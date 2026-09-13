@@ -9,10 +9,8 @@
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
-    in {
-      packages.${system}.agent-dev-tools = pkgs.buildEnv {
-        name = "agent-dev-tools";
-
+      dev-tools = pkgs.buildEnv {
+        name = "dev-tools";
         paths = with pkgs; [
           git
           gh
@@ -38,7 +36,11 @@
           direnv
         ];
       };
+    in {
+      packages.${system} = {
+        inherit dev-tools;
+        default = dev-tools;
+      };
 
-      packages.${system}.default = self.packages.${system}.agent-dev-tools;
     };
 }
