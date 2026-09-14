@@ -14,7 +14,7 @@
       system = "x86_64-linux";
 
       # The VM's login user. Change both if the image uses ec2-user, debian, root, etc.
-      username = "ubuntu";
+      username = "azureuser";
       homeDirectory = "/home/${username}";
 
       pkgs = import nixpkgs {
