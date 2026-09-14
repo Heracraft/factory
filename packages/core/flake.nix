@@ -49,6 +49,7 @@
 
           sessionVariables.PNPM_HOME = "${homeDirectory}/.local/share/pnpm";
           sessionPath = [
+            "${homeDirectory}/.nix-profile/bin"
             "${homeDirectory}/.local/share/pnpm"
             "${homeDirectory}/.cargo/bin"
           ];
@@ -61,7 +62,41 @@
         # and that whole block is gated on this being true. It also writes a
         # ~/.bash_profile that sources ~/.bashrc, which is what gets the hooks
         # into an SSH login shell.
-        programs.bash.enable = true;
+        programs.bash = {
+          enable = true;
+
+          # Home Manager owns ~/.profile and its version only sources
+          # hm-session-vars.sh, which never puts nix itself on PATH. The nix
+          # installer's line lived in the ~/.profile we overwrote, so without
+          # this a fresh login has no nix, no claude, nothing.
+          profileExtra = ''
+            if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+              . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+            elif [ -e "$HOME/.nix-profile/etc/profile.d/nix.sh" ]; then
+              . "$HOME/.nix-profile/etc/profile.d/nix.sh"
+            fi
+          '';
+
+          shellAliases = {
+            # eza, carried over from the local fish config.
+            ls = "eza -al --group-directories-first --no-permissions --no-user";
+            lsz = "eza -al --total-size --group-directories-first";
+            la = "eza -a --group-directories-first";
+            ll = "eza -l --group-directories-first";
+            lt = "eza -aT --group-directories-first";
+            "l." = "eza -ald --group-directories-first .*";
+
+            ".." = "cd ..";
+            "..." = "cd ../..";
+            "...." = "cd ../../..";
+            "....." = "cd ../../../..";
+            "......" = "cd ../../../../..";
+          };
+        };
+
+        # Ships eza and a default set of ls aliases. The explicit aliases above
+        # are plain assignments and the module's are mkDefault, so ours win.
+        programs.eza.enable = true;
 
         # These three are the ones that needed init lines.
         programs.zoxide.enable = true;
