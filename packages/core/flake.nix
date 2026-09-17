@@ -48,9 +48,13 @@
           packages = tools;
 
           sessionVariables.PNPM_HOME = "${homeDirectory}/.local/share/pnpm";
+          # The nix node's default global prefix is its own store path, which
+          # is read-only, so `npm i -g` fails with EACCES without this.
+          sessionVariables.NPM_CONFIG_PREFIX = "${homeDirectory}/.npm-global";
           sessionPath = [
             "${homeDirectory}/.nix-profile/bin"
             "${homeDirectory}/.local/share/pnpm"
+            "${homeDirectory}/.npm-global/bin"
             "${homeDirectory}/.cargo/bin"
           ];
         };

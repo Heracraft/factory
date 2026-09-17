@@ -352,3 +352,10 @@ the family. Growing to `D64s_v5` at launch is an in-place resize (deallocate,
 resize, start) because guest volumes are on the managed disk. *Rejected:*
 starting on `D64s_v5` (about $2,240 a month of credits spent on empty
 capacity); an AMD or B-series size (no or unmeasured nested virt).
+
+**I-6. Guests set `NPM_CONFIG_PREFIX=/home/dev/.npm-global` and put its
+`bin` on `PATH`.** (02) npm's default global prefix is the nodejs derivation
+itself, so `npm i -g` in a guest fails with EACCES on the read-only store.
+*Rejected:* telling users to package everything through config fragments
+(agents run `npm i -g` on their own and would hit the error unprompted).
+Interface: `guest-conventions.md` "Environment".

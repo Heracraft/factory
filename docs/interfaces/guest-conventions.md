@@ -66,7 +66,10 @@ root, read-only.
 
 `TZ` from `project.json`, `LANG=C.UTF-8`, `EDITOR=nvim` (present),
 `FACTORY_PROJECT=<slug>`, `FACTORY=1` (so scripts can detect they are in a
-guest), `PATH` includes `/home/dev/.local/bin` and `/home/dev/.local/share/pnpm`.
+guest), `NPM_CONFIG_PREFIX=/home/dev/.npm-global` (the nodejs store path is
+read-only, so `npm i -g` needs a writable prefix), `PATH` includes
+`/home/dev/.local/bin`, `/home/dev/.local/share/pnpm` and
+`/home/dev/.npm-global/bin`.
 
 ## Ports
 
