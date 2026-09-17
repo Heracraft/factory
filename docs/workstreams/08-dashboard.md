@@ -1,5 +1,10 @@
 # 08 · dashboard
 
+## 0. Design language
+
+Read `../DESIGN-LANGUAGE.md` before writing any markup. It says what to copy
+from the recruiting app and which of its controls are rejected.
+
 ## 1. Goal
 
 The web dashboard at `factory.herakraft.co` is where users do the things that

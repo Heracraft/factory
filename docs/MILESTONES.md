@@ -6,7 +6,10 @@ parallel inside one milestone, and some start early because nothing blocks
 them. "Done" for a milestone means every listed workstream's checklist is
 closed and the gate is demonstrated, not that code exists.
 
-## M0. Benchmark gate
+## M0. Benchmark gate (deferred, DECISIONS I-12)
+
+Skipped by the owner's choice on 2026-09-17. The first M1 host records real
+timings instead; the procedure below remains for when a comparison is needed.
 
 Workstreams: `00-benchmark`.
 

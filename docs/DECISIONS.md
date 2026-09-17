@@ -329,3 +329,26 @@ the wire.
 `inotify_exhausted`, `docker_down`, `freeze_timeout`, `store_path_missing`.
 hostd: `pool_high`, `store_high`, `build_queue_deep`, `cache_unreachable`,
 `guestd_lost`, `freeze_timeout`. Interfaces: `vsock-guestd.md`, `grpc-hostd.md`.
+
+**I-12. The M0 benchmark is deferred; the first M1 host measures itself.**
+(owner, 2026-09-17) The owner chose not to run the standalone benchmark.
+Hosts are still Intel `D64s_v5` with security type Standard, and
+workstream 03's checklist records build, Docker and clone timings from the
+first real host into `RESEARCH.md`. R3-20's Hetzner fallback remains the
+escape if those numbers are bad. `00-benchmark.md` stays as the procedure
+to run if a host ever needs to be compared.
+
+**I-13. Dashboard design language is the recruiting app's, minus its
+non-text controls.** (08) `DESIGN-LANGUAGE.md` lists what to copy (Noto Serif
+headings, zinc palette, single blue accent, borders not boxes, button and
+field classes) and what to replace (chip and segmented and card radios).
+
+**I-14. Pre-launch host is `Standard_D16s_v5`; the host size is a variable,
+not a constant.** (owner, 2026-09-17) The owner will test alone for about a
+month with at most 20 projects. Any Intel Dsv5 size supports nested
+virtualization, so the design is unchanged; the data disk starts at 512 GB
+Premium SSD v2 instead of 2 TB, and the quota request drops to 64 vCPUs in
+the family. Growing to `D64s_v5` at launch is an in-place resize (deallocate,
+resize, start) because guest volumes are on the managed disk. *Rejected:*
+starting on `D64s_v5` (about $2,240 a month of credits spent on empty
+capacity); an AMD or B-series size (no or unmeasured nested virt).

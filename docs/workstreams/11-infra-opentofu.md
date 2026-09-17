@@ -1,5 +1,12 @@
 # Workstream 11: infrastructure (OpenTofu)
 
+> **Host size is a variable (DECISIONS I-14).** `host_size` defaults to
+> `Standard_D16s_v5` and `host_data_disk_gb` to 512 for the pre-launch month;
+> launch values are `Standard_D64s_v5` and 2048. Validation rejects any size
+> whose name is not `Standard_D[0-9]+s_v[56]` so an AMD or ARM size cannot be
+> applied by mistake. The Coolify VM is `Standard_D4s_v5`, the edge
+> `Standard_D2s_v5`.
+
 ## 1. Goal
 
 Every cloud resource the platform needs is declared in `infra/` and created

@@ -62,8 +62,16 @@ host: a new account may run 3 projects and 1 XL until they have paid an invoice.
 
 ## 4. Hosts
 
-**Hardware.** Azure `Standard_D64s_v5` (Intel Ice Lake, 64 vCPU, 256 GB), East
-US, created with `--security-type Standard`. Trusted Launch and Confidential
+**Hardware.** Azure Intel Dsv5 family, East US, created with
+`--security-type Standard`. The launch size is `Standard_D64s_v5` (64 vCPU,
+256 GB). Until launch the single host is `Standard_D16s_v5` (16 vCPU, 64 GB,
+about $560 a month on-demand), which holds 7 large or 14 small running guests
+with the 8 GB host reserve; stopped projects cost only disk, so 20 projects
+fit as long as about a dozen small ones run at once. If that is tight,
+`D32s_v5` (128 GB, about $1,120 a month) holds 15 large. The host size is an
+OpenTofu variable; growing it is deallocate, resize, start, with guests
+stopped for the minutes it takes, because the guest volumes live on the
+managed data disk, not the local temp disk. See DECISIONS I-14. Trusted Launch and Confidential
 VMs disable nested virtualization. AMD sizes (`Da*`, `Ea*`, and the `v7` AMD
 line this repo's dev box runs on) are excluded: measured nested-KVM penalties
 on Azure AMD are 50 to 90 percent versus roughly 10 percent on Intel. ARM sizes
@@ -87,8 +95,9 @@ from `nix/hosts/`. The host configuration declares:
 - No public IP. Inbound NSG: nothing. Outbound: unrestricted (guests need it).
 
 **Capacity.** Memory is the binding constraint and is never oversubscribed.
-With 16 GB host reserve, a host fits 30 large guests, 55 small, or 15 XL, in any
-mix. CPU is oversubscribed 2:1 against the 64 vCPU. Capacity is added manually:
+The host reserve is 8 GB below 128 GB of RAM and 16 GB above. A `D64s_v5`
+fits 30 large guests, 55 small, or 15 XL, in any mix; a `D16s_v5` fits 7
+large or 14 small. CPU is oversubscribed 2:1 against the 64 vCPU. Capacity is added manually:
 an alert fires at 80 percent reserved memory and a human runs the OpenTofu
 apply for the next host.
 

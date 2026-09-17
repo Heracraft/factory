@@ -26,6 +26,9 @@ docs disagree, the doc is wrong only if a `DECISIONS.md` entry says so.
 | [ops/RUNBOOK.md](ops/RUNBOOK.md) | Something is broken in production and you need the symptom-to-fix list. |
 | [ops/OBSERVABILITY.md](ops/OBSERVABILITY.md) | You are adding a log line, a metric, or a signal that the idle and pricing policies will later depend on. |
 | [PRICING.md](PRICING.md) | Tiers, meters, the cost floor per guest, and the trial. |
+| [DESIGN-LANGUAGE.md](DESIGN-LANGUAGE.md) | You are building any screen. What to copy from the recruiting app and what not to. |
+| [ops/AZURE-SETUP.md](ops/AZURE-SETUP.md) | The one-time human steps in Azure, Cloudflare, Logto, Stripe and Resend before agents start. |
+| [workstreams/PROMPTS.md](workstreams/PROMPTS.md) | The prompt and model to use when launching an agent on a workstream. |
 
 ## How parallel work is organised
 
