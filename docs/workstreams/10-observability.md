@@ -1,0 +1,236 @@
+# Workstream 10: observability
+
+## 1. Goal
+
+Every component emits structured logs and Prometheus metrics from its first
+commit, shipped to the Loki, Grafana and Prometheus stack that already runs on
+the owner's personal server. The signals that later decide idle policy,
+pricing, and abuse response are recorded from milestone M1 onward, because a
+policy designed without a month of data is a guess.
+
+## 2. Scope: builds
+
+- `internal/obs`: one Go package used by every binary. `obs.Logger`
+  (structured JSON via `log/slog`), `obs.Metrics` (a `prometheus.Registry`
+  with the `factory_` namespace pre-set), `obs.Tracer` (OpenTelemetry with an
+  OTLP exporter that is a no-op when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset).
+- The metric and log-event naming rules below, enforced by a test that fails
+  on any metric outside the `factory_` namespace or any log call missing
+  `component`.
+- Fluent Bit configuration in `nix/hosts/fluent-bit.nix`: journald input for
+  host units, a tail input for every `/var/lib/factory/guests/*/console.log`,
+  output to Loki over WireGuard with labels `host`, `component`, and for
+  console logs `guest_id`.
+- Prometheus on the personal server: scrape configs for hosts (`hostd`
+  `:9100` node_exporter and `:9101` hostd, both bound to the WireGuard
+  address), the edge (gateway `:9102`), the Coolify VM (api `:9103` bound to
+  the WireGuard address, since the Coolify VM is also a WireGuard peer of
+  the edge for this purpose).
+- Grafana dashboards as JSON in `ops/dashboards/`, provisioned by the
+  personal server's Grafana: host capacity, per-guest resources, builds,
+  gateway, snapshots, billing, abuse.
+- Alert rules as Prometheus rules in `ops/alerts.yaml`, one per alert in
+  `../CHECKLIST.md`, routed to the existing Alertmanager (ntfy to the owner).
+- Retention: Loki 30 days for console logs and 90 days for component logs;
+  Prometheus 90 days; `meter_samples` 90 days and `proc_samples` 30 days in
+  Postgres (partition drops, see `interfaces/db-schema.md`).
+
+## 3. Scope: does not build
+
+- Sampling itself. hostd and guestd collect `Samples` (workstreams 03 and
+  04); this workstream defines what the samples must contain and how they
+  are exported.
+- The hourly rollup into `usage_hours` (workstream 09).
+- Abuse *response* tooling (`factory-admin suspend`, workstream 05). This
+  workstream builds the dashboards that show what to respond to.
+- A traces backend. `obs.Tracer` is wired; Tempo or equivalent is a later
+  decision.
+
+## 4. Interfaces
+
+Owns: metric names, log event names and fields, the `obs` package API, the
+Fluent Bit label set, dashboard and alert definitions.
+
+Consumes: everything. Every other workstream calls `obs`.
+
+## 5. Design detail
+
+### Log events
+
+One JSON object per line on stdout (journald on NixOS hosts, Docker logs on
+Coolify). Required fields on every line: `ts` (RFC 3339 UTC), `level`,
+`component` (`api|hostd|guestd|gateway|cli|admin`), `event` (lower_snake,
+the semantic name of what happened), `msg` (human sentence). Contextual
+fields when they exist: `request_id`, `command_id`, `op_id`, `project_id`,
+`guest_id`, `host_id`, `user_id`. Never `handle`, `email`, `remote_url`
+(it can contain a token), certificate bodies, secret names *and* values,
+prompts, terminal contents, process arguments, IP addresses of users, user
+agents.
+
+The reason for the never-list: a Loki query is the fastest way to leak a
+tenant's data to whoever holds the Grafana password, and logs outlive the
+incident that justified them. Bounded enums, ids, counts and durations
+carry the same diagnostic value.
+
+Events are intentional, not `fmt.Sprintf` residue. A list of the events each
+component must emit:
+
+- hostd: `guest_create`, `guest_start`, `guest_stop`, `guest_destroy`,
+  `guest_state`, `build_start`, `build_done`, `build_fail`, `switch_done`,
+  `snapshot_start`, `snapshot_done`, `snapshot_fail`, `stream_connect`,
+  `stream_disconnect`, `guestd_lost`, `guestd_regained`, `pool_warning`,
+  `store_warning`.
+- guestd: `ready`, `freeze`, `thaw`, `freeze_timeout`, `switch`,
+  `agent_event`, `agent_state`, `hook_bad_payload`.
+- api: `request` (method, route, status, duration_ms), `cert_issue`,
+  `cert_revoke`, `schedule` (host chosen, free memory), `schedule_fail`,
+  `command_send`, `command_result`, `rollup_done`, `stripe_webhook`,
+  `notify_send`, `notify_fail`, `admin_action`.
+- gateway: `session_open`, `session_close`, `auth_fail` (reason enum:
+  `bad_cert|expired|revoked|wrong_principal|stopped|not_found`),
+  `route_fail`, `dial_fail`.
+- cli: only to a local file `~/.config/factory/cli.log` at debug level when
+  `--verbose`; nothing is shipped from laptops.
+
+### Metrics
+
+Prefix `factory_`. Labels are low-cardinality only: `component`, `host_id`,
+`class`, `state`, `kind`, `reason`, `route`, `status`. `project_id` and
+`guest_id` are never labels in Prometheus; per-project figures come from
+`meter_samples` in Postgres and the billing dashboard queries there. The
+reason: 30 guests per host across a fleet is fine, but a label that grows
+with every project ever created makes Prometheus the first thing to fall
+over.
+
+Families:
+
+- Host (hostd): `factory_host_mem_free_bytes`, `factory_host_mem_reserved_bytes`,
+  `factory_host_pool_free_bytes`, `factory_host_store_bytes`,
+  `factory_host_guests{state,class}`, `factory_host_builds_running`,
+  `factory_host_build_duration_seconds{result}` (histogram),
+  `factory_host_snapshot_duration_seconds{reason,result}`,
+  `factory_host_snapshot_bytes`, `factory_host_stream_connected` (0/1),
+  `factory_host_commands_total{kind,result}`, `factory_host_guestd_lost`
+  (gauge, count of guests with `guestd_ok=false`),
+  `factory_host_guest_cpu_seconds_total{class}` (summed over guests),
+  `factory_host_guest_net_bytes_total{direction}`.
+- API: `factory_api_requests_total{route,method,status}`,
+  `factory_api_request_duration_seconds{route}`,
+  `factory_api_hosts{state}`, `factory_api_projects{state,class}`,
+  `factory_api_schedule_total{result}`, `factory_api_certs_issued_total`,
+  `factory_api_certs_revoked_total`, `factory_api_rollup_lag_seconds`,
+  `factory_api_notify_total{channel,result}`,
+  `factory_api_stripe_usage_push_total{result}`,
+  `factory_api_snapshot_age_seconds` (max over running projects; the alert
+  input).
+- Gateway: `factory_gateway_sessions` (gauge), `factory_gateway_sessions_total`,
+  `factory_gateway_auth_fail_total{reason}`, `factory_gateway_dial_fail_total`,
+  `factory_gateway_route_duration_seconds`.
+- Fleet-level abuse views are Grafana queries over Postgres `proc_samples`
+  (top `comm` by CPU across all projects, top egress by project), not
+  Prometheus series.
+
+### Day-one signals
+
+Recorded in `meter_samples` every 60 seconds per project, from DESIGN §15:
+state, class, CPU ns delta, RSS, net tx/rx delta, disk allocated and used,
+SSH sessions open, tmux clients attached, agent processes with tmux window
+and state (`working|idle|needs_input|unknown`), Docker containers running,
+`guestd_ok`. Plus `proc_samples`: `comm`, CPU ns delta, RSS. The gateway's
+`POST /internal/sessions` cross-checks `ssh_sessions`.
+
+These are the inputs to three decisions the owner deferred: what an
+unattended agent looks like from outside (idle policy), whether memory or
+CPU binds first (tier shapes and E-series vs D-series), and what abuse looks
+like (miners, fork bombs, egress). Nothing in this list identifies a user
+beyond their project id.
+
+### Dashboards
+
+| Dashboard | Panels |
+|---|---|
+| Host capacity | reserved vs free memory per host, pool free, store size, guests by state, builds running, stream connected |
+| Per-guest resources | from Postgres: CPU, RSS, net, disk for one project over time; signals timeline |
+| Builds | duration histogram, failures by error code, queue depth, eval vs build time |
+| Gateway | sessions, auth failures by reason, dial failures, route latency |
+| Snapshots | age per running project (table), bytes per day, failures |
+| Billing | usage per hour by class, rollup lag, Stripe push results, cost per project today |
+| Abuse | top 20 `comm` by CPU fleet-wide (24h), top projects by egress, guests with 100 percent CPU and zero sessions for over 24h |
+
+### Alerts
+
+Each maps to a `../ops/RUNBOOK.md` entry of the same name.
+
+| Alert | Rule | Severity |
+|---|---|---|
+| `HostMemory80` | `reserved / (reserved+free) > 0.8` for 10m | warn |
+| `HostUnreachable` | `factory_api_hosts{state="unreachable"} > 0` for 2m | page |
+| `SnapshotStale` | `factory_api_snapshot_age_seconds > 36*3600` | warn |
+| `BuildQueueStuck` | `factory_host_builds_running >= 2` and no `build_done` for 45m | warn |
+| `GatewayAuthSpike` | `rate(factory_gateway_auth_fail_total[5m]) > 1` | warn |
+| `EgressHigh` | Postgres: any project over 1 TB in 24h (checked hourly by api, exported as `factory_api_egress_alert_projects`) | warn |
+| `PoolFull` | `pool_free_bytes / pool_bytes < 0.1` | page |
+| `StoreFull` | host root fs > 85 percent | warn |
+| `GuestdLost` | `factory_host_guestd_lost > 0` for 5m | warn |
+| `RollupLag` | `factory_api_rollup_lag_seconds > 2*3600` | warn |
+| `StripePushFail` | `increase(factory_api_stripe_usage_push_total{result="error"}[1h]) > 0` | warn |
+
+### Traces
+
+`obs.Tracer` wraps the api's HTTP handlers, the gRPC stream handling, and
+the Postgres calls with OpenTelemetry spans. With no OTLP endpoint set the
+exporter is a no-op and the cost is one context value per request. When a
+backend exists, setting one environment variable turns it on.
+
+## 6. Failure modes
+
+| Failure | Outcome |
+|---|---|
+| Loki unreachable from a host | Fluent Bit buffers to disk (`/var/lib/fluent-bit`, 1 GB cap), retries; a host-side `fluent_bit_output_retries_failed_total` alert fires after 30m. Guests are unaffected. |
+| Prometheus cannot scrape a host | `up{job="hosts"} == 0` alert; hostd keeps sampling into Postgres via the gRPC stream, so billing data is not lost. |
+| A component emits a metric outside `factory_` | the `obs` package test fails at build time. |
+| A log line carries a forbidden field | a reviewer catches it (checklist item); `obs.Logger` additionally redacts any field named `token`, `secret`, `password`, `authorization`, `cert` at runtime as a floor. |
+| `proc_samples` partition drop fails | the api logs `partition_drop_fail` and alerts; disk grows but nothing else breaks. |
+
+## 7. Testing
+
+- Unit: `obs` naming tests; redaction test with every forbidden field name.
+- Integration: a `docker compose` in `ops/dev/` with Loki, Prometheus and
+  Grafana for local development; the dashboards must load without errors
+  against it (`grafana-cli` lint in CI).
+- On a real host (M1): Fluent Bit ships a guest's console log within 10
+  seconds of a `guest_start`, visible in Grafana Explore by `guest_id`.
+- Alert rules: `promtool test rules` with a fixture per alert.
+
+## 8. Rollback
+
+Disable Fluent Bit's Loki output and Prometheus's scrape job; nothing
+depends on either for correctness. Dashboards and alerts are files; revert
+the commit.
+
+## 9. Checklist
+
+- [ ] `internal/obs` exists, every binary uses it, and no binary imports
+      `log` or `fmt.Print*` for logging. Evidence: `rg '"log"|fmt.Print' cmd
+      internal` shows only `main` bootstrap lines.
+- [ ] Every event in §5 is emitted by its component. Evidence: a script
+      greps each event name and lists the call site.
+- [ ] Every metric family in §5 exists with exactly those labels. Evidence:
+      `curl :9101/metrics` output on a host pasted, and the naming test.
+- [ ] Fluent Bit on a real host ships journald and guest console logs with
+      the documented labels. Evidence: Loki query screenshot or output for
+      one guest.
+- [ ] Prometheus scrapes hosts, edge and api over WireGuard. Evidence:
+      `up` series listed.
+- [ ] All seven dashboards load and every panel renders with data from a
+      real host. Evidence: screenshots in the PR.
+- [ ] All eleven alerts exist, have a `promtool` test, and have a RUNBOOK
+      entry. Evidence: `promtool test rules ops/alerts_test.yaml` output;
+      grep of RUNBOOK headings.
+- [ ] Retention set: Loki 30/90 days, Prometheus 90 days, partition drops
+      scheduled and exercised once. Evidence: config lines and a log of one
+      drop.
+- [ ] The never-log list is enforced by redaction and stated in
+      `../ops/OBSERVABILITY.md`. Evidence: redaction test.
+- [ ] `OTEL_EXPORTER_OTLP_ENDPOINT` unset produces no network calls.
+      Evidence: `strace -e network` or a test with a fake exporter.

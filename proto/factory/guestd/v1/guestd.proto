@@ -1,0 +1,82 @@
+// Contract: docs/interfaces/vsock-guestd.md. Length-prefixed protobuf over
+// vsock port 5000 (or a unix socket in dev mode). One Envelope per frame.
+syntax = "proto3";
+
+package factory.guestd.v1;
+
+option go_package = "github.com/heracraft/factory/internal/gen/guestd/v1;guestdv1";
+
+import "factory/hostd/v1/hostd.proto";
+
+message Envelope {
+  string request_id = 1;   // empty for Notify
+  oneof body {
+    Request request = 2;
+    Response response = 3;
+    Notify notify = 4;
+  }
+}
+
+message Secret { string name = 1; bytes value = 2; }
+
+message Ping {}
+message Freeze {}
+message Thaw {}
+message Switch { string system_closure = 1; bool force_reboot = 2; }
+message GrowFs {}
+message WriteSecrets { repeated Secret secrets = 1; }
+message SetPrincipals { repeated string principals = 1; }
+message SetupProject { string project_slug = 1; string remote_url = 2; string tz = 3; string lang = 4; bytes project_json = 5; }
+message Sample {}
+message Exec { repeated string argv = 1; uint32 timeout_s = 2; string as_user = 3; }
+message Shutdown { uint32 timeout_s = 1; }
+
+message Request {
+  oneof req {
+    Ping ping = 1;
+    Freeze freeze = 2;
+    Thaw thaw = 3;
+    Switch switch = 4;
+    GrowFs grow_fs = 5;
+    WriteSecrets write_secrets = 6;
+    SetPrincipals set_principals = 7;
+    SetupProject setup_project = 8;
+    Sample sample = 9;
+    Exec exec = 10;
+    Shutdown shutdown = 11;
+  }
+}
+
+message Error { string code = 1; string message = 2; }
+
+message PingResult { string version = 1; uint64 uptime_s = 2; string boot_id = 3; }
+message SwitchResult { bool rebooted = 1; bool needs_reboot = 2; bytes output = 3; }
+message GrowFsResult { uint64 new_bytes = 1; }
+message SampleResult { factory.hostd.v1.GuestSignals signals = 1; repeated factory.hostd.v1.ProcSample procs = 2; }
+message ExecResult { int32 exit_code = 1; bytes stdout = 2; bytes stderr = 3; }
+
+message Response {
+  bool ok = 1;
+  Error error = 2;
+  oneof result {
+    PingResult ping = 10;
+    SwitchResult switch = 11;
+    GrowFsResult grow_fs = 12;
+    SampleResult sample = 13;
+    ExecResult exec = 14;
+  }
+}
+
+message Ready { string boot_id = 1; }
+message AgentEvent { string agent = 1; string tmux_window = 2; string kind = 3; string summary = 4; }
+message AgentState { string agent = 1; string tmux_window = 2; string state = 3; }
+message Warning { string kind = 1; string detail = 2; }
+
+message Notify {
+  oneof n {
+    Ready ready = 1;
+    AgentEvent agent_event = 2;
+    AgentState agent_state = 3;
+    Warning warning = 4;
+  }
+}

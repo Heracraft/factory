@@ -1,0 +1,535 @@
+# Research
+
+Facts the design rests on, with citations. Gathered 2026-09-16 and 2026-09-17
+by research agents during the design interview; each section names what was
+verified and where. Update a section when a fact changes, and date the change.
+
+## 1. Azure bare metal and nested virtualization
+
+**Bare metal with hypervisor control does not exist on Azure for general use.**
+
+- Azure Dedicated Host rents a physical server, but only Azure VMs can be
+  placed on it; there is no host OS or hypervisor access, VMs must be one
+  size family per host, and billing is per host.
+  https://learn.microsoft.com/en-us/azure/virtual-machines/dedicated-hosts
+- Azure BareMetal Infrastructure (formerly Large Instances) is the only "no
+  virtualization layer, full root" product. Pricing is workload-specific and
+  custom-quoted through a CSA/GBB engagement, in a handful of regions
+  (Microsoft Q&A answer, April 2025).
+  https://learn.microsoft.com/en-us/answers/questions/2245321/how-can-i-create-a-dedicated-physical-server-not-v
+  It targets certified enterprise apps (SAP HANA, Oracle, Nutanix NC2); SAP
+  HANA Large Instances is being decommissioned by 31 Dec 2025.
+  https://learn.microsoft.com/en-us/azure/sap/large-instances/hana-available-skus
+- NC2 on Azure is BareMetal running Nutanix AHV (KVM-based), but AOS
+  abstracts kvm, virsh, qemu and libvirt away; minimum 3 nodes plus Nutanix
+  licences. https://learn.microsoft.com/en-us/azure/nutanix/about-nc2-on-azure
+- "AKS on bare metal" (Build 2026, June preview) runs on customer-owned Azure
+  Local edge hardware, not in Azure datacentres.
+  https://blog.aks.azure.com/2026/06/02/aks-baremetal-public-preview
+
+**Nested virtualization on ordinary Azure VMs (2026).**
+
+- Supported series per official feature tables: Dv5/Dsv5, Ddsv5, Ev5, Dsv6
+  (Intel Emerald Rapids), Dasv6 (AMD Genoa), Lsv3. Check each size page's
+  "Feature support" row.
+  https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/ddsv5-series
+  https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/dsv6-series
+  https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/dasv6-series
+  https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/storage-optimized/lsv3-series
+- ARM (Dpsv5/Dpsv6 Cobalt): not supported.
+  https://learn.microsoft.com/en-us/answers/questions/1166616/nested-virtualization-for-arm-architecture
+- Trusted Launch (the portal default) and Confidential VMs disable nested
+  virtualization. Create hosts with `--security-type Standard`.
+  https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-faq
+  https://learn.microsoft.com/en-us/azure/confidential-computing/confidential-vm-faq
+- KVM inside works (`/dev/kvm` appears; Firecracker and Cloud Hypervisor open
+  it). Microsoft's position: "Non-Microsoft virtualization on Hyper-V
+  virtualization isn't supported" and is untested.
+  https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/user-guide/nested-virtualization
+  A February 2026 guide quotes 5 to 15 percent CPU overhead and "not meant
+  for production" nested VMs.
+  https://oneuptime.com/blog/post/2026-02-16-how-to-enable-nested-virtualization-on-an-azure-virtual-machine/view
+- AMD penalty: Cloud Hypervisor issue #4827 measured on Azure AMD about 50
+  percent CPU loss with Firecracker and 80 to 90 percent with Cloud
+  Hypervisor and QEMU, versus about 10 percent on Intel; "Hyper-V not
+  optimised for nested VMs on EPYC". An Azure fix was promised December 2022;
+  the issue is still open. Prefer Intel SKUs and benchmark before committing.
+  https://github.com/cloud-hypervisor/cloud-hypervisor/issues/4827
+- Evidence it is production-viable: Microsoft's own AKS Pod Sandboxing is
+  Kata plus Cloud Hypervisor nested inside Azure VMs ("any Gen2 size that
+  supports nested virtualization"), GA docs updated November 2025.
+  https://learn.microsoft.com/en-us/azure/aks/use-pod-sandboxing
+  Northflank runs Kata plus Cloud Hypervisor sandboxes, BYOC on Azure among
+  others, falling back to gVisor where nested virtualization is unavailable
+  (May 2026). https://northflank.com/blog/firecracker-vs-cloud-hypervisor
+  actuated (Firecracker CI runners) lists Azure nested-virt VMs as a
+  supported "lowest cost, mid-level performance" tier versus bare metal.
+  https://docs.actuated.com/provision-server/
+  General guidance: nested setups "can look healthy and be quietly slow";
+  measure the workload.
+  https://www.pandastack.ai/blog/bare-metal-vs-cloud-vms-for-firecracker/
+
+## 2. Azure host pricing (East US, Linux, retail price API, September 2026)
+
+| SKU | vCPU / RAM | On-demand /h | 1-yr RI /h equiv. | 3-yr RI /h equiv. |
+|---|---|---|---|---|
+| D64s_v5 (Intel) | 64 / 256 GB | $3.072 | $1.894 | $1.212 |
+| D64s_v6 (Intel EMR) | 64 / 256 GB | $3.226 | $2.00 | $1.26 |
+| D64ds_v5 (+2.4 TB local SSD) | 64 / 256 GB | $3.616 | not quoted | not quoted |
+| E64s_v5 | 64 / 512 GB | $4.032 | $2.378 | $1.591 |
+| L64s_v3 (8x1.92 TB NVMe) | 64 / 512 GB | $5.568 | ~$3.57 | ~$2.33 |
+
+Sources:
+https://prices.azure.com/api/retail/prices?$filter=armSkuName%20eq%20%27Standard_D64s_v5%27%20and%20armRegionName%20eq%20%27eastus%27
+https://prices.azure.com/api/retail/prices?$filter=armSkuName%20eq%20%27Standard_E64s_v5%27%20and%20armRegionName%20eq%20%27eastus%27
+https://prices.azure.com/api/retail/prices?$filter=armSkuName%20eq%20%27Standard_D64s_v6%27%20and%20armRegionName%20eq%20%27eastus%27
+
+Notes: Ddsv5 has a 2,400 GiB local disk at 300k IOPS but it is ephemeral.
+Dsv6 has no local disk. Lsv3 is Ice Lake with 8x NVMe and about 50 percent
+more expensive. Spot for D64s_v5 was about $0.65/h. The design (DECISIONS
+R2-17) chose D64s_v5 with a managed data disk; D64ds_v5 is the candidate if
+hot overlay data moves to local SSD later. The dev box this repo is developed
+on is a `Standard_D8alds_v7` (AMD) in `eastus`, which is the family to avoid
+for hosts.
+
+## 3. AWS
+
+**EC2 bare metal (.metal).** Ordinary on-demand types with no Nitro
+hypervisor, direct `/dev/kvm`, no nested penalty; AWS recommends metal for
+"performance sensitive or strict latency" nested workloads.
+https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/amazon-ec2-nested-virtualization.html
+GA families: m6i/c6i/r6i.metal (128 vCPU), i4i.metal, and the October 2023
+"half-size" metals c7i/m7i/r7i.metal-24xl (96 vCPU) and -48xl (192),
+r7iz.metal-16xl (64) and -32xl. AMD metal is only m7a/c7a/r7a.metal-48xl
+(192 vCPU). Smallest x86 metal is 64 to 96 vCPU.
+https://aws.amazon.com/about-aws/whats-new/2023/10/new-amazon-ec2-bare-metal-instances
+
+| Instance | vCPU / RAM | On-demand (us-east-1) | 1-yr RI no-upfront | Monthly OD |
+|---|---|---|---|---|
+| c7i.metal-24xl | 96 / 192 GB | $4.284/h | $2.834/h | $3,127 |
+| m7i.metal-24xl | 96 / 384 GB | $4.838/h | $3.201/h ($2,336/mo) | $3,532 |
+| m6i.metal | 128 / 512 GB | $6.144/h | $4.064/h | $4,485 |
+| m7a.metal-48xl | 192 / 768 GB | $11.128/h | $7.361/h | $8,124 |
+
+https://instances.vantage.sh/aws/ec2/c7i.metal-24xl
+https://instances.vantage.sh/aws/ec2/m7i.metal-24xl
+https://aws-pricing.com/m7i.metal-24xl.html
+https://instances.vantage.sh/aws/ec2/m6i.metal
+https://instances.vantage.sh/aws/ec2/m7a.metal-48xl
+
+Spot m7i.metal-24xl was about $1.21/h. Metal on m7i/c7i is EBS-only (no local
+NVMe).
+
+**Quota gotcha.** Metal counts under "Running On-Demand Standard (A, C, D, H,
+I, M, R, T, Z)" whose default for a new account is 5 vCPUs; a single 96-vCPU
+metal instance needs a quota increase, and staged requests are approved
+faster than large jumps.
+https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-on-demand-instances.html
+https://blog.ronin.cloud/how-to-request-an-ec2-quota-increase-on-aws-and-get-it-approved-faster/
+
+**Nested virtualization on regular EC2 changed in February 2026.** A
+`NestedVirtualization=enabled` CPU option (`--cpu-options`), no extra cost,
+KVM and Hyper-V as L1, launched on C8i/M8i/R8i; docs list
+M7i/M7i-flex/M8i(d)/C7i(-flex)/C8i(d)/R7i/R7iz/R8i/X8i/I7i/I7ie. Intel only,
+no AMD or Graviton. Firecracker and Cloud Hypervisor work on it.
+https://aws.amazon.com/about-aws/whats-new/2026/02/amazon-ec2-nested-virtualization-on-virtual
+https://www.theregister.com/2026/02/17/nested_virtualization_aws_ec2/
+
+**Credits.** AWS Activate: Founders $1k (up to $5k), Portfolio up to $200k;
+credits cover EC2 broadly, expire in 1 to 2 years, exclude RI and Savings
+Plan upfront fees, Marketplace and ProServe. No published exclusion of
+.metal types.
+https://aws.amazon.com/aws-startups/learn/everything-you-need-to-know-about-aws-activate-credits/
+
+## 4. Other bare-metal providers and vendor statements
+
+| Provider / plan | Hardware | Price | Notes |
+|---|---|---|---|
+| Hetzner AX162-R | EPYC 9454P 48c/96t, 256 GB, 2x1.92 TB NVMe | €199/mo at launch (+€79 setup); about €229 to €244 after the 15 June 2026 repricing | Robot webservice API for ordering once enabled |
+| Latitude.sh c3.large.x86 | 24c, 256 GB, 2x1.9 TB NVMe | $0.68/h, about $496/mo | hourly billing, API and Terraform |
+| Latitude.sh c4.metal.large | 96c Zen 5, 384 GB | $4.00/h, about $2,920/mo | |
+| OVHcloud Advance-5 | EPYC 8224P 24c/48t, up to 576 GB NVMe | about $504/mo | OVH API |
+| Vultr Bare Metal | entry plans | from $120 to $185/mo | hourly, API; 256 GB price not verified |
+| Equinix Metal | | | sunset 30 June 2026 |
+
+https://www.hetzner.com/pressroom/new-ax162/
+https://docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/
+https://robot.hetzner.com/doc/webservice/en.html
+https://docs.hetzner.com/robot/dedicated-server/robot-interfaces/
+https://www.latitude.sh/pricing
+https://us.ovhcloud.com/bare-metal/prices/
+https://blogs.vultr.com/introducing-a-new-vultr-bare-metal-plan-for-185-per-month
+https://www.datacenterdynamics.com/en/news/equinix-to-kill-off-metal-by-june-2026/
+https://www.latitude.sh/blog/equinix-metal-sunset-how-to-reduce-the-migration-burden
+
+Vendor statements:
+
+- Fly.io: "you need bare metal servers to efficiently do lightweight
+  virtualization; you want KVM but without nested virtualization... You're
+  probably not going to shell out for EC2 metal instances just to get some
+  extra isolation." https://fly.io/blog/sandboxing-and-workload-isolation/
+  "Our Workers are now bare-metal servers, not EC2 VMs."
+  https://fly.io/blog/the-serverless-server/ Fleet is 8 to 32 core, 32 to
+  256 GB physical boxes. https://fly.io/docs/reference/architecture/
+- Northflank: Kata plus Cloud Hypervisor primary, Firecracker and gVisor
+  where nested virtualization is unavailable; "On AWS, this means running on
+  .metal instances or instances with nested virtualization enabled."
+  https://northflank.com/blog/what-is-aws-firecracker
+  https://northflank.com/blog/gpu-sandboxes
+- Modal avoids KVM entirely (gVisor), so it runs on ordinary cloud VMs.
+  https://northflank.com/blog/e2b-vs-modal
+- E2B self-hosting requires hardware KVM (bare metal or nested-virt
+  instances); community guides steer production to Hetzner dedicated.
+  https://bex.co/blog/2026/07/12/daytona-vs-e2b-self-hosted-ai-sandbox
+  https://openmetal.io/resources/blog/self-hosting-an-ai-agent-code-execution-sandbox-on-bare-metal/
+- PandaStack: EC2 .metal is "genuinely bare metal that happens to bill
+  hourly" at premium per-core pricing; put the floor on rented metal, the
+  spike on cloud.
+  https://www.pandastack.ai/blog/bare-metal-vs-cloud-vms-for-firecracker/
+
+Bottom line for about 25 guests at 2 to 4 vCPU and 4 to 8 GB: AWS metal is
+about $3.1k to $3.5k/mo on demand ($2.1k to $2.3k with a 1-year RI), Azure
+D64s_v5 about $2.2k/mo, Hetzner about €230 or Latitude about $500 for
+equivalent hardware, a 6 to 12x gap.
+
+## 5. Firecracker vs Cloud Hypervisor
+
+| | Firecracker 1.17 | Cloud Hypervisor v53 |
+|---|---|---|
+| virtio-fs | No (devices: net, block, vsock, balloon, serial); host FS sharing issue #1180 closed 2020 unresolved | Yes via vhost-user virtiofsd, including DAX |
+| vsock | Yes | Yes |
+| Snapshot/restore | Full snapshots production, diff in dev preview; vsock reset on restore | Yes; virtio-fs snapshot/restore only filled out in v52 (#7937), earlier hung (#6931) |
+| Memory hotplug | virtio-mem, added 1.14, developer preview | ACPI (grow only) or virtio-mem (grow/shrink), long-standing |
+| Runs on MSHV | No, KVM only | Yes (KVM or MSHV) |
+
+https://github.com/firecracker-microvm/firecracker/blob/main/FAQ.md
+https://github.com/firecracker-microvm/firecracker/issues/1180
+https://github.com/firecracker-microvm/firecracker/blob/main/docs/snapshotting/snapshot-support.md
+https://github.com/firecracker-microvm/firecracker/blob/main/CHANGELOG.md
+https://github.com/cloud-hypervisor/cloud-hypervisor/blob/main/release-notes.md
+https://github.com/cloud-hypervisor/cloud-hypervisor/issues/6931
+https://github.com/cloud-hypervisor/cloud-hypervisor/blob/main/docs/memory.md
+
+**microvm.nix** supports both. Its hypervisor table says Firecracker has "no
+9p/virtiofs shares" and cloud-hypervisor "no 9p shares" (virtiofs OK). On
+Firecracker the guest's closure is baked into a per-VM erofs/squashfs store
+disk; on Cloud Hypervisor `/nix/store` is shared read-only through virtiofsd.
+For a host-shared store, Cloud Hypervisor is the fit.
+https://github.com/microvm-nix/microvm.nix
+https://microvm-nix.github.io/microvm.nix/shares.html
+
+## 6. Coding agents and supporting packages in nixpkgs (nixos-unstable, 2026-09-16)
+
+| Agent | Attribute | Unfree | nixpkgs version | Upstream latest | Lag |
+|---|---|---|---|---|---|
+| Claude Code | `claude-code` | Yes | 2.1.245 | 2.1.273 (npm `@anthropic-ai/claude-code`) | about 28 patch releases, days to weeks |
+| opencode | `opencode` | No (MIT) | 1.18.30 (package.nix; mynixos index showed 1.18.21) | v1.18.31 (14 Sep) | about 1 patch |
+| OpenAI Codex CLI | `codex` | No (Apache-2.0), built from `codex-rs` via cargo | 0.154.0 | rust-v0.154.0 | current |
+| Gemini CLI | `gemini-cli` | No (Apache-2.0) | 0.47.0 | v0.60.0 | about 13 minors |
+| pi | `pi-coding-agent` | No (MIT) | 0.84.2 (0.84.4 bump PR open) | 0.85.1 (npm) | about 1 minor |
+
+- Claude Code is packaged via `stdenv.mkDerivation` from Anthropic's binary
+  manifest (`manifest.zst.json`), not `buildNpmPackage`; needs `allowUnfree`.
+  Community flakes tracking upstream hourly: sadjow/claude-code-nix,
+  ryoppippi/nix-claude-code.
+- Codex: nixpkgs builds from source; community binary flakes:
+  SecBear/codex-nix, sadjow/codex-cli-nix.
+- pi is Mario Zechner's (badlogic) terminal coding agent from the
+  `badlogic/pi-mono` monorepo (packages pi-ai, pi-agent-core, pi-tui,
+  pi-coding-agent). The npm scope moved from `@mariozechner/pi-coding-agent`
+  to `@earendil-works/pi-coding-agent`; homepage pi.dev. Other installs:
+  `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`, `curl
+  -fsSL https://pi.dev/install.sh | sh`, or bun-compiled standalone binaries
+  from GitHub releases. nixpkgs PR #558575 switched to repackaging upstream's
+  bun binary. Home Manager has `programs.pi-coding-agent`; community flakes:
+  sadjow/pi-nix, lukasl-dev/pi.nix, peedrr/nix-pi-coding-agent. Issue #701
+  (missing lockfile) is closed.
+- Supporting packages: `playwright-driver` 1.63.0 exposes
+  `playwright-driver.browsers` (link farm of chromium,
+  chromium-headless-shell, firefox, webkit; `withChromiumHeadlessShell`
+  default true; `browsers-chromium` preset); `chromium` 152.0.7977.64
+  (headless works with `--headless`); `virtiofsd` 1.14.0; `cloud-hypervisor`
+  53.0.
+
+https://search.nixos.org/packages?channel=unstable&show=claude-code
+https://mynixos.com/nixpkgs/package/claude-code
+https://github.com/NixOS/nixpkgs/blob/nixos-unstable/pkgs/by-name/cl/claude-code/package.nix
+https://github.com/NixOS/nixpkgs/blob/nixos-unstable/pkgs/by-name/op/opencode/package.nix
+https://github.com/anomalyco/opencode/releases/latest
+https://github.com/NixOS/nixpkgs/blob/nixos-unstable/pkgs/by-name/co/codex/package.nix
+https://github.com/openai/codex/releases/latest
+https://github.com/NixOS/nixpkgs/blob/nixos-unstable/pkgs/by-name/ge/gemini-cli/package.nix
+https://github.com/google-gemini/gemini-cli/releases/latest
+https://mynixos.com/nixpkgs/package/pi-coding-agent
+https://github.com/NixOS/nixpkgs/pull/558575
+https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/README.md
+https://github.com/badlogic/pi-mono/issues/701
+https://github.com/nix-community/home-manager/blob/master/modules/programs/pi-coding-agent.nix
+https://github.com/NixOS/nixpkgs/blob/nixos-unstable/pkgs/development/web/playwright/driver.nix
+https://mynixos.com/nixpkgs/package/chromium
+https://github.com/NixOS/nixpkgs/blob/nixos-unstable/pkgs/by-name/vi/virtiofsd/package.nix
+https://github.com/NixOS/nixpkgs/blob/nixos-unstable/pkgs/by-name/cl/cloud-hypervisor/package.nix
+
+## 7. What agents lose in a remote headless VM
+
+### Browser use
+
+- Playwright MCP (`@playwright/mcp`): headed by default, `--headless` for
+  servers, `--cdp-endpoint` to attach to a browser elsewhere, `--port` to run
+  as a standalone SSE/HTTP server on another host; the official Docker image
+  is headless-Chromium only. https://github.com/microsoft/playwright-mcp
+- chrome-devtools-mcp (Google, Puppeteer-based): `--headless`, or point at a
+  pre-launched Chrome via `CHROME_CDP_URL` / `--browser-url`; `--isolated`
+  for per-session profiles.
+  https://github.com/ChromeDevTools/chrome-devtools-mcp/
+- vercel-labs/agent-browser: CLI over CDP, `--connect` accepts a port, HTTP
+  or WS URL, so it can drive a remote Chrome.
+  https://github.com/vercel-labs/agent-browser
+- Claude in Chrome / `claude --chrome`: needs the extension in a visible
+  Chrome, `/login` subscription auth (refuses API key or setup-token), not
+  supported in WSL; connects via a relay at `bridge.claudeusercontent.com`.
+  Unusable on a headless VM unless the laptop's extension is bridged (open
+  request https://github.com/anthropics/claude-code/issues/51844).
+  https://code.claude.com/docs/en/chrome
+- Cloud-browser alternative: Browserbase plugin for Claude Code.
+  https://github.com/browserbase/claude-code-plugin
+
+Headless Chromium on minimal Linux (Puppeteer's Debian list):
+`ca-certificates fonts-liberation libasound2 libatk-bridge2.0-0 libatk1.0-0
+libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgbm1 libgcc1
+libglib2.0-0 libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0
+libstdc++6 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1
+libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1
+libxtst6 lsb-release wget xdg-utils`. Ubuntu 24.04 renames several
+(`libasound2t64` and similar). Containers without user namespaces need
+`--no-sandbox`. On Nix, use `pkgs.playwright-driver.browsers` or
+`pkgs.chromium` instead of `npx playwright install`.
+https://pptr.dev/troubleshooting
+https://stevefenton.co.uk/blog/2025/09/playwright-insteall-github-actions/
+
+Headed browsers: headless covers most agent work (screenshots, console,
+DOM). People add a headed browser to watch or intervene (logins, CAPTCHAs):
+`xvfb-run`, the devcontainer `desktop-lite` feature exposing noVNC on port
+6080, or images like `xtr-dev/mcp-playwright-novnc`.
+https://playwright.dev/docs/docker
+https://github.com/xtr-dev/mcp-playwright-novnc
+
+How remote-dev products handle it:
+
+- Codespaces and Gitpod: devcontainer plus port forwarding and preview URLs;
+  Gitpod documents reverse-forwarding a laptop Playwright server into the
+  workspace. https://github.com/gitpod-samples/playwright-local-server
+- Coder: registry modules for Claude Code and Codex plus a `portabledesktop`
+  lightweight desktop module. https://registry.coder.com/modules
+- Daytona: Computer Use API (desktop, screenshot, click, type).
+  https://www.daytona.io/docs/en/computer-use/
+- E2B: separate desktop template with a noVNC stream. https://e2b.dev/
+- Modal: sandboxes with Playwright and GPUs.
+  https://modal.com/resources/best-sandboxes-browser-web-agent-rl-environments
+- Claude Code cloud sessions: image ships `chromedriver`; network is
+  allowlisted; the base image cannot be replaced, only extended via a setup
+  script. https://code.claude.com/docs/en/cloud-environments
+- Codex cloud: internet off during the agent phase by default, allowlist
+  per environment. https://learn.chatgpt.com/docs/cloud/internet-access
+- Managed Agents: browser via Browserbase integration.
+  https://docs.browserbase.com/integrations/anthropic/managed-agents/introduction
+
+### MCP servers
+
+- Laptop-bound (stdio, OS-level): Apple Notes/AppleScript servers, Xcode
+  (`xcrun mcpbridge`, XcodeMCP), iMessage, desktop automation, Claude in
+  Chrome, filesystem servers pointed at laptop paths.
+  https://github.com/lapfelix/xcodemcp
+  https://www.usecarly.com/blog/claude-apple-notes-integration/
+- Remote-friendly: HTTP servers (Notion, Stripe, Sentry, GitHub, Linear) and
+  stdio wrappers around APIs (need `npx` plus a token).
+- Claude Code storage: user and local scopes in `~/.claude.json` (local
+  keyed under `projects["/abs/path"].mcpServers`, so paths must match on the
+  VM); project scope in `.mcp.json`; `${VAR}` expansion; OAuth for remote
+  servers via `claude mcp login <name> --no-browser`; headless `-p` runs
+  cannot complete OAuth without tool search.
+  https://code.claude.com/docs/en/mcp
+- Forwarding a laptop stdio server: wrap with `mcp-proxy` (sparfenyuk Python
+  or punkpeye TS) as HTTP on the laptop, `ssh -R 8123:localhost:8123 vm`,
+  then `claude mcp add --transport http notes http://localhost:8123/mcp` on
+  the VM. Playwright MCP's `--port` does this natively.
+  https://github.com/sparfenyuk/mcp-proxy
+  https://github.com/punkpeye/mcp-proxy
+
+### Credentials
+
+| Tool | Path | Copying works? |
+|---|---|---|
+| Claude Code | `~/.claude/.credentials.json` (0600; macOS uses Keychain; `CLAUDE_CONFIG_DIR` relocates) | Flaky: copied refresh tokens do not refresh (issue closed "not planned"). Use `claude` login (prints a paste code over SSH) or `claude setup-token` for `CLAUDE_CODE_OAUTH_TOKEN` (1 year; no Remote Control, connectors, or Chrome) |
+| Codex CLI | `~/.codex/auth.json` (or keyring) | Yes, officially documented `ssh ... cat > ~/.codex/auth.json`; or `codex login --device-auth` (admin must enable) |
+| Gemini CLI | `~/.gemini/oauth_creds.json` | OAuth over SSH is painful; prefer `GEMINI_API_KEY` or Vertex ADC |
+| opencode | `~/.local/share/opencode/auth.json` (XDG) | Yes; `opencode auth login` |
+| gh | `~/.config/gh/hosts.yml` (`GH_CONFIG_DIR`); `GH_TOKEN` overrides | Yes |
+
+https://code.claude.com/docs/en/authentication
+https://github.com/anthropics/claude-code/issues/21765
+https://learn.chatgpt.com/docs/auth
+https://github.com/openai/codex/issues/9253
+https://github.com/google-gemini/gemini-cli/issues/1696
+https://opencode.ai/docs/providers/
+https://cli.github.com/manual/gh_help_environment
+
+Policy: OAuth is for "ordinary use of Claude Code"; hosting Claude Code in
+sandboxes requires Commercial Terms, an unmodified binary, and each user
+authenticating with their own credentials; a user signing in with their own
+subscription on such a platform is explicitly permitted. Third-party apps
+using subscription OAuth were banned in February 2026.
+https://code.claude.com/docs/en/legal-and-compliance
+
+### Notifications and check-back
+
+- Claude Code hooks: `Notification` (matchers `permission_prompt`,
+  `idle_prompt`, `agent_needs_input`, `agent_completed`), `Stop`,
+  `StopFailure`, `SessionEnd`; payload includes `session_id`, `cwd`,
+  `transcript_path`. https://code.claude.com/docs/en/hooks
+- Community: an ntfy one-line curl hook; `tap-to-tmux` (notification
+  deep-links to a tmux window); `claude-notifications-go` (Slack, Telegram,
+  ntfy, PagerDuty). https://github.com/flavio87/tap-to-tmux
+  https://github.com/777genius/claude-notifications-go
+- Remote Control (`claude --remote-control` inside tmux): phone or browser
+  view, mobile push when done or blocked, permission approval from the
+  phone; needs claude.ai `/login` (not a setup token); the process must
+  stay alive. https://code.claude.com/docs/en/remote-control
+- Channels: Telegram and Discord plugins push messages into a running
+  session and can relay permission prompts.
+  https://code.claude.com/docs/en/channels
+- Cloud sessions: questions wait until environment expiry; idle VMs are
+  reclaimed. https://code.claude.com/docs/en/claude-code-on-the-web
+
+### Other gaps
+
+- Docker in a microVM works (namespaces, no KVM needed) but the guest kernel
+  must have overlayfs, cgroups v2 and netfilter; nested overlay on overlay
+  fails; no `/dev/kvm` inside.
+  https://www.pandastack.ai/blog/firecracker-nested-virtualization-explained/
+  https://wundergraph.com/blog/the_builder_the_road_from_commit_to_production_in_13s
+- inotify: raise `fs.inotify.max_user_watches` and `max_user_instances` in
+  the VM's sysctl (cannot be set per container).
+  https://www.suse.com/support/kb/doc/?id=000020048
+- Git push: cloud products keep git credentials outside the sandbox via a
+  proxy; on a VM you need `ssh -A` agent forwarding, a deploy key, or
+  `GH_TOKEN` plus `gh auth setup-git`.
+- Ports and previews: Codespaces and Gitpod auto-forward; on Tailscale use
+  `tailscale serve` or Funnel, or SSH `-L`.
+- GPU: absent in Firecracker; Modal and E2B offer GPU sandboxes.
+- Root: Claude Code refuses `--dangerously-skip-permissions` as root; run as
+  an unprivileged user with passwordless sudo.
+- Clipboard: tmux OSC52 (`set -g set-clipboard on`) for copy-out.
+- IDE: VS Code Remote-SSH, Cursor and Zed all attach over SSH.
+- Repo clone time: Claude cloud caches environments; Codex uses setup
+  scripts; a persistent VM sidesteps this.
+- TZ and locale: set `TZ` and `LANG=C.UTF-8` so tmux and agent TUIs render
+  and timestamps match the developer.
+
+## 8. Coolify
+
+Capabilities and limits as of September 2026:
+
+- Zero-downtime deploys: yes for single-container apps (Nixpacks, Railpack,
+  Static, Dockerfile, Docker Image). Coolify starts the new container
+  alongside the old, waits for the health check, then removes the old one.
+  It silently falls back to stop-then-start when there is no passing health
+  check (Coolify's dashboard check or Dockerfile `HEALTHCHECK`; HTTP checks
+  need curl or wget in the image), a host port mapping ("Ports Mappings"),
+  Consistent Container Names or a custom container name, a custom `--ip`, or
+  PR previews. https://coolify.io/docs/knowledge-base/rolling-updates
+  https://coolify.io/docs/knowledge-base/health-checks
+- Docker Compose resources are explicitly excluded: they go through `docker
+  compose up -d` with a downtime window; a feature request has been open
+  since October 2024.
+  https://bex.co/blog/2026/09/04/coolify-docker-compose-zero-downtime-gap
+  https://learnwithhasan.com/guide/coolify-zero-downtime-deployment/
+- Raw TCP ports: yes, via "Ports Mappings" (`host:container`), plain Docker
+  port publishing that bypasses Traefik and Caddy; the proxy only owns 80
+  and 443. Mappings bind `0.0.0.0` (firewall yourself), and a mapped port
+  disables rolling updates for that app.
+  https://coolify.io/docs/knowledge-base/proxy/traefik/overview
+  https://next.coolify.io/docs/core/networking-in-coolify
+  https://github.com/coollabsio/coolify/issues/4749
+- Multi-server: one instance manages many servers over SSH; an app can be
+  built on a primary and deployed to attached servers, with an external load
+  balancer supplied by you; apps with persistent storage or Compose cannot
+  multi-server. No native N-replica-per-server setting; Docker Swarm is
+  deprecated. https://coolify.io/docs/knowledge-base/internal/scalability
+  https://github.com/coollabsio/coolify/discussions/3862
+- Database backups: scheduled cron dumps (Postgres, MySQL, MariaDB, MongoDB,
+  ClickHouse) with upload to S3-compatible storage and separate local and S3
+  retention; v4.3 added volume backups. Azure Blob is not supported
+  natively; the community workaround is an s3proxy container.
+  https://coolify.io/docs/databases/backups
+  https://coolify.io/changelog
+  https://docs.vultr.com/how-to-back-up-and-restore-postgresql-databases-to-s3-compatible-storage-in-coolify
+  https://github.com/coollabsio/coolify/discussions/7570
+- v5: announced April 2025 as a PHP refactor plus Vue/Inertia UI, not a Go
+  rewrite; no public release date as of September 2026. v4.0.0 stable
+  shipped April 2026 and v4.4-rc.1 in August 2026.
+  https://github.com/coollabsio/coolify/issues/5685
+  https://bex.co/blog/2026/07/09/coolify-v5-rewrite-no-timeline
+
+Coolify on NixOS is unsupported on both sides:
+
+- No nixpkgs package or NixOS module; packaging requests closed
+  (https://github.com/NixOS/nixpkgs/issues/291589 "not planned",
+  https://github.com/NixOS/nixpkgs/issues/303482 duplicate). Only a Coolify
+  CLI PR (#500295) is mentioned in
+  https://github.com/coollabsio/coolify/discussions/1855.
+- NixOS as a managed server is rejected by Coolify's validator: "Server OS
+  type is not supported for automated installation" even with Docker and
+  Compose running. Cause: OS detection from `/etc/os-release` plus a
+  hardcoded `/usr/bin/docker`; NixOS has it at
+  `/run/current-system/sw/bin/docker`, and a symlink did not fix it for the
+  reporter. https://github.com/coollabsio/coolify/issues/1578
+  https://github.com/coollabsio/coolify/discussions/4061 (open since October
+  2024, no maintainer reply)
+- NixOS as the Coolify host: the installer targets Debian/Ubuntu and expects
+  `curl wget git jq jc`, Docker 24+, `/data/coolify/*`, and generated SSH
+  keys. Running Coolify via docker-compose on NixOS
+  (https://github.com/coollabsio/coolify/issues/2721) reintroduces the
+  validator problem because Coolify SSHes into its own host as localhost.
+  Coolify needs root SSH or a non-root user with `NOPASSWD: ALL` sudo.
+  https://coolify.io/docs/knowledge-base/server/non-root-user
+
+## 9. Logto
+
+- Device Authorization Grant (RFC 8628): yes, shipped in v1.38.0 (OSS and
+  Cloud), endpoint `/oidc/device/auth`, token at `/oidc/token`. The app must
+  be a Native app ("Input-limited app / CLI" template), public client, no
+  secret. https://github.com/logto-io/logto/releases/tag/v1.38.0
+  https://docs.logto.io/quick-starts/device-flow
+- Logto's own CLI auth guide (April 2026) recommends authorization code plus
+  PKCE with a loopback redirect as the default and device code as the
+  headless fallback. https://blog.logto.io/cli-authentication-methods
+- GitHub social connector: yes. https://docs.logto.io/integrations/github
+- JWT access tokens for custom API resources: yes, requested via the
+  `resource` parameter; opaque tokens only when no resource is given.
+  https://docs.logto.io/authorization/global-api-resources
+- Refresh tokens with `offline_access`: yes, including in the device flow.
+  https://docs.logto.io/quick-starts/device-flow
+
+## 10. Benchmark results (M0)
+
+To be filled by workstream 00. Record the exact SKUs, kernel versions, Cloud
+Hypervisor and virtiofsd versions, microvm.nix revision, and the date.
+
+| Axis | Workload | Plain Azure VM (D4s_v5) | Guest on D64s_v5 host | Penalty | Pass (< ~20%) |
+|---|---|---|---|---|---|
+| CPU | `nix build` of fixed derivation set, wall time | | | | |
+| CPU | Go test suite, wall time | | | | |
+| Disk | `docker pull` + extract of a fixed 2 GB image | | | | |
+| Disk | `fio` 4k random read/write IOPS | | | | |
+| Network | `git clone` of a fixed 1 GB repo from GitHub | | | | |
+| Network | `iperf3` to the edge | | | | |
+
+Repeat on D64s_v6 if any axis fails. If both fail, open the Hetzner decision
+(DECISIONS R3-20).
+
+---
+
+How this was gathered: web research by sub-agents on 2026-09-16 and
+2026-09-17, summarised in the design interview; every URL above is one those
+agents cited. Prices are as quoted on those dates and will drift.

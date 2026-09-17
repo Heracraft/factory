@@ -1,50 +1,34 @@
-# Turborepo Svelte starter
+# factory
 
-This Turborepo starter is maintained by the Turborepo core team
-on [GitHub](https://github.com/vercel/turborepo/tree/main/examples/with-svelte/packages)
-.
+Persistent remote environments for coding agents. `cd` into a project, run
+`factory run`, and an agent keeps working in a NixOS microVM after your laptop
+closes. Multi-tenant, billed by the hour with a monthly cap, hosted at
+`factory.herakraft.co`.
 
-## Using this example
+Everything about what this is and how it is built lives in [`docs/`](docs/README.md).
+Start there. Contributors and agents also read [`AGENTS.md`](AGENTS.md).
 
-Run the following command:
+## Layout
 
-```sh
-npx create-turbo@latest -e with-svelte
+```
+cmd/         api, hostd, guestd, gateway, factory (CLI), factory-admin
+internal/    shared Go; fakes for every interface; generated protobuf under gen/
+proto/       gRPC and vsock contracts (docs/interfaces/ is the prose)
+nix/         one flake: hosts, edge, guest base, agent overlay, dev shell
+infra/       OpenTofu for the Azure-specific pieces and the R2 bucket
+apps/web/    SvelteKit dashboard
+packages/    TypeScript packages, and packages/core (the v0.01 home-manager flake, being retired)
+docs/        the spec
 ```
 
-## What's inside?
+## Developing
 
-This Turborepo includes the following packages/apps:
+```
+nix develop ./nix     # Go, buf, opentofu, az, just, nixos-anywhere ...
+just build
+just test
+just proto            # regenerate internal/gen from proto/
+```
 
-### Apps
-
-- `docs`: a [svelte-kit](https://kit.svelte.dev/) app
-- `web`: another [svelte-kit](https://kit.svelte.dev/) app
-
-### Packages
-
-#### `eslint-config`
-
-`eslint` configurations (includes `eslint-plugin-svelte` and `eslint-config-prettier`)
-
-#### `typescript-config`
-
-A package containing a custom `tsconfig` file.
-
-#### `ui`
-
-A stub Svelte component library shared by both `web` and `docs` applications. The package supports Svelte components and
-runes in `.svelte.ts` files, which are not supported in the svelte-kit generated tsconfig.
-
-Please refer to the [packaging](https://svelte.dev/docs/kit/packaging) page of the svelte documentation for additional
-information about svelte component libraries.
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
+Do not install anything from `nix/` on this machine; hosts and guests are
+remote (see `AGENTS.md`).

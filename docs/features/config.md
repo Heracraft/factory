@@ -1,0 +1,141 @@
+# Config
+
+A project's environment is the platform base plus the user's own Nix
+fragment. People who write Nix write the fragment; everyone else picks from a
+menu that generates the same fragment. Either way the result is a NixOS
+closure built on the host and switched into the running guest without a
+reboot.
+
+## What the user sees
+
+The menu, from the dashboard or the CLI:
+
+```
+$ factory config add bun postgresql
+Building todo-app config r14 (base 2026.09.15 + 6 packages, 1 service) ...
+  copying path '/nix/store/...-bun-1.2.4' from 'https://cache.nixos.org' ...
+  ... 38s
+Applying to running guest ... switched, no reboot needed.
+```
+
+The fragment:
+
+```
+$ factory config edit          # opens $EDITOR on the fragment
+$ factory config apply         # or `factory config apply ./my-fragment.nix`
+Building todo-app config r15 ...
+error: attribute 'nodejs_25' missing
+       at fragment.nix:7:5
+  home.packages = [ pkgs.nodejs_25 ];
+                    ^
+Fix the fragment and run `factory config apply` again. r14 is still active.
+```
+
+A change that needs a reboot:
+
+```
+Applying to running guest ... this revision changes the kernel; a reboot is
+required and claude is running in todo-app:claude.
+  factory config apply --reboot     reboot now (agents will be interrupted)
+  factory config apply --later      apply at next start
+```
+
+A base bump:
+
+```
+$ factory status
+todo-app   large   running   base 2026.09.22 (was 2026.09.15: claude-code 2.1.280, kernel 6.17.4)
+```
+
+Holding:
+
+```
+$ factory config hold
+todo-app will stay on base 2026.09.15 until `factory config unhold`.
+```
+
+## Menu versus fragment
+
+The menu is a catalog (`GET /catalog`) of packages and services with labels
+and groups: languages, databases, browsers, tools. A selection is stored as
+JSON and rendered by the API into a home-manager module. Editing the
+fragment directly turns the menu off for that project (the menu cannot
+round-trip arbitrary Nix); the CLI and dashboard say so and offer to keep a
+copy of the generated fragment as the starting point.
+
+The fragment is a home-manager module, evaluated under the platform's
+nixpkgs and home-manager inputs. The user does not choose inputs; the base
+version pins them. A fragment may add packages, enable `programs.*`
+modules, set session variables and dotfiles, and declare user systemd
+services. It cannot touch NixOS system options; those are the base's.
+
+## Behaviour that must hold
+
+Building (limits from DECISIONS R5-4, pipeline in
+`workstreams/12-nix-config-pipeline.md`):
+
+- `PUT /config` stores a revision, starts a build on the project's host, and
+  returns an op id. The CLI streams the build log. The dashboard shows it
+  live.
+- Evaluation is pure and restricted, capped at 60 seconds. Builds are
+  sandboxed, capped at 30 minutes wall time and 8 cores, with substitutes
+  from cache.nixos.org and the platform overlay cache. A project's closure
+  may not exceed 20 GB.
+- Every failure names itself. Syntax and evaluation errors show the Nix
+  message and the fragment line. A timeout says which derivation was
+  building when time ran out. A closure over the cap lists the largest
+  store paths. A fragment using a forbidden builtin (`fetchurl`,
+  `fetchTarball`, `fetchGit` outside pinned inputs, import-from-derivation)
+  is refused at evaluation with the builtin named. A fragment containing a
+  current secret value of the project is refused before evaluation.
+- A failed build changes nothing. The previous revision stays `applied` and
+  the guest is untouched. The failed revision is kept with its error so the
+  dashboard can show it.
+- A fragment identical to the applied one is a no-op and says so in one
+  line.
+
+Applying (DECISIONS R3-3):
+
+- After a successful build, hostd sends `Switch` to guestd, which runs the
+  new system's `switch-to-configuration switch`. Running processes, tmux,
+  and agents are untouched. A test starts an agent, applies a package
+  addition, and asserts the agent's PID and tmux window survive and the new
+  binary is on `PATH` in a new shell.
+- If the kernel, initrd, or virtio-fs share layout changed, guestd reports
+  `needs_reboot` and does nothing. The CLI then offers `--reboot` or
+  `--later`. `--later` marks the revision `built` and applies it on the next
+  `start`.
+- On a stopped guest, apply happens at next start and the CLI says so.
+- Switching back: `factory config revisions` lists revisions; `factory
+  config apply --revision r12` rebuilds nothing (the closure is a GC root
+  while the revision exists) and switches to it.
+
+Base bumps (DECISIONS R4-5):
+
+- The platform releases a new base version weekly, sooner for security
+  fixes. Every project not holding gets its fragment rebuilt against the
+  new base and switched in place. If that needs a reboot, it happens at the
+  project's next `stop`/`start` cycle or, after 14 days, at 03:00 in the
+  project's timezone with a notification 24 hours before, unless the guest
+  has an agent in `working` state at that moment, in which case it waits
+  for the next night.
+- A rebuild against a new base that fails does not change the project; it
+  raises an event to the user with the error and an alert to the operator,
+  since a base that breaks a fragment is usually the platform's bug.
+- `factory config hold` pins the base; `unhold` releases it and triggers the
+  rebuild. `status` shows the held version and how far behind it is.
+- The changelog line in `status` lists agent version changes and kernel
+  changes, since those are what users notice.
+
+## Depends on
+
+Workstreams 12 (evaluation, build, limits, errors), 03 (Build and
+ApplyConfig commands), 04 (Switch), 05 (config routes, catalog, revisions,
+base rollout scheduling), 07 (`config` commands, log streaming), 08
+(menu UI, revision list, build log view), 13 (base bump events).
+
+## Deferred
+
+Templates other than the single platform base (DECISIONS R4-1 mentions
+future templates). Central builder and binary cache across hosts (R4-4).
+Fragments that reference private git repositories.

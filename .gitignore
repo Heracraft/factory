@@ -33,3 +33,15 @@ dist
 
 scratch.md
 .env
+# factory
+.direnv/
+result
+result-*
+bin/
+dist/
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+infra/**/*.auto.tfvars
+/internal/gen/
