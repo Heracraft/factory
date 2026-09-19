@@ -22,7 +22,7 @@ writeShellApplication {
 
     write_atomic() { # write_atomic <path> <mode>  (content on stdin)
       local path="$1" mode="$2" tmp
-      tmp=$(mktemp "$(dirname "$path")/.repose.XXXXXX")
+      tmp=$(mktemp -p "$(dirname "$path")")
       cat > "$tmp"
       chmod "$mode" "$tmp"
       mv -f "$tmp" "$path"

@@ -255,7 +255,7 @@ let
       --shared-dir "$shared" \
       --sandbox "$sandbox" \
       --cache auto \
-      --inode-file-handles never \
+      --inode-file-handles=never \
       --announce-submounts \
       "$@"
   '';

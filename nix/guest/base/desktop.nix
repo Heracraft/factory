@@ -12,7 +12,8 @@
 let
   display = ":99";
   dir = "/run/repose/desktop";
-  websockify = pkgs.python3Packages.websockify;
+  # python312 is in the closure already (tools.nix); no second interpreter.
+  websockify = pkgs.python312Packages.websockify;
   novncWeb = "${pkgs.novnc}/share/webapps/novnc";
   idleSeconds = 1800;
 
