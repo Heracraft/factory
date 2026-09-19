@@ -394,3 +394,49 @@ operator, a JSON state file, every command as a subcommand, build logs and
 samples printed. It stays as the break-glass tool for a host that has lost
 the api. *Rejected:* building the api first (puts auth, Postgres and Logto on
 the critical path to the first running guest).
+
+**I-18. Host runtime configuration has one input, `host.json`; the host
+owns the network files, the bridge isolation lives in an nftables `bridge`
+table, and guests are cut off from every private range.** (01)
+Recorded because the docs disagreed with each other or with the kernel:
+
+- hostd writes `host.json` only and restarts `repose-host-net.service`
+  (which renders `wg0.conf`, `host.env`, `host_ca.pub`, `sshd.conf` and
+  the bridge address). 03-hostd §5.2's "hostd writes
+  `/var/lib/repose/hostd/wg0.conf` and restarts `wg-quick@wg0`" is
+  superseded; `wg-quick-wg0.service` reads `/run/repose/wg0.conf`.
+  *Rejected:* two writers of WireGuard config (a rotation by hostd and a
+  boot render by the host would race).
+- The nightly timer calls `hostd snapshot-all` (03's name), not `hostd
+  snapshot --all --reason scheduled` (01's text). 03 owns the binary.
+- Guest-to-guest traffic on the same bridge never traverses the `inet`
+  forward hook, so the documented `10.64.0.0/12` drop cannot isolate
+  tenants by itself. A `bridge repose` table drops all switched frames
+  and admits only ARP and IPv4 from `(mac, ip, tap)` tuples hostd
+  registers in its `guests` set; taps are attached `isolated on learning
+  off flood off` with a static FDB entry. The `inet` drop stays for
+  routed traffic. *Rejected:* `br_netfilter` (routes bridged frames
+  through iptables hooks, slower and a global switch); trusting port
+  isolation alone (no anti-spoofing).
+- hostd's per-guest objects live in `guest_dyn` and in the `guests` set,
+  and the host's ruleset is applied by flushing only its own chains, so a
+  `nixos-rebuild switch` never loses a running guest's counter or
+  admission. 03's "nft add element repose guests { <ip> . tap }" becomes
+  the bridge-table element above.
+- Guests are dropped to every private range (`10/8`, `172.16/12`,
+  `192.168/16`, `100.64/10`, `169.254/16`) and to the Azure wire server
+  `168.63.129.16` (it serves extension protected settings), not only to
+  IMDS and `10.64.0.0/12`. DESIGN §7's "everything else is egress to the
+  internet" is the intent; the VNet, the WireGuard mesh and the Coolify
+  VM's private address are not the internet.
+- `kernel.unprivileged_userns_clone` is a Debian patch; the NixOS kernel
+  equivalent `security.allowUserNamespaces` is set instead.
+- The guests slice reserve follows DESIGN §4 (8 GiB below 128 GiB of RAM,
+  16 GiB above), computed at boot, rather than 01's flat 16 GiB.
+- `system-features = kvm` and membership of the `kvm` group are required
+  on the dev box for the host VM tests (`docs/ops/DEV-BOX.md`).
+
+Interfaces: `host-conventions.md` rewritten with the `host.json` shape,
+the tap attach sequence, both tables, the store export path and the
+`hostd` subcommand contract. The old inet-only rules are not kept: no
+host has been provisioned yet.

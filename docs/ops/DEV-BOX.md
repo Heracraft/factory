@@ -54,3 +54,18 @@ browserless VM. The refresh token lasts about 90 days of inactivity.
 Keep 40 GB free on `/nix` before launching a wave of agents; `df -h /nix`.
 `nix-collect-garbage -d` reclaims old closures; it never touches anything
 the current flake lock references once rebuilt.
+
+## VM tests need KVM
+
+`nix flake check ./nix` runs the host NixOS VM tests (`nix/hosts/tests`).
+They are declared as needing the `kvm` builder feature; without it Nix
+refuses to build them, and without `/dev/kvm` access they would crawl
+under emulation. One-time setup on the box:
+
+```
+sudo usermod -aG kvm azureuser
+echo 'system-features = nixos-test benchmark big-parallel kvm uid-range' >> ~/.config/nix/nix.conf
+```
+
+Log in again (or prefix one command with `sg kvm -c '...'`) so the group
+applies. Each test boots one or two VMs and takes two to five minutes.
