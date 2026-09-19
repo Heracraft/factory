@@ -15,6 +15,11 @@ type FakeRunner struct {
 	// Results maps a command name (argv[0], basename after any setpriv
 	// wrapper) to what it returns. A command with no entry succeeds silently.
 	Results map[string]RunResult
+	// Match maps a substring of the joined argv to a result and is consulted
+	// before Results. It is how two invocations of the same binary, such as
+	// `systemctl is-active` and `systemctl start`, are told apart. The longest
+	// matching key wins.
+	Match map[string]RunResult
 	// Errs maps the same key to an error the runner returns instead.
 	Errs map[string]error
 	// Hook, when set, is called before the canned result is chosen.
@@ -23,7 +28,11 @@ type FakeRunner struct {
 
 // NewFakeRunner builds an empty FakeRunner.
 func NewFakeRunner() *FakeRunner {
-	return &FakeRunner{Results: map[string]RunResult{}, Errs: map[string]error{}}
+	return &FakeRunner{
+		Results: map[string]RunResult{},
+		Match:   map[string]RunResult{},
+		Errs:    map[string]error{},
+	}
 }
 
 // Run records the call and returns the canned result for its command.
@@ -39,10 +48,20 @@ func (f *FakeRunner) Run(_ context.Context, spec RunSpec) (RunResult, error) {
 		return RunResult{}, errors.New("run: empty argv")
 	}
 	key := f.key(spec)
+	joined := strings.Join(spec.Argv, " ")
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err, ok := f.Errs[key]; ok {
 		return RunResult{}, err
+	}
+	best, found := "", false
+	for pattern := range f.Match {
+		if strings.Contains(joined, pattern) && len(pattern) > len(best) {
+			best, found = pattern, true
+		}
+	}
+	if found {
+		return f.Match[best], nil
 	}
 	return f.Results[key], nil
 }

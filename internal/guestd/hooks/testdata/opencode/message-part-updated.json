@@ -1,0 +1,6 @@
+{
+  "type": "message.part.updated",
+  "properties": {
+    "sessionID": "ses_01"
+  }
+}

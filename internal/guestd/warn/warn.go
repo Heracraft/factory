@@ -323,18 +323,26 @@ func (c *Checker) watchKmsg(ctx context.Context) {
 	}
 }
 
-// oomProcess extracts the killed process name from a kernel OOM line.
+// oomProcess extracts the killed process name from a kernel OOM line. Only
+// the name is taken: it is a process name, which is the one thing on the
+// allowed side of the sampling boundary, and the rest of the line is not.
 func oomProcess(line string) string {
-	for _, key := range []string{"name=", "Killed process "} {
-		if i := strings.Index(line, key); i >= 0 {
-			rest := line[i+len(key):]
-			rest = strings.TrimSpace(rest)
-			if j := strings.IndexAny(rest, ",) \t"); j > 0 {
-				rest = rest[:j]
+	if i := strings.Index(line, "Killed process "); i >= 0 {
+		rest := line[i+len("Killed process "):]
+		// "<pid> (<comm>) ..."
+		if j := strings.Index(rest, "("); j >= 0 {
+			if k := strings.Index(rest[j:], ")"); k > 1 {
+				return "the kernel killed " + rest[j+1:j+k]
 			}
-			if rest != "" {
-				return "the kernel killed " + strings.Trim(rest, "()")
-			}
+		}
+	}
+	if i := strings.Index(line, "task="); i >= 0 {
+		rest := line[i+len("task="):]
+		if j := strings.IndexAny(rest, ", \t"); j > 0 {
+			rest = rest[:j]
+		}
+		if rest != "" {
+			return "the kernel killed " + rest
 		}
 	}
 	return "the kernel reported an out-of-memory condition"

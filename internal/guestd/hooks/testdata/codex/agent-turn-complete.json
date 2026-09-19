@@ -1,0 +1,6 @@
+{
+  "type": "agent-turn-complete",
+  "turn-id": "turn_01",
+  "input-messages": ["finish the auth flow"],
+  "last-assistant-message": "The auth flow is finished and the tests pass."
+}
