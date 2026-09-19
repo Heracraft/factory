@@ -2,7 +2,7 @@
 # See docs/workstreams/06-gateway-edge.md. Skeleton only.
 { config, pkgs, lib, ... }:
 {
-  imports = [ ../hosts/disko.nix ];
+  imports = [ ./disko.nix ];
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
   system.stateVersion = "26.11";

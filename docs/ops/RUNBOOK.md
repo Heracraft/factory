@@ -211,7 +211,7 @@ Usage records failed to push.
 2. Rows keep `stripe_usage_record_id = null` and are retried hourly; no
    usage is lost.
 
-## Host never registered
+## HostUnregistered (host never registered)
 
 A new host has been up for more than five minutes and is not in `hosts
 list`.
@@ -223,6 +223,80 @@ list`.
    Destroy and recreate; there is no in-place fix.
 3. `pool_missing`: the data disk is not attached or `disko` did not run.
    `lsblk`; re-run nixos-anywhere if the layout is missing.
+
+## PoolHigh (thin pool at 80 percent)
+
+`host_warning{kind="pool_high"}` from hostd, or
+`repose_lvm_pool_data_percent > 80` from the host's textfile collector.
+lvm.conf autoextends the pool by 10 percent of its size into the 5 percent
+VG headroom at this threshold, once; after that the pool fills for real.
+
+1. `lvs vg-guests` on the host: data and metadata percent, and whether
+   `thin` still has room to grow (`vgs vg-guests` free space). Metadata
+   over 80 percent is worse; see "PoolFull".
+2. Plan the disk grow now: `tofu apply` with a larger `data_disk_gb`
+   (online for Premium SSD v2), then on the host `pvresize <pv>` and
+   `lvextend -l +95%FREE vg-guests/thin`. At 90 percent hostd refuses
+   `CreateGuest` and `Restore` with `insufficient_capacity`; existing
+   guests keep running.
+3. `repose-admin projects list --host host-NN --sort disk` for who is
+   using it; `repose-admin hosts drain host-NN` if the grow cannot happen
+   before it fills.
+
+## StoreHigh (store at 80 percent)
+
+`host_warning{kind="store_high"}` from hostd; the root filesystem is over
+80 percent, almost always `/nix/store`. `nix.settings.min-free` (50 GB)
+already triggers GC of unrooted paths during builds and hostd refuses
+`Build` with `insufficient_capacity: host store full` at this point.
+
+1. `nix-collect-garbage` on the host now (the weekly timer keeps 14 days).
+   hostd's GC roots under `/nix/var/nix/gcroots/repose/` protect every
+   guest's closure and the last three revisions per project; everything
+   else goes.
+2. Still high: `nix path-info -S --all | sort -k2 -n | tail` for the
+   biggest closures and `repose-admin projects list --host host-NN --sort
+   closure`; a tenant near the 20 GB closure cap on a small host is the
+   usual cause. See "StoreFull" for the 85 percent alert.
+
+## HostWgDown
+
+The edge cannot reach a host's guests: `wg show` on the edge shows no
+recent handshake for the host's peer, `dial_fail` in gateway logs for its
+guests, alert `host_wg_down`. hostd's gRPC stream goes over the provider
+NIC, so the api still sees the host as `ready`.
+
+1. On the host (via the Azure serial console or the bootstrap key if the
+   tunnel is the only way in): `systemctl status wg-quick-wg0`,
+   `wg show wg0`. `ConditionPathExists=/run/repose/wg0.conf` unmet means
+   the host never registered: "HostUnregistered".
+2. `journalctl -u repose-host-net`: the render from `host.json` failed
+   (malformed `host.json` after a bad rotation) or the endpoint did not
+   resolve at boot. `systemctl restart repose-host-net` re-renders and
+   restarts wg0, sshd, node_exporter and Fluent Bit.
+3. Keys do not match: `repose-admin hosts rotate-wg host-NN` issues a new
+   pair, hostd rewrites `host.json` and restarts `repose-host-net`;
+   confirm the edge's `wgsync` picked up the new public key within 30 s.
+4. Handshake fine but no route: on the edge `ip route | grep <guest cidr>`;
+   `wgsync` adds it from `/internal/hosts`.
+
+## Host rebooted
+
+`Hello` after boot reports every guest `stopped`; the api restarts those
+that were `running` and notifies their users (workstream 03). Kernel
+panics are not auto-rebooted (`panic=` is unset on purpose); a stuck host
+is restarted from the Azure portal.
+
+1. `journalctl -b -1 -p err` on the host for why. An OOM in the host
+   itself means the `guests.slice` cap was wrong for the RAM: check
+   `systemctl show guests.slice -p MemoryMax` against `free -b`.
+2. Check that everything came back: `systemctl --failed`, `nft list table
+   inet repose`, `ip addr show br-guests`, `wg show wg0`, `lvs vg-guests`,
+   `systemctl list-units 'guest@*'`.
+3. If the reboot was for a kernel update it should have been a drain
+   (`repose-admin hosts drain`, `nixos-rebuild boot`, reboot, undrain);
+   an unplanned reboot with tenants on the host is an incident line in
+   `docs/incidents/`.
 
 ## Guest unresponsive
 
