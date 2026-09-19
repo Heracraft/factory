@@ -1,0 +1,67 @@
+# Custom tfsec checks for repose infrastructure. Run by `make policy`, which
+# is part of `make check` and of the infra CI job.
+#
+# tfsec is in maintenance upstream and trivy is its successor; these two
+# checks are small enough to port when that becomes necessary
+# (docs/workstreams/11-infra-opentofu.md §7).
+---
+checks:
+  - code: REPOSE-NET-001
+    description: The hosts subnet NSG must carry no security rules of its own
+    impact: A host becomes reachable from somewhere it should not be
+    resolution: Delete the rule. Operators reach hosts through the edge, not directly.
+    requiredTypes:
+      - resource
+    requiredLabels:
+      - azurerm_network_security_group
+    severity: CRITICAL
+    errorMessage: >-
+      nsg-hosts has a security rule. docs/DESIGN.md §4 and §7: hosts have no
+      inbound. They dial the api over mTLS gRPC and the edge over WireGuard,
+      and operators reach them through the edge. Azure's built-in
+      AllowVnetInBound already lets the edge's jump connection through, so no
+      explicit rule is ever needed here.
+    predicateMatchSpec:
+      - name: name
+        action: equals
+        value: nsg-hosts
+    matchSpec:
+      name: security_rule
+      action: isEmpty
+
+  - code: REPOSE-VM-001
+    description: repose VMs must not enable Secure Boot
+    impact: Trusted Launch disables nested virtualization, so the host has no /dev/kvm and can run no guests
+    resolution: Leave secure_boot_enabled false; the security type must stay Standard
+    requiredTypes:
+      - resource
+    requiredLabels:
+      - azurerm_linux_virtual_machine
+    severity: CRITICAL
+    errorMessage: >-
+      secure_boot_enabled is true. docs/DESIGN.md §4: Trusted Launch and
+      Confidential VMs disable nested virtualization on Azure. The portal
+      defaults to Trusted Launch and OpenTofu does not, so this is what
+      catches somebody "hardening" a host into one that boots fine and serves
+      nothing.
+    matchSpec:
+      name: secure_boot_enabled
+      action: notEqual
+      value: true
+
+  - code: REPOSE-VM-002
+    description: repose VMs must not enable a vTPM
+    impact: Trusted Launch disables nested virtualization, so the host has no /dev/kvm and can run no guests
+    resolution: Leave vtpm_enabled false; the security type must stay Standard
+    requiredTypes:
+      - resource
+    requiredLabels:
+      - azurerm_linux_virtual_machine
+    severity: CRITICAL
+    errorMessage: >-
+      vtpm_enabled is true. docs/DESIGN.md §4: Trusted Launch and Confidential
+      VMs disable nested virtualization on Azure.
+    matchSpec:
+      name: vtpm_enabled
+      action: notEqual
+      value: true

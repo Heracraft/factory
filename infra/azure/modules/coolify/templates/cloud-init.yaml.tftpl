@@ -1,0 +1,72 @@
+#cloud-config
+# The control-plane VM: Coolify, Logto, Postgres, api and dashboard.
+#
+# This one stays Ubuntu. Coolify refuses NixOS as a host or a managed server
+# (DECISIONS R4-2), which is the whole reason this VM is not part of nix/.
+#
+# Nothing secret belongs in this file: custom_data stays in the Azure VM model
+# and is readable through IMDS for the life of the VM. The WireGuard private
+# key is therefore generated on the machine at first boot and never leaves it;
+# its public half is written to /etc/wireguard/publickey for the operator to
+# add as a peer on the edge.
+ssh_pwauth: false
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+  - jq
+  - wireguard-tools
+write_files:
+  - path: /root/.ssh/authorized_keys
+    owner: root:root
+    permissions: "0600"
+    content: |
+      ${indent(6, authorized_keys)}
+  - path: /etc/ssh/sshd_config.d/60-repose.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      PermitRootLogin prohibit-password
+      PasswordAuthentication no
+  - path: /usr/local/sbin/repose-wg-setup
+    owner: root:root
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      # Bring up the control plane's WireGuard peer to the edge, so Prometheus
+      # can scrape hosts and the api can reach the edge network
+      # (docs/workstreams/11-infra-opentofu.md §2, docs/DESIGN.md §15).
+      set -euo pipefail
+      umask 077
+      install -d -m 0700 /etc/wireguard
+      if [ ! -s /etc/wireguard/privatekey ]; then
+        wg genkey > /etc/wireguard/privatekey
+        wg pubkey < /etc/wireguard/privatekey > /etc/wireguard/publickey
+        chmod 0600 /etc/wireguard/privatekey
+        chmod 0644 /etc/wireguard/publickey
+      fi
+      if [ -z "${edge_public_key}" ]; then
+        echo "repose: edge WireGuard public key not set yet; wg0 left down." >&2
+        echo "repose: add this machine to the edge as a peer:" >&2
+        echo "repose:   public key $(cat /etc/wireguard/publickey)  allowed-ips ${wireguard_address}" >&2
+        exit 0
+      fi
+      cat > /etc/wireguard/wg0.conf <<CONF
+      [Interface]
+      Address = ${wireguard_address}
+      PostUp = wg set %i private-key /etc/wireguard/privatekey
+
+      [Peer]
+      PublicKey = ${edge_public_key}
+      Endpoint = ${edge_endpoint}
+      AllowedIPs = ${wireguard_allowed_ips}
+      PersistentKeepalive = 25
+      CONF
+      chmod 0600 /etc/wireguard/wg0.conf
+      systemctl enable --now wg-quick@wg0
+runcmd:
+  - [ chmod, "0700", /root/.ssh ]
+  - [ systemctl, restart, ssh ]
+  - [ /usr/local/sbin/repose-wg-setup ]
+  - [ bash, -c, "curl -fsSL '${coolify_install_url}' -o /root/coolify-install.sh" ]
+  - [ bash, /root/coolify-install.sh ]

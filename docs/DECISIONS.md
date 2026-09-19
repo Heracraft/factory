@@ -440,3 +440,98 @@ Interfaces: `host-conventions.md` rewritten with the `host.json` shape,
 the tap attach sequence, both tables, the store export path and the
 `hostd` subcommand contract. The old inet-only rules are not kept: no
 host has been provisioned yet.
+**I-18. The state store and its resource group are created outside the
+environment's apply.** (11) `repose-prod` and the storage account
+`reposetfstate3912` inside it were created by hand on 2026-09-19
+(`ops/AZURE-SETUP.md` steps 4 and 5) and are read by the environment roots as
+a data source, never managed by them. `infra/bootstrap` declares the same
+shape — resource group, account with versioning and soft delete, private
+`tfstate` container — so a second environment is one apply, and takes
+`state_account_name = null` for an environment that keeps its state in another
+one's account under a different key (staging does). *Rejected:* importing
+production's state account into `infra/bootstrap` now (a corrupted bootstrap
+state could then destroy the state of every other root; the import commands
+are written down in `bootstrap/main.tf` for the day that trade looks
+different); a separate resource group for state, as workstream 11 §2
+originally said (it would have meant a second group to protect and a second
+one to remember, for no isolation that the `prevent_destroy` on the account
+does not already give).
+
+**I-19. The join token reaches a host over SSH after the install, not through
+cloud-init.** (11) `docs/workstreams/11-infra-opentofu.md` §2 described
+cloud-init writing `/run/repose/join-token`. It cannot work: cloud-init runs
+on the Ubuntu image, and nixos-anywhere kexecs and replaces that system
+minutes later, so `/run` is a fresh tmpfs by the time hostd starts. The token
+is therefore written by a provisioner that connects to the installed NixOS
+system through the edge, as file content rather than as a command-line
+argument, and `hostd` is restarted. *Why this is better than fixing it with
+`--extra-files`:* `custom_data` stays in the Azure VM model and is readable
+through IMDS for the life of the VM, and `--extra-files` would put a
+single-use secret on the persistent root disk. *Interface:*
+`interfaces/host-conventions.md`, whose `/run/repose/join-token` row said
+"from cloud-init". The path, the mode and the one-shot semantics are
+unchanged, so nothing that reads the file changes; the runbook's
+"Host never registered" recovery was already this exact mechanism by hand.
+
+**I-20. Credentials stay human steps: the api's Entra app registration and
+the R2 API token.** (11) `infra/` creates the Key Vault, the wrapping key and
+an access policy for the api's service principal given its object id
+(`api_identity_object_id`, null until it exists), and creates the R2 bucket
+and its lifecycle rule. It does not create the app registration, its client
+certificate, or the R2 token. *Rejected:* the `azuread` provider plus
+`tls_private_key` (the api's private key would sit in the state file in clear
+text for the life of the environment); `cloudflare_api_token` (same, for the
+backup credential). *Why:* `ops/AZURE-SETUP.md` already draws this line —
+one-time human actions that OpenTofu cannot do, or that agents should not be
+trusted to do with the owner's money and identity — and a credential in state
+is a credential in every backup of that state.
+
+**I-21. `.terraform.lock.hcl` is committed.** (11) It was in `.gitignore`.
+A dependency lock file that is not committed means CI resolves whatever
+provider version shipped that morning, so the plan a reviewer reads and the
+plan CI runs can differ. The files are locked for `linux_amd64`,
+`darwin_arm64` and `darwin_amd64` so the owner's laptop and the dev box agree.
+*Rejected:* pinning exact versions in `required_providers` instead (it pins
+the version but not the checksum, and it has to be edited in four roots).
+
+**I-22. The edge VM is `Standard_D2s_v5` and its NSG opens 22, 443,
+51820/udp and 2222.** (11) `docs/workstreams/11-infra-opentofu.md` §2 said
+`Standard_B2s` and "inbound 22/tcp and 51820/udp"; the size note at the top
+of the same document, added with I-14, says `Standard_D2s_v5`. The later note
+wins, and the burstable size is the wrong shape anyway: the thing that would
+throttle when its credits run out is every user's SSH session. The port list
+comes from `workstreams/06-gateway-edge.md` §5.1, which is the document that
+owns the edge's listeners: 22 is the user gateway, 443 the preview-proxy
+stub, 51820/udp the WireGuard hub, and 2222 the operator sshd — restricted to
+the operator address list and the VNet, because every host provisioner jumps
+through it and hosts have no public IP.
+
+**I-23. The control-plane VM is not created until wave 3.** (11, owner,
+2026-09-19) `coolify_count` defaults to 0 in both environment roots. The api,
+the dashboard and Logto are workstreams 05 and 08; until they exist the VM
+bills about $180 a month for nothing, while the edge and the first host are
+worth paying for early, because installing NixOS onto an Azure VM with
+nixos-anywhere is the riskiest unproven step in the plan and workstream 01's
+data-disk device path stays unverified until a real install happens.
+*Rejected:* creating it with everything else (the original shape of workstream
+11 §2) and stopping it by hand (a deallocated VM still bills its 256 GB
+Premium OS disk, and a VM that exists is a VM somebody configures). Setting
+`coolify_count` back to 0 after the VM exists destroys it and its OS disk,
+Postgres included; the retention that matters is the R2 dump.
+
+**I-24. The installer reaches a host through the edge, never through a
+temporary public IP.** (11) `nixos-anywhere`, the post-install checks and the
+join-token delivery all connect to the host's private address with the edge as
+an SSH jump host, and the module graph makes a host depend on the edge being
+installed. *Rejected:* giving the host a public IP for the length of the
+install and removing it afterwards. *Why:* a public IP on a host needs an
+inbound rule on the hosts subnet, which is the one thing
+`infra/policy/tfsec` forbids and `DESIGN.md` §4 and §7 promise never exists;
+the window is not short (kexec, disko, closure copy and reboot is about ten
+minutes) and what sits in it is a stock Ubuntu image accepting root SSH; and
+the edge path is the same one the runbook's "Host never registered" recovery
+already used, so the recovery path is exercised by the happy path rather than
+first tried in an incident. *Cost:* the edge must exist and be reachable
+before the first host, and its operator sshd must be listening on
+`edge_operator_ssh_port`. Until workstream 06 moves it, `nix/edge` serves sshd
+on 22, so the first apply sets `edge_operator_ssh_port = 22`.

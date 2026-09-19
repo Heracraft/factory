@@ -1,0 +1,74 @@
+# Formatting, validation and policy for infra/ on every change that touches it.
+#
+# docs/workstreams/11-infra-opentofu.md §7. The jobs that need no credentials
+# always run; the staging plan runs only where Azure credentials exist, because
+# a plan needs to read state and talk to the provider. A plan creates nothing,
+# and staging's host list is empty, so it costs nothing either.
+
+name: infra
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/infra.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - ".github/workflows/infra.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  check:
+    name: fmt, validate, policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.12.6"
+
+      - name: tofu fmt
+        run: make -C infra fmt-check
+
+      # -backend=false: no credentials, no state, no network beyond the
+      # provider registry. The committed .terraform.lock.hcl is what makes
+      # this resolve the same versions a laptop resolves (DECISIONS I-21).
+      - name: tofu validate
+        run: make -C infra validate
+
+      - name: install tfsec
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+
+      # REPOSE-NET-001 is the one that matters: an inbound rule on the hosts
+      # subnet fails the build (docs/DESIGN.md §4, §7).
+      - name: tfsec
+        run: make -C infra policy
+
+  plan:
+    name: staging plan
+    runs-on: ubuntu-latest
+    needs: check
+    # Azure credentials are federated to this repository's OIDC identity; where
+    # they are absent the job is skipped rather than failing the build.
+    if: ${{ vars.AZURE_CLIENT_ID != '' }}
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.12.6"
+
+      - name: tofu plan
+        run: make -C infra plan ENV=staging
