@@ -36,7 +36,7 @@ writeShellApplication {
           write_atomic "$settings" 0600 < "$platform_claude"
         elif jq -e . "$settings" >/dev/null 2>&1; then
           jq -s '
-            def has_repose(arr): ((arr // []) | any(.hooks[]?; ((.command // "") | contains("repose-hook"))));
+            def has_repose(arr): ((arr // []) | any(.[]; ((.hooks // []) | any(.[]; ((.command // "") | contains("repose-hook"))))));
             .[0] as $user | .[1] as $platform
             | reduce ($platform.hooks | keys[]) as $ev ($user;
                 if has_repose(.hooks[$ev]) then .
