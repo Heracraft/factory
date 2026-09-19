@@ -44,8 +44,8 @@ their consumers. Delete the worktree after merging: `git worktree remove
 ../repose-ws/03-hostd`.
 
 Nix and Go caches are shared across worktrees (`/nix/store`, `~/go/pkg`),
-so parallel builds do not multiply disk use, but the Nix store will grow by
-several GB per guest closure; keep 40 GB free.
+so parallel builds do not multiply disk use. The store lives on the dev
+box's temp disk (`docs/ops/DEV-BOX.md`); keep 40 GB free on `/nix`.
 
 ## Shared preamble
 

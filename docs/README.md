@@ -27,6 +27,7 @@ docs disagree, the doc is wrong only if a `DECISIONS.md` entry says so.
 | [ops/OBSERVABILITY.md](ops/OBSERVABILITY.md) | You are adding a log line, a metric, or a signal that the idle and pricing policies will later depend on. |
 | [PRICING.md](PRICING.md) | Tiers, meters, the cost floor per guest, and the trial. |
 | [DESIGN-LANGUAGE.md](DESIGN-LANGUAGE.md) | You are building any screen. What to copy from the recruiting app and what not to. |
+| [ops/DEV-BOX.md](ops/DEV-BOX.md) | You are on the dev VM and something about disks, Nix or az is odd. |
 | [ops/AZURE-SETUP.md](ops/AZURE-SETUP.md) | The one-time human steps in Azure, Cloudflare, Logto, Stripe and Resend before agents start. |
 | [workstreams/PROMPTS.md](workstreams/PROMPTS.md) | The prompt and model to use when launching an agent on a workstream. |
 
