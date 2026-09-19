@@ -222,7 +222,7 @@ let
       --console null \
       --serial "$serial" \
       --vsock "cid=$cid,socket=$vsock_socket" \
-      --disk "path=$volume,num_queues=$vcpu" \
+      --disk "path=$volume,image_type=raw,num_queues=$vcpu" \
       --fs "tag=ro-store,socket=$virtiofs_socket,num_queues=1,queue_size=1024" \
       --net "tap=$tap,mac=$mac" \
       --api-socket "$api_socket" \
