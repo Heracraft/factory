@@ -13,9 +13,22 @@
 # (/nix/.rw-store/store) and the NixOS test layout (/nix/.rw-store/upper).
 { config, lib, pkgs, ... }:
 let
+  # The copy-up itself: /nix/store is bind-mounted read-only over the
+  # overlay (NixOS does that for every system), so the touches run in a
+  # private mount namespace with the store remounted writable, exactly as
+  # nix-daemon does for its own writes. Failures here are real errors.
+  copyUp = pkgs.writeShellScript "repose-pin-copy-up" ''
+    set -eu
+    ${pkgs.util-linux}/bin/mount -o remount,bind,rw /nix/store
+    while IFS= read -r p; do
+      [ -n "$p" ] || continue
+      ${pkgs.findutils}/bin/find "$p" -exec ${pkgs.coreutils}/bin/touch -h -d @1 {} +
+    done
+  '';
+
   pin = pkgs.writeShellApplication {
     name = "repose-pin-profile";
-    runtimeInputs = [ pkgs.nix pkgs.coreutils pkgs.findutils pkgs.gnugrep pkgs.gawk ];
+    runtimeInputs = [ pkgs.nix pkgs.coreutils pkgs.findutils pkgs.gnugrep pkgs.gawk pkgs.util-linux ];
     text = ''
       upper=$(awk '$2 == "/nix/store" && $3 == "overlay" { print $4 }' /proc/mounts \
         | tr ',' '\n' | grep '^upperdir=' | head -n1 | cut -d= -f2-)
@@ -26,6 +39,8 @@ let
         exit 0
       fi
       pinned=0
+      todo=$(mktemp)
+      trap 'rm -f "$todo"' EXIT
       for profile in \
         /home/dev/.local/state/nix/profiles/profile \
         /nix/var/nix/profiles/per-user/dev/profile \
@@ -40,10 +55,13 @@ let
           if [ -e "$upper/$name" ]; then
             continue
           fi
-          find "$p" -exec touch -h -d @1 {} + 2>/dev/null || true
+          echo "$p" >> "$todo"
           pinned=$((pinned + 1))
         done
       done
+      if [ "$pinned" -gt 0 ]; then
+        unshare -m --propagation private ${copyUp} < "$todo"
+      fi
       echo "repose-pin-profile: pinned $pinned store paths into $upper"
     '';
   };
