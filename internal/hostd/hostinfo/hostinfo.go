@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
 	"github.com/heracraft/repose/internal/hostd/lvm"
 	"github.com/heracraft/repose/internal/hostd/shell"
@@ -53,6 +55,19 @@ func memInfoFrom(path string) (uint64, uint64, error) {
 		}
 	}
 	return total, avail, sc.Err()
+}
+
+// StoreStat returns the size and used bytes of the filesystem holding
+// /nix/store.
+func StoreStat() (total, used uint64, err error) {
+	var st unix.Statfs_t
+	if err := unix.Statfs("/nix/store", &st); err != nil {
+		return 0, 0, err
+	}
+	bs := uint64(st.Bsize)
+	total = st.Blocks * bs
+	used = (st.Blocks - st.Bfree) * bs
+	return total, used, nil
 }
 
 // Load1 reads the one-minute load average.

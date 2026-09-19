@@ -770,3 +770,34 @@ func TestRebuildFromDisk(t *testing.T) {
 		t.Fatal("rebuilt guest's address not reserved")
 	}
 }
+
+func TestStoreHighWarnsAndRefusesBuild(t *testing.T) {
+	h := newHarness(t, nil)
+	used := uint64(50 << 30)
+	h.m.d.StoreStat = func() (uint64, uint64, error) { return 100 << 30, used, nil }
+	h.mustOK(cmd(&hostdv1.Build{ProjectId: "p", RevisionId: "r1", Fragment: []byte("{}"), BaseRef: "abc"}))
+	used = 85 << 30
+	res := h.mustFail(cmd(&hostdv1.Build{ProjectId: "p", RevisionId: "r2", Fragment: []byte("{}"), BaseRef: "abc"}), CodeInsufficientCapacity)
+	if res.Error.Message != "host store full" {
+		t.Fatalf("message %s", res.Error.Message)
+	}
+	h.m.CollectSamples(context.Background())
+	for _, w := range h.rec.warnings() {
+		if w == "store_high" {
+			return
+		}
+	}
+	t.Fatal("no store_high warning")
+}
+
+func TestPoolHighWarning(t *testing.T) {
+	h := newHarness(t, nil)
+	h.lvm.PoolFree = h.lvm.PoolSize / 10
+	h.m.CollectSamples(context.Background())
+	for _, w := range h.rec.warnings() {
+		if w == "pool_high" {
+			return
+		}
+	}
+	t.Fatal("no pool_high warning")
+}

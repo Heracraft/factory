@@ -46,6 +46,15 @@ type Result struct {
 	ClosureBytes  uint64
 	Kernel        string
 	Initrd        string
+	// CacheUnreachable is set when Nix reported a substituter it could not
+	// reach; the build fell back to source and hostd warns the api.
+	CacheUnreachable bool
+}
+
+// CacheUnreachable recognises Nix's substituter failure lines.
+func CacheUnreachable(stderr string) bool {
+	return strings.Contains(stderr, "unable to download") || strings.Contains(stderr, "substituter") && strings.Contains(stderr, "failed") ||
+		strings.Contains(stderr, "Couldn't resolve host") || strings.Contains(stderr, "Could not connect to server")
 }
 
 // Builder is what the guest Manager calls.
@@ -267,7 +276,7 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 		return nil, &Error{Code: "internal", Message: "built closure is not a bootable system: " + err.Error()}
 	}
 	log("built " + outPath)
-	return &Result{SystemClosure: outPath, ClosureBytes: size, Kernel: info.Kernel, Initrd: info.Initrd}, nil
+	return &Result{SystemClosure: outPath, ClosureBytes: size, Kernel: info.Kernel, Initrd: info.Initrd, CacheUnreachable: CacheUnreachable(tail)}, nil
 }
 
 // stream runs argv, feeding stderr lines to log; it returns stdout, the

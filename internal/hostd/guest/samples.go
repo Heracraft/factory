@@ -115,19 +115,35 @@ func (m *Manager) CollectSamples(ctx context.Context) *hostdv1.Samples {
 	return s
 }
 
-var poolWarned time.Time
-
 func (m *Manager) poolWarning() {
 	pct, err := m.poolUsedPct()
-	if err != nil || pct < m.cfg.PoolWarnPct {
-		return
+	if err == nil && pct >= m.cfg.PoolWarnPct && m.d.Now().Sub(m.poolWarned) >= 10*time.Minute {
+		m.poolWarned = m.d.Now()
+		m.d.Log.Warn("thin pool high", "component", "hostd", "event", "pool_warning", "pct", int(pct))
+		m.Warn("pool_high", strconv.Itoa(int(pct))+"% of the thin pool is used")
 	}
-	if m.d.Now().Sub(poolWarned) < 10*time.Minute {
-		return
+	spct, ok := m.storeUsedPct()
+	if ok && spct >= m.cfg.StoreHighPct && m.d.Now().Sub(m.storeWarned) >= 10*time.Minute {
+		m.storeWarned = m.d.Now()
+		m.d.Log.Warn("store high", "component", "hostd", "event", "store_warning", "pct", int(spct))
+		m.Warn("store_high", strconv.Itoa(int(spct))+"% of the host store filesystem is used")
 	}
-	poolWarned = m.d.Now()
-	m.d.Log.Warn("thin pool high", "component", "hostd", "event", "pool_warning", "pct", int(pct))
-	m.Warn("pool_high", strconv.Itoa(int(pct))+"% of the thin pool is used")
+}
+
+// storeUsedPct is the host store filesystem's usage; ok is false when it
+// cannot be read (no StoreStat in tests).
+func (m *Manager) storeUsedPct() (float64, bool) {
+	if m.d.StoreStat == nil {
+		return 0, false
+	}
+	total, used, err := m.d.StoreStat()
+	if err != nil || total == 0 {
+		return 0, false
+	}
+	if m.d.Metrics != nil {
+		m.d.Metrics.StoreBytes.Set(float64(used))
+	}
+	return float64(used) / float64(total) * 100, true
 }
 
 // SnapshotAll enqueues a scheduled Snapshot for every running guest

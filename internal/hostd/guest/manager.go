@@ -119,6 +119,7 @@ type Config struct {
 	MaxVolumeBytes   uint64
 	PoolRefusePct    float64
 	PoolWarnPct      float64
+	StoreHighPct     float64
 	GuestdRetry      time.Duration
 	GuestdLostAfter  time.Duration
 	UnitPoll         time.Duration
@@ -163,6 +164,9 @@ func (c Config) Defaults() Config {
 	}
 	if c.PoolWarnPct == 0 {
 		c.PoolWarnPct = 80
+	}
+	if c.StoreHighPct == 0 {
+		c.StoreHighPct = 80
 	}
 	if c.GuestdRetry == 0 {
 		c.GuestdRetry = 2 * time.Second
@@ -211,6 +215,8 @@ type Deps struct {
 	MemInfo func() (total, avail uint64, err error)
 	// Load1 returns the one-minute load average.
 	Load1 func() float64
+	// StoreStat returns the host store filesystem's size and used bytes.
+	StoreStat func() (total, used uint64, err error)
 	// ConsoleStart begins console capture for a guest dir; the returned
 	// func stops it. Nil disables capture (tests).
 	ConsoleStart func(guestID, dir string) (stop func())
@@ -244,10 +250,12 @@ type Manager struct {
 	buildCh  chan job
 	buildRun int
 
-	cidr     *net.IPNet
-	base     net.IP
-	maxIndex uint32
-	eventSeq uint64
+	cidr        *net.IPNet
+	base        net.IP
+	maxIndex    uint32
+	poolWarned  time.Time
+	storeWarned time.Time
+	eventSeq    uint64
 }
 
 // New builds a Manager; Run must be called before commands are dispatched.

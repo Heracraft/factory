@@ -145,3 +145,12 @@ func TestRealBuildFlow(t *testing.T) {
 		t.Fatalf("missing base: %v", err)
 	}
 }
+
+func TestCacheUnreachableDetection(t *testing.T) {
+	if !CacheUnreachable("warning: error: unable to download 'https://cache.repose.herakraft.co/nar/x': Couldn't resolve host name (6); retrying in 300 ms\n") {
+		t.Fatal("substituter failure not recognised")
+	}
+	if CacheUnreachable("copying path '/nix/store/x' from 'https://cache.nixos.org'...\n") {
+		t.Fatal("false positive")
+	}
+}

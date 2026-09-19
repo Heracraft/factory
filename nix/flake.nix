@@ -64,7 +64,7 @@
           goCommon = {
             version = "0.1.0";
             inherit src;
-            vendorHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+            vendorHash = "sha256-K/dhRbLrd3kqRWeQ3BGf6W8aW9ddDz/pq5xWIQodt+I=";
             env.CGO_ENABLED = 0;
             ldflags = [ "-s" "-w" ];
             meta.description = "repose host daemon (docs/workstreams/03-hostd.md)";
