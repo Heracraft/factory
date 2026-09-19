@@ -69,10 +69,27 @@ type tmuxClient struct {
 	run   sysdep.Runner
 }
 
-// errNoServer is how tmux says the dev user has no tmux server.
-const errNoServer = "no server running"
+// tmuxFailure classifies a non-zero tmux exit into a bounded reason, so the
+// failure is logged without the message, which carries the project slug.
+// Silently reporting "no windows" for any of these is how a guest looks idle
+// while an agent is working in it.
+func tmuxFailure(stderr string) string {
+	switch {
+	case strings.Contains(stderr, "no server running"):
+		return "server_down"
+	case strings.Contains(stderr, "can't find session"), strings.Contains(stderr, "session not found"):
+		return "session_missing"
+	case strings.Contains(stderr, "error connecting"), strings.Contains(stderr, "Permission denied"):
+		return "connect_failed"
+	case strings.Contains(stderr, "not found"), strings.Contains(stderr, "No such file"):
+		return "tmux_missing"
+	default:
+		return "other"
+	}
+}
 
-// listWindows returns the windows of the project's session.
+// listWindows returns the windows of the project's session, and whether a
+// tmux server is running at all.
 func (t tmuxClient) listWindows(ctx context.Context, session string) ([]tmuxWindow, bool, error) {
 	const format = "#{window_name}\t#{pane_pid}\t#{pane_current_command}\t#{window_activity}"
 	res, err := t.run.Run(ctx, sysdep.RunSpec{
@@ -85,11 +102,16 @@ func (t tmuxClient) listWindows(ctx context.Context, session string) ([]tmuxWind
 		return nil, false, sysdep.Errf(sysdep.CodeInternal, "list tmux windows: %w", err)
 	}
 	if res.ExitCode != 0 {
-		if strings.Contains(string(res.Stderr), errNoServer) {
+		reason := tmuxFailure(string(res.Stderr))
+		if reason == "server_down" {
 			return nil, false, nil
 		}
-		// A missing session is not an error: the project may not be set up.
-		return nil, true, nil
+		if reason == "session_missing" {
+			// The project is not set up yet; that is a state, not a fault.
+			return nil, true, nil
+		}
+		return nil, true, sysdep.Errf(sysdep.CodeInternal,
+			"list tmux windows: tmux exited %d (%s)", res.ExitCode, reason)
 	}
 	var out []tmuxWindow
 	for _, line := range strings.Split(strings.TrimRight(string(res.Stdout), "\n"), "\n") {
@@ -127,10 +149,15 @@ func (t tmuxClient) listClients(ctx context.Context, session string) (uint32, bo
 		return 0, false, sysdep.Errf(sysdep.CodeInternal, "list tmux clients: %w", err)
 	}
 	if res.ExitCode != 0 {
-		if strings.Contains(string(res.Stderr), errNoServer) {
+		reason := tmuxFailure(string(res.Stderr))
+		if reason == "server_down" {
 			return 0, false, nil
 		}
-		return 0, true, nil
+		if reason == "session_missing" {
+			return 0, true, nil
+		}
+		return 0, true, sysdep.Errf(sysdep.CodeInternal,
+			"list tmux clients: tmux exited %d (%s)", res.ExitCode, reason)
 	}
 	var n uint32
 	for _, line := range strings.Split(strings.TrimRight(string(res.Stdout), "\n"), "\n") {

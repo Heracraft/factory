@@ -52,20 +52,16 @@ func (h *Handler) Sample(ctx context.Context) (*guestdv1.SampleResult, error) {
 	signals, fresh := h.watcher.Signals()
 	partial := !fresh
 
-	if n, err := h.watcher.procs.sshSessions(h.uid); err != nil {
-		partial = true
-	} else {
-		signals.SshSessions = n
-	}
-
 	var procs []*hostdv1.ProcSample
 	if ctx.Err() == nil {
-		var err error
-		procs, err = h.watcher.procs.read()
+		procs2, sessions, err := h.watcher.procs.read(h.uid)
 		if err != nil {
 			h.log.Warn("could not read the process table",
 				"event", "sample", "error_code", sysdep.CodeOf(err))
 			partial = true
+		} else {
+			procs = procs2
+			signals.SshSessions = sessions
 		}
 	} else {
 		partial = true

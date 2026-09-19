@@ -332,3 +332,36 @@ func TestWindowThatDisappearsIsAnnouncedUnknownOnce(t *testing.T) {
 		t.Fatalf("states = %v, want exactly one unknown for the closed window", states)
 	}
 }
+
+func TestAnUnexpectedTmuxFailureIsReportedNotSwallowed(t *testing.T) {
+	// The failure this is written against: guestd reported "no agent windows"
+	// for a guest whose tmux was fine but whose tmux invocation was broken, so
+	// a working agent looked idle and nothing said why.
+	w, run, _, _, _ := newWatcherFixture(t, nil)
+	run.Match["list-windows"] = sysdep.RunResult{
+		ExitCode: 1,
+		Stderr:   []byte("setpriv: failed to set the group list"),
+	}
+	_, _, err := w.tmux.listWindows(context.Background(), "todo-app")
+	if err == nil {
+		t.Fatal("an unexpected tmux failure was reported as an empty window list")
+	}
+	if !strings.Contains(err.Error(), "other") {
+		t.Fatalf("err = %v, want a classified reason", err)
+	}
+}
+
+func TestTmuxFailureClassification(t *testing.T) {
+	cases := map[string]string{
+		"no server running on /tmp/tmux-1000/default": "server_down",
+		"can't find session: todo-app":                "session_missing",
+		"error connecting to /tmp/tmux-1000/default":  "connect_failed",
+		"exec: \"tmux\": executable file not found":   "tmux_missing",
+		"something nobody has seen":                   "other",
+	}
+	for stderr, want := range cases {
+		if got := tmuxFailure(stderr); got != want {
+			t.Errorf("tmuxFailure(%q) = %q, want %q", stderr, got, want)
+		}
+	}
+}

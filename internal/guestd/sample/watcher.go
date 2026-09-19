@@ -180,18 +180,24 @@ func (w *Watcher) refreshTmux(ctx context.Context) {
 
 	windows, serverUp, err := w.tmux.listWindows(ctx, session)
 	if err != nil {
-		w.log.Warn("could not list tmux windows", "event", "agent_state", "error_code", sysdep.CodeOf(err))
+		// The reason is in the error's message, which carries no session name.
+		w.log.Warn("could not list tmux windows",
+			"event", "agent_state", "error_code", sysdep.CodeOf(err), "reason", err.Error())
 		return
 	}
 	clients := uint32(0)
 	if serverUp {
 		clients, _, err = w.tmux.listClients(ctx, session)
 		if err != nil {
-			w.log.Warn("could not list tmux clients", "event", "agent_state", "error_code", sysdep.CodeOf(err))
+			w.log.Warn("could not list tmux clients",
+				"event", "agent_state", "error_code", sysdep.CodeOf(err), "reason", err.Error())
 		}
 	}
 
 	w.oneShot(WarnTmuxDown, !serverUp, "no tmux server is running for dev")
+
+	// One child index per refresh, shared by every window's tree walk.
+	children, _ := w.procs.childIndex()
 
 	now := w.now()
 	type emission struct {
@@ -211,7 +217,7 @@ func (w *Watcher) refreshTmux(ctx context.Context) {
 		if agent == "" {
 			continue
 		}
-		if !w.procs.treeHasComm(win.PanePID, binaries[agent]) {
+		if !w.procs.treeHasComm(children, win.PanePID, binaries[agent]) {
 			// A window named after an agent whose process is not running is
 			// not an agent window; the user renamed a shell.
 			continue
@@ -223,7 +229,7 @@ func (w *Watcher) refreshTmux(ctx context.Context) {
 			ws = &windowState{agent: agent, windowName: win.Name, lastActive: now, stateSince: now}
 			w.windows[win.Name] = ws
 		}
-		cpu, ok := w.procs.treeCPU(win.PanePID)
+		cpu, ok := w.procs.treeCPU(children, win.PanePID)
 		busy := ok && cpu > ws.lastCPU
 		if busy {
 			ws.lastCPU = cpu

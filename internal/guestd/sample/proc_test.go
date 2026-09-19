@@ -73,7 +73,7 @@ func TestProcReaderAggregatesByName(t *testing.T) {
 		{pid: 4, ppid: 1, comm: "claude", ticks: 5, rssPages: 250},
 	})
 
-	first, err := r.read()
+	first, _, err := r.read(1000)
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -95,12 +95,12 @@ func TestProcReaderAggregatesByName(t *testing.T) {
 
 func TestProcReaderReportsDeltas(t *testing.T) {
 	r, p := newProcFixture(t, []fakeProc{{pid: 2, ppid: 1, comm: "node", ticks: 100, rssPages: 10}})
-	if _, err := r.read(); err != nil {
+	if _, _, err := r.read(1000); err != nil {
 		t.Fatalf("first read: %v", err)
 	}
 	writeProc(t, p, []fakeProc{{pid: 2, ppid: 1, comm: "node", ticks: 160, rssPages: 10}})
 
-	second, err := r.read()
+	second, _, err := r.read(1000)
 	if err != nil {
 		t.Fatalf("second read: %v", err)
 	}
@@ -126,10 +126,10 @@ func TestProcReaderKeepsWatchedNamesBelowTheTop(t *testing.T) {
 	p := sysdep.Paths{Root: t.TempDir()}
 	writeProc(t, p, procs)
 	r := newProcReader(p)
-	if _, err := r.read(); err != nil {
+	if _, _, err := r.read(1000); err != nil {
 		t.Fatalf("first read: %v", err)
 	}
-	out, err := r.read()
+	out, _, err := r.read(1000)
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -154,17 +154,21 @@ func TestTreeCPUAndTreeHasComm(t *testing.T) {
 		{pid: 12, ppid: 11, comm: "cargo", ticks: 200},
 	})
 
-	cpu, ok := r.treeCPU(10)
+	children, ok := r.childIndex()
+	if !ok {
+		t.Fatal("childIndex failed")
+	}
+	cpu, ok := r.treeCPU(children, 10)
 	if !ok {
 		t.Fatal("treeCPU did not find the tree")
 	}
 	if want := uint64(235) * (1_000_000_000 / clockTicks); cpu != want {
 		t.Fatalf("tree cpu = %d, want %d: the children's work is the agent's work", cpu, want)
 	}
-	if !r.treeHasComm(10, "claude") {
+	if !r.treeHasComm(children, 10, "claude") {
 		t.Fatal("claude was not found in its own pane's tree")
 	}
-	if r.treeHasComm(10, "codex") {
+	if r.treeHasComm(children, 10, "codex") {
 		t.Fatal("codex was found in a tree that does not contain it")
 	}
 }
@@ -177,9 +181,9 @@ func TestSSHSessionsCountsDevOwnedSSHD(t *testing.T) {
 		{pid: 23, ppid: 21, comm: "sshd-session", uid: 1000}, // another, newer OpenSSH
 		{pid: 24, ppid: 1, comm: "node", uid: 1000},
 	})
-	n, err := r.sshSessions(1000)
+	_, n, err := r.read(1000)
 	if err != nil {
-		t.Fatalf("sshSessions: %v", err)
+		t.Fatalf("read: %v", err)
 	}
 	if n != 2 {
 		t.Fatalf("ssh_sessions = %d, want 2", n)
@@ -188,7 +192,7 @@ func TestSSHSessionsCountsDevOwnedSSHD(t *testing.T) {
 
 func TestProcNamesWithSpacesAndParens(t *testing.T) {
 	r, _ := newProcFixture(t, []fakeProc{{pid: 30, ppid: 1, comm: "Web Content (tab)", ticks: 7}})
-	out, err := r.read()
+	out, _, err := r.read(1000)
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}

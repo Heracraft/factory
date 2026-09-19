@@ -9,11 +9,18 @@
 { pkgs, guestdPackage }:
 
 let
-  # A real binary named claude, so a tmux window named "claude" has a process
-  # tree whose comm is "claude" (docs/workstreams/04-guestd.md §5).
-  fakeClaude = pkgs.runCommand "fake-claude" { } ''
+  # A real compiled binary named claude, so a tmux window named "claude" has a
+  # process tree whose comm is "claude" (docs/workstreams/04-guestd.md §5).
+  # It has to be compiled rather than a copy of `sleep` or a shell script:
+  # coreutils may be a multi-call binary that dispatches on argv[0], and a
+  # script's comm is its interpreter's.
+  fakeClaude = pkgs.runCommand "fake-claude" { nativeBuildInputs = [ pkgs.stdenv.cc ]; } ''
     mkdir -p $out/bin
-    cp ${pkgs.coreutils}/bin/sleep $out/bin/claude
+    cat > claude.c <<'SRC'
+    #include <unistd.h>
+    int main(void) { for (;;) { sleep(60); } return 0; }
+SRC
+    $CC -O0 -o $out/bin/claude claude.c
   '';
 
   devUID = 1000;
@@ -50,8 +57,13 @@ pkgs.testers.runNixOSTest {
       };
     };
 
+    # What guestd shells out to, plus what the test script needs. The real
+    # guest gets these from nix/guest/base/tools.nix (02); the test names them
+    # so that a missing one fails here rather than on a tenant's guest.
     environment.systemPackages = with pkgs; [
-      guestdPackage fakeClaude e2fsprogs util-linux openssh jq curl tmux
+      guestdPackage fakeClaude
+      git tmux openssh e2fsprogs util-linux procps
+      jq curl coreutils
     ];
 
     # /run/repose and its secrets tmpfs, as nix/guest/base/guestd.nix (02)
@@ -201,18 +213,34 @@ pkgs.testers.runNixOSTest {
         guest.wait_until_succeeds("sudo -u dev tmux has-session -t todo-app", timeout=30)
 
     with subtest("Sample reports the tmux windows and agent states"):
+        # The absolute path, because the tmux server's own PATH is the user
+        # unit's, not a login shell's.
+        # The binary runs and stays running, before blaming tmux for anything.
+        guest.succeed(
+            "sudo -u dev sh -c 'timeout 1 ${fakeClaude}/bin/claude; test $? -eq 124'"
+        )
         guest.succeed(
             "sudo -u dev tmux new-window -t todo-app -n claude "
-            "-c /home/dev/todo-app 'exec claude 600'"
+            "-c /home/dev/todo-app '${fakeClaude}/bin/claude'"
         )
-        guest.wait_until_succeeds(
-            "sudo -u dev tmux list-windows -t todo-app | grep -q claude", timeout=30
-        )
+        guest.sleep(2)
+        print(guest.succeed("sudo -u dev tmux list-windows -t todo-app"))
+        guest.succeed("sudo -u dev tmux list-windows -t todo-app | grep -q claude")
+        guest.succeed("pgrep -x claude")
 
         def agents():
             sample = first_json(call("sample"))
             return sample["sample"]["signals"].get("agents", [])
 
+        # If the agent never appears, this is what guestd's own tmux call looks
+        # like from the outside, printed so the reason is in the log rather
+        # than inferred.
+        print(guest.execute(
+            "setpriv --reuid=1000 --regid=1000 --init-groups -- "
+            "env -i PATH=/run/current-system/sw/bin:/usr/bin:/bin HOME=/home/dev "
+            "USER=dev LOGNAME=dev SHELL=/bin/sh TERM=dumb "
+            "tmux list-windows -t todo-app -F '#{window_name} #{pane_pid} #{pane_current_command}'"
+        )[1])
         guest.wait_until_succeeds(
             "guestd call sample --dev-socket /run/repose/guestd.sock | grep -q '\"agent\": \"claude\"'",
             timeout=60,
