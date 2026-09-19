@@ -55,6 +55,42 @@ Nix and Go caches are shared across worktrees (`/nix/store`, `~/go/pkg`),
 so parallel builds do not multiply disk use. The store lives on the dev
 box's temp disk (`docs/ops/DEV-BOX.md`); keep 40 GB free on `/nix`.
 
+## M1 bring-up (owner runs the apply, then `/ws m1`)
+
+The apply creates paid resources, so it is run by the owner, from `main`,
+with the local tfvars in place (`infra/azure/prod/prod.local.tfvars`):
+
+```
+cd infra && nix shell nixpkgs#opentofu nixpkgs#azure-cli nixpkgs#gnumake nixpkgs#nixos-anywhere -c \
+  bash -c 'make init ENV=prod && tofu -chdir=azure/prod apply -input=false -var-file=prod.tfvars -var-file=prod.local.tfvars'
+```
+
+That builds the network, NAT gateway, snapshot storage, Key Vault and the
+edge VM, and installs NixOS on the edge through nixos-anywhere (about ten
+minutes). Then the M1 integration session (`/ws m1` in
+`../repose-ws/m1-integration`) does, in order:
+
+1. Copy `hostdev` to the edge (`nix copy --to ssh://root@<edge-ip>
+   'git+file://.?dir=nix#hostdev'`), run `hostdev init --listen 0.0.0.0:443
+   --names <edge-ip>` there and `hostdev serve` as a transient unit. The
+   edge NSG already opens 443. The token it prints is host-01's join token.
+2. Set `repose.host.apiAddr = "<edge-ip>:443"` for host-01 (a per-host
+   module passed through `lib.mkHost`, or the host module's default until
+   the api exists) so hostd registers with hostdev rather than
+   `api.repose.herakraft.co`.
+3. Add `"host-01"` to `hosts` in `prod.tfvars`, `host-01 = "<token>"` to
+   `join_tokens` in `prod.local.tfvars`, then `make plan` and (owner) apply
+   again: nixos-anywhere installs the host through the edge, delivers the
+   token, hostd registers, `hostdev status` shows the host.
+4. Close the real-host checklist items of 01, 02, 03 and 04: lsblk, /dev/kvm,
+   kvm_intel nested, IMDS blocked from a guest, thin pool, bridge, then
+   `hostdev create --project todo --class large --closure <guest-system>`
+   and SSH into the guest through the edge and host. Record timings in
+   `docs/RESEARCH.md` (DECISIONS I-12).
+
+WireGuard between edge and hosts is workstream 06; until it exists the M1
+session reaches guests by jumping edge → host → guest.
+
 ## Shared preamble
 
 Paste this first, then the workstream block.
