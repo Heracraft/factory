@@ -1,0 +1,25 @@
+#cloud-config
+# Ubuntu is the install target only; nixos-anywhere replaces it minutes later
+# (docs/workstreams/11-infra-opentofu.md §5). The single job of this file is to
+# let the provisioner log in as root.
+#
+# Nothing secret belongs here: custom_data stays in the Azure VM model and is
+# readable through IMDS by anything on the machine for the life of the VM. The
+# join token therefore arrives over SSH after the install (DECISIONS I-19).
+ssh_pwauth: false
+package_update: false
+write_files:
+  - path: /root/.ssh/authorized_keys
+    owner: root:root
+    permissions: "0600"
+    content: |
+      ${indent(6, authorized_keys)}
+  - path: /etc/ssh/sshd_config.d/60-repose-bootstrap.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      PermitRootLogin prohibit-password
+      PasswordAuthentication no
+runcmd:
+  - [ chmod, "0700", /root/.ssh ]
+  - [ systemctl, restart, ssh ]

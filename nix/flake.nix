@@ -52,12 +52,24 @@
         inherit nixpkgs home-manager microvm system overlay self;
       };
 
-      devShells.${system}.default = pkgs.mkShell {
-        packages = with pkgs; [
-          go_1_26 gopls golangci-lint buf protoc-gen-go protoc-gen-go-grpc
-          opentofu azure-cli just nixos-anywhere nixos-rebuild
-          postgresql_16 sqlc wireguard-tools
-        ];
+      devShells.${system} = {
+        default = pkgs.mkShell {
+          packages = with pkgs; [
+            go_1_26 gopls golangci-lint buf protoc-gen-go protoc-gen-go-grpc
+            opentofu azure-cli just nixos-anywhere nixos-rebuild
+            postgresql_16 sqlc wireguard-tools
+          ];
+        };
+
+        # `nix develop ./nix#infra`. tfsec runs the policies in
+        # infra/policy/tfsec; it is here rather than in the default shell
+        # because only workstream 11 needs it.
+        # docs/workstreams/11-infra-opentofu.md §7.
+        infra = pkgs.mkShell {
+          packages = with pkgs; [
+            opentofu azure-cli tfsec just jq nixos-anywhere wireguard-tools
+          ];
+        };
       };
 
       formatter.${system} = pkgs.nixfmt;

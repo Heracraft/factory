@@ -42,8 +42,11 @@ dist/
 *.tfstate
 *.tfstate.backup
 .terraform/
-.terraform.lock.hcl
+# .terraform.lock.hcl is committed on purpose: it is what makes a plan in CI
+# resolve the same provider versions as a plan on a laptop (DECISIONS I-21).
 infra/**/*.auto.tfvars
+# Per-operator and secret values: addresses, key paths, join tokens.
+infra/**/*.local.tfvars
 /internal/gen/
 
 #context for ages
