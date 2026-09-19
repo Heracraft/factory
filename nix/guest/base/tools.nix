@@ -1,19 +1,29 @@
-# Toolchain every guest has. This is the successor of packages/core/flake.nix;
-# that flake stays until the first guest boots from here (docs/DESIGN.md §17).
-{ pkgs, ... }:
+# Toolchain every guest has. Successor of packages/core/flake.nix (deleted
+# in this workstream); the dev shell in nix/flake.nix reuses `toolPackages`
+# so the dev box and the guests carry the same tools.
+{ pkgs, lib, ... }:
+let
+  toolPackages = import ./tool-list.nix pkgs;
+in
 {
-  environment.systemPackages = with pkgs; [
-    curl wget jq ripgrep git gh just
-    nodejs_24 pnpm python312 uv go rustup
-    tmux eza zoxide starship direnv nix-direnv
-    neovim
-  ];
+  environment.systemPackages = toolPackages;
 
-  # npm's default global prefix is the nodejs store path, which is read-only,
-  # so `npm i -g` fails with EACCES. Point it at the dev home instead
-  # (guest-conventions.md "Environment", DECISIONS I-6).
-  environment.sessionVariables.NPM_CONFIG_PREFIX = "/home/dev/.npm-global";
-  environment.extraInit = ''
-    export PATH="/home/dev/.npm-global/bin:$PATH"
-  '';
+  programs.direnv = {
+    enable = true;
+    nix-direnv.enable = true;
+  };
+  programs.starship.enable = true;
+  programs.zoxide.enable = true;
+  programs.git.enable = true;
+  programs.neovim = {
+    enable = true;
+    defaultEditor = false;
+  };
+  programs.bash.completion.enable = true;
+  programs.bash.shellAliases = {
+    ls = "eza -al --group-directories-first --no-permissions --no-user";
+    la = "eza -a --group-directories-first";
+    ll = "eza -l --group-directories-first";
+    lt = "eza -aT --group-directories-first";
+  };
 }
