@@ -7,6 +7,12 @@ lint:
   except:
     - FIELD_NOT_REQUIRED
     - PACKAGE_NO_IMPORT_CYCLE
+    # docs/interfaces/grpc-hostd.md names Rotate's messages RegisterRequest/
+    # RegisterResponse and Session's HostMessage/ApiMessage. The interface is
+    # law, so the naming rules that would rename them are off.
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+    - RPC_REQUEST_RESPONSE_UNIQUE
 breaking:
   use:
     - FILE

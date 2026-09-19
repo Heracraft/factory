@@ -1,0 +1,87 @@
+// Package sample implements the Sample request of
+// docs/interfaces/vsock-guestd.md: the guest signals and per-process-name
+// figures that metering, the idle policy and abuse detection all read.
+//
+// Two rules shape this package. Process command lines and environments are
+// never opened, so what leaves the guest is a process *name* and its numbers
+// (DECISIONS R5-3); a test runs guestd under strace and asserts it. And a
+// sample must cost under 20 ms, so everything that needs a fork lives in the
+// Watcher's background refresh and Sample reads its cache.
+package sample
+
+import (
+	"context"
+	"log/slog"
+	"time"
+
+	guestdv1 "github.com/heracraft/repose/internal/gen/guestd/v1"
+	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
+	"github.com/heracraft/repose/internal/guestd/sysdep"
+)
+
+// Budget is the deadline for one sample. Past it the result is returned with
+// partial set rather than made to wait (docs/workstreams/04-guestd.md §6).
+const Budget = time.Second
+
+// Handler answers Sample.
+type Handler struct {
+	paths   sysdep.Paths
+	watcher *Watcher
+	log     *slog.Logger
+	uid     int
+	now     func() time.Time
+}
+
+// NewHandler builds the Sample handler over an already-running Watcher.
+func NewHandler(p sysdep.Paths, w *Watcher, log *slog.Logger, now func() time.Time) *Handler {
+	if now == nil {
+		now = time.Now
+	}
+	return &Handler{paths: p, watcher: w, log: log, uid: sysdep.DevUID, now: now}
+}
+
+// Sample reads the signals and the process table. It never returns an error
+// for a signal it could not read: a missing signal comes back as zero with
+// partial set, because a sample that fails entirely loses the metering hour.
+func (h *Handler) Sample(ctx context.Context) (*guestdv1.SampleResult, error) {
+	start := h.now()
+	ctx, cancel := context.WithTimeout(ctx, Budget)
+	defer cancel()
+
+	signals, fresh := h.watcher.Signals()
+	partial := !fresh
+
+	if n, err := h.watcher.procs.sshSessions(h.uid); err != nil {
+		partial = true
+	} else {
+		signals.SshSessions = n
+	}
+
+	var procs []*hostdv1.ProcSample
+	if ctx.Err() == nil {
+		var err error
+		procs, err = h.watcher.procs.read()
+		if err != nil {
+			h.log.Warn("could not read the process table",
+				"event", "sample", "error_code", sysdep.CodeOf(err))
+			partial = true
+		}
+	} else {
+		partial = true
+	}
+	if ctx.Err() != nil {
+		partial = true
+	}
+
+	took := h.now().Sub(start)
+	h.log.Debug("sample taken",
+		"event", "sample", "duration_ms", took.Milliseconds(),
+		"procs", len(procs), "partial", partial)
+	return &guestdv1.SampleResult{Signals: signals, Procs: procs, Partial: partial}, nil
+}
+
+// WindowOfPane resolves a tmux pane id to its window name, for the hook socket
+// when a hook did not say which window it came from.
+func (h *Handler) WindowOfPane(ctx context.Context, pane string) (string, error) {
+	return h.watcher.tmux.windowOfPane(ctx, pane)
+}
