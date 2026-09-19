@@ -16,14 +16,14 @@ func TestUnixDialerAgainstFake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	s, err := UnixDialer{}.Dial(ctx, Target{GuestID: "g", Dir: dir})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	select {
 	case n := <-s.Notifications():
 		if n.GetReady() == nil {

@@ -7,9 +7,12 @@ What every host guarantees, so hostd, infra and operators agree.
 | Path | What |
 |---|---|
 | `/var/lib/repose/hostd/` | `cert.pem`, `key.pem` (mTLS to api), `host.json` (host id, guest cidr, wg keys), `state.db` (bbolt: guest table for reconciliation) |
-| `/var/lib/repose/guests/<guest_id>/` | `runner` (symlink to the microvm.nix runner package), `ch.sock` (Cloud Hypervisor API), `console.log`, `virtiofsd.sock`, `secrets/` (tmpfs mount, delivered to guest at boot then unmounted) |
+| `/var/lib/repose/guests/<guest_id>/` | `ch.args` (the rendered cloud-hypervisor argv, one argument per line; DECISIONS I-19), `guest.json` (non-secret copy of the guest record for `hostd reconcile --rebuild`), `ch.sock` (Cloud Hypervisor API), `vsock.sock` (host side of the guest's vsock, `CONNECT 5000` reaches guestd), `console.sock` (serial; hostd copies it into `console.log`, rotated at 64 MB keeping 3), `virtiofsd.sock`. Secrets are never written here: they are delivered to the guest's tmpfs over vsock. |
+| `/var/lib/repose/builds/<revision_id>/` | `fragment.nix` for a `Build`; see `nix-build-contract.md` |
+| `/var/lib/repose/base/<base_ref>/` | checkout of the platform repository at that revision (its `nix/` is the flake hostd evaluates) |
+| `/run/repose/hostd.sock` | hostd's operator control socket (`hostd status`, `guests`, `snapshot-all`, `drain`, `reconcile`) |
 | `/run/repose/join-token` | one-shot registration token from cloud-init, deleted after Register |
-| `/nix/var/nix/gcroots/repose/<guest_id>` | GC root for the guest's system closure; removed on destroy |
+| `/nix/var/nix/gcroots/repose/<guest_id>` | GC root for the guest's system closure; removed on destroy. `rev-<project_id>-<revision_id>` roots keep the last 3 built revisions per project |
 | `/dev/vg-guests/thin` | thin pool; volumes `/dev/vg-guests/g-<guest_id>` |
 | `/var/log/repose/` | hostd log (journald is primary), build logs per op |
 
@@ -41,10 +44,16 @@ What every host guarantees, so hostd, infra and operators agree.
 
 ## Cloud Hypervisor invocation (per guest)
 
-Through microvm.nix's runner, which produces a script; hostd runs it with
-`systemd-run --unit guest@<id> --property MemoryMax=<class RAM + 512M>
---property CPUQuota=<vcpus*100>%`. CH API socket is used for `pause`,
-`resume`, `shutdown`, and stats.
+hostd renders the `cloud-hypervisor` argv from the guest's system closure
+(`kernel`, `initrd`, `init`, `kernel-params`) and its record (DECISIONS
+I-19) and runs it with `systemd-run --unit guest@<id> --property
+MemoryMax=<class RAM + 512M> --property CPUQuota=<vcpus*100>% --property
+Slice=guests.slice`. The devices: `--disk path=/dev/vg-guests/g-<id>`,
+`--net tap=tap-<8hex>,mac=52:54:<4 bytes of id>`, `--fs tag=ro-store,socket=
+virtiofsd.sock`, `--vsock cid=<1000+index>,socket=vsock.sock`, `--serial
+socket=console.sock`, `--memory size=<RAM>M,shared=on`. The CH API socket
+is used for `shutdown` (after guestd's Shutdown timed out), `pause`,
+`resume`, and stats.
 
 ## Operator access
 

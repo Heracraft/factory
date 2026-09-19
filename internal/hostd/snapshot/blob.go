@@ -70,7 +70,7 @@ func (f *FileBlob) Upload(_ context.Context, path string, r io.Reader, meta map[
 	}
 	cr := &countingReader{r: r}
 	if _, err := io.Copy(w, cr); err != nil {
-		_ = w.Close()   // the copy error is what matters
+		_ = w.Close()      // the copy error is what matters
 		_ = os.Remove(tmp) // partial upload is discarded
 		return 0, err
 	}
@@ -100,7 +100,7 @@ func (f *FileBlob) Download(_ context.Context, path string, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }() // read only
 	_, err = io.Copy(w, r)
 	return err
 }

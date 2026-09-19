@@ -316,10 +316,10 @@ func (m *Manager) teardown(ctx context.Context, g *state.Guest) {
 		mon.stop()
 	}
 	_ = m.d.Systemd.Stop(ctx, GuestUnit(g.GuestID))        // best effort in reverse order; each step's absence is fine
-	_ = virtiofs.Stop(ctx, m.d.Systemd, g.GuestID)          // same
-	_ = m.d.Net.Unshape(ctx, g.Tap)                         // same
-	_ = m.d.Net.DelGuestRules(ctx, g.GuestID, g.IP, g.Tap)  // same
-	_ = m.d.Net.DelTap(ctx, g.Tap)                          // same
+	_ = virtiofs.Stop(ctx, m.d.Systemd, g.GuestID)         // same
+	_ = m.d.Net.Unshape(ctx, g.Tap)                        // same
+	_ = m.d.Net.DelGuestRules(ctx, g.GuestID, g.IP, g.Tap) // same
+	_ = m.d.Net.DelTap(ctx, g.Tap)                         // same
 	for _, s := range []string{"ch.sock", "vsock.sock", "console.sock", "virtiofsd.sock"} {
 		_ = os.Remove(filepath.Join(m.guestDir(g.GuestID), s)) // stale sockets confuse the next boot only if left behind
 	}

@@ -14,29 +14,29 @@ import (
 type M struct {
 	Registry *prometheus.Registry
 
-	Guests                  *prometheus.GaugeVec
-	CommandsTotal           *prometheus.CounterVec
-	CommandDuration         *prometheus.HistogramVec
-	BuildQueueDepth         prometheus.Gauge
-	BuildsRunning           prometheus.Gauge
-	BuildDuration           *prometheus.HistogramVec
-	SnapshotBytesTotal      prometheus.Counter
-	SnapshotBytes           prometheus.Gauge
-	SnapshotFreezeSeconds   prometheus.Histogram
-	SnapshotDuration        *prometheus.HistogramVec
-	StreamConnected         prometheus.Gauge
-	StreamReconnectsTotal   prometheus.Counter
-	SamplesDroppedTotal     prometheus.Counter
-	PoolFreeBytes           prometheus.Gauge
-	PoolBytes               prometheus.Gauge
-	StoreBytes              prometheus.Gauge
-	MemFreeBytes            prometheus.Gauge
-	MemReservedBytes        prometheus.Gauge
-	GuestdUnreachable       *prometheus.GaugeVec
-	GuestdLost              prometheus.Gauge
-	GuestCPUSecondsTotal    *prometheus.CounterVec
-	GuestNetBytesTotal      *prometheus.CounterVec
-	EventsPending           prometheus.Gauge
+	Guests                *prometheus.GaugeVec
+	CommandsTotal         *prometheus.CounterVec
+	CommandDuration       *prometheus.HistogramVec
+	BuildQueueDepth       prometheus.Gauge
+	BuildsRunning         prometheus.Gauge
+	BuildDuration         *prometheus.HistogramVec
+	SnapshotBytesTotal    prometheus.Counter
+	SnapshotBytes         prometheus.Gauge
+	SnapshotFreezeSeconds prometheus.Histogram
+	SnapshotDuration      *prometheus.HistogramVec
+	StreamConnected       prometheus.Gauge
+	StreamReconnectsTotal prometheus.Counter
+	SamplesDroppedTotal   prometheus.Counter
+	PoolFreeBytes         prometheus.Gauge
+	PoolBytes             prometheus.Gauge
+	StoreBytes            prometheus.Gauge
+	MemFreeBytes          prometheus.Gauge
+	MemReservedBytes      prometheus.Gauge
+	GuestdUnreachable     *prometheus.GaugeVec
+	GuestdLost            prometheus.Gauge
+	GuestCPUSecondsTotal  *prometheus.CounterVec
+	GuestNetBytesTotal    *prometheus.CounterVec
+	EventsPending         prometheus.Gauge
 }
 
 // New registers every instrument on a fresh registry.

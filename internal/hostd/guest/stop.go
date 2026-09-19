@@ -2,7 +2,6 @@ package guest
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"time"
 
@@ -183,9 +182,3 @@ func (m *Manager) drain(context.Context) *Error {
 func (m *Manager) Undrain() error {
 	return m.d.State.SetDraining(false)
 }
-
-func (m *Manager) fmtErr(prefix string, err error) *Error {
-	return errf(CodeInternal, "%s: %v", prefix, err)
-}
-
-var _ = fmt.Sprintf

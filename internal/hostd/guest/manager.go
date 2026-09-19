@@ -25,8 +25,8 @@ import (
 	"github.com/heracraft/repose/internal/hostd/ch"
 	"github.com/heracraft/repose/internal/hostd/gcroot"
 	"github.com/heracraft/repose/internal/hostd/lvm"
-	hnet "github.com/heracraft/repose/internal/hostd/net"
 	"github.com/heracraft/repose/internal/hostd/metrics"
+	hnet "github.com/heracraft/repose/internal/hostd/net"
 	"github.com/heracraft/repose/internal/hostd/nixbuild"
 	"github.com/heracraft/repose/internal/hostd/snapshot"
 	"github.com/heracraft/repose/internal/hostd/state"
@@ -244,10 +244,10 @@ type Manager struct {
 	buildCh  chan job
 	buildRun int
 
-	cidr      *net.IPNet
-	base      net.IP
-	maxIndex  uint32
-	eventSeq  uint64
+	cidr     *net.IPNet
+	base     net.IP
+	maxIndex uint32
+	eventSeq uint64
 }
 
 // New builds a Manager; Run must be called before commands are dispatched.
@@ -645,11 +645,12 @@ func Target(cmd *hostdv1.Command) string {
 // Dispatch handles idempotency and queues the command; the result reaches
 // the Emitter. It is safe to call from the stream goroutine.
 func (m *Manager) Dispatch(cmd *hostdv1.Command) {
-	if res := m.admit(cmd); res != nil {
+	res, proceed := m.admit(cmd)
+	if res != nil {
 		m.d.Emit.Result(res)
 		return
 	}
-	if m.inflightNow(cmd.CommandId) {
+	if !proceed {
 		return // still executing; the result is sent when it finishes
 	}
 	kind := Kind(cmd)
@@ -660,6 +661,7 @@ func (m *Manager) Dispatch(cmd *hostdv1.Command) {
 		default:
 			res := errResult(cmd.CommandId, errf(CodeInsufficientCapacity, "build queue full"))
 			m.finish(cmd, res, time.Time{})
+			m.clearInflight(cmd.CommandId)
 			m.d.Emit.Result(res)
 		}
 		return
@@ -671,48 +673,51 @@ func (m *Manager) Dispatch(cmd *hostdv1.Command) {
 	m.enqueue(key, job{cmd: cmd})
 }
 
-// admit records the command and returns a stored result for a repeat.
-// A started-but-unfinished record (hostd died mid-command) is re-executed
+// admit records the command. It returns a stored result for a repeat, or
+// proceed=false when the same command_id is executing now, else it claims
+// the command (marks it in flight) and returns proceed=true. A
+// started-but-unfinished record (hostd died mid-command) is re-executed
 // except for Exec, which is not idempotent.
-func (m *Manager) admit(cmd *hostdv1.Command) *hostdv1.Result {
+func (m *Manager) admit(cmd *hostdv1.Command) (*hostdv1.Result, bool) {
 	if cmd.CommandId == "" {
-		return errResult("", errf(CodeInvalidArgument, "command_id required"))
+		return errResult("", errf(CodeInvalidArgument, "command_id required")), false
 	}
 	kind := Kind(cmd)
 	if kind == "" {
-		res := errResult(cmd.CommandId, errf(CodeInvalidArgument, "unknown command"))
-		return res
+		return errResult(cmd.CommandId, errf(CodeInvalidArgument, "unknown command")), false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.inflight[cmd.CommandId] {
+		return nil, false
 	}
 	existing, err := m.d.State.StartCommand(&state.Command{CommandID: cmd.CommandId, Kind: kind, GuestID: Target(cmd)})
 	if err != nil {
-		return errResult(cmd.CommandId, errf(CodeInternal, "state write: %v", err))
+		return errResult(cmd.CommandId, errf(CodeInternal, "state write: %v", err)), false
 	}
-	if existing == nil {
-		return nil
-	}
-	if existing.Status == "done" {
-		res := &hostdv1.Result{}
-		if err := proto.Unmarshal(existing.Result, res); err != nil {
-			return errResult(cmd.CommandId, errf(CodeInternal, "stored result unreadable: %v", err))
+	if existing != nil {
+		if existing.Status == "done" {
+			res := &hostdv1.Result{}
+			if err := proto.Unmarshal(existing.Result, res); err != nil {
+				return errResult(cmd.CommandId, errf(CodeInternal, "stored result unreadable: %v", err)), false
+			}
+			return res, false
 		}
-		return res
+		if kind == "Exec" {
+			res := errResult(cmd.CommandId, errf(CodeInternal, "command interrupted"))
+			m.finish(cmd, res, time.Time{})
+			return res, false
+		}
+		_ = m.d.State.RestartCommand(cmd.CommandId) // the record exists (StartCommand found it); a failed touch changes nothing
 	}
-	if m.inflightNow(cmd.CommandId) {
-		return nil
-	}
-	if kind == "Exec" {
-		res := errResult(cmd.CommandId, errf(CodeInternal, "command interrupted"))
-		m.finish(cmd, res, time.Time{})
-		return res
-	}
-	_ = m.d.State.RestartCommand(cmd.CommandId) // the record exists (StartCommand found it); a failed touch changes nothing
-	return nil
+	m.inflight[cmd.CommandId] = true
+	return nil, true
 }
 
-func (m *Manager) inflightNow(id string) bool {
+func (m *Manager) clearInflight(id string) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.inflight[id]
+	delete(m.inflight, id)
+	m.mu.Unlock()
 }
 
 func (m *Manager) enqueue(key string, j job) {
@@ -776,32 +781,27 @@ func (m *Manager) runJob(j job) {
 		j.internal(m.ctx)
 		return
 	}
-	res := m.Execute(m.ctx, j.cmd)
-	if res != nil {
-		m.d.Emit.Result(res)
-	}
+	res := m.run(m.ctx, j.cmd)
+	m.d.Emit.Result(res)
 }
 
-// Execute runs a command to completion and returns its result (nil when
-// the command was ignored because the same command_id is still running).
-// Dispatch is the asynchronous path; tests call Execute directly after
-// admit, which Execute repeats harmlessly.
+// Execute admits and runs a command to completion, returning its result
+// (nil when the same command_id is executing already). Dispatch is the
+// asynchronous path; tests call Execute directly.
 func (m *Manager) Execute(ctx context.Context, cmd *hostdv1.Command) *hostdv1.Result {
-	if res := m.admit(cmd); res != nil {
+	res, proceed := m.admit(cmd)
+	if res != nil {
 		return res
 	}
-	m.mu.Lock()
-	if m.inflight[cmd.CommandId] {
-		m.mu.Unlock()
+	if !proceed {
 		return nil
 	}
-	m.inflight[cmd.CommandId] = true
-	m.mu.Unlock()
-	defer func() {
-		m.mu.Lock()
-		delete(m.inflight, cmd.CommandId)
-		m.mu.Unlock()
-	}()
+	return m.run(ctx, cmd)
+}
+
+// run executes an admitted command and releases its in-flight claim.
+func (m *Manager) run(ctx context.Context, cmd *hostdv1.Command) *hostdv1.Result {
+	defer m.clearInflight(cmd.CommandId)
 	start := m.d.Now()
 	kind := Kind(cmd)
 	m.d.Log.Info("command start", "component", "hostd", "event", "command_start", "command_id", cmd.CommandId, "kind", kind, "guest_id", Target(cmd))
@@ -891,12 +891,4 @@ func payloadOrErr(id string, err *Error, set func(*hostdv1.Result)) *hostdv1.Res
 
 func errResult(id string, e *Error) *hostdv1.Result {
 	return &hostdv1.Result{CommandId: id, Ok: false, Error: &hostdv1.Error{Code: e.Code, Message: e.Message, FragmentLine: e.FragmentLine}}
-}
-
-func internalErr(err error) *Error {
-	var e *Error
-	if errors.As(err, &e) {
-		return e
-	}
-	return errf(CodeInternal, "%v", err)
 }

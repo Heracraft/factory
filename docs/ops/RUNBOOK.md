@@ -301,6 +301,125 @@ drain).
    `docs/incidents/<date>.md`, fix, re-run isolation tests fleet-wide
    before undraining.
 
+## hostd: join token already used
+
+`systemctl status hostd` shows `status=3` and the unit is not retrying
+(`RestartPreventExitStatus=3`); the journal says `register: join token
+already used`.
+
+1. The token was consumed by an earlier registration attempt that did not
+   finish writing `/var/lib/repose/hostd/{cert,key}.pem`, or the host was
+   re-imaged with the same cloud-init payload.
+2. Mint a new token: `repose-admin hosts add --reissue <host>` (or `hostdev
+   init` output on a hostdev-driven host), write it to
+   `/run/repose/join-token`, `systemctl restart hostd`.
+
+## hostd: api unreachable
+
+`repose_host_stream_connected` is 0 and the journal loops on
+`stream_disconnect`. Guests keep running; nightly snapshots still run
+locally from `repose-snapshot.timer`.
+
+1. `hostd status` (control socket) shows `stream_connected: false`.
+2. From the host: `curl -sv https://api.repose.herakraft.co:443` (or the
+   hostdev address). A TLS error naming the client certificate means the
+   host certificate expired without rotation: `journalctl -u hostd | grep
+   rotate`; rotation needs the stream, so if the certificate is past
+   expiry re-register with a new token (previous entry) after moving the
+   old `cert.pem` aside.
+3. Results, events and up to 60 minutes of samples are buffered and sent
+   on reconnect; longer outages lose samples (`repose_host_samples_dropped_total`).
+
+## hostd: thin pool over 90 percent
+
+`host_warning{pool_high}` at 80 percent, and CreateGuest and Restore return
+`insufficient_capacity: thin pool 9x% full` from 90. See "PoolFull" above
+for extending the pool; existing guests keep running throughout.
+
+## hostd: store over 80 percent
+
+`host_warning{store_high}` and Build refuses with `insufficient_capacity:
+host store full`. See "StoreFull" above.
+
+## hostd: guest never sends Ready
+
+Create or Start fails with `guest_unresponsive: create: step 10 (ready)
+failed: guest did not become ready` after 60 s; the guest is in `error`
+and its tap, tc, nft membership and units are gone; the volume stays.
+
+1. `/var/lib/repose/guests/<id>/console.log` holds the boot output. No
+   output at all: the kernel or initrd path in `ch.args` is wrong (the
+   closure is not a bootable system) or KVM is missing.
+2. A boot that stops at mounting `/nix/.ro-store`: virtiofsd died; `journalctl
+   -u virtiofsd@<id>`.
+3. A boot that reaches login but never Ready: guestd is not running in the
+   guest; the base image is at fault (workstream 02).
+4. Fix, then `repose-admin projects start <id>` (or `hostdev start`).
+
+## hostd: virtiofsd exited under a running guest
+
+The guest is in `error` with reason `virtiofsd exited`; hostd stopped the
+hypervisor cleanly because the guest would see I/O errors on every store
+path. `journalctl -u virtiofsd@<id>` for the cause (usually OOM against
+its 1 GB MemoryMax, or a chroot problem after a store bind-mount change).
+`projects start` brings it back; the api restarts once on its own.
+
+## hostd: hypervisor exited unexpectedly
+
+Reason `hypervisor exited <code>` on the guest; tap and tc are torn down.
+`journalctl -u guest@<id>` and the tail of `console.log`. Code 137 is the
+`MemoryMax` cgroup limit (class RAM plus 512 MB) killing CH: the guest
+used more than its class through virtiofsd cache pressure; a larger class
+or a base bug. The api restarts once automatically, then leaves it in
+error with an event.
+
+## hostd: freeze without thaw
+
+`Warning{freeze_timeout}` from the guest and a failed snapshot: hostd lost
+the vsock connection or crashed between `Freeze` and `Thaw`; guestd thawed
+itself after 10 s so the tenant saw at most a 10 s pause. The snapshot
+is marked failed and retried by the api's timer; nothing else to do
+unless it repeats, in which case check `repose_host_snapshot_freeze_seconds`
+for a slow `lvcreate -s` (pool metadata nearly full).
+
+## hostd: snapshot upload failed
+
+Result `internal: snapshot upload failed: <err>`; the LVM snapshot was
+removed regardless. A 403 means the managed identity lost its role on the
+`repose-snapshots` container (`az role assignment list`); a timeout means
+egress from the host is broken (NAT gateway). The api retries once from
+its timer; `SnapshotStale` fires if a running project stays without one.
+
+## hostd: build exceeds time
+
+`build_timeout: build exceeded 1800 s; last derivation: <name>` and the
+CLI exits 10. The named derivation is what was compiling when `timeout`
+fired; the tenant either pulls a cached variant or accepts the cap.
+`BuildQueueStuck` above covers a build that ignored the cap.
+
+## hostd: command for unknown guest
+
+`not_found: guest <id> not on this host`. The api's placement and the host
+disagree, usually after a restore onto another host that was not recorded.
+`repose-admin hosts reconcile <host>` reads the host's Hello and fixes the
+api's view.
+
+## hostd: state.db corrupt or lost
+
+hostd refuses to start and logs the path. Move the file aside and run
+`hostd reconcile --rebuild` (alias `--from-api`): it rebuilds the guest
+table from `/var/lib/repose/guests/*/guest.json`, `lvs` and
+`systemctl list-units 'guest@*'`, then the next Hello lets the api
+reconcile its own view. `hostd guests` must match `lvs vg-guests` and the
+unit list afterwards. Command results are lost, so the api may re-send
+commands; every command but Exec re-executes safely.
+
+## hostd: two hostd processes
+
+The second prints `hostd already running` and exits 1: bbolt holds a
+file lock on `state.db`. Nothing to do; `systemctl status hostd` shows
+the real one.
+
 ## Suspend a user
 
 `repose-admin users suspend <handle> --reason "..."`: stops all their

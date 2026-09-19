@@ -110,7 +110,7 @@ func (h *HTTP) put(ctx context.Context, sock, path string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ch api %s: %w", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()                // body drained below
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // error bodies are informational only
 	if resp.StatusCode >= 300 {
 		return body, fmt.Errorf("ch api %s: status %d: %s", path, resp.StatusCode, strings.TrimSpace(string(body)))

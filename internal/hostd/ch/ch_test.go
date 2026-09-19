@@ -14,7 +14,7 @@ func TestArgsGolden(t *testing.T) {
 		IP: "10.64.4.2", Gateway: "10.64.4.1", Netmask: "255.255.252.0",
 		Tap: "tap-0192f0a1", MAC: "52:54:01:92:f0:a1", CID: 1000,
 		VolumeDev: "/dev/vg-guests/g-0192f0a1-1111-7000-8000-000000000001",
-		VCPUs: 4, MemMiB: 8192, StoreTag: "ro-store",
+		VCPUs:     4, MemMiB: 8192, StoreTag: "ro-store",
 	}
 	got := strings.Join(s.Args(), "\n") + "\n"
 	want, err := os.ReadFile("testdata/args.golden")

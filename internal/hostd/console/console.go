@@ -107,7 +107,7 @@ func (t *Tailer) Close() error {
 // and copies until ctx ends. A dropped connection is retried, since a
 // guest restart recreates the socket.
 func (t *Tailer) Run(ctx context.Context) error {
-	defer t.Close()
+	defer func() { _ = t.Close() }() // the log is append-only; nothing is lost on a close error
 	if err := os.MkdirAll(filepath.Dir(t.Log), 0o750); err != nil {
 		return err
 	}

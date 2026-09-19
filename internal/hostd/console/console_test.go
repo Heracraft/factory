@@ -39,7 +39,7 @@ func TestRunCopiesSocket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	tl := New(sock, filepath.Join(dir, "console.log"))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)

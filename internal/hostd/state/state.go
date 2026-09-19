@@ -13,6 +13,7 @@ import (
 	"time"
 
 	bolt "go.etcd.io/bbolt"
+	bolterrors "go.etcd.io/bbolt/errors"
 )
 
 // SchemaVersion is bumped when a bucket layout changes. A downgraded hostd
@@ -86,7 +87,7 @@ type DB struct {
 func Open(path string) (*DB, error) {
 	db, err := bolt.Open(path, 0o600, &bolt.Options{Timeout: time.Second})
 	if err != nil {
-		if errors.Is(err, bolt.ErrTimeout) {
+		if errors.Is(err, bolterrors.ErrTimeout) {
 			return nil, fmt.Errorf("%w: %s is locked", ErrLocked, path)
 		}
 		return nil, fmt.Errorf("open state %s: %w", path, err)

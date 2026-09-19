@@ -88,7 +88,13 @@ func TestCreateReachesRunningWithEverythingWired(t *testing.T) {
 	if p := fg.Principals(); len(p) != 1 || p[0] != "proj-0192f0a1" {
 		t.Fatalf("principals %v", p)
 	}
-	kinds := strings.Join(fg.Kinds(), ",")
+	var delivery []string
+	for _, k := range fg.Kinds() {
+		if k != "Ping" { // the readiness probe interleaves freely
+			delivery = append(delivery, k)
+		}
+	}
+	kinds := strings.Join(delivery, ",")
 	if !strings.Contains(kinds, "WriteSecrets,SetPrincipals,SetupProject") {
 		t.Fatalf("delivery order %s", kinds)
 	}
@@ -242,9 +248,8 @@ func TestIdempotencyAndReplay(t *testing.T) {
 func TestStopStartDestroy(t *testing.T) {
 	h := newHarness(t, nil)
 	h.create(gid1)
-	g := h.guest(gid1)
 	h.mustOK(cmd(&hostdv1.StopGuest{GuestId: gid1, TimeoutS: 2}))
-	g = h.guest(gid1)
+	g := h.guest(gid1)
 	if g.State != StateStopped {
 		t.Fatalf("state %s", g.State)
 	}
