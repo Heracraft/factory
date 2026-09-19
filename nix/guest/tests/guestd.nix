@@ -241,11 +241,16 @@ pkgs.testers.runNixOSTest {
             "USER=dev LOGNAME=dev SHELL=/bin/sh TERM=dumb "
             "tmux list-windows -t todo-app -F '#{window_name} #{pane_pid} #{pane_current_command}'"
         )[1])
-        guest.wait_until_succeeds(
-            "guestd call sample --dev-socket /run/repose/guestd.sock | grep -q '\"agent\": \"claude\"'",
-            timeout=60,
-        )
-        found = agents()
+        # Wait by parsing the sample, not by grepping it: protojson varies its
+        # whitespace between builds on purpose, so a grep for `"agent":
+        # "claude"` matches only some of the time.
+        found = []
+        for _ in range(30):
+            found = agents()
+            if found:
+                break
+            guest.sleep(2)
+        assert found, "no agent window appeared in a sample within 60 seconds"
         assert len(found) == 1, found
         assert found[0]["agent"] == "claude", found
         assert found[0]["tmuxWindow"] == "claude", found
