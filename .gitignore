@@ -47,7 +47,6 @@ dist/
 infra/**/*.auto.tfvars
 # Per-operator and secret values: addresses, key paths, join tokens.
 infra/**/*.local.tfvars
-/internal/gen/
 
 #context for ages
 context/
