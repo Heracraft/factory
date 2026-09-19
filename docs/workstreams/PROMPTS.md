@@ -21,6 +21,32 @@ Haiku for building; it is fine for the `done-check` grep pass at the end.
 Sequential sessions work the same way: one prompt per session, same
 model choice, and `STATUS.md` carries the state between them.
 
+## Launching agents in parallel
+
+Parallel agents in one checkout collide on `go.mod`, `STATUS.md`,
+`DECISIONS.md` and the proto files. Each agent therefore gets its own git
+worktree and branch, created by the owner (the repo rule that agents do not
+create branches still holds):
+
+```
+cd /home/azureuser/projects/factory
+git worktree add ../factory-ws/03-hostd -b ws/03-hostd main
+cd ../factory-ws/03-hostd && claude      # paste preamble + block 03
+```
+
+One worktree per workstream, all branched from the same `main` commit.
+When an agent reports done, the owner reviews and merges: `git merge
+ws/03-hostd` on main, resolving the shared files (keep both sides of
+`go.mod` requires and run `go mod tidy`; concatenate `STATUS.md` and
+`DECISIONS.md` entries, renumbering `I-<n>` if two agents used the same
+number). Merge the workstreams that own interfaces first (03, 05), then
+their consumers. Delete the worktree after merging: `git worktree remove
+../factory-ws/03-hostd`.
+
+Nix and Go caches are shared across worktrees (`/nix/store`, `~/go/pkg`),
+so parallel builds do not multiply disk use, but the Nix store will grow by
+several GB per guest closure; keep 40 GB free.
+
 ## Shared preamble
 
 Paste this first, then the workstream block.
@@ -44,9 +70,10 @@ Rules:
   old shape accepted for one release.
 - Where the producer of an interface you consume does not exist yet, write
   or use the fake named in docs/interfaces/README.md.
-- Work on main. Do not create a branch. Commit in small steps with messages
-  that name the workstream, and end each with the attribution line from
-  your system reminder. Do not push.
+- You are in a git worktree on a branch named ws/<nn>-<name> that the
+  owner created for you. Commit there in small steps with messages that
+  name the workstream. Do not create further branches, do not merge, do not
+  push, do not touch main. The owner merges branches into main.
 - Never install anything from nix/ on this machine; it is an AMD dev box,
   not a host. nix build and nix flake check are fine.
 - Never log prompts, terminal contents, process arguments, environment

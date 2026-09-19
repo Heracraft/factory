@@ -54,6 +54,7 @@
           sessionPath = [
             "${homeDirectory}/.nix-profile/bin"
             "${homeDirectory}/.local/share/pnpm"
+            "${homeDirectory}/.local/share/pnpm/bin"
             "${homeDirectory}/.npm-global/bin"
             "${homeDirectory}/.cargo/bin"
           ];

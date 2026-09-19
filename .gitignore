@@ -45,3 +45,6 @@ dist/
 .terraform.lock.hcl
 infra/**/*.auto.tfvars
 /internal/gen/
+
+#context for ages
+context/
