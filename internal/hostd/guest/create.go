@@ -353,7 +353,7 @@ func (m *Manager) start(ctx context.Context, c *hostdv1.StartGuest) *Error {
 	if m.FreeMemBytes() < (Classes[g.Class].MemMiB+OverheadMiB)<<20 {
 		return errf(CodeInsufficientCapacity, "not enough free memory for a %s guest", g.Class)
 	}
-	// DECISIONS I-18: StartGuest may carry the delivery fields so a host
+	// DECISIONS I-26: StartGuest may carry the delivery fields so a host
 	// that restarted still has the guest's secrets and sshd material.
 	if len(c.Secrets) > 0 || len(c.HostKey) > 0 || len(c.HostCert) > 0 || c.SshCaPub != "" {
 		if err := m.cacheSecrets(g.GuestID, c.Secrets, c.SshCaPub, c.HostKey, c.HostCert); err != nil {

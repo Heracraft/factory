@@ -1,7 +1,7 @@
 # Options the platform sets per guest at composition time. Everything a
 # guest is told at run time (ip, cid, secrets, project) arrives through the
 # kernel command line or guestd instead, so the same closure serves any
-# guest of a base version (DECISIONS I-19).
+# guest of a base version (DECISIONS I-34).
 { lib, ... }:
 {
   options.repose = {

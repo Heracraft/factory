@@ -1,7 +1,7 @@
 # sshd trusting the platform User CA, with the project id as the only
 # accepted principal (docs/interfaces/ssh-gateway.md "Guest sshd").
 #
-# Key material is a secret delivered by hostd (DECISIONS I-10, I-20): guestd
+# Key material is a secret delivered by hostd (DECISIONS I-10, I-35): guestd
 # writes the reserved names to /run/repose/, and /etc/ssh/ holds symlinks to
 # them so sshd_config can use the paths ssh-gateway.md shows. sshd must start
 # before the material arrives (Ready is sent once sshd listens, and the

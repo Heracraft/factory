@@ -2,7 +2,7 @@
 
 What hostd runs when it receives `Build` (docs/interfaces/grpc-hostd.md),
 and what the platform flake in `nix/` must expose for it. Workstream 03
-invokes; workstream 12 authors the Nix. DECISIONS I-20.
+invokes; workstream 12 authors the Nix. DECISIONS I-28.
 
 ## The flake
 
@@ -69,7 +69,7 @@ rename the output without a hostd change.
 
 ## What the built closure must contain
 
-hostd boots the guest from the closure directly (DECISIONS I-19): it needs
+hostd boots the guest from the closure directly (DECISIONS I-27): it needs
 `<out>/kernel`, `<out>/initrd`, `<out>/init` and `<out>/kernel-params`,
 which every NixOS toplevel has. Anything microvm.nix needs on the kernel
 command line must be in `boot.kernelParams`; hostd appends `init=`,

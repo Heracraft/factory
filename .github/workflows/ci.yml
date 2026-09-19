@@ -1,0 +1,57 @@
+# The four checks docs/CHECKLIST.md asks for, on every push to main and every
+# pull request. VM tests under nix/ need KVM, which hosted runners lack, so
+# the Nix job evaluates every output without building; the VM tests run on
+# the dev box and on hosts (docs/ops/DEV-BOX.md).
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: go build, vet, test, lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test -race ./...
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  proto:
+    name: buf lint and breaking
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bufbuild/buf-action@v1
+        with:
+          lint: true
+          breaking: ${{ github.event_name == 'pull_request' }}
+          breaking_against: https://github.com/${{ github.repository }}.git#branch=main
+          push: false
+
+  nix:
+    name: nix flake check (evaluate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            system-features = kvm
+      - name: evaluate every output
+        run: nix flake check --no-build ./nix
+      - name: build the Go binaries through the flake
+        run: nix build --no-link 'git+file://.?dir=nix#guestd' 'git+file://.?dir=nix#hostd'

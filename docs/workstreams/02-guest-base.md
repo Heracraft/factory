@@ -33,7 +33,7 @@ runner using the host's shared store. Everything in
   `/run/repose/ssh_host_ed25519_key`, `/run/repose/ssh_host_ed25519_key-cert.pub`
   and `/run/repose/user_ca.pub`, with `/etc/ssh/` symlinks to them; a
   throwaway key until delivery and an `ExecReload` so guestd's reload
-  re-reads (DECISIONS I-20); `AuthorizedPrincipalsFile
+  re-reads (DECISIONS I-35); `AuthorizedPrincipalsFile
   /etc/ssh/principals/%u` written by guestd; `AllowUsers dev`;
   `ClientAliveInterval 30`; `AcceptEnv TZ LANG COLORTERM`.
 - `nix/guest/base/docker.nix`: `virtualisation.docker.enable`, `storageDriver
@@ -106,7 +106,7 @@ runner using the host's shared store. Everything in
   (applied to `dev` with `useGlobalPkgs` and `useUserPackages`), and
   returns a runner package whose `bin/run` takes every per-guest value as
   an argument (guest id, ip, gateway, cid, volume device, tap, mac, vcpu,
-  memory, socket paths; DECISIONS I-19, contract in
+  memory, socket paths; DECISIONS I-34, contract in
   `interfaces/guest-conventions.md` "Runner contract"). The documented
   attributes `guestId, ip, gatewayIp, cid, volumeDevice, vcpu, mem,
   extraKernelParams` are still accepted as defaults for that script.
@@ -210,7 +210,7 @@ documents per-agent accuracy.
 Socket activation keeps the desktop's memory cost at zero until asked.
 `repose open --desktop` forwards 6080; the browser connects; systemd
 starts a `systemd-socket-proxyd` service that requires websockify, which
-pulls in x11vnc, which pulls in Xvfb and openbox (DECISIONS I-18).
+pulls in x11vnc, which pulls in Xvfb and openbox (DECISIONS I-33).
 Chromium launched by the agent with `DISPLAY=:99` (the profile snippet
 exports it when Xvfb is up) appears on that desktop. When the agent runs
 headless Chromium, nothing is displayed and nothing is started.

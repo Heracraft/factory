@@ -10,7 +10,7 @@
 #
 # Anything the installed system needs that is *not* in the flake goes through
 # post_install_commands, which run over SSH after the reboot. The join token
-# takes that path (DECISIONS I-19): a token in cloud-init would sit in the
+# takes that path (DECISIONS I-20): a token in cloud-init would sit in the
 # Azure VM model and in IMDS for the life of the VM, and would be wiped by the
 # install anyway.
 

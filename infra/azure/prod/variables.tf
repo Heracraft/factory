@@ -125,7 +125,7 @@ variable "edge_size" {
 
 variable "coolify_count" {
   type        = number
-  description = "Control-plane VMs: 0 or 1. Stays 0 until wave 3 (DECISIONS I-23)."
+  description = "Control-plane VMs: 0 or 1. Stays 0 until wave 3 (DECISIONS I-24)."
   default     = 0
 }
 

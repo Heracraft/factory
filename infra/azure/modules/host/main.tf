@@ -198,7 +198,7 @@ module "install" {
 # Register (docs/interfaces/grpc-hostd.md). It travels as file content, never
 # as a command line, so it does not reach the apply log; it lands on a tmpfs,
 # so it does not reach the disk; and rotating it is a re-run of this resource
-# alone (DECISIONS I-19).
+# alone (DECISIONS I-20).
 #
 # The host is reached through the edge because it has no public IP, which is
 # also the path the runbook's "Host never registered" entry uses by hand.

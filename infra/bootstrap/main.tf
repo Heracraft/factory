@@ -1,7 +1,7 @@
 # The one root applied with local state: the resource group an environment
 # lives in and the storage account holding every other root's state.
 #
-# It is applied once per environment and then left alone (DECISIONS I-18).
+# It is applied once per environment and then left alone (DECISIONS I-19).
 # Production's resource group and state account were created by hand on
 # 2026-09-19 following docs/ops/AZURE-SETUP.md steps 4 and 5; this module
 # describes exactly that shape so a second environment is one apply rather

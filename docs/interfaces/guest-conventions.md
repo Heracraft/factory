@@ -17,14 +17,14 @@ here exists in that module under exactly this name.
 | `/etc/repose/agents.json` | `{<agent>: {binary, version, hook}}` for every shipped agent, for `repose status --verbose` |
 | `/etc/profile.d/repose.sh` | sources `/etc/repose/env` and `/run/repose/secrets.env`, exports `DISPLAY=:99` while the desktop runs, prepends the user bin dirs to `PATH` |
 | `/etc/ssh/principals/dev` | the accepted certificate principals (the project id), written by guestd `SetPrincipals` |
-| `/etc/ssh/ssh_host_ed25519_key`, `ssh_host_ed25519_key-cert.pub`, `user_ca.pub` | symlinks to the reserved secrets below (DECISIONS I-20) |
+| `/etc/ssh/ssh_host_ed25519_key`, `ssh_host_ed25519_key-cert.pub`, `user_ca.pub` | symlinks to the reserved secrets below (DECISIONS I-35) |
 | `/run/repose/` | tmpfs (part of `/run`), 0755 root |
 | `/run/repose/ssh_host_ed25519_key`, `/run/repose/ssh_host_ed25519_key-cert.pub`, `/run/repose/user_ca.pub` | the reserved secrets, root 0600 / 0644, written by guestd `WriteSecrets`; a throwaway key is generated at first sshd start when none was delivered yet |
 | `/run/repose/secrets/<NAME>` | named secret values, tmpfs, 0400 dev, directory 0700 dev |
 | `/run/repose/secrets.env` | `export NAME='...'` lines, 0400 dev, sourced by login shells |
 | `/run/repose/hooks.sock` | hook ingest, HTTP over unix, 0660 root:dev, created by guestd |
 | `/run/repose/guestd.sock` | dev-only stand-in for vsock (absent in real guests) |
-| `/run/repose/desktop/vnc-password` | the noVNC/VNC password for the current desktop start, 0600 dev (DECISIONS I-18) |
+| `/run/repose/desktop/vnc-password` | the noVNC/VNC password for the current desktop start, 0600 dev (DECISIONS I-33) |
 | `/run/repose/desktop/last-client` | mtime of the last observed desktop client; the idle stop reads it |
 | `/nix/.ro-store` | read-only virtio-fs mount of the host store (tag `ro-store`) |
 | `/nix/.rw-store` | the guest's writable store overlay (upper dir `store/`, work dir `work/`), on the thin volume |
@@ -130,7 +130,7 @@ reachable through `repose open <port>` (SSH `-L`). Nothing is exposed
 otherwise. The desktop listens only on `127.0.0.1`: noVNC on 6080 (the
 socket-activated entry point), websockify on 6081, VNC on 5900.
 
-## Desktop (DECISIONS I-18)
+## Desktop (DECISIONS I-33)
 
 Units `repose-xvfb.service` (`Xvfb :99`, 1600x1000), `repose-openbox.service`,
 `repose-x11vnc.service` (127.0.0.1:5900, password from
@@ -154,7 +154,7 @@ The script the CLI's `open`, `sync` and the hooks rely on:
   password; `desktop stop` stops it; `desktop status` prints `running` or
   `stopped`.
 
-## Runner contract (hostd ⇄ `mkGuestRunner`, DECISIONS I-19)
+## Runner contract (hostd ⇄ `mkGuestRunner`, DECISIONS I-34)
 
 `nix/flake.nix` exposes `lib.mkGuestRunner { fragmentModule, class,
 baseVersion, ... }`, which evaluates the base plus home-manager plus the

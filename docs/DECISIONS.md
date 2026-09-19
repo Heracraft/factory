@@ -353,7 +353,7 @@ resize, start) because guest volumes are on the managed disk. *Rejected:*
 starting on `D64s_v5` (about $2,240 a month of credits spent on empty
 capacity); an AMD or B-series size (no or unmeasured nested virt).
 
-**I-6. Guests set `NPM_CONFIG_PREFIX=/home/dev/.npm-global` and put its
+**I-36. Guests set `NPM_CONFIG_PREFIX=/home/dev/.npm-global` and put its
 `bin` on `PATH`.** (02) npm's default global prefix is the nodejs derivation
 itself, so `npm i -g` in a guest fails with EACCES on the read-only store.
 *Rejected:* telling users to package everything through config fragments
@@ -440,7 +440,7 @@ Interfaces: `host-conventions.md` rewritten with the `host.json` shape,
 the tap attach sequence, both tables, the store export path and the
 `hostd` subcommand contract. The old inet-only rules are not kept: no
 host has been provisioned yet.
-**I-18. The state store and its resource group are created outside the
+**I-19. The state store and its resource group are created outside the
 environment's apply.** (11) `repose-prod` and the storage account
 `reposetfstate3912` inside it were created by hand on 2026-09-19
 (`ops/AZURE-SETUP.md` steps 4 and 5) and are read by the environment roots as
@@ -457,7 +457,7 @@ originally said (it would have meant a second group to protect and a second
 one to remember, for no isolation that the `prevent_destroy` on the account
 does not already give).
 
-**I-19. The join token reaches a host over SSH after the install, not through
+**I-20. The join token reaches a host over SSH after the install, not through
 cloud-init.** (11) `docs/workstreams/11-infra-opentofu.md` §2 described
 cloud-init writing `/run/repose/join-token`. It cannot work: cloud-init runs
 on the Ubuntu image, and nixos-anywhere kexecs and replaces that system
@@ -473,7 +473,7 @@ single-use secret on the persistent root disk. *Interface:*
 unchanged, so nothing that reads the file changes; the runbook's
 "Host never registered" recovery was already this exact mechanism by hand.
 
-**I-20. Credentials stay human steps: the api's Entra app registration and
+**I-21. Credentials stay human steps: the api's Entra app registration and
 the R2 API token.** (11) `infra/` creates the Key Vault, the wrapping key and
 an access policy for the api's service principal given its object id
 (`api_identity_object_id`, null until it exists), and creates the R2 bucket
@@ -486,7 +486,7 @@ one-time human actions that OpenTofu cannot do, or that agents should not be
 trusted to do with the owner's money and identity — and a credential in state
 is a credential in every backup of that state.
 
-**I-21. `.terraform.lock.hcl` is committed.** (11) It was in `.gitignore`.
+**I-22. `.terraform.lock.hcl` is committed.** (11) It was in `.gitignore`.
 A dependency lock file that is not committed means CI resolves whatever
 provider version shipped that morning, so the plan a reviewer reads and the
 plan CI runs can differ. The files are locked for `linux_amd64`,
@@ -494,7 +494,7 @@ plan CI runs can differ. The files are locked for `linux_amd64`,
 *Rejected:* pinning exact versions in `required_providers` instead (it pins
 the version but not the checksum, and it has to be edited in four roots).
 
-**I-22. The edge VM is `Standard_D2s_v5` and its NSG opens 22, 443,
+**I-23. The edge VM is `Standard_D2s_v5` and its NSG opens 22, 443,
 51820/udp and 2222.** (11) `docs/workstreams/11-infra-opentofu.md` §2 said
 `Standard_B2s` and "inbound 22/tcp and 51820/udp"; the size note at the top
 of the same document, added with I-14, says `Standard_D2s_v5`. The later note
@@ -506,7 +506,7 @@ stub, 51820/udp the WireGuard hub, and 2222 the operator sshd — restricted to
 the operator address list and the VNet, because every host provisioner jumps
 through it and hosts have no public IP.
 
-**I-23. The control-plane VM is not created until wave 3.** (11, owner,
+**I-24. The control-plane VM is not created until wave 3.** (11, owner,
 2026-09-19) `coolify_count` defaults to 0 in both environment roots. The api,
 the dashboard and Logto are workstreams 05 and 08; until they exist the VM
 bills about $180 a month for nothing, while the edge and the first host are
@@ -519,7 +519,7 @@ Premium OS disk, and a VM that exists is a VM somebody configures). Setting
 `coolify_count` back to 0 after the VM exists destroys it and its OS disk,
 Postgres included; the retention that matters is the R2 dump.
 
-**I-24. The installer reaches a host through the edge, never through a
+**I-25. The installer reaches a host through the edge, never through a
 temporary public IP.** (11) `nixos-anywhere`, the post-install checks and the
 join-token delivery all connect to the host's private address with the edge as
 an SSH jump host, and the module graph makes a host depend on the edge being
@@ -535,7 +535,7 @@ first tried in an incident. *Cost:* the edge must exist and be reachable
 before the first host, and its operator sshd must be listening on
 `edge_operator_ssh_port`. Until workstream 06 moves it, `nix/edge` serves sshd
 on 22, so the first apply sets `edge_operator_ssh_port = 22`.
-**I-18. Commands carry what hostd cannot keep: StartGuest repeats the
+**I-26. Commands carry what hostd cannot keep: StartGuest repeats the
 delivery fields, CreateGuest and Restore name the user, slug and remote,
 Restore names the closure, Exec carries an audit id, StopResult carries
 the snapshot's blob path.** (03) hostd holds secrets and sshd material in
@@ -557,7 +557,7 @@ fourth home for secrets); hostd asking the api for secrets over the stream
 (a request channel the contract does not have). Interface: `grpc-hostd.md`,
 `hostd.proto`.
 
-**I-19. hostd launches Cloud Hypervisor directly from the guest's system
+**I-27. hostd launches Cloud Hypervisor directly from the guest's system
 closure; no per-guest microvm.nix runner is built.** (03) The NixOS
 toplevel already carries `kernel`, `initrd`, `init` and `kernel-params`;
 hostd renders the `cloud-hypervisor` argv from them plus the guest record
@@ -574,7 +574,7 @@ per guest at start (eval cost); one runner per base with arguments
 (microvm.nix does not produce one). Interface: `host-conventions.md`
 (`ch.args` replaces `runner`).
 
-**I-20. The platform flake takes the user fragment as a non-flake input
+**I-28. The platform flake takes the user fragment as a non-flake input
 named `fragment` and exposes `guestSystem`; hostd fetches base checkouts
 with git.** (03, for 12) Pure evaluation forbids reading any absolute path
 outside the flake's own source, including store paths given as literals,
@@ -588,7 +588,7 @@ with `--base-repo-url` when it is missing. The exact contract is
 `docs/interfaces/nix-build-contract.md`. *Rejected:* `--impure` (opens
 environment and path access to fragments); tarballs delivered in `Build`
 (a 30 MB message per build).
-**I-18. Two more guestd warning kinds: `oom` and `tmux_down`.** (04) I-11
+**I-29. Two more guestd warning kinds: `oom` and `tmux_down`.** (04) I-11
 enumerated five guestd kinds, but `04-guestd.md` §5 and §6 and
 `02-guest-base.md` §6 each describe a condition outside that list: the kernel
 killing a process for memory, and no tmux server running for `dev`. Both are
@@ -601,7 +601,7 @@ already on the allowed side of the sampling boundary (R5-3). Interface:
 `vsock-guestd.md`. Note also that `04-guestd.md` §5 writes the disk kind as
 `disk_90`; the enumerated name is `disk_high` and that is what the code uses.
 
-**I-19. `WriteSecrets` carries the whole set, and validates before it
+**I-30. `WriteSecrets` carries the whole set, and validates before it
 writes.** (04) The request replaces the guest's named secrets: a secret on the
 tmpfs that is absent from the list is removed, and `secrets.env` is rewritten
 from the list. *Rejected:* treating the list as a partial update (then `repose
@@ -611,7 +611,7 @@ create path, not the secrets path, so they are exempt). Validation of every
 name and size happens before the first write, so a rejected batch leaves the
 guest exactly as it was. Interface: `vsock-guestd.md`.
 
-**I-20. `Sample` serves the tmux and Docker signals from a 5 s cache, and
+**I-31. `Sample` serves the tmux and Docker signals from a 5 s cache, and
 carries a `partial` flag.** (04) `04-guestd.md` §5 budgets a sample at under
 20 ms and §6 says an over-budget sample returns partial data; forking `tmux
 list-windows` and `tmux list-clients` on the call costs more than the whole
@@ -626,7 +626,7 @@ decide the idle policy later, and a signal that is silently stale is worse
 than one that says so). Interfaces: `vsock-guestd.md`,
 `proto/repose/guestd/v1/guestd.proto`.
 
-**I-21. `guestd call` is the client side of the vsock contract, in the same
+**I-32. `guestd call` is the client side of the vsock contract, in the same
 binary.** (04) The NixOS VM test and an operator on a guest that has lost
 hostd both need to send a request and read the response; hostd is the only
 other client and it is a different workstream's binary. `guestd call <request>
@@ -635,7 +635,7 @@ exits non-zero on an error response. *Rejected:* a separate test-only binary
 (a tool that exists only in tests is a tool nobody maintains); waiting for
 hostd (the VM test is 04's checklist item, not 03's). Interface:
 `vsock-guestd.md` "Dev mode and the client", `ops/RUNBOOK.md`.
-**I-18. The on-demand desktop is display `:99`, socket-activated, with a
+**I-33. The on-demand desktop is display `:99`, socket-activated, with a
 per-start password file.** (02) `features/browser.md` said `:1` and
 `workstreams/02-guest-base.md` said `:99`; the module uses `:99` (the
 conventional Xvfb display, never taken by a real seat) and the feature doc
@@ -650,7 +650,7 @@ password is defence in depth. *Rejected:* `Accept=yes` per-connection
 websockify (noVNC's page makes several requests, each would fork a server);
 no password (a stray forward on a shared laptop would expose the desktop).
 
-**I-19. `mkGuestRunner` takes every per-guest value at run time; the
+**I-34. `mkGuestRunner` takes every per-guest value at run time; the
 system closure is guest-independent.** (02, 03) `workstreams/02-guest-base.md`
 listed `guestId, ip, gatewayIp, cid, volumeDevice, vcpu, mem` as
 evaluation arguments. Baked in, they would put the address allocation
@@ -668,7 +668,7 @@ involved), added to `interfaces/host-conventions.md`. *Rejected:*
 `config.microvm.declaredRunner` as the output (its script has the sockets,
 tap and volume fixed at evaluation).
 
-**I-20. sshd material: reserved secrets at `/run/repose/`, symlinked into
+**I-35. sshd material: reserved secrets at `/run/repose/`, symlinked into
 `/etc/ssh/`, a throwaway key until delivery, reload re-reads.** (02, 04)
 Three docs disagreed on where `user_ca.pub` and the host key live
 (`/run/repose/secrets/`, `/run/repose/`, `/etc/ssh/`). guestd writes the
@@ -682,3 +682,19 @@ an `ExecReload` (`SIGHUP`, which re-execs sshd) so guestd's `systemctl
 reload sshd` after `WriteSecrets` and `SetPrincipals` picks up the real key,
 certificate and CA. *Rejected:* delaying sshd until the secrets arrive (a
 guest whose hostd died before delivery would have no way in at all).
+
+**I-37. Two vsock RPC implementations exist for one release.** (merge of 03
+and 04, 2026-09-19) 03 and 04 each wrote `internal/vsockrpc` and a guestd
+fake against the same contract, with the same uvarint-length protobuf
+framing, so they interoperate on the wire. 04's stays as the shared
+`internal/vsockrpc` (guestd is the canonical server side); 03's moved to
+`internal/hostd/vsockrpc` and `internal/hostd/fakeguestd`. hostd should
+migrate to the shared package when it is next touched; the M1 integration
+session proves the two speak to each other.
+
+**I-38. Generated protobuf code is tracked and also regenerated in the Nix
+sandbox.** (merge, 2026-09-19) `internal/gen/` is committed so `go build`
+works without buf; `nix/packages.nix` regenerates it with local plugins
+inside the build so a stale checkout cannot ship stale stubs. One
+`packages.nix` builds every Go binary (guestd, repose-hook, hostd, hostdev)
+from one vendor hash.

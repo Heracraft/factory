@@ -65,7 +65,7 @@ Makefile passes both when the second exists.
 Production's resource group and state storage account were created by hand on
 2026-09-19 (`docs/ops/AZURE-SETUP.md` steps 4 and 5) and are **not** managed
 by OpenTofu: an apply that could destroy the state container could destroy the
-state describing it (`docs/DECISIONS.md` I-18). `infra/bootstrap` describes
+state describing it (`docs/DECISIONS.md` I-20). `infra/bootstrap` describes
 that shape anyway, so a second environment is one command:
 
 ```bash
@@ -108,7 +108,7 @@ host's **private** address with the edge as an SSH jump host, and the module
 graph makes every host depend on the edge having been installed first.
 
 Hosts never get a public IP, not even a temporary one for the install
-(`docs/DECISIONS.md` I-24). A public IP would need an inbound rule on the
+(`docs/DECISIONS.md` I-25). A public IP would need an inbound rule on the
 hosts subnet, which is the one thing `policy/tfsec` forbids; the install
 window is about ten minutes, not seconds; and what would be sitting in it is a
 stock Ubuntu image accepting root SSH.
@@ -260,7 +260,7 @@ Re-checked on **2026-09-19** against the Azure Retail Prices API
 (`https://prices.azure.com/api/retail/prices`, `armRegionName eq 'eastus'`,
 `priceType eq 'Consumption'`), for what `prod.tfvars` actually creates: one
 `D16s_v5` host with a 512 GB Premium SSD v2 data disk (DECISIONS I-14), the
-edge, and **no control-plane VM** (`coolify_count = 0`, DECISIONS I-23). 730
+edge, and **no control-plane VM** (`coolify_count = 0`, DECISIONS I-24). 730
 hours to the month, Linux rates, no reservation.
 
 | Resource | Unit price | Monthly |
@@ -312,7 +312,7 @@ queried ones.
 - **The api's Entra app registration and client certificate**, and **the R2
   API token.** Both are credentials. Creating them is a human step next to the
   other identity setup in `docs/ops/AZURE-SETUP.md`, and neither belongs in a
-  state file (`docs/DECISIONS.md` I-20). Pass the app's object id as
+  state file (`docs/DECISIONS.md` I-21). Pass the app's object id as
   `api_identity_object_id` and the Key Vault wrap/unwrap policy appears.
 - **A Hetzner module.** Designed for in `docs/workstreams/11-infra-opentofu.md`
   §5, not built. The `host` module's variable surface (`name`, `join_token`,

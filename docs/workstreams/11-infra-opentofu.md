@@ -26,7 +26,7 @@ provider module for hosts is an addition, not a rewrite.
 - `infra/azure/`: one root module per environment (`prod/`, `staging/`)
   composing these modules:
   - `network`: VNet `10.200.0.0/16` in the existing resource group (the
-    group is created by `infra/bootstrap`, not here, DECISIONS I-18), subnet
+    group is created by `infra/bootstrap`, not here, DECISIONS I-19), subnet
     `hosts` (`10.200.1.0/24`) with a NAT gateway and an NSG carrying **no
     security rules at all** — Azure's built-in `AllowVnetInBound` is what
     lets the edge's jump connection through, so an explicit rule here is
@@ -44,10 +44,10 @@ provider module for hosts is an addition, not a rewrite.
     a post-install check that `/dev/kvm` exists and `kvm_intel` nested is
     `Y`, and a final provisioner that writes the join token to
     `/run/repose/join-token` as file content and restarts `hostd`
-    (DECISIONS I-19: cloud-init cannot deliver it, because nixos-anywhere
+    (DECISIONS I-20: cloud-init cannot deliver it, because nixos-anywhere
     replaces the system that ran cloud-init). Tag `repose:role=host`.
   - `edge`: one VM at `edge_size` (default `Standard_D2s_v5`, DECISIONS
-    I-22), static public IP with `prevent_destroy`, DNS A record
+    I-23), static public IP with `prevent_destroy`, DNS A record
     `ssh.repose.herakraft.co`, Ubuntu image, nixos-anywhere provisioner
     with `.#edge`. Its subnet NSG opens 22 (user gateway), 443 (preview
     stub) and 51820/udp (WireGuard hub) to the internet, and the operator
@@ -56,7 +56,7 @@ provider module for hosts is an addition, not a rewrite.
     certificate only, on 2222, because 22 belongs to the gateway and every
     host provisioner jumps through it.
   - `coolify`: `coolify_count` of them, defaulting to **0** until wave 3
-    (DECISIONS I-23); when 1, one `Standard_D4s_v5`, Ubuntu 24.04 LTS, static public IP,
+    (DECISIONS I-24); when 1, one `Standard_D4s_v5`, Ubuntu 24.04 LTS, static public IP,
     DNS A records `repose.herakraft.co`, `api.repose.herakraft.co`,
     `auth.repose.herakraft.co`, 256 GB Premium SSD OS disk, cloud-init that
     installs Docker and runs Coolify's installer, then installs a WireGuard
@@ -75,17 +75,17 @@ provider module for hosts is an addition, not a rewrite.
     authenticates with a client certificate stored in Coolify's secret
     store, since the Coolify VM is not an Azure identity target for
     containers; the app registration and that certificate are a human step
-    (DECISIONS I-20).
+    (DECISIONS I-21).
 - `infra/r2/`: Cloudflare provider, one bucket `repose-pg-backups` with a
   lifecycle rule deleting objects older than 35 days and aborting multipart
   uploads left incomplete for 7. The API token scoped to that bucket stays a
-  human step (DECISIONS I-20): a token created here would sit in the state
+  human step (DECISIONS I-21): a token created here would sit in the state
   file in clear text for the life of the bucket.
 - `infra/dns/`: Cloudflare zone records for `herakraft.co` subdomains used
   above, so DNS is in the same apply as the addresses it points at.
 - State backend: the Azure Storage container `tfstate` in `repose-prod`,
   created by hand on 2026-09-19 and read but never managed by the
-  environment roots (DECISIONS I-18). `infra/bootstrap/` is the tiny root
+  environment roots (DECISIONS I-19). `infra/bootstrap/` is the tiny root
   module, applied with local state, that declares the same shape for a new
   environment; `make bootstrap ENV=staging` creates `repose-staging` and
   keeps its state in the same account under a different key. Locking via
@@ -149,7 +149,7 @@ the edge being installed first. Hosts never get a public IP, not even a
 temporary one during the install: that would need an inbound rule on the hosts
 subnet, which is the one thing the tfsec policy forbids and §4 and §7 of
 `DESIGN.md` promise never exists, and the window is about ten minutes of a
-stock Ubuntu image accepting root SSH. DECISIONS I-24 has the full reasoning.
+stock Ubuntu image accepting root SSH. DECISIONS I-25 has the full reasoning.
 
 The edge's operator sshd must be listening on `edge_operator_ssh_port` for
 that to work. It defaults to 2222 because 22 belongs to the user gateway;
@@ -285,7 +285,7 @@ OpenTofu: 30 days on blobs and on containers, versioning was already on.
 Three things wait on a human rather than on an apply:
 
 - **The api's Entra app registration**, its client certificate, and the R2
-  API token (DECISIONS I-20). Pass the app's object id as
+  API token (DECISIONS I-21). Pass the app's object id as
   `api_identity_object_id` and the Key Vault wrap/unwrap policy appears.
 - **A Cloudflare API token** in `CLOUDFLARE_API_TOKEN` and the zone id in the
   local tfvars, before `manage_dns` can be true or `infra/r2` can be planned.

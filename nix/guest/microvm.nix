@@ -1,6 +1,6 @@
 # mkGuestRunner: compose the platform base, home-manager and a user fragment
 # into one NixOS system for Cloud Hypervisor, and produce the runner package
-# hostd starts (docs/workstreams/02-guest-base.md, DECISIONS I-19).
+# hostd starts (docs/workstreams/02-guest-base.md, DECISIONS I-34).
 #
 # The system closure is guest-independent: nothing about a particular guest
 # (ip, cid, tap, volume, sockets, vcpu, memory) is baked in. Those are
@@ -24,7 +24,7 @@
 , baseVersion ? (self.shortRev or self.dirtyShortRev or "dirty")
 , guestd ? null
 , hook ? null
-  # Run-time defaults (DECISIONS I-19); every one is overridable by bin/run.
+  # Run-time defaults (DECISIONS I-34); every one is overridable by bin/run.
 , guestId ? null
 , ip ? null
 , gatewayIp ? null

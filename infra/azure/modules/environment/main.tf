@@ -27,7 +27,7 @@ data "azurerm_client_config" "current" {}
 # The resource group and the OpenTofu state account inside it are created once
 # by infra/bootstrap and are never managed from here: an apply that could
 # destroy the resource group could destroy the state that describes it
-# (DECISIONS I-18).
+# (DECISIONS I-19).
 data "azurerm_resource_group" "main" {
   name = var.resource_group_name
 }
@@ -136,7 +136,7 @@ module "edge" {
 # Not created until wave 3. The api, the dashboard and Logto are workstreams
 # 05 and 08; until they exist this VM is about $180 a month of nothing, and
 # the edge and the first host are the parts worth paying for early
-# (DECISIONS I-23).
+# (DECISIONS I-24).
 module "coolify" {
   source = "../coolify"
   count  = var.coolify_count

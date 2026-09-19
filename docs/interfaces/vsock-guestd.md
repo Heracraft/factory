@@ -19,10 +19,10 @@ framing; hostd picks by flag.
 | `Thaw` | | | |
 | `Switch` | system_closure | rebooted (bool), output (capped 32 KB) | runs `<closure>/bin/switch-to-configuration switch`; if the closure's kernel or initrd differ from the running one, responds `needs_reboot=true` and does nothing unless `force_reboot` |
 | `GrowFs` | | new_bytes | `resize2fs` after the host grew the volume |
-| `WriteSecrets` | list {name, bytes} | | writes `/run/repose/secrets/<name>` 0400 dev on tmpfs, rewrites `/run/repose/secrets.env`. The list is the **whole set**: a secret present in the guest and absent from the list is removed, which is how `repose secrets rm` reaches a running guest. The three reserved names of DECISIONS I-10 are never removed this way. Validation is per request: one bad name or oversized value rejects the batch and writes nothing (DECISIONS I-19) |
+| `WriteSecrets` | list {name, bytes} | | writes `/run/repose/secrets/<name>` 0400 dev on tmpfs, rewrites `/run/repose/secrets.env`. The list is the **whole set**: a secret present in the guest and absent from the list is removed, which is how `repose secrets rm` reaches a running guest. The three reserved names of DECISIONS I-10 are never removed this way. Validation is per request: one bad name or oversized value rejects the batch and writes nothing (DECISIONS I-30) |
 | `SetPrincipals` | list | | writes `/etc/ssh/principals/dev`, reloads sshd |
 | `SetupProject` | project_slug, remote_url, tz, lang | | creates tmux session named slug, `/home/dev/<slug>`, git init if empty, writes `/home/dev/.repose/project.json` |
-| `Sample` | | GuestSignals + repeated ProcSample (shapes in grpc-hostd.md) + partial (bool) | hostd calls every 60 s. guestd walks `/proc` on the call and serves the tmux and Docker signals from a 5 s background refresh, so a sample costs under 20 ms and never forks (DECISIONS I-20). `partial` is set when a signal is missing rather than zero |
+| `Sample` | | GuestSignals + repeated ProcSample (shapes in grpc-hostd.md) + partial (bool) | hostd calls every 60 s. guestd walks `/proc` on the call and serves the tmux and Docker signals from a 5 s background refresh, so a sample costs under 20 ms and never forks (DECISIONS I-31). `partial` is set when a signal is missing rather than zero |
 | `Exec` | argv, timeout_s, as_user | exit_code, stdout, stderr | operator only; hostd audits every call |
 | `Shutdown` | timeout_s | | `systemctl poweroff` after flushing |
 
@@ -33,7 +33,7 @@ framing; hostd picks by flag.
 | `Ready` | boot_id | after network up and sshd listening |
 | `AgentEvent` | agent, tmux_window, kind (completed\|needs_input\|error), summary | agent hooks via the unix socket `/run/repose/hooks.sock` |
 | `AgentState` | agent, tmux_window, state | on change, debounced 5 s |
-| `Warning` | kind, detail | kinds: `disk_high` (over 90 percent), `inotify_exhausted`, `docker_down`, `freeze_timeout`, `store_path_missing` (a path in the running system is absent from the share, which means the host GC'd it), `oom` (the kernel killed a process for memory; detail carries the process name), `tmux_down` (no tmux server for `dev`). Each kind is sent at most once per 10 minutes. See DECISIONS I-11 and I-18 |
+| `Warning` | kind, detail | kinds: `disk_high` (over 90 percent), `inotify_exhausted`, `docker_down`, `freeze_timeout`, `store_path_missing` (a path in the running system is absent from the share, which means the host GC'd it), `oom` (the kernel killed a process for memory; detail carries the process name), `tmux_down` (no tmux server for `dev`). Each kind is sent at most once per 10 minutes. See DECISIONS I-11 and I-29 |
 
 ## Hook socket
 

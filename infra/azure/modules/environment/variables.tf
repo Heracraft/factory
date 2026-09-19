@@ -7,7 +7,7 @@ variable "env" {
 
 variable "resource_group_name" {
   type        = string
-  description = "Existing resource group, created by infra/bootstrap. Read, never managed (DECISIONS I-18)."
+  description = "Existing resource group, created by infra/bootstrap. Read, never managed (DECISIONS I-19)."
 }
 
 variable "zone" {
@@ -221,7 +221,7 @@ variable "coolify_count" {
     How many control-plane VMs to create: 0 or 1. Default 0. The api, the
     dashboard and Logto arrive in wave 3 (workstreams 05 and 08); before they
     exist the VM bills about $180 a month for nothing, while the edge and the
-    first host are worth paying for early (DECISIONS I-23). Setting this to 0
+    first host are worth paying for early (DECISIONS I-24). Setting this to 0
     after the VM exists destroys it and everything on its OS disk, Postgres
     included.
   EOT

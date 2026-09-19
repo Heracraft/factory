@@ -9,7 +9,7 @@
 # The bucket and its lifecycle rule are declared here. The API token Coolify
 # authenticates with is not: it is a credential, it would live in this state
 # file in clear text for the life of the bucket, and it is already a human
-# step in docs/ops/AZURE-SETUP.md step 10 (DECISIONS I-20).
+# step in docs/ops/AZURE-SETUP.md step 10 (DECISIONS I-21).
 
 terraform {
   required_version = ">= 1.6.0"

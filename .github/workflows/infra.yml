@@ -38,7 +38,7 @@ jobs:
 
       # -backend=false: no credentials, no state, no network beyond the
       # provider registry. The committed .terraform.lock.hcl is what makes
-      # this resolve the same versions a laptop resolves (DECISIONS I-21).
+      # this resolve the same versions a laptop resolves (DECISIONS I-22).
       - name: tofu validate
         run: make -C infra validate
 

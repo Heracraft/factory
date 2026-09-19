@@ -50,7 +50,7 @@ open --desktop --stop`.
   prints the URL. The VNC password is generated per start (read from
   `/run/repose/desktop/vnc-password` by `repose-guest-profile desktop
   start`) and printed once. Starting when already started just forwards.
-  (DECISIONS I-18.)
+  (DECISIONS I-33.)
 - When the desktop is up, `DISPLAY=:99` is exported into new shells in the
   tmux session, so an agent asked to "open a headed browser" gets one on the
   desktop and the user can see it in noVNC.
