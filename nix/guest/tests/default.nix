@@ -165,8 +165,8 @@ in
       EOF
       chmod 644 /tmp/transcript.jsonl""")
           guest.succeed("""echo '${claudeStopPayload}' | sudo -u dev REPOSE_HOOK_AGENT=claude repose-hook""")
-          log = guest.wait_until_succeeds("cat /run/repose/hooks.log")
-          ev = json.loads(log.strip().splitlines()[-1])
+          hooklog = guest.wait_until_succeeds("cat /run/repose/hooks.log")
+          ev = json.loads(hooklog.strip().splitlines()[-1])
           assert ev["agent"] == "claude" and ev["kind"] == "completed", ev
           assert "committed" in ev["summary"], ev
           guest.succeed("""echo '{"agent":"claude","kind":"completed","summary":"t"}' | curl -sf --unix-socket /run/repose/hooks.sock -d @- http://x/ -o /dev/null -w '%{http_code}' | grep -q 200""")
@@ -268,7 +268,7 @@ in
           guest.succeed("sudo -u dev bash -lc 'cd /home/dev && chromium --headless --disable-gpu --no-first-run --screenshot=/home/dev/a.png --window-size=800,600 file:///home/dev/site/index.html' 2>&1 | tail -5")
           size = int(guest.succeed("stat -c %s /home/dev/a.png").strip())
           assert size > 5000, size
-          guest.copy_from_vm("/home/dev/a.png", "")
+          guest.copy_from_machine("/home/dev/a.png", "")
 
       with subtest("MCP servers run from the packaged versions, offline"):
           out = guest.succeed("sudo -u dev bash -lc 'playwright-mcp --version'")
