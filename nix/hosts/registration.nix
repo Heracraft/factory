@@ -8,6 +8,8 @@
 # 30 seconds.
 { config, lib, pkgs, ... }:
 let
+  apiFlags = "--api-addr ${lib.escapeShellArg config.repose.host.apiAddr}"
+    + lib.optionalString (config.repose.host.apiServerName != "") " --api-server-name ${lib.escapeShellArg config.repose.host.apiServerName}";
   hostd = config.repose.host.hostdPackage;
   stateDir = "/var/lib/repose/hostd";
   token = "/run/repose/join-token";
@@ -27,7 +29,7 @@ in
     path = [ pkgs.systemd ];
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = "${hostd}/bin/hostd register --state ${stateDir} --token ${token}";
+      ExecStart = "${hostd}/bin/hostd register --state ${stateDir} --token ${token} ${apiFlags}";
       # The bridge, wg0 and sshd read host.json; apply it now.
       ExecStartPost = "${pkgs.systemd}/bin/systemctl --no-block restart repose-host-net.service";
       Restart = "on-failure";

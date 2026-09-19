@@ -71,6 +71,22 @@ in
       description = "The edge's WireGuard address (docs/workstreams/06-gateway-edge.md owns the 10.255.0.0/16 plan). Guests may reach it on the hook-ingest and noVNC relay ports only.";
     };
 
+    apiAddr = lib.mkOption {
+      type = lib.types.str;
+      default = "api.repose.herakraft.co:443";
+      description = ''
+        Where hostd registers and holds its gRPC stream. Production is the
+        api; before it exists this is the `hostdev` stand-in (DECISIONS
+        I-17), for example the edge's public address on 443.
+      '';
+    };
+
+    apiServerName = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = "TLS server name when it differs from apiAddr's host part (hostd --api-server-name). Empty means the address itself.";
+    };
+
     hostdPackage = lib.mkOption {
       type = lib.types.package;
       default = pkgs.callPackage ./hostd-stub.nix { };

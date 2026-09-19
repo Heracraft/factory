@@ -7,6 +7,8 @@
 let
   cfg = config.repose.host;
   hostd = cfg.hostdPackage;
+  apiFlags = "--api-addr ${lib.escapeShellArg cfg.apiAddr}"
+    + lib.optionalString (cfg.apiServerName != "") " --api-server-name ${lib.escapeShellArg cfg.apiServerName}";
   stateDir = "/var/lib/repose/hostd";
 
   # guests.slice gets everything but the host reserve: 8 GiB below 128 GiB
@@ -83,7 +85,7 @@ in
       coreutils
     ];
     serviceConfig = {
-      ExecStart = "${hostd}/bin/hostd --state ${stateDir}";
+      ExecStart = "${hostd}/bin/hostd --state ${stateDir} ${apiFlags}";
       Restart = "always";
       RestartSec = 2;
       # A join token that has been used is not retried (03-hostd §6).
