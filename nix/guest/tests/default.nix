@@ -178,12 +178,12 @@ in
           guest.succeed("install -m 0644 /root/ca.pub /run/repose/user_ca.pub")
           guest.succeed("echo 0192e4b0-0000-7000-8000-000000000001 > /etc/ssh/principals/dev && systemctl reload sshd")
           guest.succeed("ssh-keygen -q -s /root/ca -I 'user:heracraft' -n 0192e4b0-0000-7000-8000-000000000001 -V -1m:+12h /root/user.pub")
-          out = guest.succeed("ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o CertificateFile=/root/user-cert.pub -i /root/user dev@127.0.0.1 id")
+          out = guest.succeed("ssh -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o CertificateFile=/root/user-cert.pub -i /root/user dev@127.0.0.1 id")
           assert "uid=1000(dev)" in out, out
           guest.succeed("ssh-keygen -q -s /root/ca -I 'user:other' -n 0192e4b0-ffff-7000-8000-00000000beef -V -1m:+12h /root/user.pub")
-          err = guest.fail("ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o CertificateFile=/root/user-cert.pub -i /root/user dev@127.0.0.1 id 2>&1")
+          err = guest.fail("ssh -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o CertificateFile=/root/user-cert.pub -i /root/user dev@127.0.0.1 id 2>&1")
           assert "Permission denied" in err, err
-          guest.fail("ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -i /root/user root@127.0.0.1 id")
+          guest.fail("ssh -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -i /root/user root@127.0.0.1 id")
 
       with subtest("store overlay and profile pinning"):
           mounts = guest.succeed("mount | grep -E 'ro-store|rw-store|/nix/store'")
