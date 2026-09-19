@@ -21,6 +21,14 @@ Haiku for building; it is fine for the `done-check` grep pass at the end.
 Sequential sessions work the same way: one prompt per session, same
 model choice, and `STATUS.md` carries the state between them.
 
+## The short form: `/ws <nn>`
+
+The repo ships a project skill at `.claude/skills/ws/SKILL.md`. In a worktree,
+start Claude Code and type `/ws 03`; it loads the preamble and the `03`
+block below and begins. `/ws m1` runs the M1 integration session. The full
+text below is what the skill expands to, kept here so it can be read and
+edited in one place.
+
 ## Launching agents in parallel
 
 Parallel agents in one checkout collide on `go.mod`, `STATUS.md`,
