@@ -470,3 +470,14 @@ func (d *DB) Import(r io.Reader) error {
 		return tx.Bucket(bucketMeta).Put(keyDraining, []byte(dr))
 	})
 }
+
+// ClaimIndex reserves a specific index for guestID (rebuild from disk).
+func (d *DB) ClaimIndex(guestID string, idx uint32) error {
+	return d.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketIPs)
+		if v := b.Get(idxKey(idx)); v != nil && string(v) != guestID {
+			return fmt.Errorf("index %d held by %s", idx, string(v))
+		}
+		return b.Put(idxKey(idx), []byte(guestID))
+	})
+}

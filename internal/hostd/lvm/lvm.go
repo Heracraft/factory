@@ -393,7 +393,7 @@ func (f *Fake) GetData(name string) []byte {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if v, ok := f.Volumes[name]; ok {
-		return append([]byte(nil), v.Data...)
+		return append([]byte{}, v.Data...)
 	}
 	return nil
 }
