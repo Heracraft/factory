@@ -197,7 +197,8 @@ in
           guest.succeed(f"sudo -u dev nix profile install --offline {hello}")
           guest.succeed("systemctl start repose-pin-profile.service")
           upper = guest.succeed("awk '$2 == \"/nix/store\" { print $4 }' /proc/mounts | tr , '\\n' | grep '^upperdir=' | cut -d= -f2").strip()
-          upper = upper.removeprefix("/sysroot")
+          # the overlay appears twice (initrd and stage 2 views); one line is enough
+          upper = upper.splitlines()[0].removeprefix("/sysroot")
           import os
           name = os.path.basename(hello)
           guest.succeed(f"test -d {upper}/{name}/bin && cmp {upper}/{name}/bin/hello {hello}/bin/hello")
