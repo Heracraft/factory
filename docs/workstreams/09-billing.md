@@ -19,7 +19,7 @@ who stops it half the time pays half.
   `interfaces/db-schema.md` by this workstream).
 - The `/usage`, `/billing/*` routes in `interfaces/api.md` (implemented in
   05's HTTP layer, logic here).
-- `factory-admin billing` subcommands: `credit <user> <cents> <reason>`,
+- `repose-admin billing` subcommands: `credit <user> <cents> <reason>`,
   `suspend`, `unsuspend`, `reconcile [--month]`, `explain <project> <hour>`.
 - The Stripe test-mode fixture that reproduces the CHECKLIST usage pattern
   (one large guest, 100 hours, 40 GB, 10 GB egress) and asserts the invoice.
@@ -95,7 +95,7 @@ inserts `+1000 "trial"`. Hourly usage first debits the ledger (a negative
 row per hour with `ref = usage_hours pk`) until the balance is zero, and only
 the remainder becomes a Stripe usage record. A user with a positive balance
 and a card is `trial`; when the balance hits zero they become `active`
-and the next hour is billed. `factory-admin billing credit` adds rows for
+and the next hour is billed. `repose-admin billing credit` adds rows for
 goodwill or refunds. Balance is `sum(cents)`, computed with an index, never
 cached on `users` (the cached column was rejected because two hourly jobs
 racing would drift it).
@@ -133,7 +133,7 @@ A job at `:05` past each hour, idempotent, keyed on `(project_id, hour)`:
 
 ### 5.5 Stripe objects
 
-One product `factory`, four metered prices in USD with `usage_type =
+One product `repose`, four metered prices in USD with `usage_type =
 metered`, `aggregate_usage = sum`, billing scheme per unit at 1 cent:
 `compute_cents`, `storage_cents`, `egress_cents`, `credit_cents` (a negative
 line is not allowed, so trial credit is not a Stripe line; the credit is
@@ -171,7 +171,7 @@ retention starts at suspension. On `invoice.paid` the status returns to
 
 ### 5.7 Reconciliation
 
-`factory-admin billing reconcile --month 2026-10` (and a nightly job for
+`repose-admin billing reconcile --month 2026-10` (and a nightly job for
 the current period): for each user, sum `usage_hours.cost_cents` minus
 credit rows, compare with the sum of Stripe usage record quantities for the
 period. Any difference over 0 cents is a `billing_mismatch` alert with the
@@ -182,7 +182,7 @@ tool for answering a support ticket.
 ### 5.8 Limits and abuse hooks
 
 `users.project_limit` defaults to 3 and `xl_limit` to 1 until the first
-`invoice.paid`, then 10 and 10. `factory-admin suspend <user> <reason>`
+`invoice.paid`, then 10 and 10. `repose-admin suspend <user> <reason>`
 stops guests and blocks starts; `unsuspend` reverses. Both write
 `audit_log`.
 
@@ -270,7 +270,7 @@ logged as an audit event when flipped.
 - [ ] Reconciliation job and `explain` exist; a deliberate mismatch raises
       the alert and fixes nothing. Evidence: test.
 - [ ] Limits 3/1 before first paid invoice, 10/10 after. Evidence: test.
-- [ ] `factory-admin billing credit|suspend|unsuspend|reconcile|explain`
+- [ ] `repose-admin billing credit|suspend|unsuspend|reconcile|explain`
       exist and write `audit_log`. Evidence: transcript.
 - [ ] `BILLING_ENFORCE=false` behaves as §8 and logs an audit event.
       Evidence: test.
@@ -278,9 +278,9 @@ logged as an audit event when flipped.
       test invoice with tax line.
 - [ ] Live-mode charge of the owner's card matches `explain`. Evidence:
       invoice id and the arithmetic pasted.
-- [ ] Metrics `factory_billing_rollup_duration_seconds`,
-      `factory_billing_gap_minutes_total`,
-      `factory_billing_stripe_push_backlog`, `factory_billing_mismatch_cents`
+- [ ] Metrics `repose_billing_rollup_duration_seconds`,
+      `repose_billing_gap_minutes_total`,
+      `repose_billing_stripe_push_backlog`, `repose_billing_mismatch_cents`
       exist. Evidence: `/metrics` scrape.
 - [ ] `PRICING.md` and `features/pricing.md` match the implementation.
       Evidence: implementer re-read.

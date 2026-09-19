@@ -21,7 +21,7 @@ ship goes over the edge's WireGuard.
 
 ## Looking at one project
 
-1. `factory-admin projects show <id-or-slug>`: state, host, class, last
+1. `repose-admin projects show <id-or-slug>`: state, host, class, last
    snapshot, current signals, cost today. This is the first stop.
 2. Grafana "Per-guest resources", variable `project_id`: CPU, memory, net,
    disk, and the signals timeline (sessions, tmux clients, agent state)
@@ -31,7 +31,7 @@ ship goes over the edge's WireGuard.
    - the guest's console: `{component="console", guest_id="<guest id>"}`
    - api requests: `{component="api"} | json | project_id="<id>"`
    - gateway sessions: `{component="gateway"} | json | event=~"session_.*" | project_id="<id>"`
-4. Builds: `factory-admin ops list --project <id>` then `ops log <op id>`
+4. Builds: `repose-admin ops list --project <id>` then `ops log <op id>`
    for the full Nix output (stored in `build_logs`, not Loki).
 5. Events the user saw: `select ts, kind, agent, summary, delivered from
    events where project_id = ... order by ts desc`.
@@ -47,7 +47,7 @@ Grafana "Host capacity", variable `host_id`. Then on the host itself:
 Grafana "Abuse": fleet-wide top `comm` by CPU over 24 hours, top projects
 by egress, and guests at 100 percent CPU with zero sessions for over 24
 hours. A miner is a `comm` you do not recognise at the top of the first
-panel. Confirm with `factory-admin exec <id> -- ps -o comm,pcpu --sort
+panel. Confirm with `repose-admin exec <id> -- ps -o comm,pcpu --sort
 -pcpu | head` (audited), then the runbook's "Suspend a user".
 
 ## Log field rules

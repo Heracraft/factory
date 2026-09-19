@@ -7,7 +7,7 @@ from the recruiting app and which of its controls are rejected.
 
 ## 1. Goal
 
-The web dashboard at `factory.herakraft.co` is where users do the things that
+The web dashboard at `repose.herakraft.co` is where users do the things that
 are awkward in a terminal: pick packages from a menu without writing Nix,
 manage secrets, look at cost, put a card on file, and see what an agent did
 overnight. It shows nothing the CLI cannot also do, and it does nothing the
@@ -41,7 +41,7 @@ API does not do for it.
 - Teams, org switching (R5-6).
 - Stripe Elements beyond the SetupIntent card form (09-billing owns the
   Stripe side; the dashboard embeds the card form and links to the portal).
-- Admin or operator views (`factory-admin`, 05).
+- Admin or operator views (`repose-admin`, 05).
 
 ## 4. Interfaces
 
@@ -55,7 +55,7 @@ Consumes: `interfaces/api.md` (all user routes), `interfaces/cli-config.md`
 ### 5.1 Auth
 
 `@logto/browser` `LogtoClient` with `appId` for the dashboard's SPA app,
-`resources: ["https://api.factory.herakraft.co"]`, `scopes: ["openid",
+`resources: ["https://api.repose.herakraft.co"]`, `scopes: ["openid",
 "profile", "email", "offline_access"]`. `+layout.ts` checks
 `isAuthenticated()`; unauthenticated users see the landing page and a "Sign
 in with GitHub" button that calls `signIn(callbackUrl)`. `/callback` handles
@@ -76,7 +76,7 @@ The dashboard has no `+server.ts` routes except `/healthz`. Nothing in
 | `/` | landing (signed out) or redirect to `/projects` (signed in) |
 | `/callback` | Logto callback |
 | `/projects` | table: name, class, state (dot + word), uptime, agent state, cost today, cost month. Row click → detail. `New project` explains that projects are created from the CLI and shows the install command; there is no create form because a project needs a git remote and a laptop-side sync. |
-| `/projects/[id]` | header with state and actions (Start, Stop, Destroy with confirm typing the slug); cards: connect (`factory run` and `ssh <slug>.factory`), signals (ssh sessions, tmux clients, agents and their state, docker containers, updated N s ago), cost (today, month, projected month at current run rate, using `GET /usage`), disk (used / allocated, Resize with a size picker), events (list from `GET /events`, newest first, agent icon, summary), snapshots (list, Create, Restore with confirm, restore-as-new with a name field), last build (status, link to config) |
+| `/projects/[id]` | header with state and actions (Start, Stop, Destroy with confirm typing the slug); cards: connect (`repose run` and `ssh <slug>.repose`), signals (ssh sessions, tmux clients, agents and their state, docker containers, updated N s ago), cost (today, month, projected month at current run rate, using `GET /usage`), disk (used / allocated, Resize with a size picker), events (list from `GET /events`, newest first, agent icon, summary), snapshots (list, Create, Restore with confirm, restore-as-new with a name field), last build (status, link to config) |
 | `/projects/[id]/config` | two tabs: **Menu** and **Nix**. Menu: groups from `GET /catalog` rendered as checkbox lists with descriptions and a search box, plus a "Services" group for things like Postgres and Redis if the catalog has them; Apply sends `{menu}`. Nix: CodeMirror 6 editor with Nix syntax, Apply sends `{fragment}`. Both then open the build log panel (SSE from `/ops/:op/log`), auto-scrolled, and on failure show the error block with the fragment line highlighted in the editor. Revisions list with Re-apply. A `Hold base updates` toggle (PATCH `hold_base_updates`) with the current base version and its changelog. |
 | `/projects/[id]/secrets` | list of names with dates; Add (name, value textarea or file upload, client validates the name regex); Delete with confirm. Values are never displayed after save. |
 | `/billing` | status banner (trial credit left, past due, suspended); card on file (Stripe Elements `PaymentElement` in setup mode using `POST /billing/setup`); "Manage in Stripe" (`POST /billing/portal` → redirect); invoices table; usage chart for the month by project (bar per day, stacked by class) from `GET /usage`. |
@@ -121,7 +121,7 @@ until a poll succeeds.
 build` on port 3000 as a non-root user, `HEALTHCHECK CMD wget -qO-
 http://127.0.0.1:3000/healthz || exit 1`. Coolify application type "Dockerfile",
 health check path `/healthz`, no host port mapping (Traefik routes
-`factory.herakraft.co` → 3000), so deploys are rolling. Build args carry
+`repose.herakraft.co` → 3000), so deploys are rolling. Build args carry
 the four `PUBLIC_*` values.
 
 ### 5.7 Landing page

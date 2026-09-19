@@ -1,6 +1,6 @@
 # Working in this repo
 
-factory is a multi-tenant service that gives each project a persistent NixOS
+repose is a multi-tenant service that gives each project a persistent NixOS
 microVM on a shared host where coding agents keep running after the laptop
 closes. The design is in `docs/DESIGN.md`; every settled decision and why is in
 `docs/DECISIONS.md`; the component map is `docs/ARCHITECTURE.md`; the order of
@@ -52,7 +52,7 @@ needs the user's approval first.
 ## Names are fixed
 
 The product, CLI binary, SSH login prefix, config directory, Go module path
-and systemd unit prefix are all `factory`. Guest user is `dev`. Size classes
+and systemd unit prefix are all `repose`. Guest user is `dev`. Size classes
 are `small`, `large`, `xl`. Guest states, error codes and id formats are
 listed in `docs/interfaces/README.md`. Do not introduce a synonym for any of
 them; a second name for the same thing is how a grep misses half the uses.

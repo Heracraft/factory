@@ -98,7 +98,7 @@ written so they cannot happen quietly.
 - [ ] The Anthropic API key leaked in commit `b1a5915` has been rotated
       (done 2026-09-17) and the history has been rewritten or the repo made
       private before it is shared with contributors.
-- [ ] `factory --version` prints a version, and `curl -fsSL
-      https://factory.herakraft.co/install.sh | sh` installs it on macOS
+- [ ] `repose --version` prints a version, and `curl -fsSL
+      https://repose.herakraft.co/install.sh | sh` installs it on macOS
       arm64, macOS x86_64, Linux x86_64, Linux arm64.
 - [ ] `ops/RUNBOOK.md` has entries for every alert above.

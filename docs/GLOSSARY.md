@@ -107,7 +107,7 @@ build. Delivered by email and ntfy, listed in status and the dashboard.
 
 **hook**, the mechanism by which an agent tells the platform about an
 event: the agent's own hook system (Claude Code `Notification` and `Stop`,
-Codex `notify`) running `factory-hook`, which posts to guestd's socket. For
+Codex `notify`) running `repose-hook`, which posts to guestd's socket. For
 agents without one, guestd's pane-idle heuristic stands in and is labelled
 as such.
 
@@ -122,7 +122,7 @@ all month costs the cap and never more.
 volume GB-months by allocated size, egress GB. Recorded in `usage_hours`,
 pushed to Stripe hourly.
 
-**held**, a project whose base updates are paused by `factory config hold`.
+**held**, a project whose base updates are paused by `repose config hold`.
 It keeps its base version until unheld.
 
 **workstream**, a chunk of the build that one agent or session can own

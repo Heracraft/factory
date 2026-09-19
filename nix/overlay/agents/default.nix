@@ -3,7 +3,7 @@
 # Each attribute repackages upstream's binary release; bump.sh updates hashes.
 final: prev: {
   # Placeholders resolve to nixpkgs until each package is repackaged here.
-  factoryAgents = {
+  reposeAgents = {
     claude-code = prev.claude-code;
     opencode = prev.opencode;
     codex = prev.codex;

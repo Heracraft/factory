@@ -8,21 +8,21 @@ survives a host dying.
 ## What the user sees
 
 ```
-$ factory snapshots list
+$ repose snapshots list
 ID          TAKEN                 SIZE     REASON
 snap_01J8…  2026-09-17 03:00 UTC  2.1 GB   scheduled
 snap_01J8…  2026-09-16 22:14 UTC  2.0 GB   stop
 snap_01J8…  2026-09-16 03:00 UTC  1.9 GB   scheduled
 
-$ factory snapshots create
+$ repose snapshots create
 Snapshotting todo-app ... 2.1 GB uploaded in 41s (snap_01J8…)
 
-$ factory snapshots restore snap_01J8…
+$ repose snapshots restore snap_01J8…
 todo-app is running. Restoring replaces its current disk. Stop it first?
 [y/N] y
 Stopping (with a final snapshot) ... restoring 2.1 GB ... starting ... done.
 
-$ factory snapshots restore snap_01J8… --as-new todo-app-yesterday
+$ repose snapshots restore snap_01J8… --as-new todo-app-yesterday
 Created todo-app-yesterday (large) from snap_01J8… on az-eastus-01 ... done.
 ```
 

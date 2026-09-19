@@ -12,13 +12,13 @@ policy designed without a month of data is a guess.
 
 - `internal/obs`: one Go package used by every binary. `obs.Logger`
   (structured JSON via `log/slog`), `obs.Metrics` (a `prometheus.Registry`
-  with the `factory_` namespace pre-set), `obs.Tracer` (OpenTelemetry with an
+  with the `repose_` namespace pre-set), `obs.Tracer` (OpenTelemetry with an
   OTLP exporter that is a no-op when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset).
 - The metric and log-event naming rules below, enforced by a test that fails
-  on any metric outside the `factory_` namespace or any log call missing
+  on any metric outside the `repose_` namespace or any log call missing
   `component`.
 - Fluent Bit configuration in `nix/hosts/fluent-bit.nix`: journald input for
-  host units, a tail input for every `/var/lib/factory/guests/*/console.log`,
+  host units, a tail input for every `/var/lib/repose/guests/*/console.log`,
   output to Loki over WireGuard with labels `host`, `component`, and for
   console logs `guest_id`.
 - Prometheus on the personal server: scrape configs for hosts (`hostd`
@@ -41,7 +41,7 @@ policy designed without a month of data is a guess.
   04); this workstream defines what the samples must contain and how they
   are exported.
 - The hourly rollup into `usage_hours` (workstream 09).
-- Abuse *response* tooling (`factory-admin suspend`, workstream 05). This
+- Abuse *response* tooling (`repose-admin suspend`, workstream 05). This
   workstream builds the dashboards that show what to respond to.
 - A traces backend. `obs.Tracer` is wired; Tempo or equivalent is a later
   decision.
@@ -89,12 +89,12 @@ component must emit:
 - gateway: `session_open`, `session_close`, `auth_fail` (reason enum:
   `bad_cert|expired|revoked|wrong_principal|stopped|not_found`),
   `route_fail`, `dial_fail`.
-- cli: only to a local file `~/.config/factory/cli.log` at debug level when
+- cli: only to a local file `~/.config/repose/cli.log` at debug level when
   `--verbose`; nothing is shipped from laptops.
 
 ### Metrics
 
-Prefix `factory_`. Labels are low-cardinality only: `component`, `host_id`,
+Prefix `repose_`. Labels are low-cardinality only: `component`, `host_id`,
 `class`, `state`, `kind`, `reason`, `route`, `status`. `project_id` and
 `guest_id` are never labels in Prometheus; per-project figures come from
 `meter_samples` in Postgres and the billing dashboard queries there. The
@@ -104,28 +104,28 @@ over.
 
 Families:
 
-- Host (hostd): `factory_host_mem_free_bytes`, `factory_host_mem_reserved_bytes`,
-  `factory_host_pool_free_bytes`, `factory_host_store_bytes`,
-  `factory_host_guests{state,class}`, `factory_host_builds_running`,
-  `factory_host_build_duration_seconds{result}` (histogram),
-  `factory_host_snapshot_duration_seconds{reason,result}`,
-  `factory_host_snapshot_bytes`, `factory_host_stream_connected` (0/1),
-  `factory_host_commands_total{kind,result}`, `factory_host_guestd_lost`
+- Host (hostd): `repose_host_mem_free_bytes`, `repose_host_mem_reserved_bytes`,
+  `repose_host_pool_free_bytes`, `repose_host_store_bytes`,
+  `repose_host_guests{state,class}`, `repose_host_builds_running`,
+  `repose_host_build_duration_seconds{result}` (histogram),
+  `repose_host_snapshot_duration_seconds{reason,result}`,
+  `repose_host_snapshot_bytes`, `repose_host_stream_connected` (0/1),
+  `repose_host_commands_total{kind,result}`, `repose_host_guestd_lost`
   (gauge, count of guests with `guestd_ok=false`),
-  `factory_host_guest_cpu_seconds_total{class}` (summed over guests),
-  `factory_host_guest_net_bytes_total{direction}`.
-- API: `factory_api_requests_total{route,method,status}`,
-  `factory_api_request_duration_seconds{route}`,
-  `factory_api_hosts{state}`, `factory_api_projects{state,class}`,
-  `factory_api_schedule_total{result}`, `factory_api_certs_issued_total`,
-  `factory_api_certs_revoked_total`, `factory_api_rollup_lag_seconds`,
-  `factory_api_notify_total{channel,result}`,
-  `factory_api_stripe_usage_push_total{result}`,
-  `factory_api_snapshot_age_seconds` (max over running projects; the alert
+  `repose_host_guest_cpu_seconds_total{class}` (summed over guests),
+  `repose_host_guest_net_bytes_total{direction}`.
+- API: `repose_api_requests_total{route,method,status}`,
+  `repose_api_request_duration_seconds{route}`,
+  `repose_api_hosts{state}`, `repose_api_projects{state,class}`,
+  `repose_api_schedule_total{result}`, `repose_api_certs_issued_total`,
+  `repose_api_certs_revoked_total`, `repose_api_rollup_lag_seconds`,
+  `repose_api_notify_total{channel,result}`,
+  `repose_api_stripe_usage_push_total{result}`,
+  `repose_api_snapshot_age_seconds` (max over running projects; the alert
   input).
-- Gateway: `factory_gateway_sessions` (gauge), `factory_gateway_sessions_total`,
-  `factory_gateway_auth_fail_total{reason}`, `factory_gateway_dial_fail_total`,
-  `factory_gateway_route_duration_seconds`.
+- Gateway: `repose_gateway_sessions` (gauge), `repose_gateway_sessions_total`,
+  `repose_gateway_auth_fail_total{reason}`, `repose_gateway_dial_fail_total`,
+  `repose_gateway_route_duration_seconds`.
 - Fleet-level abuse views are Grafana queries over Postgres `proc_samples`
   (top `comm` by CPU across all projects, top egress by project), not
   Prometheus series.
@@ -164,16 +164,16 @@ Each maps to a `../ops/RUNBOOK.md` entry of the same name.
 | Alert | Rule | Severity |
 |---|---|---|
 | `HostMemory80` | `reserved / (reserved+free) > 0.8` for 10m | warn |
-| `HostUnreachable` | `factory_api_hosts{state="unreachable"} > 0` for 2m | page |
-| `SnapshotStale` | `factory_api_snapshot_age_seconds > 36*3600` | warn |
-| `BuildQueueStuck` | `factory_host_builds_running >= 2` and no `build_done` for 45m | warn |
-| `GatewayAuthSpike` | `rate(factory_gateway_auth_fail_total[5m]) > 1` | warn |
-| `EgressHigh` | Postgres: any project over 1 TB in 24h (checked hourly by api, exported as `factory_api_egress_alert_projects`) | warn |
+| `HostUnreachable` | `repose_api_hosts{state="unreachable"} > 0` for 2m | page |
+| `SnapshotStale` | `repose_api_snapshot_age_seconds > 36*3600` | warn |
+| `BuildQueueStuck` | `repose_host_builds_running >= 2` and no `build_done` for 45m | warn |
+| `GatewayAuthSpike` | `rate(repose_gateway_auth_fail_total[5m]) > 1` | warn |
+| `EgressHigh` | Postgres: any project over 1 TB in 24h (checked hourly by api, exported as `repose_api_egress_alert_projects`) | warn |
 | `PoolFull` | `pool_free_bytes / pool_bytes < 0.1` | page |
 | `StoreFull` | host root fs > 85 percent | warn |
-| `GuestdLost` | `factory_host_guestd_lost > 0` for 5m | warn |
-| `RollupLag` | `factory_api_rollup_lag_seconds > 2*3600` | warn |
-| `StripePushFail` | `increase(factory_api_stripe_usage_push_total{result="error"}[1h]) > 0` | warn |
+| `GuestdLost` | `repose_host_guestd_lost > 0` for 5m | warn |
+| `RollupLag` | `repose_api_rollup_lag_seconds > 2*3600` | warn |
+| `StripePushFail` | `increase(repose_api_stripe_usage_push_total{result="error"}[1h]) > 0` | warn |
 
 ### Traces
 
@@ -188,7 +188,7 @@ backend exists, setting one environment variable turns it on.
 |---|---|
 | Loki unreachable from a host | Fluent Bit buffers to disk (`/var/lib/fluent-bit`, 1 GB cap), retries; a host-side `fluent_bit_output_retries_failed_total` alert fires after 30m. Guests are unaffected. |
 | Prometheus cannot scrape a host | `up{job="hosts"} == 0` alert; hostd keeps sampling into Postgres via the gRPC stream, so billing data is not lost. |
-| A component emits a metric outside `factory_` | the `obs` package test fails at build time. |
+| A component emits a metric outside `repose_` | the `obs` package test fails at build time. |
 | A log line carries a forbidden field | a reviewer catches it (checklist item); `obs.Logger` additionally redacts any field named `token`, `secret`, `password`, `authorization`, `cert` at runtime as a floor. |
 | `proc_samples` partition drop fails | the api logs `partition_drop_fail` and alerts; disk grows but nothing else breaks. |
 

@@ -7,19 +7,19 @@ Destroying deletes the disk and keeps the last snapshot for 30 days.
 ## What the user sees
 
 ```
-$ factory stop
+$ repose stop
 Snapshotting todo-app ... 2.1 GB in 38s
 Stopping ... stopped. Disk (40 GB) is kept and billed at $0.10/GB-month.
 
-$ factory stop --no-snapshot
+$ repose stop --no-snapshot
 Stopping ... stopped.
 
-$ factory start
-Starting todo-app ... 4s. Attach with `factory attach`.
+$ repose start
+Starting todo-app ... 4s. Attach with `repose attach`.
 
-$ factory destroy
+$ repose destroy
 This deletes todo-app's disk. The last snapshot (2026-09-17 03:00, 2.1 GB)
-is kept for 30 days and can be restored with `factory snapshots restore
+is kept for 30 days and can be restored with `repose snapshots restore
 --as-new`. Type the project name to confirm: todo-app
 Destroyed.
 ```
@@ -36,7 +36,7 @@ Destroyed.
 | starting | booting | attached | guest-hours from `running` | no |
 | running | on | attached | guest-hours + GB-month + egress | yes |
 | stopping | shutting down, snapshotting | attached | until `stopped` | no |
-| stopped | none | kept | GB-month only | no (`factory start`) |
+| stopped | none | kept | GB-month only | no (`repose start`) |
 | restoring | none | being rewritten | GB-month | no |
 | destroying | none | deleting | until `destroyed` | no |
 | destroyed | none | gone | nothing; last snapshot kept 30 days at no charge | no |
@@ -59,7 +59,7 @@ Stop:
   crash-consistent. `--no-snapshot` skips it and prints that the newest
   snapshot is now the last nightly one.
 - SSH sessions to a stopping guest are closed; the gateway rejects new ones
-  with `todo-app is stopped; run \`factory start\`` from the moment the
+  with `todo-app is stopped; run \`repose start\`` from the moment the
   state leaves `running`.
 - A stopped project's secrets, config, and events are all retained and
   visible.
@@ -86,7 +86,7 @@ Destroy:
   (`destroyed_at` set), its events, its usage, and its newest snapshot with
   `expires_at` 30 days out.
 - Frees the project slot immediately for the account's limit.
-- Within 30 days, `factory snapshots restore <id> --as-new <name>` brings
+- Within 30 days, `repose snapshots restore <id> --as-new <name>` brings
   it back as a new project. After 30 days the snapshot is deleted by the
   retention job and the dashboard stops listing it.
 
@@ -100,7 +100,7 @@ Account cancellation (`DELETE /me`, dashboard button):
 Failure handling:
 
 - A guest that fails to boot goes to `error` with the console log's last
-  50 lines attached to the op; `factory logs --kind console` shows them.
+  50 lines attached to the op; `repose logs --kind console` shows them.
   The volume is untouched; `start` retries; `snapshots restore` is the
   escape.
 - hostd restart mid-operation: the op is replayed by the API with the same

@@ -18,15 +18,15 @@ It listens on vsock only and has no network presence.
 - `cmd/guestd/main.go` and `internal/guestd/`: the server, one package per
   request family (`freeze`, `system`, `fs`, `secrets`, `ssh`, `project`,
   `sample`, `hooks`, `exec`).
-- `proto/factory/guestd/v1/guestd.proto` and the generated Go, with the
+- `proto/repose/guestd/v1/guestd.proto` and the generated Go, with the
   length-prefixed framing in `internal/vsockrpc/` (shared with hostd's
   client side: a `Conn` that reads a uvarint length then a message, writes
   the same, and multiplexes `request_id`).
-- `cmd/factory-hook/main.go`: the tiny binary agent wrappers call from
+- `cmd/repose-hook/main.go`: the tiny binary agent wrappers call from
   their hook config. Reads the agent's hook JSON on stdin, maps to
-  `{agent, kind, summary}`, POSTs to `/run/factory/hooks.sock`, always exits
+  `{agent, kind, summary}`, POSTs to `/run/repose/hooks.sock`, always exits
   0.
-- A `--dev-socket /run/factory/guestd.sock` mode that serves the same
+- A `--dev-socket /run/repose/guestd.sock` mode that serves the same
   protocol on a Unix socket for tests and for developer machines without
   vsock.
 - `internal/fakes/guestd`: an in-process implementation of the protocol
@@ -55,7 +55,7 @@ protocol. Consumed: `interfaces/guest-conventions.md` for every path.
 
 Single static binary, runs as root, `GOMAXPROCS=1` (it must not compete with
 the agent). Starts before sshd. On start: mounts nothing (02 does the
-tmpfs), creates `/run/factory/hooks.sock` (0660 root:dev) and listens on
+tmpfs), creates `/run/repose/hooks.sock` (0660 root:dev) and listens on
 vsock port 5000 (`AF_VSOCK`, `VMADDR_CID_ANY`), or the dev Unix socket.
 Accepts one hostd connection; a second connection replaces the first (the
 old one gets `EOF`), so a hostd restart reconnects cleanly.
@@ -104,11 +104,11 @@ device (found from `/proc/mounts`), online, and returns the new size from
 
 ### Secrets
 
-`WriteSecrets{list}`: for each, write `/run/factory/secrets/<NAME>` with
+`WriteSecrets{list}`: for each, write `/run/repose/secrets/<NAME>` with
 `O_CREAT|O_TRUNC`, mode 0400, owner `dev`, via a temp file and rename.
 Reserved names (`ssh_host_ed25519_key`, `ssh_host_ed25519_key-cert.pub`,
-`user_ca.pub`) are written to `/run/factory/` (root, 0600 / 0644) instead and
-sshd is reloaded. Then rewrite `/run/factory/secrets.env` with one `export
+`user_ca.pub`) are written to `/run/repose/` (root, 0600 / 0644) instead and
+sshd is reloaded. Then rewrite `/run/repose/secrets.env` with one `export
 NAME='value'` per non-reserved secret, single-quoted with `'` escaped as
 `'\''`, mode 0400 dev. Secrets are never logged, not even their names at
 debug level (names are fine in metrics as a count).
@@ -123,9 +123,9 @@ anyway (idempotent).
 ### SetupProject
 
 `SetupProject{slug, remote_url, tz, lang}`: write
-`/home/dev/.factory/project.json` and `/etc/factory/env` (`TZ`,
-`FACTORY_PROJECT`), create `/home/dev/<slug>` if missing (owned dev), `git
-init` if it has no `.git`, and start `factory-tmux-session.service` for the
+`/home/dev/.repose/project.json` and `/etc/repose/env` (`TZ`,
+`REPOSE_PROJECT`), create `/home/dev/<slug>` if missing (owned dev), `git
+init` if it has no `.git`, and start `repose-tmux-session.service` for the
 dev user if not running (`systemctl --user -M dev@ start`). The tmux session
 is created by that unit, not by guestd directly, so it survives guestd
 restarts and belongs to `dev`'s tmux server.
@@ -168,7 +168,7 @@ obtained via `SO_PEERCRED`; this is the one environment read, limited to
 that variable, and documented in `SECURITY.md`). Relays as `AgentEvent`
 and updates the window's last-hook state for `Sample`.
 
-`factory-hook` maps Claude Code's payload: `hook_event_name=Stop` →
+`repose-hook` maps Claude Code's payload: `hook_event_name=Stop` →
 `completed` with `summary` = last assistant line if present in
 `transcript_path` (read tail 4 KB, first `"type":"assistant"` text, 200
 chars); `Notification` with `notification_type=permission_prompt|idle_
@@ -181,7 +181,7 @@ listed in `features/agents.md`.
 `Exec{argv, timeout_s, as_user}`: runs with `setpriv` to `dev` or root,
 captures 64 KB of each stream, returns exit code. guestd logs `exec
 requested` with argv length only; hostd holds the audit record. Used by
-`factory-admin exec` and by hostd for two internal purposes: the git
+`repose-admin exec` and by hostd for two internal purposes: the git
 fetch/checkout at `run` (07 drives it through the SSH session instead, so
 this is only a fallback) and `docker ps` if the socket path changes.
 
@@ -200,18 +200,18 @@ most once per 10 minutes.
 |---|---|
 | hostd never connects | guestd runs, sshd runs, the user can still work over SSH; samples are not collected, hooks queue and drop after 256 with a counter; `Ready` is retried on every new connection. The api shows `guestd_ok=false` after 60 s (03). |
 | `Freeze` then hostd dies | Thawed after 10 s, `Warning{freeze_timeout}` on reconnect. Snapshot marked failed by hostd's timeout. |
-| `Switch` fails | Old system stays; output returned; api shows the revision `failed` with the tail; user sees it in `factory config apply` and `factory status`. |
-| `Switch` needs a reboot and the user did not force | Response `needs_reboot=true`; CLI prints `this change needs a reboot (kernel changed); run \`factory config apply --reboot\` when your agent is idle`. |
+| `Switch` fails | Old system stays; output returned; api shows the revision `failed` with the tail; user sees it in `repose config apply` and `repose status`. |
+| `Switch` needs a reboot and the user did not force | Response `needs_reboot=true`; CLI prints `this change needs a reboot (kernel changed); run \`repose config apply --reboot\` when your agent is idle`. |
 | Secret name invalid or value over 64 KB | Rejected upstream by the api; guestd also rejects with `invalid_argument` and writes nothing for the whole batch (atomic per request). |
 | Hook JSON malformed | 400 to the wrapper, which ignores it; guestd logs `hook rejected: <reason>` without the body. |
 | `Sample` exceeds 1 s | Returns partial data with `partial=true`; hostd logs it; a metric counts it (10). |
 | tmux server not running for dev | `SetupProject` starts the unit; `Sample` reports 0 clients and no agents, `Warning{tmux_down}` once. |
-| Root fs 100 percent | Writes fail everywhere; guestd's own writes are on tmpfs so it keeps running; `Warning{disk_90}` fired earlier; the user resizes with `factory resize`. |
+| Root fs 100 percent | Writes fail everywhere; guestd's own writes are on tmpfs so it keeps running; `Warning{disk_90}` fired earlier; the user resizes with `repose resize`. |
 
 ## 7. Testing
 
 - Unit tests for framing, every handler with a fake filesystem root
-  (`--root` flag pointing at a temp dir for paths under `/run/factory`,
+  (`--root` flag pointing at a temp dir for paths under `/run/repose`,
   `/etc/ssh`, `/home/dev`), the proc sampler against fixture `/proc` trees,
   the hook mapper against recorded payloads from each agent (fixtures in
   `internal/guestd/hooks/testdata/`).
@@ -274,4 +274,4 @@ per-request rather than failing outright.
 - [ ] `ops/RUNBOOK.md` entries: guestd not ready, freeze timeout, switch
       failed. Evidence: the entries.
 - [ ] `rg 'TODO|FIXME|not implemented' cmd/guestd internal/guestd
-      cmd/factory-hook` empty. Evidence: output.
+      cmd/repose-hook` empty. Evidence: output.

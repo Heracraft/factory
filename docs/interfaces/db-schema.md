@@ -2,7 +2,7 @@
 
 Postgres 16. Migrations in `internal/db/migrations/` numbered
 `NNNN_name.up.sql` / `.down.sql`, applied by `api` at start (`--migrate`) and
-by `factory-admin db migrate`. Every table has `created_at timestamptz not
+by `repose-admin db migrate`. Every table has `created_at timestamptz not
 null default now()`; mutable tables also have `updated_at` maintained by a
 trigger. Ids are `uuid` (UUIDv7 generated in Go). Money is `bigint` cents.
 

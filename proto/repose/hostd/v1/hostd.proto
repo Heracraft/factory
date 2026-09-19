@@ -2,9 +2,9 @@
 // one Session stream; commands flow down, results, samples and events flow up.
 syntax = "proto3";
 
-package factory.hostd.v1;
+package repose.hostd.v1;
 
-option go_package = "github.com/heracraft/factory/internal/gen/hostd/v1;hostdv1";
+option go_package = "github.com/heracraft/repose/internal/gen/hostd/v1;hostdv1";
 
 service HostService {
   rpc Register(RegisterRequest) returns (RegisterResponse);

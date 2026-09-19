@@ -25,7 +25,7 @@ per-host shared store gives both properties.
 **R1-3. Git is the exchange channel, plus a one-shot sync of the uncommitted
 diff at launch.** *Rejected:* bidirectional file sync (mutagen) fights a
 running agent writing files; remote-only editing forces a habit change.
-*Revisit when:* users ask for live sync; consider a `factory sync --watch`.
+*Revisit when:* users ask for live sync; consider a `repose sync --watch`.
 
 **R1-4. `run` attaches, `run "prompt"` starts an agent, with a prelisted agent
 picker defaulting to Claude.** Build both from the start.
@@ -124,7 +124,7 @@ keypair injected into guests per run (key distribution into running guests);
 per-user WireGuard (a second product to run). Certificate lifetime 12 hours
 (R3-9), refreshed silently while the Logto refresh token is valid.
 
-**R2-6. Dev-server access is `factory open <port>` (SSH forward) now; per-
+**R2-6. Dev-server access is `repose open <port>` (SSH forward) now; per-
 project HTTPS preview URLs later, documented from day one.**
 
 **R3-7. The gateway is custom Go, not OpenSSH ProxyJump.** *Why:* OpenSSH
@@ -185,7 +185,7 @@ terminal contents.** The privacy policy states this in the same words.
 **R2-11 + R2-13 + R2-14 + R2-16. Agents: Claude Code, opencode, Codex CLI,
 Gemini CLI, pi. Browser: headless Chromium with Playwright MCP and
 chrome-devtools-mcp, plus on-demand Xvfb and noVNC. Laptop-bound MCPs
-unsupported at first, `factory mcp forward` planned. Notifications: platform
+unsupported at first, `repose mcp forward` planned. Notifications: platform
 hooks for every agent plus each agent's own features.** *Rejected:* a longer
 agent list (unpackaged tools become packages you maintain); a laptop Chrome
 bridge first (only works while the laptop is open, the case being escaped).
@@ -248,9 +248,9 @@ hour bundles.
 **R4-11. Retention: destroy deletes the volume and keeps the last snapshot 30
 days; cancellation stops guests, keeps snapshots 30 days.**
 
-**R4-12 + R4 domain note. The name is `factory` everywhere. Hosted under
-`herakraft.co` (`factory.herakraft.co`, `api.factory.herakraft.co`,
-`ssh.factory.herakraft.co`) until it graduates to its own domain.** *Why:*
+**R4-12 + R4 domain note. The name is `repose` everywhere. Hosted under
+`herakraft.co` (`repose.herakraft.co`, `api.repose.herakraft.co`,
+`ssh.repose.herakraft.co`) until it graduates to its own domain.** *Why:*
 velocity and clear ownership; an apps dashboard at `www.herakraft.co` lists
 side projects.
 
@@ -300,7 +300,7 @@ serving everything else; a kernel-changing apply does nothing until the user
 confirms. Interface: `grpc-hostd.md`.
 
 **I-6. Preview hostnames carry the handle:
-`<port>-<slug>-<handle>.factory.herakraft.co`.** (features) *Why:* slugs are
+`<port>-<slug>-<handle>.repose.herakraft.co`.** (features) *Why:* slugs are
 unique per user, not globally. Not built in the first release.
 
 **I-7. `POST /me/notify-test`, and the SSE build-log route accepts
@@ -310,7 +310,7 @@ token is never logged and no other route accepts it. Interface: `api.md`.
 **I-8. CLI gains `events` and `notify set|test`.** (13) Interface:
 `DESIGN.md` §10, `07-cli.md`.
 
-**I-9. The runbook's `factory-admin` surface is the required admin CLI.**
+**I-9. The runbook's `repose-admin` surface is the required admin CLI.**
 (05, ops) Subcommands named in `ops/RUNBOOK.md` and `11-infra-opentofu.md`
 (hosts add/drain/retire/reconcile/mark-lost, projects move/restore/restart,
 users suspend, billing rollup/resync, base publish, operator-cert, edge
@@ -319,7 +319,7 @@ workstream 05's checklist.
 
 **I-10. Guest sshd material travels as explicit `CreateGuest` fields and lands
 in the guest's secrets tmpfs under reserved names.** (02, 03, 05) hostd writes
-`host_key`, `host_cert` and `ssh_ca_pub` to `/run/factory/secrets/` as
+`host_key`, `host_cert` and `ssh_ca_pub` to `/run/repose/secrets/` as
 `ssh_host_ed25519_key`, `ssh_host_ed25519_key-cert.pub`, `user_ca.pub`, which
 the guest base's sshd config reads. The api rejects those names on `PUT
 /secrets`. *Why:* one delivery mechanism in the guest, one explicit contract on
@@ -359,3 +359,19 @@ itself, so `npm i -g` in a guest fails with EACCES on the read-only store.
 *Rejected:* telling users to package everything through config fragments
 (agents run `npm i -g` on their own and would hit the error unprompted).
 Interface: `guest-conventions.md` "Environment".
+
+**I-15. The product is named Repose.** (owner, 2026-09-19) Replaces
+`factory` everywhere: CLI binary, Go module `github.com/heracraft/repose`,
+proto packages `repose.*`, config directory `~/.config/repose`, paths under
+`/run/repose`, `/var/lib/repose`, `/etc/repose`, env `REPOSE_*`, metrics
+`repose_*`, systemd units `repose-*`, hostnames `repose.herakraft.co`,
+`api.repose.herakraft.co`, `ssh.repose.herakraft.co`. *Why:* the word says
+what the product does (you rest, the environment does not) and no software
+trademark or dev-tool product holds it. *Known collisions, accepted:* dead
+`repose` packages on npm, PyPI and crates.io (publish scoped or not at
+all); an Arch Linux repo tool that ships a `repose` binary (the installer
+puts ours first on PATH and warns if another is found, see 07-cli); Rackspace's
+dormant OpenRepose API proxy; a supplement brand at getrepose.com. `repose.run`
+was free on 2026-09-19 and should be registered. The on-disk checkout may
+still be called `factory`; nothing in the repo depends on the directory
+name. Supersedes R4-12's naming half.

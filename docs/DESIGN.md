@@ -1,4 +1,4 @@
-# factory: full design
+# repose: full design
 
 Status: agreed 2026-09-17 after a structured design interview. This is the
 whole system. Every other doc under `docs/` is a slice of this one; when a slice
@@ -8,7 +8,7 @@ wins on intent. Changes go through `DECISIONS.md`.
 ## 1. The one idea
 
 A developer's laptop is the wrong place for a coding agent to run for six
-hours. It sleeps, it loses Wi-Fi, it gets closed and carried to the gym. factory
+hours. It sleeps, it loses Wi-Fi, it gets closed and carried to the gym. repose
 gives each project a persistent Linux microVM on a shared host, provisioned from
 a Nix configuration, reachable over SSH through a gateway, where an agent runs
 inside tmux and keeps going. The developer checks back from the laptop, a phone,
@@ -22,24 +22,24 @@ not think about this, and power users will pay by the hour past that.
 
 ```
 $ cd ~/code/todo-app
-$ factory login                     # browser opens, Logto, GitHub sign-in, done
-$ factory run                       # creates project "todo-app" on first use,
+$ repose login                     # browser opens, Logto, GitHub sign-in, done
+$ repose run                       # creates project "todo-app" on first use,
                                     # boots a guest, syncs the working tree,
                                     # attaches to tmux inside it
 dev@todo-app:~/todo-app$            # tmux session "todo-app", window "shell"
 ^b d                                # detach; the guest keeps running
-$ factory run "finish the auth flow, run the tests, commit"
+$ repose run "finish the auth flow, run the tests, commit"
                                     # opens tmux window "claude", starts Claude
                                     # Code's TUI, types the prompt
-$ factory status
+$ repose status
 todo-app   large   running  2h14m   claude: working   $0.31 so far today
-$ factory open 3000                 # http://localhost:3000 -> guest's :3000
-$ factory attach                    # back into tmux, see what the agent did
-$ factory stop                      # snapshot, then deallocate; disk billed only
+$ repose open 3000                 # http://localhost:3000 -> guest's :3000
+$ repose attach                    # back into tmux, see what the agent did
+$ repose stop                      # snapshot, then deallocate; disk billed only
 ```
 
 Everything else (`secrets`, `config`, `snapshots`, `logs`, `destroy`, `start`)
-is a variation on that loop. The dashboard at `factory.herakraft.co` shows the
+is a variation on that loop. The dashboard at `repose.herakraft.co` shows the
 same projects, their cost, secrets, and a config menu for people who do not
 write Nix.
 
@@ -144,13 +144,13 @@ of user config:
 - OpenSSH trusting the platform CA, `AuthorizedPrincipalsFile` lists the
   project id; password auth off; only `dev` may log in.
 - The agents from the platform overlay: `claude-code`, `opencode`, `codex`,
-  `gemini-cli`, `pi-coding-agent`. Each has a `factory` wrapper that installs
+  `gemini-cli`, `pi-coding-agent`. Each has a `repose` wrapper that installs
   the notification hooks and names its tmux window.
 - Headless Chromium and `playwright-driver.browsers`, with Playwright MCP and
   chrome-devtools-mcp registered in Claude Code's user-scope MCP config,
   headless by default.
 - Xvfb, a minimal window manager, x11vnc and noVNC as socket-activated
-  services, off until `factory open --desktop` or the dashboard asks.
+  services, off until `repose open --desktop` or the dashboard asks.
 - Toolchain from the current `packages/core/flake.nix`: node 24, pnpm, python
   3.12, uv, go, rustup, just, ripgrep, jq, gh, git, direnv with nix-direnv,
   starship, zoxide, eza. This flake becomes `nix/guest/base/tools.nix`.
@@ -159,7 +159,7 @@ of user config:
   laptop's zone as reported by the CLI at project creation.
 - Fluent Bit is *not* in the guest. Console output goes to hostd over the
   serial device; application logs stay in the guest.
-- `factory-guest-profile`: a small script the CLI's `open`, `sync` and hooks
+- `repose-guest-profile`: a small script the CLI's `open`, `sync` and hooks
   rely on, documented in `interfaces/guest-conventions.md`.
 
 **User config (the fragment).** A home-manager module supplied by the user,
@@ -176,7 +176,7 @@ shared store. `hostd` tells `guestd` over vsock to run the new system's
 `switch-to-configuration switch`. The guest does not reboot unless the kernel,
 initrd, or the virtio-fs share layout changed, in which case the CLI says so
 and asks. Base bumps from the platform are applied the same way, weekly, with
-a per-project `hold` flag and a changelog line in `factory status`.
+a per-project `hold` flag and a changelog line in `repose status`.
 
 **Boot.** A stopped guest starts in under 5 seconds because its closure is
 already in the host store. A new project's first start is bounded by building
@@ -188,7 +188,7 @@ its fragment; the CLI streams the build.
   root overlay's upper dir and `/home`.
 - Snapshot = `guestd` runs `fsfreeze -f /` , hostd takes an LVM thin snapshot,
   `guestd` runs `fsfreeze -u`, freeze window under one second. The snapshot is
-  streamed `zstd`-compressed to Azure Blob (`factory-snapshots` container,
+  streamed `zstd`-compressed to Azure Blob (`repose-snapshots` container,
   path `<user>/<project>/<timestamp>.img.zst`), then the LVM snapshot is
   removed.
 - Schedule: nightly at 03:00 in the host's timezone, and on every `stop`.
@@ -208,7 +208,7 @@ laptop ──ssh──▶ edge (public IP)  ──wireguard──▶ host br-gue
                  gateway :22                        10.64.x.y
                  wg hub  :51820/udp
 laptop ──https─▶ Coolify VM (public IP) : api, web, logto
-host ──grpc/mtls (outbound)──▶ api.factory.herakraft.co
+host ──grpc/mtls (outbound)──▶ api.repose.herakraft.co
 host ──wireguard (outbound)──▶ edge
 guest ──NAT──▶ internet (shaped)
 guest ──vsock──▶ hostd
@@ -221,7 +221,7 @@ guest ──vsock──▶ hostd
   WireGuard peers. The gateway dials `10.64.x.y:22` for a guest.
 - Guests reach the edge's WireGuard address only on the hook-ingest port and
   the noVNC relay; everything else is egress to the internet.
-- Preview URLs (`3000-todo-app-heracraft.factory.herakraft.co`; the hostname
+- Preview URLs (`3000-todo-app-heracraft.repose.herakraft.co`; the hostname
   carries the handle because slugs are unique per user, not globally) are
   not built in the first release. The design: the edge terminates TLS with a wildcard cert,
   authenticates with a cookie from Logto, and proxies to the guest port over
@@ -234,15 +234,15 @@ guest ──vsock──▶ hostd
   The CLI uses authorization code with PKCE and a loopback redirect; when no
   browser is available it falls back to device code (Logto supports RFC 8628
   since v1.38). The CLI stores the refresh token in the OS keychain where one
-  exists, else `~/.config/factory/credentials.json` mode 0600.
-- **API auth.** JWT access tokens for the `https://api.factory.herakraft.co`
+  exists, else `~/.config/repose/credentials.json` mode 0600.
+- **API auth.** JWT access tokens for the `https://api.repose.herakraft.co`
   resource, verified by the API against Logto's JWKS.
 - **SSH.** The API holds an SSH CA (ed25519, key in the secrets store). On
   `run` and `attach` the CLI sends its existing public key
   (`~/.ssh/id_ed25519.pub`, created if missing) and gets back a certificate
   with principal `<project-id>`, valid 12 hours, extensions
   `permit-agent-forwarding,permit-port-forwarding,permit-pty`. The CLI adds it
-  to the running ssh-agent and writes `~/.ssh/factory/config` with one `Host`
+  to the running ssh-agent and writes `~/.ssh/repose/config` with one `Host`
   block per project, included from the user's main config by a line the CLI
   adds once. The CLI refreshes the certificate silently while the Logto
   refresh token is valid.
@@ -272,7 +272,7 @@ Four Go binaries in one module, one Postgres.
 - **`guestd`**: inside each guest, vsock only. Freeze, switch, resize-fs,
   tmux setup, process sampling, hook relay, notification of readiness.
 - **`gateway`**: on the edge. SSH relay plus, later, the HTTPS preview proxy.
-- **`factory`**: the CLI.
+- **`repose`**: the CLI.
 
 Postgres holds users, projects, hosts, guests, volumes, snapshots, secrets
 (ciphertext), certificates issued, meter samples, invoices, notifications,
@@ -294,7 +294,7 @@ servers, hence the Ubuntu VM.
 
 ## 10. The CLI
 
-`factory`, one static Go binary, installed by `curl | sh` or `nix run`.
+`repose`, one static Go binary, installed by `curl | sh` or `nix run`.
 Commands: `login`, `logout`, `run [prompt] [--agent] [--size] [--name]`,
 `attach`, `stop`, `start`, `status`, `open <port> | --desktop`, `secrets
 set|list|rm`, `config apply|edit|show`, `snapshots list|restore`, `destroy`,
@@ -302,7 +302,7 @@ set|list|rm`, `config apply|edit|show`, `snapshots list|restore`, `destroy`,
 
 Project resolution: read `git remote get-url origin`, normalise
 (`git@github.com:a/b.git` and `https://github.com/a/b` are the same), look up
-`(user, remote)` in `~/.config/factory/projects.json`, then the API. No remote
+`(user, remote)` in `~/.config/repose/projects.json`, then the API. No remote
 and no `--name` is an error with a one-line fix.
 
 `run` sequence:
@@ -323,7 +323,7 @@ and no `--name` is an error with a one-line fix.
    agent's TUI, send the prompt. Otherwise attach to the session's current
    window.
 
-All of it is idempotent; running `factory run` twice attaches twice.
+All of it is idempotent; running `repose run` twice attaches twice.
 
 ## 11. Agents, browser, MCP
 
@@ -339,20 +339,20 @@ All of it is idempotent; running `factory run` twice attaches twice.
   heuristic where no hook exists, and the doc for that agent says which.
 - Claude login happens inside the guest: the first `run` with agent claude
   detects no credentials and runs `claude` so the user pastes the code from
-  the browser. `factory secrets set CLAUDE_CODE_OAUTH_TOKEN` (from `claude
+  the browser. `repose secrets set CLAUDE_CODE_OAUTH_TOKEN` (from `claude
   setup-token` on the laptop) is the headless fallback and loses Remote
   Control, connectors and Claude in Chrome. Anthropic's terms require each
   user to authenticate with their own credentials on hosted platforms; the
   platform never stores or proxies Claude auth.
 - Browser: headless Chromium plus Playwright MCP and chrome-devtools-mcp in
-  every guest. `factory open --desktop` starts Xvfb, x11vnc and noVNC and
+  every guest. `repose open --desktop` starts Xvfb, x11vnc and noVNC and
   forwards the noVNC port so the user can watch or take over a browser the
   agent is stuck on. Claude in Chrome cannot work from a guest; a later CLI
-  feature (`factory browser bridge`) reverse-tunnels the laptop's Chrome
+  feature (`repose browser bridge`) reverse-tunnels the laptop's Chrome
   DevTools port so agents in the guest can drive the laptop's browser while
   the laptop is open.
 - MCP: HTTP and API-backed servers work as on a laptop. Laptop-bound stdio
-  servers are unsupported in the first release; `factory mcp forward` (wrap
+  servers are unsupported in the first release; `repose mcp forward` (wrap
   with mcp-proxy, reverse-tunnel, register in the guest) is the planned path
   and is written up in `features/agents.md`.
 
@@ -365,9 +365,9 @@ Three kinds, three treatments:
    (user.name and user.email only). Copied at `run` over SSH into the guest,
    mode 0600, owned by `dev`. The platform never sees them.
 2. **Claude Code**: never copied. See section 11.
-3. **Named secrets** (`factory secrets set NAME`): encrypted by the API with a
+3. **Named secrets** (`repose secrets set NAME`): encrypted by the API with a
    per-user data key, itself wrapped by an Azure Key Vault key. Ciphertext and wrapped DEK in Postgres. Delivered to
-   the guest at start as `/run/factory/secrets/NAME` (tmpfs, 0400 dev) and
+   the guest at start as `/run/repose/secrets/NAME` (tmpfs, 0400 dev) and
    exported into login shells as environment variables. Rotating the Key Vault
    key re-wraps DEKs without touching ciphertext.
 
@@ -380,7 +380,7 @@ closes that and is a recorded upgrade.
 `api` receives hook events `(project, agent, kind in {completed, needs_input,
 error}, summary)` and delivers by the user's configured channels: email
 (Resend) and ntfy (any ntfy-compatible endpoint the user sets, so phone apps
-work). Telegram and Discord webhooks are next. Events also show in `factory
+work). Telegram and Discord webhooks are next. Events also show in `repose
 status` and the dashboard. Claude Code Remote Control and channels remain
 available to users who log in with a subscription; the platform does nothing
 to them.
@@ -409,7 +409,7 @@ A failed payment stops guests after 3 days and destroys nothing for 30.
 
 Ship everything, invade nothing.
 
-- Host: node_exporter, hostd's own metrics (`factory_host_*`), Cloud
+- Host: node_exporter, hostd's own metrics (`repose_host_*`), Cloud
   Hypervisor per-guest stats, LVM pool usage, nftables byte counters per
   guest, Fluent Bit shipping journald and each guest's console log to the
   existing Loki. Prometheus is added to the personal Grafana server and
@@ -427,7 +427,7 @@ Ship everything, invade nothing.
   with no session for days, egress in the terabytes).
 - Control plane: structured JSON logs, OpenTelemetry traces exported to
   nothing yet (an OTLP endpoint env var, unset), Prometheus metrics.
-- Abuse response is manual in the first release: `factory-admin suspend
+- Abuse response is manual in the first release: `repose-admin suspend
   <user>` stops guests and freezes billing. Rate limits: 200 Mbit/s egress
   shaping, 10 projects per user, 3 until first paid invoice.
 
@@ -443,9 +443,9 @@ by restoring one Postgres dump into a Coolify elsewhere and re-pointing DNS.
 ## 17. Repository layout
 
 ```
-factory/
-  go.mod                     module github.com/heracraft/factory
-  cmd/api  cmd/hostd  cmd/guestd  cmd/gateway  cmd/factory
+repose/
+  go.mod                     module github.com/heracraft/repose
+  cmd/api  cmd/hostd  cmd/guestd  cmd/gateway  cmd/repose
   internal/                  shared Go: proto, db, ca, secrets, meter, ...
   proto/                     hostd.proto, guestd vsock messages
   nix/
@@ -468,8 +468,8 @@ then it stays so the current dev box keeps working.
 ## 18. Out of scope for the first release
 
 Teams and shared projects. Preview URLs. Idle auto-stop. Per-project LUKS.
-Central build farm. Automatic host provisioning. GPU guests. `factory mcp
-forward` and `factory browser bridge`. Telegram and Discord delivery. Any
+Central build farm. Automatic host provisioning. GPU guests. `repose mcp
+forward` and `repose browser bridge`. Telegram and Discord delivery. Any
 provider other than Azure hosts. Each has a section in `DECISIONS.md` saying
 when it becomes in scope.
 

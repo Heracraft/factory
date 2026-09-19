@@ -33,7 +33,7 @@ dist
 
 scratch.md
 .env
-# factory
+# repose
 .direnv/
 result
 result-*

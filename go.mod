@@ -1,3 +1,3 @@
-module github.com/heracraft/factory
+module github.com/heracraft/repose
 
 go 1.26

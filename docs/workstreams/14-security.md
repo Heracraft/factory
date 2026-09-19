@@ -17,7 +17,7 @@ the policy text published.
   legal/`, with the two required passages below verbatim.
 - A review checklist for each other workstream, applied at their PR time,
   recorded as a comment in `STATUS.md`.
-- `factory-admin audit` to query `audit_log`, and the audit coverage list in
+- `repose-admin audit` to query `audit_log`, and the audit coverage list in
   §5.
 - An incident response note in `../ops/RUNBOOK.md`: who is told, what is
   captured, how a tenant is notified.
@@ -70,7 +70,7 @@ The privacy policy must contain, verbatim:
 The terms must contain, in substance:
 
 > Coding agents such as Claude Code run inside your environment under your
-> own account with that agent's provider. factory does not hold, proxy, or
+> own account with that agent's provider. repose does not hold, proxy, or
 > resell those credentials. You are responsible for complying with each
 > provider's terms for hosted use.
 
@@ -97,23 +97,23 @@ Applied to workstreams 05, 07 and 04 at review:
 ### Audit coverage
 
 `audit_log` rows for: every certificate issue and revoke, every `Exec` over
-gRPC or vsock, every `factory-admin` command, every operator SSH login to a
+gRPC or vsock, every `repose-admin` command, every operator SSH login to a
 host or the edge, every secret set or delete (name only), every user
-suspension, every restore. `factory-admin audit --user`, `--project`,
+suspension, every restore. `repose-admin audit --user`, `--project`,
 `--since` query it. Retention: indefinite.
 
 ### Operator access
 
 Operators reach hosts and the edge only over the edge's WireGuard with a
-certificate from the Host CA (`factory-admin operator-cert`), 8-hour
+certificate from the Host CA (`repose-admin operator-cert`), 8-hour
 validity. There are no operator passwords. Touching a guest goes through
-`factory-admin exec`, which is audited; `virsh`-style direct access to a
+`repose-admin exec`, which is audited; `virsh`-style direct access to a
 guest's console is available only from the host and is logged by the PAM
 hook.
 
 ### Incident basics
 
-If a tenant boundary is found broken: stop scheduling (`factory-admin hosts
+If a tenant boundary is found broken: stop scheduling (`repose-admin hosts
 drain --all`), snapshot the affected guests, capture hostd and gateway logs
 for the window, notify affected users within 72 hours with what was
 exposed, record the timeline in `docs/incidents/YYYY-MM-DD.md`. The runbook

@@ -11,7 +11,7 @@ reboot.
 The menu, from the dashboard or the CLI:
 
 ```
-$ factory config add bun postgresql
+$ repose config add bun postgresql
 Building todo-app config r14 (base 2026.09.15 + 6 packages, 1 service) ...
   copying path '/nix/store/...-bun-1.2.4' from 'https://cache.nixos.org' ...
   ... 38s
@@ -21,14 +21,14 @@ Applying to running guest ... switched, no reboot needed.
 The fragment:
 
 ```
-$ factory config edit          # opens $EDITOR on the fragment
-$ factory config apply         # or `factory config apply ./my-fragment.nix`
+$ repose config edit          # opens $EDITOR on the fragment
+$ repose config apply         # or `repose config apply ./my-fragment.nix`
 Building todo-app config r15 ...
 error: attribute 'nodejs_25' missing
        at fragment.nix:7:5
   home.packages = [ pkgs.nodejs_25 ];
                     ^
-Fix the fragment and run `factory config apply` again. r14 is still active.
+Fix the fragment and run `repose config apply` again. r14 is still active.
 ```
 
 A change that needs a reboot:
@@ -36,22 +36,22 @@ A change that needs a reboot:
 ```
 Applying to running guest ... this revision changes the kernel; a reboot is
 required and claude is running in todo-app:claude.
-  factory config apply --reboot     reboot now (agents will be interrupted)
-  factory config apply --later      apply at next start
+  repose config apply --reboot     reboot now (agents will be interrupted)
+  repose config apply --later      apply at next start
 ```
 
 A base bump:
 
 ```
-$ factory status
+$ repose status
 todo-app   large   running   base 2026.09.22 (was 2026.09.15: claude-code 2.1.280, kernel 6.17.4)
 ```
 
 Holding:
 
 ```
-$ factory config hold
-todo-app will stay on base 2026.09.15 until `factory config unhold`.
+$ repose config hold
+todo-app will stay on base 2026.09.15 until `repose config unhold`.
 ```
 
 ## Menu versus fragment
@@ -106,7 +106,7 @@ Applying (DECISIONS R3-3):
   `--later`. `--later` marks the revision `built` and applies it on the next
   `start`.
 - On a stopped guest, apply happens at next start and the CLI says so.
-- Switching back: `factory config revisions` lists revisions; `factory
+- Switching back: `repose config revisions` lists revisions; `repose
   config apply --revision r12` rebuilds nothing (the closure is a GC root
   while the revision exists) and switches to it.
 
@@ -122,7 +122,7 @@ Base bumps (DECISIONS R4-5):
 - A rebuild against a new base that fails does not change the project; it
   raises an event to the user with the error and an alert to the operator,
   since a base that breaks a fragment is usually the platform's bug.
-- `factory config hold` pins the base; `unhold` releases it and triggers the
+- `repose config hold` pins the base; `unhold` releases it and triggers the
   rebuild. `status` shows the held version and how far behind it is.
 - The changelog line in `status` lists agent version changes and kernel
   changes, since those are what users notice.

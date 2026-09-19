@@ -45,7 +45,7 @@ manually issued certificate.
 Workstreams: `06-gateway-edge`, `05-control-plane-api` (auth, CA, projects,
 routing), `07-cli`, `11-infra-opentofu` (edge, hosts, blob, kv).
 
-Gate: a second person with a GitHub account runs `factory login` and `factory
+Gate: a second person with a GitHub account runs `repose login` and `repose
 run` on their laptop and lands in tmux in their own guest on the shared host,
 cannot reach the first person's guest, and gets a notification when their
 agent finishes.
@@ -74,10 +74,10 @@ at zero. A failed payment stops guests after 3 days.
 Workstreams: `14-security` (final review), `ops` docs, launch checklist in
 `CHECKLIST.md`.
 
-Gate: `CHECKLIST.md` closed. Landing page at `factory.herakraft.co`.
+Gate: `CHECKLIST.md` closed. Landing page at `repose.herakraft.co`.
 
 ## Later, in order of likely demand
 
-Preview URLs. Idle auto-stop (needs M1 signals for a month). `factory mcp
+Preview URLs. Idle auto-stop (needs M1 signals for a month). `repose mcp
 forward`. Telegram and Discord. Hetzner host module. Per-project LUKS. Teams.
 Central builder. Automatic capacity.

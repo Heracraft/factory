@@ -50,13 +50,13 @@ Owned: none. Consumed: none. Output is a section in `RESEARCH.md` and a
 ### Provisioning the host
 
 ```
-az group create -n factory-bench -l eastus
-az vm create -g factory-bench -n bench-host \
+az group create -n repose-bench -l eastus
+az vm create -g repose-bench -n bench-host \
   --image Canonical:ubuntu-24_04-lts:server:latest \
   --size Standard_D64s_v5 --security-type Standard \
   --os-disk-size-gb 128 --admin-username azureuser \
   --ssh-key-values ~/.ssh/id_ed25519.pub --public-ip-sku Standard
-az vm disk attach -g factory-bench --vm-name bench-host \
+az vm disk attach -g repose-bench --vm-name bench-host \
   --name bench-data --new --size-gb 512 --sku PremiumV2_LRS
 ```
 
@@ -153,7 +153,7 @@ Append to `docs/RESEARCH.md` under a heading `## Benchmark 2026-09`:
 
 ### Teardown
 
-`az group delete -n factory-bench --yes`. Keep the bench host only if M1 has
+`az group delete -n repose-bench --yes`. Keep the bench host only if M1 has
 already started using it (it may be re-imaged with the production host
 config by 01).
 

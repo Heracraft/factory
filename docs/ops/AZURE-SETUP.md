@@ -26,18 +26,18 @@ a day.
    Microsoft.KeyVault, Microsoft.ManagedIdentity. Portal: Subscription →
    Resource providers → Register.
 
-4. **Create a resource group** named `factory-prod` in East US. OpenTofu
+4. **Create a resource group** named `repose-prod` in East US. OpenTofu
    will put everything in it, and deleting it later deletes everything.
 
 5. **Create the OpenTofu state store by hand.** A storage account named
-   `factorytfstate` plus a random suffix (names are global), a container
+   `reposetfstate` plus a random suffix (names are global), a container
    named `tfstate`. Standard LRS is fine. This is the one thing that must
    exist before the first `tofu init`, and it must never be managed by
    OpenTofu itself.
 
 6. **Decide how OpenTofu authenticates.** For now: `az login` on the machine
    running it (the dev shell provides `az`). Later, for CI, a service
-   principal with Contributor on `factory-prod` and Key Vault Administrator
+   principal with Contributor on `repose-prod` and Key Vault Administrator
    on the vault. Do not create a subscription-wide Owner principal.
 
 7. **Set a budget alert.** Cost Management → Budgets: $1,000 a month for
@@ -58,21 +58,21 @@ a day.
 
 ## Outside Azure
 
-10. **Cloudflare R2.** Create a bucket `factory-pg-backups` and an API token
+10. **Cloudflare R2.** Create a bucket `repose-pg-backups` and an API token
     with object read/write on that bucket only. Coolify's Postgres backups
     go here. Note the account id, access key, secret and endpoint.
 
 11. **DNS for `herakraft.co`.** Nothing to create yet, but confirm you can
     add records. Agents will need these once IPs exist:
-    `factory` (dashboard), `api.factory`, `ssh.factory`, and later
-    `*.factory` for previews. If Logto stays on your personal server, its
+    `repose` (dashboard), `api.repose`, `ssh.repose`, and later
+    `*.repose` for previews. If Logto stays on your personal server, its
     hostname stays as it is.
 
 12. **Logto.** In your existing Logto: create an API resource with
-    identifier `https://api.factory.herakraft.co`; a Native application
-    named `factory-cli` (device flow and loopback redirect
+    identifier `https://api.repose.herakraft.co`; a Native application
+    named `repose-cli` (device flow and loopback redirect
     `http://127.0.0.1:*/callback` allowed); a Single-page application named
-    `factory-web` with redirect `https://factory.herakraft.co/callback`.
+    `repose-web` with redirect `https://repose.herakraft.co/callback`.
     Confirm the GitHub connector is enabled. Copy the app ids and the
     issuer URL; agents need them as environment variables, never in git.
 
@@ -81,7 +81,7 @@ a day.
     Live mode is a milestone M4 gate, not a prerequisite.
 
 14. **Resend.** Verify the sending domain (`herakraft.co` or
-    `factory.herakraft.co`) and copy an API key.
+    `repose.herakraft.co`) and copy an API key.
 
 15. **GitHub.** The repo should be private until the leaked-key history is
     handled (see `CHECKLIST.md`). Agents need push access to `main`.

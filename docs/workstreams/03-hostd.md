@@ -25,10 +25,10 @@ sloppy, one tenant's mistake becomes another's outage.
 - Samples every 60 seconds merging host-side counters with `guestd`'s
   `Sample` reply, and Events for state changes, agent events, snapshots and
   host warnings.
-- Console capture per guest to `/var/lib/factory/guests/<id>/console.log`
+- Console capture per guest to `/var/lib/repose/guests/<id>/console.log`
   with rotation, shipped by Fluent Bit (workstream 10 owns the shipping
   config; hostd owns the file).
-- The nightly snapshot timer (`factory-snapshot.timer` calls `hostd
+- The nightly snapshot timer (`repose-snapshot.timer` calls `hostd
   snapshot-all`, which enqueues a `Snapshot` per running guest locally, not
   via the api, so a control-plane outage never skips a night).
 - Prometheus `/metrics` on the WireGuard address, port 9100 is
@@ -71,7 +71,7 @@ One process, several goroutines with clear ownership:
 ```
 main
  ├─ register.EnsureCertificate()          once, then a 30-day rotation ticker
- ├─ state.Open("/var/lib/factory/hostd/state.db")
+ ├─ state.Open("/var/lib/repose/hostd/state.db")
  ├─ guest.Manager (owns the per-guest state machines, one goroutine each)
  ├─ stream.Run (dial, Hello, heartbeats, dispatch commands to Manager)
  ├─ samples.Loop (60 s ticker, asks Manager for the current guest list)
@@ -87,8 +87,8 @@ another may overlap; two commands for the same guest never do.
 
 ### 5.2 Registration
 
-At first start `/var/lib/factory/hostd/cert.pem` does not exist. hostd reads
-`/run/factory/join-token`, collects `HostInfo` (hostname, `sku` from IMDS
+At first start `/var/lib/repose/hostd/cert.pem` does not exist. hostd reads
+`/run/repose/join-token`, collects `HostInfo` (hostname, `sku` from IMDS
 `compute/vmSize` when IMDS is reachable from the host, `mem_bytes` from
 `/proc/meminfo`, `vcpus` from `nproc`, `nixos_system` from
 `/run/current-system`, `ch_version` from `cloud-hypervisor --version`,
@@ -101,7 +101,7 @@ produces `register: join token already used`, logged and the unit stops
 retrying (`Restart=on-failure` with `RestartPreventExitStatus=3`).
 
 WireGuard keys returned at registration are written to
-`/var/lib/factory/hostd/wg0.conf` and `wg-quick@wg0` is restarted; workstream
+`/var/lib/repose/hostd/wg0.conf` and `wg-quick@wg0` is restarted; workstream
 01's host config points `wg-quick` at that file.
 
 Rotation: 5 days before `cert_expires_at`, call `Rotate` on the unary API
@@ -110,7 +110,7 @@ and reconnect the stream.
 
 ### 5.3 The stream
 
-`stream.Run` dials `api.factory.herakraft.co:443` with the client
+`stream.Run` dials `api.repose.herakraft.co:443` with the client
 certificate, opens `Session`, and sends `Hello` built from bbolt: every
 guest id, its stored state, `free_mem_bytes`, `pool_free_bytes`. The api
 replies with any commands it considers unfinished; hostd looks each
@@ -170,16 +170,16 @@ Inputs: `project_id`, `guest_id`, `class`, `volume_bytes`, `system_closure`,
    Skip both if the volume already exists with the label (idempotent
    re-run).
 4. GC root: `ln -sfn <system_closure>
-   /nix/var/nix/gcroots/factory/<guest_id>`.
-5. Runner: `nix build --out-link /var/lib/factory/guests/<id>/runner
+   /nix/var/nix/gcroots/repose/<guest_id>`.
+5. Runner: `nix build --out-link /var/lib/repose/guests/<id>/runner
    <platform-flake>#runner --override-input system <closure> ...` per
    workstream 02's documented runner function signature. The runner script
    takes the guest id, volume path, tap name, vsock CID, memory and vCPU
    count as arguments so one runner serves all guests of a base version.
 6. Network: `ip tuntap add tap-<8hex> mode tap user hostd`, `ip link set
-   tap-<8hex> master br-guests up`; `nft add element factory guests { <ip>
+   tap-<8hex> master br-guests up`; `nft add element repose guests { <ip>
    . tap-<8hex> }` (a set the ruleset's chains reference, so per-guest rules
-   are set membership, not new chains); `nft add counter factory
+   are set membership, not new chains); `nft add counter repose
    egress-<guest_id>` and a rule in `guest_fwd` counting from `<ip>`; `tc
    qdisc add dev tap-<8hex> root handle 1: htb default 10`, `tc class add
    ... rate 200mbit ceil 200mbit`.
@@ -194,7 +194,7 @@ Inputs: `project_id`, `guest_id`, `class`, `volume_bytes`, `system_closure`,
    with `ro`.
 9. Cloud Hypervisor: `systemd-run --unit guest@<id> --property
    MemoryMax=<RAM+512M> --property CPUQuota=<vcpus*100>% --property
-   Restart=no /var/lib/factory/guests/<id>/runner/bin/run <args>`. The
+   Restart=no /var/lib/repose/guests/<id>/runner/bin/run <args>`. The
    runner starts CH with `--api-socket .../ch.sock`, `--serial file=...
    console.log`, `--vsock cid=<cid>,socket=...`, `--net tap=tap-<8hex>`,
    `--disk path=/dev/vg-guests/g-<id>`, `--fs tag=store,socket=...`,
@@ -238,22 +238,22 @@ grow`.
 
 Inputs: `project_id`, `revision_id`, `fragment`, `base_ref`, `limits`.
 
-1. Write the fragment to `/var/lib/factory/builds/<revision_id>/fragment.nix`
+1. Write the fragment to `/var/lib/repose/builds/<revision_id>/fragment.nix`
    (0600, hostd user).
 2. Evaluate: `nix eval --raw --option restrict-eval true --option
    allow-import-from-derivation false --option pure-eval true
    --max-call-depth 10000 --option eval-cache false
    <platform-flake>#guestSystem.<base_ref> --apply 'f: f { fragment =
-   /var/lib/factory/builds/<rev>/fragment.nix; }'` under `timeout
+   /var/lib/repose/builds/<rev>/fragment.nix; }'` under `timeout
    <eval_s>`. The exact flake expression is workstream 12's; hostd runs
    what 12 documents in `interfaces/nix-build-contract.md` (12 writes that
    file). Non-zero exit maps to `eval_failed` with stderr verbatim, and
-   `fragment_line` parsed from `at /var/lib/factory/builds/<rev>/fragment.nix:<line>:`.
+   `fragment_line` parsed from `at /var/lib/repose/builds/<rev>/fragment.nix:<line>:`.
    Exit 124 from `timeout` maps to `eval_failed` with message `evaluation
    exceeded 60 s`.
 3. Build: `nix build --no-link --print-out-paths --option sandbox true
    --max-jobs 1 --cores <cores> --option substituters
-   'https://cache.nixos.org https://cache.factory.herakraft.co' <drv>` under
+   'https://cache.nixos.org https://cache.repose.herakraft.co' <drv>` under
    `timeout <build_s>` and `systemd-run --scope -p CPUQuota=<cores*100>%
    -p MemoryMax=16G`. Stream stdout and stderr line by line as `BuildLog`.
    Non-zero exit is `build_failed` with the last 32 KB of stderr; exit 124 is
@@ -262,7 +262,7 @@ Inputs: `project_id`, `revision_id`, `fragment`, `base_ref`, `limits`.
 4. Closure size: `nix path-info -S <out>`; over `closure_bytes` is
    `closure_too_large` with the ten largest paths from `nix path-info -rS
    <out> | sort -k2 -n | tail`.
-5. GC root at `/nix/var/nix/gcroots/factory/rev-<revision_id>` (kept until
+5. GC root at `/nix/var/nix/gcroots/repose/rev-<revision_id>` (kept until
    the api sends `DestroyGuest` or a later `ApplyConfig` supersedes it and
    the api asks for pruning via a `Build` result ack; simpler rule: keep
    the last 3 revisions per project, pruned on each successful Build).
@@ -298,7 +298,7 @@ Snapshot:
    not used because it cannot read from a pipe. Blob path
    `<user_id>/<project_id>/<ts>.img.zst`, metadata `guest_id`, `class`,
    `volume_bytes`, `reason`. Authentication is the host's managed identity
-   scoped to the `factory-snapshots` container (infra grants it); IMDS is
+   scoped to the `repose-snapshots` container (infra grants it); IMDS is
    reachable from the host, only guests are blocked.
 5. `lvremove -f vg-guests/snap-...`. Even on upload failure.
 6. `Event{snapshot_done}` and the Result with `snapshot_id` (the api
@@ -355,16 +355,16 @@ draining`, and continues serving everything else.
 
 ### 5.13 Console capture
 
-The runner passes `--serial socket=/var/lib/factory/guests/<id>/console.sock`
+The runner passes `--serial socket=/var/lib/repose/guests/<id>/console.sock`
 because Cloud Hypervisor cannot reopen a log file for rotation. hostd's
 `console.Tailer` reads the socket and writes
-`/var/lib/factory/guests/<id>/console.log`, rotating at 64 MB and keeping 3
+`/var/lib/repose/guests/<id>/console.log`, rotating at 64 MB and keeping 3
 files. Fluent Bit tails those files with `guest_id` taken from the path
 (workstream 10 owns that config).
 
 ### 5.14 Metrics
 
-Prefix `factory_host_`: `guests{state}` gauge, `commands_total{kind,result}`,
+Prefix `repose_host_`: `guests{state}` gauge, `commands_total{kind,result}`,
 `command_duration_seconds{kind}` histogram, `build_queue_depth`,
 `build_duration_seconds` histogram, `snapshot_bytes_total`,
 `snapshot_freeze_seconds` histogram, `stream_connected` gauge,
@@ -377,7 +377,7 @@ workstream 10's.
 | Failure | What hostd does | What the operator or user sees |
 |---|---|---|
 | Join token already used | exit status 3, unit stops retrying | journal: `register: join token already used`; infra alert on failed host registration after 5 min |
-| api unreachable at start | keeps retrying the stream, serves running guests, runs nightly snapshots locally | `factory_host_stream_connected 0`; alert after 5 min |
+| api unreachable at start | keeps retrying the stream, serves running guests, runs nightly snapshots locally | `repose_host_stream_connected 0`; alert after 5 min |
 | Thin pool over 90 percent | `host_warning{pool_high}`; CreateGuest and Restore return `insufficient_capacity: thin pool 9x% full` | api alerts operator; CLI: `host is out of disk; try again later or contact support` |
 | Store over 80 percent | `host_warning{store_high}`; Build refuses with `insufficient_capacity: host store full` | same shape |
 | Guest never sends Ready | after 60 s: stop CH, tear down, state `error` reason `guest did not become ready` | CLI: `guest failed to boot; console log attached` with the last 50 console lines from the api |
@@ -404,7 +404,7 @@ workstream 10's.
   workstream 02 test runner, wait for Ready, snapshot to a local file
   target (Blob client with a file backend for tests), restore into a second
   volume, diff filesystems, destroy, assert nothing is left (`lvs`, `ip
-  link`, `nft list table factory`, `systemctl list-units 'guest@*'`).
+  link`, `nft list table repose`, `systemctl list-units 'guest@*'`).
   Output is pasted into the PR.
 - Chaos: kill hostd mid-Create and mid-Snapshot, restart, assert Hello
   reconciliation leaves no half-state (the host test script does this).

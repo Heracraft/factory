@@ -1,6 +1,6 @@
 # gRPC: api ⇄ hostd
 
-`proto/factory/hostd/v1/hostd.proto`. The **host dials the api** and opens
+`proto/repose/hostd/v1/hostd.proto`. The **host dials the api** and opens
 one long-lived bidirectional stream; the api sends commands down it and the
 host sends results, samples and events up it. There is no api-to-host
 connection. Transport: gRPC over TLS 1.3 with mutual auth; the host presents
@@ -19,9 +19,9 @@ HostInfo { string hostname; string sku; uint64 mem_bytes; uint32 vcpus;
            string nixos_system; string ch_version; uint64 pool_bytes; }
 ```
 
-The join token is minted by `factory-admin hosts add` and placed in the
-host's `/run/factory/join-token` by cloud-init. Register is called once; the
-certificate is stored at `/var/lib/factory/hostd/{cert,key}.pem` and rotated
+The join token is minted by `repose-admin hosts add` and placed in the
+host's `/run/repose/join-token` by cloud-init. Register is called once; the
+certificate is stored at `/var/lib/repose/hostd/{cert,key}.pem` and rotated
 by `Rotate` (unary, same shape) every 30 days.
 
 ## Stream

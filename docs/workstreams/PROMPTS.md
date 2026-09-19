@@ -29,9 +29,9 @@ worktree and branch, created by the owner (the repo rule that agents do not
 create branches still holds):
 
 ```
-cd /home/azureuser/projects/factory
-git worktree add ../factory-ws/03-hostd -b ws/03-hostd main
-cd ../factory-ws/03-hostd && claude      # paste preamble + block 03
+cd the repository root (`git rev-parse --show-toplevel`)
+git worktree add ../repose-ws/03-hostd -b ws/03-hostd main
+cd ../repose-ws/03-hostd && claude      # paste preamble + block 03
 ```
 
 One worktree per workstream, all branched from the same `main` commit.
@@ -41,7 +41,7 @@ ws/03-hostd` on main, resolving the shared files (keep both sides of
 `DECISIONS.md` entries, renumbering `I-<n>` if two agents used the same
 number). Merge the workstreams that own interfaces first (03, 05), then
 their consumers. Delete the worktree after merging: `git worktree remove
-../factory-ws/03-hostd`.
+../repose-ws/03-hostd`.
 
 Nix and Go caches are shared across worktrees (`/nix/store`, `~/go/pkg`),
 so parallel builds do not multiply disk use, but the Nix store will grow by
@@ -52,7 +52,7 @@ several GB per guest closure; keep 40 GB free.
 Paste this first, then the workstream block.
 
 ```
-You are building one workstream of factory in /home/azureuser/projects/factory.
+You are building one workstream of repose in the repository root (`git rev-parse --show-toplevel`).
 Read, in order: AGENTS.md, docs/README.md, docs/DESIGN.md, docs/DECISIONS.md,
 docs/workstreams/README.md, then your workstream doc and every docs/interfaces/
 file it owns or consumes. Do not skim; the checklists reference exact names.
@@ -89,7 +89,7 @@ Rules:
 
 ```
 Workstream: docs/workstreams/01-host-nixos.md. Build nix/hosts/ so a fresh
-Azure Ubuntu VM becomes a factory host via nixos-anywhere: disko layout,
+Azure Ubuntu VM becomes a repose host via nixos-anywhere: disko layout,
 kernel modules, br-guests, the nftables table in docs/interfaces/host-
 conventions.md including the IMDS block and per-guest counters, tc shaping,
 LVM thin pool on the data disk, virtiofsd and cloud-hypervisor packages,
@@ -142,7 +142,7 @@ server per docs/interfaces/vsock-guestd.md with the unix-socket dev mode,
 every request (Ping, Freeze with the thaw watchdog, Thaw, Switch, GrowFs,
 WriteSecrets, SetPrincipals, SetupProject with tmux, Sample from /proc and
 tmux, Exec, Shutdown), the Notify messages, the hook socket at
-/run/factory/hooks.sock and the factory-hook helper. Unit-test everything
+/run/repose/hooks.sock and the repose-hook helper. Unit-test everything
 against a fake filesystem and a real tmux where available.
 ```
 
@@ -150,14 +150,14 @@ against a fake filesystem and a real tmux where available.
 
 ```
 Workstream: docs/workstreams/05-control-plane-api.md. Build cmd/api and
-cmd/factory-admin: every route in docs/interfaces/api.md with Logto JWT
+cmd/repose-admin: every route in docs/interfaces/api.md with Logto JWT
 verification, the Postgres schema in docs/interfaces/db-schema.md as
 migrations, the gRPC server side of docs/interfaces/grpc-hostd.md with
 the fake hostd for tests, the scheduler, SSH CA issue and revoke and the
 guest host-key generation (I-3), envelope-encrypted secrets with a fake Key
 Vault for tests, config revisions with SSE build logs, snapshots, events
 ingest and the notification outbox, meter ingest and hourly rollup,
-internal routes for the gateway, rate limits, the full factory-admin
+internal routes for the gateway, rate limits, the full repose-admin
 surface named in DECISIONS I-9, Dockerfile with health check for Coolify,
 OpenTelemetry wiring. Integration tests run against a real Postgres.
 ```
@@ -179,7 +179,7 @@ internal/ca/testca and an in-process SSH server standing in for a guest.
 ### 07 cli
 
 ```
-Workstream: docs/workstreams/07-cli.md. Build cmd/factory: every command
+Workstream: docs/workstreams/07-cli.md. Build cmd/repose: every command
 listed there including events and notify (DECISIONS I-8), Logto login with
 PKCE loopback and device-code fallback, project resolution and remote
 normalisation per docs/interfaces/cli-config.md, certificate refresh and
@@ -222,7 +222,7 @@ CHECKLIST usage pattern that must match to the cent.
 ```
 Workstream: docs/workstreams/10-observability.md. Build the shared
 telemetry package (structured logs with the never-log list enforced by a
-test, factory_* metrics, OTel wiring), the Fluent Bit config in nix/hosts,
+test, repose_* metrics, OTel wiring), the Fluent Bit config in nix/hosts,
 the Prometheus scrape config and WireGuard peer for the personal Grafana
 server, and every dashboard and alert rule listed in docs/CHECKLIST.md as
 Grafana JSON and Prometheus rules under ops/grafana/.
@@ -262,7 +262,7 @@ end to end: per-agent hook installation in the wrappers (Claude Code
 Notification and Stop hooks; the documented equivalents or tmux-idle
 heuristic for opencode, codex, gemini-cli, pi), the outbox with retries and
 dedupe in the api, Resend email and ntfy delivery, user settings, the
-notify-test route, and what factory status, factory events and the
+notify-test route, and what repose status, repose events and the
 dashboard show.
 ```
 

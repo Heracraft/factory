@@ -8,19 +8,19 @@ the directory it runs in.
 
 ```
 $ cd ~/code/todo-app
-$ factory run
+$ repose run
 Creating project todo-app (github.com/heracraft/todo-app) as large ...
 ```
 
 ```
 $ cd ~/scratch/no-remote
-$ factory run
+$ repose run
 error: this directory has no git remote. Give the project a name:
-  factory run --name scratch
+  repose run --name scratch
 ```
 
 ```
-$ factory run --name todo-app-experiment
+$ repose run --name todo-app-experiment
 Creating project todo-app-experiment (github.com/heracraft/todo-app) ...
 ```
 
@@ -46,11 +46,11 @@ Identity:
 - The project name becomes the slug: lowercase, `[a-z0-9-]`, other characters
   replaced by `-`, runs collapsed, 1 to 40 characters. `Todo App` and
   `todo-app` collide, and the CLI says so with the existing project's name.
-- Nothing is ever written into the user's repository. No `.factory` file, no
+- Nothing is ever written into the user's repository. No `.repose` file, no
   git config key, no hook. Evidence for a test: `git status` before and after
-  `factory run` shows the same tree.
-- `FACTORY_PROJECT` or `--project <id or slug>` overrides directory
-  resolution for every command, so scripts can run `factory stop --project
+  `repose run` shows the same tree.
+- `REPOSE_PROJECT` or `--project <id or slug>` overrides directory
+  resolution for every command, so scripts can run `repose stop --project
   todo-app` from anywhere.
 
 Limits:

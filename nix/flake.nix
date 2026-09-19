@@ -1,5 +1,5 @@
 {
-  description = "factory: hosts, edge, guest base, agent overlay, dev shell";
+  description = "repose: hosts, edge, guest base, agent overlay, dev shell";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

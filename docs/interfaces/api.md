@@ -1,8 +1,8 @@
 # HTTP API
 
-Base: `https://api.factory.herakraft.co/v1`. JSON. Auth: `Authorization:
+Base: `https://api.repose.herakraft.co/v1`. JSON. Auth: `Authorization:
 Bearer <Logto access token>` for user routes (resource
-`https://api.factory.herakraft.co`, verified against Logto JWKS, `sub` is the
+`https://api.repose.herakraft.co`, verified against Logto JWKS, `sub` is the
 user id). Internal routes under `/internal/` are for the gateway and use a
 shared mTLS client certificate. Errors: `{ "error": { "code": "...",
 "message": "...", "detail": {...} } }` with codes `unauthenticated`,

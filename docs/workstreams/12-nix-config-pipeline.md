@@ -21,7 +21,7 @@ guest without breaking the ones that asked to be left alone.
   menuSnippet, guestParams }` that 03 calls (through `mkGuestRunner` from
   02) to produce the runner and the toplevel.
 - `internal/nixbuild/`: the Go package hostd uses: writes the fragment to
-  `/var/lib/factory/builds/<revision_id>/fragment.nix`, runs `nix eval` then
+  `/var/lib/repose/builds/<revision_id>/fragment.nix`, runs `nix eval` then
   `nix build` with the flags below, enforces the limits with a cgroup and
   timers, parses errors into `{code, message, fragment_line}`, streams
   `BuildLog` lines, registers the GC root, measures closure size.
@@ -39,7 +39,7 @@ guest without breaking the ones that asked to be left alone.
   the Coolify VM; decision recorded at implementation as I-n) so hosts do
   not rebuild it.
 - `internal/basebump/`: the api-side job that, when a new `base_versions`
-  row is published (`factory-admin base publish <git rev> --changelog`),
+  row is published (`repose-admin base publish <git rev> --changelog`),
   schedules `Build` + `ApplyConfig` for every project not on hold, at most
   N concurrent per host, over a 24 h window; records per-project outcome;
   never touches a project whose last build failed until the user
@@ -83,7 +83,7 @@ attrset`. It is applied to user `dev`. It may:
 - set `home.sessionVariables` and `home.sessionPath`;
 - define overlays via `nixpkgs.overlays` **only** when `useGlobalPkgs` is
   off, which it is not, so overlays are instead accepted through a
-  dedicated option `factory.overlays = [ (self: super: {...}) ]` that the
+  dedicated option `repose.overlays = [ (self: super: {...}) ]` that the
   composer applies to the guest's `pkgs` before evaluating anything;
 - fetch sources with `pkgs.fetchFromGitHub`, `pkgs.fetchurl` and friends
   (fixed-output derivations with a hash: these run in the build sandbox
@@ -125,18 +125,18 @@ in nixpkgs.lib.nixosSystem {
     { home-manager.users.dev = fragment;
       home-manager.useGlobalPkgs = true;
       home-manager.useUserPackages = true;
-      nixpkgs.overlays = [ self.overlays.agents ] ++ (fragment.factory.overlays or []); }
+      nixpkgs.overlays = [ self.overlays.agents ] ++ (fragment.repose.overlays or []); }
     (guestParamsModule guestParams)               # ip, cid, tap, volume, vcpu, mem
   ];
 }
 ```
 
 `baseRef` is a git revision of this repository's `nix/` directory; hostd
-keeps a checkout per `base_versions` row under `/var/lib/factory/base/<rev>`
+keeps a checkout per `base_versions` row under `/var/lib/repose/base/<rev>`
 (fetched over HTTPS from the repository with a read token, or delivered by
 the api as a tarball in `Build`; implementation choice recorded as I-n).
 The build command is `nix build <checkout>#lib.guestRunner --arg ...` with
-the fragment path passed as a `--arg fragmentPath /var/lib/factory/builds/
+the fragment path passed as a `--arg fragmentPath /var/lib/repose/builds/
 <rev>/fragment.nix` under `restrict-eval` with that directory in
 `allowed-paths`.
 
@@ -169,7 +169,7 @@ expression fails fast with `eval_timeout` before any build starts.
 After the build: `nix path-info -S` on the toplevel; if closure size minus
 the base closure size exceeds 20 GB, the build result is deleted (no GC
 root) and `closure_too_large` is returned with the ten largest paths listed
-in `message`. Otherwise `nix-store --add-root /nix/var/nix/gcroots/factory/
+in `message`. Otherwise `nix-store --add-root /nix/var/nix/gcroots/repose/
 <guest_id>-<revision_id> -r <toplevel>`; the previous revision's root is
 kept until the new one is applied plus 14 days, so rollback is instant.
 
@@ -183,9 +183,9 @@ the `Build` result and the api tells the CLI before `ApplyConfig`.
 
 | Pattern | Code | fragment_line |
 |---|---|---|
-| `error: syntax error, unexpected ... at /var/lib/factory/builds/<rev>/fragment.nix:L:C` | `eval_failed` | L |
+| `error: syntax error, unexpected ... at /var/lib/repose/builds/<rev>/fragment.nix:L:C` | `eval_failed` | L |
 | `error: attribute 'X' missing` with a trace line in `fragment.nix:L` | `eval_failed` | L |
-| `The option 'X' does not exist` with a definition location in `fragment.nix` | `eval_failed` | L, hint "system services come from the menu or `factory config menu`" |
+| `The option 'X' does not exist` with a definition location in `fragment.nix` | `eval_failed` | L, hint "system services come from the menu or `repose config menu`" |
 | `cannot fetch ... in pure evaluation mode` / `access to absolute path` | `eval_failed` | L, hint "use pkgs.fetchurl with a hash instead of builtins.fetch*" |
 | `RuntimeMaxSec` kill during eval | `eval_timeout` | none, message "evaluation exceeded 60 s" |
 | `error: builder for '/nix/store/...-X.drv' failed` | `build_failed` | none, message = last 200 lines of that builder's log via `nix log`, prefixed with the derivation name |
@@ -241,14 +241,14 @@ flag; (d) with the cap lowered to 100 MB).
 `MenuSelection` is `[{id, options: {name: value}}]`. The renderer
 validates ids and option values against the catalog (unknown id → api
 `invalid` with the id), renders `hm` snippets into one generated fragment
-(with a header comment `# generated by factory from your menu selection;
-edit with factory config edit to take over`) and `nixos` snippets into the
+(with a header comment `# generated by repose from your menu selection;
+edit with repose config edit to take over`) and `nixos` snippets into the
 `menuSnippet` module. Services in the catalog are the only way a fragment
 gets a system service, and every `nixos` snippet in the catalog is reviewed
 under `SECURITY.md`'s allowlist (no `networking`, no `users`, no
 `boot`, no `virtualisation` beyond Docker, no `services.openssh`).
 
-Taking over: `factory config edit` on a menu-managed project writes the
+Taking over: `repose config edit` on a menu-managed project writes the
 generated fragment to the user's editor; saving it switches the project to
 fragment mode and the menu selection is kept as history only. `PUT
 /config` with `menu` on a fragment-mode project is refused with
@@ -256,7 +256,7 @@ fragment mode and the menu selection is kept as history only. `PUT
 
 ### Base bumps
 
-`factory-admin base publish <rev> --changelog "..." [--security]` inserts a
+`repose-admin base publish <rev> --changelog "..." [--security]` inserts a
 `base_versions` row. `internal/basebump` then, for each project with
 `hold_base_updates = false` and `state in (running, stopped)`, enqueues
 `Build` with the new `baseRef` and the project's current fragment, then
@@ -267,10 +267,10 @@ bump build fails keeps its old closure, gets an event `base_update_failed`
 with the error, and is skipped by later bumps until the user's next
 successful apply. `kernel_changed = true` for a bump means the guest is
 switched with `needs_reboot` and the user sees `base update ready; reboot
-when convenient: factory config apply --reboot` in `status` and an event;
+when convenient: repose config apply --reboot` in `status` and an event;
 the api does not reboot unattended guests.
 
-`factory status` shows `base 2026.09.3 (2026.09.4 available, held)` or
+`repose status` shows `base 2026.09.3 (2026.09.4 available, held)` or
 `(applied 2026-09-20)`.
 
 ### Agent overlay
@@ -299,7 +299,7 @@ codex 0.155.0`. Merging the PR does nothing to guests until `base publish`.
 | Any of the five canonical errors | The exact messages above, revision `failed`, guest untouched. |
 | Overlay cache unreachable | Builds fall back to building the agents from the release binaries (they are fixed-output fetches, so this is a download, not a compile); slower, `host_warning{kind: "cache_unreachable"}`. |
 | nixpkgs rev in `baseRef` cannot be fetched | `Build` fails `internal: base <rev> unavailable`; alert; no project changes. |
-| A base bump breaks a fragment that used to build | That project gets `base_update_failed` with the error, stays on the old base, is listed in `factory-admin base status <version>`; the operator can `base rollback` if it is widespread. |
+| A base bump breaks a fragment that used to build | That project gets `base_update_failed` with the error, stays on the old base, is listed in `repose-admin base status <version>`; the operator can `base rollback` if it is widespread. |
 | Build cgroup OOM (over 16 GB) | Nix reports the builder killed; mapped to `build_failed` with hint "build exceeded 16 GB RAM". |
 | GC root missing (host bug) and the closure is collected while a guest runs | The guest keeps running from page cache until it touches a missing path; guestd's `Warning{store_path_missing}` (added here to 04's warning list) fires; hostd re-builds the revision (deterministic) and re-roots; the runbook entry says how to restart the guest if it wedged. |
 | Two applies race | The api serialises per project (`ops` with state `running` blocks a second `PUT /config` with `conflict: a build is in progress`). |
@@ -324,7 +324,7 @@ codex 0.155.0`. Merging the PR does nothing to guests until `base publish`.
 ## 8. Rollback
 
 Per project: `POST /config/revisions/:rev/apply` re-applies any successful
-revision still rooted (14 days). Per base: `factory-admin base rollback
+revision still rooted (14 days). Per base: `repose-admin base rollback
 <version>`. The overlay: revert the `versions.json` PR and `base publish`
 again.
 
@@ -363,7 +363,7 @@ again.
       api. Evidence: the sequence of API calls and responses.
 - [ ] Base bump: publishing a version applies to a non-held project and
       not a held one; a project whose bump fails shows
-      `base_update_failed` and keeps working. Evidence: `factory status`
+      `base_update_failed` and keeps working. Evidence: `repose status`
       for three projects pasted.
 - [ ] `scripts/bump-agents.sh` produces a PR on a schedule and the built
       agents print their versions. Evidence: a merged PR link and CI log.

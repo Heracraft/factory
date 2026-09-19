@@ -8,14 +8,14 @@ binaries, unmodified.
 ## What the user sees
 
 ```
-$ factory run "write tests for the payment module"
+$ repose run "write tests for the payment module"
 Starting claude in window todo-app:claude
 ```
 
 First use of Claude in a guest with no credentials:
 
 ```
-$ factory run "write tests for the payment module"
+$ repose run "write tests for the payment module"
 claude is not logged in on todo-app. Complete the login in the window that
 opens (paste the code from your browser), then rerun this command.
 ```
@@ -24,7 +24,7 @@ Setting the headless fallback:
 
 ```
 $ claude setup-token                       # on the laptop
-$ factory secrets set CLAUDE_CODE_OAUTH_TOKEN
+$ repose secrets set CLAUDE_CODE_OAUTH_TOKEN
 Enter value: ********
 Stored. claude on todo-app will use it on next start (no Remote Control,
 connectors, or Claude in Chrome with a setup token).
@@ -33,16 +33,16 @@ connectors, or Claude in Chrome with a setup token).
 Picking a default:
 
 ```
-$ factory config set agent codex
+$ repose config set agent codex
 ```
 
 ## The five agents
 
 | Agent | Binary | Window | Hook mechanism | Login in guest |
 |---|---|---|---|---|
-| Claude Code | `claude` | `claude` | `Notification` and `Stop` hooks in `~/.claude/settings.json` calling `factory-hook` | `claude` prints a paste code over SSH; or `CLAUDE_CODE_OAUTH_TOKEN` named secret |
+| Claude Code | `claude` | `claude` | `Notification` and `Stop` hooks in `~/.claude/settings.json` calling `repose-hook` | `claude` prints a paste code over SSH; or `CLAUDE_CODE_OAUTH_TOKEN` named secret |
 | opencode | `opencode` | `opencode` | its plugin/event hook if present in the shipped version; otherwise tmux pane-idle heuristic | `~/.local/share/opencode/auth.json` synced from the laptop |
-| Codex CLI | `codex` | `codex` | `notify` config entry pointing at `factory-hook` | `~/.codex/auth.json` synced from the laptop |
+| Codex CLI | `codex` | `codex` | `notify` config entry pointing at `repose-hook` | `~/.codex/auth.json` synced from the laptop |
 | Gemini CLI | `gemini` | `gemini` | tmux pane-idle heuristic | `GEMINI_API_KEY` named secret |
 | pi | `pi` | `pi` | its hooks if present in the shipped version; otherwise pane-idle heuristic | provider API key as a named secret |
 
@@ -60,19 +60,19 @@ knows what they are being told.
 Each binary is wrapped by `nix/overlay/agents/wrap.nix` to:
 
 1. Write or patch its hook configuration so completion and needs-input
-   events go to `factory-hook`, which POSTs to `/run/factory/hooks.sock`.
+   events go to `repose-hook`, which POSTs to `/run/repose/hooks.sock`.
    The patch is idempotent and preserves the user's other hooks.
 2. Export `TERM=tmux-256color` and `COLORTERM=truecolor` so the TUIs render.
 3. Exec the real binary with all arguments.
 
-`factory-hook` always exits 0. A hook that fails must never block an agent,
+`repose-hook` always exits 0. A hook that fails must never block an agent,
 because a blocked agent is a silently wasted night.
 
 ## Versions
 
 Agents come from the platform overlay (`nix/overlay/agents/`), which
 repackages upstream binary releases and is bumped by a scheduled job that
-opens a pull request with the version diff. Users see the version in `factory
+opens a pull request with the version diff. Users see the version in `repose
 status --verbose` and in the base changelog. nixpkgs is the fallback only;
 it lags Claude Code by weeks and Gemini CLI by months (DECISIONS R3-19).
 
@@ -106,7 +106,7 @@ party reuse of subscription OAuth is forbidden. So:
   10 seconds of the hook firing, or within 90 seconds for heuristic agents.
 - A missing login produces the agent's own login prompt in the window plus
   the CLI message above; it never produces a crash loop.
-- `factory status` shows per agent window: `working`, `idle`,
+- `repose status` shows per agent window: `working`, `idle`,
   `needs_input`, or `unknown`, from guestd's `AgentState` notifications.
 - Removing an agent from the overlay is a base bump with a changelog line;
   a project holding base updates keeps the old one.
@@ -127,7 +127,7 @@ project-scoped entries are keyed on absolute laptop paths that do not exist
 in the guest; a user who wants an MCP in the guest adds it there, or in the
 repo's `.mcp.json`, which syncs with the repo.
 
-### Planned: `factory mcp forward NAME`
+### Planned: `repose mcp forward NAME`
 
 For when the laptop is open and a laptop-bound server is wanted anyway:
 
@@ -145,12 +145,12 @@ to escape, so it is a convenience, not a promise.
 
 ## Depends on
 
-Workstreams 02 (overlay, wrappers, `factory-hook`), 04 (hook socket,
+Workstreams 02 (overlay, wrappers, `repose-hook`), 04 (hook socket,
 pane-idle heuristic, AgentState), 05 (events ingest), 07 (`--agent`,
 `config set agent`, secrets), 13 (delivery).
 
 ## Deferred
 
-`factory mcp forward`. Syncing `~/.claude.json` with path rewriting. Agents
+`repose mcp forward`. Syncing `~/.claude.json` with path rewriting. Agents
 beyond the five (DECISIONS R2-11: anything nixpkgs does not package is a
 package the platform maintains).

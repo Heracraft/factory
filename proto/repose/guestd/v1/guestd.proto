@@ -2,11 +2,11 @@
 // vsock port 5000 (or a unix socket in dev mode). One Envelope per frame.
 syntax = "proto3";
 
-package factory.guestd.v1;
+package repose.guestd.v1;
 
-option go_package = "github.com/heracraft/factory/internal/gen/guestd/v1;guestdv1";
+option go_package = "github.com/heracraft/repose/internal/gen/guestd/v1;guestdv1";
 
-import "factory/hostd/v1/hostd.proto";
+import "repose/hostd/v1/hostd.proto";
 
 message Envelope {
   string request_id = 1;   // empty for Notify
@@ -52,7 +52,7 @@ message Error { string code = 1; string message = 2; }
 message PingResult { string version = 1; uint64 uptime_s = 2; string boot_id = 3; }
 message SwitchResult { bool rebooted = 1; bool needs_reboot = 2; bytes output = 3; }
 message GrowFsResult { uint64 new_bytes = 1; }
-message SampleResult { factory.hostd.v1.GuestSignals signals = 1; repeated factory.hostd.v1.ProcSample procs = 2; }
+message SampleResult { repose.hostd.v1.GuestSignals signals = 1; repeated repose.hostd.v1.ProcSample procs = 2; }
 message ExecResult { int32 exit_code = 1; bytes stdout = 2; bytes stderr = 3; }
 
 message Response {

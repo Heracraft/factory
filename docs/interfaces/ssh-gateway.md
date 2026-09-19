@@ -2,7 +2,7 @@
 
 ## Names
 
-- Gateway address: `ssh.factory.herakraft.co:22`.
+- Gateway address: `ssh.repose.herakraft.co:22`.
 - Login name: `<project-slug>.<user-handle>`, e.g. `todo-app.heracraft`.
   The gateway splits on the last `.`.
 - Inside the guest the Unix user is always `dev`.
@@ -19,8 +19,8 @@ Two CAs, both ed25519, private keys in the api's secret store:
   `source-address` restriction (laptops move).
 - **Host CA** signs the gateway's host key and every guest's host key
   (guest keys are generated at create by hostd and signed via the api).
-  The CLI writes `@cert-authority ssh.factory.herakraft.co,10.64.* <host ca>`
-  to `~/.ssh/factory/known_hosts`, so there is never a host-key prompt.
+  The CLI writes `@cert-authority ssh.repose.herakraft.co,10.64.* <host ca>`
+  to `~/.ssh/repose/known_hosts`, so there is never a host-key prompt.
 
 ## Gateway behaviour
 
@@ -29,7 +29,7 @@ Two CAs, both ed25519, private keys in the api's secret store:
    within validity, serial not in the revocation set (refreshed from
    `/internal/revoked` every 30 s, plus a push on revoke).
 3. Resolve `login` via `GET /internal/route`. If the project's `state` is
-   not `running`, reject with a banner: `todo-app is stopped; run \`factory
+   not `running`, reject with a banner: `todo-app is stopped; run \`repose
    start\``. If the certificate's principals do not contain the project id,
    reject with `certificate not valid for this project`.
 4. Terminate the client's SSH session at the gateway, then open a second
@@ -58,22 +58,22 @@ AllowUsers dev
 
 ## CLI side
 
-`~/.ssh/factory/config` (included from `~/.ssh/config` by a line the CLI adds
-once, `Include ~/.ssh/factory/config`):
+`~/.ssh/repose/config` (included from `~/.ssh/config` by a line the CLI adds
+once, `Include ~/.ssh/repose/config`):
 
 ```
-Host todo-app.factory
-  HostName ssh.factory.herakraft.co
+Host todo-app.repose
+  HostName ssh.repose.herakraft.co
   User todo-app.heracraft
-  CertificateFile ~/.ssh/factory/id_ed25519-cert.pub
+  CertificateFile ~/.ssh/repose/id_ed25519-cert.pub
   IdentityFile ~/.ssh/id_ed25519
-  UserKnownHostsFile ~/.ssh/factory/known_hosts
+  UserKnownHostsFile ~/.ssh/repose/known_hosts
   ForwardAgent yes
   ServerAliveInterval 30
 ```
 
-So `ssh todo-app.factory` works from any tool (VS Code Remote-SSH, Zed,
-Cursor) without the CLI, as long as the certificate is fresh. `factory run`
+So `ssh todo-app.repose` works from any tool (VS Code Remote-SSH, Zed,
+Cursor) without the CLI, as long as the certificate is fresh. `repose run`
 refreshes it.
 
 ## Test CA

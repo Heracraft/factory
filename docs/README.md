@@ -1,9 +1,9 @@
-# factory docs
+# repose docs
 
-factory is a service where a developer runs `factory run` in a project directory
+repose is a service where a developer runs `repose run` in a project directory
 and gets a persistent remote environment where coding agents keep working after
 the laptop closes. Multi-tenant from the first release, billed from the first
-hour, hosted at `factory.herakraft.co` until it graduates to its own domain.
+hour, hosted at `repose.herakraft.co` until it graduates to its own domain.
 
 These docs are the source of truth. The code does not exist yet; when code and
 docs disagree, the doc is wrong only if a `DECISIONS.md` entry says so.
@@ -57,5 +57,5 @@ An agent working a workstream:
 - A doc states the failure that a rule prevents. A rule without its failure story
   gets argued with and then deleted.
 - Names are fixed: the product, CLI binary, SSH login prefix, config directory and
-  Go module are all `factory`. Do not introduce synonyms.
+  Go module are all `repose`. Do not introduce synonyms.
 - Dates are absolute (2026-09-17), never "last week".

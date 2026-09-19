@@ -5,11 +5,11 @@
 When an agent the user left running finishes or gets stuck, the user finds
 out on their phone within a minute, whichever agent it was. One event
 pipeline from the guest to the user's channels, with the same shape for
-every agent, so `factory status` and the dashboard show one timeline.
+every agent, so `repose status` and the dashboard show one timeline.
 
 ## 2. Scope: builds
 
-- Hook side in the guest: `factory-hook` (Go, part of `cmd/guestd` as a
+- Hook side in the guest: `repose-hook` (Go, part of `cmd/guestd` as a
   subcommand or a tiny separate binary in the same package), the
   per-agent hook configuration that the agent wrappers install
   (02-guest-base installs the wrappers; this workstream defines what they
@@ -23,7 +23,7 @@ every agent, so `factory status` and the dashboard show one timeline.
 - Templates for email and ntfy.
 - Platform-originated events that reuse the pipeline: `billing_stopped`,
   `base_updated`, `snapshot_failed`, `host_moved` (restore onto a new host).
-- What `factory status` and the dashboard events card display (07 and 08
+- What `repose status` and the dashboard events card display (07 and 08
   render; this workstream defines the fields and wording).
 
 ## 3. Scope: does not build
@@ -40,7 +40,7 @@ every agent, so `factory status` and the dashboard show one timeline.
 ## 4. Interfaces
 
 Owns: event shapes (`kind`, `summary` rules), the hook JSON on
-`/run/factory/hooks.sock`, the `events.delivered` JSON, the
+`/run/repose/hooks.sock`, the `events.delivered` JSON, the
 `notify_email` and `ntfy_url` semantics on `users`, `POST /me/notify-test`
 (added to `interfaces/api.md`).
 
@@ -72,10 +72,10 @@ contains a transcript path, it is not opened.
 
 ### 5.2 Hook socket protocol
 
-`POST http://unix/run/factory/hooks.sock/v1/event` with JSON
+`POST http://unix/run/repose/hooks.sock/v1/event` with JSON
 `{"agent": "claude", "window": "claude", "kind": "completed", "summary":
 "..."}`. Response 202 always, even on validation failure (logged), so a
-hook never blocks an agent. `factory-hook` is what agents run; it reads the
+hook never blocks an agent. `repose-hook` is what agents run; it reads the
 agent's native payload from stdin, maps it, resolves `window` from
 `$TMUX_PANE` via `tmux display -p -t $TMUX_PANE '#{window_name}'`, and
 POSTs. It exits 0 in every case, including when the socket is missing.
@@ -84,14 +84,14 @@ POSTs. It exits 0 in every case, including when the socket is missing.
 
 | Agent | Mechanism | `completed` | `needs_input` | `error` |
 |---|---|---|---|---|
-| Claude Code | `~/.claude/settings.json` hooks written by the wrapper if absent: `Notification` with matchers `agent_completed`, `agent_needs_input`, `permission_prompt`, `idle_prompt`; `Stop`; `StopFailure`. Command `factory-hook claude`. | `Stop` and `Notification:agent_completed` (deduped, 5.5) | `Notification:agent_needs_input`, `permission_prompt`, `idle_prompt` | `StopFailure` |
-| Codex CLI | `~/.codex/config.toml` `notify = ["factory-hook", "codex"]` (Codex calls it with a JSON arg on `agent-turn-complete`) | `agent-turn-complete` | tmux-idle heuristic (5.4) | process exit non-zero while window present (guestd) |
-| opencode | plugin file `~/.config/opencode/plugin/factory.js` written by the wrapper, subscribing to `session.idle` and `permission.asked` events and calling `factory-hook opencode` | `session.idle` | `permission.asked` | tmux-idle with error pattern (5.4) |
+| Claude Code | `~/.claude/settings.json` hooks written by the wrapper if absent: `Notification` with matchers `agent_completed`, `agent_needs_input`, `permission_prompt`, `idle_prompt`; `Stop`; `StopFailure`. Command `repose-hook claude`. | `Stop` and `Notification:agent_completed` (deduped, 5.5) | `Notification:agent_needs_input`, `permission_prompt`, `idle_prompt` | `StopFailure` |
+| Codex CLI | `~/.codex/config.toml` `notify = ["repose-hook", "codex"]` (Codex calls it with a JSON arg on `agent-turn-complete`) | `agent-turn-complete` | tmux-idle heuristic (5.4) | process exit non-zero while window present (guestd) |
+| opencode | plugin file `~/.config/opencode/plugin/repose.js` written by the wrapper, subscribing to `session.idle` and `permission.asked` events and calling `repose-hook opencode` | `session.idle` | `permission.asked` | tmux-idle with error pattern (5.4) |
 | Gemini CLI | no stable hook API at time of writing; tmux-idle heuristic only | idle after activity | idle with a prompt marker on the last line | non-zero exit |
 | pi | `~/.pi/agent/hooks/` if present in the packaged version, else tmux-idle | as available | as available | non-zero exit |
 
 The wrapper for each agent writes its hook config only if the key is absent
-(a user's own hooks are preserved and `factory-hook` is appended, never
+(a user's own hooks are preserved and `repose-hook` is appended, never
 replacing). The exact file edits are in `interfaces/guest-conventions.md`
 under agent wrappers; the mapping from native payload to `kind` lives in
 `internal/hooks/<agent>.go` with a fixture of each native payload.
@@ -122,7 +122,7 @@ window:
 The heuristic is suppressed for an agent that has a real hook (Claude,
 Codex, opencode) except for the exit case, so the pipeline does not double
 up. The heuristic is the reason `AgentState` exists separately from
-`AgentEvent`: state feeds `factory status` and the samples; events feed
+`AgentEvent`: state feeds `repose status` and the samples; events feed
 notifications.
 
 ### 5.5 Ingest, dedupe, outbox
@@ -143,8 +143,8 @@ user per channel: 30 per hour, beyond that events are stored and a single
 ### 5.6 Channels
 
 - **email** (Resend, `internal/notify/email.go`): from
-  `factory <notify@factory.herakraft.co>`, subject `[factory] todo-app:
-  claude finished`, body: title, summary, `factory attach` hint, dashboard
+  `repose <notify@repose.herakraft.co>`, subject `[repose] todo-app:
+  claude finished`, body: title, summary, `repose attach` hint, dashboard
   link, unsubscribe link (sets `notify_email = false` through a signed
   token route `GET /notify/unsubscribe?token=`). Enabled by default at
   signup. Platform events use their own subjects (`Your guests were stopped
@@ -156,7 +156,7 @@ user per channel: 30 per hour, beyond that events are stored and a single
   self-hosted or `ntfy.sh/<topic>`; the URL is stored as is and never
   logged.
 - `POST /me/notify-test` sends a `completed` event with summary `This is a
-  test from factory` through the enabled channels and returns the per-channel
+  test from repose` through the enabled channels and returns the per-channel
   result so the settings page can show it.
 
 Adding Telegram or Discord is a new file implementing
@@ -165,7 +165,7 @@ changes.
 
 ### 5.7 Display
 
-`factory status` shows the last event (`last event 12m ago: claude
+`repose status` shows the last event (`last event 12m ago: claude
 completed "ran tests, 3 failures fixed"`) and `AgentState` per window
 (`claude: working`). The dashboard events card lists the last 50 with
 delivery status icons per channel. `GET /events?since=` is the only read
@@ -173,17 +173,17 @@ path.
 
 ### 5.8 Metrics
 
-`factory_notify_events_total{kind,agent,source=hook|heuristic}`,
-`factory_notify_delivered_total{channel,result}`,
-`factory_notify_outbox_depth`, `factory_notify_delivery_latency_seconds`
-(event ts → delivered ts), `factory_notify_dedupe_total`.
+`repose_notify_events_total{kind,agent,source=hook|heuristic}`,
+`repose_notify_delivered_total{channel,result}`,
+`repose_notify_outbox_depth`, `repose_notify_delivery_latency_seconds`
+(event ts → delivered ts), `repose_notify_dedupe_total`.
 
 ## 6. Failure modes
 
 | Situation | Outcome |
 |---|---|
-| Hook socket missing or guestd down | `factory-hook` exits 0 silently, guestd logs on next start; the tmux-idle heuristic still runs once guestd is back |
-| Agent payload unparseable | `factory-hook` sends `kind = completed`, `summary = "<agent> event (unparsed)"`; fixture added |
+| Hook socket missing or guestd down | `repose-hook` exits 0 silently, guestd logs on next start; the tmux-idle heuristic still runs once guestd is back |
+| Agent payload unparseable | `repose-hook` sends `kind = completed`, `summary = "<agent> event (unparsed)"`; fixture added |
 | Both hook and heuristic fire | dedupe window collapses them |
 | Resend down | retries per 5.5, `failed` after 5, metric and alert if > 5 percent failed in 10 minutes |
 | ntfy URL invalid or 4xx | first failure marks `delivered.ntfy = "failed: 404"` with no retry (4xx), the settings page shows a warning banner |
@@ -211,12 +211,12 @@ path.
 Migrations down for `events_outbox`. Disabling delivery is
 `NOTIFY_CHANNELS=` empty, which keeps ingesting events (they still show in
 status) and delivers nothing. Wrappers writing hook config are idempotent
-and reversible by deleting the `factory-hook` entries; a `factory-hook
+and reversible by deleting the `repose-hook` entries; a `repose-hook
 uninstall` subcommand does that for every agent.
 
 ## 9. Checklist
 
-- [ ] Hook socket protocol implemented; `factory-hook` exits 0 in every
+- [ ] Hook socket protocol implemented; `repose-hook` exits 0 in every
       case including a missing socket. Evidence: test that removes the
       socket.
 - [ ] Every agent row in 5.3 has a fixture of the native payload and a
@@ -247,7 +247,7 @@ uninstall` subcommand does that for every agent.
 - [ ] Real guest: each of the five agents produces a `completed` and, where
       the mechanism supports it, a `needs_input`, delivered to a phone
       within 60 s. Evidence: `STATUS.md` line per agent with the event ids.
-- [ ] `factory status` and the dashboard show last event and agent state.
+- [ ] `repose status` and the dashboard show last event and agent state.
       Evidence: screenshot and CLI output.
 - [ ] Metrics in 5.8 exist. Evidence: `/metrics` scrape.
 - [ ] `features/notifications.md` matches. Evidence: implementer re-read.

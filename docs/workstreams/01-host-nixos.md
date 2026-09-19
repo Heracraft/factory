@@ -6,7 +6,7 @@ it).
 
 ## 1. Goal
 
-Produce the NixOS configuration for a factory host: a machine that boots
+Produce the NixOS configuration for a repose host: a machine that boots
 from nixos-anywhere with nothing on it but the plumbing hostd needs to run
 tenants' guests, and nothing else. Every path, device and rule in
 `interfaces/host-conventions.md` is created by this configuration.
@@ -28,12 +28,12 @@ tenants' guests, and nothing else. Every path, device and rule in
   `vm.overcommit_memory=1` (CH mmaps guest RAM and the host must not refuse
   it), `kernel.unprivileged_userns_clone=1`.
 - `nix/hosts/network.nix`: `br-guests` bridge with the host address `.1` of
-  the host's `/22` (read at boot from `/var/lib/factory/hostd/host.json`
-  by a `factory-host-net` oneshot that runs before hostd, because the CIDR
+  the host's `/22` (read at boot from `/var/lib/repose/hostd/host.json`
+  by a `repose-host-net` oneshot that runs before hostd, because the CIDR
   is assigned at registration, not at build time); no DHCP on the bridge;
   `wg0` via `networking.wireguard.interfaces.wg0` with keys and peer from the
   same `host.json`; systemd-networkd, not scripted networking.
-- `nix/hosts/nftables.nix`: the `factory` table exactly as
+- `nix/hosts/nftables.nix`: the `repose` table exactly as
   `host-conventions.md` describes, with the guest chain rules templated by
   hostd at runtime (hostd adds and removes per-guest counter rules and `tc`
   classes; the base table is declarative and hostd's rules live in a
@@ -42,7 +42,7 @@ tenants' guests, and nothing else. Every path, device and rule in
   .enable`, thin provisioning tools, `lvm.conf` with
   `thin_pool_autoextend_threshold = 80` and
   `thin_pool_autoextend_percent = 10` so the pool grows into the VG headroom
-  rather than filling silently; a `factory-pool-monitor.timer` every 5
+  rather than filling silently; a `repose-pool-monitor.timer` every 5
   minutes that exports pool usage to a textfile for node_exporter.
 - `nix/hosts/virt.nix`: `cloud-hypervisor`, `virtiofsd`, `ch-remote` in
   `environment.systemPackages`; a `virtiofsd` user and group; udev rule
@@ -51,17 +51,17 @@ tenants' guests, and nothing else. Every path, device and rule in
   spawning virtiofsd with `--sandbox chroot --shared-dir /nix/store
   --cache auto --xattr`. virtiofsd sees only `/nix/store`; the store's
   `.links` directory is excluded by mounting a bind of `/nix/store` at
-  `/run/factory/store-export` with `.links` masked by an empty tmpfs mount on
+  `/run/repose/store-export` with `.links` masked by an empty tmpfs mount on
   top, and sharing that path.
 - `nix/hosts/hostd.nix`: `systemd.services.hostd` with `Restart=always`,
-  `RestartSec=2`, `After=network-online.target factory-host-net.service`,
-  `ExecStart=${hostd}/bin/hostd --state /var/lib/factory/hostd`,
-  `LimitNOFILE=1048576`, `StateDirectory=factory/hostd`, `KillMode=process`
+  `RestartSec=2`, `After=network-online.target repose-host-net.service`,
+  `ExecStart=${hostd}/bin/hostd --state /var/lib/repose/hostd`,
+  `LimitNOFILE=1048576`, `StateDirectory=repose/hostd`, `KillMode=process`
   (guests are transient units, not children; a hostd restart must not stop
-  guests), plus `factory-snapshot.timer` at 03:00 local calling
+  guests), plus `repose-snapshot.timer` at 03:00 local calling
   `hostd snapshot --all --reason scheduled`.
 - `nix/hosts/gc.nix`: `nix.gc.automatic = true` weekly with `--delete-older-
-  than 14d`; the GC roots directory `/nix/var/nix/gcroots/factory/` is
+  than 14d`; the GC roots directory `/nix/var/nix/gcroots/repose/` is
   created and owned by root; `nix.settings.min-free` 50 GB and `max-free`
   100 GB so a build never fills the store completely; `nix.settings.sandbox
   = true`; `nix.settings.trusted-users = [ "root" ]` only;
@@ -71,11 +71,11 @@ tenants' guests, and nothing else. Every path, device and rule in
 - `nix/hosts/observability.nix`: `services.prometheus.exporters.node`
   bound to the `wg0` address only, textfile collector at
   `/var/lib/node_exporter/textfile`; Fluent Bit reading journald and
-  `/var/lib/factory/guests/*/console.log` (tail input with the guest id as a
+  `/var/lib/repose/guests/*/console.log` (tail input with the guest id as a
   label from the path) shipping to the Loki address in `host.json`, over
   `wg0`. Nothing listens on the Azure NIC.
-- `nix/hosts/registration.nix`: `factory-register.service`, oneshot before
-  hostd, reads `/run/factory/join-token` (written by cloud-init from the
+- `nix/hosts/registration.nix`: `repose-register.service`, oneshot before
+  hostd, reads `/run/repose/join-token` (written by cloud-init from the
   OpenTofu output), calls `hostd register`, which writes `host.json`,
   `cert.pem`, `key.pem`, deletes the token, and exits. Idempotent: if
   `host.json` exists the service does nothing.
@@ -122,7 +122,7 @@ workstream reads at boot for the guest CIDR, wg keys, Loki address. Shape:
 
 ```json
 { "host_id": "...", "guest_cidr": "10.64.4.0/22", "wg": { "private_key": "...",
-  "address": "10.255.0.7/16", "edge_pubkey": "...", "edge_endpoint": "edge.factory.herakraft.co:51820" },
+  "address": "10.255.0.7/16", "edge_pubkey": "...", "edge_endpoint": "edge.repose.herakraft.co:51820" },
   "host_ca_pub": "ssh-ed25519 ...", "loki_url": "http://10.255.0.1:3100" }
 ```
 
@@ -143,8 +143,8 @@ The `/22` for a host is allocated by the api at registration. Baking it into
 the NixOS config would mean one configuration per host and a rebuild to add
 a host. Instead the network unit reads `host.json` and configures `br-guests`
 and `wg0` at boot. The first boot (before registration) has no bridge, which
-is fine because there are no guests yet; `factory-register.service` triggers
-a restart of `factory-host-net.service` after writing `host.json`.
+is fine because there are no guests yet; `repose-register.service` triggers
+a restart of `repose-host-net.service` after writing `host.json`.
 
 ### The store export and `.links`
 
@@ -202,8 +202,8 @@ by drain, `nixos-rebuild boot`, reboot, undrain. `system.autoUpgrade` is off.
 | Failure | Operator-visible outcome |
 |---|---|
 | Data disk missing at install | disko fails with `device /dev/disk/azure/scsi1/lun0 not found`; nixos-anywhere aborts before touching the OS disk. Attach the disk, rerun. |
-| `host.json` absent at boot (registration never ran) | `factory-host-net.service` logs `no host.json; bridge not configured` and exits 0; hostd starts, sees no registration, retries `Register` every 30 s using the join token, logs `waiting for join token` if that is missing too. Alert `host_unregistered` after 10 minutes (10-observability). |
-| Join token rejected | hostd logs `register: join token invalid or used`; same alert. Operator mints a new one with `factory-admin hosts add --reissue <host>` and writes it to `/run/factory/join-token`. |
+| `host.json` absent at boot (registration never ran) | `repose-host-net.service` logs `no host.json; bridge not configured` and exits 0; hostd starts, sees no registration, retries `Register` every 30 s using the join token, logs `waiting for join token` if that is missing too. Alert `host_unregistered` after 10 minutes (10-observability). |
+| Join token rejected | hostd logs `register: join token invalid or used`; same alert. Operator mints a new one with `repose-admin hosts add --reissue <host>` and writes it to `/run/repose/join-token`. |
 | Thin pool at 80 percent | `host_warning{pool_80}` event, Grafana alert; autoextend consumes the headroom; at 95 percent hostd refuses `CreateGuest` and `ResizeVolume` with `insufficient_capacity` and existing guests keep running. |
 | Store at 80 percent | `host_warning{store_80}`; `nix.settings.min-free` triggers GC of unrooted paths; builds fail with `closure_too_large` before touching the last 50 GB. |
 | WireGuard handshake fails | `wg show wg0` shows no handshake; hostd's gRPC still works (it goes over the Azure NIC), so the api sees the host but the gateway cannot reach guests; alert `host_wg_down` from the edge side. |
@@ -216,7 +216,7 @@ by drain, `nixos-rebuild boot`, reboot, undrain. `system.autoUpgrade` is off.
   VM tests in `nix/hosts/tests/`: (a) the nftables table loads and a
   simulated guest namespace cannot reach `169.254.169.254` or the host,
   (b) the thin pool is created by disko and a thin volume can be created,
-  (c) `factory-host-net` configures the bridge from a fixture `host.json`,
+  (c) `repose-host-net` configures the bridge from a fixture `host.json`,
   (d) the hostd unit starts the stub and survives `systemctl restart`
   without stopping a transient `guest@test` unit.
 - On a real Azure host (required, the VM test cannot do KVM inside KVM in
@@ -243,14 +243,14 @@ they require a new host.
       `lvm.conf` check). Evidence: pasted.
 - [ ] After writing a fixture `host.json`, `ip addr show br-guests` shows the
       `.1` address and `wg show` shows the interface. Evidence: pasted.
-- [ ] `nft list table inet factory` shows `guest_fwd`, `guest_in`, `nat`,
+- [ ] `nft list table inet repose` shows `guest_fwd`, `guest_in`, `nat`,
       `guest_dyn` with the IMDS drop and the `10.64.0.0/12` drop. Evidence:
       pasted.
 - [ ] From a network namespace attached to the bridge (or a real guest once
       02 exists): `curl -m2 http://169.254.169.254` fails, `ping 10.64.x.1`
       is rate limited, `ping 10.64.other` fails, `curl https://github.com`
       succeeds. Evidence: the four commands and outputs pasted.
-- [ ] `ls /run/factory/store-export/.links` is empty. Evidence: pasted.
+- [ ] `ls /run/repose/store-export/.links` is empty. Evidence: pasted.
 - [ ] `systemctl status hostd` is active with the stub; `systemctl restart
       hostd` leaves a transient `guest@test` unit (created with `systemd-run
       --unit guest@test sleep infinity`) running. Evidence: pasted.
@@ -260,7 +260,7 @@ they require a new host.
       Evidence: two curl outputs.
 - [ ] Fluent Bit ships a test line from journald to Loki and it is visible
       in Grafana with the `host` label. Evidence: screenshot or LogQL result.
-- [ ] `factory-register.service` with a fixture join token writes
+- [ ] `repose-register.service` with a fixture join token writes
       `host.json` and deletes the token; running it again does nothing.
       Evidence: pasted journal.
 - [ ] `nix/hosts/tests/` VM tests pass in CI. Evidence: CI.

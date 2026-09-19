@@ -1,4 +1,4 @@
-// Command gateway is part of factory. See docs/workstreams/ for the workstream
+// Command gateway is part of repose. See docs/workstreams/ for the workstream
 // that owns it and docs/interfaces/ for the contracts it implements.
 package main
 

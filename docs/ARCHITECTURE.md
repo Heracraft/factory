@@ -11,7 +11,7 @@ a content hash, not a promise.
 
 | Component | Runs on | Language | Talks to |
 |---|---|---|---|
-| `factory` (CLI) | laptop | Go | api (HTTPS), gateway (SSH), Logto (browser) |
+| `repose` (CLI) | laptop | Go | api (HTTPS), gateway (SSH), Logto (browser) |
 | `api` | Coolify VM | Go | Postgres, Logto JWKS, Stripe, Key Vault, hostd (gRPC server side), Resend, ntfy |
 | dashboard | Coolify VM | SvelteKit | api |
 | Logto | Coolify VM | (upstream) | GitHub |
@@ -35,7 +35,7 @@ CLI ─POST /projects─▶ api ─scheduler picks host─▶ hostd.Create (gRPC
                                                    ├─ start virtiofsd, tap, systemd-run cloud-hypervisor
                                                    └─ guestd ready over vsock ─▶ hostd ─▶ api ─▶ CLI
 CLI ─POST /certs─▶ api (SSH CA) ─▶ cert ─▶ ssh-agent
-CLI ─ssh todo-app.user@ssh.factory.herakraft.co─▶ gateway ─verify cert, GET /internal/route─▶ api
+CLI ─ssh todo-app.user@ssh.repose.herakraft.co─▶ gateway ─verify cert, GET /internal/route─▶ api
         gateway ─tcp over wireguard─▶ guest:22 ─▶ sshd (trusts CA, principal = project id)
 CLI ─over that ssh─▶ git fetch/checkout, tar of diff, credential files, tmux attach or send-keys
 ```

@@ -27,33 +27,33 @@ provider module for hosts is an addition, not a rewrite.
     "Standard"` (Trusted Launch disables nested virtualization), Ubuntu
     24.04 marketplace image as the nixos-anywhere target, no public IP, one
     Premium SSD v2 data disk (2 TB, 16k IOPS, 600 MB/s to start), cloud-init
-    that writes `/run/factory/join-token` from a variable and opens root SSH
+    that writes `/run/repose/join-token` from a variable and opens root SSH
     for the provisioner, a `null_resource` provisioner that runs
     `nixos-anywhere --flake .#host-<name> root@<private ip>` through the edge
     as a jump host, then a second provisioner that removes the temporary
-    root key. Tag `factory:role=host`.
+    root key. Tag `repose:role=host`.
   - `edge`: one `Standard_B2s`, static public IP, DNS A record
-    `ssh.factory.herakraft.co`, Ubuntu image, nixos-anywhere provisioner
+    `ssh.repose.herakraft.co`, Ubuntu image, nixos-anywhere provisioner
     with `.#edge`. Root SSH after install is by operator certificate only.
   - `coolify`: one `Standard_D4s_v5`, Ubuntu 24.04 LTS, static public IP,
-    DNS A records `factory.herakraft.co`, `api.factory.herakraft.co`,
-    `auth.factory.herakraft.co`, 256 GB Premium SSD OS disk, cloud-init that
+    DNS A records `repose.herakraft.co`, `api.repose.herakraft.co`,
+    `auth.repose.herakraft.co`, 256 GB Premium SSD OS disk, cloud-init that
     installs Docker and runs Coolify's installer, then installs a WireGuard
     peer config so Prometheus and the api can reach the edge network. Its
     NSG allows 80, 443 and 22 from the owner's IP list only.
-  - `storage`: storage account (LRS, hot), container `factory-snapshots`
+  - `storage`: storage account (LRS, hot), container `repose-snapshots`
     with a lifecycle rule moving blobs older than 7 days to cool and
     deleting blobs older than 45 days (the 30-day post-destroy window plus
     slack; the api deletes on schedule and this is the backstop). A
     user-assigned managed identity for hosts with `Storage Blob Data
     Contributor` scoped to that container.
   - `keyvault`: Key Vault with purge protection, one RSA-3072 key
-    `factory-dek-wrap` with rotation policy 12 months, and an access policy
+    `repose-dek-wrap` with rotation policy 12 months, and an access policy
     for the api's identity (wrap/unwrap only, never get). The api on the
     Coolify VM authenticates with a client certificate stored in Coolify's
     secret store, since the Coolify VM is not an Azure identity target for
     containers.
-- `infra/r2/`: Cloudflare provider, one bucket `factory-pg-backups` with a
+- `infra/r2/`: Cloudflare provider, one bucket `repose-pg-backups` with a
   lifecycle rule deleting objects older than 35 days, and an API token
   scoped to that bucket for Coolify's backup job.
 - `infra/dns/`: Cloudflare zone records for `herakraft.co` subdomains used
@@ -79,7 +79,7 @@ provider module for hosts is an addition, not a rewrite.
 ## 4. Interfaces
 
 Owns: variable names and outputs of each module, the join-token handoff
-(`/run/factory/join-token`), the tag scheme, DNS names.
+(`/run/repose/join-token`), the tag scheme, DNS names.
 
 Consumes: `interfaces/host-conventions.md` (what the host expects at boot),
 `interfaces/grpc-hostd.md` (Register uses the join token).
@@ -89,7 +89,7 @@ Consumes: `interfaces/host-conventions.md` (what the host expects at boot),
 ### Adding a host
 
 ```
-factory-admin hosts add --name host-03 --provider azure   # mints join token, prints it
+repose-admin hosts add --name host-03 --provider azure   # mints join token, prints it
 tofu -chdir=infra/azure/prod apply -var 'hosts=["host-01","host-02","host-03"]' \
      -var 'join_tokens={"host-03":"<token>"}'
 ```
@@ -97,7 +97,7 @@ tofu -chdir=infra/azure/prod apply -var 'hosts=["host-01","host-02","host-03"]' 
 The apply creates the VM, attaches the disk, runs nixos-anywhere with the
 disko layout from `nix/hosts/disko.nix` (root on the OS disk, `vg-guests`
 on the data disk), reboots into NixOS, and hostd registers on first boot.
-The token is single-use and expires in 24 hours. `factory-admin hosts list`
+The token is single-use and expires in 24 hours. `repose-admin hosts list`
 shows the host as `ready` within two minutes of the reboot or the runbook
 entry "Host never registered" applies.
 
@@ -144,7 +144,7 @@ sponsorship SKUs; check before assuming the reserved column applies.
 | Failure | Outcome |
 |---|---|
 | nixos-anywhere fails mid-install | the VM is left on Ubuntu or half-kexec'd; `tofu apply` reports the provisioner error; re-running the apply re-taints the host and retries from the image (the data disk is preserved because it is a separate resource and `prevent_destroy = true`). |
-| Join token expired before first boot | hostd logs `register_fail reason=token_expired` every 30 s; runbook "Host never registered": mint a new token, write it to `/run/factory/join-token` over the edge jump, restart hostd. |
+| Join token expired before first boot | hostd logs `register_fail reason=token_expired` every 30 s; runbook "Host never registered": mint a new token, write it to `/run/repose/join-token` over the edge jump, restart hostd. |
 | `security_type` left at the default | the VM boots but `/dev/kvm` is absent; hostd refuses to start with `kvm_missing`. The variable has no default so the plan fails without an explicit value. |
 | Data disk detached or lost | hostd fails `pool_missing` at start and marks every guest on the host `error`; recovery is restore from Blob onto another host (runbook "Host loss"). `prevent_destroy` and a `lifecycle.ignore_changes` on the disk attachment guard the common mistakes. |
 | State lock stuck | `tofu force-unlock` after confirming no apply is running; documented in `infra/README.md`. |
@@ -165,7 +165,7 @@ sponsorship SKUs; check before assuming the reserved column applies.
 `tofu apply` with the previous variable values. Hosts are never destroyed
 by a rollback unless the host list shrinks, and shrinking requires the host
 to be `retired` in the api first (a `precondition` reads
-`factory-admin hosts list --json`). State is versioned in the storage
+`repose-admin hosts list --json`). State is versioned in the storage
 container with soft delete enabled, so a corrupted state file is restored
 from the previous version.
 
@@ -176,7 +176,7 @@ from the previous version.
 - [ ] `tofu plan` on `prod` with the current host list is empty. Evidence:
       plan output pasted.
 - [ ] A host created by `tofu apply` registers with the api without manual
-      steps. Evidence: `factory-admin hosts list` showing `ready`, and the
+      steps. Evidence: `repose-admin hosts list` showing `ready`, and the
       apply log.
 - [ ] `/dev/kvm` present and nested enabled on a fresh host. Evidence:
       command output.

@@ -9,16 +9,16 @@ browser. Claude in Chrome is not available in a guest, and the doc says why.
 Agents just use it:
 
 ```
-$ factory run "log into the staging site and screenshot the dashboard"
+$ repose run "log into the staging site and screenshot the dashboard"
 ```
 
 Watching or taking over:
 
 ```
-$ factory open --desktop
+$ repose open --desktop
 Starting desktop on todo-app ... ready
 Open http://localhost:6080/vnc.html (password copied to clipboard)
-Press Ctrl-C to stop forwarding; the desktop keeps running until `factory
+Press Ctrl-C to stop forwarding; the desktop keeps running until `repose
 open --desktop --stop`.
 ```
 
@@ -45,14 +45,14 @@ open --desktop --stop`.
   that.
 - Claude Code in a fresh guest lists `playwright` and `chrome-devtools` in
   `claude mcp list`.
-- `factory open --desktop` starts Xvfb on `:1`, the window manager, x11vnc
+- `repose open --desktop` starts Xvfb on `:1`, the window manager, x11vnc
   bound to localhost, and noVNC on 6080, then forwards 6080 over SSH and
   prints the URL. The VNC password is generated per start and printed once.
   Starting when already started just forwards.
 - When the desktop is up, `DISPLAY=:1` is exported into new shells in the
   tmux session, so an agent asked to "open a headed browser" gets one on the
   desktop and the user can see it in noVNC.
-- `factory open --desktop --stop` stops the units and clears `DISPLAY`.
+- `repose open --desktop --stop` stops the units and clears `DISPLAY`.
 - The desktop is never reachable except through the SSH forward. noVNC
   binds `127.0.0.1` in the guest; the guest has no inbound anyway.
 - Headless Chromium is killed when its RSS passes 1.5 GB on a small guest,
@@ -69,7 +69,7 @@ from the laptop today. Agents that need browsing use Playwright MCP or
 chrome-devtools-mcp instead, which cover navigation, forms, screenshots,
 console and network capture.
 
-## Planned: `factory browser bridge`
+## Planned: `repose browser bridge`
 
 For the "open Chrome and go to my thing" case while the laptop is open:
 
@@ -92,5 +92,5 @@ Exec).
 
 ## Deferred
 
-`factory browser bridge`. Browserbase or another hosted browser as an
+`repose browser bridge`. Browserbase or another hosted browser as an
 option. GPU-accelerated rendering (no GPU guests).

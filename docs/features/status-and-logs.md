@@ -1,19 +1,19 @@
 # Status and logs
 
-`factory status` answers "what is it doing and what is it costing" in one
-screen. `factory logs` shows the guest's console, the last build, or the
+`repose status` answers "what is it doing and what is it costing" in one
+screen. `repose logs` shows the guest's console, the last build, or the
 operations history. The dashboard shows the same data with history.
 
 ## What the user sees
 
 ```
-$ factory status
+$ repose status
 PROJECT     CLASS  STATE    UP       AGENTS                   TODAY    MONTH
 todo-app    large  running  2h14m    claude: working          $0.31    $18.40
 api-v2      xl     stopped  -        -                        $0.00    $41.02
 scratch     small  running  6d3h     -                        $1.63    $9.88
 
-$ factory status --project todo-app
+$ repose status --project todo-app
 todo-app  large  running on az-eastus-01  up 2h14m
   base      2026.09.15 (held; latest 2026.09.22)
   config    r14 applied 2026-09-17 13:40
@@ -27,9 +27,9 @@ todo-app  large  running on az-eastus-01  up 2h14m
 ```
 
 ```
-$ factory logs                    # console, last 200 lines, follow with -f
-$ factory logs --kind build       # the last build's output
-$ factory logs --kind ops         # create/start/stop/apply/snapshot history
+$ repose logs                    # console, last 200 lines, follow with -f
+$ repose logs --kind build       # the last build's output
+$ repose logs --kind ops         # create/start/stop/apply/snapshot history
 ```
 
 ## Behaviour that must hold
@@ -89,4 +89,4 @@ Workstreams 05 (project and usage routes, ops history, log storage), 03
 ## Deferred
 
 Application log shipping from the guest (opt-in). Historical resource
-graphs per project in the dashboard beyond cost. A `factory top` live view.
+graphs per project in the dashboard beyond cost. A `repose top` live view.

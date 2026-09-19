@@ -6,7 +6,7 @@
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
   system.stateVersion = "26.11";
-  networking.hostName = lib.mkDefault "factory-edge";
+  networking.hostName = lib.mkDefault "repose-edge";
   networking.firewall.allowedTCPPorts = [ 22 ];
   networking.firewall.allowedUDPPorts = [ 51820 ];
   services.openssh.enable = true;

@@ -1,6 +1,6 @@
 # Security
 
-The threat model for factory, the boundaries that hold it up, the rules that
+The threat model for repose, the boundaries that hold it up, the rules that
 are not negotiable, and the things the first release deliberately does not
 mitigate. `workstreams/14-security.md` is the work that verifies this doc.
 
@@ -45,7 +45,7 @@ From `ARCHITECTURE.md`, with the mechanism and the actor it stops:
    gateway (route lookup plus principal match) and at the guest's sshd.
    12-hour validity, revocation list. Stops: a tenant or a stolen
    certificate opening another project; a stolen laptop after 12 hours or
-   after `factory logout` from another device.
+   after `repose logout` from another device.
 4. **mTLS per host** with the host id as CN; every command checked against
    the stream's identity. Stops: a compromised host acting on another
    host's guests.
@@ -117,6 +117,6 @@ Written down so nobody believes otherwise.
 
 ## Reporting
 
-Security reports go to the owner's email listed on `factory.herakraft.co`.
+Security reports go to the owner's email listed on `repose.herakraft.co`.
 Incident handling is in `ops/RUNBOOK.md` under "Suspected cross-tenant
 access".

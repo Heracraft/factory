@@ -7,25 +7,25 @@ keep working on top.
 ## What the user sees
 
 ```
-$ factory notify set ntfy https://ntfy.sh/heracraft-factory-8f3a
+$ repose notify set ntfy https://ntfy.sh/heracraft-repose-8f3a
 Test notification sent. Check your phone.
 
-$ factory notify set email on
+$ repose notify set email on
 ```
 
 On the phone (ntfy):
 
 ```
-factory · todo-app
+repose · todo-app
 claude finished: "Added auth flow, 14 tests green, committed 3f9e2a1"
 ```
 
 ```
-factory · todo-app
+repose · todo-app
 codex needs input: "Should I drop the legacy sessions table?"
 ```
 
-In `factory status`:
+In `repose status`:
 
 ```
 todo-app   large   running   claude: needs_input (2m ago)   last: "Should I drop..."
@@ -57,7 +57,7 @@ Events (see agents.md for how each agent produces them):
 Channels (DECISIONS R4-15):
 
 - Email through Resend, to the account's email, one message per event,
-  subject `factory · <project>: <agent> <kind>`. Off by default after the
+  subject `repose · <project>: <agent> <kind>`. Off by default after the
   first week of an account, on by default before, so a new user gets the
   first "it finished" without configuring anything.
 - ntfy: the user sets any ntfy-compatible URL, including a self-hosted
@@ -74,8 +74,8 @@ proxy or intercept these.
 
 Dashboard and CLI:
 
-- `factory status` shows the last event per agent window.
-- `factory events`, its own command, lists
+- `repose status` shows the last event per agent window.
+- `repose events`, its own command, lists
   the last 50 events with timestamps.
 - The dashboard project page shows the event stream and delivery status per
   channel, so a user who got nothing can see whether the event happened and
@@ -86,7 +86,7 @@ Dashboard and CLI:
 Workstreams 13 (delivery, dedupe, rate cap, Resend, ntfy), 04 (hook socket,
 AgentEvent), 03 (Event forwarding), 05 (ingest, events routes, `PATCH /me`
 notify settings), 07 (`notify` and `events` commands), 08 (settings and
-event stream pages), 02 (`factory-hook` and wrappers).
+event stream pages), 02 (`repose-hook` and wrappers).
 
 ## Deferred
 

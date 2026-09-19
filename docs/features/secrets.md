@@ -6,20 +6,20 @@ exists because the other two would be wrong for that kind.
 ## What the user sees
 
 ```
-$ factory secrets set DATABASE_URL
+$ repose secrets set DATABASE_URL
 Enter value (input hidden): ********
-Stored for todo-app. Available as $DATABASE_URL and /run/factory/secrets/DATABASE_URL.
+Stored for todo-app. Available as $DATABASE_URL and /run/repose/secrets/DATABASE_URL.
 
-$ factory secrets list
+$ repose secrets list
 NAME               UPDATED
 DATABASE_URL       2026-09-17 14:02
 GEMINI_API_KEY     2026-09-15 09:41
 
-$ factory secrets rm GEMINI_API_KEY
+$ repose secrets rm GEMINI_API_KEY
 Removed. Running processes that already read it keep their copy until restart.
 ```
 
-Synced logins happen silently inside `factory run`:
+Synced logins happen silently inside `repose run`:
 
 ```
 Syncing logins: gh, codex, opencode, git identity
@@ -27,7 +27,7 @@ Syncing logins: gh, codex, opencode, git identity
 
 ## Kind 1: tool logins the laptop already has
 
-Copied at every `factory run` over the SSH session into the guest, owned by
+Copied at every `repose run` over the SSH session into the guest, owned by
 `dev`, mode 0600. The list is exact and lives in
 `interfaces/guest-conventions.md`: gh's `hosts.yml`, Codex's `auth.json`,
 opencode's `auth.json`, and the two git identity keys. The platform never
@@ -57,12 +57,12 @@ and the Anthropic policy behind it.
 
 ## Kind 3: named secrets
 
-`factory secrets set NAME` and the dashboard's secrets page. Stored by the
+`repose secrets set NAME` and the dashboard's secrets page. Stored by the
 API as ciphertext in Postgres, encrypted with a per-user data key that is
 itself wrapped by an Azure Key Vault key (DECISIONS R3-10). Delivered to the
-guest at start and on every change as `/run/factory/secrets/NAME` on a
+guest at start and on every change as `/run/repose/secrets/NAME` on a
 tmpfs, mode 0400, owner `dev`, and exported into login shells through
-`/run/factory/secrets.env`.
+`/run/repose/secrets.env`.
 
 Why central: an unattended agent needs them when no laptop is connected, and
 a stopped guest that restarts at 03:00 for a base bump needs them too. Why
@@ -89,7 +89,7 @@ Rules that must hold:
   `[redacted]`, because a Nix build that echoes an environment variable is a
   common way a token leaks into a log that lives 90 days.
 - Rotating the Key Vault key re-wraps every DEK without touching
-  ciphertext; `factory-admin secrets rewrap` does it and is rehearsed before
+  ciphertext; `repose-admin secrets rewrap` does it and is rehearsed before
   launch.
 
 ## Where secrets are not
