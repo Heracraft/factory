@@ -53,7 +53,6 @@
       nixosConfigurations.host-bench = mkHost { hostName = "host-bench"; };
       lib.mkHost = mkHost;
 
-      packages.${system}.hostd-stub = pkgs.callPackage ./hosts/hostd-stub.nix { };
 
       # NixOS VM tests for the host configuration (nix/hosts/tests). They
       # need KVM on the builder: `system-features = kvm` in nix.conf.
@@ -76,6 +75,36 @@
       lib.mkGuest = import ./guest/microvm.nix {
         inherit nixpkgs home-manager microvm system overlay self;
       };
+
+      # hostd and hostdev (workstream 03). The Go module is the repository
+      # root, one level above this flake, so build with the repo as the
+      # flake source: `nix build 'git+file://.?dir=nix#hostd'` or
+      # `nix build '.?dir=nix#hostd'` from the repository root. From
+      # `./nix` alone the parent is not in the source and evaluation fails
+      # with a clear message instead of a build error.
+      packages.${system} =
+        let
+          src = ../.;
+          goCommon = {
+            version = "0.1.0";
+            inherit src;
+            vendorHash = "sha256-K/dhRbLrd3kqRWeQ3BGf6W8aW9ddDz/pq5xWIQodt+I=";
+            env.CGO_ENABLED = 0;
+            ldflags = [ "-s" "-w" ];
+            meta.description = "repose host daemon (docs/workstreams/03-hostd.md)";
+          };
+          have = builtins.pathExists (src + "/go.mod");
+          mk = name: if have then pkgs.buildGoModule (goCommon // {
+            pname = name;
+            subPackages = [ "cmd/${name}" ];
+            ldflags = goCommon.ldflags ++ [ "-X main.version=${goCommon.version}" ];
+          }) else throw "packages.${name}: build from the repository root with `nix build '.?dir=nix#${name}'` so go.mod is in the flake source";
+        in {
+          hostd = mk "hostd";
+          hostdev = mk "hostdev";
+          # Workstream 01's stand-in, kept for the host VM tests.
+          hostd-stub = pkgs.callPackage ./hosts/hostd-stub.nix { };
+        };
 
       devShells.${system} = {
         default = pkgs.mkShell {

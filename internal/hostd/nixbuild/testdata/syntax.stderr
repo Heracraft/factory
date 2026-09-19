@@ -1,0 +1,20 @@
+error:
+       … while calling the 'toJSON' builtin
+         at /nix/store/qrpf3yaaqr1z8mvl2ldk3f5l8wy1778y-source/flake.nix:8:62:
+            7|     in {
+            8|       guestSystem = { config.system.build.toplevel.drvPath = builtins.toJSON cfg; };
+             |                                                              ^
+            9|     };
+
+       … while calling the 'import' builtin
+         at /nix/store/qrpf3yaaqr1z8mvl2ldk3f5l8wy1778y-source/flake.nix:5:16:
+            4|     let pkgs = { ripgrep = "rg"; };
+            5|         frag = import "${fragment}/fragment.nix";
+             |                ^
+            6|         cfg = frag { inherit pkgs; };
+
+       error: syntax error, unexpected ';'
+       at /nix/store/1mpn84z20q92fvhjnwfrh4sdlcs80fcp-source/fragment.nix:1:49:
+            1| { pkgs, ... }: { home.packages = [ pkgs.ripgrep ; }
+             |                                                 ^
+            2|

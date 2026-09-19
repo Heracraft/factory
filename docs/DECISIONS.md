@@ -535,3 +535,56 @@ first tried in an incident. *Cost:* the edge must exist and be reachable
 before the first host, and its operator sshd must be listening on
 `edge_operator_ssh_port`. Until workstream 06 moves it, `nix/edge` serves sshd
 on 22, so the first apply sets `edge_operator_ssh_port = 22`.
+**I-18. Commands carry what hostd cannot keep: StartGuest repeats the
+delivery fields, CreateGuest and Restore name the user, slug and remote,
+Restore names the closure, Exec carries an audit id, StopResult carries
+the snapshot's blob path.** (03) hostd holds secrets and sshd material in
+memory only (secrets have three homes and the host disk is not one), so
+after a hostd restart a `StartGuest` with only `guest_id` would boot a
+guest without its secrets or host key. `StartGuest` now accepts the same
+optional fields as `CreateGuest` (`secrets`, `env`, `ssh_ca_pub`,
+`principals`, `hooks_config`, `host_key`, `host_cert`, `project_json`); the
+api sends them on every start, and the old shape (guest id only) still
+works while hostd has the values cached. `CreateGuest` and `Restore` gain
+`user_id` (the snapshot path is `<user_id>/<project_id>/<ts>.img.zst`),
+`project_slug` and `remote_url` (guestd's `SetupProject` needs them) and
+`project_json`; `Restore` gains `system_closure` (the doc said "the closure
+the api passed" but the message had no field). `Exec` gains `audit_id`,
+required, because the doc says Exec is only accepted with one. `StopResult`
+gains `blob_path` and `bytes` because hostd never knows the api's
+`snapshot_id`. *Rejected:* an encrypted secrets cache on the host disk (a
+fourth home for secrets); hostd asking the api for secrets over the stream
+(a request channel the contract does not have). Interface: `grpc-hostd.md`,
+`hostd.proto`.
+
+**I-19. hostd launches Cloud Hypervisor directly from the guest's system
+closure; no per-guest microvm.nix runner is built.** (03) The NixOS
+toplevel already carries `kernel`, `initrd`, `init` and `kernel-params`;
+hostd renders the `cloud-hypervisor` argv from them plus the guest record
+(tap, MAC, CID, volume, class) and writes it to
+`/var/lib/repose/guests/<id>/ch.args`. microvm.nix's runner would only wrap
+the same values, and building one per guest means evaluating the whole
+NixOS system on every start (tens of seconds, against the 5 s start in
+DESIGN §5), while one runner per base cannot take per-guest arguments.
+The guest side (virtio-fs tag `ro-store`, root on the disk, the writable
+store overlay) stays in 02's module; `mkGuestRunner` remains for VM tests
+and `nix flake check`. The kernel command line hostd adds is `init=`,
+`console=ttyS0` and the static `ip=` line 02 documents. *Rejected:* runner
+per guest at start (eval cost); one runner per base with arguments
+(microvm.nix does not produce one). Interface: `host-conventions.md`
+(`ch.args` replaces `runner`).
+
+**I-20. The platform flake takes the user fragment as a non-flake input
+named `fragment` and exposes `guestSystem`; hostd fetches base checkouts
+with git.** (03, for 12) Pure evaluation forbids reading any absolute path
+outside the flake's own source, including store paths given as literals,
+so a fragment file cannot be passed with `--apply` or `--arg`. It is
+passed as `--override-input fragment path:/var/lib/repose/builds/<rev>`,
+which Nix copies into the store and lets the flake read as
+`${fragment}/fragment.nix`. Error locations come out as `fragment.nix:L:C`,
+which is what the error mapping parses. A base checkout lives at
+`/var/lib/repose/base/<base_ref>` and hostd clones the repository there
+with `--base-repo-url` when it is missing. The exact contract is
+`docs/interfaces/nix-build-contract.md`. *Rejected:* `--impure` (opens
+environment and path access to fragments); tarballs delivered in `Build`
+(a 30 MB message per build).

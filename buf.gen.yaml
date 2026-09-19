@@ -2,7 +2,7 @@ version: v2
 plugins:
   - remote: buf.build/protocolbuffers/go
     out: internal/gen
-    opt: paths=source_relative
+    opt: module=github.com/heracraft/repose/internal/gen
   - remote: buf.build/grpc/go
     out: internal/gen
-    opt: paths=source_relative
+    opt: module=github.com/heracraft/repose/internal/gen

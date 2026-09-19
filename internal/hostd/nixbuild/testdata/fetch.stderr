@@ -1,0 +1,17 @@
+error:
+       … while calling the 'toJSON' builtin
+         at /nix/store/qrpf3yaaqr1z8mvl2ldk3f5l8wy1778y-source/flake.nix:8:62:
+            7|     in {
+            8|       guestSystem = { config.system.build.toplevel.drvPath = builtins.toJSON cfg; };
+             |                                                              ^
+            9|     };
+
+       … while evaluating attribute 'home'
+         at /nix/store/y0hxjrhjh6dygbscjrjfhw6a41ygin7y-source/fragment.nix:1:18:
+            1| { pkgs, ... }: { home.file.x.source = builtins.fetchurl "https://example.com/x"; }
+             |                  ^
+            2|
+
+       (stack trace truncated; use '--show-trace' to show the full, detailed trace)
+
+       error: access to URI 'https://example.com/x' is forbidden in restricted mode

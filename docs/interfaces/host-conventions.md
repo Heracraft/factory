@@ -9,13 +9,15 @@ change to either happens in the same commit.
 | Path | What |
 |---|---|
 | `/var/lib/repose/hostd/` | `cert.pem`, `key.pem` (mTLS to api), `host.json` (see below), `state.db` (bbolt: guest table for reconciliation). Mode 0700, written by `hostd register`. |
-| `/var/lib/repose/guests/<guest_id>/` | `runner` (symlink to the microvm.nix runner package), `ch.sock` (Cloud Hypervisor API), `console.log`, `virtiofsd.sock`, `secrets/` (tmpfs mount, delivered to guest at boot then unmounted). Parent 0700 root. |
-| `/var/lib/repose/builds/<revision_id>/` | fragment and build scratch for one `Build`. |
+| `/var/lib/repose/guests/<guest_id>/` | `ch.args` (the rendered cloud-hypervisor argv, one argument per line; DECISIONS I-19), `guest.json` (non-secret copy of the guest record for `hostd reconcile --rebuild`), `ch.sock` (Cloud Hypervisor API), `vsock.sock` (host side of the guest's vsock, `CONNECT 5000` reaches guestd), `console.sock` (serial; hostd copies it into `console.log`, rotated at 64 MB keeping 3), `virtiofsd.sock`. Secrets are never written here: they are delivered to the guest's tmpfs over vsock. |
+| `/var/lib/repose/builds/<revision_id>/` | `fragment.nix` for a `Build`; see `nix-build-contract.md` |
+| `/var/lib/repose/base/<base_ref>/` | checkout of the platform repository at that revision (its `nix/` is the flake hostd evaluates) |
+| `/run/repose/hostd.sock` | hostd's operator control socket (`hostd status`, `guests`, `snapshot-all`, `drain`, `reconcile`) |
 | `/run/repose/join-token` | one-shot registration token, written to the installed system over SSH by `infra/azure/modules/host` or by hand per the runbook, mode 0600, deleted after Register. Not from cloud-init: nixos-anywhere replaces the system that ran cloud-init (DECISIONS I-19) |
 | `/run/repose/host.env` | rendered from `host.json` at boot by `repose-host-net`: `HOST_ID`, `GUEST_CIDR`, `BRIDGE_ADDR`, `WG_ADDR`, `LOKI_HOST`, `LOKI_PORT`. Read by units that need the addresses (node_exporter, Fluent Bit); hostd may read it too. No secrets in it. |
 | `/run/repose/wg0.conf`, `/run/repose/host_ca.pub`, `/run/repose/sshd.conf` | also rendered from `host.json`; wg-quick, sshd `TrustedUserCAKeys` and sshd `ListenAddress` respectively. |
 | `/run/repose/store-export/` | read-only bind of `/nix/store` with an empty tmpfs over `.links`. **This, not `/nix/store`, is what virtiofsd shares** (`--shared-dir /run/repose/store-export`), so a guest cannot enumerate the store through the hard-link farm. |
-| `/nix/var/nix/gcroots/repose/<guest_id>` | GC root for the guest's system closure; removed on destroy. `rev-<revision_id>` for build revisions. |
+| `/nix/var/nix/gcroots/repose/<guest_id>` | GC root for the guest's system closure; removed on destroy. `rev-<project_id>-<revision_id>` roots keep the last 3 built revisions per project. |
 | `/dev/vg-guests/thin` | thin pool (95 percent of the data disk, autoextend at 80 percent by 10 percent, discards passdown, zeroing on); volumes `/dev/vg-guests/g-<guest_id>`, snapshots `snap-<guest_id>-<ts>` |
 | `/var/log/repose/` | hostd log (journald is primary), build logs per op |
 | `/var/lib/node_exporter/textfile/` | node_exporter textfile collector; `repose_lvm.prom` is written every 5 minutes by `repose-pool-monitor.timer` (`repose_lvm_pool_present`, `repose_lvm_pool_size_bytes`, `repose_lvm_pool_data_percent`, `repose_lvm_pool_metadata_percent`, `repose_lvm_volumes`) |
@@ -132,11 +134,18 @@ has `CPUWeight=50`. Nix: `max-jobs 2`, `cores 8`, `min-free 50G`,
 
 ## Cloud Hypervisor invocation (per guest)
 
-Through microvm.nix's runner, which produces a script; hostd runs it with
-`systemd-run --unit guest@<id> --slice guests.slice --property
-MemoryMax=<class RAM + 512M> --property CPUQuota=<vcpus*100>%`. CH API
-socket is used for `pause`, `resume`, `shutdown`, and stats. virtiofsd runs
-as `virtiofsd:virtiofsd` sharing `/run/repose/store-export`.
+hostd renders the `cloud-hypervisor` argv from the guest's system closure
+(`kernel`, `initrd`, `init`, `kernel-params`) and its record (DECISIONS
+I-19) and runs it with `systemd-run --unit guest@<id> --property
+MemoryMax=<class RAM + 512M> --property CPUQuota=<vcpus*100>% --property
+Slice=guests.slice`. The devices: `--disk path=/dev/vg-guests/g-<id>`,
+`--net tap=tap-<8hex>,mac=52:54:<4 bytes of id>`, `--fs tag=ro-store,socket=
+virtiofsd.sock`, `--vsock cid=<1000+index>,socket=vsock.sock`, `--serial
+socket=console.sock`, `--memory size=<RAM>M,shared=on`. The CH API socket
+is used for `shutdown` (after guestd's Shutdown timed out), `pause`,
+`resume`, and stats.
+virtiofsd runs as `virtiofsd:virtiofsd` in a chroot sandbox sharing
+`/run/repose/store-export` (never `/nix/store` directly).
 
 ## Operator access
 

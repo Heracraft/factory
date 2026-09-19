@@ -1,0 +1,12 @@
+this derivation will be built:
+  /nix/store/6v3cd4dy8pfmi24r2bw1hipqsk8wchgb-fails-1.0.drv
+building '/nix/store/6v3cd4dy8pfmi24r2bw1hipqsk8wchgb-fails-1.0.drv'...
+error: Cannot build '/nix/store/6v3cd4dy8pfmi24r2bw1hipqsk8wchgb-fails-1.0.drv'.
+       Reason: builder failed with exit code 1.
+       Output paths:
+         /nix/store/322y862rrxbfcs4xydl9s9gxamqars4a-fails-1.0
+       Last 2 log lines:
+       > compiling
+       > boom
+       For full logs, run:
+         nix log /nix/store/6v3cd4dy8pfmi24r2bw1hipqsk8wchgb-fails-1.0.drv

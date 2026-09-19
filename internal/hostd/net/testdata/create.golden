@@ -1,0 +1,12 @@
+ip link show dev tap-0192abcd
+ip tuntap add dev tap-0192abcd mode tap
+ip link set dev tap-0192abcd master br-guests up
+nft add element inet repose guests { 10.64.4.2 . tap-0192abcd }
+nft list counter inet repose egress-g1
+nft add counter inet repose egress-g1
+nft add rule inet repose guest_dyn ip saddr 10.64.4.2 counter name "egress-g1"
+tc qdisc replace dev tap-0192abcd root handle 1: htb default 10
+tc class replace dev tap-0192abcd parent 1: classid 1:10 htb rate 200mbit ceil 200mbit
+nft delete element inet repose guests { 10.64.4.2 . tap-0192abcd }
+nft -a list chain inet repose guest_dyn
+nft delete rule inet repose guest_dyn handle 17
