@@ -7,6 +7,12 @@
 > applied by mistake. The Coolify VM is `Standard_D4s_v5`, the edge
 > `Standard_D2s_v5`.
 
+> **State backend (created 2026-09-19):** resource group `repose-prod`,
+> storage account `reposetfstate3912`, container `tfstate`, key
+> `azure.tfstate`, `use_azuread_auth = true`. Subscription
+> `5f27aace-dd8c-4dc0-95bf-b59ee8de7d70`, tenant
+> `3d6e97f4-af27-4cea-8bf3-f42718e67189`, region `eastus`.
+
 ## 1. Goal
 
 Every cloud resource the platform needs is declared in `infra/` and created

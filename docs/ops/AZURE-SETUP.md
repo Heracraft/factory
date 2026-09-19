@@ -17,23 +17,23 @@ a day.
      `D16s_v5` at 16, the Coolify VM 4, the edge 2, and room for a `D32s_v5`
      if 16 is tight). Raise it to 160 before launch for the `D64s_v5`.
    - `Total Regional vCPUs`: 100 for now.
-   Defaults are usually 10 to 20 per family, so a host cannot be created
-   until this is approved. Approval is often automatic within minutes for
+   Checked 2026-09-19: the subscription already has 65 on both lines, so no
+   request is needed until launch. Approval is often automatic within minutes for
    these sizes; if it goes to a ticket it can take a day. Do this first.
 
-3. **Register resource providers** (once per subscription; harmless if
-   already done): Microsoft.Compute, Microsoft.Network, Microsoft.Storage,
+3. **Register resource providers** (done 2026-09-19; once per subscription): Microsoft.Compute, Microsoft.Network, Microsoft.Storage,
    Microsoft.KeyVault, Microsoft.ManagedIdentity. Portal: Subscription →
    Resource providers → Register.
 
-4. **Create a resource group** named `repose-prod` in East US. OpenTofu
-   will put everything in it, and deleting it later deletes everything.
+4. **Create a resource group** named `repose-prod` in East US. Done
+   2026-09-19. OpenTofu will put everything in it, and deleting it later
+   deletes everything.
 
-5. **Create the OpenTofu state store by hand.** A storage account named
-   `reposetfstate` plus a random suffix (names are global), a container
-   named `tfstate`. Standard LRS is fine. This is the one thing that must
-   exist before the first `tofu init`, and it must never be managed by
-   OpenTofu itself.
+5. **Create the OpenTofu state store by hand.** Done 2026-09-19: storage
+   account `reposetfstate3912` in `repose-prod`, container `tfstate`, blob
+   versioning on, Standard LRS, no public access. Backend key
+   `azure.tfstate`, auth via `az login`. This account must never be managed
+   by OpenTofu itself.
 
 6. **Decide how OpenTofu authenticates.** For now: `az login` on the machine
    running it (the dev shell provides `az`). Later, for CI, a service
