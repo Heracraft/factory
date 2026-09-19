@@ -54,6 +54,10 @@ in
   environment.etc."ssh/ssh_host_ed25519_key-cert.pub".source = hostCert;
   environment.etc."ssh/user_ca.pub".source = userCA;
 
+  # systemd's ssh generator would add sshd listeners on AF_VSOCK and a local
+  # AF_UNIX socket; the only way in is the tap interface through the gateway.
+  boot.kernelParams = [ "systemd.ssh_auto=no" ];
+
   systemd.tmpfiles.rules = [
     "d /etc/ssh/principals 0755 root root -"
     "d ${runDir} 0755 root root -"

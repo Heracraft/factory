@@ -15,8 +15,10 @@
   networking.nftables.enable = false;
 
   # systemd-network-generator reads ip= from /proc/cmdline into
-  # /run/systemd/network/71-eth0.network. The networkd module wires it into
-  # sysinit.target; requiring it explicitly documents the dependency.
+  # /run/systemd/network/71-eth0.network. NixOS ships that unit only for the
+  # initrd, so stage 2 gets the upstream unit here and pulls it into
+  # sysinit.target (as a drop-in on the upstream file, not a replacement).
+  systemd.additionalUpstreamSystemUnits = [ "systemd-network-generator.service" ];
   systemd.services.systemd-network-generator.wantedBy = [ "sysinit.target" ];
   systemd.network.wait-online.enable = false;
 
