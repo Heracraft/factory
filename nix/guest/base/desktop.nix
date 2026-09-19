@@ -103,6 +103,8 @@ in
       ExecStartPre = "${genPassword}/bin/repose-vnc-password";
       ExecStart = "${pkgs.x11vnc}/bin/x11vnc -display ${display} -localhost -rfbport 5900 -rfbauth ${dir}/vnc-passwd -forever -shared -noxdamage -quiet";
       ExecStartPost = waitPort 5900;
+      # x11vnc exits 2 when told to stop; that is its normal shutdown.
+      SuccessExitStatus = "2";
     };
   };
 

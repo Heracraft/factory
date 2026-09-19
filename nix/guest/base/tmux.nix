@@ -34,6 +34,11 @@ in
 {
   programs.tmux = {
     enable = true;
+    # One socket path for everyone: /tmp/tmux-1000/default. With the secure
+    # socket the server started by the user unit and a client in an SSH
+    # session would look in different places (TMUX_TMPDIR is only set in
+    # login shells).
+    secureSocket = false;
     # Written to /etc/tmux.conf; guest-conventions.md "tmux" lists these.
     historyLimit = 50000;
     escapeTime = 10;
