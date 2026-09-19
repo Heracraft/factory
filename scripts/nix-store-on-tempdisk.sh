@@ -18,6 +18,10 @@ fi
 # 2. Mount it.
 mkdir -p "$MNT"
 mountpoint -q "$MNT" || mount "$DISK" "$MNT"
+# Single-user Nix: /nix must be owned by the user, and mkfs leaves the
+# mount root owned by root. Without this the installer on the recovery
+# path refuses "/nix exists but is not writable".
+chown "${SUDO_USER:-azureuser}:root" "$MNT"
 
 # 3. First run: copy the existing store over and bind it in place.
 if ! mountpoint -q /nix; then
