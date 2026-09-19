@@ -1,0 +1,17 @@
+error:
+       … while calling the 'toJSON' builtin
+         at /nix/store/qrpf3yaaqr1z8mvl2ldk3f5l8wy1778y-source/flake.nix:8:62:
+            7|     in {
+            8|       guestSystem = { config.system.build.toplevel.drvPath = builtins.toJSON cfg; };
+             |                                                              ^
+            9|     };
+
+       … while evaluating attribute 'home'
+         at /nix/store/kz8116g6avhkwgfxsnhfjhlzfnwx30qd-source/fragment.nix:1:18:
+            1| { pkgs, ... }: { home.packages = builtins.readFile "/etc/passwd"; }
+             |                  ^
+            2|
+
+       (stack trace truncated; use '--show-trace' to show the full, detailed trace)
+
+       error: access to absolute path '/etc/passwd' is forbidden in pure evaluation mode (use '--impure' to override)

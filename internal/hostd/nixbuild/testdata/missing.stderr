@@ -1,0 +1,22 @@
+error:
+       … while calling the 'toJSON' builtin
+         at /nix/store/qrpf3yaaqr1z8mvl2ldk3f5l8wy1778y-source/flake.nix:8:62:
+            7|     in {
+            8|       guestSystem = { config.system.build.toplevel.drvPath = builtins.toJSON cfg; };
+             |                                                              ^
+            9|     };
+
+       … while evaluating attribute 'home'
+         at /nix/store/bwmplba3qj64ynfmmybwzgg01jnk2j3h-source/fragment.nix:1:18:
+            1| { pkgs, ... }: { home.packages = [ pkgs.ripgrepp ]; }
+             |                  ^
+            2|
+
+       (stack trace truncated; use '--show-trace' to show the full, detailed trace)
+
+       error: attribute 'ripgrepp' missing
+       at /nix/store/bwmplba3qj64ynfmmybwzgg01jnk2j3h-source/fragment.nix:1:36:
+            1| { pkgs, ... }: { home.packages = [ pkgs.ripgrepp ]; }
+             |                                    ^
+            2|
+       Did you mean ripgrep?

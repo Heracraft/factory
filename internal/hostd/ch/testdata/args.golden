@@ -1,0 +1,25 @@
+cloud-hypervisor
+--api-socket
+/var/lib/repose/guests/0192f0a1-1111-7000-8000-000000000001/ch.sock
+--kernel
+/nix/store/abc-nixos-system/kernel
+--initramfs
+/nix/store/abc-nixos-system/initrd
+--cmdline
+init=/nix/store/abc-nixos-system/init loglevel=4 reboot=t panic=-1 console=ttyS0 ip=10.64.4.2::10.64.4.1:255.255.252.0::eth0:off
+--cpus
+boot=4
+--memory
+size=8192M,shared=on
+--disk
+path=/dev/vg-guests/g-0192f0a1-1111-7000-8000-000000000001
+--net
+tap=tap-0192f0a1,mac=52:54:01:92:f0:a1
+--fs
+tag=ro-store,socket=/var/lib/repose/guests/0192f0a1-1111-7000-8000-000000000001/virtiofsd.sock
+--vsock
+cid=1000,socket=/var/lib/repose/guests/0192f0a1-1111-7000-8000-000000000001/vsock.sock
+--serial
+socket=/var/lib/repose/guests/0192f0a1-1111-7000-8000-000000000001/console.sock
+--console
+off
