@@ -8,7 +8,7 @@ What every host guarantees, so hostd, infra and operators agree.
 |---|---|
 | `/var/lib/repose/hostd/` | `cert.pem`, `key.pem` (mTLS to api), `host.json` (host id, guest cidr, wg keys), `state.db` (bbolt: guest table for reconciliation) |
 | `/var/lib/repose/guests/<guest_id>/` | `runner` (symlink to the microvm.nix runner package), `ch.sock` (Cloud Hypervisor API), `console.log`, `virtiofsd.sock`, `secrets/` (tmpfs mount, delivered to guest at boot then unmounted) |
-| `/run/repose/join-token` | one-shot registration token from cloud-init, deleted after Register |
+| `/run/repose/join-token` | one-shot registration token, written to the installed system over SSH by `infra/azure/modules/host` or by hand per the runbook, mode 0600, deleted after Register. Not from cloud-init: nixos-anywhere replaces the system that ran cloud-init (DECISIONS I-19) |
 | `/nix/var/nix/gcroots/repose/<guest_id>` | GC root for the guest's system closure; removed on destroy |
 | `/dev/vg-guests/thin` | thin pool; volumes `/dev/vg-guests/g-<guest_id>` |
 | `/var/log/repose/` | hostd log (journald is primary), build logs per op |

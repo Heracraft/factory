@@ -40,6 +40,10 @@ provider "azurerm" {
   features {}
   subscription_id     = var.subscription_id
   storage_use_azuread = true
+
+  # See the note in infra/azure/prod/main.tf; docs/ops/AZURE-SETUP.md step 3
+  # registers the providers once, by hand.
+  resource_provider_registrations = "none"
 }
 
 locals {

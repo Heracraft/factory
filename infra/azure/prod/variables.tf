@@ -77,10 +77,32 @@ variable "host_class" {
   default     = "azure-d16s-v5"
 }
 
+variable "host_security_type" {
+  type        = string
+  description = <<-EOT
+    Azure security type for hosts. Deliberately has no default, so a plan that
+    does not pass the environment's tfvars fails instead of quietly picking
+    one; only "Standard" is accepted, because Trusted Launch and Confidential
+    VMs disable nested virtualization (docs/DESIGN.md §4).
+  EOT
+}
+
 variable "host_data_disk_gb" {
   type        = number
   description = "Premium SSD v2 data disk per host."
   default     = 512
+}
+
+variable "host_data_disk_iops" {
+  type        = number
+  description = "Provisioned IOPS on each host's data disk. The first 3,000 are free."
+  default     = 16000
+}
+
+variable "host_data_disk_mbps" {
+  type        = number
+  description = "Provisioned throughput MB/s on each host's data disk. The first 125 are free; Azure caps this at a quarter of the IOPS."
+  default     = 600
 }
 
 variable "edge_size" {

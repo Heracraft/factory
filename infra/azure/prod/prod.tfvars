@@ -11,9 +11,15 @@ zone                = "1"
 
 # DECISIONS I-14: the pre-launch host. Launch values are Standard_D64s_v5,
 # azure-d64s-v5 and 2048, applied with guests stopped.
-host_size         = "Standard_D16s_v5"
-host_class        = "azure-d16s-v5"
-host_data_disk_gb = 512
+host_size           = "Standard_D16s_v5"
+host_class          = "azure-d16s-v5"
+host_data_disk_gb   = 512
+host_data_disk_iops = 16000
+host_data_disk_mbps = 600
+
+# The portal defaults to Trusted Launch, which silently disables nested
+# virtualization. Only "Standard" is accepted and the variable has no default.
+host_security_type = "Standard"
 
 edge_size    = "Standard_D2s_v5"
 coolify_size = "Standard_D4s_v5"

@@ -39,6 +39,13 @@ terraform {
 provider "azurerm" {
   features {}
   subscription_id = var.subscription_id
+
+  # The subscription's resource providers were registered by hand
+  # (docs/ops/AZURE-SETUP.md step 3). Letting the provider re-check them on
+  # every plan adds minutes of polling against Azure Resource Manager for a
+  # question whose answer never changes. A new subscription registers them
+  # once, by following that step.
+  resource_provider_registrations = "none"
 }
 
 # Token from the CLOUDFLARE_API_TOKEN environment variable. It is scoped to
@@ -68,13 +75,16 @@ module "environment" {
   # DECISIONS I-14: the pre-launch host is a D16s_v5 with a 512 GB data disk.
   # Launch values are Standard_D64s_v5 and 2048, changed here and applied with
   # guests stopped (deallocate, resize, start).
-  host_size         = var.host_size
-  host_class        = var.host_class
-  host_data_disk_gb = var.host_data_disk_gb
+  host_size           = var.host_size
+  host_class          = var.host_class
+  host_data_disk_gb   = var.host_data_disk_gb
+  host_data_disk_iops = var.host_data_disk_iops
+  host_data_disk_mbps = var.host_data_disk_mbps
 
-  # Written out rather than defaulted: the portal's default is Trusted Launch,
-  # which silently disables nested virtualization (docs/DESIGN.md §4).
-  host_security_type = "Standard"
+  # Comes from the environment's tfvars, which is where somebody reads it.
+  # The variable has no default, so a plan without that file fails rather than
+  # silently picking a security type (docs/workstreams/11-infra-opentofu.md §6).
+  host_security_type = var.host_security_type
 
   edge_size    = var.edge_size
   coolify_size = var.coolify_size

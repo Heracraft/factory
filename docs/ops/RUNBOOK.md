@@ -216,13 +216,29 @@ Usage records failed to push.
 A new host has been up for more than five minutes and is not in `hosts
 list`.
 
-1. `ssh root@<private ip>` via the edge: `journalctl -u hostd`. `token_expired`
-   or `token_used`: mint a new one (`repose-admin hosts add --reissue`),
-   write it to `/run/repose/join-token`, `systemctl restart hostd`.
+1. `ssh -J root@<edge ip>:2222 root@<private ip>`: `journalctl -u hostd`.
+   `token_expired` or `token_used`: mint a new one (`repose-admin hosts add
+   --reissue`), put it in `infra/azure/prod/prod.local.tfvars` and
+   `make -C infra apply ENV=prod` (only the token-delivery step re-runs), or
+   by hand `install -d -m 0700 /run/repose && umask 077 && cat >
+   /run/repose/join-token` and `systemctl restart hostd`. The token is never
+   passed as a command-line argument, so it does not land in a shell history
+   or an apply log.
 2. `kvm_missing`: the VM was created without `security_type = Standard`.
-   Destroy and recreate; there is no in-place fix.
+   Destroy and recreate; there is no in-place fix. The apply should not have
+   got this far: the host module's post-install check fails when `/dev/kvm`
+   is missing, and the tfsec rule REPOSE-VM-001 fails the build when Secure
+   Boot is set.
 3. `pool_missing`: the data disk is not attached or `disko` did not run.
-   `lsblk`; re-run nixos-anywhere if the layout is missing.
+   `lsblk` and `ls -l /dev/disk/azure/scsi1/lun10`; re-run nixos-anywhere if
+   the layout is missing.
+4. Nothing in the journal at all and SSH refused: the install may have
+   stopped mid-kexec. `az vm boot-diagnostics get-boot-log --name <host> -g
+   repose-prod` shows the serial console; `make -C infra apply ENV=prod`
+   after `tofu -chdir=infra/azure/prod taint
+   'module.environment.module.host["<host>"].module.install.terraform_data.install'`
+   retries the install from the image. The data disk is a separate resource
+   with `prevent_destroy`, so it is not touched.
 
 ## Guest unresponsive
 
@@ -300,6 +316,50 @@ drain).
    affected tenant within 72 hours with what was reachable, write
    `docs/incidents/<date>.md`, fix, re-run isolation tests fleet-wide
    before undraining.
+
+## OpenTofu state lock stuck
+
+`make plan` or `make apply` reports `Error acquiring the state lock` with an
+ID. An apply was killed and its blob lease survives it.
+
+1. Confirm nobody is running an apply: ask, and check the CI run list.
+2. `make -C infra force-unlock ENV=prod LOCK_ID=<id from the message>`.
+3. If the state itself is wrong rather than locked, the container has blob
+   versioning: `az storage blob list --account-name reposetfstate3912
+   --container-name tfstate --include v` lists the versions and
+   `az storage blob copy start` from one restores it.
+
+A lease expires on its own after fifteen minutes; force-unlock is for when
+waiting is not acceptable.
+
+## An apply wants to replace a host data disk or a static IP
+
+The plan shows `# forces replacement` on `azurerm_managed_disk.data`,
+`azurerm_virtual_machine_data_disk_attachment.data`, or any
+`azurerm_public_ip`. It cannot: those carry `prevent_destroy` and the plan
+fails instead.
+
+That is the intended outcome. A replaced data disk loses every tenant volume
+on that host; a replaced static IP breaks every host's WireGuard endpoint and
+the DNS that users type. Find what changed (usually `zone`, `disk_size_gb`
+shrinking, or `storage_account_type`) and change it back. If the replacement
+really is wanted, drain the host first
+(`infra/README.md`, "Draining and destroying a host").
+
+## Control plane cannot reach the edge network
+
+Prometheus cannot scrape hosts, or the api cannot reach the edge.
+
+1. `ssh root@<control ip> wg show`. No `wg0`: the edge's public key was not
+   known when the VM was built.
+2. `ssh root@<control ip> cat /etc/wireguard/publickey` and add it as a peer
+   on the edge with allowed-ips `10.255.255.1/32`.
+3. Put the edge's own public key in `prod.local.tfvars` as
+   `edge_wireguard_public_key`, `make -C infra apply ENV=prod`, then
+   `ssh root@<control ip> /usr/local/sbin/repose-wg-setup`.
+
+The control plane's WireGuard private key is generated on the machine and
+never leaves it, which is why this is two moves rather than one apply.
 
 ## Suspend a user
 

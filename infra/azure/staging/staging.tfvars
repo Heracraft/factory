@@ -7,9 +7,13 @@ zone                = "1"
 
 # Smallest size that still satisfies the Intel Dsv5 rule, because staging
 # exists to rehearse the shape of an apply, not its capacity.
-host_size         = "Standard_D2s_v5"
-host_class        = "azure-d2s-v5"
-host_data_disk_gb = 64
+host_size           = "Standard_D2s_v5"
+host_class          = "azure-d2s-v5"
+host_data_disk_gb   = 64
+host_data_disk_iops = 3000
+host_data_disk_mbps = 125
+
+host_security_type = "Standard"
 
 edge_size    = "Standard_D2s_v5"
 coolify_size = "Standard_D2s_v5"

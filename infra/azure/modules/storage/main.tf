@@ -47,12 +47,19 @@ resource "azurerm_storage_account" "snapshots" {
     # is a broken promise rather than a safety net.
     versioning_enabled = false
 
-    delete_retention_policy {
-      days = var.blob_delete_retention_days
+    # Azure has no "0 days"; the policy is expressed by the block's absence.
+    dynamic "delete_retention_policy" {
+      for_each = var.blob_delete_retention_days > 0 ? [var.blob_delete_retention_days] : []
+      content {
+        days = delete_retention_policy.value
+      }
     }
 
-    container_delete_retention_policy {
-      days = var.container_delete_retention_days
+    dynamic "container_delete_retention_policy" {
+      for_each = var.container_delete_retention_days > 0 ? [var.container_delete_retention_days] : []
+      content {
+        days = container_delete_retention_policy.value
+      }
     }
   }
 

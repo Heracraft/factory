@@ -53,10 +53,13 @@ locals {
 # host that registered last month legitimately has no token today.
 check "every_host_has_a_join_token" {
   assert {
-    condition = length(setsubtract(toset(var.hosts), toset(keys(var.join_tokens)))) == 0
+    # The token values are sensitive; the host names they are keyed by are
+    # not, and without nonsensitive() OpenTofu refuses to print the message
+    # that names the hosts, which is the entire value of the check.
+    condition = length(setsubtract(toset(var.hosts), toset(nonsensitive(keys(var.join_tokens))))) == 0
     error_message = format(
       "No join token for %s. If they have already registered this is fine; otherwise mint one with `repose-admin hosts add` and put it in the environment's local tfvars.",
-      join(", ", setsubtract(toset(var.hosts), toset(keys(var.join_tokens)))),
+      join(", ", setsubtract(toset(var.hosts), toset(nonsensitive(keys(var.join_tokens))))),
     )
   }
 }

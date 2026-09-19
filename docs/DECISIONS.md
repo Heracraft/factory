@@ -394,3 +394,69 @@ operator, a JSON state file, every command as a subcommand, build logs and
 samples printed. It stays as the break-glass tool for a host that has lost
 the api. *Rejected:* building the api first (puts auth, Postgres and Logto on
 the critical path to the first running guest).
+
+**I-18. The state store and its resource group are created outside the
+environment's apply.** (11) `repose-prod` and the storage account
+`reposetfstate3912` inside it were created by hand on 2026-09-19
+(`ops/AZURE-SETUP.md` steps 4 and 5) and are read by the environment roots as
+a data source, never managed by them. `infra/bootstrap` declares the same
+shape — resource group, account with versioning and soft delete, private
+`tfstate` container — so a second environment is one apply, and takes
+`state_account_name = null` for an environment that keeps its state in another
+one's account under a different key (staging does). *Rejected:* importing
+production's state account into `infra/bootstrap` now (a corrupted bootstrap
+state could then destroy the state of every other root; the import commands
+are written down in `bootstrap/main.tf` for the day that trade looks
+different); a separate resource group for state, as workstream 11 §2
+originally said (it would have meant a second group to protect and a second
+one to remember, for no isolation that the `prevent_destroy` on the account
+does not already give).
+
+**I-19. The join token reaches a host over SSH after the install, not through
+cloud-init.** (11) `docs/workstreams/11-infra-opentofu.md` §2 described
+cloud-init writing `/run/repose/join-token`. It cannot work: cloud-init runs
+on the Ubuntu image, and nixos-anywhere kexecs and replaces that system
+minutes later, so `/run` is a fresh tmpfs by the time hostd starts. The token
+is therefore written by a provisioner that connects to the installed NixOS
+system through the edge, as file content rather than as a command-line
+argument, and `hostd` is restarted. *Why this is better than fixing it with
+`--extra-files`:* `custom_data` stays in the Azure VM model and is readable
+through IMDS for the life of the VM, and `--extra-files` would put a
+single-use secret on the persistent root disk. *Interface:*
+`interfaces/host-conventions.md`, whose `/run/repose/join-token` row said
+"from cloud-init". The path, the mode and the one-shot semantics are
+unchanged, so nothing that reads the file changes; the runbook's
+"Host never registered" recovery was already this exact mechanism by hand.
+
+**I-20. Credentials stay human steps: the api's Entra app registration and
+the R2 API token.** (11) `infra/` creates the Key Vault, the wrapping key and
+an access policy for the api's service principal given its object id
+(`api_identity_object_id`, null until it exists), and creates the R2 bucket
+and its lifecycle rule. It does not create the app registration, its client
+certificate, or the R2 token. *Rejected:* the `azuread` provider plus
+`tls_private_key` (the api's private key would sit in the state file in clear
+text for the life of the environment); `cloudflare_api_token` (same, for the
+backup credential). *Why:* `ops/AZURE-SETUP.md` already draws this line —
+one-time human actions that OpenTofu cannot do, or that agents should not be
+trusted to do with the owner's money and identity — and a credential in state
+is a credential in every backup of that state.
+
+**I-21. `.terraform.lock.hcl` is committed.** (11) It was in `.gitignore`.
+A dependency lock file that is not committed means CI resolves whatever
+provider version shipped that morning, so the plan a reviewer reads and the
+plan CI runs can differ. The files are locked for `linux_amd64`,
+`darwin_arm64` and `darwin_amd64` so the owner's laptop and the dev box agree.
+*Rejected:* pinning exact versions in `required_providers` instead (it pins
+the version but not the checksum, and it has to be edited in four roots).
+
+**I-22. The edge VM is `Standard_D2s_v5` and its NSG opens 22, 443,
+51820/udp and 2222.** (11) `docs/workstreams/11-infra-opentofu.md` §2 said
+`Standard_B2s` and "inbound 22/tcp and 51820/udp"; the size note at the top
+of the same document, added with I-14, says `Standard_D2s_v5`. The later note
+wins, and the burstable size is the wrong shape anyway: the thing that would
+throttle when its credits run out is every user's SSH session. The port list
+comes from `workstreams/06-gateway-edge.md` §5.1, which is the document that
+owns the edge's listeners: 22 is the user gateway, 443 the preview-proxy
+stub, 51820/udp the WireGuard hub, and 2222 the operator sshd — restricted to
+the operator address list and the VNet, because every host provisioner jumps
+through it and hosts have no public IP.

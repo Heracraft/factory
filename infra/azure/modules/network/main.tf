@@ -119,6 +119,12 @@ resource "azurerm_subnet" "edge" {
 # SSH gateway, 443 the preview-proxy stub, 51820/udp the WireGuard hub, and
 # 2222 the operator sshd, which is reachable only from the operator list and
 # from inside the VNet (the dev box jumps through it to reach hosts).
+#
+# 22 is open to the internet from the first apply, which is also what
+# nixos-anywhere needs while the machine is still the Ubuntu image. Azure
+# rejects a priority below 100, so there is no room for a narrower rule in
+# front of the gateway's, and a second rule for the same port and protocol
+# would add nothing anyway.
 resource "azurerm_network_security_group" "edge" {
   name                = "nsg-edge"
   resource_group_name = var.resource_group_name
@@ -192,24 +198,6 @@ resource "azurerm_network_security_group" "edge" {
       destination_port_ranges                    = []
       source_address_prefix                      = ""
       source_address_prefixes                    = concat(var.operator_cidrs, [var.vnet_cidr])
-      destination_address_prefix                 = "*"
-      destination_address_prefixes               = []
-      source_application_security_group_ids      = []
-      destination_application_security_group_ids = []
-    },
-    {
-      name                                       = "allow-bootstrap-ssh"
-      description                                = "Ubuntu sshd on 22 before nixos-anywhere runs; operator list only"
-      priority                                   = 90
-      direction                                  = "Inbound"
-      access                                     = "Allow"
-      protocol                                   = "Tcp"
-      source_port_range                          = "*"
-      source_port_ranges                         = []
-      destination_port_range                     = "22"
-      destination_port_ranges                    = []
-      source_address_prefix                      = ""
-      source_address_prefixes                    = var.operator_cidrs
       destination_address_prefix                 = "*"
       destination_address_prefixes               = []
       source_application_security_group_ids      = []

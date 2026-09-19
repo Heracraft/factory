@@ -73,7 +73,7 @@ resource "azurerm_linux_virtual_machine" "main" {
   custom_data = base64encode(templatefile("${path.module}/templates/cloud-init.yaml.tftpl", {
     authorized_keys       = join("\n", var.authorized_keys)
     coolify_install_url   = var.coolify_install_url
-    edge_public_key       = coalesce(var.edge_wireguard_public_key, "")
+    edge_public_key       = var.edge_wireguard_public_key == null ? "" : var.edge_wireguard_public_key
     edge_endpoint         = var.edge_wireguard_endpoint
     wireguard_address     = var.wireguard_address
     wireguard_allowed_ips = join(", ", var.wireguard_allowed_ips)
