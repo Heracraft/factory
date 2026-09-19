@@ -24,9 +24,8 @@ type Call struct {
 type Fake struct {
 	mu sync.Mutex
 
-	calls  []Call
-	conns  []*vsockrpc.Conn
-	closed bool
+	calls []Call
+	conns []*vsockrpc.Conn
 
 	// Version is what Ping reports.
 	Version string

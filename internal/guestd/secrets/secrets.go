@@ -65,7 +65,8 @@ type Handler struct {
 // New builds the handler. uid and gid own the secret files; a real guest
 // passes dev's.
 func New(p sysdep.Paths, run sysdep.Runner, log *slog.Logger) *Handler {
-	return &Handler{paths: p, run: run, log: log, uid: sysdep.DevUID, gid: sysdep.DevGID}
+	uid, gid := sysdep.DevIdentity()
+	return &Handler{paths: p, run: run, log: log, uid: uid, gid: gid}
 }
 
 // Write replaces the guest's named secrets with list. The list is the whole

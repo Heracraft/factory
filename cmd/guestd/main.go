@@ -31,9 +31,14 @@ func main() {
 }
 
 func run() error {
-	if len(os.Args) > 1 && os.Args[1] == "version" {
-		fmt.Println("guestd", version, "protocol", guestd.ProtocolVersion)
-		return nil
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "version":
+			fmt.Println("guestd", version, "protocol", guestd.ProtocolVersion)
+			return nil
+		case "call":
+			return runCall(os.Args[2:])
+		}
 	}
 
 	fs := flag.NewFlagSet("guestd", flag.ContinueOnError)

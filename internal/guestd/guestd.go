@@ -102,10 +102,9 @@ type Server struct {
 	started time.Time
 	bootID  string
 
-	mu      sync.Mutex
-	conn    *vsockrpc.Conn
-	closers []func()
-	ready   bool
+	mu    sync.Mutex
+	conn  *vsockrpc.Conn
+	ready bool
 }
 
 // New builds the server and its handlers.
@@ -160,7 +159,8 @@ func New(cfg Config) (*Server, error) {
 	if hookPath == "" {
 		hookPath = paths.HooksSock()
 	}
-	s.hooks = hooks.NewServer(hookPath, sysdep.DevGID, s.onHook, s.sampler.WindowOfPane, log)
+	_, devGID := sysdep.DevIdentity()
+	s.hooks = hooks.NewServer(hookPath, devGID, s.onHook, s.sampler.WindowOfPane, log)
 	return s, nil
 }
 

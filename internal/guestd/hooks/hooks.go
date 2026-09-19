@@ -19,7 +19,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/heracraft/repose/internal/guestd/sysdep"
@@ -60,15 +59,12 @@ type Server struct {
 	gid      int
 	srv      *http.Server
 	listener net.Listener
-
-	mu       sync.Mutex
-	peerPIDs map[net.Conn]int
 }
 
 // NewServer builds the hook server. gid owns the socket's group, so the dev
 // user can write to it and nothing else can.
 func NewServer(path string, gid int, sink Sink, resolve WindowResolver, log *slog.Logger) *Server {
-	s := &Server{path: path, sink: sink, resolve: resolve, log: log, gid: gid, peerPIDs: map[net.Conn]int{}}
+	s := &Server{path: path, sink: sink, resolve: resolve, log: log, gid: gid}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handle)
 	s.srv = &http.Server{
@@ -77,7 +73,6 @@ func NewServer(path string, gid int, sink Sink, resolve WindowResolver, log *slo
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
 		ConnContext:       s.connContext,
-		ConnState:         s.connState,
 	}
 	return s
 }
@@ -136,8 +131,6 @@ func (s *Server) connContext(ctx context.Context, c net.Conn) context.Context {
 	pid := peerPID(c)
 	return context.WithValue(ctx, peerKey{}, pid)
 }
-
-func (s *Server) connState(net.Conn, http.ConnState) {}
 
 // peerPID reads the credentials of the process on the other end of the socket.
 func peerPID(c net.Conn) int {

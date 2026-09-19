@@ -59,7 +59,8 @@ type Handler struct {
 // earlier boot, so a guestd restart samples the right tmux session before
 // hostd has sent SetupProject again.
 func New(p sysdep.Paths, run sysdep.Runner, log *slog.Logger) *Handler {
-	h := &Handler{paths: p, run: run, log: log, uid: sysdep.DevUID, gid: sysdep.DevGID}
+	uid, gid := sysdep.DevIdentity()
+	h := &Handler{paths: p, run: run, log: log, uid: uid, gid: gid}
 	if info, err := h.load(); err == nil && info.Slug != "" {
 		h.slug = info.Slug
 	}

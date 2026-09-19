@@ -37,7 +37,8 @@ func NewHandler(p sysdep.Paths, w *Watcher, log *slog.Logger, now func() time.Ti
 	if now == nil {
 		now = time.Now
 	}
-	return &Handler{paths: p, watcher: w, log: log, uid: sysdep.DevUID, now: now}
+	uid, _ := sysdep.DevIdentity()
+	return &Handler{paths: p, watcher: w, log: log, uid: uid, now: now}
 }
 
 // Sample reads the signals and the process table. It never returns an error

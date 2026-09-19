@@ -78,7 +78,22 @@ Rules that hold regardless of convenience. Each names its failure.
 - **Secret values never leave `secrets.ciphertext` and the guest tmpfs.**
   Not in logs, not in `audit_log`, not in api responses, not in build logs.
 - **Process samples carry names, CPU, memory, bytes. Nothing else.** The
-  privacy policy says so in those words.
+  privacy policy says so in those words. guestd reads `/proc/<pid>/stat` and
+  `/proc/<pid>/status` and nothing else of a process: it never opens
+  `/proc/<pid>/cmdline` and never opens `/proc/<pid>/environ`, with the single
+  exception below. `TestStraceNeverOpensCmdlineOrEnviron` in
+  `internal/guestd` runs guestd under `strace -e openat` while it serves a
+  Sample and asserts it, because a library added later that reads a command
+  line would keep every other test green.
+- **The one environment guestd reads is `$TMUX_PANE` of a hook's caller.** An
+  agent wrapper that POSTs to `/run/repose/hooks.sock` without naming its tmux
+  window is resolved by taking the peer's pid from `SO_PEERCRED` and reading
+  that one variable out of its environment. Nothing else from that environment
+  is read, kept, logged or sent. The alternative, sending the window name in
+  the payload, is what every wrapper does when it can; this is the fallback
+  so that a hook still reaches the user rather than being dropped.
+  `TestStraceReadsEnvironOnlyForTheHookPaneLookup` asserts that this is the
+  only environ open, and only on that path.
 - **Every `Exec` is audited.** Operator convenience that skips the audit is
   an unrecorded access to tenant data.
 - **Certificates expire in 12 hours** and the gateway checks revocation.
@@ -86,6 +101,24 @@ Rules that hold regardless of convenience. Each names its failure.
 - **`security_type = Standard` and Intel hosts.** Not security in itself,
   but a Trusted Launch host silently has no `/dev/kvm`, and a fallback to
   containers "just for now" would collapse boundary 1.
+
+## The abuse watch list
+
+`internal/guestd/sample/watch.go` holds process names that are always reported
+in a guest sample even when they fall below the top fifty by CPU, so a miner
+that throttles itself to stay off the top of the list still appears in the
+Grafana "Abuse" panel. It is a list of names worth seeing, not an accusation,
+and it changes nothing about what is collected: only which of the names already
+collected survive the trim.
+
+```
+xmrig  minerd  cpuminer  ccminer  cgminer  bfgminer  ethminer  nbminer
+phoenixminer  t-rex  lolminer  xmr-stak  kdevtmpfsi  kinsing  tsm  sysrv
+masscan  zmap  hashcat  john
+```
+
+Keep this list and `watch.go` in step; `TestWatchListIsNotEmpty` checks the
+file is populated, and a reviewer checks the two agree.
 
 ## Not mitigated in the first release
 

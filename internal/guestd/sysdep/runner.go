@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/user"
 	"strconv"
 	"syscall"
 )
@@ -50,13 +49,6 @@ type ExecRunner struct {
 	// SetprivPath overrides the setpriv binary; empty means look it up on PATH.
 	SetprivPath string
 }
-
-// DevUID and DevGID are the guest user's ids
-// (docs/interfaces/guest-conventions.md: dev is uid 1000).
-const (
-	DevUID = 1000
-	DevGID = 100
-)
 
 // Run executes spec. A non-zero exit is not an error: it comes back in
 // RunResult.ExitCode, because every caller reports it rather than failing.
@@ -129,15 +121,7 @@ func (r ExecRunner) setprivArgv(argv []string) ([]string, error) {
 			return nil, fmt.Errorf("setpriv not found, cannot drop privileges: %w", err)
 		}
 	}
-	uid, gid := DevUID, DevGID
-	if u, err := user.Lookup("dev"); err == nil {
-		if n, err := strconv.Atoi(u.Uid); err == nil {
-			uid = n
-		}
-		if n, err := strconv.Atoi(u.Gid); err == nil {
-			gid = n
-		}
-	}
+	uid, gid := DevIdentity()
 	wrapped := []string{
 		path,
 		"--reuid=" + strconv.Itoa(uid),

@@ -1,0 +1,369 @@
+# The guestd VM test of docs/workstreams/04-guestd.md §7: the real binary,
+# inside a real NixOS guest, exercised over the protocol it serves.
+#
+# Two guestd instances run. The first serves the VM's own root and is what the
+# secrets, principals, tmux and hook checks talk to. The second serves a
+# loop-mounted ext4 under --root, and is where freeze and grow are exercised:
+# FIFREEZE on the VM's own root would block the test driver's own writes, and a
+# loop device is a block device that can actually be resized from inside.
+{ pkgs, guestdPackage }:
+
+let
+  # A real binary named claude, so a tmux window named "claude" has a process
+  # tree whose comm is "claude" (docs/workstreams/04-guestd.md §5).
+  fakeClaude = pkgs.runCommand "fake-claude" { } ''
+    mkdir -p $out/bin
+    cp ${pkgs.coreutils}/bin/sleep $out/bin/claude
+  '';
+
+  devUID = 1000;
+in
+pkgs.testers.runNixOSTest {
+  name = "guestd";
+
+  nodes.guest = { config, pkgs, lib, ... }: {
+    virtualisation.memorySize = 2048;
+    virtualisation.diskSize = 4096;
+
+    # guest-conventions.md gives the hook socket group `dev`, so the guest
+    # declares that group; guestd resolves it at runtime either way.
+    users.groups.dev.gid = devUID;
+    users.users.dev = {
+      isNormalUser = true;
+      uid = devUID;
+      group = "dev";
+      extraGroups = [ "wheel" ];
+    };
+    security.sudo.wheelNeedsPassword = false;
+    users.users.dev.linger = true;
+
+    programs.tmux.enable = true;
+
+    services.openssh = {
+      enable = true;
+      settings = {
+        PasswordAuthentication = false;
+        PermitRootLogin = "no";
+        AuthorizedPrincipalsFile = "/etc/ssh/principals/%u";
+        TrustedUserCAKeys = "/run/repose/user_ca.pub";
+      };
+    };
+
+    environment.systemPackages = with pkgs; [
+      guestdPackage fakeClaude e2fsprogs util-linux openssh jq curl tmux
+    ];
+
+    # /run/repose and its secrets tmpfs, as nix/guest/base/guestd.nix (02)
+    # declares them.
+    systemd.tmpfiles.rules = [
+      "d /run/repose 0755 root root -"
+      "d /run/repose/secrets 0700 dev dev -"
+      "d /etc/ssh/principals 0755 root root -"
+    ];
+
+    systemd.services.guestd = {
+      description = "repose guest daemon";
+      wantedBy = [ "multi-user.target" ];
+      before = [ "sshd.service" ];
+      after = [ "network.target" ];
+      serviceConfig = {
+        ExecStart = "${guestdPackage}/bin/guestd --dev-socket /run/repose/guestd.sock --log-level debug";
+        Restart = "always";
+        User = "root";
+      };
+    };
+
+    # The tmux session unit SetupProject starts
+    # (docs/workstreams/02-guest-base.md owns it; the test provides the same
+    # name so the contract is exercised).
+    systemd.user.services.repose-tmux-session = {
+      description = "project tmux session";
+      serviceConfig = {
+        Type = "forking";
+        ExecStart = "${pkgs.writeShellScript "repose-tmux-session" ''
+          slug=$(${pkgs.jq}/bin/jq -r .slug /home/dev/.repose/project.json)
+          exec ${pkgs.tmux}/bin/tmux new-session -d -s "$slug" -n shell -c "/home/dev/$slug"
+        ''}";
+        ExecStop = "${pkgs.tmux}/bin/tmux kill-server";
+        RemainAfterExit = true;
+      };
+    };
+
+    # A second system generation that adds a package and keeps the kernel, and
+    # a third that changes the initrd. Specialisations are built with the
+    # system, so no second evaluation is needed.
+    specialisation.withHtop.configuration = {
+      environment.systemPackages = [ pkgs.htop ];
+    };
+    specialisation.newInitrd.configuration = {
+      boot.initrd.availableKernelModules = [ "nbd" "dm_mod" "raid0" ];
+    };
+  };
+
+  testScript = ''
+    import json
+
+    guest.wait_for_unit("multi-user.target")
+    guest.wait_for_unit("guestd.service")
+    guest.wait_for_file("/run/repose/guestd.sock")
+    guest.wait_for_file("/run/repose/hooks.sock")
+
+    def call(request, body=None, extra="", socket="/run/repose/guestd.sock"):
+        arg = "" if body is None else " '" + json.dumps(body) + "'"
+        out = guest.succeed(f"guestd call {request}{arg} --dev-socket {socket} {extra}")
+        return out
+
+    def first_json(out):
+        # `call` prints the response object, then any notification lines.
+        decoder = json.JSONDecoder()
+        return decoder.raw_decode(out.lstrip())[0]
+
+    with subtest("guestd listens and answers Ping"):
+        guest.succeed("journalctl -u guestd | grep -q '\"event\":\"ready\"'")
+        guest.succeed("journalctl -u guestd | grep -q '\"transport\":\"unix\"'")
+        ping = first_json(call("ping"))
+        assert ping["ok"] is True, ping
+        assert ping["ping"]["version"] == "1", ping
+        assert ping["ping"]["bootId"], ping
+
+    with subtest("the hook socket is 0660 root:dev"):
+        mode = guest.succeed("stat -c '%a %U %G' /run/repose/hooks.sock").strip()
+        assert mode == "660 root dev", mode
+
+    with subtest("WriteSecrets: modes, ownership and shell quoting"):
+        import base64
+        tricky = "it's a\nmulti 'line' value\n"
+        call("write-secrets", {"secrets": [
+            {"name": "TRICKY", "value": base64.b64encode(tricky.encode()).decode()},
+            {"name": "PLAIN", "value": base64.b64encode(b"simple").decode()},
+        ]})
+        for name in ["TRICKY", "PLAIN"]:
+            out = guest.succeed(f"stat -c '%a %U' /run/repose/secrets/{name}").strip()
+            assert out == "400 dev", f"{name}: {out}"
+        out = guest.succeed("stat -c '%a %U' /run/repose/secrets.env").strip()
+        assert out == "400 dev", out
+        # The only check that matters for quoting is a shell sourcing it.
+        got = guest.succeed(
+            "sudo -u dev sh -c '. /run/repose/secrets.env; printf %s \"$TRICKY\" | base64 -w0'"
+        ).strip()
+        assert base64.b64decode(got).decode() == tricky, got
+
+    with subtest("WriteSecrets: withdrawing a secret removes it"):
+        call("write-secrets", {"secrets": [
+            {"name": "PLAIN", "value": base64.b64encode(b"simple").decode()},
+        ]})
+        guest.fail("test -e /run/repose/secrets/TRICKY")
+        guest.fail("grep -q TRICKY /run/repose/secrets.env")
+
+    with subtest("SetPrincipals, then ssh with a matching certificate"):
+        guest.succeed('ssh-keygen -t ed25519 -N "" -C repose-ca -f /tmp/ca')
+        guest.succeed('sudo -u dev mkdir -p /home/dev/.ssh')
+        guest.succeed('sudo -u dev ssh-keygen -t ed25519 -N "" -f /home/dev/.ssh/id_ed25519')
+        guest.succeed(
+            "ssh-keygen -s /tmp/ca -I tester -n project-abc -V +1h "
+            "/home/dev/.ssh/id_ed25519.pub"
+        )
+        import base64 as b64
+        ca_pub = guest.succeed("cat /tmp/ca.pub")
+        call("write-secrets", {"secrets": [
+            {"name": "user_ca.pub", "value": b64.b64encode(ca_pub.encode()).decode()},
+            {"name": "PLAIN", "value": b64.b64encode(b"simple").decode()},
+        ]})
+        guest.succeed("stat -c '%a' /run/repose/user_ca.pub | grep -q 644")
+
+        # Without the principal, sshd must refuse.
+        call("set-principals", {"principals": ["someone-else"]})
+        guest.succeed("sudo -u dev chmod 600 /home/dev/.ssh/id_ed25519*")
+        guest.fail(
+            "sudo -u dev ssh -o StrictHostKeyChecking=no -o BatchMode=yes "
+            "-i /home/dev/.ssh/id_ed25519 dev@127.0.0.1 true"
+        )
+        # With it, sshd must accept.
+        call("set-principals", {"principals": ["project-abc", "todo-app.heracraft"]})
+        guest.succeed("grep -q project-abc /etc/ssh/principals/dev")
+        guest.succeed(
+            "sudo -u dev ssh -o StrictHostKeyChecking=no -o BatchMode=yes "
+            "-i /home/dev/.ssh/id_ed25519 dev@127.0.0.1 true"
+        )
+
+    with subtest("SetupProject creates the tree and the tmux session"):
+        call("setup-project", {
+            "projectSlug": "todo-app",
+            "remoteUrl": "https://github.com/heracraft/todo-app",
+            "tz": "Africa/Nairobi",
+            "lang": "C.UTF-8",
+        })
+        guest.succeed("test -d /home/dev/todo-app/.git")
+        guest.succeed("grep -q 'REPOSE_PROJECT=todo-app' /etc/repose/env")
+        guest.succeed("grep -q 'TZ=Africa/Nairobi' /etc/repose/env")
+        guest.succeed("stat -c '%U' /home/dev/.repose/project.json | grep -q dev")
+        guest.wait_until_succeeds("sudo -u dev tmux has-session -t todo-app", timeout=30)
+
+    with subtest("Sample reports the tmux windows and agent states"):
+        guest.succeed(
+            "sudo -u dev tmux new-window -t todo-app -n claude "
+            "-c /home/dev/todo-app 'exec claude 600'"
+        )
+        guest.wait_until_succeeds(
+            "sudo -u dev tmux list-windows -t todo-app | grep -q claude", timeout=30
+        )
+
+        def agents():
+            sample = first_json(call("sample"))
+            return sample["sample"]["signals"].get("agents", [])
+
+        guest.wait_until_succeeds(
+            "guestd call sample --dev-socket /run/repose/guestd.sock | grep -q '\"agent\": \"claude\"'",
+            timeout=60,
+        )
+        found = agents()
+        assert len(found) == 1, found
+        assert found[0]["agent"] == "claude", found
+        assert found[0]["tmuxWindow"] == "claude", found
+        assert found[0]["state"] in ["working", "idle", "unknown", "needs_input"], found
+
+        sample = first_json(call("sample"))
+        signals = sample["sample"]["signals"]
+        assert signals["guestdOk"] is True, signals
+        assert int(signals.get("tmuxClients", 0)) >= 0, signals
+        assert len(sample["sample"]["procs"]) > 0, sample
+
+    with subtest("a sample costs under 20 ms"):
+        line = guest.succeed(
+            "journalctl -u guestd -o cat | grep '\"event\":\"sample\"' | tail -1"
+        )
+        entry = json.loads(line)
+        print("sample timing:", line)
+        assert entry["duration_ms"] < 20, entry
+
+    with subtest("a hook reaches hostd as an AgentEvent"):
+        guest.execute(
+            "guestd call ping --dev-socket /run/repose/guestd.sock --watch 8s "
+            ">/tmp/notifications.txt 2>&1 &"
+        )
+        guest.sleep(1)
+        guest.succeed(
+            "sudo -u dev repose-hook --agent claude --window claude "
+            "--socket /run/repose/hooks.sock "
+            "'{\"agent\":\"claude\",\"kind\":\"completed\",\"summary\":\"tests pass\"}'"
+        )
+        guest.wait_until_succeeds("grep -q agentEvent /tmp/notifications.txt", timeout=30)
+        guest.succeed("grep -q 'tests pass' /tmp/notifications.txt")
+        # A malformed hook is refused and nothing is logged of its body.
+        guest.fail(
+            "curl -sf --unix-socket /run/repose/hooks.sock -X POST "
+            "-d '{\"agent\":\"aider\"}' http://x/"
+        )
+        guest.succeed("journalctl -u guestd | grep -q hook_bad_payload")
+        guest.fail("journalctl -u guestd | grep -q aider")
+
+    with subtest("Switch applies a new generation without a reboot"):
+        guest.fail("test -e /run/current-system/sw/bin/htop")
+        closure = guest.succeed(
+            "readlink -f /run/current-system/specialisation/withHtop"
+        ).strip()
+        boot_id_before = guest.succeed("cat /proc/sys/kernel/random/boot_id").strip()
+        result = first_json(call("switch", {"systemClosure": closure}))
+        assert result["ok"] is True, result
+        assert not result.get("switch", {}).get("needsReboot", False), result
+        assert not result.get("switch", {}).get("rebooted", False), result
+        guest.succeed("test -e /run/current-system/sw/bin/htop")
+        boot_id_after = guest.succeed("cat /proc/sys/kernel/random/boot_id").strip()
+        assert boot_id_before == boot_id_after, "the guest rebooted"
+        guest.succeed(f"test $(readlink -f /nix/var/nix/profiles/system) = {closure}")
+
+    with subtest("Switch refuses a generation whose boot files changed"):
+        closure = guest.succeed(
+            "readlink -f /run/current-system/specialisation/newInitrd"
+        ).strip()
+        result = first_json(call("switch", {"systemClosure": closure}))
+        assert result["ok"] is True, result
+        assert result["switch"]["needsReboot"] is True, result
+        assert not result["switch"].get("rebooted", False), result
+
+    with subtest("Switch refuses a closure the store does not have"):
+        guest.fail(
+            "guestd call switch '{\"systemClosure\":\"/nix/store/"
+            "0000000000000000000000000000000-collected\"}' "
+            "--dev-socket /run/repose/guestd.sock"
+        )
+
+    # Freeze and GrowFs run against a loop-mounted ext4 served by a second
+    # guestd under --root, so the VM's own root is never frozen and the block
+    # device is one the test can actually resize.
+    with subtest("Freeze blocks a write and Thaw releases it"):
+        guest.succeed("mkdir -p /srv/vol && truncate -s 64M /srv/disk.img")
+        guest.succeed("mkfs.ext4 -q /srv/disk.img")
+        loop = guest.succeed("losetup --find --show /srv/disk.img").strip()
+        guest.succeed(f"mount {loop} /srv/vol")
+        guest.succeed("mkdir -p /srv/vol/proc /srv/vol/run/repose")
+        guest.succeed(f"echo '{loop} / ext4 rw,relatime 0 0' > /srv/vol/proc/mounts")
+        guest.succeed(
+            "systemd-run --unit=guestd-vol --collect "
+            "guestd --root /srv/vol --dev-socket /srv/vol/run/repose/guestd.sock "
+            "--hook-socket /srv/vol/run/repose/hooks.sock --log-level debug"
+        )
+        guest.wait_for_file("/srv/vol/run/repose/guestd.sock")
+        vol_sock = "/srv/vol/run/repose/guestd.sock"
+
+        call("freeze", socket=vol_sock)
+        # A write to the frozen filesystem must not finish.
+        guest.execute(
+            "(dd if=/dev/zero of=/srv/vol/blocked bs=1M count=8 conv=fsync "
+            "&& touch /srv/vol/.written) >/dev/null 2>&1 &"
+        )
+        guest.sleep(3)
+        guest.fail("test -e /srv/vol/.written")
+        call("thaw", socket=vol_sock)
+        guest.wait_until_succeeds("test -e /srv/vol/.written", timeout=30)
+        guest.succeed("rm -f /srv/vol/.written /srv/vol/blocked")
+
+    with subtest("the freeze watchdog thaws and warns when Thaw is withheld"):
+        out = call("freeze", extra="--watch 15s", socket=vol_sock)
+        assert "freeze_timeout" in out, out
+        # And the filesystem is usable again without a Thaw ever being sent.
+        guest.succeed("touch /srv/vol/after-watchdog")
+        guest.succeed("journalctl -u guestd-vol | grep -q '\"event\":\"freeze_timeout\"'")
+
+    with subtest("GrowFs after a block device resize"):
+        before = int(first_json(call("grow-fs", socket=vol_sock))["growFs"]["newBytes"])
+        loop = guest.succeed("losetup -j /srv/disk.img -O NAME -n").strip()
+        guest.succeed("truncate -s 256M /srv/disk.img")
+        guest.succeed(f"losetup -c {loop}")
+        after = int(first_json(call("grow-fs", socket=vol_sock))["growFs"]["newBytes"])
+        assert after > before, (before, after)
+        df = int(guest.succeed("df -B1 --output=size /srv/vol | tail -1").strip())
+        assert abs(df - after) < 1024 * 1024, (df, after)
+
+    with subtest("Exec runs as dev and as root"):
+        result = first_json(call("exec", {"argv": ["id", "-un"], "asUser": "dev", "timeoutS": 10}))
+        import base64 as b64
+        assert b64.b64decode(result["exec"]["stdout"]).decode().strip() == "dev", result
+        result = first_json(call("exec", {"argv": ["id", "-un"], "timeoutS": 10}))
+        assert b64.b64decode(result["exec"]["stdout"]).decode().strip() == "root", result
+        result = first_json(call("exec", {"argv": ["false"], "timeoutS": 10}))
+        assert result["ok"] is True, result
+        assert result["exec"]["exitCode"] == 1, result
+        # The argv never reaches a log field.
+        guest.fail("journalctl -u guestd | grep -q '\"argv\"'")
+        guest.succeed("journalctl -u guestd | grep -q '\"event\":\"exec\"'")
+
+    with subtest("no secret value is ever in a log line"):
+        guest.fail("journalctl -u guestd | grep -q 'simple'")
+        guest.fail("journalctl -u guestd | grep -q 'multi'")
+
+    with subtest("guestd is small and light"):
+        size = int(guest.succeed("stat -c %s $(readlink -f $(which guestd))").strip())
+        print(f"guestd binary: {size} bytes")
+        assert size < 15 * 1024 * 1024, size
+        rss_kb = int(guest.succeed(
+            "ps -o rss= -p $(systemctl show -p MainPID --value guestd)"
+        ).strip())
+        print(f"guestd RSS: {rss_kb} KB")
+        assert rss_kb < 20 * 1024, rss_kb
+
+    with subtest("Shutdown powers the guest off"):
+        guest.execute("guestd call shutdown '{\"timeoutS\":10}' --dev-socket /run/repose/guestd.sock")
+        guest.wait_for_shutdown()
+  '';
+}

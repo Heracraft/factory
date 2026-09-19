@@ -81,7 +81,11 @@ component must emit:
   `stream_disconnect`, `guestd_lost`, `guestd_regained`, `pool_warning`,
   `store_warning`.
 - guestd: `ready`, `freeze`, `thaw`, `freeze_timeout`, `switch`,
-  `agent_event`, `agent_state`, `hook_bad_payload`.
+  `agent_event`, `agent_state`, `hook_bad_payload`, plus the one-per-request
+  events 04 emits: `grow_fs`, `write_secrets`, `set_principals`,
+  `setup_project`, `sample` (debug, carries `duration_ms`), `exec` and
+  `shutdown`, and `warning` (carries `kind`, the enumeration in
+  `interfaces/vsock-guestd.md`).
 - api: `request` (method, route, status, duration_ms), `cert_issue`,
   `cert_revoke`, `schedule` (host chosen, free memory), `schedule_fail`,
   `command_send`, `command_result`, `rollup_done`, `stripe_webhook`,
