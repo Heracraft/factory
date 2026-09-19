@@ -1,8 +1,8 @@
-// Package guestd is the unix-socket stand-in for a guest's guestd, per
+// Package fakeguestd is the unix-socket stand-in for a guest's guestd, per
 // docs/interfaces/vsock-guestd.md. hostd's tests point the vsock dialer at
 // it; it records every request, answers with canned results, sends Ready
 // on connect, and runs the 10 s freeze watchdog like the real daemon.
-package guestd
+package fakeguestd
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 
 	guestdv1 "github.com/heracraft/repose/internal/gen/guestd/v1"
 	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
-	"github.com/heracraft/repose/internal/vsockrpc"
+	"github.com/heracraft/repose/internal/hostd/vsockrpc"
 )
 
 // Call is one recorded request.

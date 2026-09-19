@@ -47,7 +47,12 @@ $ repose config set agent codex
 | pi | `pi` | `pi` | its hooks if present in the shipped version; otherwise pane-idle heuristic | provider API key as a named secret |
 
 The exact hook mechanism per agent is verified when the overlay is built and
-recorded in `workstreams/02-guest-base.md`; the table is the intent. Where an
+recorded in `workstreams/02-guest-base.md`; the table is the intent. The
+payload each agent actually sends is recorded as a fixture under
+`internal/guestd/hooks/testdata/<agent>/`, one file per shape, so a change in
+an agent's payload shows up as a failing test rather than as a notification
+that stops arriving. The two agents with no hook have a README there instead,
+naming the heuristic test that covers them. Where an
 agent has no completion hook, guestd watches the pane: an agent window whose
 pane has produced no output for 90 seconds and whose foreground process is
 the agent itself is reported `idle`, which becomes a `completed` event once,

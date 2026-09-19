@@ -192,6 +192,71 @@ hostd cannot talk to a guest's guestd for 5 minutes.
 3. Sampling for that guest is missing for the window; billing uses the
    last known state, so a running guest is still billed.
 
+## Guestd not ready
+
+A guest is `starting` and never reaches `running`, or the api shows
+`guestd_ok=false` from the first sample. guestd sends `Ready` only once sshd
+is listening, so "not ready" means guestd did not start, or sshd did not.
+
+1. Console log at `/var/lib/repose/guests/<id>/console.log`. The line to look
+   for is guestd's own: `{"event":"ready","msg":"listening",...}` with
+   `"transport":"vsock"`. If it is absent, guestd did not start; the lines
+   above it say why (a missing `/run/repose`, a vsock device the runner did
+   not attach).
+2. If guestd is listening but no `Ready` followed, sshd is the one that did
+   not come up: the same console log has sshd's error. The usual cause is
+   sshd material that never arrived, so `/run/repose/ssh_host_ed25519_key` is
+   missing; `repose-admin projects restart <id>` re-sends `CreateGuest`'s
+   secrets.
+3. From the host, talk to the guest directly:
+   `repose-admin exec <id> -- guestd call ping --cid <vsock cid>`. A response
+   means guestd is fine and the problem is on hostd's side of the vsock; no
+   response with guestd listening means the CID is wrong in hostd's state.
+4. The guest keeps running through all of this. A tenant with a certificate
+   can still SSH in; what is lost is sampling, secrets delivery and config
+   apply.
+
+## Freeze timeout
+
+A snapshot failed with `freeze_timeout`, or the alert fired from a
+`host_warning` of that kind.
+
+1. This is guestd's watchdog doing its job: it froze the root filesystem for a
+   snapshot, no `Thaw` arrived within 10 seconds, and it thawed itself. The
+   guest is *not* wedged; nothing needs to be unfrozen by hand.
+2. The cause is on the host side: hostd died mid-snapshot, or the LVM
+   snapshot took longer than the window. `journalctl -u hostd | grep
+   snapshot` on the host gives which.
+3. If the thin pool is near full, the LVM snapshot is what was slow: see
+   "PoolFull" above, then `repose-admin projects snapshot <id>` again.
+4. If it repeats for one project only, the guest's root filesystem has a
+   writer that will not quiesce (a database in a container). Stop the guest
+   and snapshot from stopped: `repose-admin projects restart <id>` takes the
+   snapshot on the way through.
+5. To confirm the guest is healthy afterwards:
+   `repose-admin exec <id> -- guestd call ping` and check `df` inside.
+
+## Switch failed
+
+`repose config apply` reported a failed revision, or a base bump left a
+project on the old system.
+
+1. The Nix output is stored with the revision: `repose-admin ops list
+   --project <id>` then `ops log <op id>`. The tail of it is the reason; it
+   is `switch-to-configuration`'s own output, verbatim.
+2. The old system is still active and the guest is still running. This is
+   switch-to-configuration's semantics and guestd relies on it: a failed
+   switch changes nothing.
+3. The common causes, in order: a systemd unit in the user's fragment that
+   fails to start (the output names it), a store path missing from the share
+   (guestd also sends `store_path_missing`; see "StoreFull" for why a path
+   disappears, then `repose-admin projects restart <id>` to rebuild and
+   re-register the GC root), and a closure that needs a reboot
+   (`needs_reboot=true` is not a failure: the user is told to run `repose
+   config apply --reboot` when their agent is idle).
+4. To retry by hand once the fragment is fixed: `repose config apply` again.
+   Nothing needs cleaning up first.
+
 ## RollupLag
 
 The hourly usage rollup is more than 2 hours behind.
@@ -323,7 +388,8 @@ A tenant reports `repose attach` hangs, or `Freeze` times out.
    means "GuestdLost" above.
 2. `repose-admin exec <id> -- uptime` (goes through vsock; if it works,
    the guest is fine and the problem is the gateway or the tenant's
-   certificate).
+   certificate). From the host itself, `guestd call ping --cid <vsock cid>`
+   asks guestd directly, without the api in the path.
 3. Console log for kernel panics or OOM. A panic leaves CH running with a
    dead guest: `repose-admin projects restart`.
 

@@ -1,0 +1,7 @@
+{
+  "type": "session.error",
+  "properties": {
+    "sessionID": "ses_01",
+    "error": "provider returned 429 after 5 retries"
+  }
+}

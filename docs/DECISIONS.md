@@ -588,3 +588,50 @@ with `--base-repo-url` when it is missing. The exact contract is
 `docs/interfaces/nix-build-contract.md`. *Rejected:* `--impure` (opens
 environment and path access to fragments); tarballs delivered in `Build`
 (a 30 MB message per build).
+**I-18. Two more guestd warning kinds: `oom` and `tmux_down`.** (04) I-11
+enumerated five guestd kinds, but `04-guestd.md` §5 and §6 and
+`02-guest-base.md` §6 each describe a condition outside that list: the kernel
+killing a process for memory, and no tmux server running for `dev`. Both are
+things the user sees as an agent that vanished or a `repose attach` that finds
+nothing, so both are worth a notification. *Rejected:* folding them into
+`disk_high`-style generic text (a kind is what the dashboard and the runbook
+key on); dropping them (the two docs that describe them would then be wrong).
+The `oom` detail carries the killed process's *name*, which is the one thing
+already on the allowed side of the sampling boundary (R5-3). Interface:
+`vsock-guestd.md`. Note also that `04-guestd.md` §5 writes the disk kind as
+`disk_90`; the enumerated name is `disk_high` and that is what the code uses.
+
+**I-19. `WriteSecrets` carries the whole set, and validates before it
+writes.** (04) The request replaces the guest's named secrets: a secret on the
+tmpfs that is absent from the list is removed, and `secrets.env` is rewritten
+from the list. *Rejected:* treating the list as a partial update (then `repose
+secrets rm` never reaches a running guest, and a revoked token keeps working
+until the next stop); removing reserved names the same way (they arrive on the
+create path, not the secrets path, so they are exempt). Validation of every
+name and size happens before the first write, so a rejected batch leaves the
+guest exactly as it was. Interface: `vsock-guestd.md`.
+
+**I-20. `Sample` serves the tmux and Docker signals from a 5 s cache, and
+carries a `partial` flag.** (04) `04-guestd.md` §5 budgets a sample at under
+20 ms and §6 says an over-budget sample returns partial data; forking `tmux
+list-windows` and `tmux list-clients` on the call costs more than the whole
+budget on its own. A background watcher refreshes them every 5 seconds, which
+is also what the agent-state machine and the 90 s pane-idle heuristic need to
+run on; `Sample` walks `/proc` fresh and reads the rest from memory. Measured:
+4.5 ms for 300 processes. `SampleResult` gains `bool partial = 3`, set when a
+signal is missing rather than zero, so hostd can tell "no sessions" from "not
+known". *Rejected:* forking on the sampling path (over budget, and it competes
+with the agent for a 2-vCPU guest); dropping the accuracy claim (the signals
+decide the idle policy later, and a signal that is silently stale is worse
+than one that says so). Interfaces: `vsock-guestd.md`,
+`proto/repose/guestd/v1/guestd.proto`.
+
+**I-21. `guestd call` is the client side of the vsock contract, in the same
+binary.** (04) The NixOS VM test and an operator on a guest that has lost
+hostd both need to send a request and read the response; hostd is the only
+other client and it is a different workstream's binary. `guestd call <request>
+[json]` dials the dev socket or a vsock CID, prints the response as JSON, and
+exits non-zero on an error response. *Rejected:* a separate test-only binary
+(a tool that exists only in tests is a tool nobody maintains); waiting for
+hostd (the VM test is 04's checklist item, not 03's). Interface:
+`vsock-guestd.md` "Dev mode and the client", `ops/RUNBOOK.md`.

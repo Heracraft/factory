@@ -1,0 +1,367 @@
+package sample
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"log/slog"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/heracraft/repose/internal/guestd/sysdep"
+)
+
+func quietLog() *slog.Logger { return slog.New(slog.NewJSONHandler(io.Discard, nil)) }
+
+type fixedSlug string
+
+func (f fixedSlug) Slug() string { return string(f) }
+
+type recorder struct {
+	mu     sync.Mutex
+	states []string
+	events []string
+	warns  []string
+}
+
+func (r *recorder) AgentState(agent, window, state string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.states = append(r.states, fmt.Sprintf("%s/%s=%s", agent, window, state))
+}
+
+func (r *recorder) AgentEvent(agent, window, kind, summary string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, fmt.Sprintf("%s/%s=%s:%s", agent, window, kind, summary))
+}
+
+func (r *recorder) Warn(kind, _ string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.warns = append(r.warns, kind)
+}
+
+func (r *recorder) snapshot() (states, events, warns []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.states...), append([]string(nil), r.events...), append([]string(nil), r.warns...)
+}
+
+// clock is a hand-advanced time source, so state transitions are exact.
+type clock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func (c *clock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.t
+}
+
+func (c *clock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(d)
+}
+
+// tmuxOutput builds a list-windows result in the watcher's format.
+func tmuxOutput(rows ...[4]string) sysdep.RunResult {
+	var b strings.Builder
+	for _, r := range rows {
+		fmt.Fprintf(&b, "%s\t%s\t%s\t%s\n", r[0], r[1], r[2], r[3])
+	}
+	return sysdep.RunResult{Stdout: []byte(b.String())}
+}
+
+func newWatcherFixture(t *testing.T, procs []fakeProc) (*Watcher, *sysdep.FakeRunner, *recorder, *clock, sysdep.Paths) {
+	t.Helper()
+	p := sysdep.Paths{Root: t.TempDir()}
+	writeProc(t, p, procs)
+	run := sysdep.NewFakeRunner()
+	rec := &recorder{}
+	clk := &clock{t: time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)}
+	docker := &sysdep.FakeDocker{Up: true, Containers: 2}
+	w := NewWatcher(p, run, docker, fixedSlug("todo-app"), rec, quietLog(), clk.now)
+	return w, run, rec, clk, p
+}
+
+func TestAgentOf(t *testing.T) {
+	cases := map[string]string{
+		"claude":    "claude",
+		"claude-2":  "claude",
+		"codex-12":  "codex",
+		"opencode":  "opencode",
+		"gemini":    "gemini",
+		"pi":        "pi",
+		"shell":     "",
+		"claude-x":  "",
+		"claudette": "",
+		"":          "",
+	}
+	for window, want := range cases {
+		if got := AgentOf(window); got != want {
+			t.Errorf("AgentOf(%q) = %q, want %q", window, got, want)
+		}
+	}
+}
+
+func TestWatcherReportsWorkingThenIdle(t *testing.T) {
+	procs := []fakeProc{
+		{pid: 100, ppid: 1, comm: "bash"},
+		{pid: 101, ppid: 100, comm: "claude", ticks: 50},
+	}
+	w, run, rec, clk, p := newWatcherFixture(t, procs)
+	run.Match["list-windows"] = tmuxOutput([4]string{"claude", "101", "claude", "0"})
+	run.Match["list-clients"] = sysdep.RunResult{Stdout: []byte("/dev/pts/0\n")}
+
+	ctx := context.Background()
+	w.Refresh(ctx) // first look: the window appears
+
+	// The agent burns CPU: working.
+	writeProc(t, p, []fakeProc{{pid: 101, ppid: 100, comm: "claude", ticks: 200}})
+	clk.advance(Interval)
+	w.Refresh(ctx)
+	clk.advance(StateDebounce)
+	w.Refresh(ctx)
+
+	states, _, _ := rec.snapshot()
+	if !containsState(states, "claude/claude="+StateWorking) {
+		t.Fatalf("states = %v, want a working state", states)
+	}
+
+	// Then it stops for longer than IdleAfter.
+	clk.advance(IdleAfter)
+	w.Refresh(ctx)
+	clk.advance(StateDebounce)
+	w.Refresh(ctx)
+	states, _, _ = rec.snapshot()
+	if !containsState(states, "claude/claude="+StateIdle) {
+		t.Fatalf("states = %v, want an idle state", states)
+	}
+}
+
+func containsState(states []string, want string) bool {
+	for _, s := range states {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestWatcherIgnoresAWindowNamedAfterAnAgentThatIsNotRunning(t *testing.T) {
+	// A user renamed a shell "claude". It is not an agent window.
+	procs := []fakeProc{
+		{pid: 100, ppid: 1, comm: "bash"},
+		{pid: 101, ppid: 100, comm: "vim"},
+	}
+	w, run, _, _, _ := newWatcherFixture(t, procs)
+	run.Match["list-windows"] = tmuxOutput([4]string{"claude", "101", "vim", "0"})
+
+	w.Refresh(context.Background())
+	sig, _ := w.Signals()
+	if len(sig.GetAgents()) != 0 {
+		t.Fatalf("agents = %v, want none", sig.GetAgents())
+	}
+}
+
+func TestHookSetsNeedsInput(t *testing.T) {
+	procs := []fakeProc{
+		{pid: 100, ppid: 1, comm: "bash"},
+		{pid: 101, ppid: 100, comm: "claude", ticks: 10},
+	}
+	w, run, _, clk, _ := newWatcherFixture(t, procs)
+	run.Match["list-windows"] = tmuxOutput([4]string{"claude", "101", "claude", "0"})
+
+	ctx := context.Background()
+	w.Refresh(ctx)
+	w.RecordHook("claude", KindNeedsInput, clk.now())
+	clk.advance(Interval)
+	w.Refresh(ctx)
+
+	sig, _ := w.Signals()
+	if len(sig.GetAgents()) != 1 || sig.GetAgents()[0].GetState() != StateNeedsInput {
+		t.Fatalf("agents = %+v, want one needs_input", sig.GetAgents())
+	}
+
+	// A completion clears it.
+	w.RecordHook("claude", KindCompleted, clk.now())
+	clk.advance(Interval)
+	w.Refresh(ctx)
+	sig, _ = w.Signals()
+	if sig.GetAgents()[0].GetState() == StateNeedsInput {
+		t.Fatal("needs_input survived a completion hook")
+	}
+}
+
+func TestHeuristicCompletionForAHooklessAgent(t *testing.T) {
+	procs := []fakeProc{
+		{pid: 200, ppid: 1, comm: "bash"},
+		{pid: 201, ppid: 200, comm: "gemini", ticks: 5},
+	}
+	w, run, rec, clk, _ := newWatcherFixture(t, procs)
+	activity := clk.now().Unix()
+	run.Match["list-windows"] = tmuxOutput([4]string{"gemini", "201", "gemini", fmt.Sprint(activity)})
+
+	ctx := context.Background()
+	w.Refresh(ctx)
+	_, events, _ := rec.snapshot()
+	if len(events) != 0 {
+		t.Fatalf("events = %v, want none yet", events)
+	}
+
+	clk.advance(HeuristicIdleAfter + time.Second)
+	w.Refresh(ctx)
+	_, events, _ = rec.snapshot()
+	if len(events) != 1 || !strings.Contains(events[0], "completed:gemini went idle") {
+		t.Fatalf("events = %v, want one heuristic completion saying it went idle", events)
+	}
+
+	// It fires once, not every five seconds.
+	clk.advance(HeuristicIdleAfter)
+	w.Refresh(ctx)
+	_, events, _ = rec.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("events = %v, want the heuristic to fire once per quiet period", events)
+	}
+}
+
+func TestHookedAgentsDoNotUseTheHeuristic(t *testing.T) {
+	procs := []fakeProc{
+		{pid: 300, ppid: 1, comm: "bash"},
+		{pid: 301, ppid: 300, comm: "claude", ticks: 5},
+	}
+	w, run, rec, clk, _ := newWatcherFixture(t, procs)
+	run.Match["list-windows"] = tmuxOutput([4]string{"claude", "301", "claude", fmt.Sprint(clk.now().Unix())})
+
+	ctx := context.Background()
+	w.Refresh(ctx)
+	clk.advance(HeuristicIdleAfter * 3)
+	w.Refresh(ctx)
+
+	_, events, _ := rec.snapshot()
+	if len(events) != 0 {
+		t.Fatalf("events = %v: claude has a real Stop hook, so the heuristic must stay quiet", events)
+	}
+}
+
+func TestTmuxDownWarnsOnce(t *testing.T) {
+	w, run, rec, clk, _ := newWatcherFixture(t, nil)
+	run.Match["list-windows"] = sysdep.RunResult{ExitCode: 1, Stderr: []byte("no server running on /tmp/tmux-1000/default")}
+
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		w.Refresh(ctx)
+		clk.advance(Interval)
+	}
+	_, _, warns := rec.snapshot()
+	if len(warns) != 1 || warns[0] != WarnTmuxDown {
+		t.Fatalf("warns = %v, want one %s", warns, WarnTmuxDown)
+	}
+	sig, _ := w.Signals()
+	if sig.GetTmuxClients() != 0 || len(sig.GetAgents()) != 0 {
+		t.Fatalf("signals with no tmux server = %+v, want zeroes", sig)
+	}
+}
+
+func TestDockerDownWarnsOnce(t *testing.T) {
+	p := sysdep.Paths{Root: t.TempDir()}
+	run := sysdep.NewFakeRunner()
+	rec := &recorder{}
+	clk := &clock{t: time.Now()}
+	docker := &sysdep.FakeDocker{Up: false}
+	w := NewWatcher(p, run, docker, fixedSlug(""), rec, quietLog(), clk.now)
+
+	for i := 0; i < 3; i++ {
+		w.Refresh(context.Background())
+	}
+	_, _, warns := rec.snapshot()
+	if len(warns) != 1 || warns[0] != WarnDockerDown {
+		t.Fatalf("warns = %v, want one %s", warns, WarnDockerDown)
+	}
+
+	docker.Set(true, 4)
+	w.Refresh(context.Background())
+	sig, _ := w.Signals()
+	if sig.GetDockerContainers() != 4 {
+		t.Fatalf("docker_containers = %d, want 4", sig.GetDockerContainers())
+	}
+}
+
+func TestStaleCacheIsReportedNotFresh(t *testing.T) {
+	w, run, _, clk, _ := newWatcherFixture(t, nil)
+	run.Match["list-windows"] = tmuxOutput()
+	w.Refresh(context.Background())
+	if _, fresh := w.Signals(); !fresh {
+		t.Fatal("a just-refreshed cache is not fresh")
+	}
+	clk.advance(CacheStale + time.Second)
+	if _, fresh := w.Signals(); fresh {
+		t.Fatal("a stale cache reported itself fresh, so a Sample would report signals that are minutes old as current")
+	}
+}
+
+func TestWindowThatDisappearsIsAnnouncedUnknownOnce(t *testing.T) {
+	procs := []fakeProc{
+		{pid: 400, ppid: 1, comm: "bash"},
+		{pid: 401, ppid: 400, comm: "codex", ticks: 5},
+	}
+	w, run, rec, clk, _ := newWatcherFixture(t, procs)
+	run.Match["list-windows"] = tmuxOutput([4]string{"codex", "401", "codex", "0"})
+	ctx := context.Background()
+	w.Refresh(ctx)
+
+	run.Match["list-windows"] = tmuxOutput()
+	clk.advance(Interval)
+	w.Refresh(ctx)
+	clk.advance(Interval)
+	w.Refresh(ctx)
+
+	states, _, _ := rec.snapshot()
+	count := 0
+	for _, s := range states {
+		if s == "codex/codex="+StateUnknown {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("states = %v, want exactly one unknown for the closed window", states)
+	}
+}
+
+func TestAnUnexpectedTmuxFailureIsReportedNotSwallowed(t *testing.T) {
+	// The failure this is written against: guestd reported "no agent windows"
+	// for a guest whose tmux was fine but whose tmux invocation was broken, so
+	// a working agent looked idle and nothing said why.
+	w, run, _, _, _ := newWatcherFixture(t, nil)
+	run.Match["list-windows"] = sysdep.RunResult{
+		ExitCode: 1,
+		Stderr:   []byte("setpriv: failed to set the group list"),
+	}
+	_, _, err := w.tmux.listWindows(context.Background(), "todo-app")
+	if err == nil {
+		t.Fatal("an unexpected tmux failure was reported as an empty window list")
+	}
+	if !strings.Contains(err.Error(), "other") {
+		t.Fatalf("err = %v, want a classified reason", err)
+	}
+}
+
+func TestTmuxFailureClassification(t *testing.T) {
+	cases := map[string]string{
+		"no server running on /tmp/tmux-1000/default": "server_down",
+		"can't find session: todo-app":                "session_missing",
+		"error connecting to /tmp/tmux-1000/default":  "connect_failed",
+		"exec: \"tmux\": executable file not found":   "tmux_missing",
+		"something nobody has seen":                   "other",
+	}
+	for stderr, want := range cases {
+		if got := tmuxFailure(stderr); got != want {
+			t.Errorf("tmuxFailure(%q) = %q, want %q", stderr, got, want)
+		}
+	}
+}

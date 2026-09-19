@@ -1,0 +1,7 @@
+{
+  "type": "session.idle",
+  "properties": {
+    "sessionID": "ses_01",
+    "message": "Finished refactoring the router."
+  }
+}

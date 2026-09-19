@@ -1,0 +1,7 @@
+{
+  "type": "permission.asked",
+  "properties": {
+    "sessionID": "ses_01",
+    "message": "opencode wants to run `rm -rf build`"
+  }
+}

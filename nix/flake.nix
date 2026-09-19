@@ -45,6 +45,26 @@
     in {
       overlays.agents = overlay;
 
+      # The Go binaries that live inside a guest. 02's guest base installs
+      # packages.guestd; the VM test below runs it.
+      packages.${system} = let
+        guest = import ./packages.nix { inherit pkgs; lib = nixpkgs.lib; };
+      in {
+        guestd = guest.guestd;
+        repose-hook = guest.repose-hook;
+        default = guest.guestd;
+      };
+
+      # docs/workstreams/04-guestd.md §7: the real binary exercised inside a
+      # real guest. Run with `nix flake check ./nix` or
+      # `nix build ./nix#checks.x86_64-linux.guestd`.
+      checks.${system} = {
+        guestd = import ./guest/tests/guestd.nix {
+          inherit pkgs;
+          guestdPackage = self.packages.${system}.guestd;
+        };
+      };
+
       # Host: nixos-anywhere target. docs/workstreams/01-host-nixos.md
       # `host` is the generic configuration (what `nix build
       # .#nixosConfigurations.host...` in the launch prompt refers to);

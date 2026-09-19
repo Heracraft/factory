@@ -1125,10 +1125,13 @@ func (x *GrowFsResult) GetNewBytes() uint64 {
 	return 0
 }
 
+// partial is set when the sample deadline (1 s) expired and some signals are
+// missing rather than zero. See docs/interfaces/vsock-guestd.md.
 type SampleResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Signals       *v1.GuestSignals       `protobuf:"bytes,1,opt,name=signals,proto3" json:"signals,omitempty"`
 	Procs         []*v1.ProcSample       `protobuf:"bytes,2,rep,name=procs,proto3" json:"procs,omitempty"`
+	Partial       bool                   `protobuf:"varint,3,opt,name=partial,proto3" json:"partial,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1175,6 +1178,13 @@ func (x *SampleResult) GetProcs() []*v1.ProcSample {
 		return x.Procs
 	}
 	return nil
+}
+
+func (x *SampleResult) GetPartial() bool {
+	if x != nil {
+		return x.Partial
+	}
+	return false
 }
 
 type ExecResult struct {
@@ -1790,10 +1800,11 @@ const file_repose_guestd_v1_guestd_proto_rawDesc = "" +
 	"\fneeds_reboot\x18\x02 \x01(\bR\vneedsReboot\x12\x16\n" +
 	"\x06output\x18\x03 \x01(\fR\x06output\"+\n" +
 	"\fGrowFsResult\x12\x1b\n" +
-	"\tnew_bytes\x18\x01 \x01(\x04R\bnewBytes\"z\n" +
+	"\tnew_bytes\x18\x01 \x01(\x04R\bnewBytes\"\x94\x01\n" +
 	"\fSampleResult\x127\n" +
 	"\asignals\x18\x01 \x01(\v2\x1d.repose.hostd.v1.GuestSignalsR\asignals\x121\n" +
-	"\x05procs\x18\x02 \x03(\v2\x1b.repose.hostd.v1.ProcSampleR\x05procs\"Y\n" +
+	"\x05procs\x18\x02 \x03(\v2\x1b.repose.hostd.v1.ProcSampleR\x05procs\x12\x18\n" +
+	"\apartial\x18\x03 \x01(\bR\apartial\"Y\n" +
 	"\n" +
 	"ExecResult\x12\x1b\n" +
 	"\texit_code\x18\x01 \x01(\x05R\bexitCode\x12\x16\n" +

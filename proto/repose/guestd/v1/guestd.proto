@@ -52,7 +52,13 @@ message Error { string code = 1; string message = 2; }
 message PingResult { string version = 1; uint64 uptime_s = 2; string boot_id = 3; }
 message SwitchResult { bool rebooted = 1; bool needs_reboot = 2; bytes output = 3; }
 message GrowFsResult { uint64 new_bytes = 1; }
-message SampleResult { repose.hostd.v1.GuestSignals signals = 1; repeated repose.hostd.v1.ProcSample procs = 2; }
+// partial is set when the sample deadline (1 s) expired and some signals are
+// missing rather than zero. See docs/interfaces/vsock-guestd.md.
+message SampleResult {
+  repose.hostd.v1.GuestSignals signals = 1;
+  repeated repose.hostd.v1.ProcSample procs = 2;
+  bool partial = 3;
+}
 message ExecResult { int32 exit_code = 1; bytes stdout = 2; bytes stderr = 3; }
 
 message Response {

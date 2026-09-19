@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	fakeguestd "github.com/heracraft/repose/internal/fakes/guestd"
+	fakeguestd "github.com/heracraft/repose/internal/hostd/fakeguestd"
 	guestdv1 "github.com/heracraft/repose/internal/gen/guestd/v1"
 )
 

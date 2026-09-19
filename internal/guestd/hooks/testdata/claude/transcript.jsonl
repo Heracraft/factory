@@ -1,0 +1,4 @@
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"write the tests"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I will start with the payment module."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Added 14 tests for the payment module and they all pass."}]}}

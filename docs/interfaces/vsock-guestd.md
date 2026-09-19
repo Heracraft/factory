@@ -14,15 +14,15 @@ framing; hostd picks by flag.
 
 | Request | Fields | Response | Notes |
 |---|---|---|---|
-| `Ping` | | version, uptime_s, boot_id | also the readiness check after boot |
+| `Ping` | | version, uptime_s, boot_id | also the readiness check after boot; `version` is the guestd *protocol* version (`1` today), which is what hostd compares before sending a request a guest may not know |
 | `Freeze` | | | `fsfreeze -f /`; guestd sets a 10 s watchdog that thaws if no `Thaw` arrives |
 | `Thaw` | | | |
 | `Switch` | system_closure | rebooted (bool), output (capped 32 KB) | runs `<closure>/bin/switch-to-configuration switch`; if the closure's kernel or initrd differ from the running one, responds `needs_reboot=true` and does nothing unless `force_reboot` |
 | `GrowFs` | | new_bytes | `resize2fs` after the host grew the volume |
-| `WriteSecrets` | list {name, bytes} | | writes `/run/repose/secrets/<name>` 0400 dev on tmpfs, rewrites `/run/repose/secrets.env` |
+| `WriteSecrets` | list {name, bytes} | | writes `/run/repose/secrets/<name>` 0400 dev on tmpfs, rewrites `/run/repose/secrets.env`. The list is the **whole set**: a secret present in the guest and absent from the list is removed, which is how `repose secrets rm` reaches a running guest. The three reserved names of DECISIONS I-10 are never removed this way. Validation is per request: one bad name or oversized value rejects the batch and writes nothing (DECISIONS I-19) |
 | `SetPrincipals` | list | | writes `/etc/ssh/principals/dev`, reloads sshd |
 | `SetupProject` | project_slug, remote_url, tz, lang | | creates tmux session named slug, `/home/dev/<slug>`, git init if empty, writes `/home/dev/.repose/project.json` |
-| `Sample` | | GuestSignals + repeated ProcSample (shapes in grpc-hostd.md) | hostd calls every 60 s; guestd reads /proc and `tmux list-clients`, `tmux list-windows` |
+| `Sample` | | GuestSignals + repeated ProcSample (shapes in grpc-hostd.md) + partial (bool) | hostd calls every 60 s. guestd walks `/proc` on the call and serves the tmux and Docker signals from a 5 s background refresh, so a sample costs under 20 ms and never forks (DECISIONS I-20). `partial` is set when a signal is missing rather than zero |
 | `Exec` | argv, timeout_s, as_user | exit_code, stdout, stderr | operator only; hostd audits every call |
 | `Shutdown` | timeout_s | | `systemctl poweroff` after flushing |
 
@@ -33,14 +33,20 @@ framing; hostd picks by flag.
 | `Ready` | boot_id | after network up and sshd listening |
 | `AgentEvent` | agent, tmux_window, kind (completed\|needs_input\|error), summary | agent hooks via the unix socket `/run/repose/hooks.sock` |
 | `AgentState` | agent, tmux_window, state | on change, debounced 5 s |
-| `Warning` | kind, detail | kinds: `disk_high` (over 90 percent), `inotify_exhausted`, `docker_down`, `freeze_timeout`, `store_path_missing` (a path in the running system is absent from the share, which means the host GC'd it) |
+| `Warning` | kind, detail | kinds: `disk_high` (over 90 percent), `inotify_exhausted`, `docker_down`, `freeze_timeout`, `store_path_missing` (a path in the running system is absent from the share, which means the host GC'd it), `oom` (the kernel killed a process for memory; detail carries the process name), `tmux_down` (no tmux server for `dev`). Each kind is sent at most once per 10 minutes. See DECISIONS I-11 and I-18 |
 
 ## Hook socket
 
 Agents (via their wrappers) POST JSON to the Unix socket
 `/run/repose/hooks.sock` (HTTP over unix, group `dev`):
-`{"agent":"claude","kind":"completed","summary":"..."}`. guestd relays as
-`AgentEvent`. The wrapper for each agent is in `guest-conventions.md`.
+`{"agent":"claude","kind":"completed","summary":"...","window":"claude"}`.
+guestd relays as `AgentEvent`. `agent` must be one of the five the platform
+ships, `kind` one of `completed|needs_input|error`, and `summary` is truncated
+to 1 KB. `window` is optional: without it guestd resolves the calling process's
+`$TMUX_PANE` through `SO_PEERCRED`, and failing that uses the agent name. The
+wrapper for each agent is in `guest-conventions.md`; the payload mapping per
+agent is `internal/guestd/hooks` with a recorded fixture per shape in its
+`testdata/`.
 
 ## Failure behaviour
 
@@ -51,3 +57,14 @@ Agents (via their wrappers) POST JSON to the Unix socket
   `Warning{kind:"freeze_timeout"}`.
 - `Switch` output is always returned, even on failure, and failure leaves
   the previous system active (switch-to-configuration semantics).
+- A request this guest's protocol version does not know is answered
+  `invalid_argument` with the version in the message, so a newer hostd
+  degrades per request instead of failing outright.
+
+## Dev mode and the client
+
+`guestd --dev-socket <path>` serves the same framing on a unix socket, for
+tests and for machines without vsock. `guestd call <request> [json]` is the
+client side of this document: it is what the NixOS VM test drives and what an
+operator uses on a guest that has lost hostd (`ops/RUNBOOK.md`, "Guest
+unresponsive"). hostd's own client is `internal/vsockrpc`.

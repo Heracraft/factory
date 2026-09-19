@@ -14,7 +14,7 @@ import (
 	"time"
 
 	guestdv1 "github.com/heracraft/repose/internal/gen/guestd/v1"
-	"github.com/heracraft/repose/internal/vsockrpc"
+	"github.com/heracraft/repose/internal/hostd/vsockrpc"
 )
 
 // Port is guestd's vsock port.

@@ -13,7 +13,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	fakeguestd "github.com/heracraft/repose/internal/fakes/guestd"
+	fakeguestd "github.com/heracraft/repose/internal/hostd/fakeguestd"
 	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
 	"github.com/heracraft/repose/internal/hostd/ch"
 	"github.com/heracraft/repose/internal/hostd/gcroot"
