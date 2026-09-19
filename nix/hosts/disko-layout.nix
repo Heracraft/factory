@@ -11,8 +11,10 @@
 {
   lib,
   osDevice,
-  dataDevice,
+  dataDevice ? null,
   withOs ? true,
+  # The edge (nix/edge) has no data disk and reuses only the OS layout.
+  withData ? true,
   # Directory of udev rules that create /dev/disk/azure/*; null outside Azure.
   azureUdevRules ? null,
 }:
@@ -78,7 +80,9 @@ let
   };
 in
 {
-  disk = (lib.optionalAttrs withOs { inherit os; }) // { inherit data; };
+  disk = (lib.optionalAttrs withOs { inherit os; }) // (lib.optionalAttrs withData { inherit data; });
+}
+// lib.optionalAttrs withData {
   lvm_vg.vg-guests = {
     type = "lvm_vg";
     lvs.thin = {

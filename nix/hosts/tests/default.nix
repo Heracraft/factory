@@ -337,15 +337,20 @@ in
           host.succeed("ssh-keygen -q -t ed25519 -N \"\" -f /root/op")
           host.succeed("ssh-keygen -q -s /root/ca -I operator-test -n root -V +1h /root/op.pub")
           host.wait_until_succeeds("ss -tlnH | grep -q '10.255.0.7:22'")
-          host.succeed(
-              "ssh -i /root/op -o CertificateFile=/root/op-cert.pub -o StrictHostKeyChecking=no "
-              "-o UserKnownHostsFile=/dev/null -o BatchMode=yes root@10.255.0.7 true"
+          # -n and the redirects keep ssh away from the test driver's console.
+          status, _ = host.execute(
+              "ssh -n -v -i /root/op -o CertificateFile=/root/op-cert.pub -o StrictHostKeyChecking=no "
+              "-o UserKnownHostsFile=/dev/null -o BatchMode=yes root@10.255.0.7 true </dev/null >/root/ssh.log 2>&1"
           )
+          print(host.succeed("cat /root/ssh.log"))
+          if status != 0:
+              print(host.succeed("journalctl -u sshd --no-pager | tail -40"))
+          assert status == 0, "certificate login over wg0 failed"
           host.wait_until_succeeds("journalctl -t hostd-audit --no-pager | grep -q 'audit_login'")
           print(host.succeed("journalctl -t hostd-audit --no-pager"))
           host.fail(
-              "ssh -i /root/op -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
-              "-o BatchMode=yes -o CertificateFile=/dev/null root@10.255.0.7 true"
+              "ssh -n -i /root/op -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
+              "-o BatchMode=yes -o CertificateFile=/dev/null root@10.255.0.7 true </dev/null >/dev/null 2>&1"
           )
     '';
   };

@@ -75,10 +75,11 @@ in
         chain input {
           type filter hook input priority filter; policy drop;
           iifname "lo" accept
+          # Guests first: conntrack marks a repeated ICMP echo as
+          # established, which would skip the rate limit in guest_in.
+          iifname "br-guests" jump guest_in
           ct state established,related accept
           ct state invalid drop
-
-          iifname "br-guests" jump guest_in
 
           # Operators and scrapes come over WireGuard only.
           iifname "wg0" tcp dport { 22, 9100, 9101 } accept
