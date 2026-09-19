@@ -47,6 +47,17 @@ let
     '';
   };
 
+  # Wait until a listener is bound, so a unit only counts as started when a
+  # dependent can connect (websockify and x11vnc have no sd_notify).
+  waitPort = port: pkgs.writeShellScript "repose-wait-${toString port}" ''
+    for _ in $(seq 1 100); do
+      if ${pkgs.iproute2}/bin/ss -Hltn "sport = :${toString port}" | grep -q LISTEN; then exit 0; fi
+      sleep 0.1
+    done
+    echo "port ${toString port} not listening after 10 s" >&2
+    exit 1
+  '';
+
   common = {
     serviceConfig = {
       User = "dev";
@@ -91,6 +102,7 @@ in
     serviceConfig = {
       ExecStartPre = "${genPassword}/bin/repose-vnc-password";
       ExecStart = "${pkgs.x11vnc}/bin/x11vnc -display ${display} -localhost -rfbport 5900 -rfbauth ${dir}/vnc-passwd -forever -shared -noxdamage -quiet";
+      ExecStartPost = waitPort 5900;
     };
   };
 
@@ -99,7 +111,10 @@ in
     requires = [ "repose-x11vnc.service" ];
     after = [ "repose-x11vnc.service" ];
     bindsTo = [ "repose-x11vnc.service" ];
-    serviceConfig.ExecStart = "${websockify}/bin/websockify --web ${novncWeb} 127.0.0.1:6081 127.0.0.1:5900";
+    serviceConfig = {
+      ExecStart = "${websockify}/bin/websockify --web ${novncWeb} 127.0.0.1:6081 127.0.0.1:5900";
+      ExecStartPost = waitPort 6081;
+    };
   };
 
   systemd.sockets.repose-novnc = {
