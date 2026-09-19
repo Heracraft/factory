@@ -27,6 +27,13 @@ who stops it half the time pays half.
   `internal/billing/prices.go`, with a test that fails if the doc and the
   constants disagree (the test parses the table in `PRICING.md`).
 
+### Billing-exempt accounts (DECISIONS I-16)
+
+`repose-admin users exempt <handle>` sets `billing_status=exempt`. Exempt
+users pass the card and trial checks, still accrue `usage_hours`, and are
+never pushed to Stripe. With no `STRIPE_*` variables the api starts normally
+and billing routes answer `503 billing_disabled`.
+
 ## 3. Scope: does not build
 
 - Sampling (03-hostd sends `Samples`; 05 writes `meter_samples`). This

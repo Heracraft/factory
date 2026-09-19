@@ -45,6 +45,13 @@ as a stateless container on Coolify with Postgres beside it.
 - OpenTelemetry: traces and metrics via OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT`
   is set, no-op otherwise; Prometheus `/metrics` always.
 
+### Billing-exempt accounts (DECISIONS I-16)
+
+`repose-admin users exempt <handle>` sets `billing_status=exempt`. Exempt
+users pass the card and trial checks, still accrue `usage_hours`, and are
+never pushed to Stripe. With no `STRIPE_*` variables the api starts normally
+and billing routes answer `503 billing_disabled`.
+
 ## 3. Scope: does not build
 
 - Price constants, Stripe customer and invoice logic, the trial ledger:

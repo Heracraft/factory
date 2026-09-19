@@ -375,3 +375,14 @@ dormant OpenRepose API proxy; a supplement brand at getrepose.com. `repose.run`
 was free on 2026-09-19 and should be registered. The on-disk checkout may
 still be called `factory`; nothing in the repo depends on the directory
 name. Supersedes R4-12's naming half.
+
+**I-16. Stripe is not needed until milestone M4; accounts can be billing-
+exempt.** (owner, 2026-09-19) `users.billing_status` gains the value `exempt`,
+set only by `repose-admin users exempt <handle>`. An exempt user passes every
+"card required" and "trial depleted" check, accrues `usage_hours` rows like
+anyone else (so the meters are exercised), and is never pushed to Stripe.
+The api starts without `STRIPE_*` variables set; billing routes return
+`503 billing_disabled` until they are. Workstream 09 removes nothing here:
+exempt stays as the operator and design-partner path. *Why:* the owner tests
+alone for a month; wiring Stripe before there is anything to bill is work
+done in the wrong order.

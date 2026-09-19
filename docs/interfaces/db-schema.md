@@ -9,7 +9,7 @@ trigger. Ids are `uuid` (UUIDv7 generated in Go). Money is `bigint` cents.
 ```sql
 users        (id pk, logto_sub text unique, handle text unique, email text,
               github_login text, tz text, notify_email bool, ntfy_url text,
-              stripe_customer_id text unique, billing_status text,
+              stripe_customer_id text unique, billing_status text,  -- trial|active|past_due|suspended|exempt (I-16)
               trial_credit_cents bigint, project_limit int, xl_limit int,
               suspended_at, cancelled_at, deleted_at)
 

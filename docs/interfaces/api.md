@@ -14,7 +14,7 @@ shared mTLS client certificate. Errors: `{ "error": { "code": "...",
 
 | Method | Path | Body / result |
 |---|---|---|
-| GET | `/me` | `{id, handle, email, github_login, tz, created_at, billing: {status: trial\|active\|past_due\|suspended, trial_credit_cents, has_card}, limits: {projects, xl}}` |
+| GET | `/me` | `{id, handle, email, github_login, tz, created_at, billing: {status: trial\|active\|past_due\|suspended\|exempt, trial_credit_cents, has_card}, limits: {projects, xl}}` |
 | PATCH | `/me` | `{tz?, notify: {email?: bool, ntfy_url?: string\|null}}` |
 | DELETE | `/me` | begins cancellation (stops guests, 30-day retention) |
 | POST | `/me/notify-test` | sends a test event to every configured channel → `{email: ok\|error, ntfy: ok\|error}` |
