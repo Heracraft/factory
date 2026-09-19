@@ -1,12 +1,13 @@
 # The Go binaries that ship inside a guest, built from the repository root.
 #
-# The generated protobuf code is not in git (`.gitignore` has `/internal/gen/`),
-# so it is produced here by `buf` with local plugins. That keeps the build
+# The generated protobuf code is tracked in git, but it is regenerated here
+# by `buf` with local plugins so a stale checkout cannot ship stale stubs. That keeps the build
 # offline and reproducible: buf compiles the .proto files itself, so no
 # network and no remote plugin is involved.
 #
-# Workstream: docs/workstreams/04-guestd.md. Used by
-# nix/guest/base/guestd.nix (02) and nix/guest/tests/guestd.nix.
+# Builds every Go binary in the repo: guestd and repose-hook (04), hostd and
+# hostdev (03). Used by the flake's packages, nix/guest/base (02) and
+# nix/hosts (01).
 { pkgs, lib, version ? "dev" }:
 
 let
@@ -50,8 +51,10 @@ let
     buf generate ${src} --template ${bufTemplate}
   '';
 
-  repose = pkgs.buildGoModule {
-    pname = "repose-guest";
+  # One derivation per binary so `${pkg}/bin/<name>` and meta.mainProgram
+  # are right for each; they share src and vendorHash.
+  mkBin = name: pkgs.buildGoModule {
+    pname = name;
     inherit version src;
 
     # `nix build ./nix#guestd` prints the expected value when a dependency
@@ -64,7 +67,7 @@ let
       chmod -R u+w internal/gen
     '';
 
-    subPackages = [ "cmd/guestd" "cmd/repose-hook" ];
+    subPackages = [ "cmd/${name}" ];
 
     ldflags = [ "-s" "-w" "-X main.version=${version}" ];
 
@@ -73,14 +76,15 @@ let
     doCheck = false;
 
     meta = {
-      description = "repose in-guest daemon and agent hook helper";
-      mainProgram = "guestd";
+      description = "repose ${name} (see docs/workstreams/)";
+      mainProgram = name;
     };
   };
 in
 {
-  inherit repose generated;
-
-  guestd = repose;
-  repose-hook = repose;
+  inherit generated;
+  guestd = mkBin "guestd";
+  repose-hook = mkBin "repose-hook";
+  hostd = mkBin "hostd";
+  hostdev = mkBin "hostdev";
 }

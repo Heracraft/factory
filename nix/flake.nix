@@ -20,119 +20,142 @@
   outputs = { self, nixpkgs, home-manager, microvm, disko }:
     let
       system = "x86_64-linux";
+      lib = nixpkgs.lib;
       overlay = import ./overlay/agents;
       pkgs = import nixpkgs {
         inherit system;
         overlays = [ overlay ];
         config.allowUnfreePredicate = pkg:
-          builtins.elem (nixpkgs.lib.getName pkg) [ "claude-code" ];
+          builtins.elem (lib.getName pkg) [ "claude-code" "codex" "gemini-cli" ];
       };
 
-      # Workstream 03 adds `packages.hostd`; until it exists the host runs
-      # the stub from nix/hosts/hostd-stub.nix.
-      hostdPackage = self.packages.${system}.hostd or null;
+      # The platform base version: the revision of this repository. The api's
+      # base_versions row and /etc/repose/base-version carry the same string.
+      baseVersion = self.shortRev or self.dirtyShortRev or "dirty";
+
+      # Every Go binary in the repository (guestd, repose-hook, hostd,
+      # hostdev), built from the repository root one level above this flake.
+      # From `./nix` alone the parent is not in the flake source, so build with
+      # `nix build '.?dir=nix#hostd'` from the repository root.
+      goPkgs = import ./packages.nix { inherit pkgs lib; version = baseVersion; };
+      guestd = goPkgs.guestd;
+      reposeHook = goPkgs.repose-hook;
+
+      mkGuestRunner = import ./guest/microvm.nix {
+        inherit nixpkgs home-manager microvm system overlay self;
+      };
+
+      guestTests = import ./guest/tests {
+        inherit pkgs lib baseVersion;
+        guestBase = self.nixosModules.guestBase;
+        inherit guestd reposeHook;
+      };
+
       hostModules = [
         disko.nixosModules.disko
         ./hosts
-        { repose.host.hostdPackage = nixpkgs.lib.mkIf (hostdPackage != null) hostdPackage; }
+        { repose.host.hostdPackage = goPkgs.hostd; }
       ];
       mkHost = { hostName, provider ? "azure", modules ? [ ] }:
-        nixpkgs.lib.nixosSystem {
+        lib.nixosSystem {
           inherit system;
           specialArgs = { inherit self; };
           modules = hostModules ++ [ { repose.host = { inherit hostName provider; }; } ] ++ modules;
         };
+      hostChecks = import ./hosts/tests {
+        inherit pkgs nixpkgs disko hostModules;
+      };
     in {
       overlays.agents = overlay;
 
-      # The Go binaries that live inside a guest. 02's guest base installs
-      # packages.guestd; the VM test below runs it.
-      packages.${system} = let
-        guest = import ./packages.nix { inherit pkgs; lib = nixpkgs.lib; };
-      in {
-        guestd = guest.guestd;
-        repose-hook = guest.repose-hook;
-        default = guest.guestd;
-      };
-
-      # docs/workstreams/04-guestd.md §7: the real binary exercised inside a
-      # real guest. Run with `nix flake check ./nix` or
-      # `nix build ./nix#checks.x86_64-linux.guestd`.
-      checks.${system} = {
-        guestd = import ./guest/tests/guestd.nix {
-          inherit pkgs;
-          guestdPackage = self.packages.${system}.guestd;
-        };
-      };
-
-      # Host: nixos-anywhere target. docs/workstreams/01-host-nixos.md
-      # `host` is the generic configuration (what `nix build
-      # .#nixosConfigurations.host...` in the launch prompt refers to);
-      # named hosts are instances of mkHost with their own hostName.
+      # Hosts: nixos-anywhere targets. docs/workstreams/01-host-nixos.md.
+      # `host` is the generic configuration; named hosts are instances of
+      # lib.mkHost with their own hostName.
       nixosConfigurations.host = mkHost { hostName = "repose-host"; };
       nixosConfigurations.host-bench = mkHost { hostName = "host-bench"; };
-      lib.mkHost = mkHost;
-
-
-      # NixOS VM tests for the host configuration (nix/hosts/tests). They
-      # need KVM on the builder: `system-features = kvm` in nix.conf.
-      checks.${system} = import ./hosts/tests {
-        inherit pkgs nixpkgs disko;
-        hostModules = hostModules;
-      };
 
       # Edge: gateway + WireGuard hub. docs/workstreams/06-gateway-edge.md
-      nixosConfigurations.edge = nixpkgs.lib.nixosSystem {
+      nixosConfigurations.edge = lib.nixosSystem {
         inherit system;
         specialArgs = { inherit self; };
         modules = [ disko.nixosModules.disko ./edge ];
       };
 
-      # Guest base as a module, and a function hostd calls with a user
-      # fragment to produce a runner. docs/workstreams/02-guest-base.md and
-      # docs/workstreams/12-nix-config-pipeline.md
-      nixosModules.guestBase = import ./guest/base;
-      lib.mkGuest = import ./guest/microvm.nix {
-        inherit nixpkgs home-manager microvm system overlay self;
+      # Guest base as a module, and the function hostd's build step calls with
+      # a user fragment to produce a runner. docs/workstreams/02-guest-base.md
+      # and docs/workstreams/12-nix-config-pipeline.md
+      nixosModules.guestBase = {
+        imports = [ ./guest/base ];
+        repose.baseVersion = lib.mkDefault baseVersion;
+        repose.guestd.package = lib.mkDefault guestd;
+        repose.hookPackage = lib.mkDefault reposeHook;
       };
 
-      # hostd and hostdev (workstream 03). The Go module is the repository
-      # root, one level above this flake, so build with the repo as the
-      # flake source: `nix build 'git+file://.?dir=nix#hostd'` or
-      # `nix build '.?dir=nix#hostd'` from the repository root. From
-      # `./nix` alone the parent is not in the source and evaluation fails
-      # with a clear message instead of a build error.
-      packages.${system} =
-        let
-          src = ../.;
-          goCommon = {
-            version = "0.1.0";
-            inherit src;
-            vendorHash = "sha256-K/dhRbLrd3kqRWeQ3BGf6W8aW9ddDz/pq5xWIQodt+I=";
-            env.CGO_ENABLED = 0;
-            ldflags = [ "-s" "-w" ];
-            meta.description = "repose host daemon (docs/workstreams/03-hostd.md)";
-          };
-          have = builtins.pathExists (src + "/go.mod");
-          mk = name: if have then pkgs.buildGoModule (goCommon // {
-            pname = name;
-            subPackages = [ "cmd/${name}" ];
-            ldflags = goCommon.ldflags ++ [ "-X main.version=${goCommon.version}" ];
-          }) else throw "packages.${name}: build from the repository root with `nix build '.?dir=nix#${name}'` so go.mod is in the flake source";
-        in {
-          hostd = mk "hostd";
-          hostdev = mk "hostdev";
-          # Workstream 01's stand-in, kept for the host VM tests.
-          hostd-stub = pkgs.callPackage ./hosts/hostd-stub.nix { };
+      lib = {
+        inherit mkGuestRunner mkHost baseVersion;
+        # Name used by the scaffold; same function.
+        mkGuest = mkGuestRunner;
+      };
+
+      packages.${system} = {
+        inherit (goPkgs) guestd repose-hook hostd hostdev;
+        # Workstream 01's stand-in, kept for the host VM tests.
+        hostd-stub = pkgs.callPackage ./hosts/hostd-stub.nix { };
+        # A runner with an empty fragment: what `nix build .#guest-runner`
+        # produces and what the local Cloud Hypervisor boot test uses.
+        guest-runner = mkGuestRunner {
+          inherit guestd;
+          hook = reposeHook;
+          baseVersion = baseVersion;
+          class = "large";
         };
+        guest-system = self.packages.${system}.guest-runner.toplevel;
+        claude-code = pkgs.reposeAgents.claude-code;
+        opencode = pkgs.reposeAgents.opencode;
+        codex = pkgs.reposeAgents.codex;
+        gemini-cli = pkgs.reposeAgents.gemini-cli;
+        pi-coding-agent = pkgs.reposeAgents.pi-coding-agent;
+        playwright-mcp = pkgs.reposeMcp.playwright-mcp;
+        chrome-devtools-mcp = pkgs.reposeMcp.chrome-devtools-mcp;
+        default = self.packages.${system}.guest-runner;
+      };
+
+      # NixOS VM tests for the host (nix/hosts/tests) and the guest
+      # (nix/guest/tests). They need KVM on the builder: `system-features =
+      # kvm` in nix.conf.
+      checks.${system} = hostChecks // guestTests // {
+        # The base closure must stay under 6 GB (02 §7): every host's store
+        # grows by it, and every first boot registers its metadata.
+        guest-closure-size = pkgs.runCommand "guest-closure-size" {
+          closureInfo = pkgs.closureInfo { rootPaths = [ self.packages.${system}.guest-system ]; };
+        } ''
+          size=$(cut -f2 $closureInfo/total-nar-size 2>/dev/null || true)
+          [ -n "$size" ] || size=$(cat $closureInfo/total-nar-size)
+          limit=$((6 * 1024 * 1024 * 1024))
+          echo "guest system closure: $size bytes (limit $limit)"
+          if [ "$size" -gt "$limit" ]; then
+            echo "closure over 6 GB; largest paths:" >&2
+            exit 1
+          fi
+          echo "$size" > $out
+        '';
+        guest-runner-builds = self.packages.${system}.guest-runner;
+        # docs/workstreams/04-guestd.md §7: the real binary exercised inside a
+        # real guest.
+        guestd = import ./guest/tests/guestd.nix {
+          inherit pkgs;
+          guestdPackage = guestd;
+        };
+      };
 
       devShells.${system} = {
         default = pkgs.mkShell {
-          packages = with pkgs; [
+          packages = (import ./guest/base/tool-list.nix pkgs) ++ (with pkgs; [
+            reposeAgents.claude-code reposeAgents.opencode
             go_1_26 gopls golangci-lint buf protoc-gen-go protoc-gen-go-grpc
             opentofu azure-cli just nixos-anywhere nixos-rebuild
             postgresql_16 sqlc wireguard-tools
-          ];
+          ]);
         };
 
         # `nix develop ./nix#infra`. tfsec runs the policies in

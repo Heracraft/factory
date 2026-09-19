@@ -393,6 +393,91 @@ A tenant reports `repose attach` hangs, or `Freeze` times out.
 3. Console log for kernel panics or OOM. A panic leaves CH running with a
    dead guest: `repose-admin projects restart`.
 
+## Guest not ready
+
+hostd reports `guest did not become ready` (no `Ready` from guestd within
+120 s of start), or the api shows a project `starting` for minutes.
+
+1. Console log: `/var/lib/repose/guests/<id>/console.log` on the host.
+   The last lines say where boot stopped. A kernel panic or `init=` not
+   found means the runner's closure is gone from the host store ("Store
+   mount missing" below covers the guest side; on the host, `ls -l
+   /nix/var/nix/gcroots/repose/<id>`).
+2. `systemctl status guest@<id> virtiofsd@<id>` on the host. If virtiofsd
+   is not running, the guest is stuck in the initrd waiting for the
+   `ro-store` tag: start it and restart the guest.
+3. If boot completed (`multi-user.target` in the console) but no `Ready`:
+   guestd crashed. The console carries guestd's own stderr (it logs to the
+   console so a frozen root never blocks it); `repose-admin exec <id> --
+   systemctl status guestd` works only once it is up, so read the console.
+   A crash loop in guestd is a base bug: `hold_base_updates` the project,
+   roll the base back (`repose-admin base rollback`), open an issue.
+4. sshd refusing the certificate after `Ready` is a principals or CA
+   problem, not readiness: `repose-admin exec <id> -- cat
+   /etc/ssh/principals/dev /etc/ssh/user_ca.pub` must show the project id
+   and the User CA; `SetPrincipals` and `UpdateSecrets` from the api
+   rewrite them and reload sshd.
+
+## Store mount missing
+
+A guest logs `mount: /nix/.ro-store: wrong fs type` or `virtiofs: tag
+ro-store not found` in its console, commands fail with `No such file or
+directory` for store paths, or guestd sends `Warning{store_path_missing}`.
+
+1. On the host: `systemctl status virtiofsd@<id>`; the unit must be running
+   on `/var/lib/repose/guests/<id>/virtiofsd.sock` with `--shared-dir
+   /nix/store`. If it exited, `journalctl -u virtiofsd@<id>` says why
+   (usually the socket directory or the `virtiofsd` user's permissions).
+   Restart it, then `repose-admin projects restart <id>`; a guest cannot
+   re-mount the share on its own.
+2. `store_path_missing` with virtiofsd healthy means the host garbage
+   collected a path the guest's system uses: the GC root under
+   `/nix/var/nix/gcroots/repose/` is gone. `nix build` the guest's
+   revision again on the host (deterministic), re-root, restart the guest.
+   That is a hostd bug; record it.
+3. Paths a user installed in the guest are never affected: they live in
+   the guest's overlay upper dir (`/nix/.rw-store`), and
+   `repose-pin-profile` copies shared paths of the profile there whenever
+   the profile changes (`journalctl -u repose-pin-profile` in the guest
+   shows `pinned N store paths`).
+
+## Docker driver wrong
+
+`docker info` in a guest shows a storage driver other than `overlay2`, or
+`docker run` fails with `overlay2 not supported`.
+
+1. `mount | grep ' / '` in the guest must show ext4 on `/dev/vda`. Anything
+   else means the thin volume was created without `mkfs.ext4` or the
+   runner booted the wrong disk: check `lvs vg-guests` and the guest's
+   `bin/run --volume` argument in `systemctl cat guest@<id>`.
+2. `lsmod | grep overlay` must list the module; the base loads it in the
+   initrd. A base whose kernel dropped it is caught by the `guest-docker`
+   VM test before publish; if a published base has it, `repose-admin base
+   rollback` and hold the affected projects.
+3. `/var/lib/docker` full: the guest's volume is at capacity; `repose
+   resize` (the user) or `repose-admin projects resize` (operator).
+
+## Desktop not starting
+
+`repose open --desktop` hangs, or the browser shows a connection error on
+6080.
+
+1. In the guest: `systemctl status repose-novnc.socket repose-xvfb
+   repose-x11vnc repose-novnc`. The socket must be `listening`; a
+   connection to 127.0.0.1:6080 starts the proxy, which requires the whole
+   chain. `journalctl -u repose-x11vnc` failing at `ExecStartPre` means the
+   password step could not write `/run/repose/desktop` (must be 0700 dev;
+   tmpfiles recreates it at boot).
+2. `Xvfb` failing with `Cannot establish any listening sockets` means a
+   stale `/tmp/.X11-unix/X99` lock from a killed server: remove
+   `/tmp/.X99-lock` and `/tmp/.X11-unix/X99`, then reconnect.
+3. The chain stopped by itself: that is the 30-minute idle stop
+   (`journalctl -u repose-desktop-idle`); reconnecting starts it again with
+   a new password (`repose-guest-profile desktop start` prints it).
+4. A headed browser shows nothing on the desktop: the shell that launched
+   it had no `DISPLAY` because it started before Xvfb. New shells export
+   `DISPLAY=:99` while the X socket exists; open a new tmux window.
+
 ## Reservation drift
 
 `hosts list` free memory does not match the sum of running guests.
