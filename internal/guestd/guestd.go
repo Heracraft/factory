@@ -197,7 +197,12 @@ func (s *Server) Run(ctx context.Context) error {
 		return err
 	}
 	defer l.Close() //nolint:errcheck // the listener is torn down with the process
-	s.log.Info("listening", "event", "ready", "transport", s.transport(), "port", s.cfg.VsockPort)
+	if s.cfg.DevSocket != "" {
+		s.log.Info("listening on the dev unix socket", "event", "ready", "transport", "unix")
+	} else {
+		s.log.Info(fmt.Sprintf("listening on vsock port %d", s.cfg.VsockPort),
+			"event", "ready", "transport", "vsock", "port", s.cfg.VsockPort)
+	}
 
 	go s.watcher.Run(ctx)
 	go s.warn.Run(ctx)
