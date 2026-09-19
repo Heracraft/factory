@@ -1,0 +1,12 @@
+{
+  "host_id": "01926b3e-7c7a-7f1e-9b0a-4a2f6c1d3e55",
+  "guest_cidr": "10.64.4.0/22",
+  "wg": {
+    "private_key": "zBY/FE1VUpft/YQvXtxDJgaq1DV60AarfyBY8yGghpI=",
+    "address": "10.255.0.7/16",
+    "edge_pubkey": "dyP2l2byrPpr9ehOwYga0Ya9/qkUChpSCR0vJVRa0f8=",
+    "edge_endpoint": "203.0.113.9:51820"
+  },
+  "host_ca_pub": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEEeyr2itMhkWR+qf6iuaiG/1q5vHNj4S0jd7gYedUdS repose-test-host-ca",
+  "loki_url": "http://203.0.113.9:3100"
+}
