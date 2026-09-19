@@ -61,7 +61,7 @@ to Grafana provisioning, and the Loki labels are already in Fluent Bit.
 | Task | Command |
 |---|---|
 | List hosts with capacity | `repose-admin hosts list` |
-| Add a host | `repose-admin hosts add --name host-NN` then `tofu apply` (workstream 11) |
+| Add a host | `hostdev init --host host-NN` (M1) or `repose-admin hosts add --name host-NN` (once the api exists), then `make -C infra apply ENV=prod` (workstream 11) |
 | Drain a host (no new placements) | `repose-admin hosts drain host-NN` |
 | Retire a host (after all projects moved) | `repose-admin hosts retire host-NN` |
 | Move a project to another host | `repose-admin projects move <id> --to host-NN` (stop, snapshot, restore, start) |
@@ -217,8 +217,9 @@ A new host has been up for more than five minutes and is not in `hosts
 list`.
 
 1. `ssh -J root@<edge ip>:2222 root@<private ip>`: `journalctl -u hostd`.
-   `token_expired` or `token_used`: mint a new one (`repose-admin hosts add
-   --reissue`), put it in `infra/azure/prod/prod.local.tfvars` and
+   `token_expired` or `token_used`: mint a new one (`hostdev init --host
+   <name> --reissue` for M1, `repose-admin hosts add --reissue` once the api
+   exists), put it in `infra/azure/prod/prod.local.tfvars` and
    `make -C infra apply ENV=prod` (only the token-delivery step re-runs), or
    by hand `install -d -m 0700 /run/repose && umask 077 && cat >
    /run/repose/join-token` and `systemctl restart hostd`. The token is never

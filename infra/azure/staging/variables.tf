@@ -111,10 +111,28 @@ variable "host_data_disk_mbps" {
   default     = 600
 }
 
+variable "edge_operator_ssh_port" {
+  type        = number
+  description = <<-EOT
+    Port the edge's operator sshd listens on; every host provisioner jumps
+    through it. 2222 is the target state, because 22 belongs to the
+    user-facing SSH gateway. Until workstream 06 gives the edge that gateway,
+    nix/edge serves sshd on 22 and this must be 22
+    (infra/README.md, "How the installer reaches a host").
+  EOT
+  default     = 2222
+}
+
 variable "edge_size" {
   type        = string
   description = "Edge VM size."
   default     = "Standard_D2s_v5"
+}
+
+variable "coolify_count" {
+  type        = number
+  description = "Control-plane VMs: 0 or 1. Stays 0 until wave 3 (DECISIONS I-23)."
+  default     = 0
 }
 
 variable "coolify_size" {

@@ -460,3 +460,33 @@ owns the edge's listeners: 22 is the user gateway, 443 the preview-proxy
 stub, 51820/udp the WireGuard hub, and 2222 the operator sshd — restricted to
 the operator address list and the VNet, because every host provisioner jumps
 through it and hosts have no public IP.
+
+**I-23. The control-plane VM is not created until wave 3.** (11, owner,
+2026-09-19) `coolify_count` defaults to 0 in both environment roots. The api,
+the dashboard and Logto are workstreams 05 and 08; until they exist the VM
+bills about $180 a month for nothing, while the edge and the first host are
+worth paying for early, because installing NixOS onto an Azure VM with
+nixos-anywhere is the riskiest unproven step in the plan and workstream 01's
+data-disk device path stays unverified until a real install happens.
+*Rejected:* creating it with everything else (the original shape of workstream
+11 §2) and stopping it by hand (a deallocated VM still bills its 256 GB
+Premium OS disk, and a VM that exists is a VM somebody configures). Setting
+`coolify_count` back to 0 after the VM exists destroys it and its OS disk,
+Postgres included; the retention that matters is the R2 dump.
+
+**I-24. The installer reaches a host through the edge, never through a
+temporary public IP.** (11) `nixos-anywhere`, the post-install checks and the
+join-token delivery all connect to the host's private address with the edge as
+an SSH jump host, and the module graph makes a host depend on the edge being
+installed. *Rejected:* giving the host a public IP for the length of the
+install and removing it afterwards. *Why:* a public IP on a host needs an
+inbound rule on the hosts subnet, which is the one thing
+`infra/policy/tfsec` forbids and `DESIGN.md` §4 and §7 promise never exists;
+the window is not short (kexec, disko, closure copy and reboot is about ten
+minutes) and what sits in it is a stock Ubuntu image accepting root SSH; and
+the edge path is the same one the runbook's "Host never registered" recovery
+already used, so the recovery path is exercised by the happy path rather than
+first tried in an incident. *Cost:* the edge must exist and be reachable
+before the first host, and its operator sshd must be listening on
+`edge_operator_ssh_port`. Until workstream 06 moves it, `nix/edge` serves sshd
+on 22, so the first apply sets `edge_operator_ssh_port = 22`.

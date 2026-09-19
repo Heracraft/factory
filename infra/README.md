@@ -100,10 +100,51 @@ The plan for an environment with `hosts = []` creates the network, the NAT
 gateway, the snapshot account, the Key Vault, the edge and the control plane,
 and nothing else.
 
+## How the installer reaches a host
+
+Through the edge, always. `nixos-anywhere`, the post-install `/dev/kvm` and
+nested-virtualization checks, and the join-token delivery all connect to the
+host's **private** address with the edge as an SSH jump host, and the module
+graph makes every host depend on the edge having been installed first.
+
+Hosts never get a public IP, not even a temporary one for the install
+(`docs/DECISIONS.md` I-24). A public IP would need an inbound rule on the
+hosts subnet, which is the one thing `policy/tfsec` forbids; the install
+window is about ten minutes, not seconds; and what would be sitting in it is a
+stock Ubuntu image accepting root SSH.
+
+```
+you (operator_cidrs) ──ssh──▶ edge :<edge_operator_ssh_port> ──ssh──▶ host :22
+```
+
+Two things have to be true for that to work, and both are worth checking
+before the first apply:
+
+- **Your address is in `operator_cidrs`.** The edge NSG opens the operator
+  SSH port to that list and to the VNet, nothing else.
+- **The edge's sshd is on `edge_operator_ssh_port`.** It defaults to 2222,
+  because 22 belongs to the user-facing SSH gateway once workstream 06 lands.
+  Until then, `nix/edge` serves sshd on 22 and there is no gateway competing
+  for it, so **the first apply sets `edge_operator_ssh_port = 22`** in the
+  local tfvars and moves it to 2222 in the same change that gives the edge its
+  gateway.
+
+The host side needs nothing configured: Azure's built-in `AllowVnetInBound`
+rule is what lets the edge reach a host's sshd, which is why the hosts NSG can
+have no rules of its own at all.
+
+The provisioner shape this rests on — bastion connection, `install -d` then a
+`file` provisioner then `remote-exec` — was exercised against a real sshd on
+2026-09-19: the token arrived at mode 0600 and its contents appear nowhere in
+the apply log, because it travels as file content and never as an argument.
+
 ## Adding a host
 
 ```bash
-repose-admin hosts add --name host-02 --provider azure    # prints a token
+# M1, before the api exists: the one-host dev driver mints it (DECISIONS I-17)
+hostdev init --host host-02                              # prints a token
+# once the api is up:
+# repose-admin hosts add --name host-02 --provider azure
 ```
 
 Then:
@@ -133,7 +174,8 @@ closure copy.
 A host that never registered, or one whose token was seen by someone:
 
 ```bash
-repose-admin hosts add --name host-02 --reissue        # new token
+hostdev init --host host-02 --reissue                 # new token (M1)
+# repose-admin hosts add --name host-02 --reissue      # once the api exists
 # replace the value in prod.local.tfvars
 make apply ENV=prod
 ```
@@ -216,9 +258,10 @@ small enough surface to port when that day comes.
 
 Re-checked on **2026-09-19** against the Azure Retail Prices API
 (`https://prices.azure.com/api/retail/prices`, `armRegionName eq 'eastus'`,
-`priceType eq 'Consumption'`), for the pre-launch configuration in
-`prod.tfvars`: one `D16s_v5` host with a 512 GB Premium SSD v2 data disk
-(DECISIONS I-14). 730 hours to the month, Linux rates, no reservation.
+`priceType eq 'Consumption'`), for what `prod.tfvars` actually creates: one
+`D16s_v5` host with a 512 GB Premium SSD v2 data disk (DECISIONS I-14), the
+edge, and **no control-plane VM** (`coolify_count = 0`, DECISIONS I-23). 730
+hours to the month, Linux rates, no reservation.
 
 | Resource | Unit price | Monthly |
 |---|---|---|
@@ -230,31 +273,30 @@ Re-checked on **2026-09-19** against the Azure Retail Prices API
 | NAT gateway | $0.045/h + $0.045/GB processed | $32.85 + egress |
 | Edge `Standard_D2s_v5` | $0.096/h | $70.08 |
 | Edge OS disk, Premium SSD P6 (64 GiB) + mount | $10.21 + $0.47 | $10.68 |
-| Coolify VM `Standard_D4s_v5` | $0.192/h | $140.16 |
-| Coolify OS disk, Premium SSD P15 (256 GiB) + mount | $38.01 + $1.83 | $39.84 |
-| Three Standard static IPv4 (NAT, edge, control) | $0.005/h each | $10.95 |
+| Two Standard static IPv4 (NAT, edge) | $0.005/h each | $7.30 |
 | Blob, 500 GB of snapshots, Cool LRS | $0.0152/GB/month | $7.60 |
 | Key Vault standard, operations | $0.03 per 10K | under $1 |
 | R2, 50 GB | $0.015/GB/month | $0.75 |
-| **Total, one host, before egress** | | **about $1,040** |
+| **Total, one host, no control plane, before egress** | | **about $857** |
 
-Two things that table says which the earlier estimate did not:
+Adding the control-plane VM in wave 3 — `coolify_count = 1`, a `D4s_v5` at
+$140.16, its 256 GB OS disk at $39.84 and its static IP at $3.65 — takes it to
+about **$1,040**, which is over the $1,000 monthly budget alert in
+`docs/ops/AZURE-SETUP.md` step 7. Raise the budget to $1,200 at that point, or
+drop the control plane to a `D2s_v5` and save $70.
 
-- **It is over the budget alert.** `docs/ops/AZURE-SETUP.md` step 7 sets a
-  $1,000 monthly budget for the pre-launch month. This configuration reaches
-  it before a single guest runs. Either raise the budget to $1,200 or drop
-  something: the Coolify VM at `Standard_D2s_v5` saves $70, and provisioning
-  the data disk at 3,000 IOPS and 125 MB/s — the free tier — saves $85 and
-  can be raised in place later without downtime.
-- **Premium SSD v2 provisioned performance is most of the disk bill.** The
-  capacity is $41; the IOPS and throughput above the free tier are another
-  $85. `host_data_disk_iops` and `host_data_disk_mbps` are variables for
-  exactly this reason.
+The other thing this table says that the earlier estimate did not:
+**Premium SSD v2 provisioned performance is most of the disk bill.** Capacity
+is $41; the IOPS and throughput above the free tier are another $85.
+`host_data_disk_iops` and `host_data_disk_mbps` are variables for exactly that
+reason, and both can be raised in place later without downtime, so the first
+host can start at the free tier (3,000 IOPS, 125 MB/s) and save $85 a month
+until there is a guest whose builds justify more.
 
-At launch sizes (`Standard_D64s_v5`, 2 TB data disk) the same table totals
-about **$2,850**. The $10k credit funds roughly three and a half months of
-that with one host. Reservations generally cannot be bought with sponsorship
-credits; check before assuming a reserved rate applies.
+At launch sizes (`Standard_D64s_v5`, 2 TB data disk, control plane on) the
+same table totals about **$2,850**. The $10k credit funds roughly three and a
+half months of that with one host. Reservations generally cannot be bought
+with sponsorship credits; check before assuming a reserved rate applies.
 
 One figure is not from the API: Azure does not expose a NAT Gateway meter
 under any `serviceName` in `eastus` that the retail endpoint will return, so

@@ -133,7 +133,12 @@ variable "hosts" {
 
 variable "join_tokens" {
   type        = map(string)
-  description = "host name to single-use registration token from `repose-admin hosts add`. Never committed."
+  description = <<-EOT
+    host name to single-use registration token. For M1 the token comes from
+    `hostdev init`, the one-host dev driver that plays the api side of the
+    gRPC contract until the api exists (DECISIONS I-17); once the api is up it
+    comes from `repose-admin hosts add` (I-9). Never committed.
+  EOT
   sensitive   = true
   default     = {}
 }
@@ -208,6 +213,24 @@ variable "edge_wireguard_public_key" {
   type        = string
   description = "The edge's WireGuard public key, read from the edge after its first install. Null leaves the control plane's tunnel down."
   default     = null
+}
+
+variable "coolify_count" {
+  type        = number
+  description = <<-EOT
+    How many control-plane VMs to create: 0 or 1. Default 0. The api, the
+    dashboard and Logto arrive in wave 3 (workstreams 05 and 08); before they
+    exist the VM bills about $180 a month for nothing, while the edge and the
+    first host are worth paying for early (DECISIONS I-23). Setting this to 0
+    after the VM exists destroys it and everything on its OS disk, Postgres
+    included.
+  EOT
+  default     = 0
+
+  validation {
+    condition     = contains([0, 1], var.coolify_count)
+    error_message = "coolify_count is 0 or 1; there is one control plane."
+  }
 }
 
 variable "coolify_name" {

@@ -15,6 +15,11 @@ operator_authorized_keys = [
   "ssh-ed25519 AAAA... operator@laptop",
 ]
 
+# The edge's operator sshd port. Every host provisioner jumps through it.
+# 2222 is the target state; until workstream 06 gives the edge its SSH
+# gateway, nix/edge serves sshd on 22 and this must be 22.
+# edge_operator_ssh_port = 22
+
 # Private key matching one of the above, on the machine running tofu.
 ssh_private_key_path = "/home/azureuser/.ssh/id_ed25519"
 

@@ -59,8 +59,9 @@ module "environment" {
   resource_group_name = var.resource_group_name
   zone                = var.zone
 
-  operator_cidrs    = var.operator_cidrs
-  control_web_cidrs = var.control_web_cidrs
+  operator_cidrs         = var.operator_cidrs
+  control_web_cidrs      = var.control_web_cidrs
+  edge_operator_ssh_port = var.edge_operator_ssh_port
 
   operator_authorized_keys = var.operator_authorized_keys
   ssh_private_key_path     = var.ssh_private_key_path
@@ -86,8 +87,9 @@ module "environment" {
   # silently picking a security type (docs/workstreams/11-infra-opentofu.md §6).
   host_security_type = var.host_security_type
 
-  edge_size    = var.edge_size
-  coolify_size = var.coolify_size
+  edge_size     = var.edge_size
+  coolify_count = var.coolify_count
+  coolify_size  = var.coolify_size
 
   edge_wireguard_public_key = var.edge_wireguard_public_key
 

@@ -55,7 +55,8 @@ provider module for hosts is an addition, not a rewrite.
     port list workstream 06 §5.1 owns. Operator SSH after install is by
     certificate only, on 2222, because 22 belongs to the gateway and every
     host provisioner jumps through it.
-  - `coolify`: one `Standard_D4s_v5`, Ubuntu 24.04 LTS, static public IP,
+  - `coolify`: `coolify_count` of them, defaulting to **0** until wave 3
+    (DECISIONS I-23); when 1, one `Standard_D4s_v5`, Ubuntu 24.04 LTS, static public IP,
     DNS A records `repose.herakraft.co`, `api.repose.herakraft.co`,
     `auth.repose.herakraft.co`, 256 GB Premium SSD OS disk, cloud-init that
     installs Docker and runs Coolify's installer, then installs a WireGuard
@@ -110,14 +111,18 @@ Owns: variable names and outputs of each module, the join-token handoff
 (`/run/repose/join-token`), the tag scheme, DNS names.
 
 Consumes: `interfaces/host-conventions.md` (what the host expects at boot),
-`interfaces/grpc-hostd.md` (Register uses the join token).
+`interfaces/grpc-hostd.md` (Register uses the join token). For M1 the token
+is minted by `hostdev init`, the one-host dev driver in workstream 03
+(DECISIONS I-17), not by `repose-admin`; workstream 05 is not on the path
+between this workstream and a registered host.
 
 ## 5. Design detail
 
 ### Adding a host
 
 ```
-repose-admin hosts add --name host-03 --provider azure   # mints join token, prints it
+hostdev init --host host-03            # M1: mints the join token and prints it
+# once the api exists: repose-admin hosts add --name host-03 --provider azure
 # add "host-03" to hosts in azure/prod/prod.tfvars, in a reviewed commit
 # add host-03 = "<token>" to join_tokens in prod.local.tfvars (git-ignored)
 make -C infra plan ENV=prod && make -C infra apply ENV=prod
@@ -134,6 +139,22 @@ on the data disk), reboots into NixOS, and hostd registers on first boot.
 The token is single-use and expires in 24 hours. `repose-admin hosts list`
 shows the host as `ready` within two minutes of the reboot or the runbook
 entry "Host never registered" applies.
+
+### How the installer reaches a host
+
+Through the edge. `nixos-anywhere`, the post-install `/dev/kvm` and nested
+checks, and the join-token delivery all connect to the host's private address
+with the edge as an SSH jump host, and the module graph makes a host depend on
+the edge being installed first. Hosts never get a public IP, not even a
+temporary one during the install: that would need an inbound rule on the hosts
+subnet, which is the one thing the tfsec policy forbids and §4 and §7 of
+`DESIGN.md` promise never exists, and the window is about ten minutes of a
+stock Ubuntu image accepting root SSH. DECISIONS I-24 has the full reasoning.
+
+The edge's operator sshd must be listening on `edge_operator_ssh_port` for
+that to work. It defaults to 2222 because 22 belongs to the user gateway;
+until workstream 06 gives the edge that gateway, `nix/edge` serves sshd on 22
+and the first apply sets `edge_operator_ssh_port = 22`.
 
 ### Why Ubuntu as the install target
 
@@ -170,11 +191,12 @@ so a Hetzner host uses Hetzner Object Storage or R2.
 | Total with one host | ~$2,700 |
 
 `infra/README.md` carries the version of this table re-derived from the Azure
-Retail Prices API on 2026-09-19, for the pre-launch sizes: about **$1,040** a
-month, which is over the $1,000 budget alert in `ops/AZURE-SETUP.md` step 7
-before a single guest runs, and about **$2,850** at launch sizes. Most of the
-difference from the estimate above is Premium SSD v2 provisioned IOPS and
-throughput, which are variables. The $10k credit funds roughly three and a
+Retail Prices API on 2026-09-19, for what `prod.tfvars` actually creates:
+about **$857** a month with one pre-launch host and no control-plane VM,
+about **$1,040** once wave 3 turns that VM on, which is over the $1,000 budget
+alert in `ops/AZURE-SETUP.md` step 7, and about **$2,850** at launch sizes.
+Most of the difference from the estimate above is Premium SSD v2 provisioned
+IOPS and throughput, which are variables and can be raised in place later. The $10k credit funds roughly three and a
 half months at launch sizes with one host and no reservation. Reservations cannot be bought with credits on most Azure
 sponsorship SKUs; check before assuming the reserved column applies.
 
@@ -250,18 +272,23 @@ from the previous version.
 
 ## 10. What is left for the owner
 
-Nothing in `infra/` has been applied. Every checklist item above that says
-"a host", "a fresh host", "a test blob" or "Coolify's backup job" needs an
-apply the owner authorises, and `infra/README.md` is the order to do it in.
-Three things are also waiting on a human and not on an apply:
+Nothing in `infra/` has been applied, and the owner's instruction is that the
+apply happens from `main` after this branch and workstream 01's are merged, so
+the host installs from the merged flake rather than this branch's snapshot of
+the skeleton. Every checklist item above that says "a host", "a fresh host",
+"a test blob" or "Coolify's backup job" waits on that, and `infra/README.md`
+is the order to do it in.
 
-- **Blob soft delete on the state account.** `reposetfstate3912` has blob
-  versioning on and soft delete off. `az storage account blob-service-properties
-  update --account-name reposetfstate3912 --resource-group repose-prod
-  --enable-delete-retention true --delete-retention-days 30` closes the first
-  checklist item. `infra/bootstrap` sets both for a new environment.
+Blob soft delete on `reposetfstate3912` was the one change made outside
+OpenTofu: 30 days on blobs and on containers, versioning was already on.
+
+Three things wait on a human rather than on an apply:
+
 - **The api's Entra app registration**, its client certificate, and the R2
   API token (DECISIONS I-20). Pass the app's object id as
   `api_identity_object_id` and the Key Vault wrap/unwrap policy appears.
 - **A Cloudflare API token** in `CLOUDFLARE_API_TOKEN` and the zone id in the
   local tfvars, before `manage_dns` can be true or `infra/r2` can be planned.
+- **`edge_operator_ssh_port = 22`** in the local tfvars for the first apply,
+  until workstream 06 moves the edge's operator sshd off the port the user
+  gateway wants.

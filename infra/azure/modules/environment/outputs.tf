@@ -9,8 +9,8 @@ output "edge_ssh_jump" {
 }
 
 output "control_public_ip" {
-  description = "Static address of the control plane."
-  value       = module.coolify.public_ip
+  description = "Static address of the control plane, or null while coolify_count is 0."
+  value       = one(module.coolify[*].public_ip)
 }
 
 output "guest_egress_ip" {

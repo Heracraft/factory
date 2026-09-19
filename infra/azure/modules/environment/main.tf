@@ -58,7 +58,7 @@ check "every_host_has_a_join_token" {
     # that names the hosts, which is the entire value of the check.
     condition = length(setsubtract(toset(var.hosts), toset(nonsensitive(keys(var.join_tokens))))) == 0
     error_message = format(
-      "No join token for %s. If they have already registered this is fine; otherwise mint one with `repose-admin hosts add` and put it in the environment's local tfvars.",
+      "No join token for %s. If they have already registered this is fine; otherwise mint one with `hostdev init` (or `repose-admin hosts add` once the api exists) and put it in the environment's local tfvars.",
       join(", ", setsubtract(toset(var.hosts), toset(nonsensitive(keys(var.join_tokens))))),
     )
   }
@@ -133,8 +133,13 @@ module "edge" {
   tags = local.tags
 }
 
+# Not created until wave 3. The api, the dashboard and Logto are workstreams
+# 05 and 08; until they exist this VM is about $180 a month of nothing, and
+# the edge and the first host are the parts worth paying for early
+# (DECISIONS I-23).
 module "coolify" {
   source = "../coolify"
+  count  = var.coolify_count
 
   name                = var.coolify_name
   size                = var.coolify_size
@@ -200,25 +205,31 @@ module "dns" {
 
   zone_id = var.cloudflare_zone_id
 
-  records = {
-    (local.ssh_fqdn) = {
-      address = module.edge.public_ip
-      comment = "repose SSH gateway and WireGuard hub (${var.env})"
-    }
-    (local.dashboard_fqdn) = {
-      address = module.coolify.public_ip
-      proxied = var.proxy_web_records
-      comment = "repose dashboard (${var.env})"
-    }
-    (local.api_fqdn) = {
-      address = module.coolify.public_ip
-      proxied = var.proxy_web_records
-      comment = "repose api (${var.env})"
-    }
-    (local.auth_fqdn) = {
-      address = module.coolify.public_ip
-      proxied = var.proxy_web_records
-      comment = "Logto (${var.env})"
-    }
-  }
+  # A record that resolves to nothing is worse than no record, so the control
+  # plane's names appear only once the VM behind them does.
+  records = merge(
+    {
+      (local.ssh_fqdn) = {
+        address = module.edge.public_ip
+        comment = "repose SSH gateway and WireGuard hub (${var.env})"
+      }
+    },
+    var.coolify_count == 0 ? {} : {
+      (local.dashboard_fqdn) = {
+        address = one(module.coolify[*].public_ip)
+        proxied = var.proxy_web_records
+        comment = "repose dashboard (${var.env})"
+      }
+      (local.api_fqdn) = {
+        address = one(module.coolify[*].public_ip)
+        proxied = var.proxy_web_records
+        comment = "repose api (${var.env})"
+      }
+      (local.auth_fqdn) = {
+        address = one(module.coolify[*].public_ip)
+        proxied = var.proxy_web_records
+        comment = "Logto (${var.env})"
+      }
+    },
+  )
 }

@@ -15,8 +15,10 @@ host_data_disk_mbps = 125
 
 host_security_type = "Standard"
 
-edge_size    = "Standard_D2s_v5"
-coolify_size = "Standard_D2s_v5"
+edge_size = "Standard_D2s_v5"
+
+coolify_count = 0
+coolify_size  = "Standard_D2s_v5"
 
 # Empty except during the monthly create-register-destroy exercise
 # (docs/workstreams/11-infra-opentofu.md §7).

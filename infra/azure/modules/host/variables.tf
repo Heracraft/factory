@@ -4,7 +4,7 @@ variable "name" {
 
   validation {
     condition     = can(regex("^host-[0-9a-z-]+$", var.name))
-    error_message = "Host names look like host-01; the runbook and repose-admin hosts add use the same form."
+    error_message = "Host names look like host-01; the runbook and the host-registration commands use the same form."
   }
 }
 
@@ -18,8 +18,10 @@ variable "class" {
 
 variable "join_token" {
   description = <<-EOT
-    Single-use registration token from `repose-admin hosts add`, delivered to
-    /run/repose/join-token over SSH after the install. Empty skips delivery,
+    Single-use registration token, delivered to /run/repose/join-token over
+    SSH after the install. It comes from `hostdev init` until the api exists
+    and from `repose-admin hosts add` after (DECISIONS I-17, I-9). Empty skips
+    delivery,
     which is what an already-registered host wants; keeping the spent token in
     the (git-ignored) local tfvars file keeps later plans quiet, and replacing
     its value is how the token is rotated.

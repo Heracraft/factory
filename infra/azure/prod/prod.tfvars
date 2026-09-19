@@ -21,8 +21,12 @@ host_data_disk_mbps = 600
 # virtualization. Only "Standard" is accepted and the variable has no default.
 host_security_type = "Standard"
 
-edge_size    = "Standard_D2s_v5"
-coolify_size = "Standard_D4s_v5"
+edge_size = "Standard_D2s_v5"
+
+# The control plane arrives in wave 3 with workstreams 05 and 08; until then
+# it is about $180 a month of nothing (DECISIONS I-23). Set to 1 then.
+coolify_count = 0
+coolify_size  = "Standard_D4s_v5"
 
 # Hosts are added one at a time; see infra/README.md.
 hosts = []
