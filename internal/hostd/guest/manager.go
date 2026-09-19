@@ -255,7 +255,6 @@ type Manager struct {
 	maxIndex    uint32
 	poolWarned  time.Time
 	storeWarned time.Time
-	eventSeq    uint64
 }
 
 // New builds a Manager; Run must be called before commands are dispatched.

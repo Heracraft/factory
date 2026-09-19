@@ -539,7 +539,7 @@ func (c *Client) do(ctx context.Context, method, path string, body io.Reader) ([
 	if err != nil {
 		return nil, fmt.Errorf("hostdev serve is not running in %s: %w", c.Dir, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // body read below
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -625,7 +625,7 @@ func (c *Client) Logs(ctx context.Context, id string, follow bool, w io.Writer) 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // body read below
 	_, err = io.Copy(w, resp.Body)
 	return err
 }

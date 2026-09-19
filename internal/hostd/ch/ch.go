@@ -127,7 +127,7 @@ func (h *HTTP) get(ctx context.Context, sock, path string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ch api %s: %w", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // body read below
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
 		return nil, err

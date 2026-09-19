@@ -167,7 +167,7 @@ func (a *AzureBlob) Download(ctx context.Context, path string, w io.Writer) erro
 	if err != nil {
 		return fmt.Errorf("blob download: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // body copied below
 	_, err = io.Copy(w, resp.Body)
 	return err
 }
