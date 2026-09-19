@@ -67,6 +67,9 @@ let
     virtualisation.diskSize = 8192;
     # ssh-keygen and ssh client for the certificate test.
     environment.systemPackages = [ pkgs.openssh ];
+    # A path in the host store but outside the system closure, registered
+    # in the VM's database so the pin test can install it offline.
+    virtualisation.additionalPaths = [ pkgs.hello ];
   };
 
   helloImage = pkgs.dockerTools.buildImage {
