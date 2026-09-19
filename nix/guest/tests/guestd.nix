@@ -22,7 +22,8 @@ pkgs.testers.runNixOSTest {
   name = "guestd";
 
   nodes.guest = { config, pkgs, lib, ... }: {
-    virtualisation.memorySize = 2048;
+    virtualisation.memorySize = 4096;
+    virtualisation.cores = 4;
     virtualisation.diskSize = 4096;
 
     # guest-conventions.md gives the hook socket group `dev`, so the guest
@@ -163,6 +164,7 @@ pkgs.testers.runNixOSTest {
             "ssh-keygen -s /tmp/ca -I tester -n project-abc -V +1h "
             "/home/dev/.ssh/id_ed25519.pub"
         )
+        guest.succeed("chown dev:dev /home/dev/.ssh/id_ed25519-cert.pub")
         import base64 as b64
         ca_pub = guest.succeed("cat /tmp/ca.pub")
         call("write-secrets", {"secrets": [
@@ -173,7 +175,6 @@ pkgs.testers.runNixOSTest {
 
         # Without the principal, sshd must refuse.
         call("set-principals", {"principals": ["someone-else"]})
-        guest.succeed("sudo -u dev chmod 600 /home/dev/.ssh/id_ed25519*")
         guest.fail(
             "sudo -u dev ssh -o StrictHostKeyChecking=no -o BatchMode=yes "
             "-i /home/dev/.ssh/id_ed25519 dev@127.0.0.1 true"
@@ -260,7 +261,7 @@ pkgs.testers.runNixOSTest {
     with subtest("Switch applies a new generation without a reboot"):
         guest.fail("test -e /run/current-system/sw/bin/htop")
         closure = guest.succeed(
-            "readlink -f /run/current-system/specialisation/withHtop"
+            "readlink -f /run/booted-system/specialisation/withHtop"
         ).strip()
         boot_id_before = guest.succeed("cat /proc/sys/kernel/random/boot_id").strip()
         result = first_json(call("switch", {"systemClosure": closure}))
@@ -274,7 +275,7 @@ pkgs.testers.runNixOSTest {
 
     with subtest("Switch refuses a generation whose boot files changed"):
         closure = guest.succeed(
-            "readlink -f /run/current-system/specialisation/newInitrd"
+            "readlink -f /run/booted-system/specialisation/newInitrd"
         ).strip()
         result = first_json(call("switch", {"systemClosure": closure}))
         assert result["ok"] is True, result
@@ -300,7 +301,8 @@ pkgs.testers.runNixOSTest {
         guest.succeed(f"echo '{loop} / ext4 rw,relatime 0 0' > /srv/vol/proc/mounts")
         guest.succeed(
             "systemd-run --unit=guestd-vol --collect "
-            "guestd --root /srv/vol --dev-socket /srv/vol/run/repose/guestd.sock "
+            "${guestdPackage}/bin/guestd --root /srv/vol "
+            "--dev-socket /srv/vol/run/repose/guestd.sock "
             "--hook-socket /srv/vol/run/repose/hooks.sock --log-level debug"
         )
         guest.wait_for_file("/srv/vol/run/repose/guestd.sock")

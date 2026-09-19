@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -29,6 +31,13 @@ type RunSpec struct {
 
 // DefaultMaxOutput is the per-stream cap when a RunSpec does not set one.
 const DefaultMaxOutput = 64 << 10
+
+// GuestPATH is where a guest's commands live. guestd runs as a systemd unit,
+// whose PATH does not include the NixOS system profile, so a command resolved
+// against guestd's own environment would be reported missing even though the
+// guest has it. Every command is resolved against the PATH it will run with,
+// and this is the floor.
+const GuestPATH = "/run/current-system/sw/bin:/usr/bin:/bin"
 
 // RunResult is what a command produced. Stdout and Stderr are the tail of each
 // stream, capped at MaxOutput.
@@ -56,10 +65,14 @@ func (r ExecRunner) Run(ctx context.Context, spec RunSpec) (RunResult, error) {
 	if len(spec.Argv) == 0 {
 		return RunResult{}, errors.New("run: empty argv")
 	}
-	argv := spec.Argv
+	argv := append([]string(nil), spec.Argv...)
+	resolved, err := LookPath(argv[0], spec.Env)
+	if err != nil {
+		return RunResult{}, fmt.Errorf("run %s: %w", argv[0], err)
+	}
+	argv[0] = resolved
 	if spec.User == "dev" {
-		var err error
-		argv, err = r.setprivArgv(argv)
+		argv, err = r.setprivArgv(argv, spec.Env)
 		if err != nil {
 			return RunResult{}, err
 		}
@@ -89,7 +102,7 @@ func (r ExecRunner) Run(ctx context.Context, spec RunSpec) (RunResult, error) {
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 
-	err := cmd.Run()
+	runErr := cmd.Run()
 	res := RunResult{
 		Stdout:    stdout.Bytes(),
 		Stderr:    stderr.Bytes(),
@@ -97,12 +110,12 @@ func (r ExecRunner) Run(ctx context.Context, spec RunSpec) (RunResult, error) {
 	}
 	var exitErr *exec.ExitError
 	switch {
-	case err == nil:
+	case runErr == nil:
 		res.ExitCode = 0
-	case errors.As(err, &exitErr):
+	case errors.As(runErr, &exitErr):
 		res.ExitCode = exitErr.ExitCode()
 	default:
-		return res, fmt.Errorf("run %s: %w", argv[0], err)
+		return res, fmt.Errorf("run %s: %w", argv[0], runErr)
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return res, fmt.Errorf("run %s: %w", argv[0], ctxErr)
@@ -112,11 +125,11 @@ func (r ExecRunner) Run(ctx context.Context, spec RunSpec) (RunResult, error) {
 
 // setprivArgv wraps argv so it runs as dev. docs/workstreams/04-guestd.md
 // names setpriv; it is in util-linux, which every NixOS guest has.
-func (r ExecRunner) setprivArgv(argv []string) ([]string, error) {
+func (r ExecRunner) setprivArgv(argv []string, env []string) ([]string, error) {
 	path := r.SetprivPath
 	if path == "" {
 		var err error
-		path, err = exec.LookPath("setpriv")
+		path, err = LookPath("setpriv", env)
 		if err != nil {
 			return nil, fmt.Errorf("setpriv not found, cannot drop privileges: %w", err)
 		}
@@ -132,6 +145,49 @@ func (r ExecRunner) setprivArgv(argv []string) ([]string, error) {
 	return append(wrapped, argv...), nil
 }
 
+// LookPath resolves a command against the PATH it will run with: the PATH in
+// env when there is one, then guestd's own, then GuestPATH. A name containing
+// a separator is taken as written.
+func LookPath(name string, env []string) (string, error) {
+	if name == "" {
+		return "", errors.New("look up command: empty name")
+	}
+	if strings.ContainsRune(name, os.PathSeparator) {
+		return name, nil
+	}
+	seen := map[string]bool{}
+	for _, list := range []string{pathFromEnv(env), os.Getenv("PATH"), GuestPATH} {
+		for _, dir := range filepath.SplitList(list) {
+			if dir == "" || seen[dir] {
+				continue
+			}
+			seen[dir] = true
+			candidate := filepath.Join(dir, name)
+			if isExecutable(candidate) {
+				return candidate, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("%q not found in PATH", name)
+}
+
+func pathFromEnv(env []string) string {
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, "PATH="); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+func isExecutable(path string) bool {
+	fi, err := os.Stat(path)
+	if err != nil || fi.IsDir() {
+		return false
+	}
+	return fi.Mode().Perm()&0o111 != 0
+}
+
 // DevEnv is the environment a command run as dev gets: enough to find binaries
 // and the home directory, and nothing carried over from guestd's own.
 func DevEnv(p Paths, user string) []string {
@@ -140,7 +196,7 @@ func DevEnv(p Paths, user string) []string {
 		home, name = "/root", "root"
 	}
 	env := []string{
-		"PATH=/run/current-system/sw/bin:/usr/bin:/bin",
+		"PATH=" + GuestPATH,
 		"HOME=" + home,
 		"USER=" + name,
 		"LOGNAME=" + name,
