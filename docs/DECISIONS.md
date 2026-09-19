@@ -394,3 +394,51 @@ operator, a JSON state file, every command as a subcommand, build logs and
 samples printed. It stays as the break-glass tool for a host that has lost
 the api. *Rejected:* building the api first (puts auth, Postgres and Logto on
 the critical path to the first running guest).
+
+**I-18. The on-demand desktop is display `:99`, socket-activated, with a
+per-start password file.** (02) `features/browser.md` said `:1` and
+`workstreams/02-guest-base.md` said `:99`; the module uses `:99` (the
+conventional Xvfb display, never taken by a real seat) and the feature doc
+is corrected. `repose-novnc.socket` on 127.0.0.1:6080 pulls in websockify
+(6081), x11vnc (5900), openbox and Xvfb through `systemd-socket-proxyd`
+because websockify cannot inherit a listening socket; a per-minute check
+stops the chain after 30 minutes without a client and `systemctl start
+repose-desktop-idle` stops it now. x11vnc gets a fresh 8-character password
+at every start, kept in `/run/repose/desktop/vnc-password` (0600 dev) for
+the CLI to print; noVNC is only reachable through the SSH forward, so the
+password is defence in depth. *Rejected:* `Accept=yes` per-connection
+websockify (noVNC's page makes several requests, each would fork a server);
+no password (a stray forward on a shared laptop would expose the desktop).
+
+**I-19. `mkGuestRunner` takes every per-guest value at run time; the
+system closure is guest-independent.** (02, 03) `workstreams/02-guest-base.md`
+listed `guestId, ip, gatewayIp, cid, volumeDevice, vcpu, mem` as
+evaluation arguments. Baked in, they would put the address allocation
+before `Build` (which produces `system_closure` per revision, before
+`CreateGuest` allocates an ip), make one closure per guest instead of per
+revision, and make `kernel_changed` a per-guest comparison. The function
+still accepts those attributes as defaults, but the runner's `bin/run`
+takes them as arguments (contract in `interfaces/guest-conventions.md`
+"Runner contract"), the kernel line carries `ip=` and the guest's
+systemd-network-generator applies it. hostd builds one runner per base
+version and revision and starts any guest from it. The vsock device is a
+unix socket `vsock.sock` in the guest's state directory (Cloud Hypervisor
+implements vsock in user space; the host's `vhost_vsock` module is not
+involved), added to `interfaces/host-conventions.md`. *Rejected:*
+`config.microvm.declaredRunner` as the output (its script has the sockets,
+tap and volume fixed at evaluation).
+
+**I-20. sshd material: reserved secrets at `/run/repose/`, symlinked into
+`/etc/ssh/`, a throwaway key until delivery, reload re-reads.** (02, 04)
+Three docs disagreed on where `user_ca.pub` and the host key live
+(`/run/repose/secrets/`, `/run/repose/`, `/etc/ssh/`). guestd writes the
+reserved names to `/run/repose/` (04's design), `/etc/ssh/` holds symlinks
+to them so `sshd_config` reads the paths `interfaces/ssh-gateway.md`
+shows, and the api keeps rejecting the reserved names on `PUT /secrets`
+(I-10). Because `Ready` is sent once sshd listens and the secrets follow
+`Ready`, sshd's preStart generates a throwaway ed25519 key when none was
+delivered and an empty CA file (trusts nobody); the guest's sshd unit gets
+an `ExecReload` (`SIGHUP`, which re-execs sshd) so guestd's `systemctl
+reload sshd` after `WriteSecrets` and `SetPrincipals` picks up the real key,
+certificate and CA. *Rejected:* delaying sshd until the secrets arrive (a
+guest whose hostd died before delivery would have no way in at all).

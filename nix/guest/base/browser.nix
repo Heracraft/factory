@@ -67,7 +67,7 @@ in
   ];
 
   environment.variables = {
-    PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+    PLAYWRIGHT_BROWSERS_PATH = "${pkgs.reposePlaywrightBrowsers}";
     PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "1";
     # chrome-devtools-mcp and puppeteer users: never download a browser.
     PUPPETEER_SKIP_DOWNLOAD = "1";

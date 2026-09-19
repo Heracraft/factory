@@ -45,11 +45,13 @@ open --desktop --stop`.
   that.
 - Claude Code in a fresh guest lists `playwright` and `chrome-devtools` in
   `claude mcp list`.
-- `repose open --desktop` starts Xvfb on `:1`, the window manager, x11vnc
+- `repose open --desktop` starts Xvfb on `:99`, the window manager, x11vnc
   bound to localhost, and noVNC on 6080, then forwards 6080 over SSH and
-  prints the URL. The VNC password is generated per start and printed once.
-  Starting when already started just forwards.
-- When the desktop is up, `DISPLAY=:1` is exported into new shells in the
+  prints the URL. The VNC password is generated per start (read from
+  `/run/repose/desktop/vnc-password` by `repose-guest-profile desktop
+  start`) and printed once. Starting when already started just forwards.
+  (DECISIONS I-18.)
+- When the desktop is up, `DISPLAY=:99` is exported into new shells in the
   tmux session, so an agent asked to "open a headed browser" gets one on the
   desktop and the user can see it in noVNC.
 - `repose open --desktop --stop` stops the units and clears `DISPLAY`.

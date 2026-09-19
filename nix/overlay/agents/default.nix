@@ -31,10 +31,36 @@ in
   # the base uses it until workstream 04's Go binary exists in cmd/repose-hook.
   repose-hook-shim = final.callPackage ./repose-hook.nix { };
 
+  # Playwright's browsers, chromium preset (with the headless shell that
+  # headless launches use). The WebKit and Firefox builds are neither wanted
+  # nor, at this nixpkgs revision, buildable (WebKit misses libmanette).
+  reposePlaywrightBrowsers = prev.playwright-driver.browsers.override {
+    withFirefox = false;
+    withWebkit = false;
+  };
+
+  # nixpkgs's playwright-test bakes the all-browsers set into its wrapper
+  # (and playwright-mcp links against it), so its install phase is rewritten
+  # to point at the chromium set. The string's other references (the
+  # playwright npm build, node) are kept through their contexts; only the
+  # all-browsers derivation drops out, so it is never built.
+  reposePlaywrightTest =
+    let
+      old = prev.playwright-test;
+      all = prev.playwright-driver.browsers;
+      keep = prev.lib.filterAttrs (drv: _: drv != all.drvPath) (builtins.getContext old.installPhase);
+      phase = builtins.replaceStrings [ "${all}" ] [ "${final.reposePlaywrightBrowsers}" ]
+        (builtins.unsafeDiscardStringContext old.installPhase);
+    in old.overrideAttrs (_: { installPhase = builtins.appendContext phase keep; });
+
   reposeMcp = {
-    # nixpkgs keeps playwright-mcp and playwright-driver.browsers in step;
-    # the two are tightly coupled, so both come from the same locked rev.
-    playwright-mcp = prev.playwright-mcp;
+    # nixpkgs keeps playwright-mcp and playwright-driver in step; the two
+    # are tightly coupled, so both come from the same locked rev, with the
+    # browsers swapped for the chromium preset above.
+    playwright-mcp = prev.playwright-mcp.override {
+      playwright-test = final.reposePlaywrightTest;
+      playwright-driver = prev.playwright-driver // { browsers = final.reposePlaywrightBrowsers; };
+    };
     chrome-devtools-mcp = final.callPackage ./chrome-devtools-mcp.nix { };
   };
 
