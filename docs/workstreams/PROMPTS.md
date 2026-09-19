@@ -128,7 +128,8 @@ Snapshot, Restore, UpdateSecrets, SetPrincipals, Exec, Drain) implemented
 against LVM, nftables, tc, systemd-run, the Cloud Hypervisor API socket,
 virtiofsd and the microvm.nix runner, bbolt state and reconciliation at
 start, GC roots, samples every 60 s, console capture, snapshot streaming to
-Blob, Prometheus metrics. Generate the Go code from proto/ with buf.
+Blob, Prometheus metrics, and the one-host dev driver cmd/hostdev
+(DECISIONS I-17). Generate the Go code from proto/ with buf.
 Everything that shells out goes behind an interface with a fake so the
 state machine is unit-tested without a host; the host-level tests are
 marked as such in the checklist.

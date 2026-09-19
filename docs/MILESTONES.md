@@ -34,8 +34,8 @@ M0 can run in parallel with every M1 workstream that does not need a host.
 Workstreams: `01-host-nixos`, `02-guest-base`, `03-hostd`, `04-guestd`,
 `12-nix-config-pipeline`, `10-observability` (host and guest parts).
 
-Gate: on one real host, a developer's own projects run as guests created by
-gRPC calls from a local `hostd` client, with the shared store, Docker inside,
+Gate: on one real host, a developer's own projects run as guests created
+through `hostdev` (DECISIONS I-17), with the shared store, Docker inside,
 config apply in place, snapshot and restore round-trip, process samples and
 metrics visible in Grafana. Reached over WireGuard from the laptop with a
 manually issued certificate.

@@ -36,6 +36,21 @@ sloppy, one tenant's mistake becomes another's outage.
 - A `hostd` subcommand set for operators: `hostd status`, `hostd guests`,
   `hostd reconcile`, `hostd snapshot-all`, `hostd drain`.
 
+### Dev driver `cmd/hostdev` (DECISIONS I-17)
+
+The M1 gate is reached before the api exists, so this workstream also ships
+`cmd/hostdev`: a single binary that plays the api side of
+`interfaces/grpc-hostd.md` for exactly one host. It listens for the host's
+Session stream with a self-signed CA it generates on first run (`hostdev
+init` prints the join token and writes the client certificate material hostd
+expects), keeps state in one JSON file, and exposes the commands as
+subcommands: `hostdev create --project todo --class large --fragment ./f.nix`,
+`start`, `stop`, `destroy`, `build`, `apply`, `snapshot`, `restore`,
+`secrets set`, `exec`, `drain`, `status`, `logs` (streams BuildLog), and
+`samples` (prints the last Samples). It is the tool the M1 integration
+session uses and the one operators keep for a host that has lost the api.
+It must not grow scheduling, users or billing; it is one host, one operator.
+
 ## 3. Scope: does not build
 
 - The host NixOS configuration, bridge, thin pool creation, WireGuard,

@@ -386,3 +386,11 @@ The api starts without `STRIPE_*` variables set; billing routes return
 exempt stays as the operator and design-partner path. *Why:* the owner tests
 alone for a month; wiring Stripe before there is anything to bill is work
 done in the wrong order.
+
+**I-17. hostd ships a one-host dev driver, `cmd/hostdev`.** (03) The M1 gate
+("your own projects run as guests, driven by a local client") needs the api
+side of the gRPC contract without the api. `hostdev` is that: one host, one
+operator, a JSON state file, every command as a subcommand, build logs and
+samples printed. It stays as the break-glass tool for a host that has lost
+the api. *Rejected:* building the api first (puts auth, Postgres and Logto on
+the critical path to the first running guest).
