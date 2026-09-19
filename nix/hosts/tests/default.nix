@@ -192,12 +192,17 @@ in
           host.fail(f"{ga} ping -c1 -W2 10.64.4.3")
 
       with subtest("sshd and node_exporter listen on wg0 only; nothing on the provider NIC"):
-          host.wait_until_succeeds("curl -sf -m3 http://10.255.0.7:9100/metrics | grep -q node_exporter_build_info")
+          # grep -c reads to EOF; grep -q would SIGPIPE curl under pipefail and never succeed
+          host.wait_until_succeeds("curl -sf -m3 http://10.255.0.7:9100/metrics | grep -c node_exporter_build_info >/dev/null")
           host.wait_until_succeeds("ss -tlnH | grep -q '10.255.0.7:22'")
-          listeners = host.succeed("ss -tlnpH")
-          print(listeners)
-          for bad in [host_ip, "0.0.0.0:", "*:", "[::]:"]:
-              assert bad not in listeners, f"something listens on {bad}"
+          print(host.succeed("ss -tlnpH"))
+          # column 4 of `ss -tlnH` is the local address:port; everything
+          # must be on the WireGuard address or loopback.
+          locals_ = host.succeed("ss -tlnH | awk '{print $4}'").split()
+          print(locals_)
+          for addr in locals_:
+              ip = addr.rsplit(":", 1)[0]
+              assert ip == "10.255.0.7" or ip.startswith("127.") or ip.startswith("[::1]"), f"listener on {addr}"
           inet.fail(f"curl -sf -m3 http://{host_ip}:9100/")
           inet.fail(f"nc -z -w3 {host_ip} 22")
           inet.succeed(f"ping -c1 -W2 {host_ip}")
@@ -206,12 +211,12 @@ in
           host.wait_for_unit("fluent-bit.service")
           host.succeed("logger -t repose-test 'repose fluent-bit smoke line'")
           inet.wait_until_succeeds(
-              "logcli query --addr http://127.0.0.1:3100 --no-labels '{host=\"${hostId}\"}' | grep -q 'repose fluent-bit smoke line'",
+              "logcli query --addr http://127.0.0.1:3100 --no-labels '{host=\"${hostId}\"}' | grep -c 'repose fluent-bit smoke line' >/dev/null",
               timeout=180,
           )
           host.succeed("mkdir -p /var/lib/repose/guests/g-test && echo 'guest console smoke line' >> /var/lib/repose/guests/g-test/console.log")
           inet.wait_until_succeeds(
-              "logcli query --addr http://127.0.0.1:3100 --no-labels '{component=\"console\",guest_id=\"g-test\"}' | grep -q 'guest console smoke line'",
+              "logcli query --addr http://127.0.0.1:3100 --no-labels '{component=\"console\",guest_id=\"g-test\"}' | grep -c 'guest console smoke line' >/dev/null",
               timeout=180,
           )
           print(inet.succeed("logcli query --addr http://127.0.0.1:3100 '{component=\"console\"}' --limit 3"))
@@ -337,9 +342,11 @@ in
           host.succeed("ssh-keygen -q -t ed25519 -N \"\" -f /root/op")
           host.succeed("ssh-keygen -q -s /root/ca -I operator-test -n root -V +1h /root/op.pub")
           host.wait_until_succeeds("ss -tlnH | grep -q '10.255.0.7:22'")
-          # -n and the redirects keep ssh away from the test driver's console.
+          # -n and the redirects keep ssh away from the test driver's console;
+          # -F /dev/null skips the system ssh_config, which the client rejects
+          # in a test VM because the writable store is not root-owned.
           status, _ = host.execute(
-              "ssh -n -v -i /root/op -o CertificateFile=/root/op-cert.pub -o StrictHostKeyChecking=no "
+              "ssh -n -v -F /dev/null -i /root/op -o CertificateFile=/root/op-cert.pub -o StrictHostKeyChecking=no "
               "-o UserKnownHostsFile=/dev/null -o BatchMode=yes root@10.255.0.7 true </dev/null >/root/ssh.log 2>&1"
           )
           print(host.succeed("cat /root/ssh.log"))
@@ -349,7 +356,7 @@ in
           host.wait_until_succeeds("journalctl -t hostd-audit --no-pager | grep -q 'audit_login'")
           print(host.succeed("journalctl -t hostd-audit --no-pager"))
           host.fail(
-              "ssh -n -i /root/op -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
+              "ssh -n -F /dev/null -i /root/op -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
               "-o BatchMode=yes -o CertificateFile=/dev/null root@10.255.0.7 true </dev/null >/dev/null 2>&1"
           )
     '';

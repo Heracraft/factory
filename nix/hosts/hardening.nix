@@ -37,6 +37,13 @@
   systemd.settings.Manager.RuntimeWatchdogSec = "off";
   systemd.settings.Manager.RebootWatchdogSec = "off";
 
+  # No LLMNR or mDNS responders: they would be the only sockets bound on
+  # every interface, including the provider NIC.
+  services.resolved.settings.Resolve = {
+    LLMNR = "false";
+    MulticastDNS = "false";
+  };
+
   # Nothing on a host reads documentation or needs a shell for a tenant.
   documentation.enable = false;
   documentation.nixos.enable = false;
