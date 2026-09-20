@@ -37,9 +37,10 @@ TAGS = ["repose"]
 # --- targets ---------------------------------------------------------------
 
 
-def q(expr: str, legend: str = "", instant: bool = False) -> dict:
-    """A Prometheus query."""
-    return {
+def q(expr: str, legend: str = "", instant: bool = False, fmt: str = "time_series") -> dict:
+    """A Prometheus query. fmt is the query editor's Format: a heatmap panel
+    needs "heatmap" or it receives series instead of buckets."""
+    t = {
         "datasource": PROM,
         "editorMode": "code",
         "expr": expr,
@@ -48,6 +49,9 @@ def q(expr: str, legend: str = "", instant: bool = False) -> dict:
         "instant": instant,
         "refId": "A",
     }
+    if fmt != "time_series":
+        t["format"] = fmt
+    return t
 
 
 def logq(expr: str, legend: str = "") -> dict:
@@ -443,7 +447,7 @@ def builds() -> dict:
             ),
             panel(
                 "heatmap", "Build duration distribution",
-                [q('sum by (le) (increase(repose_host_build_duration_seconds_bucket{host_id=~"$host_id"}[$__interval]))', "{{le}}")],
+                [q('sum by (le) (increase(repose_host_build_duration_seconds_bucket{host_id=~"$host_id"}[$__interval]))', "{{le}}", fmt="heatmap")],
                 desc="The histogram §5 asks for: most builds are substituted and fast, and the tail is source builds.",
                 unit="s", w=12, h=9,
                 options={"calculate": False},

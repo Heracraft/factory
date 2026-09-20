@@ -311,7 +311,8 @@
           "legendFormat": "{{le}}",
           "range": true,
           "instant": false,
-          "refId": "A"
+          "refId": "A",
+          "format": "heatmap"
         }
       ],
       "fieldConfig": {
