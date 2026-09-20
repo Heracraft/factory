@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// Row: a guest escape does not land as root (review H-2, DECISIONS I-49).
+// Row: a guest escape does not land as root (review H-2, DECISIONS I-51).
 // The hypervisor process of guest A runs as the hostd user inside the
 // sandboxed transient unit, and the unit says so.
 func TestHypervisorRunsAsHostdUser(t *testing.T) {

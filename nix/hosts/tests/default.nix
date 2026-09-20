@@ -259,7 +259,7 @@ in
       with subtest("a thin volume can be created, used and snapshotted"):
           host.succeed("lvcreate -V 1G -T vg-guests/thin -n g-test")
           host.succeed("udevadm settle")
-          # I-49: guest volumes are group hostd for the unprivileged guest@ unit;
+          # I-51: guest volumes are group hostd for the unprivileged guest@ unit;
           # anything else in the VG keeps root:disk.
           perm = host.succeed("stat -L -c '%U:%G:%a' /dev/vg-guests/g-test").strip()
           print(f"g-test node {perm}")
@@ -330,7 +330,7 @@ in
           assert mm not in ("infinity", ""), "guests.slice has no memory cap"
           host.succeed("systemctl stop guest@test.service")
 
-      with subtest("guest@ units run as hostd inside the I-49 sandbox"):
+      with subtest("guest@ units run as hostd inside the I-51 sandbox"):
           # The property list is internal/hostd/guest/testdata/unit.golden with
           # this test's ids substituted; the Go golden pins the list itself.
           assert "kvm" in host.succeed("id -nG hostd").split(), "hostd is not in kvm"

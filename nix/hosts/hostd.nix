@@ -158,7 +158,7 @@ in
   systemd.tmpfiles.rules = [
     "d /var/lib/repose 0755 root root -"
     # 0711: virtiofsd reaches its socket directory under its guest's
-    # directory; the per-guest directories are 1770 root:hostd (I-49).
+    # directory; the per-guest directories are 1770 root:hostd (I-51).
     "d /var/lib/repose/guests 0711 root root -"
     "d /var/lib/repose/builds 0711 root root -"
     "d /var/lib/repose/base 0755 root root -"

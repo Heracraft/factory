@@ -1105,7 +1105,7 @@ whether Gemini CLI stays in the agent list at all**, given it no longer
 authenticates for the tier most users are expected to be on.
 
 
-**I-49. `guest@<id>` runs Cloud Hypervisor as the `hostd` user inside a
+**I-51. `guest@<id>` runs Cloud Hypervisor as the `hostd` user inside a
 systemd sandbox; hostd itself stays root.** (14 follow-up, review H-2,
 2026-09-20) `docs/SECURITY.md` accepted that a KVM escape lands in the
 Azure VM; as built it landed as root, which is every tenant on the host,

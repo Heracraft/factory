@@ -37,7 +37,7 @@ From `ARCHITECTURE.md`, with the mechanism and the actor it stops:
    hostd from the guest's system closure (DECISIONS I-27) as the
    unprivileged `hostd` user in a systemd sandbox that allows it
    `/dev/kvm`, `/dev/net/tun`, its own volume, its own guest directory
-   and no network address family (I-49); the guest sees
+   and no network address family (I-51); the guest sees
    one block device (its thin volume), one tap, one vsock, one virtio-fs
    mount and a serial console. The virtio-fs share is
    `/run/repose/store-export`, a read-only `nosuid,nodev` bind of the
@@ -183,7 +183,7 @@ Applied at each workstream's PR, recorded as a comment line in
 Written down so nobody believes otherwise.
 
 - **Every guest's hypervisor is the same `hostd` user** (review L-11,
-  after H-2 was fixed by I-49). A KVM escape lands as `hostd`, whose unit
+  after H-2 was fixed by I-51). A KVM escape lands as `hostd`, whose unit
   can open only its own volume and sees only its own guest directory; but
   every tap is owned by that uid, so an escaped hypervisor could attach to
   another guest's tap (its frames are still admitted per tap by the bridge

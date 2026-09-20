@@ -9,7 +9,7 @@ change to either happens in the same commit.
 | Path | What |
 |---|---|
 | `/var/lib/repose/hostd/` | `cert.pem`, `key.pem` (mTLS to api), `host.json` (see below), `state.db` (bbolt: guest table for reconciliation). Mode 0700, written by `hostd register`. |
-| `/var/lib/repose/guests/<guest_id>/` | `ch.args` (the rendered cloud-hypervisor argv, one argument per line; DECISIONS I-27), `guest.json` (non-secret copy of the guest record for `hostd reconcile --rebuild`), `ch.sock` (Cloud Hypervisor API), `vsock.sock` (host side of the guest's vsock, `CONNECT 5000` reaches guestd), `console.sock` (serial; hostd copies it into `console.log`, rotated at 64 MB keeping 3), `virtiofsd/virtiofsd.sock`. The parent is `0711 root`; the directory is `1770 root:hostd` so the unprivileged `guest@<id>` (I-49) can create its sockets but not remove hostd's files; `virtiofsd/` is `0750 virtiofsd:hostd` and the socket in it is group `hostd` (`--socket-group`). Secrets are never written here: they are delivered to the guest's tmpfs over vsock. |
+| `/var/lib/repose/guests/<guest_id>/` | `ch.args` (the rendered cloud-hypervisor argv, one argument per line; DECISIONS I-27), `guest.json` (non-secret copy of the guest record for `hostd reconcile --rebuild`), `ch.sock` (Cloud Hypervisor API), `vsock.sock` (host side of the guest's vsock, `CONNECT 5000` reaches guestd), `console.sock` (serial; hostd copies it into `console.log`, rotated at 64 MB keeping 3), `virtiofsd/virtiofsd.sock`. The parent is `0711 root`; the directory is `1770 root:hostd` so the unprivileged `guest@<id>` (I-51) can create its sockets but not remove hostd's files; `virtiofsd/` is `0750 virtiofsd:hostd` and the socket in it is group `hostd` (`--socket-group`). Secrets are never written here: they are delivered to the guest's tmpfs over vsock. |
 | `/var/lib/repose/builds/<revision_id>/` | `fragment.nix` for a `Build`; see `nix-build-contract.md` |
 | `/var/lib/repose/base/<base_ref>/` | checkout of the platform repository at that revision (its `nix/` is the flake hostd evaluates) |
 | `/run/repose/hostd.sock` | hostd's operator control socket (`hostd status`, `guests`, `snapshot-all`, `drain`, `reconcile`) |
@@ -139,7 +139,7 @@ hostd renders the `cloud-hypervisor` argv from the guest's system closure
 I-27) and runs it with `systemd-run --unit guest@<id> --property
 MemoryMax=<class RAM + 512M> --property CPUQuota=<vcpus*100>% --property
 Slice=guests.slice --property User=hostd` and the sandbox of DECISIONS
-I-49, pinned verbatim by `internal/hostd/guest/testdata/unit.golden`:
+I-51, pinned verbatim by `internal/hostd/guest/testdata/unit.golden`:
 `NoNewPrivileges=yes`, `CapabilityBoundingSet=` (empty), `UMask=0077`,
 `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`,
 `ProtectKernelTunables=yes`, `ProtectKernelModules=yes`,

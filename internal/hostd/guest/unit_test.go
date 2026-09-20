@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// The unit properties are the H-2 sandbox (DECISIONS I-49); the golden is
+// The unit properties are the H-2 sandbox (DECISIONS I-51); the golden is
 // what host-conventions.md "Cloud Hypervisor invocation" lists.
 func TestGuestUnitPropsGolden(t *testing.T) {
 	dir := "/var/lib/repose/guests/0192f0a1-1111-7000-8000-000000000001"

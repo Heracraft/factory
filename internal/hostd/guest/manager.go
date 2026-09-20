@@ -116,7 +116,7 @@ type Config struct {
 	VirtiofsUser     string
 	VirtiofsBinary   string
 	// GuestUser is the unprivileged user guest@<id> (Cloud Hypervisor) runs
-	// as (I-49). It owns the taps and is in group kvm; the guest volumes
+	// as (I-51). It owns the taps and is in group kvm; the guest volumes
 	// are group-owned by it through the host's udev rule.
 	GuestUser string
 	// Lookup resolves a user name to uid and primary gid; nil means the

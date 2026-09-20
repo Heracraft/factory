@@ -212,7 +212,7 @@ Inputs: `project_id`, `guest_id`, `class`, `volume_bytes`, `system_closure`,
 9. Cloud Hypervisor: `systemd-run --unit guest@<id> --property
    MemoryMax=<RAM+512M> --property CPUQuota=<vcpus*100>% --property
    Restart=no --property User=hostd` plus the sandbox properties of
-   DECISIONS I-49 (`DevicePolicy=closed` with `/dev/kvm`, `/dev/net/tun`
+   DECISIONS I-51 (`DevicePolicy=closed` with `/dev/kvm`, `/dev/net/tun`
    and the guest's volume allowed, a private view of the guests directory,
    no capabilities, `AF_UNIX`/`AF_VSOCK` only), then
    `/var/lib/repose/guests/<id>/runner/bin/run <args>`. Cloud Hypervisor

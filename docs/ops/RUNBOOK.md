@@ -431,7 +431,7 @@ hostd reports `guest did not become ready` (no `Ready` from guestd within
 2. `systemctl status guest@<id> virtiofsd@<id>` on the host. If virtiofsd
    is not running, the guest is stuck in the initrd waiting for the
    `ro-store` tag: start it and restart the guest. `guest@<id>` runs as
-   the `hostd` user (I-49): `Permission denied` on `/dev/kvm`, the tap or
+   the `hostd` user (I-51): `Permission denied` on `/dev/kvm`, the tap or
    `/dev/vg-guests/g-<id>` in `journalctl -u guest@<id>` means the host
    lost `hostd`'s `kvm` membership, the tap's owner, or the udev rule
    that makes `g-*` volumes group `hostd` (`ls -l /dev/mapper/vg--guests-g--*`

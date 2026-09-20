@@ -9,7 +9,7 @@ import (
 )
 
 // The guest@<id> transient unit runs Cloud Hypervisor as the unprivileged
-// hostd user, not root (security review 2026-09-20, H-2; DECISIONS I-49).
+// hostd user, not root (security review 2026-09-20, H-2; DECISIONS I-51).
 // A KVM escape then lands as a user that owns taps and can open /dev/kvm,
 // /dev/net/tun and its own volume, and nothing else: the cgroup device
 // policy allows those three nodes only, the mount namespace shows the unit

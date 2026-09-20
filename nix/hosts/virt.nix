@@ -48,7 +48,7 @@ in
   };
 
   # hostd itself runs as root (LVM, nftables, taps). The guest@<id> units
-  # it starts, Cloud Hypervisor, run as this account (DECISIONS I-49,
+  # it starts, Cloud Hypervisor, run as this account (DECISIONS I-51,
   # security review H-2): it owns the taps (`ip tuntap add ... user hostd`),
   # is in `kvm` for /dev/kvm, and is the group of every guest volume through
   # the udev rule below. The unit's DeviceAllow then narrows a guest's
