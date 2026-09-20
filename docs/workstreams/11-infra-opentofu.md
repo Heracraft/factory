@@ -273,9 +273,12 @@ row says otherwise. Commands were run from the dev box, which is in
       `make plan ENV=prod` at commit 95349b5 (this branch's base), against
       the live backend: *"No changes. Your infrastructure matches the
       configuration."* after refreshing all 38 resources. With
-      `coolify_count = 1` the same plan is **4 to add, 0 to change, 0 to
-      destroy** — the control-plane public IP, NIC, VM and its readiness
-      resource, and nothing else.
+      `coolify_count = 1` the same plan, re-run at this branch's head against
+      the live backend, is **4 to add, 0 to change, 0 to destroy** — the
+      control-plane public IP, NIC, VM and its readiness resource, and
+      nothing else — with no errors and one warning, the
+      `dns_is_managed_or_manual` check firing as designed because
+      `manage_dns` is false.
 - [x] A host created by `tofu apply` registers without manual steps.
       Evidence: the registrar for M1 is `hostdev` on the edge (DECISIONS
       I-17), which runs from its store path as the transient unit
@@ -320,8 +323,8 @@ row says otherwise. Commands were run from the dev box, which is in
       the host installed successfully, and the guest-side half is workstream
       01's nftables rule. One command on the host closes it.
 - [ ] Data disk has `prevent_destroy`; a plan that would replace it fails.
-      **Not closed:** the deliberate attempt needs a plan against real state,
-      and plans from this dev box stalled repeatedly on 2026-09-20 (§10). The
+      **Not closed:** the deliberate attempt needs a plan against real state
+      with a changed disk size, which was not run. The
       `prevent_destroy` and `ignore_changes` blocks are in
       `azure/modules/host/main.tf` and the equivalent attempt was made
       against the plan on 2026-09-19. One `host_data_disk_gb` change, planned
