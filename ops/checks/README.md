@@ -34,10 +34,33 @@ blocks are headed the way the checklist rows are worded, so the paste into
 
 - **A kernel-changing base.** Every merged `main` since the scaffold locks
   the same nixpkgs (`b1b8759`), so no published revision changes the guest
-  kernel and `kernel_changed` cannot come out true from the catalogue of
-  existing commits. `resilience.sh bump` takes `BASE_REV`; a `nix flake
-  update nixpkgs` commit is the honest way to get one, and that is a real
-  base bump for every guest, so it is the conductor's call, not a check's.
+  kernel. The conductor's rule (2026-09-20): do not bump nixpkgs for the
+  row; flip the kernel only, once, in a test base that the next base
+  reverts. That is commit `38d1cbf` on `ws/m3-integration`: the one line
+  `boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_latest` in
+  `nix/guest/base/boot.nix` (7.2.6 instead of the LTS 6.18.52; both
+  kernels are in cache.nixos.org, checked with `nix path-info --store`, so
+  the host substitutes rather than compiles under the 30-minute cap; the
+  toplevel evaluates), followed by its revert `741e1e0` so `main` never
+  carries it. The plan, run by `resilience.sh bump` with
+  `BASE_REV=38d1cbf` once the conductor approves the publish:
+  1. `repose-admin base publish --rev 38d1cbf --version <date>-kernel-test
+     --changelog "kernel_changed test base (linux 7.2.6)" --security`;
+     the sweep builds the unheld project, `Build` reports
+     `kernel_changed=true`, the revision ends `built` with
+     `reboot_required` and the `base_update_ready` event, the guest keeps
+     running on 6.18.52 (nothing is applied unattended, 12 §5);
+  2. `repose config apply --reboot` on that project (or the api's
+     `POST .../revisions/:rev/apply?reboot=true`) boots it on 7.2.6:
+     `uname -r` in the guest;
+  3. `repose-admin base publish --rev <main sha> --version <date>-1
+     --changelog "back to the LTS kernel" --security` rebuilds it with
+     `kernel_changed=true` again and the package-only projects with
+     `kernel_changed=false`, which is the second `Build` result the row
+     asks for. The held project sees neither.
+  The flip commit is reachable only through this branch; after the branch
+  is merged and deleted it becomes unreachable on GitHub, which is fine
+  for a base row nothing points at after step 3.
 - **Real agent hooks for Claude, Codex and opencode** need the owner logged
   in inside the guest (Claude: `repose run` detects no credentials and
   runs `claude` for the device code; Codex and opencode: their auth files
