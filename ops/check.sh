@@ -45,7 +45,7 @@ say "every alert has a runbook heading"
 # knows what to do with. The heading is the alert name, lowercased by
 # GitHub-style anchors but written out in full in the file.
 missing=""
-for name in $(grep -oE '^\s+- alert: [A-Za-z]+' "$ops/alerts.yaml" | awk '{print $3}'); do
+for name in $(grep -oE "^[[:space:]]+- alert: [A-Za-z0-9]+" "$ops/alerts.yaml" | awk '{print $3}'); do
   grep -qi "^## $name" docs/ops/RUNBOOK.md || missing="$missing $name"
 done
 if [ -n "$missing" ]; then
