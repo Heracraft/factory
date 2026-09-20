@@ -67,13 +67,15 @@ func (s *Server) internalSessions(w http.ResponseWriter, r *http.Request) error 
 	}
 	opened := body.Event == "opened"
 	closed := !opened
-	s.sessions.update(pid, body.CertSerial, opened)
+	if err := s.sessions.update(r.Context(), pid, body.CertSerial, opened); err != nil {
+		return err
+	}
 	ev := "session_open"
 	if closed {
 		ev = "session_close"
 	}
 	obs.Logger(r.Context(), s.d.Log).Info("gateway session", "event", ev, "project_id", pid.String(), "cert_serial", body.CertSerial)
-	writeJSON(w, http.StatusOK, map[string]any{"open": s.sessions.Count(pid)})
+	writeJSON(w, http.StatusOK, map[string]any{"open": s.sessions.Count(r.Context(), pid)})
 	return nil
 }
 

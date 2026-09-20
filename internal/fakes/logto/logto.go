@@ -35,7 +35,7 @@ type Fake struct {
 	users    map[string]User
 	// JWKSDown makes the JWKS endpoint fail; MgmtDown the users endpoint.
 	JWKSDown, MgmtDown bool
-	jwksHits int
+	jwksHits           int
 }
 
 // New starts the fake for the given API resource audience.

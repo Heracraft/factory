@@ -51,9 +51,9 @@ type Harness struct {
 	Meter   *meter.Ingest
 	Engine  *ops.Engine
 
-	engine   atomic.Pointer[ops.Engine]
-	grpcAddr string
-	cancel   context.CancelFunc
+	engine       atomic.Pointer[ops.Engine]
+	grpcAddr     string
+	cancel       context.CancelFunc
 	engineCancel context.CancelFunc
 
 	// Host is the registered fake host.

@@ -27,3 +27,12 @@ create table settings (
   updated_at timestamptz not null default now()
 );
 create trigger settings_updated_at before update on settings for each row execute function set_updated_at();
+
+-- Gateway session reports (POST /internal/sessions) land here so the HTTP
+-- app can show them beside guestd's own count.
+create table gateway_sessions (
+  project_id  uuid not null references projects(id),
+  cert_serial bigint not null,
+  opened_at   timestamptz not null default now(),
+  primary key (project_id, cert_serial)
+);

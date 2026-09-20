@@ -98,7 +98,7 @@ func (s *Server) projectJSON(ctx context.Context, p *store.Project, u *store.Use
 			agents = append(agents, map[string]string{"agent": a["agent"], "window": a["window"], "state": a["state"]})
 		}
 		out["signals"] = map[string]any{"ssh_sessions": x.latest.SSHSessions, "tmux_clients": x.latest.TmuxClients, "agents": agents,
-			"docker_containers": x.latest.DockerContainers, "guestd_ok": x.latest.GuestdOK, "sampled_at": x.latest.TS, "gateway_sessions": s.sessions.Count(p.ID)}
+			"docker_containers": x.latest.DockerContainers, "guestd_ok": x.latest.GuestdOK, "sampled_at": x.latest.TS, "gateway_sessions": s.sessions.Count(ctx, p.ID)}
 	}
 	return out, nil
 }

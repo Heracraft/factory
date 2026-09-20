@@ -403,12 +403,24 @@ func (e *Engine) buildBuild(ctx context.Context, op *store.Op, p *store.Project)
 	if hostID == nil {
 		var picked uuid.UUID
 		err := db.InTx(ctx, e.pool, func(tx db.Tx) error {
-			pk, err := scheduler.PickHost(ctx, tx, p.Class, p.VolumeBytes, e.now())
-			if err != nil {
-				return err
+			// An operator may pin the placement (repose-admin hosts smoke).
+			if want, ok := op.Params["host_id"].(string); ok && want != "" {
+				h, err := store.GetHost(ctx, tx, uuid.MustParse(want))
+				if err != nil {
+					return err
+				}
+				if h.State != "ready" && h.State != "draining" {
+					return &opError{code: "capacity", msg: "host " + h.Name + " is " + h.State}
+				}
+				picked = h.ID
+			} else {
+				pk, err := scheduler.PickHost(ctx, tx, p.Class, p.VolumeBytes, e.now())
+				if err != nil {
+					return err
+				}
+				picked = pk.HostID
 			}
-			picked = pk.HostID
-			_, err = tx.Exec(ctx, "update projects set host_id = $2 where id = $1 and host_id is null", p.ID, pk.HostID)
+			_, err := tx.Exec(ctx, "update projects set host_id = $2 where id = $1 and host_id is null", p.ID, picked)
 			return err
 		})
 		if errors.Is(err, scheduler.ErrNoCapacity) {

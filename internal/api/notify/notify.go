@@ -26,13 +26,13 @@ import (
 
 // Message is one notification to deliver.
 type Message struct {
-	EventID  uuid.UUID
-	Kind     string
-	Agent    string
-	Project  string // slug
-	Summary  string
-	Email    string
-	NtfyURL  string
+	EventID   uuid.UUID
+	Kind      string
+	Agent     string
+	Project   string // slug
+	Summary   string
+	Email     string
+	NtfyURL   string
 	Dashboard string
 }
 
@@ -105,15 +105,15 @@ func (o *Outbox) Run(ctx context.Context) {
 }
 
 type row struct {
-	eventID  uuid.UUID
-	channel  string
-	attempts int
-	kind     string
-	agent    *string
-	summary  string
-	slug     string
-	email    *string
-	ntfy     *string
+	eventID     uuid.UUID
+	channel     string
+	attempts    int
+	kind        string
+	agent       *string
+	summary     string
+	slug        string
+	email       *string
+	ntfy        *string
 	notifyEmail bool
 }
 

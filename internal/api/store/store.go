@@ -115,26 +115,26 @@ const hostCols = `id, name, hostname, sku, provider, region, mem_bytes, vcpus, p
 
 // Op is an ops row.
 type Op struct {
-	ID             uuid.UUID       `db:"id"`
-	ProjectID      *uuid.UUID      `db:"project_id"`
-	Kind           string          `db:"kind"`
-	State          string          `db:"state"`
-	Step           int             `db:"step"`
-	CommandID      *uuid.UUID      `db:"command_id"`
-	HostID         *uuid.UUID      `db:"host_id"`
-	Params         map[string]any  `db:"params"`
-	CommandResult  map[string]any  `db:"command_result"`
-	Result         map[string]any  `db:"result"`
-	Error          map[string]any  `db:"error"`
-	RevisionID     *uuid.UUID      `db:"revision_id"`
-	SnapshotID     *uuid.UUID      `db:"snapshot_id"`
-	AuditID        *uuid.UUID      `db:"audit_id"`
-	RebootRequired bool            `db:"reboot_required"`
-	SentAt         *time.Time      `db:"sent_at"`
-	StartedAt      *time.Time      `db:"started_at"`
-	FinishedAt     *time.Time      `db:"finished_at"`
-	CreatedAt      time.Time       `db:"created_at"`
-	UpdatedAt      time.Time       `db:"updated_at"`
+	ID             uuid.UUID      `db:"id"`
+	ProjectID      *uuid.UUID     `db:"project_id"`
+	Kind           string         `db:"kind"`
+	State          string         `db:"state"`
+	Step           int            `db:"step"`
+	CommandID      *uuid.UUID     `db:"command_id"`
+	HostID         *uuid.UUID     `db:"host_id"`
+	Params         map[string]any `db:"params"`
+	CommandResult  map[string]any `db:"command_result"`
+	Result         map[string]any `db:"result"`
+	Error          map[string]any `db:"error"`
+	RevisionID     *uuid.UUID     `db:"revision_id"`
+	SnapshotID     *uuid.UUID     `db:"snapshot_id"`
+	AuditID        *uuid.UUID     `db:"audit_id"`
+	RebootRequired bool           `db:"reboot_required"`
+	SentAt         *time.Time     `db:"sent_at"`
+	StartedAt      *time.Time     `db:"started_at"`
+	FinishedAt     *time.Time     `db:"finished_at"`
+	CreatedAt      time.Time      `db:"created_at"`
+	UpdatedAt      time.Time      `db:"updated_at"`
 }
 
 const opCols = `id, project_id, kind, state, step, command_id, host_id, params, command_result, result, error, revision_id, snapshot_id, audit_id, reboot_required, sent_at, started_at, finished_at, created_at, updated_at`

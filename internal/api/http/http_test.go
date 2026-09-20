@@ -49,7 +49,9 @@ type env struct {
 	sent     *sync.Map
 }
 
-func newEnv(t *testing.T) *env { return newEnvLimits(t, &httpapi.RateLimits{General: 10000, Certs: 10000, Config: 10000}) }
+func newEnv(t *testing.T) *env {
+	return newEnvLimits(t, &httpapi.RateLimits{General: 10000, Certs: 10000, Config: 10000})
+}
 
 func newEnvLimits(t *testing.T, limits *httpapi.RateLimits) *env {
 	t.Helper()
@@ -61,7 +63,10 @@ func newEnvLimits(t *testing.T, limits *httpapi.RateLimits) *env {
 	log := obs.NewLogger("api", syncw, slog.LevelDebug)
 	parser, _ := config.NewParser()
 	sent := &sync.Map{}
-	sender := notify.SenderFunc(func(ctx context.Context, m notify.Message) error { sent.Store(m.EventID.String()+m.Kind, m); return nil })
+	sender := notify.SenderFunc(func(ctx context.Context, m notify.Message) error {
+		sent.Store(m.EventID.String()+m.Kind, m)
+		return nil
+	})
 	reg := prometheus.NewRegistry()
 	e := &env{h: h, logto: lf, logs: logs, sent: sent}
 	e.srv = httpapi.New(httpapi.Deps{

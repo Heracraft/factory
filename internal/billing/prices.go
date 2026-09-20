@@ -18,15 +18,15 @@ const (
 	HourLarge int64 = 14 // ceil(9900/720)
 	HourXL    int64 = 28 // ceil(19900/720)
 
-	StoragePerGBMonth      int64 = 10
-	EgressIncludedGB       int64 = 500
-	EgressPerGB            int64 = 5
-	TrialCreditCents       int64 = 1000
-	DefaultPeriodHours           = 720
-	ProjectLimitTrial            = 3
-	XLLimitTrial                 = 1
-	ProjectLimitPaid             = 10
-	XLLimitPaid                  = 10
+	StoragePerGBMonth  int64 = 10
+	EgressIncludedGB   int64 = 500
+	EgressPerGB        int64 = 5
+	TrialCreditCents   int64 = 1000
+	DefaultPeriodHours       = 720
+	ProjectLimitTrial        = 3
+	XLLimitTrial             = 1
+	ProjectLimitPaid         = 10
+	XLLimitPaid              = 10
 )
 
 // Cap is the monthly cap for a class.

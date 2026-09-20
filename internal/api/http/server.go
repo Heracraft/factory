@@ -104,7 +104,7 @@ func New(d Deps) *Server {
 		lim = *d.Limits
 	}
 	s := &Server{d: d, user: http.NewServeMux(), internal: http.NewServeMux(),
-		general: ratelimit.New(lim.General), certs: ratelimit.New(lim.Certs), cfg: ratelimit.New(lim.Config), sessions: newSessionTracker()}
+		general: ratelimit.New(lim.General), certs: ratelimit.New(lim.Certs), cfg: ratelimit.New(lim.Config), sessions: newSessionTracker(d.Pool)}
 	s.registerUserRoutes()
 	s.registerInternalRoutes()
 	s.user.HandleFunc("GET /healthz", s.healthz)
@@ -140,9 +140,6 @@ func (s *Server) SetReady(v bool) {
 	defer s.mu.Unlock()
 	s.ready = v
 }
-
-// Sessions is the gateway session tracker (for tests).
-func (s *Server) Sessions() *sessionTracker { return s.sessions }
 
 type handler func(w http.ResponseWriter, r *http.Request) error
 
@@ -403,37 +400,26 @@ func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {
 // --- gateway sessions -------------------------------------------------------
 
 type sessionTracker struct {
-	mu    sync.Mutex
-	open  map[uuid.UUID]map[int64]time.Time
-	total map[uuid.UUID]int
+	pool *db.Pool
 }
 
-func newSessionTracker() *sessionTracker {
-	return &sessionTracker{open: map[uuid.UUID]map[int64]time.Time{}, total: map[uuid.UUID]int{}}
-}
+func newSessionTracker(pool *db.Pool) *sessionTracker { return &sessionTracker{pool: pool} }
 
-func (t *sessionTracker) update(project uuid.UUID, serial int64, opened bool) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+func (t *sessionTracker) update(ctx context.Context, project uuid.UUID, serial int64, opened bool) error {
 	if opened {
-		if t.open[project] == nil {
-			t.open[project] = map[int64]time.Time{}
-		}
-		t.open[project][serial] = time.Now()
-		t.total[project]++
-		return
+		_, err := t.pool.Exec(ctx, "insert into gateway_sessions (project_id, cert_serial) values ($1, $2) on conflict (project_id, cert_serial) do update set opened_at = now()", project, serial)
+		return err
 	}
-	if m := t.open[project]; m != nil {
-		delete(m, serial)
-		if t.total[project] > 0 {
-			t.total[project]--
-		}
-	}
+	_, err := t.pool.Exec(ctx, "delete from gateway_sessions where project_id = $1 and cert_serial = $2", project, serial)
+	return err
 }
 
-// Count returns the open gateway sessions of a project.
-func (t *sessionTracker) Count(project uuid.UUID) int {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.total[project]
+// Count returns the open gateway sessions of a project reported in the
+// last day (a gateway that died never sends its closes).
+func (t *sessionTracker) Count(ctx context.Context, project uuid.UUID) int {
+	var n int
+	if err := t.pool.QueryRow(ctx, "select count(*) from gateway_sessions where project_id = $1 and opened_at > now() - interval '1 day'", project).Scan(&n); err != nil {
+		return 0
+	}
+	return n
 }
