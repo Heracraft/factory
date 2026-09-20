@@ -57,7 +57,7 @@ type Deps struct {
 	Outbox   *notify.Outbox
 	// Unsub verifies the email unsubscribe link (13-notifications.md §5.6);
 	// nil disables GET /notify/unsubscribe with a 500 rather than a panic.
-	Unsub *notify.Unsubscriber
+	Unsub    *notify.Unsubscriber
 	Parser   *config.Parser
 	Metrics  *metrics.M
 	Registry *prometheus.Registry
