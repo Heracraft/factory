@@ -28,8 +28,13 @@ edge_size = "Standard_D2s_v5"
 coolify_count = 0
 coolify_size  = "Standard_D4s_v5"
 
-# Hosts are added one at a time; see infra/README.md.
-hosts = []
+# Hosts are added one at a time; see infra/README.md. Each production host
+# has its own nixosConfigurations attribute (nix/hosts/<name>.nix, DECISIONS
+# I-39); the join token goes in prod.local.tfvars.
+hosts = ["host-01"]
+host_flake_attrs = {
+  host-01 = "host-01"
+}
 
 snapshots_account_name = "reposesnapshots3912"
 keyvault_name          = "repose-kv-3912"

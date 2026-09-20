@@ -8,7 +8,16 @@ let
   cfg = config.repose.host;
   hostd = cfg.hostdPackage;
   apiFlags = "--api-addr ${lib.escapeShellArg cfg.apiAddr}"
-    + lib.optionalString (cfg.apiServerName != "") " --api-server-name ${lib.escapeShellArg cfg.apiServerName}";
+    + lib.optionalString (cfg.apiServerName != "") " --api-server-name ${lib.escapeShellArg cfg.apiServerName}"
+    + lib.optionalString (cfg.apiCA != "") " --api-ca ${pkgs.writeText "repose-api-ca.pem" cfg.apiCA}";
+  # hostd refuses to start without a snapshot target (03-hostd §5.9): Blob
+  # when the host has an account, its own disk otherwise.
+  snapshotFlags =
+    if cfg.snapshots.blobUrl != "" then
+      "--blob-url ${lib.escapeShellArg cfg.snapshots.blobUrl} --blob-container ${lib.escapeShellArg cfg.snapshots.container}"
+      + lib.optionalString (cfg.snapshots.identityClientId != "") " --blob-identity ${lib.escapeShellArg cfg.snapshots.identityClientId}"
+    else
+      "--snapshot-dir ${lib.escapeShellArg cfg.snapshots.localDir}";
   stateDir = "/var/lib/repose/hostd";
 
   # guests.slice gets everything but the host reserve: 8 GiB below 128 GiB
@@ -85,7 +94,7 @@ in
       coreutils
     ];
     serviceConfig = {
-      ExecStart = "${hostd}/bin/hostd --state ${stateDir} ${apiFlags}";
+      ExecStart = "${hostd}/bin/hostd --state ${stateDir} ${apiFlags} ${snapshotFlags}";
       Restart = "always";
       RestartSec = 2;
       # A join token that has been used is not retried (03-hostd §6).
@@ -128,5 +137,5 @@ in
     "d /var/lib/repose/guests 0700 root root -"
     "d /var/lib/repose/builds 0700 root root -"
     "d /var/log/repose 0750 root root -"
-  ];
+  ] ++ lib.optional (cfg.snapshots.blobUrl == "") "d ${cfg.snapshots.localDir} 0700 root root -";
 }

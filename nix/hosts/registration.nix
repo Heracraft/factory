@@ -9,7 +9,8 @@
 { config, lib, pkgs, ... }:
 let
   apiFlags = "--api-addr ${lib.escapeShellArg config.repose.host.apiAddr}"
-    + lib.optionalString (config.repose.host.apiServerName != "") " --api-server-name ${lib.escapeShellArg config.repose.host.apiServerName}";
+    + lib.optionalString (config.repose.host.apiServerName != "") " --api-server-name ${lib.escapeShellArg config.repose.host.apiServerName}"
+    + lib.optionalString (config.repose.host.apiCA != "") " --api-ca ${pkgs.writeText "repose-api-ca.pem" config.repose.host.apiCA}";
   hostd = config.repose.host.hostdPackage;
   stateDir = "/var/lib/repose/hostd";
   token = "/run/repose/join-token";

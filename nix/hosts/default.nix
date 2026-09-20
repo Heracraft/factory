@@ -87,6 +87,47 @@ in
       description = "TLS server name when it differs from apiAddr's host part (hostd --api-server-name). Empty means the address itself.";
     };
 
+    apiCA = lib.mkOption {
+      type = lib.types.lines;
+      default = "";
+      description = ''
+        PEM certificate bundle hostd trusts for the api instead of the
+        system roots (hostd --api-ca). Empty means the system roots, which
+        is what the real api behind a public certificate needs. The
+        `hostdev` stand-in (DECISIONS I-17) issues its own CA, and a host it
+        drives names that certificate here. Public material only, never a
+        key: it lands in the store.
+      '';
+    };
+
+    snapshots = {
+      blobUrl = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = ''
+          Azure Blob service URL snapshots stream to (hostd --blob-url),
+          for example `https://<account>.blob.core.windows.net`. Empty
+          keeps snapshots under `localDir`, which is not a backup: DESIGN
+          §6 says Blob, and a production host must set this.
+        '';
+      };
+      container = lib.mkOption {
+        type = lib.types.str;
+        default = "repose-snapshots";
+        description = "Blob container snapshots are written to (hostd --blob-container).";
+      };
+      identityClientId = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "Client id of the user-assigned managed identity hostd authenticates to Blob with (hostd --blob-identity); empty uses the VM's default credential chain.";
+      };
+      localDir = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/repose/snapshots";
+        description = "Where snapshots land while blobUrl is empty (hostd --snapshot-dir): the host's own disk, for VM tests and a host without a Blob account. A snapshot here does not survive the host.";
+      };
+    };
+
     hostdPackage = lib.mkOption {
       type = lib.types.package;
       default = pkgs.callPackage ./hostd-stub.nix { };
@@ -139,6 +180,9 @@ in
         message = "repose.host.bootstrap.enable without authorizedKeys opens sshd on the provider NIC for nobody.";
       }
     ];
+
+    warnings = lib.optional (cfg.provider == "azure" && cfg.snapshots.blobUrl == "")
+      "repose.host.snapshots.blobUrl is empty: snapshots of ${cfg.hostName} stay on its own disk under ${cfg.snapshots.localDir} and do not survive the host (DESIGN §6).";
 
     networking.hostName = cfg.hostName;
     time.timeZone = cfg.timeZone;

@@ -341,6 +341,28 @@ already triggers GC of unrooted paths during builds and hostd refuses
    closure`; a tenant near the 20 GB closure cap on a small host is the
    usual cause. See "StoreFull" for the 85 percent alert.
 
+## Reaching a guest before WireGuard exists (M1)
+
+Until workstream 06 lands, hosts are not on WireGuard and the gateway does
+not exist. Operators reach a guest by jumping through the edge and the host:
+
+1. `ssh -J root@<edge ip> root@<host private ip>` (bootstrap sshd on the
+   provider NIC, `repose.host.bootstrap.enable`, DECISIONS I-39).
+2. The host's `inet repose` `input` chain sends every frame from
+   `br-guests` to `guest_in`, which drops all but rate-limited ICMP, so a
+   TCP connection the host opens to a guest never gets its replies. For the
+   length of the session, and only on a host driven by `hostdev`, admit
+   replies to host-initiated flows:
+   `nft insert rule inet repose input iifname "br-guests" ct state established,related accept`.
+   The rule is runtime only: a `systemctl reload nftables` or a reboot
+   removes it. Guests still cannot open anything towards the host.
+3. `hostdev ssh-cert --project <p> --pubkey ~/.ssh/id_ed25519.pub >
+   ~/.ssh/id_ed25519-cert.pub` on the edge, then
+   `ssh -J root@<edge ip>,root@<host ip> dev@<guest ip>`.
+
+Remove the rule when done (`nft -a list chain inet repose input`, then
+`nft delete rule inet repose input handle <n>`).
+
 ## HostWgDown
 
 The edge cannot reach a host's guests: `wg show` on the edge shows no

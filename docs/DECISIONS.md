@@ -698,3 +698,40 @@ works without buf; `nix/packages.nix` regenerates it with local plugins
 inside the build so a stale checkout cannot ship stale stubs. One
 `packages.nix` builds every Go binary (guestd, repose-hook, hostd, hostdev)
 from one vendor hash.
+
+**I-39. A production host is a named configuration; the api CA and the
+snapshot target are host module options; a host registered by `hostdev`
+comes up without WireGuard or a Host CA.** (m1 integration, 2026-09-20)
+Bringing host-01 up against `hostdev` on the edge (I-17) found four gaps
+between the merged host configuration and a real host:
+
+- `hostd.service` passed no snapshot target, and hostd exits at startup
+  without one (`hostd: set --snapshot-dir or --blob-url`). The host module
+  gains `repose.host.snapshots.{blobUrl, container, identityClientId,
+  localDir}`; the unit passes Blob when `blobUrl` is set and
+  `--snapshot-dir` otherwise, with a build warning on an Azure host that
+  has no Blob account. *Rejected:* defaulting the Blob URL in the module
+  (the account name is an infra value; see `prod.tfvars`).
+- hostd had no way to trust hostdev's self-signed CA. `repose.host.apiCA`
+  (PEM text, public material) is written to the store and passed as
+  `--api-ca` by both `hostd.service` and `repose-register.service`.
+- `repose-host-net` used `jq -e` on `host_ca_pub` and the WireGuard fields,
+  which the api fills and hostdev does not, so registration by hostdev
+  left the bridge unconfigured. It now renders `wg0.conf` only when every
+  WireGuard field is present (the unit is already conditioned on the file),
+  writes an empty CA file otherwise, and says so in the journal.
+- The generic `host` attribute has bootstrap sshd off, and until workstream
+  06 puts hosts on WireGuard the installer, the join-token delivery and
+  operators reach a host only over the VNet through the edge, which the
+  nftables `input` chain admits only while `repose.host.bootstrap.enable`
+  is on. So a production host is its own attribute, `nixosConfigurations.
+  host-<name>` from `nix/hosts/<name>.nix`, selected by the new root
+  variable `host_flake_attrs` in `infra/azure/{prod,staging}`; `host-01`
+  sets the edge address, hostdev's CA, the operator key for bootstrap and
+  the Blob endpoint and identity. *Rejected:* setting these on the generic
+  `host` (every future host would trust a dev CA and expose bootstrap
+  sshd); passing them at install time (nixos-anywhere takes a flake
+  attribute, nothing else). Interfaces: `host-conventions.md` (the
+  `hostd.service` command line). The edge firewall also opens 443, which
+  the NSG already did, for hostdev now and the preview-proxy stub later.
+

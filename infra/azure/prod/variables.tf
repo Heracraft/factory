@@ -58,6 +58,12 @@ variable "hosts" {
   default     = []
 }
 
+variable "host_flake_attrs" {
+  type        = map(string)
+  description = "Per-host nixosConfigurations attribute in nix/flake.nix (for example host-01 = \"host-01\"); a host absent here installs the generic `host`."
+  default     = {}
+}
+
 variable "join_tokens" {
   type        = map(string)
   description = "host name to single-use registration token. Passed with -var on the apply that adds a host; never committed."

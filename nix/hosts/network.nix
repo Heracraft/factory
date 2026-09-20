@@ -54,7 +54,13 @@ let
 
       host_id=$(jq -er .host_id "$hostJson")
       guest_cidr=$(jq -er .guest_cidr "$hostJson")
-      wg_address=$(jq -er .wg.address "$hostJson")
+      # WireGuard material and the Host CA arrive with registration by the
+      # api; `hostdev` (DECISIONS I-17) registers a host without them, and
+      # the bridge, sshd and the exporters must still come up (I-39).
+      wg_private_key=$(jq -r '.wg.private_key // empty' "$hostJson")
+      wg_address=$(jq -r '.wg.address // empty' "$hostJson")
+      wg_edge_pubkey=$(jq -r '.wg.edge_pubkey // empty' "$hostJson")
+      wg_endpoint=$(jq -r '.wg.edge_endpoint // empty' "$hostJson")
       wg_ip=''${wg_address%/*}
       loki_url=$(jq -r '.loki_url // empty' "$hostJson")
 
@@ -82,23 +88,32 @@ let
       ENV
       mv "$run/host.env.tmp" "$run/host.env"
 
-      (
-        umask 077
-        {
-          echo "[Interface]"
-          echo "PrivateKey = $(jq -er .wg.private_key "$hostJson")"
-          echo "Address = $wg_address"
-          echo
-          echo "[Peer]"
-          echo "PublicKey = $(jq -er .wg.edge_pubkey "$hostJson")"
-          echo "Endpoint = $(jq -er .wg.edge_endpoint "$hostJson")"
-          echo "AllowedIPs = 10.255.0.0/16"
-          echo "PersistentKeepalive = 25"
-        } > "$run/wg0.conf.tmp"
-        mv "$run/wg0.conf.tmp" "$run/wg0.conf"
-      )
+      if [ -n "$wg_private_key" ] && [ -n "$wg_address" ] && [ -n "$wg_edge_pubkey" ] && [ -n "$wg_endpoint" ]; then
+        (
+          umask 077
+          {
+            echo "[Interface]"
+            echo "PrivateKey = $wg_private_key"
+            echo "Address = $wg_address"
+            echo
+            echo "[Peer]"
+            echo "PublicKey = $wg_edge_pubkey"
+            echo "Endpoint = $wg_endpoint"
+            echo "AllowedIPs = 10.255.0.0/16"
+            echo "PersistentKeepalive = 25"
+          } > "$run/wg0.conf.tmp"
+          mv "$run/wg0.conf.tmp" "$run/wg0.conf"
+        )
+      else
+        # wg-quick-wg0.service is conditioned on this file; without it the
+        # tunnel stays down and sshd listens on every interface behind the
+        # nftables input chain (operator ssh only while bootstrap is on).
+        echo "no WireGuard material in host.json; wg0 not configured"
+        rm -f "$run/wg0.conf"
+      fi
 
-      jq -er .host_ca_pub "$hostJson" > "$run/host_ca.pub.tmp"
+      # An empty CA file trusts nobody; the bootstrap key still works.
+      jq -r '.host_ca_pub // empty' "$hostJson" > "$run/host_ca.pub.tmp"
       mv "$run/host_ca.pub.tmp" "$run/host_ca.pub"
 
       write_sshd "$wg_ip"
@@ -110,7 +125,12 @@ let
 
       echo "host.json applied: host_id=$host_id guest_cidr=$guest_cidr bridge=$bridge_address"
       systemctl --no-block reload-or-restart sshd.service
-      systemctl --no-block restart wg-quick-wg0.service prometheus-node-exporter.service fluent-bit.service
+      systemctl --no-block restart prometheus-node-exporter.service fluent-bit.service
+      if [ -s "$run/wg0.conf" ]; then
+        systemctl --no-block restart wg-quick-wg0.service
+      else
+        systemctl --no-block stop wg-quick-wg0.service
+      fi
     '';
   };
 in
