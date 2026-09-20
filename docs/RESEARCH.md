@@ -669,3 +669,5 @@ reached; a row without a number was not measured.
 | the same, `create` (thin volume, taps, virtiofsd, Cloud Hypervisor, Ready, secrets, project setup) | 21.5 s to running |
 | the same, `snapshot` (freeze, LVM snapshot, zstd, Blob) / `stop` / `start` / `destroy` | 16.5 s / 4.5 s / 14.5 s / 22.0 s; whole smoke 79 s |
 | the same smoke, first attempt | failed at create step 8 in 21 s: `/run/repose` was 0700 after the token delivery (I-97) |
+| The conductor's `repose run` (v0.1.3 build of main) for project `recruiting`, class small, base 2026.09.20 already in the store | build 5 s, create 14 s to running (22:38:36 → 22:38:50); first gateway relay into the guest 90 s later, exec sessions 105–267 ms each |
+| Smoke against base 2026.09.20.2 (d315339: guestd and the guest ssh config changed, so a fresh guest closure) | hostd's own clone of the base, build 18.9 s, create → running 16 s, snapshot/stop/start/destroy all done within 2 min |
