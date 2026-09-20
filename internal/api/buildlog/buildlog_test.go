@@ -79,3 +79,35 @@ func TestRedactionBatchingAndSubscribe(t *testing.T) {
 		t.Fatalf("trim %d %v", n, err)
 	}
 }
+
+// A reader that arrives while a flush is in flight must see the batch that
+// flush is inserting (DECISIONS I-117). Appends and flushes race a reader
+// that expects every line appended before it started.
+func TestReadWaitsForTheFlushInFlight(t *testing.T) {
+	pool := testdb.Open(t)
+	ctx := context.Background()
+	uid, pid, opID := store.NewID(), store.NewID(), store.NewID()
+	if _, err := pool.Exec(ctx, "insert into users (id, handle) values ($1, 'bl2')", uid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "insert into projects (id, user_id, name, slug, class, state, volume_bytes) values ($1, $2, 'p2', 'p2', 'small', 'running', 1)", pid, uid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "insert into ops (id, project_id, kind, state) values ($1, $2, 'build', 'running')", opID, pid); err != nil {
+		t.Fatal(err)
+	}
+	s := buildlog.New(pool, slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	for round := int64(1); round <= 40; round++ {
+		s.Append(opID, round, "line")
+		done := make(chan struct{})
+		go func() { s.Flush(ctx); close(done) }()
+		lines, err := s.Read(ctx, opID, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if int64(len(lines)) < round {
+			t.Fatalf("round %d: read %d lines, want at least %d", round, len(lines), round)
+		}
+		<-done
+	}
+}

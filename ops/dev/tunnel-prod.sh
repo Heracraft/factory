@@ -16,6 +16,14 @@
 # Local ports, matching ops/dev/prometheus-prod.yml:
 #   19100 edge node_exporter      19102 gateway
 #   19103 api                     19104 api-grpc
+#   19200 host node_exporter      19201 hostd     19202 host Fluent Bit
+#
+# The host's three are forwarded *through* the edge, which reaches them
+# over WireGuard. That works whatever the edge's forward chain says,
+# because the edge originates the connection itself rather than routing
+# somebody else's packet — which is exactly the distinction that makes
+# the real monitoring peer need `repose.edge.monitoring.peerCIDRs`
+# (DECISIONS I-94). Do not read a working tunnel as a working peer.
 #
 # Stop it with Ctrl-C, or `ops/dev/tunnel-prod.sh --stop`.
 set -euo pipefail
@@ -47,9 +55,13 @@ ssh_opts=(-N -o ExitOnForwardFailure=yes -o ConnectTimeout=15 -o ServerAliveInte
 
 # The edge's exporters bind its WireGuard address, not localhost, so the
 # forward has to name that address rather than 127.0.0.1.
+HOST_WG=${HOST_WG:-10.255.0.2}
 ssh "${ssh_opts[@]}" -p "$EDGE_SSH_PORT" \
 	-L "$BIND_ADDR:19100:10.255.0.1:9100" \
 	-L "$BIND_ADDR:19102:10.255.0.1:9102" \
+	-L "$BIND_ADDR:19200:$HOST_WG:9100" \
+	-L "$BIND_ADDR:19201:$HOST_WG:9101" \
+	-L "$BIND_ADDR:19202:$HOST_WG:2021" \
 	"root@$EDGE" &
 echo $! >"$PIDFILE"
 
@@ -82,7 +94,7 @@ ssh "${ssh_opts[@]}" \
 echo $! >>"$PIDFILE"
 
 sleep 2
-for p in 19100 19102 19103 19104; do
+for p in 19100 19102 19103 19104 19200 19201; do
 	code=$(curl -sS -o /dev/null --max-time 5 -w '%{http_code}' "http://$BIND_ADDR:$p/metrics" || echo 000)
 	printf '  %s:%s /metrics -> %s\n' "$BIND_ADDR" "$p" "$code"
 done

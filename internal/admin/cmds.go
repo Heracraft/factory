@@ -972,7 +972,7 @@ func (e *Env) users(ctx context.Context, args []string) error {
 			return fmt.Errorf("%w: %q is not a valid handle (lowercase [a-z0-9-], at most 32)", ErrUsage, newHandle)
 		}
 		var n int
-		if err := e.pool.QueryRow(ctx, "select count(*) from projects where user_id = $1", u.ID).Scan(&n); err != nil {
+		if err := e.pool.QueryRow(ctx, "select count(*) from projects where user_id = $1 and state <> 'destroyed'", u.ID).Scan(&n); err != nil {
 			return err
 		}
 		if n > 0 {
