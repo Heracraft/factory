@@ -26,6 +26,11 @@ let
       hostName = "host-test";
       provider = "none";
       uplinkInterface = "eth1";
+      # These tests exercise the host's units, not the daemon: the stub
+      # answers `register` from a fixture and `snapshot-all` by logging,
+      # which the real hostd (what hostModules installs) cannot do without
+      # an api.
+      hostdPackage = lib.mkForce (pkgs.callPackage ../hostd-stub.nix { });
     };
     disko.enableConfig = false;
     # The test driver sets a root password file; the host's locked password

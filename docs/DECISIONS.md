@@ -1013,3 +1013,23 @@ and the host-services VM test asserts `/nix/store/.links` is not a mount
 point. *Rejected:* dropping the mask (the enumeration leak 01 §5 closes);
 masking with a bind of an empty directory (propagates the same way).
 
+**I-50. virtiofsd's socket lives in a subdirectory it owns, and hostd fails
+step 8 when virtiofsd exits.** (m1 integration, 2026-09-20) The first
+guest on host-01 died a minute after start with "guest did not become
+ready": virtiofsd, which I-48 runs as the unprivileged `virtiofsd` user in
+namespace sandbox mode, had exited at once because it could not create
+`virtiofsd.sock` in the root-only guest directory (0750 under a 0700
+parent), and Cloud Hypervisor retried the missing socket for 60 s. hostd
+now creates `/var/lib/repose/guests/<id>/` as root 0710 with group
+`virtiofsd` and `<id>/virtiofsd/` owned by that user, the socket is
+`virtiofsd/virtiofsd.sock`, `/var/lib/repose/guests` is a 0710
+root:virtiofsd tmpfiles directory instead of a `StateDirectory`, and step 8
+waits up to 10 s for the socket while checking the unit, so a dead
+virtiofsd fails the create as step 8 with its unit named. *Rejected:*
+making the guest directory group-writable (virtiofsd could then rewrite
+`ch.args`, which hostd hands to a root Cloud Hypervisor at the next start);
+running virtiofsd as root in chroot mode (what I-48 moved away from);
+socket activation through a transient socket unit (an fd-passing path
+nothing else in hostd uses). Interface: `host-conventions.md` (guest
+directory row and the CH invocation).
+

@@ -9,7 +9,7 @@ change to either happens in the same commit.
 | Path | What |
 |---|---|
 | `/var/lib/repose/hostd/` | `cert.pem`, `key.pem` (mTLS to api), `host.json` (see below), `state.db` (bbolt: guest table for reconciliation). Mode 0700, written by `hostd register`. |
-| `/var/lib/repose/guests/<guest_id>/` | `ch.args` (the rendered cloud-hypervisor argv, one argument per line; DECISIONS I-27), `guest.json` (non-secret copy of the guest record for `hostd reconcile --rebuild`), `ch.sock` (Cloud Hypervisor API), `vsock.sock` (host side of the guest's vsock, `CONNECT 5000` reaches guestd), `console.sock` (serial; hostd copies it into `console.log`, rotated at 64 MB keeping 3), `virtiofsd.sock`. Secrets are never written here: they are delivered to the guest's tmpfs over vsock. |
+| `/var/lib/repose/guests/<guest_id>/` | `ch.args` (the rendered cloud-hypervisor argv, one argument per line; DECISIONS I-27), `guest.json` (non-secret copy of the guest record for `hostd reconcile --rebuild`), `ch.sock` (Cloud Hypervisor API), `vsock.sock` (host side of the guest's vsock, `CONNECT 5000` reaches guestd), `console.sock` (serial; hostd copies it into `console.log`, rotated at 64 MB keeping 3), `virtiofsd/virtiofsd.sock` (the subdirectory is owned by the `virtiofsd` user, the one place under the guest directory it can write; the guest directory itself is root 0710 with group `virtiofsd`, DECISIONS I-50). Secrets are never written here: they are delivered to the guest's tmpfs over vsock. |
 | `/var/lib/repose/builds/<revision_id>/` | `fragment.nix` for a `Build`; see `nix-build-contract.md` |
 | `/var/lib/repose/base/<base_ref>/` | checkout of the platform repository at that revision (its `nix/` is the flake hostd evaluates) |
 | `/run/repose/hostd.sock` | hostd's operator control socket (`hostd status`, `guests`, `snapshot-all`, `drain`, `reconcile`) |
@@ -140,7 +140,7 @@ I-27) and runs it with `systemd-run --unit guest@<id> --property
 MemoryMax=<class RAM + 512M> --property CPUQuota=<vcpus*100>% --property
 Slice=guests.slice`. The devices: `--disk path=/dev/vg-guests/g-<id>`,
 `--net tap=tap-<8hex>,mac=52:54:<4 bytes of id>`, `--fs tag=ro-store,socket=
-virtiofsd.sock`, `--vsock cid=<1000+index>,socket=vsock.sock`, `--serial
+virtiofsd/virtiofsd.sock`, `--vsock cid=<1000+index>,socket=vsock.sock`, `--serial
 socket=console.sock`, `--memory size=<RAM>M,shared=on`. The CH API socket
 is used for `shutdown` (after guestd's Shutdown timed out), `pause`,
 `resume`, and stats.

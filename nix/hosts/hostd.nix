@@ -110,7 +110,10 @@ in
       KillMode = "process";
       LimitNOFILE = 1048576;
       # repose/builds is a tmpfiles rule below: the build user must traverse it.
-      StateDirectory = "repose/hostd repose/guests";
+      # repose/guests is a tmpfiles rule below, not a StateDirectory: it must
+      # be traversable by the virtiofsd user (DECISIONS I-50), which
+      # StateDirectoryMode=0700 would undo at every start.
+      StateDirectory = "repose/hostd";
       StateDirectoryMode = "0700";
       LogsDirectory = "repose";
       OOMScoreAdjust = -900;
@@ -156,7 +159,7 @@ in
 
   systemd.tmpfiles.rules = [
     "d /var/lib/repose 0755 root root -"
-    "d /var/lib/repose/guests 0700 root root -"
+    "d /var/lib/repose/guests 0710 root virtiofsd -"
     "d /var/lib/repose/builds 0711 root root -"
     "d /var/lib/repose/base 0755 root root -"
     "d /var/log/repose 0750 root root -"

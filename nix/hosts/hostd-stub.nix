@@ -19,11 +19,15 @@ writeShellApplication {
     state=/var/lib/repose/hostd
     token=/run/repose/join-token
     cmd=serve
+    # Same shape as the daemon: `hostd [flags] [command]`, every flag the
+    # units pass takes a value (--api-addr, --api-ca, --snapshot-dir,
+    # --blob-url, --blob-container, --blob-identity, --join-token).
     while [ $# -gt 0 ]; do
       case "$1" in
         --state) state="$2"; shift 2 ;;
-        --token) token="$2"; shift 2 ;;
-        --*) shift ;;
+        --join-token|--token) token="$2"; shift 2 ;;
+        --*)
+          if [ $# -ge 2 ] && [ "''${2#--}" = "$2" ]; then shift 2; else shift; fi ;;
         *) cmd="$1"; shift ;;
       esac
     done

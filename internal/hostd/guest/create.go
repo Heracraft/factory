@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -201,7 +203,7 @@ func (m *Manager) fail(g *state.Guest, step int, err error) *Error {
 func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Error {
 	class := Classes[g.Class]
 	dir := m.guestDir(g.GuestID)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	if err := prepareGuestDir(dir, m.cfg.VirtiofsUser); err != nil {
 		return m.fail(g, firstStep, err)
 	}
 
@@ -244,6 +246,9 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 	}
 	vcfg := virtiofs.Config{SharedDir: m.cfg.StoreExport, User: m.cfg.VirtiofsUser, Group: m.cfg.VirtiofsUser, Binary: m.cfg.VirtiofsBinary}
 	if err := virtiofs.Start(ctx, m.d.Systemd, vcfg, g.GuestID, ch.VirtiofsSocket(dir)); err != nil {
+		return m.fail(g, stepVirtiofsd, err)
+	}
+	if err := m.waitVirtiofsSocket(ctx, g.GuestID, ch.VirtiofsSocket(dir)); err != nil {
 		return m.fail(g, stepVirtiofsd, err)
 	}
 
@@ -320,8 +325,79 @@ func (m *Manager) teardown(ctx context.Context, g *state.Guest) {
 	_ = m.d.Net.Unshape(ctx, g.Tap)                               // same
 	_ = m.d.Net.DelGuestRules(ctx, g.GuestID, g.IP, g.MAC, g.Tap) // same
 	_ = m.d.Net.DelTap(ctx, g.Tap)                                // same
-	for _, s := range []string{"ch.sock", "vsock.sock", "console.sock", "virtiofsd.sock"} {
+	for _, s := range []string{"ch.sock", "vsock.sock", "console.sock", filepath.Join("virtiofsd", "virtiofsd.sock")} {
 		_ = os.Remove(filepath.Join(m.guestDir(g.GuestID), s)) // stale sockets confuse the next boot only if left behind
+	}
+}
+
+// prepareGuestDir creates the guest directory (root, 0710, group virtiofsd
+// so virtiofsd can traverse it and nothing else) and the virtiofsd
+// subdirectory it owns (DECISIONS I-50). Ownership is only applied when
+// running as root; the unit tests run unprivileged in a temp dir.
+func prepareGuestDir(dir, virtiofsUser string) error {
+	if err := os.MkdirAll(dir, 0o710); err != nil {
+		return err
+	}
+	sub := ch.VirtiofsDir(dir)
+	if err := os.MkdirAll(sub, 0o750); err != nil {
+		return err
+	}
+	if os.Geteuid() != 0 {
+		return nil
+	}
+	u, err := user.Lookup(virtiofsUser)
+	if err != nil {
+		return fmt.Errorf("virtiofsd user %q: %w", virtiofsUser, err)
+	}
+	uid, err := strconv.Atoi(u.Uid)
+	if err != nil {
+		return fmt.Errorf("virtiofsd user %q: uid %q", virtiofsUser, u.Uid)
+	}
+	gid, err := strconv.Atoi(u.Gid)
+	if err != nil {
+		return fmt.Errorf("virtiofsd user %q: gid %q", virtiofsUser, u.Gid)
+	}
+	if err := os.Chown(dir, 0, gid); err != nil {
+		return err
+	}
+	if err := os.Chmod(dir, 0o710); err != nil {
+		return err
+	}
+	if err := os.Chown(sub, uid, gid); err != nil {
+		return err
+	}
+	return os.Chmod(sub, 0o750)
+}
+
+// waitVirtiofsSocket waits for virtiofsd to bind its socket, failing early
+// when its unit has already exited. Cloud Hypervisor would otherwise retry
+// the connection for a full minute and the create would fail at step 10
+// with "guest did not become ready", which names the wrong step.
+func (m *Manager) waitVirtiofsSocket(ctx context.Context, guestID, socket string) error {
+	if m.cfg.VirtiofsSocketWait <= 0 {
+		return nil
+	}
+	deadline := time.Now().Add(m.cfg.VirtiofsSocketWait)
+	unit := virtiofs.Unit(guestID)
+	for {
+		if _, err := os.Stat(socket); err == nil {
+			return nil
+		}
+		active, err := m.d.Systemd.IsActive(ctx, unit)
+		if err != nil {
+			return err
+		}
+		if !active {
+			return fmt.Errorf("virtiofsd exited before creating its socket; see journalctl -u %s", unit)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("virtiofsd did not create %s within %s", filepath.Base(socket), m.cfg.VirtiofsSocketWait)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
 }
 

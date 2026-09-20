@@ -744,6 +744,12 @@ and its tap, tc, nft membership and units are gone; the volume stays.
    guest; the base image is at fault (workstream 02).
 4. Fix, then `repose-admin projects start <id>` (or `hostdev start`).
 
+Since I-50 a virtiofsd that exits before creating its socket fails the
+create at step 8 instead; on an older hostd, `systemctl status
+virtiofsd@<guest id>` and `journalctl -u guest@<guest id>` (Cloud
+Hypervisor "Failed connecting the backend ... virtiofsd.sock") are the
+first things to read when this message appears at once after a create.
+
 ## hostd: virtiofsd exited under a running guest
 
 The guest is in `error` with reason `virtiofsd exited`; hostd stopped the

@@ -109,20 +109,26 @@ type Config struct {
 	MaxBuilds        int
 	MaxBuildQueue    int
 	ReadyTimeout     time.Duration
-	StopTimeoutS     uint32
-	EgressMbit       int
-	StoreTag         string
-	StoreExport      string
-	VirtiofsUser     string
-	VirtiofsBinary   string
-	MinVolumeBytes   uint64
-	MaxVolumeBytes   uint64
-	PoolRefusePct    float64
-	PoolWarnPct      float64
-	StoreHighPct     float64
-	GuestdRetry      time.Duration
-	GuestdLostAfter  time.Duration
-	UnitPoll         time.Duration
+	// VirtiofsSocketWait bounds how long step 8 waits for virtiofsd to create
+	// its socket before Cloud Hypervisor is started; zero skips the wait
+	// (unit tests with a fake systemd). A virtiofsd that exits first fails
+	// the create at step 8 with its unit named, instead of step 10 a minute
+	// later (DECISIONS I-50).
+	VirtiofsSocketWait time.Duration
+	StopTimeoutS       uint32
+	EgressMbit         int
+	StoreTag           string
+	StoreExport        string
+	VirtiofsUser       string
+	VirtiofsBinary     string
+	MinVolumeBytes     uint64
+	MaxVolumeBytes     uint64
+	PoolRefusePct      float64
+	PoolWarnPct        float64
+	StoreHighPct       float64
+	GuestdRetry        time.Duration
+	GuestdLostAfter    time.Duration
+	UnitPoll           time.Duration
 	// FailAtStep injects a failure into CreateGuest at that step (tests).
 	FailAtStep int
 }

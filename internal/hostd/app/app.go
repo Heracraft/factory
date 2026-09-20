@@ -209,6 +209,7 @@ func Run(ctx context.Context, o Options, log *slog.Logger) error {
 	cfg := guest.Config{
 		HostID: id.Host.HostID, GuestsDir: o.GuestsDir, GuestCIDR: id.Host.GuestCIDR, TotalMemBytes: total,
 		MaxOps: o.MaxOps, MaxBuilds: o.MaxBuilds, StoreExport: o.StoreExport, VirtiofsUser: o.VirtiofsUser,
+		VirtiofsSocketWait: 10 * time.Second,
 	}
 	if os.Getenv("REPOSE_HOSTD_TESTING") == "1" {
 		cfg.FailAtStep = o.FailAtStep

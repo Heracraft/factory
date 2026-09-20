@@ -39,7 +39,11 @@ type Spec struct {
 func APISocket(dir string) string      { return filepath.Join(dir, "ch.sock") }
 func VsockSocket(dir string) string    { return filepath.Join(dir, "vsock.sock") }
 func ConsoleSocket(dir string) string  { return filepath.Join(dir, "console.sock") }
-func VirtiofsSocket(dir string) string { return filepath.Join(dir, "virtiofsd.sock") }
+func VirtiofsSocket(dir string) string { return filepath.Join(VirtiofsDir(dir), "virtiofsd.sock") }
+
+// VirtiofsDir is the one place under a guest directory the unprivileged
+// virtiofsd user can write: it creates its socket there (DECISIONS I-50).
+func VirtiofsDir(dir string) string { return filepath.Join(dir, "virtiofsd") }
 
 // Cmdline renders the kernel command line: the closure's init and params,
 // the serial console, and the static address the guest's networkd reads.
