@@ -31,8 +31,17 @@ func RecordEnforcement(ctx context.Context, pool *db.Pool, enforce bool, actor s
 	if prev == now {
 		return false, nil
 	}
-	if err := store.SetSetting(ctx, pool, SettingEnforce, now); err != nil {
+	// Compare and set in one statement: two replicas starting together
+	// would otherwise both read the old value and both write an audit row
+	// for one flip.
+	tag, err := pool.Exec(ctx, `insert into settings (key, value) values ($1, $2)
+		on conflict (key) do update set value = excluded.value where settings.value is distinct from excluded.value`,
+		SettingEnforce, now)
+	if err != nil {
 		return false, err
+	}
+	if tag.RowsAffected() == 0 {
+		return false, nil
 	}
 	if _, err := store.Audit(ctx, pool, actor, "billing_enforce", "", map[string]any{"from": prev, "to": now}); err != nil {
 		return false, err

@@ -102,7 +102,10 @@ inserts `+1000 "trial"`. Hourly usage first debits the ledger (a negative
 row per hour with `ref = usage_hours pk`) until the balance is zero, and only
 the remainder becomes a Stripe usage record. A user with a positive balance
 and a card is `trial`; when the balance hits zero they become `active`
-and the next hour is billed. `repose-admin billing credit` adds rows for
+and the next hour is billed — the transition happens in the same
+transaction as the debit that exhausted the balance, because the card gate
+refuses a `trial` account with no credit (`trial_depleted`) and an account
+that merely used its ten dollars must not be locked out of its own guests. `repose-admin billing credit` adds rows for
 goodwill or refunds. Balance is `sum(cents)`, computed with an index, never
 cached on `users` (the cached column was rejected because two hourly jobs
 racing would drift it). `users.trial_credit_cents` remains as a *projection*

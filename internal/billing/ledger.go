@@ -125,7 +125,9 @@ func DebitUsage(ctx context.Context, tx store.Querier, userID, projectID uuid.UU
 	}
 	switch {
 	case want == already:
-		return already, nil
+		// Nothing to write, but a re-run of the hour that exhausted the
+		// credit must still leave the account on the right status.
+		return already, endOfTrial(ctx, tx, userID)
 	case already == 0:
 		if _, err := Credit(ctx, tx, userID, -want, ReasonUsage, ref); err != nil {
 			return 0, err
@@ -135,5 +137,24 @@ func DebitUsage(ctx context.Context, tx store.Querier, userID, projectID uuid.UU
 			return 0, err
 		}
 	}
-	return want, nil
+	return want, endOfTrial(ctx, tx, userID)
+}
+
+// endOfTrial moves an account off `trial` once its credit is gone
+// (09-billing.md §5.3: "when the balance hits zero they become active and
+// the next hour is billed"; PRICING.md: "nothing stops"). It runs inside
+// the debit's transaction, under the same row lock.
+//
+// The failure it prevents: the card gate refuses a start with
+// `trial_depleted` for any user whose status is `trial` and whose balance
+// is zero, so an account that simply used its ten dollars would have been
+// locked out of its own guests instead of being charged for them.
+func endOfTrial(ctx context.Context, tx store.Querier, userID uuid.UUID) error {
+	_, err := tx.Exec(ctx, `update users set billing_status = 'active'
+		where id = $1 and billing_status = 'trial' and has_card
+		and coalesce((select sum(cents) from credit_ledger where user_id = $1), 0) <= 0`, userID)
+	if err != nil {
+		return fmt.Errorf("end the trial: %w", err)
+	}
+	return nil
 }

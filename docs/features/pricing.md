@@ -26,7 +26,7 @@ The other reasons the same error carries:
 | `detail.reason` | What the user did | What fixes it |
 |---|---|---|
 | `card_required` | no card on file | add one |
-| `trial_depleted` | $10 of credit used, no paid usage yet | nothing — it means the card is missing, not the credit; `has_card` is checked first |
+| `trial_depleted` | an account still marked `trial` with no credit left | should not be reachable: the hour that exhausts the credit moves an account with a card to `active`, and an account without one is refused as `card_required` first. If it appears, the account has a card and did not move; `repose-admin users show` and the runbook |
 | `past_due` | an invoice failed | update the card in the billing portal |
 | `suspended` | three days past due, or an operator suspension | pay, or email |
 
@@ -39,8 +39,10 @@ it (DECISIONS I-16).
 A new account gets $10 of credit. It is consumed at exactly the rates a paid
 account pays — a large guest takes 14 cents an hour out of it, a 40 GB volume
 takes about half a cent an hour — so the trial is also the first test of the
-meters. `repose status` and the dashboard show what is left. When it reaches
-zero nothing stops; the next hour is charged to the card.
+meters. `repose status` and the dashboard show what is left. When the last
+of it is spent, the account moves from `trial` to `active` in the same
+transaction that spends it: nothing stops, and the next hour goes on the
+card.
 
 A credit is never refunded as money and never expires. An operator can add
 more with `repose-admin billing credit`, which is also how a goodwill

@@ -119,7 +119,9 @@ func TestRollupIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	start := base()
 	ensurePartitions(t, pool, start, start.AddDate(0, 1, 0))
-	a := seedAccount(t, pool, "large", start, 500)
+	// Enough credit that the period does not exhaust it, so the idempotency
+	// check is not confused by the trial-to-active transition.
+	a := seedAccount(t, pool, "large", start, 5000)
 	p := &recorder{}
 	r := newRollup(pool, p)
 	fillRunning(t, pool, a, start, 6, "large", 40<<30, 1<<30)
@@ -241,6 +243,16 @@ func TestTrialCreditIsDebitedBeforeStripe(t *testing.T) {
 	// Stripe only ever saw the remainder.
 	if want := cost - credit; p.total() != want {
 		t.Fatalf("pushed %d cents to Stripe, want %d", p.total(), want)
+	}
+	// §5.3: with the credit gone and a card on file the account is `active`,
+	// so the next hour is billed instead of the card gate refusing the start
+	// with trial_depleted.
+	var status string
+	if err := pool.QueryRow(ctx, "select billing_status from users where id = $1", a.UserID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "active" {
+		t.Fatalf("billing_status after the trial ran out: %s, want active", status)
 	}
 	// The first two hours were entirely covered, so they were never pushed.
 	var unpushedFree int
