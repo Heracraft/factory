@@ -304,6 +304,15 @@ row says otherwise. Commands were run from the dev box, which is in
       against a fixture that adds one on 2026-09-19. A second guard was added
       on 2026-09-20 for the control subnet: a `postcondition` that fails the
       plan on any inbound rule for 8000, 6001, 6002 or `*` (DECISIONS I-70).
+      Fired deliberately by adding a `TEMP-coolify-dashboard` rule for 8000
+      to the module and planning against a scratch local-state root; it
+      failed with *"The control subnet NSG must not open 8000, 6001, 6002 or
+      every port: Coolify's dashboard is unauthenticated until its admin
+      account exists, and the way in is `ssh -L 8000:127.0.0.1:8000`"*, and
+      passed again once the rule was removed. The three new variable
+      validations were fired the same way and produce their documented
+      messages: `coolify_size = Standard_D4s_v5`, `coolify_version = latest`,
+      and `manage_dns` on with a null zone id.
 - [ ] IMDS is reachable from the host and blocked from guests. **Not
       re-checked this session:** the sandbox on the machine running these
       commands refuses shell pipelines that fetch instance metadata, so the
@@ -312,10 +321,11 @@ row says otherwise. Commands were run from the dev box, which is in
       01's nftables rule. One command on the host closes it.
 - [ ] Data disk has `prevent_destroy`; a plan that would replace it fails.
       **Not closed:** the deliberate attempt needs a plan against real state,
-      and the state blob is currently leased (see §10). The
+      and plans from this dev box stalled repeatedly on 2026-09-20 (§10). The
       `prevent_destroy` and `ignore_changes` blocks are in
       `azure/modules/host/main.tf` and the equivalent attempt was made
-      against the plan on 2026-09-19.
+      against the plan on 2026-09-19. One `host_data_disk_gb` change, planned
+      and read, closes it.
 - [x] Blob lifecycle rule exists. Evidence: `az storage account
       management-policy show --account-name reposesnapshots3912` returns one
       enabled rule `snapshots-tier-and-expire`, `blobTypes: [blockBlob]`,
