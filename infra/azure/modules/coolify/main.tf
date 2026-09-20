@@ -73,6 +73,10 @@ resource "azurerm_linux_virtual_machine" "main" {
   custom_data = base64encode(templatefile("${path.module}/templates/cloud-init.yaml.tftpl", {
     authorized_keys       = join("\n", var.authorized_keys)
     coolify_install_url   = var.coolify_install_url
+    coolify_version       = var.coolify_version
+    autoupdate            = var.coolify_autoupdate ? "true" : "false"
+    backup_bucket         = var.backup_bucket
+    backup_max_age_hours  = var.backup_max_age_hours
     edge_public_key       = var.edge_wireguard_public_key == null ? "" : var.edge_wireguard_public_key
     edge_endpoint         = var.edge_wireguard_endpoint
     wireguard_address     = var.wireguard_address
@@ -95,6 +99,8 @@ resource "azurerm_linux_virtual_machine" "main" {
 
   boot_diagnostics {}
 
+  depends_on = [var.network_ready]
+
   lifecycle {
     # Postgres and every Coolify application definition live on this VM's OS
     # disk. Re-imaging it because the marketplace published a new Ubuntu
@@ -107,5 +113,43 @@ resource "azurerm_linux_virtual_machine" "main" {
       condition     = length(var.authorized_keys) > 0
       error_message = "The Coolify VM needs at least one operator public key; there is no other way in."
     }
+  }
+}
+
+# An apply that returns before Coolify is installed leaves the operator with a
+# public IP and no way to tell whether cloud-init is still pulling Docker
+# images or died twelve minutes ago. The installer itself waits for the
+# `coolify` container's Docker health check and exits non-zero if it never
+# goes healthy, so re-reading that status here is reading the same signal the
+# installer used, not a second invented one.
+#
+# It is deliberately not tied to custom_data: the VM ignores custom_data
+# changes (see the lifecycle block above), so a template edit must not look
+# like a reason to re-check a machine that is already serving.
+resource "terraform_data" "ready" {
+  triggers_replace = {
+    vm_id = azurerm_linux_virtual_machine.main.id
+  }
+
+  connection {
+    type        = "ssh"
+    host        = azurerm_public_ip.main.ip_address
+    user        = "root"
+    port        = 22
+    private_key = file(var.ssh_private_key_path)
+    timeout     = var.connect_timeout
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "cloud-init status --wait >/dev/null 2>&1 || true",
+      "cloud-init status | grep -q 'status: done' || { echo 'cloud-init did not finish cleanly on ${var.name}; see /var/log/cloud-init-output.log' >&2; cloud-init status --long >&2; exit 1; }",
+      "command -v docker >/dev/null || { echo 'docker is not installed; the Coolify installer did not get that far' >&2; exit 1; }",
+      "test \"$(docker inspect --format '{{.State.Health.Status}}' coolify 2>/dev/null)\" = healthy || { echo 'the coolify container is not healthy; run: docker logs coolify' >&2; exit 1; }",
+      # The two commands docs/ops/RUNBOOK.md "Postgres restore" opens with.
+      # A restore that stops to apt-get something is a restore nobody has
+      # rehearsed.
+      "command -v rclone >/dev/null && command -v pg_restore >/dev/null || { echo 'rclone or pg_restore missing; the restore procedure cannot be followed on this VM' >&2; exit 1; }",
+    ]
   }
 }

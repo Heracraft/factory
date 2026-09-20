@@ -1,6 +1,15 @@
 variable "zone_id" {
   type        = string
   description = "Cloudflare zone id for herakraft.co."
+
+  # This module is only instantiated when manage_dns is true, so a null or
+  # placeholder zone id here means somebody turned DNS on without the two
+  # things it needs. Failing in the variable names both; failing inside the
+  # provider produces an authentication error that names neither.
+  validation {
+    condition     = var.zone_id != null && can(regex("^[0-9a-f]{32}$", var.zone_id))
+    error_message = "manage_dns is true, so cloudflare_zone_id must be the 32-character zone id for the zone, and CLOUDFLARE_API_TOKEN must be set in the environment (infra/README.md, \"DNS\")."
+  }
 }
 
 variable "records" {

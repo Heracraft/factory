@@ -8,6 +8,17 @@ variable "size" {
   type        = string
   description = "Azure VM size for the control plane."
   default     = "Standard_D4s_v7"
+
+  validation {
+    # The first production apply died with SkuNotAvailable after creating the
+    # NIC and the public IP: this subscription has every v5 and v6
+    # general-purpose size marked NotAvailableForSubscription in East US
+    # (DECISIONS I-39). A regex cannot know availability, but it can stop the
+    # one mistake that has actually happened, which is copying a v5 size name
+    # out of an older document.
+    condition     = can(regex("^Standard_[A-Z][0-9]+[a-z]*s_v[7-9]$", var.size))
+    error_message = "The control-plane size must be a v7 or later Standard size (DECISIONS I-39: v5 and v6 are NotAvailableForSubscription in East US). Confirm with `az vm list-skus --location eastus --size <name> --all` before widening this."
+  }
 }
 
 variable "zone" {
@@ -84,6 +95,57 @@ variable "coolify_install_url" {
     plane and one that installs whatever shipped this morning.
   EOT
   default     = "https://cdn.coollabs.io/coolify/install.sh"
+}
+
+variable "coolify_version" {
+  type        = string
+  description = <<-EOT
+    Coolify release installed at first boot, passed to the installer as its
+    one positional argument. Pinned rather than left at the installer's
+    `latest`, so that rebuilding this VM reproduces the control plane instead
+    of installing whatever shipped that morning. Current releases are listed
+    at https://cdn.coollabs.io/coolify/versions.json.
+  EOT
+  default     = "4.3.23"
+
+  validation {
+    condition     = can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", var.coolify_version))
+    error_message = "coolify_version is an exact release such as 4.3.23; `latest` is what this variable exists to avoid."
+  }
+}
+
+variable "coolify_autoupdate" {
+  type        = bool
+  description = <<-EOT
+    Let Coolify update itself. False: the control plane runs the api, the
+    dashboard, Logto and the platform Postgres, and an unattended upgrade of
+    the thing that deploys them is a deploy nobody reviewed. Upgrades are a
+    deliberate step in docs/ops/coolify.md.
+  EOT
+  default     = false
+}
+
+variable "backup_bucket" {
+  type        = string
+  description = "R2 bucket Coolify writes Postgres dumps to (infra/r2 output `bucket_name`). Used only by the repose-backup-check helper; Coolify's own destination is configured in its UI with the token, which is a human step (DECISIONS I-21)."
+  default     = "repose-pg-backups"
+}
+
+variable "backup_max_age_hours" {
+  type        = number
+  description = "repose-backup-check reports failure when the newest object in the bucket is older than this. 36 hours: a nightly dump plus a missed night's grace."
+  default     = 36
+}
+
+variable "ssh_private_key_path" {
+  type        = string
+  description = "Operator private key used by the readiness provisioner. The same key as the first entry of authorized_keys."
+}
+
+variable "connect_timeout" {
+  type        = string
+  description = "How long the readiness provisioner waits for SSH. Coolify's installer pulls Docker and several images."
+  default     = "20m"
 }
 
 variable "edge_wireguard_public_key" {

@@ -48,9 +48,28 @@ help:
 	@echo "make check                         fmt-check + validate + policy"
 	@echo "make bootstrap ENV=staging         apply infra/bootstrap (local state)"
 	@echo "make force-unlock ENV=... LOCK_ID=...  release a stuck state lease"
+	@echo ""
+	@echo "az login for Azure; CLOUDFLARE_API_TOKEN for ENV=r2 and for manage_dns=true"
+
+# The Cloudflare provider reads its token from the environment, and without
+# one it fails deep inside a resource read with an authentication error that
+# names neither the variable nor the step that creates it. ENV=r2 always needs
+# it; azure/ needs it only when manage_dns is true, which the roots default to
+# false for exactly this reason.
+.PHONY: require-cloudflare-token
+require-cloudflare-token:
+	@test -n "$${CLOUDFLARE_API_TOKEN:-}" || { \
+	  echo "CLOUDFLARE_API_TOKEN is not set. Create a token with R2 object read/write (or DNS edit on the zone) and export it; docs/ops/AZURE-SETUP.md step 10." >&2; \
+	  exit 1; }
+
+ifeq ($(ENV),r2)
+  TOKEN_GUARD := require-cloudflare-token
+else
+  TOKEN_GUARD :=
+endif
 
 .PHONY: init
-init:
+init: $(TOKEN_GUARD)
 	$(TOFU) -chdir=$(ROOT) init -input=false
 
 .PHONY: plan
