@@ -1,7 +1,13 @@
 // Package net wires a guest into the host network per
-// docs/interfaces/host-conventions.md: a tap on br-guests, membership in
-// the nftables `guests` set, a per-guest egress counter and rule in the
-// hostd-owned chain `guest_dyn`, and an HTB class shaping egress.
+// docs/interfaces/host-conventions.md "Network": a tap on br-guests attached
+// `isolated on learning off flood off` with a static FDB entry, membership
+// in the `bridge repose` table's `guests` set (mac . ip . tap, which is what
+// admits the guest's ARP and IPv4 frames to the host at all), a per-guest
+// egress counter and rule in the hostd-owned `inet repose` chain
+// `guest_dyn`, and an HTB class shaping egress. DECISIONS I-18 explains why
+// the admission lives in the bridge family: frames between two taps never
+// traverse the inet forward hook, and `learning off` plus the static FDB
+// entry is what stops a guest claiming another guest's MAC.
 package net
 
 import (
@@ -23,8 +29,11 @@ type Net interface {
 	TapExists(ctx context.Context, tap string) (bool, error)
 	AddTap(ctx context.Context, tap string) error
 	DelTap(ctx context.Context, tap string) error
-	AddGuestRules(ctx context.Context, guestID, ip, tap string) error
-	DelGuestRules(ctx context.Context, guestID, ip, tap string) error
+	// AddGuestRules registers the guest's (mac, ip, tap) tuple with the
+	// bridge (static FDB entry, `guests` set element) and creates its egress
+	// counter and rule.
+	AddGuestRules(ctx context.Context, guestID, ip, mac, tap string) error
+	DelGuestRules(ctx context.Context, guestID, ip, mac, tap string) error
 	Shape(ctx context.Context, tap string, mbit int) error
 	Unshape(ctx context.Context, tap string) error
 	// CounterBytes reads the guest's egress counter.
@@ -41,20 +50,23 @@ type Net interface {
 // CounterName is the nft counter for a guest.
 func CounterName(guestID string) string { return "egress-" + guestID }
 
-// Real drives ip, nft and tc through a shell.Runner.
+// Real drives ip, bridge, nft and tc through a shell.Runner.
 type Real struct {
-	Bridge string // br-guests
-	Family string // inet
-	Table  string // repose
-	Chain  string // guest_dyn
-	Set    string // guests
-	SysFS  string // /sys/class/net
-	R      shell.Runner
+	Bridge       string // br-guests
+	TapUser      string // hostd: the tap's owner (host-conventions.md)
+	Family       string // inet: the table holding guest_dyn and the counters
+	Table        string // repose
+	Chain        string // guest_dyn
+	BridgeFamily string // bridge: the table holding the guests set
+	BridgeTable  string // repose
+	Set          string // guests
+	SysFS        string // /sys/class/net
+	R            shell.Runner
 }
 
 // NewReal returns the documented defaults.
 func NewReal(r shell.Runner) *Real {
-	return &Real{Bridge: "br-guests", Family: "inet", Table: "repose", Chain: "guest_dyn", Set: "guests", SysFS: "/sys/class/net", R: r}
+	return &Real{Bridge: "br-guests", TapUser: "hostd", Family: "inet", Table: "repose", Chain: "guest_dyn", BridgeFamily: "bridge", BridgeTable: "repose", Set: "guests", SysFS: "/sys/class/net", R: r}
 }
 
 // TapExists implements Net.
@@ -67,18 +79,26 @@ func (n *Real) TapExists(ctx context.Context, tap string) (bool, error) {
 	return err == nil, err
 }
 
-// AddTap implements Net.
+// AddTap implements Net with exactly the attach sequence the host's
+// bridge table depends on: `isolated on` stops frames between taps at the
+// bridge, `learning off` (with the static FDB entry AddGuestRules adds)
+// stops a guest from claiming another guest's MAC, `flood off` keeps
+// broadcast off every other tap. vnet_hdr is what the runner contract in
+// guest-conventions.md expects of the tap.
 func (n *Real) AddTap(ctx context.Context, tap string) error {
 	ok, err := n.TapExists(ctx, tap)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		if _, err := n.R.Run(ctx, "ip", "tuntap", "add", "dev", tap, "mode", "tap"); err != nil {
+		if _, err := n.R.Run(ctx, "ip", "tuntap", "add", "dev", tap, "mode", "tap", "user", n.TapUser, "vnet_hdr"); err != nil {
 			return err
 		}
 	}
-	_, err = n.R.Run(ctx, "ip", "link", "set", "dev", tap, "master", n.Bridge, "up")
+	if _, err := n.R.Run(ctx, "ip", "link", "set", "dev", tap, "master", n.Bridge, "up"); err != nil {
+		return err
+	}
+	_, err = n.R.Run(ctx, "bridge", "link", "set", "dev", tap, "isolated", "on", "learning", "off", "flood", "off")
 	return err
 }
 
@@ -101,9 +121,17 @@ func (n *Real) counterExists(ctx context.Context, guestID string) (bool, error) 
 	return err == nil, err
 }
 
-// AddGuestRules implements Net.
-func (n *Real) AddGuestRules(ctx context.Context, guestID, ip, tap string) error {
-	if _, err := n.R.Run(ctx, "nft", "add", "element", n.Family, n.Table, n.Set, "{ "+ip+" . "+tap+" }"); err != nil {
+func (n *Real) element(ip, mac, tap string) string {
+	return "{ " + mac + " . " + ip + " . " + tap + " }"
+}
+
+// AddGuestRules implements Net. `bridge fdb replace` and `nft add element`
+// are both idempotent, so a re-run after a crash converges.
+func (n *Real) AddGuestRules(ctx context.Context, guestID, ip, mac, tap string) error {
+	if _, err := n.R.Run(ctx, "bridge", "fdb", "replace", mac, "dev", tap, "master", "static"); err != nil {
+		return err
+	}
+	if _, err := n.R.Run(ctx, "nft", "add", "element", n.BridgeFamily, n.BridgeTable, n.Set, n.element(ip, mac, tap)); err != nil {
 		return err
 	}
 	ok, err := n.counterExists(ctx, guestID)
@@ -122,11 +150,16 @@ func (n *Real) AddGuestRules(ctx context.Context, guestID, ip, tap string) error
 
 var handleRe = regexp.MustCompile(`counter name "([^"]+)".*# handle (\d+)`)
 
-// DelGuestRules implements Net: set element, the rule (found by handle) and
-// nothing else; the counter stays until DelCounter reads its final value.
-func (n *Real) DelGuestRules(ctx context.Context, guestID, ip, tap string) error {
-	_, err := n.R.Run(ctx, "nft", "delete", "element", n.Family, n.Table, n.Set, "{ "+ip+" . "+tap+" }")
+// DelGuestRules implements Net: set element, FDB entry, the rule (found by
+// handle) and nothing else; the counter stays until DelCounter reads its
+// final value. An element or entry that is already gone is not an error.
+func (n *Real) DelGuestRules(ctx context.Context, guestID, ip, mac, tap string) error {
+	_, err := n.R.Run(ctx, "nft", "delete", "element", n.BridgeFamily, n.BridgeTable, n.Set, n.element(ip, mac, tap))
 	var ee *shell.ExitError
+	if err != nil && !errors.As(err, &ee) {
+		return err
+	}
+	_, err = n.R.Run(ctx, "bridge", "fdb", "del", mac, "dev", tap, "master")
 	if err != nil && !errors.As(err, &ee) {
 		return err
 	}
@@ -240,7 +273,7 @@ type Fake struct {
 	mu       sync.Mutex
 	Taps     map[string]bool
 	Shaped   map[string]int
-	Elements map[string]string // ip . tap by guest
+	Elements map[string]string // mac . ip . tap by guest
 	Counters map[string]uint64
 	Stats    map[string][2]uint64 // tap -> rx, tx (guest view)
 	FailOn   map[string]error     // "tap", "rules", "shape"
@@ -278,21 +311,21 @@ func (f *Fake) DelTap(_ context.Context, tap string) error {
 	return nil
 }
 
-func (f *Fake) AddGuestRules(_ context.Context, guestID, ip, tap string) error {
+func (f *Fake) AddGuestRules(_ context.Context, guestID, ip, mac, tap string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Ops = append(f.Ops, "rules+"+guestID)
 	if err := f.FailOn["rules"]; err != nil {
 		return err
 	}
-	f.Elements[guestID] = ip + " . " + tap
+	f.Elements[guestID] = mac + " . " + ip + " . " + tap
 	if _, ok := f.Counters[guestID]; !ok {
 		f.Counters[guestID] = 0
 	}
 	return nil
 }
 
-func (f *Fake) DelGuestRules(_ context.Context, guestID, _, _ string) error {
+func (f *Fake) DelGuestRules(_ context.Context, guestID, _, _, _ string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Ops = append(f.Ops, "rules-"+guestID)

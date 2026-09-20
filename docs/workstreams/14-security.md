@@ -44,7 +44,7 @@ Consumes: every interface, read-only.
 | Boundary | Mechanism | Test in `test/isolation/` |
 |---|---|---|
 | Guest A cannot reach guest B | per-guest tap, nftables `guest_fwd` default drop, no shared L2 | from A: `ping`, `arping`, `nmap -p 22,5000` against B's IP all fail; `tcpdump` on B's tap sees nothing from A's MAC |
-| Guest cannot reach host | `guest_in` drop | from A: connect to host `.1` on 22, 9101, 8080 fails; `ping .1` fails |
+| Guest cannot reach host | `guest_in` drop (ICMP echo excepted at 5/s, DECISIONS I-18) | from A: connect to host `.1` on 22, 9101, 8080 fails; a `ping` flood of `.1` loses most packets |
 | Guest cannot reach IMDS | explicit drop of `169.254.169.254/32` in `guest_fwd` | `curl -H Metadata:true http://169.254.169.254/...` times out from A |
 | Guest cannot reach other hosts' guest ranges | drop `10.64.0.0/12` | connect to another host's guest IP fails |
 | Guest cannot write the store | virtio-fs exported read-only, `virtiofsd --sandbox chroot` as an unprivileged user | `touch /nix/store/x` fails; `ls /nix/store/.links` is absent or unreadable |
