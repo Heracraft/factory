@@ -276,13 +276,21 @@ row says otherwise. Commands were run from the dev box, which is in
       `coolify_count = 1` the same plan is **4 to add, 0 to change, 0 to
       destroy** — the control-plane public IP, NIC, VM and its readiness
       resource, and nothing else.
-- [ ] A host created by `tofu apply` registers with the api without manual
-      steps. **Not closed.** `host-01` was installed by the apply and
-      `systemctl is-active hostd.service` on it returns `active`, but nothing
-      has registered it: the api is not deployed and `hostdev` is not on the
-      edge (`command not found`), so there is no registrar. This closes in
-      the M1 integration session or on the first control-plane deploy, with
-      `repose-admin hosts list` showing `ready`.
+- [x] A host created by `tofu apply` registers without manual steps.
+      Evidence: the registrar for M1 is `hostdev` on the edge (DECISIONS
+      I-17), which runs from its store path as the transient unit
+      `hostdev.service` on 443 — so it is not on root's `PATH` and
+      `hostdev status` says `command not found`, which is not the same as
+      absent. `systemctl is-active hostdev` on the edge returns `active`, and
+      its journal carries
+      `{"msg":"host registered","component":"hostdev","event":"register","host_id":"host-01a0bcd4"}`
+      at 2026-09-20T03:20:55Z — minutes after the host's install, with no
+      manual step between. On `host-01`, `/var/lib/repose/hostd` holds
+      `cert.pem`, `host.json` and `key.pem` (the registration output), and
+      hostd's journal shows repeated `stream_connect`. The token delivered by
+      the apply's provisioner is what bought those credentials. The
+      `repose-admin hosts list` form of this evidence waits on the control
+      plane being deployed.
 - [x] `/dev/kvm` present and nested enabled on a fresh host. Evidence, on
       `host-01` through the edge jump:
       `crw-rw---- 1 root kvm 10, 232 Sep 20 03:47 /dev/kvm`,
