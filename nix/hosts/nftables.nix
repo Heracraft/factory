@@ -103,7 +103,7 @@ in
         chain guest_in {
           # Replies to connections the host opened: operators reach a guest
           # on 22 by jumping through the host until the gateway exists
-          # (DECISIONS I-70). `ct direction reply` is what keeps this from
+          # (DECISIONS I-74). `ct direction reply` is what keeps this from
           # being a way in: a guest's own first packet is the original
           # direction and falls through to the drop below, and a repeated
           # ICMP echo from a guest is original too, so the rate limit holds.

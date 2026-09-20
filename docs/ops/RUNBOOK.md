@@ -441,9 +441,9 @@ not exist. Operators reach a guest by jumping through the edge and the host:
    provider NIC, `repose.host.bootstrap.enable`, DECISIONS I-40).
 2. Nothing to do: `guest_in` admits replies to flows the host itself
    opened (`ct direction reply ct state established,related`, DECISIONS
-   I-70), so the host reaches a guest's sshd and a reload does not undo it.
+   I-74), so the host reaches a guest's sshd and a reload does not undo it.
    Guests still cannot open anything towards the host; on a host built
-   before I-70 the equivalent is the runtime
+   before I-74 the equivalent is the runtime
    `nft insert rule inet repose input iifname "br-guests" ct state established,related accept`,
    removed again with `nft -a list chain inet repose input` and
    `nft delete rule inet repose input handle <n>`.
@@ -1315,3 +1315,108 @@ reports the project `running`.
 3. Retry `repose run`/`attach` once more before escalating: the 60s
    window is deliberately short so an agent's user is not left staring at
    a hang; the guest is very likely still coming up.
+
+## StripePushBacklog
+
+`repose_api_billing_stripe_push_backlog_seconds` past six hours: the
+oldest `usage_hours` row with no `stripe_usage_record_id` is that old.
+`StripePushFail` catches a push that errors; this catches the quiet cases
+where nothing errors and nothing ships.
+
+Look in this order:
+
+1. Is Stripe configured at all? The api logs `billing_disabled` at start
+   when `STRIPE_SECRET_KEY` is unset, and every billing route answers
+   `503 billing_disabled` (DECISIONS I-16). Rows keep accruing and are
+   pushed once it is set; nothing is lost.
+2. Is the rollup running? `RollupLag` and `api: rollup or expiry not
+   running on one replica` above.
+3. Is Stripe refusing? `stripe_push_fail` lines carry the error. A key
+   that was rotated or a meter that was deleted are the two that produce a
+   steady failure.
+
+Then `repose-admin billing resync`, which re-pushes every pending row and
+prints how many moved. The push is idempotent twice over: a row with a
+record id is never re-sent, and the meter event identifier
+(`usage:<project>:<hour>:<part>`) is unique at Stripe's end as well, so a
+resync cannot double-bill.
+
+## BillingMismatch
+
+`repose_api_billing_mismatch_cents` above zero: the nightly reconciliation
+found `usage_hours` and Stripe disagreeing for at least one account. The
+job never fixes a difference, so the alert stays lit until a human acts.
+
+```
+repose-admin billing reconcile              # the current period, per account
+repose-admin billing reconcile --month 2026-10
+repose-admin billing explain <project> <2026-10-04T13>
+```
+
+The `UNPUSHED` column is the usual innocent explanation: rows that have
+not reached Stripe yet, which is `StripePushBacklog`, not a mismatch of
+substance. A difference that is not explained by unpushed rows means one
+of the two ledgers is wrong:
+
+- **usage_hours is right, Stripe is short.** Re-push with `billing
+  resync`. If the rows already carry record ids and Stripe still has not
+  got them, the identifiers were consumed by an earlier push that failed
+  after Stripe accepted it; issue the difference as an invoice item in the
+  Stripe dashboard rather than clearing the record ids.
+- **Stripe is right, usage_hours is wrong.** Do not edit `usage_hours`:
+  it is the ledger of record for what was used, and an invoice already
+  refers to it. Correct the customer with `repose-admin billing credit
+  <handle> <cents> "<reason>"`, which is what the credit ledger is for.
+
+Either way, nothing here is automatic and nothing is silent.
+
+## A user says they were overcharged
+
+`repose-admin billing explain <project> <hour>` prints every input and each
+step of the pricing rule for one hour: the samples the hour was built from,
+the period running totals before it, which cap applied and why, the storage
+remainder, the credit taken and what reached Stripe. Walk the hours they
+question; the arithmetic is the answer.
+
+The three that come up:
+
+- **"I stopped it and it still charged me."** Storage accrues for as long
+  as the project exists, on the *allocated* volume size (`PRICING.md`). The
+  `storage` line in `explain` shows it; the `guest` line will be zero.
+- **"It says more hours than I used."** A guest-hour is a minute of
+  `running` samples; `explain` prints how many samples the hour had. If it
+  shows fewer samples than seconds implies, that is the gap case and it
+  under-bills, never over.
+- **"I was charged after I hit the cap."** The cap is per project per
+  billing period and applies to guest-hours only; storage and egress are
+  always additive (§5.1). `explain` names the cap class and the period
+  total, which is where a mid-period class change shows up.
+
+A correction is a `repose-admin billing credit` row, never an edit to
+`usage_hours`.
+
+## StripeWebhookRejected
+
+Five or more deliveries in ten minutes failed signature verification
+(`stripe_webhook` lines with `result=bad_signature`; the body is never
+logged). Two causes, in order of likelihood:
+
+1. **The endpoint's API version does not match the deployed SDK.**
+   `stripe-go` refuses an event rendered under another version, because an
+   object it deserialises wrongly is a wrong amount. `go doc
+   github.com/stripe/stripe-go/v83.APIVersion` prints what the binary
+   expects; the endpoint's version is on its page in the Stripe dashboard.
+   Recreate the endpoint on the right version (`ops/AZURE-SETUP.md`
+   step 17). This is the one that appears right after an SDK upgrade.
+2. **`STRIPE_WEBHOOK_SECRET` is not this endpoint's signing secret.** A
+   second endpoint, or a test-mode secret on a live-mode deployment.
+
+While it fires, no invoice event is applied: accounts will not move to
+`past_due` or back to `active`. Stripe retries for up to three days, so
+fixing the secret inside that window replays everything; past it, resend
+the events from the endpoint's page in the dashboard.
+
+If neither is true, someone is posting at the endpoint. It is
+unauthenticated by design (the signature is the authentication) and a
+forged body cannot pass, so this is noise rather than an incident; the
+rate limit in front of the api is the answer if it becomes constant.

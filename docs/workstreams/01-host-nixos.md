@@ -199,7 +199,7 @@ by drain, `nixos-rebuild boot`, reboot, undrain. `system.autoUpgrade` is off.
   ICMP echo for debugging (rate-limited) and packets in the reply direction
   of a flow the host itself opened (`ct direction reply`, so a guest's own
   first packet never matches it), both deliberate exceptions recorded here
-  and in DECISIONS I-18 and I-70.
+  and in DECISIONS I-18 and I-74.
 - Every `Exec` into a guest and every host login is audited.
 
 ## 6. Failure modes

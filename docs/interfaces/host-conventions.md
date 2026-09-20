@@ -52,7 +52,7 @@ rotates keys does the same restart itself.
 
 | Command | Called by | Contract |
 |---|---|---|
-| `hostd --state /var/lib/repose/hostd --api-addr <addr> [--api-ca <pem>] (--blob-url <url> --blob-container <name> [--blob-identity <client id>] \| --snapshot-dir <dir>)` | `hostd.service` | the daemon. The api address, its CA (only for the `hostdev` stand-in, I-17) and the snapshot target come from `repose.host.apiAddr`, `apiCA` (a PEM in the store) or `apiCAFile` (a path on the host, I-71), and `snapshots.*` (DECISIONS I-40); hostd refuses to start without a snapshot target. The binary is on the operator's PATH: the `hostd status`, `hostd guests` and `hostd reconcile` of docs/ops/RUNBOOK.md are this same binary over the control socket. Exit status 3 means "join token used or invalid"; the unit does not restart on it. |
+| `hostd --state /var/lib/repose/hostd --api-addr <addr> [--api-ca <pem>] (--blob-url <url> --blob-container <name> [--blob-identity <client id>] \| --snapshot-dir <dir>)` | `hostd.service` | the daemon. The api address, its CA (only for the `hostdev` stand-in, I-17) and the snapshot target come from `repose.host.apiAddr`, `apiCA` (a PEM in the store) or `apiCAFile` (a path on the host, I-75), and `snapshots.*` (DECISIONS I-40); hostd refuses to start without a snapshot target. The binary is on the operator's PATH: the `hostd status`, `hostd guests` and `hostd reconcile` of docs/ops/RUNBOOK.md are this same binary over the control socket. Exit status 3 means "join token used or invalid"; the unit does not restart on it. |
 | `hostd register --state <dir> --join-token /run/repose/join-token` | `repose-register.service`, once, before hostd | exit 0 with `host.json`, `cert.pem`, `key.pem` written and the token deleted; exit 0 doing nothing if `host.json` exists; exit 3 on a rejected token; any other non-zero is retried after 30 s. |
 | `hostd audit-login` | PAM session hook on every sshd login | environment `PAM_TYPE`, `PAM_USER`, `PAM_RHOST`; writes an `audit_log` row (or a journal line until the api exists). Must be quick and never block a login. |
 | `hostd snapshot-all` | `repose-snapshot.timer` at 03:00 local | snapshots every running guest without the api. |
@@ -89,7 +89,7 @@ rotates keys does the same restart itself.
     `guest_in`), `guest_in` (replies to flows the host itself opened,
     matched as `ct direction reply ct state established,related`, so an
     operator can reach a guest on 22 by jumping through the host until the
-    gateway exists (DECISIONS I-70); ICMP echo to the host rate-limited to
+    gateway exists (DECISIONS I-74); ICMP echo to the host rate-limited to
     5/second; everything else dropped, and a guest's own first packet is
     the original direction, so nothing a guest opens reaches the host; no
     DHCP), `guest_fwd` (policy drop;

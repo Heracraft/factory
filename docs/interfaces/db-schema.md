@@ -9,9 +9,15 @@ trigger. Ids are `uuid` (UUIDv7 generated in Go). Money is `bigint` cents.
 ```sql
 users        (id pk, logto_sub text unique, handle text unique, email text,
               github_login text, tz text, notify_email bool, ntfy_url text,
-              stripe_customer_id text unique, billing_status text,  -- trial|active|past_due|suspended|exempt (I-16)
+              stripe_customer_id text unique, stripe_subscription_id text unique,
+              billing_anchor timestamptz,   -- signup; the billing period is counted from it (09 §5.1)
+              past_due_since timestamptz,   -- first failed invoice; the 3-day stop reads it
+              billing_status text,  -- trial|active|past_due|suspended|exempt (I-16)
               has_card bool, trial_credit_cents bigint, project_limit int, xl_limit int,
               suspended_at, suspended_reason text, cancelled_at, deleted_at)
+              -- trial_credit_cents is a projection of credit_ledger maintained by a
+              -- trigger inside the same transaction as the ledger row; the balance of
+              -- record is sum(credit_ledger.cents) (09 §5.3)
 
 hosts        (id pk, name text unique, hostname text, sku text, provider text, region text,
               mem_bytes bigint, vcpus int, pool_bytes bigint, guest_cidr cidr,
@@ -82,7 +88,18 @@ proc_samples (ts, project_id, comm text, cpu_ns bigint, rss bigint,
 usage_hours  (project_id fk, hour timestamptz, class text, running_seconds int,
               gb_alloc bigint, egress_bytes bigint, cost_cents bigint,
               guest_cents bigint, storage_cents bigint, egress_cents bigint, storage_remainder bigint,
-              stripe_usage_record_id text null, gap bool, primary key (project_id, hour))
+              period_start timestamptz, period_end timestamptz,  -- the billing period the hour falls in
+              credit_cents bigint,          -- taken from credit_ledger; cost_cents - credit_cents is pushed
+              price_version text,           -- PRICING.md "Changing prices"; rows are never repriced
+              stripe_usage_record_id text null,  -- 'usage:<project_id>:<hour>', or 'exempt' (I-16)
+              gap bool, primary key (project_id, hour))
+
+credit_ledger (id pk, user_id fk, cents bigint, reason text, ref text, created_at)
+              -- reason: trial|usage|goodwill|refund|adjustment; ref is
+              -- '<project_id>:<hour>' for a usage debit, unique among reason='usage'
+
+stripe_events (id text pk, type text, received_at, processed_at, error text)
+              -- Stripe's event.id is the dedupe key for webhook replays (09 §5.6)
 
 invoices     (id pk, user_id fk, stripe_invoice_id text unique, period_start,
               period_end, total_cents, status text)
@@ -102,10 +119,12 @@ schema_migrations (version int pk, name text, applied_at)
 Indexes: `projects(user_id)`, `projects(host_id) where state in ('running',
 'starting')`, `events(project_id, ts desc)`, `snapshots(project_id, taken_at
 desc)`, `certificates(user_id) where revoked_at is null`, `usage_hours(hour)`,
+`usage_hours(project_id, period_start)`, `usage_hours(hour) where
+stripe_usage_record_id is null`, `credit_ledger(user_id, created_at)`,
 `ops(state) where state in ('pending','running')`, `events_outbox(next_at)`.
 
-Migrations `0001_init` and `0002_outbox_sessions_settings` create all of
-this; `repose-admin db migrate --down 1` reverts one. Partitions of the
+Migrations `0001_init`, `0002_outbox_sessions_settings` and `0003_billing`
+create all of this; `repose-admin db migrate --down 1` reverts one. Partitions of the
 sample tables are created for the current and next month at start and by
 the daily job, which also drops partitions past retention.
 
@@ -124,3 +143,8 @@ Rules:
   so the effective retention is 90 or 30 days plus up to a month.
 - Secrets values never appear in `audit_log.detail` or anywhere but
   `secrets.ciphertext`.
+- `credit_ledger` is append-only. A usage debit that has to change is
+  corrected by an `adjustment` row referring to the same `ref`, never by
+  updating or deleting the original; `usage_hours` is the ledger of record
+  for what was used and is corrected the same way, with a `credit` row
+  rather than an edit (`ops/RUNBOOK.md` "BillingMismatch").

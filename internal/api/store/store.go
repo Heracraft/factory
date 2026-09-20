@@ -25,29 +25,36 @@ type Querier interface {
 
 // User is a users row.
 type User struct {
-	ID               uuid.UUID  `db:"id"`
-	LogtoSub         *string    `db:"logto_sub"`
-	Handle           string     `db:"handle"`
-	Email            *string    `db:"email"`
-	GithubLogin      *string    `db:"github_login"`
-	TZ               *string    `db:"tz"`
-	NotifyEmail      bool       `db:"notify_email"`
-	NtfyURL          *string    `db:"ntfy_url"`
-	StripeCustomerID *string    `db:"stripe_customer_id"`
-	BillingStatus    string     `db:"billing_status"`
-	HasCard          bool       `db:"has_card"`
-	TrialCreditCents int64      `db:"trial_credit_cents"`
-	ProjectLimit     int        `db:"project_limit"`
-	XLLimit          int        `db:"xl_limit"`
-	SuspendedAt      *time.Time `db:"suspended_at"`
-	SuspendedReason  *string    `db:"suspended_reason"`
-	CancelledAt      *time.Time `db:"cancelled_at"`
-	DeletedAt        *time.Time `db:"deleted_at"`
-	CreatedAt        time.Time  `db:"created_at"`
-	UpdatedAt        time.Time  `db:"updated_at"`
+	ID               uuid.UUID `db:"id"`
+	LogtoSub         *string   `db:"logto_sub"`
+	Handle           string    `db:"handle"`
+	Email            *string   `db:"email"`
+	GithubLogin      *string   `db:"github_login"`
+	TZ               *string   `db:"tz"`
+	NotifyEmail      bool      `db:"notify_email"`
+	NtfyURL          *string   `db:"ntfy_url"`
+	StripeCustomerID *string   `db:"stripe_customer_id"`
+	// StripeSubscriptionID, BillingAnchor and PastDueSince are workstream
+	// 09's (migration 0003): the subscription carrying the three metered
+	// prices, the signup anchor the billing period is counted from, and
+	// when the account first failed a payment.
+	StripeSubscriptionID *string    `db:"stripe_subscription_id"`
+	BillingAnchor        *time.Time `db:"billing_anchor"`
+	PastDueSince         *time.Time `db:"past_due_since"`
+	BillingStatus        string     `db:"billing_status"`
+	HasCard              bool       `db:"has_card"`
+	TrialCreditCents     int64      `db:"trial_credit_cents"`
+	ProjectLimit         int        `db:"project_limit"`
+	XLLimit              int        `db:"xl_limit"`
+	SuspendedAt          *time.Time `db:"suspended_at"`
+	SuspendedReason      *string    `db:"suspended_reason"`
+	CancelledAt          *time.Time `db:"cancelled_at"`
+	DeletedAt            *time.Time `db:"deleted_at"`
+	CreatedAt            time.Time  `db:"created_at"`
+	UpdatedAt            time.Time  `db:"updated_at"`
 }
 
-const userCols = `id, logto_sub, handle, email, github_login, tz, notify_email, ntfy_url, stripe_customer_id, billing_status, has_card, trial_credit_cents, project_limit, xl_limit, suspended_at, suspended_reason, cancelled_at, deleted_at, created_at, updated_at`
+const userCols = `id, logto_sub, handle, email, github_login, tz, notify_email, ntfy_url, stripe_customer_id, stripe_subscription_id, billing_anchor, past_due_since, billing_status, has_card, trial_credit_cents, project_limit, xl_limit, suspended_at, suspended_reason, cancelled_at, deleted_at, created_at, updated_at`
 
 // Project is a projects row.
 type Project struct {

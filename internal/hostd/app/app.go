@@ -135,7 +135,7 @@ func EnsureIdentity(ctx context.Context, o Options, log *slog.Logger, r shell.Ru
 		case errors.Is(err, register.ErrNoToken):
 			// The token may be gone because repose-register.service used it:
 			// it writes the identity and exits, and nothing else tells a
-			// hostd that started before the token arrived (DECISIONS I-72).
+			// hostd that started before the token arrived (DECISIONS I-76).
 			if id, lerr := register.Load(o.StateDir); lerr == nil {
 				log.Info("registered", "event", "register", "host_id", id.Host.HostID)
 				return id, nil

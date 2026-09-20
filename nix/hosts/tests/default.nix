@@ -229,7 +229,7 @@ in
 
       with subtest("the host reaches a guest on 22, and only in that direction"):
           # What the runbook's manual `nft insert` used to do until this rule
-          # was declared (DECISIONS I-70): an operator jumps edge -> host ->
+          # was declared (DECISIONS I-74): an operator jumps edge -> host ->
           # guest for SSH while the gateway does not exist yet.
           # Absolute paths: a transient unit gets systemd's PATH, and
           # `ip netns exec` execs its command from that.
@@ -266,7 +266,7 @@ in
           host.succeed(f"{ga} curl -sf -m5 http://203.0.113.9/ >/dev/null")
           host.fail(f"{ga} ping -c1 -W2 10.64.4.3")
           # host -> guest is declared in the ruleset, not inserted by hand,
-          # so it comes back with the reload (DECISIONS I-70).
+          # so it comes back with the reload (DECISIONS I-74).
           host.succeed("ping -c1 -W2 10.64.4.2")
 
       with subtest("sshd and node_exporter listen on wg0 only; nothing on the provider NIC"):
@@ -481,7 +481,7 @@ in
           # hostd retries registration on its own every 30 s, and the token is
           # one-shot: stopped here, the unit is its only claimant, which is
           # also why the unit is ordered before hostd on a host. That a
-          # running hostd takes an identity the unit wrote is DECISIONS I-72,
+          # running hostd takes an identity the unit wrote is DECISIONS I-76,
           # pinned by internal/hostd/app's TestEnsureIdentityTakesTheIdentity-
           # TheUnitWrote.
           host.succeed("systemctl stop hostd.service")

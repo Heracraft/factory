@@ -102,12 +102,25 @@ inserts `+1000 "trial"`. Hourly usage first debits the ledger (a negative
 row per hour with `ref = usage_hours pk`) until the balance is zero, and only
 the remainder becomes a Stripe usage record. A user with a positive balance
 and a card is `trial`; when the balance hits zero they become `active`
-and the next hour is billed. `repose-admin billing credit` adds rows for
+and the next hour is billed — the transition happens in the same
+transaction as the debit that exhausted the balance, because the card gate
+refuses a `trial` account with no credit (`trial_depleted`) and an account
+that merely used its ten dollars must not be locked out of its own guests. `repose-admin billing credit` adds rows for
 goodwill or refunds. Balance is `sum(cents)`, computed with an index, never
 cached on `users` (the cached column was rejected because two hourly jobs
-racing would drift it).
+racing would drift it). `users.trial_credit_cents` remains as a *projection*
+of the ledger, updated by an `after insert` trigger inside the same
+transaction and under the same row lock as the ledger row, so it cannot
+drift; `sum(cents)` is still the balance of record and is what `Balance`
+returns (DECISIONS I-78).
 
 ### 5.4 Hourly rollup
+
+The rollup is `internal/billing.Rollup` (DECISIONS I-78; workstream 05 had
+built it as `internal/api/meter.Rollup` against the calendar month).
+`usage_hours` rows carry the `period_start` and `period_end` they were
+priced in, so the running totals a later hour reads cannot drift from the
+rule that priced the earlier ones.
 
 A job at `:05` past each hour, idempotent, keyed on `(project_id, hour)`:
 
@@ -140,24 +153,43 @@ A job at `:05` past each hour, idempotent, keyed on `(project_id, hour)`:
 
 ### 5.5 Stripe objects
 
-One product `repose`, four metered prices in USD with `usage_type =
-metered`, `aggregate_usage = sum`, billing scheme per unit at 1 cent:
-`compute_cents`, `storage_cents`, `egress_cents`, `credit_cents` (a negative
-line is not allowed, so trial credit is not a Stripe line; the credit is
-consumed before the usage record is created, and the invoice shows a
-"trial credit applied" memo line via `invoice.description`). Each user has one
-subscription with those four prices, created at first card attach, period
-anchored then. Usage records are pushed per `usage_hours` row with
-`timestamp = hour`, `action = set`? No: `action = increment` with
-idempotency key `usage:<project_id>:<hour>` and the record id stored in
-`usage_hours.stripe_usage_record_id`. A row with a stored id is never
-re-pushed. The three cost parts are pushed to their three prices separately
-so the invoice has three lines per period.
+**As built (DECISIONS I-77).** Stripe retired the `usage_type = metered` /
+`aggregate_usage = sum` subscription-item usage records this section was
+written against; the shape below is the same contract expressed with
+billing meters, which is what the current API and `stripe-go` v83 offer.
+
+One product `repose`, three **meters** — `repose_compute_cents`,
+`repose_storage_cents`, `repose_egress_cents` — and three metered prices in
+USD, one per meter, billing scheme per unit at 1 cent. Each user has one
+subscription carrying those three prices, created at first card attach with
+the period anchored then (`users.stripe_subscription_id`,
+`users.billing_anchor`). Trial credit is not a Stripe line, because a
+negative line is not allowed: the credit is consumed before the push and
+the invoice shows a "trial credit applied" memo line.
+
+Each `usage_hours` row is pushed as up to three meter events with
+`timestamp = hour`, `payload.stripe_customer_id`, `payload.value` in cents,
+and `identifier = usage:<project_id>:<hour>:<compute|storage|egress>`, which
+is the idempotency key: Stripe enforces it as unique over a rolling window
+of at least 24 hours, and it is sent as the HTTP idempotency key as well.
+`usage_hours.stripe_usage_record_id` holds `usage:<project_id>:<hour>` and a
+row that has one is never pushed again. A part worth zero cents is not
+pushed at all. An exempt account's rows are marked `exempt` instead
+(DECISIONS I-16).
 
 The rejected alternative was one price per class with per-hour quantities;
 it makes the cap impossible to express in Stripe and doubles the number of
 prices whenever a class is added. Cents as the unit keeps Stripe a ledger of
 amounts we computed.
+
+The Stripe configuration is `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+`STRIPE_PRICE_{COMPUTE,STORAGE,EGRESS}`, `STRIPE_METER_{COMPUTE,STORAGE,
+EGRESS}` (the event names, defaulted to the three above) and
+`STRIPE_METER_ID_{COMPUTE,STORAGE,EGRESS}` (the `mtr_...` ids reconciliation
+reads summaries from). A secret key without the webhook secret and the three
+prices is refused at start rather than silently billing nothing; with no
+secret key at all the api starts normally and the billing routes answer
+`503 billing_disabled`. `ops/AZURE-SETUP.md` step 17 creates them.
 
 ### 5.6 Invoices and dunning
 
@@ -211,14 +243,14 @@ invoice never disagree.
 
 | Situation | Outcome |
 |---|---|
-| Stripe unreachable during the hourly push | `usage_hours` row exists with null record id; the next hourly run retries every null row older than 5 minutes; alert `stripe_push_backlog` if any row is older than 6 hours |
+| Stripe unreachable during the hourly push | `usage_hours` row exists with null record id; the next hourly run retries every null row; alert `StripePushBacklog` (`repose_api_billing_stripe_push_backlog_seconds`) if any row is older than 6 hours |
 | Duplicate webhook delivery | ignored by `stripe_events` primary key |
 | Webhook signature invalid | 400, logged with the event type only, alert after 5 in 10 minutes |
 | Sample gap for a running guest | under-billed minutes, `billing_gap` metric, never estimated |
 | Class changed mid-period | cap rule 5.1, `explain` shows it |
 | Card removed while guests run | `has_card = false`, guests keep running until invoice failure path; starts blocked with `payment_required` |
 | Trial balance negative (race) | impossible by construction: debit inside the same transaction as the `usage_hours` insert with `select ... for update` on the user row |
-| Reconciliation mismatch | alert with details; humans decide; `credit` for the fix |
+| Reconciliation mismatch | alert `BillingMismatch` (`repose_api_billing_mismatch_cents`) with details; humans decide; `credit` for the fix |
 | Suspended user calls start | `payment_required` with `detail.reason = suspended` |
 
 ## 7. Testing
@@ -285,10 +317,14 @@ logged as an audit event when flipped.
       test invoice with tax line.
 - [ ] Live-mode charge of the owner's card matches `explain`. Evidence:
       invoice id and the arithmetic pasted.
-- [ ] Metrics `repose_billing_rollup_duration_seconds`,
-      `repose_billing_gap_minutes_total`,
-      `repose_billing_stripe_push_backlog`, `repose_billing_mismatch_cents`
-      exist. Evidence: `/metrics` scrape.
+- [ ] Metrics for the rollup duration, the sample gap, the Stripe push
+      backlog and the reconciliation difference exist. They carry the
+      `repose_api_*` prefix every api family uses (DECISIONS I-49, I-60,
+      I-78), not the `repose_billing_*` names this list was written with:
+      `repose_api_rollup_duration_seconds`,
+      `repose_api_billing_gap_minutes_total`,
+      `repose_api_billing_stripe_push_backlog_seconds`,
+      `repose_api_billing_mismatch_cents`. Evidence: `/metrics` scrape.
 - [ ] `PRICING.md` and `features/pricing.md` match the implementation.
       Evidence: implementer re-read.
 - [ ] `ops/RUNBOOK.md` has: push backlog, mismatch alert, user says they

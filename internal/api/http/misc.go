@@ -130,7 +130,7 @@ func (s *Server) usage(w http.ResponseWriter, r *http.Request) error {
 	if from.IsZero() {
 		from = to.AddDate(0, -1, 0)
 	}
-	rows, err := s.d.Pool.Query(r.Context(), `select u.project_id, p.slug, date_trunc('day', u.hour) as day, u.class, sum(u.running_seconds), sum(u.gb_alloc), sum(u.egress_bytes), sum(u.cost_cents)
+	rows, err := s.d.Pool.Query(r.Context(), `select u.project_id, p.slug, date_trunc('day', u.hour) as day, u.class, sum(u.running_seconds), sum(u.gb_alloc), sum(u.egress_bytes), sum(u.cost_cents), sum(u.credit_cents)
 		from usage_hours u join projects p on p.id = u.project_id where p.user_id = $1 and u.hour >= $2 and u.hour < $3 group by u.project_id, p.slug, day, u.class order by day, p.slug`, u.ID, from, to)
 	if err != nil {
 		return err
@@ -140,14 +140,14 @@ func (s *Server) usage(w http.ResponseWriter, r *http.Request) error {
 	for rows.Next() {
 		var pid, slug, class string
 		var day time.Time
-		var running, gb, egress, cost int64
-		if err := rows.Scan(&pid, &slug, &day, &class, &running, &gb, &egress, &cost); err != nil {
+		var running, gb, egress, cost, credit int64
+		if err := rows.Scan(&pid, &slug, &day, &class, &running, &gb, &egress, &cost, &credit); err != nil {
 			return err
 		}
 		hours := map[string]float64{"small": 0, "large": 0, "xl": 0}
 		hours[class] = float64(running) / 3600
 		out = append(out, map[string]any{"project_id": pid, "slug": slug, "day": day.Format("2006-01-02"), "guest_hours": hours,
-			"gb_months": float64(gb) / 720, "egress_gb": float64(egress) / (1 << 30), "cost_cents": cost})
+			"gb_months": float64(gb) / 720, "egress_gb": float64(egress) / (1 << 30), "cost_cents": cost, "credit_cents": credit})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"from": from, "to": to, "days": out})
 	return rows.Err()

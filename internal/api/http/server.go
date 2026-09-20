@@ -63,7 +63,18 @@ type Deps struct {
 	Registry *prometheus.Registry
 	Log      *slog.Logger
 	Billing  billing.Portal
-	Gateway  Gateway
+	// Webhooks applies Stripe events (09-billing.md §5.6); nil makes
+	// POST /billing/webhook answer 503 billing_disabled.
+	Webhooks *billing.Webhooks
+	// Customers creates the Stripe customer at first GET /me (§5.2); nil
+	// when Stripe is not configured.
+	Customers interface {
+		EnsureCustomer(ctx context.Context, userID uuid.UUID) (string, error)
+	}
+	// BillingEnforce is BILLING_ENFORCE (§8): false keeps metering and
+	// pushing but stops blocking starts.
+	BillingEnforce bool
+	Gateway        Gateway
 	// Migrations reports pending migrations for /healthz.
 	Migrations func(ctx context.Context) (pending int, err error)
 	// Limits override the documented per-minute rate limits (tests).

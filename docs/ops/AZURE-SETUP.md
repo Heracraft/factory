@@ -97,8 +97,9 @@ a day.
     issuer URL; agents need them as environment variables, never in git.
 
 13. **Stripe.** An account in test mode is enough to start. Copy the test
-    secret key and set up a webhook endpoint later when the API exists.
-    Live mode is a milestone M4 gate, not a prerequisite.
+    secret key. The objects the api needs are step 17, once there is a
+    hostname to point a webhook at. Live mode is a milestone M4 gate, not a
+    prerequisite.
 
 14. **Resend.** Verify the sending domain (`herakraft.co` or
     `repose.herakraft.co`) and copy an API key.
@@ -115,6 +116,43 @@ a day.
     push to `main` and hosts substitute the agents instead of fetching
     upstream (DECISIONS I-46). Until then builds fetch the release
     binaries themselves, which is slower, not wrong.
+
+17. **Stripe objects and the webhook** (after the api has a hostname; do it
+    in test mode first and repeat in live mode before launch). In the Stripe
+    dashboard, or with the CLI:
+
+    - One **product**, `repose`.
+    - Three **billing meters**, event names `repose_compute_cents`,
+      `repose_storage_cents`, `repose_egress_cents`, each aggregating
+      `sum` over the payload key `value`, keyed on `stripe_customer_id`.
+      Note each meter's `mtr_...` id as well as its event name.
+    - Three **prices** on the product, one per meter, USD, recurring
+      monthly, usage-based, **$0.01 per unit** — the unit is one cent,
+      because the platform computes the amounts and Stripe adds nothing of
+      its own (DECISIONS I-77).
+    - A **webhook endpoint** at
+      `https://api.repose.herakraft.co/v1/billing/webhook` subscribed to
+      `invoice.paid`, `invoice.payment_failed`,
+      `customer.subscription.deleted`, `setup_intent.succeeded`,
+      `payment_method.detached` and `charge.refunded`. **Create it with the
+      API version the deployed `stripe-go` pins** (`2025-10-29.clover`
+      today; `go doc github.com/stripe/stripe-go/v83.APIVersion` prints the
+      current one). An endpoint on another version has every delivery
+      rejected as a version mismatch, which looks like a silent billing
+      outage. Copy the signing secret.
+    - **Stripe Tax** on, and the customer address marked required on the
+      card form, so invoices carry a tax line (09-billing.md §5.9).
+    - The **customer portal** configured to allow updating the payment
+      method and the billing address.
+
+    Then set, in Coolify, the variables `ops/coolify/api.env.example`
+    lists under "Billing": `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+    `STRIPE_PRICE_{COMPUTE,STORAGE,EGRESS}` and
+    `STRIPE_METER_ID_{COMPUTE,STORAGE,EGRESS}`. Until `STRIPE_SECRET_KEY`
+    is set the api runs normally and the billing routes answer
+    `503 billing_disabled` (DECISIONS I-16); with it set but the webhook
+    secret or the prices missing, the api refuses to start rather than
+    billing nothing quietly.
 
 ## What you do not need to do
 

@@ -393,3 +393,93 @@ tests:
       - eval_time: 11m
         alertname: StripePushFail
         exp_alerts: []
+
+  # --- StripePushBacklog ---------------------------------------------------
+  - interval: 1m
+    name: StripePushBacklog fires when the oldest unbilled hour passes six hours
+    input_series:
+      - series: 'repose_api_billing_stripe_push_backlog_seconds{job="api",instance="10.255.0.9:9103"}'
+        values: "25200x40"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: StripePushBacklog
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: api
+              instance: 10.255.0.9:9103
+            exp_annotations:
+              summary: "the oldest unbilled hour is 7h 0m 0s old"
+              description: "usage_hours rows are not reaching Stripe. `repose-admin billing resync` re-pushes them; until they land the invoice undercharges."
+              runbook: "docs/ops/RUNBOOK.md#stripepushbacklog"
+
+  - interval: 1m
+    name: StripePushBacklog stays quiet while the push keeps up
+    input_series:
+      - series: 'repose_api_billing_stripe_push_backlog_seconds{job="api",instance="10.255.0.9:9103"}'
+        values: "0 3600 0 3600 0 3600 0 3600 0 3600 0 3600 0 3600 0 3600 0 3600 0 3600 0"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: StripePushBacklog
+        exp_alerts: []
+
+  # --- BillingMismatch -----------------------------------------------------
+  - interval: 1m
+    name: BillingMismatch fires on a difference the reconciliation reported
+    input_series:
+      - series: 'repose_api_billing_mismatch_cents{job="api",instance="10.255.0.9:9103"}'
+        values: "0 0 500x40"
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: BillingMismatch
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: api
+              instance: 10.255.0.9:9103
+            exp_annotations:
+              summary: "usage_hours and Stripe differ by 500 cents"
+              description: "The reconciliation reported and fixed nothing. `repose-admin billing reconcile` names the accounts and `billing explain <project> <hour>` shows one row."
+              runbook: "docs/ops/RUNBOOK.md#billingmismatch"
+
+  - interval: 1m
+    name: BillingMismatch stays quiet when the ledgers agree
+    input_series:
+      - series: 'repose_api_billing_mismatch_cents{job="api",instance="10.255.0.9:9103"}'
+        values: "0x40"
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: BillingMismatch
+        exp_alerts: []
+
+  # --- StripeWebhookRejected -----------------------------------------------
+  - interval: 1m
+    name: StripeWebhookRejected fires on five rejections in ten minutes
+    input_series:
+      - series: 'repose_api_stripe_webhook_total{job="api",instance="10.255.0.9:9103",result="bad_signature"}'
+        values: "0 1 2 3 4 5 6 7 8 9 10 11"
+      - series: 'repose_api_stripe_webhook_total{job="api",instance="10.255.0.9:9103",result="ok"}'
+        values: "0+2x11"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: StripeWebhookRejected
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: api
+              instance: 10.255.0.9:9103
+              result: bad_signature
+            exp_annotations:
+              summary: "10 Stripe webhook deliveries rejected in ten minutes"
+              description: "Check STRIPE_WEBHOOK_SECRET against the endpoint's signing secret, and that the endpoint's API version matches the deployed SDK (ops/AZURE-SETUP.md step 17). While this fires, invoice events are not being applied."
+              runbook: "docs/ops/RUNBOOK.md#stripewebhookrejected"
+
+  - interval: 1m
+    name: StripeWebhookRejected ignores a single stray rejection
+    input_series:
+      - series: 'repose_api_stripe_webhook_total{job="api",instance="10.255.0.9:9103",result="bad_signature"}'
+        values: "0 0 1 1 1 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: StripeWebhookRejected
+        exp_alerts: []

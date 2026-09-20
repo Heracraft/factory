@@ -71,7 +71,7 @@ func (s *Server) restoreSnapshot(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 	start := body.Start == nil || *body.Start
-	if err := billingGate(u); err != nil {
+	if err := s.billingGate(u); err != nil {
 		return err
 	}
 	target := src

@@ -55,6 +55,13 @@ func newEnv(t *testing.T) *env {
 }
 
 func newEnvLimits(t *testing.T, limits *httpapi.RateLimits) *env {
+	return newEnvWith(t, limits, nil)
+}
+
+// newEnvWith lets a test change the dependencies before the server is
+// built (workstream 09 turns billing enforcement off and plugs the Stripe
+// webhook handler in this way).
+func newEnvWith(t *testing.T, limits *httpapi.RateLimits, tweak func(*httpapi.Deps)) *env {
 	t.Helper()
 	h := apitest.New(t, apitest.Options{})
 	lf := logto.New(aud)
@@ -74,17 +81,21 @@ func newEnvLimits(t *testing.T, limits *httpapi.RateLimits) *env {
 		t.Fatal(err)
 	}
 	e := &env{h: h, logto: lf, logs: logs, sent: sent, unsub: unsub}
-	e.srv = httpapi.New(httpapi.Deps{
+	deps := httpapi.Deps{
 		Pool: h.Pool, Verifier: auth.NewVerifier(lf.Issuer(), aud, nil), Users: auth.NewProvisioner(h.Pool, auth.NewLogtoManagement(lf.Issuer(), "m2m", "s", nil)),
 		CA: h.CA, Secrets: h.Secrets, Engine: h.Engine, Logs: h.Logs, Events: h.Events, Parser: parser, Metrics: h.Metrics, Registry: reg, Log: log,
 		Outbox:  notify.New(h.Pool, map[string]notify.Sender{"email": sender, "ntfy": sender}, h.Metrics, log),
 		Unsub:   unsub,
-		Gateway: httpapi.Gateway{Host: "ssh.test", Port: 22}, Limits: limits,
+		Gateway: httpapi.Gateway{Host: "ssh.test", Port: 22}, Limits: limits, BillingEnforce: true,
 		Migrations: func(ctx context.Context) (int, error) {
 			st, err := db.MigrateStatus(ctx, h.Pool)
 			return len(st.Pending), err
 		},
-	})
+	}
+	if tweak != nil {
+		tweak(&deps)
+	}
+	e.srv = httpapi.New(deps)
 	e.srv.SetReady(true)
 	e.api = httptest.NewServer(e.srv.Handler())
 	e.internal = httptest.NewServer(e.srv.InternalHandler())
@@ -137,6 +148,29 @@ func (e *env) do(t *testing.T, token, method, path string, body any) resp {
 		_ = json.Unmarshal(raw, &out.body)
 	} else if len(raw) > 0 && raw[0] == '[' {
 		_ = json.Unmarshal(raw, &out.list)
+	}
+	return out
+}
+
+// doRaw posts a body verbatim with the given headers and no bearer token:
+// the Stripe webhook route authenticates with its own header, so it cannot
+// be exercised through do().
+func (e *env) doRaw(t *testing.T, method, path string, body []byte, headers map[string]string) resp {
+	t.Helper()
+	req, _ := http.NewRequest(method, e.api.URL+"/v1"+path, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	raw, _ := io.ReadAll(res.Body)
+	out := resp{status: res.StatusCode, raw: raw, hdr: res.Header}
+	if len(raw) > 0 && raw[0] == '{' {
+		_ = json.Unmarshal(raw, &out.body)
 	}
 	return out
 }

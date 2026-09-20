@@ -147,6 +147,133 @@
     },
     {
       "type": "stat",
+      "title": "Oldest unbilled hour",
+      "description": "The age of the oldest usage_hours row with no Stripe record. Past six hours is StripePushBacklog; `repose-admin billing resync` re-pushes them (09-billing.md \u00a76).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max(repose_api_billing_stripe_push_backlog_seconds)",
+          "legendFormat": "backlog",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 3600
+              },
+              {
+                "color": "red",
+                "value": 21600
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "Reconciliation difference",
+      "description": "The largest usage_hours minus Stripe difference the nightly reconciliation found. It reports and never fixes; `repose-admin billing explain` shows one row (09-billing.md \u00a75.7).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max(repose_api_billing_mismatch_cents)",
+          "legendFormat": "cents",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "id": 4
+    },
+    {
+      "type": "stat",
       "title": "Cost today",
       "description": "Across every project, from usage_hours. A project's own figure is capped at its monthly price (small 49, large 99, xl 199).",
       "datasource": {
@@ -197,10 +324,10 @@
       "gridPos": {
         "h": 6,
         "w": 6,
-        "x": 12,
-        "y": 0
+        "x": 0,
+        "y": 6
       },
-      "id": 3
+      "id": 5
     },
     {
       "type": "stat",
@@ -253,10 +380,80 @@
       "gridPos": {
         "h": 6,
         "w": 6,
-        "x": 18,
-        "y": 0
+        "x": 6,
+        "y": 6
       },
-      "id": 4
+      "id": 6
+    },
+    {
+      "type": "timeseries",
+      "title": "Trial credit consumed per hour",
+      "description": "The trial is consumed at the same rates as paid usage, so it is also the first test of the meters (DECISIONS R4-8). Only the billed half reaches Stripe.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "repose-postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "repose-postgres"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "select hour as time, sum(credit_cents) / 100.0 as credit_usd, sum(cost_cents - credit_cents) / 100.0 as billed_usd from usage_hours where $__timeFilter(hour) group by 1 order by 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0
+          },
+          "unit": "currencyUSD",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "id": 7
     },
     {
       "type": "timeseries",
@@ -324,9 +521,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 6
+        "y": 14
       },
-      "id": 5
+      "id": 8
     },
     {
       "type": "timeseries",
@@ -395,9 +592,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 6
+        "y": 14
       },
-      "id": 6
+      "id": 9
     },
     {
       "type": "table",
@@ -471,9 +668,9 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 14
+        "y": 22
       },
-      "id": 7
+      "id": 10
     },
     {
       "type": "timeseries",
@@ -541,9 +738,9 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 23
+        "y": 31
       },
-      "id": 8
+      "id": 11
     }
   ]
 }

@@ -130,8 +130,10 @@ func (s *Server) userProject(r *http.Request) (*store.Project, error) {
 }
 
 // billingGate is the card and status check before compute (R2-10, I-16).
-func billingGate(u *store.User) error {
-	if u.BillingStatus == "exempt" {
+// With BILLING_ENFORCE=false it lets everything through: metering and the
+// Stripe push carry on, but nothing is blocked (09-billing.md §8).
+func (s *Server) billingGate(u *store.User) error {
+	if u.BillingStatus == "exempt" || !s.d.BillingEnforce {
 		return nil
 	}
 	switch u.BillingStatus {
@@ -184,7 +186,7 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) error {
 	if body.Agent != nil {
 		agent = *body.Agent
 	}
-	if err := billingGate(u); err != nil {
+	if err := s.billingGate(u); err != nil {
 		return err
 	}
 	if u.CancelledAt != nil {
@@ -346,7 +348,7 @@ func (s *Server) startProject(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	u := userFrom(r.Context())
-	if err := billingGate(u); err != nil {
+	if err := s.billingGate(u); err != nil {
 		return err
 	}
 	switch p.State {

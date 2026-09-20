@@ -204,3 +204,44 @@ groups:
           summary: "Stripe usage records are failing"
           description: "{{ $value }} failed pushes in the last hour. The reconciliation job repairs it; if it does not, the invoice undercharges."
           runbook: "docs/ops/RUNBOOK.md#stripepushfail"
+
+      - alert: StripePushBacklog
+        # 09-billing.md §6: a usage_hours row older than six hours with no
+        # Stripe record. StripePushFail catches an erroring push; this
+        # catches the quiet cases (Stripe not configured after a deploy, the
+        # rollup leader not running) where nothing errors and nothing ships.
+        expr: repose_api_billing_stripe_push_backlog_seconds > 6 * 3600
+        for: 15m
+        labels:
+          severity: warn
+        annotations:
+          summary: "the oldest unbilled hour is {{ $value | humanizeDuration }} old"
+          description: "usage_hours rows are not reaching Stripe. `repose-admin billing resync` re-pushes them; until they land the invoice undercharges."
+          runbook: "docs/ops/RUNBOOK.md#stripepushbacklog"
+
+      - alert: BillingMismatch
+        # 09-billing.md §5.7: the nightly reconciliation found usage_hours
+        # and Stripe disagreeing. The job never fixes a difference, so this
+        # stays lit until a human decides.
+        expr: repose_api_billing_mismatch_cents > 0
+        for: 30m
+        labels:
+          severity: warn
+        annotations:
+          summary: "usage_hours and Stripe differ by {{ $value }} cents"
+          description: "The reconciliation reported and fixed nothing. `repose-admin billing reconcile` names the accounts and `billing explain <project> <hour>` shows one row."
+          runbook: "docs/ops/RUNBOOK.md#billingmismatch"
+
+      - alert: StripeWebhookRejected
+        # 09-billing.md §6: "webhook signature invalid: 400, logged with the
+        # event type only, alert after 5 in 10 minutes." Either someone is
+        # posting at the endpoint, or the signing secret and the endpoint
+        # have drifted apart, in which case no invoice event is being applied.
+        expr: increase(repose_api_stripe_webhook_total{result="bad_signature"}[10m]) >= 5
+        for: 0m
+        labels:
+          severity: warn
+        annotations:
+          summary: "{{ $value }} Stripe webhook deliveries rejected in ten minutes"
+          description: "Check STRIPE_WEBHOOK_SECRET against the endpoint's signing secret, and that the endpoint's API version matches the deployed SDK (ops/AZURE-SETUP.md step 17). While this fires, invoice events are not being applied."
+          runbook: "docs/ops/RUNBOOK.md#stripewebhookrejected"

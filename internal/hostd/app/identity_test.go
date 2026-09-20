@@ -57,7 +57,7 @@ func writeIdentity(t *testing.T, dir string) {
 
 // A hostd that started before the join token arrived must notice the
 // identity repose-register.service wrote with it, without a restart
-// (DECISIONS I-72): the unit consumes the token, so hostd's own attempts
+// (DECISIONS I-76): the unit consumes the token, so hostd's own attempts
 // only ever see ErrNoToken after that.
 func TestEnsureIdentityTakesTheIdentityTheUnitWrote(t *testing.T) {
 	dir := t.TempDir()

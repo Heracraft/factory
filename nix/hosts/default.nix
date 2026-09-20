@@ -113,7 +113,7 @@ in
         Path on the host to a PEM bundle hostd trusts for the api
         (hostd --api-ca), for a CA that is not known when the host is built:
         the VM tests' `hostdev`, or a CA delivered beside the join token.
-        `apiCA` is the usual way; setting both is an error (DECISIONS I-71).
+        `apiCA` is the usual way; setting both is an error (DECISIONS I-75).
       '';
     };
 

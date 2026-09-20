@@ -28,7 +28,7 @@ docs disagree, the doc is wrong only if a `DECISIONS.md` entry says so.
 | [ops/RUNBOOK.md](ops/RUNBOOK.md) | Something is broken in production and you need the symptom-to-fix list. |
 | [ops/coolify.md](ops/coolify.md) | You are setting up, backing up, restoring or upgrading the control plane. The click path OpenTofu cannot own, because Coolify keeps it in its own database. |
 | [ops/OBSERVABILITY.md](ops/OBSERVABILITY.md) | You are adding a log line, a metric, or a signal that the idle and pricing policies will later depend on. |
-| [PRICING.md](PRICING.md) | Tiers, meters, the cost floor per guest, and the trial. |
+| [PRICING.md](PRICING.md) | Tiers, meters, the cost floor per guest, and the trial. What a user sees is [features/pricing.md](features/pricing.md). |
 | [DESIGN-LANGUAGE.md](DESIGN-LANGUAGE.md) | You are building any screen. What to copy from the recruiting app and what not to. |
 | [ops/DEV-BOX.md](ops/DEV-BOX.md) | You are on the dev VM and something about disks, Nix or az is odd. |
 | [ops/AZURE-SETUP.md](ops/AZURE-SETUP.md) | The one-time human steps in Azure, Cloudflare, Logto, Stripe and Resend before agents start. |

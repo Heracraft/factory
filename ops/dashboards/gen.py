@@ -395,7 +395,7 @@ def per_guest() -> dict:
                          state || (case when guestd_ok is false then ' (guestd lost)'
                                         when guestd_ok is null then ' (guestd unknown)' else '' end) as state
                          from meter_samples {where} order by ts""")],
-                desc="The guest's own state, with the gaps where guestd was unreachable. Samples continue during those gaps; the signals inside them do not. A null guestd_ok is a sample from before the column existed, which is unknown rather than lost (DECISIONS I-51).",
+                desc="The guest's own state, with the gaps where guestd was unreachable. Samples continue during those gaps; the signals inside them do not. A null guestd_ok is a sample from before the column existed, which is unknown rather than lost (DECISIONS I-54).",
             ),
             panel(
                 "table", "Top processes in the window",
@@ -635,6 +635,19 @@ def billing() -> dict:
                 desc="A failed usage record is money that will not appear on an invoice unless the reconciliation job repairs it.",
             ),
             panel(
+                "stat", "Oldest unbilled hour",
+                [q("max(repose_api_billing_stripe_push_backlog_seconds)", "backlog", instant=True)],
+                unit="s", w=6, h=6,
+                thresholds=[("green", None), ("yellow", 3600), ("red", 21600)],
+                desc="The age of the oldest usage_hours row with no Stripe record. Past six hours is StripePushBacklog; `repose-admin billing resync` re-pushes them (09-billing.md §6).",
+            ),
+            panel(
+                "stat", "Reconciliation difference",
+                [q("max(repose_api_billing_mismatch_cents)", "cents", instant=True)],
+                w=6, h=6, thresholds=[("green", None), ("red", 1)],
+                desc="The largest usage_hours minus Stripe difference the nightly reconciliation found. It reports and never fixes; `repose-admin billing explain` shows one row (09-billing.md §5.7).",
+            ),
+            panel(
                 "stat", "Cost today",
                 [sql("""select coalesce(sum(cost_cents), 0) / 100.0 as usd from usage_hours
                         where hour >= date_trunc('day', now())""", fmt="table")],
@@ -647,6 +660,13 @@ def billing() -> dict:
                         where hour >= date_trunc('day', now()) and running_seconds > 0""", fmt="table")],
                 desc="Projects that have run for part of today. A stopped project still bills its volume, and does not appear here.",
                 w=6, h=6,
+            ),
+            panel(
+                "timeseries", "Trial credit consumed per hour",
+                [sql("""select hour as time, sum(credit_cents) / 100.0 as credit_usd, sum(cost_cents - credit_cents) / 100.0 as billed_usd
+                        from usage_hours where $__timeFilter(hour) group by 1 order by 1""", fmt="time_series")],
+                desc="The trial is consumed at the same rates as paid usage, so it is also the first test of the meters (DECISIONS R4-8). Only the billed half reaches Stripe.",
+                unit="currencyUSD",
             ),
             panel(
                 "timeseries", "Guest hours per hour by class",

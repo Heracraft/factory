@@ -1585,7 +1585,7 @@ building `cmd/repose`.** (07, 2026-09-20)
   outer pointer omits the field, a non-nil one pointing at a nil inner
   pointer marshals to `null`.
 
-**I-70. The host reaches its guests through a declared `ct direction reply`
+**I-74. The host reaches its guests through a declared `ct direction reply`
 rule, not a rule an operator inserts by hand.** (01/03 follow-up,
 2026-09-20) Until the gateway exists (workstream 06), an operator reaches a
 guest by jumping edge → host → guest, and the host's `input` chain sends
@@ -1605,7 +1605,7 @@ manual until 06 (an operator procedure that a reload silently undoes, and
 tcp sport 22 (the host also curls a guest's noVNC relay, and "replies to
 what the host opened" is the honest rule).
 
-**I-71. `repose.host.apiCAFile` names an api CA that only exists at run
+**I-75. `repose.host.apiCAFile` names an api CA that only exists at run
 time.** (01/03 follow-up, 2026-09-20) `repose.host.apiCA` puts a PEM in the
 store, which is how host-01 names the `hostdev` CA (I-40), but the CA the
 host-services VM test registers against is generated when its `hostdev`
@@ -1618,7 +1618,7 @@ builds a derivation to evaluate); a fixed CA keypair committed under
 `nix/hosts/tests/fixtures` (a private key in the repository, and `hostdev`
 has no flag to adopt one).
 
-**I-72. hostd takes an identity `repose-register.service` wrote while it was
+**I-76. hostd takes an identity `repose-register.service` wrote while it was
 running.** (01/03 follow-up, 2026-09-20) `EnsureIdentity` read the state
 directory once and then looped on the join token alone, so a hostd that
 started before the token arrived kept logging `waiting for join token` for
@@ -1632,3 +1632,98 @@ code. *Rejected:* watching the state directory with inotify (30 s is soon
 enough for a host that has just booted); having the unit restart hostd (a
 restart in the middle of registration is what `RestartPreventExitStatus=3`
 exists to avoid).
+**I-77. Usage records are Stripe billing meter events, not subscription-item
+usage records.** (09) `09-billing.md` §5.5 was written against Stripe's
+`usage_type = metered` / `aggregate_usage = sum` prices and the
+`POST /v1/subscription_items/{id}/usage_records` endpoint with `action =
+increment`. Stripe has retired that model: the current API and every
+maintained SDK (`stripe-go` v83, which this repo now depends on) expose
+billing **meters** and `POST /v1/billing/meter_events` instead, and there is
+no `usagerecord` package left to call. The shape §5.5 asked for is kept
+where it matters and moved where it cannot be:
+
+- Still three lines per period, still cents as the unit: one product, three
+  metered prices at 1 cent per unit, each attached to a meter
+  (`repose_compute_cents`, `repose_storage_cents`, `repose_egress_cents`),
+  and one subscription per user carrying all three, created at first card
+  attach with the period anchored then.
+- The idempotency key §5.5 specified becomes the meter event's
+  `identifier`, `usage:<project_id>:<hour>:<part>`, which Stripe enforces as
+  unique over a rolling window of at least 24 hours. It is sent as the HTTP
+  idempotency key as well, so a retried push is deduplicated twice.
+  `usage_hours.stripe_usage_record_id` holds the `usage:<project_id>:<hour>`
+  base and a row that has one is never pushed again, exactly as §5.5 says.
+- The `credit_cents` price §5.5 mentioned in passing is still not created: a
+  negative meter event is not allowed, so the trial credit is consumed
+  before the push and the invoice carries a memo line.
+- Reconciliation reads the other side back with
+  `GET /v1/billing/meters/{id}/event_summaries`, which is why the
+  `STRIPE_METER_ID_*` variables exist alongside the event names; without
+  them `repose-admin billing reconcile` says it could not compare rather
+  than reporting every account as a mismatch against zero.
+
+*Rejected:* pinning an old `stripe-go` that still has usage records (a
+payments library frozen at a version that will stop being served); writing
+the retired endpoint by hand over `net/http` (the same bet, minus the
+library); Stripe's newer `/v2/billing/meter_events` stream (higher
+throughput, at-least-once semantics and a separate session object, for a
+push of at most one event per project per hour). *Also recorded:* the
+webhook endpoint must be created with the SDK's API version
+(`stripe.APIVersion`, `2025-10-29.clover` today) or `webhook.ConstructEvent`
+refuses every delivery as a version mismatch; `ops/AZURE-SETUP.md` step 17
+says so, and the SDK's strictness is kept rather than disabled because an
+object rendered under another version may deserialise wrongly, which in this
+package means the wrong amount. Interfaces: `db-schema.md`, `api.md`
+(`POST /billing/webhook`), `09-billing.md` §5.5.
+
+**I-78. The rollup lives in `internal/billing`, the billing period is
+anchored at signup and stored on every row, and `users.trial_credit_cents`
+is a trigger-maintained projection of the ledger.** (09, amends 05) Three
+places where the code the api already had did not match what
+`09-billing.md` asks for, resolved in the workstream doc's favour:
+
+- *Where it lives.* Workstream 05 built the hourly rollup as
+  `internal/api/meter.Rollup` with a price table in `internal/billing`
+  (I-42: "when 09 lands, the api swaps the implementation behind the same
+  interfaces"). §2 puts the rollup in `internal/billing`, and that is where
+  it is now; `internal/api/meter` keeps the sample ingest, which is the half
+  §3 says this workstream does not own. `internal/obs/obslint` counts
+  `internal/billing` as the api component, because it runs in the api
+  process.
+- *The period.* §5.1 says "month" is the user's Stripe billing period
+  anchored at signup, not the calendar month; 05's rollup used
+  `date_trunc('month')` for the cap, the egress allowance and the storage
+  remainder. `users.billing_anchor` is that anchor, periods are counted from
+  it with Stripe's short-month clamping (an anchor on the 31st bills on the
+  28th in February and returns to the 31st in March), and `period_start` /
+  `period_end` are written on every `usage_hours` row so the running-total
+  query cannot drift from the rule that priced the row. The storage
+  remainder resets at each period start, which is what makes a period sum to
+  exactly `gb_alloc * 10` for a period of any length rather than only for a
+  30-day one.
+- *The balance.* §5.3 rejected caching the balance on `users` because "two
+  hourly jobs racing would drift it", but `users.trial_credit_cents` exists
+  and `/me` and the card gate both read it. It is kept as a projection
+  maintained by an `after insert` trigger on `credit_ledger`, so it is
+  updated inside the same transaction and under the same row lock as the
+  ledger row; the drift the section rejected cannot happen, and
+  `sum(credit_ledger.cents)` is still the balance of record. A usage debit
+  that is recomputed differently on a re-run is corrected by an
+  `adjustment` row, never by editing the original: the ledger is
+  append-only.
+
+Also settled here: the cap for a project that changed class mid-period is
+the cap of the largest class it ran in during the period (§5.1's "bounded by
+the larger class's cap"), carried as `Inputs.CapClass`; an exempt account
+(I-16) accrues `usage_hours` and debits its credit ledger like anyone else
+but is marked `stripe_usage_record_id = 'exempt'` instead of being pushed;
+and the billing metrics keep the `repose_api_*` prefix of I-49 and I-60
+rather than §9's `repose_billing_*` wording, so the two new families are
+`repose_api_billing_stripe_push_backlog_seconds` and
+`repose_api_billing_mismatch_cents` next to the existing
+`repose_api_billing_gap_minutes_total` and `repose_api_rollup_duration_seconds`.
+*Rejected:* leaving the rollup in `internal/api/meter` and adding the period
+there (two packages owning one rule); computing the period from
+`created_at` at read time instead of storing it (a period boundary that
+moves when an anchor is corrected silently reprices history); renaming a
+dozen deployed metric families for one workstream's original wording.

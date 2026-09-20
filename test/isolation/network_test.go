@@ -44,7 +44,7 @@ func TestGuestACannotReachGuestB(t *testing.T) {
 // Row: guest cannot reach the host. Mechanism: `guest_in` drops everything
 // but rate-limited ICMP echo and replies to flows the host itself opened
 // (host-conventions.md; DECISIONS I-18 kept a deliberate 5/s ping exception
-// for debugging from a guest, and I-70 lets the host reach a guest's sshd;
+// for debugging from a guest, and I-74 lets the host reach a guest's sshd;
 // a connection a guest opens is the original direction and matches
 // neither).
 func TestGuestCannotReachHost(t *testing.T) {

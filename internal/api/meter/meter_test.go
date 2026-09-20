@@ -24,7 +24,9 @@ func seed(t *testing.T, pool *db.Pool, class string, created time.Time) (uuid.UU
 	t.Helper()
 	ctx := context.Background()
 	uid, pid, gid := store.NewID(), store.NewID(), store.NewID()
-	if _, err := pool.Exec(ctx, "insert into users (id, handle) values ($1, $2)", uid, "u"+uid.String()[24:]); err != nil {
+	// The billing period is anchored at signup (09-billing.md §5.1), so the
+	// anchor is set explicitly and the period is the 720 hours from it.
+	if _, err := pool.Exec(ctx, "insert into users (id, handle, created_at, billing_anchor) values ($1, $2, $3, $3)", uid, "u"+uid.String()[24:], created); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, "insert into projects (id, user_id, name, slug, class, state, volume_bytes, guest_id, created_at) values ($1, $2, 'todo', $3, $4, 'running', $5, $6, $7)", pid, uid, "s"+pid.String()[24:], class, int64(40)<<30, gid, created); err != nil {
@@ -37,7 +39,7 @@ type pusher struct{ pushed []billing.UsageRow }
 
 func (p *pusher) PushUsage(ctx context.Context, r billing.UsageRow) (string, error) {
 	p.pushed = append(p.pushed, r)
-	return "ur_" + r.Hour, nil
+	return "ur_" + r.Hour.Format(time.RFC3339), nil
 }
 
 // One large guest running 10 hours of a day with 40 GB and 3 GB egress:
@@ -85,9 +87,9 @@ func TestIngestAndSyntheticDayRollup(t *testing.T) {
 	}
 	_ = latest
 	p := &pusher{}
-	r := meter.NewRollup(pool, p, m, log)
+	r := billing.NewRollup(pool, p, m, log)
 	r.Now = func() time.Time { return day.Add(25 * time.Hour) }
-	var rows []meter.Row
+	var rows []billing.Row
 	for h := 0; h < 24; h++ {
 		out, err := r.Hour(ctx, day.Add(time.Duration(h)*time.Hour))
 		if err != nil {
@@ -149,7 +151,7 @@ func TestIngestAndSyntheticDayRollup(t *testing.T) {
 	ing2 := meter.New(pool2, m, log)
 	_, gid2 := seed(t, pool2, "xl", day)
 	ing2.OnSamples(ctx, hostID, &hostdv1.Samples{Ts: day.Add(30 * time.Minute).Unix(), Guests: []*hostdv1.GuestSample{{GuestId: gid2.String(), State: "running", Class: "xl"}}})
-	r2 := meter.NewRollup(pool2, billing.Disabled{}, m, log)
+	r2 := billing.NewRollup(pool2, billing.Disabled{}, m, log)
 	r2.Now = func() time.Time { return day.Add(3*time.Hour + 5*time.Minute) }
 	n, err := r2.Due(ctx)
 	if err != nil || n != 3 {
