@@ -12,7 +12,10 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.38.0"
+	// The same schema version the SDK's own resource.Default() uses; a
+	// different one makes resource.Merge fail with "conflicting Schema URL",
+	// which TestTracingOnWithAnEndpoint caught.
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 )

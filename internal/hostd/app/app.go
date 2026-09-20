@@ -152,6 +152,24 @@ func (l *lateHost) Dispatch(c *command)   { l.m.Dispatch(c) }
 // Run starts everything and blocks until ctx ends. Guests keep running
 // across a return; only hostd's goroutines stop.
 func Run(ctx context.Context, o Options, log *slog.Logger) error {
+	// Tracing is wired and off: with no OTEL_EXPORTER_OTLP_ENDPOINT there is
+	// no exporter and no connection, and the spans the gRPC stream starts go
+	// to the noop provider (docs/workstreams/10-observability.md §5).
+	_, shutdownTracing, err := obs.SetupTracing(ctx, obs.TraceOptions{Component: obs.ComponentHostd, Version: o.Version, Insecure: true})
+	if err != nil {
+		return fmt.Errorf("set up tracing: %w", err)
+	}
+	defer func() {
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTracing(sctx); err != nil {
+			log.Warn("tracer shutdown failed", "event", "shutdown", "err", err.Error())
+		}
+	}()
+	if obs.TracingEnabled() {
+		log.Info("tracing enabled", "event", "start", "part", "tracing")
+	}
+
 	st, err := state.Open(filepath.Join(o.StateDir, "state.db"))
 	if err != nil {
 		return err

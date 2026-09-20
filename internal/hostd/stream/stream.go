@@ -46,10 +46,14 @@ type GRPCDialer struct {
 
 // Dial implements Dialer.
 func (d GRPCDialer) Dial(ctx context.Context) (hostdv1.HostService_SessionClient, func(), error) {
-	conn, err := grpc.NewClient(d.Addr,
+	// obs.GRPCDialOptions puts the Session stream in a trace when an OTLP
+	// endpoint is configured, and costs one context value per RPC when it is
+	// not (docs/workstreams/10-observability.md §5 "Traces").
+	opts := append([]grpc.DialOption{
 		grpc.WithTransportCredentials(credentials.NewTLS(d.TLS)),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: 30 * time.Second, Timeout: 10 * time.Second, PermitWithoutStream: true}),
-	)
+	}, obs.GRPCDialOptions()...)
+	conn, err := grpc.NewClient(d.Addr, opts...)
 	if err != nil {
 		return nil, nil, err
 	}

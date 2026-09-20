@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel"
 )
@@ -96,5 +97,50 @@ func TestSetupTracingRejectsAnUnknownComponent(t *testing.T) {
 	}
 	if err := shutdown(context.Background()); err != nil {
 		t.Errorf("shutdown: %v", err)
+	}
+}
+
+// TestTracingOnWithAnEndpoint is the other half of the no-network claim: with
+// an endpoint set, the SDK provider is installed, spans record, and the
+// exporter is the thing that opens a connection. Without this test,
+// "no network calls when it is off" could pass because tracing never works at
+// all.
+func TestTracingOnWithAnEndpoint(t *testing.T) {
+	// A listener that accepts and says nothing: the exporter connects lazily
+	// and retries, and the test asserts nothing about what arrives.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			defer c.Close()
+		}
+	}()
+
+	t.Setenv(EndpointEnv, "http://"+ln.Addr().String())
+	tr, shutdown, err := SetupTracing(context.Background(), TraceOptions{
+		Component: ComponentAPI, Version: "test", Insecure: true,
+	})
+	if err != nil {
+		t.Fatalf("SetupTracing: %v", err)
+	}
+	_, span := tr.Start(context.Background(), "op")
+	if !span.IsRecording() {
+		t.Error("a span is not recording with an endpoint set")
+	}
+	if !span.SpanContext().IsValid() {
+		t.Error("a span has no trace id with an endpoint set")
+	}
+	span.End()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := shutdown(ctx); err != nil {
+		t.Logf("shutdown: %v (the collector is a bare listener)", err)
 	}
 }
