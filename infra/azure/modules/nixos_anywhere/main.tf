@@ -35,8 +35,10 @@ locals {
     ],
   )
 
-  ssh_option_flags = join(" ", [for o in local.ssh_common : "--ssh-option ${o}"])
-  ssh_cli_flags    = join(" ", [for o in local.ssh_common : "-o ${o}"])
+  # Single-quoted: the ProxyCommand value contains spaces, and unquoted it
+  # split into stray arguments that made nixos-anywhere print its usage.
+  ssh_option_flags = join(" ", [for o in local.ssh_common : "--ssh-option '${o}'"])
+  ssh_cli_flags    = join(" ", [for o in local.ssh_common : "-o '${o}'"])
 
   authorized_keys = join("\n", var.authorized_keys)
 }
