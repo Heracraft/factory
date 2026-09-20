@@ -85,6 +85,21 @@ least once between 2026-09-19 and 2026-09-20.
   is still running in them: a session whose worktree is removed keeps a
   dead working directory and cannot commit. Kill its pane and relaunch in a
   fresh worktree if it had more to do.
+- **The flake's source filter is a merge hazard.** `nix/packages.nix` keeps
+  only the paths the Go build reads. A branch that makes `cmd/` import a
+  package outside that list (the dashboard's `cmd/fake-logto` importing
+  `test/fake-logto`) passes `go build` and fails every `nix build` at the
+  vendor step. `nix build .#guestd` is part of the merge check for that
+  reason, not only for the hash.
+- **Run `go test` with a short `TMPDIR`.** Inside `nix develop` the
+  temporary directory is `/tmp/nix-shell.*`, and the tmux and vsock fakes
+  put unix sockets under `t.TempDir()`; the socket path limit makes those
+  tests fail with "File name too long" and nothing else wrong. Set
+  `TMPDIR=/tmp/rt` (or similar) for the test step.
+- **A test that passes here and fails on CI is usually the runner's
+  PATH.** The dev box has `claude`; the runner does not, so a tmux window
+  running it exits at once. Fix the fixture (remain-on-exit, a stub), not
+  the assertion, and reproduce first with an exiting shim on PATH.
 
 ## When a worker stalls
 
