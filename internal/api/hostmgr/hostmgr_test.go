@@ -109,6 +109,12 @@ func TestRegisterSessionSendSweep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The Loki every host ships to travels in RegisterResponse
+	// (DECISIONS I-95); recorded before this host registers, so Register
+	// carries it and Rotate carries it again.
+	if err := store.SetSetting(ctx, h.pool, hostmgr.SettingLokiURL, "http://10.255.0.3:3100"); err != nil {
+		t.Fatal(err)
+	}
 	client := hostdv1.NewHostServiceClient(h.dial(t, nil))
 	info := &hostdv1.HostInfo{Hostname: "host-01", Sku: "Standard_D16s_v7", MemBytes: 64 << 30, Vcpus: 16, PoolBytes: 500 << 30, NixosSystem: "/nix/store/x", ChVersion: "53"}
 	if _, err := client.Register(ctx, &hostdv1.RegisterRequest{JoinToken: "wrong", Info: info}); err == nil {
@@ -120,6 +126,9 @@ func TestRegisterSessionSendSweep(t *testing.T) {
 	}
 	if resp.GuestCidr != "10.64.0.0/22" && resp.GuestCidr != "10.64.4.0/22" && resp.GuestCidr != "10.64.8.0/22" {
 		t.Fatalf("guest cidr %s", resp.GuestCidr)
+	}
+	if resp.LokiUrl != "http://10.255.0.3:3100" {
+		t.Fatalf("register loki_url %q: a host with none renders an empty LOKI_HOST and ships nothing", resp.LokiUrl)
 	}
 	if _, err := client.Register(ctx, &hostdv1.RegisterRequest{JoinToken: token, Info: info}); err == nil {
 		t.Fatal("token accepted twice")
@@ -170,6 +179,9 @@ func TestRegisterSessionSendSweep(t *testing.T) {
 	rot, err := hostdv1.NewHostServiceClient(conn).Rotate(ctx, &hostdv1.RegisterRequest{Info: info})
 	if err != nil || rot.HostId != resp.HostId || len(rot.ClientCert) == 0 {
 		t.Fatalf("rotate %+v %v", rot, err)
+	}
+	if rot.LokiUrl != "http://10.255.0.3:3100" {
+		t.Fatalf("rotate loki_url %q: rotate is how a host registered before a Loki existed learns it", rot.LokiUrl)
 	}
 	// Silence marks the host unreachable; a heartbeat brings it back.
 	cancel()

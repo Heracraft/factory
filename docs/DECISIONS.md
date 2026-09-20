@@ -2104,3 +2104,137 @@ and `repose-host-net` (which now `chmod 0755`s the directory whatever made
 it) agree on 0755. *Rejected:* moving the token to its own 0700 directory
 (a second path in the runbook, the host module and hostd for one file's
 mode, which the file already carries).
+**I-94. A scrape is a forwarded packet, so the edge needs a forward rule;
+the control plane is `10.255.255.1` on the hub, and its two applications
+are two scrape targets.** (m3-web, 2026-09-20) `ops/prometheus/
+wireguard-peer.conf` said in as many words that "the edge's firewall needs
+nothing new" for the monitoring peer. Read against the edge as built, and
+against the live edge's ruleset, that is wrong three times over, and each
+of the three would have presented as the same symptom: a WireGuard
+handshake that looks perfect and a Prometheus with every target down.
+
+- *The forward chain.* `nix/edge/default.nix` gives `forward` a policy of
+  drop with `ct state established,related accept` and nothing else, and
+  its comment says why: "hosts never route through the edge to one
+  another". But Prometheus is not in Azure and hosts have no inbound, so
+  every scrape of a host, and of the control plane, is a packet the edge
+  forwards from one peer to another, and so is every Fluent Bit push to
+  Loki. Both were dropped. `repose.edge.monitoring.{peerCIDRs,
+  scrapePorts, logPorts}` adds exactly two rules when a monitoring peer is
+  declared and none when it is not: that peer may reach 9100, 9101, 2021,
+  9103 and 9104 on another peer, and another peer may reach 3100 on it.
+  *Rejected:* `iifname "wg0" oifname "wg0" accept` (it would also let one
+  tenant's host reach another's, and the control plane's gRPC listener,
+  which is the thing per-host AllowedIPs and this policy exist to
+  prevent); a route on the monitoring server straight to each host (hosts
+  have no address anyone outside the mesh can route to, which is the
+  point).
+- *The control plane's address.* The same file, and the `api` job of
+  `ops/prometheus/prometheus.yml`, put the control VM at `10.255.0.2`.
+  DECISIONS I-92 put it at `10.255.255.1` and that is what `wg show` on
+  both machines says today. The file with the wrong address was the one an
+  operator would have followed.
+- *One job, two targets.* `api` and `api-grpc` are separate Coolify
+  applications from the same image (I-2), so they are two processes with
+  two registries, and the families split between them: the HTTP families
+  come from `api`, the stream, ops and outbox families from `api-grpc`.
+  The job now has both with an `app` label. Verified on the control VM:
+  `api` serves 57 `repose_*` series on its container address and
+  `api-grpc` 62 on the host's 9104.
+
+Also found and *not* fixed here, because it is a Coolify field and this
+session does not touch the UI: `ops/coolify/README.md` prescribes a
+`9103:9103` port mapping on the `api` application and the live application
+has no port mappings at all, so its metrics are reachable only from inside
+the container network. `api-grpc`'s `9104:9103` is in place. One field,
+for the conductor.
+
+Interfaces: none. `ops/prometheus/prometheus.yml`,
+`ops/prometheus/wireguard-peer.conf` and `nix/edge/default.nix` change
+together because they are three halves of one path.
+
+**I-95. `RegisterResponse` carries `loki_url`, from a setting an operator
+records with `repose-admin edge loki`; Fluent Bit refuses to start without
+one.** (m3-web, 10 and 05, 2026-09-20) `docs/interfaces/host-conventions.md`
+has documented a `loki_url` field of `host.json` since workstream 01,
+`nix/hosts/network.nix` renders `LOKI_HOST` and `LOKI_PORT` from it,
+`nix/hosts/fluent-bit.nix` uses them as its Loki output's address, and
+`ops/RUNBOOK.md`'s FluentBitStuck entry says in as many words that the value
+"comes from `loki_url` in `host.json`, which the api sends at registration".
+Nothing sent it: `RegisterResponse` had six fields and none of them was
+this one, and `internal/hostd/register` declared the struct field and never
+assigned it. Every host would have rendered `LOKI_HOST=` and shipped
+nothing, and the symptom — a Fluent Bit retrying a connection to an empty
+host name for ever — is indistinguishable in the journal from a Loki that
+is down. So M3's "Fluent Bit on host-01 ships journald and guest console
+logs" could not have been closed by configuration alone.
+
+- *A setting, not an environment variable.* The Loki names a machine
+  outside this deployment, it changes without the api changing, and
+  moving a log sink should not need a redeploy of the api — the same
+  three reasons the edge's WireGuard endpoint and public key are already
+  settings written by `repose-admin edge init`. `repose-admin edge loki
+  [URL]` prints, records, or (with an empty string) clears it, refuses a
+  URL with no scheme because that is the mistake that produces a fleet
+  shipping nowhere, and writes an `audit_log` row like every other admin
+  action. *Rejected:* a `LOKI_URL` variable in `ops/coolify/api.env`
+  (a redeploy of the api to change where hosts send logs, and the api
+  redeploy is the one this milestone coordinates most carefully); a
+  per-host column (there is one Loki, and a per-host value is a per-host
+  mistake).
+- *`Rotate` carries it too.* A host registers once, so a Loki recorded
+  after the fleet exists would never reach it. `Rotate` runs every 30
+  days and already returns a `RegisterResponse`; it now carries the
+  current value, which bounds "an operator recorded a Loki" to at most a
+  month, and the runbook's edit-and-restart is the immediate path.
+- *Empty is still the old behaviour, both ways.* An api that predates the
+  field sends nothing, and hostd then keeps whatever `host.json` already
+  had rather than clearing a working host's sink at its next rotation; a
+  host that has never been told renders an empty `LOKI_HOST`, and
+  `fluent-bit.service` now refuses to start with that reason in the
+  journal instead of retrying nothing for ever. *Rejected:* defaulting to
+  the edge's address (the edge is not a log store, and guessing an
+  address is how a fleet ships to a machine nobody is reading).
+
+Interfaces: `grpc-hostd.md` (`RegisterResponse.loki_url`),
+`host-conventions.md` (where the field comes from and what an empty one
+means), `proto/repose/hostd/v1/hostd.proto`. The old shape stays accepted:
+field 7 is additive and an absent value means what it meant before.
+
+**I-96. Where `features/` promised a dashboard that was never specified,
+the feature doc is corrected, not the dashboard.** (m3-web, 08, 2026-09-20)
+The M3 web session's last item is "`docs/features/*` match what is live".
+Two of them did not, and in both cases the feature doc was written before
+`workstreams/08-dashboard.md` §5.2 fixed the page list, and promised more
+than §5.2 ever asked for:
+
+- `features/status-and-logs.md` "Dashboard" promised a sortable project
+  list with a cost sparkline, and a project page with a state timeline,
+  a ports card and a cost breakdown by meter, and an account page
+  carrying limits. §5.2 specifies none of those: the list is a plain
+  table, the project page is seven cards, secrets and config are their
+  own pages, and billing, settings and account are three pages. The
+  section now describes the built pages route by route, and each promise
+  it dropped is named in "Deferred" rather than deleted, so the next
+  person to want a state timeline finds that it was considered.
+- `features/notifications.md` promised the project page would show
+  "delivery status per channel, so a user who got nothing can see ...
+  whether the delivery failed". `GET /projects/:id/events` returns
+  `{id, ts, kind, agent, summary}` and has no per-channel outcome in it;
+  the outbox's state is in `events_outbox`, which no user route exposes.
+  The doc now says what the Events card does answer (did the event
+  happen), points the other half at `ops/RUNBOOK.md` "No notifications
+  arriving", and defers the feature with the route change it needs.
+
+*Why the doc and not the code:* AGENTS.md's rule is that the code follows
+the docs, and the tie-break when two docs disagree is the one that owns
+the thing. `workstreams/08-dashboard.md` owns the dashboard, its §9
+checklist is what 08 was built and tested against, and `features/` is
+meant to describe user-visible behaviour rather than to widen scope by
+prose. Building four features in an integration session to make a sketch
+true is the wrong direction, and shipping a doc that describes a product
+nobody has is worse than shipping a shorter doc. *Rejected:* building
+them (scope, in a session whose job is to close what exists); deleting
+the promises without trace (the reasoning behind per-channel delivery
+status — a support call the platform cannot otherwise answer — is worth
+keeping).

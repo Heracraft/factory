@@ -10,3 +10,6 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 test-results
 playwright-report
+
+# live suite: a real signed-in browser session (a Logto refresh token)
+/tests-live/.auth

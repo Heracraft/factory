@@ -21,7 +21,10 @@
 	} = $props();
 </script>
 
-<div class="mx-auto {width === 'form' ? 'max-w-2xl' : 'max-w-3xl'} px-5 pt-10 pb-20">
+<!-- A <main> landmark rather than a <div>: it was the one audit every
+     signed-in page failed (Lighthouse landmark-one-main, 98/100), and it is
+     what a screen reader's "skip to main content" jumps to. -->
+<main class="mx-auto {width === 'form' ? 'max-w-2xl' : 'max-w-3xl'} px-5 pt-10 pb-20">
 	{#if crumbs.length}
 		<p class="mb-2 text-sm text-zinc-500 dark:text-zinc-400">
 			{#each crumbs as crumb, i (crumb.label)}
@@ -42,4 +45,4 @@
 	<div class="mt-6">
 		{@render children()}
 	</div>
-</div>
+</main>

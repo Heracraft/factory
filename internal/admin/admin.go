@@ -61,7 +61,7 @@ const Usage = `repose-admin <command> [args]
   ca        init | show | rotate [--user] [--host] | sign-host --principal P... --pubkey FILE | sign-client --name NAME [--operator] [--csr FILE] [--out DIR]
             sign-server --name NAME[,NAME...] [--ttl 43800h] [--csr FILE] [--out DIR]
   operator-cert --pubkey FILE [--ttl 8h] [--name NAME]
-  edge      init --endpoint HOST:PORT --pubkey WGPUB [--out DIR]
+  edge      init --endpoint HOST:PORT --pubkey WGPUB [--out DIR] | loki [URL]
   audit     [--user HANDLE] [--since 24h] [--action A]
   ops       list [--project ID] [--host N] [--state S] | log OPID
   version

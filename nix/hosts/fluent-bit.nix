@@ -153,10 +153,24 @@ in
     };
 
     systemd.services.fluent-bit = {
+      # Two conditions, not one. host.env exists as soon as the host has
+      # registered, but LOKI_HOST in it is empty until the api has a Loki
+      # recorded (`repose-admin edge loki`, DECISIONS I-95); starting with
+      # an empty output host makes Fluent Bit retry a connection to
+      # nothing for ever, which looks in the journal exactly like a Loki
+      # that is down. `ConditionEnvironment` is not a thing, so the check
+      # is a one-line ExecCondition reading the same file the unit does.
       unitConfig.ConditionPathExists = hostEnv;
       after = [ "repose-host-net.service" "wg-quick-wg0.service" ];
       partOf = [ "repose-host-net.service" ];
       serviceConfig = {
+        ExecCondition = pkgs.writeShellScript "repose-fluent-bit-has-loki" ''
+          . ${hostEnv}
+          if [ -z "''${LOKI_HOST:-}" ]; then
+            echo "no LOKI_HOST in ${hostEnv}: nothing to ship to; see repose-admin edge loki" >&2
+            exit 1
+          fi
+        '';
         EnvironmentFile = hostEnv;
         StateDirectory = "fluent-bit";
         # Console logs are written by hostd (root) under a 0700 directory;

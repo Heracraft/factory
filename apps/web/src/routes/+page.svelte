@@ -39,7 +39,7 @@
 	<title>repose — a persistent environment for coding agents</title>
 </svelte:head>
 
-<div class="mx-auto max-w-3xl px-5 pt-16 pb-24">
+<main class="mx-auto max-w-3xl px-5 pt-16 pb-24">
 	<h1 class="font-display text-4xl font-semibold text-balance sm:text-5xl">
 		A developer's laptop is the wrong place for a coding agent to run for six hours.
 	</h1>
@@ -110,4 +110,4 @@ dev@todo-app:~/todo-app$            # tmux session "todo-app", window "shell"</p
 		<span class="mx-1.5">·</span>
 		<a href={resolve('/privacy')} class="link">Privacy</a>
 	</p>
-</div>
+</main>

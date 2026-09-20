@@ -300,6 +300,41 @@ keeps arriving (docs/workstreams/10-observability.md §6).
 5. Nothing to do about the gap: Prometheus has no backfill. Say so in the
    incident note rather than wondering later why a graph has a hole.
 
+If *every* target is down at once, including the edge's and the api's, it
+is not the hosts: see "Every Prometheus target is down and WireGuard looks
+fine" below.
+
+## Every Prometheus target is down and WireGuard looks fine
+
+`up == 0` for every job the moment monitoring is first wired up, or right
+after the edge is rebuilt. `wg show` on the monitoring server shows a
+recent handshake with the edge, `ping 10.255.0.1` answers, and every
+scrape still times out.
+
+The edge is a hub, not a bridge. Its `forward` chain is policy drop with
+`ct state established,related accept` and nothing else, on purpose: hosts
+must not reach one another or the api's gRPC listener through it. A scrape
+from the monitoring peer to a host, or to the control plane, is exactly
+that forwarded traffic, and so is Fluent Bit's push to Loki in the other
+direction (DECISIONS I-94).
+
+1. The ping answering proves nothing: the edge's own address is `input`,
+   not `forward`. The test that distinguishes them is a scrape of the edge
+   itself against a scrape of anything behind it —
+   `curl http://10.255.0.1:9102/metrics` working while
+   `curl http://<host wg addr>:9101/metrics` hangs is this entry.
+2. On the edge, `nft list chain inet repose-edge forward`. Two rules
+   naming the monitoring peer's address should be there; if the chain is
+   just the `ct state` accept and a drop, the edge was built without
+   `repose.edge.monitoring.peerCIDRs` set.
+3. Fix it in `nix/edge/edge-01.nix`, not with `nft add rule`: a live rule
+   is gone at the next `nixos-rebuild`, and the peer itself must be in
+   `staticPeers` too or `wgsync` removes it within 30 seconds.
+   `ops/prometheus/wireguard-peer.conf` has all three parts.
+4. Until the rebuild, an operator with the edge's SSH key can see the same
+   numbers through SSH forwards: `ops/dev/tunnel-prod.sh <edge> <control>`
+   plus the local stack with `ops/dev/prometheus-prod.yml`.
+
 ## FluentBitStuck
 
 A host's Fluent Bit has been failing to ship to Loki for 30 minutes
@@ -308,7 +343,9 @@ disk and retries forever, so nothing is lost yet; at 1 GB the oldest chunks
 are dropped.
 
 1. Is Loki up? `curl -s http://<loki>:3100/ready` from the monitoring server.
-   If Loki is the problem, every host alerts at once.
+   If Loki is the problem, every host alerts at once. Every host alerting at
+   once *and* every Prometheus target down is the edge's forward chain
+   instead: "Every Prometheus target is down and WireGuard looks fine".
 2. On the host: `systemctl status fluent-bit`, `journalctl -u fluent-bit -n
    50`. `ConditionPathExists=/run/repose/host.env` unmet means the host never
    registered ("HostUnregistered"); the unit is `partOf`
@@ -316,9 +353,15 @@ are dropped.
    it with freshly rendered addresses.
 3. Buffer size: `du -sh /var/lib/fluent-bit/storage`. Approaching 1 GB is the
    deadline for fixing Loki before lines are dropped.
-4. Wrong Loki address: `grep LOKI /run/repose/host.env`. It comes from
-   `loki_url` in `host.json`, which the api sends at registration; correct it
-   there and `systemctl restart repose-host-net`.
+4. Wrong or missing Loki address: `grep LOKI /run/repose/host.env`. It
+   comes from `loki_url` in `host.json`, which the api sends at
+   registration from the `loki_url` setting. An **empty** `LOKI_HOST` is
+   not a failure of this alert but of its precondition: the unit refuses
+   to start and says so (`systemctl status fluent-bit`), because no Loki
+   has been recorded. Fix it centrally with `repose-admin edge loki
+   http://<loki>:3100` — a host picks it up at its next `Rotate`, or
+   immediately by editing `host.json` and `systemctl restart
+   repose-host-net` (DECISIONS I-95).
 5. Guests are unaffected throughout: nothing in a guest waits on log
    shipping.
 

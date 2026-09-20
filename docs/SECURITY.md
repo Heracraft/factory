@@ -31,7 +31,13 @@ mitigate. `workstreams/14-security.md` is the work that verifies this doc.
 
 ## Boundaries
 
-From `ARCHITECTURE.md`, with the mechanism and the actor it stops:
+From `ARCHITECTURE.md`, with the mechanism and the actor it stops. Its
+five trust boundaries are rows 1, 2, 4 and 3 here in that order; its
+fifth, **operator to tenant data**, has no mechanism to describe and is
+under "Not mitigated in the first release" instead, which is what
+`ARCHITECTURE.md` itself says of it ("Recorded, not mitigated, until
+per-project LUKS"). Rows 5 to 8 are boundaries this document adds because
+they stop an actor the component map does not draw.
 
 1. **KVM between guest and host.** Cloud Hypervisor on KVM, launched by
    hostd from the guest's system closure (DECISIONS I-27) as the

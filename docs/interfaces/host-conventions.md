@@ -44,6 +44,13 @@ runtime; hostd does not write `wg0.conf` or any other network file
 }
 ```
 
+`loki_url` comes from `RegisterResponse.loki_url`, which the api fills
+from the `loki_url` setting (`repose-admin edge loki`, DECISIONS I-95).
+It is absent when no Loki has been recorded; `repose-host-net` then
+renders an empty `LOKI_HOST` and `fluent-bit.service` refuses to start
+with that reason in the journal, rather than retrying a connection to
+nothing for ever.
+
 After writing it, `hostd register` exits and the unit runs `systemctl
 restart repose-host-net.service`; a running hostd that re-registers or
 rotates keys does the same restart itself.

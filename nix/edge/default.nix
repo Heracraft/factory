@@ -25,6 +25,21 @@ let
   cfg = config.repose.edge;
   stateDir = "/var/lib/repose/edge";
   tlsDir = "${stateDir}/tls";
+
+  # Indented strings strip the common leading whitespace of their own
+  # literal lines, not of interpolated ones, so a multi-line value has to
+  # carry the post-strip indentation itself. nftables does not care; the
+  # generated file being readable does.
+  ruleSep = "\n    ";
+  set = xs: "{ ${lib.concatStringsSep ", " xs} }";
+  ports = xs: set (map toString xs);
+  # Empty when no monitoring peer is declared, so the forward chain keeps
+  # its established-only shape on an edge that nothing scrapes.
+  monitoringForward =
+    lib.optionals (cfg.monitoring.peerCIDRs != [ ]) [
+      ''iifname "wg0" oifname "wg0" ip saddr ${set cfg.monitoring.peerCIDRs} tcp dport ${ports cfg.monitoring.scrapePorts} accept''
+      ''iifname "wg0" oifname "wg0" ip daddr ${set cfg.monitoring.peerCIDRs} tcp dport ${ports cfg.monitoring.logPorts} accept''
+    ];
 in
 {
   imports = [ ./disko.nix ];
@@ -99,6 +114,51 @@ in
       type = lib.types.str;
       default = "";
       description = "Loki push URL Fluent Bit ships the edge journal to, over WireGuard (docs/ops/OBSERVABILITY.md). Empty disables shipping.";
+    };
+
+    monitoring = {
+      peerCIDRs = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "10.255.0.3/32" ];
+        description = ''
+          The monitoring server's address on this hub. It is the one peer
+          that is neither a host nor the control plane, and the only one
+          allowed to route *through* the edge to another peer: Prometheus
+          lives outside Azure, hosts have no inbound, and the control
+          plane's metrics are on its WireGuard address, so every scrape is
+          a forwarded packet (ops/prometheus/wireguard-peer.conf).
+
+          Empty leaves the forward chain as it was — established and
+          related only — which is the right state for an edge with no
+          monitoring peer.
+        '';
+      };
+
+      scrapePorts = lib.mkOption {
+        type = lib.types.listOf lib.types.port;
+        default = [ 9100 9101 2021 9103 9104 ];
+        description = ''
+          Ports the monitoring peer may reach on other peers: node_exporter
+          (9100), hostd (9101) and Fluent Bit (2021) on a host, and the
+          `api` and `api-grpc` applications' metrics on the control plane
+          (9103 and 9104, ops/coolify/README.md). Nothing else is
+          forwarded, so the monitoring peer cannot reach a host's sshd or a
+          guest.
+        '';
+      };
+
+      logPorts = lib.mkOption {
+        type = lib.types.listOf lib.types.port;
+        default = [ 3100 ];
+        description = ''
+          Ports peers may reach *on* the monitoring server: Loki's push
+          endpoint, which every host's Fluent Bit writes to. The other
+          direction of the same tunnel, and the reason a host that cannot
+          reach Loki buffers for ever instead of failing (alert
+          FluentBitStuck).
+        '';
+      };
     };
   };
 
@@ -179,6 +239,14 @@ in
           # traffic is `established`; hosts never route through the edge to
           # one another (that is enforced by per-host AllowedIPs).
           ct state established,related accept
+          # The one exception, and why it is one: Prometheus is not in Azure
+          # and hosts have no inbound, so a scrape is a packet the edge
+          # forwards from the monitoring peer to a host or to the control
+          # plane, and Fluent Bit's push to Loki is the same packet the
+          # other way. Named ports from named addresses; everything else
+          # between peers stays dropped. With no monitoring peer declared
+          # these lines are absent and the chain is what it was.
+          ${lib.concatStringsSep ruleSep monitoringForward}
           counter drop
         }
 

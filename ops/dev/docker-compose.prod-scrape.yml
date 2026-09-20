@@ -1,0 +1,20 @@
+# Overlay that swaps the dev stack's Prometheus config for the one that
+# scrapes production through ops/dev/tunnel-prod.sh's tunnels.
+#
+#   ops/dev/tunnel-prod.sh <edge-ip> <control-ip> &
+#   docker compose -f ops/dev/docker-compose.yml \
+#     -f ops/dev/docker-compose.prod-scrape.yml up -d
+#
+# Everything else — Loki, Grafana, the provisioning, the dashboards — is
+# the base file's.
+name: repose-obs-dev
+
+services:
+  prometheus:
+    volumes:
+      - ./prometheus-prod.yml:/etc/prometheus/prometheus.yml:ro
+      - ../alerts.yaml:/etc/prometheus/repose/alerts.yaml:ro
+      - prometheus:/prometheus
+
+volumes:
+  prometheus:

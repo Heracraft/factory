@@ -79,13 +79,29 @@ scrape_configs:
         labels:
           role: edge
 
-  # The Coolify VM: the api. It is a WireGuard peer of the edge for this
+  # The control VM: the api. It is a WireGuard peer of the edge for this
   # scrape and for nothing else (docs/workstreams/10-observability.md §2);
   # its HTTP surface is reached by users over the internet, not from here.
-  # The address is whatever the edge's pool gives it (workstream 06); this is
-  # the convention ops/prometheus/wireguard-peer.conf writes down.
+  #
+  # Two targets, not one: `api` and `api-grpc` are separate Coolify
+  # applications from the same image (DECISIONS I-2), each with its own
+  # process and so its own registry, and the series that matter are split
+  # between them — the HTTP families come from `api`, the stream and ops
+  # families from `api-grpc`. The `app` label is what tells them apart in a
+  # panel.
+  #
+  # 10.255.255.1 is the control VM's address on the hub, fixed by
+  # DECISIONS I-92; an earlier draft of this file guessed 10.255.0.2.
+  # 9103 and 9104 are host ports on that VM, published by each
+  # application's port mapping (ops/coolify/README.md), because a
+  # container's own METRICS_LISTEN is not reachable from the tunnel.
   - job_name: api
     static_configs:
-      - targets: ["10.255.0.2:9103"]
+      - targets: ["10.255.255.1:9103"]
         labels:
           role: control-plane
+          app: api
+      - targets: ["10.255.255.1:9104"]
+        labels:
+          role: control-plane
+          app: api-grpc
