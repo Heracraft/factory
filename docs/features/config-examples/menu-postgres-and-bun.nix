@@ -3,11 +3,11 @@
 { config, pkgs, lib, ... }:
 {
   imports = [
-    # bun (runtimes)
+    # bun (runtimes): Bun
     {
       home.packages = [ pkgs.bun ];
     }
-    # postgresql (databases): PostgreSQL 16
+    # postgresql (databases): PostgreSQL version 16
     {
       home.packages = [ pkgs.postgresql_16 ];
       repose.system = [
@@ -15,10 +15,13 @@
           services.postgresql = {
             enable = true;
             package = pkgs.postgresql_16;
-            dataDir = "/home/dev/.local/share/postgres/16";
             ensureDatabases = [ "dev" ];
             ensureUsers = [ { name = "dev"; ensureClauses.superuser = true; } ];
-            authentication = "local all all trust\nhost all all 127.0.0.1/32 trust\nhost all all ::1/128 trust\n";
+            authentication = lib.mkForce ''
+              local all all trust
+              host all all 127.0.0.1/32 trust
+              host all all ::1/128 trust
+            '';
           };
         }
       ];

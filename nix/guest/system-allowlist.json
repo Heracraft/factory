@@ -6,7 +6,6 @@
     "services.mysql",
     "services.memcached",
     "services.rabbitmq",
-    "services.minio",
     "services.meilisearch",
     "services.nats"
   ]

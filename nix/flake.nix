@@ -33,8 +33,7 @@
       pkgs = import nixpkgs {
         inherit system;
         overlays = [ overlay ];
-        config.allowUnfreePredicate = pkg:
-          builtins.elem (lib.getName pkg) [ "claude-code" "codex" "gemini-cli" ];
+        config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) (import ./guest/unfree-allowlist.nix);
       };
 
       # The platform base version: the revision of this repository. The api's

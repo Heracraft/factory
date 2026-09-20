@@ -53,8 +53,7 @@ let
   prePassPkgs = import nixpkgs {
     inherit system;
     overlays = [ overlay ];
-    config.allowUnfreePredicate = pkg:
-      builtins.elem (lib.getName pkg) [ "claude-code" "codex" "gemini-cli" ];
+    config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) (import ./unfree-allowlist.nix);
   };
 
   guestSystem = lib.nixosSystem {

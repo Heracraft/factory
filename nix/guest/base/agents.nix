@@ -40,9 +40,7 @@ in
     # The base brings its own overlay so nixosModules.guestBase is
     # self-contained; nix/guest/microvm.nix adds the user's overlays after.
     nixpkgs.overlays = [ (import ../../overlay/agents) ];
-    nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [
-      "claude-code" "codex" "gemini-cli"
-    ];
+    nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) (import ../unfree-allowlist.nix);
   }) {
 
     environment.systemPackages = (builtins.attrValues pkgs.reposeAgents) ++ [

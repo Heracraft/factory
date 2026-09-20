@@ -1,0 +1,245 @@
+# The menu catalog (docs/workstreams/12-nix-config-pipeline.md "The menu").
+# Each entry renders into the generated fragment: `hm` into the
+# home-manager module, `nixos` into a repose.system entry, both as Nix
+# attribute definitions (no surrounding braces). Templates: {{.option}} is
+# the selected option value; `nodots` strips dots ("3.12" -> "312").
+# Every `nixos` snippet sets options only under the prefixes in
+# nix/guest/system-allowlist.json (lint.go enforces it in `go test`, and
+# nix/guest/contract.nix enforces it again at evaluation), reviewed under
+# docs/SECURITY.md boundary 8: no networking, users, boot, virtualisation,
+# services.openssh. Every service listens on localhost only; the guest is
+# reachable through `repose open <port>`.
+
+- id: bun
+  label: Bun
+  group: runtimes
+  kind: runtime
+  description: The Bun JavaScript runtime, bundler and package manager.
+  hm: |
+    home.packages = [ pkgs.bun ];
+
+- id: deno
+  label: Deno
+  group: runtimes
+  kind: runtime
+  description: The Deno runtime for TypeScript and JavaScript.
+  hm: |
+    home.packages = [ pkgs.deno ];
+
+- id: nodejs
+  label: Node.js
+  group: runtimes
+  kind: runtime
+  description: A second Node.js next to the base's node 24, for projects pinned to another major.
+  hm: |
+    home.packages = [ pkgs.nodejs_{{.version}} ];
+  options:
+    - id: version
+      type: enum
+      values: ["20", "22"]
+      default: "22"
+
+- id: python
+  label: Python
+  group: runtimes
+  kind: runtime
+  description: A Python interpreter next to the base's 3.12, with pip.
+  hm: |
+    home.packages = [ pkgs.python{{.version | nodots}} ];
+  options:
+    - id: version
+      type: enum
+      values: ["3.11", "3.13"]
+      default: "3.13"
+
+- id: go-tools
+  label: Go tools
+  group: runtimes
+  kind: runtime
+  description: gopls, golangci-lint and delve next to the base's Go toolchain.
+  hm: |
+    home.packages = [ pkgs.gopls pkgs.golangci-lint pkgs.delve ];
+
+- id: zig
+  label: Zig
+  group: runtimes
+  kind: runtime
+  description: The Zig compiler and build system.
+  hm: |
+    home.packages = [ pkgs.zig ];
+
+- id: elixir
+  label: Elixir
+  group: runtimes
+  kind: runtime
+  description: Elixir with Erlang/OTP.
+  hm: |
+    home.packages = [ pkgs.elixir ];
+
+- id: ruby
+  label: Ruby
+  group: runtimes
+  kind: runtime
+  description: Ruby with bundler.
+  hm: |
+    home.packages = [ pkgs.ruby pkgs.bundler ];
+
+- id: jdk
+  label: Java
+  group: runtimes
+  kind: runtime
+  description: An OpenJDK with Maven and Gradle.
+  hm: |
+    home.packages = [ pkgs.jdk{{.version}} pkgs.maven pkgs.gradle ];
+    home.sessionVariables.JAVA_HOME = "${pkgs.jdk{{.version}}}/lib/openjdk";
+  options:
+    - id: version
+      type: enum
+      values: ["17", "21"]
+      default: "21"
+
+- id: dotnet
+  label: .NET SDK
+  group: runtimes
+  kind: runtime
+  description: The .NET SDK.
+  hm: |
+    home.packages = [ pkgs.dotnet-sdk ];
+    home.sessionVariables.DOTNET_CLI_TELEMETRY_OPTOUT = "1";
+
+- id: postgresql
+  label: PostgreSQL
+  group: databases
+  kind: service
+  description: A local PostgreSQL on 5432 for user dev (superuser, no password); data lives on the volume under /var/lib/postgresql.
+  hm: |
+    home.packages = [ pkgs.postgresql_{{.version}} ];
+  nixos: |
+    services.postgresql = {
+      enable = true;
+      package = pkgs.postgresql_{{.version}};
+      ensureDatabases = [ "dev" ];
+      ensureUsers = [ { name = "dev"; ensureClauses.superuser = true; } ];
+      authentication = lib.mkForce ''
+        local all all trust
+        host all all 127.0.0.1/32 trust
+        host all all ::1/128 trust
+      '';
+    };
+  options:
+    - id: version
+      type: enum
+      values: ["15", "16", "17"]
+      default: "16"
+
+- id: redis
+  label: Redis
+  group: databases
+  kind: service
+  description: A local Redis on 6379.
+  hm: |
+    home.packages = [ pkgs.redis ];
+  nixos: |
+    services.redis.servers.dev = {
+      enable = true;
+      port = 6379;
+      bind = "127.0.0.1";
+    };
+
+- id: mysql
+  label: MySQL (MariaDB)
+  group: databases
+  kind: service
+  description: A local MariaDB on 3306 with a `dev` database owned by user dev.
+  hm: |
+    home.packages = [ pkgs.mariadb.client ];
+  nixos: |
+    services.mysql = {
+      enable = true;
+      package = pkgs.mariadb;
+      ensureDatabases = [ "dev" ];
+      ensureUsers = [ { name = "dev"; ensurePermissions = { "dev.*" = "ALL PRIVILEGES"; }; } ];
+    };
+
+- id: memcached
+  label: Memcached
+  group: databases
+  kind: service
+  description: A local Memcached on 11211.
+  nixos: |
+    services.memcached = {
+      enable = true;
+      listen = "127.0.0.1";
+    };
+
+- id: rabbitmq
+  label: RabbitMQ
+  group: databases
+  kind: service
+  description: A local RabbitMQ on 5672 with the management UI on 15672.
+  nixos: |
+    services.rabbitmq = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      managementPlugin.enable = true;
+    };
+
+- id: meilisearch
+  label: Meilisearch
+  group: databases
+  kind: service
+  description: A local Meilisearch on 7700 in development mode (no master key).
+  nixos: |
+    services.meilisearch = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      listenPort = 7700;
+      environment = "development";
+    };
+
+- id: nats
+  label: NATS
+  group: databases
+  kind: service
+  description: A local NATS server on 4222 with JetStream.
+  hm: |
+    home.packages = [ pkgs.natscli ];
+  nixos: |
+    services.nats = {
+      enable = true;
+      jetstream = true;
+      settings.host = "127.0.0.1";
+    };
+
+- id: awscli
+  label: AWS CLI
+  group: tools
+  kind: package
+  description: The AWS command line, v2.
+  hm: |
+    home.packages = [ pkgs.awscli2 ];
+
+- id: opentofu
+  label: OpenTofu
+  group: tools
+  kind: package
+  description: OpenTofu, the open Terraform.
+  hm: |
+    home.packages = [ pkgs.opentofu ];
+
+- id: kubernetes
+  label: Kubernetes tools
+  group: tools
+  kind: package
+  description: kubectl, Helm and k9s.
+  hm: |
+    home.packages = [ pkgs.kubectl pkgs.kubernetes-helm pkgs.k9s ];
+
+- id: shell-extras
+  label: Shell extras
+  group: tools
+  kind: package
+  description: lazygit, delta, tldr and hyperfine.
+  hm: |
+    home.packages = [ pkgs.lazygit pkgs.delta pkgs.tlrc pkgs.hyperfine ];
+    programs.git.delta.enable = true;

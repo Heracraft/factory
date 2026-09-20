@@ -36,7 +36,7 @@ func TestMapEvalErrorFixtures(t *testing.T) {
 		{"nixpath.stderr", "<nixpkgs> is not available at fragment.nix:1:44; use the pkgs argument, which is the platform's pinned nixpkgs", 1},
 		{"ifd.stderr", "import-from-derivation is not allowed at fragment.nix:1:37; a fragment cannot import a file that a build produces", 1},
 		{"option.stderr", "option 'services.postgresql' does not exist in a fragment; system services come from the menu or `repose config menu`", 0},
-		{"assertion.stderr", "repose.system: option 'networking.firewall' is not allowed in a fragment; system services come from the menu or `repose config menu` (allowed: services.postgresql, services.redis, services.mysql, services.memcached, services.rabbitmq, services.minio, services.meilisearch, services.nats)", 0},
+		{"assertion.stderr", "repose.system: option 'networking.firewall' is not allowed in a fragment; system services come from the menu or `repose config menu` (allowed: services.postgresql, services.redis, services.mysql, services.memcached, services.rabbitmq, services.meilisearch, services.nats)", 0},
 		{"hmoverlays.stderr", "fragment: nixpkgs.overlays is ignored with useGlobalPkgs; use repose.overlays = [ ... ] instead", 0},
 	}
 	for _, c := range cases {
