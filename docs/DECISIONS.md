@@ -771,3 +771,38 @@ controller layouts, and wrong again if the LUN changes); a udev rule in the
 installer (nixos-anywhere's kexec image takes none). *Revisit when:* a host
 has more than one data disk.
 
+**I-42. virtiofsd's sandbox is `namespace`, and hostd attaches taps with
+exactly the host-conventions sequence.** (14, review of 01 and 03,
+2026-09-20) Two places where merged code disagreed with the merged
+contract, found by reading them side by side:
+
+- `internal/hostd/virtiofs` started virtiofsd as user `virtiofsd` with
+  `--sandbox chroot`. chroot(2) needs CAP_SYS_CHROOT, and virtiofsd 1.14.0
+  refuses the combination outright: `Error entering sandbox: sandbox mode
+  'chroot' can only be used by root (Use '--sandbox namespace' instead)`
+  (reproduced on the dev box, exit 1). Every guest create would have failed
+  at step 8 on a real host, and the tempting "fix" of dropping `User=`
+  would have put a root virtiofsd with the whole store in front of every
+  tenant. Namespace mode is what `03-hostd.md` §5.5 and the runner's
+  `bin/virtiofsd` already said; `host-conventions.md` and `01-host-nixos.md`
+  said chroot and now say namespace. The host enables unprivileged user
+  namespaces (`security.allowUserNamespaces`, `kernel.nix`) for this.
+  *Rejected:* `AmbientCapabilities=CAP_SYS_CHROOT` on the unit (a
+  capability on a process that faces tenant-controlled FUSE traffic, to
+  keep a mode whose only advantage is not needing user namespaces).
+  *Verify on the first host:* `systemctl status virtiofsd@<guest>` is
+  active and `ls /nix/store` works in the guest; the dev box cannot run
+  namespace mode itself (Ubuntu's `apparmor_restrict_unprivileged_userns`).
+- `internal/hostd/net` created taps with `ip tuntap add ... mode tap` and
+  attached them with a bare `ip link set master`, then added the guest to
+  a set `inet repose guests { ip . tap }` that no host declares: I-18
+  moved admission into the `bridge repose` table with type `ether_addr .
+  ipv4_addr . ifname`, and 03's code predates that. On a host, `nft add
+  element` fails and every create stops at step 6; had the set been
+  declared to make it pass, taps without `learning off` and a static FDB
+  entry would let a guest claim another guest's MAC and receive its
+  inbound frames (the bridge learns before the nftables input hook
+  drops). The `Net` interface now carries the MAC and the golden test is
+  the command list from `host-conventions.md` "Network", verbatim.
+  Interface text unchanged; the code follows the doc.
+

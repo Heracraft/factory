@@ -565,6 +565,54 @@ drain).
    `docs/incidents/<date>.md`, fix, re-run isolation tests fleet-wide
    before undraining.
 
+Who is told, what is captured, how a tenant hears (workstream 14 §5):
+
+- **Told, in this order:** the owner (ntfy, then the incident file); the
+  affected tenants; a third party only if their credentials inside the
+  guest could have been read (GitHub, OpenAI, Anthropic) so they can
+  rotate on their side. Nobody else until the timeline is written.
+- **Captured before anything is stopped**, into
+  `/var/lib/repose/incident-<date>/` on the host (root, 0700), then copied
+  off with `scp` through the edge:
+  ```
+  journalctl -u hostd --since '<window start>' -o json > hostd.json
+  journalctl -u sshd --since '<window start>' -o json > sshd.json
+  journalctl -t hostd-audit --since '<window start>' -o json > audit-login.json
+  nft list ruleset > nft.txt; bridge fdb show br br-guests > fdb.txt
+  bridge -d link show > taps.txt; ip -s link > ifstats.txt
+  hostd guests > guests.txt; hostd state export > state.json
+  timeout 3600 tcpdump -nn -e -i tap-<8hex> -w tap-<8hex>.pcap &
+  ```
+  On the edge: gateway journal for the window; Loki
+  `{component="gateway"}` and `{component="hostd", host="<id>"}` exports;
+  `audit_log` rows for the window (`repose-admin audit --since`). Never
+  capture guest disks or terminal contents beyond what the boundary test
+  needs: an incident does not suspend the privacy policy.
+- **Confirm or refute** with the suite, from the operator machine:
+  ```
+  REPOSE_ISOLATION_HOST_ID=<id> REPOSE_ISOLATION_EXEC_A='ssh -J root@<edge>,root@<host> dev@<A ip>' \
+  REPOSE_ISOLATION_EXEC_B='ssh -J root@<edge>,root@<host> dev@<B ip>' \
+  REPOSE_ISOLATION_HOST_EXEC='ssh -J root@<edge> root@<host>' \
+  REPOSE_ISOLATION_A_IP=<A ip> REPOSE_ISOLATION_B_IP=<B ip> REPOSE_ISOLATION_A_MAC=<A mac> \
+  REPOSE_ISOLATION_B_TAP=tap-<8hex> REPOSE_ISOLATION_HOST_IP=<.1> REPOSE_ISOLATION_OTHER_GUEST_IP=<other /22> \
+  REPOSE_ISOLATION_A_GUEST_ID=<A guest id> REPOSE_ISOLATION_A_SLUG=<A slug> \
+    go test ./test/isolation/ -run . -v -count=1 2>&1 | tee isolation-<date>.txt
+  ```
+  The output (host id and date on every test) goes into the incident
+  file verbatim.
+- **Tenant notice**, within 72 hours of confirmation, by email from the
+  owner's address (the notification pipeline is for agent events, not
+  incidents), one message per affected user, plain text: what boundary
+  failed, the window, what was reachable in their environment (network
+  ports, files, secrets by name only), what we did, what they should
+  rotate, and a contact. Keep a copy in the incident file. A user whose
+  data was *not* reached is not written to; say so in the file.
+- **Incident file** `docs/incidents/YYYY-MM-DD.md`: timeline (UTC),
+  boundary and mechanism, hosts and guests involved by id, what was
+  captured and where it is, tenants notified and when, the fix, the
+  re-run's `isolation-<date>.txt`, and the decision entry if a contract
+  changed.
+
 ## OpenTofu state lock stuck
 
 `make plan` or `make apply` reports `Error acquiring the state lock` with an
