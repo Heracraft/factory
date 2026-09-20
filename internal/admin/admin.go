@@ -186,7 +186,7 @@ func (e *Env) engine(ctx context.Context) (*ops.Engine, error) {
 	}
 	// The admin only enqueues; the api-grpc process drives, so no sender,
 	// CA or secrets are needed here.
-	e.eng = ops.New(e.pool, nil, nil, nil, nil, metrics.NewNop(), obs.NewLogger("admin", e.Stderr, 8), ops.Config{})
+	e.eng = ops.New(e.pool, nil, nil, nil, nil, nil, metrics.NewNop(), obs.NewLogger("admin", e.Stderr, 8), ops.Config{})
 	return e.eng, nil
 }
 

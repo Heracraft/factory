@@ -47,6 +47,7 @@ type env struct {
 	internal *httptest.Server
 	logs     *bytes.Buffer
 	sent     *sync.Map
+	unsub    *notify.Unsubscriber
 }
 
 func newEnv(t *testing.T) *env {
@@ -68,11 +69,16 @@ func newEnvLimits(t *testing.T, limits *httpapi.RateLimits) *env {
 		return nil
 	})
 	reg := prometheus.NewRegistry()
-	e := &env{h: h, logto: lf, logs: logs, sent: sent}
+	unsub, err := notify.LoadOrCreateUnsubscriber(context.Background(), h.Secrets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &env{h: h, logto: lf, logs: logs, sent: sent, unsub: unsub}
 	e.srv = httpapi.New(httpapi.Deps{
 		Pool: h.Pool, Verifier: auth.NewVerifier(lf.Issuer(), aud, nil), Users: auth.NewProvisioner(h.Pool, auth.NewLogtoManagement(lf.Issuer(), "m2m", "s", nil)),
 		CA: h.CA, Secrets: h.Secrets, Engine: h.Engine, Logs: h.Logs, Events: h.Events, Parser: parser, Metrics: h.Metrics, Registry: reg, Log: log,
 		Outbox:  notify.New(h.Pool, map[string]notify.Sender{"email": sender, "ntfy": sender}, h.Metrics, log),
+		Unsub:   unsub,
 		Gateway: httpapi.Gateway{Host: "ssh.test", Port: 22}, Limits: limits,
 		Migrations: func(ctx context.Context) (int, error) {
 			st, err := db.MigrateStatus(ctx, h.Pool)
@@ -189,6 +195,96 @@ func (e *env) signIn(t *testing.T, sub, login string) string {
 		t.Fatal(err)
 	}
 	return tok
+}
+
+// TestNotifyUnsubscribe covers docs/workstreams/13-notifications.md §5.6
+// and §9's "unsubscribe link that works": a valid token flips
+// notify_email off with no auth, and a forged or malformed one is refused.
+func TestNotifyUnsubscribe(t *testing.T) {
+	e := newEnv(t)
+	tok := e.signIn(t, "sub-uns", "uns")
+	r := e.do(t, tok, "GET", "/me", nil)
+	if r.status != 200 {
+		t.Fatalf("me: %d %s", r.status, r.raw)
+	}
+	userID, err := uuid.Parse(r.body["id"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Invalid tokens never touch the row.
+	if resp := e.do(t, "", "GET", "/notify/unsubscribe?token=garbage", nil); resp.status != 400 {
+		t.Fatalf("garbage token: %d %s", resp.status, resp.raw)
+	}
+	// A well-formed token signed for a user id nobody has is not an error
+	// (it verifies; there is just no row to update) and must not touch the
+	// real user's row.
+	other := e.unsub.Sign(uuid.New())
+	if resp := e.do(t, "", "GET", "/notify/unsubscribe?token="+other, nil); resp.status != 200 {
+		t.Fatalf("unknown-user token: %d %s", resp.status, resp.raw)
+	}
+	var notifyEmail bool
+	if err := e.h.Pool.QueryRow(e.h.Ctx, "select notify_email from users where id = $1", userID).Scan(&notifyEmail); err != nil {
+		t.Fatal(err)
+	}
+	if !notifyEmail {
+		t.Fatal("an unrelated token's success must not have touched this user's row")
+	}
+
+	// A valid token flips it off, with no Authorization header.
+	token := e.unsub.Sign(userID)
+	resp := e.do(t, "", "GET", "/notify/unsubscribe?token="+token, nil)
+	if resp.status != 200 || !strings.Contains(string(resp.raw), "unsubscribed") {
+		t.Fatalf("unsubscribe: %d %s", resp.status, resp.raw)
+	}
+	if err := e.h.Pool.QueryRow(e.h.Ctx, "select notify_email from users where id = $1", userID).Scan(&notifyEmail); err != nil {
+		t.Fatal(err)
+	}
+	if notifyEmail {
+		t.Fatal("notify_email was not cleared")
+	}
+
+	// A tampered signature is refused.
+	idPart, _, _ := strings.Cut(token, ".")
+	_, sigPart, _ := strings.Cut(other, ".")
+	if resp := e.do(t, "", "GET", "/notify/unsubscribe?token="+idPart+"."+sigPart, nil); resp.status != 400 {
+		t.Fatalf("tampered token: %d %s", resp.status, resp.raw)
+	}
+}
+
+// TestNotifyTestRoute is 13-notifications.md §9's "POST /me/notify-test
+// returns per-channel results": the settings page's test button.
+func TestNotifyTestRoute(t *testing.T) {
+	e := newEnv(t)
+	tok := e.signIn(t, "sub-kim", "kim")
+	// Email only, no ntfy: the result carries email but not ntfy.
+	r := e.do(t, tok, "POST", "/me/notify-test", nil)
+	if r.status != 200 {
+		t.Fatalf("notify-test: %d %s", r.status, r.raw)
+	}
+	if r.body["email"] != "ok" {
+		t.Fatalf("email result: %v", r.body)
+	}
+	if _, ok := r.body["ntfy"]; ok {
+		t.Fatalf("ntfy attempted with no url configured: %v", r.body)
+	}
+	// Setting an ntfy url gets it included too; the fake sender in this
+	// harness (newEnvLimits) answers every send with no error.
+	if r := e.do(t, tok, "PATCH", "/me", map[string]any{"notify": map[string]any{"ntfy_url": "https://ntfy.example/topic"}}); r.status != 200 {
+		t.Fatalf("set ntfy: %d %s", r.status, r.raw)
+	}
+	r = e.do(t, tok, "POST", "/me/notify-test", nil)
+	if r.status != 200 || r.body["email"] != "ok" || r.body["ntfy"] != "ok" {
+		t.Fatalf("notify-test with ntfy: %d %v", r.status, r.body)
+	}
+	// Turning email off drops it from the test, not just real events.
+	if r := e.do(t, tok, "PATCH", "/me", map[string]any{"notify": map[string]any{"email": false}}); r.status != 200 {
+		t.Fatalf("disable email: %d %s", r.status, r.raw)
+	}
+	r = e.do(t, tok, "POST", "/me/notify-test", nil)
+	if _, ok := r.body["email"]; ok {
+		t.Fatalf("email attempted after being disabled: %v", r.body)
+	}
 }
 
 func TestRouteContract(t *testing.T) {
