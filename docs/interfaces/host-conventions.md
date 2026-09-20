@@ -144,8 +144,10 @@ virtiofsd.sock`, `--vsock cid=<1000+index>,socket=vsock.sock`, `--serial
 socket=console.sock`, `--memory size=<RAM>M,shared=on`. The CH API socket
 is used for `shutdown` (after guestd's Shutdown timed out), `pause`,
 `resume`, and stats.
-virtiofsd runs as `virtiofsd:virtiofsd` in a chroot sandbox sharing
-`/run/repose/store-export` (never `/nix/store` directly).
+virtiofsd runs as `virtiofsd:virtiofsd` with `--sandbox namespace` (a
+user and mount namespace with the export pivot_rooted in; `chroot` is
+root-only and virtiofsd refuses it for an unprivileged user, DECISIONS
+I-48) sharing `/run/repose/store-export` (never `/nix/store` directly).
 
 ## Operator access
 

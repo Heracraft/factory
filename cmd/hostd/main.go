@@ -52,6 +52,8 @@ func options(fs *flag.FlagSet) *app.Options {
 	fs.StringVar(&o.BuildsDir, "builds-dir", "/var/lib/repose/builds", "fragment build directories")
 	fs.StringVar(&o.BaseDir, "base-dir", "/var/lib/repose/base", "platform checkouts by base_ref")
 	fs.StringVar(&o.BaseRepoURL, "base-repo-url", "", "git URL to clone a missing base checkout from")
+	fs.StringVar(&o.BaseSSHKey, "base-repo-ssh-key", "", "private key file for cloning --base-repo-url over SSH")
+	fs.StringVar(&o.BuildUser, "build-user", "nixbuild", "unprivileged user fragment evaluation and builds run as (empty: hostd's own)")
 	fs.StringVar(&o.GCRootsDir, "gcroots", "/nix/var/nix/gcroots/repose", "GC roots directory")
 	fs.StringVar(&o.APIAddr, "api-addr", "api.repose.herakraft.co:443", "api gRPC address")
 	fs.StringVar(&o.APIServerName, "api-server-name", "", "TLS server name when it differs from the address")
@@ -72,7 +74,7 @@ func options(fs *flag.FlagSet) *app.Options {
 	fs.IntVar(&o.MaxBuilds, "max-builds", 2, "concurrent builds")
 	fs.IntVar(&o.FailAtStep, "fail-at-step", 0, "inject a CreateGuest failure at this step (REPOSE_HOSTD_TESTING=1 only)")
 	fs.BoolVar(&o.NoWG, "no-wg", false, "do not restart wg-quick after registration")
-	fs.StringVar(&o.Substituters, "substituters", "", "nix substituters for builds (default cache.nixos.org and the platform cache)")
+	fs.StringVar(&o.Substituters, "substituters", "", "nix substituters for builds, space separated (default cache.nixos.org; the host module adds the overlay cache)")
 	return o
 }
 

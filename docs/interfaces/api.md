@@ -34,7 +34,7 @@ unique; it is the second half of the SSH login name.
 | POST | `/projects/:id/start` | → `{op_id}` |
 | POST | `/projects/:id/stop` | `{snapshot: bool=true}` → `{op_id}` |
 | GET | `/projects/:id/ops/:op_id` | `{state: pending\|running\|done\|error, error?, log_url?}` |
-| GET | `/projects/:id/ops/:op_id/log` | SSE stream of `BuildLog` lines, then `done` event. Browsers cannot set headers on EventSource, so this route also accepts `?access_token=<jwt>`; the token is never logged and the route is the only one that accepts it. |
+| GET | `/projects/:id/ops/:op_id/log` | SSE stream of `BuildLog` lines (`id:` = seq, `data:` = `{seq, line}`), then a `done` event whose data is `{state}`; `?since=<seq>` or `Last-Event-ID` resumes after a line. Browsers cannot set headers on EventSource, so this route also accepts `?access_token=<jwt>`; the token is never logged and the route is the only one that accepts it. |
 | POST | `/projects/:id/resize` | `{volume_bytes}` (grow only) |
 | GET | `/projects/:id/route` | `{host_id, guest_ip, state}` (used by CLI for `status` detail) |
 
@@ -57,7 +57,7 @@ half of the SSH login name and the tmux session name.
 | PUT | `/projects/:id/config` | `{fragment}` or `{menu: MenuSelection}` (the api renders menu → fragment) → `{revision_id, op_id}`; build starts immediately; apply happens when the build succeeds |
 | GET | `/projects/:id/config/revisions` | list with `{revision_id, created_at, status: building\|applied\|failed, error?}` |
 | POST | `/projects/:id/config/revisions/:rev/apply` | re-apply an older successful revision |
-| GET | `/catalog` | menu catalog: `[{id, label, group, description}]` (packages and services the dashboard menu offers) |
+| GET | `/catalog` | menu catalog: `[{id, label, group, kind, description, options?: [{id, type, values, default}]}]` (packages and services the dashboard menu offers; `kind` is `service|package|agent|runtime`, `options` are enums the menu shows as selects; from `internal/menu`, DECISIONS I-44) |
 
 ## Certificates
 
@@ -110,7 +110,7 @@ sshd material (delivered by hostd into the same tmpfs from the explicit
 | GET | `/internal/route?login=<slug>.<handle>` | `{project_id, guest_ip, state, principals}` |
 | GET | `/internal/revoked?since=` | `[serial]` |
 | GET | `/internal/ca` | `{user_ca_pub, host_ca_pub}` |
-| POST | `/internal/sessions` | `{project_id, opened\|closed, cert_serial}` (gateway reports, feeds signals) |
+| POST | `/internal/sessions` | `{project_id, event: opened\|closed, cert_serial}` (gateway reports, feeds signals) |
 | GET | `/internal/hosts` | `[{host_id, wg_pubkey, wg_ip, guest_cidr, state}]` for the edge's WireGuard peer sync |
 | POST | `/internal/gateway-certs` | `{public_key, project_id}` → `{certificate}`: 5-minute user certificate for the gateway's own key, principal = project id, key_id suffixed `:via-gateway` |
 | POST | `/internal/events` | `{source_ip, agent, kind, summary}`: hook events that reached the edge over HTTP because guestd was unavailable; the api maps `source_ip` to a project and dedupes on `(project_id, agent, kind, ts to the second)` |

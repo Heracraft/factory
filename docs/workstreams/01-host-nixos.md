@@ -48,7 +48,7 @@ tenants' guests, and nothing else. Every path, device and rule in
   `environment.systemPackages`; a `virtiofsd` user and group; udev rule
   giving `kvm` group access to `/dev/kvm`; `hostd` runs as root (it needs
   LVM, nftables, tap creation) and drops to `virtiofsd:virtiofsd` when
-  spawning virtiofsd with `--sandbox chroot --shared-dir /nix/store
+  spawning virtiofsd with `--sandbox namespace --shared-dir /run/repose/store-export
   --cache auto --xattr`. virtiofsd sees only `/nix/store`; the store's
   `.links` directory is excluded by mounting a bind of `/nix/store` at
   `/run/repose/store-export` with `.links` masked by an empty tmpfs mount on

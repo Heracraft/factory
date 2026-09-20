@@ -1,0 +1,392 @@
+package ops_test
+
+import (
+	"context"
+	"encoding/base64"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/heracraft/repose/internal/api/apitest"
+	"github.com/heracraft/repose/internal/api/ops"
+	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/db/testdb"
+	fakehostd "github.com/heracraft/repose/internal/fakes/hostd"
+	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
+)
+
+func TestMain(m *testing.M) { os.Exit(testdb.Run(m)) }
+
+func TestLifecycle(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	u := h.NewUser("alice")
+	ctx := h.Ctx
+	if err := h.Secrets.Put(ctx, u.ID.String(), "", "X", nil); err == nil {
+		t.Fatal("put without a project should fail")
+	}
+	p := h.NewProject(u, "todo", "large")
+	pid := p.ID
+	if err := h.Secrets.Put(ctx, u.ID.String(), pid.String(), "DATABASE_URL", []byte("postgres://planted")); err != nil {
+		t.Fatal(err)
+	}
+	// create: build then create_guest
+	op := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindCreate, ProjectID: &pid, Phases: ops.PlanCreate()}))
+	if op.State != "done" {
+		t.Fatalf("create: %+v", op.Error)
+	}
+	p = h.Project(pid)
+	if p.State != "running" || p.GuestIP == nil || p.HostID == nil || p.GuestID == nil || p.StartedAt == nil {
+		t.Fatalf("after create: %+v", p)
+	}
+	rev, _ := store.GetRevision(ctx, h.Pool, *p.ConfigRevisionID)
+	if rev.Status != "applied" || rev.SystemClosure == nil {
+		t.Fatalf("revision after create: %+v", rev)
+	}
+	// The CreateGuest command carried the secrets and the sshd material.
+	var create *hostdv1.CreateGuest
+	for _, c := range h.Fake.Commands() {
+		if cg := c.GetCreateGuest(); cg != nil {
+			create = cg
+		}
+	}
+	if create == nil {
+		t.Fatal("no CreateGuest sent")
+	}
+	if len(create.HostKey) == 0 || len(create.HostCert) == 0 || create.SshCaPub == "" || create.Principals[0] != pid.String() || create.UserId != u.ID.String() || create.ProjectSlug != "todo" {
+		t.Fatalf("CreateGuest fields: key=%d cert=%d ca=%q principals=%v", len(create.HostKey), len(create.HostCert), create.SshCaPub, create.Principals)
+	}
+	if len(create.Secrets) != 1 || create.Secrets[0].Name != "DATABASE_URL" || string(create.Secrets[0].Value) != "postgres://planted" {
+		t.Fatalf("secrets on the wire: %+v", create.Secrets)
+	}
+	if create.Env["TZ"] != "UTC" || create.Env["LANG"] != "C.UTF-8" {
+		t.Fatalf("env %v", create.Env)
+	}
+	if len(create.ProjectJson) == 0 {
+		t.Fatal("project_json empty")
+	}
+	// The host certificate now carries the guest ip principal.
+	vals, _ := h.Secrets.DecryptForGuest(ctx, pid.String())
+	var certLine string
+	for _, v := range vals {
+		if v.Name == "ssh_host_ed25519_key-cert.pub" {
+			certLine = string(v.Value)
+		}
+	}
+	if certLine == "" {
+		t.Fatal("host cert not stored")
+	}
+	// update_secrets pushes the whole set.
+	if err := h.Secrets.Put(ctx, u.ID.String(), pid.String(), "TOKEN", []byte("t")); err != nil {
+		t.Fatal(err)
+	}
+	op = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindUpdateSecrets, ProjectID: &pid, Phases: ops.PlanUpdateSecrets()}))
+	if op.State != "done" {
+		t.Fatalf("update_secrets: %+v", op.Error)
+	}
+	for _, g := range h.Fake.Guests() {
+		if string(g.Secrets["TOKEN"]) != "t" || string(g.Secrets["DATABASE_URL"]) != "postgres://planted" {
+			t.Fatalf("guest secrets %v", g.Secrets)
+		}
+		if _, ok := g.Secrets["ssh_host_ed25519_key"]; ok {
+			t.Fatal("reserved name pushed through UpdateSecrets")
+		}
+	}
+	// stop with snapshot
+	op = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindStop, ProjectID: &pid, Params: map[string]any{"snapshot": true}, Phases: ops.PlanStop()}))
+	if op.State != "done" || op.SnapshotID == nil {
+		t.Fatalf("stop: %+v %+v", op.Error, op)
+	}
+	if p = h.Project(pid); p.State != "stopped" || p.StoppedAt == nil {
+		t.Fatalf("after stop: %s", p.State)
+	}
+	snaps, _ := store.ListSnapshots(ctx, h.Pool, pid)
+	if len(snaps) != 1 || snaps[0].Reason != "stop" || snaps[0].Bytes == 0 {
+		t.Fatalf("snapshots after stop: %+v", snaps)
+	}
+	// start
+	op = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindStart, ProjectID: &pid, Phases: ops.PlanStart(false)}))
+	if op.State != "done" {
+		t.Fatalf("start: %+v", op.Error)
+	}
+	if p = h.Project(pid); p.State != "running" {
+		t.Fatalf("after start: %s", p.State)
+	}
+	var start *hostdv1.StartGuest
+	for _, c := range h.Fake.Commands() {
+		if sg := c.GetStartGuest(); sg != nil {
+			start = sg
+		}
+	}
+	if start == nil || len(start.HostKey) == 0 || len(start.Secrets) != 2 || start.SshCaPub == "" {
+		t.Fatalf("StartGuest delivery fields: %+v", start)
+	}
+	// manual snapshot
+	op = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindSnapshot, ProjectID: &pid, Params: map[string]any{"reason": "manual"}, Phases: ops.PlanSnapshot()}))
+	if op.State != "done" || op.SnapshotID == nil {
+		t.Fatalf("snapshot: %+v", op.Error)
+	}
+	snaps, _ = store.ListSnapshots(ctx, h.Pool, pid)
+	if len(snaps) != 2 || snaps[0].Reason != "manual" {
+		t.Fatalf("snapshots: %+v", snaps)
+	}
+	// resize
+	op = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindResize, ProjectID: &pid, Params: map[string]any{"volume_bytes": float64(80 << 30)}, Phases: ops.PlanResize()}))
+	if op.State != "done" {
+		t.Fatalf("resize: %+v", op.Error)
+	}
+	if p = h.Project(pid); p.VolumeBytes != 80<<30 {
+		t.Fatalf("volume after resize %d", p.VolumeBytes)
+	}
+	// exec requires an audit id
+	op = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindExec, ProjectID: &pid, Params: map[string]any{"argv": []any{"uptime"}}, Phases: ops.PlanExec()}))
+	if op.State != "error" || op.Error["code"] != "invalid" {
+		t.Fatalf("exec without audit: %+v", op)
+	}
+	aid, _ := store.Audit(ctx, h.Pool, "admin", "exec", pid.String(), map[string]any{"argv": []string{"uptime"}})
+	op = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindExec, ProjectID: &pid, AuditID: &aid, Params: map[string]any{"argv": []any{"uptime"}}, Phases: ops.PlanExec()}))
+	if op.State != "done" {
+		t.Fatalf("exec: %+v", op.Error)
+	}
+	out, _ := base64.StdEncoding.DecodeString(op.Result["stdout"].(string))
+	if string(out) != "fake\n" {
+		t.Fatalf("exec stdout %q", out)
+	}
+	// destroy: stop with snapshot, destroy guest, keep the snapshot 30 days
+	op = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindDestroy, ProjectID: &pid, Phases: ops.PlanDestroy(h.Project(pid))}))
+	if op.State != "done" {
+		t.Fatalf("destroy: %+v", op.Error)
+	}
+	p = h.Project(pid)
+	if p.State != "destroyed" || p.DestroyedAt == nil || p.HostID != nil || p.GuestID != nil {
+		t.Fatalf("after destroy: %+v", p)
+	}
+	snaps, _ = store.ListSnapshots(ctx, h.Pool, pid)
+	if len(snaps) != 3 {
+		t.Fatalf("snapshots after destroy: %d", len(snaps))
+	}
+	for _, s := range snaps {
+		if s.ExpiresAt == nil || time.Until(*s.ExpiresAt) < 29*24*time.Hour {
+			t.Fatalf("snapshot %s expires %v", s.ID, s.ExpiresAt)
+		}
+	}
+	if len(h.Fake.Guests()) != 0 {
+		t.Fatal("fake still holds the guest")
+	}
+	var reserved int64
+	_ = h.Pool.QueryRow(ctx, "select coalesce(sum(reserved_bytes),0) from host_reservations").Scan(&reserved)
+	if reserved != 0 {
+		t.Fatalf("reservation not released: %d", reserved)
+	}
+}
+
+func TestCapacityError(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	if _, err := h.Pool.Exec(h.Ctx, "update hosts set mem_bytes = 8::bigint<<30, free_mem_bytes = 8::bigint<<30"); err != nil {
+		t.Fatal(err)
+	}
+	u := h.NewUser("bob")
+	p := h.NewProject(u, "big", "xl")
+	pid := p.ID
+	op := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindCreate, ProjectID: &pid, Phases: ops.PlanCreate()}))
+	if op.State != "error" || op.Error["code"] != "capacity" {
+		t.Fatalf("expected capacity error, got %+v", op)
+	}
+	p = h.Project(pid)
+	if p.State != "error" || p.HostID != nil {
+		t.Fatalf("after capacity error: %+v", p)
+	}
+}
+
+func TestBuildFailureAndRebootRequired(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	u := h.NewUser("carol")
+	p := h.CreateRunning(u, "app")
+	pid := p.ID
+	// A failing build on a running project leaves it running and marks the revision failed.
+	h.Fake.SetFail("Build", "eval_failed")
+	rid := store.NewID()
+	if _, err := h.Pool.Exec(h.Ctx, "insert into config_revisions (id, project_id, fragment, status) values ($1, $2, 'bad', 'building')", rid, pid); err != nil {
+		t.Fatal(err)
+	}
+	op := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindBuild, ProjectID: &pid, RevisionID: &rid, Phases: ops.PlanBuild(true)}))
+	if op.State != "error" || op.Error["code"] != "eval_failed" {
+		t.Fatalf("build fail: %+v", op)
+	}
+	rev, _ := store.GetRevision(h.Ctx, h.Pool, rid)
+	if rev.Status != "failed" || rev.Error == nil {
+		t.Fatalf("revision: %+v", rev)
+	}
+	if h.Project(pid).State != "running" {
+		t.Fatal("a failed build changed the project state")
+	}
+	h.Fake.SetFail("Build", "")
+	// A kernel-changing build applies nothing until confirmed with reboot.
+	h.Fake.SetKernelChanged(true)
+	rid2 := store.NewID()
+	if _, err := h.Pool.Exec(h.Ctx, "insert into config_revisions (id, project_id, fragment, status) values ($1, $2, 'kernel', 'building')", rid2, pid); err != nil {
+		t.Fatal(err)
+	}
+	op = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindBuild, ProjectID: &pid, RevisionID: &rid2, Phases: ops.PlanBuild(true)}))
+	if op.State != "done" || !op.RebootRequired {
+		t.Fatalf("kernel build: state=%s reboot_required=%v err=%+v", op.State, op.RebootRequired, op.Error)
+	}
+	rev, _ = store.GetRevision(h.Ctx, h.Pool, rid2)
+	if rev.Status != "built" || !rev.RebootRequired || !rev.KernelChanged {
+		t.Fatalf("revision after kernel build: %+v", rev)
+	}
+	if *h.Project(pid).ConfigRevisionID == rid2 {
+		t.Fatal("kernel revision applied without confirmation")
+	}
+	op = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindApply, ProjectID: &pid, RevisionID: &rid2, Params: map[string]any{"reboot": true}, Phases: ops.PlanApply()}))
+	if op.State != "done" || op.RebootRequired {
+		t.Fatalf("apply with reboot: %+v", op)
+	}
+	rev, _ = store.GetRevision(h.Ctx, h.Pool, rid2)
+	if rev.Status != "applied" || *h.Project(pid).ConfigRevisionID != rid2 {
+		t.Fatalf("after confirmed apply: %+v", rev)
+	}
+}
+
+func waitSent(h *apitest.Harness, opID uuid.UUID) {
+	h.WaitFor("command sent", func() bool {
+		op, err := store.GetOp(h.Ctx, h.Pool, opID)
+		return err == nil && op.State == "running" && op.CommandID != nil
+	})
+}
+
+// Kill the api mid-build, restart it, the build completes.
+func TestOpSurvivesApiRestart(t *testing.T) {
+	h := apitest.New(t, apitest.Options{BuildDelay: 1500 * time.Millisecond})
+	u := h.NewUser("dave")
+	p := h.NewProject(u, "restart", "large")
+	pid := p.ID
+	opID := h.Enqueue(ops.NewOp{Kind: ops.KindCreate, ProjectID: &pid, Phases: ops.PlanCreate()})
+	waitSent(h, opID)
+	h.StopEngine()
+	time.Sleep(200 * time.Millisecond)
+	h.StartEngine(ops.Config{BaseRef: "deadbeef"})
+	op := h.WaitOp(opID)
+	if op.State != "done" {
+		t.Fatalf("after restart: %+v", op.Error)
+	}
+	if h.Project(pid).State != "running" {
+		t.Fatal("project not running after the restarted op")
+	}
+}
+
+// Drop the host stream mid-build; the command is re-sent with the same
+// command_id after Hello and the build completes.
+func TestOpSurvivesStreamDrop(t *testing.T) {
+	h := apitest.New(t, apitest.Options{BuildDelay: 1500 * time.Millisecond})
+	u := h.NewUser("erin")
+	p := h.NewProject(u, "drop", "large")
+	pid := p.ID
+	opID := h.Enqueue(ops.NewOp{Kind: ops.KindCreate, ProjectID: &pid, Phases: ops.PlanCreate()})
+	waitSent(h, opID)
+	op0, _ := store.GetOp(h.Ctx, h.Pool, opID)
+	h.ReconnectHost(t)
+	op := h.WaitOp(opID)
+	if op.State != "done" {
+		t.Fatalf("after stream drop: %+v", op.Error)
+	}
+	builds := 0
+	for _, c := range h.Fake.Commands() {
+		if c.GetBuild() != nil && c.CommandId == op0.CommandID.String() {
+			builds++
+		}
+	}
+	if builds < 2 {
+		t.Fatalf("expected the build re-sent with the same command_id, saw %d", builds)
+	}
+	lines, err := h.Logs.Read(h.Ctx, opID, 0, 0)
+	if err != nil || len(lines) < 3 {
+		t.Fatalf("build log lines %d %v", len(lines), err)
+	}
+}
+
+func TestRestoreOntoHostAndSecretValueInFragmentRefused(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	u := h.NewUser("frank")
+	p := h.CreateRunning(u, "res")
+	pid := p.ID
+	op := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindStop, ProjectID: &pid, Phases: ops.PlanStop()}))
+	if op.State != "done" || op.SnapshotID == nil {
+		t.Fatalf("stop: %+v", op.Error)
+	}
+	oldGuest := *h.Project(pid).GuestID
+	sid := *op.SnapshotID
+	p = h.Project(pid)
+	rop := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindRestore, ProjectID: &pid, SnapshotID: &sid, Phases: ops.PlanRestore(p, true, true)}))
+	if rop.State != "done" {
+		t.Fatalf("restore: %+v", rop.Error)
+	}
+	p = h.Project(pid)
+	if p.State != "running" || *p.GuestID == oldGuest || p.GuestIP == nil {
+		t.Fatalf("after restore: %+v", p)
+	}
+	snap, _ := store.GetSnapshot(h.Ctx, h.Pool, sid)
+	if snap.RestoringOpID != nil {
+		t.Fatal("restore guard not released")
+	}
+	var restore *hostdv1.Restore
+	for _, c := range h.Fake.Commands() {
+		if r := c.GetRestore(); r != nil {
+			restore = r
+		}
+	}
+	if restore == nil || restore.BlobPath != snap.BlobPath || restore.SystemClosure == "" || len(restore.HostKey) == 0 {
+		t.Fatalf("Restore command: %+v", restore)
+	}
+	// A fragment containing a current secret value is refused before Build.
+	if err := h.Secrets.Put(h.Ctx, u.ID.String(), pid.String(), "API_KEY", []byte("sk-verysecret")); err != nil {
+		t.Fatal(err)
+	}
+	rid := store.NewID()
+	if _, err := h.Pool.Exec(h.Ctx, "insert into config_revisions (id, project_id, fragment, status) values ($1, $2, $3, 'building')", rid, pid, `{ home.sessionVariables.K = "sk-verysecret"; }`); err != nil {
+		t.Fatal(err)
+	}
+	before := len(h.Fake.Commands())
+	op = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindBuild, ProjectID: &pid, RevisionID: &rid, Phases: ops.PlanBuild(true)}))
+	if op.State != "error" || op.Error["code"] != "invalid" {
+		t.Fatalf("fragment with secret: %+v", op)
+	}
+	if len(h.Fake.Commands()) != before {
+		t.Fatal("a Build was sent despite the secret in the fragment")
+	}
+}
+
+func TestEnqueueRefusesConcurrentOps(t *testing.T) {
+	h := apitest.New(t, apitest.Options{BuildDelay: 2 * time.Second})
+	u := h.NewUser("gina")
+	p := h.NewProject(u, "busy", "large")
+	pid := p.ID
+	opID := h.Enqueue(ops.NewOp{Kind: ops.KindCreate, ProjectID: &pid, Phases: ops.PlanCreate()})
+	if _, err := h.Engine.Enqueue(context.Background(), h.Pool, ops.NewOp{Kind: ops.KindStop, ProjectID: &pid, Phases: ops.PlanStop()}, false); err != ops.ErrOpInProgress {
+		t.Fatalf("expected op in progress, got %v", err)
+	}
+	h.WaitOp(opID)
+}
+
+func TestDrainAndHelloReconcile(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	u := h.NewUser("hank")
+	p := h.CreateRunning(u, "rec")
+	hid := h.HostID
+	op := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindDrain, HostID: &hid, Phases: ops.PlanDrain()}))
+	if op.State != "done" {
+		t.Fatalf("drain: %+v", op.Error)
+	}
+	h.WaitFor("host draining", func() bool {
+		hr, _ := store.GetHost(h.Ctx, h.Pool, hid)
+		return hr != nil && hr.State == "draining" && hr.Draining
+	})
+	// The host's view wins over a stale api state when no op is open.
+	if _, err := h.Pool.Exec(h.Ctx, "update projects set state = 'stopped' where id = $1", p.ID); err != nil {
+		t.Fatal(err)
+	}
+	h.ReconnectHost(t)
+	h.WaitFor("state reconciled from Hello", func() bool { return h.Project(p.ID).State == "running" })
+	_ = fakehostd.Options{}
+}

@@ -1,0 +1,121 @@
+package auth_test
+
+import (
+	"context"
+	"errors"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/heracraft/repose/internal/api/auth"
+	"github.com/heracraft/repose/internal/db/testdb"
+	"github.com/heracraft/repose/internal/fakes/logto"
+)
+
+func TestMain(m *testing.M) { os.Exit(testdb.Run(m)) }
+
+const aud = "https://api.repose.herakraft.co"
+
+func TestVerify(t *testing.T) {
+	f := logto.New(aud)
+	defer f.Close()
+	v := auth.NewVerifier(f.Issuer(), aud, nil)
+	ctx := context.Background()
+	c, err := v.Verify(ctx, f.Token("sub1"))
+	if err != nil || c.Sub != "sub1" {
+		t.Fatalf("%+v %v", c, err)
+	}
+	for name, tok := range map[string]string{
+		"wrong audience": f.TokenWith("sub1", "https://other", time.Hour),
+		"expired":        f.TokenWith("sub1", aud, -time.Hour),
+		"wrong key":      f.TokenWrongKey("sub1"),
+		"garbage":        "not.a.jwt",
+	} {
+		if _, err := v.Verify(ctx, tok); !errors.Is(err, auth.ErrInvalidToken) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	// One JWKS fetch serves an hour of verifications.
+	for i := 0; i < 20; i++ {
+		if _, err := v.Verify(ctx, f.Token("sub1")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if f.JWKSHits() > 3 {
+		t.Fatalf("jwks fetched %d times", f.JWKSHits())
+	}
+}
+
+func TestJWKSOutageServesStaleThenFails(t *testing.T) {
+	f := logto.New(aud)
+	defer f.Close()
+	v := auth.NewVerifier(f.Issuer(), aud, nil)
+	ctx := context.Background()
+	if _, err := v.Verify(ctx, f.Token("s")); err != nil {
+		t.Fatal(err)
+	}
+	f.JWKSDown = true
+	// Cache still fresh: fine. Force a refresh by making the cache old.
+	auth.SetClockForTest(v, time.Now().Add(2*time.Hour))
+	if _, err := v.Verify(ctx, f.Token("s")); err != nil {
+		t.Fatalf("stale cache within 24 h should serve: %v", err)
+	}
+	auth.SetClockForTest(v, time.Now().Add(30*time.Hour))
+	if _, err := v.Verify(ctx, f.Token("s")); !errors.Is(err, auth.ErrIdentityProviderUnavailable) {
+		t.Fatalf("expected identity provider unavailable, got %v", err)
+	}
+	v2 := auth.NewVerifier(f.Issuer(), aud, nil)
+	if _, err := v2.Verify(ctx, f.Token("s")); !errors.Is(err, auth.ErrIdentityProviderUnavailable) {
+		t.Fatalf("cold cache with jwks down: %v", err)
+	}
+}
+
+func TestDeriveHandle(t *testing.T) {
+	for in, want := range map[string]string{
+		"Heracraft": "heracraft", "Foo_Bar.Baz": "foo-bar-baz", "--x--": "x", "a  b": "a-b",
+		"ThisIsAVeryLongGitHubLoginNameIndeedYes": "thisisaverylonggithubloginnamein", "": "user", "日本": "user",
+	} {
+		if got := auth.DeriveHandle(in); got != want {
+			t.Errorf("%q: got %q want %q", in, got, want)
+		}
+	}
+}
+
+func TestFirstSignInCreatesUserAndCollisionsSuffix(t *testing.T) {
+	pool := testdb.Open(t)
+	f := logto.New(aud)
+	defer f.Close()
+	f.AddUser("sub-a", logto.User{Email: "a@example.com", GithubLogin: "Octo_Cat"})
+	f.AddUser("sub-b", logto.User{Email: "b@example.com", GithubLogin: "octo-cat"})
+	f.AddUser("sub-c", logto.User{Email: "c@example.com", GithubLogin: "OCTO.CAT"})
+	p := auth.NewProvisioner(pool, auth.NewLogtoManagement(f.Issuer(), "m2m", "secret", nil))
+	ctx := context.Background()
+	a, err := p.EnsureUser(ctx, "sub-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Handle != "octo-cat" || *a.Email != "a@example.com" || a.TrialCreditCents != 1000 || a.ProjectLimit != 3 || a.XLLimit != 1 || a.BillingStatus != "trial" {
+		t.Fatalf("%+v", a)
+	}
+	again, err := p.EnsureUser(ctx, "sub-a")
+	if err != nil || again.ID != a.ID {
+		t.Fatalf("second sign-in: %+v %v", again, err)
+	}
+	b, err := p.EnsureUser(ctx, "sub-b")
+	if err != nil || b.Handle != "octo-cat-2" {
+		t.Fatalf("collision: %+v %v", b, err)
+	}
+	c, err := p.EnsureUser(ctx, "sub-c")
+	if err != nil || c.Handle != "octo-cat-3" {
+		t.Fatalf("second collision: %+v %v", c, err)
+	}
+	f.MgmtDown = true
+	if _, err := p.EnsureUser(ctx, "sub-d"); !errors.Is(err, auth.ErrProvisionFailed) {
+		t.Fatalf("management api down: %v", err)
+	}
+	var n int
+	_ = pool.QueryRow(ctx, "select count(*) from users where logto_sub = 'sub-d'").Scan(&n)
+	if n != 0 {
+		t.Fatal("a user row was created despite the provider failure")
+	}
+}

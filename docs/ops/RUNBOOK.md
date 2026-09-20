@@ -12,8 +12,8 @@ machine.
 ```bash
 nix develop                                  # go, tofu, az, wg, promtool, grafana-cli
 az login
-repose-admin login                          # Logto, operator role
-repose-admin operator-cert                  # 8h Host-CA cert into ssh-agent
+export DATABASE_URL=...                      # repose-admin talks to Postgres directly (I-42); over the Coolify VM's WireGuard address
+repose-admin operator-cert                  # 8h Host-CA cert, add it next to ~/.ssh/id_ed25519
 sudo wg-quick up ops/wg/operator.conf        # 10.255.0.0/16 reachable
 ```
 
@@ -75,6 +75,9 @@ to Grafana provisioning, and the Loki labels are already in Fluent Bit.
 | Rotate the Key Vault wrapping key | `az keyvault key rotate` then `repose-admin secrets rewrap` |
 | Query audit log | `repose-admin audit --user <handle> --since 24h` |
 | Publish a base version | `repose-admin base publish --rev <git sha> --changelog "..." [--security]` |
+| Smoke-test a host | `repose-admin hosts smoke host-NN` (create, snapshot, stop, start, destroy a throwaway guest) |
+| Initialise the CAs (once) | `repose-admin ca init`; then `repose-admin ca sign-client --name gateway --out <dir>` for the edge |
+| Record the edge WireGuard hub | `repose-admin edge init --endpoint <ip>:51820 --pubkey <wg pub> [--out <dir>]` |
 | Re-run the hourly rollup | `repose-admin billing rollup --hour 2026-09-17T14` |
 | Database migration | `repose-admin db migrate` / `repose-admin db rollback --to NNNN` |
 
@@ -565,6 +568,54 @@ drain).
    `docs/incidents/<date>.md`, fix, re-run isolation tests fleet-wide
    before undraining.
 
+Who is told, what is captured, how a tenant hears (workstream 14 §5):
+
+- **Told, in this order:** the owner (ntfy, then the incident file); the
+  affected tenants; a third party only if their credentials inside the
+  guest could have been read (GitHub, OpenAI, Anthropic) so they can
+  rotate on their side. Nobody else until the timeline is written.
+- **Captured before anything is stopped**, into
+  `/var/lib/repose/incident-<date>/` on the host (root, 0700), then copied
+  off with `scp` through the edge:
+  ```
+  journalctl -u hostd --since '<window start>' -o json > hostd.json
+  journalctl -u sshd --since '<window start>' -o json > sshd.json
+  journalctl -t hostd-audit --since '<window start>' -o json > audit-login.json
+  nft list ruleset > nft.txt; bridge fdb show br br-guests > fdb.txt
+  bridge -d link show > taps.txt; ip -s link > ifstats.txt
+  hostd guests > guests.txt; hostd state export > state.json
+  timeout 3600 tcpdump -nn -e -i tap-<8hex> -w tap-<8hex>.pcap &
+  ```
+  On the edge: gateway journal for the window; Loki
+  `{component="gateway"}` and `{component="hostd", host="<id>"}` exports;
+  `audit_log` rows for the window (`repose-admin audit --since`). Never
+  capture guest disks or terminal contents beyond what the boundary test
+  needs: an incident does not suspend the privacy policy.
+- **Confirm or refute** with the suite, from the operator machine:
+  ```
+  REPOSE_ISOLATION_HOST_ID=<id> REPOSE_ISOLATION_EXEC_A='ssh -J root@<edge>,root@<host> dev@<A ip>' \
+  REPOSE_ISOLATION_EXEC_B='ssh -J root@<edge>,root@<host> dev@<B ip>' \
+  REPOSE_ISOLATION_HOST_EXEC='ssh -J root@<edge> root@<host>' \
+  REPOSE_ISOLATION_A_IP=<A ip> REPOSE_ISOLATION_B_IP=<B ip> REPOSE_ISOLATION_A_MAC=<A mac> \
+  REPOSE_ISOLATION_B_TAP=tap-<8hex> REPOSE_ISOLATION_HOST_IP=<.1> REPOSE_ISOLATION_OTHER_GUEST_IP=<other /22> \
+  REPOSE_ISOLATION_A_GUEST_ID=<A guest id> REPOSE_ISOLATION_A_SLUG=<A slug> \
+    go test ./test/isolation/ -run . -v -count=1 2>&1 | tee isolation-<date>.txt
+  ```
+  The output (host id and date on every test) goes into the incident
+  file verbatim.
+- **Tenant notice**, within 72 hours of confirmation, by email from the
+  owner's address (the notification pipeline is for agent events, not
+  incidents), one message per affected user, plain text: what boundary
+  failed, the window, what was reachable in their environment (network
+  ports, files, secrets by name only), what we did, what they should
+  rotate, and a contact. Keep a copy in the incident file. A user whose
+  data was *not* reached is not written to; say so in the file.
+- **Incident file** `docs/incidents/YYYY-MM-DD.md`: timeline (UTC),
+  boundary and mechanism, hosts and guests involved by id, what was
+  captured and where it is, tenants notified and when, the fix, the
+  re-run's `isolation-<date>.txt`, and the decision entry if a contract
+  changed.
+
 ## OpenTofu state lock stuck
 
 `make plan` or `make apply` reports `Error acquiring the state lock` with an
@@ -700,10 +751,120 @@ its timer; `SnapshotStale` fires if a running project stays without one.
 
 ## hostd: build exceeds time
 
-`build_timeout: build exceeded 1800 s; last derivation: <name>` and the
-CLI exits 10. The named derivation is what was compiling when `timeout`
-fired; the tenant either pulls a cached variant or accepts the cap.
-`BuildQueueStuck` above covers a build that ignored the cap.
+`build_timeout: build timed out after 30 minutes while building <name>`
+and the CLI exits 10. The named derivation is what was compiling when
+`timeout` fired (the scope's `RuntimeMaxSec` is the backstop 30 s later);
+the tenant either pulls a cached variant or accepts the cap. "Build
+stuck" and `BuildQueueStuck` above cover a build that ignored the cap.
+
+## Build stuck (no BuildLog line for 10 minutes)
+
+A `Build` op is `running`, its SSE log has not moved, and hostd's
+`builds_running` gauge holds. Distinguish a slow build from a wedged one:
+
+1. On the host: `systemctl list-units 'repose-build-*'` shows the scope
+   (`repose-build-<revision>` for the build, `-eval` for the evaluation)
+   with its `RuntimeMaxSec`; `systemctl status <scope>` shows the `nix`
+   process tree under user `nixbuild`. A build is alive when `nix log
+   --follow` on its derivation (`journalctl -u hostd | grep build_start`
+   names the revision; `nix log <drv>`) still grows.
+2. A build compiling something big (a browser, CUDA) is slow, not stuck;
+   the 30-minute cap ends it as `build_timeout` naming the derivation and
+   the tenant reads it in the CLI. Nothing to do.
+3. If the scope is past `RuntimeMaxSec` and still present, systemd's kill
+   failed: `systemctl kill --signal=KILL <scope>`; hostd reports
+   `build_timeout`. If the `nix` client is gone but `nix-daemon` still runs
+   the builder (`ps -o pid,user,etime,args -C nix-daemon`), the daemon lost
+   the client's cancellation: `nix build --no-link <drv>` from a root shell
+   attaches to the running build so you can watch it, or `systemctl restart
+   nix-daemon` kills every build on the host (both hostd builds restart
+   from their last substituted path; nothing tenant-visible is lost).
+4. `BuildQueueStuck` above covers the metric-level alert.
+
+## Build: cache unreachable
+
+`host_warning{kind: cache_unreachable}` and BuildLog lines `warning:
+unable to download 'https://<cache>/...'`. Builds go on from
+cache.nixos.org or source; only speed is lost.
+
+1. `curl -sI https://repose.cachix.org/nix-cache-info` from the host. A
+   DNS or TLS failure from the host and not from your laptop is the host's
+   egress (NAT gateway, `HostWgDown` is unrelated). A 5xx is Cachix; check
+   status.cachix.org and wait.
+2. If the cache is fine but every host warns, the public key changed:
+   `repose.host.overlayCache.publicKey` must equal the key on the cache's
+   page, else Nix refuses its narinfos with `signature ... invalid` and
+   falls back to building the agents from their release tarballs
+   (downloads, not compiles; minutes).
+3. `nix store info --store https://repose.cachix.org` proves the host
+   reaches it after the fix. The warning is per build and stops by itself.
+
+## Build: base unavailable
+
+`Build` fails `internal: base <rev> unavailable: ...` for every project;
+no tenant config changes.
+
+1. `ls /var/lib/repose/base/` on the host. Each directory is a git
+   checkout of this repository at a `base_versions.nix_rev`.
+2. `clone failed`: hostd's `--base-repo-url` is empty or the repository
+   refused it. A private repository needs `repose.host.baseRepo.sshKeyFile`
+   pointing at a deploy key delivered like the join token (never in the
+   store); `journalctl -u hostd | grep base` has git's stderr. Place the
+   checkout by hand from a machine that can: `git clone --no-checkout
+   <url> /var/lib/repose/base/<rev> && git -C /var/lib/repose/base/<rev>
+   checkout <rev>`, then resend the build (`repose-admin projects
+   rebuild <id>`, or `repose config apply` as the user).
+3. `checkout failed`: the revision is not in the repository (a
+   `base publish` of a rev that was never pushed). Publish a rev that
+   exists.
+4. `flake.lock` errors: the checkout is not a complete repository
+   (interrupted clone). Remove the directory and let hostd clone again.
+
+## Base bump failures
+
+`repose-admin base status <version>` lists projects `failed` with the
+error's first line; each has a `base_update_failed` event the user saw.
+
+1. One or two projects failing with `eval_failed` or `build_failed` is a
+   fragment that stopped building on the new base (a renamed attribute, a
+   removed package). The project keeps its old base and is skipped by
+   later bumps until the user's next successful `repose config apply`;
+   nothing to do on the platform side, but the error text tells you which
+   nixpkgs change caused it.
+2. Many projects failing the same way is the base's bug: `repose-admin
+   base rollback <previous version>` re-applies the previous closure to
+   every project the bump reached (still rooted, so no rebuild), then fix
+   the base and publish again.
+3. `needs_reboot` is not a failure: the kernel changed, the guest was
+   built and the user decides when to reboot (`repose config apply
+   --reboot`); `repose status` says `base X (Y ready; reboot when
+   convenient)`.
+4. A bump that never started: the daily job runs at 04:00 UTC (05); a
+   `--security` publish runs at once. `repose-admin ops list --kind build`
+   shows the queued builds and their `not_before` times, spread over 24 h
+   (2 h security), two per host at a time.
+
+## Closure collected under a running guest
+
+`Warning{kind: store_path_missing}` from a guest, or a tenant's shell
+saying `No such file or directory` for a store path. The host garbage
+collected a path the guest's running system references, which means its
+GC root was missing (a hostd bug) or was removed by hand.
+
+1. `ls -l /nix/var/nix/gcroots/repose/` on the host: the guest's root is
+   `<guest_id>` and the newest three revisions are
+   `rev-<project_id>-<revision_id>`; `nix-store --gc --print-dead | grep
+   <closure>` is empty when the closure is protected.
+2. Rebuild the revision (deterministic): `repose-admin projects rebuild
+   <id>` sends `Build` with the same fragment and base; hostd re-roots the
+   result. A guest that only lost a leaf package keeps running from page
+   cache and picks the path up at its next `switch`; one that lost its
+   `init`, kernel or a service binary is wedged: `repose-admin projects
+   restart <id>` (stop with a snapshot, start) boots it from the rebuilt
+   closure.
+3. Find why the root was gone: `journalctl -u hostd | grep gcroot`
+   (hostd logs every root it sets and removes) and the weekly
+   `nix-gc.service` run time. A root removed by hand is an audit finding.
 
 ## hostd: command for unknown guest
 
@@ -727,6 +888,112 @@ commands; every command but Exec re-executes safely.
 The second prints `hostd already running` and exits 1: bbolt holds a
 file lock on `state.db`. Nothing to do; `systemctl status hostd` shows
 the real one.
+
+## api: login service unavailable
+
+The CLI prints `login service unavailable, retry in a minute`; the api
+logs `request` lines with status 401 and the message `identity provider
+unavailable`. Logto's JWKS could not be fetched and the cached copy is
+older than 24 hours (fresh copies are served for up to an hour without a
+fetch).
+
+1. `curl -s https://auth.repose.herakraft.co/oidc/jwks` from the Coolify
+   VM. Logto down: its container in Coolify. A 200 here means the api
+   container cannot reach it (DNS inside the Coolify network).
+2. The api recovers on the next request once the fetch succeeds; nothing
+   to restart.
+
+## api: could not create your account
+
+A first sign-in failed with `internal: identity provider unavailable`
+and no user row exists. The Management API call
+(`GET <issuer>/api/users/<sub>` with the M2M client) failed.
+
+1. Check `LOGTO_M2M_CLIENT_ID/SECRET` on the api app and that the M2M app
+   in Logto holds the Management API `all` scope.
+2. The user retries; the api creates the row on the first successful
+   lookup. Nothing is half-created.
+
+## api: no capacity right now
+
+An op ended `capacity`; `repose_api_schedule_total{result="capacity"}`
+rose; the CLI printed `no capacity right now; you have not been charged`.
+
+1. `repose-admin hosts list`: no host is `ready` with free memory above
+   the reserve for the class and pool room for the volume. Draining,
+   unreachable and stale-heartbeat hosts do not count.
+2. Add a host (11 §5) or undrain one. The user runs `repose run` again;
+   the project is in `error` with `last_error = capacity` until then.
+
+## api: op stuck waiting for host
+
+`GET /ops/:id` stays `running` and the CLI shows `waiting for host`. The
+host's stream dropped mid-command.
+
+1. `repose-admin ops list --state running` and `hosts list`: the host's
+   heartbeat age. Under 90 s: hostd reconnects with backoff and the api
+   re-sends the command on `Hello` with the same command_id
+   (`command_resend` in the log); nothing to do.
+2. Unreachable for more than 10 minutes: the op fails
+   `host_unreachable`, the project goes to `error`. See
+   "HostUnreachable"; `repose-admin projects start` once the host is back.
+
+## api: build failed
+
+The revision is `failed` with the Nix error and `fragment_line`; the CLI
+exits 10. The guest is untouched and the previous revision stays applied.
+`repose-admin ops log <op>` has the full output (`build_logs`, secret
+values already redacted). A fragment that contains a current secret value
+is refused before the build with `invalid: fragment contains the value of
+secret NAME`.
+
+## api: secret service unavailable
+
+`PUT /secrets` returned `internal: key service unavailable`;
+`repose_api_keyvault_errors_total` rose. Guest starts retry for 30
+minutes (`op_retry` in the log) before failing with the same message.
+
+1. `az keyvault key show --vault-name <kv> --name repose-dek-kek` with the
+   api's identity; a 403 means the access policy lost the api's object id
+   (11 §Key Vault); a timeout means egress from the Coolify VM.
+2. Reads keep working from the 10-minute DEK cache; writes and cold starts
+   do not. Nothing to restart once Key Vault answers.
+
+## api: Postgres down
+
+`/healthz` returns 503 (`db unreachable` or `migrations pending`) and
+Coolify stops routing; host streams drop and hostd buffers samples for 60
+minutes. Fix the database (Coolify's Postgres resource, disk, or run
+`repose-admin db migrate` for the pending case); the api needs no restart.
+
+## api: rollup or expiry not running on one replica
+
+`rollup: not leader` (`rollup_skip`) means another replica holds the
+advisory lock; only one runs the hourly rollup, the outbox, snapshot
+expiry and the ops driver. Expected with two replicas. If no replica logs
+`rollup_done` for two hours, `RollupLag` fires: `repose-admin billing
+rollup` runs it by hand.
+
+## api: snapshot deleted under a restore
+
+Cannot happen by construction: the restore op marks
+`snapshots.restoring_op_id` inside the same row lock the expiry job takes
+with `for update skip locked`, and the job skips rows a restore holds. If
+a restore fails with `not_found: snapshot was deleted`, the snapshot had
+expired before the restore was enqueued; pick a newer one.
+
+## api: duplicate results or events
+
+Ignored by design: `ops.command_id` is unique and a result for a finished
+command logs `duplicate or unknown result ignored`; `events.host_event_id`
+is unique and hook events collapse on `(project, agent, kind, second)`.
+Nothing to do.
+
+## api: user reports "account suspended"
+
+`forbidden: account suspended` on every route but `GET /me` and the
+billing portal. `repose-admin users show <handle>` for the reason;
+`users unsuspend` reverses it.
 
 ## Suspend a user
 

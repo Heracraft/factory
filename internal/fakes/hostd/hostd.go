@@ -97,6 +97,13 @@ func (f *Fake) Commands() []*hostdv1.Command {
 	return append([]*hostdv1.Command(nil), f.commands...)
 }
 
+// SetKernelChanged changes what Build reports at runtime.
+func (f *Fake) SetKernelChanged(v bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.opts.KernelChanged = v
+}
+
 // SetFail changes the failure map at runtime.
 func (f *Fake) SetFail(kind, code string) {
 	f.mu.Lock()
@@ -335,7 +342,7 @@ func (f *Fake) execute(cmd *hostdv1.Command) *hostdv1.Result {
 		}
 		var blob string
 		if c.StopGuest.SnapshotFirst {
-			blob = fmt.Sprintf("%s/%s/%d.img.zst", "user", g.ProjectID, time.Now().Unix())
+			blob = fmt.Sprintf("%s/%s/%d.img.zst", "user", g.ProjectID, time.Now().UnixNano())
 			f.event(&hostdv1.Event{Ev: &hostdv1.Event_SnapshotDone{SnapshotDone: &hostdv1.SnapshotDone{GuestId: g.GuestID, BlobPath: blob, Bytes: 1 << 30}}})
 		}
 		f.setState(g, "stopping", "")
@@ -375,13 +382,20 @@ func (f *Fake) execute(cmd *hostdv1.Command) *hostdv1.Result {
 				time.Sleep(f.opts.BuildDelay / 3)
 			}
 		}
+		closure := f.opts.FakeClosure
+		if c.Build.RevisionId != "" {
+			closure = f.opts.FakeClosure + "-" + c.Build.RevisionId
+		}
 		return ok(func(r *hostdv1.Result) {
-			r.Payload = &hostdv1.Result_Build{Build: &hostdv1.BuildResult{SystemClosure: f.opts.FakeClosure, ClosureBytes: 3 << 30, KernelChanged: f.opts.KernelChanged}}
+			r.Payload = &hostdv1.Result_Build{Build: &hostdv1.BuildResult{SystemClosure: closure, ClosureBytes: 3 << 30, KernelChanged: f.opts.KernelChanged}}
 		})
 	case *hostdv1.Command_ApplyConfig:
+		// A kernel-changing closure applies nothing unless force_reboot
+		// (DECISIONS I-5); the fake reports kernel changes per KernelChanged.
 		f.mu.Lock()
 		g, e := get(c.ApplyConfig.GuestId)
-		if e == nil {
+		needsReboot := e == nil && f.opts.KernelChanged && g.Closure != c.ApplyConfig.SystemClosure && !c.ApplyConfig.ForceReboot
+		if e == nil && !needsReboot {
 			g.Closure = c.ApplyConfig.SystemClosure
 		}
 		f.mu.Unlock()
@@ -389,7 +403,7 @@ func (f *Fake) execute(cmd *hostdv1.Command) *hostdv1.Result {
 			return e
 		}
 		return ok(func(r *hostdv1.Result) {
-			r.Payload = &hostdv1.Result_Apply{Apply: &hostdv1.ApplyResult{Rebooted: c.ApplyConfig.ForceReboot}}
+			r.Payload = &hostdv1.Result_Apply{Apply: &hostdv1.ApplyResult{Rebooted: c.ApplyConfig.ForceReboot, RebootRequired: needsReboot}}
 		})
 	case *hostdv1.Command_Snapshot:
 		f.mu.Lock()

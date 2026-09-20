@@ -33,14 +33,27 @@ mitigate. `workstreams/14-security.md` is the work that verifies this doc.
 
 From `ARCHITECTURE.md`, with the mechanism and the actor it stops:
 
-1. **KVM between guest and host.** Cloud Hypervisor on KVM; the guest sees
-   one block device, one tap, one vsock, one virtio-fs mount (read-only,
-   exported by an unprivileged `virtiofsd` in a chroot), a serial console.
-   Stops: a tenant or their agent reaching the host or the store's write
-   path.
-2. **nftables between guests.** Per-guest tap, default-drop forward chain,
-   drop to the host, drop to IMDS, drop to all other guest ranges, NAT out.
-   Stops: a tenant reaching another tenant's sshd, guestd, or dev servers.
+1. **KVM between guest and host.** Cloud Hypervisor on KVM, launched by
+   hostd from the guest's system closure (DECISIONS I-27); the guest sees
+   one block device (its thin volume), one tap, one vsock, one virtio-fs
+   mount and a serial console. The virtio-fs share is
+   `/run/repose/store-export`, a read-only `nosuid,nodev` bind of the
+   store with an empty tmpfs over `.links`, served by an unprivileged
+   `virtiofsd` in a user and mount namespace sandbox (I-48). Stops: a
+   tenant or their agent reaching the host or the store's write path, or
+   enumerating other tenants' closures through the hard-link farm.
+2. **The bridge and nftables between guests.** Per-guest tap attached
+   `isolated on learning off flood off` with a static FDB entry; the
+   `bridge repose` table drops every switched frame and admits ARP and
+   IPv4 to the host only from the `(mac, ip, tap)` tuple hostd registered
+   (I-18: frames between two taps never reach the inet forward hook, so
+   the drop has to live in the bridge family, and `learning off` is what
+   stops a guest claiming another guest's MAC). The `inet repose` table
+   drops guest traffic to the host except rate-limited ICMP echo, to IMDS
+   and the Azure wire server, to every other guest range, and to every
+   private range, and NATs the rest out of the provider NIC. Stops: a
+   tenant reaching another tenant's sshd, guestd or dev servers, the
+   host, the VNet, or the mesh.
 3. **SSH certificates with project principals**, checked twice: at the
    gateway (route lookup plus principal match) and at the guest's sshd.
    12-hour validity, revocation list. Stops: a tenant or a stolen
@@ -78,7 +91,13 @@ Rules that hold regardless of convenience. Each names its failure.
 - **Secret values never leave `secrets.ciphertext` and the guest tmpfs.**
   Not in logs, not in `audit_log`, not in api responses, not in build logs.
 - **Process samples carry names, CPU, memory, bytes. Nothing else.** The
-  privacy policy says so in those words. guestd reads `/proc/<pid>/stat` and
+  privacy policy says, verbatim: "We sample the processes running in your
+  environment once a minute and record their names, CPU time, memory use
+  and network bytes. We never record command-line arguments, environment
+  variables, file paths, file contents, terminal contents, or the prompts
+  you give to any agent." `ProcSample` is `{comm, cpu_ns_delta,
+  rss_bytes}` and `test/isolation/policy_test.go` fails if it, or
+  `GuestSignals`, gains a field. guestd reads `/proc/<pid>/stat` and
   `/proc/<pid>/status` and nothing else of a process: it never opens
   `/proc/<pid>/cmdline` and never opens `/proc/<pid>/environ`, with the single
   exception below. `TestStraceNeverOpensCmdlineOrEnviron` in
@@ -120,9 +139,62 @@ masscan  zmap  hashcat  john
 Keep this list and `watch.go` in step; `TestWatchListIsNotEmpty` checks the
 file is populated, and a reviewer checks the two agree.
 
+## Verifying the boundaries
+
+`test/isolation/` has one test per row of the boundary table in
+`workstreams/14-security.md` §5, plus policy tests that run without a
+host. The host tests take a real host with two guests of two users and run
+scripts through command prefixes given in the environment
+(`REPOSE_ISOLATION_EXEC_A`, `_EXEC_B`, `_HOST_EXEC`, the addresses; the
+package doc lists them); a test whose inputs are missing skips by name,
+so a green run with skips proves only the rows that ran. They run before
+every release and against the staging host nightly; `ops/RUNBOOK.md`
+"Suspected cross-tenant access" runs them during an incident. The policy
+tests pin the sample message shape, the verbatim policy sentence, the
+watch list and the credentials exclusion, and run in ordinary CI.
+
+Dated reviews of the code against this document live in `security/`;
+the first is [security/review-2026-09-20.md](security/review-2026-09-20.md).
+
+## Reviewing a workstream
+
+Applied at each workstream's PR, recorded as a comment line in
+`workstreams/STATUS.md`:
+
+- Every new log call checked against `ops/OBSERVABILITY.md` "Never in a
+  log field".
+- Every new listener: which interface, which firewall rule admits it,
+  which identity it checks.
+- Every new secret or credential: which of the three homes it lives in,
+  who can read the file, whether it ever crosses a process boundary as an
+  argument or an environment variable.
+- Every new command from a peer: which fields are validated (ids, paths,
+  sizes) before they touch the filesystem or a shell.
+- Every new privileged process: which user, which capabilities, which
+  sandbox; "root because it was easier" is a finding.
+- The workstream's boundary rows above: which test in `test/isolation/`
+  covers them, or which one is added.
+
 ## Not mitigated in the first release
 
 Written down so nobody believes otherwise.
+
+- **Cloud Hypervisor runs as root** (review H-2, owner 03). A guest
+  escape is therefore root on the host, not a user in the `kvm` group.
+  The fix is `User=hostd` on the `guest@` unit with device and group
+  grants; until it lands, the nested-virtualization item below is worse
+  than it reads.
+- **One Blob identity for every host** (review M-3). Each host can read
+  and delete every tenant's snapshots fleet-wide. Per-host containers or
+  api-issued SAS tokens close it.
+- **No Host CA reaches hosts yet** (review M-1). Operator access is the
+  bootstrap key on the provider NIC until `RegisterResponse` carries the
+  CA; certificate-only, audited-by-serial operator access is the design,
+  not the state.
+- **hostdev holds secrets in plaintext on the edge** (review M-4) for
+  the owner-only M1 period; it does not outlive the api.
+- **The edge's sshd runs with NixOS defaults** (review M-2) until 06
+  configures it: no password can succeed, but the settings do not say so.
 
 - **Operator access to tenant volumes.** Root on a host can read any thin
   volume. Mitigation is per-project LUKS with keys held by the api
@@ -152,4 +224,5 @@ Written down so nobody believes otherwise.
 
 Security reports go to the owner's email listed on `repose.herakraft.co`.
 Incident handling is in `ops/RUNBOOK.md` under "Suspected cross-tenant
-access".
+access": who is told, what is captured, how a tenant is notified within
+72 hours, and the isolation-suite invocation that confirms or refutes.

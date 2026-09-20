@@ -47,17 +47,29 @@ let
   defaultVcpu = if vcpu != null then vcpu else classDefaults.vcpu;
   defaultMem = if mem != null then mem else classDefaults.mem;
 
+  # The platform's pkgs without user overlays, for the fragment's
+  # repose.overlays pre-pass (nix/guest/contract.nix). Same instantiation
+  # as the flake's `pkgs`.
+  prePassPkgs = import nixpkgs {
+    inherit system;
+    overlays = [ overlay ];
+    config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) (import ./unfree-allowlist.nix);
+  };
+
   guestSystem = lib.nixosSystem {
     inherit system;
     modules = [
       microvm.nixosModules.microvm
       home-manager.nixosModules.home-manager
       ./base
+      # The fragment contract: repose.fragment applied to dev, repose.overlays
+      # onto pkgs, repose.system through the allowlist (nix/guest/contract.nix).
+      ./contract.nix
       {
         repose.class = class;
         repose.baseVersion = baseVersion;
-        # The user's overlays come after the base's own (agents) overlay.
-        nixpkgs.overlays = if builtins.isAttrs fragmentModule then (fragmentModule.repose.overlays or [ ]) else [ ];
+        repose.fragment = fragmentModule;
+        repose.prePassPkgs = prePassPkgs;
       }
       (lib.mkIf (guestd != null) { repose.guestd.package = guestd; })
       (lib.mkIf (hook != null) { repose.hookPackage = hook; })
@@ -96,8 +108,6 @@ let
         home-manager.useUserPackages = true;
         home-manager.backupFileExtension = "repose-bak";
         home-manager.users.dev = {
-          imports = [ (builtins.removeAttrs (if builtins.isAttrs fragmentModule then fragmentModule else { }) [ "repose" ]) ]
-            ++ lib.optional (builtins.isFunction fragmentModule) fragmentModule;
           home.username = "dev";
           home.homeDirectory = "/home/dev";
           home.stateVersion = "26.11";

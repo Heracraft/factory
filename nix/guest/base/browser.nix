@@ -1,14 +1,12 @@
 # Headless Chromium, Playwright's browsers, and the two MCP servers every
 # guest has (docs/features/browser.md). The MCP servers and chromium enter
 # the per-user slice repose-browser.slice so a runaway page cannot take the
-# agent down with it; the ceiling depends on the class.
+# agent down with it. The ceiling is a share of the guest's memory, which
+# systemd resolves at boot: 37.5 percent is 1.5 GB small, 3 GB large, 6 GB
+# xl, so one system closure serves every class (DECISIONS I-34, I-43).
 { config, lib, pkgs, ... }:
 let
-  browserMemory = {
-    small = "1536M";
-    large = "3G";
-    xl = "6G";
-  }.${config.repose.class};
+  browserMemory = "37.5%";
 
   # Run a program inside the user's browser slice when a user manager is
   # reachable, else run it directly. `--scope` keeps stdio, which the MCP

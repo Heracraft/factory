@@ -20,15 +20,24 @@ func fixture(t *testing.T, name string) string {
 	return string(b)
 }
 
+// The fixtures are real `nix eval` stderr from the platform flake
+// (docs/interfaces/nix-build-contract.md "Fixtures"); the first lines are
+// the canonical ones from docs/workstreams/12-nix-config-pipeline.md.
 func TestMapEvalErrorFixtures(t *testing.T) {
 	cases := []struct {
 		file, wantFirst string
 		wantLine        int32
 	}{
-		{"syntax.stderr", "syntax error, unexpected ';' at fragment.nix:1:49", 1},
-		{"missing.stderr", "attribute 'ripgrepp' missing at fragment.nix:1:36 (did you mean ripgrep?)", 1},
-		{"fetch.stderr", "eval-time fetch not allowed at fragment.nix:1:18; use pkgs.fetchurl { url = ...; hash = ...; }", 1},
-		{"abspath.stderr", "access to absolute path '/etc/passwd' is forbidden in pure evaluation mode (use '--impure' to override) at fragment.nix:1:18; a fragment may only read files it carries", 1},
+		{"syntax.stderr", "syntax error at fragment.nix:1:49, unexpected ';'", 1},
+		{"missing.stderr", "attribute 'ripgrepp' missing at fragment.nix:1:36 (did you mean one of ripgrep, ipgrep or repgrep?)", 1},
+		{"fetch.stderr", "eval-time fetch not allowed at fragment.nix:1:39; use pkgs.fetchurl { url = ...; hash = ...; }", 1},
+		{"fetchgit.stderr", "eval-time fetch not allowed at fragment.nix:1:39; use pkgs.fetchgit or pkgs.fetchurl with a hash instead of builtins.fetch*", 1},
+		{"abspath.stderr", "access to absolute path '/etc/passwd' is forbidden in pure evaluation mode (use '--impure' to override) at fragment.nix:1:37; a fragment may only read files it carries", 1},
+		{"nixpath.stderr", "<nixpkgs> is not available at fragment.nix:1:44; use the pkgs argument, which is the platform's pinned nixpkgs", 1},
+		{"ifd.stderr", "import-from-derivation is not allowed at fragment.nix:1:37; a fragment cannot import a file that a build produces", 1},
+		{"option.stderr", "option 'services.postgresql' does not exist in a fragment; system services come from the menu or `repose config menu`", 0},
+		{"assertion.stderr", "repose.system: option 'networking.firewall' is not allowed in a fragment; system services come from the menu or `repose config menu` (allowed: services.postgresql, services.redis, services.mysql, services.memcached, services.rabbitmq, services.meilisearch, services.nats)", 0},
+		{"hmoverlays.stderr", "fragment: nixpkgs.overlays is ignored with useGlobalPkgs; use repose.overlays = [ ... ] instead", 0},
 	}
 	for _, c := range cases {
 		e := MapEvalError(fixture(t, c.file))
@@ -36,13 +45,15 @@ func TestMapEvalErrorFixtures(t *testing.T) {
 			t.Errorf("%s: code %s", c.file, e.Code)
 		}
 		if got := firstLine(e.Message); got != c.wantFirst {
-			t.Errorf("%s: first line %q, want %q", c.file, got, c.wantFirst)
+			t.Errorf("%s: first line\n got %q\nwant %q", c.file, got, c.wantFirst)
 		}
 		if e.FragmentLine != c.wantLine {
 			t.Errorf("%s: fragment_line %d, want %d", c.file, e.FragmentLine, c.wantLine)
 		}
-		if !strings.Contains(e.Message, "\n\nerror:") {
-			t.Errorf("%s: verbatim output missing after the summary", c.file)
+		// The verbatim block follows a blank line and ends with Nix's own
+		// final error; a trace over 32 KB loses its head, never its tail.
+		if i := strings.Index(e.Message, "\n\n"); i < 0 || !strings.Contains(e.Message[i:], "error:") || len(e.Message) > MessageCap+len(c.wantFirst)+2 {
+			t.Errorf("%s: verbatim output missing or over the cap (%d bytes)", c.file, len(e.Message))
 		}
 	}
 }
@@ -55,13 +66,70 @@ func TestMapBuildErrorAndTimeouts(t *testing.T) {
 	if !strings.Contains(e.Message, "> boom") {
 		t.Fatal("verbatim builder log missing")
 	}
+	if FailedDerivation(fixture(t, "build.stderr")) != "/nix/store/6v3cd4dy8pfmi24r2bw1hipqsk8wchgb-fails-1.0.drv" {
+		t.Fatal("failed derivation not found")
+	}
 	bt := BuildTimeout(1800, fixture(t, "build.stderr"))
-	if bt.Code != "build_timeout" || bt.Message != "build exceeded 1800 s; last derivation: fails-1.0" {
-		t.Fatalf("timeout: %s %q", bt.Code, bt.Message)
+	if bt.Code != "build_timeout" || firstLine(bt.Message) != "build timed out after 30 minutes while building fails-1.0" {
+		t.Fatalf("timeout: %s %q", bt.Code, firstLine(bt.Message))
+	}
+	if got := firstLine(BuildTimeout(5, "building '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-sleep-forever-1.0.drv'...\n").Message); got != "build timed out after 5 s while building sleep-forever-1.0" {
+		t.Fatalf("short timeout: %q", got)
+	}
+	if got := BuildTimeout(1800, "").Message; got != "build timed out after 30 minutes\n\n" {
+		t.Fatalf("timeout without derivation: %q", got)
 	}
 	et := EvalTimeout(60)
 	if et.Code != "eval_failed" || et.Message != "evaluation exceeded 60 s" {
 		t.Fatalf("eval timeout: %v", et)
+	}
+	ct := ClosureTooLarge(33501750067, 20<<30, "  30 GB  /nix/store/x-cuda\n")
+	if firstLine(ct.Message) != "closure is 31.2 GB, limit is 20 GB; largest paths:" || !strings.HasSuffix(ct.Message, "/nix/store/x-cuda") {
+		t.Fatalf("closure: %q", ct.Message)
+	}
+}
+
+func TestKernelChanged(t *testing.T) {
+	a := Info{Kernel: "/nix/store/k1-linux-6.17.4/bzImage", Initrd: "/nix/store/i1-initrd/initrd"}
+	pkgOnly := Info{Kernel: a.Kernel, Initrd: a.Initrd}
+	newKernel := Info{Kernel: "/nix/store/k2-linux-6.17.5/bzImage", Initrd: a.Initrd}
+	newInitrd := Info{Kernel: a.Kernel, Initrd: "/nix/store/i2-initrd/initrd"}
+	if KernelChanged(a, pkgOnly) {
+		t.Fatal("package-only change reported kernel_changed")
+	}
+	if !KernelChanged(a, newKernel) || !KernelChanged(a, newInitrd) {
+		t.Fatal("kernel or initrd change not reported")
+	}
+}
+
+func TestAllowedURIsFromLock(t *testing.T) {
+	got, err := AllowedURIs(filepath.Join("..", "..", "..", "nix", "flake.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(got, " ")
+	for _, want := range []string{"github:NixOS/nixpkgs/", "github:nix-community/home-manager/", "github:microvm-nix/microvm.nix/", "?narHash=sha256-"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("allowed-uris missing %q in %q", want, joined)
+		}
+	}
+	for _, u := range got {
+		if strings.Contains(u, "fragment-placeholder") || strings.Contains(u, "%2F") || strings.Contains(u, "=") && !strings.Contains(u, "%3D") {
+			t.Errorf("unexpected entry %q", u)
+		}
+	}
+}
+
+func TestWrapArgv(t *testing.T) {
+	b := (&Real{Timeout: "timeout", UseScope: true, User: "nixbuild"}).Defaults()
+	got := strings.Join(b.wrap("repose-build-r1", 1800, 8, []string{"nix", "build"}), " ")
+	want := "systemd-run --scope --quiet --unit repose-build-r1 -p CPUQuota=800% -p MemoryMax=16G -p RuntimeMaxSec=1830 -- setpriv --reuid=nixbuild --regid=nixbuild --init-groups --bounding-set=-all --inh-caps=-all --no-new-privs -- env HOME=/var/lib/repose/nixbuild USER=nixbuild LOGNAME=nixbuild NIX_REMOTE=daemon timeout -k 5 1800 nix build"
+	if got != want {
+		t.Fatalf("wrap:\n got %s\nwant %s", got, want)
+	}
+	plain := (&Real{}).Defaults()
+	if got := strings.Join(plain.wrap("u", 60, 8, []string{"nix", "eval"}), " "); got != "nix eval" {
+		t.Fatalf("plain wrap: %s", got)
 	}
 }
 
@@ -79,14 +147,22 @@ func fakeClosure(t *testing.T) string {
 	return c
 }
 
-func TestRealBuildFlow(t *testing.T) {
-	closure := fakeClosure(t)
+func fakeBase(t *testing.T) string {
+	t.Helper()
 	base := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(base, "abc123", "nix"), 0o755)
 	_ = os.WriteFile(filepath.Join(base, "abc123", "nix", "flake.nix"), []byte("{}"), 0o644)
+	lock := `{"nodes":{"nixpkgs":{"locked":{"type":"github","owner":"NixOS","repo":"nixpkgs","rev":"b1b8","narHash":"sha256-zVx="}},"root":{"inputs":{"nixpkgs":"nixpkgs"}}},"root":"root","version":7}`
+	_ = os.WriteFile(filepath.Join(base, "abc123", "nix", "flake.lock"), []byte(lock), 0o644)
+	return base
+}
+
+func TestRealBuildFlow(t *testing.T) {
+	closure := fakeClosure(t)
+	base := fakeBase(t)
 	r := &shell.Fake{Scripts: []shell.Script{
-		{Prefix: []string{"timeout", "60", "nix", "eval"}, Result: shell.Result{Stdout: []byte("/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-nixos-system-guest.drv\n")}},
-		{Prefix: []string{"timeout", "1800", "nix", "build"}, Result: shell.Result{Stdout: []byte(closure + "\n"), Stderr: []byte("building '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-nixos-system-guest.drv'...\ncopying path\n")}},
+		{Prefix: []string{"timeout", "-k", "5", "60", "nix", "eval"}, Result: shell.Result{Stdout: []byte("/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-nixos-system-guest.drv\n")}},
+		{Prefix: []string{"timeout", "-k", "5", "1800", "nix", "build"}, Result: shell.Result{Stdout: []byte(closure + "\n"), Stderr: []byte("building '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-nixos-system-guest.drv'...\ncopying path\n")}},
 		{Prefix: []string{"nix", "path-info", "-S"}, Result: shell.Result{Stdout: []byte(closure + "\t5368709120\n")}},
 	}}
 	b := (&Real{R: r, BuildsDir: t.TempDir(), BaseDir: base, Roots: gcroot.Roots{Dir: t.TempDir()}, Timeout: "timeout"}).Defaults()
@@ -99,11 +175,18 @@ func TestRealBuildFlow(t *testing.T) {
 	if res.SystemClosure != closure || res.ClosureBytes != 5368709120 || !strings.HasSuffix(res.Kernel, "bzImage") {
 		t.Fatalf("result %+v", res)
 	}
-	evalCall := strings.Join(r.CallsWithPrefix("timeout", "60", "nix", "eval")[0], " ")
-	if !strings.Contains(evalCall, "--override-input fragment path:"+filepath.Join(b.BuildsDir, "r1")) || !strings.Contains(evalCall, "--option restrict-eval true") || !strings.Contains(evalCall, "#guestSystem.config.system.build.toplevel.drvPath") {
-		t.Fatalf("eval argv: %s", evalCall)
+	evalCall := strings.Join(r.CallsWithPrefix("timeout", "-k", "5", "60", "nix", "eval")[0], " ")
+	for _, want := range []string{
+		"--override-input fragment path:" + filepath.Join(b.BuildsDir, "r1"),
+		"--option restrict-eval true", "--option pure-eval true", "--option allow-import-from-derivation false",
+		"--option allowed-uris github:NixOS/nixpkgs/b1b8?narHash=sha256-zVx%3D path:" + filepath.Join(b.BuildsDir, "r1"),
+		"git+file://" + filepath.Join(base, "abc123") + "?dir=nix#guestSystem.config.system.build.toplevel.drvPath",
+	} {
+		if !strings.Contains(evalCall, want) {
+			t.Fatalf("eval argv missing %q: %s", want, evalCall)
+		}
 	}
-	buildCall := strings.Join(r.CallsWithPrefix("timeout", "1800", "nix", "build")[0], " ")
+	buildCall := strings.Join(r.CallsWithPrefix("timeout", "-k", "5", "1800", "nix", "build")[0], " ")
 	if !strings.Contains(buildCall, "--cores 8") || !strings.Contains(buildCall, "--option sandbox true") || !strings.HasSuffix(buildCall, "nixos-system-guest.drv^*") {
 		t.Fatalf("build argv: %s", buildCall)
 	}
@@ -120,29 +203,70 @@ func TestRealBuildFlow(t *testing.T) {
 
 	// Closure cap.
 	r.Scripts = append([]shell.Script{
-		{Prefix: []string{"nix", "path-info", "-rS"}, Result: shell.Result{Stdout: []byte("/nix/store/x-cuda\t30000000000\n/nix/store/y-glibc\t30000000\n")}},
+		{Prefix: []string{"nix", "path-info", "-rs"}, Result: shell.Result{Stdout: []byte("/nix/store/x-cuda\t30000000000\n/nix/store/y-glibc\t30000000\n")}},
 	}, r.Scripts...)
 	_, err = b.Build(context.Background(), Request{ProjectID: "p1", RevisionID: "r2", BaseRef: "abc123", Limits: Limits{EvalS: 60, BuildS: 1800, ClosureBytes: 1 << 30}}, func(string) {})
 	ne, ok := err.(*Error)
-	if !ok || ne.Code != "closure_too_large" || !strings.Contains(ne.Message, "x-cuda") {
+	if !ok || ne.Code != "closure_too_large" || !strings.Contains(ne.Message, "x-cuda") || firstLine(ne.Message) != "closure is 5 GB, limit is 1 GB; largest paths:" {
 		t.Fatalf("cap: %v", err)
+	}
+	if _, err := b.Roots.Get("rev-p1-r2"); err == nil {
+		t.Fatal("an over-cap closure must not be rooted")
 	}
 
 	// Eval timeout via exit 124, and eval failure via fixture.
-	r.Scripts = append([]shell.Script{{Prefix: []string{"timeout", "60", "nix", "eval"}, Result: shell.Result{ExitCode: 124}}}, r.Scripts...)
+	r.Scripts = append([]shell.Script{{Prefix: []string{"timeout", "-k", "5", "60", "nix", "eval"}, Result: shell.Result{ExitCode: 124}}}, r.Scripts...)
 	_, err = b.Build(context.Background(), Request{ProjectID: "p1", RevisionID: "r3", BaseRef: "abc123", Limits: Limits{EvalS: 60}}, func(string) {})
 	if ne, ok := err.(*Error); !ok || ne.Code != "eval_failed" || ne.Message != "evaluation exceeded 60 s" {
 		t.Fatalf("eval timeout: %v", err)
 	}
-	r.Scripts = append([]shell.Script{{Prefix: []string{"timeout", "60", "nix", "eval"}, Result: shell.Result{ExitCode: 1, Stderr: []byte(fixture(t, "syntax.stderr"))}}}, r.Scripts...)
+	r.Scripts = append([]shell.Script{{Prefix: []string{"timeout", "-k", "5", "60", "nix", "eval"}, Result: shell.Result{ExitCode: 1, Stderr: []byte(fixture(t, "syntax.stderr"))}}}, r.Scripts...)
 	_, err = b.Build(context.Background(), Request{ProjectID: "p1", RevisionID: "r4", BaseRef: "abc123", Limits: Limits{EvalS: 60}}, func(string) {})
 	if ne, ok := err.(*Error); !ok || ne.Code != "eval_failed" || ne.FragmentLine != 1 {
 		t.Fatalf("eval failure: %v", err)
+	}
+	// Build failure pulls the builder's log through `nix log`.
+	r.Scripts = append([]shell.Script{
+		{Prefix: []string{"timeout", "-k", "5", "60", "nix", "eval"}, Result: shell.Result{Stdout: []byte("/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-nixos-system-guest.drv\n")}},
+		{Prefix: []string{"timeout", "-k", "5", "1800", "nix", "build"}, Result: shell.Result{ExitCode: 1, Stderr: []byte(fixture(t, "build.stderr"))}},
+		{Prefix: []string{"nix", "log", "/nix/store/6v3cd4dy8pfmi24r2bw1hipqsk8wchgb-fails-1.0.drv"}, Result: shell.Result{Stdout: []byte("compiling\nboom\n")}},
+	}, r.Scripts...)
+	_, err = b.Build(context.Background(), Request{ProjectID: "p1", RevisionID: "r6", BaseRef: "abc123", Limits: Limits{EvalS: 60, BuildS: 1800}}, func(string) {})
+	if ne, ok := err.(*Error); !ok || ne.Code != "build_failed" || firstLine(ne.Message) != "build of fails-1.0 failed" || !strings.Contains(ne.Message, "fails-1.0 log (last 200 lines):\ncompiling\nboom") {
+		t.Fatalf("build failure: %v", err)
 	}
 	// Missing base with no repo URL.
 	_, err = b.Build(context.Background(), Request{ProjectID: "p1", RevisionID: "r5", BaseRef: "nothere"}, func(string) {})
 	if ne, ok := err.(*Error); !ok || ne.Code != "internal" || !strings.Contains(ne.Message, "base nothere unavailable") {
 		t.Fatalf("missing base: %v", err)
+	}
+}
+
+func TestEnsureBaseClonesWithKey(t *testing.T) {
+	base := t.TempDir()
+	r := &shell.Fake{Scripts: []shell.Script{
+		{Prefix: []string{"env"}, Handle: func(argv []string) (shell.Result, error) {
+			// Simulate the clone by creating the checkout the way git would.
+			dst := argv[len(argv)-1]
+			_ = os.MkdirAll(filepath.Join(dst, "nix"), 0o755)
+			_ = os.WriteFile(filepath.Join(dst, "nix", "flake.nix"), []byte("{}"), 0o644)
+			return shell.Result{}, nil
+		}},
+	}}
+	b := (&Real{R: r, BaseDir: base, BaseRepoURL: "git@github.com:heracraft/repose.git", BaseSSHKey: "/var/lib/repose/hostd/base-deploy-key"}).Defaults()
+	dir, err := b.ensureBase(context.Background(), "deadbeef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dir != filepath.Join(base, "deadbeef") {
+		t.Fatalf("dir %s", dir)
+	}
+	call := strings.Join(r.CallsWithPrefix("env")[0], " ")
+	if !strings.Contains(call, "GIT_SSH_COMMAND=ssh -i /var/lib/repose/hostd/base-deploy-key") || !strings.Contains(call, "git clone --quiet --no-checkout git@github.com:heracraft/repose.git") {
+		t.Fatalf("clone argv: %s", call)
+	}
+	if got := strings.Join(r.CallsWithPrefix("git", "-C")[0], " "); !strings.HasSuffix(got, "checkout --quiet deadbeef") {
+		t.Fatalf("checkout argv: %s", got)
 	}
 }
 

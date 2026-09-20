@@ -50,3 +50,13 @@ infra/**/*.local.tfvars
 
 #context for ages
 context/
+
+# go build ./cmd/<name> drops a binary here
+/hostd
+/guestd
+/hostdev
+/api
+/gateway
+/repose
+/repose-admin
+/repose-hook

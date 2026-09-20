@@ -145,11 +145,35 @@ in
       '';
     };
 
+    baseRepo = {
+      url = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = ''
+          Git URL hostd clones a missing base checkout from
+          (`/var/lib/repose/base/<base_ref>`, hostd --base-repo-url). Empty
+          means the operator places checkouts by hand (ops/RUNBOOK.md
+          "Build: base unavailable").
+        '';
+      };
+      sshKeyFile = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "Private key file for a private baseRepo.url over SSH (hostd --base-repo-ssh-key); delivered like the join token, never in the store.";
+      };
+    };
+
+    buildUser = lib.mkOption {
+      type = lib.types.str;
+      default = "nixbuild";
+      description = "The unprivileged account fragment evaluation and builds run as (docs/workstreams/12-nix-config-pipeline.md \"Flags and limits\"); created here, allowed to talk to nix-daemon.";
+    };
+
     overlayCache = {
       url = lib.mkOption {
         type = lib.types.str;
         default = "";
-        description = "Platform overlay binary cache URL, added to substituters. Empty until workstream 12 publishes one.";
+        description = "Platform overlay binary cache URL (DECISIONS I-46: the Cachix cache `repose`, https://repose.cachix.org), added to the daemon's substituters and passed to hostd's builds. Empty until the owner creates the cache (ops/AZURE-SETUP.md).";
       };
       publicKey = lib.mkOption {
         type = lib.types.str;
