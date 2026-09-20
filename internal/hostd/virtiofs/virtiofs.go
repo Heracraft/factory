@@ -7,7 +7,7 @@
 // and virtiofsd 1.14 refuses it outright for a non-root user ("sandbox mode
 // 'chroot' can only be used by root"). Namespace mode unshares a user and
 // mount namespace and pivot_roots into the export, which is what an
-// unprivileged process can do (DECISIONS I-42; the host enables user
+// unprivileged process can do (DECISIONS I-48; the host enables user
 // namespaces in nix/hosts/kernel.nix for exactly this).
 package virtiofs
 

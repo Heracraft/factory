@@ -90,7 +90,7 @@ jobs:
       - name: fragment contract and examples
         run: nix build --no-link ./nix#checks.x86_64-linux.fragment-contract ./nix#checks.x86_64-linux.fragment-examples
       # The agent overlay, built and pushed to the platform cache
-      # (DECISIONS I-45) when the Cachix token is configured; hosts then
+      # (DECISIONS I-46) when the Cachix token is configured; hosts then
       # substitute the agents instead of fetching upstream.
       - name: build the agent overlay
         run: nix build --no-link ./nix#claude-code ./nix#opencode ./nix#codex ./nix#gemini-cli ./nix#pi-coding-agent ./nix#chrome-devtools-mcp ./nix#playwright-mcp

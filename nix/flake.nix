@@ -119,7 +119,7 @@
       # What hostd evaluates for a Build (docs/interfaces/nix-build-contract.md):
       # the base plus the fragment at "${fragment}/fragment.nix" applied to
       # dev. `config.system.build.toplevel` is the system closure; the class
-      # is not baked in (DECISIONS I-34, I-42).
+      # is not baked in (DECISIONS I-34, I-43).
       guestSystem = (composeGuest {
         fragmentPath = "${fragment}/fragment.nix";
         inherit guestd baseVersion;

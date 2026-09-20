@@ -853,7 +853,7 @@ a doc disagreed with a contract:
   `repose-admin` talks to Postgres directly and has no `login`; the
   runbook's `repose-admin login` line is withdrawn. Rate-limit buckets are
   per replica.
-**I-42. The fragment contract is enforced by a NixOS module,
+**I-43. The fragment contract is enforced by a NixOS module,
 `nix/guest/contract.nix`: `repose.overlays` from a pre-pass, `repose.system`
 through a static allowlist, and one class-independent closure.** (12)
 `workstreams/12-nix-config-pipeline.md` sketched `composeGuest { baseRef,
@@ -886,7 +886,7 @@ second override input, and the takeover flow would have two things to
 copy). Interfaces: `nix-build-contract.md`, `guest-conventions.md`
 (browser slice), `features/config.md` "Writing a fragment".
 
-**I-43. The menu package is `internal/menu`; `GET /catalog` carries `kind`
+**I-44. The menu package is `internal/menu`; `GET /catalog` carries `kind`
 and `options`.** (12, for 05 and 08) `05-control-plane-api.md` named it
 `internal/nixmenu`; the workstream that owns it (12) names it
 `internal/menu`, and 05's text is corrected. The catalog is a YAML file
@@ -900,7 +900,7 @@ the selection, so a menu-managed project round-trips without a second
 store. Playwright MCP stays nixpkgs's (02's coupling to
 `playwright-driver`), so `versions.json` does not list it.
 
-**I-44. Fragment evaluation and builds run as `nixbuild` inside a
+**I-45. Fragment evaluation and builds run as `nixbuild` inside a
 transient scope, against a `git+file://` flake, with `allowed-uris`
 derived from the base checkout's lock file, and `--show-trace`.** (12, 03)
 Four things the contract as written could not do, found by running it:
@@ -930,7 +930,7 @@ passed as `--substituters`, not a constant in hostd. *Rejected:* keeping
 package is extended in place, and the fixtures stay where the contract
 says).
 
-**I-45. The agent overlay is built from upstream release binaries pinned
+**I-46. The agent overlay is built from upstream release binaries pinned
 in `versions.json` and cached on Cachix.** (12) Claude Code from
 Anthropic's release bucket (the ELF the npm installer fetches), opencode
 and pi from their GitHub release tarballs (bun-compiled, dynamically
@@ -952,7 +952,7 @@ binaries); R2 through Nix's S3 support (works, but is a second credential
 in CI for no gain until Cachix's free tier is outgrown). *Revisit when:*
 the cache passes 5 GB or a private overlay package appears.
 
-**I-46. Base bumps are a planner and a runner in `internal/basebump` over
+**I-47. Base bumps are a planner and a runner in `internal/basebump` over
 two interfaces the api implements.** (12, for 05) The api does not exist
 yet, so the policy is a package with `NewPlan` (which projects a version
 reaches: not held, last build not failed, running or stopped, not already
@@ -966,7 +966,7 @@ and `StatusLine` for the base part of `repose status`. Workstream 05 wires
 `Dispatcher` and `Recorder` to Postgres and the stream and schedules the
 run from `base publish`. The checklist's "three projects" evidence is the
 package's test until the api exists.
-**I-42. virtiofsd's sandbox is `namespace`, and hostd attaches taps with
+**I-48. virtiofsd's sandbox is `namespace`, and hostd attaches taps with
 exactly the host-conventions sequence.** (14, review of 01 and 03,
 2026-09-20) Two places where merged code disagreed with the merged
 contract, found by reading them side by side:

@@ -147,7 +147,7 @@ is used for `shutdown` (after guestd's Shutdown timed out), `pause`,
 virtiofsd runs as `virtiofsd:virtiofsd` with `--sandbox namespace` (a
 user and mount namespace with the export pivot_rooted in; `chroot` is
 root-only and virtiofsd refuses it for an unprivileged user, DECISIONS
-I-42) sharing `/run/repose/store-export` (never `/nix/store` directly).
+I-48) sharing `/run/repose/store-export` (never `/nix/store` directly).
 
 ## Operator access
 

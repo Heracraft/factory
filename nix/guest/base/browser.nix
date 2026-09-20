@@ -3,7 +3,7 @@
 # the per-user slice repose-browser.slice so a runaway page cannot take the
 # agent down with it. The ceiling is a share of the guest's memory, which
 # systemd resolves at boot: 37.5 percent is 1.5 GB small, 3 GB large, 6 GB
-# xl, so one system closure serves every class (DECISIONS I-34, I-42).
+# xl, so one system closure serves every class (DECISIONS I-34, I-43).
 { config, lib, pkgs, ... }:
 let
   browserMemory = "37.5%";

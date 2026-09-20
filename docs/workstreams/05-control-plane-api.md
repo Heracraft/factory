@@ -61,7 +61,7 @@ and billing routes answer `503 billing_disabled`.
 - The gateway's relay: workstream 06. The api serves `/internal/*`.
 - The Nix evaluation policy and menu catalog contents: workstream 12
   supplies the catalog file and the menu-to-fragment renderer as a Go
-  package (`internal/menu`, DECISIONS I-43); the api calls it.
+  package (`internal/menu`, DECISIONS I-44); the api calls it.
 - Host provisioning, Coolify configuration, Key Vault creation: workstream
   11. The api needs a Key Vault URL and a managed identity or client
   credentials in env.

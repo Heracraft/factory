@@ -57,7 +57,7 @@ half of the SSH login name and the tmux session name.
 | PUT | `/projects/:id/config` | `{fragment}` or `{menu: MenuSelection}` (the api renders menu → fragment) → `{revision_id, op_id}`; build starts immediately; apply happens when the build succeeds |
 | GET | `/projects/:id/config/revisions` | list with `{revision_id, created_at, status: building\|applied\|failed, error?}` |
 | POST | `/projects/:id/config/revisions/:rev/apply` | re-apply an older successful revision |
-| GET | `/catalog` | menu catalog: `[{id, label, group, kind, description, options?: [{id, type, values, default}]}]` (packages and services the dashboard menu offers; `kind` is `service|package|agent|runtime`, `options` are enums the menu shows as selects; from `internal/menu`, DECISIONS I-43) |
+| GET | `/catalog` | menu catalog: `[{id, label, group, kind, description, options?: [{id, type, values, default}]}]` (packages and services the dashboard menu offers; `kind` is `service|package|agent|runtime`, `options` are enums the menu shows as selects; from `internal/menu`, DECISIONS I-44) |
 
 ## Certificates
 

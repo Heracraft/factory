@@ -22,7 +22,7 @@
         The guest's size class, for the runner's vcpu and memory defaults
         and for inspection. Nothing in the system closure depends on it
         (the browser slice ceiling is a percentage of guest memory), so the
-        closure a Build produces serves any class (DECISIONS I-42).
+        closure a Build produces serves any class (DECISIONS I-43).
       '';
     };
   };

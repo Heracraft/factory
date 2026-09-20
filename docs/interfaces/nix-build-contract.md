@@ -4,7 +4,7 @@ What hostd runs when it receives `Build` (docs/interfaces/grpc-hostd.md),
 what the platform flake in `nix/` exposes for it, and what the user reads
 when it fails. Workstream 03 invokes; workstream 12 authors the Nix, the
 flags, the limits and the messages (`internal/hostd/nixbuild` is the one
-implementation of both). DECISIONS I-28, I-42.
+implementation of both). DECISIONS I-28, I-43.
 
 ## The flake
 
@@ -26,7 +26,7 @@ outputs = { self, nixpkgs, home-manager, microvm, fragment, ... }: {
 
 The placeholder input exists so the lock file is valid; hostd always
 overrides it. The system closure is independent of the guest's class and
-address (DECISIONS I-34, I-42), so one `Build` per revision serves the
+address (DECISIONS I-34, I-43), so one `Build` per revision serves the
 project's guest wherever it runs.
 
 ## What hostd runs

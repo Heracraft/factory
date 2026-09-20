@@ -39,7 +39,7 @@ From `ARCHITECTURE.md`, with the mechanism and the actor it stops:
    mount and a serial console. The virtio-fs share is
    `/run/repose/store-export`, a read-only `nosuid,nodev` bind of the
    store with an empty tmpfs over `.links`, served by an unprivileged
-   `virtiofsd` in a user and mount namespace sandbox (I-42). Stops: a
+   `virtiofsd` in a user and mount namespace sandbox (I-48). Stops: a
    tenant or their agent reaching the host or the store's write path, or
    enumerating other tenants' closures through the hard-link farm.
 2. **The bridge and nftables between guests.** Per-guest tap attached

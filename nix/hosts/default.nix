@@ -173,7 +173,7 @@ in
       url = lib.mkOption {
         type = lib.types.str;
         default = "";
-        description = "Platform overlay binary cache URL (DECISIONS I-45: the Cachix cache `repose`, https://repose.cachix.org), added to the daemon's substituters and passed to hostd's builds. Empty until the owner creates the cache (ops/AZURE-SETUP.md).";
+        description = "Platform overlay binary cache URL (DECISIONS I-46: the Cachix cache `repose`, https://repose.cachix.org), added to the daemon's substituters and passed to hostd's builds. Empty until the owner creates the cache (ops/AZURE-SETUP.md).";
       };
       publicKey = lib.mkOption {
         type = lib.types.str;

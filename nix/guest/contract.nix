@@ -3,7 +3,7 @@
 # { config, pkgs, lib, ... }) applied to user dev. Two things a home-manager
 # module cannot normally do are given a named door here, and nothing else
 # reaches NixOS from a fragment (docs/workstreams/12-nix-config-pipeline.md
-# §5, docs/features/config.md "Writing a fragment", DECISIONS I-42):
+# §5, docs/features/config.md "Writing a fragment", DECISIONS I-43):
 #
 #   repose.overlays = [ (final: prev: { ... }) ];
 #     applied to the guest's pkgs before anything is evaluated, after the

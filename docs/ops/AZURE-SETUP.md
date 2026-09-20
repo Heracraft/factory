@@ -93,7 +93,7 @@ a day.
     host), and add the cache's auth token to the GitHub repository as the
     secret `CACHIX_AUTH_TOKEN`. CI then pushes the agent overlay on every
     push to `main` and hosts substitute the agents instead of fetching
-    upstream (DECISIONS I-45). Until then builds fetch the release
+    upstream (DECISIONS I-46). Until then builds fetch the release
     binaries themselves, which is slower, not wrong.
 
 ## What you do not need to do

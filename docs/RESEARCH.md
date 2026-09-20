@@ -281,7 +281,7 @@ https://microvm-nix.github.io/microvm.nix/shares.html
   53.0.
 
 Update 2026-09-20 (workstream 12): the overlay no longer takes any agent
-from nixpkgs (DECISIONS I-45). Upstream release artefacts for
+from nixpkgs (DECISIONS I-46). Upstream release artefacts for
 `x86_64-linux`, as pinned in `nix/overlay/agents/versions.json`:
 
 | Agent | Source | Artefact | Linking |
@@ -606,5 +606,5 @@ the substitution of what is new, and the CLI's `Building ... 38s` in
 `features/config.md` is the right order of magnitude. The first build on
 a fresh host also pulls the base closure's build-time dependencies that
 the guest itself never needs (home-manager's activation scripts and the
-like), which is what the platform cache (DECISIONS I-45) removes.
+like), which is what the platform cache (DECISIONS I-46) removes.
 
