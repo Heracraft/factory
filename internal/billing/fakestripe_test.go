@@ -39,6 +39,7 @@ type fakeStripe struct {
 	customers     []string
 	subscriptions []string
 	items         []map[string]any
+	autoTax       bool
 	invoices      []map[string]any
 	srv           *httptest.Server
 }
@@ -132,6 +133,7 @@ func (f *fakeStripe) subscriptionsHandler(w http.ResponseWriter, r *http.Request
 		items = append(items, map[string]any{"id": fmt.Sprintf("si_fake%d", i), "object": "subscription_item", "price": map[string]any{"id": price, "object": "price"}})
 	}
 	f.items = items
+	f.autoTax = r.PostForm.Get("automatic_tax[enabled]") == "true"
 	f.mu.Unlock()
 	writeStripe(w, map[string]any{"id": id, "object": "subscription", "customer": r.PostForm.Get("customer"),
 		"automatic_tax": map[string]any{"enabled": r.PostForm.Get("automatic_tax[enabled]") == "true"},
@@ -208,6 +210,29 @@ func (f *fakeStripe) meter(customer, name string) int64 {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.events[customer][name]
+}
+
+// automaticTax reports whether the subscription asked Stripe Tax to run
+// (09-billing.md §5.9).
+func (f *fakeStripe) automaticTax() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.autoTax
+}
+
+// subscriptionPrices lists the prices the subscription was created with.
+func (f *fakeStripe) subscriptionPrices() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []string
+	for _, it := range f.items {
+		if p, ok := it["price"].(map[string]any); ok {
+			if id, ok := p["id"].(string); ok {
+				out = append(out, id)
+			}
+		}
+	}
+	return out
 }
 
 func (f *fakeStripe) callCount(path string) int {

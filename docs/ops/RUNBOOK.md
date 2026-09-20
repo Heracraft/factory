@@ -1225,3 +1225,29 @@ The three that come up:
 
 A correction is a `repose-admin billing credit` row, never an edit to
 `usage_hours`.
+
+## StripeWebhookRejected
+
+Five or more deliveries in ten minutes failed signature verification
+(`stripe_webhook` lines with `result=bad_signature`; the body is never
+logged). Two causes, in order of likelihood:
+
+1. **The endpoint's API version does not match the deployed SDK.**
+   `stripe-go` refuses an event rendered under another version, because an
+   object it deserialises wrongly is a wrong amount. `go doc
+   github.com/stripe/stripe-go/v83.APIVersion` prints what the binary
+   expects; the endpoint's version is on its page in the Stripe dashboard.
+   Recreate the endpoint on the right version (`ops/AZURE-SETUP.md`
+   step 17). This is the one that appears right after an SDK upgrade.
+2. **`STRIPE_WEBHOOK_SECRET` is not this endpoint's signing secret.** A
+   second endpoint, or a test-mode secret on a live-mode deployment.
+
+While it fires, no invoice event is applied: accounts will not move to
+`past_due` or back to `active`. Stripe retries for up to three days, so
+fixing the secret inside that window replays everything; past it, resend
+the events from the endpoint's page in the dashboard.
+
+If neither is true, someone is posting at the endpoint. It is
+unauthenticated by design (the signature is the authentication) and a
+forged body cannot pass, so this is noise rather than an incident; the
+rate limit in front of the api is the answer if it becomes constant.

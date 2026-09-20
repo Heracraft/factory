@@ -451,3 +451,35 @@ tests:
       - eval_time: 40m
         alertname: BillingMismatch
         exp_alerts: []
+
+  # --- StripeWebhookRejected -----------------------------------------------
+  - interval: 1m
+    name: StripeWebhookRejected fires on five rejections in ten minutes
+    input_series:
+      - series: 'repose_api_stripe_webhook_total{job="api",instance="10.255.0.9:9103",result="bad_signature"}'
+        values: "0 1 2 3 4 5 6 7 8 9 10 11"
+      - series: 'repose_api_stripe_webhook_total{job="api",instance="10.255.0.9:9103",result="ok"}'
+        values: "0+2x11"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: StripeWebhookRejected
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: api
+              instance: 10.255.0.9:9103
+              result: bad_signature
+            exp_annotations:
+              summary: "10 Stripe webhook deliveries rejected in ten minutes"
+              description: "Check STRIPE_WEBHOOK_SECRET against the endpoint's signing secret, and that the endpoint's API version matches the deployed SDK (ops/AZURE-SETUP.md step 17). While this fires, invoice events are not being applied."
+              runbook: "docs/ops/RUNBOOK.md#stripewebhookrejected"
+
+  - interval: 1m
+    name: StripeWebhookRejected ignores a single stray rejection
+    input_series:
+      - series: 'repose_api_stripe_webhook_total{job="api",instance="10.255.0.9:9103",result="bad_signature"}'
+        values: "0 0 1 1 1 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: StripeWebhookRejected
+        exp_alerts: []

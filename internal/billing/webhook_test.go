@@ -67,6 +67,16 @@ func TestAllSixWebhooks(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// §9: "Limits 3/1 before first paid invoice, 10/10 after." A new
+	// account starts on the trial limits.
+	var projects0, xl0 int
+	if err := pool.QueryRow(ctx, "select project_limit, xl_limit from users where id = $1", a.UserID).Scan(&projects0, &xl0); err != nil {
+		t.Fatal(err)
+	}
+	if projects0 != billing.ProjectLimitTrial || xl0 != billing.XLLimitTrial {
+		t.Fatalf("limits before the first paid invoice: %d/%d, want %d/%d", projects0, xl0, billing.ProjectLimitTrial, billing.XLLimitTrial)
+	}
+
 	// setup_intent.succeeded: has_card flips (§5.2).
 	if err := deliver(t, w, "evt_1", billing.TypeSetupIntentSucceeded, map[string]any{"id": "seti_1", "customer": customer, "payment_method": "pm_1"}); err != nil {
 		t.Fatal(err)

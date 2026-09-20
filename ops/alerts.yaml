@@ -231,3 +231,17 @@ groups:
           summary: "usage_hours and Stripe differ by {{ $value }} cents"
           description: "The reconciliation reported and fixed nothing. `repose-admin billing reconcile` names the accounts and `billing explain <project> <hour>` shows one row."
           runbook: "docs/ops/RUNBOOK.md#billingmismatch"
+
+      - alert: StripeWebhookRejected
+        # 09-billing.md §6: "webhook signature invalid: 400, logged with the
+        # event type only, alert after 5 in 10 minutes." Either someone is
+        # posting at the endpoint, or the signing secret and the endpoint
+        # have drifted apart, in which case no invoice event is being applied.
+        expr: increase(repose_api_stripe_webhook_total{result="bad_signature"}[10m]) >= 5
+        for: 0m
+        labels:
+          severity: warn
+        annotations:
+          summary: "{{ $value }} Stripe webhook deliveries rejected in ten minutes"
+          description: "Check STRIPE_WEBHOOK_SECRET against the endpoint's signing secret, and that the endpoint's API version matches the deployed SDK (ops/AZURE-SETUP.md step 17). While this fires, invoice events are not being applied."
+          runbook: "docs/ops/RUNBOOK.md#stripewebhookrejected"

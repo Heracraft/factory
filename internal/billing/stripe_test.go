@@ -76,8 +76,16 @@ func TestCustomerSetupIntentAndSubscription(t *testing.T) {
 	if n := f.callCount("subscriptions"); n != 1 {
 		t.Fatalf("created %d subscriptions", n)
 	}
-	t.Logf("transcript: customer=%s setup_intent secret=%s... subscription=%s prices=%s,%s,%s automatic_tax=on",
-		cus, secret[:9], *sub, f.config().PriceCompute, f.config().PriceStorage, f.config().PriceEgress)
+	// §5.9: Stripe Tax is switched on with `automatic_tax: {enabled: true}`
+	// on the subscription and nothing else; the fake records what was sent.
+	if !f.automaticTax() {
+		t.Fatal("the subscription was created without automatic_tax")
+	}
+	if len(f.subscriptionPrices()) != 3 {
+		t.Fatalf("the subscription carries %v, want the three metered prices", f.subscriptionPrices())
+	}
+	t.Logf("transcript: customer=%s setup_intent secret=%s... subscription=%s prices=%v automatic_tax=%v",
+		cus, secret[:9], *sub, f.subscriptionPrices(), f.automaticTax())
 
 	// The portal and the invoice list answer through the same client.
 	if url, err := st.PortalURL(ctx, a.UserID.String()); err != nil || url == "" {
