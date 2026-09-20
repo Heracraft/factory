@@ -19,9 +19,10 @@
       type = lib.types.enum [ "small" "large" "xl" ];
       default = "large";
       description = ''
-        The guest's size class. Only things that must be known at build time
-        read it (the headless browser memory ceiling); vcpu and memory are
-        runtime arguments of the runner.
+        The guest's size class, for the runner's vcpu and memory defaults
+        and for inspection. Nothing in the system closure depends on it
+        (the browser slice ceiling is a percentage of guest memory), so the
+        closure a Build produces serves any class (DECISIONS I-42).
       '';
     };
   };

@@ -1,0 +1,14 @@
+{
+  "_comment": "NixOS option prefixes a fragment may set through repose.system (docs/workstreams/12-nix-config-pipeline.md 'The menu', docs/SECURITY.md boundary 8). Read by nix/guest/fragment.nix at evaluation and by internal/menu's catalog lint; TestAllowlistMatchesNix keeps the Go copy equal to this file. Never networking, users, boot, services.openssh, virtualisation.",
+  "allowed": [
+    "services.postgresql",
+    "services.redis",
+    "services.mysql",
+    "services.memcached",
+    "services.rabbitmq",
+    "services.minio",
+    "services.meilisearch",
+    "services.nats",
+    "services.mailpit"
+  ]
+}
