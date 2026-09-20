@@ -25,6 +25,20 @@ in
   # over vsock, which a guest never does.
   programs.ssh.systemd-ssh-proxy.enable = false;
 
+  # The project's origin is an SSH URL fetched through the forwarded agent
+  # (I-107); the first fetch in a fresh guest failed on host-key
+  # verification because nothing had ever connected to github.com from it
+  # (DECISIONS I-111). GitHub's published host keys are pinned; any other
+  # forge is trusted on first use, the same policy a laptop's first clone
+  # applies, and pinned keys are never overridden by it.
+  programs.ssh.knownHosts."github.com" = {
+    extraHostNames = [ "ssh.github.com" ];
+    publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl";
+  };
+  programs.ssh.extraConfig = ''
+    StrictHostKeyChecking accept-new
+  '';
+
   services.openssh = {
     enable = true;
     startWhenNeeded = false;

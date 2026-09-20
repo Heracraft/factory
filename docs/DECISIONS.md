@@ -2435,3 +2435,15 @@ certificate carries `<slug>.<handle>`, I-42). *Rejected:* fetching GitHub's
 profile from the api with the connector's token (the Management API
 already returns it); a rename that re-signs host certificates (an
 operator path for a one-time repair).
+
+**I-111. The guest pins GitHub's SSH host key and trusts other forges on
+first use.** (conductor, 2026-09-20) With `origin` set by guestd (I-107) the
+first real sync on the new base failed with `Host key verification failed`:
+a fresh guest has no known_hosts, and git's ssh refuses an unknown host
+rather than prompting inside a non-interactive fetch. The guest base pins
+`github.com`'s published ed25519 key through `programs.ssh.knownHosts` and
+sets `StrictHostKeyChecking accept-new` for everything else, which is the
+policy a laptop's first clone applies and never overrides a pinned key.
+*Rejected:* `StrictHostKeyChecking no` (accepts a changed key too);
+seeding known_hosts from the laptop at sync (one more file the CLI copies,
+and the laptop may never have connected either).
