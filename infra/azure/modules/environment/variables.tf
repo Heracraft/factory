@@ -189,6 +189,12 @@ variable "host_data_disk_mbps" {
   default     = 600
 }
 
+variable "host_data_disk_device" {
+  type        = string
+  description = "Device the data disk appears at on an installed host: /dev/disk/azure/scsi1/lun10 on SCSI sizes (v5), /dev/nvme1n1 on NVMe-only sizes (v6, v7)."
+  default     = "/dev/disk/azure/scsi1/lun10"
+}
+
 variable "host_os_disk_gb" {
   type        = number
   description = "Host OS disk. Holds /nix/store, which every guest's closure is built into and shared from over virtio-fs."

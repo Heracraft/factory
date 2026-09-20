@@ -70,7 +70,9 @@ module "environment" {
   hosts       = var.hosts
   join_tokens = var.join_tokens
 
-  host_flake_attrs = var.host_flake_attrs
+  host_flake_attrs      = var.host_flake_attrs
+  host_data_disk_device = var.host_data_disk_device
+  edge_flake_attr       = var.edge_flake_attr
 
   # DECISIONS I-14: the pre-launch host is a D16s_v5 with a 512 GB data disk.
   # Launch values are Standard_D64s_v5 and 2048, changed here and applied with

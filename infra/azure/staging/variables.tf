@@ -64,6 +64,18 @@ variable "dns_prefix" {
   default     = "repose-staging"
 }
 
+variable "host_data_disk_device" {
+  type        = string
+  description = "Device the data disk appears at on an installed host: /dev/disk/azure/scsi1/lun10 on SCSI sizes (v5), /dev/nvme1n1 on NVMe-only sizes (v6, v7)."
+  default     = "/dev/disk/azure/scsi1/lun10"
+}
+
+variable "edge_flake_attr" {
+  type        = string
+  description = "nixosConfigurations attribute installed on the edge; a named one (edge-01) carries what differs from the generic edge, such as the NVMe OS device of a v7 size."
+  default     = "edge"
+}
+
 variable "host_flake_attrs" {
   type        = map(string)
   description = "Per-host nixosConfigurations attribute in nix/flake.nix (for example host-01 = \"host-01\"); a host absent here installs the generic `host`."

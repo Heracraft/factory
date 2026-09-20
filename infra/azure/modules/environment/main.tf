@@ -179,6 +179,8 @@ module "host" {
   data_disk_mbps = var.host_data_disk_mbps
   os_disk_gb     = var.host_os_disk_gb
 
+  data_disk_device = var.host_data_disk_device
+
   snapshot_identity_id = module.storage.host_identity_id
 
   flake_path           = var.flake_path

@@ -92,6 +92,35 @@ hot overlay data moves to local SSD later. The dev box this repo is developed
 on is a `Standard_D8alds_v7` (AMD) in `eastus`, which is the family to avoid
 for hosts.
 
+### 2a. What this subscription may actually deploy in East US (2026-09-20)
+
+Checked with `az vm list-skus -l eastus --all` during the M1 bring-up
+after the first apply failed with `SkuNotAvailable` on the edge:
+
+- `Standard_D2s_v5`, `D4s_v5`, `D16s_v5`, `D2s_v6`, `D16s_v6` and
+  `D2as_v5` all carry `NotAvailableForSubscription` restrictions of type
+  `Location` and `Zone` (zones 1, 2, 3) in `eastus`. The quota for
+  `standardDSv5Family` is 65 vCPUs, so this is a SKU restriction on the
+  subscription, not a quota. The dev box's own family (`Dalsv7`) is
+  unrestricted.
+- Unrestricted Intel general-purpose families in `eastus`: `Dsv7`/`Ddsv7`
+  (Xeon 6 Granite Rapids, all three zones, quota 350 vCPUs in
+  `StandardDsv7Family`), and the network-optimised `Dnsv6`/`Dndsv6`.
+  Confidential (`DC*`) and AMD (`Da*`) families are also open.
+- `Standard_D16s_v5` is unrestricted for this subscription only in
+  `swedencentral`, `koreacentral`, `southafricanorth`, `eastasia`,
+  `israelcentral`, `denmarkeast`, `chilecentral`, `newzealandnorth`,
+  `indiasouthcentral`, `saudiarabiaeast`, `taiwannorth` and a set of
+  non-GA region codes.
+- Dsv7 feature table: nested virtualization **Supported**, Premium SSD v2
+  supported, no local temp disk, NVMe-only (the OS disk is `nvme0n1` on the
+  cached controller; uncached data disks are on a second controller,
+  `nvme1n1` first). Retail prices, `eastus`, Linux, on-demand
+  (2026-09-20): `Standard_D16s_v7` $1.058/h (about $772/month against
+  $561 for `D16s_v5`), `Standard_D2s_v7` $0.132/h (about $96 against $70).
+  https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/dsv7-series
+  https://learn.microsoft.com/en-us/azure/virtual-machines/enable-nvme-remote-faqs
+
 ## 3. AWS
 
 **EC2 bare metal (.metal).** Ordinary on-demand types with no Nitro
