@@ -510,10 +510,14 @@ func (e *Engine) failWithLine(ctx context.Context, op *store.Op, code, msg strin
 	if line > 0 {
 		errObj["fragment_line"] = line
 	}
+	// Side effects first (project state, revision status), then the op row:
+	// clients poll the op row and read the project the moment it says
+	// error, so the reverse order let them see a failed op on a project
+	// still "creating" (CI, 2026-09-20).
+	e.onFail(ctx, op, code, msg, line)
 	if _, err := e.pool.Exec(ctx, "update ops set state = 'error', error = $2, finished_at = now() where id = $1", op.ID, errObj); err != nil {
 		e.log.Error("op fail record", "event", "op_fail", "op_id", op.ID.String(), "err", err.Error())
 	}
-	e.onFail(ctx, op, code, msg, line)
 	e.log.Warn("op failed", "event", "op_fail", "op_id", op.ID.String(), "kind", op.Kind, "phase", currentPhase(op), "code", code)
 	e.m.OpsTotal.WithLabelValues(op.Kind, "error").Inc()
 	e.m.OpsOpen.WithLabelValues(op.Kind).Dec()
