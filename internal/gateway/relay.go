@@ -52,14 +52,14 @@ func (s *session) run(ctx context.Context) {
 
 	guest, gchans, greqs, err := s.dialGuest(ctx)
 	if err != nil {
-		g.cfg.Metrics.DialErrorsTotal.Inc()
+		g.cfg.Metrics.DialFailTotal.Inc()
 		reason, msg := dialFailure(err)
 		s.log.Warn("guest dial failed", "event", "dial_fail", "reason", reason)
 		s.refuse(ctx, msg)
 		return
 	}
 	s.guest = guest
-	g.cfg.Metrics.ConnectionsOpen.Inc()
+	g.cfg.Metrics.Sessions.Inc()
 	g.cfg.Metrics.SessionsTotal.Inc()
 	s.log.Info("session opened", "event", "session_open", "source_prefix", s.prefix)
 	s.report(ctx, true)
@@ -113,7 +113,7 @@ func (s *session) run(ctx context.Context) {
 	wg.Wait()
 	s.relays.Wait()
 
-	g.cfg.Metrics.ConnectionsOpen.Dec()
+	g.cfg.Metrics.Sessions.Dec()
 	dur := g.cfg.Clock().Sub(s.startedAt)
 	g.cfg.Metrics.SessionSeconds.Observe(dur.Seconds())
 	s.log.Info("session closed", "event", "session_close", "source_prefix", s.prefix,

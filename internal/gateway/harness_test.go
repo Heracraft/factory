@@ -20,6 +20,8 @@ import (
 
 	"github.com/heracraft/repose/internal/ca/testca"
 	fakeapi "github.com/heracraft/repose/internal/fakes/api"
+	"github.com/heracraft/repose/internal/obs"
+	obsmetrics "github.com/heracraft/repose/internal/obs/metrics"
 )
 
 // harness is one gateway in front of one fake guest, both against the
@@ -35,7 +37,7 @@ type harness struct {
 	login   string
 	offset  atomic.Int64 // seconds added to the clock
 	cancel  context.CancelFunc
-	metrics *Metrics
+	metrics *obsmetrics.GatewayMetrics
 	logs    *syncBuffer
 
 	mu    sync.Mutex
@@ -119,7 +121,7 @@ func newHarness(t *testing.T, o harnessOpts) *harness {
 		t.Fatal(err)
 	}
 	_, gwKey := genKey(t)
-	h.metrics = NewMetrics(nil)
+	h.metrics = obsmetrics.NewGatewayMetrics(obsmetrics.New(obs.ComponentGateway))
 	gw, err := New(Config{
 		API:               client,
 		HostKey:           hostSigner,

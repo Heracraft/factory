@@ -52,8 +52,8 @@ func TestRelayExecExitStatusAndStderr(t *testing.T) {
 	if !bytes.Equal(out2.Bytes(), in) {
 		t.Fatalf("cat relayed %d bytes, want %d", out2.Len(), len(in))
 	}
-	if counterValue(t, h.metrics.AuthTotal.WithLabelValues(ResultOK)) < 1 {
-		t.Fatal("auth_total{result=ok} not incremented")
+	if counterValue(t, h.metrics.SessionsTotal) < 1 {
+		t.Fatal("sessions_total not incremented on an accepted relay")
 	}
 }
 
@@ -341,7 +341,7 @@ func TestAuthRefusals(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			before := counterValue(t, h.metrics.AuthTotal.WithLabelValues(c.result))
+			before := counterValue(t, h.metrics.AuthFailTotal.WithLabelValues(c.result))
 			conn, banner, err := h.dial(c.login, c.auth)
 			if err == nil {
 				_ = conn.Close()
@@ -350,7 +350,7 @@ func TestAuthRefusals(t *testing.T) {
 			if !strings.Contains(banner, c.banner) {
 				t.Fatalf("banner %q, want %q", banner, c.banner)
 			}
-			if after := counterValue(t, h.metrics.AuthTotal.WithLabelValues(c.result)); after != before+1 {
+			if after := counterValue(t, h.metrics.AuthFailTotal.WithLabelValues(c.result)); after != before+1 {
 				t.Fatalf("auth_total{result=%s} %v -> %v", c.result, before, after)
 			}
 			t.Logf("%s: banner %q result=%s", c.name, banner, c.result)
@@ -523,7 +523,7 @@ func TestGuestNotReady(t *testing.T) {
 		t.Fatalf("stderr %q", errb)
 	}
 	_ = c.Close()
-	if v := counterValue(t, h.metrics.DialErrorsTotal); v != 3 {
+	if v := counterValue(t, h.metrics.DialFailTotal); v != 3 {
 		t.Fatalf("dial_errors_total %v", v)
 	}
 	if !strings.Contains(h.logs.String(), `"reason":"no_route"`) {
@@ -550,7 +550,7 @@ func TestConnectionCapAndPerSourceAuthLimit(t *testing.T) {
 	if err == nil || banner != MsgBusy {
 		t.Fatalf("third connection: err=%v banner=%q", err, banner)
 	}
-	if v := counterValue(t, h.metrics.AuthTotal.WithLabelValues(ResultBusy)); v != 1 {
+	if v := counterValue(t, h.metrics.AuthFailTotal.WithLabelValues(ResultBusy)); v != 1 {
 		t.Fatalf("auth_total{result=busy} %v", v)
 	}
 
@@ -569,7 +569,7 @@ func TestConnectionCapAndPerSourceAuthLimit(t *testing.T) {
 	if err == nil || banner != MsgRateLimited {
 		t.Fatalf("second concurrent auth: err=%v banner=%q", err, banner)
 	}
-	if v := counterValue(t, h2.metrics.AuthTotal.WithLabelValues(ResultRateLimited)); v != 1 {
+	if v := counterValue(t, h2.metrics.AuthFailTotal.WithLabelValues(ResultRateLimited)); v != 1 {
 		t.Fatalf("auth_total{result=rate_limited} %v", v)
 	}
 	_ = parked.Close()

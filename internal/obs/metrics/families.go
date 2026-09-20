@@ -26,18 +26,31 @@ import "github.com/prometheus/client_golang/prometheus"
 // buckets exist only to keep the +Inf bucket from swallowing the tail.
 var gatewayRouteBuckets = []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5}
 
+// gatewaySessionBuckets span a keepalive interval to the 24 h relay cap
+// (docs/workstreams/06-gateway-edge.md §5.4).
+var gatewaySessionBuckets = []float64{1, 10, 60, 300, 1800, 3600, 4 * 3600, 12 * 3600, 24 * 3600}
+
 // AuthFailReasons is the `reason` enum of the gateway's auth_fail event and
 // of repose_gateway_auth_fail_total (docs/workstreams/10-observability.md §5,
 // docs/interfaces/ssh-gateway.md).
-var AuthFailReasons = []string{"bad_cert", "expired", "revoked", "wrong_principal", "stopped", "not_found"}
+var AuthFailReasons = []string{
+	"no_cert", "bad_ca", "expired", "revoked", "wrong_principal",
+	"stopped", "route_error", "rate_limited", "not_found", "bad_login", "busy",
+}
 
 // GatewayMetrics is the gateway's family.
 type GatewayMetrics struct {
-	Sessions      prometheus.Gauge
-	SessionsTotal prometheus.Counter
-	AuthFailTotal *prometheus.CounterVec // reason
-	DialFailTotal prometheus.Counter
-	RouteDuration prometheus.Histogram
+	Sessions           prometheus.Gauge
+	SessionsTotal      prometheus.Counter
+	AuthFailTotal      *prometheus.CounterVec // reason
+	DialFailTotal      prometheus.Counter
+	RouteDuration      prometheus.Histogram
+	RelayBytesTotal    *prometheus.CounterVec // direction: client_to_guest, guest_to_client
+	SessionSeconds     prometheus.Histogram
+	RevocationCacheAge prometheus.Gauge
+	WGSyncPeers        prometheus.Gauge
+	WGSyncErrorsTotal  prometheus.Counter
+	HookEventsTotal    *prometheus.CounterVec // result: forwarded, rejected, rate_limited, api_error, not_found
 }
 
 // NewGatewayMetrics registers the gateway family. The auth-failure counter
@@ -47,14 +60,26 @@ type GatewayMetrics struct {
 func NewGatewayMetrics(m *Metrics) *GatewayMetrics {
 	f := factory{m, "gateway"}
 	g := &GatewayMetrics{
-		Sessions:      f.gauge("sessions", "SSH sessions relayed right now."),
-		SessionsTotal: f.counter("sessions_total", "SSH sessions relayed."),
-		AuthFailTotal: f.counterVec("auth_fail_total", "Authentication failures by reason.", "reason"),
-		DialFailTotal: f.counter("dial_fail_total", "Failures dialling a guest's sshd."),
-		RouteDuration: f.histogram("route_duration_seconds", "Time to resolve a login name to a guest address.", gatewayRouteBuckets),
+		Sessions:           f.gauge("sessions", "SSH sessions relayed right now."),
+		SessionsTotal:      f.counter("sessions_total", "SSH sessions relayed."),
+		AuthFailTotal:      f.counterVec("auth_fail_total", "Authentication failures by reason.", "reason"),
+		DialFailTotal:      f.counter("dial_fail_total", "Failures dialling a guest's sshd."),
+		RouteDuration:      f.histogram("route_duration_seconds", "Time to resolve a login name to a guest address.", gatewayRouteBuckets),
+		RelayBytesTotal:    f.counterVec("relay_bytes_total", "Bytes relayed, by direction.", "direction"),
+		SessionSeconds:     f.histogram("session_seconds", "Relay duration from accept to close.", gatewaySessionBuckets),
+		RevocationCacheAge: f.gauge("revocation_cache_age_seconds", "Seconds since the revocation list last refreshed."),
+		WGSyncPeers:        f.gauge("wgsync_peers", "WireGuard peers wgsync last applied."),
+		WGSyncErrorsTotal:  f.counter("wgsync_errors_total", "wgsync cycles that failed."),
+		HookEventsTotal:    f.counterVec("hook_events_total", "Hook events received on the ingest port, by result.", "result"),
 	}
 	for _, r := range AuthFailReasons {
 		g.AuthFailTotal.WithLabelValues(r)
+	}
+	for _, d := range []string{"client_to_guest", "guest_to_client"} {
+		g.RelayBytesTotal.WithLabelValues(d)
+	}
+	for _, r := range []string{"forwarded", "rejected", "rate_limited", "api_error", "not_found"} {
+		g.HookEventsTotal.WithLabelValues(r)
 	}
 	return g
 }

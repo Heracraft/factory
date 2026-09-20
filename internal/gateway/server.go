@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"github.com/heracraft/repose/internal/obs"
+	obsmetrics "github.com/heracraft/repose/internal/obs/metrics"
 )
 
 // The messages a user sees, as banners, for each refusal
@@ -59,7 +62,7 @@ type Config struct {
 	CARefresh         time.Duration
 
 	Log     *slog.Logger
-	Metrics *Metrics
+	Metrics *obsmetrics.GatewayMetrics
 	Clock   func() time.Time
 	// Dial replaces the TCP dial to the guest (tests).
 	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
@@ -125,7 +128,7 @@ func New(cfg Config) (*Gateway, error) {
 		cfg.Log = slog.New(slog.DiscardHandler)
 	}
 	if cfg.Metrics == nil {
-		cfg.Metrics = NewMetrics(nil)
+		cfg.Metrics = obsmetrics.NewGatewayMetrics(obsmetrics.New(obs.ComponentGateway))
 	}
 	if cfg.Dial == nil {
 		cfg.Dial = (&net.Dialer{}).DialContext
@@ -333,7 +336,7 @@ func (g *Gateway) serverConfig(ctx context.Context, st *connState) *ssh.ServerCo
 // fail records the result and returns the banner error.
 func (g *Gateway) fail(st *connState, result, message string) (*ssh.Permissions, error) {
 	st.result = result
-	g.cfg.Metrics.auth(result)
+	g.cfg.Metrics.AuthFailTotal.WithLabelValues(result).Inc()
 	return nil, &ssh.BannerError{Err: errors.New(result), Message: message}
 }
 
@@ -410,7 +413,6 @@ func (g *Gateway) authenticate(ctx context.Context, st *connState, conn ssh.Conn
 		return g.fail(st, ResultBadCA, MsgBadCA)
 	}
 	st.route, st.slug, st.handle, st.serial, st.keyID, st.result = route, slug, handle, cert.Serial, cert.KeyId, ResultOK
-	g.cfg.Metrics.auth(ResultOK)
 	perms := &ssh.Permissions{
 		CriticalOptions: cert.CriticalOptions,
 		Extensions: map[string]string{
