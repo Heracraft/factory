@@ -40,9 +40,37 @@ scrape_configs:
       - targets: ["host.docker.internal:19100"]
         labels:
           host_id: edge
+        # The edge's own node_exporter. It is in the `hosts` job because
+        # the Host capacity dashboard groups by host_id and the edge is
+        # one more machine to watch, not because the edge holds guests.
+      - targets: ["host.docker.internal:19200"]
+        labels:
+          host_id: host-01
+          region: eastus
+
+  # hostd on host-01: every repose_host_* series (195 of them on the real
+  # host). Reached through the edge, which is why the tunnel exists.
+  - job_name: hostd
+    static_configs:
+      - targets: ["host.docker.internal:19201"]
+        labels:
+          host_id: host-01
+          region: eastus
     relabel_configs:
       - target_label: instance
-        replacement: "10.255.0.1:9100"
+        replacement: "10.255.0.2:9101"
+
+  # Fluent Bit's own metrics, on its own path (the FluentBitStuck alert).
+  - job_name: fluent-bit
+    metrics_path: /api/v1/metrics/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:19202"]
+        labels:
+          host_id: host-01
+          region: eastus
+    relabel_configs:
+      - target_label: instance
+        replacement: "10.255.0.2:2021"
 
   # The tunnel reaches the api's 9103 on its container address, which is
   # a thing only an operator with SSH to the VM can do: the application
