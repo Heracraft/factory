@@ -17,25 +17,26 @@ repose-admin operator-cert                  # 8h Host-CA cert, add it next to ~/
 sudo wg-quick up ops/wg/operator.conf        # 10.255.0.0/16 reachable
 ```
 
-### Control plane (Coolify VM)
+### Control plane (control VM, a server of the owner's Coolify)
 
 The full click path, with the reasons, is `coolify.md`. The short form:
 
-1. `make -C infra apply ENV=prod` with `coolify_count = 1` in `prod.tfvars`.
-   The apply does not return until Coolify's container is healthy. Coolify's
-   dashboard is on **8000, plain HTTP, and deliberately not in the NSG**, so
-   reach it through the tunnel and create the admin user:
-   `ssh -N -L 8000:127.0.0.1:8000 root@<control ip>`, then
-   `http://127.0.0.1:8000`. Add the server as `localhost`.
-2. Copy `/data/coolify/source/.env` into the password manager **now**. Its
-   `APP_KEY` is what decrypts every credential in the Postgres dump; without
-   it the dump restores a database of ciphertext.
-3. Add Logto as a Docker Image resource (`ghcr.io/logto-io/logto`), Postgres
-   as a Coolify database, run its migration, set `ENDPOINT` and
-   `ADMIN_ENDPOINT` to `auth.repose.herakraft.co`. Configure the GitHub
-   connector and two applications: `repose-cli` (Native, device flow on)
-   and `repose-web` (SPA). Create API resource
-   `https://api.repose.herakraft.co`.
+1. `make -C infra apply ENV=prod` with `coolify_count = 1` in `prod.tfvars`
+   and the owner's Coolify address in `coolify_manager_cidrs`
+   (`prod.local.tfvars`). The apply does not return until the VM is what
+   Coolify's validation expects: root login by the instance's key, Docker
+   with the compose plugin, `rclone` and `pg_restore`.
+2. In the owner's Coolify: Servers, Add. Address `control_public_ip`, user
+   `root`, port 22, the private key whose public half is
+   `coolify_public_key`. Validate & configure; Coolify starts its proxy on
+   80 and 443. Nothing of Coolify runs on the VM itself (I-83), so there
+   is no admin account, no port 8000 and no `.env` to copy off it.
+3. On that server, add Logto as a Docker Image resource
+   (`ghcr.io/logto-io/logto`), Postgres as a Coolify database, run its
+   migration, set `ENDPOINT` and `ADMIN_ENDPOINT` to
+   `auth.repose.herakraft.co`. Configure the GitHub connector and two
+   applications: `repose-cli` (Native, device flow on) and `repose-web`
+   (SPA). Create API resource `https://api.repose.herakraft.co`.
 4. Add `api` and `web` as Dockerfile applications from the repo, health
    checks `/healthz` and `/`, env from `ops/coolify/api.env.example`.
    Secrets (CA keys, Key Vault client cert, Stripe keys, Resend key) as
@@ -46,7 +47,7 @@ The full click path, with the reasons, is `coolify.md`. The short form:
    `tofu -chdir=infra/r2 output coolify_s3_destination`. Run
    `repose-admin db migrate`, then one manual backup, then
    `ssh root@<control ip> repose-backup-check`.
-6. Add the Coolify VM as a WireGuard peer of the edge (`ops/wg/coolify.conf`).
+6. Add the control VM as a WireGuard peer of the edge (`ops/wg/coolify.conf`).
 
 ### Edge
 
@@ -668,7 +669,7 @@ The api or web app's rolling deploy did not go green.
    start): wait, the old container is still serving.
 2. A migration failure leaves the new container crash-looping and the old
    one serving. Fix forward or `repose-admin db rollback --to <previous>`
-   from the operator machine (it connects to Postgres over the Coolify
+   from the operator machine (it connects to Postgres over the control
    VM's WireGuard address), then redeploy the previous image tag.
 3. If the deploy fell back to stop-then-start (Coolify does this silently
    when the health check is missing), the health check config was lost;
@@ -703,21 +704,26 @@ The bucket's 35-day lifecycle rule keeps deleting old dumps while this alert
 is open, so a week of failures is a week closer to having no restore point at
 all.
 
-## Coolify dashboard unreachable
+## Coolify cannot validate the control VM
 
-`http://<control ip>:8000` times out. That is correct: the control subnet NSG
-does not open 8000, and `infra/azure/modules/network/main.tf` has a
-postcondition that fails the plan if somebody adds it. Coolify's dashboard is
-plain HTTP and unauthenticated until an admin account exists.
+"Validate & configure" on the server hangs or fails. Nothing of Coolify runs
+on the VM (I-83); this is Coolify on the owner's server failing to SSH in.
 
-```bash
-ssh -N -L 8000:127.0.0.1:8000 root@<control ip>   # then http://127.0.0.1:8000
-```
+1. A hang is the NSG: the instance's public address must be in
+   `coolify_manager_cidrs` (`prod.local.tfvars`), applied. `ssh root@<control
+   ip>` from an operator address still works while this is wrong.
+2. "Permission denied" is the key: the private key picked in Coolify must be
+   the one whose public half is `coolify_public_key` in `prod.tfvars`.
+   `grep -c ssh-ed25519 /root/.ssh/authorized_keys` on the VM should count
+   the operator keys plus one.
+3. A Docker complaint means cloud-init did not finish:
+   `/var/log/cloud-init-output.log` on the VM. A fresh apply would have
+   failed at `terraform_data.ready` rather than returning, so this is a
+   machine that was ready and stopped being one.
 
-If the tunnel connects but nothing answers, the installer did not finish:
-`docker logs coolify` and `/var/log/cloud-init-output.log` on the VM. A fresh
-apply would have failed at `terraform_data.ready` rather than returning, so
-this is a machine that was healthy and stopped being one.
+There is no `http://<control ip>:8000`; the control subnet NSG does not open
+it and `infra/azure/modules/network/main.tf` has a postcondition that fails
+the plan if somebody adds it. The dashboard is the owner's instance.
 
 ## ssh.repose.herakraft.co resolves to Cloudflare
 
@@ -740,10 +746,12 @@ its WireGuard endpoint fails the same way.
 ## Postgres restore
 
 The dump in R2 is only half of a restore. Coolify encrypts the credentials it
-holds with `APP_KEY` from `/data/coolify/source/.env`; a dump restored without
-that file is a database of ciphertext. Start from both.
+holds with `APP_KEY` from `/data/coolify/source/.env` on the owner's Coolify
+host (not on the control VM, which runs no Coolify, I-83); a dump restored
+into a Coolify without that key is a database of ciphertext. Start from both.
 
-1. Provision a scratch Coolify (or use staging), add a Postgres database,
+1. Add a scratch server to the same Coolify (staging's control VM), add a
+   Postgres database on it,
    download the newest dump from R2 (`rclone ls r2:repose-pg-backups`),
    `pg_restore` into it. `rclone` and `pg_restore` are installed on the
    control-plane VM by cloud-init, and the apply fails if they are missing.

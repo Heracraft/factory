@@ -287,12 +287,14 @@ transaction, and send the create command. A host that has not heartbeated for
 
 **Deployment.** `api` and the dashboard are single-container Coolify
 applications (Dockerfile, health check, so they get rolling deploys) on an
-Ubuntu LTS VM in Azure that also runs Coolify itself and Logto. Postgres is a
-Coolify-managed database with nightly dumps to Cloudflare R2. The edge is a
-separate NixOS VM (`nix/edge/`) deployed with `nixos-rebuild switch` because
-the gateway needs a raw port and WireGuard needs the kernel module, and a
-Coolify port mapping would cost it rolling deploys. Coolify cannot manage NixOS
-servers, hence the Ubuntu VM.
+Ubuntu LTS VM in Azure that the owner's existing Coolify instance manages as a
+server (DECISIONS I-83); Logto runs there the same way, and Coolify itself
+runs where it already did. Postgres is a Coolify-managed database on that VM
+with nightly dumps to Cloudflare R2. The edge is a separate NixOS VM
+(`nix/edge/`) deployed with `nixos-rebuild switch` because the gateway needs
+a raw port and WireGuard needs the kernel module, and a Coolify port mapping
+would cost it rolling deploys. Coolify cannot manage NixOS servers, hence the
+Ubuntu VM.
 
 ## 10. The CLI
 

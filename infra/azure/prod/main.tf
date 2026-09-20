@@ -61,6 +61,7 @@ module "environment" {
   zone                = var.zone
 
   operator_cidrs         = var.operator_cidrs
+  coolify_manager_cidrs  = var.coolify_manager_cidrs
   control_web_cidrs      = var.control_web_cidrs
   edge_operator_ssh_port = var.edge_operator_ssh_port
 
@@ -92,9 +93,8 @@ module "environment" {
 
   edge_size          = var.edge_size
   coolify_count      = var.coolify_count
+  coolify_public_key = var.coolify_public_key
   coolify_size       = var.coolify_size
-  coolify_version    = var.coolify_version
-  coolify_autoupdate = var.coolify_autoupdate
 
   edge_wireguard_public_key = var.edge_wireguard_public_key
 

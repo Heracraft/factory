@@ -223,7 +223,8 @@ variable "coolify_count" {
     exist the VM bills about $180 a month for nothing, while the edge and the
     first host are worth paying for early (DECISIONS I-24). Setting this to 0
     after the VM exists destroys it and everything on its OS disk, Postgres
-    included.
+    included. The VM is a server of the owner's existing Coolify, not a
+    Coolify install of its own (DECISIONS I-83).
   EOT
   default     = 0
 
@@ -247,26 +248,20 @@ variable "coolify_size" {
 
 variable "coolify_os_disk_gb" {
   type        = number
-  description = "Control-plane OS disk; holds Postgres and every image layer."
+  description = "Control-plane OS disk; holds the platform Postgres and every image layer Coolify deploys."
   default     = 256
 }
 
-variable "coolify_install_url" {
+variable "coolify_public_key" {
   type        = string
-  description = "Coolify installer URL used by cloud-init."
-  default     = "https://cdn.coollabs.io/coolify/install.sh"
+  description = "SSH public key of the owner's existing Coolify instance, which manages the control VM as a server (DECISIONS I-83). Required when coolify_count is 1."
+  default     = null
 }
 
-variable "coolify_version" {
-  type        = string
-  description = "Coolify release installed at first boot. Pinned, not `latest`; see the coolify module."
-  default     = "4.3.23"
-}
-
-variable "coolify_autoupdate" {
-  type        = bool
-  description = "Let Coolify update itself. False: an unattended upgrade of the thing that deploys the api is a deploy nobody reviewed."
-  default     = false
+variable "coolify_manager_cidrs" {
+  type        = list(string)
+  description = "Addresses the owner's Coolify instance connects from; opened on 22 to the control VM next to operator_cidrs. Empty until the owner supplies them, and then Coolify cannot reach the server."
+  default     = []
 }
 
 variable "backup_bucket" {

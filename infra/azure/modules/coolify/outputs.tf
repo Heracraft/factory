@@ -13,17 +13,16 @@ output "vm_id" {
   value       = azurerm_linux_virtual_machine.main.id
 }
 
-output "dashboard_url" {
+output "coolify_server" {
   description = <<-EOT
-    Coolify's own dashboard. It listens on 8000 over plain HTTP and the
-    control subnet NSG does not open that port on purpose, so this is the
-    address to use *after* `ssh -L 8000:127.0.0.1:8000 root@<public ip>`
-    (docs/ops/coolify.md).
+    What the owner's Coolify asks for under Servers -> Add: the address, the
+    user and the port it will SSH to, plus the private key to pick (the one
+    whose public half is coolify_public_key). Coolify's "Validate & configure"
+    then installs its proxy and takes the machine over (docs/ops/coolify.md).
   EOT
-  value       = "http://127.0.0.1:8000"
-}
-
-output "version" {
-  description = "Coolify release this VM was installed with."
-  value       = var.coolify_version
+  value = {
+    ip_address = azurerm_public_ip.main.ip_address
+    user       = "root"
+    port       = 22
+  }
 }

@@ -1,8 +1,10 @@
-# The control-plane VM: Coolify itself, Logto, Postgres, and the api and
-# dashboard as single-container Coolify applications (DECISIONS R4-2, R5-11).
+# The control-plane VM: Logto, Postgres, and the api and dashboard as
+# single-container Coolify applications (DECISIONS R4-2, R5-11), deployed onto
+# it by the owner's existing Coolify instance, which manages this machine as a
+# server over SSH (DECISIONS I-83). Coolify itself does not run here.
 #
 # Unlike the host and the edge this VM stays Ubuntu and is never touched by
-# nixos-anywhere, because Coolify rejects NixOS as a host or managed server.
+# nixos-anywhere, because Coolify rejects NixOS as a managed server.
 
 terraform {
   required_version = ">= 1.6.0"
@@ -72,9 +74,7 @@ resource "azurerm_linux_virtual_machine" "main" {
 
   custom_data = base64encode(templatefile("${path.module}/templates/cloud-init.yaml.tftpl", {
     authorized_keys       = join("\n", var.authorized_keys)
-    coolify_install_url   = var.coolify_install_url
-    coolify_version       = var.coolify_version
-    autoupdate            = var.coolify_autoupdate ? "true" : "false"
+    coolify_public_key    = var.coolify_public_key
     backup_bucket         = var.backup_bucket
     backup_max_age_hours  = var.backup_max_age_hours
     edge_public_key       = var.edge_wireguard_public_key == null ? "" : var.edge_wireguard_public_key
@@ -102,11 +102,11 @@ resource "azurerm_linux_virtual_machine" "main" {
   depends_on = [var.network_ready]
 
   lifecycle {
-    # Postgres and every Coolify application definition live on this VM's OS
-    # disk. Re-imaging it because the marketplace published a new Ubuntu
-    # version, or because a WireGuard key changed in cloud-init, would destroy
-    # the control plane. Rebuilding it is a deliberate, documented restore
-    # from the R2 dump (infra/README.md).
+    # The platform Postgres lives on this VM's OS disk. Re-imaging it because
+    # the marketplace published a new Ubuntu version, or because a WireGuard
+    # key changed in cloud-init, would destroy the control plane. Rebuilding
+    # it is a deliberate, documented restore from the R2 dump
+    # (infra/README.md).
     ignore_changes = [source_image_reference, custom_data]
 
     precondition {
@@ -116,12 +116,11 @@ resource "azurerm_linux_virtual_machine" "main" {
   }
 }
 
-# An apply that returns before Coolify is installed leaves the operator with a
-# public IP and no way to tell whether cloud-init is still pulling Docker
-# images or died twelve minutes ago. The installer itself waits for the
-# `coolify` container's Docker health check and exits non-zero if it never
-# goes healthy, so re-reading that status here is reading the same signal the
-# installer used, not a second invented one.
+# An apply that returns before the machine is ready leaves the operator with
+# a public IP and a Coolify "Validate & configure" that fails for a reason
+# only visible on the VM. This checks what Coolify's validation checks (root
+# login by the key it holds, Docker with the compose plugin) plus the two
+# restore commands the runbook opens with.
 #
 # It is deliberately not tied to custom_data: the VM ignores custom_data
 # changes (see the lifecycle block above), so a template edit must not look
@@ -144,8 +143,13 @@ resource "terraform_data" "ready" {
     inline = [
       "cloud-init status --wait >/dev/null 2>&1 || true",
       "cloud-init status | grep -q 'status: done' || { echo 'cloud-init did not finish cleanly on ${var.name}; see /var/log/cloud-init-output.log' >&2; cloud-init status --long >&2; exit 1; }",
-      "command -v docker >/dev/null || { echo 'docker is not installed; the Coolify installer did not get that far' >&2; exit 1; }",
-      "test \"$(docker inspect --format '{{.State.Health.Status}}' coolify 2>/dev/null)\" = healthy || { echo 'the coolify container is not healthy; run: docker logs coolify' >&2; exit 1; }",
+      "command -v docker >/dev/null || { echo 'docker is not installed on ${var.name}; see /var/log/cloud-init-output.log' >&2; exit 1; }",
+      "systemctl is-active --quiet docker || { echo 'docker is installed but not running on ${var.name}' >&2; exit 1; }",
+      "docker compose version >/dev/null 2>&1 || { echo 'the docker compose plugin is missing; Coolify validation needs it' >&2; exit 1; }",
+      # The key Coolify will connect with. If it is not here, Coolify's
+      # "Validate & configure" fails with a permission error that looks like
+      # a firewall problem.
+      "grep -qF '${trimspace(var.coolify_public_key)}' /root/.ssh/authorized_keys || { echo 'coolify_public_key is not in root authorized_keys on ${var.name}' >&2; exit 1; }",
       # The two commands docs/ops/RUNBOOK.md "Postgres restore" opens with.
       # A restore that stops to apt-get something is a restore nobody has
       # rehearsed.

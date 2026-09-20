@@ -10,6 +10,11 @@ operator_cidrs = ["203.0.113.4/32"]
 # DNS-01 rather than HTTP-01. At launch this becomes ["0.0.0.0/0"].
 control_web_cidrs = ["203.0.113.4/32"]
 
+# The public address of the owner's existing Coolify instance, which manages
+# the control VM over SSH (DECISIONS I-83). Without it Coolify's
+# "Validate & configure" of the server times out at the NSG.
+coolify_manager_cidrs = ["198.51.100.7/32"]
+
 # Operator SSH public keys. The first is also each VM's Azure admin key.
 operator_authorized_keys = [
   "ssh-ed25519 AAAA... operator@laptop",

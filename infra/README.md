@@ -191,53 +191,50 @@ log, and it lands on a tmpfs, so it is not on the disk
 ## The control plane
 
 `coolify_count = 1` creates it: an Ubuntu `Standard_D4s_v7` with a 256 GB
-Premium OS disk and a static public IP in the `control` subnet, running
-Coolify, and under Coolify the api, the dashboard, Logto and the platform
-Postgres. It stays Ubuntu because Coolify rejects NixOS as a host or a managed
+Premium OS disk and a static public IP in the `control` subnet. It is a
+**server** of the owner's existing Coolify instance, not a Coolify install of
+its own (`docs/DECISIONS.md` I-83): that instance connects over SSH as root,
+installs its proxy, and deploys the api, the dashboard, Logto and the platform
+Postgres onto it. It stays Ubuntu because Coolify rejects NixOS as a managed
 server (`docs/DECISIONS.md` R4-2), which is why this is the one machine here
 that `nix/` knows nothing about.
 
-The apply does not return until Coolify is up. `terraform_data.ready` waits
-for cloud-init, reads the `coolify` container's Docker health status — the
-same signal the installer itself waits on — and fails if `rclone` or
-`pg_restore` is missing, because those are the first two commands of
-`docs/ops/RUNBOOK.md` "Postgres restore" and a restore that stops to install
-something is a restore nobody has rehearsed.
+cloud-init leaves the VM as Coolify's "Validate & configure" expects to find
+it: root login by key, with the operator keys and the instance's own key
+(`coolify_public_key`, a public key, in `prod.tfvars`) in
+`/root/.ssh/authorized_keys`; Docker Engine and the compose plugin from
+Docker's apt repository; `rclone` and `pg_restore`, because those are the
+first two commands of `docs/ops/RUNBOOK.md` "Postgres restore" and a restore
+that stops to install something is a restore nobody has rehearsed; the
+WireGuard peer script; and nothing listening but sshd. The apply does not
+return until `terraform_data.ready` has checked each of those over SSH.
 
-**The machine running `tofu apply` must be in `operator_cidrs`.** The readiness
-provisioner reaches the VM over its public IP on 22, and the control subnet
-NSG opens that port to that list alone; from anywhere else the apply looks
-like a twenty-minute hang rather than a refusal. This is the same requirement
-as for hosts, which reach their installer through the edge.
+**Two address lists must be right.** The machine running `tofu apply` must be
+in `operator_cidrs`: the readiness provisioner reaches the VM over its public
+IP on 22, and from anywhere else the apply looks like a fifteen-minute hang
+rather than a refusal. And the owner's Coolify instance must be in
+`coolify_manager_cidrs` (`prod.local.tfvars`), which the control NSG adds to
+the same port-22 rule; without it Coolify's validation of the server times
+out and looks like a dead machine.
 
-Two things are pinned on purpose. `coolify_version` is an exact release
-(`4.3.23`), not the installer's moving `latest`, so rebuilding this VM
-reproduces the control plane; and `AUTOUPDATE=false`, because an unattended
-upgrade of the thing that deploys the api is a deploy nobody reviewed.
-Upgrading is a deliberate step in `docs/ops/coolify.md`.
-
-**Coolify's own dashboard is not in the NSG.** It listens on 8000 over plain
-HTTP and anyone who reaches it before an admin account exists can create one,
-so the way in is the port that is already open to `operator_cidrs`:
-
-```bash
-ssh -N -L 8000:127.0.0.1:8000 root@$(tofu -chdir=azure/prod output -raw control_public_ip)
-# http://127.0.0.1:8000
-```
-
-`azure/modules/network/main.tf` carries a `postcondition` that fails the plan
-if 8000, 6001, 6002 or `*` ever appears as an inbound rule on that subnet.
+**There is no port 8000.** Coolify's dashboard is the owner's instance, not
+this VM; `azure/modules/network/main.tf` carries a `postcondition` that fails
+the plan if 8000, 6001, 6002 or `*` ever appears as an inbound rule on the
+control subnet. 80 and 443 are open to `control_web_cidrs` for the proxy
+Coolify installs on the server, which terminates TLS for the three names in
+"DNS" below.
 
 Everything past the VM is a click path Coolify keeps in its own database, not
-in state: `docs/ops/coolify.md` is that path, including the R2 backup
-destination, the restore rehearsal, and the one fact that ruins a restore if
-it is learned late — Coolify encrypts its stored credentials with `APP_KEY`
-from `/data/coolify/source/.env`, so a Postgres dump without that file
-restores a database of ciphertext.
+in state: `docs/ops/coolify.md` is that path, including adding the server,
+the R2 backup destination, the restore rehearsal, and the one fact that ruins
+a restore if it is learned late — Coolify encrypts its stored credentials
+with `APP_KEY` from the `.env` on the owner's Coolify host, so a Postgres dump
+without that key restores a database of ciphertext.
 
-Setting `coolify_count` back to 0 destroys the VM and its OS disk, Postgres
-and every application definition included. The retention that matters is the
-R2 dump plus that `.env`.
+Setting `coolify_count` back to 0 destroys the VM and its OS disk, the
+platform Postgres included; Coolify's own definitions of the resources
+survive on the owner's instance, pointing at a server that no longer exists.
+The retention that matters is the R2 dump plus the owner's `.env`.
 
 ## DNS
 
@@ -281,7 +278,7 @@ Until a token exists, create these by hand in the Cloudflare dashboard, as
 | Name | Points at | Proxy | Why |
 |---|---|---|---|
 | `ssh.repose` | `edge_public_ip` output | **off** | SSH gateway and every host's WireGuard endpoint; the proxy carries neither |
-| `repose` | `control_public_ip` output | off | dashboard; Coolify terminates TLS itself |
+| `repose` | `control_public_ip` output | off | dashboard; the proxy Coolify installs on the server terminates TLS |
 | `api.repose` | `control_public_ip` output | off | proxying hides client addresses from the api's rate limits |
 | `auth.repose` | `control_public_ip` output | off | Logto's issuer must match the certificate it presents |
 
@@ -434,7 +431,7 @@ queried ones.
 - **Coolify's application definitions.** Coolify keeps them in its own
   database, which no `tofu plan` can read or diff; the click path is
   `docs/ops/coolify.md`, with the short form in `docs/ops/RUNBOOK.md`
-  "Control plane (Coolify VM)".
+  "Control plane".
 - **The api's Entra app registration and client certificate**, and **the R2
   API token.** Both are credentials. Creating them is a human step next to the
   other identity setup in `docs/ops/AZURE-SETUP.md`, and neither belongs in a

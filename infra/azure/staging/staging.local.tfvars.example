@@ -5,6 +5,9 @@
 # control plane (port 22). The dev box and the owner's laptop, never 0.0.0.0/0.
 operator_cidrs = ["203.0.113.4/32"]
 
+# The owner's Coolify instance, if staging ever gets a control VM (DECISIONS I-83).
+# coolify_manager_cidrs = ["198.51.100.7/32"]
+
 # Addresses allowed to reach 80 and 443 on the control plane. Pre-launch this
 # is the same operator list, which means Coolify must issue certificates over
 # DNS-01 rather than HTTP-01. At launch this becomes ["0.0.0.0/0"].

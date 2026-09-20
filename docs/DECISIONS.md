@@ -1820,3 +1820,36 @@ bidirectional `io.Copy` with a single close on first EOF (loses exit status
 and truncates output under load); a fixed delay before closing (a race is not
 a timing constant). Interface text unchanged; the behaviour is in
 `internal/gateway/relay.go`.
+
+**I-83. The control VM is a server managed by the owner's existing Coolify
+instance; Coolify itself is not installed on it.** (conductor, owner,
+2026-09-20) The interview settled that the control plane "will be added to
+Coolify", meaning the instance the owner already runs on their personal
+server (which also runs Logto, Loki and Grafana). Workstream 11's text
+turned that into a second Coolify installed by cloud-init on the control
+VM, and the control-plane session built and applied it. The owner caught it
+on first contact. The VM now boots to what Coolify's "Validate & configure"
+expects of a server: root login by key (operator keys plus the instance's
+own public key, `coolify_public_key` in `prod.tfvars`), Docker Engine with
+the compose plugin from Docker's apt repository, `rclone` and
+`postgresql-client` for the restore procedure, the WireGuard peer, and
+nothing listening but sshd. The control NSG opens 22 to
+`coolify_manager_cidrs` (the instance's address, `prod.local.tfvars`) next
+to `operator_cidrs`; 80 and 443 stay as they were, because the proxy
+Coolify installs on the server is what terminates TLS for
+`repose.herakraft.co`, `api.` and `auth.`. `terraform_data.ready` checks
+those facts instead of a `coolify` container's health. Consequences: there
+is no admin account, no port 8000, no `APP_KEY` and no `.env` on this VM;
+all of those belong to the owner's instance and its own backup. The
+platform Postgres, its R2 backup job, Logto, the api and the dashboard are
+still resources of that instance deployed onto this server, so
+`docs/ops/coolify.md`'s click path survives with "localhost" replaced by
+the added server. The live VM was converted in place (Coolify's containers,
+network, images and `/data/coolify` removed, the key added), which the
+`custom_data` `ignore_changes` on the VM makes equivalent to a rebuild.
+*Rejected:* a second Coolify (two control planes to upgrade, back up and
+log into, for one api); Coolify's "localhost" server on the personal server
+itself (the api must sit in the Azure VNet next to the edge and the hosts,
+DESIGN §15). `coolify_version`, `coolify_autoupdate` and
+`coolify_install_url` are gone from every root; upgrading Coolify is the
+owner's existing routine, not a step here.

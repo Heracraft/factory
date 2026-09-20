@@ -153,16 +153,16 @@ variable "coolify_size" {
   default     = "Standard_D4s_v7"
 }
 
-variable "coolify_version" {
+variable "coolify_public_key" {
   type        = string
-  description = "Coolify release installed on the control-plane VM. Pinned so a rebuild reproduces the control plane."
-  default     = "4.3.23"
+  description = "SSH public key of the owner's existing Coolify instance; staging's control VM, when it exists, is a server of the same instance (DECISIONS I-83)."
+  default     = null
 }
 
-variable "coolify_autoupdate" {
-  type        = bool
-  description = "Let Coolify update itself. False; upgrades are a step in docs/ops/coolify.md."
-  default     = false
+variable "coolify_manager_cidrs" {
+  type        = list(string)
+  description = "Addresses the owner's Coolify instance connects from (staging.local.tfvars)."
+  default     = []
 }
 
 variable "edge_wireguard_public_key" {

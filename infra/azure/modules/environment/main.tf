@@ -91,6 +91,7 @@ module "network" {
   control_subnet_cidr = var.control_subnet_cidr
 
   operator_cidrs         = var.operator_cidrs
+  coolify_manager_cidrs  = var.coolify_manager_cidrs
   control_web_cidrs      = var.control_web_cidrs
   edge_operator_ssh_port = var.edge_operator_ssh_port
 
@@ -165,9 +166,7 @@ module "coolify" {
   authorized_keys      = var.operator_authorized_keys
   ssh_private_key_path = var.ssh_private_key_path
   os_disk_gb           = var.coolify_os_disk_gb
-  coolify_install_url  = var.coolify_install_url
-  coolify_version      = var.coolify_version
-  coolify_autoupdate   = var.coolify_autoupdate
+  coolify_public_key   = var.coolify_public_key
 
   backup_bucket        = var.backup_bucket
   backup_max_age_hours = var.backup_max_age_hours

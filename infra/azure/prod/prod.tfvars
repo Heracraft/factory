@@ -24,12 +24,17 @@ host_security_type = "Standard"
 edge_size = "Standard_D2s_v7"
 
 # Wave 3 is here: the api and repose-admin are merged, so the control plane is
-# worth its ~$237 a month (DECISIONS I-24, I-71; infra/README.md "Cost"). The VM's OS disk holds
-# Postgres and every Coolify application definition, so setting this back to 0
-# destroys the control plane; the retention that matters is the R2 dump.
-coolify_count   = 1
-coolify_size    = "Standard_D4s_v7"
-coolify_version = "4.3.23"
+# worth its ~$237 a month (DECISIONS I-24, I-71; infra/README.md "Cost"). The
+# VM's OS disk holds the platform Postgres, so setting this back to 0 destroys
+# the control plane; the retention that matters is the R2 dump.
+#
+# The VM is a server of the owner's existing Coolify instance, not a Coolify
+# install of its own (DECISIONS I-83): this is the public half of the key that
+# instance connects with. The address it connects from is coolify_manager_cidrs
+# in prod.local.tfvars.
+coolify_count      = 1
+coolify_size       = "Standard_D4s_v7"
+coolify_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINF+RWPEGM/+MfUFU4nZ1HbqBt3YkNa74frsKHepY0Ca"
 
 # No Cloudflare token on this subscription yet, so the records are created by
 # hand from the table in infra/README.md. herakraft.co answers every name from

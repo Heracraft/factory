@@ -1,27 +1,49 @@
 #cloud-config
-# The control-plane VM: Coolify, Logto, Postgres, api and dashboard.
+# The control-plane VM: a server managed by the owner's existing Coolify.
 #
-# This one stays Ubuntu. Coolify refuses NixOS as a host or a managed server
+# Coolify itself is not installed here. The instance on the owner's personal
+# server adds this machine under Servers, connects over SSH as root with the
+# key in coolify_public_key, installs its proxy, and deploys the api, the
+# dashboard, Logto and the platform Postgres onto it (DECISIONS I-83). What
+# cloud-init leaves behind is exactly what Coolify's "Validate & configure"
+# expects to find: root login by key, Docker Engine with the compose plugin,
+# and nothing listening.
+#
+# This one stays Ubuntu. Coolify refuses NixOS as a managed server
 # (DECISIONS R4-2), which is the whole reason this VM is not part of nix/.
 #
 # Nothing secret belongs in this file: custom_data stays in the Azure VM model
 # and is readable through IMDS for the life of the VM. The WireGuard private
 # key is therefore generated on the machine at first boot and never leaves it;
 # its public half is written to /etc/wireguard/publickey for the operator to
-# add as a peer on the edge. For the same reason the installer's
-# ROOT_USER_PASSWORD is not used: the admin account is created by hand at
-# first login (docs/ops/coolify.md).
+# add as a peer on the edge.
 ssh_pwauth: false
 # Ubuntu images default to disable_root: true, whose ssh module runs after
 # write_files and replaces root's authorized_keys with a forced-command line
 # ("Please login as the user azureuser"). That is what the first apply hit.
 disable_root: false
 package_update: true
+# Docker from Docker's own repository, which is what Coolify's server
+# validation would install if it found none (get.docker.com); installing it
+# here means the readiness check below can prove the machine is ready before
+# anyone opens Coolify. Coolify rewrites /etc/docker/daemon.json when it
+# takes the server over, so none is written here.
+apt:
+  sources:
+    docker:
+      source: "deb [arch=amd64 signed-by=$KEY_FILE] https://download.docker.com/linux/ubuntu $RELEASE stable"
+      keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+      keyserver: https://download.docker.com/linux/ubuntu/gpg
 packages:
   - ca-certificates
   - curl
   - jq
   - wireguard-tools
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-compose-plugin
+  - docker-buildx-plugin
   # The two the runbook's restore procedure calls by name: rclone lists and
   # fetches the dumps from R2, pg_restore loads them. Installing them here is
   # the difference between following "Postgres restore" and stopping on the
@@ -29,11 +51,14 @@ packages:
   - rclone
   - postgresql-client
 write_files:
+  # Operator keys, then the key Coolify connects with. Root, because that is
+  # the user Coolify manages a server as; sshd below limits root to keys.
   - path: /root/.ssh/authorized_keys
     owner: root:root
     permissions: "0600"
     content: |
       ${indent(6, authorized_keys)}
+      ${coolify_public_key}
   - path: /etc/ssh/sshd_config.d/60-repose.conf
     owner: root:root
     permissions: "0644"
@@ -118,10 +143,5 @@ write_files:
 runcmd:
   - [ chmod, "0700", /root/.ssh ]
   - [ systemctl, restart, ssh ]
+  - [ systemctl, enable, --now, docker ]
   - [ /usr/local/sbin/repose-wg-setup ]
-  - [ bash, -c, "curl -fsSL '${coolify_install_url}' -o /root/coolify-install.sh" ]
-  # The installer takes the release as its one positional argument and reads
-  # AUTOUPDATE from the environment; both are variables so that rebuilding
-  # this VM reproduces the control plane rather than installing whatever
-  # shipped that morning (docs/ops/coolify.md).
-  - [ bash, -c, "AUTOUPDATE=${autoupdate} bash /root/coolify-install.sh '${coolify_version}'" ]

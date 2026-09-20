@@ -266,7 +266,7 @@ resource "azurerm_network_security_group" "control" {
     },
     {
       name                                       = "allow-operator-ssh"
-      description                                = "operator SSH to the Coolify VM"
+      description                                = "operator SSH to the control VM, and the owner's Coolify managing it"
       priority                                   = 120
       direction                                  = "Inbound"
       access                                     = "Allow"
@@ -276,7 +276,7 @@ resource "azurerm_network_security_group" "control" {
       destination_port_range                     = "22"
       destination_port_ranges                    = []
       source_address_prefix                      = ""
-      source_address_prefixes                    = var.operator_cidrs
+      source_address_prefixes                    = concat(var.operator_cidrs, var.coolify_manager_cidrs)
       destination_address_prefix                 = "*"
       destination_address_prefixes               = []
       source_application_security_group_ids      = []
@@ -302,7 +302,7 @@ resource "azurerm_network_security_group" "control" {
           contains(["8000", "6001", "6002", "*"], p)
         ])
       ]) == 0
-      error_message = "The control subnet NSG must not open 8000, 6001, 6002 or every port: Coolify's dashboard is unauthenticated until its admin account exists, and the way in is `ssh -L 8000:127.0.0.1:8000` (docs/ops/coolify.md)."
+      error_message = "The control subnet NSG must not open 8000, 6001, 6002 or every port: nothing of Coolify runs on the control VM (DECISIONS I-83); the dashboard is the owner's instance, and the VM needs only 22 (operators and that instance), 80 and 443 (docs/ops/coolify.md)."
     }
   }
 }

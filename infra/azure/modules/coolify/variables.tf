@@ -50,7 +50,7 @@ variable "network_ready" {
 
 variable "os_disk_gb" {
   type        = number
-  description = "OS disk size. Postgres, the Coolify database and every image layer live here."
+  description = "OS disk size. The platform Postgres and every image layer Coolify deploys here live on it."
   default     = 256
 }
 
@@ -61,7 +61,7 @@ variable "os_disk_type" {
 }
 
 variable "image" {
-  description = "Ubuntu LTS image. This VM stays Ubuntu; Coolify rejects NixOS (DECISIONS R4-2)."
+  description = "Ubuntu LTS image. This VM stays Ubuntu; Coolify rejects NixOS as a managed server (DECISIONS R4-2)."
   type = object({
     publisher = string
     offer     = string
@@ -87,42 +87,21 @@ variable "authorized_keys" {
   description = "Operator public keys."
 }
 
-variable "coolify_install_url" {
+variable "coolify_public_key" {
   type        = string
   description = <<-EOT
-    Coolify's installer. Pinning it to a release URL rather than the moving
-    `latest` is the difference between a rebuild that reproduces the control
-    plane and one that installs whatever shipped this morning.
+    The SSH public key of the owner's existing Coolify instance (Coolify ->
+    Keys & Tokens -> Private Keys). Coolify manages this VM as a *server*: it
+    connects over SSH as root with this key, installs its proxy and deploys
+    the api, the dashboard, Logto and Postgres onto it. Nothing Coolify runs
+    here; the instance is the one already on the owner's personal server
+    (DECISIONS I-83). A public key, so it belongs in prod.tfvars.
   EOT
-  default     = "https://cdn.coollabs.io/coolify/install.sh"
-}
-
-variable "coolify_version" {
-  type        = string
-  description = <<-EOT
-    Coolify release installed at first boot, passed to the installer as its
-    one positional argument. Pinned rather than left at the installer's
-    `latest`, so that rebuilding this VM reproduces the control plane instead
-    of installing whatever shipped that morning. Current releases are listed
-    at https://cdn.coollabs.io/coolify/versions.json.
-  EOT
-  default     = "4.3.23"
 
   validation {
-    condition     = can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", var.coolify_version))
-    error_message = "coolify_version is an exact release such as 4.3.23; `latest` is what this variable exists to avoid."
+    condition     = can(regex("^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp[0-9]+) [A-Za-z0-9+/=]+", var.coolify_public_key))
+    error_message = "coolify_public_key is an OpenSSH public key line (ssh-ed25519 AAAA...), the one Coolify shows under Keys & Tokens."
   }
-}
-
-variable "coolify_autoupdate" {
-  type        = bool
-  description = <<-EOT
-    Let Coolify update itself. False: the control plane runs the api, the
-    dashboard, Logto and the platform Postgres, and an unattended upgrade of
-    the thing that deploys them is a deploy nobody reviewed. Upgrades are a
-    deliberate step in docs/ops/coolify.md.
-  EOT
-  default     = false
 }
 
 variable "backup_bucket" {
@@ -144,8 +123,8 @@ variable "ssh_private_key_path" {
 
 variable "connect_timeout" {
   type        = string
-  description = "How long the readiness provisioner waits for SSH. Coolify's installer pulls Docker and several images."
-  default     = "20m"
+  description = "How long the readiness provisioner waits for SSH. cloud-init installs Docker from Docker's apt repository first."
+  default     = "15m"
 }
 
 variable "edge_wireguard_public_key" {

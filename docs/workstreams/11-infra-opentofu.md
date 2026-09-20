@@ -63,18 +63,22 @@ provider module for hosts is an addition, not a rewrite.
     (DECISIONS I-24, I-71). One `Standard_D4s_v7`, Ubuntu 24.04 LTS, static
     public IP, DNS A records `repose.herakraft.co`,
     `api.repose.herakraft.co`, `auth.repose.herakraft.co`, 256 GB Premium SSD
-    OS disk, cloud-init that installs Docker and runs Coolify's installer at
-    a pinned `coolify_version` with `AUTOUPDATE=false`, installs `rclone` and
-    `postgresql-client` (the first two commands of the runbook's restore
-    procedure) and a `repose-backup-check` helper, then installs a WireGuard
-    peer config so Prometheus and the api can reach the edge network. Its NSG
-    allows 80, 443 and 22 from the owner's IP lists only: **not 8000**, which
-    is Coolify's own dashboard, plain HTTP and unauthenticated until an admin
-    account exists — operators reach it through `ssh -L 8000:127.0.0.1:8000`
-    and a `postcondition` on the control NSG fails the plan if a rule for
-    8000, 6001, 6002 or `*` is ever added. `terraform_data.ready` holds the
-    apply open until the `coolify` container reports healthy. The click path
-    past the VM is `docs/ops/coolify.md`.
+    OS disk. It is a server of the owner's existing Coolify instance, not a
+    Coolify install of its own (DECISIONS I-83): cloud-init installs Docker
+    from Docker's apt repository, puts the instance's public key
+    (`coolify_public_key`) on root next to the operator keys, installs
+    `rclone` and `postgresql-client` (the first two commands of the
+    runbook's restore procedure) and a `repose-backup-check` helper, then
+    installs a WireGuard peer config so Prometheus and the api can reach
+    the edge network. Its NSG allows 80 and 443 from `control_web_cidrs`,
+    and 22 from `operator_cidrs` plus `coolify_manager_cidrs` (the
+    instance's address); a `postcondition` on the control NSG fails the
+    plan if a rule for 8000, 6001, 6002 or `*` is ever added, since no
+    Coolify dashboard exists on this VM. `terraform_data.ready` holds the
+    apply open until root login by the instance's key, Docker with the
+    compose plugin, `rclone` and `pg_restore` are all in place. The click
+    path past the VM, starting with adding the server, is
+    `docs/ops/coolify.md`.
   - `storage`: storage account (LRS, hot), container `repose-snapshots`
     with a lifecycle rule moving blobs older than 7 days to cool and
     deleting blobs older than 45 days (the 30-day post-destroy window plus
@@ -84,9 +88,9 @@ provider module for hosts is an addition, not a rewrite.
   - `keyvault`: Key Vault with purge protection, one RSA-3072 key
     `repose-dek-wrap` with rotation policy 12 months, and an access policy
     for the api's identity (wrap/unwrap only, never get) created when
-    `api_identity_object_id` is supplied. The api on the Coolify VM
+    `api_identity_object_id` is supplied. The api on the control VM
     authenticates with a client certificate stored in Coolify's secret
-    store, since the Coolify VM is not an Azure identity target for
+    store, since the control VM is not an Azure identity target for
     containers; the app registration and that certificate are a human step
     (DECISIONS I-21).
 - `infra/r2/`: Cloudflare provider, one bucket `repose-pg-backups` with a
@@ -407,10 +411,10 @@ az storage blob metadata show --account-name reposetfstate3912 \
 
 `make plan ENV=prod` shows 4 to add — the control-plane public IP, NIC,
 VM and readiness check — and `make apply ENV=prod` creates them. The apply
-does not return until Coolify is healthy. `docs/ops/coolify.md` is everything
-after that, in order, and its first two steps matter most: create the admin
-user through an SSH tunnel, then copy `/data/coolify/source/.env` off the
-machine.
+does not return until the VM is what Coolify's server validation expects
+(DECISIONS I-83). `docs/ops/coolify.md` is everything after that, in order,
+and its first two steps matter most: put the owner's Coolify address in
+`coolify_manager_cidrs`, then add the VM as a server in that instance.
 
 Three things still wait on a human rather than on an apply:
 

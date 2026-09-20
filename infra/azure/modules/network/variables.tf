@@ -61,6 +61,17 @@ variable "operator_cidrs" {
   }
 }
 
+variable "coolify_manager_cidrs" {
+  type        = list(string)
+  description = "Addresses the owner's Coolify instance manages the control VM from, over SSH on 22 (DECISIONS I-83). Added to the operator rule; never the whole internet."
+  default     = []
+
+  validation {
+    condition     = !contains(var.coolify_manager_cidrs, "0.0.0.0/0")
+    error_message = "coolify_manager_cidrs must not contain 0.0.0.0/0; it is the one address the owner's Coolify connects from."
+  }
+}
+
 variable "control_web_cidrs" {
   description = <<-EOT
     Source CIDRs allowed to reach 80 and 443 on the Coolify VM. Pre-launch this
