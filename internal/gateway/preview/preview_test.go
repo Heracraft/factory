@@ -16,7 +16,7 @@ func TestRoute(t *testing.T) {
 	}{
 		{"3000-todo-app-heracraft.repose.herakraft.co", true, "todo-app", "heracraft", 3000},
 		{"8080-api-heracraft.repose.herakraft.co:443", true, "api", "heracraft", 8080},
-		{"3000-TODO-heracraft.repose.herakraft.co", true, "todo", "heracraft", 3000}, // hostnames are case-insensitive; lowercased
+		{"3000-Api-Heracraft.repose.herakraft.co", true, "api", "heracraft", 3000}, // hostnames are case-insensitive; lowercased
 		{"todo-app.heracraft.repose.herakraft.co", false, "", "", 0},
 		{"3000-todo-app.repose.herakraft.co", true, "3000-todo", "app", 0}, // greedy: still parses, but not the intended shape
 		{"99999999-a-b.repose.herakraft.co", false, "", "", 0},

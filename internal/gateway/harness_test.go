@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
-	"encoding/pem"
 	"io"
 	"log/slog"
 	"net"
@@ -219,7 +218,7 @@ func run(t *testing.T, c *ssh.Client, cmd string) (string, string, int) {
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}
-	defer sess.Close()
+	defer func() { _ = sess.Close() }()
 	var out, errb strings.Builder
 	sess.Stdout, sess.Stderr = &out, &errb
 	err = sess.Run(cmd)
@@ -256,27 +255,11 @@ func echoServer(t *testing.T) string {
 				return
 			}
 			go func() {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				_, _ = io.Copy(c, c)
 			}()
 		}
 	}()
 	t.Cleanup(func() { _ = ln.Close() })
 	return ln.Addr().String()
-}
-
-func writeFile(t *testing.T, path string, data []byte, mode os.FileMode) {
-	t.Helper()
-	if err := os.WriteFile(path, data, mode); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func privPEM(t *testing.T, key ed25519.PrivateKey) []byte {
-	t.Helper()
-	blk, err := ssh.MarshalPrivateKey(key, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return pem.EncodeToMemory(blk)
 }

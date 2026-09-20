@@ -2,7 +2,7 @@
 // (docs/workstreams/06-gateway-edge.md §5.8, docs/features/ports-and-previews.md).
 // The listener, the wildcard-certificate path and the hostname parser exist
 // so the certificate pipeline is proven before the feature is built; the
-// authentication and the reverse proxy return "not implemented" until
+// authentication and the reverse proxy return ErrNotImplemented until
 // features/ports-and-previews.md is delivered.
 package preview
 

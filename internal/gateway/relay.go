@@ -207,7 +207,7 @@ func dialFailure(err error) (reason, msg string) {
 func (s *session) refuse(ctx context.Context, msg string) {
 	deadline := time.NewTimer(10 * time.Second)
 	defer deadline.Stop()
-	defer s.conn.Close()
+	defer func() { _ = s.conn.Close() }()
 	go func() {
 		for req := range s.reqs {
 			if req.WantReply {

@@ -25,7 +25,7 @@ func TestRelayExecExitStatusAndStderr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v (banner %q)", err, banner)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	out, _, status := run(t, c, "echo hello relay")
 	if out != "hello relay\n" || status != 0 {
 		t.Fatalf("echo: %q %d", out, status)
@@ -64,12 +64,12 @@ func TestRelayEnvFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	sess, err := c.NewSession()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sess.Close()
+	defer func() { _ = sess.Close() }()
 	if err := sess.Setenv("TERM", "xterm-256color"); err != nil {
 		t.Fatalf("TERM refused: %v", err)
 	}
@@ -100,12 +100,12 @@ func TestRelayPtyAndWindowChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	sess, err := c.NewSession()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sess.Close()
+	defer func() { _ = sess.Close() }()
 	if err := sess.RequestPty("xterm", 24, 80, ssh.TerminalModes{}); err != nil {
 		t.Fatalf("pty-req: %v", err)
 	}
@@ -157,12 +157,12 @@ func TestRelayLocalForward(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	conn, err := c.Dial("tcp", echo)
 	if err != nil {
 		t.Fatalf("direct-tcpip: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	msg := bytes.Repeat([]byte("forward me "), 20000)
 	go func() { _, _ = conn.Write(msg) }()
 	got := make([]byte, len(msg))
@@ -184,12 +184,12 @@ func TestRelayRemoteForward(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	ln, err := c.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("tcpip-forward: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	go func() {
 		for {
 			rc, err := ln.Accept()
@@ -197,7 +197,7 @@ func TestRelayRemoteForward(t *testing.T) {
 				return
 			}
 			go func() {
-				defer rc.Close()
+				defer func() { _ = rc.Close() }()
 				_, _ = io.Copy(rc, rc)
 			}()
 		}
@@ -206,7 +206,7 @@ func TestRelayRemoteForward(t *testing.T) {
 	if err != nil {
 		t.Fatalf("connect to the remote-forward port: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if _, err := conn.Write([]byte("reverse")); err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestRelayAgentForwarding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	if err := agent.ForwardToAgent(c, keyring); err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestRelayAgentForwarding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sess.Close()
+	defer func() { _ = sess.Close() }()
 	if err := agent.RequestAgentForwarding(sess); err != nil {
 		t.Fatalf("auth-agent-req: %v", err)
 	}
@@ -540,12 +540,12 @@ func TestConnectionCapAndPerSourceAuthLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c1.Close()
+	defer func() { _ = c1.Close() }()
 	c2, _, err := h.dial(h.login, cert)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c2.Close()
+	defer func() { _ = c2.Close() }()
 	_, banner, err := h.dial(h.login, cert)
 	if err == nil || banner != MsgBusy {
 		t.Fatalf("third connection: err=%v banner=%q", err, banner)
@@ -563,7 +563,7 @@ func TestConnectionCapAndPerSourceAuthLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer parked.Close()
+	defer func() { _ = parked.Close() }()
 	time.Sleep(100 * time.Millisecond)
 	_, banner, err = h2.dial(h2.login, cert2)
 	if err == nil || banner != MsgRateLimited {
@@ -601,13 +601,13 @@ func TestSoakHundredConnections(t *testing.T) {
 				errs <- err
 				return
 			}
-			defer c.Close()
+			defer func() { _ = c.Close() }()
 			sess, err := c.NewSession()
 			if err != nil {
 				errs <- err
 				return
 			}
-			defer sess.Close()
+			defer func() { _ = sess.Close() }()
 			var cw countWriter
 			sess.Stdout = &cw
 			if err := sess.Run(fmt.Sprintf("big %d", bytesEach)); err != nil {

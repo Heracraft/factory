@@ -62,7 +62,8 @@ func TestLimiterBansAfterTwentyFailures(t *testing.T) {
 
 func TestConnCounter(t *testing.T) {
 	c := &connCounter{max: 2}
-	if !c.acquire() || !c.acquire() {
+	a, b := c.acquire(), c.acquire()
+	if !a || !b {
 		t.Fatal("first two refused")
 	}
 	if c.acquire() {

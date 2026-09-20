@@ -123,7 +123,7 @@ func (g *fakeGuest) handle(c net.Conn) {
 		_ = c.Close()
 		return
 	}
-	defer sconn.Close()
+	defer func() { _ = sconn.Close() }()
 	go func() {
 		for req := range reqs {
 			g.globalRequest(sconn, req)
@@ -241,7 +241,7 @@ func (g *fakeGuest) globalRequest(sconn *ssh.ServerConn, req *ssh.Request) {
 }
 
 func (g *fakeGuest) session(sconn *ssh.ServerConn, ch ssh.Channel, reqs <-chan *ssh.Request) {
-	defer ch.Close()
+	defer func() { _ = ch.Close() }()
 	envs := map[string]string{}
 	exit := func(status uint32) {
 		_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))

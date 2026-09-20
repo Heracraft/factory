@@ -176,18 +176,25 @@ On accept: `POST /internal/sessions {project_id, opened, cert_serial}`; on
 close, `closed`. Fire-and-forget with one retry; a failure is a log line,
 not a refusal.
 
-Metrics `repose_gateway_`: `connections_open`, `auth_total{result}` with
-results `ok`, `no_cert`, `bad_ca`, `revoked`, `expired`,
-`wrong_principal`, `stopped`, `route_error`, `rate_limited`;
-`relay_bytes_total{direction}`; `dial_errors_total`; `session_seconds`
-histogram; `revocation_cache_age_seconds`; `wgsync_peers`;
-`wgsync_errors_total`.
+Metrics `repose_gateway_` live in `internal/obs/metrics` as the
+`GatewayMetrics` family workstream 10 owns, extended by this workstream
+(DECISIONS I-73): `sessions` (open relays), `sessions_total`,
+`auth_fail_total{reason}` with reasons `no_cert`, `bad_ca`, `expired`,
+`revoked`, `wrong_principal`, `stopped`, `route_error`, `rate_limited`,
+`not_found`, `bad_login`, `busy`; `dial_fail_total`;
+`relay_bytes_total{direction}`; `session_seconds` histogram;
+`route_duration_seconds` histogram; `revocation_cache_age_seconds`;
+`wgsync_peers`; `wgsync_errors_total`; `hook_events_total{result}`. An
+accepted connection is counted by `sessions_total`, so there is no
+`auth_total{result=ok}`.
 
-Logs: one line per connection open and close with `project_id`,
-`cert_serial`, `source_ip` truncated to /24 for IPv4 and /48 for IPv6,
-duration, bytes; auth failures with `result` and the truncated source.
-Never the login name's handle in plain text beside the source address
-beyond what the project id already implies; never channel contents.
+Logs: one line per connection open (`session_open`) and close
+(`session_close`) with `project_id`, `cert_serial`, `source_prefix` (the
+source truncated to /24 for IPv4 and /48 for IPv6), duration and bytes; auth
+failures (`auth_fail`) with `reason` and the truncated source. Never the
+login name's handle, never a full source address, never channel contents
+(docs/ops/OBSERVABILITY.md; enforced by `internal/obs` redaction and the
+`internal/obs/obslint` field check).
 
 ### 5.6 wgsync
 

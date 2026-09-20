@@ -161,15 +161,43 @@ Two builds running on a host with no completion for 45 minutes.
 
 More than one auth failure per second at the gateway.
 
-1. Grafana gateway dashboard: failures by `reason`. `bad_cert` in volume
-   from one source is a scan; the gateway rate-limits per source IP after
-   20 failures (fail2ban-style, built in). Nothing to do unless it
-   persists for hours; then add the source to the edge NSG deny list.
+1. Grafana gateway dashboard: failures by `reason`. `no_cert` or `bad_ca`
+   in volume from one source is a scan; the gateway rate-limits per source
+   IP after 20 failures (fail2ban-style, built in) and refuses further auth
+   for 10 minutes. Nothing to do unless it persists for hours; then add the
+   source to the edge NSG deny list. `route_error` in volume means the
+   gateway cannot reach the api (see "Gateway relay failures").
 2. `expired` in volume means the CLI's silent refresh is broken for many
    users: check `repose_api_certs_issued_total` fell off a cliff, and the
    Logto token endpoint.
 3. `wrong_principal` from one user repeatedly is someone probing other
    projects; `repose-admin audit --user`.
+
+## Gateway relay failures
+
+The failure modes of the SSH gateway (docs/workstreams/06-gateway-edge.md
+§6), and the message the user sees for each. The gateway is on the edge;
+reach it with `ssh -p <edge_operator_ssh_port> root@<edge ip>` and read
+`journalctl -u gateway` (events are structured JSON: `auth_fail`,
+`route_fail`, `dial_fail`, `session_open`, `session_close`).
+
+| Symptom / user message | Cause | What to do |
+|---|---|---|
+| `gateway cannot reach control plane; try again shortly` | the api is down or the CA/revocation caches aged past 1 h | `journalctl -u gateway \| grep route_fail`; check the api and `api-grpc` app; existing sessions keep working, new ones resume when a refresh succeeds |
+| `environment is not accepting connections yet` | the guest's sshd is not up yet, or dialed a throwaway host key | the CLI retries 60 s after a `start`; if it persists, `repose-admin projects show` for the guest state, then "Guest not ready" |
+| `cannot reach environment: no route to host` | no WireGuard peer or route for the guest's host | on the edge `wg show wg0` and `ip route \| grep <guest cidr>`; `wgsync` adds them from `/internal/hosts` within 30 s — see "HostWgDown" |
+| `permission denied (certificate expired)` / `... not yet valid` | the user's certificate is outside its 12 h validity | the CLI refreshes and retries once; a spike of `expired` is "GatewayAuthSpike" step 2 |
+| `permission denied (certificate revoked)` | logout or a revoked serial | expected; takes effect within 30 s of `repose logout` |
+| `certificate not valid for this project` | the certificate's principals do not contain the resolved project id | the CLI re-requests a cert for the project; repeated from one user is probing ("GatewayAuthSpike" step 3) |
+| `<slug> is stopped; run \`repose start\`` | the project is stopped | expected; the user starts it |
+| `gateway busy` | the 200-connection cap is reached | alert on `repose_gateway_sessions`; if legitimate, the edge is undersized |
+| `too many authentication attempts from your address; try again later` | 4 concurrent auths or 20 failures from one source | a scan; the ban clears in 10 min |
+| `login name must be <project>.<user>` | a malformed SSH login name | the user's SSH config is wrong; `repose run` rewrites it |
+
+A gateway restart (a deploy) drops every relay; the guest's tmux session
+survives, so `repose attach` reconnects. `nixos-rebuild switch --rollback`
+on the edge restores the previous gateway in seconds, and `wgsync` rebuilds
+the peer set within 30 s.
 
 ## EgressHigh
 
