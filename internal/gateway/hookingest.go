@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/heracraft/repose/internal/obs"
 	obsmetrics "github.com/heracraft/repose/internal/obs/metrics"
 )
 
@@ -38,7 +39,7 @@ type HookIngest struct {
 // NewHookIngest builds the forwarder.
 func NewHookIngest(api *Client, log *slog.Logger, m *obsmetrics.GatewayMetrics) *HookIngest {
 	if log == nil {
-		log = slog.New(slog.DiscardHandler)
+		log = obs.Nop(obs.ComponentGateway)
 	}
 	return &HookIngest{api: api, log: log, m: m, clock: time.Now, hits: map[string][]time.Time{}}
 }

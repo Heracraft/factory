@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/heracraft/repose/internal/obs"
 	obsmetrics "github.com/heracraft/repose/internal/obs/metrics"
 )
 
@@ -47,7 +48,7 @@ type WGSync struct {
 // NewWGSync builds a syncer for the interface (usually wg0).
 func NewWGSync(api *Client, wg WG, iface string, log *slog.Logger, m *obsmetrics.GatewayMetrics) *WGSync {
 	if log == nil {
-		log = slog.New(slog.DiscardHandler)
+		log = obs.Nop(obs.ComponentGateway)
 	}
 	return &WGSync{api: api, wg: wg, iface: iface, log: log, m: m, clock: time.Now, routes: map[string]string{}}
 }

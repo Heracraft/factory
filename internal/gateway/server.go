@@ -125,7 +125,7 @@ func New(cfg Config) (*Gateway, error) {
 		cfg.Clock = time.Now
 	}
 	if cfg.Log == nil {
-		cfg.Log = slog.New(slog.DiscardHandler)
+		cfg.Log = obs.Nop(obs.ComponentGateway)
 	}
 	if cfg.Metrics == nil {
 		cfg.Metrics = obsmetrics.NewGatewayMetrics(obsmetrics.New(obs.ComponentGateway))
