@@ -25,8 +25,13 @@ locals {
       "UserKnownHostsFile=/dev/null",
       "ConnectTimeout=10",
     ],
+    # ProxyCommand rather than ProxyJump: the jump connection ProxyJump opens
+    # does not inherit the -o options on the command line, so it refused the
+    # edge's host key after the edge was reinstalled and nixos-anywhere
+    # looped on "Host key verification failed". Spelling the jump out lets
+    # the same two options apply to it.
     var.jump_host == null ? [] : [
-      "ProxyJump=${var.jump_user}@${var.jump_host}:${var.jump_port}",
+      "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ${var.ssh_private_key_path} -W %h:%p -p ${var.jump_port} ${var.jump_user}@${var.jump_host}",
     ],
   )
 
