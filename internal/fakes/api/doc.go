@@ -17,4 +17,8 @@
 //     01900000-0000-7000-8000-000000000001.
 //   - Fail, FailNext and Unfail make a route return an error envelope.
 //   - Nothing here rate-limits unless Options.RateLimit is set.
+//   - A fragment containing "repose-force-eval-error" makes `PUT /config`
+//     answer the first canonical eval_failed message from
+//     nix-build-contract.md instead of applying: the revision is `failed`,
+//     the op ends in `error`, and the project's config is unchanged.
 package api

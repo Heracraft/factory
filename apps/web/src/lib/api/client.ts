@@ -46,7 +46,9 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 			headers,
 			body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined
 		});
-		reachability.ok = true;
+		// A 5xx counts as "cannot reach the api" for the persistent bar
+		// (08-dashboard.md 6), same as a network-level failure below.
+		reachability.ok = res.status < 500;
 	} catch (err) {
 		reachability.ok = false;
 		throw new NetworkError(err);

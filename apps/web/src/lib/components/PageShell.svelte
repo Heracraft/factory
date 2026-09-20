@@ -26,7 +26,12 @@
 		<p class="mb-2 text-sm text-zinc-500 dark:text-zinc-400">
 			{#each crumbs as crumb, i (crumb.label)}
 				{#if i > 0}<span class="mx-1.5">·</span>{/if}
-				{#if crumb.href}<a href={crumb.href} class="link">{crumb.label}</a>{:else}{crumb.label}{/if}
+				{#if crumb.href}
+					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- callers build crumb.href with $app/paths' resolve() -->
+					<a href={crumb.href} class="link">{crumb.label}</a>
+				{:else}
+					{crumb.label}
+				{/if}
 			{/each}
 		</p>
 	{/if}

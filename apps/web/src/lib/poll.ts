@@ -2,10 +2,12 @@
 // detail poll every 10s while the tab is visible, 60s otherwise, and stop
 // when the page/component goes away. Ops poll every 2s until done.
 import { browser } from '$app/environment';
+import { reachability } from './api/reachability.svelte';
 
 /**
  * Calls `fn` immediately, then again after 10s (tab visible) or 60s (tab
- * hidden), for as long as the tab exists. Call the returned function to stop
+ * hidden or the api unreachable — 6 "polling continues with backoff to
+ * 60s"), for as long as the tab exists. Call the returned function to stop
  * (from a component's `$effect` cleanup, typically): that is what "stops
  * when the tab is closed" means in practice, since a closed tab runs no
  * JavaScript to keep polling with.
@@ -17,7 +19,7 @@ export function pollWhileVisible(fn: () => void | Promise<void>): () => void {
 
 	const schedule = () => {
 		if (stopped) return;
-		const ms = document.visibilityState === 'visible' ? 10_000 : 60_000;
+		const ms = document.visibilityState === 'visible' && reachability.ok ? 10_000 : 60_000;
 		timer = setTimeout(tick, ms);
 	};
 	const tick = async () => {

@@ -1,4 +1,4 @@
-# The four checks docs/CHECKLIST.md asks for, on every push to main and every
+# The checks docs/CHECKLIST.md asks for, on every push to main and every
 # pull request. VM tests under nix/ need KVM, which hosted runners lack, so
 # the Nix job evaluates every output without building; the VM tests run on
 # the dev box and on hosts (docs/ops/DEV-BOX.md).
@@ -120,3 +120,52 @@ jobs:
       # ops/check.sh falls back to `nix shell nixpkgs#prometheus.cli` when
       # promtool is not on PATH, which is the case here.
       - run: ops/check.sh
+
+  web:
+    name: dashboard unit + e2e tests, Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter web exec vitest run
+      - run: pnpm --filter web exec svelte-kit sync
+      - run: pnpm --filter web exec svelte-check --tsconfig ./tsconfig.json
+      - run: pnpm --filter web exec eslint .
+      - run: pnpm --filter web build
+      # The two Go fixtures (cmd/fakeapi, cmd/fake-logto) and the fake
+      # Logto's own test suite (08-dashboard.md §7).
+      - run: go test ./test/fake-logto/... ./internal/fakes/api/...
+      - name: playwright browsers
+        run: pnpm --filter web exec playwright install --with-deps chromium
+      - run: pnpm --filter web exec playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
+      - name: docker build
+        run: docker build -f apps/web/Dockerfile -t repose-web:ci .
+      - name: image under 200 MB
+        run: |
+          size=$(docker image inspect repose-web:ci --format='{{.Size}}')
+          echo "image size: $size bytes"
+          test "$size" -lt 200000000
+      - name: healthz on the built image
+        run: |
+          docker run -d --name web-ci -p 3000:3000 repose-web:ci
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/healthz || true)
+            [ "$code" = "200" ] && break
+            sleep 1
+          done
+          test "$code" = "200"
+          docker logs web-ci

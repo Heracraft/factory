@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { resolve } from '$app/paths';
 	import { toast } from 'svelte-sonner';
 	import { signIn } from '$lib/auth.svelte';
 
@@ -105,8 +106,8 @@ dev@todo-app:~/todo-app$            # tmux session "todo-app", window "shell"</p
 	</div>
 
 	<p class="form-section text-sm text-zinc-500 dark:text-zinc-400">
-		<a href="/terms" class="link">Terms</a>
+		<a href={resolve('/terms')} class="link">Terms</a>
 		<span class="mx-1.5">·</span>
-		<a href="/privacy" class="link">Privacy</a>
+		<a href={resolve('/privacy')} class="link">Privacy</a>
 	</p>
 </div>

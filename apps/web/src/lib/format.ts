@@ -63,3 +63,26 @@ export function projectedMonthCents(
 	const hoursRemaining = totalHoursThisMonth - hoursElapsedThisMonth;
 	return Math.round(costMonthCents + ratePerHour * hoursRemaining);
 }
+
+/**
+ * Normalizes a git remote URL for display, the same way interfaces/cli-
+ * config.md does for its lookup cache: strip the scheme and `git@`, turn
+ * the `:` after the host into `/`, drop a trailing `.git`, lowercase the
+ * host. `git@github.com:a/b.git` and `https://github.com/a/b` both become
+ * `github.com/a/b`, so the connect card shows one form regardless of how
+ * the project's remote was recorded.
+ */
+export function normalizeRemoteDisplay(remoteUrl: string): string {
+	let s = remoteUrl.trim();
+	s = s.replace(/^[a-z]+:\/\//i, '');
+	s = s.replace(/^git@/i, '');
+	const slash = s.indexOf('/');
+	const colon = s.indexOf(':');
+	if (colon !== -1 && (slash === -1 || colon < slash)) {
+		s = s.slice(0, colon) + '/' + s.slice(colon + 1);
+	}
+	s = s.replace(/\.git$/i, '');
+	const firstSlash = s.indexOf('/');
+	if (firstSlash === -1) return s.toLowerCase();
+	return s.slice(0, firstSlash).toLowerCase() + s.slice(firstSlash);
+}

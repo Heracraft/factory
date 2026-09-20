@@ -57,7 +57,7 @@ type Deps struct {
 	Outbox   *notify.Outbox
 	// Unsub verifies the email unsubscribe link (13-notifications.md §5.6);
 	// nil disables GET /notify/unsubscribe with a 500 rather than a panic.
-	Unsub *notify.Unsubscriber
+	Unsub    *notify.Unsubscriber
 	Parser   *config.Parser
 	Metrics  *metrics.M
 	Registry *prometheus.Registry
@@ -264,8 +264,30 @@ func (w *statusWriter) Flush() {
 	}
 }
 
+// corsAllowedHeaders and corsAllowedMethods cover every header and verb the
+// dashboard and CLI send from a browser (I-61): the SSE log route is a GET
+// with no custom headers, so it needs no preflight at all, and every other
+// route sends at most a bearer token and a JSON body.
+const corsAllowedHeaders = "Authorization, Content-Type"
+const corsAllowedMethods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+
 func (s *Server) wrap(mux *http.ServeMux, component string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if component == "http" {
+			// The dashboard (repose.herakraft.co) and the api
+			// (api.repose.herakraft.co) are different origins, and every
+			// route here is authenticated by a bearer token, never a
+			// cookie, so a wildcard origin leaks no ambient credential
+			// (I-61). /internal is never called from a browser and gets
+			// no CORS headers at all.
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", corsAllowedMethods)
+			w.Header().Set("Access-Control-Allow-Headers", corsAllowedHeaders)
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
 		start := time.Now()
 		rid := r.Header.Get("X-Request-Id")
 		if rid == "" || len(rid) > 64 {

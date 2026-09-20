@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { toast } from 'svelte-sonner';
 	import {
 		getProject,
@@ -15,19 +16,26 @@
 		createSnapshot,
 		restoreSnapshot,
 		getUsage,
-		getConfig,
 		listRevisions
 	} from '$lib/api/client';
 	import { ApiError } from '$lib/api/errors';
 	import { toastApiError } from '$lib/api/toast';
 	import { pollWhileVisible, pollUntilDone } from '$lib/poll';
-	import { money, uptime, gb, relativeTime, dateTime, projectedMonthCents } from '$lib/format';
+	import {
+		money,
+		uptime,
+		gb,
+		relativeTime,
+		dateTime,
+		projectedMonthCents,
+		normalizeRemoteDisplay
+	} from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import StateDot from '$lib/components/StateDot.svelte';
 	import ConfirmType from '$lib/components/ConfirmType.svelte';
 	import type { Project, ProjectEvent, Snapshot, Revision } from '$lib/api/types';
 
-	const id = page.params.id;
+	const id = page.params.id as string;
 
 	let project = $state<Project | undefined>(undefined);
 	let notFound = $state(false);
@@ -187,7 +195,7 @@
 		try {
 			await destroyProject(id);
 			toast.success(`${project?.name} destroyed. Its last snapshot is kept 30 days.`);
-			await goto('/projects');
+			await goto(resolve('/projects'));
 		} catch (err) {
 			opBusy = undefined;
 			toastApiError(err, 'Could not destroy the project.');
@@ -252,17 +260,17 @@
 </svelte:head>
 
 {#if notFound}
-	<PageShell title="Not found" crumbs={[{ label: 'Projects', href: '/projects' }]}>
+	<PageShell title="Not found" crumbs={[{ label: 'Projects', href: resolve('/projects') }]}>
 		<p class="text-sm text-zinc-500 dark:text-zinc-400">
 			This project doesn't exist, or isn't yours.
 		</p>
 	</PageShell>
 {:else if !project}
-	<PageShell title="Loading…" crumbs={[{ label: 'Projects', href: '/projects' }]}>
+	<PageShell title="Loading…" crumbs={[{ label: 'Projects', href: resolve('/projects') }]}>
 		<p class="text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
 	</PageShell>
 {:else}
-	<PageShell title={project.name} crumbs={[{ label: 'Projects', href: '/projects' }]}>
+	<PageShell title={project.name} crumbs={[{ label: 'Projects', href: resolve('/projects') }]}>
 		{#snippet action()}
 			<div class="flex items-center gap-2">
 				{#if project?.state === 'stopped'}
@@ -293,7 +301,7 @@
 
 		{#if startBanner === 'payment_required'}
 			<div class="banner banner--warn mt-4">
-				A card on file is required to start a project. <a href="/billing" class="link"
+				A card on file is required to start a project. <a href={resolve('/billing')} class="link"
 					>Add one in Billing</a
 				>.
 			</div>
@@ -306,6 +314,9 @@
 				<h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400">Connect</h2>
 				<code class="codeblock mt-3 block px-3 py-2 text-sm">repose run</code>
 				<code class="codeblock mt-2 block px-3 py-2 text-sm">ssh {project.slug}.repose</code>
+				<p class="mt-2 text-xs text-zinc-400 dark:text-zinc-500">
+					{normalizeRemoteDisplay(project.remote_url)}
+				</p>
 			</div>
 
 			<div class="card">
@@ -374,9 +385,10 @@
 						>Resize…</button
 					>
 				{:else}
+					{@const currentVolumeBytes = project.volume_bytes}
 					<div class="mt-2 flex items-center gap-2">
 						<select class="field" bind:value={resizeTo}>
-							{#each SIZES_GB.filter((s) => s * 1024 * 1024 * 1024 > project.volume_bytes) as s (s)}
+							{#each SIZES_GB.filter((s) => s * 1024 * 1024 * 1024 > currentVolumeBytes) as s (s)}
 								<option value={s}>{s} GB</option>
 							{/each}
 						</select>
@@ -404,7 +416,7 @@
 				{:else}
 					<p class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">base {project.base_version}</p>
 				{/if}
-				<a href={`/projects/${id}/config`} class="link mt-2 inline-block text-sm">View config</a>
+				<a href={resolve('/projects/[id]/config', { id })} class="link mt-2 inline-block text-sm">View config</a>
 			</div>
 
 			<div class="card sm:col-span-2">

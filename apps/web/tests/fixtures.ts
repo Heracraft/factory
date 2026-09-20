@@ -1,0 +1,111 @@
+// Spawns and tears down the two Go test fixtures (cmd/fakeapi, cmd/fake-
+// logto) and the built dashboard server, for Playwright's global setup/
+// teardown (08-dashboard.md §7: "Playwright end to end against
+// internal/fakes/api ... with a fake Logto").
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { createInterface } from 'node:readline';
+import path from 'node:path';
+
+const REPO_ROOT = path.resolve(import.meta.dirname, '../../..');
+const WEB_ROOT = path.resolve(import.meta.dirname, '..');
+export const WEB_PORT = 4173;
+export const BASE_URL = `http://127.0.0.1:${WEB_PORT}`;
+
+interface Running {
+	fakeapi: ChildProcessWithoutNullStreams;
+	fakeLogto: ChildProcessWithoutNullStreams;
+	web: ChildProcessWithoutNullStreams;
+}
+
+let running: Running | undefined;
+export let fakeApiAdminURL = '';
+
+/**
+ * Reads a fixture's "KEY=value" stdout lines and resolves once every given
+ * prefix has been seen, in one pass over the stream (a stream can only be
+ * consumed once, so this reads all of a process's expected lines together
+ * rather than opening a separate readline per prefix).
+ */
+function readLines(
+	child: ChildProcessWithoutNullStreams,
+	prefixes: string[]
+): Promise<Record<string, string>> {
+	return new Promise((resolve, reject) => {
+		const found: Record<string, string> = {};
+		const rl = createInterface({ input: child.stdout });
+		const timeout = setTimeout(
+			() => reject(new Error(`${prefixes.join(',')}: timed out waiting for stdout`)),
+			15_000
+		);
+		rl.on('line', (line) => {
+			for (const prefix of prefixes) {
+				if (line.startsWith(prefix)) found[prefix] = line.slice(prefix.length).trim();
+			}
+			if (prefixes.every((p) => p in found)) {
+				clearTimeout(timeout);
+				rl.close();
+				resolve(found);
+			}
+		});
+		child.once('exit', (code) =>
+			reject(new Error(`${prefixes.join(',')}: process exited early with code ${code}`))
+		);
+	});
+}
+
+async function waitForHealthz(url: string, timeoutMs = 20_000): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	for (;;) {
+		try {
+			const res = await fetch(url);
+			if (res.ok) return;
+		} catch {
+			// not up yet
+		}
+		if (Date.now() > deadline) throw new Error(`timed out waiting for ${url}`);
+		await new Promise((r) => setTimeout(r, 200));
+	}
+}
+
+export async function startAll(): Promise<void> {
+	const fakeapi = spawn('go', ['run', './cmd/fakeapi'], { cwd: REPO_ROOT });
+	const fakeapiLines = await readLines(fakeapi, ['FAKEAPI_URL=', 'FAKEAPI_ADMIN_URL=']);
+	const fakeApiURL = fakeapiLines['FAKEAPI_URL='];
+	fakeApiAdminURL = fakeapiLines['FAKEAPI_ADMIN_URL='];
+
+	const fakeLogto = spawn('go', ['run', './cmd/fake-logto'], { cwd: REPO_ROOT });
+	const fakeLogtoURL = (await readLines(fakeLogto, ['FAKELOGTO_URL=']))['FAKELOGTO_URL='];
+
+	// Test files run in worker processes forked after globalSetup returns,
+	// which inherit process.env as it stands at fork time — this is how a
+	// spec file finds the fixtures' (randomly chosen) ports.
+	process.env.PUBLIC_API_URL = fakeApiURL;
+	process.env.PUBLIC_LOGTO_ENDPOINT = fakeLogtoURL;
+	process.env.FAKEAPI_ADMIN_URL = fakeApiAdminURL;
+
+	const web = spawn('node', ['build'], {
+		cwd: WEB_ROOT,
+		env: {
+			...process.env,
+			PORT: String(WEB_PORT),
+			HOST: '127.0.0.1',
+			PUBLIC_API_URL: fakeApiURL,
+			PUBLIC_LOGTO_ENDPOINT: fakeLogtoURL,
+			PUBLIC_LOGTO_APP_ID: 'dashboard-test',
+			PUBLIC_STRIPE_PUBLISHABLE_KEY: ''
+		}
+	});
+	web.stderr.on('data', (d) => process.stderr.write(`[web] ${d}`));
+
+	await waitForHealthz(`${BASE_URL}/healthz`);
+
+	running = { fakeapi, fakeLogto, web };
+}
+
+export async function stopAll(): Promise<void> {
+	if (!running) return;
+	for (const child of [running.web, running.fakeLogto, running.fakeapi]) {
+		child.kill('SIGTERM');
+	}
+	running = undefined;
+}

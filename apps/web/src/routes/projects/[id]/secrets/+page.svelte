@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import { toast } from 'svelte-sonner';
 	import { getProject, listSecrets, putSecret, deleteSecret } from '$lib/api/client';
 	import { toastApiError } from '$lib/api/toast';
@@ -9,7 +10,7 @@
 	import PageShell from '$lib/components/PageShell.svelte';
 	import type { Project, SecretMeta } from '$lib/api/types';
 
-	const id = page.params.id;
+	const id = page.params.id as string;
 
 	const NAME_RE = /^[A-Z][A-Z0-9_]{0,63}$/;
 	const RESERVED = new Set(['ssh_host_ed25519_key', 'ssh_host_ed25519_key-cert.pub', 'user_ca.pub']);
@@ -20,7 +21,7 @@
 
 	let name = $state('');
 	let value = $state('');
-	let fileInput: HTMLInputElement | undefined;
+	let fileInput = $state<HTMLInputElement | undefined>(undefined);
 	let nameError = $state<string | undefined>(undefined);
 	let valueError = $state<string | undefined>(undefined);
 	let saving = $state(false);
@@ -97,8 +98,8 @@
 	title="Secrets"
 	width="form"
 	crumbs={[
-		{ label: 'Projects', href: '/projects' },
-		{ label: project?.name ?? '…', href: `/projects/${id}` }
+		{ label: 'Projects', href: resolve('/projects') },
+		{ label: project?.name ?? '…', href: resolve('/projects/[id]', { id }) }
 	]}
 >
 	{#if secrets === undefined}

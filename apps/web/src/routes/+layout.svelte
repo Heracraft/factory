@@ -2,6 +2,7 @@
 	import './layout.css';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { Toaster } from 'svelte-sonner';
 	import { authState, initAuth } from '$lib/auth.svelte';
@@ -21,9 +22,9 @@
 		if (authState.authenticated === undefined) return;
 		const path = page.url.pathname;
 		if (!authState.authenticated && !PUBLIC_PATHS.has(path)) {
-			void goto('/');
+			void goto(resolve('/'));
 		} else if (authState.authenticated && path === '/') {
-			void goto('/projects');
+			void goto(resolve('/projects'));
 		}
 	});
 

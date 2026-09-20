@@ -7,7 +7,8 @@
 		lineNumbers,
 		highlightActiveLine,
 		highlightActiveLineGutter,
-		Decoration
+		Decoration,
+		type DecorationSet
 	} from '@codemirror/view';
 	import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 	import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language';
@@ -25,7 +26,7 @@
 	// A build error names a fragment.nix line (nix-build-contract.md); this
 	// paints that one line so the user does not have to count.
 	const setErrorLine = StateEffect.define<number | null>();
-	const errorLineField = StateField.define<ReturnType<typeof Decoration.none>>({
+	const errorLineField = StateField.define<DecorationSet>({
 		create: () => Decoration.none,
 		update(deco, tr) {
 			deco = deco.map(tr.changes);

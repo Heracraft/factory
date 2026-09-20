@@ -1,16 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { toast } from 'svelte-sonner';
 	import { handleSignInCallback } from '$lib/auth.svelte';
 
 	onMount(async () => {
 		try {
 			await handleSignInCallback(location.href);
-			await goto('/projects');
+			await goto(resolve('/projects'));
 		} catch {
 			toast.error('Sign-in was cancelled or failed; try again.');
-			await goto('/');
+			await goto(resolve('/'));
 		}
 	});
 </script>

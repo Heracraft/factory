@@ -4,6 +4,7 @@
 import { browser } from '$app/environment';
 import { env } from '$env/dynamic/public';
 import { goto } from '$app/navigation';
+import { resolve } from '$app/paths';
 import { toast } from 'svelte-sonner';
 import LogtoClient from '@logto/browser';
 
@@ -68,7 +69,7 @@ export async function signOut(): Promise<void> {
 async function forceSignOutExpired(): Promise<void> {
 	authState.authenticated = false;
 	toast.error('Session expired, sign in again.');
-	await goto('/');
+	await goto(resolve('/'));
 }
 
 /** Used by the api client. Throws if the user is signed out or refresh failed. */

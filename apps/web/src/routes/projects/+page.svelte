@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { listProjects } from '$lib/api/client';
 	import { toastApiError } from '$lib/api/toast';
 	import { pollWhileVisible } from '$lib/poll';
@@ -65,10 +67,12 @@
 					{#each projects as p (p.id)}
 						<tr
 							class="cursor-pointer border-t border-zinc-100 hover:bg-zinc-100/60 dark:border-zinc-900 dark:hover:bg-zinc-900/60"
-							onclick={() => (location.href = `/projects/${p.id}`)}
+							onclick={() => goto(resolve('/projects/[id]', { id: p.id }))}
 						>
 							<td class="px-2 py-2.5 font-medium">
-								<a href={`/projects/${p.id}`} class="hover:underline">{p.name}</a>
+								<a href={resolve('/projects/[id]', { id: p.id })} class="hover:underline"
+									>{p.name}</a
+								>
 							</td>
 							<td class="px-2 py-2.5">{p.class}</td>
 							<td class="px-2 py-2.5"><StateDot state={p.state} /></td>

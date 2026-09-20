@@ -24,6 +24,12 @@ const (
 	maxFragmentBytes = 256 << 10
 	maxSecretBytes   = 64 << 10
 	retentionDays    = 30
+
+	// forceEvalErrorMarker in a fragment makes putConfig answer the exact
+	// first canonical eval_failed message from nix-build-contract.md
+	// instead of applying, so a consumer can test the error path without a
+	// real Nix evaluation.
+	forceEvalErrorMarker = "repose-force-eval-error"
 )
 
 var reservedSecretNames = map[string]bool{
@@ -634,10 +640,24 @@ func (f *Fake) putConfig(w http.ResponseWriter, r *http.Request) *apiError {
 		fragment, menu = rendered, body.Menu
 	}
 	now := f.now()
+	o := f.newOp(p, "config")
+	// A canned eval failure, for the dashboard and CLI to exercise the
+	// error path (08-dashboard.md §7, nix-build-contract.md "What the user
+	// reads" — the exact first canonical message) without a real Nix
+	// evaluation. A failed build changes nothing: the previous revision
+	// stays applied.
+	if strings.Contains(fragment, forceEvalErrorMarker) {
+		msg := "config error: syntax error at fragment.nix:1:32, unexpected ';'"
+		rev := &Revision{ID: f.nextID(), CreatedAt: now, Status: "failed", Error: msg, Fragment: fragment, Menu: menu, BaseVersion: baseVersion}
+		p.revisions = append(p.revisions, rev)
+		o.State, o.Error = "error", msg
+		f.event(p, "config.failed", "", "revision failed: "+msg)
+		writeJSON(w, http.StatusAccepted, map[string]string{"revision_id": rev.ID, "op_id": o.id})
+		return nil
+	}
 	rev := &Revision{ID: f.nextID(), CreatedAt: now, Status: "applied", Fragment: fragment, Menu: menu, BaseVersion: baseVersion, AppliedAt: &now}
 	p.revisions = append(p.revisions, rev)
 	p.ConfigRevisionID = rev.ID
-	o := f.newOp(p, "config")
 	f.event(p, "config.applied", "", "revision applied")
 	writeJSON(w, http.StatusAccepted, map[string]string{"revision_id": rev.ID, "op_id": o.id})
 	return nil

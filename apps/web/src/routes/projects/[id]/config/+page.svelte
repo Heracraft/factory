@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/state';
-	import { toast } from 'svelte-sonner';
+	import { resolve } from '$app/paths';
 	import {
 		getConfig,
 		putConfig,
@@ -15,11 +15,12 @@
 	} from '$lib/api/client';
 	import { toastApiError } from '$lib/api/toast';
 	import { dateTime } from '$lib/format';
+	import { toggleSelection, groupCatalog, buildMenuSelection } from '$lib/menuSelection';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import NixEditor from '$lib/components/NixEditor.svelte';
-	import type { CatalogItem, Config, MenuSelection, Project, Revision } from '$lib/api/types';
+	import type { CatalogItem, Config, Project, Revision } from '$lib/api/types';
 
-	const id = page.params.id;
+	const id = page.params.id as string;
 
 	let project = $state<Project | undefined>(undefined);
 	let config = $state<Config | undefined>(undefined);
@@ -45,7 +46,7 @@
 	let buildError = $state<string | undefined>(undefined);
 	let currentOpId = $state<string | undefined>(undefined);
 	let eventSource: EventSource | undefined;
-	let logEl: HTMLPreElement | undefined;
+	let logEl = $state<HTMLPreElement | undefined>(undefined);
 
 	function fragmentErrorLine(message: string | undefined): number | undefined {
 		if (!message) return undefined;
@@ -74,31 +75,14 @@
 	onMount(load);
 	onDestroy(() => eventSource?.close());
 
-	function displayGroup(item: CatalogItem): string {
-		return item.kind === 'service' ? 'Services' : item.group;
-	}
-
-	let groups = $derived.by(() => {
-		const q = search.trim().toLowerCase();
-		const filtered = catalog.filter(
-			(c) => !q || c.label.toLowerCase().includes(q) || c.description.toLowerCase().includes(q)
-		);
-		const byGroup = new Map<string, CatalogItem[]>();
-		for (const item of filtered) {
-			const g = displayGroup(item);
-			if (!byGroup.has(g)) byGroup.set(g, []);
-			byGroup.get(g)!.push(item);
-		}
-		return byGroup;
-	});
+	let groups = $derived(groupCatalog(catalog, search));
 
 	function toggleItem(item: CatalogItem, checked: boolean) {
-		const set = item.kind === 'service' ? selectedServices : selectedPackages;
-		const next = new Set(set);
-		if (checked) next.add(item.id);
-		else next.delete(item.id);
-		if (item.kind === 'service') selectedServices = next;
-		else selectedPackages = next;
+		if (item.kind === 'service') {
+			selectedServices = toggleSelection(selectedServices, item.id, checked);
+		} else {
+			selectedPackages = toggleSelection(selectedPackages, item.id, checked);
+		}
 	}
 
 	function isSelected(item: CatalogItem): boolean {
@@ -142,11 +126,7 @@
 
 	async function applyMenu() {
 		applying = true;
-		const menu: MenuSelection = {
-			packages: [...selectedPackages],
-			services: [...selectedServices],
-			options: menuOptions
-		};
+		const menu = buildMenuSelection(selectedPackages, selectedServices, menuOptions);
 		try {
 			const { op_id } = await putConfig(id, { menu });
 			startBuild(op_id);
@@ -199,8 +179,8 @@
 <PageShell
 	title="Config"
 	crumbs={[
-		{ label: 'Projects', href: '/projects' },
-		{ label: project?.name ?? '…', href: `/projects/${id}` }
+		{ label: 'Projects', href: resolve('/projects') },
+		{ label: project?.name ?? '…', href: resolve('/projects/[id]', { id }) }
 	]}
 >
 	{#if !project || !config}

@@ -19,8 +19,8 @@
 	let usageRows = $state<Array<{ day: string; small: number; large: number; xl: number }>>([]);
 
 	let stripe: Stripe | undefined;
-	let elements: StripeElements | undefined;
-	let cardContainer: HTMLDivElement | undefined;
+	let elements = $state<StripeElements | undefined>(undefined);
+	let cardContainer = $state<HTMLDivElement | undefined>(undefined);
 	let savingCard = $state(false);
 	let portalBusy = $state(false);
 
@@ -43,6 +43,9 @@
 			const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
 			const to = now.toISOString().slice(0, 10);
 			const rows = await getUsage(from, to);
+			// A local scratch value, discarded once usageRows is assigned below —
+			// a plain Map, not SvelteMap, since nothing reads it reactively.
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity
 			const byDay = new Map<string, { day: string; small: number; large: number; xl: number }>();
 			for (const r of rows) {
 				const entry = byDay.get(r.day) ?? { day: r.day, small: 0, large: 0, xl: 0 };
@@ -161,7 +164,10 @@
 							<span>{dateTime(inv.created_at)} · <span class="badge">{inv.status}</span></span>
 							<span>
 								{money(inv.amount_cents)}
-								{#if inv.pdf_url}<a href={inv.pdf_url} class="link ml-2">PDF</a>{/if}
+								{#if inv.pdf_url}
+									<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- external Stripe-hosted URL, not an app route -->
+									<a href={inv.pdf_url} class="link ml-2">PDF</a>
+								{/if}
 							</span>
 						</li>
 					{/each}

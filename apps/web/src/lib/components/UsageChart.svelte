@@ -56,9 +56,14 @@
 						height={seg.h}
 						rx="2"
 						fill="var(--viz-{seg.cls})"
+						role="button"
+						tabindex="0"
+						aria-label="{row.day} {seg.cls}: {seg.hours.toFixed(1)} hours"
 						onmouseenter={() =>
 							(hover = { day: row.day, cls: seg.cls, hours: seg.hours, x: seg.x, y: seg.y })}
 						onmouseleave={() => (hover = undefined)}
+						onfocus={() => (hover = { day: row.day, cls: seg.cls, hours: seg.hours, x: seg.x, y: seg.y })}
+						onblur={() => (hover = undefined)}
 					/>
 				{/if}
 			{/each}

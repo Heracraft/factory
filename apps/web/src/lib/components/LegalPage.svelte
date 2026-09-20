@@ -28,6 +28,7 @@
 		<p class="banner banner--warn">Draft: {meta.status}</p>
 	{/if}
 	<article class="prose prose-zinc dark:prose-invert max-w-none">
+		<!-- eslint-disable-next-line svelte/no-at-html-tags -- `raw` only ever comes from this repo's own src/content/legal/*.md via a ?raw import, never from a user or the api -->
 		{@html html}
 	</article>
 </div>
