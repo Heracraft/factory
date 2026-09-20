@@ -19,12 +19,14 @@ services:
   # The service name is the hostname the api applications use. Coolify
   # overwrites `container_name` with <service>-<uuid> and drops any
   # `networks: aliases:` when it rewrites this file
-  # (bootstrap/helpers/parsers.php), but Compose adds the service name as
-  # a DNS alias on every network the container joins, so with "Connect to
-  # predefined network" on (Configuration -> Advanced) this service answers
-  # as `repose-postgres` on the shared `coolify` network, where the
-  # Dockerfile applications already live. Unique on purpose: a second
-  # service called `postgres` on that network would round-robin with it.
+  # (bootstrap/helpers/parsers.php). The service-name alias exists only on
+  # the resource's own network: with "Connect to predefined network" on
+  # (Configuration -> Advanced) Coolify attaches the container to the shared
+  # `coolify` network afterwards with `docker network connect`, which
+  # carries the container name and nothing else (verified on the VM,
+  # 2026-09-20). So the applications reach it as
+  # `repose-postgres-<service uuid>`, the uuid being the one in this
+  # resource's Coolify URL; docs/ops/coolify.md fact 11.
   repose-postgres:
     image: postgres:16-alpine
     restart: unless-stopped

@@ -663,22 +663,24 @@ reconcile is safe to run any time.
 
 ## api cannot resolve repose-postgres
 
-`api` or `api-grpc` logs a DNS failure for `repose-postgres` at start
-(`DATABASE_URL` host). The Postgres compose Service is on its own network
-unless "Connect to predefined network" is on for it (`coolify.md`, facts
-1 and 2).
+`api` or `api-grpc` logs a DNS failure for the `DATABASE_URL` host at
+start. The Postgres compose Service is on its own network unless "Connect
+to predefined network" is on for it, and on the shared network its only
+name is the container name `repose-postgres-<service uuid>` (`coolify.md`,
+facts 2 and 11).
 
 1. On the VM: `docker inspect $(docker ps -qf name=repose-postgres) --format
    '{{json .NetworkSettings.Networks}}' | jq 'keys'` must list the
    server's `coolify` network. If not, the toggle is off, or hit the known
    Coolify bug where it does not attach: turn it off and on and redeploy
    the Service.
-2. The alias is the service name, `repose-postgres`. If somebody renamed
-   the service in the compose file, the hostname in every env file
-   changed with it; `container_name` and `aliases` in the file are not
-   honoured by Coolify.
+2. The hostname is `repose-postgres-<uuid>` exactly as `docker ps` prints
+   it. The bare service name does not resolve on `coolify`; a Service
+   deleted and re-added has a new uuid, and every env file with it. Nothing
+   in the compose file (`container_name`, `aliases`) can change this.
 3. From the api container's network: `docker run --rm --network coolify
-   busybox nslookup repose-postgres` resolves once 1 is right.
+   busybox:1.36 nc -z -w 3 repose-postgres-<uuid> 5432` prints nothing and
+   exits 0 once 1 and 2 are right.
 
 ## Coolify deploy failed
 

@@ -1932,3 +1932,18 @@ Coolify's API driven by a script (unstable across 4.x, untestable from
 here); pg_dump and rclone sidecars in the compose file (code to maintain
 for what Coolify's backup does; the file is a Service rather than a git
 application precisely so that Backups tab exists for it).
+
+**I-88. The api reaches Postgres as `repose-postgres-<service uuid>`, the
+container name, not the service name.** (conductor, 2026-09-20) I-87
+assumed Compose's service-name alias would exist on the shared `coolify`
+network once "Connect to predefined network" was on. It does not: Coolify's
+generated compose lists only the resource's own network, and the shared
+one is joined afterwards by `docker network connect`, which registers the
+container name alone. Verified on the control VM (busybox on `coolify`:
+service name NXDOMAIN, container name reachable on 5432); the first api
+deploy failed on exactly this lookup. The env files carry the container
+name, with the uuid pasted from the resource's Coolify URL. *Rejected:*
+aliases in the compose file (stripped by the parser, and the shared network
+is not in the file anyway); a `docker network connect --alias` by hand
+(lost on the next redeploy); putting the applications on the resource's
+network (Coolify applications have no such setting).

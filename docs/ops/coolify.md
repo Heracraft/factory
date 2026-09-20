@@ -60,9 +60,10 @@ of that is missing.
    Compose Empty, paste `ops/coolify/postgres/docker-compose.yml`, server
    the one just added (`DECISIONS.md` I-87). A Service rather than a git
    application because Coolify gives the postgres image inside a Service
-   its Backups tab. Turn "Connect to predefined network" on for it, so the
-   applications reach it as `repose-postgres` (the service name; Coolify
-   rewrites container names and strips aliases, I-87). `POSTGRES_PASSWORD`
+   its Backups tab. Turn "Connect to predefined network" on for it; the
+   applications then reach it as `repose-postgres-<service uuid>`, the
+   container name, which is the only name Coolify gives it on the shared
+   network (fact 11, I-88). `POSTGRES_PASSWORD`
    is a project-level shared variable so the api applications reference
    the same one. Then the backup destination, below.
 5. **Logto** is the owner's existing instance, `https://accounts.herakraft.co`
@@ -141,12 +142,11 @@ the live instance, not taken from the docs. Each one changed a file here.
 
 1. **`container_name` in a compose file is overwritten** with
    `<service>-<uuid>`, and `networks: aliases:` are dropped: the parser
-   rebuilds every service's networks as bare entries. The name that
-   survives is the **service name**, because Compose aliases a service by
-   its name on every network it joins. Hence the service is
-   `repose-postgres`, not `postgres` (a second `postgres` on the shared
-   network would round-robin with it), and nothing relies on the container
-   name.
+   rebuilds every service's networks as bare entries. Compose aliases the
+   service by its name, but only on the networks in the generated file,
+   which is the resource's own (fact 11). The service name still matters
+   because the container name is built from it: `repose-postgres`, not
+   `postgres`.
 2. **Compose resources get their own network; applications sit on the
    server's `coolify` network.** A compose Service reaches the applications,
    and they reach it, only with **Connect to predefined network** on for
@@ -199,6 +199,19 @@ the live instance, not taken from the docs. Each one changed a file here.
    no notion of a management address distinct from a served one; turn it
    off under Settings -> Advanced, "DNS validation". The records stay as
    `infra/README.md` "DNS" lists them.
+11. **On the shared network a Service's only name is its container name.**
+   "Connect to predefined network" does not add `coolify` to the generated
+   compose (its `networks:` lists only the per-resource network,
+   `/data/coolify/services/<uuid>/docker-compose.yml` on the VM); Coolify
+   runs `docker network connect coolify <container>` afterwards, and Docker
+   registers the container name there and nothing else. Verified
+   2026-09-20: from a busybox on `coolify`, `repose-postgres` is NXDOMAIN
+   and `repose-postgres-cs9drwz0wzweqxvhwsx11y4q:5432` is open. So the api
+   env files use `repose-postgres-<service uuid>`; the uuid is in the
+   resource's URL and is stable for the life of the resource (deleting and
+   re-adding the Service changes it, and every env file with it). A
+   service-name alias, which the earlier text here assumed, exists only on
+   the resource's own network, where no application is.
 
 ## The instance's .env is half the backup
 

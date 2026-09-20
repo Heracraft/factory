@@ -18,12 +18,14 @@ The compose file is Postgres alone. Add it as a Coolify **Service** (Add
 resource -> Docker Compose Empty, paste the file): Coolify recognises the
 postgres image inside a Service and gives it a Backups tab, where the
 nightly dump to R2 is scheduled (`docs/ops/coolify.md`). Turn **Connect to
-predefined network** on for it (Configuration -> Advanced): the service is
-named `repose-postgres`, and that name is the DNS alias Compose gives it on
-the shared `coolify` network, where the Dockerfile applications already
-are. Coolify rewrites `container_name` to `<service>-<uuid>` and strips
-`aliases`, so the service name is the only name that survives; do not
-rename it. Its one value is `POSTGRES_PASSWORD`,
+predefined network** on for it (Configuration -> Advanced). On the shared
+`coolify` network, where the Dockerfile applications are, the container's
+only DNS name is `repose-postgres-<service uuid>` (the uuid in the
+resource's Coolify URL, also `docker ps` on the VM): Coolify attaches it
+to that network after `compose up`, so neither the service name nor any
+alias from the file exists there (`docs/ops/coolify.md`, fact 11). That
+name is the `DATABASE_URL` host in the api env files; it changes only if
+the Service is deleted and recreated. Its one value is `POSTGRES_PASSWORD`,
 a project-level shared variable, so the api apps reference the same one as
 `PGPASSWORD={{project.POSTGRES_PASSWORD}}`, on its own line: Coolify only
 resolves a reference that is a variable's whole value, so the password is
@@ -38,10 +40,10 @@ on (`docs/ops/coolify.md`, fact 10).
 Each is Coolify "Dockerfile" build pack from this repository with base
 directory `/` and the Dockerfile path above. Paste the matching env file
 into the app's Environment (developer view) and fill the blanks.
-Applications sit on the server's `coolify` network by default, which is
-where `repose-postgres` answers once the Postgres service has "Connect to
-predefined network" on; if a `DATABASE_URL` host lookup fails, that toggle
-is the first thing to check.
+Applications sit on the server's `coolify` network by default, where the
+Postgres container answers as `repose-postgres-<service uuid>` once its
+"Connect to predefined network" is on; if the `DATABASE_URL` host lookup
+fails, that toggle and then the uuid are the two things to check.
 
 - `api`: domain `https://api.repose.herakraft.co:8080`; port mapping
   `9103:9103` (metrics, over WireGuard only); pre-deploy command
