@@ -1260,3 +1260,61 @@ billing portal. `repose-admin users show <handle>` for the reason;
 guests (with snapshot), sets `billing_status = suspended`, revokes their
 certificates, and writes an audit row. Their data is retained on the normal
 30-day schedule from the moment of suspension unless `--retain` is passed.
+
+## CLI: user cannot log in
+
+`repose login` never completes: the browser flow times out after 5
+minutes, or device code polling reports `authorization_pending` forever
+and then `device code expired`.
+
+1. Ask which path they used. Loopback (PKCE): a corporate firewall or a
+   browser extension can block `http://127.0.0.1:<port>/callback`;
+   `--no-browser` (or `REPOSE_NO_BROWSER=1`) forces device code, which
+   only needs outbound HTTPS.
+2. `curl -s https://auth.repose.herakraft.co/oidc/.well-known/openid-configuration`
+   from the user's machine: a failure here means the CLI cannot even
+   start (`Cannot reach <issuer>`, exit 1), independent of the flow.
+3. Confirm the `repose-cli` Native application in Logto still has the
+   loopback redirect (`http://127.0.0.1:*/callback`) and device flow
+   enabled (`ops/AZURE-SETUP.md` step 12); a removed or misconfigured app
+   answers `invalid_client` on the token exchange.
+4. `repose logout --purge` clears any half-written `credentials.json` or
+   `~/.ssh/repose/` state before retrying.
+
+## CLI: certificate rejected
+
+`repose run`/`attach`/`open` gets a gateway banner (`certificate not
+valid for this project`, or a stopped-project banner) instead of a shell,
+or `POST /certs` itself fails.
+
+1. `repose certs`... there is no such command; the certificate lives at
+   `~/.ssh/repose/id_ed25519-cert.pub`. `ssh-keygen -L -f
+   ~/.ssh/repose/id_ed25519-cert.pub` shows its principals and expiry —
+   confirm the failing project's id is in `Principals` and `Valid` has
+   not passed (12h lifetime, R3-9).
+2. A missing or expired principal means the cert predates the project
+   (created on another machine, or before this project existed locally):
+   delete the cert file and re-run; `ensureCert` reissues one covering
+   every project the account has.
+3. `POST /certs` answering `rate_limited` (10/min) is expected under
+   rapid repeated runs; the CLI reuses the certificate on disk if it still
+   has validity and only warns. If none is on disk yet, wait a minute.
+4. A banner that is not one of the two above (gateway-side rejection, not
+   yet built as of 07-cli.md's landing — see 06-gateway-edge) surfaces
+   verbatim with exit 1; file it against the gateway, not the CLI.
+
+## CLI: SSH timeout after running
+
+`Guest is running but SSH did not answer in 60s.` after the API already
+reports the project `running`.
+
+1. `repose logs --kind console` — sshd not started yet (guest still
+   booting past `running`), or a boot failure, both show here.
+2. `repose status` for `sessions`/`tmux clients`: if the API's state is
+   stale (host lost contact), `hosts` on the host-01 side and
+   `repose-admin hosts show` tell you whether the host itself is
+   reachable; a `sessions` count that never reflects change means the
+   API's view of the guest is the stale part, not SSH.
+3. Retry `repose run`/`attach` once more before escalating: the 60s
+   window is deliberately short so an agent's user is not left staring at
+   a hang; the guest is very likely still coming up.

@@ -59,7 +59,7 @@ let
 
     # `nix build ./nix#guestd` prints the expected value when a dependency
     # changes and this no longer matches.
-    vendorHash = "sha256-Ru625ERRuWfP8PrjjzsSNgEvSK3BsmzpHWPTQ+exDoQ=";
+    vendorHash = "sha256-7XDmZCfFXMIwrxGgSBYvRZAXxjFaovmNXdoNT5+2cMg=";
 
     postPatch = ''
       mkdir -p internal/gen
@@ -89,4 +89,5 @@ in
   hostdev = mkBin "hostdev";
   api = mkBin "api";
   repose-admin = mkBin "repose-admin";
+  repose = mkBin "repose";
 }

@@ -11,10 +11,9 @@ First run on a new project:
 
 ```
 $ repose run
-Creating project todo-app (github.com/heracraft/todo-app) as large on host az-eastus-01
-Building environment (base 2026.09.15 + your config) ... 41s
-Starting guest ... 4s
-Syncing: 3 changed files, 1 untracked, 12 KB
+Connected to todo-app (large)
+Synced: 3 modified, 1 untracked
+Credentials: gh
 dev@todo-app:~/todo-app$
 ```
 
@@ -22,8 +21,8 @@ Run with a prompt:
 
 ```
 $ repose run "finish the auth flow, run the tests, commit when green"
-Starting claude in window todo-app:claude
-Attached. Detach with C-b d; the agent keeps running.
+Connected to todo-app (large)
+Synced: 0 modified, 0 untracked
 ```
 
 Run with another agent and an explicit size for a new project:
@@ -47,12 +46,10 @@ Starting a second claude in window todo-app:claude-2. Two agents on one tree
 can conflict; use `git worktree` inside the guest if that matters.
 ```
 
-Trying to run a stopped project:
-
-```
-$ repose run
-todo-app is stopped. Starting ... 4s
-```
+Running against a stopped project starts it first, silently, before the
+usual `Connected to todo-app (large)` line — there is no separate
+"stopped" message for `run` (only `attach` and `open` refuse a stopped
+guest, exit 5, since starting one is not their job).
 
 ## Behaviour that must hold
 
@@ -67,16 +64,19 @@ Session and windows (see `interfaces/guest-conventions.md`):
   `<agent>-2`, then `-3`. The agent's interactive TUI runs in that window,
   never a headless or print mode, because the point is that the user can
   attach and see the live session with its history.
-- The prompt is typed into the TUI only once the TUI is up. guestd waits
-  for the pane to be idle for 1 second before `send-keys`, then sends the
-  prompt and Enter. A prompt containing newlines is sent as one paste
-  (bracketed paste), not as separate Enter presses.
+- The prompt is typed into the TUI only once the TUI is up. The CLI polls
+  `tmux display -p '#{pane_current_command}'` and `tmux capture-pane`
+  until the pane's process matches the agent and its content has been
+  unchanged for 1 second, then `tmux send-keys -l '<prompt>'` followed by
+  a separate `Enter`, exactly as 07-cli.md §5.5 step 7 specifies (a single
+  `-l` send, not a bracketed paste).
 - After starting the agent the CLI attaches to that window unless
-  `--detach` was given. Detaching (`C-b d`) never stops anything.
-- `repose attach` attaches to the current window. `repose attach --window
-  claude` attaches to a named window. If the session does not exist (guest
-  rebooted and guestd failed to recreate it), the CLI recreates it via
-  guestd and says so.
+  `--no-attach` was given. Detaching (`C-b d`) never stops anything.
+- `repose attach` attaches to the project's current window; there is no
+  `--window` flag (07-cli.md's command tree has none). If the session does
+  not exist, `repose attach` fails the way any other tmux target failure
+  does; recreating a lost session is guestd's job at boot
+  (`guest-conventions.md`), not something the CLI drives.
 - Two `repose run` invocations on the same project from two terminals both
   attach; tmux handles the multi-client case and the smaller terminal
   constrains the size, as tmux always does. That is documented, not hidden.
@@ -96,8 +96,9 @@ Sequence and idempotency (from DESIGN §10):
 
 1. Resolve or create the project (projects.md).
 2. Ensure the guest is running; stream a pending build; start a stopped
-   guest. A guest in state `building` shows the build log; `error` shows
-   the last error and exits 5.
+   guest. An op that ends in `error` prints it and exits 1 (a build's own
+   `eval_failed`/`build_failed` exits 10 instead, per the failure table
+   below).
 3. Get or refresh the SSH certificate; write the SSH config block.
 4. Sync (sync-at-launch.md). Skipped with `--no-sync`.
 5. Sync credential files (secrets.md).
@@ -115,15 +116,20 @@ Timing that must hold on a healthy host:
 
 Failure output:
 
-- Not logged in: exit 3, `run \`repose login\` first`.
-- No card: exit 7 with the dashboard billing URL.
-- Host capacity exhausted: exit 8, `no host has room for a large guest right
-  now; try again in a few minutes or pick --size small`. The API also raises
-  a capacity alert.
+- Not logged in: exit 3, `Not logged in. Run \`repose login\`.`
+- No card: exit 7, `Add a card at https://repose.herakraft.co/billing
+  first.`
+- Host capacity exhausted: exit 8, `No capacity right now; try again in a
+  few minutes. (We have been alerted.)` The API also raises a capacity
+  alert.
 - Build failed: exit 10, the Nix error verbatim, the fragment line if known,
   and `edit with \`repose config edit\``.
-- Gateway unreachable or certificate rejected: the ssh error verbatim plus
-  `run \`repose login\` again if this persists`.
+- SSH does not answer within 60s of the API reporting `running`: exit 1,
+  `Guest is running but SSH did not answer in 60s. \`repose logs --kind
+  console\` may show why.` A gateway certificate rejection during that
+  window surfaces the same way today; re-issuing the certificate once and
+  retrying (07-cli.md §6) needs a real gateway to verify the exact banner
+  text against and is not yet built (06-gateway-edge).
 
 ## Depends on
 

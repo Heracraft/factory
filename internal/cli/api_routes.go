@@ -1,0 +1,318 @@
+package cli
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"time"
+)
+
+// One method per route in docs/interfaces/api.md, in the doc's order.
+
+func (c *Client) GetMe(ctx context.Context) (*Me, error) {
+	var m Me
+	if err := c.get(ctx, "/me", &m); err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+type PatchMeRequest struct {
+	TZ     *string      `json:"tz,omitempty"`
+	Notify *NotifyPatch `json:"notify,omitempty"`
+}
+
+type NotifyPatch struct {
+	Email *bool `json:"email,omitempty"`
+	// NtfyURL is a pointer to a pointer so PatchMeRequest can tell "leave
+	// it alone" (nil, omitted) from "clear it" (points at a nil *string,
+	// marshals to JSON null) from "set it" (points at a non-nil one).
+	NtfyURL **string `json:"ntfy_url,omitempty"`
+}
+
+func (c *Client) PatchMe(ctx context.Context, req PatchMeRequest) (*Me, error) {
+	var m Me
+	if err := c.patch(ctx, "/me", req, &m); err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+func (c *Client) NotifyTest(ctx context.Context) (*NotifyTestResult, error) {
+	var r NotifyTestResult
+	if err := c.post(ctx, "/me/notify-test", nil, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
+	var ps []Project
+	if err := c.get(ctx, "/projects", &ps); err != nil {
+		return nil, err
+	}
+	return ps, nil
+}
+
+type CreateProjectRequest struct {
+	Name      string `json:"name"`
+	RemoteURL string `json:"remote_url,omitempty"`
+	Class     string `json:"class"`
+	TZ        string `json:"tz,omitempty"`
+}
+
+func (c *Client) CreateProject(ctx context.Context, req CreateProjectRequest) (*Project, error) {
+	var p Project
+	if err := c.post(ctx, "/projects", req, &p); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+func (c *Client) GetProject(ctx context.Context, id string) (*Project, error) {
+	var p Project
+	if err := c.get(ctx, "/projects/"+url.PathEscape(id), &p); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+type PatchProjectRequest struct {
+	Class           *string `json:"class,omitempty"`
+	HoldBaseUpdates *bool   `json:"hold_base_updates,omitempty"`
+	AgentDefault    *string `json:"agent_default,omitempty"`
+}
+
+func (c *Client) PatchProject(ctx context.Context, id string, req PatchProjectRequest) (*Project, error) {
+	var p Project
+	if err := c.patch(ctx, "/projects/"+url.PathEscape(id), req, &p); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+func (c *Client) DestroyProject(ctx context.Context, id string) error {
+	return c.delete(ctx, "/projects/"+url.PathEscape(id), nil)
+}
+
+type opIDResponse struct {
+	OpID string `json:"op_id"`
+}
+
+func (c *Client) StartProject(ctx context.Context, id string) (string, error) {
+	var r opIDResponse
+	if err := c.post(ctx, "/projects/"+url.PathEscape(id)+"/start", nil, &r); err != nil {
+		return "", err
+	}
+	return r.OpID, nil
+}
+
+func (c *Client) StopProject(ctx context.Context, id string, snapshot bool) (string, error) {
+	var r opIDResponse
+	body := map[string]bool{"snapshot": snapshot}
+	if err := c.post(ctx, "/projects/"+url.PathEscape(id)+"/stop", body, &r); err != nil {
+		return "", err
+	}
+	return r.OpID, nil
+}
+
+func (c *Client) GetOp(ctx context.Context, projectID, opID string) (*Op, error) {
+	var op Op
+	if err := c.get(ctx, "/projects/"+url.PathEscape(projectID)+"/ops/"+url.PathEscape(opID), &op); err != nil {
+		return nil, err
+	}
+	return &op, nil
+}
+
+func (c *Client) ResizeProject(ctx context.Context, id string, bytes int64) (string, error) {
+	var r opIDResponse
+	body := map[string]int64{"volume_bytes": bytes}
+	if err := c.post(ctx, "/projects/"+url.PathEscape(id)+"/resize", body, &r); err != nil {
+		return "", err
+	}
+	return r.OpID, nil
+}
+
+func (c *Client) ProjectRoute(ctx context.Context, id string) (*Route, error) {
+	var r Route
+	if err := c.get(ctx, "/projects/"+url.PathEscape(id)+"/route", &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+func (c *Client) GetConfig(ctx context.Context, id string) (*ConfigResponse, error) {
+	var cfg ConfigResponse
+	if err := c.get(ctx, "/projects/"+url.PathEscape(id)+"/config", &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+type putConfigResponse struct {
+	RevisionID string `json:"revision_id"`
+	OpID       string `json:"op_id"`
+}
+
+func (c *Client) PutConfigFragment(ctx context.Context, id, fragment string) (revisionID, opID string, err error) {
+	var r putConfigResponse
+	if err := c.put(ctx, "/projects/"+url.PathEscape(id)+"/config", map[string]string{"fragment": fragment}, &r); err != nil {
+		return "", "", err
+	}
+	return r.RevisionID, r.OpID, nil
+}
+
+func (c *Client) PutConfigMenu(ctx context.Context, id string, menu any) (revisionID, opID string, err error) {
+	var r putConfigResponse
+	if err := c.put(ctx, "/projects/"+url.PathEscape(id)+"/config", map[string]any{"menu": menu}, &r); err != nil {
+		return "", "", err
+	}
+	return r.RevisionID, r.OpID, nil
+}
+
+func (c *Client) ListRevisions(ctx context.Context, id string) ([]Revision, error) {
+	var rs []Revision
+	if err := c.get(ctx, "/projects/"+url.PathEscape(id)+"/config/revisions", &rs); err != nil {
+		return nil, err
+	}
+	return rs, nil
+}
+
+func (c *Client) ApplyRevision(ctx context.Context, id, rev string) (string, error) {
+	var r opIDResponse
+	if err := c.post(ctx, "/projects/"+url.PathEscape(id)+"/config/revisions/"+url.PathEscape(rev)+"/apply", nil, &r); err != nil {
+		return "", err
+	}
+	return r.OpID, nil
+}
+
+func (c *Client) Catalog(ctx context.Context) ([]CatalogItem, error) {
+	var items []CatalogItem
+	if err := c.get(ctx, "/catalog", &items); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (c *Client) IssueCert(ctx context.Context, publicKey string, projectIDs []string) (*CertResponse, error) {
+	var r CertResponse
+	body := map[string]any{"public_key": publicKey, "project_ids": projectIDs}
+	if err := c.post(ctx, "/certs", body, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+func (c *Client) RevokeCertsAll(ctx context.Context) error {
+	return c.post(ctx, "/certs/revoke", map[string]bool{"all": true}, nil)
+}
+
+func (c *Client) ListSecrets(ctx context.Context, id string) ([]SecretMeta, error) {
+	var s []SecretMeta
+	if err := c.get(ctx, "/projects/"+url.PathEscape(id)+"/secrets", &s); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// PutSecretResult reports whether the value reached a running guest.
+type PutSecretResult struct {
+	Pushed bool `json:"pushed"`
+}
+
+func (c *Client) PutSecret(ctx context.Context, id, name string, value []byte) (*PutSecretResult, error) {
+	var r PutSecretResult
+	body := map[string]string{"value": b64(value)}
+	if err := c.put(ctx, fmt.Sprintf("/projects/%s/secrets/%s", url.PathEscape(id), url.PathEscape(name)), body, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+func (c *Client) DeleteSecret(ctx context.Context, id, name string) error {
+	return c.delete(ctx, fmt.Sprintf("/projects/%s/secrets/%s", url.PathEscape(id), url.PathEscape(name)), nil)
+}
+
+func (c *Client) ListSnapshots(ctx context.Context, id string) ([]Snapshot, error) {
+	var s []Snapshot
+	if err := c.get(ctx, "/projects/"+url.PathEscape(id)+"/snapshots", &s); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func (c *Client) CreateSnapshot(ctx context.Context, id string) (string, error) {
+	var r opIDResponse
+	if err := c.post(ctx, "/projects/"+url.PathEscape(id)+"/snapshots", nil, &r); err != nil {
+		return "", err
+	}
+	return r.OpID, nil
+}
+
+func (c *Client) RestoreSnapshot(ctx context.Context, id, snapshotID, asNew string) (string, error) {
+	var r opIDResponse
+	var body map[string]string
+	if asNew != "" {
+		body = map[string]string{"as_new_project": asNew}
+	}
+	if err := c.post(ctx, fmt.Sprintf("/projects/%s/snapshots/%s/restore", url.PathEscape(id), url.PathEscape(snapshotID)), body, &r); err != nil {
+		return "", err
+	}
+	return r.OpID, nil
+}
+
+func (c *Client) ListEvents(ctx context.Context, id, since string) ([]Event, error) {
+	var e []Event
+	path := "/projects/" + url.PathEscape(id) + "/events"
+	if since != "" {
+		path += "?since=" + url.QueryEscape(since)
+	}
+	if err := c.get(ctx, path, &e); err != nil {
+		return nil, err
+	}
+	return e, nil
+}
+
+type LogLine struct {
+	TS   time.Time `json:"ts"`
+	Kind string    `json:"kind"`
+	Line string    `json:"line"`
+}
+
+func (c *Client) ProjectLogs(ctx context.Context, id, kind, since string) ([]LogLine, error) {
+	q := url.Values{}
+	if kind != "" {
+		q.Set("kind", kind)
+	}
+	if since != "" {
+		q.Set("since", since)
+	}
+	path := "/projects/" + url.PathEscape(id) + "/logs"
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	var lines []LogLine
+	err := c.getNDJSON(ctx, path, func(dec *json.Decoder) error {
+		var l LogLine
+		if err := dec.Decode(&l); err != nil {
+			return err
+		}
+		lines = append(lines, l)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return lines, nil
+}
+
+func (c *Client) BillingPortal(ctx context.Context) (string, error) {
+	var r struct {
+		URL string `json:"url"`
+	}
+	if err := c.post(ctx, "/billing/portal", nil, &r); err != nil {
+		return "", err
+	}
+	return r.URL, nil
+}

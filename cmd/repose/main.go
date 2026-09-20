@@ -1,19 +1,16 @@
-// Command repose is part of repose. See docs/workstreams/ for the workstream
-// that owns it and docs/interfaces/ for the contracts it implements.
+// Command repose is the CLI a developer installs. See
+// docs/workstreams/07-cli.md for the workstream that owns it and
+// docs/interfaces/ for the contracts it implements.
 package main
 
 import (
-	"fmt"
 	"os"
+
+	"github.com/heracraft/repose/internal/cli"
 )
 
 var version = "dev" // set by -ldflags at release
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "version" {
-		fmt.Println("repose", version)
-		return
-	}
-	fmt.Fprintln(os.Stderr, "repose: not implemented yet; see docs/workstreams/")
-	os.Exit(2)
+	os.Exit(cli.Execute(version))
 }

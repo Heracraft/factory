@@ -1539,3 +1539,48 @@ hand until a token exists, and `ops/RUNBOOK.md` has it as a symptom entry.
 to read `dig` output would have to rediscover the wildcard); making
 `manage_dns` a required variable (a plan-only CI run has no business
 supplying a Cloudflare value).
+
+**I-71. Points 07-cli.md and cli-config.md left implicit, settled while
+building `cmd/repose`.** (07, 2026-09-20)
+
+- *Remote normalisation lowercases the whole string, not only the host.*
+  cli-config.md's rule said "lowercase host", but its own worked example
+  (`git@github.com:A/B.git` and `https://github.com/a/b` both become
+  `github.com/a/b`) only holds if the path is lowercased too. The doc is
+  corrected to match the example, which is what a case-insensitive host
+  like GitHub's actually needs.
+- *Logto's OIDC endpoints live under `/oidc` relative the issuer.*
+  `internal/api/auth` already hits `<issuer>/oidc/jwks` and
+  `<issuer>/oidc/token` off the same `logto_issuer` value, and 07-cli.md's
+  own device-code step names `POST /oidc/device/auth`; the CLI's discovery
+  fetch is `<issuer>/oidc/.well-known/openid-configuration`, matching, and
+  its login's OAuth client id is `repose-cli` (Native, PKCE loopback and
+  device code), the same one `ops/AZURE-SETUP.md` step 12 and
+  `ops/RUNBOOK.md` already name. *Not verified against a real Logto*: no
+  self-hosted instance is reachable from this workstream's dev box; the
+  path is inferred from the api's own two call sites, which is the closest
+  evidence available. *Revisit when:* the first real `repose login` runs
+  against the deployed Logto (M2's gate).
+- *`repose resize SIZE` is a hidden cobra command, not documented in
+  `--help`.* 07-cli.md §5.6 says it exists as "a hidden alias" and is
+  "document[ed] in `features/config.md` only"; `cobra.Command.Hidden`
+  is that hiding mechanism.
+- *`ensureCert` recovers from `rate_limited` only when a certificate is
+  already on disk with validity left*; with none, the error surfaces
+  as-is (07-cli.md doesn't say what happens with no certificate at all to
+  fall back to, and there is nothing sensible to reuse).
+- *The Docker fixture `test/guest-sshd/` 07-cli.md §7 names is
+  `internal/testguest` instead*: an in-process Go SSH server running real
+  `git`, `tar` and `tmux` against a scratch `$HOME`, authenticating with a
+  plain key rather than the CA certificate chain (that chain is
+  `internal/ca/testca`'s and `ssh-gateway.md`'s contract, exercised by
+  `cert_test.go`). The same trade 06-gateway-edge made for its own tests
+  ("an in-process SSH server standing in for a guest"). *Rejected:* the
+  Docker fixture (a container dependency in `go test` for behaviour a Go
+  SSH server already reproduces exactly: real git, real tmux, over a real
+  SSH session).
+- *`PatchMeRequest.Notify.NtfyURL` is `**string`*, not `*string`: the api
+  needs to tell "clear the URL" (JSON `null`) from "leave it alone" (field
+  omitted), which a single pointer with `omitempty` cannot express — a nil
+  outer pointer omits the field, a non-nil one pointing at a nil inner
+  pointer marshals to `null`.
