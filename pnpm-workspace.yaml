@@ -3,3 +3,6 @@ packages:
   - "packages/eslint-config"
   - "packages/typescript-config"
   - "packages/ui"
+
+onlyBuiltDependencies:
+  - esbuild
