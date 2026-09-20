@@ -23,7 +23,7 @@
 	let html = $derived(marked.parse(body) as string);
 </script>
 
-<div class="mx-auto max-w-3xl px-5 pt-10 pb-20">
+<main class="mx-auto max-w-3xl px-5 pt-10 pb-20">
 	{#if meta.status}
 		<p class="banner banner--warn">Draft: {meta.status}</p>
 	{/if}
@@ -31,4 +31,4 @@
 		<!-- eslint-disable-next-line svelte/no-at-html-tags -- `raw` only ever comes from this repo's own src/content/legal/*.md via a ?raw import, never from a user or the api -->
 		{@html html}
 	</article>
-</div>
+</main>

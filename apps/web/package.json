@@ -15,7 +15,8 @@
 		"test:integration": "playwright test",
 		"test:unit": "vitest run",
 		"live": "playwright test --config playwright.live.config.ts",
-		"live:auth": "node tests-live/capture-auth.mjs"
+		"live:auth": "node tests-live/capture-auth.mjs",
+		"a11y": "playwright test --config playwright.a11y.config.ts"
 	},
 	"dependencies": {
 		"@logto/browser": "^3.0.14",
