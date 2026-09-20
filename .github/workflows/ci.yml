@@ -230,12 +230,29 @@ jobs:
       - name: playwright browsers
         run: pnpm --filter web exec playwright install --with-deps chromium
       - run: pnpm --filter web exec playwright test
+      # Accessibility, against the same fixtures: Lighthouse attaches to the
+      # browser Playwright has already signed in, so it audits /projects and
+      # the config page with a session and real markup (08-dashboard.md §9,
+      # score 90 or higher). It is here because the audit it enforces,
+      # landmark-one-main, is the kind that comes back the next time
+      # somebody wraps a page in a div.
+      - name: lighthouse accessibility
+        run: |
+          npm i -g lighthouse@13
+          pnpm --filter web exec playwright test --config playwright.a11y.config.ts
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: playwright-report
           path: apps/web/playwright-report/
           retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-reports
+          path: apps/web/test-results/lighthouse/
+          retention-days: 7
+          if-no-files-found: ignore
       - name: docker build
         run: docker build -f apps/web/Dockerfile -t repose-web:ci .
       - name: image under 200 MB
