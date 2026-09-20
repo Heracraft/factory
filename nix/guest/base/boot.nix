@@ -5,7 +5,10 @@
 { config, lib, pkgs, ... }:
 {
   # Latest LTS from nixpkgs (linuxPackages is the LTS default).
-  boot.kernelPackages = lib.mkDefault pkgs.linuxPackages;
+  # TEST BASE for the kernel_changed row (12 §9, ops/checks/README.md):
+  # linuxPackages_latest instead of the LTS, published once as a base version
+  # and reverted by the next commit. Never merge this line as the default.
+  boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_latest;
 
   boot.kernelModules = [
     "overlay"
