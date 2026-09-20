@@ -41,7 +41,7 @@
 
     # The guest's nix database does not know the paths it sees through the
     # shared store until hostd sends RegisterPaths after Ready (DECISIONS
-    # I-55). home-manager's activation is the first thing at boot that asks
+    # I-67). home-manager's activation is the first thing at boot that asks
     # nix about them, so it waits for guestd's stamp; a guest whose hostd
     # never comes proceeds after the timeout and the unit fails as before.
     systemd.services.repose-paths = {

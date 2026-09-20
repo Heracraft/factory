@@ -179,7 +179,7 @@ func (m *Manager) drain(context.Context) *Error {
 	if err := m.d.State.SetDraining(true); err != nil {
 		return errf(CodeInternal, "state write: %v", err)
 	}
-	m.d.Log.Info("host draining", "component", "hostd", "event", "host_drain")
+	m.d.Log.Info("host draining", "event", "host_drain")
 	return nil
 }
 

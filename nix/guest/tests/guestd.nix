@@ -6,7 +6,7 @@
 # loop-mounted ext4 under --root, and is where freeze and grow are exercised:
 # FIFREEZE on the VM's own root would block the test driver's own writes, and a
 # loop device is a block device that can actually be resized from inside.
-{ pkgs, guestdPackage }:
+{ pkgs, guestdPackage, hookPackage }:
 
 let
   # A real compiled binary named claude, so a tmux window named "claude" has a
@@ -61,7 +61,7 @@ pkgs.testers.runNixOSTest {
     # guest gets these from nix/guest/base/tools.nix (02); the test names them
     # so that a missing one fails here rather than on a tenant's guest.
     environment.systemPackages = with pkgs; [
-      guestdPackage fakeClaude
+      guestdPackage hookPackage fakeClaude
       git tmux openssh e2fsprogs util-linux procps
       jq curl coreutils
     ];

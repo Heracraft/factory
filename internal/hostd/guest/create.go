@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/user"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -203,7 +201,7 @@ func (m *Manager) fail(g *state.Guest, step int, err error) *Error {
 func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Error {
 	class := Classes[g.Class]
 	dir := m.guestDir(g.GuestID)
-	if err := prepareGuestDir(dir, m.cfg.VirtiofsUser); err != nil {
+	if err := m.prepareGuestDir(dir); err != nil {
 		return m.fail(g, firstStep, err)
 	}
 
@@ -244,7 +242,7 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 	if err := m.injected(stepVirtiofsd); err != nil {
 		return m.fail(g, stepVirtiofsd, err)
 	}
-	vcfg := virtiofs.Config{SharedDir: m.cfg.StoreExport, User: m.cfg.VirtiofsUser, Group: m.cfg.VirtiofsUser, Binary: m.cfg.VirtiofsBinary}
+	vcfg := virtiofs.Config{SharedDir: m.cfg.StoreExport, User: m.cfg.VirtiofsUser, Group: m.cfg.VirtiofsUser, SocketGroup: m.cfg.GuestUser, Binary: m.cfg.VirtiofsBinary}
 	if err := virtiofs.Start(ctx, m.d.Systemd, vcfg, g.GuestID, ch.VirtiofsSocket(dir)); err != nil {
 		return m.fail(g, stepVirtiofsd, err)
 	}
@@ -259,11 +257,7 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 	if err := m.setState(g, StateStarting, ""); err != nil {
 		return m.fail(g, stepHypervisr, err)
 	}
-	props := []string{
-		fmt.Sprintf("MemoryMax=%dM", class.MemMiB+OverheadMiB),
-		fmt.Sprintf("CPUQuota=%d%%", class.VCPUs*100),
-		"Restart=no", "Slice=guests.slice",
-	}
+	props := GuestUnitProps(class, m.cfg.GuestUser, m.cfg.GuestsDir, dir, spec.VolumeDev)
 	if err := m.d.Systemd.Run(ctx, GuestUnit(g.GuestID), props, argv); err != nil {
 		return m.fail(g, stepHypervisr, err)
 	}
@@ -294,7 +288,7 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 // deliver sends secrets, principals and the project setup after Ready.
 func (m *Manager) deliver(ctx context.Context, g *state.Guest, sess vsockclient.Session) error {
 	// The booted closure is on disk in the guest but unknown to its nix
-	// database until registered (DECISIONS I-55).
+	// database until registered (DECISIONS I-67).
 	reg, err := m.d.Nix.DumpDB(ctx, g.SystemClosure)
 	if err != nil {
 		return fmt.Errorf("nix-store --dump-db: %w", err)
@@ -339,45 +333,6 @@ func (m *Manager) teardown(ctx context.Context, g *state.Guest) {
 	for _, s := range []string{"ch.sock", "vsock.sock", "console.sock", filepath.Join("virtiofsd", "virtiofsd.sock")} {
 		_ = os.Remove(filepath.Join(m.guestDir(g.GuestID), s)) // stale sockets confuse the next boot only if left behind
 	}
-}
-
-// prepareGuestDir creates the guest directory (root, 0710, group virtiofsd
-// so virtiofsd can traverse it and nothing else) and the virtiofsd
-// subdirectory it owns (DECISIONS I-50). Ownership is only applied when
-// running as root; the unit tests run unprivileged in a temp dir.
-func prepareGuestDir(dir, virtiofsUser string) error {
-	if err := os.MkdirAll(dir, 0o710); err != nil {
-		return err
-	}
-	sub := ch.VirtiofsDir(dir)
-	if err := os.MkdirAll(sub, 0o750); err != nil {
-		return err
-	}
-	if os.Geteuid() != 0 {
-		return nil
-	}
-	u, err := user.Lookup(virtiofsUser)
-	if err != nil {
-		return fmt.Errorf("virtiofsd user %q: %w", virtiofsUser, err)
-	}
-	uid, err := strconv.Atoi(u.Uid)
-	if err != nil {
-		return fmt.Errorf("virtiofsd user %q: uid %q", virtiofsUser, u.Uid)
-	}
-	gid, err := strconv.Atoi(u.Gid)
-	if err != nil {
-		return fmt.Errorf("virtiofsd user %q: gid %q", virtiofsUser, u.Gid)
-	}
-	if err := os.Chown(dir, 0, gid); err != nil {
-		return err
-	}
-	if err := os.Chmod(dir, 0o710); err != nil {
-		return err
-	}
-	if err := os.Chown(sub, uid, gid); err != nil {
-		return err
-	}
-	return os.Chmod(sub, 0o750)
 }
 
 // waitVirtiofsSocket waits for virtiofsd to bind its socket, failing early
@@ -636,9 +591,10 @@ func (mon *monitor) checkLost() {
 	if !mon.lost && m.d.Now().Sub(mon.lostAt) >= m.cfg.GuestdLostAfter {
 		mon.lost = true
 		m.log(mon.g).Warn("guestd lost", "event", "guestd_lost")
-		if m.d.Metrics != nil {
-			m.d.Metrics.GuestdUnreachable.WithLabelValues(mon.g.GuestID).Set(1)
-		}
+		// The metric is the count, repose_host_guestd_lost, recomputed by the
+		// samples loop: guest_id is never a Prometheus label
+		// (docs/workstreams/10-observability.md §5). Which guest it is comes
+		// from this line in Loki and from the Warning the api receives.
 		m.Warn("guestd_lost", "guest "+mon.g.GuestID+": no vsock connection for "+m.cfg.GuestdLostAfter.String())
 	}
 }
@@ -649,9 +605,6 @@ func (mon *monitor) regained() {
 		m.log(mon.g).Info("guestd regained", "event", "guestd_regained")
 	}
 	mon.lost = false
-	if m.d.Metrics != nil {
-		m.d.Metrics.GuestdUnreachable.WithLabelValues(mon.g.GuestID).Set(0)
-	}
 }
 
 func (mon *monitor) handleNotify(n *guestdv1.Notify) {

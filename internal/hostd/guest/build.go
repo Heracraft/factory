@@ -37,7 +37,7 @@ func (m *Manager) build(ctx context.Context, commandID string, c *hostdv1.Build)
 	if pct, ok := m.storeUsedPct(); ok && pct >= m.cfg.StoreHighPct {
 		return nil, errf(CodeInsufficientCapacity, "host store full")
 	}
-	log := m.d.Log.With("component", "hostd", "project_id", c.ProjectId, "command_id", commandID)
+	log := m.d.Log.With("project_id", c.ProjectId, "command_id", commandID)
 	log.Info("build start", "event", "build_start", "revision_id", c.RevisionId)
 	start := m.d.Now()
 	if m.d.Metrics != nil {
@@ -78,11 +78,15 @@ func (m *Manager) build(ctx context.Context, commandID string, c *hostdv1.Build)
 	}
 	if m.d.Metrics != nil {
 		m.d.Metrics.BuildDuration.WithLabelValues("ok").Observe(dur.Seconds())
+		m.d.Metrics.BuildPhaseDuration.WithLabelValues("eval").Observe(res.EvalDuration.Seconds())
+		m.d.Metrics.BuildPhaseDuration.WithLabelValues("build").Observe(res.BuildDuration.Seconds())
 	}
 	if res.CacheUnreachable {
 		m.Warn("cache_unreachable", "substituter unreachable during build of revision "+c.RevisionId+"; built from source")
 	}
-	log.Info("build done", "event", "build_done", "duration_ms", dur.Milliseconds(), "closure_bytes", res.ClosureBytes)
+	log.Info("build done", "event", "build_done", "duration_ms", dur.Milliseconds(),
+		"eval_ms", res.EvalDuration.Milliseconds(), "build_ms", res.BuildDuration.Milliseconds(),
+		"closure_bytes", res.ClosureBytes)
 	return &hostdv1.BuildResult{SystemClosure: res.SystemClosure, ClosureBytes: res.ClosureBytes, KernelChanged: m.kernelChanged(c.ProjectId, res)}, nil
 }
 

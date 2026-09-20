@@ -11,7 +11,6 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -34,6 +33,8 @@ import (
 	"github.com/heracraft/repose/internal/hostd/stream"
 	"github.com/heracraft/repose/internal/hostd/systemd"
 	"github.com/heracraft/repose/internal/hostd/vsockclient"
+	"github.com/heracraft/repose/internal/obs"
+	"github.com/heracraft/repose/internal/obs/instrument"
 )
 
 // Options are the daemon's flags.
@@ -60,6 +61,7 @@ type Options struct {
 	BlobIdentity  string
 	StoreExport   string
 	VirtiofsUser  string
+	GuestUser     string
 	VG            string
 	Pool          string
 	MaxOps        int
@@ -67,18 +69,20 @@ type Options struct {
 	FailAtStep    int
 	NoWG          bool
 	Substituters  string
+	LogLevel      string
 }
 
-// Logger builds the JSON logger every component shares: ts, level, msg,
-// component on every line.
-func Logger() *slog.Logger {
-	h := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo, ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-		if a.Key == slog.TimeKey {
-			a.Key = "ts"
-		}
-		return a
-	}})
-	return slog.New(h)
+// Logger builds hostd's logger from internal/obs, which puts ts, level,
+// component and the redaction floor on every line
+// (docs/workstreams/10-observability.md §5). level is a --log-level value;
+// an unknown one falls back to info and says so on the first line.
+func Logger(level string) *slog.Logger {
+	lv, err := obs.ParseLevel(level)
+	log := obs.NewLogger(obs.LogOptions{Component: obs.ComponentHostd, Level: lv})
+	if err != nil {
+		log.Warn("unknown log level; using info", "event", "start", "reason", "bad_log_level")
+	}
+	return log
 }
 
 // HostNetUnit renders the bridge, sshd and exporter addresses from
@@ -109,7 +113,7 @@ func EnsureIdentity(ctx context.Context, o Options, log *slog.Logger, r shell.Ru
 		id, err := register.Register(ctx, cfg)
 		switch {
 		case err == nil:
-			log.Info("registered", "component", "hostd", "event", "register", "host_id", id.Host.HostID)
+			log.Info("registered", "event", "register", "host_id", id.Host.HostID)
 			// host.json is the host's runtime network input; the renderer
 			// that reads it must run again now (docs/interfaces/
 			// host-conventions.md, DECISIONS I-18, I-40). When hostd
@@ -117,17 +121,17 @@ func EnsureIdentity(ctx context.Context, o Options, log *slog.Logger, r shell.Ru
 			// else would.
 			if cfg.Runner != nil {
 				if _, rerr := cfg.Runner.Run(ctx, "systemctl", "--no-block", "restart", HostNetUnit); rerr != nil {
-					log.Warn("restart of the host network renderer failed", "component", "hostd", "event", "register", "unit", HostNetUnit, "err", rerr.Error())
+					log.Warn("restart of the host network renderer failed", "event", "register", "unit", HostNetUnit, "err", rerr.Error())
 				}
 			}
 			return id, nil
 		case errors.Is(err, register.ErrTokenUsed):
-			log.Error("register: join token already used", "component", "hostd", "event", "register")
+			log.Error("register: join token already used", "event", "register")
 			return nil, err
 		case errors.Is(err, register.ErrNoToken):
-			log.Warn("waiting for join token", "component", "hostd", "event", "register")
+			log.Warn("waiting for join token", "event", "register")
 		default:
-			log.Warn("register failed; retrying", "component", "hostd", "event", "register", "err", err.Error())
+			log.Warn("register failed; retrying", "event", "register", "err", err.Error())
 		}
 		select {
 		case <-ctx.Done():
@@ -166,6 +170,24 @@ func (l *lateHost) Dispatch(c *command)   { l.m.Dispatch(c) }
 // Run starts everything and blocks until ctx ends. Guests keep running
 // across a return; only hostd's goroutines stop.
 func Run(ctx context.Context, o Options, log *slog.Logger) error {
+	// Tracing is wired and off: with no OTEL_EXPORTER_OTLP_ENDPOINT there is
+	// no exporter and no connection, and the spans the gRPC stream starts go
+	// to the noop provider (docs/workstreams/10-observability.md §5).
+	_, shutdownTracing, err := instrument.SetupTracing(ctx, instrument.TraceOptions{Component: obs.ComponentHostd, Version: o.Version, Insecure: true})
+	if err != nil {
+		return fmt.Errorf("set up tracing: %w", err)
+	}
+	defer func() {
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTracing(sctx); err != nil {
+			log.Warn("tracer shutdown failed", "event", "shutdown", "err", err.Error())
+		}
+	}()
+	if instrument.TracingEnabled() {
+		log.Info("tracing enabled", "event", "start", "part", "tracing")
+	}
+
 	st, err := state.Open(filepath.Join(o.StateDir, "state.db"))
 	if err != nil {
 		return err
@@ -210,9 +232,13 @@ func Run(ctx context.Context, o Options, log *slog.Logger) error {
 		HostID: id.Host.HostID, GuestsDir: o.GuestsDir, GuestCIDR: id.Host.GuestCIDR, TotalMemBytes: total,
 		MaxOps: o.MaxOps, MaxBuilds: o.MaxBuilds, StoreExport: o.StoreExport, VirtiofsUser: o.VirtiofsUser,
 		VirtiofsSocketWait: 10 * time.Second,
+		GuestUser:          o.GuestUser,
 	}
 	if os.Getenv("REPOSE_HOSTD_TESTING") == "1" {
 		cfg.FailAtStep = o.FailAtStep
+		// The hostd and virtiofsd accounts exist on hosts only; under the
+		// fakes the guest directory is chowned to hostd's own ids.
+		cfg.Lookup = func(string) (int, int, error) { return os.Getuid(), os.Getgid(), nil }
 	}
 	consoles := &consoleSet{log: log}
 	mgr, err := guest.New(cfg, guest.Deps{
@@ -238,7 +264,7 @@ func Run(ctx context.Context, o Options, log *slog.Logger) error {
 			defer wg.Done()
 			f()
 		}()
-		log.Info("started "+name, "component", "hostd", "event", "start", "part", name)
+		log.Info("started "+name, "event", "start", "part", name)
 	}
 	run("stream", func() { d.strm.Run(ctx) })
 	run("samples", func() { d.samplesLoop(ctx) })
@@ -247,7 +273,7 @@ func Run(ctx context.Context, o Options, log *slog.Logger) error {
 	run("metrics", func() { d.serveMetrics(ctx) })
 	run("control", func() {
 		if err := control.Serve(ctx, o.ControlSock, d); err != nil {
-			log.Error("control socket failed", "component", "hostd", "event", "control", "err", err.Error())
+			log.Error("control socket failed", "event", "control", "err", err.Error())
 		}
 	})
 	<-ctx.Done()
@@ -287,7 +313,7 @@ func (d *Daemon) rotationLoop(ctx context.Context, roots *x509.CertPool) {
 		cfg := register.Config{Dir: d.o.StateDir, APIAddr: d.o.APIAddr, ServerName: d.o.APIServerName, Roots: roots, Info: hostinfo.Collect(ctx, shell.Exec{}, nil)}
 		next, err := register.Rotate(ctx, cfg, cur)
 		if err != nil {
-			d.log.Warn("certificate rotation failed", "component", "hostd", "event", "rotate", "err", err.Error())
+			d.log.Warn("certificate rotation failed", "event", "rotate", "err", err.Error())
 			continue
 		}
 		d.idMu.Lock()
@@ -296,7 +322,7 @@ func (d *Daemon) rotationLoop(ctx context.Context, roots *x509.CertPool) {
 		d.dialer.mu.Lock()
 		d.dialer.inner = stream.GRPCDialer{Addr: d.o.APIAddr, TLS: next.TLSConfig(roots, d.o.APIServerName)}
 		d.dialer.mu.Unlock()
-		d.log.Info("certificate rotated", "component", "hostd", "event", "rotate", "not_after", next.NotAfter.Format(time.RFC3339))
+		d.log.Info("certificate rotated", "event", "rotate", "not_after", next.NotAfter.Format(time.RFC3339))
 		d.strm.Reconnect()
 	}
 }
@@ -306,7 +332,7 @@ func (d *Daemon) pruneLoop(ctx context.Context) {
 	defer t.Stop()
 	for {
 		if n, err := d.st.PruneCommands(time.Now().Add(-7 * 24 * time.Hour)); err == nil && n > 0 {
-			d.log.Info("pruned command results", "component", "hostd", "event", "prune", "count", n)
+			d.log.Info("pruned command results", "event", "prune", "count", n)
 		}
 		select {
 		case <-ctx.Done():
@@ -326,18 +352,9 @@ func (d *Daemon) serveMetrics(ctx context.Context) {
 			}
 		}
 	}
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", d.metrics.Handler())
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	go func() {
-		<-ctx.Done()
-		sctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(sctx) // shutting down
-	}()
-	d.log.Info("metrics listening", "component", "hostd", "event", "metrics", "addr", addr)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		d.log.Error("metrics server failed", "component", "hostd", "event", "metrics", "err", err.Error())
+	d.log.Info("metrics listening", "event", "metrics", "addr", addr)
+	if err := d.metrics.Serve(ctx, addr); err != nil {
+		d.log.Error("metrics server failed", "event", "metrics", "err", err.Error())
 	}
 }
 
@@ -400,7 +417,7 @@ func (c *consoleSet) start(guestID, dir string) func() {
 	t := console.New(ch.ConsoleSocket(dir), filepath.Join(dir, "console.log"))
 	go func() {
 		if err := t.Run(ctx); err != nil {
-			c.log.Warn("console capture ended", "component", "hostd", "event", "console", "guest_id", guestID, "err", err.Error())
+			c.log.Warn("console capture ended", "event", "console", "guest_id", guestID, "err", err.Error())
 		}
 	}()
 	return func() {
@@ -427,5 +444,5 @@ func AuditLogin(log *slog.Logger, hostID string) {
 	if kind == "" {
 		kind = "unknown"
 	}
-	log.Log(context.Background(), slog.Level(2), "operator login", "component", "hostd", "event", "operator_login", "host_id", hostID, "pam_type", kind, "user_present", user != "")
+	log.Log(context.Background(), slog.Level(2), "operator login", "event", "operator_login", "host_id", hostID, "pam_type", kind, "user_present", user != "")
 }

@@ -45,7 +45,7 @@ type Session interface {
 	Thaw(ctx context.Context) error
 	Switch(ctx context.Context, closure string, forceReboot bool, registration []byte) (*guestdv1.SwitchResult, error)
 	// RegisterPaths loads a `nix-store --dump-db` listing into the guest's
-	// database (DECISIONS I-55).
+	// database (DECISIONS I-67).
 	RegisterPaths(ctx context.Context, registration []byte) error
 	GrowFs(ctx context.Context) (uint64, error)
 	WriteSecrets(ctx context.Context, secrets []*guestdv1.Secret) error

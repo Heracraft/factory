@@ -188,7 +188,7 @@ func resolve(path string) (string, error) {
 // database and leaves the stamp guest units wait for. Paths that arrive
 // through the shared store are on disk but unknown to the database until
 // this runs; `nix-env --set`, home-manager's activation and any user
-// `nix` command that touches them fail without it (DECISIONS I-55).
+// `nix` command that touches them fail without it (DECISIONS I-67).
 // Loading is idempotent: a listing that is already registered changes
 // nothing.
 func (h *Handler) RegisterPaths(ctx context.Context, registration []byte) error {

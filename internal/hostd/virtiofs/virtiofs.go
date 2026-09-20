@@ -23,6 +23,9 @@ type Config struct {
 	User      string // virtiofsd
 	Group     string // virtiofsd
 	Binary    string // virtiofsd
+	// SocketGroup is chgrp'd onto the vhost-user socket (mode 0660) so the
+	// hypervisor's user, not virtiofsd's, can connect to it.
+	SocketGroup string // hostd
 }
 
 // Unit is the transient unit name for a guest.
@@ -40,8 +43,11 @@ func Start(ctx context.Context, sd systemd.Systemd, cfg Config, guestID, socket 
 	// virtiofs mount inside the overlay's lower layer, and overlayfs answers
 	// every lookup crossing into it with EREMOTE ("Object is remote"), which
 	// killed the guest's nix-daemon at its first mkdir of /nix/store/.links
-	// (DECISIONS I-53). Flattened, it is an empty directory like any other.
+	// (DECISIONS I-65). Flattened, it is an empty directory like any other.
 	argv := []string{bin, "--socket-path", socket, "--shared-dir", cfg.SharedDir, "--sandbox", "namespace", "--cache", "auto", "--xattr", "--no-announce-submounts"}
+	if cfg.SocketGroup != "" {
+		argv = append(argv, "--socket-group", cfg.SocketGroup)
+	}
 	return sd.Run(ctx, Unit(guestID), props, argv)
 }
 

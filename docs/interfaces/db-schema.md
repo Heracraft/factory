@@ -114,6 +114,13 @@ Rules:
 - No `delete` of `projects` rows; `destroyed_at` is set and the row stays for
   usage history. `users.deleted_at` likewise.
 - `meter_samples` and `proc_samples` are append-only and never joined to
-  from request paths; the hourly rollup reads them once.
+  from request paths; the hourly rollup reads them once. Both are partitioned
+  by month: the api creates the current and next month's partitions at start
+  and in its daily job, which also drops the ones past retention and logs
+  `partition_drop_fail` with `repose_api_partition_drop_fail_total` when it
+  cannot. `ops/sql/partitions.sql` is the same maintenance as SQL functions,
+  for an operator with psql and for the dashboard tests; either way a
+  partition is dropped only once its whole month is past the retention period,
+  so the effective retention is 90 or 30 days plus up to a month.
 - Secrets values never appear in `audit_log.detail` or anywhere but
   `secrets.ciphertext`.

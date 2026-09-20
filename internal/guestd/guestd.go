@@ -29,6 +29,7 @@ import (
 	"github.com/heracraft/repose/internal/guestd/sysdep"
 	"github.com/heracraft/repose/internal/guestd/system"
 	"github.com/heracraft/repose/internal/guestd/warn"
+	"github.com/heracraft/repose/internal/obs"
 	"github.com/heracraft/repose/internal/vsockrpc"
 )
 
@@ -110,9 +111,9 @@ type Server struct {
 // New builds the server and its handlers.
 func New(cfg Config) (*Server, error) {
 	if cfg.Log == nil {
-		cfg.Log = slog.New(slog.NewJSONHandler(io.Discard, nil))
+		cfg.Log = obs.Nop(obs.ComponentGuestd)
 	}
-	log := cfg.Log.With("component", "guestd")
+	log := cfg.Log
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}

@@ -621,7 +621,7 @@ these are the absolute numbers the design can be checked against.
 
 | Operation | Measured |
 |---|---|
-| `nix copy` of a 6.35 GB guest closure into the host through the edge (daemon store) | 24 s once the store paths were mostly present; first transfers were interrupted by the `.links` bug (I-49) |
+| `nix copy` of a 6.35 GB guest closure into the host through the edge (daemon store) | 24 s once the store paths were mostly present; first transfers were interrupted by the `.links` bug (I-61) |
 | `hostdev create` (thin volume, mkfs, tap, nft, virtiofsd, CH, Ready, secrets, project) | 20 s to `running` |
 | Guest boot to `Ready` (serial console timestamp) | 17 s on first boot, 11.7 s on restart (multi-user target at 11.2 s) |
 | `hostdev start` of a stopped guest | 12.5 s to `running` |

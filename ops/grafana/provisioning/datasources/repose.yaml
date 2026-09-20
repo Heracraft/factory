@@ -1,0 +1,55 @@
+# Datasources for the repose dashboards, provisioned on the personal Grafana
+# server. The uids are what every panel in ops/dashboards/ refers to, so they
+# are fixed: renaming one breaks 56 panels.
+#
+# Three, because §5 splits the data three ways on purpose: fleet-level series
+# in Prometheus, per-project figures in Postgres (a project_id label would
+# make Prometheus the first thing to fall over), and lines in Loki.
+apiVersion: 1
+
+datasources:
+  - name: repose-prometheus
+    uid: repose-prometheus
+    type: prometheus
+    access: proxy
+    url: http://127.0.0.1:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 30s
+      httpMethod: POST
+
+  - name: repose-loki
+    uid: repose-loki
+    type: loki
+    access: proxy
+    url: http://127.0.0.1:3100
+    jsonData:
+      maxLines: 1000
+
+  # Read-only role, because a dashboard that can write to the control plane's
+  # database is a dashboard that can destroy a tenant's project row:
+  #
+  #   create role grafana_ro login password '...';
+  #   grant connect on database repose to grafana_ro;
+  #   grant usage on schema public to grafana_ro;
+  #   grant select on all tables in schema public to grafana_ro;
+  #   alter default privileges in schema public grant select on tables to grafana_ro;
+  #
+  # The password comes from the environment, never from this file:
+  # GF_SECURITY_* style variables are expanded by Grafana at load time.
+  - name: repose-postgres
+    uid: repose-postgres
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: $REPOSE_PG_HOST
+    user: grafana_ro
+    jsonData:
+      database: repose
+      sslmode: require
+      maxOpenConns: 4
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+      postgresVersion: 1600
+      timescaledb: false
+    secureJsonData:
+      password: $REPOSE_PG_PASSWORD

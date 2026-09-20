@@ -1,18 +1,25 @@
 // Package metrics is hostd's Prometheus surface: every series named in
 // docs/workstreams/03-hostd.md §5.14 and the host family in
 // docs/workstreams/10-observability.md, under the repose_host_ prefix.
+//
+// The registry comes from internal/obs/metrics, which refuses a name outside
+// the repose_ namespace and a label outside the low-cardinality list, so a
+// series added here cannot break §5 without failing at startup.
 package metrics
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/heracraft/repose/internal/obs"
+	obsmetrics "github.com/heracraft/repose/internal/obs/metrics"
 )
 
 // M holds the registry and every instrument.
 type M struct {
-	Registry *prometheus.Registry
+	obs *obsmetrics.Metrics
 
 	Guests                *prometheus.GaugeVec
 	CommandsTotal         *prometheus.CounterVec
@@ -20,6 +27,7 @@ type M struct {
 	BuildQueueDepth       prometheus.Gauge
 	BuildsRunning         prometheus.Gauge
 	BuildDuration         *prometheus.HistogramVec
+	BuildPhaseDuration    *prometheus.HistogramVec
 	SnapshotBytesTotal    prometheus.Counter
 	SnapshotBytes         prometheus.Gauge
 	SnapshotFreezeSeconds prometheus.Histogram
@@ -32,7 +40,6 @@ type M struct {
 	StoreBytes            prometheus.Gauge
 	MemFreeBytes          prometheus.Gauge
 	MemReservedBytes      prometheus.Gauge
-	GuestdUnreachable     *prometheus.GaugeVec
 	GuestdLost            prometheus.Gauge
 	GuestCPUSecondsTotal  *prometheus.CounterVec
 	GuestNetBytesTotal    *prometheus.CounterVec
@@ -40,17 +47,23 @@ type M struct {
 }
 
 // New registers every instrument on a fresh registry.
-func New() *M {
-	reg := prometheus.NewRegistry()
-	f := promauto{reg}
+func New() *M { return NewVersion("dev") }
+
+// NewVersion is New with the binary's version for repose_build_info.
+func NewVersion(version string) *M {
+	om := obsmetrics.NewVersion(obs.ComponentHostd, version)
+	f := promauto{om}
 	m := &M{
-		Registry:              reg,
-		Guests:                f.gaugeVec("guests", "Guests on this host by state and class.", "state", "class"),
-		CommandsTotal:         f.counterVec("commands_total", "Commands handled by kind and result.", "kind", "result"),
-		CommandDuration:       f.histVec("command_duration_seconds", "Command execution time by kind.", []float64{.1, .5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1800}, "kind"),
-		BuildQueueDepth:       f.gauge("build_queue_depth", "Builds waiting for a worker."),
-		BuildsRunning:         f.gauge("builds_running", "Builds executing now."),
-		BuildDuration:         f.histVec("build_duration_seconds", "Build wall time by result.", []float64{5, 15, 30, 60, 120, 300, 600, 1200, 1800}, "result"),
+		obs:             om,
+		Guests:          f.gaugeVec("guests", "Guests on this host by state and class.", "state", "class"),
+		CommandsTotal:   f.counterVec("commands_total", "Commands handled by kind and result.", "kind", "result"),
+		CommandDuration: f.histVec("command_duration_seconds", "Command execution time by kind.", []float64{.1, .5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1800}, "kind"),
+		BuildQueueDepth: f.gauge("build_queue_depth", "Builds waiting for a worker."),
+		BuildsRunning:   f.gauge("builds_running", "Builds executing now."),
+		BuildDuration:   f.histVec("build_duration_seconds", "Build wall time by result.", []float64{5, 15, 30, 60, 120, 300, 600, 1200, 1800}, "result"),
+		// Eval and build have different caps (60 s and 30 minutes) and fail
+		// for different reasons, so the Builds dashboard shows them apart.
+		BuildPhaseDuration:    f.histVec("build_phase_duration_seconds", "Wall time of one build phase.", []float64{.5, 1, 2, 5, 10, 20, 30, 60, 120, 300, 600, 1200, 1800}, "phase"),
 		SnapshotBytesTotal:    f.counter("snapshot_bytes_total", "Bytes uploaded to the snapshot store."),
 		SnapshotBytes:         f.gauge("snapshot_bytes", "Bytes of the most recent snapshot upload."),
 		SnapshotFreezeSeconds: f.hist("snapshot_freeze_seconds", "Freeze window per snapshot.", []float64{.05, .1, .25, .5, 1, 2, 5, 10}),
@@ -63,7 +76,6 @@ func New() *M {
 		StoreBytes:            f.gauge("store_bytes", "Bytes used by the host store filesystem."),
 		MemFreeBytes:          f.gauge("mem_free_bytes", "Host free memory after the reserve."),
 		MemReservedBytes:      f.gauge("mem_reserved_bytes", "Memory reserved by running guests."),
-		GuestdUnreachable:     f.gaugeVec("guestd_unreachable", "1 while a guest's guestd is unreachable.", "guest_id"),
 		GuestdLost:            f.gauge("guestd_lost", "Count of guests with guestd_ok=false."),
 		GuestCPUSecondsTotal:  f.counterVec("guest_cpu_seconds_total", "Guest CPU time summed by class.", "class"),
 		GuestNetBytesTotal:    f.counterVec("guest_net_bytes_total", "Guest network bytes by direction.", "direction"),
@@ -73,46 +85,53 @@ func New() *M {
 }
 
 // Handler serves the registry.
-func (m *M) Handler() http.Handler {
-	return promhttp.HandlerFor(m.Registry, promhttp.HandlerOpts{})
-}
+func (m *M) Handler() http.Handler { return m.obs.Handler() }
 
-type promauto struct{ reg *prometheus.Registry }
+// Registry is the registry to gather from, for tests and for hostdev.
+func (m *M) Registry() *prometheus.Registry { return m.obs.Registry() }
 
-const ns = "repose_host"
+// Serve runs the /metrics endpoint until ctx is done. The address must name
+// an interface: docs/ops/OBSERVABILITY.md requires the WireGuard address.
+func (m *M) Serve(ctx context.Context, addr string) error { return m.obs.Serve(ctx, addr) }
+
+type promauto struct{ reg *obsmetrics.Metrics }
+
+// Every series is repose_host_<name>; obsmetrics.Namespace is the one
+// definition of the prefix, and the registry checks it again at registration.
+const sub = "host"
 
 func (p promauto) gauge(name, help string) prometheus.Gauge {
-	g := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: ns, Name: name, Help: help})
+	g := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: obsmetrics.Namespace, Subsystem: sub, Name: name, Help: help})
 	p.reg.MustRegister(g)
 	return g
 }
 
 func (p promauto) gaugeVec(name, help string, labels ...string) *prometheus.GaugeVec {
-	g := prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: ns, Name: name, Help: help}, labels)
+	g := prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: obsmetrics.Namespace, Subsystem: sub, Name: name, Help: help}, labels)
 	p.reg.MustRegister(g)
 	return g
 }
 
 func (p promauto) counter(name, help string) prometheus.Counter {
-	c := prometheus.NewCounter(prometheus.CounterOpts{Namespace: ns, Name: name, Help: help})
+	c := prometheus.NewCounter(prometheus.CounterOpts{Namespace: obsmetrics.Namespace, Subsystem: sub, Name: name, Help: help})
 	p.reg.MustRegister(c)
 	return c
 }
 
 func (p promauto) counterVec(name, help string, labels ...string) *prometheus.CounterVec {
-	c := prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: ns, Name: name, Help: help}, labels)
+	c := prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: obsmetrics.Namespace, Subsystem: sub, Name: name, Help: help}, labels)
 	p.reg.MustRegister(c)
 	return c
 }
 
 func (p promauto) hist(name, help string, buckets []float64) prometheus.Histogram {
-	h := prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: ns, Name: name, Help: help, Buckets: buckets})
+	h := prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: obsmetrics.Namespace, Subsystem: sub, Name: name, Help: help, Buckets: buckets})
 	p.reg.MustRegister(h)
 	return h
 }
 
 func (p promauto) histVec(name, help string, buckets []float64, labels ...string) *prometheus.HistogramVec {
-	h := prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: ns, Name: name, Help: help, Buckets: buckets}, labels)
+	h := prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: obsmetrics.Namespace, Subsystem: sub, Name: name, Help: help, Buckets: buckets}, labels)
 	p.reg.MustRegister(h)
 	return h
 }

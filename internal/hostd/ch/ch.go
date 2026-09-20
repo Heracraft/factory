@@ -37,14 +37,13 @@ type Spec struct {
 }
 
 // Paths under the guest directory.
-func APISocket(dir string) string      { return filepath.Join(dir, "ch.sock") }
-func VsockSocket(dir string) string    { return filepath.Join(dir, "vsock.sock") }
-func ConsoleSocket(dir string) string  { return filepath.Join(dir, "console.sock") }
-func VirtiofsSocket(dir string) string { return filepath.Join(VirtiofsDir(dir), "virtiofsd.sock") }
+func APISocket(dir string) string     { return filepath.Join(dir, "ch.sock") }
+func VsockSocket(dir string) string   { return filepath.Join(dir, "vsock.sock") }
+func ConsoleSocket(dir string) string { return filepath.Join(dir, "console.sock") }
 
-// VirtiofsDir is the one place under a guest directory the unprivileged
-// virtiofsd user can write: it creates its socket there (DECISIONS I-50).
-func VirtiofsDir(dir string) string { return filepath.Join(dir, "virtiofsd") }
+// VirtiofsSocket lives in a subdirectory virtiofsd owns, since the guest
+// directory itself is writable only by hostd and the hypervisor's user.
+func VirtiofsSocket(dir string) string { return filepath.Join(dir, "virtiofsd", "virtiofsd.sock") }
 
 // Cmdline renders the kernel command line: the closure's init and params,
 // the serial console, and the static address the guest's networkd reads.
@@ -70,13 +69,16 @@ func (s Spec) Args() []string {
 		"--memory", fmt.Sprintf("size=%dM,shared=on", s.MemMiB),
 		// image_type=raw: Cloud Hypervisor 53 refuses sector-0 writes on a
 		// disk whose type it auto-detected, and ext4 keeps its superblock
-		// there (DECISIONS I-51).
+		// there (DECISIONS I-63).
 		"--disk", "path=" + s.VolumeDev + ",image_type=raw",
 		"--net", fmt.Sprintf("tap=%s,mac=%s", s.Tap, s.MAC),
 		"--fs", fmt.Sprintf("tag=%s,socket=%s", s.StoreTag, VirtiofsSocket(s.GuestDir)),
 		"--vsock", fmt.Sprintf("cid=%d,socket=%s", s.CID, VsockSocket(s.GuestDir)),
 		"--serial", "socket=" + ConsoleSocket(s.GuestDir),
 		"--console", "off",
+		// Cloud Hypervisor's default; written out so a build that flips the
+		// default, or an operator reading ch.args, sees the filter is on.
+		"--seccomp", "true",
 	}
 }
 
@@ -177,7 +179,7 @@ func (h *HTTP) putJSON(ctx context.Context, sock, path string, body any) error {
 
 // ResizeDisk implements Client. Without it an lvextend on the host is
 // invisible to the guest: virtio-blk keeps the capacity it was created
-// with and resize2fs has nothing to grow (DECISIONS I-54).
+// with and resize2fs has nothing to grow (DECISIONS I-66).
 func (h *HTTP) ResizeDisk(ctx context.Context, sock, id string, newSize uint64) error {
 	return h.putJSON(ctx, sock, "vm.resize-disk", map[string]any{"id": id, "desired_size": newSize})
 }
