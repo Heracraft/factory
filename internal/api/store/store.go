@@ -397,7 +397,7 @@ func GetSnapshot(ctx context.Context, q Querier, id uuid.UUID) (*Snapshot, error
 
 // ListSnapshots lists a project's live snapshots, newest first.
 func ListSnapshots(ctx context.Context, q Querier, projectID uuid.UUID) ([]Snapshot, error) {
-	return many[Snapshot](ctx, q, "select "+snapshotCols+" from snapshots where project_id = $1 and deleted_at is null order by taken_at desc", projectID)
+	return many[Snapshot](ctx, q, "select "+snapshotCols+" from snapshots where project_id = $1 and deleted_at is null order by taken_at desc, created_at desc", projectID)
 }
 
 // --- events -----------------------------------------------------------

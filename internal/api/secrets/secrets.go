@@ -219,6 +219,28 @@ func (s *Store) Put(ctx context.Context, userID, projectID, name string, value [
 
 func (s *Store) isPlatform(projectID string) bool { return projectID == PlatformProjectID }
 
+// PutReserved stores the guest sshd material (DECISIONS I-10, I-35) under
+// one of the reserved names; user routes never reach it.
+func (s *Store) PutReserved(ctx context.Context, userID, projectID, name string, value []byte) error {
+	if !reserved[name] {
+		return ErrInvalidName
+	}
+	return db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
+		dek, wrapped, version, err := s.userDEK(ctx, tx, userID)
+		if err != nil {
+			return err
+		}
+		ct, err := Seal(dek, name, value)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `insert into secrets (id, project_id, name, ciphertext, dek_wrapped, kv_key_version) values ($1, $2, $3, $4, $5, $6)
+			on conflict (project_id, name) do update set ciphertext = excluded.ciphertext, dek_wrapped = excluded.dek_wrapped, kv_key_version = excluded.kv_key_version`,
+			uuid.Must(uuid.NewV7()), projectID, name, ct, wrapped, version)
+		return err
+	})
+}
+
 // Delete removes a secret; missing is not an error.
 func (s *Store) Delete(ctx context.Context, projectID, name string) (bool, error) {
 	tag, err := s.pool.Exec(ctx, "delete from secrets where project_id = $1 and name = $2", projectID, name)
@@ -228,9 +250,10 @@ func (s *Store) Delete(ctx context.Context, projectID, name string) (bool, error
 	return tag.RowsAffected() > 0, nil
 }
 
-// List returns names and timestamps.
+// List returns names and timestamps of the user's secrets; the reserved
+// sshd material is not listed.
 func (s *Store) List(ctx context.Context, projectID string) ([]Meta, error) {
-	rows, err := s.pool.Query(ctx, "select name, created_at, updated_at from secrets where project_id = $1 order by name", projectID)
+	rows, err := s.pool.Query(ctx, "select name, created_at, updated_at from secrets where project_id = $1 and name not in ('ssh_host_ed25519_key','ssh_host_ed25519_key-cert.pub','user_ca.pub') order by name", projectID)
 	if err != nil {
 		return nil, err
 	}

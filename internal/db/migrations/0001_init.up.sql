@@ -236,7 +236,9 @@ create table events (
   created_at    timestamptz not null default now()
 );
 create index events_project_ts on events(project_id, ts desc);
-create unique index events_dedupe on events(project_id, coalesce(agent,''), kind, ts_second);
+-- Hook events reaching the api twice (vsock and the edge's HTTP path)
+-- collapse on (project, agent, kind, second); state changes may repeat.
+create unique index events_dedupe on events(project_id, coalesce(agent,''), kind, ts_second) where kind in ('completed','needs_input','error');
 
 create table meter_samples (
   ts                timestamptz not null,
@@ -275,6 +277,10 @@ create table usage_hours (
   gb_alloc                bigint not null default 0,
   egress_bytes            bigint not null default 0,
   cost_cents              bigint not null default 0,
+  guest_cents             bigint not null default 0,
+  storage_cents           bigint not null default 0,
+  egress_cents            bigint not null default 0,
+  storage_remainder       bigint not null default 0,
   stripe_usage_record_id  text,
   gap                     boolean not null default false,
   created_at              timestamptz not null default now(),

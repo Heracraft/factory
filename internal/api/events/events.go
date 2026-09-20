@@ -1,0 +1,295 @@
+// Package events ingests hostd Event messages and the edge's HTTP hook
+// path into the events table (05-control-plane-api.md §5.4, §5.9;
+// 13-notifications.md §5.5): agent events are deduped, get an outbox row
+// per enabled channel, and are rate-capped per project; guest state
+// changes update the project; snapshot_done inserts a snapshots row;
+// host warnings are logged and counted.
+package events
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/netip"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/heracraft/repose/internal/api/metrics"
+	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/db"
+	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
+)
+
+// Kinds that reach the user's channels.
+var notifyKinds = map[string]bool{
+	"completed": true, "needs_input": true, "error": true,
+	"billing_stopped": true, "base_updated": true, "base_update_failed": true, "snapshot_failed": true, "host_moved": true,
+	"notifications_paused": true,
+}
+
+// MaxSummary is the summary cap.
+const MaxSummary = 1024
+
+// DedupeWindow collapses repeats of one event.
+const DedupeWindow = 60 * time.Second
+
+// RatePerHour is the per-project notification cap.
+const RatePerHour = 30
+
+// Ingest writes events.
+type Ingest struct {
+	pool *db.Pool
+	m    *metrics.M
+	log  *slog.Logger
+	now  func() time.Time
+}
+
+// New builds an ingest.
+func New(pool *db.Pool, m *metrics.M, log *slog.Logger) *Ingest {
+	return &Ingest{pool: pool, m: m, log: log.With("component", "api"), now: time.Now}
+}
+
+// Incoming describes an event to insert.
+type Incoming struct {
+	ProjectID   uuid.UUID
+	TS          time.Time
+	Kind        string
+	Agent       string
+	Window      string
+	Summary     string
+	Source      string
+	HostEventID string
+}
+
+// Insert stores an event with dedupe and outbox rows. inserted is false
+// when it collapsed into an earlier one or was a duplicate.
+func (i *Ingest) Insert(ctx context.Context, n Incoming) (id uuid.UUID, inserted bool, err error) {
+	now := i.now()
+	ts := n.TS
+	var skew *int
+	if ts.IsZero() || ts.Sub(now).Abs() > 5*time.Minute {
+		if !ts.IsZero() {
+			s := int(now.Sub(ts).Seconds())
+			skew = &s
+		}
+		ts = now
+	}
+	if len(n.Summary) > MaxSummary {
+		n.Summary = n.Summary[:MaxSummary]
+	}
+	var agent, window, hostEventID *string
+	if n.Agent != "" {
+		agent = &n.Agent
+	}
+	if n.Window != "" {
+		window = &n.Window
+	}
+	if n.HostEventID != "" {
+		hostEventID = &n.HostEventID
+	}
+	if n.Source == "" {
+		n.Source = "host"
+	}
+	err = db.InTx(ctx, i.pool, func(tx db.Tx) error {
+		if notifyKinds[n.Kind] && n.Kind != "notifications_paused" {
+			// Collapse a repeat within the window, appending a new summary.
+			var prevID uuid.UUID
+			var prevSummary string
+			err := tx.QueryRow(ctx, `select id, summary from events where project_id = $1 and coalesce(agent,'') = $2 and kind = $3 and ts > $4 order by ts desc limit 1 for update`,
+				n.ProjectID, n.Agent, n.Kind, ts.Add(-DedupeWindow)).Scan(&prevID, &prevSummary)
+			if err == nil {
+				if n.Summary != "" && !strings.Contains(prevSummary, n.Summary) {
+					merged := prevSummary + "\n" + n.Summary
+					if len(merged) > MaxSummary {
+						merged = merged[:MaxSummary]
+					}
+					if _, err := tx.Exec(ctx, "update events set summary = $2 where id = $1", prevID, merged); err != nil {
+						return err
+					}
+				}
+				id = prevID
+				i.m.EventsTotal.WithLabelValues("deduped").Inc()
+				return nil
+			}
+			if !db.IsNoRows(err) {
+				return err
+			}
+		}
+		id = store.NewID()
+		tag, err := tx.Exec(ctx, `insert into events (id, project_id, ts, ts_second, kind, agent, tmux_window, summary, source, skew_seconds, host_event_id) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict do nothing`,
+			id, n.ProjectID, ts, ts.Unix(), n.Kind, agent, window, n.Summary, n.Source, skew, hostEventID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			i.m.EventsTotal.WithLabelValues("duplicate").Inc()
+			id = uuid.Nil
+			return nil
+		}
+		inserted = true
+		i.m.EventsTotal.WithLabelValues(n.Kind).Inc()
+		if !notifyKinds[n.Kind] {
+			return nil
+		}
+		return i.enqueue(ctx, tx, id, n.ProjectID, n.Kind, ts)
+	})
+	return id, inserted, err
+}
+
+// enqueue writes one outbox row per enabled channel, applying the
+// per-project hourly cap with a single digest event past it.
+func (i *Ingest) enqueue(ctx context.Context, tx db.Tx, eventID, projectID uuid.UUID, kind string, ts time.Time) error {
+	var notifyEmail bool
+	var email, ntfy *string
+	if err := tx.QueryRow(ctx, "select u.notify_email, u.email, u.ntfy_url from users u join projects p on p.user_id = u.id where p.id = $1", projectID).Scan(&notifyEmail, &email, &ntfy); err != nil {
+		return err
+	}
+	var channels []string
+	if notifyEmail && email != nil && *email != "" {
+		channels = append(channels, "email")
+	}
+	if ntfy != nil && *ntfy != "" {
+		channels = append(channels, "ntfy")
+	}
+	if len(channels) == 0 {
+		return nil
+	}
+	if kind != "notifications_paused" {
+		var recent int
+		if err := tx.QueryRow(ctx, `select count(distinct o.event_id) from events_outbox o join events e on e.id = o.event_id where e.project_id = $1 and e.ts > $2 and e.kind <> 'notifications_paused'`, projectID, ts.Add(-time.Hour)).Scan(&recent); err != nil {
+			return err
+		}
+		if recent >= RatePerHour {
+			var paused int
+			if err := tx.QueryRow(ctx, "select count(*) from events where project_id = $1 and kind = 'notifications_paused' and ts > $2", projectID, ts.Add(-time.Hour)).Scan(&paused); err != nil {
+				return err
+			}
+			if paused == 0 {
+				did := store.NewID()
+				if _, err := tx.Exec(ctx, `insert into events (id, project_id, ts, ts_second, kind, summary, source) values ($1, $2, $3, $4, 'notifications_paused', $5, 'api')`,
+					did, projectID, ts, ts.Unix(), "30+ events in the last hour; notifications for this project are paused until the top of the hour. See the dashboard."); err != nil {
+					return err
+				}
+				for _, ch := range channels {
+					if _, err := tx.Exec(ctx, "insert into events_outbox (event_id, channel) values ($1, $2)", did, ch); err != nil {
+						return err
+					}
+				}
+			}
+			i.m.EventsTotal.WithLabelValues("rate_limited").Inc()
+			return nil
+		}
+	}
+	for _, ch := range channels {
+		if _, err := tx.Exec(ctx, "insert into events_outbox (event_id, channel) values ($1, $2) on conflict do nothing", eventID, ch); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// OnEvent handles a hostd Event and reports whether to ack it.
+func (i *Ingest) OnEvent(ctx context.Context, hostID uuid.UUID, ev *hostdv1.Event) bool {
+	ts := time.Unix(ev.Ts, 0)
+	switch e := ev.Ev.(type) {
+	case *hostdv1.Event_GuestStateChanged:
+		p, err := i.projectByGuest(ctx, e.GuestStateChanged.GuestId)
+		if err != nil {
+			i.log.Warn("state change for unknown guest", "event", "guest_state", "host_id", hostID.String(), "guest_id", e.GuestStateChanged.GuestId)
+			return true
+		}
+		open, _ := store.OpenOpsForProject(ctx, i.pool, p.ID)
+		st := e.GuestStateChanged.State
+		if len(open) == 0 && p.State != st && p.State != "destroyed" && validState(st) {
+			if err := store.SetProjectState(ctx, i.pool, p.ID, st); err != nil {
+				i.log.Error("state update", "event", "guest_state", "project_id", p.ID.String(), "err", err.Error())
+				return false
+			}
+			i.log.Info("guest state from host", "event", "guest_state", "project_id", p.ID.String(), "state", st, "reason", e.GuestStateChanged.Reason)
+		}
+		_, _, err = i.Insert(ctx, Incoming{ProjectID: p.ID, TS: ts, Kind: "guest_state_changed", Summary: st, Source: "host", HostEventID: ev.EventId})
+		if err != nil {
+			i.log.Error("state event insert", "event", "guest_state", "err", err.Error())
+			return false
+		}
+		return true
+	case *hostdv1.Event_AgentEvent:
+		p, err := i.projectByGuest(ctx, e.AgentEvent.GuestId)
+		if err != nil {
+			return true
+		}
+		kind := e.AgentEvent.Kind
+		if !notifyKinds[kind] {
+			kind = "error"
+		}
+		_, _, err = i.Insert(ctx, Incoming{ProjectID: p.ID, TS: ts, Kind: kind, Agent: e.AgentEvent.Agent, Summary: e.AgentEvent.Summary, Source: "host", HostEventID: ev.EventId})
+		if err != nil {
+			i.log.Error("agent event insert", "event", "agent_event", "err", err.Error())
+			return false
+		}
+		return true
+	case *hostdv1.Event_SnapshotDone:
+		p, err := i.projectByGuest(ctx, e.SnapshotDone.GuestId)
+		if err != nil {
+			return true
+		}
+		if e.SnapshotDone.BlobPath == "" {
+			return true
+		}
+		_, err = i.pool.Exec(ctx, `insert into snapshots (id, project_id, host_id, blob_path, bytes, reason, taken_at) values ($1, $2, $3, $4, $5, 'scheduled', $6) on conflict (blob_path) do nothing`,
+			store.NewID(), p.ID, hostID, e.SnapshotDone.BlobPath, int64(e.SnapshotDone.Bytes), ts)
+		if err != nil {
+			i.log.Error("snapshot event insert", "event", "snapshot_done", "err", err.Error())
+			return false
+		}
+		return true
+	case *hostdv1.Event_HostWarning:
+		i.m.HostWarningsTotal.WithLabelValues(e.HostWarning.Kind).Inc()
+		i.log.Warn("host warning", "event", "host_warning", "host_id", hostID.String(), "kind", e.HostWarning.Kind, "detail", e.HostWarning.Detail)
+		return true
+	}
+	return true
+}
+
+func validState(s string) bool {
+	switch s {
+	case "creating", "building", "starting", "running", "stopping", "stopped", "restoring", "destroying", "destroyed", "error":
+		return true
+	}
+	return false
+}
+
+func (i *Ingest) projectByGuest(ctx context.Context, guestID string) (*store.Project, error) {
+	gid, err := uuid.Parse(guestID)
+	if err != nil {
+		return nil, err
+	}
+	return store.GetProjectByGuest(ctx, i.pool, gid)
+}
+
+// FromEdge handles a hook event that arrived over HTTP through the edge
+// (I-4): the source ip maps to a project.
+func (i *Ingest) FromEdge(ctx context.Context, sourceIP, agent, kind, summary string) (uuid.UUID, error) {
+	ip, err := netip.ParseAddr(sourceIP)
+	if err != nil {
+		return uuid.Nil, errors.New("source_ip is not an address")
+	}
+	p, err := store.GetProjectByGuestIP(ctx, i.pool, ip)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if !notifyKinds[kind] {
+		return uuid.Nil, errors.New("unknown event kind")
+	}
+	id, _, err := i.Insert(ctx, Incoming{ProjectID: p.ID, TS: i.now(), Kind: kind, Agent: agent, Summary: summary, Source: "http"})
+	return id, err
+}
+
+// Platform inserts an api-originated event (billing_stopped,
+// base_updated, ...).
+func (i *Ingest) Platform(ctx context.Context, projectID uuid.UUID, kind, summary string) error {
+	_, _, err := i.Insert(ctx, Incoming{ProjectID: projectID, TS: i.now(), Kind: kind, Summary: summary, Source: "api"})
+	return err
+}
