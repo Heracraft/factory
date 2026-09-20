@@ -28,12 +28,15 @@ let
   # retriggering, on an NVMe size by pointing the symlink at the one NVMe
   # disk that is not the OS disk. A no-op wherever the path already exists.
   azureUdevHook = lib.optionalString (azureUdevRules != null) ''
-    if [ ! -e "${dataDevice}" ] && [ -d /run/udev ]; then
+    # The SCSI branch is best effort: this waagent build ships no rules at
+    # that path, and on host-01 the unguarded cp aborted the whole hook
+    # before the NVMe branch below ever ran (2026-09-20).
+    if [ ! -e "${dataDevice}" ] && [ -d /run/udev ] && [ -d "${azureUdevRules}" ]; then
       mkdir -p /run/udev/rules.d
-      cp ${azureUdevRules}/*.rules /run/udev/rules.d/
-      udevadm control --reload
-      udevadm trigger --subsystem-match=block --action=add
-      udevadm settle
+      cp "${azureUdevRules}"/*.rules /run/udev/rules.d/ 2>/dev/null || true
+      udevadm control --reload || true
+      udevadm trigger --subsystem-match=block --action=add || true
+      udevadm settle || true
     fi
     if [ ! -e "${dataDevice}" ]; then
       os=$(readlink -f "${osDevice}")
