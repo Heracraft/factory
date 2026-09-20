@@ -163,3 +163,32 @@ func TestSetupReportsAFailedTmuxStart(t *testing.T) {
 		t.Fatal("a failed tmux unit start was reported as success")
 	}
 }
+
+// The CLI's sync runs `git fetch origin` in the guest; a git init with no
+// origin is the failure the first real run hit (DECISIONS I-107).
+func TestSetupPointsOriginAtTheRemote(t *testing.T) {
+	h, _, run := newHandler(t)
+	r := req()
+	r.RemoteUrl = "github.com/heracraft/todo-app"
+	if err := h.Setup(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := run.Ran("git remote add origin git@github.com:heracraft/todo-app.git"); !ok {
+		t.Fatalf("origin was not added; calls: %v", run.Calls())
+	}
+}
+
+func TestOriginURL(t *testing.T) {
+	for in, want := range map[string]string{
+		"github.com/heracraft/todo-app":     "git@github.com:heracraft/todo-app.git",
+		"github.com/heracraft/todo-app.git": "git@github.com:heracraft/todo-app.git",
+		"git@github.com:heracraft/todo.git": "git@github.com:heracraft/todo.git",
+		"https://gitlab.com/x/y.git":        "https://gitlab.com/x/y.git",
+		"":                                  "",
+		"github.com":                        "",
+	} {
+		if got := originURL(in); got != want {
+			t.Errorf("originURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

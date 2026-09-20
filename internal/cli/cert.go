@@ -187,6 +187,10 @@ func renderSSHConfig(projects []Project, handle string) string {
 		b.WriteString("  IdentityFile ~/.ssh/id_ed25519\n")
 		b.WriteString("  UserKnownHostsFile ~/.ssh/repose/known_hosts\n")
 		b.WriteString("  ForwardAgent yes\n")
+		// Only the certificate identity above: with an agent loaded, ssh
+		// otherwise offers the agent's plain keys first and the gateway
+		// answers "certificate required" (M2 gate, DECISIONS I-108).
+		b.WriteString("  IdentitiesOnly yes\n")
 		b.WriteString("  ServerAliveInterval 30\n")
 	}
 	return b.String()

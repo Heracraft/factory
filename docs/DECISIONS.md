@@ -2376,3 +2376,41 @@ owner already manages. The cost is that this side cannot prove the
 upload happened — which is honest, because it never really could: an
 rclone listing proves an object exists, not that it is last night's
 database.
+
+**I-106. `repose run` waits on the op a create leaves in flight instead of
+starting the project.** (conductor, 2026-09-20) The first real `repose run`
+answered `conflict: recruiting is already starting`: the api's create
+returns `state: creating` with the create op's `op_id`, and the CLI's
+`ensureRunning` saw "not running" and issued a start, which the engine
+refuses while the create op runs. The fakes never showed it because their
+create completed instantly. The CLI's `Project` now carries `op_id`;
+`ensureRunning` waits on that op (streaming its build log) or, without an
+op id, on the state leaving `creating`/`starting`, then re-reads before
+deciding to start. `internal/fakes/api` gains `Options.CreateDelay`, which
+answers a create the way the engine does and refuses a start meanwhile; the
+regression test runs the flow against it. *Rejected:* retrying the start
+until it is accepted (the op-conflict retry already exists and would have
+raced the create's own start for the whole build).
+
+**I-107. guestd's `SetupProject` points `origin` at the project's remote.**
+(conductor, 2026-09-20) The first real sync failed in the guest with
+`'origin' does not appear to be a git repository`: guestd ran `git init` in
+the project directory and never added a remote, while the CLI's sync (and
+`docs/features/sync-at-launch.md`) expect "a clone with an origin remote".
+`Setup` now adds `origin` as the SSH form of the api's normalised remote
+(`github.com/owner/repo` becomes `git@github.com:owner/repo.git`, fetched
+through the agent the CLI forwards), or `set-url`s an existing one.
+Guests built before this carry the old guestd until the next base version;
+the M2 test guest had its remote added by hand. *Rejected:* cloning at
+setup (the CLI's first sync fetches exactly what it needs and the agent is
+only present during a run); HTTPS URLs (private repositories need the
+user's credentials, which only the forwarded agent carries).
+
+**I-108. The generated `~/.ssh/repose/config` sets `IdentitiesOnly yes`.**
+(conductor, 2026-09-20) `ssh <slug>.repose` from a plain terminal answered
+`permission denied (certificate required)` while the CLI's own connection
+worked: with an ssh-agent loaded, ssh offered the agent's plain key before
+the configured certificate identity, and the gateway refuses plain keys by
+design. The generated host block now restricts ssh to the certificate
+identity it names; `ForwardAgent yes` stays, since the agent is still
+forwarded for the guest's own git.

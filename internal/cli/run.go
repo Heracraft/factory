@@ -207,6 +207,31 @@ func ensureRunning(ctx context.Context, e *Env, project *Project) error {
 	if project.State == "running" {
 		return nil
 	}
+	// A project just created (or being started by someone else) has an op
+	// in flight; starting it again is the conflict the first real run hit
+	// ("recruiting is already starting", DECISIONS I-106). Wait on that op
+	// when the api named it, otherwise on the state, then re-read.
+	if project.State == "creating" || project.State == "starting" {
+		if project.OpID != "" {
+			op, err := waitOp(ctx, e.Client, project.ID, project.OpID, e.Out)
+			if err != nil {
+				return err
+			}
+			if op.State == "error" {
+				return exitf(ExitGeneric, "%s", op.Error)
+			}
+		} else if err := waitState(ctx, e.Client, project); err != nil {
+			return err
+		}
+		p, err = e.Client.GetProject(ctx, project.ID)
+		if err != nil {
+			return err
+		}
+		*project = *p
+		if project.State == "running" {
+			return nil
+		}
+	}
 	var opID string
 	err = retryOnOpConflict(ctx, func() error {
 		var err error
@@ -236,6 +261,25 @@ func ensureRunning(ctx context.Context, e *Env, project *Project) error {
 	}
 	*project = *p
 	return nil
+}
+
+// waitState polls the project until it leaves a transitional state.
+func waitState(ctx context.Context, c *Client, project *Project) error {
+	for {
+		p, err := c.GetProject(ctx, project.ID)
+		if err != nil {
+			return err
+		}
+		*project = *p
+		if p.State != "creating" && p.State != "starting" && p.State != "stopping" {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
 }
 
 // waitOp polls an op to completion, streaming its build log if one

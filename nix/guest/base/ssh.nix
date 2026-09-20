@@ -16,6 +16,15 @@ let
   userCA = "${runDir}/user_ca.pub";
 in
 {
+  # NixOS includes systemd's ssh_config.d drop-in (the systemd-ssh-proxy
+  # for AF_VSOCK/AF_UNIX hosts) from the nix store in every ssh client
+  # invocation. Over the shared virtio-fs store the file is not owned by
+  # root as far as the guest can tell, and ssh refuses the whole config with
+  # "Bad owner or permissions", which broke `git fetch origin` in the first
+  # real guest (DECISIONS I-109). The proxy is for reaching VMs from a host
+  # over vsock, which a guest never does.
+  programs.ssh.systemd-ssh-proxy.enable = false;
+
   services.openssh = {
     enable = true;
     startWhenNeeded = false;

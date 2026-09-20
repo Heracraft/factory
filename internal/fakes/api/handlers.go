@@ -355,6 +355,24 @@ func (f *Fake) createProject(w http.ResponseWriter, r *http.Request) *apiError {
 	if e != nil {
 		return e
 	}
+	if f.opts.CreateDelay > 0 {
+		// Under f.mu already (ServeHTTP); only the goroutine takes it.
+		o := f.newOp(p, "create")
+		o.State = "running"
+		p.State = "creating"
+		p.OpID = o.id
+		out := p.Project
+		go func() {
+			time.Sleep(f.opts.CreateDelay)
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			p.OpID = ""
+			f.run(p)
+			o.State = "done"
+		}()
+		writeJSON(w, http.StatusCreated, out)
+		return nil
+	}
 	writeJSON(w, http.StatusCreated, p.Project)
 	return nil
 }
@@ -425,6 +443,10 @@ func (f *Fake) startProject(w http.ResponseWriter, r *http.Request) *apiError {
 	p, e := f.project(userFrom(r), r.PathValue("id"))
 	if e != nil {
 		return e
+	}
+	if p.State == "creating" || p.State == "starting" {
+		// What the api answers while the create op is still running.
+		return errf("conflict", "%s is already starting", p.Slug)
 	}
 	o := f.newOp(p, "start")
 	if p.State != "running" {

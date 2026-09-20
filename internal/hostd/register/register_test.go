@@ -38,7 +38,7 @@ func (a *apiStub) Register(_ context.Context, req *hostdv1.RegisterRequest) (*ho
 		return nil, err
 	}
 	return &hostdv1.RegisterResponse{HostId: "host-1", ClientCert: cert, ClientKey: key, GuestCidr: "10.64.4.0/22",
-		LokiUrl: "http://10.255.0.3:3100",
+		LokiUrl:      "http://10.255.0.3:3100",
 		WgPrivateKey: "wgpriv", Edge: &hostdv1.WireguardPeer{Endpoint: "edge:51820", PublicKey: "edgepub", Address: "10.255.0.7/16", AllowedIps: []string{"10.255.0.0/16"}}}, nil
 }
 

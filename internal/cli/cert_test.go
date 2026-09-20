@@ -41,6 +41,7 @@ Host blog.repose
   IdentityFile ~/.ssh/id_ed25519
   UserKnownHostsFile ~/.ssh/repose/known_hosts
   ForwardAgent yes
+  IdentitiesOnly yes
   ServerAliveInterval 30
 Host todo-app.repose
   HostName ssh.repose.herakraft.co
@@ -49,6 +50,7 @@ Host todo-app.repose
   IdentityFile ~/.ssh/id_ed25519
   UserKnownHostsFile ~/.ssh/repose/known_hosts
   ForwardAgent yes
+  IdentitiesOnly yes
   ServerAliveInterval 30
 `
 	if got != want {

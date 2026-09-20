@@ -118,6 +118,9 @@ func (h *Handler) Setup(ctx context.Context, req *guestdv1.SetupProject) error {
 	if err != nil {
 		return err
 	}
+	if err := h.ensureOrigin(ctx, slug, req.GetRemoteUrl()); err != nil {
+		return err
+	}
 	started, err := h.ensureTmux(ctx)
 	if err != nil {
 		return err
@@ -235,6 +238,66 @@ func (h *Handler) ensureGitRepo(ctx context.Context, slug string) (bool, error) 
 		return false, sysdep.Errf(sysdep.CodeInternal, "git init in the project directory: exited %d", res.ExitCode)
 	}
 	return true, nil
+}
+
+// ensureOrigin points the repository's `origin` at the project's remote,
+// which is what the CLI's sync fetches from at every run
+// (docs/features/sync-at-launch.md: "a clone with an origin remote"). The
+// api stores the remote normalised as host/path; the guest fetches it over
+// SSH through the agent the CLI forwards, so origin is the SSH form. The
+// first real run found the directory git-inited with no origin at all
+// (DECISIONS I-107). Idempotent: set-url when origin exists.
+func (h *Handler) ensureOrigin(ctx context.Context, slug, remote string) error {
+	url := originURL(remote)
+	if url == "" {
+		return nil
+	}
+	dir := h.paths.ProjectDir(slug)
+	run := func(argv ...string) (int, error) {
+		res, err := h.run.Run(ctx, sysdep.RunSpec{
+			Argv:      argv,
+			User:      "dev",
+			Dir:       dir,
+			Env:       sysdep.DevEnv(h.paths, "dev"),
+			MaxOutput: 8 << 10,
+		})
+		if err != nil {
+			return -1, sysdep.Errf(sysdep.CodeInternal, "%s in the project directory: %w", strings.Join(argv[:2], " "), err)
+		}
+		return res.ExitCode, nil
+	}
+	if code, err := run("git", "remote", "add", "origin", url); err != nil {
+		return err
+	} else if code == 0 {
+		return nil
+	}
+	// origin exists: keep it pointed at the project's remote.
+	if code, err := run("git", "remote", "set-url", "origin", url); err != nil {
+		return err
+	} else if code != 0 {
+		return sysdep.Errf(sysdep.CodeInternal, "git remote set-url origin: exited %d", code)
+	}
+	return nil
+}
+
+// originURL turns the api's normalised remote ("github.com/owner/repo")
+// into the SSH clone URL ("git@github.com:owner/repo.git"). A remote that
+// already carries a scheme or an scp-style prefix is used as is; an empty
+// remote (a --name project with no git remote) gives "".
+func originURL(remote string) string {
+	remote = strings.TrimSpace(remote)
+	if remote == "" {
+		return ""
+	}
+	if strings.Contains(remote, "://") || strings.HasPrefix(remote, "git@") {
+		return remote
+	}
+	host, path, ok := strings.Cut(remote, "/")
+	if !ok || host == "" || path == "" {
+		return ""
+	}
+	path = strings.TrimSuffix(path, ".git")
+	return "git@" + host + ":" + path + ".git"
 }
 
 // ensureTmux starts the user unit if it is not already running.
