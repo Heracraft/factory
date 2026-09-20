@@ -25,7 +25,9 @@ are. Coolify rewrites `container_name` to `<service>-<uuid>` and strips
 `aliases`, so the service name is the only name that survives; do not
 rename it. Its one value is `POSTGRES_PASSWORD`,
 a project-level shared variable, so the api apps reference the same one as
-`{{project.POSTGRES_PASSWORD}}`.
+`PGPASSWORD={{project.POSTGRES_PASSWORD}}`, on its own line: Coolify only
+resolves a reference that is a variable's whole value, so the password is
+not embedded in `DATABASE_URL`; pgx takes it from `PGPASSWORD`.
 
 ## The three applications
 
