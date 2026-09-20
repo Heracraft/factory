@@ -51,7 +51,7 @@ func discover(ctx context.Context, httpClient *http.Client, configDirPath, issue
 		}
 	}
 	// Logto's OIDC endpoints live under /oidc relative to the configured
-	// issuer (DECISIONS I-71; internal/api/auth hits "/oidc/jwks" and
+	// issuer (DECISIONS I-73; internal/api/auth hits "/oidc/jwks" and
 	// "/oidc/token" off the same issuer value, and 07-cli.md's own device
 	// code step names "POST /oidc/device/auth").
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(issuer, "/")+"/oidc/.well-known/openid-configuration", nil)

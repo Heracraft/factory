@@ -1540,7 +1540,7 @@ to read `dig` output would have to rediscover the wildcard); making
 `manage_dns` a required variable (a plan-only CI run has no business
 supplying a Cloudflare value).
 
-**I-71. Points 07-cli.md and cli-config.md left implicit, settled while
+**I-73. Points 07-cli.md and cli-config.md left implicit, settled while
 building `cmd/repose`.** (07, 2026-09-20)
 
 - *Remote normalisation lowercases the whole string, not only the host.*

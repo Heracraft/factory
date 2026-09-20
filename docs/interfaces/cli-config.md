@@ -13,7 +13,7 @@ All under `~/.config/repose/` (respecting `$XDG_CONFIG_HOME`), mode 0700.
 
 Remote URL normalisation: strip scheme and `git@`, replace `:` after host
 with `/`, strip trailing `.git`, lowercase the whole result (DECISIONS
-I-71: not just the host, so the worked example below actually holds).
+I-73: not just the host, so the worked example below actually holds).
 `git@github.com:A/B.git` and `https://github.com/a/b` both become
 `github.com/a/b`.
 
