@@ -239,7 +239,7 @@ func (i *Ingest) OnEvent(ctx context.Context, hostID uuid.UUID, ev *hostdv1.Even
 			return true
 		}
 		_, err = i.pool.Exec(ctx, `insert into snapshots (id, project_id, host_id, blob_path, bytes, reason, taken_at) values ($1, $2, $3, $4, $5, 'scheduled', $6) on conflict (blob_path) do nothing`,
-			store.NewID(), p.ID, hostID, e.SnapshotDone.BlobPath, int64(e.SnapshotDone.Bytes), ts)
+			store.NewID(), p.ID, p.HostID, e.SnapshotDone.BlobPath, int64(e.SnapshotDone.Bytes), ts)
 		if err != nil {
 			i.log.Error("snapshot event insert", "event", "snapshot_done", "err", err.Error())
 			return false

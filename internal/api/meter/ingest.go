@@ -147,7 +147,7 @@ type Latest struct {
 func LatestSample(ctx context.Context, q store.Querier, projectID uuid.UUID) (*Latest, bool, error) {
 	var l Latest
 	var agents []byte
-	err := q.QueryRow(ctx, "select ts, state, ssh_sessions, tmux_clients, agents, docker_containers, disk_used, guestd_ok from meter_samples where project_id = $1 and ts > now() - interval '1 day' order by ts desc limit 1", projectID).
+	err := q.QueryRow(ctx, "select ts, state, ssh_sessions, tmux_clients, agents, docker_containers, disk_used, guestd_ok from meter_samples where project_id = $1 order by ts desc limit 1", projectID).
 		Scan(&l.TS, &l.State, &l.SSHSessions, &l.TmuxClients, &agents, &l.DockerContainers, &l.DiskUsed, &l.GuestdOK)
 	if err != nil {
 		if db.IsNoRows(err) {

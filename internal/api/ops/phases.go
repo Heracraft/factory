@@ -590,6 +590,22 @@ func (e *Engine) buildApply(ctx context.Context, op *store.Op, p *store.Project)
 	if p.GuestID == nil || p.HostID == nil || p.State != "running" {
 		return nil, uuid.Nil, true, nil // applies at the next start
 	}
+	// A start applies the newest built-but-unapplied revision, fixed on
+	// the op so the result handler sees the same one.
+	if op.Kind == KindStart && op.RevisionID == nil {
+		var rid uuid.UUID
+		err := e.pool.QueryRow(ctx, "select id from config_revisions where project_id = $1 and status = 'built' and system_closure is not null order by created_at desc limit 1", p.ID).Scan(&rid)
+		if err != nil {
+			if db.IsNoRows(err) {
+				return nil, uuid.Nil, true, nil
+			}
+			return nil, uuid.Nil, false, err
+		}
+		if _, err := e.pool.Exec(ctx, "update ops set revision_id = $2 where id = $1", op.ID, rid); err != nil {
+			return nil, uuid.Nil, false, err
+		}
+		op.RevisionID = &rid
+	}
 	rev, err := e.revisionFor(ctx, op, p)
 	if err != nil {
 		return nil, uuid.Nil, false, err
