@@ -313,10 +313,26 @@ that host, and the mistake it prevents is a one-character edit to a list.
 ## Recovering from a stuck state lease
 
 An apply that was killed leaves a lease on the state blob and the next one
-says `Error acquiring the state lock` with an ID.
+says `Error acquiring the state lock` with an ID. So does a **plan** that lost
+its connection to Azure Resource Manager mid-refresh: this happened twice from
+the dev box on 2026-09-20, with `context deadline exceeded` on a single
+resource read followed by `Error releasing the state lock`.
+
+"Confirm nobody is running an apply" does not have to be a guess. The lock
+blob's metadata records which operation took it, from where, and when:
 
 ```bash
-# Confirm nobody is running an apply anywhere. Then:
+az storage blob metadata show --account-name reposetfstate3912 \
+  --container-name tfstate --name azure.tfstate --auth-mode login \
+  --query terraformlockid -o tsv | base64 -d
+# {"ID":"946e71cf-...","Operation":"OperationTypePlan","Who":"azureuser@woker-1",
+#  "Created":"2026-09-20T04:16:35Z",...}
+```
+
+`OperationTypePlan` from a machine where no `tofu` process is alive is safe to
+break; `OperationTypeApply` from somewhere you cannot see is not.
+
+```bash
 make force-unlock ENV=prod LOCK_ID=<the id from the message>
 ```
 
@@ -352,7 +368,7 @@ Retail Prices API (`https://prices.azure.com/api/retail/prices`,
 `armRegionName eq 'eastus'`, `priceType eq 'Consumption'`), for what
 `prod.tfvars` actually creates: one `D16s_v7` host with a 512 GB Premium SSD
 v2 data disk (DECISIONS I-14, I-39), the edge, and **the control-plane VM**
-(`coolify_count = 1`, DECISIONS I-61). 730 hours to the month, Linux rates, no
+(`coolify_count = 1`, DECISIONS I-70). 730 hours to the month, Linux rates, no
 reservation.
 
 | Resource | Unit price | Monthly |

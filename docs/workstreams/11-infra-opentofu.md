@@ -60,7 +60,7 @@ provider module for hosts is an addition, not a rewrite.
     host provisioner jumps through it.
   - `coolify`: `coolify_count` of them; the module default is **0** so a new
     environment costs nothing, and production runs **1** from 2026-09-20
-    (DECISIONS I-24, I-61). One `Standard_D4s_v7`, Ubuntu 24.04 LTS, static
+    (DECISIONS I-24, I-70). One `Standard_D4s_v7`, Ubuntu 24.04 LTS, static
     public IP, DNS A records `repose.herakraft.co`,
     `api.repose.herakraft.co`, `auth.repose.herakraft.co`, 256 GB Premium SSD
     OS disk, cloud-init that installs Docker and runs Coolify's installer at
@@ -98,7 +98,7 @@ provider module for hosts is an addition, not a rewrite.
   above, so DNS is in the same apply as the addresses it points at.
   `manage_dns` defaults to **false**, because the records need a
   `CLOUDFLARE_API_TOKEN` and a zone id that do not exist yet (DECISIONS
-  I-62). While it is false the names are not merely absent: `herakraft.co`
+  I-71). While it is false the names are not merely absent: `herakraft.co`
   answers every name under it from a proxied wildcard, so
   `ssh.repose.herakraft.co` resolves to Cloudflare's proxy, which carries
   neither SSH nor WireGuard. A plan-time `check` warns, and `infra/README.md`
@@ -295,7 +295,7 @@ row says otherwise. Commands were run from the dev box, which is in
       `repose:inbound=none`; `make check` is clean; the rule was fired
       against a fixture that adds one on 2026-09-19. A second guard was added
       on 2026-09-20 for the control subnet: a `postcondition` that fails the
-      plan on any inbound rule for 8000, 6001, 6002 or `*` (DECISIONS I-61).
+      plan on any inbound rule for 8000, 6001, 6002 or `*` (DECISIONS I-70).
 - [ ] IMDS is reachable from the host and blocked from guests. **Not
       re-checked this session:** the sandbox on the machine running these
       commands refuses shell pipelines that fetch instance metadata, so the
@@ -340,7 +340,7 @@ row says otherwise. Commands were run from the dev box, which is in
       ssh.repose.herakraft.co` returns `172.67.175.123` and `104.21.31.82`,
       Cloudflare's proxy, not the edge's `20.102.98.254` — `herakraft.co`
       answers every name under it from a proxied wildcard, and the proxy
-      carries neither SSH nor WireGuard (DECISIONS I-62). The plan now warns,
+      carries neither SSH nor WireGuard (DECISIONS I-71). The plan now warns,
       `infra/README.md` has the four records to create by hand, and
       `ops/RUNBOOK.md` has the symptom entry. Closes with a Cloudflare token
       and `manage_dns = true`, or with the records made by hand.
@@ -367,21 +367,24 @@ edge and `host-01` are live in `repose-prod`, and `make plan ENV=prod` at this
 branch's base was clean against them. What this branch adds is the
 control plane, and it is **not applied** — the owner applies from `main`.
 
-**Release the state lease first.** A `tofu plan` from this branch on
-2026-09-20 lost its connection to Azure Resource Manager mid-refresh
-(`context deadline exceeded`) and could not release the blob lease afterwards,
-so the state is locked and the next plan or apply will refuse:
+One thing to expect, because it happened twice on 2026-09-20: a plan from this
+dev box can lose its connection to Azure Resource Manager mid-refresh
+(`context deadline exceeded` on a single resource read) and then fail to
+release the state lease, leaving the next plan or apply to refuse with
+`Error acquiring the state lock`. The recovery is `infra/README.md`,
+"Recovering from a stuck state lease" — confirm no apply is running anywhere,
+then `make -C infra force-unlock ENV=prod LOCK_ID=<the id from the message>`.
+The lock blob's own metadata says which operation left it and when, which is
+how "no apply was running" gets confirmed rather than assumed:
 
 ```bash
-make -C infra force-unlock ENV=prod LOCK_ID=946e71cf-6fb1-7e38-79ce-c54972161362
+az storage blob metadata show --account-name reposetfstate3912 \
+  --container-name tfstate --name azure.tfstate --auth-mode login \
+  --query terraformlockid -o tsv | base64 -d
+# {"ID":"...","Operation":"OperationTypePlan","Who":"azureuser@woker-1",...}
 ```
 
-The lock's own metadata records it as `OperationTypePlan` by
-`azureuser@woker-1` at 2026-09-20T04:16:35Z, which is that run; no apply was
-in flight. This is the procedure in `infra/README.md`, "Recovering from a
-stuck state lease".
-
-Then `make plan ENV=prod` shows 4 to add — the control-plane public IP, NIC,
+`make plan ENV=prod` shows 4 to add — the control-plane public IP, NIC,
 VM and readiness check — and `make apply ENV=prod` creates them. The apply
 does not return until Coolify is healthy. `docs/ops/coolify.md` is everything
 after that, in order, and its first two steps matter most: create the admin

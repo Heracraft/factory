@@ -1347,67 +1347,6 @@ the metric and log naming, and a merge that keeps both of everything is how
 deleting 10's (it has no component enum, no event registry, no source lint and
 no metrics enforcement); keeping both tracing setups behind a flag.
 
-**I-61. The control plane is created now, with its Coolify pinned and its
-dashboard off the network.** (11, owner, 2026-09-20) `coolify_count = 1` in
-`prod.tfvars`. I-24 deferred the VM until "wave 3" on the grounds that it
-would bill for nothing while the api did not exist; the api and `repose-admin`
-are merged, so the trade has flipped. Three things were settled with it:
-
-- **The Coolify release is pinned** (`coolify_version`, `4.3.23`) and
-  `AUTOUPDATE=false`. The installer's own default is the moving `latest`, so
-  the VM could not be rebuilt onto the version it had been running, and the
-  thing that deploys the api could upgrade itself overnight. *Rejected:*
-  tracking `latest` and pinning nothing (a rebuild after a loss is the moment
-  a version surprise is least affordable).
-- **Coolify's dashboard is not in the NSG.** It listens on 8000 over plain
-  HTTP and, before an admin account exists, anyone who reaches it can create
-  one. Operators reach it with `ssh -L 8000:127.0.0.1:8000`, on the port the
-  NSG already opens to `operator_cidrs`, and the control subnet's NSG carries
-  a `postcondition` that fails the plan if 8000, 6001, 6002 or `*` ever
-  appears as an inbound rule. *Rejected:* opening 8000 to `operator_cidrs`
-  (an unauthenticated admin panel on the internet for the length of one
-  setup, and NSG lists are edited more often than they are re-read).
-- **The apply waits for Coolify to be healthy.** `terraform_data.ready` reads
-  the `coolify` container's Docker health status — the signal the installer
-  itself waits on — and also fails when `rclone` or `pg_restore` is missing,
-  because those are the first two commands of the runbook's restore
-  procedure. *Rejected:* returning as soon as the VM boots (the operator
-  cannot tell a machine still pulling images from one whose cloud-init died
-  twelve minutes ago).
-
-The cost re-query this forced corrected the estimate: the `D4s_v7` is
-$0.265/h, not the $140.16 a month the 2026-09-19 table carried, so the control
-plane is about $237 a month and the environment about $1,094, over the $1,000
-budget alert (`ops/AZURE-SETUP.md` step 7). Setting `coolify_count` back to 0
-destroys the VM, its OS disk, Postgres and every Coolify application
-definition; the retention that matters is the R2 dump *and*
-`/data/coolify/source/.env`, whose `APP_KEY` decrypts the credentials in that
-dump. `ops/coolify.md` is the click path and holds that last point where it
-will be read before a restore rather than after one.
-
-**I-62. `manage_dns` defaults to false, and the absence of a record is not
-the absence of an answer.** (11, 2026-09-20) The roots defaulted `manage_dns`
-to true while no `CLOUDFLARE_API_TOKEN` existed, so every plan depended on the
-local tfvars turning it off, and a plan without them failed inside the
-Cloudflare provider with an authentication error naming neither the variable
-nor the step that creates the token. It now defaults to false in both roots,
-`infra/dns` validates the zone id where a null one would otherwise reach the
-provider, and `make plan ENV=r2` fails on the missing token with the step that
-creates it.
-
-The reason this matters beyond tidiness was found by resolving the names on
-2026-09-20: **`herakraft.co` answers every name under it from a proxied
-wildcard record.** `ssh.repose.herakraft.co` therefore resolves today, to
-Cloudflare's proxy, which carries neither SSH nor WireGuard — so a user
-following the documented hostname, and any host configured with it as a
-WireGuard endpoint, fails in a way that looks like a firewall problem. The
-environment module raises it as a plan-time `check` warning whenever
-`manage_dns` is false, `infra/README.md` has the four records to create by
-hand until a token exists, and `ops/RUNBOOK.md` has it as a symptom entry.
-*Rejected:* creating the records by hand and saying nothing (the next person
-to read `dig` output would have to rediscover the wildcard); making
-`manage_dns` a required variable (a plan-only CI run has no business
-supplying a Cloudflare value).
 **I-61. The store export bind is made private before `.links` is masked.**
 (m1 integration, 2026-09-20) On host-01 every store write failed with
 `Read-only file system` on `/nix/store/.links`: the tmpfs mask
@@ -1530,3 +1469,64 @@ nothing under the store export, which is what the user exists to protect.
 socket directory under `/run` outside the guest directory (a second
 layout for one file).
 
+**I-70. The control plane is created now, with its Coolify pinned and its
+dashboard off the network.** (11, owner, 2026-09-20) `coolify_count = 1` in
+`prod.tfvars`. I-24 deferred the VM until "wave 3" on the grounds that it
+would bill for nothing while the api did not exist; the api and `repose-admin`
+are merged, so the trade has flipped. Three things were settled with it:
+
+- **The Coolify release is pinned** (`coolify_version`, `4.3.23`) and
+  `AUTOUPDATE=false`. The installer's own default is the moving `latest`, so
+  the VM could not be rebuilt onto the version it had been running, and the
+  thing that deploys the api could upgrade itself overnight. *Rejected:*
+  tracking `latest` and pinning nothing (a rebuild after a loss is the moment
+  a version surprise is least affordable).
+- **Coolify's dashboard is not in the NSG.** It listens on 8000 over plain
+  HTTP and, before an admin account exists, anyone who reaches it can create
+  one. Operators reach it with `ssh -L 8000:127.0.0.1:8000`, on the port the
+  NSG already opens to `operator_cidrs`, and the control subnet's NSG carries
+  a `postcondition` that fails the plan if 8000, 6001, 6002 or `*` ever
+  appears as an inbound rule. *Rejected:* opening 8000 to `operator_cidrs`
+  (an unauthenticated admin panel on the internet for the length of one
+  setup, and NSG lists are edited more often than they are re-read).
+- **The apply waits for Coolify to be healthy.** `terraform_data.ready` reads
+  the `coolify` container's Docker health status — the signal the installer
+  itself waits on — and also fails when `rclone` or `pg_restore` is missing,
+  because those are the first two commands of the runbook's restore
+  procedure. *Rejected:* returning as soon as the VM boots (the operator
+  cannot tell a machine still pulling images from one whose cloud-init died
+  twelve minutes ago).
+
+The cost re-query this forced corrected the estimate: the `D4s_v7` is
+$0.265/h, not the $140.16 a month the 2026-09-19 table carried, so the control
+plane is about $237 a month and the environment about $1,094, over the $1,000
+budget alert (`ops/AZURE-SETUP.md` step 7). Setting `coolify_count` back to 0
+destroys the VM, its OS disk, Postgres and every Coolify application
+definition; the retention that matters is the R2 dump *and*
+`/data/coolify/source/.env`, whose `APP_KEY` decrypts the credentials in that
+dump. `ops/coolify.md` is the click path and holds that last point where it
+will be read before a restore rather than after one.
+
+**I-71. `manage_dns` defaults to false, and the absence of a record is not
+the absence of an answer.** (11, 2026-09-20) The roots defaulted `manage_dns`
+to true while no `CLOUDFLARE_API_TOKEN` existed, so every plan depended on the
+local tfvars turning it off, and a plan without them failed inside the
+Cloudflare provider with an authentication error naming neither the variable
+nor the step that creates the token. It now defaults to false in both roots,
+`infra/dns` validates the zone id where a null one would otherwise reach the
+provider, and `make plan ENV=r2` fails on the missing token with the step that
+creates it.
+
+The reason this matters beyond tidiness was found by resolving the names on
+2026-09-20: **`herakraft.co` answers every name under it from a proxied
+wildcard record.** `ssh.repose.herakraft.co` therefore resolves today, to
+Cloudflare's proxy, which carries neither SSH nor WireGuard — so a user
+following the documented hostname, and any host configured with it as a
+WireGuard endpoint, fails in a way that looks like a firewall problem. The
+environment module raises it as a plan-time `check` warning whenever
+`manage_dns` is false, `infra/README.md` has the four records to create by
+hand until a token exists, and `ops/RUNBOOK.md` has it as a symptom entry.
+*Rejected:* creating the records by hand and saying nothing (the next person
+to read `dig` output would have to rediscover the wildcard); making
+`manage_dns` a required variable (a plan-only CI run has no business
+supplying a Cloudflare value).
