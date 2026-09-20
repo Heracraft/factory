@@ -771,6 +771,13 @@ The api, api-grpc or web app's rolling deploy did not go green.
    required" means the variable was cleared; the certificate is issued
    from the CA for those names at start, and `repose-admin ca init` must
    have run once (a fresh database has no CA yet).
+5. A user reporting "it hung for five seconds while you deployed" is not
+   a failed deploy. Every switchover drops exactly one request per
+   client, ten to thirty seconds after the new container starts, as a
+   hang rather than a 502 — measured three times out of three
+   (`docs/ops/coolify.md` fact 13). `ops/deploy-probe.sh` against the
+   domain during a deploy is how to tell that from a real outage: one
+   000 and then 200s is the known drain gap, a run of them is not.
 
 ## PostgresBackupStale
 

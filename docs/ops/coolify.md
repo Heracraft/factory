@@ -225,20 +225,34 @@ the live instance, not taken from the docs. Each one changed a file here.
    in, because an api that exits on a missing CA never goes healthy and
    Coolify removes it. The api now does both itself at start (I-90).
 
-13. **A rolling deploy still drops a request or two at the switchover.**
-   Measured on `web`, 2026-09-20: two loops at five requests a second
-   against `https://repose.herakraft.co/` and `/healthz` saw ~10,400
-   responses and exactly one failure each, both at 18:05:15Z, eleven
-   seconds after the new container started (created 18:05:02.851Z,
-   started 18:05:04.014Z, image `e6dd4fa`). The failures were 5-second
-   *hangs*, not 502s, which points at Traefik keeping the outgoing
-   container in its pool for a moment after Coolify removes it rather
-   than at the health check — the new container was healthy before the
-   old one went. So "rolling" here means "no outage", not "no dropped
-   request": a user reloading at that instant waits five seconds. It is
-   worth knowing before it is measured on `api`, where the same gap is a
-   CLI command failing rather than a page taking a moment.
-   `ops/deploy-probe.sh` is the loop that measures it.
+13. **A rolling deploy drops exactly one request per client at the
+   switchover, every time.** Measured on 2026-09-20 with
+   `ops/deploy-probe.sh`, two loops at five requests a second against the
+   dashboard and one against the api, ~23,000 responses in all. Three
+   switchovers, three identical results:
+
+   | deploy | container started | failure | delay |
+   |---|---|---|---|
+   | `web` → `e6dd4fa` | 18:05:04.0Z | 18:05:15Z, both loops | +11 s |
+   | `web` → `4bcc94b` | 18:22:22.6Z | 18:22:34Z, both loops | +12 s |
+   | `api` → `4bcc94b` | 18:23:02.2Z | 18:23:28Z | +26 s |
+
+   Every failure is a 5-second **hang**, never a 502, and every one lands
+   ten to thirty seconds after the new container starts — which is when
+   Coolify removes the old one, not when the new one appears. The health
+   check is doing its job: the new container was healthy first in all
+   three. What is missing is a drain: Traefik keeps the outgoing
+   container in its pool for a moment, and a request that picks it in
+   that instant waits for the client's timeout.
+
+   So "rolling" here means no outage, not no dropped request, and it is
+   reproducible rather than bad luck. On `web` it is a page that takes
+   five seconds; on `api` it is a CLI command or a dashboard poll that
+   fails, which is the one worth deciding about. One unexplained extra
+   timeout appeared on a single loop at 18:20:39Z with no deploy near
+   it, so treat one isolated 000 as noise and a simultaneous pair as a
+   switchover.
+
 
 ## The instance's .env is half the backup
 
