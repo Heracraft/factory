@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata" // PATCH /me validates tz without depending on the host's zoneinfo
+
+	"github.com/heracraft/repose/internal/ca/sshca"
 )
 
 var (
@@ -687,13 +689,42 @@ func (f *Fake) issueCert(w http.ResponseWriter, r *http.Request) *apiError {
 	f.serial++
 	c := &cert{serial: f.serial, owner: u.ID, projectIDs: body.ProjectIDs, expiresAt: f.now().Add(12 * time.Hour)}
 	f.certs[c.serial] = c
+	line := fmt.Sprintf("ssh-ed25519-cert-v01@openssh.com AAAA...fake serial %d", c.serial)
+	if f.opts.CA != nil {
+		pub, err := sshca.ParsePublicKey(body.PublicKey)
+		if err != nil {
+			return invalid("public_key: %v", err)
+		}
+		signed, err := f.opts.CA.User.SignUser(sshca.UserCert{PublicKey: pub, KeyID: u.ID + ":" + u.Handle, Principals: body.ProjectIDs,
+			Serial: c.serial, ValidAfter: f.now().Add(-time.Minute), ValidBefore: c.expiresAt})
+		if err != nil {
+			return errf("internal", "signing: %v", err)
+		}
+		line = sshca.Marshal(signed)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"certificate": fmt.Sprintf("ssh-ed25519-cert-v01@openssh.com AAAA...fake serial %d", c.serial),
+		"certificate": line,
 		"serial":      c.serial,
 		"expires_at":  c.expiresAt,
-		"gateway":     map[string]any{"host": gatewayHost, "port": 22, "host_ca_pub": hostCAPub},
+		"gateway":     map[string]any{"host": gatewayHost, "port": 22, "host_ca_pub": f.hostCAPub()},
 	})
 	return nil
+}
+
+// hostCAPub and userCAPub are the CA lines: the test CA's when one is
+// configured, placeholders otherwise.
+func (f *Fake) hostCAPub() string {
+	if f.opts.CA != nil {
+		return f.opts.CA.Host.PublicLine()
+	}
+	return hostCAPub
+}
+
+func (f *Fake) userCAPub() string {
+	if f.opts.CA != nil {
+		return f.opts.CA.User.PublicLine()
+	}
+	return userCAPub
 }
 
 func (f *Fake) revokeCerts(w http.ResponseWriter, r *http.Request) *apiError {
@@ -1035,7 +1066,7 @@ func (f *Fake) internalRevoked(w http.ResponseWriter, r *http.Request) *apiError
 }
 
 func (f *Fake) internalCA(w http.ResponseWriter, r *http.Request) *apiError {
-	writeJSON(w, http.StatusOK, map[string]string{"user_ca_pub": userCAPub, "host_ca_pub": hostCAPub})
+	writeJSON(w, http.StatusOK, map[string]string{"user_ca_pub": f.userCAPub(), "host_ca_pub": f.hostCAPub()})
 	return nil
 }
 
@@ -1055,6 +1086,7 @@ func (f *Fake) internalSessions(w http.ResponseWriter, r *http.Request) *apiErro
 	if !ok || p.destroyed {
 		return notFound("project")
 	}
+	f.sessions = append(f.sessions, SessionReport{ProjectID: body.ProjectID, Event: body.Event, CertSerial: body.CertSerial})
 	if p.Signals == nil {
 		p.Signals = &Signals{Agents: []AgentSignal{}}
 	}
@@ -1068,6 +1100,10 @@ func (f *Fake) internalSessions(w http.ResponseWriter, r *http.Request) *apiErro
 }
 
 func (f *Fake) internalHosts(w http.ResponseWriter, r *http.Request) *apiError {
+	if f.hosts != nil {
+		writeJSON(w, http.StatusOK, f.hosts)
+		return nil
+	}
 	writeJSON(w, http.StatusOK, []Host{{
 		HostID: hostID, WGPubkey: "fakewgpubkey0000000000000000000000000000000=", WGIP: "10.64.0.1",
 		GuestCIDR: "10.64.4.0/22", State: "ready",
@@ -1091,9 +1127,23 @@ func (f *Fake) internalGatewayCerts(w http.ResponseWriter, r *http.Request) *api
 		return notFound("project")
 	}
 	f.serial++
-	writeJSON(w, http.StatusOK, map[string]string{
-		"certificate": fmt.Sprintf("ssh-ed25519-cert-v01@openssh.com AAAA...fake serial %d principal %s key_id %s:via-gateway", f.serial, p.ID, p.ID),
-	})
+	line := fmt.Sprintf("ssh-ed25519-cert-v01@openssh.com AAAA...fake serial %d principal %s key_id %s:via-gateway", f.serial, p.ID, p.ID)
+	expires := f.now().Add(sshca.GatewayCertTTL)
+	if f.opts.CA != nil {
+		pub, err := sshca.ParsePublicKey(body.PublicKey)
+		if err != nil {
+			return invalid("public_key: %v", err)
+		}
+		u := f.users[p.owner]
+		signed, err := f.opts.CA.User.SignUser(sshca.UserCert{PublicKey: pub, KeyID: u.ID + ":" + u.Handle + ":via-gateway", Principals: []string{p.ID},
+			Serial: f.serial, ValidAfter: f.now().Add(-time.Minute), ValidBefore: expires})
+		if err != nil {
+			return errf("internal", "signing: %v", err)
+		}
+		line = sshca.Marshal(signed)
+	}
+	f.gatewayCerts++
+	writeJSON(w, http.StatusOK, map[string]any{"certificate": line, "expires_at": expires})
 	return nil
 }
 
