@@ -30,7 +30,10 @@ in
     path = [ pkgs.systemd ];
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = "${hostd}/bin/hostd register --state ${stateDir} --token ${token} ${apiFlags}";
+      # Flags before the command (hostd parses "[flags] [command]"), and the
+      # token flag is --join-token: with --token the unit exited 2 on host-01's
+      # first boot while hostd's own startup registration succeeded.
+      ExecStart = "${hostd}/bin/hostd --state ${stateDir} --join-token ${token} ${apiFlags} register";
       # The bridge, wg0 and sshd read host.json; apply it now.
       ExecStartPost = "${pkgs.systemd}/bin/systemctl --no-block restart repose-host-net.service";
       Restart = "on-failure";
