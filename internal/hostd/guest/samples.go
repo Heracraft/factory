@@ -2,16 +2,18 @@ package guest
 
 import (
 	"context"
-	"log/slog"
 	"strconv"
 	"time"
 
 	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
 	"github.com/heracraft/repose/internal/hostd/virtiofs"
+	"github.com/heracraft/repose/internal/obs"
 )
 
-// levelNotice sits between Info and Warn, for audit lines.
-const levelNotice = slog.Level(2)
+// levelNotice sits between Info and Warn, for audit lines. obs owns the
+// level and the name the JSON carries (NOTICE); this is the local spelling so
+// the call sites read the same as before.
+const levelNotice = obs.LevelNotice
 
 type sampleCursor struct {
 	cpu, rx, tx, egress uint64
