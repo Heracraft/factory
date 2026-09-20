@@ -2238,3 +2238,19 @@ them (scope, in a session whose job is to close what exists); deleting
 the promises without trace (the reasoning behind per-channel delivery
 status — a support call the platform cannot otherwise answer — is worth
 keeping).
+
+**I-98. CLI releases are GitHub releases of the `Heracraft/factory`
+repository, cut from `v*` tags; the dashboard serves `install.sh`.**
+(conductor, 2026-09-20) The M2 gate's first step was to install the CLI,
+and `install.sh` pointed at `heracraft/repose`, a repository that does not
+exist, with no release to point at and no route serving the script at the
+URL the landing page prints. Three fixes: `install.sh` names the repository
+as it is (the rename to `repose` stays the owner's step; GitHub redirects
+the old name afterwards, so the script keeps working through it);
+`.github/workflows/release.yml` runs GoReleaser on a tag push and publishes
+the four archives plus `checksums.txt`; the dashboard's build copies
+`install.sh` into its static assets, so `curl -fsSL
+https://repose.herakraft.co/install.sh | sh` is what the page says it is.
+`v0.1.0` is the first tag. *Rejected:* waiting for the rename (the gate is
+today); serving the script from the api (the page prints the dashboard's
+host, and a static file needs no code).
