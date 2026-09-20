@@ -19,10 +19,12 @@ import (
 	"time"
 )
 
-// clientID is the CLI's public OAuth client id, registered with Logto as
-// a native/CLI application (no secret: PKCE and device code are both
-// secret-free flows).
-const clientID = "repose-cli"
+// The CLI's public OAuth client id is Logto's App ID for the `repose-cli`
+// Native application (defaultLogtoClientID in config.go, overridable as
+// logto_client_id); no secret, since PKCE and device code are both
+// secret-free flows. It is passed to every flow below rather than read
+// from a constant, so a credentials file records the id its refresh token
+// belongs to.
 
 const loginScope = "openid offline_access profile email"
 
@@ -134,7 +136,7 @@ func postForm(ctx context.Context, httpClient *http.Client, endpoint string, for
 // loginPKCE runs the authorization-code-with-PKCE loopback flow
 // (07-cli.md §5.2 step 2). It blocks until the callback arrives or ctx is
 // done.
-func loginPKCE(ctx context.Context, httpClient *http.Client, doc *discoveryDoc, open func(string) error) (*tokenResponse, error) {
+func loginPKCE(ctx context.Context, httpClient *http.Client, doc *discoveryDoc, clientID string, open func(string) error) (*tokenResponse, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, err
@@ -224,7 +226,7 @@ type deviceAuthResponse struct {
 
 // loginDeviceCode runs RFC 8628 device authorization (07-cli.md §5.2 step
 // 3). print is called once with the user-facing instructions.
-func loginDeviceCode(ctx context.Context, httpClient *http.Client, doc *discoveryDoc, print func(string)) (*tokenResponse, error) {
+func loginDeviceCode(ctx context.Context, httpClient *http.Client, doc *discoveryDoc, clientID string, print func(string)) (*tokenResponse, error) {
 	form := url.Values{"client_id": {clientID}, "scope": {loginScope}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, doc.DeviceAuthorizationEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -276,7 +278,7 @@ func loginDeviceCode(ctx context.Context, httpClient *http.Client, doc *discover
 	}
 }
 
-func refreshToken(ctx context.Context, httpClient *http.Client, doc *discoveryDoc, refresh string) (*tokenResponse, error) {
+func refreshToken(ctx context.Context, httpClient *http.Client, doc *discoveryDoc, clientID, refresh string) (*tokenResponse, error) {
 	form := url.Values{
 		"grant_type":    {"refresh_token"},
 		"client_id":     {clientID},
@@ -316,7 +318,7 @@ func (s *oidcTokenSource) AccessToken(ctx context.Context, forceRefresh bool) (s
 		}
 		s.doc = doc
 	}
-	tr, err := refreshToken(ctx, s.httpClient, s.doc, s.creds.RefreshToken)
+	tr, err := refreshToken(ctx, s.httpClient, s.doc, s.creds.clientIDOrDefault(), s.creds.RefreshToken)
 	if err != nil {
 		return "", fmt.Errorf("refreshing session: %w", err)
 	}

@@ -1,0 +1,7 @@
+# Lint for ops/checks/*.sh, so `shellcheck -x ops/checks/*.sh` gives one
+# answer with or without flags. SC2016 and SC2029: the scripts build shell
+# text on purpose for `sh -s` on a guest, a host or the control VM, and for
+# `ssh` command strings, so single-quoted `$` and client-side expansion are
+# the intent. SC1091: lib.sh's optional m3.env is git-ignored.
+source-path=SCRIPTDIR
+disable=SC1091,SC2016,SC2029

@@ -4,9 +4,9 @@ All under `~/.config/repose/` (respecting `$XDG_CONFIG_HOME`), mode 0700.
 
 | File | Contents |
 |---|---|
-| `credentials.json` | `{refresh_token, access_token, expires_at, logto_issuer}`; on macOS the refresh token goes to the keychain (`repose` service) and this file holds only the issuer. Mode 0600. |
+| `credentials.json` | `{refresh_token, access_token, expires_at, logto_issuer, logto_client_id}` (`logto_client_id` since v0.1.1; absent means the built-in id); on macOS the refresh token goes to the keychain (`repose` service) and this file holds only the issuer. Mode 0600. |
 | `projects.json` | cache: `{"<normalised remote>": {"project_id", "slug", "name"}, ...}` plus `{"by_dir": {"<abs path>": "project_id"}}` for `--name` projects. Regenerable from `GET /projects`. |
-| `config.toml` | `api_url` (default prod), `gateway`, `default_class`, `default_agent`, `sync.exclude` (extra gitignore-style patterns). |
+| `config.toml` | `api_url` (default prod), `gateway`, `default_class`, `default_agent`, `sync.exclude` (extra gitignore-style patterns), `logto_issuer` (default the owner's Logto), `logto_client_id` (default the App ID of the `repose-cli` application there; DECISIONS I-99). |
 
 `~/.ssh/repose/` holds `id_ed25519-cert.pub` (the current certificate),
 `known_hosts`, and `config` (see ssh-gateway.md).

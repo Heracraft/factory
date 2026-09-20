@@ -1,0 +1,27 @@
+# Cuts a CLI release from a tag: `git tag v0.1.0 && git push origin v0.1.0`.
+# GoReleaser builds the four targets in .goreleaser.yaml, uploads the
+# archives and checksums.txt to a GitHub release, and install.sh (served at
+# https://repose.herakraft.co/install.sh) resolves "latest" to that tag.
+# The matrix build itself is exercised on every push by ci.yml's
+# cli-goreleaser job (--snapshot); this workflow only publishes.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -771,6 +771,15 @@ The api, api-grpc or web app's rolling deploy did not go green.
    required" means the variable was cleared; the certificate is issued
    from the CA for those names at start, and `repose-admin ca init` must
    have run once (a fresh database has no CA yet).
+5. A user reporting "it hung for five seconds while you deployed", or a
+   single 502 at the same moment, is not a failed deploy. Every
+   switchover loses one or two requests per client, at a delay that is
+   the same every time for a given app (`web` +11 s, `api` +26 s, which
+   is each image's health-check start period) — measured seven times out
+   of seven (`docs/ops/coolify.md` fact 13). `ops/deploy-probe.sh` against
+   the domain during a deploy is how to tell that from a real outage: a
+   failure or two and then 200s is the known drain gap, a run of them is
+   not.
 
 ## PostgresBackupStale
 
@@ -854,6 +863,10 @@ into a Coolify without that key is a database of ciphertext. Start from both.
    download the newest dump from R2 (`rclone ls r2:repose-pg-backups`),
    `pg_restore` into it. `rclone` and `pg_restore` are installed on the
    control-plane VM by cloud-init, and the apply fails if they are missing.
+   For the rehearsal — and for finding out how long a restore takes before
+   you need to know — `ops/restore-rehearsal.sh` does all of that into a
+   throwaway container of its own and prints the timings
+   (`docs/ops/coolify.md`, "Restore rehearsal").
 2. Point a staging api at it, run `repose-admin db verify` (row counts
    per table against the last rollup), time the whole thing, record it in
    `../CHECKLIST.md`'s release item.

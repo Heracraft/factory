@@ -11,6 +11,11 @@ import (
 
 const defaultAPIURL = "https://api.repose.herakraft.co/v1"
 const defaultLogtoIssuer = "https://accounts.herakraft.co" // the owner's Logto (DECISIONS I-84); /oidc is appended
+// defaultLogtoClientID is the App ID Logto assigned to the `repose-cli`
+// Native application. Logto identifies applications by this opaque id, not
+// by name; "repose-cli" as client_id answered oidc.invalid_client at the
+// M2 gate (DECISIONS I-99). Public, like the dashboard's PUBLIC_LOGTO_APP_ID.
+const defaultLogtoClientID = "jccig5bb3i4d78bq4farv"
 const apiResource = "https://api.repose.herakraft.co"
 
 // Config is config.toml (docs/interfaces/cli-config.md).
@@ -21,14 +26,18 @@ type Config struct {
 	DefaultAgent string   `toml:"default_agent"`
 	SyncExclude  []string `toml:"sync.exclude"`
 	LogtoIssuer  string   `toml:"logto_issuer"`
+	// LogtoClientID overrides the built-in App ID for a different Logto
+	// (staging, a fork). Public.
+	LogtoClientID string `toml:"logto_client_id"`
 }
 
 func defaultConfig() Config {
 	return Config{
-		APIURL:       defaultAPIURL,
-		DefaultClass: "large",
-		DefaultAgent: "claude",
-		LogtoIssuer:  defaultLogtoIssuer,
+		APIURL:        defaultAPIURL,
+		DefaultClass:  "large",
+		DefaultAgent:  "claude",
+		LogtoIssuer:   defaultLogtoIssuer,
+		LogtoClientID: defaultLogtoClientID,
 	}
 }
 
@@ -52,6 +61,9 @@ func loadConfig(dir string) (Config, error) {
 	if cfg.LogtoIssuer == "" {
 		cfg.LogtoIssuer = defaultLogtoIssuer
 	}
+	if cfg.LogtoClientID == "" {
+		cfg.LogtoClientID = defaultLogtoClientID
+	}
 	return cfg, nil
 }
 
@@ -64,6 +76,19 @@ type Credentials struct {
 	AccessToken  string    `json:"access_token,omitempty"`
 	ExpiresAt    time.Time `json:"expires_at,omitempty"`
 	LogtoIssuer  string    `json:"logto_issuer"`
+	// LogtoClientID is the client_id the refresh token was issued to, so a
+	// refresh needs no config. Empty in files written before v0.1.1: the
+	// token source falls back to the built-in id.
+	LogtoClientID string `json:"logto_client_id,omitempty"`
+}
+
+// clientIDOrDefault returns the credentials' client id, or the built-in one
+// for credentials written before the field existed.
+func (c Credentials) clientIDOrDefault() string {
+	if c.LogtoClientID != "" {
+		return c.LogtoClientID
+	}
+	return defaultLogtoClientID
 }
 
 func credentialsPath(dir string) string { return filepath.Join(dir, "credentials.json") }

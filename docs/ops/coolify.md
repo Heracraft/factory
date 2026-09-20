@@ -225,20 +225,57 @@ the live instance, not taken from the docs. Each one changed a file here.
    in, because an api that exits on a missing CA never goes healthy and
    Coolify removes it. The api now does both itself at start (I-90).
 
-13. **A rolling deploy still drops a request or two at the switchover.**
-   Measured on `web`, 2026-09-20: two loops at five requests a second
-   against `https://repose.herakraft.co/` and `/healthz` saw ~10,400
-   responses and exactly one failure each, both at 18:05:15Z, eleven
-   seconds after the new container started (created 18:05:02.851Z,
-   started 18:05:04.014Z, image `e6dd4fa`). The failures were 5-second
-   *hangs*, not 502s, which points at Traefik keeping the outgoing
-   container in its pool for a moment after Coolify removes it rather
-   than at the health check — the new container was healthy before the
-   old one went. So "rolling" here means "no outage", not "no dropped
-   request": a user reloading at that instant waits five seconds. It is
-   worth knowing before it is measured on `api`, where the same gap is a
-   CLI command failing rather than a page taking a moment.
-   `ops/deploy-probe.sh` is the loop that measures it.
+13. **Every rolling deploy loses a request or two per client at the
+   switchover, and how long after depends on the app.** Measured on
+   2026-09-20 with `ops/deploy-probe.sh`: three loops at five requests a
+   second, two against the dashboard and one against the api, **29,841
+   responses, 14 failures, 7 switchovers**.
+
+   | deploy | new container started | failures | after |
+   |---|---|---|---|
+   | `web` → `e6dd4fa` | 18:05:04.0Z | 18:05:15Z, both loops | +11 s |
+   | `web` → `4bcc94b` | 18:22:22.6Z | 18:22:34Z, both loops | +12 s |
+   | `api` → `4bcc94b` | 18:23:02.2Z | 18:23:28Z | +26 s |
+   | `web` → `cde2b05` | 18:25:24.2Z | 18:25:35Z, both loops | +11 s |
+   | `web` → `cc916eb` | 18:28:24.1Z | 18:28:30Z **502**, 18:28:35Z both | +6 s, +11 s |
+   | `api` → `faeaefc` | 18:30:20.3Z | 18:30:46Z | +26 s |
+   | `web` → `faeaefc` | 18:30:28.9Z | 18:30:40Z, both loops | +11 s |
+
+   Seven for seven, and the delay is the same each time *per
+   application*: `web` at +11 or +12 seconds, `api` at +26, both times.
+   That tracks each image's `HEALTHCHECK` start period — `web` 5 s,
+   `api` 20 s — which is what Coolify waits on before it removes the old
+   container, and the failure lands at the removal, not at the start. So
+   this is not the health check failing; it is the absence of a drain
+   after it passes. Traefik keeps the outgoing container in its pool for
+   a moment: a request that picks it then either waits out the client's
+   timeout (almost all of them, at 5 s) or gets a clean 502 once the
+   container is actually gone (once, at +6 s).
+
+   "Rolling" therefore means no outage, not no dropped request. On `web`
+   that is a page that takes five seconds; on `api` it is a CLI command
+   or a dashboard poll that fails, which is the one worth deciding
+   about. The lever, if it is worth pulling, is the Coolify proxy's
+   graceful-shutdown/drain setting, not anything in these images.
+
+   Reading a probe afterwards: a failure within thirty seconds of a
+   container start is this, and one on its own with no deploy near it is
+   not — a single unexplained 000 appeared at 18:20:39Z on one loop, and
+   folding it into the pattern would have made the pattern wrong.
+
+14. **A port mapping and a rolling deploy are mutually exclusive.** A
+   published host port means the old and the new container cannot both be
+   up, so Coolify falls back to stop-then-start — which is exactly why
+   `api-grpc` is a separate application from `api` (I-2), not a
+   convenience. So the HTTP `api` publishes **nothing**: an earlier
+   version of `ops/coolify/README.md` told an operator to add
+   `9103:9103` to it for metrics, and following that would have quietly
+   cost the api its rolling deploys, which is the one property the split
+   exists to protect. `api-grpc` carries `8443`, `8444` and `9104:9103`
+   because it is the app that accepts the restart. Where the api's own
+   metrics go instead is an open choice, written up with both options
+   and a ready-to-paste label block in `ops/coolify/README.md`, "The
+   api's metrics".
 
 ## The instance's .env is half the backup
 
@@ -260,8 +297,30 @@ the control VM by cloud-init so that it can be followed without stopping to
 install anything, and the readiness provisioner fails the apply if either is
 missing.
 
-Rehearse onto a scratch server added to the same Coolify (staging's control
-VM, `coolify_count = 1` in `staging.tfvars`), never onto production.
+`ops/restore-rehearsal.sh` is that procedure as one command with a clock
+on it:
+
+```bash
+scp ops/restore-rehearsal.sh root@<control ip>:/root/
+ssh root@<control ip> /root/restore-rehearsal.sh
+```
+
+It finds the newest object in the bucket, restores it into a throwaway
+`postgres:16-alpine` container of its own — never into `repose-postgres`,
+and with no published port — runs `repose-admin db verify` from the api
+image against it, prints fetch, restore and verify times, and removes the
+container on the way out (and on Ctrl-C). It reads both shapes of dump,
+gzipped plain SQL and custom format, by looking at the bytes rather than
+at the name, because which one Coolify writes depends on how the backup
+was set up. Run it after any schema change that moves a lot of rows: the
+number it prints is what an incident will cost, and a number from before
+the data grew is not that number.
+
+Rehearsing onto a scratch *server* added to the same Coolify (staging's
+control VM, `coolify_count = 1` in `staging.tfvars`) is still the fuller
+exercise, because it also proves the Coolify half; the script is the part
+that has to work under pressure, and it can be run on the control VM
+itself without risk.
 
 ## Upgrading Coolify
 

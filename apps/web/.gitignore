@@ -13,3 +13,5 @@ playwright-report
 
 # live suite: a real signed-in browser session (a Logto refresh token)
 /tests-live/.auth
+# copied from the repository root at build time; served as /install.sh
+static/install.sh

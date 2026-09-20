@@ -409,69 +409,161 @@ exercised in CI against a seeded database.
 
 ## 9. Checklist
 
-- [ ] Every route in `interfaces/api.md` is registered with the documented
-      method, path, body and response shape. Evidence: the contract test
-      output listing each route.
-- [ ] A Logto-issued token for a new GitHub user creates a user row with
+Ticked 2026-09-20 by the M3 integration session from the evidence in
+`STATUS.md` (05 done-local line, 2026-09-20) and the test names in the
+tree; `[~]` is a row whose local half is closed and whose real-path half
+waits on host-01 (`ops/checks/README.md` names the script that closes it).
+
+- [x] Every route in `interfaces/api.md` is registered with the documented
+      method, path, body and response shape. Evidence:
+      `internal/api/http/http_test.go` `TestRouteContract` (the route table
+      parsed from `api.md` by `internal/api/apidoc`, 41 routes, none
+      missing or extra) and `internal/api/apidoc/apidoc_test.go`
+      `TestLoadFindsEveryTable`.
+- [~] A Logto-issued token for a new GitHub user creates a user row with
       the derived handle, trial credit 1000, limits 3 and 1. Evidence:
-      integration test and a real first sign-in on staging with the row
-      pasted.
-- [ ] Handle collision produces `-2`. Evidence: test.
-- [ ] `POST /projects` enforces project and XL limits and
-      `payment_required`. Evidence: tests for each.
-- [ ] Scheduler never places on a draining, unreachable or full host, and
+      `internal/api/auth/auth_test.go`
+      `TestFirstSignInCreatesUserAndCollisionsSuffix` and
+      `internal/api/http/http_test.go` `TestSignInAndProjectsLifecycle`
+      (the row read back: `trial_credit_cents`, `project_limit`,
+      `xl_limit`, `billing_status`). Real first sign-in: the M2 owner-run
+      gate (2026-09-20, in progress on host-01) is the first real token;
+      the row is pasted by that session.
+- [x] Handle collision produces `-2`. Evidence: `TestDeriveHandle` and
+      `TestFirstSignInCreatesUserAndCollisionsSuffix` (`internal/api/auth`).
+- [x] `POST /projects` enforces project and XL limits and
+      `payment_required`. Evidence: `TestSignInAndProjectsLifecycle`
+      (limits from `GET /me` and the refusals) and
+      `internal/api/http/billing_test.go` `TestBillingGateBlocksCompute`,
+      `TestBillingEnforceFalseLetsStartsThrough` (`payment_required
+      {reason: card_required}`, I-42).
+- [x] Scheduler never places on a draining, unreachable or full host, and
       reserves memory transactionally under concurrent creates (100
       parallel creates on a host with room for 30 yield exactly 30 running
-      and 70 `capacity`). Evidence: test output.
-- [ ] Ops survive an api restart and a host stream drop: kill the api
-      mid-build, restart, the build completes. Evidence: test with the
-      fake hostd.
-- [ ] SSE build log delivers every line in order and supports `since`.
-      Evidence: test with 10k lines.
-- [ ] Certificates: a cert for project A is refused by the gateway route
+      and 70 `capacity`). Evidence: `internal/api/scheduler/scheduler_test.go`
+      `TestPickTable` (draining, unreachable, stale heartbeat, memory and
+      pool) and `TestConcurrentPlacementsReserveExactly` (100 creates, 30
+      placed, 70 `capacity`).
+- [x] Ops survive an api restart and a host stream drop: kill the api
+      mid-build, restart, the build completes. Evidence:
+      `internal/api/ops/ops_test.go` `TestOpSurvivesApiRestart` and
+      `TestOpSurvivesStreamDrop` against `internal/fakes/hostd` (the
+      command is re-sent with the same `command_id` on the next `Hello`).
+      On the real path: `ops/checks/resilience.sh grpc|http`.
+- [x] SSE build log delivers every line in order and supports `since`.
+      Evidence: `internal/api/http/http_test.go`
+      `TestSSEDeliversEveryLineInOrderWithSince` (10k lines through the
+      store, `?since=` and `Last-Event-ID` resume) and
+      `TestSSELiveStreamAndConcurrentLoad`.
+- [x] Certificates: a cert for project A is refused by the gateway route
       check for project B; revocation appears in `/internal/revoked` within
-      one call. Evidence: tests.
-- [ ] Guest host keys and certificates are generated per guest and passed
+      one call. Evidence: `internal/api/ca/ca_test.go`
+      `TestInitLoadAndUserCert` (principals are the project ids; the
+      revoked list before and after) and the gateway's principal check in
+      `internal/gateway` (06); on host-01, `ops/checks/isolation-host01.sh`
+      runs `TestCertificateForACannotOpenBAtGateway` and
+      `TestRevokedCertificateRejected`.
+- [x] Guest host keys and certificates are generated per guest and passed
       in `CreateGuest`; `interfaces/grpc-hostd.md` updated (I-3). Evidence:
-      the diff and the fake hostd asserting the fields.
-- [ ] Secrets: value round-trips; ciphertext for name A fails to decrypt
+      `interfaces/grpc-hostd.md` `CreateGuest` row (`host_key`,
+      `host_cert`); `internal/api/ca/ca_test.go`
+      `TestGatewayAndGuestHostCerts`; `TestLifecycle` (`internal/api/ops`)
+      with the fake hostd asserting the fields; host-01 booted with them at
+      M2 (STATUS m2-integration).
+- [~] Secrets: value round-trips; ciphertext for name A fails to decrypt
       under name B; DEK rewrap after a Key Vault key version bump works
-      without touching ciphertext. Evidence: tests with the fake KV and one
-      run against the real Key Vault on staging.
-- [ ] No route ever returns a secret value; `rg` for the decrypt function
-      shows callers only in the hostd command builders. Evidence: grep
-      output.
-- [ ] Config: fragment with a parse error is rejected at `PUT` with the
+      without touching ciphertext. Evidence: `internal/api/secrets/secrets_test.go`
+      `TestRoundTripAndAAD`, `TestRewrapAfterKeyVersionBump`,
+      `TestDEKCacheLimitsKeyVaultCalls`, `TestKeyVaultDownFailsClosed`.
+      Real Key Vault: the CA init at first start in production wrapped and
+      unwrapped a real DEK (DECISIONS I-91, 2026-09-20); `repose-admin
+      secrets rewrap` against the real key is not yet run.
+- [x] No route ever returns a secret value; `rg` for the decrypt function
+      shows callers only in the hostd command builders. Evidence
+      (2026-09-20): `rg -n 'DecryptForGuest\(' internal/api cmd` finds the
+      definition, `internal/api/ops/phases.go:156,213` (the CreateGuest,
+      StartGuest, Restore and UpdateSecrets builders), `phases.go:383` (the
+      same values for build-log redaction and the secret-in-fragment
+      refusal, I-42) and `secrets.go:370` (the platform's own CA rows);
+      `GET /secrets` reads `secrets.Meta`, which has no value field. On the
+      real path: `ops/checks/secrets.sh`.
+- [~] Config: fragment with a parse error is rejected at `PUT` with the
       line; menu selection renders to a fragment that builds. Evidence:
-      tests plus one real build on the M1 host.
-- [ ] `reboot_required` blocks apply until confirmed. Evidence: test.
-- [ ] Base bump job builds every unheld project and skips held ones.
-      Evidence: test with 3 projects.
-- [ ] Snapshot expiry removes blobs on schedule and never one referenced
-      by a running restore. Evidence: test with the fake blob store.
-- [ ] Outbox delivers each event once per channel and retries failures.
-      Evidence: test with a failing sender.
-- [ ] Hourly rollup produces the documented figures for a synthetic day
+      `internal/api/config/parse_test.go` `TestParseCheck` and
+      `internal/api/http/http_test.go` `TestConfigRoutes` (the `invalid`
+      with `fragment_line`); `internal/menu` `TestEveryEntryRendersAndRoundTrips`
+      and `TestRealNixAllEntriesEvaluate`. The real build on host-01 is
+      `ops/checks/menu.sh`.
+- [x] `reboot_required` blocks apply until confirmed. Evidence:
+      `internal/api/ops/ops_test.go` `TestBuildFailureAndRebootRequired`.
+- [x] Base bump job builds every unheld project and skips held ones.
+      Evidence: `internal/api/basebump/basebump_test.go`
+      `TestSweepBuildsUnheldSkipsHeld` and `internal/basebump`
+      `TestThreeProjects`. On the real path: `ops/checks/resilience.sh bump`.
+- [x] Snapshot expiry removes blobs on schedule and never one referenced
+      by a running restore. Evidence: `internal/api/snapshots/expiry_test.go`
+      `TestExpiryRules` with the fake blob store (`restoring_op_id` guard).
+      On the real path: `ops/checks/resilience.sh expiry`.
+- [x] Outbox delivers each event once per channel and retries failures.
+      Evidence: `internal/api/notify/notify_test.go`
+      `TestOutboxDeliversOncePerChannelAndRetries`,
+      `TestPermanentFailureIsNotRetried`.
+- [~] Hourly rollup produces the documented figures for a synthetic day
       (one large guest 10 h running, 40 GB, 3 GB egress) and pushes to
-      Stripe test mode. Evidence: `usage_hours` rows and the Stripe
-      dashboard screenshot.
-- [ ] `/internal/*` rejects requests without the gateway client cert.
-      Evidence: `curl` outputs.
-- [ ] Rate limits return `rate_limited` with `Retry-After`. Evidence: test.
-- [ ] `repose-admin` subcommands all exist and `hosts add` produces a
-      token that registers a host exactly once. Evidence: staging run.
-- [ ] `/healthz` fails when Postgres is down or migrations are pending;
-      Coolify stops routing. Evidence: staging test with the DB paused.
+      Stripe test mode. Evidence: `internal/api/meter/meter_test.go`
+      `TestIngestAndSyntheticDayRollup` (153 cents for the synthetic day,
+      STATUS 05). The Stripe test-mode push and screenshot are M4 (09, I-16).
+- [~] `/internal/*` rejects requests without the gateway client cert.
+      Evidence: `internal/api/app/app_test.go`
+      `TestProcessDevModeAndInternalMTLS`. On the live control plane the
+      edge reaches `/internal` at `10.255.255.1:8444` only with the
+      gateway certificate signed by `repose-admin ca sign-client`
+      (DECISIONS I-92, M2 session); the `curl` outputs without a
+      certificate are pasted by the M2 session.
+- [x] Rate limits return `rate_limited` with `Retry-After`. Evidence:
+      `internal/api/http/http_test.go` `TestRateLimits` and
+      `internal/api/ratelimit/ratelimit_test.go` `TestBucket`.
+- [~] `repose-admin` subcommands all exist and `hosts add` produces a
+      token that registers a host exactly once. Evidence:
+      `internal/admin/admin_test.go` `TestAdminSurface` (every I-9
+      subcommand); host-01 registered with the real api on 2026-09-20
+      through a token from `hosts add` and is `ready` (`repose-admin hosts
+      list`, M2 session, STATUS); the second-use refusal on the real host
+      is `nix/hosts/tests` host-services against `hostdev` (a second token
+      after `host.json` exists is not consumed).
+- [~] `/healthz` fails when Postgres is down or migrations are pending;
+      Coolify stops routing. Evidence: `internal/api/http/http_test.go`
+      `TestHealthz` (DB ping and migration state). The staging DB pause is
+      not done (no staging control plane exists).
 - [ ] Rolling deploy on Coolify serves requests throughout a deploy.
       Evidence: a `while curl` loop with no failures during a deploy.
+      Owner: the m3-web session (`ops/deploy-probe.sh`).
 - [ ] `api-grpc` restarts are absorbed by hostd reconnect with no lost
       commands. Evidence: deploy during a build, the build completes.
-- [ ] Logs contain none of the forbidden fields. Evidence: a test that
-      drives every route and greps the captured log for a planted secret
-      value, token and email.
-- [ ] `repose-admin db migrate --down 1` works in CI. Evidence: CI job.
-- [ ] No `TODO`, `FIXME`, `panic(` outside main, `_ = err` under `cmd/api`,
-      `cmd/repose-admin`, `internal/api`, `internal/db`. Evidence: grep.
-- [ ] `ops/RUNBOOK.md` has an entry per row in section 6.
-- [ ] `docs/DECISIONS.md` carries I-2 (separate gRPC app) and I-3 (guest
+      `ops/checks/resilience.sh grpc` on host-01.
+- [x] Logs contain none of the forbidden fields. Evidence:
+      `internal/obs/logger_test.go` `TestRedaction` (a planted value under
+      every never-log name the api and hostd use is absent from the
+      output; the handler redacts by name, DECISIONS I-52, I-60) and
+      `internal/obs/obslint` over `cmd` and `internal` in `go test`.
+- [x] `repose-admin db migrate --down 1` works in CI. Evidence:
+      `.github/workflows/ci.yml` step "repose-admin db migrate --down 1 on
+      a seeded database" (migrate, seed, down 1, up) and
+      `internal/db/db_test.go` `TestMigrateUpDownUp`.
+- [x] No `TODO`, `FIXME`, `panic(` outside main, `_ = err` under `cmd/api`,
+      `cmd/repose-admin`, `internal/api`, `internal/db`. Evidence
+      (2026-09-20): `just done-check "cmd/api cmd/repose-admin
+      internal/api internal/db"` finds two `panic(err)` in test fixtures
+      (`internal/api/http/billing_test.go:157`,
+      `internal/api/notify/notify_test.go:287`, each commented as a bug in
+      the test itself) and no leftovers.
+- [x] `ops/RUNBOOK.md` has an entry per row in section 6. Evidence: the
+      entries "api: login service unavailable", "api: could not create
+      your account", "api: no capacity right now", "api: op stuck waiting
+      for host", "api: build failed", "api: secret service unavailable",
+      "StripePushFail", "api: Postgres down", "api: duplicate results or
+      events", "api: snapshot deleted under a restore", "api: rollup or
+      expiry not running on one replica", "api: user reports \"account
+      suspended\"".
+- [x] `docs/DECISIONS.md` carries I-2 (separate gRPC app) and I-3 (guest
       host keys in CreateGuest). Evidence: the entries.
