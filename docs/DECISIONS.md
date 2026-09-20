@@ -1454,3 +1454,18 @@ command makes its own. *Rejected:* naming the snapshot after the
 resume from a snapshot taken before the guest wrote more, which is
 correct but the same as a fresh one, for extra state).
 
+**I-69. The `virtiofsd` user is in group `hostd`.** (m1 integration,
+2026-09-20) The first create on host-01 under the I-49 sandbox failed at
+step 8: virtiofsd logged "`<guest dir>/virtiofsd` does not exist or is not
+a directory" because the guest directory is `1770 root:hostd` and the
+virtiofsd user was in no group but its own, so it could not traverse it;
+and `--socket-group hostd` needs the same membership, since an
+unprivileged process can only chgrp into a group it belongs to. The user
+gains `extraGroups = [ "hostd" ]`. What that widens: virtiofsd can create
+files in a guest directory before it sandboxes itself (the sticky bit
+keeps it from removing hostd's, and `ch.args` is `0640 root`); it gains
+nothing under the store export, which is what the user exists to protect.
+*Rejected:* `1771` on the guest directory (does not fix the chgrp); a
+socket directory under `/run` outside the guest directory (a second
+layout for one file).
+

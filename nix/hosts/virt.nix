@@ -49,6 +49,12 @@ in
   users.users.virtiofsd = {
     isSystemUser = true;
     group = "virtiofsd";
+    # In group hostd for two reasons the first host found (DECISIONS I-69):
+    # the per-guest directory is 1770 root:hostd (I-49), which it must
+    # traverse to reach its own socket directory, and `--socket-group hostd`
+    # is a chgrp an unprivileged process may only do into a group it is in.
+    # Group membership gives it no write access under the store export.
+    extraGroups = [ "hostd" ];
     description = "virtiofsd store share (no write access anywhere under the store)";
   };
 
