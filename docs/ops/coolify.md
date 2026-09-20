@@ -60,10 +60,10 @@ of that is missing.
    Compose Empty, paste `ops/coolify/postgres/docker-compose.yml`, server
    the one just added (`DECISIONS.md` I-87). A Service rather than a git
    application because Coolify gives the postgres image inside a Service
-   its Backups tab. Turn "Connect to predefined network" on for it; the
-   applications then reach it as `repose-postgres-<service uuid>`, the
-   container name, which is the only name Coolify gives it on the shared
-   network (fact 11, I-88). `POSTGRES_PASSWORD`
+   its Backups tab. Leave "Connect to predefined network" off: the file
+   joins the shared `coolify` network itself, which registers the service
+   name `repose-postgres` there for the applications (fact 11, I-89).
+   `POSTGRES_PASSWORD`
    is a project-level shared variable so the api applications reference
    the same one. Then the backup destination, below.
 5. **Logto** is the owner's existing instance, `https://accounts.herakraft.co`
@@ -142,11 +142,13 @@ the live instance, not taken from the docs. Each one changed a file here.
 
 1. **`container_name` in a compose file is overwritten** with
    `<service>-<uuid>`, and `networks: aliases:` are dropped: the parser
-   rebuilds every service's networks as bare entries. Compose aliases the
-   service by its name, but only on the networks in the generated file,
-   which is the resource's own (fact 11). The service name still matters
-   because the container name is built from it: `repose-postgres`, not
-   `postgres`.
+   `<service>-<uuid>`. `networks: aliases:` are **not** dropped for a
+   service: the parser's "ignore aliases" applies to top-level network
+   definitions, and a service's own `networks:` map is passed through
+   (serviceParser, 4.3.23). Docker registers the service name on every
+   network the file joins, so `repose-postgres` (not `postgres`, which a
+   second such service on the shared network would round-robin with) is
+   the hostname.
 2. **Compose resources get their own network; applications sit on the
    server's `coolify` network.** A compose Service reaches the applications,
    and they reach it, only with **Connect to predefined network** on for
@@ -199,19 +201,19 @@ the live instance, not taken from the docs. Each one changed a file here.
    no notion of a management address distinct from a served one; turn it
    off under Settings -> Advanced, "DNS validation". The records stay as
    `infra/README.md` "DNS" lists them.
-11. **On the shared network a Service's only name is its container name.**
-   "Connect to predefined network" does not add `coolify` to the generated
-   compose (its `networks:` lists only the per-resource network,
+11. **"Connect to predefined network" registers only the container name.**
+   The toggle does not add `coolify` to the generated compose (its
+   `networks:` lists only the per-resource network,
    `/data/coolify/services/<uuid>/docker-compose.yml` on the VM); Coolify
-   runs `docker network connect coolify <container>` afterwards, and Docker
-   registers the container name there and nothing else. Verified
-   2026-09-20: from a busybox on `coolify`, `repose-postgres` is NXDOMAIN
-   and `repose-postgres-cs9drwz0wzweqxvhwsx11y4q:5432` is open. So the api
-   env files use `repose-postgres-<service uuid>`; the uuid is in the
-   resource's URL and is stable for the life of the resource (deleting and
-   re-adding the Service changes it, and every env file with it). A
-   service-name alias, which the earlier text here assumed, exists only on
-   the resource's own network, where no application is.
+   runs `docker network connect` afterwards, and Docker registers the
+   container name there and nothing else, so the first api deploy failed
+   with `repose-postgres` NXDOMAIN (2026-09-20). The fix is in the file:
+   the service lists `coolify` (declared `external: true`) under its own
+   `networks:`, and Docker then registers the service name and any
+   `aliases` there. Verified on the VM with a throwaway compose: aliases on
+   `coolify` came out as the container name, `repose-postgres` and the
+   explicit alias, and a busybox reached 5432 by name. The toggle stays
+   off for this Service.
 
 ## The instance's .env is half the backup
 

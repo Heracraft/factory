@@ -1947,3 +1947,20 @@ aliases in the compose file (stripped by the parser, and the shared network
 is not in the file anyway); a `docker network connect --alias` by hand
 (lost on the next redeploy); putting the applications on the resource's
 network (Coolify applications have no such setting).
+
+**I-89. The Postgres compose file joins the `coolify` network itself; the
+api reaches it as `repose-postgres`. Supersedes I-88.** (owner, conductor,
+2026-09-20) I-88 read the parser wrong: its "ignore aliases" is about
+top-level network definitions, and serviceParser passes a service's own
+`networks:` map through, only appending the per-resource network. With
+`networks: { coolify: { aliases: [repose-postgres] } }` on the service and
+`coolify` declared external, Docker registers the service name on the
+shared network at `compose up`. Verified on the control VM with a
+throwaway compose beside the live database: aliases on `coolify` were the
+container name, `repose-postgres` and the explicit alias; a busybox
+reached 5432 by name. The owner's preference, and the right one: the
+hostname is a name chosen in a file, not a uuid copied out of a URL into
+three env files. "Connect to predefined network" stays off for the
+Service; its after-the-fact `docker network connect` is what registered
+the container name alone. *Rejected:* the container-name host of I-88
+(changes when the Service is recreated, and lives in every env file).

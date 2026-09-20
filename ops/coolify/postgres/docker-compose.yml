@@ -16,17 +16,18 @@
 # four agree.
 
 services:
-  # The service name is the hostname the api applications use. Coolify
-  # overwrites `container_name` with <service>-<uuid> and drops any
-  # `networks: aliases:` when it rewrites this file
-  # (bootstrap/helpers/parsers.php). The service-name alias exists only on
-  # the resource's own network: with "Connect to predefined network" on
-  # (Configuration -> Advanced) Coolify attaches the container to the shared
-  # `coolify` network afterwards with `docker network connect`, which
-  # carries the container name and nothing else (verified on the VM,
-  # 2026-09-20). So the applications reach it as
-  # `repose-postgres-<service uuid>`, the uuid being the one in this
-  # resource's Coolify URL; docs/ops/coolify.md fact 11.
+  # The service name is the hostname the api applications use, and this
+  # file joins the shared `coolify` network itself so that name is
+  # registered there: Docker aliases a service by its name on every network
+  # the compose file puts it on, and Coolify's serviceParser passes a
+  # service's own `networks:` map through unchanged (it only appends its
+  # per-resource network). The "Connect to predefined network" toggle is
+  # the wrong tool for this: it connects the container after `compose up`,
+  # which registers the container name and nothing else, so the bare
+  # service name did not resolve and the first api deploy failed
+  # (docs/ops/coolify.md fact 11, DECISIONS I-89). Leave that toggle off.
+  # `container_name` would be overwritten with <service>-<uuid>; nothing
+  # relies on it.
   repose-postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -41,6 +42,16 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
+    networks:
+      coolify:
+        # Redundant with the service name, kept so the intent is in the file.
+        aliases:
+          - repose-postgres
+
+networks:
+  coolify:
+    name: coolify
+    external: true
 
 volumes:
   pgdata:
