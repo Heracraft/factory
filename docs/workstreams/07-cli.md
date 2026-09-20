@@ -425,9 +425,12 @@ removes all of them including the `Include` line.
       URI, so the PKCE loopback of `--browser` cannot match it), with the
       application's App ID as client id (I-99). Evidence: the owner's
       transcript of `repose login` at the M2 gate (2026-09-20); the first
-      two attempts failed with `oidc.invalid_client` (the application name
-      was sent as client id) and `oidc.invalid_redirect_uri` (PKCE against
-      a device-flow application), each fixed on main before the third.
+      three attempts failed with `oidc.invalid_client` (the application
+      name was sent as client id), `oidc.invalid_redirect_uri` (PKCE
+      against a device-flow application) and the api's `unauthenticated:
+      invalid token` (the device-code and refresh grants carried no
+      `resource`, so Logto minted an opaque token without the api audience,
+      I-102), each fixed on main before the next.
 - [ ] Tokens stored per `interfaces/cli-config.md`; on macOS the refresh
       token is in the keychain and absent from disk. Evidence: `cat
       credentials.json` on macOS shows no refresh token.
