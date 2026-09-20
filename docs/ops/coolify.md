@@ -66,7 +66,7 @@ of that is missing.
    `POSTGRES_PASSWORD`
    is a project-level shared variable so the api applications reference
    the same one. Its backups are set up on that tab and are the owner's
-   own concern (fact 15, `DECISIONS.md` I-104).
+   own concern (fact 15, `DECISIONS.md` I-112).
 5. **Logto** is the owner's existing instance, `https://accounts.herakraft.co`
    (`DECISIONS.md` I-84); nothing is deployed for it. In that Logto: the API
    resource `https://api.repose.herakraft.co`, two applications,
@@ -246,7 +246,7 @@ the live instance, not taken from the docs. Each one changed a file here.
    schedule and the destination live on the Postgres service's Backups
    tab, against storage the owner configures in their own Coolify. No
    bucket, no token, no on-VM check, no rehearsal script and no alert
-   exist on this side any more (`DECISIONS.md` I-104), and `infra/r2` is
+   exist on this side any more (`DECISIONS.md` I-112), and `infra/r2` is
    gone. If a backup question arises, the answer is in Coolify, not in
    this repository.
 
@@ -263,7 +263,7 @@ the live instance, not taken from the docs. Each one changed a file here.
 ## The instance's .env is half any backup
 
 Backups are Coolify's and the destination is the owner's (`DECISIONS.md`
-I-104), so this is a note for whoever owns them rather than a step here,
+I-112), so this is a note for whoever owns them rather than a step here,
 and it is the one that ruins a restore if it is learned late.
 
 Coolify encrypts the credentials it holds — every application's secrets,
@@ -289,7 +289,7 @@ specific to a Coolify version (`DESIGN.md` §Risks).
 - The values under each resource's Environment tab and the two Domains
   fields (`ops/coolify/README.md`).
 - Backups: the schedule and the destination on the Postgres service's
-  Backups tab, entirely in the owner's Coolify (`DECISIONS.md` I-104).
+  Backups tab, entirely in the owner's Coolify (`DECISIONS.md` I-112).
 - The api's Entra app registration and its client certificate, whose object id
   becomes `api_identity_object_id` and turns on the Key Vault wrap/unwrap
   policy (`DECISIONS.md` I-21).

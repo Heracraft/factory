@@ -60,7 +60,7 @@ a day.
 
 10. **Postgres backups.** Nothing here, and deliberately: Coolify runs
     them and the destination is configured in your own Coolify, on the
-    Postgres service's Backups tab (`DECISIONS.md` I-104). No bucket, no
+    Postgres service's Backups tab (`DECISIONS.md` I-112). No bucket, no
     token, no schedule and no check exist on the repose side. The one
     thing worth reading before you need it is `docs/ops/coolify.md`,
     "The instance's .env is half any backup".

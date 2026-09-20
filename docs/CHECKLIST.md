@@ -79,7 +79,7 @@ written so they cannot happen quietly.
       documented error and nothing else happens.
 - [ ] Postgres backup and restore are configured in the owner's Coolify
       (Backups tab); nothing here. Evidence: the schedule exists there
-      (DECISIONS I-104).
+      (DECISIONS I-112).
 - [ ] Snapshot restore of a guest onto a *different* host rehearsed.
 - [ ] Host loss rehearsed: deallocate a host, restore its projects elsewhere
       from Blob, users notified.

@@ -353,7 +353,7 @@ row says otherwise. Commands were run from the dev box, which is in
       for an R2 bucket, its token and lifecycle rule, a successful Coolify
       backup job and a rehearsed restore. Backups are Coolify's, against a
       destination in the owner's own Coolify, and nothing on this side
-      takes part (DECISIONS I-104): `infra/r2` is deleted, the on-VM
+      takes part (DECISIONS I-112): `infra/r2` is deleted, the on-VM
       check and the rehearsal script are gone, and there is nothing here
       left to verify.
 - [ ] Edge and Coolify DNS names resolve to their static IPs. **Not closed,
@@ -415,7 +415,7 @@ and its first two steps matter most: put the owner's Coolify address in
 Two things still wait on a human rather than on an apply:
 
 - **A Cloudflare API token**, for `manage_dns = true` and nothing else
-  now that `infra/r2` is gone (DECISIONS I-104). Until it exists, the four
+  now that `infra/r2` is gone (DECISIONS I-112). Until it exists, the four
   DNS records in `infra/README.md` should be created by hand, because the
   wildcard means the names resolve wrongly rather than not at all.
 - **The api's Entra app registration** and its client certificate. Pass the

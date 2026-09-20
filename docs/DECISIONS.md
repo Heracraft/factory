@@ -2414,6 +2414,16 @@ the configured certificate identity, and the gateway refuses plain keys by
 design. The generated host block now restricts ssh to the certificate
 identity it names; `ForwardAgent yes` stays, since the agent is still
 forwarded for the guest's own git.
+**I-104. The CLI sends an IANA zone name or no `tz` at all.** (conductor,
+owner, 2026-09-20) The owner's first `repose run` failed at create with `tz
+is not an IANA zone name`: Go names `time.Local` "Local" unless `TZ` is
+set, and the CLI's fallback sent the zone abbreviation ("EAT"), which the
+api rightly refuses. `localTZ` now resolves `TZ`, the Local name, the
+`/etc/localtime` symlink or `/etc/timezone`, validates each with
+`time.LoadLocation`, and omits `tz` when none is known so the api applies
+its default. *Rejected:* accepting abbreviations at the api (ambiguous:
+"CST" is three zones).
+
 **I-105. The provisioner reads the GitHub login from Logto's
 `rawData.userInfo.login`; the fake Logto emits that shape.** (m2 gate,
 2026-09-20) The conductor's device-code login, approved by the owner
@@ -2447,7 +2457,7 @@ policy a laptop's first clone applies and never overrides a pinned key.
 *Rejected:* `StrictHostKeyChecking no` (accepts a changed key too);
 seeding known_hosts from the laptop at sync (one more file the CLI copies,
 and the laptop may never have connected either).
-**I-104. Backups are entirely Coolify's, and Coolify redeploys on every
+**I-112. Backups are entirely Coolify's, and Coolify redeploys on every
 push to `main`.** (owner, 2026-09-20) Supersedes what is left of I-103,
 which had kept a foot in the door: an on-VM check, a restore rehearsal
 script, a runbook alert entry and `infra/r2` as an "optional" module. The

@@ -48,7 +48,7 @@ The full click path, with the reasons, is `coolify.md`. The short form:
    migrations and creates the CA at start, and a pre-deploy command
    would not run on the first deploy anyway (I-90). Backups are set up
    on the Postgres service's Backups tab and are the owner's own
-   (I-104).
+   (I-112).
 5. The applications deploy themselves: Coolify redeploys on every push
    to `main` (`coolify.md` fact 16). `repose-admin ca init` is not a
    step either — the api does it at first start (I-90) — and it remains

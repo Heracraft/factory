@@ -219,7 +219,7 @@ Does not create guests; project flows that need one wait for `m3`'s step 1
    changes.
 3. **Backups**: nothing. They are Coolify's, on the Postgres service's
    Backups tab, against a destination in the owner's own Coolify
-   (DECISIONS I-104). No token, no bucket, no on-VM check, no rehearsal
+   (DECISIONS I-112). No token, no bucket, no on-VM check, no rehearsal
    script, no alert. A session that finds itself writing backup
    machinery has misread this.
 4. **Observability on the real path** (10): the api's, edge's and host's
@@ -497,7 +497,7 @@ Standard, Premium SSD v2 data disk, cloud-init writing the join token,
 nixos-anywhere provisioner), edge VM, Coolify Ubuntu VM with cloud-init,
 Blob with lifecycle rules, Key Vault with the wrapping key, the remote
 state backend. No backup bucket: backups are Coolify's, against the
-owner's own destination (DECISIONS I-104). `tofu validate` and `tofu
+owner's own destination (DECISIONS I-112). `tofu validate` and `tofu
 plan` must be clean; apply only when the owner says so.
 ```
 

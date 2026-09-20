@@ -17,7 +17,7 @@ its own and the three applications get rolling deploys (DECISIONS I-87):
 The compose file is Postgres alone. Add it as a Coolify **Service** (Add
 resource -> Docker Compose Empty, paste the file): Coolify recognises the
 postgres image inside a Service and gives it a Backups tab, which is
-where the owner sets the schedule and destination (I-104). Turn **Connect to
+where the owner sets the schedule and destination (I-112). Turn **Connect to
 predefined network** **off** for it (Configuration -> Advanced): the file
 joins the shared `coolify` network itself, so the service name
 `repose-postgres` is registered there and is the `DATABASE_URL` host. The
@@ -145,7 +145,7 @@ nobody will thank you for.
 Coolify's, on the Postgres service's Backups tab, against a destination
 the owner configures in their own Coolify. Nothing on this side is
 involved: no bucket, no token, no check, no rehearsal script and no alert
-(`docs/DECISIONS.md` I-104). A backup or restore question is answered in
+(`docs/DECISIONS.md` I-112). A backup or restore question is answered in
 Coolify.
 
 One thing worth knowing before a restore rather than during one:

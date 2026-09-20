@@ -233,7 +233,7 @@ the one fact that ruins a restore if it is learned late — Coolify encrypts its
 stored credentials with `APP_KEY` from the `.env` on the owner's Coolify host,
 so a Postgres dump without that key restores a database of ciphertext.
 Backups and restores are Coolify's own, against a destination the owner
-configures there; nothing in this repository touches them (DECISIONS I-104).
+configures there; nothing in this repository touches them (DECISIONS I-112).
 
 Setting `coolify_count` back to 0 destroys the VM and its OS disk, the
 platform Postgres included; Coolify's own definitions of the resources
@@ -470,7 +470,7 @@ queried ones.
   (`docs/DECISIONS.md` I-21). Pass the app's object id as
   `api_identity_object_id` and the Key Vault wrap/unwrap policy appears.
 - **Postgres backups.** Coolify's, to a destination in the owner's own
-  Coolify. No bucket, no token, no schedule here (DECISIONS I-104).
+  Coolify. No bucket, no token, no schedule here (DECISIONS I-112).
 - **A Hetzner module.** Designed for in `docs/workstreams/11-infra-opentofu.md`
   §5, not built. The `host` module's variable surface (`name`, `join_token`,
   `class`, `data_disk_gb`) and its outputs (`private_ip`, `ssh_jump`) are the
