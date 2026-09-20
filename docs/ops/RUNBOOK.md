@@ -36,18 +36,17 @@ The full click path, with the reasons, is `coolify.md`. The short form:
    `https://api.repose.herakraft.co`, applications `repose-cli` (Native,
    device flow on) and `repose-web` (SPA), and the M2M application
    `repose-api` (Management API role) for `LOGTO_M2M_CLIENT_ID/SECRET`.
-4. Add Postgres as a Docker Compose resource from the repo,
-   `ops/coolify/postgres/docker-compose.yml` (I-87: Postgres, `pg-backup`,
-   `backup-sync`), then `api`, `api-grpc` and `web` as Dockerfile
+4. Add Postgres as a Service (Docker Compose Empty, paste
+   `ops/coolify/postgres/docker-compose.yml`, I-87) with its Backups tab
+   set to R2 nightly, then `api`, `api-grpc` and `web` as Dockerfile
    applications, each with its `ops/coolify/*.env.example` pasted in and
    "Connect to predefined network" on. Domains, port mappings and the
    health-check settings: `ops/coolify/README.md`. Secrets go in each
    resource's Environment tab, nowhere else. `api`'s pre-deploy command is
    `repose-admin db migrate`; `api-grpc` deploys after it.
 5. Deploy. Then `repose-admin ca init` once (`DATABASE_URL` over the VM's
-   WireGuard address, I-42), one manual dump (`pg-backup once` in the
-   service's terminal), and `ssh root@<control ip> repose-backup-check`
-   once the sync has run (within 15 minutes).
+   WireGuard address, I-42), one manual backup from the service's Backups
+   tab, and `ssh root@<control ip> repose-backup-check`.
 6. Add the control VM as a WireGuard peer of the edge (`ops/wg/coolify.conf`).
 
 ### Edge
@@ -683,10 +682,9 @@ The api, api-grpc or web app's rolling deploy did not go green.
 
 ## PostgresBackupStale
 
-No Postgres dump has landed in R2 for more than 36 hours. The dump is the
-`pg-backup` service and the upload the `backup-sync` service of the
-Postgres compose resource (I-87); their logs are in Coolify, which nobody
-is watching at 02:00, so the check is a command:
+No Postgres dump has landed in R2 for more than 36 hours. Coolify reports
+backup failures only in its own UI, which nobody is watching at 02:00, so the
+check is a command:
 
 ```bash
 ssh root@<control ip> repose-backup-check
@@ -699,14 +697,13 @@ the bucket is empty, and 2 when the machine has no rclone remote named `r2`
 
 1. Exit 2 means the check was never wired up, not that the backup failed. The
    remote is created once from the R2 API token.
-2. Otherwise the two services' logs in Coolify. `pg-backup: dump failed`
-   is Postgres (its own log next); `backup-sync: rclone failed` is the R2
-   token or `R2_ENDPOINT` without its `https://` (the region is fixed to
-   `auto` in the file).
+2. Otherwise Coolify's backup log on the Postgres service. An
+   authentication error is usually the endpoint without its scheme or the
+   region left blank instead of `auto` (`coolify.md`).
 3. A disk-full on the control plane fails the dump before the upload: the
-   dump is written to the `pgbackups` volume first. `df -h /` on the VM.
-4. Run `pg-backup once` in the service's terminal once the cause is fixed,
-   wait for the sync, and re-run `repose-backup-check`.
+   dump is written locally first. `df -h /` on the VM.
+4. Run a manual backup from the Backups tab once the cause is fixed, and
+   re-run `repose-backup-check`.
 
 The bucket's 35-day lifecycle rule keeps deleting old dumps while this alert
 is open, so a week of failures is a week closer to having no restore point at

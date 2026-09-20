@@ -5,7 +5,7 @@ its own and the three applications get rolling deploys (DECISIONS I-87):
 
 | resource | type | from | env |
 | --- | --- | --- | --- |
-| `repose-postgres` | Docker Compose | `postgres/docker-compose.yml` | its `${VAR:?}` values in the resource's Environment tab |
+| `repose-postgres` | Service (Docker Compose, pasted) | `postgres/docker-compose.yml` | `POSTGRES_PASSWORD`; backups in its Backups tab |
 | `api` | Dockerfile application, `cmd/api/Dockerfile`, context `/` | this repo, `main` | `api.env.example` |
 | `api-grpc` | Dockerfile application, same Dockerfile | this repo, `main` | `api-grpc.env.example` |
 | `web` | Dockerfile application, `apps/web/Dockerfile`, context `/` | this repo, `main` | `web.env.example` |
@@ -14,16 +14,14 @@ its own and the three applications get rolling deploys (DECISIONS I-87):
 
 ## Postgres
 
-The compose resource is Postgres plus its backup: `pg-backup` dumps nightly
-(`pg_dump -Fc`) into a volume and prunes after 35 days; `backup-sync`
-copies new dumps to R2 every 15 minutes and never deletes there. The
-container is named `repose-postgres` and joins the shared `coolify` network
-so the api applications reach it by that name. Values: `POSTGRES_PASSWORD`
-(a project-level shared variable, so the api apps reference the same one
-as `{{project.POSTGRES_PASSWORD}}`), `R2_ACCESS_KEY_ID`,
-`R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT` (from the R2 API token, DECISIONS
-I-21; the endpoint with its `https://`). Optional: `BACKUP_HOUR_UTC` (2),
-`BACKUP_KEEP_DAYS` (35), `R2_BUCKET`.
+The compose file is Postgres alone. Add it as a Coolify **Service** (Add
+resource -> Docker Compose Empty, paste the file): Coolify recognises the
+postgres image inside a Service and gives it a Backups tab, where the
+nightly dump to R2 is scheduled (`docs/ops/coolify.md`). The container is
+named `repose-postgres` and joins the shared `coolify` network so the api
+applications reach it by that name. Its one value is `POSTGRES_PASSWORD`,
+a project-level shared variable, so the api apps reference the same one as
+`{{project.POSTGRES_PASSWORD}}`.
 
 ## The three applications
 
@@ -57,7 +55,9 @@ Required before anything serves: `LOGTO_M2M_CLIENT_ID/SECRET` (the
 
 ## Backups
 
-Verify with `ssh root@<control ip> repose-backup-check` (needs the `r2`
-rclone remote on the VM, once, from the same token). A manual dump: in
-Coolify's terminal for `pg-backup`, `pg-backup once`; the sync follows
-within 15 minutes. Restore: `docs/ops/RUNBOOK.md` "Postgres restore".
+Coolify's own: on the Postgres service, Backups, nightly at 02:00 to the R2
+S3 storage, retention 35 days; the destination's fields are
+`tofu -chdir=infra/r2 output coolify_s3_destination`. Verify with
+`ssh root@<control ip> repose-backup-check` (needs the `r2` rclone remote
+on the VM, once, from the same token). Restore: `docs/ops/RUNBOOK.md`
+"Postgres restore".

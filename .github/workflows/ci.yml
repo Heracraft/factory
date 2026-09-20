@@ -203,10 +203,7 @@ jobs:
       # promtool is not on PATH, which is the case here.
       - run: ops/check.sh
       - name: postgres compose validates (ops/coolify/postgres, DECISIONS I-87)
-        run: |
-          POSTGRES_PASSWORD=x R2_ACCESS_KEY_ID=x R2_SECRET_ACCESS_KEY=x R2_ENDPOINT=x \
-          docker compose -f ops/coolify/postgres/docker-compose.yml config --quiet
-          sh -n ops/coolify/postgres/backup/pg-backup.sh && sh -n ops/coolify/postgres/backup/backup-sync.sh
+        run: POSTGRES_PASSWORD=x docker compose -f ops/coolify/postgres/docker-compose.yml config --quiet
 
   web:
     name: dashboard unit + e2e tests, Docker build

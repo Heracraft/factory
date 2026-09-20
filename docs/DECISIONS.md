@@ -1904,11 +1904,13 @@ deployment in files, not built by hand in Coolify's UI, and each thing
 deployed on its own. A first draft put everything in one compose file; the
 owner rejected it within the hour: a compose deploy recreates services
 instead of rolling them, and one file means one deploy for all. So: the
-database, which has no rolling deploy to lose, is a compose resource from
-the repository (Postgres, `pg-backup` doing a nightly `pg_dump -Fc` into a
-volume with a 35-day prune, `backup-sync` doing `rclone copy` to R2 every
-15 minutes and never deleting), container `repose-postgres` on Coolify's
-shared network; the three applications are Coolify "Dockerfile" builds
+database, which has no rolling deploy to lose, is a compose file in the
+repository added as a Coolify Service (Postgres alone, container
+`repose-postgres` on Coolify's shared network); its backup is Coolify's
+own scheduled dump to R2 on that service, which the owner already runs
+elsewhere and which `repose-backup-check` verifies, rather than two
+sidecar services the first draft wrote and the owner struck the same day
+as code to maintain for a thing Coolify does; the three applications are Coolify "Dockerfile" builds
 from the repository, each with an env file in `ops/coolify/` to paste,
 reaching Postgres by that name with the password as a project shared
 variable. Coolify's own health check cannot run in the distroless api
@@ -1923,5 +1925,6 @@ the requirement is now `GRPC_SERVER_NAMES`, and hosts verify that name
 (`apiServerName`). The M2M application the api provisions users with is
 `repose-api`. *Rejected:* one compose resource for everything (above);
 Coolify's API driven by a script (unstable across 4.x, untestable from
-here); Coolify's managed-database backup UI (a click path; the two
-services are files and `repose-backup-check` verifies them the same way).
+here); pg_dump and rclone sidecars in the compose file (code to maintain
+for what Coolify's backup does; the file is a Service rather than a git
+application precisely so that Backups tab exists for it).

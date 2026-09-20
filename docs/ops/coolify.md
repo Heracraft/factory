@@ -56,13 +56,13 @@ of that is missing.
    at the VM's public IP (`infra/README.md`, "DNS"). 80 and 443 are open to
    the internet (`control_web_cidrs = ["0.0.0.0/0"]`, owner's call
    2026-09-20), so Let's Encrypt HTTP-01 works as it does everywhere.
-4. **Postgres, as a file.** Project -> Add resource -> Docker Compose
-   from git: repository `heracraft/repose`, branch `main`, base directory
-   `/`, compose file `/ops/coolify/postgres/docker-compose.yml`, server
-   the one just added (`DECISIONS.md` I-87). It is Postgres plus the
-   nightly dump and the R2 upload; `ops/coolify/README.md` lists its
-   values. `POSTGRES_PASSWORD` is a project-level shared variable so the
-   api applications reference the same one.
+4. **Postgres, as a file.** Project -> Add resource -> Services -> Docker
+   Compose Empty, paste `ops/coolify/postgres/docker-compose.yml`, server
+   the one just added (`DECISIONS.md` I-87). A Service rather than a git
+   application because Coolify gives the postgres image inside a Service
+   its Backups tab. `POSTGRES_PASSWORD` is a project-level shared variable
+   so the api applications reference the same one. Then the backup
+   destination, below.
 5. **Logto** is the owner's existing instance, `https://accounts.herakraft.co`
    (`DECISIONS.md` I-84); nothing is deployed for it. In that Logto: the API
    resource `https://api.repose.herakraft.co`, two applications,
@@ -108,18 +108,17 @@ make -C infra plan ENV=r2 && make -C infra apply ENV=r2
 tofu -chdir=infra/r2 output coolify_s3_destination
 ```
 
-The token's access key id, secret and the endpoint (with its `https://`)
-are `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_ENDPOINT` on the
-Postgres compose resource. The backup itself is two services in that file
-(I-87):
-`pg-backup` dumps nightly at `BACKUP_HOUR_UTC` (02:00) into a volume and
-prunes after 35 days; `backup-sync` copies new dumps to the bucket every 15
-minutes and never deletes there, so the bucket's lifecycle rule and the
-local prune are both set to 35 days on purpose — whichever one is
-misconfigured later, the other still bounds the bill and the exposure.
+That output is the form Coolify asks for under S3 Storages, field by field.
+Two of them are got wrong reliably: the **endpoint carries its scheme**
+(`https://<account id>.r2.cloudflarestorage.com`) and the **region is the
+literal `auto`**, not blank and not an AWS region.
 
-Run one by hand before trusting the schedule (Coolify's terminal on
-`pg-backup`: `pg-backup once`; the sync follows within 15 minutes), then:
+Then, on the Postgres service, Backups: nightly at 02:00, retention 35
+days, destination the S3 storage just added. Coolify's retention and the
+bucket's lifecycle rule are both set to 35 days on purpose — whichever one
+is misconfigured later, the other still bounds the bill and the exposure.
+
+Run one backup by hand from the UI before trusting the schedule, then:
 
 ```bash
 ssh root@<control ip> repose-backup-check
