@@ -33,7 +33,8 @@ import (
 	"github.com/heracraft/repose/internal/fakes/kv"
 	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
 	"github.com/heracraft/repose/internal/obs"
-	"github.com/heracraft/repose/internal/otel"
+	"github.com/heracraft/repose/internal/obs/instrument"
+	obsmetrics "github.com/heracraft/repose/internal/obs/metrics"
 
 	"github.com/google/uuid"
 )
@@ -60,16 +61,23 @@ type App struct {
 
 // New wires the process. Nothing listens yet.
 func New(ctx context.Context, cfg Config, version string) (*App, error) {
-	log := obs.NewLogger("api", os.Stdout, slog.LevelInfo)
-	if os.Getenv("LOG_LEVEL") == "debug" {
-		log = obs.NewLogger("api", os.Stdout, slog.LevelDebug)
+	level := slog.LevelInfo
+	if lv, err := obs.ParseLevel(os.Getenv("LOG_LEVEL")); err == nil {
+		level = lv
 	}
+	log := obs.NewLogger(obs.LogOptions{Component: obs.ComponentAPI, Level: level})
 	a := &App{cfg: cfg, log: log, version: version}
-	off, enabled, err := otel.Setup(ctx, "repose-api", version)
+	// One tracing setup for every binary (DECISIONS I-59): no exporter and no
+	// connection when OTEL_EXPORTER_OTLP_ENDPOINT is unset, OTLP over HTTP or
+	// gRPC as OTEL_EXPORTER_OTLP_PROTOCOL asks.
+	_, off, err := instrument.SetupTracing(ctx, instrument.TraceOptions{
+		Component: obs.ComponentAPI, Version: version, Insecure: true,
+	})
 	if err != nil {
 		return nil, err
 	}
 	a.otelOff = off
+	enabled := instrument.TracingEnabled()
 	log.Info("starting", "event", "start", "mode", cfg.Mode, "version", version, "otel", enabled, "dev", cfg.Dev)
 	a.pool, err = db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
@@ -91,8 +99,13 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	} else if err := db.EnsurePartitions(ctx, a.pool, time.Now()); err != nil {
 		return nil, err
 	}
-	a.reg = obs.Registry()
-	a.m = metrics.New(a.reg)
+	// The registry from internal/obs/metrics refuses a metric outside the
+	// repose_ namespace or with a label outside the low-cardinality list, so
+	// every series in internal/api/metrics is checked at startup
+	// (docs/workstreams/10-observability.md §5).
+	om := obsmetrics.NewVersion(obs.ComponentAPI, version)
+	a.reg = om.Registry()
+	a.m = metrics.New(om)
 	var kvs secrets.KeyVault
 	if cfg.KeyVaultURL != "" {
 		azkv, err := secrets.NewAzureKV(cfg.KeyVaultURL, cfg.KeyVaultKeyName, nil)
@@ -343,9 +356,11 @@ func (a *App) loops(ctx context.Context) {
 				a.log.Info("certificates pruned", "event", "cert_prune", "count", n)
 			}
 			if err := db.EnsurePartitions(ctx, a.pool, time.Now()); err != nil {
+				a.m.PartitionDropFailTotal.Inc()
 				a.log.Error("partitions", "event", "partition_fail", "err", err.Error())
 			}
 			if dropped, err := db.DropExpiredPartitions(ctx, a.pool, time.Now()); err != nil {
+				a.m.PartitionDropFailTotal.Inc()
 				a.log.Error("partition drop", "event", "partition_drop_fail", "err", err.Error())
 			} else if len(dropped) > 0 {
 				a.log.Info("partitions dropped", "event", "partition_drop", "count", len(dropped))

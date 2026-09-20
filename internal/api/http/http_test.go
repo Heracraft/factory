@@ -61,7 +61,7 @@ func newEnvLimits(t *testing.T, limits *httpapi.RateLimits) *env {
 	t.Cleanup(lf.Close)
 	logs := &bytes.Buffer{}
 	syncw := &syncWriter{w: logs}
-	log := obs.NewLogger("api", syncw, slog.LevelDebug)
+	log := obs.NewLogger(obs.LogOptions{Component: obs.ComponentAPI, Writer: syncw, Level: slog.LevelDebug})
 	parser, _ := config.NewParser()
 	sent := &sync.Map{}
 	sender := notify.SenderFunc(func(ctx context.Context, m notify.Message) error {

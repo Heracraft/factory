@@ -545,9 +545,10 @@ func (mon *monitor) checkLost() {
 	if !mon.lost && m.d.Now().Sub(mon.lostAt) >= m.cfg.GuestdLostAfter {
 		mon.lost = true
 		m.log(mon.g).Warn("guestd lost", "event", "guestd_lost")
-		if m.d.Metrics != nil {
-			m.d.Metrics.GuestdUnreachable.WithLabelValues(mon.g.GuestID).Set(1)
-		}
+		// The metric is the count, repose_host_guestd_lost, recomputed by the
+		// samples loop: guest_id is never a Prometheus label
+		// (docs/workstreams/10-observability.md §5). Which guest it is comes
+		// from this line in Loki and from the Warning the api receives.
 		m.Warn("guestd_lost", "guest "+mon.g.GuestID+": no vsock connection for "+m.cfg.GuestdLostAfter.String())
 	}
 }
@@ -558,9 +559,6 @@ func (mon *monitor) regained() {
 		m.log(mon.g).Info("guestd regained", "event", "guestd_regained")
 	}
 	mon.lost = false
-	if m.d.Metrics != nil {
-		m.d.Metrics.GuestdUnreachable.WithLabelValues(mon.g.GuestID).Set(0)
-	}
 }
 
 func (mon *monitor) handleNotify(n *guestdv1.Notify) {

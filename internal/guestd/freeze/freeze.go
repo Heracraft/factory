@@ -73,10 +73,13 @@ func (h *Handler) Freeze() error {
 func (h *Handler) Thaw() error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.thawLocked("thaw")
+	return h.thawLocked(false)
 }
 
-func (h *Handler) thawLocked(event string) error {
+// thawLocked thaws and logs `thaw`, unless the watchdog is doing it: fire
+// logs `freeze_timeout` itself, and one event per thaw is what the event
+// list in docs/workstreams/10-observability.md §5 describes.
+func (h *Handler) thawLocked(watchdog bool) error {
 	if h.timer != nil {
 		h.timer.Stop()
 		h.timer = nil
@@ -88,7 +91,9 @@ func (h *Handler) thawLocked(event string) error {
 		return sysdep.Errf(sysdep.CodeInternal, "thaw root filesystem: %w", err)
 	}
 	h.frozen = false
-	h.log.Info("root filesystem thawed", "event", event)
+	if !watchdog {
+		h.log.Info("root filesystem thawed", "event", "thaw")
+	}
 	return nil
 }
 
@@ -108,7 +113,7 @@ func (h *Handler) fire() {
 		return
 	}
 	h.timeouts++
-	err := h.thawLocked(WarnFreezeTimeout)
+	err := h.thawLocked(true)
 	h.mu.Unlock()
 
 	if err != nil {
@@ -141,5 +146,5 @@ func (h *Handler) Timeouts() int {
 func (h *Handler) Close() error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.thawLocked("thaw")
+	return h.thawLocked(false)
 }

@@ -1,0 +1,44 @@
+# Single-binary Loki for the dev stack: filesystem storage, no retention worth
+# the name, no authentication. The personal server's retention is
+# ops/loki/retention.yaml.
+#
+# Everything lives under /loki because that is the directory the upstream
+# image creates for the unprivileged `loki` user; a volume mounted anywhere
+# else is owned by root and Loki exits with "mkdir ...: permission denied".
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2026-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  retention_period: 168h
+  allow_structured_metadata: true
+  volume_enabled: true
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem

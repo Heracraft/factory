@@ -424,9 +424,19 @@ func (e *Engine) buildBuild(ctx context.Context, op *store.Op, p *store.Project)
 			return err
 		})
 		if errors.Is(err, scheduler.ErrNoCapacity) {
+			// docs/workstreams/10-observability.md §5 requires schedule_fail
+			// and counts placements by result; without these two lines a
+			// fleet that has run out of memory is invisible until a user
+			// complains.
+			e.m.ScheduleTotal.WithLabelValues("no_capacity").Inc()
+			e.log.Warn("no host has capacity", "event", "schedule_fail",
+				"project_id", p.ID.String(), "class", p.Class, "reason", "no_capacity")
 			return nil, uuid.Nil, false, errCapacity()
 		}
 		if err != nil {
+			e.m.ScheduleTotal.WithLabelValues("error").Inc()
+			e.log.Error("placement failed", "event", "schedule_fail",
+				"project_id", p.ID.String(), "class", p.Class, "reason", "error", "err", err.Error())
 			return nil, uuid.Nil, false, err
 		}
 		e.m.ScheduleTotal.WithLabelValues("ok").Inc()

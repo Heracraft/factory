@@ -8,6 +8,7 @@ package apitest
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -33,6 +34,7 @@ import (
 	fakehostd "github.com/heracraft/repose/internal/fakes/hostd"
 	"github.com/heracraft/repose/internal/fakes/kv"
 	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
+	"github.com/heracraft/repose/internal/obs"
 )
 
 // Harness is the assembled control plane.
@@ -76,10 +78,14 @@ func New(t *testing.T, o Options) *Harness {
 	t.Helper()
 	pool := testdb.Open(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	// The strict test logger: every line the api writes during a harness test
+	// must name an event and carry no never-log field
+	// (docs/workstreams/10-observability.md §5). APITEST_VERBOSE shows them.
+	out := io.Discard
 	if os.Getenv("APITEST_VERBOSE") != "" {
-		log = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		out = os.Stderr
 	}
+	log := obs.NewTestLogger(t, obs.ComponentAPI, out)
 	h := &Harness{T: t, Ctx: ctx, Pool: pool, KV: kv.New(), Metrics: metrics.NewNop(), Log: log, cancel: cancel}
 	h.Secrets = secrets.New(pool, h.KV)
 	var err error

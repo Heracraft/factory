@@ -1,0 +1,206 @@
+# Prometheus alert rules for repose. One rule per alert in
+# docs/CHECKLIST.md and docs/workstreams/10-observability.md §5, plus the
+# three §6 failure modes that are only visible from outside: a host that
+# stopped shipping logs, a host Prometheus cannot scrape, and partition
+# maintenance that is not running.
+#
+# Every alert name is a heading in docs/ops/RUNBOOK.md, and `promtool test
+# rules ops/alerts_test.yaml` has a case per rule. Alertmanager routes them to
+# the owner's ntfy topic (ops/alertmanager/repose-route.yaml).
+#
+# Severity: `page` wakes someone (tenants are down or data is at risk),
+# `warn` is a notification that can wait for the morning.
+groups:
+  - name: repose-hosts
+    interval: 1m
+    rules:
+      - alert: HostMemory80
+        # Memory is never oversubscribed (DESIGN §4), so reserved memory is
+        # the capacity figure: at 80 percent the next `repose run` of an XL
+        # may not fit and a human runs the OpenTofu apply for another host
+        # (DECISIONS R3-5).
+        expr: |
+          repose_host_mem_reserved_bytes
+            / (repose_host_mem_reserved_bytes + repose_host_mem_free_bytes) > 0.8
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: "host {{ $labels.host_id }} is over 80 percent reserved memory"
+          description: "{{ $value | humanizePercentage }} of usable memory is reserved by running guests. Add a host before the next XL create fails."
+          runbook: "docs/ops/RUNBOOK.md#hostmemory80"
+
+      - alert: PoolFull
+        # A full thin pool means every guest's writes fail at once, so this
+        # pages: guests are not down yet, but they are about to be.
+        expr: repose_host_pool_free_bytes / repose_host_pool_bytes < 0.1
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "thin pool on {{ $labels.host_id }} is over 90 percent full"
+          description: "{{ $value | humanizePercentage }} of vg-guests/thin is free. Autoextend has run out of PV or the disk needs growing."
+          runbook: "docs/ops/RUNBOOK.md#poolfull"
+
+      - alert: StoreFull
+        # The host's root filesystem holds /nix/store, which every guest
+        # reads over virtio-fs. A full store fails builds and, worse, a
+        # `nix-collect-garbage` that races a create.
+        expr: |
+          1 - (
+            node_filesystem_avail_bytes{job="hosts",mountpoint="/",fstype!~"tmpfs|ramfs"}
+            / node_filesystem_size_bytes{job="hosts",mountpoint="/",fstype!~"tmpfs|ramfs"}
+          ) > 0.85
+        for: 15m
+        labels:
+          severity: warn
+        annotations:
+          summary: "root filesystem on {{ $labels.host_id }} is over 85 percent full"
+          description: "{{ $value | humanizePercentage }} used. The store is the usual cause; check the per-project closure cap before deleting anything."
+          runbook: "docs/ops/RUNBOOK.md#storefull"
+
+      - alert: GuestdLost
+        # A guest whose guestd is unreachable still runs, but it cannot be
+        # frozen for a snapshot, resized, or told to switch, and its samples
+        # stop. The count is the metric; which guest it is comes from the
+        # guestd_lost log line in Loki (guest_id is never a label).
+        expr: repose_host_guestd_lost > 0
+        for: 5m
+        labels:
+          severity: warn
+        annotations:
+          summary: "{{ $value }} guest(s) on {{ $labels.host_id }} have lost guestd"
+          description: "No vsock connection for over a minute. Snapshots, resize and config apply are blocked for those guests."
+          runbook: "docs/ops/RUNBOOK.md#guestdlost"
+
+      - alert: BuildQueueStuck
+        # hostd runs at most two builds at once (DECISIONS R5-4). Two
+        # running with nothing completing for 45 minutes is a build that will
+        # not finish inside its 30-minute cap, which means the cap is not
+        # being enforced.
+        expr: |
+          repose_host_builds_running >= 2
+          unless on (instance)
+          sum by (instance) (increase(repose_host_build_duration_seconds_count[45m])) > 0
+        for: 5m
+        labels:
+          severity: warn
+        annotations:
+          summary: "build queue on {{ $labels.host_id }} has not completed a build in 45 minutes"
+          description: "Both build slots are busy and no build has finished. A build past its 30-minute cap is not being killed."
+          runbook: "docs/ops/RUNBOOK.md#buildqueuestuck"
+
+      - alert: HostScrapeDown
+        # docs/workstreams/10-observability.md §6: hostd keeps sampling into
+        # Postgres over the gRPC stream, so billing data is not lost; what is
+        # lost is every dashboard for that host.
+        expr: up{job=~"hosts|hostd"} == 0
+        for: 5m
+        labels:
+          severity: warn
+        annotations:
+          summary: "Prometheus cannot scrape {{ $labels.job }} on {{ $labels.host_id }}"
+          description: "The WireGuard tunnel or the exporter is down. Metering continues through the api stream; metrics and the host dashboards do not."
+          runbook: "docs/ops/RUNBOOK.md#hostwgdown"
+
+      - alert: FluentBitStuck
+        # §6: Fluent Bit buffers to disk and retries forever, so failed
+        # retries accumulating for half an hour is a host whose logs are
+        # about to age out of a 1 GB buffer.
+        expr: increase(fluentbit_output_retries_failed_total{job="fluent-bit"}[30m]) > 0
+        for: 30m
+        labels:
+          severity: warn
+        annotations:
+          summary: "Fluent Bit on {{ $labels.host_id }} cannot ship to Loki"
+          description: "Retries have been failing for 30 minutes. Chunks buffer to /var/lib/fluent-bit up to 1 GB, then the oldest are dropped."
+          runbook: "docs/ops/RUNBOOK.md#observability"
+
+  - name: repose-control-plane
+    interval: 1m
+    rules:
+      - alert: HostUnreachable
+        # The api marks a host unreachable after 90 seconds without a
+        # heartbeat (DESIGN §9). Its guests may still be running, but no
+        # command reaches them, so this pages.
+        expr: repose_api_hosts{state="unreachable"} > 0
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "{{ $value }} host(s) are unreachable from the api"
+          description: "No heartbeat for over 90 seconds. Placements are already refused; guests on that host cannot be started, stopped or snapshotted."
+          runbook: "docs/ops/RUNBOOK.md#hostunreachable"
+
+      - alert: SnapshotStale
+        # Nightly at 03:00 plus one on every stop (DESIGN §6), so 36 hours
+        # without one means two schedules have been missed.
+        expr: repose_api_snapshot_age_seconds > 36 * 3600
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: "a running project has no snapshot for over 36 hours"
+          description: "Oldest last-snapshot is {{ $value | humanizeDuration }}. A host loss now loses up to that much of a tenant's work."
+          runbook: "docs/ops/RUNBOOK.md#snapshotstale"
+
+      - alert: GatewayAuthSpike
+        # One failure a second, sustained, is not a user with a stale
+        # certificate; it is a scan or a bug in the CLI's refresh.
+        expr: sum by (instance) (rate(repose_gateway_auth_fail_total[5m])) > 1
+        for: 5m
+        labels:
+          severity: warn
+        annotations:
+          summary: "gateway is refusing over one login a second"
+          description: "Break it down by reason: bad_cert and not_found are a scan, expired and revoked are the CLI's refresh path."
+          runbook: "docs/ops/RUNBOOK.md#gatewayauthspike"
+
+      - alert: EgressHigh
+        # The api recomputes this hourly from meter_samples, because a
+        # per-project series in Prometheus is the label this design refuses
+        # (§5). Over a terabyte a day is not a build cache.
+        expr: repose_api_egress_alert_projects > 0
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: "{{ $value }} project(s) sent over 1 TB in 24 hours"
+          description: "Find them on the Abuse dashboard's egress panel, then the runbook's Suspend a user."
+          runbook: "docs/ops/RUNBOOK.md#egresshigh"
+
+      - alert: RollupLag
+        # usage_hours is what invoices are built from; two hours behind is
+        # the point at which a month-end close would be wrong.
+        expr: repose_api_rollup_lag_seconds > 2 * 3600
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: "usage rollup is {{ $value | humanizeDuration }} behind"
+          description: "meter_samples are arriving but usage_hours is not being written. Invoices are built from usage_hours."
+          runbook: "docs/ops/RUNBOOK.md#rolluplag"
+
+      - alert: PartitionDropFail
+        # docs/workstreams/10-observability.md §6: the sample tables' monthly
+        # partitions are not being dropped, so Postgres grows and nothing
+        # else breaks. It is only urgent on the way to a full disk.
+        expr: increase(repose_api_partition_drop_fail_total[6h]) > 0
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: "partition maintenance is failing"
+          description: "{{ $value }} failed runs in six hours. meter_samples and proc_samples keep their old partitions; check the disk before it matters."
+          runbook: "docs/ops/RUNBOOK.md#partitiondropfail"
+
+      - alert: StripePushFail
+        # A failed usage push is money that will not appear on an invoice.
+        expr: increase(repose_api_stripe_usage_push_total{result="error"}[1h]) > 0
+        for: 5m
+        labels:
+          severity: warn
+        annotations:
+          summary: "Stripe usage records are failing"
+          description: "{{ $value }} failed pushes in the last hour. The reconciliation job repairs it; if it does not, the invoice undercharges."
+          runbook: "docs/ops/RUNBOOK.md#stripepushfail"

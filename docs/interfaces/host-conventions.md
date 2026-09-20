@@ -84,7 +84,8 @@ rotates keys does the same restart itself.
 - nftables, two tables, both declared by the host and reloaded without
   touching what hostd added:
   - `inet repose`: chains `input` (policy drop: lo, established, wg0 for
-    ssh/9100/9101, DHCP and ICMP on the provider NIC; from `br-guests` jump
+    ssh/9100/9101 and the Fluent Bit metrics port 2021 (DECISIONS I-56),
+    DHCP and ICMP on the provider NIC; from `br-guests` jump
     `guest_in`), `guest_in` (ICMP echo to the host rate-limited to
     5/second, everything else dropped; no DHCP), `guest_fwd` (policy drop;
     established; `wg0 → br-guests` tcp 22 for the gateway; from
@@ -123,7 +124,10 @@ RestartPreventExitStatus=3), `virtiofsd@<guest>.service` and
 (oneshot, skipped when `host.json` exists or there is no token),
 `repose-guests-slice.service` (sets `guests.slice` `MemoryMax` to RAM minus
 the reserve: 8 GiB below 128 GiB, 16 GiB above), `hostd.service`,
-`fluent-bit.service`, `prometheus-node-exporter.service` (on
+`fluent-bit.service` (ships journald and every guest's console log to Loki,
+and serves its own Prometheus metrics on `<wg0>:2021/api/v1/metrics/prometheus`
+so that a host which has stopped shipping is visible),
+`prometheus-node-exporter.service` (on
 `<wg0>:9100`), `sshd.service` (on `<wg0>:22`), `repose-snapshot.timer`
 (nightly 03:00 local), `repose-pool-monitor.timer` (every 5 minutes),
 `nix-gc.timer` (weekly, `--delete-older-than 14d`), `fstrim.timer`.

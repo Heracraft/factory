@@ -10,14 +10,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
-	"time"
 
 	"github.com/heracraft/repose/internal/guestd"
+	"github.com/heracraft/repose/internal/obs"
 	"github.com/heracraft/repose/internal/vsockrpc"
 )
 
@@ -62,25 +61,14 @@ func run() error {
 		runtime.GOMAXPROCS(1)
 	}
 
-	level, err := parseLevel(*logLevel)
+	level, err := obs.ParseLevel(*logLevel)
 	if err != nil {
 		return err
 	}
 	// Logs go to stderr, which is the serial console in a guest. Nothing is
 	// written to a file, so logging keeps working while the root filesystem is
 	// frozen for a snapshot.
-	log := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-		Level: level,
-		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.TimeKey {
-				return slog.String("ts", a.Value.Time().UTC().Format(time.RFC3339))
-			}
-			if a.Key == slog.MessageKey {
-				return slog.String("msg", a.Value.String())
-			}
-			return a
-		},
-	}))
+	log := obs.NewLogger(obs.LogOptions{Component: obs.ComponentGuestd, Level: level, Writer: os.Stderr})
 
 	srv, err := guestd.New(guestd.Config{
 		Root:       *root,
@@ -96,19 +84,4 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	return srv.Run(ctx)
-}
-
-func parseLevel(s string) (slog.Level, error) {
-	switch s {
-	case "debug":
-		return slog.LevelDebug, nil
-	case "info":
-		return slog.LevelInfo, nil
-	case "warn":
-		return slog.LevelWarn, nil
-	case "error":
-		return slog.LevelError, nil
-	default:
-		return 0, fmt.Errorf("unknown log level %q; use debug, info, warn or error", s)
-	}
 }
