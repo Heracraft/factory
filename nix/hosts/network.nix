@@ -24,15 +24,19 @@ let
     text = ''
       hostJson=${hostJson}
       run=${runDir}
-      bootstrap=${if cfg.bootstrap.enable then "1" else "0"}
       mkdir -p "$run"
       umask 022
 
       write_sshd() {
         # $1: WireGuard address or empty. With no address sshd listens on
-        # all interfaces and the nftables input chain is the gate.
+        # all interfaces and the nftables input chain is the gate (operator
+        # ssh on the provider NIC only while bootstrap is on). Once
+        # registration has given the host a WireGuard address, sshd binds
+        # that alone even with bootstrap on: bootstrap is "until
+        # registered", so the installer and the token delivery reach a new
+        # host over the VNet and nothing does afterwards (DECISIONS I-92).
         {
-          if [ "$bootstrap" = 1 ] || [ -z "$1" ]; then
+          if [ -z "$1" ]; then
             echo "ListenAddress 0.0.0.0"
           else
             echo "ListenAddress $1"

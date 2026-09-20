@@ -195,7 +195,7 @@ in
     };
 
     bootstrap = {
-      enable = lib.mkEnableOption "operator SSH on the provider NIC with a plain public key, for the time before the edge exists (removed by workstream 11 once WireGuard is up)";
+      enable = lib.mkEnableOption "operator SSH on the provider NIC with a plain public key, until the host is registered: the installer's checks and the join-token delivery reach a host over the VNet through the edge, and once host.json carries a WireGuard address sshd binds that alone, so the rule admits nothing afterwards (DECISIONS I-92)";
       authorizedKeys = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];

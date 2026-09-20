@@ -2066,3 +2066,22 @@ host after it registered. Settled as follows:
   reinstalled or re-tokened host needs that path again; sshd binds the
   WireGuard address alone once `host.json` carries it (`network.nix`),
   so the provider-NIC rule admits nothing after registration.
+
+**I-93. hostd hands the base checkout to the build user.** (m2
+integration, 2026-09-20) The first `Build` on host-01 (a one-line
+home-manager fragment against main, through `hostdev build`) failed before
+evaluation: hostd clones the base as root, the evaluation runs as
+`nixbuild` (I-45), and Nix's libgit2 refuses a `git+file://` repository
+owned by another user (`repository path ... is not owned by current user
+(libgit2 error code = 7)`). No unit test could see it: the fake runner's
+clone has no owner. `ensureBase` now runs `chown -R <user>: <checkout>`
+after a clone and on an existing checkout too, so a checkout an operator
+placed by hand (`ops/RUNBOOK.md` "Build: base unavailable") is handed over
+the same way. With that, the build ran through: eval plus build of the
+6.0 GB guest closure from a cold host store took the time recorded in
+`docs/RESEARCH.md` §11. *Rejected:* `safe.directory = *` in a git config
+for the build user (libgit2 honours it, but a directive that disables the
+check everywhere for a user that evaluates tenant input is the wrong
+direction); cloning as the build user (hostd would need the deploy key
+readable by that user, which is the key a tenant's evaluation runs next
+to).

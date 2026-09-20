@@ -1107,6 +1107,12 @@ no tenant config changes.
    exists.
 4. `flake.lock` errors: the checkout is not a complete repository
    (interrupted clone). Remove the directory and let hostd clone again.
+5. `repository path '/var/lib/repose/base/<rev>' is not owned by current
+   user (libgit2 error code = 7)` in the build log: the checkout belongs
+   to root and the evaluation runs as `nixbuild`. hostd hands every
+   checkout to the build user before evaluating (`chown -R nixbuild:`,
+   DECISIONS I-93); seeing this means a hostd older than that, and the
+   fix by hand is the same chown.
 
 ## Base bump failures
 

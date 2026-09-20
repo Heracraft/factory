@@ -253,13 +253,25 @@ func TestEnsureBaseClonesWithKey(t *testing.T) {
 			return shell.Result{}, nil
 		}},
 	}}
-	b := (&Real{R: r, BaseDir: base, BaseRepoURL: "git@github.com:heracraft/repose.git", BaseSSHKey: "/var/lib/repose/hostd/base-deploy-key"}).Defaults()
+	b := (&Real{R: r, BaseDir: base, BaseRepoURL: "git@github.com:heracraft/repose.git", BaseSSHKey: "/var/lib/repose/hostd/base-deploy-key", User: "nixbuild"}).Defaults()
 	dir, err := b.ensureBase(context.Background(), "deadbeef")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if dir != filepath.Join(base, "deadbeef") {
 		t.Fatalf("dir %s", dir)
+	}
+	// The clone is root's; the evaluation runs as the build user, whose
+	// libgit2 refuses a repository it does not own (I-93).
+	if got := r.CallsWithPrefix("chown"); len(got) != 1 || strings.Join(got[0], " ") != "chown -R nixbuild: "+dir {
+		t.Fatalf("chown calls: %v", got)
+	}
+	// An existing checkout (placed by hand) is handed over the same way.
+	if _, err := b.ensureBase(context.Background(), "deadbeef"); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.CallsWithPrefix("chown"); len(got) != 2 {
+		t.Fatalf("chown on an existing checkout: %v", got)
 	}
 	call := strings.Join(r.CallsWithPrefix("env")[0], " ")
 	if !strings.Contains(call, "GIT_SSH_COMMAND=ssh -i /var/lib/repose/hostd/base-deploy-key") || !strings.Contains(call, "git clone --quiet --no-checkout git@github.com:heracraft/repose.git") {

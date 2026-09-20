@@ -222,7 +222,7 @@ func (b *Real) ensureBase(ctx context.Context, ref string) (string, error) {
 	}
 	dir := filepath.Join(b.BaseDir, ref)
 	if _, err := os.Stat(filepath.Join(dir, b.BaseSubdir, "flake.nix")); err == nil {
-		return dir, nil
+		return dir, b.ownBase(ctx, dir)
 	}
 	if b.BaseRepoURL == "" {
 		return "", &Error{Code: "internal", Message: "base " + ref + " unavailable: no checkout under " + b.BaseDir}
@@ -246,7 +246,23 @@ func (b *Real) ensureBase(ctx context.Context, ref string) (string, error) {
 	if err := os.Rename(tmp, dir); err != nil && !errors.Is(err, os.ErrExist) {
 		return "", fmt.Errorf("base checkout: %w", err)
 	}
-	return dir, nil
+	return dir, b.ownBase(ctx, dir)
+}
+
+// ownBase hands the checkout to the build user. hostd clones as root, the
+// evaluation runs as User (setpriv, I-45), and Nix's libgit2 refuses a
+// repository owned by another user ("repository path ... is not owned by
+// current user", seen on host-01 at the first Build, DECISIONS I-93). Also
+// applied to a checkout an operator placed by hand (ops/RUNBOOK.md "Build:
+// base unavailable"), which is the same situation.
+func (b *Real) ownBase(ctx context.Context, dir string) error {
+	if b.User == "" {
+		return nil
+	}
+	if _, err := b.R.Run(ctx, "chown", "-R", b.User+":", dir); err != nil {
+		return &Error{Code: "internal", Message: "base checkout: chown to " + b.User + " failed: " + err.Error()}
+	}
+	return nil
 }
 
 // flakeRef names the checkout's nix/ directory as a flake.
