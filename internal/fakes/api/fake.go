@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/heracraft/repose/internal/ca/testca"
 )
 
 // Options configures New. The zero value is a usable fake.
@@ -26,6 +28,11 @@ type Options struct {
 	RateLimit bool
 	// Now replaces the clock; nil means time.Now in UTC.
 	Now func() time.Time
+	// CA, when set, backs /certs, /internal/ca and /internal/gateway-certs
+	// with real certificates from the test CA (docs/interfaces/
+	// ssh-gateway.md "Test CA"), so the gateway relay can be tested end
+	// to end. Nil keeps the canned placeholder strings.
+	CA *testca.CA
 }
 
 // CannedUser is the user every token maps to when Options.Users is nil.
@@ -55,20 +62,23 @@ type Fake struct {
 	mux    *http.ServeMux
 	routes []string
 
-	mu         sync.Mutex
-	seq        int64
-	reqSeq     int64
-	ipSeq      int
-	serial     uint64
-	tokens     map[string]string // token -> user id
-	users      map[string]*userRec
-	projects   map[string]*project
-	ops        map[string]*op
-	certs      map[uint64]*cert
-	revoked    []revocation
-	failOnce   []failRule
-	failAlways map[string]string
-	hits       map[string][]time.Time
+	mu           sync.Mutex
+	seq          int64
+	reqSeq       int64
+	ipSeq        int
+	serial       uint64
+	tokens       map[string]string // token -> user id
+	users        map[string]*userRec
+	projects     map[string]*project
+	ops          map[string]*op
+	certs        map[uint64]*cert
+	revoked      []revocation
+	failOnce     []failRule
+	failAlways   map[string]string
+	hits         map[string][]time.Time
+	hosts        []Host // nil means the one canned host
+	gatewayCerts int    // POST /internal/gateway-certs calls, for cache tests
+	sessions     []SessionReport
 }
 
 type failRule struct {

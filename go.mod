@@ -13,6 +13,7 @@ require (
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/mdlayher/vsock v1.3.0
 	github.com/prometheus/client_golang v1.24.1
+	github.com/prometheus/client_model v0.6.2
 	github.com/spf13/cobra v1.10.2
 	github.com/stripe/stripe-go/v83 v83.2.1
 	go.etcd.io/bbolt v1.5.0
@@ -54,7 +55,6 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pierrec/lz4/v4 v4.1.28 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.70.1 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect

@@ -90,4 +90,5 @@ in
   api = mkBin "api";
   repose-admin = mkBin "repose-admin";
   repose = mkBin "repose";
+  gateway = mkBin "gateway";
 }

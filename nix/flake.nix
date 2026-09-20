@@ -99,7 +99,7 @@
       nixosConfigurations.edge = lib.nixosSystem {
         inherit system;
         specialArgs = { inherit self; };
-        modules = [ disko.nixosModules.disko ./edge ];
+        modules = [ disko.nixosModules.disko ./edge { repose.edge.gatewayPackage = goPkgs.gateway; } ];
       };
 
       # Guest base as a module, and the function hostd's build step calls with
@@ -129,7 +129,7 @@
       }).guestSystem;
 
       packages.${system} = {
-        inherit (goPkgs) guestd repose-hook hostd hostdev api repose-admin repose;
+        inherit (goPkgs) guestd repose-hook hostd hostdev api repose-admin repose gateway;
         # Workstream 01's stand-in, kept for the host VM tests.
         hostd-stub = pkgs.callPackage ./hosts/hostd-stub.nix { };
         # A runner with an empty fragment: what `nix build .#guest-runner`

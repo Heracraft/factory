@@ -1,0 +1,123 @@
+package api
+
+import "errors"
+
+// Test helpers for the gateway (workstream 06): direct control over what
+// the internal routes answer, without going through the user routes.
+
+// SessionReport is one POST /internal/sessions the fake received.
+type SessionReport struct {
+	ProjectID  string
+	Event      string
+	CertSerial uint64
+}
+
+// SetHosts replaces what GET /internal/hosts returns (nil restores the
+// canned host).
+func (f *Fake) SetHosts(hosts []Host) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.hosts = hosts
+}
+
+// CreateProject creates a running project for the canned user and returns
+// it. The name must be valid per POST /projects.
+func (f *Fake) CreateProject(name, class string) (Project, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, e := f.create(f.users[CannedUser.ID], name, "", class)
+	if e != nil {
+		return Project{}, errors.New(e.Message)
+	}
+	return p.Project, nil
+}
+
+// CreateProjectFor creates a running project owned by the given user id
+// (the user must exist in Options.Users).
+func (f *Fake) CreateProjectFor(userID, name, class string) (Project, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[userID]
+	if !ok {
+		return Project{}, errors.New("user not found")
+	}
+	p, e := f.create(u, name, "", class)
+	if e != nil {
+		return Project{}, errors.New(e.Message)
+	}
+	return p.Project, nil
+}
+
+// SetState sets a project's state (and clears guest_ip when it is not
+// running), as the api would after an op.
+func (f *Fake) SetState(projectID, state string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.projects[projectID]
+	if !ok {
+		return
+	}
+	p.State = state
+	if state != "running" {
+		p.GuestIP = ""
+	} else if p.GuestIP == "" {
+		f.ipSeq++
+		p.GuestIP = "10.64.4." + itoa(10+f.ipSeq)
+	}
+}
+
+// SetGuestIP sets a running project's guest address (tests point it at an
+// in-process sshd).
+func (f *Fake) SetGuestIP(projectID, ip string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if p, ok := f.projects[projectID]; ok {
+		p.GuestIP = ip
+	}
+}
+
+// RevokeSerial revokes a certificate by serial regardless of owner, as
+// POST /certs/revoke would; it appears in GET /internal/revoked.
+func (f *Fake) RevokeSerial(serial uint64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c, ok := f.certs[serial]
+	if ok && c.revoked {
+		return
+	}
+	if ok {
+		c.revoked = true
+	}
+	f.revoked = append(f.revoked, revocation{serial: serial, at: f.now()})
+}
+
+// GatewayCertCalls is how many POST /internal/gateway-certs the fake has
+// answered.
+func (f *Fake) GatewayCertCalls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.gatewayCerts
+}
+
+// SessionReports lists POST /internal/sessions calls in order.
+func (f *Fake) SessionReports() []SessionReport {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]SessionReport, len(f.sessions))
+	copy(out, f.sessions)
+	return out
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b [20]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(b[i:])
+}

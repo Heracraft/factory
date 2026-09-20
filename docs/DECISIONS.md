@@ -1770,3 +1770,53 @@ or admin endpoint to toggle the failure globally (a fragment-content marker
 composes with parallel tests without shared state; the fake's existing
 `Fail`/`FailNext` switch is per-route, not per-payload, so it cannot express
 "this specific fragment fails").
+**I-73. The gateway's metrics live in `internal/obs/metrics` as an extended
+`GatewayMetrics` family, and `auth_fail_total`'s reason enum is the union the
+gateway actually distinguishes.** (06, 2026-09-20) Workstream 10 owns metric
+naming (`AGENTS.md`, `workstreams/README.md`) and had already merged a
+`GatewayMetrics` with five series (`repose_gateway_sessions`,
+`sessions_total`, `auth_fail_total{reason}`, `dial_fail_total`,
+`route_duration_seconds`) wired into `ops/dashboards/gateway.json` and the
+`GatewayAuthSpike` alert. `06-gateway-edge.md` §5.5 listed a richer set under
+different names (`connections_open`, `auth_total{result}`,
+`dial_errors_total`, `session_seconds`, `revocation_cache_age_seconds`,
+`wgsync_*`, `relay_bytes_total`). Rather than a second gateway metrics
+package that the dashboards would not match, this workstream extends 10's
+`GatewayMetrics` in place with the missing series (`relay_bytes_total`,
+`session_seconds`, `revocation_cache_age_seconds`, `wgsync_peers`,
+`wgsync_errors_total`, `hook_events_total`), keeping 10's five names for the
+overlap (`connections_open` becomes `sessions`, `dial_errors_total` becomes
+`dial_fail_total`, and `auth_total{result=ok}` is dropped because an accepted
+relay is already counted by `sessions_total`). `AuthFailReasons` grows from
+10's `{bad_cert, expired, revoked, wrong_principal, stopped, not_found}` to
+the reasons the gateway can tell apart: `{no_cert, bad_ca, expired, revoked,
+wrong_principal, stopped, route_error, rate_limited, not_found, bad_login,
+busy}`. The `GatewayAuthSpike` alert is a `rate()` over the whole counter and
+the dashboard groups by reason, so both survive the wider enum; the runbook's
+`bad_cert` references become `no_cert`/`bad_ca`. The same reason string is the
+`reason` field of the `auth_fail` log event. *Rejected:* a `internal/gateway`
+metrics package (the dashboards reference `internal/obs/metrics`' names, and
+two families for one component is what I-45 and I-59 already refused
+elsewhere); mapping the gateway's finer results onto 10's six reasons (a
+scan showing as `bad_cert` and an api outage showing as the same reason hides
+the distinction the runbook's `GatewayAuthSpike` triage needs). Interfaces:
+`internal/obs/metrics/families.go`, `06-gateway-edge.md` §5.5,
+`10-observability.md` §5.
+
+**I-74. The gateway relay closes the client channel only after the guest's
+in-flight request replies are delivered, and the connection tears down guest
+first.** (06, 2026-09-20) Two ordering bugs found by the §7 soak (100
+concurrent relays): an OpenSSH-style client surfaces a command's exit status
+only when the channel's request stream closes, so the gateway must send the
+full `CHANNEL_CLOSE` (not just EOF) once the guest is done; and the reply to
+a client's `exec` travels on the client channel, so a guest that finishes and
+closes faster than that reply propagates would have the gateway close the
+client channel first, failing the client's request with `EOF` and discarding
+the buffered output. The relay therefore closes the client channel only after
+(a) all guest-to-client data is flushed and (b) no client-request reply is
+still in flight, and on connection teardown it closes the guest side first
+and drains the relays before closing the client transport. *Rejected:* a raw
+bidirectional `io.Copy` with a single close on first EOF (loses exit status
+and truncates output under load); a fixed delay before closing (a race is not
+a timing constant). Interface text unchanged; the behaviour is in
+`internal/gateway/relay.go`.
