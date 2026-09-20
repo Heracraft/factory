@@ -146,6 +146,7 @@ type project struct {
 
 type op struct {
 	Op
+	id        string
 	projectID string
 	kind      string
 }

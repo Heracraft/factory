@@ -231,7 +231,7 @@ func errf(code, format string, args ...any) *apiError {
 }
 
 func invalid(format string, args ...any) *apiError { return errf("invalid", format, args...) }
-func notFound(what string) *apiError          { return errf("not_found", "%s not found", what) }
+func notFound(what string) *apiError               { return errf("not_found", "%s not found", what) }
 
 func (e *apiError) withDetail(detail map[string]any) *apiError {
 	e.Detail = detail
