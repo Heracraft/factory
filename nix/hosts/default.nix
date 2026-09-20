@@ -19,6 +19,7 @@ in
     ./hostd.nix
     ./gc.nix
     ./observability.nix
+    ./fluent-bit.nix
     ./registration.nix
     ./ssh.nix
     ./hardening.nix

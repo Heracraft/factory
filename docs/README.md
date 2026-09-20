@@ -24,7 +24,9 @@ docs disagree, the doc is wrong only if a `DECISIONS.md` entry says so.
 | [workstreams/](workstreams/README.md) | You are an agent picking up a chunk of work. Each workstream is self-contained: scope, non-goals, interfaces it owns and consumes, and a checklist. |
 | [interfaces/](interfaces/README.md) | Two workstreams meet here. gRPC between API and hostd, vsock between hostd and guestd, the HTTP API, the database schema, the SSH gateway login contract, the CLI config file. |
 | [features/](features/README.md) | User-facing behaviour, one feature per file, written as the behaviour a user sees and the edge cases that must hold. |
+| [ops/ORCHESTRATION.md](ops/ORCHESTRATION.md) | You are running the waves: conductor and worker roles, the wave cycle, merge rules learned by doing, how applies and stalls are handled. |
 | [ops/RUNBOOK.md](ops/RUNBOOK.md) | Something is broken in production and you need the symptom-to-fix list. |
+| [ops/coolify.md](ops/coolify.md) | You are setting up, backing up, restoring or upgrading the control plane. The click path OpenTofu cannot own, because Coolify keeps it in its own database. |
 | [ops/OBSERVABILITY.md](ops/OBSERVABILITY.md) | You are adding a log line, a metric, or a signal that the idle and pricing policies will later depend on. |
 | [PRICING.md](PRICING.md) | Tiers, meters, the cost floor per guest, and the trial. |
 | [DESIGN-LANGUAGE.md](DESIGN-LANGUAGE.md) | You are building any screen. What to copy from the recruiting app and what not to. |

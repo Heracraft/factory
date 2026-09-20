@@ -8,12 +8,19 @@ be in a log. The design rules and the full metric list are in
 
 ```
 hosts (NixOS)          journald ─▶ Fluent Bit ─▶ Loki  (labels host, component, guest_id for console)
-                       hostd :9101 /metrics, node_exporter :9100  ◀─ Prometheus scrape over WireGuard
+                       hostd :9101 /metrics, node_exporter :9100,
+                       Fluent Bit :2021 /api/v1/metrics/prometheus  ◀─ Prometheus scrape over WireGuard
 edge (NixOS)           gateway :9102 /metrics; journald ─▶ Fluent Bit ─▶ Loki
 Coolify VM (Ubuntu)    api, web containers: stdout ─▶ Coolify log drain ─▶ Loki; api :9103 /metrics over WireGuard
 Postgres               meter_samples, proc_samples, usage_hours, events, audit_log (Grafana Postgres datasource, read-only role)
 personal server        Loki, Prometheus, Grafana, Alertmanager (ntfy to the owner)
 ```
+
+Every exporter binds the host's WireGuard address and nothing else; a repose
+binary refuses a metrics address that would bind every interface. The files
+that configure the personal server are in `ops/` and its README has the
+install order; `docker compose -f ops/dev/docker-compose.yml up -d` is the
+same Grafana and the same dashboards locally, with no data.
 
 Nothing observability-related runs on hosts beyond Fluent Bit and the two
 exporters, and nothing is reachable from the internet: every scrape and
@@ -74,11 +81,30 @@ line stored by us:**
   counter in memory for rate limiting; it does not log the address)
 - Stripe card details of any kind, including last four
 
-`internal/obs` redacts fields named `token`, `secret`, `password`,
-`authorization`, `cert`, `key` as a floor; the reviewer is the real check.
-The reason is in the privacy policy: it promises the process-sample
-boundary in plain words, and a log line that crosses it is a broken
-promise that outlives the incident.
+`internal/obs` is where the rules live rather than where they are written
+down (in three packages, so that guestd links a logger and not an exporter:
+DECISIONS I-59):
+
+- Every logger comes from `obs.NewLogger`, which puts `component` on the line
+  itself, so a call site cannot omit it, and replaces the value of any field
+  named `token`, `secret`, `password`, `authorization`, `cert`, `key`,
+  `email`, `handle`, `remote_url`, `prompt`, `args`, `argv`, `env`,
+  `cmdline`, `command_line` or `user_agent` with `[redacted]`. Matching is on
+  the exact name, so `cert_serial`, `key_id` and `token_used` still read.
+- Every metric comes from a registry `internal/obs/metrics` built, which
+  refuses a name outside `repose_` and any label outside the low-cardinality
+  list, at registration: a series labelled by `project_id` stops the binary
+  at startup instead of filling Prometheus.
+- `internal/obs/obslint`, run by a unit test over `cmd/` and `internal/`,
+  refuses the standard library's `log`, a logger or registry built outside
+  `obs`, a log call that does not name its `event`, and a never-log field
+  name at a call site — including the wider list (`path`, `output`,
+  `transcript`, `ip`, `jwt` and the rest) that redaction does not cover.
+
+None of that replaces the reviewer, and the redaction floor is a floor. The
+reason is in the privacy policy: it promises the process-sample boundary in
+plain words, and a log line that crosses it is a broken promise that
+outlives the incident.
 
 ## Retention
 
@@ -91,9 +117,22 @@ promise that outlives the incident.
 | `proc_samples` | 30 days |
 | `usage_hours`, `events`, `audit_log`, `build_logs` | indefinite (`build_logs` trimmed to the last 20 ops per project) |
 
+Loki's retention is `ops/loki/retention.yaml` and does nothing unless the
+compactor runs with `retention_enabled`. Prometheus's is the flag
+`--storage.tsdb.retention.time=90d`, not a config key. The two Postgres
+sample tables are partitioned by month and dropped by
+`repose_partitions_maintain()` (`ops/sql/partitions.sql`), which the api
+calls hourly and logs `partition_drop_fail` when it fails; because a whole
+month has to age out, the real retention is 90 or 30 days plus up to a month.
+
 ## Alerts
 
-Routed by Alertmanager to the owner's ntfy topic. Each alert name is a
-heading in `RUNBOOK.md`. Silence with `amtool silence add alertname=...
+Thirteen rules in `ops/alerts.yaml`, routed by Alertmanager
+(`ops/alertmanager/repose-route.yaml`) to the owner's ntfy topic, with
+`page` on a topic of its own so a phone can be allowed to make a sound for
+those alone. Each alert name is a heading in `RUNBOOK.md`, and
+`ops/check.sh` fails if one is missing. Each also has a `promtool` test
+case, because an alert whose expression is subtly wrong looks exactly like a
+quiet system until the incident it was written for. Silence with `amtool silence add alertname=...
 --duration 2h --comment "..."` and say why in the comment; a silence with
 no comment is deleted by a nightly job.

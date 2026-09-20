@@ -8,6 +8,7 @@ package apitest
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -33,6 +34,7 @@ import (
 	fakehostd "github.com/heracraft/repose/internal/fakes/hostd"
 	"github.com/heracraft/repose/internal/fakes/kv"
 	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
+	"github.com/heracraft/repose/internal/obs"
 )
 
 // Harness is the assembled control plane.
@@ -76,10 +78,14 @@ func New(t *testing.T, o Options) *Harness {
 	t.Helper()
 	pool := testdb.Open(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	// The strict test logger: every line the api writes during a harness test
+	// must name an event and carry no never-log field
+	// (docs/workstreams/10-observability.md §5). APITEST_VERBOSE shows them.
+	out := io.Discard
 	if os.Getenv("APITEST_VERBOSE") != "" {
-		log = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		out = os.Stderr
 	}
+	log := obs.NewTestLogger(t, obs.ComponentAPI, out)
 	h := &Harness{T: t, Ctx: ctx, Pool: pool, KV: kv.New(), Metrics: metrics.NewNop(), Log: log, cancel: cancel}
 	h.Secrets = secrets.New(pool, h.KV)
 	var err error
@@ -148,7 +154,7 @@ func (h *Harness) StartEngine(cfg ops.Config) *ops.Engine {
 	}
 	ectx, ecancel := context.WithCancel(h.Ctx)
 	h.engineCancel = ecancel
-	e := ops.New(h.Pool, h.HostMgr, h.CA, h.Secrets, h.Logs, h.Metrics, h.Log, cfg)
+	e := ops.New(h.Pool, h.HostMgr, h.CA, h.Secrets, h.Logs, h.Events, h.Metrics, h.Log, cfg)
 	h.engine.Store(e)
 	h.Engine = e
 	go e.Run(ectx)
@@ -330,4 +336,26 @@ func (h *Harness) CreateRunning(u *store.User, name string) *store.Project {
 		h.T.Fatalf("create failed: %+v", op.Error)
 	}
 	return h.Project(pid)
+}
+
+// WaitIdle blocks until the project has no pending or running op. Handlers
+// that push to a running guest (secrets, principals) queue an op the caller
+// never sees an id for, and a lifecycle request issued while it is still
+// open answers 409 (CI, 2026-09-20).
+func (h *Harness) WaitIdle(projectID uuid.UUID) {
+	h.T.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		var open int
+		if err := h.Pool.QueryRow(h.Ctx, "select count(*) from ops where project_id = $1 and state in ('pending','running')", projectID).Scan(&open); err != nil {
+			h.T.Fatal(err)
+		}
+		if open == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			h.T.Fatalf("project %s still has %d open ops", projectID, open)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }

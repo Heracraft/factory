@@ -158,6 +158,11 @@ func (m *Manager) resize(ctx context.Context, c *hostdv1.ResizeVolume) *Error {
 		m.writeGuestJSON(g)
 	}
 	if g.State == StateRunning {
+		// The hypervisor read the volume's size when the guest started;
+		// tell it about the new one before asking the guest to grow.
+		if err := m.d.CH.ResizeDisk(ctx, ch.APISocket(m.guestDir(g.GuestID)), ch.DiskID, c.NewBytes); err != nil {
+			return errf(CodeInternal, "cloud-hypervisor resize-disk: %v", err)
+		}
 		sess, err := m.session(g.GuestID)
 		if err != nil {
 			return err
@@ -174,7 +179,7 @@ func (m *Manager) drain(context.Context) *Error {
 	if err := m.d.State.SetDraining(true); err != nil {
 		return errf(CodeInternal, "state write: %v", err)
 	}
-	m.d.Log.Info("host draining", "component", "hostd", "event", "host_drain")
+	m.d.Log.Info("host draining", "event", "host_drain")
 	return nil
 }
 

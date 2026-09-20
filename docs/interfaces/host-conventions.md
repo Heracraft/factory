@@ -9,7 +9,7 @@ change to either happens in the same commit.
 | Path | What |
 |---|---|
 | `/var/lib/repose/hostd/` | `cert.pem`, `key.pem` (mTLS to api), `host.json` (see below), `state.db` (bbolt: guest table for reconciliation). Mode 0700, written by `hostd register`. |
-| `/var/lib/repose/guests/<guest_id>/` | `ch.args` (the rendered cloud-hypervisor argv, one argument per line; DECISIONS I-27), `guest.json` (non-secret copy of the guest record for `hostd reconcile --rebuild`), `ch.sock` (Cloud Hypervisor API), `vsock.sock` (host side of the guest's vsock, `CONNECT 5000` reaches guestd), `console.sock` (serial; hostd copies it into `console.log`, rotated at 64 MB keeping 3), `virtiofsd.sock`. Secrets are never written here: they are delivered to the guest's tmpfs over vsock. |
+| `/var/lib/repose/guests/<guest_id>/` | `ch.args` (the rendered cloud-hypervisor argv, one argument per line; DECISIONS I-27), `guest.json` (non-secret copy of the guest record for `hostd reconcile --rebuild`), `ch.sock` (Cloud Hypervisor API), `vsock.sock` (host side of the guest's vsock, `CONNECT 5000` reaches guestd), `console.sock` (serial; hostd copies it into `console.log`, rotated at 64 MB keeping 3), `virtiofsd/virtiofsd.sock`. The parent is `0711 root`; the directory is `1770 root:hostd` so the unprivileged `guest@<id>` (I-51) can create its sockets but not remove hostd's files; `virtiofsd/` is `0750 virtiofsd:hostd` and the socket in it is group `hostd` (`--socket-group`). Secrets are never written here: they are delivered to the guest's tmpfs over vsock. |
 | `/var/lib/repose/builds/<revision_id>/` | `fragment.nix` for a `Build`; see `nix-build-contract.md` |
 | `/var/lib/repose/base/<base_ref>/` | checkout of the platform repository at that revision (its `nix/` is the flake hostd evaluates) |
 | `/run/repose/hostd.sock` | hostd's operator control socket (`hostd status`, `guests`, `snapshot-all`, `drain`, `reconcile`) |
@@ -53,7 +53,7 @@ rotates keys does the same restart itself.
 | Command | Called by | Contract |
 |---|---|---|
 | `hostd --state /var/lib/repose/hostd --api-addr <addr> [--api-ca <pem>] (--blob-url <url> --blob-container <name> [--blob-identity <client id>] \| --snapshot-dir <dir>)` | `hostd.service` | the daemon. The api address, its CA (only for the `hostdev` stand-in, I-17) and the snapshot target come from `repose.host.apiAddr`, `apiCA` and `snapshots.*` (DECISIONS I-40); hostd refuses to start without a snapshot target. Exit status 3 means "join token used or invalid"; the unit does not restart on it. |
-| `hostd register --state <dir> --token /run/repose/join-token` | `repose-register.service`, once, before hostd | exit 0 with `host.json`, `cert.pem`, `key.pem` written and the token deleted; exit 0 doing nothing if `host.json` exists; exit 3 on a rejected token; any other non-zero is retried after 30 s. |
+| `hostd register --state <dir> --join-token /run/repose/join-token` | `repose-register.service`, once, before hostd | exit 0 with `host.json`, `cert.pem`, `key.pem` written and the token deleted; exit 0 doing nothing if `host.json` exists; exit 3 on a rejected token; any other non-zero is retried after 30 s. |
 | `hostd audit-login` | PAM session hook on every sshd login | environment `PAM_TYPE`, `PAM_USER`, `PAM_RHOST`; writes an `audit_log` row (or a journal line until the api exists). Must be quick and never block a login. |
 | `hostd snapshot-all` | `repose-snapshot.timer` at 03:00 local | snapshots every running guest without the api. |
 
@@ -84,7 +84,8 @@ rotates keys does the same restart itself.
 - nftables, two tables, both declared by the host and reloaded without
   touching what hostd added:
   - `inet repose`: chains `input` (policy drop: lo, established, wg0 for
-    ssh/9100/9101, DHCP and ICMP on the provider NIC; from `br-guests` jump
+    ssh/9100/9101 and the Fluent Bit metrics port 2021 (DECISIONS I-56),
+    DHCP and ICMP on the provider NIC; from `br-guests` jump
     `guest_in`), `guest_in` (ICMP echo to the host rate-limited to
     5/second, everything else dropped; no DHCP), `guest_fwd` (policy drop;
     established; `wg0 → br-guests` tcp 22 for the gateway; from
@@ -123,7 +124,10 @@ RestartPreventExitStatus=3), `virtiofsd@<guest>.service` and
 (oneshot, skipped when `host.json` exists or there is no token),
 `repose-guests-slice.service` (sets `guests.slice` `MemoryMax` to RAM minus
 the reserve: 8 GiB below 128 GiB, 16 GiB above), `hostd.service`,
-`fluent-bit.service`, `prometheus-node-exporter.service` (on
+`fluent-bit.service` (ships journald and every guest's console log to Loki,
+and serves its own Prometheus metrics on `<wg0>:2021/api/v1/metrics/prometheus`
+so that a host which has stopped shipping is visible),
+`prometheus-node-exporter.service` (on
 `<wg0>:9100`), `sshd.service` (on `<wg0>:22`), `repose-snapshot.timer`
 (nightly 03:00 local), `repose-pool-monitor.timer` (every 5 minutes),
 `nix-gc.timer` (weekly, `--delete-older-than 14d`), `fstrim.timer`.
@@ -138,16 +142,35 @@ hostd renders the `cloud-hypervisor` argv from the guest's system closure
 (`kernel`, `initrd`, `init`, `kernel-params`) and its record (DECISIONS
 I-27) and runs it with `systemd-run --unit guest@<id> --property
 MemoryMax=<class RAM + 512M> --property CPUQuota=<vcpus*100>% --property
-Slice=guests.slice`. The devices: `--disk path=/dev/vg-guests/g-<id>`,
+Slice=guests.slice --property User=hostd` and the sandbox of DECISIONS
+I-51, pinned verbatim by `internal/hostd/guest/testdata/unit.golden`:
+`NoNewPrivileges=yes`, `CapabilityBoundingSet=` (empty), `UMask=0077`,
+`ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`,
+`ProtectKernelTunables=yes`, `ProtectKernelModules=yes`,
+`ProtectKernelLogs=yes`, `ProtectControlGroups=yes`,
+`ProtectProc=invisible`, `RestrictNamespaces=yes`, `RestrictRealtime=yes`,
+`RestrictSUIDSGID=yes`, `LockPersonality=yes`,
+`SystemCallArchitectures=native`, `TemporaryFileSystem=/var/lib/repose/guests`,
+`BindPaths=<guest dir>`, `ReadWritePaths=<guest dir>`,
+`DevicePolicy=closed`, `DeviceAllow=/dev/kvm rw`, `DeviceAllow=/dev/net/tun
+rw`, `DeviceAllow=/dev/vg-guests/g-<id> rw`, `RestrictAddressFamilies=AF_UNIX
+AF_VSOCK`. Cloud Hypervisor therefore runs as `hostd` (in group `kvm`,
+owner of the tap, group of its own volume through the udev rule in
+`virt.nix`), sees only its own guest directory, and can open exactly three
+device nodes. The devices: `--disk path=/dev/vg-guests/g-<id>,image_type=raw` (I-63),
 `--net tap=tap-<8hex>,mac=52:54:<4 bytes of id>`, `--fs tag=ro-store,socket=
-virtiofsd.sock`, `--vsock cid=<1000+index>,socket=vsock.sock`, `--serial
-socket=console.sock`, `--memory size=<RAM>M,shared=on`. The CH API socket
-is used for `shutdown` (after guestd's Shutdown timed out), `pause`,
-`resume`, and stats.
+virtiofsd/virtiofsd.sock`, `--vsock cid=<1000+index>,socket=vsock.sock`,
+`--serial socket=console.sock`, `--console off`, `--memory
+size=<RAM>M,shared=on`, `--seccomp true` (the default, written out). The CH
+API socket is used for `shutdown` (after guestd's Shutdown timed out),
+`pause`, `resume`, `resize-disk` (after `lvextend`, before guestd's
+`GrowFs`; I-66) and stats; hostd connects to the guest's sockets as root.
 virtiofsd runs as `virtiofsd:virtiofsd` with `--sandbox namespace` (a
 user and mount namespace with the export pivot_rooted in; `chroot` is
 root-only and virtiofsd refuses it for an unprivileged user, DECISIONS
-I-48) sharing `/run/repose/store-export` (never `/nix/store` directly).
+I-48) sharing `/run/repose/store-export` (never `/nix/store` directly),
+binding `virtiofsd/virtiofsd.sock` with `--socket-group hostd` so the
+hypervisor can connect.
 
 ## Operator access
 

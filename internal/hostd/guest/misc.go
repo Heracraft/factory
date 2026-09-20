@@ -69,9 +69,11 @@ func (m *Manager) exec(ctx context.Context, c *hostdv1.Exec) (*hostdv1.ExecResul
 	if g.State != StateRunning {
 		return nil, errf(CodeInvalidArgument, "guest is %s; exec needs running", g.State)
 	}
-	// The one place argv is logged: an operator's audited command, never a
-	// tenant's process.
-	m.log(g).Log(ctx, levelNotice, "audited exec", "event", "exec_audit", "audit_id", c.AuditId, "argv", c.Argv)
+	// The command itself is not logged, not even an operator's: process
+	// arguments are on the never-log list of docs/ops/OBSERVABILITY.md, and
+	// the audit trail that must hold the command is the api's audit_log row
+	// keyed by this audit_id (docs/interfaces/db-schema.md).
+	m.log(g).Log(ctx, levelNotice, "audited exec", "event", "exec_audit", "audit_id", c.AuditId, "argv_len", len(c.Argv))
 	sess, serr := m.session(g.GuestID)
 	if serr != nil {
 		return nil, serr

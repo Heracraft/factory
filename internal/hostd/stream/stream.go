@@ -22,6 +22,8 @@ import (
 
 	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
 	"github.com/heracraft/repose/internal/hostd/metrics"
+	"github.com/heracraft/repose/internal/obs"
+	"github.com/heracraft/repose/internal/obs/instrument"
 )
 
 // Host is what the stream needs from the guest Manager.
@@ -45,10 +47,14 @@ type GRPCDialer struct {
 
 // Dial implements Dialer.
 func (d GRPCDialer) Dial(ctx context.Context) (hostdv1.HostService_SessionClient, func(), error) {
-	conn, err := grpc.NewClient(d.Addr,
+	// instrument.GRPCDialOptions puts the Session stream in a trace when an OTLP
+	// endpoint is configured, and costs one context value per RPC when it is
+	// not (docs/workstreams/10-observability.md §5 "Traces").
+	opts := append([]grpc.DialOption{
 		grpc.WithTransportCredentials(credentials.NewTLS(d.TLS)),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: 30 * time.Second, Timeout: 10 * time.Second, PermitWithoutStream: true}),
-	)
+	}, instrument.GRPCDialOptions()...)
+	conn, err := grpc.NewClient(d.Addr, opts...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -103,10 +109,10 @@ func New(cfg Config, dialer Dialer, host Host, m *metrics.M, log *slog.Logger) *
 		cfg.BackoffBase = time.Second
 	}
 	if log == nil {
-		log = slog.Default()
+		log = obs.Nop(obs.ComponentHostd)
 	}
 	return &Stream{
-		cfg: cfg, dialer: dialer, host: host, metrics: m, log: log.With("component", "hostd"),
+		cfg: cfg, dialer: dialer, host: host, metrics: m, log: log,
 		out: make(chan *hostdv1.HostMessage, 8192), events: map[string]*hostdv1.Event{},
 		kick: make(chan struct{}, 1), reconnect: make(chan struct{}, 1),
 	}

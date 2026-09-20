@@ -34,6 +34,13 @@ type Sender interface {
 	Connected(hostID uuid.UUID) bool
 }
 
+// EventSink records a platform-originated event (13-notifications.md §2,
+// "billing_stopped, base_updated, snapshot_failed, host_moved"). It is nil
+// in the admin CLI's ad-hoc engine, where no user should be paged.
+type EventSink interface {
+	Platform(ctx context.Context, projectID uuid.UUID, kind, summary string) error
+}
+
 // Limits are the Build limits (DECISIONS R5-4).
 type Limits struct {
 	EvalS        uint32
@@ -61,25 +68,30 @@ type Config struct {
 
 // Engine is the op driver.
 type Engine struct {
-	pool *db.Pool
-	send Sender
-	ca   *ca.CA
-	sec  *secrets.Store
-	logs *buildlog.Store
-	m    *metrics.M
-	log  *slog.Logger
-	cfg  Config
+	pool   *db.Pool
+	send   Sender
+	ca     *ca.CA
+	sec    *secrets.Store
+	logs   *buildlog.Store
+	events EventSink
+	m      *metrics.M
+	log    *slog.Logger
+	cfg    Config
 
 	kick    chan struct{}
 	now     func() time.Time
 	mu      sync.Mutex
 	waiters map[uuid.UUID][]chan struct{}
-	// OnFinished is called after an op reaches done or error (events).
-	OnFinished func(ctx context.Context, op *store.Op)
+	// onFinished is called after an op reaches done or error (events). Set
+	// through SetOnFinished: callers install it after Run has started (the
+	// base-bump job in app.go and the tests), so the engine goroutine reads
+	// it concurrently.
+	onFinishedMu sync.RWMutex
+	onFinished   func(ctx context.Context, op *store.Op)
 }
 
-// New builds an engine.
-func New(pool *db.Pool, send Sender, c *ca.CA, sec *secrets.Store, logs *buildlog.Store, m *metrics.M, log *slog.Logger, cfg Config) *Engine {
+// New builds an engine. events may be nil (the admin CLI's ad-hoc engine).
+func New(pool *db.Pool, send Sender, c *ca.CA, sec *secrets.Store, logs *buildlog.Store, events EventSink, m *metrics.M, log *slog.Logger, cfg Config) *Engine {
 	if cfg.Limits == (Limits{}) {
 		cfg.Limits = DefaultLimits
 	}
@@ -92,7 +104,7 @@ func New(pool *db.Pool, send Sender, c *ca.CA, sec *secrets.Store, logs *buildlo
 	if cfg.Lang == "" {
 		cfg.Lang = "C.UTF-8"
 	}
-	return &Engine{pool: pool, send: send, ca: c, sec: sec, logs: logs, m: m, log: log.With("component", "api"), cfg: cfg,
+	return &Engine{pool: pool, send: send, ca: c, sec: sec, logs: logs, events: events, m: m, log: log.With("component", "api"), cfg: cfg,
 		kick: make(chan struct{}, 1), now: time.Now, waiters: map[uuid.UUID][]chan struct{}{}}
 }
 
@@ -506,10 +518,14 @@ func (e *Engine) failWithLine(ctx context.Context, op *store.Op, code, msg strin
 	if line > 0 {
 		errObj["fragment_line"] = line
 	}
+	// Side effects first (project state, revision status), then the op row:
+	// clients poll the op row and read the project the moment it says
+	// error, so the reverse order let them see a failed op on a project
+	// still "creating" (CI, 2026-09-20).
+	e.onFail(ctx, op, code, msg, line)
 	if _, err := e.pool.Exec(ctx, "update ops set state = 'error', error = $2, finished_at = now() where id = $1", op.ID, errObj); err != nil {
 		e.log.Error("op fail record", "event", "op_fail", "op_id", op.ID.String(), "err", err.Error())
 	}
-	e.onFail(ctx, op, code, msg, line)
 	e.log.Warn("op failed", "event", "op_fail", "op_id", op.ID.String(), "kind", op.Kind, "phase", currentPhase(op), "code", code)
 	e.m.OpsTotal.WithLabelValues(op.Kind, "error").Inc()
 	e.m.OpsOpen.WithLabelValues(op.Kind).Dec()
@@ -518,8 +534,8 @@ func (e *Engine) failWithLine(ctx context.Context, op *store.Op, code, msg strin
 	}
 	op.State = "error"
 	e.notifyWaiters(op)
-	if e.OnFinished != nil {
-		e.OnFinished(ctx, op)
+	if f := e.finishedHook(); f != nil {
+		f(ctx, op)
 	}
 }
 
@@ -538,8 +554,8 @@ func (e *Engine) finish(ctx context.Context, op *store.Op) {
 	}
 	op.State = "done"
 	e.notifyWaiters(op)
-	if e.OnFinished != nil {
-		e.OnFinished(ctx, op)
+	if f := e.finishedHook(); f != nil {
+		f(ctx, op)
 	}
 }
 
@@ -580,4 +596,18 @@ func (e *Engine) Wait(ctx context.Context, id uuid.UUID) (*store.Op, error) {
 func (e *Engine) setResult(ctx context.Context, op *store.Op, fields map[string]any) error {
 	_, err := e.pool.Exec(ctx, "update ops set result = coalesce(result, '{}'::jsonb) || $2::jsonb where id = $1", op.ID, fields)
 	return err
+}
+
+// SetOnFinished installs the hook called after an op reaches done or error.
+// Safe to call while the engine is running.
+func (e *Engine) SetOnFinished(f func(ctx context.Context, op *store.Op)) {
+	e.onFinishedMu.Lock()
+	defer e.onFinishedMu.Unlock()
+	e.onFinished = f
+}
+
+func (e *Engine) finishedHook() func(ctx context.Context, op *store.Op) {
+	e.onFinishedMu.RLock()
+	defer e.onFinishedMu.RUnlock()
+	return e.onFinished
 }

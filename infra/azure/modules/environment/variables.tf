@@ -257,6 +257,30 @@ variable "coolify_install_url" {
   default     = "https://cdn.coollabs.io/coolify/install.sh"
 }
 
+variable "coolify_version" {
+  type        = string
+  description = "Coolify release installed at first boot. Pinned, not `latest`; see the coolify module."
+  default     = "4.3.23"
+}
+
+variable "coolify_autoupdate" {
+  type        = bool
+  description = "Let Coolify update itself. False: an unattended upgrade of the thing that deploys the api is a deploy nobody reviewed."
+  default     = false
+}
+
+variable "backup_bucket" {
+  type        = string
+  description = "R2 bucket Coolify writes Postgres dumps to (infra/r2). Read by the control plane's repose-backup-check helper."
+  default     = "repose-pg-backups"
+}
+
+variable "backup_max_age_hours" {
+  type        = number
+  description = "Age at which repose-backup-check calls the newest dump stale."
+  default     = 36
+}
+
 # --- storage and secrets ---------------------------------------------------
 
 variable "snapshots_account_name" {
@@ -285,13 +309,20 @@ variable "keyvault_name" {
 
 variable "manage_dns" {
   type        = bool
-  description = "Create the Cloudflare records. False where no Cloudflare token is available, such as a plan-only CI run."
-  default     = true
+  description = <<-EOT
+    Create the Cloudflare records. Default false, because it takes a
+    CLOUDFLARE_API_TOKEN in the environment and a zone id, and a plan without
+    them fails inside the provider rather than in a variable. Turn it on in
+    the environment's local tfvars on the first apply that has a token; until
+    then the records are created by hand from the table in infra/README.md,
+    "DNS while manage_dns is false".
+  EOT
+  default     = false
 }
 
 variable "cloudflare_zone_id" {
   type        = string
-  description = "Cloudflare zone id for the DNS zone below."
+  description = "Cloudflare zone id for the DNS zone below. Required when manage_dns is true."
   default     = null
 }
 

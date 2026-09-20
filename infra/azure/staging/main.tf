@@ -90,9 +90,11 @@ module "environment" {
   # silently picking a security type (docs/workstreams/11-infra-opentofu.md §6).
   host_security_type = var.host_security_type
 
-  edge_size     = var.edge_size
-  coolify_count = var.coolify_count
-  coolify_size  = var.coolify_size
+  edge_size          = var.edge_size
+  coolify_count      = var.coolify_count
+  coolify_size       = var.coolify_size
+  coolify_version    = var.coolify_version
+  coolify_autoupdate = var.coolify_autoupdate
 
   edge_wireguard_public_key = var.edge_wireguard_public_key
 

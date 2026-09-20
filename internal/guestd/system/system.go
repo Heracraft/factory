@@ -51,10 +51,15 @@ func New(p sysdep.Paths, run sysdep.Runner, timeout time.Duration, log *slog.Log
 // Switch activates closure. It returns needs_reboot without doing anything
 // when the kernel or initrd differ and force is false, because rebooting a
 // guest under the user's nose loses the agent that was running in it.
-func (h *Handler) Switch(ctx context.Context, closure string, force bool) (*guestdv1.SwitchResult, error) {
+func (h *Handler) Switch(ctx context.Context, closure string, force bool, registration []byte) (*guestdv1.SwitchResult, error) {
 	real, err := h.resolveClosure(closure)
 	if err != nil {
 		return nil, err
+	}
+	if len(registration) > 0 {
+		if err := h.RegisterPaths(ctx, registration); err != nil {
+			return nil, err
+		}
 	}
 
 	changed, err := h.kernelChanged(real)
@@ -177,6 +182,33 @@ func resolve(path string) (string, error) {
 		return target, nil
 	}
 	return filepath.Join(filepath.Dir(path), target), nil
+}
+
+// RegisterPaths loads a `nix-store --dump-db` listing into the guest's nix
+// database and leaves the stamp guest units wait for. Paths that arrive
+// through the shared store are on disk but unknown to the database until
+// this runs; `nix-env --set`, home-manager's activation and any user
+// `nix` command that touches them fail without it (DECISIONS I-67).
+// Loading is idempotent: a listing that is already registered changes
+// nothing.
+func (h *Handler) RegisterPaths(ctx context.Context, registration []byte) error {
+	res, err := h.run.Run(ctx, sysdep.RunSpec{
+		Argv:      []string{"nix-store", "--load-db"},
+		Stdin:     registration,
+		MaxOutput: 8 << 10,
+		Env:       sysdep.DevEnv(h.paths, "root"),
+	})
+	if err != nil {
+		return sysdep.Errf(sysdep.CodeInternal, "register paths: %w", err)
+	}
+	if res.ExitCode != 0 {
+		return sysdep.Errf(sysdep.CodeInternal, "register paths: nix-store --load-db exited %d", res.ExitCode)
+	}
+	if err := os.WriteFile(h.paths.PathsRegistered(), []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644); err != nil {
+		return sysdep.Errf(sysdep.CodeInternal, "register paths: stamp: %w", err)
+	}
+	h.log.Info("store paths registered", "event", "register_paths", "bytes", len(registration))
+	return nil
 }
 
 // setProfile points /nix/var/nix/profiles/system at the new closure.

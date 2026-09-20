@@ -26,6 +26,11 @@ let
       hostName = "host-test";
       provider = "none";
       uplinkInterface = "eth1";
+      # These tests exercise the host's units, not the daemon: the stub
+      # answers `register` from a fixture and `snapshot-all` by logging,
+      # which the real hostd (what hostModules installs) cannot do without
+      # an api.
+      hostdPackage = lib.mkForce (pkgs.callPackage ../hostd-stub.nix { });
     };
     disko.enableConfig = false;
     # The test driver sets a root password file; the host's locked password
@@ -41,7 +46,7 @@ let
     };
     # No DHCP server in the storage and services tests; do not wait 2 min.
     systemd.network.wait-online.enable = false;
-    environment.systemPackages = with pkgs; [ curl iputils netcat-openbsd jq ];
+    environment.systemPackages = with pkgs; [ curl iputils netcat-openbsd jq python3 ];
   };
 
   # The "internet" next to the host: DHCP server for the provider NIC, a
@@ -209,6 +214,10 @@ in
 
       with subtest("Fluent Bit ships journald and console logs to Loki with the documented labels"):
           host.wait_for_unit("fluent-bit.service")
+          # Its own metrics, on wg0 only, are what the FluentBitStuck alert
+          # reads (DECISIONS I-56, ops/alerts.yaml).
+          host.wait_until_succeeds("curl -sf -m3 http://10.255.0.7:2021/api/v1/metrics/prometheus | grep -c fluentbit_output_retries_failed_total >/dev/null")
+          inet.fail(f"curl -sf -m3 http://{host_ip}:2021/api/v1/metrics/prometheus")
           host.succeed("logger -t repose-test 'repose fluent-bit smoke line'")
           inet.wait_until_succeeds(
               "logcli query --addr http://127.0.0.1:3100 --no-labels '{host=\"${hostId}\"}' | grep -c 'repose fluent-bit smoke line' >/dev/null",
@@ -253,9 +262,25 @@ in
 
       with subtest("a thin volume can be created, used and snapshotted"):
           host.succeed("lvcreate -V 1G -T vg-guests/thin -n g-test")
+          host.succeed("udevadm settle")
+          # I-51: guest volumes are group hostd for the unprivileged guest@ unit;
+          # anything else in the VG keeps root:disk.
+          perm = host.succeed("stat -L -c '%U:%G:%a' /dev/vg-guests/g-test").strip()
+          print(f"g-test node {perm}")
+          assert perm == "root:hostd:660", f"g-test is {perm}, want root:hostd:660"
+          # The guest@ unit's DeviceAllow names the LV symlink; systemd resolves
+          # it to the dm node, and DevicePolicy=closed refuses everything else.
+          host.succeed("systemd-run --wait --pipe --collect -p User=hostd -p DevicePolicy=closed -p 'DeviceAllow=/dev/vg-guests/g-test rw' -- dd if=/dev/vg-guests/g-test of=/dev/null bs=4k count=1")
+          host.fail("systemd-run --wait --pipe --collect -p User=hostd -p DevicePolicy=closed -- dd if=/dev/vg-guests/g-test of=/dev/null bs=4k count=1")
           host.succeed("mkfs.ext4 -q /dev/vg-guests/g-test && mkdir -p /mnt/g && mount /dev/vg-guests/g-test /mnt/g")
           host.succeed("dd if=/dev/urandom of=/mnt/g/blob bs=1M count=64 status=none && umount /mnt/g")
           host.succeed("lvcreate -s -n snap-g-test vg-guests/g-test && lvremove -f vg-guests/snap-g-test")
+          # The udev rule matches g-* only: any other volume in the VG keeps root:disk.
+          host.succeed("lvcreate -V 1G -T vg-guests/thin -n x-test && udevadm settle")
+          other = host.succeed("stat -L -c '%U:%G:%a' /dev/vg-guests/x-test").strip()
+          print(f"x-test node {other}")
+          assert other == "root:disk:660", f"x-test is {other}, want root:disk:660"
+          host.succeed("lvremove -f vg-guests/x-test")
           print(host.succeed("lvs vg-guests"))
 
       with subtest("the pool monitor exports pool usage for node_exporter"):
@@ -279,9 +304,20 @@ in
     testScript = ''
       host.wait_for_unit("multi-user.target")
 
-      with subtest("hostd runs the stub and no sudo exists"):
+      with subtest("hostd runs, logs the documented JSON shape, and no sudo exists"):
           host.wait_for_unit("hostd.service")
-          host.succeed("journalctl -u hostd --no-pager | grep -q stub_start")
+          # The unit runs the real hostd (nix/flake.nix sets
+          # repose.host.hostdPackage to packages.hostd), which on a host with
+          # no join token waits for one; the stub's `stub_start` line has not
+          # existed since workstream 03 merged. What is asserted instead is
+          # the log contract of docs/workstreams/10-observability.md §5: every
+          # line is JSON with ts, level, component and event.
+          host.wait_until_succeeds(
+              "journalctl -u hostd --no-pager -o cat"
+              " | grep '\"component\":\"hostd\"' | tail -1"
+              " | jq -e '.ts and .level and .component == \"hostd\" and .event and .msg' >/dev/null"
+          )
+          print(host.succeed("journalctl -u hostd --no-pager -o cat | tail -3"))
           host.fail("command -v sudo")
 
       with subtest("the store export is read-only with .links masked"):
@@ -292,6 +328,10 @@ in
           assert host.succeed("ls /run/repose/store-export | wc -l").strip() != "0"
           host.fail("touch /run/repose/store-export/x")
           host.fail("touch /run/repose/store-export/.links/x")
+          # The mask must not propagate onto the real store (DECISIONS I-61):
+          # nix itself needs to write /nix/store/.links.
+          host.fail("mountpoint -q /nix/store/.links")
+          host.succeed("nix-store --optimise >/dev/null 2>&1 || true; mount -o remount,bind,rw /nix/store; touch /nix/store/.links/probe; rm /nix/store/.links/probe; mount -o remount,bind,ro /nix/store")
 
       with subtest("a transient guest unit survives hostd restart and kill"):
           host.succeed("systemd-run --unit guest@test --slice guests.slice sleep infinity")
@@ -309,10 +349,48 @@ in
           assert mm not in ("infinity", ""), "guests.slice has no memory cap"
           host.succeed("systemctl stop guest@test.service")
 
+      with subtest("guest@ units run as hostd inside the I-51 sandbox"):
+          # The property list is internal/hostd/guest/testdata/unit.golden with
+          # this test's ids substituted; the Go golden pins the list itself.
+          assert "kvm" in host.succeed("id -nG hostd").split(), "hostd is not in kvm"
+          host.succeed("install -d -m 0711 /var/lib/repose/guests")
+          host.succeed("install -d -m 1770 -g hostd /var/lib/repose/guests/h2")
+          host.succeed("install -d -m 0750 -o virtiofsd -g hostd /var/lib/repose/guests/h2/virtiofsd")
+          host.succeed("install -d -m 1770 -g hostd /var/lib/repose/guests/other")
+          host.succeed("ip tuntap add dev tap-h2 mode tap user hostd vnet_hdr")
+          host.succeed("touch /var/lib/repose/guests/other/vsock.sock && chown hostd /var/lib/repose/guests/other/vsock.sock")
+          props = " ".join("-p " + p for p in [
+              "MemoryMax=512M", "CPUQuota=100%", "Restart=no", "Slice=guests.slice", "User=hostd",
+              "NoNewPrivileges=yes", "CapabilityBoundingSet=", "UMask=0077", "ProtectSystem=strict",
+              "ProtectHome=yes", "PrivateTmp=yes", "ProtectKernelTunables=yes", "ProtectKernelModules=yes",
+              "ProtectKernelLogs=yes", "ProtectControlGroups=yes", "ProtectProc=invisible",
+              "RestrictNamespaces=yes", "RestrictRealtime=yes", "RestrictSUIDSGID=yes", "LockPersonality=yes",
+              "SystemCallArchitectures=native", "TemporaryFileSystem=/var/lib/repose/guests",
+              "BindPaths=/var/lib/repose/guests/h2", "ReadWritePaths=/var/lib/repose/guests/h2",
+              "DevicePolicy=closed", "'DeviceAllow=/dev/kvm rw'", "'DeviceAllow=/dev/net/tun rw'",
+              "'RestrictAddressFamilies=AF_UNIX AF_VSOCK'",
+          ])
+          probe = "/var/lib/repose/guests/h2/probe.py"
+          host.succeed("install -m 0644 ${./h2probe.py} " + probe)
+          out = host.succeed("systemd-run --wait --pipe --collect --unit guest@h2 " + props + " -- ${pkgs.python3}/bin/python3 " + probe + " 2>&1")
+          print(out)
+          for line in ["uid " + host.succeed("id -u hostd").strip(), "tap ok", "unix socket ok", "AF_INET refused", "vhost-vsock refused by DevicePolicy"]:
+              assert line in out, f"missing {line!r} in probe output"
+          ch = host.succeed("systemd-run --wait --pipe --collect --unit guest@h2ch " + props + " -- cloud-hypervisor --version 2>&1")
+          print(ch)
+          assert "cloud-hypervisor" in ch
+          host.succeed("ip link del tap-h2 && rm -rf /var/lib/repose/guests/h2 /var/lib/repose/guests/other")
+
       with subtest("the nightly snapshot timer is wired to hostd snapshot-all"):
           host.succeed("systemctl list-timers --all repose-snapshot.timer | grep -q repose-snapshot")
-          host.succeed("systemctl start repose-snapshot.service")
-          host.succeed("journalctl -u repose-snapshot --no-pager | grep -q snapshot_skip")
+          host.succeed("systemctl cat repose-snapshot.service | grep -q 'snapshot-all'")
+          # The real hostd (not the stub) is on this host and has no join
+          # token yet, so it has not opened its control socket: the unit is
+          # expected to fail, with the message the runbook quotes. A host
+          # that has registered runs it for real, which is a host-level
+          # checklist item of workstream 03.
+          host.fail("systemctl start repose-snapshot.service")
+          host.succeed("journalctl -u repose-snapshot --no-pager | grep -q 'hostd is not running'")
 
       with subtest("registration consumes the join token once and is idempotent"):
           host.succeed("test ! -e /var/lib/repose/hostd/host.json")

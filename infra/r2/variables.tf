@@ -1,6 +1,11 @@
 variable "account_id" {
   type        = string
-  description = "Cloudflare account id holding the R2 bucket."
+  description = "Cloudflare account id holding the R2 bucket. An identifier, not a credential; the token is in CLOUDFLARE_API_TOKEN (DECISIONS I-21)."
+
+  validation {
+    condition     = var.account_id != null && can(regex("^[0-9a-f]{32}$", var.account_id))
+    error_message = "account_id is the 32-character Cloudflare account id from the R2 dashboard; fill it in in r2.tfvars (docs/ops/AZURE-SETUP.md step 10)."
+  }
 }
 
 variable "bucket_name" {

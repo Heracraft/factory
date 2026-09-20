@@ -23,10 +23,20 @@ host_security_type = "Standard"
 
 edge_size = "Standard_D2s_v7"
 
-# The control plane arrives in wave 3 with workstreams 05 and 08; until then
-# it is about $180 a month of nothing (DECISIONS I-23). Set to 1 then.
-coolify_count = 0
-coolify_size  = "Standard_D4s_v7"
+# Wave 3 is here: the api and repose-admin are merged, so the control plane is
+# worth its ~$237 a month (DECISIONS I-24, I-71; infra/README.md "Cost"). The VM's OS disk holds
+# Postgres and every Coolify application definition, so setting this back to 0
+# destroys the control plane; the retention that matters is the R2 dump.
+coolify_count   = 1
+coolify_size    = "Standard_D4s_v7"
+coolify_version = "4.3.23"
+
+# No Cloudflare token on this subscription yet, so the records are created by
+# hand from the table in infra/README.md. herakraft.co answers every name from
+# a proxied wildcard, so "no record" means "resolves to Cloudflare's proxy",
+# which carries neither SSH nor WireGuard (infra/README.md, "DNS while
+# manage_dns is false").
+manage_dns = false
 
 # Hosts are added one at a time; see infra/README.md. Each production host
 # has its own nixosConfigurations attribute (nix/hosts/<name>.nix, DECISIONS

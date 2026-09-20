@@ -19,27 +19,38 @@ sudo wg-quick up ops/wg/operator.conf        # 10.255.0.0/16 reachable
 
 ### Control plane (Coolify VM)
 
-1. `tofu -chdir=infra/azure/prod apply` with `coolify_vm = true`. Cloud-init
-   installs Coolify; open `https://<ip>:8000`, create the admin user, add the
-   server as `localhost`.
-2. Add Logto as a Docker Image resource (`ghcr.io/logto-io/logto`), Postgres
+The full click path, with the reasons, is `coolify.md`. The short form:
+
+1. `make -C infra apply ENV=prod` with `coolify_count = 1` in `prod.tfvars`.
+   The apply does not return until Coolify's container is healthy. Coolify's
+   dashboard is on **8000, plain HTTP, and deliberately not in the NSG**, so
+   reach it through the tunnel and create the admin user:
+   `ssh -N -L 8000:127.0.0.1:8000 root@<control ip>`, then
+   `http://127.0.0.1:8000`. Add the server as `localhost`.
+2. Copy `/data/coolify/source/.env` into the password manager **now**. Its
+   `APP_KEY` is what decrypts every credential in the Postgres dump; without
+   it the dump restores a database of ciphertext.
+3. Add Logto as a Docker Image resource (`ghcr.io/logto-io/logto`), Postgres
    as a Coolify database, run its migration, set `ENDPOINT` and
    `ADMIN_ENDPOINT` to `auth.repose.herakraft.co`. Configure the GitHub
    connector and two applications: `repose-cli` (Native, device flow on)
    and `repose-web` (SPA). Create API resource
    `https://api.repose.herakraft.co`.
-3. Add `api` and `web` as Dockerfile applications from the repo, health
+4. Add `api` and `web` as Dockerfile applications from the repo, health
    checks `/healthz` and `/`, env from `ops/coolify/api.env.example`.
    Secrets (CA keys, Key Vault client cert, Stripe keys, Resend key) as
-   Coolify secrets.
-4. Add the platform Postgres as a Coolify database with S3 backup to R2
-   (`infra/r2` outputs), nightly 02:00, retention 35 days. Run
-   `repose-admin db migrate`.
-5. Add the Coolify VM as a WireGuard peer of the edge (`ops/wg/coolify.conf`).
+   Coolify secrets. A health check on every app is not optional: without one
+   Coolify silently falls back to stop-then-start instead of a rolling deploy.
+5. Add the platform Postgres as a Coolify database with S3 backup to R2,
+   nightly 02:00, retention 35 days. The form's fields are
+   `tofu -chdir=infra/r2 output coolify_s3_destination`. Run
+   `repose-admin db migrate`, then one manual backup, then
+   `ssh root@<control ip> repose-backup-check`.
+6. Add the Coolify VM as a WireGuard peer of the edge (`ops/wg/coolify.conf`).
 
 ### Edge
 
-`tofu apply` with `edge = true`; nixos-anywhere installs `.#edge`. Then
+`make -C infra apply ENV=prod`; nixos-anywhere installs `.#edge`. Then
 `repose-admin edge init` writes the WireGuard hub key into the api and the
 gateway's mTLS client cert. Verify `ssh -p 22 probe.nobody@ssh.repose.herakraft.co`
 returns `certificate required`.
@@ -52,9 +63,23 @@ See `../workstreams/11-infra-opentofu.md` §5 "Adding a host". Then
 
 ### Observability
 
-On the personal server: add `ops/prometheus/repose.yaml` to Prometheus's
-scrape configs, `ops/alerts.yaml` to its rule files, `ops/dashboards/*.json`
-to Grafana provisioning, and the Loki labels are already in Fluent Bit.
+On the personal server, from this repository's `ops/` (its README has the
+copy-paste version):
+
+- `ops/prometheus/prometheus.yml` is the scrape config; hosts are listed in
+  `ops/prometheus/targets/hosts.yml`, which Prometheus re-reads every minute,
+  so adding a host needs no restart. Run Prometheus with
+  `--storage.tsdb.retention.time=90d`.
+- `ops/alerts.yaml` goes in its rule files, `ops/alertmanager/repose-route.yaml`
+  into Alertmanager (ntfy to the owner).
+- `ops/grafana/provisioning/` and `ops/dashboards/*.json` are Grafana's
+  provisioning; the seven dashboards appear in a `repose` folder.
+- `ops/loki/retention.yaml` sets 90 days for component logs and 30 for guest
+  console logs, and needs the compactor enabled to do anything.
+- The server joins the edge's WireGuard as one more peer:
+  `ops/prometheus/wireguard-peer.conf`. Nothing is scraped over the internet.
+- Locally, `docker compose -f ops/dev/docker-compose.yml up -d` is the same
+  Grafana with the same dashboards and no data.
 
 ## Common operations
 
@@ -195,6 +220,48 @@ hostd cannot talk to a guest's guestd for 5 minutes.
 3. Sampling for that guest is missing for the window; billing uses the
    last known state, so a running guest is still billed.
 
+## HostScrapeDown
+
+Prometheus cannot scrape a host: `up{job=~"hosts|hostd"} == 0` for 5 minutes,
+and that host's panels on Host capacity go blank. Metering is *not* affected:
+hostd sends samples to the api over its own gRPC stream, so billing data
+keeps arriving (docs/workstreams/10-observability.md §6).
+
+1. From the monitoring server: `curl -s http://<host wg addr>:9101/metrics |
+   head -1`. A timeout is the tunnel, a connection refused is hostd.
+2. Tunnel: "HostWgDown" above. The scrape and the logs use the same path, so
+   a FluentBitStuck alert for the same host confirms it.
+3. hostd itself: on the host, `systemctl status hostd` and
+   `ss -tlnp | grep 9101`. hostd binds the WireGuard address, so a hostd that
+   started before wg0 existed still listens (`ip_nonlocal_bind`); if it does
+   not, `systemctl restart hostd`.
+4. nftables: `nft list chain inet repose input` must admit 9100, 9101 and the
+   Fluent Bit metrics port from `wg0`.
+5. Nothing to do about the gap: Prometheus has no backfill. Say so in the
+   incident note rather than wondering later why a graph has a hole.
+
+## FluentBitStuck
+
+A host's Fluent Bit has been failing to ship to Loki for 30 minutes
+(`increase(fluentbit_output_retries_failed_total[30m]) > 0`). It buffers to
+disk and retries forever, so nothing is lost yet; at 1 GB the oldest chunks
+are dropped.
+
+1. Is Loki up? `curl -s http://<loki>:3100/ready` from the monitoring server.
+   If Loki is the problem, every host alerts at once.
+2. On the host: `systemctl status fluent-bit`, `journalctl -u fluent-bit -n
+   50`. `ConditionPathExists=/run/repose/host.env` unmet means the host never
+   registered ("HostUnregistered"); the unit is `partOf`
+   `repose-host-net.service`, so `systemctl restart repose-host-net` restarts
+   it with freshly rendered addresses.
+3. Buffer size: `du -sh /var/lib/fluent-bit/storage`. Approaching 1 GB is the
+   deadline for fixing Loki before lines are dropped.
+4. Wrong Loki address: `grep LOKI /run/repose/host.env`. It comes from
+   `loki_url` in `host.json`, which the api sends at registration; correct it
+   there and `systemctl restart repose-host-net`.
+5. Guests are unaffected throughout: nothing in a guest waits on log
+   shipping.
+
 ## Guestd not ready
 
 A guest is `starting` and never reaches `running`, or the api shows
@@ -268,6 +335,27 @@ The hourly usage rollup is more than 2 hours behind.
    is retried; a poisoned row (a sample with a negative delta from a
    hostd restart) is skipped and logged with the project id.
 2. `repose-admin billing rollup --hour <hour>` to re-run one hour.
+
+## PartitionDropFail
+
+The hourly `repose_partitions_maintain()` is failing: `meter_samples` and
+`proc_samples` keep partitions past their 90 and 30 day retention, so
+Postgres grows. Nothing else breaks and no data is lost
+(docs/workstreams/10-observability.md §6).
+
+1. The api's log says why: `{component="api"} | json | event="partition_drop_fail"`.
+2. By hand, as the api's role: `select * from repose_partitions_maintain();`
+   It prints one row per create and drop. A permission error means the role
+   cannot `drop table`; a lock timeout means something is reading a partition
+   it wants to drop, and the next hour will get it.
+3. Space now, if that is the pressure:
+   `select relname, pg_size_pretty(pg_total_relation_size(oid)) from pg_class
+   where relname like 'proc_samples_%' order by relname;` then
+   `drop table proc_samples_YYYYMM` for a month wholly past retention.
+4. If the *create* half failed, inserts for the new month will fail at 00:00
+   on the first: `select repose_partition_create('meter_samples',
+   date_trunc('month', now())::date);` is the fix, and hostd's sample buffer
+   holds what did not land (workstream 03).
 
 ## StripePushFail
 
@@ -366,6 +454,35 @@ not exist. Operators reach a guest by jumping through the edge and the host:
 Remove the rule when done (`nft -a list chain inet repose input`, then
 `nft delete rule inet repose input handle <n>`).
 
+## Host never configured its bridge (registration ran, br-guests has no address)
+
+`hostd status` says registered and `stream_connected`, but `ip addr show
+br-guests` has no `10.64.x.1` address, `/run/repose/host.env` is missing,
+and node_exporter or Fluent Bit are inactive. `repose-host-net` renders
+those from `host.json` and is restarted by `repose-register.service`'s
+ExecStartPost; when the unit failed for any reason other than the token
+(seen 2026-09-20: it exited 2 on an unknown flag, DECISIONS I-40) hostd
+registered by itself and nothing restarted the renderer.
+
+1. `journalctl -u repose-register -u repose-host-net` for the cause.
+2. `systemctl restart repose-host-net.service`; then `ip -br addr show
+   br-guests` shows the `.1/22` address and `cat /run/repose/host.env` has
+   `HOST_ID` and `GUEST_CIDR`.
+3. hostd restarts `repose-host-net` itself after a self-registration since
+   I-40, so on a current host this entry means the renderer itself failed.
+
+## Store writes fail with `Read-only file system` on `/nix/store/.links`
+
+`nix copy` to the host, hostd's `Build`, or `nix-store --optimise` fail with
+`creating hard link ... /nix/store/.links/...: Read-only file system`, while
+`/nix/store` itself is the usual read-only bind. `findmnt /nix/store/.links`
+shows the `repose-links-mask` tmpfs: the mask `repose-store-export.service`
+puts over `/run/repose/store-export/.links` propagated back to the store
+because the bind shared `/`'s peer group (DECISIONS I-61, fixed by making
+the export mount private). On a host built before the fix:
+`umount /nix/store/.links`, and confirm
+`ls -A /run/repose/store-export/.links` is still empty.
+
 ## HostWgDown
 
 The edge cannot reach a host's guests: `wg show` on the edge shows no
@@ -430,7 +547,13 @@ hostd reports `guest did not become ready` (no `Ready` from guestd within
    /nix/var/nix/gcroots/repose/<id>`).
 2. `systemctl status guest@<id> virtiofsd@<id>` on the host. If virtiofsd
    is not running, the guest is stuck in the initrd waiting for the
-   `ro-store` tag: start it and restart the guest.
+   `ro-store` tag: start it and restart the guest. `guest@<id>` runs as
+   the `hostd` user (I-51): `Permission denied` on `/dev/kvm`, the tap or
+   `/dev/vg-guests/g-<id>` in `journalctl -u guest@<id>` means the host
+   lost `hostd`'s `kvm` membership, the tap's owner, or the udev rule
+   that makes `g-*` volumes group `hostd` (`ls -l /dev/mapper/vg--guests-g--*`
+   should say `root hostd`); a create that fails at step 5 naming a user
+   means the `hostd` or `virtiofsd` account is missing.
 3. If boot completed (`multi-user.target` in the console) but no `Ready`:
    guestd crashed. The console carries guestd's own stderr (it logs to the
    console so a frozen root never blocks it); `repose-admin exec <id> --
@@ -526,11 +649,79 @@ The api or web app's rolling deploy did not go green.
    when the health check is missing), the health check config was lost;
    restore it before the next deploy.
 
+## PostgresBackupStale
+
+No Postgres dump has landed in R2 for more than 36 hours. Coolify reports
+backup failures only in its own UI, which nobody is watching at 02:00, so the
+check is a command:
+
+```bash
+ssh root@<control ip> repose-backup-check
+```
+
+It exits 0 with the age of the newest object, 1 when that is over 36 hours or
+the bucket is empty, and 2 when the machine has no rclone remote named `r2`
+(the fix is in the script's own header, and in the `rclone_hint` field of
+`tofu -chdir=infra/r2 output coolify_s3_destination`).
+
+1. Exit 2 means the check was never wired up, not that the backup failed. The
+   remote is created once from the R2 API token.
+2. Otherwise Coolify's backup job log for the Postgres resource. An
+   authentication error is usually the endpoint without its scheme or the
+   region left blank instead of `auto` (`coolify.md`).
+3. A disk-full on the control plane fails the dump before the upload: the
+   dump is written locally first. `df -h /data` on the VM.
+4. Run a manual backup from the UI once the cause is fixed, and re-run
+   `repose-backup-check`.
+
+The bucket's 35-day lifecycle rule keeps deleting old dumps while this alert
+is open, so a week of failures is a week closer to having no restore point at
+all.
+
+## Coolify dashboard unreachable
+
+`http://<control ip>:8000` times out. That is correct: the control subnet NSG
+does not open 8000, and `infra/azure/modules/network/main.tf` has a
+postcondition that fails the plan if somebody adds it. Coolify's dashboard is
+plain HTTP and unauthenticated until an admin account exists.
+
+```bash
+ssh -N -L 8000:127.0.0.1:8000 root@<control ip>   # then http://127.0.0.1:8000
+```
+
+If the tunnel connects but nothing answers, the installer did not finish:
+`docker logs coolify` and `/var/log/cloud-init-output.log` on the VM. A fresh
+apply would have failed at `terraform_data.ready` rather than returning, so
+this is a machine that was healthy and stopped being one.
+
+## ssh.repose.herakraft.co resolves to Cloudflare
+
+`dig +short ssh.repose.herakraft.co` returns `104.21.x.x` or `172.67.x.x`
+instead of the edge's address, and SSH hangs or is refused. `herakraft.co`
+answers every name under it from a **proxied wildcard record**, so a missing
+`ssh.repose` record does not fail, it resolves to Cloudflare's proxy, which
+carries neither SSH nor WireGuard. Every host configured with that hostname as
+its WireGuard endpoint fails the same way.
+
+1. `make -C infra plan ENV=prod` says so too, as the `dns_is_managed_or_manual`
+   check warning, whenever `manage_dns` is false.
+2. Fix: create `ssh.repose` as an **unproxied** A record pointing at the
+   `edge_public_ip` output, or set `manage_dns = true` with a
+   `CLOUDFLARE_API_TOKEN` and let OpenTofu own it. `infra/README.md`,
+   "DNS while manage_dns is false", has the full record table.
+3. Until then the edge is reachable at its literal address, which is what
+   every `ssh_jump` output already prints.
+
 ## Postgres restore
+
+The dump in R2 is only half of a restore. Coolify encrypts the credentials it
+holds with `APP_KEY` from `/data/coolify/source/.env`; a dump restored without
+that file is a database of ciphertext. Start from both.
 
 1. Provision a scratch Coolify (or use staging), add a Postgres database,
    download the newest dump from R2 (`rclone ls r2:repose-pg-backups`),
-   `pg_restore` into it.
+   `pg_restore` into it. `rclone` and `pg_restore` are installed on the
+   control-plane VM by cloud-init, and the apply fails if they are missing.
 2. Point a staging api at it, run `repose-admin db verify` (row counts
    per table against the last rollup), time the whole thing, record it in
    `../CHECKLIST.md`'s release item.
@@ -714,6 +905,12 @@ and its tap, tc, nft membership and units are gone; the volume stays.
 3. A boot that reaches login but never Ready: guestd is not running in the
    guest; the base image is at fault (workstream 02).
 4. Fix, then `repose-admin projects start <id>` (or `hostdev start`).
+
+Since I-62 a virtiofsd that exits before creating its socket fails the
+create at step 8 instead; on an older hostd, `systemctl status
+virtiofsd@<guest id>` and `journalctl -u guest@<guest id>` (Cloud
+Hypervisor "Failed connecting the backend ... virtiofsd.sock") are the
+first things to read when this message appears at once after a create.
 
 ## hostd: virtiofsd exited under a running guest
 
@@ -946,6 +1143,68 @@ exits 10. The guest is untouched and the previous revision stays applied.
 values already redacted). A fragment that contains a current secret value
 is refused before the build with `invalid: fragment contains the value of
 secret NAME`.
+
+## No notifications arriving
+
+A user reports nothing on their phone or in their inbox for an agent that
+clearly finished.
+
+1. `repose status` / `GET /projects/:id/events` first: if the event is not
+   there at all, the problem is upstream of the outbox (the hook never
+   fired, or the guest never reached the api). Check `guestd_ok` in the
+   project's signals (`GuestdLost` if it is false) and, on the guest,
+   whether `/run/repose/hooks.sock` exists and the agent's wrapper actually
+   ran `repose-agent-setup` (`grep repose-hook` in the agent's own hook
+   config file, `guest-conventions.md` "Agent wrappers").
+2. If the event is there but `delivered` has no key for the channel: the
+   outbox has not picked it up yet, or the channel is disabled
+   (`notify_email` false, `ntfy_url` null) or over the 30/hour rate cap
+   (`kind = 'notifications_paused'` events on the project in the last
+   hour). `repose_api_outbox_depth` and `repose_api_outbox_lag_seconds`
+   rising together mean the worker itself is stuck: it holds
+   `db.LockOutbox`, so `select pg_advisory_lock_...` on the wrong replica
+   or a stuck transaction is what to look for; only one replica runs it
+   (`api: rollup or expiry not running on one replica` is the same shape
+   for a different job).
+3. If `delivered[channel]` says `"error: ..."` or `"failed: ..."`, the
+   channel-specific entries below have the fix. Nothing to do if it says a
+   timestamp: delivery succeeded and the miss is client-side (a stale
+   ntfy subscription, a spam folder).
+
+## ntfy failing
+
+`delivered.ntfy` carries `"error: ..."` (retrying) or `"failed: 404"` (not
+retried, DECISIONS §5's 4xx rule) and the settings page shows a warning.
+
+1. A 4xx (`400`, `404`) means the URL is wrong or the topic does not exist
+   on that server any more: the user re-pastes it from
+   `repose notify set ntfy <url>`, which sends a test push
+   (`POST /me/notify-test`) so a wrong URL is caught immediately rather
+   than on the next real event.
+2. A 5xx or timeout retries on the schedule in `13-notifications.md` §5.5
+   (7 attempts over roughly 24 h) before `failed`; a self-hosted ntfy
+   server that is down for longer than that needs the user to re-set the
+   URL once it is back, which requeues nothing retroactively — only new
+   events are affected.
+3. `repose_api_notify_total{channel="ntfy",result="failed"}` rising across
+   many users means a widely-used relay (`ntfy.sh`) is down, not a
+   per-user URL problem; check its status page before debugging further.
+
+## Resend failing
+
+Every email `delivered.email` value is `"error: ..."` or `"failed: ..."`
+across many users at once (a per-user failure is `email: "user has no
+address"`, permanent, and not a Resend outage).
+
+1. Resend's status page and `RESEND_API_KEY`'s validity
+   (`repose-admin` has no direct check; a `401` in the api's logs under
+   `event=notify_fail` for the email channel is the tell — Resend's API key
+   is a Coolify secret, `ops/coolify/api.env.example`).
+2. A `429` retries like any 5xx (the sender treats both as retryable); a
+   sustained `429` means the account's Resend rate limit needs raising.
+3. `repose_api_notify_total{channel="email",result="failed"}` over 5
+   percent in 10 minutes is `13-notifications.md` §6's alert threshold;
+   page on it rather than waiting for a user to report silence.
 
 ## api: secret service unavailable
 

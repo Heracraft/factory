@@ -34,7 +34,10 @@ mitigate. `workstreams/14-security.md` is the work that verifies this doc.
 From `ARCHITECTURE.md`, with the mechanism and the actor it stops:
 
 1. **KVM between guest and host.** Cloud Hypervisor on KVM, launched by
-   hostd from the guest's system closure (DECISIONS I-27); the guest sees
+   hostd from the guest's system closure (DECISIONS I-27) as the
+   unprivileged `hostd` user in a systemd sandbox that allows it
+   `/dev/kvm`, `/dev/net/tun`, its own volume, its own guest directory
+   and no network address family (I-51); the guest sees
    one block device (its thin volume), one tap, one vsock, one virtio-fs
    mount and a serial console. The virtio-fs share is
    `/run/repose/store-export`, a read-only `nosuid,nodev` bind of the
@@ -179,11 +182,12 @@ Applied at each workstream's PR, recorded as a comment line in
 
 Written down so nobody believes otherwise.
 
-- **Cloud Hypervisor runs as root** (review H-2, owner 03). A guest
-  escape is therefore root on the host, not a user in the `kvm` group.
-  The fix is `User=hostd` on the `guest@` unit with device and group
-  grants; until it lands, the nested-virtualization item below is worse
-  than it reads.
+- **Every guest's hypervisor is the same `hostd` user** (review L-11,
+  after H-2 was fixed by I-51). A KVM escape lands as `hostd`, whose unit
+  can open only its own volume and sees only its own guest directory; but
+  every tap is owned by that uid, so an escaped hypervisor could attach to
+  another guest's tap (its frames are still admitted per tap by the bridge
+  ruleset). One user per guest would close it.
 - **One Blob identity for every host** (review M-3). Each host can read
   and delete every tenant's snapshots fleet-wide. Per-host containers or
   api-issued SAS tokens close it.

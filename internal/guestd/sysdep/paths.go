@@ -21,6 +21,11 @@ func (p Paths) join(elem ...string) string {
 // RunDir is /run/repose: tmpfs, created by the guest base module (02).
 func (p Paths) RunDir() string { return p.join("run", "repose") }
 
+// PathsRegistered is /run/repose/paths-registered: written after the first
+// successful RegisterPaths; repose-paths.service in the guest waits for it
+// before home-manager activates (DECISIONS I-67).
+func (p Paths) PathsRegistered() string { return p.join("run", "repose", "paths-registered") }
+
 // SecretsDir is /run/repose/secrets: named secret values, 0400 dev.
 func (p Paths) SecretsDir() string { return p.join("run", "repose", "secrets") }
 

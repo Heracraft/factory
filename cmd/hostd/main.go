@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"text/tabwriter"
 
@@ -68,6 +69,7 @@ func options(fs *flag.FlagSet) *app.Options {
 	fs.StringVar(&o.BlobIdentity, "blob-identity", "", "managed identity client id (empty: default credential)")
 	fs.StringVar(&o.StoreExport, "store-export", "/run/repose/store-export", "directory virtiofsd shares")
 	fs.StringVar(&o.VirtiofsUser, "virtiofsd-user", "virtiofsd", "user virtiofsd runs as")
+	fs.StringVar(&o.GuestUser, "guest-user", "hostd", "unprivileged user the guest@ (Cloud Hypervisor) units run as")
 	fs.StringVar(&o.VG, "vg", "vg-guests", "volume group")
 	fs.StringVar(&o.Pool, "pool", "thin", "thin pool")
 	fs.IntVar(&o.MaxOps, "max-ops", 8, "concurrent guest operations")
@@ -75,6 +77,7 @@ func options(fs *flag.FlagSet) *app.Options {
 	fs.IntVar(&o.FailAtStep, "fail-at-step", 0, "inject a CreateGuest failure at this step (REPOSE_HOSTD_TESTING=1 only)")
 	fs.BoolVar(&o.NoWG, "no-wg", false, "do not restart wg-quick after registration")
 	fs.StringVar(&o.Substituters, "substituters", "", "nix substituters for builds, space separated (default cache.nixos.org; the host module adds the overlay cache)")
+	fs.StringVar(&o.LogLevel, "log-level", "info", "log level: debug, info, notice, warn, error")
 	return o
 }
 
@@ -82,25 +85,65 @@ func main() {
 	fs := flag.NewFlagSet("hostd", flag.ExitOnError)
 	fs.Usage = func() { fmt.Fprint(os.Stderr, usage); fs.PrintDefaults() }
 	o := options(fs)
-	// Flags may come before or after the command word.
+	// Flags may come before or after the command word. Global flags after
+	// the command word (`hostd register --state ...`) are still global;
+	// anything the global set does not know (`reconcile --rebuild`,
+	// `snapshot-all --reason`) belongs to the subcommand.
 	args := os.Args[1:]
 	cmd := "run"
 	if len(args) > 0 && args[0][0] != '-' {
 		cmd, args = args[0], args[1:]
 	}
-	if err := fs.Parse(args); err != nil {
+	global, sub := splitArgs(fs, args)
+	if err := fs.Parse(global); err != nil {
 		os.Exit(2)
 	}
-	if cmd == "run" && fs.NArg() > 0 {
-		cmd, args = fs.Arg(0), fs.Args()[1:]
-	} else {
-		args = fs.Args()
+	if cmd == "run" && len(sub) > 0 && sub[0][0] != '-' {
+		cmd, sub = sub[0], sub[1:]
 	}
-	os.Exit(dispatch(cmd, args, o))
+	os.Exit(dispatch(cmd, sub, o))
+}
+
+// splitArgs separates the flags fs defines (with their values) from
+// everything else, which is the subcommand's to parse. It stops at "--".
+func splitArgs(fs *flag.FlagSet, args []string) (global, sub []string) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			sub = append(sub, args[i+1:]...)
+			break
+		}
+		if !strings.HasPrefix(a, "-") || a == "-" {
+			sub = append(sub, a)
+			continue
+		}
+		name := strings.TrimLeft(a, "-")
+		hasValue := false
+		if eq := strings.Index(name, "="); eq >= 0 {
+			name, hasValue = name[:eq], true
+		}
+		f := fs.Lookup(name)
+		if f == nil {
+			sub = append(sub, a)
+			continue
+		}
+		global = append(global, a)
+		if hasValue {
+			continue
+		}
+		if b, ok := f.Value.(interface{ IsBoolFlag() bool }); ok && b.IsBoolFlag() {
+			continue
+		}
+		if i+1 < len(args) {
+			global = append(global, args[i+1])
+			i++
+		}
+	}
+	return global, sub
 }
 
 func dispatch(cmd string, args []string, o *app.Options) int {
-	log := app.Logger()
+	log := app.Logger(o.LogLevel)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	cc := control.NewClient(o.ControlSock)

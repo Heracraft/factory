@@ -34,6 +34,9 @@ type Message struct {
 	Email     string
 	NtfyURL   string
 	Dashboard string
+	// Unsubscribe is the one-click link the email template embeds; empty
+	// when no Unsubscriber is configured (dev) or the channel is not email.
+	Unsubscribe string
 }
 
 // Sender delivers on one channel.
@@ -67,11 +70,17 @@ type Outbox struct {
 	Now       func() time.Time
 	Dashboard string
 	Interval  time.Duration
+	// Unsub signs the email unsubscribe link; nil means no link is sent
+	// (dev, or before the platform secret exists).
+	Unsub *Unsubscriber
+	// APIBase is the api's own public origin, which serves
+	// GET /notify/unsubscribe; distinct from Dashboard.
+	APIBase string
 }
 
 // New builds an outbox with the given channel senders.
 func New(pool *db.Pool, senders map[string]Sender, m *metrics.M, log *slog.Logger) *Outbox {
-	return &Outbox{pool: pool, senders: senders, m: m, log: log.With("component", "api"), Now: time.Now, Dashboard: "https://repose.herakraft.co", Interval: 2 * time.Second}
+	return &Outbox{pool: pool, senders: senders, m: m, log: log.With("component", "api"), Now: time.Now, Dashboard: "https://repose.herakraft.co", APIBase: "https://api.repose.herakraft.co", Interval: 2 * time.Second}
 }
 
 // Run polls until ctx ends, under the outbox advisory lock.
@@ -115,6 +124,8 @@ type row struct {
 	email       *string
 	ntfy        *string
 	notifyEmail bool
+	userID      uuid.UUID
+	eventTS     time.Time
 }
 
 // Once delivers every due row and returns how many it attempted.
@@ -122,7 +133,7 @@ func (o *Outbox) Once(ctx context.Context) (int, error) {
 	now := o.Now()
 	var rows []row
 	err := db.InTx(ctx, o.pool, func(tx db.Tx) error {
-		rs, err := tx.Query(ctx, `select o.event_id, o.channel, o.attempts, e.kind, e.agent, e.summary, p.slug, u.email, u.ntfy_url, u.notify_email
+		rs, err := tx.Query(ctx, `select o.event_id, o.channel, o.attempts, e.kind, e.agent, e.summary, e.ts, p.slug, u.id, u.email, u.ntfy_url, u.notify_email
 			from events_outbox o join events e on e.id = o.event_id join projects p on p.id = e.project_id join users u on u.id = p.user_id
 			where o.next_at <= $1 order by o.next_at limit 100 for update of o skip locked`, now)
 		if err != nil {
@@ -131,7 +142,7 @@ func (o *Outbox) Once(ctx context.Context) (int, error) {
 		defer rs.Close()
 		for rs.Next() {
 			var r row
-			if err := rs.Scan(&r.eventID, &r.channel, &r.attempts, &r.kind, &r.agent, &r.summary, &r.slug, &r.email, &r.ntfy, &r.notifyEmail); err != nil {
+			if err := rs.Scan(&r.eventID, &r.channel, &r.attempts, &r.kind, &r.agent, &r.summary, &r.eventTS, &r.slug, &r.userID, &r.email, &r.ntfy, &r.notifyEmail); err != nil {
 				return err
 			}
 			rows = append(rows, r)
@@ -178,6 +189,9 @@ func (o *Outbox) deliver(ctx context.Context, r row) {
 	if r.ntfy != nil {
 		m.NtfyURL = *r.ntfy
 	}
+	if r.channel == "email" && o.Unsub != nil {
+		m.Unsubscribe = o.Unsub.URL(o.APIBase, r.userID)
+	}
 	sctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	err := s.Send(sctx, m)
 	cancel()
@@ -189,6 +203,9 @@ func (o *Outbox) mark(ctx context.Context, r row, err error, permanent bool) {
 	now := o.Now()
 	if err == nil {
 		o.m.NotifyTotal.WithLabelValues(r.channel, "ok").Inc()
+		if !r.eventTS.IsZero() {
+			o.m.NotifyDeliveryLatencySeconds.Observe(now.Sub(r.eventTS).Seconds())
+		}
 		o.log.Info("notification sent", "event", "notify_send", "channel", r.channel, "kind", r.kind)
 		_ = db.InTx(ctx, o.pool, func(tx db.Tx) error { // a failed mark re-sends once; the delivered key is idempotent
 			if _, err := tx.Exec(ctx, "update events set delivered = delivered || jsonb_build_object($2::text, $3::text) where id = $1", r.eventID, r.channel, now.UTC().Format(time.RFC3339)); err != nil {
@@ -235,7 +252,8 @@ func (o *Outbox) gauges(ctx context.Context) {
 	}
 }
 
-// Title renders the one-line title of a message.
+// Title renders the one-line title of a message: what the ntfy Title
+// header and ordinary email subjects use.
 func Title(m Message) string {
 	verb := map[string]string{"completed": "finished", "needs_input": "needs input", "error": "hit an error"}[m.Kind]
 	if verb == "" {
@@ -245,6 +263,22 @@ func Title(m Message) string {
 		return fmt.Sprintf("%s: %s %s", m.Project, m.Agent, verb)
 	}
 	return fmt.Sprintf("%s: %s", m.Project, verb)
+}
+
+// platformSubjects are the dedicated subject lines DESIGN.md §13 and
+// 13-notifications.md §5.6 give platform-originated events: the user, not
+// an agent, is what changed state, so "<project>: <verb>" reads wrong.
+var platformSubjects = map[string]string{
+	"billing_stopped": "Your guests were stopped for non-payment",
+}
+
+// Subject is the email subject line: Title for agent events, the
+// documented wording for platform events.
+func Subject(m Message) string {
+	if s, ok := platformSubjects[m.Kind]; ok {
+		return s
+	}
+	return Title(m)
 }
 
 // Email sends through Resend's HTTP API.
@@ -271,9 +305,12 @@ func (e *Email) Send(ctx context.Context, m Message) error {
 	if url == "" {
 		url = "https://api.resend.com/emails"
 	}
-	title := Title(m)
-	body := fmt.Sprintf("%s\n\n%s\n\nAttach with `repose attach --project %s` or open %s/projects.\n", title, m.Summary, m.Project, m.Dashboard)
-	payload, err := json.Marshal(map[string]any{"from": from, "to": []string{m.Email}, "subject": "[repose] " + title, "text": body})
+	subject := Subject(m)
+	body := fmt.Sprintf("%s\n\n%s\n\nAttach with `repose attach --project %s` or open %s/projects.\n", subject, m.Summary, m.Project, m.Dashboard)
+	if m.Unsubscribe != "" {
+		body += fmt.Sprintf("\nStop these emails: %s\n", m.Unsubscribe)
+	}
+	payload, err := json.Marshal(map[string]any{"from": from, "to": []string{m.Email}, "subject": "[repose] " + subject, "text": body})
 	if err != nil {
 		return err
 	}

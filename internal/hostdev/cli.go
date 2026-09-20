@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -21,6 +20,7 @@ import (
 
 	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
 	"github.com/heracraft/repose/internal/hostd/testca"
+	"github.com/heracraft/repose/internal/obs"
 )
 
 // Usage is the subcommand list.
@@ -241,7 +241,7 @@ func mustRead(p string) string {
 }
 
 func serveCmd(ctx context.Context, dir string) error {
-	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	log := obs.NewLogger(obs.LogOptions{Component: obs.ComponentHostdev})
 	s, err := NewServer(dir, log)
 	if err != nil {
 		return err

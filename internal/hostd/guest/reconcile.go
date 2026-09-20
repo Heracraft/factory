@@ -41,7 +41,7 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 		if known[id] {
 			continue
 		}
-		m.d.Log.Warn("orphan guest unit", "component", "hostd", "event", "reconcile_orphan", "guest_id", id)
+		m.d.Log.Warn("orphan guest unit", "event", "reconcile_orphan", "guest_id", id)
 		if g := m.guestFromDisk(id); g != nil {
 			if _, err := m.d.State.AllocIndex(g.GuestID, m.maxIndex); err == nil {
 				_ = m.d.State.PutGuest(g) // adopted from guest.json; a failed write is retried at the next reconcile
@@ -49,8 +49,31 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 			}
 		}
 	}
+	m.sweepStaleSnapshots(ctx)
 	m.refreshGuestGauge()
 	return nil
+}
+
+// sweepStaleSnapshots removes LVM snapshot volumes left by a hostd that
+// died between `lvcreate -s` and `lvremove` (DECISIONS I-68). At start no
+// snapshot is in flight, so every `snap-*` volume is an orphan: the api
+// re-sends the interrupted Snapshot command and the re-run makes its own.
+func (m *Manager) sweepStaleSnapshots(ctx context.Context) {
+	vols, err := m.d.LVM.ListVolumes(ctx)
+	if err != nil {
+		m.d.Log.Warn("could not list volumes for the snapshot sweep", "event", "reconcile_snapshots", "err", err.Error())
+		return
+	}
+	for _, v := range vols {
+		if !strings.HasPrefix(v, "snap-") {
+			continue
+		}
+		if err := m.d.LVM.RemoveVolume(ctx, v); err != nil {
+			m.d.Log.Warn("stale snapshot volume not removed", "event", "reconcile_snapshots", "volume", v, "err", err.Error())
+			continue
+		}
+		m.d.Log.Warn("removed stale snapshot volume", "event", "reconcile_snapshots", "volume", v)
+	}
 }
 
 func (m *Manager) reconcileGuest(ctx context.Context, g *state.Guest, unitActive bool) {
@@ -122,7 +145,7 @@ func (m *Manager) Rebuild(ctx context.Context) ([]string, error) {
 			continue
 		}
 		if err := m.d.State.ClaimIndex(g.GuestID, g.IPIndex); err != nil {
-			m.d.Log.Warn("rebuild: address in use", "component", "hostd", "event", "reconcile_rebuild", "guest_id", g.GuestID, "err", err.Error())
+			m.d.Log.Warn("rebuild: address in use", "event", "reconcile_rebuild", "guest_id", g.GuestID, "err", err.Error())
 			continue
 		}
 		if err := m.d.State.PutGuest(g); err != nil {

@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -40,6 +41,7 @@ type Env struct {
 	sec   *secrets.Store
 	ca    *ca.CA
 	eng   *ops.Engine
+	log   *slog.Logger
 }
 
 // Usage is the command list.
@@ -186,7 +188,7 @@ func (e *Env) engine(ctx context.Context) (*ops.Engine, error) {
 	}
 	// The admin only enqueues; the api-grpc process drives, so no sender,
 	// CA or secrets are needed here.
-	e.eng = ops.New(e.pool, nil, nil, nil, nil, metrics.NewNop(), obs.NewLogger("admin", e.Stderr, 8), ops.Config{})
+	e.eng = ops.New(e.pool, nil, nil, nil, nil, nil, metrics.NewNop(), obs.NewLogger(obs.LogOptions{Component: obs.ComponentAdmin, Writer: e.Stderr, Level: slog.LevelError + 1}), ops.Config{})
 	return e.eng, nil
 }
 
@@ -197,8 +199,32 @@ func envOr(name, def string) string {
 	return def
 }
 
+// audited writes the audit_log row and the admin_action line that
+// docs/workstreams/10-observability.md §5 requires: the row is the record an
+// auditor reads, the line is what a Loki query over the incident window
+// shows. The detail map is not logged; it is the row's business, and it can
+// carry a target's own values.
 func (e *Env) audited(ctx context.Context, action, target string, detail map[string]any) (uuid.UUID, error) {
-	return store.Audit(ctx, e.pool, e.Actor, action, target, detail)
+	id, err := store.Audit(ctx, e.pool, e.Actor, action, target, detail)
+	result := "ok"
+	if err != nil {
+		result = "error"
+	}
+	e.logger().Log(ctx, obs.LevelNotice, "admin action", "event", "admin_action",
+		"action", action, "audit_id", id.String(), "result", result)
+	return id, err
+}
+
+// logger is built on first use, so a test Env needs no wiring.
+func (e *Env) logger() *slog.Logger {
+	if e.log == nil {
+		w := e.Stderr
+		if w == nil {
+			w = io.Discard
+		}
+		e.log = obs.NewLogger(obs.LogOptions{Component: obs.ComponentAdmin, Writer: w})
+	}
+	return e.log
 }
 
 func (e *Env) table(rows [][]string) {

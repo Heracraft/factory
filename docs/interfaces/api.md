@@ -18,6 +18,7 @@ shared mTLS client certificate. Errors: `{ "error": { "code": "...",
 | PATCH | `/me` | `{tz?, notify: {email?: bool, ntfy_url?: string\|null}}` |
 | DELETE | `/me` | begins cancellation (stops guests, 30-day retention) |
 | POST | `/me/notify-test` | sends a test event to every configured channel → `{email: ok\|error, ntfy: ok\|error}` |
+| GET | `/notify/unsubscribe?token=` | no auth; the token is a signed, non-expiring user id (13-notifications.md §5.6) from an email's unsubscribe link. Sets `notify_email = false` and returns a plain-text confirmation; an invalid or forged token gets `invalid` |
 
 `handle` is derived from the GitHub login at first sign-in, lowercased, `[a-z0-9-]`,
 unique; it is the second half of the SSH login name.

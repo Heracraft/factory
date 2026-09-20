@@ -8,7 +8,9 @@
 # and is readable through IMDS for the life of the VM. The WireGuard private
 # key is therefore generated on the machine at first boot and never leaves it;
 # its public half is written to /etc/wireguard/publickey for the operator to
-# add as a peer on the edge.
+# add as a peer on the edge. For the same reason the installer's
+# ROOT_USER_PASSWORD is not used: the admin account is created by hand at
+# first login (docs/ops/coolify.md).
 ssh_pwauth: false
 # Ubuntu images default to disable_root: true, whose ssh module runs after
 # write_files and replaces root's authorized_keys with a forced-command line
@@ -20,6 +22,12 @@ packages:
   - curl
   - jq
   - wireguard-tools
+  # The two the runbook's restore procedure calls by name: rclone lists and
+  # fetches the dumps from R2, pg_restore loads them. Installing them here is
+  # the difference between following "Postgres restore" and stopping on the
+  # first line to apt-get something.
+  - rclone
+  - postgresql-client
 write_files:
   - path: /root/.ssh/authorized_keys
     owner: root:root
@@ -68,9 +76,52 @@ write_files:
       CONF
       chmod 0600 /etc/wireguard/wg0.conf
       systemctl enable --now wg-quick@wg0
+  - path: /usr/local/sbin/repose-backup-check
+    owner: root:root
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      # Is there a recent Postgres dump in R2?
+      #
+      # Coolify's backup job reports success in its own UI, which nobody is
+      # watching at 02:00. This turns "did last night's dump land" into one
+      # command with an exit code, which is what docs/ops/RUNBOOK.md
+      # "PostgresBackupStale" tells an operator to run.
+      #
+      # It needs an rclone remote named `r2`, created once from the R2 API
+      # token (a human step, DECISIONS I-21):
+      #   rclone config create r2 s3 provider=Cloudflare \
+      #     access_key_id=... secret_access_key=... \
+      #     endpoint=https://<account>.r2.cloudflarestorage.com
+      set -euo pipefail
+      bucket="$${1:-${backup_bucket}}"
+      max_age_hours=$${2:-${backup_max_age_hours}}
+
+      if ! rclone listremotes 2>/dev/null | grep -qx 'r2:'; then
+        echo "repose-backup-check: no rclone remote named r2; see the header of this script" >&2
+        exit 2
+      fi
+
+      newest=$(rclone lsjson --recursive "r2:$${bucket}" 2>/dev/null |
+        jq -r 'map(.ModTime) | sort | last // empty')
+      if [ -z "$${newest}" ]; then
+        echo "repose-backup-check: bucket $${bucket} is empty; no dump has ever landed" >&2
+        exit 1
+      fi
+
+      age_hours=$(( ( $(date -u +%s) - $(date -u -d "$${newest}" +%s) ) / 3600 ))
+      if [ "$${age_hours}" -gt "$${max_age_hours}" ]; then
+        echo "repose-backup-check: newest dump is $${age_hours}h old (limit $${max_age_hours}h), written $${newest}" >&2
+        exit 1
+      fi
+      echo "repose-backup-check: newest dump is $${age_hours}h old, written $${newest}"
 runcmd:
   - [ chmod, "0700", /root/.ssh ]
   - [ systemctl, restart, ssh ]
   - [ /usr/local/sbin/repose-wg-setup ]
   - [ bash, -c, "curl -fsSL '${coolify_install_url}' -o /root/coolify-install.sh" ]
-  - [ bash, /root/coolify-install.sh ]
+  # The installer takes the release as its one positional argument and reads
+  # AUTOUPDATE from the environment; both are variables so that rebuilding
+  # this VM reproduces the control plane rather than installing whatever
+  # shipped that morning (docs/ops/coolify.md).
+  - [ bash, -c, "AUTOUPDATE=${autoupdate} bash /root/coolify-install.sh '${coolify_version}'" ]

@@ -1,0 +1,86 @@
+# Loki, Prometheus and Grafana for local development
+# (docs/workstreams/10-observability.md §7). It is not a copy of the personal
+# server: there is no Alertmanager, no WireGuard, no retention to speak of and
+# no Postgres datasource unless one is pointed at. What it is for is checking
+# that the seven dashboards load and that a panel's query parses before either
+# reaches the server that people rely on.
+#
+#   docker compose -f ops/dev/docker-compose.yml up -d
+#   # Grafana on the Tailscale address of this box, not just localhost:
+#   #   http://100.89.156.32:3000  (anonymous, admin)
+#   docker compose -f ops/dev/docker-compose.yml down -v
+#
+# The dashboards and their provisioning file are mounted read-only from
+# ops/, so a provisioning mistake shows up here rather than on the server. `ops/check.sh --grafana`
+# brings the stack up, waits for Grafana, and asserts every dashboard loaded.
+name: repose-obs-dev
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../alerts.yaml:/etc/prometheus/repose/alerts.yaml:ro
+      - prometheus:/prometheus
+    ports:
+      - "0.0.0.0:9090:9090"
+    # host.docker.internal is how the scrape jobs reach a hostd, an api or a
+    # gateway running on this box.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  loki:
+    image: grafana/loki:3.5.9
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./loki.yaml:/etc/loki/loki.yaml:ro
+      - loki:/loki
+    ports:
+      - "0.0.0.0:3100:3100"
+
+  # A Postgres for the per-guest, billing, snapshot and abuse dashboards,
+  # loaded with the fixture schema and some synthetic samples by
+  # ops/dev/pgcheck.sh. The real datasource is the control plane's database
+  # with a read-only role.
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: repose
+      POSTGRES_DB: repose
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55432:5432"
+
+  grafana:
+    image: grafana/grafana:12.4.0
+    environment:
+      # A dev stack nobody should have to log into, on a box reachable only
+      # over Tailscale. The server's Grafana is the one with a password.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_USERS_DEFAULT_THEME: dark
+      GF_LOG_LEVEL: info
+    volumes:
+      # The real dashboard provider and the real dashboards; only the
+      # datasource URLs differ from the server, because two provisioning files
+      # declaring the same uid is an error rather than an override.
+      - ../grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ../dashboards:/etc/grafana/dashboards/repose:ro
+      - ./grafana-datasources-dev.yaml:/etc/grafana/provisioning/datasources/repose.yaml:ro
+      - grafana:/var/lib/grafana
+    ports:
+      - "0.0.0.0:3000:3000"
+    depends_on: [prometheus, loki, postgres]
+
+volumes:
+  prometheus:
+  loki:
+  grafana:
+  postgres:

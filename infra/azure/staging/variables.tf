@@ -137,7 +137,13 @@ variable "edge_size" {
 
 variable "coolify_count" {
   type        = number
-  description = "Control-plane VMs: 0 or 1. Stays 0 until wave 3 (DECISIONS I-24)."
+  description = <<-EOT
+    Control-plane VMs: 0 or 1. Production runs 1 from wave 3 (DECISIONS I-24,
+    I-71); the default stays 0 so a new environment costs nothing until
+    somebody asks for a control plane. Setting it back to 0 destroys the VM
+    and its OS disk, Postgres and every Coolify application definition
+    included.
+  EOT
   default     = 0
 }
 
@@ -145,6 +151,18 @@ variable "coolify_size" {
   type        = string
   description = "Control-plane VM size."
   default     = "Standard_D4s_v7"
+}
+
+variable "coolify_version" {
+  type        = string
+  description = "Coolify release installed on the control-plane VM. Pinned so a rebuild reproduces the control plane."
+  default     = "4.3.23"
+}
+
+variable "coolify_autoupdate" {
+  type        = bool
+  description = "Let Coolify update itself. False; upgrades are a step in docs/ops/coolify.md."
+  default     = false
 }
 
 variable "edge_wireguard_public_key" {
@@ -165,8 +183,12 @@ variable "keyvault_name" {
 
 variable "manage_dns" {
   type        = bool
-  description = "Create the Cloudflare records."
-  default     = true
+  description = <<-EOT
+    Create the Cloudflare records. False until CLOUDFLARE_API_TOKEN and
+    cloudflare_zone_id both exist; until then the records are created by hand
+    from the table in infra/README.md, "DNS while manage_dns is false".
+  EOT
+  default     = false
 }
 
 variable "cloudflare_zone_id" {
