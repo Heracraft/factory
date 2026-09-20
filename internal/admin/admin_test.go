@@ -150,6 +150,15 @@ func TestAdminSurface(t *testing.T) {
 	if st := h.Project(p2.ID).State; st != "destroyed" {
 		t.Fatalf("state after destroy: %s", st)
 	}
+	// A destroyed project no longer pins the handle.
+	u3 := h.NewUser("user-tmp3")
+	p3 := h.CreateRunning(u3, "zr")
+	if _, err := run(t, e, "projects", "destroy", p3.ID.String()); err != nil {
+		t.Fatalf("destroy zr: %v", err)
+	}
+	if out, err := run(t, e, "users", "rename", "user-tmp3", "tmp3"); err != nil || !strings.Contains(out, "is now tmp3") {
+		t.Fatalf("rename after destroy: %s %v", out, err)
+	}
 	if _, err := run(t, e, "users", "suspend", "zed", "--reason", "abuse"); err != nil {
 		t.Fatalf("suspend: %v", err)
 	}
