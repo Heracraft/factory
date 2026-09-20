@@ -113,6 +113,56 @@ func (c *CA) issue(tmpl *x509.Certificate) (certPEM, keyPEM []byte, serial strin
 		pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: kb}), sn.String(), nil
 }
 
+// SignCSR signs a certificate signing request whose private key stays where
+// it was generated (the edge's gateway key, DECISIONS I-92): the CSR's
+// public key gets a client certificate with CN = name, or a server
+// certificate for the names (an IP becomes an IP SAN) when server is set.
+// The CSR's own subject and extensions are ignored; only its key is used.
+func (c *CA) SignCSR(csrPEM []byte, server bool, validity time.Duration, names ...string) (certPEM []byte, serial string, err error) {
+	block, _ := pem.Decode(csrPEM)
+	if block == nil || block.Type != "CERTIFICATE REQUEST" {
+		return nil, "", errors.New("pki: not a PEM certificate request")
+	}
+	csr, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		return nil, "", fmt.Errorf("pki: parse request: %w", err)
+	}
+	if err := csr.CheckSignature(); err != nil {
+		return nil, "", fmt.Errorf("pki: request signature: %w", err)
+	}
+	if len(names) == 0 || names[0] == "" {
+		return nil, "", errors.New("pki: a name is required")
+	}
+	tmpl := &x509.Certificate{
+		Subject:   pkix.Name{CommonName: names[0]},
+		NotBefore: time.Now().Add(-time.Minute),
+		NotAfter:  time.Now().Add(validity),
+		KeyUsage:  x509.KeyUsageDigitalSignature,
+	}
+	if server {
+		tmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+		for _, n := range names {
+			if ip := net.ParseIP(n); ip != nil {
+				tmpl.IPAddresses = append(tmpl.IPAddresses, ip)
+			} else {
+				tmpl.DNSNames = append(tmpl.DNSNames, n)
+			}
+		}
+	} else {
+		tmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
+	}
+	sn, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 62))
+	if err != nil {
+		return nil, "", err
+	}
+	tmpl.SerialNumber = sn
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, c.Cert, csr.PublicKey, c.Key)
+	if err != nil {
+		return nil, "", err
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), sn.String(), nil
+}
+
 // IssueClient issues a client certificate with CN = name.
 func (c *CA) IssueClient(name string, validity time.Duration) (certPEM, keyPEM []byte, serial string, err error) {
 	return c.issue(&x509.Certificate{

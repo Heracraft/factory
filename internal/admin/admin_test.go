@@ -3,9 +3,13 @@ package admin_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -200,6 +204,28 @@ func TestAdminSurface(t *testing.T) {
 	}
 	if _, err := run(t, e, "ca", "sign-server"); err == nil {
 		t.Fatal("sign-server without --name should refuse")
+	}
+	// --csr signs a request made elsewhere and prints the certificate alone:
+	// the private key never travels (the edge's gateway key, I-92).
+	csrKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	csrDER, _ := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{}, csrKey)
+	csrFile := filepath.Join(t.TempDir(), "gateway.csr")
+	if err := os.WriteFile(csrFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"ca", "sign-client", "--name", "gateway", "--csr", csrFile}, {"ca", "sign-server", "--name", "10.255.0.1", "--csr", csrFile}} {
+		out, err := run(t, e, args...)
+		if err != nil || !strings.Contains(out, "-----BEGIN CERTIFICATE-----") || strings.Contains(out, "PRIVATE KEY") {
+			t.Fatalf("%v: %q %v", args, out, err)
+		}
+		blk, _ := pem.Decode([]byte(out[strings.Index(out, "-----BEGIN"):]))
+		crt, err := x509.ParseCertificate(blk.Bytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !csrKey.PublicKey.Equal(crt.PublicKey) {
+			t.Fatalf("%v: certificate is not for the request's key", args)
+		}
 	}
 	if v, _ := store.Setting(ctx, h.Pool, "edge_wg_endpoint"); v != "1.2.3.4:51820" {
 		t.Fatalf("edge setting %q", v)

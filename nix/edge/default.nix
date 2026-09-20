@@ -344,6 +344,8 @@ in
     services.journald.settings.Journal.SystemMaxUse = "2G";
     services.resolved.settings.Resolve = { LLMNR = "false"; MulticastDNS = "false"; };
 
-    environment.systemPackages = with pkgs; [ wireguard-tools iproute2 ];
+    # openssl: the gateway's key pair and its certificate requests are made
+    # here so the private key never leaves the edge (ops/RUNBOOK.md "Edge").
+    environment.systemPackages = with pkgs; [ wireguard-tools iproute2 openssl ];
   };
 }

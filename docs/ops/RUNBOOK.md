@@ -64,15 +64,20 @@ once, in this order (DECISIONS I-92):
    records the hub, so hosts registering from now on receive it.
 3. `api-ca.pem`: `repose-admin ca show` (the x509 host CA certificate; the
    two SSH CA lines it prints as comments are informational).
-4. `gateway.crt`, `gateway.key`: `repose-admin ca sign-client --name
-   gateway` (the mTLS client for `/internal`).
+4. `gateway.key` and `gateway.crt`, the mTLS client for `/internal`. The
+   key is made on the edge and never leaves it: `openssl ecparam -name
+   prime256v1 -genkey -noout -out gateway.key && openssl req -new -key
+   gateway.key -subj /CN=gateway -out gateway.csr`, then `repose-admin ca
+   sign-client --name gateway --csr /dev/stdin < gateway.csr >
+   gateway.crt` (the CSR is public; pipe it through `docker exec -i`).
 5. `ssh_host_ed25519_key` (`ssh-keygen -t ed25519 -N ''`) and its
    certificate `ssh_host_ed25519_key-cert.pub` from `repose-admin ca
    sign-host --principal ssh.repose.herakraft.co,<edge ip> --pubkey
    ssh_host_ed25519_key.pub`, so clients verify the gateway through the
    `@cert-authority` line the CLI writes.
-6. `tls/edge-internal.crt`, `.key`: `repose-admin ca sign-server --name
-   10.255.0.1` for the hook-ingest listener. `tls/wildcard.*` (the preview
+6. `tls/edge-internal.key`, `.crt`: the same CSR dance with
+   `repose-admin ca sign-server --name 10.255.0.1 --csr /dev/stdin` for
+   the hook-ingest listener. `tls/wildcard.*` (the preview
    stub) waits on a DNS-validated wildcard certificate; without it the
    gateway logs `listener disabled` for `preview` and serves everything
    else.

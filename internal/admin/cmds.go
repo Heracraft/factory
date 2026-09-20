@@ -1325,6 +1325,7 @@ func (e *Env) caCmd(ctx context.Context, args []string) error {
 			fs.String("name", "gateway", "client name (CN)")
 			fs.Bool("operator", false, "sign an operator SSH certificate instead (reads --pubkey)")
 			fs.String("pubkey", "", "public key file (with --operator)")
+			fs.String("csr", "", "PEM certificate request to sign instead of generating a key; the key stays where it was made")
 			fs.String("out", "", "directory for <name>.crt and <name>.key")
 		})
 		if err != nil {
@@ -1338,6 +1339,9 @@ func (e *Env) caCmd(ctx context.Context, args []string) error {
 			return err
 		}
 		name := fs.Lookup("name").Value.String()
+		if csrFile := fs.Lookup("csr").Value.String(); csrFile != "" {
+			return e.signCSR(ctx, c, csrFile, false, 2*365*24*time.Hour, name)
+		}
 		certPEM, keyPEM, serial, err := c.X509().IssueClient(name, 2*365*24*time.Hour)
 		if err != nil {
 			return err
@@ -1375,6 +1379,7 @@ func (e *Env) caCmd(ctx context.Context, args []string) error {
 		fs, err := flagsFor("sign-server", args[1:], func(fs *flag.FlagSet) {
 			fs.String("name", "", "comma-separated DNS names or IPs; the first is the CN")
 			fs.String("ttl", "43800h", "validity")
+			fs.String("csr", "", "PEM certificate request to sign instead of generating a key; the key stays where it was made")
 			fs.String("out", "", "directory for <first name>.crt and .key")
 		})
 		if err != nil {
@@ -1391,6 +1396,9 @@ func (e *Env) caCmd(ctx context.Context, args []string) error {
 		c, err := e.loadCA(ctx)
 		if err != nil {
 			return err
+		}
+		if csrFile := fs.Lookup("csr").Value.String(); csrFile != "" {
+			return e.signCSR(ctx, c, csrFile, true, ttl, names...)
 		}
 		certPEM, keyPEM, err := c.X509().IssueServer(ttl, names...)
 		if err != nil {
@@ -1413,6 +1421,29 @@ func (e *Env) caCmd(ctx context.Context, args []string) error {
 		return nil
 	}
 	return fmt.Errorf("%w: ca %s", ErrUsage, args[0])
+}
+
+// signCSR signs a certificate request from a file (or stdin as /dev/stdin)
+// and prints the certificate alone: the private key never travels
+// (DECISIONS I-92, the edge's gateway key).
+func (e *Env) signCSR(ctx context.Context, c *ca.CA, csrFile string, server bool, ttl time.Duration, names ...string) error {
+	csrPEM, err := os.ReadFile(csrFile)
+	if err != nil {
+		return err
+	}
+	certPEM, serial, err := c.X509().SignCSR(csrPEM, server, ttl, names...)
+	if err != nil {
+		return err
+	}
+	action := "ca_sign_client"
+	if server {
+		action = "ca_sign_server"
+	}
+	if _, err := e.audited(ctx, action, names[0], map[string]any{"serial": serial, "csr": true}); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprint(e.Stdout, string(certPEM))
+	return nil
 }
 
 func (e *Env) signSSH(ctx context.Context, fs *flag.FlagSet, operator bool) error {
