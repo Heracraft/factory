@@ -23,7 +23,8 @@
 # kernel_changed for a base kernel bump is resilience.sh's base-bump section
 # (it needs a published base whose kernel differs; README.md).
 #
-#   ops/checks/menu.sh [--with-destroy] [--with-closure-cap]   # PROJECT running
+#   ops/checks/menu.sh [--with-destroy] [--with-closure-cap] [--with-build-timeout]
+#   (PROJECT running; --with-build-timeout takes 30 minutes by design)
 set -euo pipefail
 check=menu
 # shellcheck disable=SC1091
@@ -31,11 +32,13 @@ check=menu
 frags="$checks_dir/fragments"
 with_destroy=0
 with_cap=0
+with_timeout=0
 for a in "$@"; do
 	case $a in
 	--with-destroy) with_destroy=1 ;;
 	--with-closure-cap) with_cap=1 ;;
-	*) echo "usage: $0 [--with-destroy] [--with-closure-cap]" >&2; exit 2 ;;
+	--with-build-timeout) with_timeout=1 ;;
+	*) echo "usage: $0 [--with-destroy] [--with-closure-cap] [--with-build-timeout]" >&2; exit 2 ;;
 	esac
 done
 
@@ -60,6 +63,11 @@ log "menu revision $rev, op $op"
 logf="$OUT/menu-buildlog-$stamp.sse"
 stream_op_log "$pid" "$op" "$logf" &
 sse=$!
+# While it runs: the eval and build scopes and the user they run as (12 §9
+# "The build runs as nixbuild, not root, inside a scope with the documented
+# CPUQuota, MemoryMax, RuntimeMaxSec").
+sleep 6
+host_sh "for u in \$(systemctl list-units --type=scope --plain --no-legend 'repose-build-*' | awk '{print \$1}'); do echo \"== \$u\"; systemctl show \"\$u\" -p CPUQuotaPerSecUSec,MemoryMax,RuntimeMaxUSec,ControlGroup; done; echo '== nix processes (user pid comm)'; ps -eo user=,pid=,comm= | grep -E ' nix( |\$)|nix-build|nix eval' | head -5" | evidence "build scopes and processes on the host during op $op"
 wait_op "$pid" "$op" 1800 || fail "the menu build failed"
 sleep 2
 kill $sse 2>/dev/null || true
@@ -139,6 +147,17 @@ if [ $with_destroy = 1 ]; then
 	sleep 20
 	host_sh "echo roots: \$(ls /nix/var/nix/gcroots/repose/ | grep -cE '$tgid|rev-$tpid' || true); echo volumes: \$(lvs --noheadings -o lv_name vg-guests | grep -c 'g-$tgid' || true); systemctl list-units 'guest@*' --no-pager --plain | grep -c '$tgid' || true" | evidence "after destroy: roots, volumes and units of $tp (all 0)"
 	rm -rf "$d"
+fi
+
+# 9a. Optional: the 30-minute build cap on the real host (case (c)).
+if [ $with_timeout = 1 ]; then
+	set +e
+	out=$("$REPOSE" config apply "$frags/build-timeout.nix" --project "$PROJECT" 2>&1)
+	rc=$?
+	set -e
+	printf '%s\n' "$out" | grep -B1 -A3 'timed out' | evidence "build timeout (exit $rc)"
+	[ $rc -ne 0 ] || fail "the sleeping derivation was accepted"
+	printf '%s' "$out" | grep -q 'build timed out after 30 minutes while building sleep-forever-1.0' || fail "build_timeout message is not the documented one"
 fi
 
 # 9. Optional: the closure cap on the real host.

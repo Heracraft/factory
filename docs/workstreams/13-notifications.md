@@ -337,11 +337,20 @@ not-yet-built convenience for later.
 - [ ] Real guest: each of the five agents produces a `completed` and, where
       the mechanism supports it, a `needs_input`, delivered to a phone
       within 60 s. Evidence: `STATUS.md` line per agent with the event ids.
-      NOT done: needs a registered host (M1 bring-up is still blocked on
-      the owner's apply per `STATUS.md`).
-- [ ] `repose status` and the dashboard show last event and agent state.
-      Evidence: screenshot and CLI output. NOT done: 07 and 08 render this;
-      this workstream defines the fields (5.7) they read.
+      Owner: the M3 integration session, `ops/checks/notifications.sh` on
+      host-01 (2026-09-20): a real `repose run` for Claude, Codex and
+      opencode when the owner is logged in inside the guest, else their
+      native payload replayed through `repose-hook` from the agent's tmux
+      window; the shipped pane-idle heuristic for Gemini and pi; the
+      script prints the STATUS line per agent with the event id and the
+      ntfy delivery time.
+- [~] `repose status` and the dashboard show last event and agent state.
+      Evidence: screenshot and CLI output. The CLI half is built:
+      `internal/cli/status.go` prints `last event <age>: <agent> <kind>
+      "<summary>"` and one `<agent>: <state>` line per window (07,
+      STATUS 2026-09-20); its output on host-01 is in
+      `ops/checks/notifications.sh`'s report. The dashboard events card
+      is 08's row, closed by the m3-web session against the real api.
 - [x] Metrics in 5.8 exist. Evidence: `internal/api/metrics/metrics.go`
       registers `repose_api_events_total`, `repose_api_notify_total`,
       `repose_api_outbox_depth`, `repose_api_outbox_lag_seconds`,

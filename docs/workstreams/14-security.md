@@ -143,22 +143,69 @@ boundary actually is.
 
 ## 9. Checklist
 
-- [ ] `../SECURITY.md` matches the current design: every boundary in
-      `ARCHITECTURE.md` has a row here. Evidence: a diff review by someone
-      other than the author.
+Ticked 2026-09-20 by the M3 integration session from `STATUS.md` (the 14
+lines of 2026-09-20), `docs/security/review-2026-09-20.md` and the tree;
+`[~]` is a row whose local half is closed and whose host half is an
+`ops/checks/` run on host-01 (`ops/checks/README.md`).
+
+- [x] `../SECURITY.md` matches the current design: every boundary in
+      `ARCHITECTURE.md` has a row here. Evidence: the review by someone
+      other than the author, main `afc5411` ("m3-web(14): the
+      SECURITY/ARCHITECTURE boundary review, by someone else",
+      2026-09-20).
 - [ ] Every row in the boundary table has a passing test on a shared host
       with two guests from two users. Evidence: test output pasted with
-      host id and date.
+      host id and date. `test/isolation/` has one test per row (STATUS 14,
+      2026-09-20); `ops/checks/isolation-host01.sh` fills its environment
+      for host-01 with the owner's guest through the gateway and a second
+      user's guest through audited `repose-admin exec`, and runs it. The
+      row "hostd for host X cannot act on host Y" needs a second host.
 - [ ] The fork bomb and memory hog test leaves the neighbour within 10
       percent. Evidence: numbers.
-- [ ] Privacy policy and terms contain the two required passages. Evidence:
-      the page URL and a grep of the source.
-- [ ] `rg 'credentials.json'` shows only the exclusion. Evidence: output.
+      `TestForkBombAndMemoryHogLeaveNeighbourWithinTenPercent` in the same
+      run.
+- [~] Privacy policy and terms contain the two required passages. Evidence:
+      the page URL and a grep of the source. `test/isolation/policy_test.go`
+      `TestPolicyTextContainsTheRequiredPassages` pins both passages in
+      `apps/web/src/content/legal/{privacy,terms}.md` and the same
+      sentence in `docs/SECURITY.md`; the live URLs
+      (`https://repose.herakraft.co/privacy`, `/terms`) are the m3-web
+      session's text row.
+- [x] `rg 'credentials.json'` shows only the exclusion. Evidence
+      (2026-09-20, `rg -n 'credentials.json' cmd internal`, non-test):
+      `internal/cli/creds.go:29` (the comment on the allowlist that never
+      includes it), `internal/cli/tmux.go:52` (`test -f
+      ~/.claude/.credentials.json` in the guest, which decides whether
+      `run` attaches for the user to log in instead of sending a prompt,
+      DESIGN §11), and `internal/cli/config.go`, `keychain_other.go` (the
+      CLI's own `~/.config/repose/credentials.json`, a different file).
+      Pinned by `TestClaudeCredentialsAppearOnlyAsAnExclusion`
+      (`test/isolation/policy_test.go`) and
+      `internal/cli/run_integration_test.go` (a laptop home holding
+      `.claude/.credentials.json`, `.gemini/oauth_creds.json` and an SSH
+      key: none travels).
 - [ ] Every audited action in §5 writes an `audit_log` row. Evidence: one
       row per action type, triggered deliberately.
+      `ops/checks/audit-rows.sh` triggers cert issue and revoke, secret
+      put and delete, `exec`, `hosts drain|undrain`, `projects snapshot`
+      and prints the rows by action. Found reading the producers
+      (2026-09-20): an operator SSH login writes a journal line (`hostd
+      audit-login`, event `operator_login`) and no api ingests it into
+      `audit_log`; a restore through the user route (`POST
+      .../snapshots/:sid/restore`) writes no row, only `repose-admin
+      projects restore` does (`project_restore`). Both are open until 05
+      adds the producers.
 - [ ] Operator access works only with a certificate; a password attempt is
-      logged. Evidence: sshd log lines.
-- [ ] Secrets review comments exist in `STATUS.md` for workstreams 04, 05,
-      07. Evidence: the lines.
-- [ ] Incident runbook entry exists and the commands in it were run once
-      on staging. Evidence: notes.
+      logged. Evidence: sshd log lines. `ops/checks/isolation-host01.sh`
+      makes the attempt against host-01 and the edge and pastes both sshd
+      journals and `sshd -T`. Note: until `RegisterResponse` carries a
+      Host CA (review M-1), the host admits the bootstrap key on the
+      WireGuard address (I-92) rather than a certificate.
+- [~] Secrets review comments exist in `STATUS.md` for workstreams 04, 05,
+      07. Evidence: the lines. 04: 2026-09-20 (14 review line). 05 and
+      07: 2026-09-20 (M3 integration session lines, below the 14 lines).
+- [~] Incident runbook entry exists and the commands in it were run once
+      on staging. Evidence: notes. The entry is `ops/RUNBOOK.md`
+      "Suspected cross-tenant access"; the suite invocation in it is what
+      `ops/checks/isolation-host01.sh` runs on host-01 (there is no
+      staging host; the capture commands have not been run).

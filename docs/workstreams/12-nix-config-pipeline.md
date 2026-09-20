@@ -330,51 +330,110 @@ again.
 
 ## 9. Checklist
 
-- [ ] The fragment contract section above is reproduced in
+Ticked 2026-09-20 by the M3 integration session from the evidence in
+`STATUS.md` (12 done-local line, 2026-09-20), the test names in the tree
+and the M1 and M2 host sessions; `[~]` is a row whose local half is closed
+and whose host half is one of the `ops/checks/menu.sh` or
+`ops/checks/resilience.sh` runs on host-01 (`ops/checks/README.md`).
+
+- [x] The fragment contract section above is reproduced in
       `docs/features/config.md` for users, with three example fragments in
       `docs/features/config-examples/` that `nix flake check` builds.
-      Evidence: CI and the files.
-- [ ] Each of the five canonical cases produces exactly the documented
-      first line. Evidence: test output pasted, plus one real run of each
-      through the CLI on a host with the output pasted.
-- [ ] `nix eval` of a fragment containing `builtins.readFile "/etc/passwd"`
+      Evidence: `docs/features/config.md` "Writing a fragment";
+      `nix/flake.nix` `checks.fragment-examples` and
+      `checks.fragment-contract` (`nix flake check ./nix`, CI `nix` job).
+- [~] Each of the five canonical cases produces exactly the documented
+      first line. Evidence: `internal/hostd/nixbuild/nixbuild_test.go`
+      `TestMapEvalErrorFixtures` (the summary line and `fragment_line` of
+      every `testdata/*.stderr`, real Nix output) and
+      `realnix_test.go` `TestRealNixCanonicalCases`,
+      `TestRealNixBuildTimeout`, `TestRealNixClosureCap`
+      (`REPOSE_NIX_TESTS=1`, timeout 5 s and cap 100 MB). Through the CLI
+      on host-01: `ops/checks/menu.sh` for (a), (b), (e), and
+      `--with-closure-cap` and `--with-build-timeout` for (d) and (c).
+- [~] `nix eval` of a fragment containing `builtins.readFile "/etc/passwd"`
       fails with `access to absolute path` (restrict-eval works). Evidence:
-      pasted.
-- [ ] A fragment containing `import <nixpkgs>` fails (no `NIX_PATH`,
-      pure eval). Evidence: pasted.
-- [ ] A fragment with `pkgs.fetchurl { url; hash }` for a file not in any
+      `testdata/abspath.stderr` pinned by `TestMapEvalErrorFixtures`; on
+      host-01, `ops/checks/menu.sh` (`fragments/abspath.nix`).
+- [~] A fragment containing `import <nixpkgs>` fails (no `NIX_PATH`,
+      pure eval). Evidence: `testdata/nixpath.stderr` pinned by
+      `TestMapEvalErrorFixtures`; on host-01, `ops/checks/menu.sh`
+      (`fragments/nixpath.nix`).
+- [~] A fragment with `pkgs.fetchurl { url; hash }` for a file not in any
       cache builds (sandbox network for fixed-output works). Evidence:
-      pasted.
+      `realnix_test.go` `TestRealNixFixedOutputFetch`
+      (`REPOSE_NIX_NETWORK=1`); on host-01, `ops/checks/menu.sh`
+      (`fragments/fetchurl-ok.nix`).
 - [ ] The build runs as `nixbuild`, not root, inside a scope with the
       documented `CPUQuota`, `MemoryMax`, `RuntimeMaxSec`. Evidence:
-      `systemctl show <scope>` pasted during a build.
-- [ ] Closure cap test with the cap lowered passes; a real 20 GB+ fragment
-      on a host returns `closure_too_large` with ten paths. Evidence: test
-      output and the real message.
-- [ ] GC root exists after a build and is removed after destroy; `nix-
+      `systemctl show <scope>` pasted during a build. Locally the argv is
+      pinned by `TestWrapArgv` (`systemd-run --scope`, `setpriv` to
+      `nixbuild`, the three properties); `ops/checks/menu.sh` captures the
+      scopes on host-01 during the menu build.
+- [~] Closure cap test with the cap lowered passes; a real 20 GB+ fragment
+      on a host returns `closure_too_large` with ten paths. Evidence:
+      `TestRealNixClosureCap` (cap 100 MB, ten paths); on host-01,
+      `ops/checks/menu.sh --with-closure-cap` (`fragments/closure-cap.nix`,
+      a 21 GB sparse output).
+- [~] GC root exists after a build and is removed after destroy; `nix-
       collect-garbage` on the host does not remove a running guest's
-      closure. Evidence: `ls gcroots` before and after, and a `nix-store
-      --gc --print-dead` showing the closure is live.
-- [ ] `kernel_changed` is true when the base kernel is bumped and false for
-      a package-only change. Evidence: two `Build` results pasted.
-- [ ] Menu: every catalog entry has a test; the allowlist lint runs in CI
-      and rejects a test entry with `networking.firewall`. Evidence: CI.
+      closure. Evidence: `TestRealNixSuccessRootAndKernelChanged` (the
+      root under `gcroots/repose`); `nix-collect-garbage` on host-01 with
+      two guests running kept both rooted closures (M1 session,
+      `docs/RESEARCH.md` §11: 1.1 GiB freed, guests unaffected); the
+      root after a destroy through the api is `ops/checks/menu.sh
+      --with-destroy`.
+- [~] `kernel_changed` is true when the base kernel is bumped and false for
+      a package-only change. Evidence: `TestKernelChanged` and
+      `TestRealNixSuccessRootAndKernelChanged` (a package-only change and
+      a kernel bump across two toplevels); on host-01, the first real
+      `Build` reported `kernel_changed` against the M1 guest's closure
+      (`docs/RESEARCH.md` §12) and `ApplyConfig` refused the kernel change
+      until forced (M1 session). Two `Build` results from the api path
+      need a published base whose kernel differs; every merged `main`
+      locks the same nixpkgs, so `ops/checks/resilience.sh bump` takes
+      `BASE_REV` and the conductor decides when a `nix flake update`
+      commit is published (`ops/checks/README.md`).
+- [x] Menu: every catalog entry has a test; the allowlist lint runs in CI
+      and rejects a test entry with `networking.firewall`. Evidence:
+      `internal/menu/menu_test.go` `TestEveryEntryRendersAndRoundTrips`,
+      `TestRealNixAllEntriesEvaluate`, `TestLintRejectsForbiddenPrefix`
+      (`networking.firewall`), `TestAllowlistMatchesNix`; CI `go` job.
 - [ ] Menu → fragment → edit → takeover flow works end to end through the
       api. Evidence: the sequence of API calls and responses.
-- [ ] Base bump: publishing a version applies to a non-held project and
+      `internal/api/http/http_test.go` `TestConfigRoutes` covers the routes
+      against the fake hostd; the sequence on host-01 is `ops/checks/menu.sh`.
+- [~] Base bump: publishing a version applies to a non-held project and
       not a held one; a project whose bump fails shows
-      `base_update_failed` and keeps working. Evidence: `repose status`
-      for three projects pasted.
+      `base_update_failed` and keeps working. Evidence:
+      `internal/basebump/basebump_test.go` `TestThreeProjects`,
+      `TestApplyFailureAndContextCancel`; `internal/api/basebump`
+      `TestSweepBuildsUnheldSkipsHeld`. `repose status` for real projects:
+      `ops/checks/resilience.sh bump`.
 - [ ] `scripts/bump-agents.sh` produces a PR on a schedule and the built
       agents print their versions. Evidence: a merged PR link and CI log.
+      The workflow exists (`.github/workflows/bump-agents.yml`) and every
+      overlay package prints its version locally (STATUS 12); no run has
+      happened on GitHub yet (owner).
 - [ ] Overlay cache is populated and a fresh host substitutes the agents
       instead of fetching upstream (`nix build --print-build-logs` shows
-      `copying path ... from <cache>`). Evidence: pasted.
-- [ ] `RESEARCH.md` records eval and build timings for the base plus a
+      `copying path ... from <cache>`). Evidence: pasted. Waits on the
+      owner's Cachix cache and `CACHIX_AUTH_TOKEN` (`ops/AZURE-SETUP.md`
+      step 16, DECISIONS I-46).
+- [~] `RESEARCH.md` records eval and build timings for the base plus a
       typical fragment on a host (so 05 can set user expectations).
-      Evidence: the section.
-- [ ] `ops/RUNBOOK.md` entries: build stuck, cache unreachable, base bump
-      failures, closure collected. Evidence: the entries.
-- [ ] `rg 'TODO|FIXME|not implemented' internal/nixbuild internal/menu
+      Evidence: `docs/RESEARCH.md` §11 (dev box) and §12 (host-01: the
+      first `Build`, 35.0 s, eval 13.0 s, build 21.9 s); more host rows come
+      from `ops/checks/menu.sh`'s `build_done` capture.
+- [x] `ops/RUNBOOK.md` entries: build stuck, cache unreachable, base bump
+      failures, closure collected. Evidence: "Build stuck (no BuildLog line
+      for 10 minutes)", "Build: cache unreachable", "Base bump failures",
+      "Closure collected under a running guest".
+- [x] `rg 'TODO|FIXME|not implemented' internal/nixbuild internal/menu
       internal/basebump nix/guest/compose.nix nix/guest/fragment.nix
-      nix/overlay scripts/bump-agents.sh` empty. Evidence: output.
+      nix/overlay scripts/bump-agents.sh` empty. Evidence (2026-09-20):
+      empty over `internal/hostd/nixbuild internal/menu internal/basebump
+      nix/guest/compose.nix nix/guest/contract.nix nix/overlay
+      scripts/bump-agents.sh` (the package is `internal/hostd/nixbuild`
+      and the contract module `nix/guest/contract.nix`, DECISIONS I-45,
+      I-43).
