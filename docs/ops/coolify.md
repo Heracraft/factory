@@ -56,15 +56,13 @@ of that is missing.
    at the VM's public IP (`infra/README.md`, "DNS"). 80 and 443 are open to
    the internet (`control_web_cidrs = ["0.0.0.0/0"]`, owner's call
    2026-09-20), so Let's Encrypt HTTP-01 works as it does everywhere.
-4. **The control plane, as one file.** Project -> Add resource -> Docker
-   Compose from git: repository `heracraft/repose`, branch `main`, base
-   directory `/`, compose file `/ops/coolify/docker-compose.yml`, server
-   the one just added. `ops/coolify/README.md` lists the values Coolify
-   asks for and the two Domains fields
-   (`https://api.repose.herakraft.co:8080` on `api`,
-   `https://repose.herakraft.co:3000` on `web`). The file carries Postgres,
-   the two apis, the dashboard and the backup pair (`DECISIONS.md` I-87);
-   the deploy refuses until every `${VAR:?}` has a value.
+4. **Postgres, as a file.** Project -> Add resource -> Docker Compose
+   from git: repository `heracraft/repose`, branch `main`, base directory
+   `/`, compose file `/ops/coolify/postgres/docker-compose.yml`, server
+   the one just added (`DECISIONS.md` I-87). It is Postgres plus the
+   nightly dump and the R2 upload; `ops/coolify/README.md` lists its
+   values. `POSTGRES_PASSWORD` is a project-level shared variable so the
+   api applications reference the same one.
 5. **Logto** is the owner's existing instance, `https://accounts.herakraft.co`
    (`DECISIONS.md` I-84); nothing is deployed for it. In that Logto: the API
    resource `https://api.repose.herakraft.co`, two applications,
