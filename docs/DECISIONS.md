@@ -1440,3 +1440,17 @@ skipping `nix-env` in `Switch` (leaves the database wrong for every later
 nix command). Interfaces: `vsock-guestd.md`, `guest-conventions.md`,
 `proto/repose/guestd/v1/guestd.proto` (old shape accepted: an empty
 registration means the previous behaviour).
+
+**I-68. Reconcile removes `snap-*` volumes left by an interrupted
+snapshot.** (m1 integration, 2026-09-20) `kill -9` of hostd on host-01
+between the LVM snapshot and its removal, with a Blob upload in flight,
+replayed the Snapshot command correctly after the restart (same
+`command_id`, a fresh snapshot, result ok) but left
+`snap-<guest>-<ts>` from the killed attempt in `vg-guests`, holding thin
+pool space for ever. Reconcile at start now removes every `snap-*`
+volume: hostd has no snapshot in flight when it starts, and a replayed
+command makes its own. *Rejected:* naming the snapshot after the
+`command_id` and reusing it on replay (an upload that died half way would
+resume from a snapshot taken before the guest wrote more, which is
+correct but the same as a fresh one, for extra state).
+
