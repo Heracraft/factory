@@ -109,9 +109,12 @@ func TestWatchListMatchesSecurityDoc(t *testing.T) {
 	}
 }
 
-// `rg 'credentials.json' cmd internal` shows only the explicit exclusion
-// (docs/workstreams/14-security.md §5 "Secrets handling review"). Every hit
-// must be an exclusion, never a copy.
+// `rg '.claude/.credentials.json' cmd internal` shows only explicit
+// exclusions (docs/workstreams/14-security.md §5 "Secrets handling review").
+// Every hit must be an exclusion or an existence check, never a copy. The
+// CLI's own ~/.config/repose/credentials.json (docs/interfaces/cli-config.md)
+// is a different file and is not matched. The exclusion words may sit on
+// the line itself or the two lines before or after, since Go comments wrap.
 func TestClaudeCredentialsAppearOnlyAsAnExclusion(t *testing.T) {
 	root := repoRoot(t)
 	var hits []string
@@ -124,14 +127,21 @@ func TestClaudeCredentialsAppearOnlyAsAnExclusion(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			for i, line := range strings.Split(string(b), "\n") {
-				if !strings.Contains(line, "credentials.json") {
+			lines := strings.Split(string(b), "\n")
+			for i, line := range lines {
+				if !strings.Contains(line, ".claude/.credentials.json") {
 					continue
 				}
-				l := strings.ToLower(line)
+				window := line
+				for _, j := range []int{i - 2, i - 1, i + 1, i + 2} {
+					if j >= 0 && j < len(lines) {
+						window += " " + lines[j]
+					}
+				}
+				l := strings.ToLower(window)
 				rel, _ := filepath.Rel(root, path)
 				hit := rel + ":" + itoa(i+1) + ": " + strings.TrimSpace(line)
-				if !strings.Contains(l, "never") && !strings.Contains(l, "exclude") && !strings.Contains(l, "not copied") {
+				if !strings.Contains(l, "never") && !strings.Contains(l, "exclu") && !strings.Contains(l, "not copied") && !strings.Contains(l, "exists-check") {
 					t.Errorf("mentions Claude's credentials file without being an exclusion: %s", hit)
 				}
 				hits = append(hits, hit)
