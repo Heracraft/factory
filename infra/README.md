@@ -432,7 +432,9 @@ queried ones.
 - **The NixOS configurations.** `nix/hosts` and `nix/edge` are workstreams 01
   and 06; this only invokes them.
 - **Coolify's application definitions.** Coolify keeps them in its own
-  database; the click path is in `docs/ops/RUNBOOK.md` "Control plane".
+  database, which no `tofu plan` can read or diff; the click path is
+  `docs/ops/coolify.md`, with the short form in `docs/ops/RUNBOOK.md`
+  "Control plane (Coolify VM)".
 - **The api's Entra app registration and client certificate**, and **the R2
   API token.** Both are credentials. Creating them is a human step next to the
   other identity setup in `docs/ops/AZURE-SETUP.md`, and neither belongs in a
