@@ -38,16 +38,21 @@ The full click path, with the reasons, is `coolify.md`. The short form:
    `repose-api` (Management API role) for `LOGTO_M2M_CLIENT_ID/SECRET`.
 4. Add Postgres as a Service (Docker Compose Empty, paste
    `ops/coolify/postgres/docker-compose.yml`, I-87) with its Backups tab
-   set to R2 nightly, then `api`, `api-grpc` and `web` as Dockerfile
-   applications, each with its `ops/coolify/*.env.example` pasted in
-   (the Postgres service has "Connect to predefined network" on; the apps
-   are on that network already). Domains, port mappings and the
-   health-check settings: `ops/coolify/README.md`. Secrets go in each
-   resource's Environment tab, nowhere else. `api`'s pre-deploy command is
-   `repose-admin db migrate`; `api-grpc` deploys after it.
-5. Deploy. Then `repose-admin ca init` once (`DATABASE_URL` over the VM's
-   WireGuard address, I-42), one manual backup from the service's Backups
-   tab, and `ssh root@<control ip> repose-backup-check`.
+   set to nightly against an S3 storage of the owner's (I-102), then
+   `api`, `api-grpc` and `web` as Dockerfile applications, each with its
+   `ops/coolify/*.env.example` pasted in ("Connect to predefined
+   network" stays **off** for the Service: the compose file joins the
+   `coolify` network itself, I-89; the apps are on it already). Domains,
+   port mappings and the health-check settings: `ops/coolify/README.md`.
+   Secrets go in each resource's Environment tab, nowhere else. **No
+   pre-deploy command on any of them** — the api applies its own
+   migrations and creates the CA at start, and a pre-deploy command
+   would not run on the first deploy anyway (I-90). `api-grpc` deploys
+   after `api`.
+5. Deploy. Then one manual backup from the service's Backups tab and
+   `ssh root@<control ip> repose-backup-check`. (`repose-admin ca init`
+   is not a step: the api does it at first start, I-90. It remains for
+   an operator.)
 6. Add the control VM as a WireGuard peer of the edge (`ops/wg/coolify.conf`).
 
 ### Edge
@@ -783,32 +788,44 @@ The api, api-grpc or web app's rolling deploy did not go green.
 
 ## PostgresBackupStale
 
-No Postgres dump has landed in R2 for more than 36 hours. Coolify reports
-backup failures only in its own UI, which nobody is watching at 02:00, so the
-check is a command:
+No recent Postgres dump. Coolify runs the backup and uploads it to an S3
+storage in the owner's own Coolify; no credential for that storage is
+here (DECISIONS I-102), so the two halves are checked in two places.
+
+**Was a dump taken?** On the control VM, and needing nothing:
 
 ```bash
 ssh root@<control ip> repose-backup-check
 ```
 
-It exits 0 with the age of the newest object, 1 when that is over 36 hours or
-the bucket is empty, and 2 when the machine has no rclone remote named `r2`
-(the fix is in the script's own header, and in the `rclone_hint` field of
-`tofu -chdir=infra/r2 output coolify_s3_destination`).
+It reports the age of the newest file Coolify has written under
+`/data/coolify/backups` and exits 0 under 36 hours (a nightly dump plus a
+missed night), 1 when the newest is older or when no dump has ever been
+written there. That is the failure that silently leaves no restore point
+at all.
 
-1. Exit 2 means the check was never wired up, not that the backup failed. The
-   remote is created once from the R2 API token.
-2. Otherwise Coolify's backup log on the Postgres service. An
-   authentication error is usually the endpoint without its scheme or the
-   region left blank instead of `auto` (`coolify.md`).
-3. A disk-full on the control plane fails the dump before the upload: the
-   dump is written locally first. `df -h /` on the VM.
+**Did it upload?** Only Coolify knows. The database's **Backups** tab
+lists each execution with its outcome, and it is where an upload failure
+is reported. An authentication error there is usually one of the two
+fields that are got wrong reliably: the endpoint without its scheme, or
+the region blank instead of the provider's literal (`auto`, for R2).
+
+1. `repose-backup-check` exits 1 with "has never run a backup on this
+   server": the schedule was never enabled, or the service was recreated
+   and the schedule went with it. Backups tab, re-enable, run one by
+   hand.
+2. It exits 0 but the Backups tab shows upload failures: the dumps exist
+   on the VM and are not leaving it. Fix the destination; the local
+   copies are a stopgap restore source in the meantime, and
+   `ops/restore-rehearsal.sh <file>` will restore one.
+3. A disk-full on the control plane fails the dump before the upload —
+   the dump is written locally first. `df -h /` on the VM.
 4. Run a manual backup from the Backups tab once the cause is fixed, and
    re-run `repose-backup-check`.
 
-The bucket's 35-day lifecycle rule keeps deleting old dumps while this alert
-is open, so a week of failures is a week closer to having no restore point at
-all.
+The retention on the destination keeps deleting old dumps while this
+alert is open, so a week of failures is a week closer to having no
+restore point at all.
 
 ## Coolify cannot validate the control VM
 
@@ -853,20 +870,23 @@ its WireGuard endpoint fails the same way.
 
 ## Postgres restore
 
-The dump in R2 is only half of a restore. Coolify encrypts the credentials it
+The dump is only half of a restore. Coolify encrypts the credentials it
 holds with `APP_KEY` from `/data/coolify/source/.env` on the owner's Coolify
 host (not on the control VM, which runs no Coolify, I-83); a dump restored
 into a Coolify without that key is a database of ciphertext. Start from both.
 
-1. Add a scratch server to the same Coolify (staging's control VM), add a
-   Postgres database on it,
-   download the newest dump from R2 (`rclone ls r2:repose-pg-backups`),
-   `pg_restore` into it. `rclone` and `pg_restore` are installed on the
-   control-plane VM by cloud-init, and the apply fails if they are missing.
-   For the rehearsal — and for finding out how long a restore takes before
-   you need to know — `ops/restore-rehearsal.sh` does all of that into a
-   throwaway container of its own and prints the timings
-   (`docs/ops/coolify.md`, "Restore rehearsal").
+1. Get the dump from the database's **Backups** tab in Coolify — that is
+   where they are listed and downloadable, and the storage they were
+   uploaded to is the owner's, with no credential on this side (I-102).
+   Add a scratch server to the same Coolify (staging's control VM), add
+   a Postgres database on it, and `pg_restore` into that.
+   For the rehearsal — and for finding out how long a restore takes
+   before you need to know — `ops/restore-rehearsal.sh <dump>` does the
+   restore and the verify into a throwaway container of its own and
+   prints the timings (`docs/ops/coolify.md`, "Restore rehearsal"). If
+   Coolify itself is unreachable, the dumps it wrote before uploading
+   are still on the control VM under `/data/coolify/backups`, which is
+   what `repose-backup-check` reads.
 2. Point a staging api at it, run `repose-admin db verify` (row counts
    per table against the last rollup), time the whole thing, record it in
    `../CHECKLIST.md`'s release item.

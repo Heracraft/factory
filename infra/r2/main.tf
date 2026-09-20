@@ -1,4 +1,12 @@
-# Cloudflare R2: where Coolify's nightly Postgres dumps go.
+# Cloudflare R2: an optional bucket for Postgres dumps.
+#
+# NOT what production uses. The owner's decision (DECISIONS I-102) is that
+# Coolify owns the backups and uploads them to an S3 storage configured in
+# the owner's own Coolify, and that no credential for that storage comes
+# through this repository or an agent session. This root is kept for
+# whoever wants a bucket of their own; applying it needs a
+# CLOUDFLARE_API_TOKEN that nothing here will create, and nothing in
+# infra/azure depends on it.
 #
 # DECISIONS R4-14: Coolify only backs up to S3-compatible targets, and putting
 # a translation proxy in the backup path means the backup path is the thing

@@ -99,42 +99,49 @@ is the image's own `HEALTHCHECK` (`api -healthcheck`), because Coolify's
 curl-based one cannot run in a distroless image; Coolify's is turned off
 there so the image's drives the deploy (I-87).
 
-## The Postgres backup to R2
+## The Postgres backup
 
-The bucket, its 35-day lifecycle rule and its incomplete-upload cleanup are
-`infra/r2`. The API token is not: a token created by OpenTofu would sit in the
-state file in clear text for the life of the bucket, so it is a human step
-next to the other credentials (`DECISIONS.md` I-21, `AZURE-SETUP.md` step 10).
+Coolify does the backups and the owner owns the destination. On the
+Postgres service, Backups: nightly at 02:00, retention 35 days,
+destination an **S3 storage configured in the owner's own Coolify** —
+which may already exist for their other databases. No credential for it
+is in this repository, on the control VM, or in any agent session
+(`DECISIONS.md` I-102). That is the whole configuration; there is no step
+here that creates a bucket or a token.
 
-```bash
-export CLOUDFLARE_API_TOKEN=...          # R2 object read/write on the bucket
-make -C infra plan ENV=r2 && make -C infra apply ENV=r2
-tofu -chdir=infra/r2 output coolify_s3_destination
-```
+Two fields of Coolify's S3 storage form are got wrong reliably, whatever
+the provider: the **endpoint carries its scheme**
+(`https://…`) and the **region is often the literal `auto`** rather than
+blank or an AWS region. Worth checking those two first when a backup
+fails to upload.
 
-That output is the form Coolify asks for under S3 Storages, field by field.
-Two of them are got wrong reliably: the **endpoint carries its scheme**
-(`https://<account id>.r2.cloudflarestorage.com`) and the **region is the
-literal `auto`**, not blank and not an AWS region.
+`infra/r2` remains in the repository as an optional module — a bucket
+with a 35-day lifecycle rule and an incomplete-upload cleanup, for
+whoever wants one — and production does not use it. It needs a
+`CLOUDFLARE_API_TOKEN` that nothing here will create.
 
-Then, on the Postgres service, Backups: nightly at 02:00, retention 35
-days, destination the S3 storage just added. Coolify's retention and the
-bucket's lifecycle rule are both set to 35 days on purpose — whichever one
-is misconfigured later, the other still bounds the bill and the exposure.
-
-Run one backup by hand from the UI before trusting the schedule, then:
+Run one backup by hand from the UI before trusting the schedule. Then
+there are two halves to check, and only one of them is checkable from
+this VM:
 
 ```bash
 ssh root@<control ip> repose-backup-check
-# repose-backup-check: newest dump is 0h old, written 2026-09-20T02:00:11Z
+# repose-backup-check: newest dump is 0h old: /data/coolify/backups/databases/…
+# repose-backup-check: this proves the dump was taken, not that it was
+# uploaded; Coolify's Backups tab has the upload.
 ```
 
-`repose-backup-check` is installed on the VM by cloud-init and needs an
-rclone remote named `r2`, created once from the same token (the command is in
-the script's own header, and in the `rclone_hint` field of the tofu output).
-It exits non-zero when the newest object is older than 36 hours, which is a
-nightly dump plus one missed night. `RUNBOOK.md` "PostgresBackupStale" is the
-entry that calls it.
+`repose-backup-check` is installed by cloud-init and needs no credential:
+it reports the age of the newest dump Coolify has written under
+`/data/coolify/backups` and exits non-zero past 36 hours, a nightly dump
+plus one missed night. It catches the failure that otherwise leaves no
+restore point at all — the dump that was never taken. Whether the upload
+reached the owner's storage is Coolify's Backups tab, which is also where
+its failures are reported. `RUNBOOK.md` "PostgresBackupStale" covers both
+halves.
+
+To rehearse a restore, download a dump from that Backups tab and give it
+to `ops/restore-rehearsal.sh` (see "Restore rehearsal" below).
 
 ## Coolify facts that cost a round trip each (2026-09-20)
 
@@ -283,7 +290,7 @@ Coolify encrypts the credentials it holds — every application's secrets, the
 database passwords it generated — with `APP_KEY` from
 `/data/coolify/source/.env` **on the owner's Coolify host**, not on this VM.
 **A Postgres dump restored into a Coolify without that key is a database of
-ciphertext nobody can read.** The dump in R2 is therefore not a complete
+ciphertext nobody can read.** The nightly dump is therefore not a complete
 backup of the control plane on its own; the owner's existing backup of their
 Coolify host is the other half, and it was already their problem before this
 project. Check that it exists.
@@ -291,28 +298,29 @@ project. Check that it exists.
 ## Restore rehearsal
 
 The release checklist wants this timed at least once
-(`docs/CHECKLIST.md`, "Postgres restore from R2 rehearsed"). The procedure is
-`RUNBOOK.md` "Postgres restore"; `rclone` and `pg_restore` are installed on
-the control VM by cloud-init so that it can be followed without stopping to
-install anything, and the readiness provisioner fails the apply if either is
-missing.
+(`docs/CHECKLIST.md`, the Postgres-restore item). The procedure is
+`RUNBOOK.md` "Postgres restore"; `pg_restore` (and `rclone`, for whoever
+has a remote) are installed on the control VM by cloud-init so that it
+can be followed without stopping to install anything, and the readiness
+provisioner fails the apply if either is missing.
 
 `ops/restore-rehearsal.sh` is that procedure as one command with a clock
-on it:
+on it. Download a dump from the database's Backups tab in Coolify, then:
 
 ```bash
-scp ops/restore-rehearsal.sh root@<control ip>:/root/
-ssh root@<control ip> /root/restore-rehearsal.sh
+scp ops/restore-rehearsal.sh backup.dmp root@<control ip>:/root/
+ssh root@<control ip> '/root/restore-rehearsal.sh /root/backup.dmp'
 ```
 
-It finds the newest object in the bucket, restores it into a throwaway
-`postgres:16-alpine` container of its own — never into `repose-postgres`,
-and with no published port — runs `repose-admin db verify` from the api
-image against it, prints fetch, restore and verify times, and removes the
-container on the way out (and on Ctrl-C). It reads both shapes of dump,
-gzipped plain SQL and custom format, by looking at the bytes rather than
-at the name, because which one Coolify writes depends on how the backup
-was set up. Run it after any schema change that moves a lot of rows: the
+It restores the file into a throwaway `postgres:16-alpine` container of
+its own — never into `repose-postgres`, and with no published port —
+runs `repose-admin db verify` from the api image against it, prints
+fetch, restore and verify times, and removes the container on the way
+out (and on Ctrl-C). It reads both shapes of dump, gzipped plain SQL and
+custom format, by looking at the bytes rather than at the name, because
+which one Coolify writes depends on how the backup was set up.
+`--from-bucket` fetches with rclone instead, for whoever has a remote of
+their own; production does not back up that way (I-102). Run it after any schema change that moves a lot of rows: the
 number it prints is what an incident will cost, and a number from before
 the data grew is not that number.
 
@@ -335,7 +343,8 @@ specific to a Coolify version (`DESIGN.md` §Risks).
   resource in the owner's Logto (above).
 - The values under each resource's Environment tab and the two Domains
   fields (`ops/coolify/README.md`).
-- The R2 API token (`DECISIONS.md` I-21).
+- The backup destination: an S3 storage in the owner's own Coolify,
+  which the platform never sees a credential for (`DECISIONS.md` I-102).
 - The api's Entra app registration and its client certificate, whose object id
   becomes `api_identity_object_id` and turns on the Key Vault wrap/unwrap
   policy (`DECISIONS.md` I-21).

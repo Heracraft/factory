@@ -69,8 +69,9 @@ provider module for hosts is an addition, not a rewrite.
     from Docker's apt repository and Tailscale (not joined; the instance
     reaches the VM over the tailnet, I-86), puts the instance's public key
     (`coolify_public_key`) on root next to the operator keys, installs
-    `rclone` and `postgresql-client` (the first two commands of the
-    runbook's restore procedure) and a `repose-backup-check` helper, then
+    `rclone` and `postgresql-client` (`pg_restore` for the runbook's
+    restore procedure; `rclone` only for an operator who has a remote of
+    their own, DECISIONS I-102) and a `repose-backup-check` helper, then
     installs a WireGuard peer config so Prometheus and the api can reach
     the edge network. Its NSG allows 80 and 443 from `control_web_cidrs`,
     and 22 from `operator_cidrs` plus `coolify_manager_cidrs` (the
@@ -360,10 +361,13 @@ row says otherwise. Commands were run from the dev box, which is in
       succeeded once and a restore was rehearsed. **Not closed:** no
       `CLOUDFLARE_API_TOKEN` exists, so `infra/r2` has never been applied.
       `make plan ENV=r2` now fails with the step that creates one rather than
-      with a provider authentication error, the bucket's S3 form is
-      `tofu -chdir=infra/r2 output coolify_s3_destination`, the control-plane
-      VM ships `repose-backup-check` and the `rclone`/`pg_restore` the
-      rehearsal needs, and `docs/ops/coolify.md` has the procedure.
+      with a provider authentication error. Production does **not** use
+      `infra/r2`: the backup destination is an S3 storage in the owner's own
+      Coolify and no credential for it comes through this repository
+      (DECISIONS I-102), so the module is optional and unused. The
+      control-plane VM ships `repose-backup-check` (credential-free, reading
+      `/data/coolify/backups`) and the `pg_restore` the rehearsal needs, and
+      `docs/ops/coolify.md` has the procedure.
 - [ ] Edge and Coolify DNS names resolve to their static IPs. **Not closed,
       and worse than absent.** On 2026-09-20 `dig +short
       ssh.repose.herakraft.co` returns `172.67.175.123` and `104.21.31.82`,

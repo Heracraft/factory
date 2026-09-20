@@ -58,23 +58,21 @@ a day.
 
 ## Outside Azure
 
-10. **Cloudflare R2 and the API token.** The *bucket* is not a manual step:
-    `infra/r2` creates `repose-pg-backups` with its 35-day lifecycle rule.
-    What is manual is the credential — an API token with object read/write on
-    that bucket only — because a token created by OpenTofu would sit in the
-    state file in clear text for the life of the bucket (`DECISIONS.md`
-    I-21). Create the token, note the account id (an identifier, not a
-    secret; it goes in `infra/r2/r2.tfvars`), then:
+10. **The Postgres backup destination.** Not a step here, and deliberately
+    so: Coolify runs the backups and uploads them to an S3 storage
+    configured in your own Coolify, which may already exist for your other
+    databases. No credential for it belongs in this repository, on the
+    control VM, or in any agent session (`DECISIONS.md` I-102), so there is
+    nothing to create or paste on this side. Set the schedule and the
+    destination on the Postgres service's Backups tab
+    (`docs/ops/coolify.md`, "The Postgres backup"); verify with
+    `ssh root@<control ip> repose-backup-check`, which needs no credential.
 
-    ```bash
-    export CLOUDFLARE_API_TOKEN=...
-    make -C infra apply ENV=r2
-    tofu -chdir=infra/r2 output coolify_s3_destination   # the form Coolify asks for
-    ```
-
-    The same token, scoped to DNS edit on `herakraft.co`, is what
-    `manage_dns = true` needs (step 11). Coolify's backup destination and the
-    restore rehearsal are `docs/ops/coolify.md`.
+    `infra/r2` stays in the repository as an optional module for whoever
+    wants a bucket of their own — it creates one with a 35-day lifecycle
+    rule and needs a `CLOUDFLARE_API_TOKEN` — and production does not use
+    it. A Cloudflare token is still needed for **DNS** (step 11); that is a
+    different scope and a different question.
 
 11. **DNS for `herakraft.co`.** The zone already answers every name under it
     from a **proxied wildcard**, so the repose names resolve today — to
