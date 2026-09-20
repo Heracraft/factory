@@ -107,6 +107,22 @@ var cliOutputFiles = map[string]bool{
 	"cmd/guestd/call.go":      true, // `guestd call` prints the response as JSON (I-32)
 }
 
+// cliOutputDirs are whole packages that are a terminal surface: the user
+// CLI (workstream 07) prints its results and prompts for a human.
+var cliOutputDirs = []string{"internal/cli/"}
+
+func isCLIOutput(rel string) bool {
+	if cliOutputFiles[rel] {
+		return true
+	}
+	for _, d := range cliOutputDirs {
+		if strings.HasPrefix(rel, d) {
+			return true
+		}
+	}
+	return false
+}
+
 // logMethods are the slog.Logger methods a call site uses.
 var logMethods = map[string]bool{
 	"Debug": true, "Info": true, "Warn": true, "Error": true, "Log": true,
@@ -316,7 +332,7 @@ func checkFile(rel string, fset *token.FileSet, f *ast.File) []Finding {
 			case pkg == "fmt" && strings.HasPrefix(name, "Print"):
 				// A main package prints usage and version; the CLI surfaces
 				// print for a human. Everything else must log.
-				if !isMain && !cliOutputFiles[rel] {
+				if !isMain && !isCLIOutput(rel) {
 					add(x.Pos(), RulePrint, fmt.Sprintf("fmt.%s outside a CLI surface; log through internal/obs instead", name))
 				}
 			case pkg == "slog" && (name == "New" || name == "NewJSONHandler" || name == "NewTextHandler" || name == "Default" || name == "SetDefault"):
