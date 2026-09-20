@@ -56,7 +56,9 @@ func newFakeStripe(t *testing.T) *fakeStripe {
 	mux.HandleFunc("/v1/billing/meters/", f.meterSummaries)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("fake stripe: unexpected %s %s", r.Method, r.URL.Path)
-		writeStripe(w, map[string]any{"error": map[string]any{"message": "not implemented in the fake"}})
+		// The t.Errorf above is the real report; this body only keeps the
+		// Stripe client from blocking on an empty response.
+		writeStripe(w, map[string]any{"error": map[string]any{"message": "no such route in the fake"}})
 	})
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)

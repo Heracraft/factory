@@ -1146,3 +1146,82 @@ billing portal. `repose-admin users show <handle>` for the reason;
 guests (with snapshot), sets `billing_status = suspended`, revokes their
 certificates, and writes an audit row. Their data is retained on the normal
 30-day schedule from the moment of suspension unless `--retain` is passed.
+
+## StripePushBacklog
+
+`repose_api_billing_stripe_push_backlog_seconds` past six hours: the
+oldest `usage_hours` row with no `stripe_usage_record_id` is that old.
+`StripePushFail` catches a push that errors; this catches the quiet cases
+where nothing errors and nothing ships.
+
+Look in this order:
+
+1. Is Stripe configured at all? The api logs `billing_disabled` at start
+   when `STRIPE_SECRET_KEY` is unset, and every billing route answers
+   `503 billing_disabled` (DECISIONS I-16). Rows keep accruing and are
+   pushed once it is set; nothing is lost.
+2. Is the rollup running? `RollupLag` and `api: rollup or expiry not
+   running on one replica` above.
+3. Is Stripe refusing? `stripe_push_fail` lines carry the error. A key
+   that was rotated or a meter that was deleted are the two that produce a
+   steady failure.
+
+Then `repose-admin billing resync`, which re-pushes every pending row and
+prints how many moved. The push is idempotent twice over: a row with a
+record id is never re-sent, and the meter event identifier
+(`usage:<project>:<hour>:<part>`) is unique at Stripe's end as well, so a
+resync cannot double-bill.
+
+## BillingMismatch
+
+`repose_api_billing_mismatch_cents` above zero: the nightly reconciliation
+found `usage_hours` and Stripe disagreeing for at least one account. The
+job never fixes a difference, so the alert stays lit until a human acts.
+
+```
+repose-admin billing reconcile              # the current period, per account
+repose-admin billing reconcile --month 2026-10
+repose-admin billing explain <project> <2026-10-04T13>
+```
+
+The `UNPUSHED` column is the usual innocent explanation: rows that have
+not reached Stripe yet, which is `StripePushBacklog`, not a mismatch of
+substance. A difference that is not explained by unpushed rows means one
+of the two ledgers is wrong:
+
+- **usage_hours is right, Stripe is short.** Re-push with `billing
+  resync`. If the rows already carry record ids and Stripe still has not
+  got them, the identifiers were consumed by an earlier push that failed
+  after Stripe accepted it; issue the difference as an invoice item in the
+  Stripe dashboard rather than clearing the record ids.
+- **Stripe is right, usage_hours is wrong.** Do not edit `usage_hours`:
+  it is the ledger of record for what was used, and an invoice already
+  refers to it. Correct the customer with `repose-admin billing credit
+  <handle> <cents> "<reason>"`, which is what the credit ledger is for.
+
+Either way, nothing here is automatic and nothing is silent.
+
+## A user says they were overcharged
+
+`repose-admin billing explain <project> <hour>` prints every input and each
+step of the pricing rule for one hour: the samples the hour was built from,
+the period running totals before it, which cap applied and why, the storage
+remainder, the credit taken and what reached Stripe. Walk the hours they
+question; the arithmetic is the answer.
+
+The three that come up:
+
+- **"I stopped it and it still charged me."** Storage accrues for as long
+  as the project exists, on the *allocated* volume size (`PRICING.md`). The
+  `storage` line in `explain` shows it; the `guest` line will be zero.
+- **"It says more hours than I used."** A guest-hour is a minute of
+  `running` samples; `explain` prints how many samples the hour had. If it
+  shows fewer samples than seconds implies, that is the gap case and it
+  under-bills, never over.
+- **"I was charged after I hit the cap."** The cap is per project per
+  billing period and applies to guest-hours only; storage and egress are
+  always additive (§5.1). `explain` names the cap class and the period
+  total, which is where a mid-period class change shows up.
+
+A correction is a `repose-admin billing credit` row, never an edit to
+`usage_hours`.

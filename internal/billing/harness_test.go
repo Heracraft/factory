@@ -71,22 +71,6 @@ func sample(t *testing.T, pool *db.Pool, a account, ts time.Time, state, class s
 	}
 }
 
-// runHours samples n running minutes per hour from start and rolls the
-// hours up, returning the rollup so the caller can inspect it.
-func runHours(t *testing.T, pool *db.Pool, r *billing.Rollup, a account, start time.Time, hours int, class string, netTxPerMinute int64) {
-	t.Helper()
-	ctx := context.Background()
-	for h := 0; h < hours; h++ {
-		hour := start.Add(time.Duration(h) * time.Hour)
-		for m := 0; m < 60; m++ {
-			sample(t, pool, a, hour.Add(time.Duration(m)*time.Minute), "running", class, 40<<30, netTxPerMinute)
-		}
-		if _, err := r.Hour(ctx, hour); err != nil {
-			t.Fatalf("roll up %s: %v", hour, err)
-		}
-	}
-}
-
 // recorder is a UsagePusher that remembers what it was given.
 type recorder struct {
 	rows []billing.UsageRow

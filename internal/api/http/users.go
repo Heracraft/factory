@@ -22,7 +22,19 @@ func userJSON(u *store.User) map[string]any {
 }
 
 func (s *Server) getMe(w http.ResponseWriter, r *http.Request) error {
-	writeJSON(w, http.StatusOK, userJSON(userFrom(r.Context())))
+	u := userFrom(r.Context())
+	// 09-billing.md §5.2: the Stripe customer is created at first GET /me.
+	// A Stripe outage must not make the user's own profile unreadable, so a
+	// failure is logged and the next /me tries again; nothing downstream
+	// needs the customer until a card is added.
+	if s.d.Customers != nil && (u.StripeCustomerID == nil || *u.StripeCustomerID == "") && u.BillingStatus != "exempt" {
+		if _, err := s.d.Customers.EnsureCustomer(r.Context(), u.ID); err != nil {
+			obs.Logger(r.Context(), s.d.Log).Warn("could not create the Stripe customer", "event", obs.EventStripeWebhook, "action", "customer_create", "err", err.Error())
+		} else if fresh, err := store.GetUser(r.Context(), s.d.Pool, u.ID); err == nil {
+			u = fresh
+		}
+	}
+	writeJSON(w, http.StatusOK, userJSON(u))
 	return nil
 }
 

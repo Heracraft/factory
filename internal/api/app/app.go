@@ -165,6 +165,9 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	bcfg, stripeOn := billing.ConfigFromEnv()
 	a.bcfg = bcfg
 	var portal billing.Portal = billing.DisabledPortal{}
+	var customers interface {
+		EnsureCustomer(ctx context.Context, userID uuid.UUID) (string, error)
+	}
 	if stripeOn {
 		st, err := billing.NewStripe(bcfg, a.pool, log)
 		if err != nil {
@@ -174,6 +177,7 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 		portal = st
 		a.hooks = billing.NewWebhooks(a.pool, bcfg.WebhookSecret, log)
 		a.hooks.OnCardAttached = st.OnCardAttached
+		customers = st
 		log.Info("billing enabled", "event", "billing_enabled", "enforced", bcfg.Enforce, "automatic_tax", bcfg.AutomaticTax)
 	} else {
 		log.Info("billing disabled until STRIPE_SECRET_KEY is set (DECISIONS I-16)", "event", "billing_disabled")
@@ -195,7 +199,7 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	}
 	a.server = httpapi.New(httpapi.Deps{
 		Pool: a.pool, Verifier: verifier, Users: users, CA: a.ca, Secrets: a.sec, Engine: a.engine, Logs: a.logs, Events: a.events, Outbox: a.outbox, Unsub: unsub,
-		Parser: parser, Metrics: a.m, Registry: a.reg, Log: log, Billing: portal, Webhooks: a.hooks, BillingEnforce: bcfg.Enforce,
+		Parser: parser, Metrics: a.m, Registry: a.reg, Log: log, Billing: portal, Webhooks: a.hooks, BillingEnforce: bcfg.Enforce, Customers: customers,
 		Gateway: httpapi.Gateway{Host: cfg.GatewayHost, Port: cfg.GatewayPort},
 		Migrations: func(ctx context.Context) (int, error) {
 			st, err := db.MigrateStatus(ctx, a.pool)

@@ -393,3 +393,61 @@ tests:
       - eval_time: 11m
         alertname: StripePushFail
         exp_alerts: []
+
+  # --- StripePushBacklog ---------------------------------------------------
+  - interval: 1m
+    name: StripePushBacklog fires when the oldest unbilled hour passes six hours
+    input_series:
+      - series: 'repose_api_billing_stripe_push_backlog_seconds{job="api",instance="10.255.0.9:9103"}'
+        values: "25200x40"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: StripePushBacklog
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: api
+              instance: 10.255.0.9:9103
+            exp_annotations:
+              summary: "the oldest unbilled hour is 7h 0m 0s old"
+              description: "usage_hours rows are not reaching Stripe. `repose-admin billing resync` re-pushes them; until they land the invoice undercharges."
+              runbook: "docs/ops/RUNBOOK.md#stripepushbacklog"
+
+  - interval: 1m
+    name: StripePushBacklog stays quiet while the push keeps up
+    input_series:
+      - series: 'repose_api_billing_stripe_push_backlog_seconds{job="api",instance="10.255.0.9:9103"}'
+        values: "0 3600 0 3600 0 3600 0 3600 0 3600 0 3600 0 3600 0 3600 0 3600 0 3600 0"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: StripePushBacklog
+        exp_alerts: []
+
+  # --- BillingMismatch -----------------------------------------------------
+  - interval: 1m
+    name: BillingMismatch fires on a difference the reconciliation reported
+    input_series:
+      - series: 'repose_api_billing_mismatch_cents{job="api",instance="10.255.0.9:9103"}'
+        values: "0 0 500x40"
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: BillingMismatch
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: api
+              instance: 10.255.0.9:9103
+            exp_annotations:
+              summary: "usage_hours and Stripe differ by 500 cents"
+              description: "The reconciliation reported and fixed nothing. `repose-admin billing reconcile` names the accounts and `billing explain <project> <hour>` shows one row."
+              runbook: "docs/ops/RUNBOOK.md#billingmismatch"
+
+  - interval: 1m
+    name: BillingMismatch stays quiet when the ledgers agree
+    input_series:
+      - series: 'repose_api_billing_mismatch_cents{job="api",instance="10.255.0.9:9103"}'
+        values: "0x40"
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: BillingMismatch
+        exp_alerts: []

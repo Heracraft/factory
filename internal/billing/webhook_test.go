@@ -29,7 +29,7 @@ func stripeEvent(id, kind string, object map[string]any) []byte {
 		"data":    map[string]any{"object": object},
 	})
 	if err != nil {
-		panic(err)
+		panic(err) // test fixture on a literal map; a marshal failure is a bug in the test
 	}
 	return b
 }

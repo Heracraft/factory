@@ -154,7 +154,7 @@ func routeEvent(id, kind string, object map[string]any) []byte {
 		"created": time.Now().Unix(), "data": map[string]any{"object": object},
 	})
 	if err != nil {
-		panic(err)
+		panic(err) // test fixture on a literal map; a marshal failure is a bug in the test
 	}
 	return b
 }

@@ -66,6 +66,11 @@ type Deps struct {
 	// Webhooks applies Stripe events (09-billing.md §5.6); nil makes
 	// POST /billing/webhook answer 503 billing_disabled.
 	Webhooks *billing.Webhooks
+	// Customers creates the Stripe customer at first GET /me (§5.2); nil
+	// when Stripe is not configured.
+	Customers interface {
+		EnsureCustomer(ctx context.Context, userID uuid.UUID) (string, error)
+	}
 	// BillingEnforce is BILLING_ENFORCE (§8): false keeps metering and
 	// pushing but stops blocking starts.
 	BillingEnforce bool

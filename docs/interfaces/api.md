@@ -7,8 +7,8 @@ user id). Internal routes under `/internal/` are for the gateway and use a
 shared mTLS client certificate. Errors: `{ "error": { "code": "...",
 "message": "...", "detail": {...} } }` with codes `unauthenticated`,
 `forbidden`, `not_found`, `invalid`, `conflict`, `payment_required`,
-`capacity`, `rate_limited`, `internal`. Every response carries
-`X-Request-Id`.
+`capacity`, `rate_limited`, `billing_disabled`, `internal`. Every response
+carries `X-Request-Id`.
 
 ## Users
 
