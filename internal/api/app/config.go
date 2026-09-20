@@ -120,8 +120,13 @@ func (c Config) Validate() error {
 	if (c.GRPCServerCert == "") != (c.GRPCServerKey == "") {
 		return errors.New("GRPC_SERVER_CERT and GRPC_SERVER_KEY go together")
 	}
-	if c.Mode != "http" && c.GRPCServerCert == "" && !c.Dev {
-		return errors.New("GRPC_SERVER_CERT and GRPC_SERVER_KEY are required for the grpc app")
+	// With no files the grpc listener's certificate is issued from the
+	// api's own CA in Postgres for GRPC_SERVER_NAMES at start
+	// (hostmgr.TLSConfig, pki.ServerTLS), which is what hosts verify
+	// against anyway; nothing else can sign one (DECISIONS I-87). Files
+	// remain for a certificate somebody else issued.
+	if c.Mode != "http" && c.GRPCServerCert == "" && len(c.GRPCServerNames) == 0 && !c.Dev {
+		return errors.New("GRPC_SERVER_NAMES is required for the grpc app when GRPC_SERVER_CERT is not set")
 	}
 	return nil
 }

@@ -56,30 +56,34 @@ of that is missing.
    at the VM's public IP (`infra/README.md`, "DNS"). 80 and 443 are open to
    the internet (`control_web_cidrs = ["0.0.0.0/0"]`, owner's call
    2026-09-20), so Let's Encrypt HTTP-01 works as it does everywhere.
-4. **Postgres**: on the new server, add the platform database as a
-   Coolify-managed Postgres. Then the backup destination (below), then
-   `repose-admin db migrate`.
+4. **The control plane, as one file.** Project -> Add resource -> Docker
+   Compose from git: repository `heracraft/repose`, branch `main`, base
+   directory `/`, compose file `/ops/coolify/docker-compose.yml`, server
+   the one just added. `ops/coolify/README.md` lists the values Coolify
+   asks for and the two Domains fields
+   (`https://api.repose.herakraft.co:8080` on `api`,
+   `https://repose.herakraft.co:3000` on `web`). The file carries Postgres,
+   the two apis, the dashboard and the backup pair (`DECISIONS.md` I-87);
+   the deploy refuses until every `${VAR:?}` has a value.
 5. **Logto** is the owner's existing instance, `https://accounts.herakraft.co`
    (`DECISIONS.md` I-84); nothing is deployed for it. In that Logto: the API
    resource `https://api.repose.herakraft.co`, two applications,
    `repose-cli` (Native, device flow on, redirect
    `http://127.0.0.1:*/callback`) and `repose-web` (SPA, redirect
-   `https://repose.herakraft.co/callback`), and an M2M application with the
-   Management API role for the api's `LOGTO_M2M_CLIENT_ID/SECRET`. The api
-   and CLI take the endpoint without `/oidc` and append it.
-6. **api and web**: Dockerfile applications from the repository, on the
-   server, health checks `/healthz` and `/`, environment from
-   `ops/coolify/api.env.example`. The gRPC listener is a second app from the
-   same image with `API_MODE=grpc` (`DECISIONS.md` I-2). Secrets — CA keys,
-   the Key Vault client certificate, Stripe and Resend keys — go in
-   Coolify's secret store, never in the env file.
-7. **WireGuard to the edge**: `infra/README.md`, "Wiring the control plane to
-   the edge". Two moves, because the private key never leaves the VM.
+   `https://repose.herakraft.co/callback`), and the M2M application
+   `repose-api` with a role granting the Management API, whose id and
+   secret are `LOGTO_M2M_CLIENT_ID/SECRET`. The api and CLI take the
+   endpoint without `/oidc` and append it.
+6. **Deploy**, then `repose-admin ca init` once against the database
+   (`RUNBOOK.md` "Control plane"), and the WireGuard peer to the edge:
+   `infra/README.md`, "Wiring the control plane to the edge". Two moves,
+   because the private key never leaves the VM.
 
-A health check on every application is not optional: without one Coolify
-silently falls back to stop-then-start instead of a rolling deploy, and the
-first anybody hears of it is downtime during a routine deploy
-(`RUNBOOK.md` "Coolify deploy failed").
+Every service in the file has a health check; Coolify's status and the
+`depends_on` ordering (migrations before `api-grpc`) rest on them. A compose
+deploy is not a rolling deploy (I-87): expect a few seconds of 503 on the
+api and dashboard per deploy until launch, when `api` and `web` can become
+Coolify "Dockerfile" applications without a code change.
 
 ## The Postgres backup to R2
 
@@ -94,17 +98,17 @@ make -C infra plan ENV=r2 && make -C infra apply ENV=r2
 tofu -chdir=infra/r2 output coolify_s3_destination
 ```
 
-That output is the form Coolify asks for, field by field. Two of them are got
-wrong reliably: the **endpoint carries its scheme**
-(`https://<account id>.r2.cloudflarestorage.com`) and the **region is the
-literal `auto`**, not blank and not an AWS region.
-
-Then, on the Postgres resource: backups on, nightly at 02:00, retention 35
-days, destination the S3 storage just added. Coolify's retention and the
-bucket's lifecycle rule are both set to 35 days on purpose — whichever one is
+The token's access key id, secret and the endpoint (with its `https://`)
+are `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_ENDPOINT` on the
+compose resource. The backup itself is two services in the file (I-87):
+`pg-backup` dumps nightly at `BACKUP_HOUR_UTC` (02:00) into a volume and
+prunes after 35 days; `backup-sync` copies new dumps to the bucket every 15
+minutes and never deletes there, so the bucket's lifecycle rule and the
+local prune are both set to 35 days on purpose — whichever one is
 misconfigured later, the other still bounds the bill and the exposure.
 
-Run one backup by hand from the UI before trusting the schedule, then:
+Run one by hand before trusting the schedule (Coolify's terminal on
+`pg-backup`: `pg-backup once`; the sync follows within 15 minutes), then:
 
 ```bash
 ssh root@<control ip> repose-backup-check
@@ -150,7 +154,10 @@ specific to a Coolify version (`DESIGN.md` §Risks).
 ## What is still a human step
 
 - Joining the tailnet and adding the server (above).
-- The Logto applications and API resource in the owner's Logto (above).
+- The Logto applications, the `repose-api` M2M application and the API
+  resource in the owner's Logto (above).
+- The values under the compose resource's Environment tab
+  (`ops/coolify/README.md`) and its two Domains fields.
 - The R2 API token (`DECISIONS.md` I-21).
 - The api's Entra app registration and its client certificate, whose object id
   becomes `api_identity_object_id` and turns on the Key Vault wrap/unwrap

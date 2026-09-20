@@ -202,6 +202,12 @@ jobs:
       # ops/check.sh falls back to `nix shell nixpkgs#prometheus.cli` when
       # promtool is not on PATH, which is the case here.
       - run: ops/check.sh
+      - name: control-plane compose validates (ops/coolify, DECISIONS I-87)
+        run: |
+          LOGTO_M2M_CLIENT_ID=x LOGTO_M2M_CLIENT_SECRET=x AZURE_TENANT_ID=x AZURE_CLIENT_ID=x AZURE_CLIENT_SECRET=x \
+          PUBLIC_LOGTO_APP_ID=x R2_ACCESS_KEY_ID=x R2_SECRET_ACCESS_KEY=x R2_ENDPOINT=x SERVICE_PASSWORD_POSTGRES=x \
+          docker compose -f ops/coolify/docker-compose.yml config --quiet
+          sh -n ops/coolify/backup/pg-backup.sh && sh -n ops/coolify/backup/backup-sync.sh
 
   web:
     name: dashboard unit + e2e tests, Docker build

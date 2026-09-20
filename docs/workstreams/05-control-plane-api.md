@@ -332,6 +332,12 @@ over mTLS, I-42), no rolling deploy. The image is `cmd/api/Dockerfile`.
 Migrations run by a Coolify pre-deploy command `repose-admin db migrate`
 so a new image never starts against an old schema.
 
+> Superseded in deployment shape by DECISIONS I-87 (2026-09-20): the two
+> apps, Postgres, the dashboard and the backup are one Docker Compose
+> resource, `ops/coolify/docker-compose.yml`; `api` runs `-migrate` itself
+> and `api-grpc` waits on it; the grpc certificate is issued from the CA for
+> `GRPC_SERVER_NAMES`; `api -healthcheck` is the compose health check.
+
 ### 5.14a What the implementation settled (I-42)
 
 The ops engine, the placement of `/internal`, where the CA keys live, the
