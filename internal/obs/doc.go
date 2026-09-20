@@ -3,7 +3,9 @@
 // naming rules of docs/workstreams/10-observability.md §5 built into the
 // types rather than left to each call site.
 //
-// Three entry points:
+// Three entry points. The workstream doc calls them obs.Logger, obs.Metrics
+// and obs.Tracer; in Go they are a constructor each, and Metrics is also the
+// type's name:
 //
 //	log := obs.NewLogger(obs.LogOptions{Component: obs.ComponentHostd})
 //	met := obs.NewMetrics(obs.ComponentHostd)
