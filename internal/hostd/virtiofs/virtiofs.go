@@ -23,6 +23,9 @@ type Config struct {
 	User      string // virtiofsd
 	Group     string // virtiofsd
 	Binary    string // virtiofsd
+	// SocketGroup is chgrp'd onto the vhost-user socket (mode 0660) so the
+	// hypervisor's user, not virtiofsd's, can connect to it.
+	SocketGroup string // hostd
 }
 
 // Unit is the transient unit name for a guest.
@@ -36,6 +39,9 @@ func Start(ctx context.Context, sd systemd.Systemd, cfg Config, guestID, socket 
 	}
 	props := []string{"User=" + cfg.User, "Group=" + cfg.Group, "MemoryMax=1G", "Slice=guests.slice"}
 	argv := []string{bin, "--socket-path", socket, "--shared-dir", cfg.SharedDir, "--sandbox", "namespace", "--cache", "auto", "--xattr"}
+	if cfg.SocketGroup != "" {
+		argv = append(argv, "--socket-group", cfg.SocketGroup)
+	}
 	return sd.Run(ctx, Unit(guestID), props, argv)
 }
 

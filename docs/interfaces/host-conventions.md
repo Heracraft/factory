@@ -9,7 +9,7 @@ change to either happens in the same commit.
 | Path | What |
 |---|---|
 | `/var/lib/repose/hostd/` | `cert.pem`, `key.pem` (mTLS to api), `host.json` (see below), `state.db` (bbolt: guest table for reconciliation). Mode 0700, written by `hostd register`. |
-| `/var/lib/repose/guests/<guest_id>/` | `ch.args` (the rendered cloud-hypervisor argv, one argument per line; DECISIONS I-27), `guest.json` (non-secret copy of the guest record for `hostd reconcile --rebuild`), `ch.sock` (Cloud Hypervisor API), `vsock.sock` (host side of the guest's vsock, `CONNECT 5000` reaches guestd), `console.sock` (serial; hostd copies it into `console.log`, rotated at 64 MB keeping 3), `virtiofsd.sock`. Secrets are never written here: they are delivered to the guest's tmpfs over vsock. |
+| `/var/lib/repose/guests/<guest_id>/` | `ch.args` (the rendered cloud-hypervisor argv, one argument per line; DECISIONS I-27), `guest.json` (non-secret copy of the guest record for `hostd reconcile --rebuild`), `ch.sock` (Cloud Hypervisor API), `vsock.sock` (host side of the guest's vsock, `CONNECT 5000` reaches guestd), `console.sock` (serial; hostd copies it into `console.log`, rotated at 64 MB keeping 3), `virtiofsd/virtiofsd.sock`. The parent is `0711 root`; the directory is `1770 root:hostd` so the unprivileged `guest@<id>` (I-49) can create its sockets but not remove hostd's files; `virtiofsd/` is `0750 virtiofsd:hostd` and the socket in it is group `hostd` (`--socket-group`). Secrets are never written here: they are delivered to the guest's tmpfs over vsock. |
 | `/var/lib/repose/builds/<revision_id>/` | `fragment.nix` for a `Build`; see `nix-build-contract.md` |
 | `/var/lib/repose/base/<base_ref>/` | checkout of the platform repository at that revision (its `nix/` is the flake hostd evaluates) |
 | `/run/repose/hostd.sock` | hostd's operator control socket (`hostd status`, `guests`, `snapshot-all`, `drain`, `reconcile`) |
@@ -138,16 +138,35 @@ hostd renders the `cloud-hypervisor` argv from the guest's system closure
 (`kernel`, `initrd`, `init`, `kernel-params`) and its record (DECISIONS
 I-27) and runs it with `systemd-run --unit guest@<id> --property
 MemoryMax=<class RAM + 512M> --property CPUQuota=<vcpus*100>% --property
-Slice=guests.slice`. The devices: `--disk path=/dev/vg-guests/g-<id>`,
+Slice=guests.slice --property User=hostd` and the sandbox of DECISIONS
+I-49, pinned verbatim by `internal/hostd/guest/testdata/unit.golden`:
+`NoNewPrivileges=yes`, `CapabilityBoundingSet=` (empty), `UMask=0077`,
+`ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`,
+`ProtectKernelTunables=yes`, `ProtectKernelModules=yes`,
+`ProtectKernelLogs=yes`, `ProtectControlGroups=yes`,
+`ProtectProc=invisible`, `RestrictNamespaces=yes`, `RestrictRealtime=yes`,
+`RestrictSUIDSGID=yes`, `LockPersonality=yes`,
+`SystemCallArchitectures=native`, `TemporaryFileSystem=/var/lib/repose/guests`,
+`BindPaths=<guest dir>`, `ReadWritePaths=<guest dir>`,
+`DevicePolicy=closed`, `DeviceAllow=/dev/kvm rw`, `DeviceAllow=/dev/net/tun
+rw`, `DeviceAllow=/dev/vg-guests/g-<id> rw`, `RestrictAddressFamilies=AF_UNIX
+AF_VSOCK`. Cloud Hypervisor therefore runs as `hostd` (in group `kvm`,
+owner of the tap, group of its own volume through the udev rule in
+`virt.nix`), sees only its own guest directory, and can open exactly three
+device nodes. The devices: `--disk path=/dev/vg-guests/g-<id>`,
 `--net tap=tap-<8hex>,mac=52:54:<4 bytes of id>`, `--fs tag=ro-store,socket=
-virtiofsd.sock`, `--vsock cid=<1000+index>,socket=vsock.sock`, `--serial
-socket=console.sock`, `--memory size=<RAM>M,shared=on`. The CH API socket
-is used for `shutdown` (after guestd's Shutdown timed out), `pause`,
-`resume`, and stats.
+virtiofsd/virtiofsd.sock`, `--vsock cid=<1000+index>,socket=vsock.sock`,
+`--serial socket=console.sock`, `--console off`, `--memory
+size=<RAM>M,shared=on`, `--seccomp true` (the default, written out). The CH
+API socket is used for `shutdown` (after guestd's Shutdown timed out),
+`pause`, `resume`, and stats; hostd connects to the guest's sockets as
+root.
 virtiofsd runs as `virtiofsd:virtiofsd` with `--sandbox namespace` (a
 user and mount namespace with the export pivot_rooted in; `chroot` is
 root-only and virtiofsd refuses it for an unprivileged user, DECISIONS
-I-48) sharing `/run/repose/store-export` (never `/nix/store` directly).
+I-48) sharing `/run/repose/store-export` (never `/nix/store` directly),
+binding `virtiofsd/virtiofsd.sock` with `--socket-group hostd` so the
+hypervisor can connect.
 
 ## Operator access
 

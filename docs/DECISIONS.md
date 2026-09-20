@@ -1001,3 +1001,46 @@ contract, found by reading them side by side:
   the command list from `host-conventions.md` "Network", verbatim.
   Interface text unchanged; the code follows the doc.
 
+
+**I-49. `guest@<id>` runs Cloud Hypervisor as the `hostd` user inside a
+systemd sandbox; hostd itself stays root.** (14 follow-up, review H-2,
+2026-09-20) `docs/SECURITY.md` accepted that a KVM escape lands in the
+Azure VM; as built it landed as root, which is every tenant on the host,
+the host's mTLS identity and its Blob credential. The transient unit now
+carries `User=hostd` and the property list pinned by
+`internal/hostd/guest/testdata/unit.golden`: `NoNewPrivileges`, an empty
+`CapabilityBoundingSet`, `ProtectSystem=strict`, `ProtectHome`,
+`PrivateTmp`, the `ProtectKernel*`/`ProtectControlGroups`/`ProtectProc`
+set, `RestrictNamespaces`, `RestrictRealtime`, `RestrictSUIDSGID`,
+`LockPersonality`, `SystemCallArchitectures=native`, `DevicePolicy=closed`
+with `DeviceAllow` for `/dev/kvm`, `/dev/net/tun` and the guest's own
+`/dev/vg-guests/g-<id>` only, `RestrictAddressFamilies=AF_UNIX AF_VSOCK`
+(Cloud Hypervisor's tap ioctls use AF_UNIX sockets; AF_INET is needed only
+for `--net ip=`, which hostd never passes), and `TemporaryFileSystem=
+/var/lib/repose/guests` with `BindPaths=` of the guest's own directory, so
+one hypervisor cannot see, let alone connect to, another guest's
+`vsock.sock` (a direct line to that guest's guestd). `--seccomp true` is
+written out on the argv. What the host provides for it: `hostd` in group
+`kvm`; a udev rule making `dm-*` nodes with `DM_VG_NAME=vg-guests` and
+`DM_LV_NAME=g-*` group `hostd` mode 0660 (snapshots and the pool stay
+`root:disk`); `/var/lib/repose/guests` 0711 with each guest directory
+`1770 root:hostd` (the sticky bit keeps `ch.args`, `guest.json` and
+`console.log` out of the hypervisor's reach) and a `virtiofsd/`
+subdirectory `0750 virtiofsd:hostd` where virtiofsd binds
+`virtiofsd.sock` with `--socket-group hostd`. The socket path moved from
+`<dir>/virtiofsd.sock` to `<dir>/virtiofsd/virtiofsd.sock`; nothing
+outside hostd read the old path. hostd remains root (LVM, nftables, taps)
+and connects to the guest's sockets with root's override.
+*Rejected:* one system user per guest (`DynamicUser=`): the cleanest
+separation, but taps and volumes need a known owner before the unit
+exists, and the shared-uid gap it would close is already narrowed by
+`DeviceAllow` and the private guests directory; recorded as review L-11
+for a later pass. `AmbientCapabilities=` of any kind: Cloud Hypervisor
+needs none with `kvm` group access. Dropping `ProtectSystem=strict`
+because the store is on `/`: the store is read-only for the unit either
+way and the unit reads only the closure's kernel and initrd.
+*Verify on the first host:* `systemctl show guest@<id> -p User` is
+`hostd`; `ps -o user= -p $(systemctl show -p MainPID --value guest@<id>)`
+is `hostd`; `ls -l /dev/mapper/vg--guests-g--*` is `root hostd`; the
+guest boots and `ls /nix/store` works inside it; `test/isolation`
+`TestHypervisorRunsAsHostdUser`.
