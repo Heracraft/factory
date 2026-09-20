@@ -65,7 +65,8 @@ of that is missing.
    name `repose-postgres` there for the applications (fact 11, I-89).
    `POSTGRES_PASSWORD`
    is a project-level shared variable so the api applications reference
-   the same one. Then the backup destination, below.
+   the same one. Its backups are set up on that tab and are the owner's
+   own concern (fact 15, `DECISIONS.md` I-112).
 5. **Logto** is the owner's existing instance, `https://accounts.herakraft.co`
    (`DECISIONS.md` I-84); nothing is deployed for it. In that Logto: the API
    resource `https://api.repose.herakraft.co`, two applications,
@@ -87,9 +88,10 @@ of that is missing.
    migrations at start and generates the platform CA the first time it
    finds none, both idempotent (fact 12, I-90). `api-grpc` deploys after
    `api`.
-7. **Deploy**, then the WireGuard peer to the edge: `infra/README.md`,
-   "Wiring the control plane to the edge". Two moves, because the private
-   key never leaves the VM.
+7. **The WireGuard peer to the edge**: `infra/README.md`, "Wiring the
+   control plane to the edge". Two moves, because the private key never
+   leaves the VM. The applications deploy themselves on the first push to
+   `main` (fact 16); there is no deploy step here.
 
 A health check on every application is not optional: without one Coolify
 silently falls back to stop-then-start instead of a rolling deploy, and the
@@ -98,50 +100,6 @@ first anybody hears of it is downtime during a routine deploy
 is the image's own `HEALTHCHECK` (`api -healthcheck`), because Coolify's
 curl-based one cannot run in a distroless image; Coolify's is turned off
 there so the image's drives the deploy (I-87).
-
-## The Postgres backup
-
-Coolify does the backups and the owner owns the destination. On the
-Postgres service, Backups: nightly at 02:00, retention 35 days,
-destination an **S3 storage configured in the owner's own Coolify** —
-which may already exist for their other databases. No credential for it
-is in this repository, on the control VM, or in any agent session
-(`DECISIONS.md` I-103). That is the whole configuration; there is no step
-here that creates a bucket or a token.
-
-Two fields of Coolify's S3 storage form are got wrong reliably, whatever
-the provider: the **endpoint carries its scheme**
-(`https://…`) and the **region is often the literal `auto`** rather than
-blank or an AWS region. Worth checking those two first when a backup
-fails to upload.
-
-`infra/r2` remains in the repository as an optional module — a bucket
-with a 35-day lifecycle rule and an incomplete-upload cleanup, for
-whoever wants one — and production does not use it. It needs a
-`CLOUDFLARE_API_TOKEN` that nothing here will create.
-
-Run one backup by hand from the UI before trusting the schedule. Then
-there are two halves to check, and only one of them is checkable from
-this VM:
-
-```bash
-ssh root@<control ip> repose-backup-check
-# repose-backup-check: newest dump is 0h old: /data/coolify/backups/databases/…
-# repose-backup-check: this proves the dump was taken, not that it was
-# uploaded; Coolify's Backups tab has the upload.
-```
-
-`repose-backup-check` is installed by cloud-init and needs no credential:
-it reports the age of the newest dump Coolify has written under
-`/data/coolify/backups` and exits non-zero past 36 hours, a nightly dump
-plus one missed night. It catches the failure that otherwise leaves no
-restore point at all — the dump that was never taken. Whether the upload
-reached the owner's storage is Coolify's Backups tab, which is also where
-its failures are reported. `RUNBOOK.md` "PostgresBackupStale" covers both
-halves.
-
-To rehearse a restore, download a dump from that Backups tab and give it
-to `ops/restore-rehearsal.sh` (see "Restore rehearsal" below).
 
 ## Coolify facts that cost a round trip each (2026-09-20)
 
@@ -284,51 +242,38 @@ the live instance, not taken from the docs. Each one changed a file here.
    and a ready-to-paste label block in `ops/coolify/README.md`, "The
    api's metrics".
 
-## The instance's .env is half the backup
+15. **Backups are Coolify's, and nothing here touches them.** The
+   schedule and the destination live on the Postgres service's Backups
+   tab, against storage the owner configures in their own Coolify. No
+   bucket, no token, no on-VM check, no rehearsal script and no alert
+   exist on this side any more (`DECISIONS.md` I-112), and `infra/r2` is
+   gone. If a backup question arises, the answer is in Coolify, not in
+   this repository.
 
-Coolify encrypts the credentials it holds — every application's secrets, the
-database passwords it generated — with `APP_KEY` from
-`/data/coolify/source/.env` **on the owner's Coolify host**, not on this VM.
-**A Postgres dump restored into a Coolify without that key is a database of
-ciphertext nobody can read.** The nightly dump is therefore not a complete
-backup of the control plane on its own; the owner's existing backup of their
-Coolify host is the other half, and it was already their problem before this
-project. Check that it exists.
+16. **Every push to `main` redeploys.** Coolify watches the repository,
+   so `api`, `api-grpc` and `web` rebuild and roll on their own; the
+   deploy is a consequence of merging, not a step anybody performs.
+   Two things follow. A documented procedure must never say "then
+   redeploy X" — if it needs new code it needs a merge, and if it needs
+   only an environment change, that is a Coolify field and the redeploy
+   comes with it. And the drop of fact 13 happens on **every merge**,
+   not only on deliberate deploys, which is what makes it worth a
+   decision rather than a shrug.
 
-## Restore rehearsal
+## The instance's .env is half any backup
 
-The release checklist wants this timed at least once
-(`docs/CHECKLIST.md`, the Postgres-restore item). The procedure is
-`RUNBOOK.md` "Postgres restore"; `pg_restore` (and `rclone`, for whoever
-has a remote) are installed on the control VM by cloud-init so that it
-can be followed without stopping to install anything, and the readiness
-provisioner fails the apply if either is missing.
+Backups are Coolify's and the destination is the owner's (`DECISIONS.md`
+I-112), so this is a note for whoever owns them rather than a step here,
+and it is the one that ruins a restore if it is learned late.
 
-`ops/restore-rehearsal.sh` is that procedure as one command with a clock
-on it. Download a dump from the database's Backups tab in Coolify, then:
-
-```bash
-scp ops/restore-rehearsal.sh backup.dmp root@<control ip>:/root/
-ssh root@<control ip> '/root/restore-rehearsal.sh /root/backup.dmp'
-```
-
-It restores the file into a throwaway `postgres:16-alpine` container of
-its own — never into `repose-postgres`, and with no published port —
-runs `repose-admin db verify` from the api image against it, prints
-fetch, restore and verify times, and removes the container on the way
-out (and on Ctrl-C). It reads both shapes of dump, gzipped plain SQL and
-custom format, by looking at the bytes rather than at the name, because
-which one Coolify writes depends on how the backup was set up.
-`--from-bucket` fetches with rclone instead, for whoever has a remote of
-their own; production does not back up that way (I-103). Run it after any schema change that moves a lot of rows: the
-number it prints is what an incident will cost, and a number from before
-the data grew is not that number.
-
-Rehearsing onto a scratch *server* added to the same Coolify (staging's
-control VM, `coolify_count = 1` in `staging.tfvars`) is still the fuller
-exercise, because it also proves the Coolify half; the script is the part
-that has to work under pressure, and it can be run on the control VM
-itself without risk.
+Coolify encrypts the credentials it holds — every application's secrets,
+the database passwords it generated — with `APP_KEY` from
+`/data/coolify/source/.env` **on the owner's Coolify host**, not on the
+control VM, which runs no Coolify (I-83). **A Postgres dump restored into
+a Coolify without that key is a database of ciphertext nobody can read.**
+The dump is therefore not a complete backup of the control plane on its
+own; the owner's backup of their Coolify host is the other half, and it
+was already their problem before this project. Check that it exists.
 
 ## Upgrading Coolify
 
@@ -343,8 +288,8 @@ specific to a Coolify version (`DESIGN.md` §Risks).
   resource in the owner's Logto (above).
 - The values under each resource's Environment tab and the two Domains
   fields (`ops/coolify/README.md`).
-- The backup destination: an S3 storage in the owner's own Coolify,
-  which the platform never sees a credential for (`DECISIONS.md` I-103).
+- Backups: the schedule and the destination on the Postgres service's
+  Backups tab, entirely in the owner's Coolify (`DECISIONS.md` I-112).
 - The api's Entra app registration and its client certificate, whose object id
   becomes `api_identity_object_id` and turns on the Key Vault wrap/unwrap
   policy (`DECISIONS.md` I-21).

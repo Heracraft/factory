@@ -401,7 +401,7 @@ Traces around every op and every hostd command.
 
 ## 8. Rollback
 
-Coolify keeps previous images; rollback is redeploying the previous one.
+Coolify keeps previous images; rollback is selecting the previous one from its deployment history, and it is the one deploy that is not automatic (a push to `main` rolls forward by itself, `docs/ops/coolify.md` fact 16).
 Migrations are additive within a release (new columns nullable, new tables)
 and destructive changes wait one release, so the previous image runs
 against the new schema. `repose-admin db migrate --down 1` exists and is

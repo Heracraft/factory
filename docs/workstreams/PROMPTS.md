@@ -210,19 +210,18 @@ Does not create guests; project flows that need one wait for `m3`'s step 1
    landing page with the install command and the pricing table matching
    `docs/features/pricing.md`. Playwright against the real site where the
    fake-api suite already passes locally.
-2. **Rolling deploys** (05, 08): deploy `web` twice while `curl` loops
-   against it, then `api` the same way, and record zero failed requests;
-   any redeploy of `api` or `api-grpc` is announced to the conductor first,
-   because `m3` may be mid-operation on host-01.
-3. **Backups**: the destination is an S3 storage in the owner's own
-   Coolify and no credential for it comes through this repository or a
-   session (DECISIONS I-103), so there is no token to ask for and no
-   `infra/r2` apply. What is left: the nightly schedule on the Postgres
-   Service, one manual backup, `repose-backup-check` green on the
-   control VM (it reads `/data/coolify/backups` and needs nothing), and
-   the restore rehearsal — `ops/restore-rehearsal.sh <dump>` with a file
-   downloaded from that Backups tab — timed and recorded in
-   `docs/CHECKLIST.md`.
+2. **Rolling deploys** (05, 08): **closed 2026-09-20** and not zero.
+   Coolify redeploys on every push to `main` (`ops/coolify.md` fact 16),
+   so the measurement is `ops/deploy-probe.sh` running across merges
+   rather than deploys anybody triggers. Seven switchovers, ~30,000
+   responses: every one loses a request or two per client at a delay
+   fixed per application (fact 13). Re-measure only if the proxy's drain
+   changes.
+3. **Backups**: nothing. They are Coolify's, on the Postgres service's
+   Backups tab, against a destination in the owner's own Coolify
+   (DECISIONS I-112). No token, no bucket, no on-VM check, no rehearsal
+   script, no alert. A session that finds itself writing backup
+   machinery has misread this.
 4. **Observability on the real path** (10): the api's, edge's and host's
    metrics are scrapeable over WireGuard; Fluent Bit on host-01 ships
    journald and guest console logs; the seven dashboards render with real
@@ -252,8 +251,9 @@ Stripe account yet. In order:
    owner creates the account and hands the test secret key, webhook secret
    and the three prices plus meter ids through the conductor; they go in
    the api's Coolify environment (`ops/coolify/api.env.example`, the
-   `STRIPE_*` block), never in a file here. Redeploy api through the
-   conductor.
+   `STRIPE_*` block), never in a file here. Setting them there is the
+   whole step; Coolify restarts the app itself (`ops/coolify.md` fact
+   16).
 2. **The fixed usage pattern, end to end**: drive it through the api
    against host-01 where a real guest can produce it (a large guest left
    running for the hours with the volume and egress the pattern names;
@@ -496,7 +496,8 @@ variable, default Standard_D16s_v7 per DECISIONS I-14 and I-39, security type
 Standard, Premium SSD v2 data disk, cloud-init writing the join token,
 nixos-anywhere provisioner), edge VM, Coolify Ubuntu VM with cloud-init,
 Blob with lifecycle rules, Key Vault with the wrapping key, the remote
-state backend; infra/r2 for the backup bucket. `tofu validate` and `tofu
+state backend. No backup bucket: backups are Coolify's, against the
+owner's own destination (DECISIONS I-112). `tofu validate` and `tofu
 plan` must be clean; apply only when the owner says so.
 ```
 

@@ -5,7 +5,7 @@ its own and the three applications get rolling deploys (DECISIONS I-87):
 
 | resource | type | from | env |
 | --- | --- | --- | --- |
-| `repose-postgres` | Service (Docker Compose, pasted) | `postgres/docker-compose.yml` | `POSTGRES_PASSWORD`; backups in its Backups tab |
+| `repose-postgres` | Service (Docker Compose, pasted) | `postgres/docker-compose.yml` | `POSTGRES_PASSWORD`; backups are the owner's, on its Backups tab |
 | `api` | Dockerfile application, `cmd/api/Dockerfile`, context `/` | this repo, `main` | `api.env.example` |
 | `api-grpc` | Dockerfile application, same Dockerfile | this repo, `main` | `api-grpc.env.example` |
 | `web` | Dockerfile application, `apps/web/Dockerfile`, context `/` | this repo, `main` | `web.env.example` |
@@ -16,9 +16,8 @@ its own and the three applications get rolling deploys (DECISIONS I-87):
 
 The compose file is Postgres alone. Add it as a Coolify **Service** (Add
 resource -> Docker Compose Empty, paste the file): Coolify recognises the
-postgres image inside a Service and gives it a Backups tab, where the
-nightly dump is scheduled, to an S3 storage of the owner's
-(`docs/ops/coolify.md`). Turn **Connect to
+postgres image inside a Service and gives it a Backups tab, which is
+where the owner sets the schedule and destination (I-112). Turn **Connect to
 predefined network** **off** for it (Configuration -> Advanced): the file
 joins the shared `coolify` network itself, so the service name
 `repose-postgres` is registered there and is the `DATABASE_URL` host. The
@@ -55,7 +54,7 @@ repose-postgres").
 - `api-grpc`: no domain; port mappings `8443:8443`, `8444:8444`,
   `9104:9103` (Configuration -> Network, "Ports Mappings"; a Dockerfile
   application publishes nothing until they are set); Coolify's health check
-  **off** (same reason); deploy after `api`. The control NSG never opens
+  **off** (same reason). The control NSG never opens
   these ports on the public IP. Docker publishes them on every address, so
   they are reached on two private ones (DECISIONS I-92): hosts dial the VNet
   address (`control_private_ip`, `10.200.3.4`) because a host registers
@@ -143,12 +142,11 @@ nobody will thank you for.
 
 ## Backups
 
-Coolify's own: on the Postgres service, Backups, nightly at 02:00,
-retention 35 days, destination an S3 storage configured in the owner's
-own Coolify. No credential for it is in this repository or on the VM
-(DECISIONS I-103), so there is nothing to generate here. Verify with
-`ssh root@<control ip> repose-backup-check`, which needs no credential
-and reports the age of the newest dump Coolify wrote under
-`/data/coolify/backups` — that the dump was taken; the upload is the
-Backups tab. Restore: `docs/ops/RUNBOOK.md` "Postgres restore", or
-`ops/restore-rehearsal.sh <dump>` with a file downloaded from that tab.
+Coolify's, on the Postgres service's Backups tab, against a destination
+the owner configures in their own Coolify. Nothing on this side is
+involved: no bucket, no token, no check, no rehearsal script and no alert
+(`docs/DECISIONS.md` I-112). A backup or restore question is answered in
+Coolify.
+
+One thing worth knowing before a restore rather than during one:
+`docs/ops/coolify.md`, "The instance's .env is half any backup".

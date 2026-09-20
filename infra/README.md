@@ -26,7 +26,6 @@ infra/
     prod/             state key azure.tfstate
     staging/          state key staging.tfstate
   dns/                Cloudflare records, called by the environment module
-  r2/                 Postgres backup bucket, state key r2.tfstate
   policy/tfsec/       the two rules a reviewer should not have to remember
 ```
 
@@ -48,7 +47,7 @@ Two environment values are read from the environment rather than a file:
 
 ```bash
 az login                                # OpenTofu's Azure credentials
-export CLOUDFLARE_API_TOKEN=...         # only for DNS and R2
+export CLOUDFLARE_API_TOKEN=...         # only when manage_dns is true
 ```
 
 ## Values: what is committed and what is not
@@ -229,16 +228,17 @@ Coolify installs on the server, which terminates TLS for the two names in
 "DNS" below.
 
 Everything past the VM is a click path Coolify keeps in its own database, not
-in state: `docs/ops/coolify.md` is that path, including adding the server,
-the R2 backup destination, the restore rehearsal, and the one fact that ruins
-a restore if it is learned late — Coolify encrypts its stored credentials
-with `APP_KEY` from the `.env` on the owner's Coolify host, so a Postgres dump
-without that key restores a database of ciphertext.
+in state: `docs/ops/coolify.md` is that path, including adding the server and
+the one fact that ruins a restore if it is learned late — Coolify encrypts its
+stored credentials with `APP_KEY` from the `.env` on the owner's Coolify host,
+so a Postgres dump without that key restores a database of ciphertext.
+Backups and restores are Coolify's own, against a destination the owner
+configures there; nothing in this repository touches them (DECISIONS I-112).
 
 Setting `coolify_count` back to 0 destroys the VM and its OS disk, the
 platform Postgres included; Coolify's own definitions of the resources
 survive on the owner's instance, pointing at a server that no longer exists.
-The retention that matters is the R2 dump plus the owner's `.env`.
+The retention that matters is Coolify's own backup plus the owner's `.env`.
 
 ## DNS
 
@@ -420,7 +420,6 @@ reservation.
 | Two Standard static IPv4 (NAT, edge) | $0.005/h each | $7.30 |
 | Blob, 500 GB of snapshots, Cool LRS | $0.0152/GB/month | $7.60 |
 | Key Vault standard, operations | $0.03 per 10K | under $1 |
-| R2, 50 GB | $0.015/GB/month | $0.75 |
 | **Subtotal, one host and the edge, before egress** | | **about $857** |
 | Control plane `Standard_D4s_v7` | $0.265/h | $193.45 |
 | — its OS disk, Premium SSD P15 (256 GiB) + mount | $38.01 + $1.83 | $39.84 |
@@ -465,11 +464,13 @@ queried ones.
   database, which no `tofu plan` can read or diff; the click path is
   `docs/ops/coolify.md`, with the short form in `docs/ops/RUNBOOK.md`
   "Control plane".
-- **The api's Entra app registration and client certificate**, and **the R2
-  API token.** Both are credentials. Creating them is a human step next to the
-  other identity setup in `docs/ops/AZURE-SETUP.md`, and neither belongs in a
-  state file (`docs/DECISIONS.md` I-21). Pass the app's object id as
+- **The api's Entra app registration and client certificate.** A credential:
+  creating it is a human step next to the other identity setup in
+  `docs/ops/AZURE-SETUP.md`, and it does not belong in a state file
+  (`docs/DECISIONS.md` I-21). Pass the app's object id as
   `api_identity_object_id` and the Key Vault wrap/unwrap policy appears.
+- **Postgres backups.** Coolify's, to a destination in the owner's own
+  Coolify. No bucket, no token, no schedule here (DECISIONS I-112).
 - **A Hetzner module.** Designed for in `docs/workstreams/11-infra-opentofu.md`
   §5, not built. The `host` module's variable surface (`name`, `join_token`,
   `class`, `data_disk_gb`) and its outputs (`private_ip`, `ssh_jump`) are the
