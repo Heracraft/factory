@@ -1,6 +1,9 @@
 package cli
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // These mirror docs/interfaces/api.md exactly (field names and JSON tags
 // match internal/fakes/api's Project et al. so the CLI decodes the fake
@@ -66,10 +69,45 @@ type AgentSignal struct {
 }
 
 type Op struct {
-	State  string `json:"state"`
-	Error  string `json:"error,omitempty"`
-	LogURL string `json:"log_url,omitempty"`
+	State  string  `json:"state"`
+	Error  OpError `json:"error,omitempty"`
+	LogURL string  `json:"log_url,omitempty"`
 }
+
+// OpError is an op's error as the api stores it: `{code, message}` (the
+// hostd Result's error, or the api's own `invalid`), which an older
+// reading as a bare string rendered as nothing (DECISIONS I-114). A bare
+// string is still accepted.
+type OpError struct {
+	Code    string `json:"code,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+func (e *OpError) UnmarshalJSON(b []byte) error {
+	if len(b) == 0 || string(b) == "null" {
+		*e = OpError{}
+		return nil
+	}
+	if b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		*e = OpError{Message: s}
+		return nil
+	}
+	type raw OpError
+	var r raw
+	if err := json.Unmarshal(b, &r); err != nil {
+		return err
+	}
+	*e = OpError(r)
+	return nil
+}
+
+// String is the message alone; the code chooses a prefix only where the
+// build contract names one (RenderBuildError).
+func (e OpError) String() string { return e.Message }
 
 type CertResponse struct {
 	Certificate string    `json:"certificate"`

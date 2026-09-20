@@ -437,9 +437,24 @@ func (m *Manager) refreshGuestGauge() {
 		return
 	}
 	m.d.Metrics.Guests.Reset()
+	// Every state and class is published, at zero when empty: a GaugeVec
+	// with no children exposes no series at all, so a host with no guests
+	// showed "no data" rather than 0 (m3 integration, DECISIONS I-116).
+	for _, st := range GuestStates {
+		for class := range Classes {
+			m.d.Metrics.Guests.WithLabelValues(st, class).Set(0)
+		}
+	}
 	for _, g := range gs {
 		m.d.Metrics.Guests.WithLabelValues(g.State, g.Class).Inc()
 	}
+}
+
+// GuestStates is the guest state enum of docs/interfaces/README.md, the
+// label set repose_host_guests always carries.
+var GuestStates = []string{
+	StateCreating, StateBuilding, StateStarting, StateRunning, StateStopping,
+	StateStopped, StateRestoring, StateDestroying, StateDestroyed, StateError,
 }
 
 func (m *Manager) emitEvent(ev any) {

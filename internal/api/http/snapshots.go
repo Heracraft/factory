@@ -104,6 +104,12 @@ func (s *Server) restoreSnapshot(w http.ResponseWriter, r *http.Request) error {
 				if err != nil {
 					return err
 				}
+				// A destroyed project's closure lost its GC roots with its
+				// guest (DECISIONS I-115), so the copy carries no closure
+				// and the restore plan rebuilds before it boots.
+				if src.DestroyedAt != nil {
+					cur.SystemClosure, cur.ClosureBytes = nil, nil
+				}
 				_, err = tx.Exec(ctx, "insert into config_revisions (id, project_id, fragment, menu, base_version, status, system_closure, closure_bytes, kernel_changed, built_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())",
 					rid, newID, cur.Fragment, cur.Menu, cur.BaseVersion, revisionStatusForCopy(cur), cur.SystemClosure, cur.ClosureBytes, cur.KernelChanged)
 				return err

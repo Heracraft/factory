@@ -33,7 +33,8 @@ type Options struct {
 	// ssh-gateway.md "Test CA"), so the gateway relay can be tested end
 	// to end. Nil keeps the canned placeholder strings.
 	CA *testca.CA
-	// CreateDelay makes POST /projects answer state "creating" with an
+	// CreateDelay makes POST /projects answer state "creating" (and read
+	// back as "building" while the op runs, as the engine does) with an
 	// op_id whose op finishes (and the guest runs) only after the delay,
 	// the way the real engine does; a start meanwhile is a conflict. Zero
 	// keeps the instant create.

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"os"
 	"path/filepath"
 	"slices"
@@ -295,6 +296,17 @@ func TestStopStartDestroy(t *testing.T) {
 	}
 	_ = h.roots.Set(gid1, h.closure)
 	h.mustOK(cmd(&hostdv1.StartGuest{GuestId: gid1}))
+	// Revision roots of this project and of another: destroy removes the
+	// project's own and leaves the other's (I-115).
+	revRoots := []string{"rev-proj-" + gid1[:8] + "-01", "rev-proj-" + gid1[:8] + "-02"}
+	for _, name := range revRoots {
+		if err := h.roots.Set(name, h.closure); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := h.roots.Set("rev-other-project-01", h.closure); err != nil {
+		t.Fatal(err)
+	}
 	// Destroy from running, with a final egress sample and nothing left.
 	h.net.Counters[gid1] = 12345
 	h.mustOK(cmd(&hostdv1.DestroyGuest{GuestId: gid1}))
@@ -309,6 +321,22 @@ func TestStopStartDestroy(t *testing.T) {
 	}
 	if ok, _ := h.roots.Exists(gid1); ok {
 		t.Fatal("gc root still present after destroy")
+	}
+	for _, name := range revRoots {
+		if ok, _ := h.roots.Exists(name); ok {
+			t.Fatalf("revision root %s still present after destroy (I-115)", name)
+		}
+	}
+	if ok, _ := h.roots.Exists("rev-other-project-01"); !ok {
+		t.Fatal("another project's revision root was removed by the destroy")
+	}
+	// repose_host_guests publishes every state and class, at 0 when
+	// empty, so a panel reads 0 rather than no data (I-116).
+	if n := testutil.CollectAndCount(h.metrics.Guests); n != len(GuestStates)*len(Classes) {
+		t.Fatalf("repose_host_guests has %d series, want %d", n, len(GuestStates)*len(Classes))
+	}
+	if v := testutil.ToFloat64(h.metrics.Guests.WithLabelValues(StateRunning, "large")); v != 0 {
+		t.Fatalf("running/large gauge after destroy = %v, want 0", v)
 	}
 	if _, err := os.Stat(filepath.Join(h.cfg.GuestsDir, gid1)); err == nil {
 		t.Fatal("guest dir still present after destroy")

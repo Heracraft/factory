@@ -167,6 +167,28 @@ func TestAdminSurface(t *testing.T) {
 	if out, err := run(t, e, "base", "status", "2026.09.20"); err != nil || !strings.Contains(out, "zp") {
 		t.Fatalf("base status: %s %v", out, err)
 	}
+	// projects create (I-113): a synthetic exempt user gets a project and
+	// a create op the engine drives; the slug follows the api's rule.
+	if _, err := run(t, e, "projects", "create", "--user", "repose-m3", "--name", "Iso_A", "--host", "host-01"); err == nil {
+		t.Fatal("projects create for an unknown user without --create-user should refuse")
+	}
+	out, err = run(t, e, "projects", "create", "--user", "repose-m3", "--create-user", "--name", "Iso_A", "--class", "small", "--host", "host-01", "--wait")
+	if err != nil || !strings.Contains(out, "user repose-m3 created") || !strings.Contains(out, "\nrunning") {
+		t.Fatalf("projects create: %s %v", out, err)
+	}
+	var createdSlug, createdState, createdBilling string
+	if err := h.Pool.QueryRow(ctx, "select p.slug, p.state, u.billing_status from projects p join users u on u.id = p.user_id where u.handle = 'repose-m3'").Scan(&createdSlug, &createdState, &createdBilling); err != nil {
+		t.Fatal(err)
+	}
+	if createdSlug != "iso-a" || createdState != "running" || createdBilling != "exempt" {
+		t.Fatalf("created project: slug %q state %q billing %q", createdSlug, createdState, createdBilling)
+	}
+	if out, err := run(t, e, "audit", "--action", "project_create"); err != nil || !strings.Contains(out, "project_create") {
+		t.Fatalf("audit project_create: %s %v", out, err)
+	}
+	if _, err := run(t, e, "projects", "create", "--user", "repose-m3", "--name", "bad class", "--class", "huge"); err == nil {
+		t.Fatal("projects create with a bad class should refuse")
+	}
 	// smoke: create, snapshot, stop, start, destroy on host-01
 	if out, err := run(t, e, "hosts", "smoke", "host-01"); err != nil || !strings.Contains(out, "destroy   ok") {
 		t.Fatalf("smoke: %s %v", out, err)

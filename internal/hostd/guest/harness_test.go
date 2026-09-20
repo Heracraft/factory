@@ -80,6 +80,7 @@ func (r *recorder) warnings() []string {
 }
 
 type harness struct {
+	metrics *metrics.M
 	t       *testing.T
 	m       *Manager
 	st      *state.DB
@@ -190,9 +191,10 @@ func newHarness(t *testing.T, mut func(*Config)) *harness {
 	// tests must name an event and carry no never-log field
 	// (docs/workstreams/10-observability.md §5).
 	logger := obs.NewTestLogger(t, obs.ComponentHostd, io.Discard)
+	h.metrics = metrics.New()
 	m, err := New(cfg, Deps{
 		State: st, LVM: h.lvm, Net: h.net, Systemd: h.sd, CH: h.chc, Nix: h.nix, Roots: h.roots, Blob: h.blob,
-		Stream: &snapshot.FakeStreamer{LVM: h.lvm}, Emit: h.rec, Metrics: metrics.New(), Log: logger,
+		Stream: &snapshot.FakeStreamer{LVM: h.lvm}, Emit: h.rec, Metrics: h.metrics, Log: logger,
 		Guestd:  vsockclient.UnixDialer{Path: func(tg vsockclient.Target) string { return filepath.Join(h.sockDir, tg.GuestID+".sock") }},
 		MemInfo: func() (uint64, uint64, error) { return 64 << 30, 40 << 30, nil },
 		Load1:   func() float64 { return 0.5 },

@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -57,8 +58,8 @@ func TestRenderBuildErrorGolden(t *testing.T) {
 	fragment := "{ pkgs, ... }:\n{\n  home.packages = with pkgs; [\n    nodejs_25\n  ];\n}\n"
 	msg := "attribute 'nodejs_25' missing at fragment.nix:4:5"
 	var buf bytes.Buffer
-	RenderBuildError(&buf, msg, "./repose.nix", []byte(fragment))
-	want := "error: attribute 'nodejs_25' missing at repose.nix:4:5\n" +
+	RenderBuildError(&buf, "eval_failed", msg, "./repose.nix", []byte(fragment))
+	want := "config error: attribute 'nodejs_25' missing at repose.nix:4:5\n" +
 		"   at repose.nix:4:5\n" +
 		"      3 |   home.packages = with pkgs; [\n" +
 		"      4 |     nodejs_25\n" +
@@ -70,9 +71,39 @@ func TestRenderBuildErrorGolden(t *testing.T) {
 
 func TestRenderBuildErrorWithoutFragmentSource(t *testing.T) {
 	var buf bytes.Buffer
-	RenderBuildError(&buf, "evaluation exceeded 60 s", "./repose.nix", nil)
-	want := "error: evaluation exceeded 60 s\n"
+	RenderBuildError(&buf, "eval_failed", "evaluation exceeded 60 s", "./repose.nix", nil)
+	want := "config error: evaluation exceeded 60 s\n"
 	if buf.String() != want {
 		t.Fatalf("got %q, want %q", buf.String(), want)
+	}
+}
+
+// The api stores an op's error as {code, message} (I-42); the first real
+// secret-in-fragment refusal rendered as "error: " because the CLI read
+// it as a string (DECISIONS I-114). Both shapes decode, and the contract's
+// prefixes follow the code.
+func TestOpErrorDecodesObjectAndStringAndPrefixes(t *testing.T) {
+	var op Op
+	if err := json.Unmarshal([]byte(`{"state":"error","error":{"code":"invalid","message":"fragment contains the value of secret X"}}`), &op); err != nil {
+		t.Fatal(err)
+	}
+	if op.Error.Code != "invalid" || op.Error.String() != "fragment contains the value of secret X" {
+		t.Fatalf("object form: %+v", op.Error)
+	}
+	if err := json.Unmarshal([]byte(`{"state":"error","error":"host unreachable"}`), &op); err != nil {
+		t.Fatal(err)
+	}
+	if op.Error.Message != "host unreachable" || op.Error.Code != "" {
+		t.Fatalf("string form: %+v", op.Error)
+	}
+	for code, want := range map[string]string{"eval_failed": "config error: ", "invalid": "config error: ", "closure_too_large": "config too large: ", "build_failed": "", "build_timeout": "", "internal": "error: "} {
+		if got := buildErrorPrefix(code); got != want {
+			t.Fatalf("prefix for %s = %q, want %q", code, got, want)
+		}
+	}
+	var buf bytes.Buffer
+	RenderBuildError(&buf, "build_timeout", "build timed out after 30 minutes while building sleep-forever-1.0", "./repose.nix", nil)
+	if buf.String() != "build timed out after 30 minutes while building sleep-forever-1.0\n" {
+		t.Fatalf("build_timeout rendering: %q", buf.String())
 	}
 }

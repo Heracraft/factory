@@ -47,7 +47,7 @@ func applyFragmentAndRender(ctx context.Context, e *Env, project *Project, fragm
 	if err != nil {
 		var apiErr *APIError
 		if ok := asAPIError(err, &apiErr); ok && apiErr.Code == "invalid" {
-			RenderBuildError(e.Out, apiErr.Message, localFragmentPath, mustReadFragment(localFragmentPath))
+			RenderBuildError(e.Out, apiErr.Code, apiErr.Message, localFragmentPath, mustReadFragment(localFragmentPath))
 			return silent(ExitBuildFailed)
 		}
 		return err
@@ -61,7 +61,7 @@ func applyFragmentAndRender(ctx context.Context, e *Env, project *Project, fragm
 		return err
 	}
 	if op.State == "error" {
-		RenderBuildError(e.Out, op.Error, localFragmentPath, mustReadFragment(localFragmentPath))
+		RenderBuildError(e.Out, op.Error.Code, op.Error.Message, localFragmentPath, mustReadFragment(localFragmentPath))
 		return silent(ExitBuildFailed)
 	}
 	_, _ = fmt.Fprintf(e.Out, "Applied revision %s\n", revisionID)

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/heracraft/repose/internal/api/auth"
 	"github.com/heracraft/repose/internal/api/ca"
 	"github.com/heracraft/repose/internal/api/hostmgr"
+	httpapi "github.com/heracraft/repose/internal/api/http"
 	"github.com/heracraft/repose/internal/api/meter"
 	"github.com/heracraft/repose/internal/api/metrics"
 	"github.com/heracraft/repose/internal/api/ops"
@@ -356,33 +358,13 @@ func (e *Env) smoke(ctx context.Context, hostRef string) error {
 	}
 	u, err := store.GetUserByHandle(ctx, e.pool, "repose-smoke")
 	if errors.Is(err, db.ErrNotFound) {
-		uid := store.NewID()
-		if _, err := e.pool.Exec(ctx, "insert into users (id, handle, billing_status, has_card, project_limit, xl_limit) values ($1, 'repose-smoke', 'exempt', true, 100, 100)", uid); err != nil {
-			return err
-		}
-		u, err = store.GetUser(ctx, e.pool, uid)
+		u, err = e.createExemptUser(ctx, "repose-smoke")
 	}
 	if err != nil {
 		return err
 	}
 	name := "smoke-" + time.Now().UTC().Format("20060102-150405")
-	pid, rid := store.NewID(), store.NewID()
-	eng, err := e.engine(ctx)
-	if err != nil {
-		return err
-	}
-	var opID uuid.UUID
-	err = db.InTx(ctx, e.pool, func(tx db.Tx) error {
-		if _, err := tx.Exec(ctx, "insert into projects (id, user_id, name, slug, class, state, volume_bytes, config_revision_id) values ($1, $2, $3, $3, 'small', 'creating', $4, $5)", pid, u.ID, name, scheduler.DefaultVolume("small"), rid); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, "insert into config_revisions (id, project_id, fragment, status) values ($1, $2, $3, 'building')", rid, pid, "{ pkgs, ... }:\n{\n  home.packages = [ ];\n}\n"); err != nil {
-			return err
-		}
-		var err error
-		opID, err = eng.Enqueue(ctx, tx, ops.NewOp{Kind: ops.KindCreate, ProjectID: &pid, Params: map[string]any{"host_id": h.ID.String()}, Phases: ops.PlanCreate()}, false)
-		return err
-	})
+	pid, opID, err := e.createProject(ctx, u, name, "small", h)
 	if err != nil {
 		return err
 	}
@@ -444,6 +426,63 @@ func (e *Env) smoke(ctx context.Context, hostRef string) error {
 	return err
 }
 
+var handleRe = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
+
+// createExemptUser inserts a billing-exempt account with the limits
+// `hosts smoke` gives repose-smoke (DECISIONS I-16, I-113): no Logto
+// identity, so nothing can sign in as it; it exists for guests an operator
+// drives through repose-admin.
+func (e *Env) createExemptUser(ctx context.Context, handle string) (*store.User, error) {
+	if !handleRe.MatchString(handle) {
+		return nil, fmt.Errorf("%w: handle must match [a-z0-9-]{1,32}", ErrUsage)
+	}
+	uid := store.NewID()
+	if _, err := e.pool.Exec(ctx, "insert into users (id, handle, billing_status, has_card, project_limit, xl_limit) values ($1, $2, 'exempt', true, 100, 100)", uid, handle); err != nil {
+		return nil, err
+	}
+	return store.GetUser(ctx, e.pool, uid)
+}
+
+// createProject inserts the project and its empty revision the way POST
+// /projects does (05 §5.3) and enqueues the create op, pinned to host when
+// one is given; the api-grpc process drives it.
+func (e *Env) createProject(ctx context.Context, u *store.User, name, class string, host *store.Host) (uuid.UUID, uuid.UUID, error) {
+	if !projectNameRe.MatchString(name) {
+		return uuid.Nil, uuid.Nil, fmt.Errorf("%w: project name must match [A-Za-z0-9._-]{1,64}", ErrUsage)
+	}
+	slug := httpapi.Slug(name)
+	if slug == "" {
+		return uuid.Nil, uuid.Nil, fmt.Errorf("%w: %q has no slug", ErrUsage, name)
+	}
+	pid, rid := store.NewID(), store.NewID()
+	eng, err := e.engine(ctx)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	params := map[string]any{}
+	if host != nil {
+		params["host_id"] = host.ID.String()
+	}
+	var opID uuid.UUID
+	err = db.InTx(ctx, e.pool, func(tx db.Tx) error {
+		if _, err := tx.Exec(ctx, "insert into projects (id, user_id, name, slug, class, state, volume_bytes, config_revision_id) values ($1, $2, $3, $4, $5, 'creating', $6, $7)", pid, u.ID, name, slug, class, scheduler.DefaultVolume(class), rid); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, "insert into config_revisions (id, project_id, fragment, status) values ($1, $2, $3, 'building')", rid, pid, httpapi.DefaultFragment); err != nil {
+			return err
+		}
+		var err error
+		opID, err = eng.Enqueue(ctx, tx, ops.NewOp{Kind: ops.KindCreate, ProjectID: &pid, Params: params, Phases: ops.PlanCreate()}, false)
+		return err
+	})
+	if err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	return pid, opID, nil
+}
+
+var projectNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
 // --- projects ---------------------------------------------------------------
 
 func (e *Env) projects(ctx context.Context, args []string) error {
@@ -454,6 +493,66 @@ func (e *Env) projects(ctx context.Context, args []string) error {
 		return err
 	}
 	switch args[0] {
+	case "create":
+		fs, err := flagsFor("create", args[1:], func(fs *flag.FlagSet) {
+			fs.String("user", "", "handle of the owning user")
+			fs.Bool("create-user", false, "create the user as a billing-exempt account when the handle does not exist (DECISIONS I-16, I-113)")
+			fs.String("name", "", "project name ([A-Za-z0-9._-]{1,64})")
+			fs.String("class", "small", "small|large|xl")
+			fs.String("host", "", "pin the placement to this host instead of the scheduler's pick")
+			fs.Bool("wait", false, "wait for the create op (build and boot) to finish")
+		})
+		if err != nil {
+			return err
+		}
+		handle, name := fs.Lookup("user").Value.String(), fs.Lookup("name").Value.String()
+		class := fs.Lookup("class").Value.String()
+		if handle == "" || name == "" {
+			return fmt.Errorf("%w: projects create needs --user and --name", ErrUsage)
+		}
+		if !scheduler.ValidClass(class) {
+			return fmt.Errorf("%w: class is small, large or xl", ErrUsage)
+		}
+		var host *store.Host
+		if hn := fs.Lookup("host").Value.String(); hn != "" {
+			if host, err = e.findHost(ctx, hn); err != nil {
+				return err
+			}
+		}
+		u, err := e.findUser(ctx, handle)
+		if err != nil {
+			if fs.Lookup("create-user").Value.String() != "true" {
+				return err
+			}
+			if u, err = e.createExemptUser(ctx, handle); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(e.Stdout, "user %s created (exempt, limits 100/100)\n", handle)
+		}
+		pid, opID, err := e.createProject(ctx, u, name, class, host)
+		if err != nil {
+			return err
+		}
+		detail := map[string]any{"user": u.Handle, "class": class}
+		if host != nil {
+			detail["host"] = host.Name
+		}
+		if _, err := e.audited(ctx, "project_create", pid.String(), detail); err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintf(e.Stdout, "project %s (%s) created for %s, op %s\n", name, pid, u.Handle, opID)
+		if fs.Lookup("wait").Value.String() != "true" {
+			return nil
+		}
+		op, err := e.waitOp(ctx, opID, 45*time.Minute)
+		if err != nil {
+			return err
+		}
+		if op.State != "done" {
+			return fmt.Errorf("create failed: %v", op.Error)
+		}
+		_, _ = fmt.Fprintln(e.Stdout, "running")
+		return nil
 	case "list":
 		fs, err := flagsFor("list", args[1:], func(fs *flag.FlagSet) {
 			fs.String("host", "", "only this host")

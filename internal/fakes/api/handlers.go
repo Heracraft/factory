@@ -362,6 +362,10 @@ func (f *Fake) createProject(w http.ResponseWriter, r *http.Request) *apiError {
 		p.State = "creating"
 		p.OpID = o.id
 		out := p.Project
+		// The engine's create op builds first, so a project read back a
+		// moment after the create is "building", not "creating"
+		// (DECISIONS I-114); the fake shows the same sequence.
+		p.State = "building"
 		go func() {
 			time.Sleep(f.opts.CreateDelay)
 			f.mu.Lock()

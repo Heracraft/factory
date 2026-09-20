@@ -2546,3 +2546,66 @@ dropped request happens on **every merge**, not only on deliberate
 deploys, which is what turns it from a curiosity into the owner's
 decision about the proxy's drain. Recorded as `coolify.md` facts 15
 and 16.
+
+**I-113. `repose-admin projects create` makes a project for a synthetic,
+billing-exempt user; `hosts smoke` uses the same path.** (m3 integration,
+conductor, 2026-09-20) The M3 checks that must not run as the owner (two
+tenants for the isolation rows, throwaway guests for notifications and
+audit rows) need a guest under a user that cannot sign in, the way `hosts
+smoke` runs under `repose-smoke`. `projects create --user HANDLE --name N
+[--class C] [--host N] [--create-user] [--wait]` is smoke's create step
+factored out: with `--create-user` a missing handle becomes an exempt
+account with limits 100/100 and no Logto identity (I-16), the project and
+its empty revision are inserted the way `POST /projects` does and the
+create op is enqueued for api-grpc to drive, pinned to a host when asked.
+Audited as `project_create`. *Rejected:* inserting rows by hand with
+`psql` (the op has to come from the engine); a Logto identity for
+synthetic users (a second identity path in the api for a test).
+
+**I-114. The CLI waits through `building`, and reads an op's error as
+`{code, message}`.** (m3 integration, 2026-09-20) Two things the first
+`repose run` and `repose config apply` on host-01 under a real build
+showed: I-106's wait covered `creating` and `starting`, but the create
+op's first phase puts the project in `building` a moment after `POST
+/projects` answers, so the CLI issued a start and got the api's
+`conflict: m3-check is building` (the fake completed its create before
+any state could be read; it now reports `building` while its create
+delay runs, which reproduces the race). And `Op.Error` was a string while
+the api stores and returns the hostd result's `{code, message}` (I-42),
+so the secret-in-fragment refusal rendered as `error: ` with nothing
+after it. `OpError` decodes both shapes, and `RenderBuildError` takes the
+code and prints the prefix `nix-build-contract.md` "What the user reads"
+assigns it (`config error: ` for `eval_failed` and the api's `invalid`,
+`config too large: ` for `closure_too_large`, none for `build_failed` and
+`build_timeout`, `error: ` otherwise). *Rejected:* changing the api to
+return a string (the code is what the CLI switches on, and the dashboard
+reads the same shape).
+
+**I-115. A destroyed project's `rev-*` GC roots go with its guest, and a
+restore of a destroyed project rebuilds its closure.** (m3 integration,
+2026-09-20) `host-conventions.md` says the guest's root is removed on
+destroy and the `rev-<project>-<revision>` roots keep the last three
+built revisions; hostd removed the first and never the second, so every
+destroyed project on host-01 left its revision roots (seven of them
+after one evening) and 6 GB of store each, for ever. `DestroyGuest` now
+prunes every `rev-<project>-*` root of that project. Because a restore
+of a destroyed project (`POST .../snapshots/:sid/restore` with
+`as_new_project`, within the 30-day retention) would otherwise hand
+hostd a closure the next `nix-collect-garbage` may have removed, the
+api copies the revision without its closure when the source is
+destroyed, so the restore plan is `build, restore, start_guest`.
+*Rejected:* keeping the roots for 30 days to match snapshot retention
+(the store is the host's scarce resource and the closure is a
+deterministic build of a fragment the database still holds).
+
+**I-116. `repose_host_guests` publishes every state and class at zero.**
+(m3 integration, m3-web, 2026-09-20) m3-web saw no `repose_host_guests`
+series on host-01 at all. The wiring was fine (the gauge appeared as soon
+as a guest existed: `repose_host_guests{class="small",state="running"} 1`
+at 23:45Z); a Prometheus `GaugeVec` with no children exposes nothing,
+not even HELP, so a host with no guests read as "no data" on the
+capacity panel rather than 0. `refreshGuestGauge` now sets every
+`state × class` combination to 0 before counting, so the family has
+thirty series from the first refresh. *Rejected:* a separate
+`repose_host_guests_total` gauge (a second name for the same count).
+
