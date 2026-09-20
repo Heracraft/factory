@@ -420,9 +420,14 @@ removes all of them including the `Include` line.
 
 - [ ] Every command and flag in 5.1 exists with that name. Evidence: `repose
       --help` tree pasted, diffed against 5.1.
-- [ ] Login works with a browser (PKCE loopback) and without
-      (`--no-browser`, device code), against the real Logto. Evidence:
-      recording or transcript of both.
+- [ ] Login works against the real Logto: device code is the default
+      (DECISIONS I-101; the `repose-cli` Native application has no redirect
+      URI, so the PKCE loopback of `--browser` cannot match it), with the
+      application's App ID as client id (I-99). Evidence: the owner's
+      transcript of `repose login` at the M2 gate (2026-09-20); the first
+      two attempts failed with `oidc.invalid_client` (the application name
+      was sent as client id) and `oidc.invalid_redirect_uri` (PKCE against
+      a device-flow application), each fixed on main before the third.
 - [ ] Tokens stored per `interfaces/cli-config.md`; on macOS the refresh
       token is in the keychain and absent from disk. Evidence: `cat
       credentials.json` on macOS shows no refresh token.
