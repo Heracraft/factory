@@ -9,11 +9,12 @@
 #                  wg0, listeners on wg0 only, Fluent Bit to a real Loki
 #   host-storage   the disko data-disk layout on a virtual disk: PV, VG,
 #                  thin pool with autoextend, a thin volume, the pool monitor
-#   host-services  hostd stub, guests.slice, transient guest survives a
+#   host-services  the real hostd, guests.slice, transient guest survives a
 #                  hostd restart and kill, store export with .links masked,
-#                  registration with a fixture token (idempotent), sshd on
-#                  wg0 with a CA certificate and the PAM audit hook
-{ pkgs, nixpkgs, disko, hostModules }:
+#                  registration against a `hostdev` in a second node
+#                  (idempotent), sshd on wg0 with a CA certificate and the
+#                  PAM audit hook
+{ pkgs, nixpkgs, disko, hostModules, hostdev }:
 let
   lib = pkgs.lib;
   system = pkgs.stdenv.hostPlatform.system;
@@ -26,11 +27,6 @@ let
       hostName = "host-test";
       provider = "none";
       uplinkInterface = "eth1";
-      # These tests exercise the host's units, not the daemon: the stub
-      # answers `register` from a fixture and `snapshot-all` by logging,
-      # which the real hostd (what hostModules installs) cannot do without
-      # an api.
-      hostdPackage = lib.mkForce (pkgs.callPackage ../hostd-stub.nix { });
     };
     disko.enableConfig = false;
     # The test driver sets a root password file; the host's locked password
@@ -49,15 +45,18 @@ let
     environment.systemPackages = with pkgs; [ curl iputils netcat-openbsd jq python3 ];
   };
 
-  # The "internet" next to the host: DHCP server for the provider NIC, a
-  # web server, an impersonated IMDS address, and a Loki for Fluent Bit.
-  inetNode = { pkgs, ... }: {
+  # host-network and host-storage exercise the host's units, not the daemon,
+  # and have no api to register against: the stub stands in for hostd there.
+  # host-services runs the real binary against the hostdev below.
+  stubNode = { lib, pkgs, ... }: {
+    imports = [ hostNode ];
+    repose.host.hostdPackage = lib.mkForce (pkgs.callPackage ../hostd-stub.nix { });
+  };
+
+  # The provider-NIC side of every test: DHCP for the host's uplink.
+  lanNode = { ... }: {
     virtualisation.interfaces.eth1 = { vlan = 1; assignIP = false; };
     networking.useDHCP = false;
-    networking.interfaces.eth1.ipv4.addresses = [
-      { address = "203.0.113.9"; prefixLength = 24; }
-      { address = "169.254.169.254"; prefixLength = 32; }
-    ];
     networking.firewall.enable = false;
     services.dnsmasq = {
       enable = true;
@@ -67,9 +66,60 @@ let
         bind-interfaces = true;
         port = 0;
         dhcp-range = "203.0.113.100,203.0.113.150,12h";
-        dhcp-option = [ "option:router,203.0.113.9" ];
+        dhcp-option = [ "option:router,${lanIP}" ];
       };
     };
+  };
+
+  lanIP = "203.0.113.9";
+
+  # `hostdev` (DECISIONS I-17) is the api in host-services: one host, real
+  # mTLS, real join token. `init` runs at build time so the host can be
+  # built with `--api-ca` naming its CA; only the certificate crosses to the
+  # host node, never the CA key or the token.
+  hostdevState = pkgs.runCommand "repose-hostdev-test-state" { } ''
+    mkdir -p $out
+    ${hostdev}/bin/hostdev --state-dir $out init \
+      --listen 0.0.0.0:8443 --names ${lanIP} --guest-cidr 10.64.4.0/22 > $out/init.log
+  '';
+  hostdevCA = pkgs.runCommand "repose-hostdev-test-ca" { } ''
+    mkdir -p $out && cp ${hostdevState}/ca.pem $out/ca.pem
+  '';
+  hostdevDir = "/var/lib/repose-hostdev";
+
+  apiNode = { pkgs, ... }: {
+    imports = [ lanNode ];
+    networking.interfaces.eth1.ipv4.addresses = [{ address = lanIP; prefixLength = 24; }];
+    systemd.services.hostdev = {
+      description = "hostdev: the api for this test";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network.target" ];
+      serviceConfig = {
+        # The state directory is writable: hostdev records the used token,
+        # the host's Hello and every command in it.
+        ExecStartPre = pkgs.writeShellScript "hostdev-state" ''
+          if [ ! -e ${hostdevDir}/state.json ]; then
+            mkdir -p ${hostdevDir}
+            cp -r ${hostdevState}/. ${hostdevDir}/
+            chmod 0700 ${hostdevDir} && chmod 0600 ${hostdevDir}/*
+          fi
+        '';
+        ExecStart = "${hostdev}/bin/hostdev --state-dir ${hostdevDir} serve";
+        Restart = "always";
+        RestartSec = 2;
+      };
+    };
+    environment.systemPackages = [ hostdev pkgs.jq ];
+  };
+
+  # The "internet" next to the host: DHCP server for the provider NIC, a
+  # web server, an impersonated IMDS address, and a Loki for Fluent Bit.
+  inetNode = { pkgs, ... }: {
+    imports = [ lanNode ];
+    networking.interfaces.eth1.ipv4.addresses = [
+      { address = lanIP; prefixLength = 24; }
+      { address = "169.254.169.254"; prefixLength = 32; }
+    ];
     systemd.services.web = {
       wantedBy = [ "multi-user.target" ];
       script = "cd /tmp && exec ${pkgs.python3}/bin/python3 -m http.server 80 --bind 0.0.0.0";
@@ -101,7 +151,7 @@ in
 {
   host-network = pkgs.testers.runNixOSTest {
     name = "repose-host-network";
-    nodes.host = hostNode;
+    nodes.host = stubNode;
     nodes.inet = inetNode;
     testScript = ''
       inet.start()
@@ -177,6 +227,26 @@ in
           host.fail(f"{ga} nc -z -w3 10.64.4.1 22")
           host.fail(f"{ga} nc -z -w3 {host_ip} 22")
 
+      with subtest("the host reaches a guest on 22, and only in that direction"):
+          # What the runbook's manual `nft insert` used to do until this rule
+          # was declared (DECISIONS I-70): an operator jumps edge -> host ->
+          # guest for SSH while the gateway does not exist yet.
+          # Absolute paths: a transient unit gets systemd's PATH, and
+          # `ip netns exec` execs its command from that.
+          host.succeed(
+              "systemd-run --unit ga-listen --collect ip netns exec ga"
+              " ${pkgs.bash}/bin/sh -c '${pkgs.netcat-openbsd}/bin/nc -l 22 > /tmp/ga-in'"
+          )
+          host.wait_until_succeeds("ip netns exec ga ss -tlnH | grep -c ':22' >/dev/null")
+          host.succeed("echo host-to-guest-22 | nc -N -w5 10.64.4.2 22")
+          host.wait_until_succeeds("grep -q host-to-guest-22 /tmp/ga-in")
+          host.succeed("ping -c1 -W2 10.64.4.2")
+          print(host.succeed("nft list chain inet repose guest_in"))
+          # The rule is `ct direction reply` only: a guest's own first packet
+          # is the original direction, so nothing above opened a way in.
+          host.fail(f"{ga} nc -z -w3 10.64.4.1 22")
+          host.fail(f"{ga} nc -z -w3 10.64.4.1 9100")
+
       with subtest("a guest cannot use another guest's address"):
           host.succeed("ip -n ga addr add 10.64.4.3/22 dev veth-ga")
           host.fail(f"{ga} curl -sf -m3 --interface 10.64.4.3 http://203.0.113.9/")
@@ -195,6 +265,9 @@ in
           host.succeed("nft list set bridge repose guests | grep -q 'tap-ga'")
           host.succeed(f"{ga} curl -sf -m5 http://203.0.113.9/ >/dev/null")
           host.fail(f"{ga} ping -c1 -W2 10.64.4.3")
+          # host -> guest is declared in the ruleset, not inserted by hand,
+          # so it comes back with the reload (DECISIONS I-70).
+          host.succeed("ping -c1 -W2 10.64.4.2")
 
       with subtest("sshd and node_exporter listen on wg0 only; nothing on the provider NIC"):
           # grep -c reads to EOF; grep -q would SIGPIPE curl under pipefail and never succeed
@@ -235,7 +308,7 @@ in
   host-storage = pkgs.testers.runNixOSTest {
     name = "repose-host-storage";
     nodes.host = { ... }: {
-      imports = [ hostNode ];
+      imports = [ stubNode ];
       virtualisation.emptyDiskImages = [ 65536 ];
     };
     testScript = ''
@@ -295,23 +368,29 @@ in
 
   host-services = pkgs.testers.runNixOSTest {
     name = "repose-host-services";
+    nodes.api = apiNode;
     nodes.host = { ... }: {
       imports = [ hostNode ];
-      # The stub's registration installs this host.json (built in the test
-      # with a CA whose private half the test holds) and consumes the token.
-      systemd.services.repose-register.environment.HOSTD_STUB_FIXTURE = "/root/host.json";
+      # The real hostd (hostModules' packages.hostd) against the hostdev in
+      # the api node: `hostd register` makes a real gRPC call with a real
+      # join token, and the daemon holds the stream afterwards.
+      repose.host.apiAddr = "${lanIP}:8443";
+      repose.host.apiCAFile = "${hostdevCA}/ca.pem";
     };
     testScript = ''
+      api.start()
+      host.start()
+      api.wait_for_unit("hostdev.service")
+      api.wait_for_open_port(8443)
       host.wait_for_unit("multi-user.target")
 
       with subtest("hostd runs, logs the documented JSON shape, and no sudo exists"):
           host.wait_for_unit("hostd.service")
           # The unit runs the real hostd (nix/flake.nix sets
           # repose.host.hostdPackage to packages.hostd), which on a host with
-          # no join token waits for one; the stub's `stub_start` line has not
-          # existed since workstream 03 merged. What is asserted instead is
-          # the log contract of docs/workstreams/10-observability.md §5: every
-          # line is JSON with ts, level, component and event.
+          # no join token waits for one. What is asserted is the log contract
+          # of docs/workstreams/10-observability.md §5: every line is JSON
+          # with ts, level, component and event.
           host.wait_until_succeeds(
               "journalctl -u hostd --no-pager -o cat"
               " | grep '\"component\":\"hostd\"' | tail -1"
@@ -384,24 +463,51 @@ in
       with subtest("the nightly snapshot timer is wired to hostd snapshot-all"):
           host.succeed("systemctl list-timers --all repose-snapshot.timer | grep -q repose-snapshot")
           host.succeed("systemctl cat repose-snapshot.service | grep -q 'snapshot-all'")
-          # The real hostd (not the stub) is on this host and has no join
-          # token yet, so it has not opened its control socket: the unit is
-          # expected to fail, with the message the runbook quotes. A host
-          # that has registered runs it for real, which is a host-level
-          # checklist item of workstream 03.
+          # hostd has no join token yet, so it has not opened its control
+          # socket: the unit is expected to fail, with the message the
+          # runbook quotes. It runs for real once the host is registered,
+          # a few subtests below.
           host.fail("systemctl start repose-snapshot.service")
           host.succeed("journalctl -u repose-snapshot --no-pager | grep -q 'hostd is not running'")
 
+      hostdev = "hostdev --state-dir ${hostdevDir}"
+
       with subtest("registration consumes the join token once and is idempotent"):
+          # The provider NIC reaches the api through the default-drop input
+          # chain: the reply to a flow the host opened, nothing inbound.
+          host.wait_until_succeeds("ip -4 addr show eth1 | grep -q 'inet 203.0.113'", timeout=120)
+          host.wait_until_succeeds("nc -z -w3 ${lanIP} 8443")
           host.succeed("test ! -e /var/lib/repose/hostd/host.json")
-          host.succeed("ssh-keygen -q -t ed25519 -N \"\" -f /root/ca")
-          host.succeed("jq --arg ca \"$(cat /root/ca.pub)\" '.host_ca_pub = $ca' ${fixture} > /root/host.json")
-          host.succeed("echo throwaway-join-token > /run/repose/join-token")
+          # hostd retries registration on its own every 30 s, and the token is
+          # one-shot: stopped here, the unit is its only claimant, which is
+          # also why the unit is ordered before hostd on a host. That a
+          # running hostd takes an identity the unit wrote is DECISIONS I-72,
+          # pinned by internal/hostd/app's TestEnsureIdentityTakesTheIdentity-
+          # TheUnitWrote.
+          host.succeed("systemctl stop hostd.service")
+          # The join token hostdev printed at init; nothing else authenticates
+          # a first registration (docs/interfaces/host-conventions.md).
+          token = api.succeed("jq -r .join_token ${hostdevDir}/state.json").strip()
+          assert token.startswith("rjt_"), f"join token {token!r}"
+          host.succeed(f"install -m 0600 /dev/null /run/repose/join-token && echo {token} > /run/repose/join-token")
           host.succeed("systemctl start repose-register.service")
-          host.succeed("test -s /var/lib/repose/hostd/host.json")
+          for f in ["host.json", "cert.pem", "key.pem"]:
+              host.succeed(f"test -s /var/lib/repose/hostd/{f}")
           host.succeed("test ! -e /run/repose/join-token")
-          print(host.succeed("journalctl -u repose-register --no-pager"))
-          host.succeed("journalctl -u repose-register --no-pager | grep -q register_done")
+          print(host.succeed("journalctl -u repose-register --no-pager -o cat"))
+          print(host.succeed("cat /var/lib/repose/hostd/host.json"))
+          host.succeed(
+              "journalctl -u repose-register --no-pager -o cat | grep '\"event\":\"register\"' | tail -1"
+              " | jq -e '.msg == \"registered\" and .host_id' >/dev/null"
+          )
+          host_id = host.succeed("jq -r .host_id /var/lib/repose/hostd/host.json").strip()
+          # The api's own record of the same registration, and its token spent.
+          print(api.succeed(f"{hostdev} status"))
+          # grep -c reads to EOF; grep -q closes the pipe and the writer
+          # dies of SIGPIPE, which pipefail reports as a failure (141).
+          api.succeed(f"{hostdev} status | grep -c {host_id} >/dev/null")
+          api.succeed("jq -e .token_used ${hostdevDir}/state.json >/dev/null")
+
           mtime = host.succeed("stat -c %Y /var/lib/repose/hostd/host.json").strip()
           host.succeed("echo second-token > /run/repose/join-token")
           host.succeed("systemctl start repose-register.service")
@@ -410,8 +516,42 @@ in
           assert host.succeed("stat -c %Y /var/lib/repose/hostd/host.json").strip() == mtime
           host.succeed("rm /run/repose/join-token")
 
-      with subtest("host.json is applied after registration"):
+      with subtest("the bridge comes from the registration, and hostd holds the stream"):
+          # repose-register restarts the renderer, which takes the guest /22
+          # out of the host.json the api wrote: .1 of hostdev's 10.64.4.0/22.
           host.wait_until_succeeds("ip -4 addr show br-guests | grep -q '10.64.4.1/22'")
+          host.succeed("grep -q GUEST_CIDR=10.64.4.0/22 /run/repose/host.env")
+          # hostd starts after the unit, as on a host: it loads the identity
+          # the unit was issued, holds the stream with that certificate, and
+          # opens the control socket.
+          host.succeed("systemctl start hostd.service")
+          host.wait_for_unit("hostd.service")
+          api.wait_until_succeeds(f"{hostdev} status | grep -c 'connected: true' >/dev/null", timeout=120)
+          print(api.succeed(f"{hostdev} status"))
+          host.wait_until_succeeds("test -S /run/repose/hostd.sock")
+          print(host.succeed("hostd status"))
+          host.succeed("hostd status | jq -e '.host_id == \"" + host_id + "\"' >/dev/null")
+
+      with subtest("the nightly snapshot runs once hostd is registered"):
+          # The same unit that failed before registration, with no guest to
+          # snapshot: the control socket answers and the timer's command works.
+          host.succeed("systemctl start repose-snapshot.service")
+          print(host.succeed("journalctl -u repose-snapshot --no-pager -o cat | tail -2"))
+          host.succeed("journalctl -u repose-snapshot --no-pager -o cat | grep -c 'queued 0 snapshot' >/dev/null")
+
+      with subtest("host.json is applied after registration"):
+          # hostdev registers a host without WireGuard or a Host CA (I-40);
+          # the real api returns both in the same host.json. The test adds
+          # what the api would have sent, with a CA whose private half it
+          # holds, and re-runs the renderer the way registration did.
+          host.succeed("ssh-keygen -q -t ed25519 -N \"\" -f /root/ca")
+          host.succeed(
+              "jq --arg ca \"$(cat /root/ca.pub)\" --slurpfile f ${fixture}"
+              " '.host_ca_pub = $ca | .wg = $f[0].wg | .loki_url = $f[0].loki_url'"
+              " /var/lib/repose/hostd/host.json > /root/host.json"
+          )
+          host.succeed("install -m 0600 /root/host.json /var/lib/repose/hostd/host.json")
+          host.succeed("systemctl restart repose-host-net.service")
           host.wait_for_unit("wg-quick-wg0.service")
           host.succeed("grep -q 'ListenAddress 10.255.0.7' /run/repose/sshd.conf")
           host.succeed("cmp /run/repose/host_ca.pub /root/ca.pub")
@@ -431,7 +571,14 @@ in
           if status != 0:
               print(host.succeed("journalctl -u sshd --no-pager | tail -40"))
           assert status == 0, "certificate login over wg0 failed"
-          host.wait_until_succeeds("journalctl -t hostd-audit --no-pager | grep -q 'audit_login'")
+          # `hostd audit-login` from the PAM hook, logging the host id it
+          # registered with; the event name is 10-observability's
+          # operator_login (the stub's `audit_login` was never hostd's).
+          host.wait_until_succeeds("journalctl -t hostd-audit --no-pager -o cat | grep -c '\"event\":\"operator_login\"' >/dev/null")
+          host.succeed(
+              "journalctl -t hostd-audit --no-pager -o cat | tail -1"
+              " | jq -e '.component == \"hostd\" and .host_id == \"" + host_id + "\" and .pam_type' >/dev/null"
+          )
           print(host.succeed("journalctl -t hostd-audit --no-pager"))
           host.fail(
               "ssh -n -F /dev/null -i /root/op -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "

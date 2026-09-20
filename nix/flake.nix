@@ -79,6 +79,8 @@
         };
       hostChecks = import ./hosts/tests {
         inherit pkgs nixpkgs disko hostModules;
+        # host-services registers against a real hostdev (DECISIONS I-17).
+        hostdev = goPkgs.hostdev;
       };
     in {
       overlays.agents = overlay;

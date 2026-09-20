@@ -52,7 +52,10 @@ From `ARCHITECTURE.md`, with the mechanism and the actor it stops:
    (I-18: frames between two taps never reach the inet forward hook, so
    the drop has to live in the bridge family, and `learning off` is what
    stops a guest claiming another guest's MAC). The `inet repose` table
-   drops guest traffic to the host except rate-limited ICMP echo, to IMDS
+   drops guest traffic to the host except rate-limited ICMP echo and the
+   reply direction of flows the host itself opened (I-70, which is how an
+   operator reaches a guest's sshd until the gateway exists; a packet a
+   guest sends first is the original direction and is dropped), to IMDS
    and the Azure wire server, to every other guest range, and to every
    private range, and NATs the rest out of the provider NIC. Stops: a
    tenant reaching another tenant's sshd, guestd or dev servers, the

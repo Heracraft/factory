@@ -196,8 +196,10 @@ by drain, `nixos-rebuild boot`, reboot, undrain. `system.autoUpgrade` is off.
   itself is root.
 - Guests cannot reach the host: nftables `guest_in` drops all traffic from
   `br-guests` to the host's addresses, including the bridge `.1`, except
-  ICMP echo for debugging (rate-limited), which is a deliberate exception
-  recorded here.
+  ICMP echo for debugging (rate-limited) and packets in the reply direction
+  of a flow the host itself opened (`ct direction reply`, so a guest's own
+  first packet never matches it), both deliberate exceptions recorded here
+  and in DECISIONS I-18 and I-70.
 - Every `Exec` into a guest and every host login is audited.
 
 ## 6. Failure modes
@@ -263,9 +265,10 @@ they require a new host.
       Evidence: two curl outputs.
 - [ ] Fluent Bit ships a test line from journald to Loki and it is visible
       in Grafana with the `host` label. Evidence: screenshot or LogQL result.
-- [ ] `repose-register.service` with a fixture join token writes
-      `host.json` and deletes the token; running it again does nothing.
-      Evidence: pasted journal.
+- [ ] `repose-register.service` with a real join token (a `hostdev` in a
+      second test node, DECISIONS I-17) writes `host.json`, `cert.pem` and
+      `key.pem` and deletes the token; running it again does nothing.
+      Evidence: pasted journal and `hostdev status`.
 - [ ] `nix/hosts/tests/` VM tests pass in CI. Evidence: CI.
 - [ ] `interfaces/host-conventions.md` matches every path and unit name in
       the configuration. Evidence: a grep list in the PR.

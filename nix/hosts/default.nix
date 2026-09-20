@@ -106,6 +106,17 @@ in
       '';
     };
 
+    apiCAFile = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        Path on the host to a PEM bundle hostd trusts for the api
+        (hostd --api-ca), for a CA that is not known when the host is built:
+        the VM tests' `hostdev`, or a CA delivered beside the join token.
+        `apiCA` is the usual way; setting both is an error (DECISIONS I-71).
+      '';
+    };
+
     snapshots = {
       blobUrl = lib.mkOption {
         type = lib.types.str;
@@ -208,6 +219,10 @@ in
       {
         assertion = !cfg.bootstrap.enable || cfg.bootstrap.authorizedKeys != [ ];
         message = "repose.host.bootstrap.enable without authorizedKeys opens sshd on the provider NIC for nobody.";
+      }
+      {
+        assertion = cfg.apiCA == "" || cfg.apiCAFile == "";
+        message = "repose.host.apiCA and repose.host.apiCAFile both set: hostd takes one --api-ca, so name the CA once.";
       }
     ];
 

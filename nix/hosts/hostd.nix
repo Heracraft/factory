@@ -7,9 +7,7 @@
 let
   cfg = config.repose.host;
   hostd = cfg.hostdPackage;
-  apiFlags = "--api-addr ${lib.escapeShellArg cfg.apiAddr}"
-    + lib.optionalString (cfg.apiServerName != "") " --api-server-name ${lib.escapeShellArg cfg.apiServerName}"
-    + lib.optionalString (cfg.apiCA != "") " --api-ca ${pkgs.writeText "repose-api-ca.pem" cfg.apiCA}";
+  apiFlags = import ./api-flags.nix { inherit lib pkgs cfg; };
   # hostd refuses to start without a snapshot target (03-hostd §5.9): Blob
   # when the host has an account, its own disk otherwise.
   snapshotFlags =
@@ -118,6 +116,11 @@ in
       TimeoutStopSec = 30;
     };
   };
+
+  # The operator commands docs/ops/RUNBOOK.md names (`hostd status`,
+  # `hostd guests`, `hostd reconcile`, `hostd state export`) are this
+  # binary over the control socket: it belongs on an operator's PATH.
+  environment.systemPackages = [ hostd ];
 
   systemd.services.repose-snapshot = {
     description = "Nightly snapshot of every running guest";

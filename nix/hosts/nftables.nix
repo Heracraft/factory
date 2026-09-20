@@ -5,8 +5,10 @@
 #              metrics), DHCP and
 #              ICMP on the provider NIC, ssh on the provider NIC only while
 #              bootstrap is on; frames from guests go to guest_in.
-#   guest_in   guests to the host: ICMP echo rate-limited, everything else
-#              dropped (there is no DHCP; guests get static addresses).
+#   guest_in   guests to the host: replies to flows the host itself opened
+#              (operator ssh to a guest until the gateway exists), ICMP
+#              echo rate-limited, everything else dropped (there is no
+#              DHCP; guests get static addresses).
 #   guest_fwd  policy drop: established both ways; the gateway over wg0 to
 #              guest sshd; guests out through guest_dyn (hostd's counters)
 #              and then to the internet only: IMDS, the Azure wire server,
@@ -99,6 +101,13 @@ in
         }
 
         chain guest_in {
+          # Replies to connections the host opened: operators reach a guest
+          # on 22 by jumping through the host until the gateway exists
+          # (DECISIONS I-70). `ct direction reply` is what keeps this from
+          # being a way in: a guest's own first packet is the original
+          # direction and falls through to the drop below, and a repeated
+          # ICMP echo from a guest is original too, so the rate limit holds.
+          ct direction reply ct state established,related accept
           # A deliberate, rate-limited exception for debugging from a guest.
           icmp type echo-request limit rate 5/second accept
           counter drop

@@ -1584,3 +1584,51 @@ building `cmd/repose`.** (07, 2026-09-20)
   omitted), which a single pointer with `omitempty` cannot express — a nil
   outer pointer omits the field, a non-nil one pointing at a nil inner
   pointer marshals to `null`.
+
+**I-70. The host reaches its guests through a declared `ct direction reply`
+rule, not a rule an operator inserts by hand.** (01/03 follow-up,
+2026-09-20) Until the gateway exists (workstream 06), an operator reaches a
+guest by jumping edge → host → guest, and the host's `input` chain sends
+every frame from `br-guests` to `guest_in`, which dropped all but
+rate-limited ICMP: the host could open a TCP connection to a guest and
+never see the reply. The M1 session worked around it with a runtime
+`nft insert rule inet repose input iifname "br-guests" ct state
+established,related accept` that a `systemctl reload nftables` or a reboot
+removed, and that also let a repeated ICMP echo from a guest count as
+established and skip the rate limit. `guest_in` now starts with
+`ct direction reply ct state established,related accept`: only packets in
+the reply direction of a flow the host itself opened match, so a guest's
+own first packet is still dropped and the ICMP limit still holds, and the
+rule survives a reload because it is in the ruleset. *Rejected:* keeping it
+manual until 06 (an operator procedure that a reload silently undoes, and
+`hostd` has no other way to reach a guest's sshd today); narrowing it to
+tcp sport 22 (the host also curls a guest's noVNC relay, and "replies to
+what the host opened" is the honest rule).
+
+**I-71. `repose.host.apiCAFile` names an api CA that only exists at run
+time.** (01/03 follow-up, 2026-09-20) `repose.host.apiCA` puts a PEM in the
+store, which is how host-01 names the `hostdev` CA (I-40), but the CA the
+host-services VM test registers against is generated when its `hostdev`
+state is built, and reading it back at evaluation time would be an import
+from derivation in every `nix flake check`. The option takes a path
+instead, passed straight to `hostd --api-ca`, and an assertion refuses both
+being set. It is also what a host whose CA is delivered beside the join
+token needs. *Rejected:* IFD on the generated CA (a `flake check` that
+builds a derivation to evaluate); a fixed CA keypair committed under
+`nix/hosts/tests/fixtures` (a private key in the repository, and `hostdev`
+has no flag to adopt one).
+
+**I-72. hostd takes an identity `repose-register.service` wrote while it was
+running.** (01/03 follow-up, 2026-09-20) `EnsureIdentity` read the state
+directory once and then looped on the join token alone, so a hostd that
+started before the token arrived kept logging `waiting for join token` for
+ever after the register unit consumed that token and wrote `host.json`:
+only a restart moved it. On a host the unit is ordered before hostd, so
+this is the operator path of ops/RUNBOOK.md (write the token, then
+`systemctl start repose-register`). The `ErrNoToken` branch now re-reads
+the identity before waiting again. Pinned by
+`TestEnsureIdentityTakesTheIdentityTheUnitWrote`, which fails on the old
+code. *Rejected:* watching the state directory with inotify (30 s is soon
+enough for a host that has just booted); having the unit restart hostd (a
+restart in the middle of registration is what `RestartPreventExitStatus=3`
+exists to avoid).
