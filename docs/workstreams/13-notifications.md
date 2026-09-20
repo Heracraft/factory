@@ -85,45 +85,63 @@ POSTs. It exits 0 in every case, including when the socket is missing.
 | Agent | Mechanism | `completed` | `needs_input` | `error` |
 |---|---|---|---|---|
 | Claude Code | `~/.claude/settings.json` hooks written by the wrapper if absent: `Notification` with matchers `agent_completed`, `agent_needs_input`, `permission_prompt`, `idle_prompt`; `Stop`; `StopFailure`. Command `repose-hook claude`. | `Stop` and `Notification:agent_completed` (deduped, 5.5) | `Notification:agent_needs_input`, `permission_prompt`, `idle_prompt` | `StopFailure` |
-| Codex CLI | `~/.codex/config.toml` `notify = ["repose-hook", "codex"]` (Codex calls it with a JSON arg on `agent-turn-complete`) | `agent-turn-complete` | tmux-idle heuristic (5.4) | process exit non-zero while window present (guestd) |
-| opencode | plugin file `~/.config/opencode/plugin/repose.js` written by the wrapper, subscribing to `session.idle` and `permission.asked` events and calling `repose-hook opencode` | `session.idle` | `permission.asked` | tmux-idle with error pattern (5.4) |
-| Gemini CLI | no stable hook API at time of writing; tmux-idle heuristic only | idle after activity | idle with a prompt marker on the last line | non-zero exit |
-| pi | `~/.pi/agent/hooks/` if present in the packaged version, else tmux-idle | as available | as available | non-zero exit |
+| Codex CLI | `~/.codex/config.toml` `notify = ["repose-hook", "codex"]` (Codex calls it with a JSON arg on `agent-turn-complete`) | `agent-turn-complete` | none (no heuristic fallback either, DECISIONS I-49) | not built (5.4, "Not built: the exit case") |
+| opencode | plugin file `~/.config/opencode/plugin/repose.js` written by the wrapper, subscribing to `session.idle`, `session.error` and `permission.asked`/`permission.updated` events and calling `repose-hook opencode` | `session.idle` | `permission.asked`, `permission.updated` | `session.error` |
+| Gemini CLI | tmux-idle heuristic only, as shipped. **Resolved, DECISIONS I-50:** the current Gemini CLI ships a real `Notification`/post-loop hook, and independently stopped serving free/Pro/Ultra-tier requests on 2026-06-18 (replaced by Antigravity CLI) — both need the owner's attention before this row is "at time of writing" again. | 90 s pane-idle heuristic (5.4): `"gemini went idle"` | none (5.4: the heuristic never produces `needs_input`) | not built |
+| pi | tmux-idle heuristic only, as shipped, despite `~/.pi/agent/hooks/` existing in the current binary (DECISIONS I-50: unmapped, not verified against the real wire shape) | 90 s pane-idle heuristic (5.4): `"pi went idle"` | none | not built |
 
 The wrapper for each agent writes its hook config only if the key is absent
 (a user's own hooks are preserved and `repose-hook` is appended, never
 replacing). The exact file edits are in `interfaces/guest-conventions.md`
 under agent wrappers; the mapping from native payload to `kind` lives in
-`internal/hooks/<agent>.go` with a fixture of each native payload.
+`internal/guestd/hooks/mapper.go`, one function per agent, with a fixture
+of each native payload in `internal/guestd/hooks/testdata/<agent>/`.
 
-Where a mechanism above says "at time of writing", the implementer checks
-the agent's current docs and records the finding in `DECISIONS.md` as an
+Where a mechanism above says "at time of writing" or is marked resolved
+by a decision, the implementer checks the agent's current docs and records
+the finding in `DECISIONS.md` as an
 implementation entry; a heuristic is never left in place if a hook exists.
 
 ### 5.4 tmux-idle heuristic (guestd)
 
-For each window whose name is an agent name, every 5 seconds guestd reads
-`#{pane_current_command}` and the pane's last 3 lines (`tmux capture-pane
--p -S -3`, kept in memory only, never logged or sent). State machine per
-window:
+As built (DECISIONS I-49 corrects this section: the original design below
+read pane text; the shipped one never does). For each window whose name is
+an agent name, every 5 seconds guestd's watcher (`internal/guestd/sample`)
+reads `#{pane_current_command}` and `#{window_activity}` — never pane
+*content* — and walks the pane's process tree for CPU deltas. State machine
+per window:
 
-- `working`: output changed in the last 30 s.
-- `idle`: no change for 30 s. Transition working → idle emits
-  `AgentState idle`; if the window has emitted no `completed` via a real
-  hook in the last 60 s, it emits a synthetic `completed` with `summary =
-  "<agent> has been idle for 30s"`.
-- `needs_input`: idle and the last line matches the agent's prompt pattern
-  (a table in `internal/hooks/patterns.go`: Claude `❯`, Codex `›`, Gemini
-  `>`, opencode `>`, pi `❯`, plus `[y/N]`, `(y/n)`, `Allow?`). Emits
-  `needs_input` once per idle period.
-- window gone: if `pane_dead` or the window closed with a non-zero exit,
-  emit `error` with `summary = "<agent> exited with status N"`.
+- `working`: the process tree has consumed CPU since the last refresh.
+- `idle`: alive, no CPU consumed for 30 s.
+- `needs_input`: only ever set by a real hook's `RecordHook` (5.5's dedupe
+  window has nothing to do with this; it is the `AgentEvent` a hook already
+  sent, mirrored into `AgentState` so `repose status` shows it). There is no
+  pane-content pattern match; an agent with no hook cannot report
+  `needs_input` at all, and says so honestly rather than guessing from text
+  that would have to be read to guess from.
+- `unknown`: alive, neither of the above (a window observed for the first
+  time, or with a state the debounce below has not yet confirmed).
+- Heuristic completion (agents with no hook: Gemini CLI, pi, and opencode or
+  Codex if their hook is ever absent): no pane activity for 90 seconds while
+  the foreground process is still the agent binary emits one synthetic
+  `completed` with `summary = "<agent> went idle"`, once per quiet period.
+  Suppressed for Claude, Codex and opencode, which have real hooks.
+- A state change is debounced 5 s before it is announced as `AgentState`,
+  so a one-tick flicker does not spam `repose status`.
 
-The heuristic is suppressed for an agent that has a real hook (Claude,
-Codex, opencode) except for the exit case, so the pipeline does not double
-up. The heuristic is the reason `AgentState` exists separately from
-`AgentEvent`: state feeds `repose status` and the samples; events feed
-notifications.
+**Not built: the exit case.** 5.3's "process exit non-zero while window
+present" (Codex) and "non-zero exit" (Gemini, pi) has no code path: tmux
+closes a window the instant its pane's process exits, so by the time the
+next refresh notices the window is gone there is nothing left to read an
+exit status from. Reading one needs `remain-on-exit` on the tmux session,
+which keeps *every* window (including `shell`) open after its process
+dies — a `guest-conventions.md`/`run-and-attach.md` behaviour change 02
+would have to make and sign off on, not something to slip in from this
+workstream. Today a window disappearing only ever produces
+`AgentState unknown`; the checklist item below is marked accordingly.
+
+`AgentState` exists separately from `AgentEvent` for the reason originally
+given: state feeds `repose status` and samples; events feed notifications.
 
 ### 5.5 Ingest, dedupe, outbox
 
@@ -134,34 +152,41 @@ summary appended if different (Claude fires both `Stop` and
 `agent_completed`). An `events_outbox` table (`event_id, channel, attempts,
 next_at, last_error`) is filled at insert with one row per enabled channel.
 A worker polls the outbox every 2 seconds (`for update skip locked`),
-delivers, and writes `events.delivered[channel] = ts` or `error`. Retries: 5
-attempts at 10 s, 1 m, 5 m, 30 m, 2 h; after that `delivered[channel] =
-"failed: <reason>"` and a `notify_delivery_failed` metric. Rate limit per
-user per channel: 30 per hour, beyond that events are stored and a single
-"30+ events in the last hour, see the dashboard" message is sent.
+delivers, and writes `events.delivered[channel] = ts` or `error`. Retries: 7
+attempts at 10 s, 1 m, 5 m, 30 m, 2 h, 8 h, 12 h (sums to just under the 24 h
+`05-control-plane-api.md` §5.9 promises, corrected from this section's
+original 5-attempt/2-hour schedule to match it); after that
+`delivered[channel] = "failed: <reason>"` and `repose_api_notify_total
+{result="failed"}` (5.8). Rate limit per user per channel: 30 per hour,
+beyond that events are stored and a single "30+ events in the last hour,
+see the dashboard" message is sent.
 
 ### 5.6 Channels
 
-- **email** (Resend, `internal/notify/email.go`): from
+- **email** (Resend, `internal/api/notify/notify.go`'s `Email`): from
   `repose <notify@repose.herakraft.co>`, subject `[repose] todo-app:
   claude finished`, body: title, summary, `repose attach` hint, dashboard
-  link, unsubscribe link (sets `notify_email = false` through a signed
-  token route `GET /notify/unsubscribe?token=`). Enabled by default at
-  signup. Platform events use their own subjects (`Your guests were stopped
-  for non-payment`).
-- **ntfy** (`internal/notify/ntfy.go`): `POST <ntfy_url>` with headers
-  `Title`, `Priority` (5 for `needs_input`, 3 otherwise), `Tags`
-  (`white_check_mark`, `question`, `x`), `Click` (dashboard project URL),
-  body = summary. The user pastes any ntfy-compatible URL including
-  self-hosted or `ntfy.sh/<topic>`; the URL is stored as is and never
-  logged.
+  link, and (when an `Unsubscriber` is configured) an unsubscribe line
+  pointing at `GET /v1/notify/unsubscribe?token=` — a non-expiring,
+  HMAC-signed user id, checked with no database round trip and no
+  `Authorization` header, keyed by a secret auto-provisioned into the
+  platform pseudo-project the first time the api starts (DECISIONS I-49;
+  same home as the CA material, `internal/api/ca`, never a fourth one).
+  Enabled by default at signup. Platform events use their own subjects
+  (`internal/api/notify.Subject`; today only `billing_stopped`: "Your
+  guests were stopped for non-payment").
+- **ntfy** (`internal/api/notify/notify.go`'s `Ntfy`): `POST <ntfy_url>`
+  with headers `Title`, `Priority` (5 for `needs_input`, 4 for `error` and
+  the platform failure kinds, 3 otherwise), `Tags` (`white_check_mark`,
+  `question`, `x`), `Click` (dashboard project URL), body = summary. The
+  user pastes any ntfy-compatible URL including self-hosted or
+  `ntfy.sh/<topic>`; the URL is stored as is and never logged.
 - `POST /me/notify-test` sends a `completed` event with summary `This is a
   test from repose` through the enabled channels and returns the per-channel
   result so the settings page can show it.
 
-Adding Telegram or Discord is a new file implementing
-`Channel{Send(ctx, user, event) error}` and a user setting; nothing else
-changes.
+Adding Telegram or Discord is a new file implementing `notify.Sender
+{Send(ctx, m Message) error}` and a user setting; nothing else changes.
 
 ### 5.7 Display
 
@@ -173,10 +198,20 @@ path.
 
 ### 5.8 Metrics
 
-`repose_notify_events_total{kind,agent,source=hook|heuristic}`,
-`repose_notify_delivered_total{channel,result}`,
-`repose_notify_outbox_depth`, `repose_notify_delivery_latency_seconds`
-(event ts → delivered ts), `repose_notify_dedupe_total`.
+As built (DECISIONS I-49): every api metric carries the `repose_api_`
+prefix 05 gave the whole process, not a standalone `repose_notify_*`
+family. `repose_api_events_total{kind}` (`kind="deduped"` is the dedupe
+counter this section originally asked as a separate
+`repose_notify_dedupe_total`; there is no separate `agent` or
+`source=hook|heuristic` label — the heuristic's synthetic `completed` and a
+real hook's land in the same counter under the same kind, because nothing
+downstream has needed to tell them apart), `repose_api_notify_total
+{channel,result}` (the delivery counter this section called
+`repose_notify_delivered_total`), `repose_api_outbox_depth`,
+`repose_api_outbox_lag_seconds`, and
+`repose_api_notify_delivery_latency_seconds` (event ts → delivered ts,
+successful deliveries only — the one metric here with no prior equivalent,
+added by this workstream).
 
 ## 6. Failure modes
 
@@ -185,7 +220,7 @@ path.
 | Hook socket missing or guestd down | `repose-hook` exits 0 silently, guestd logs on next start; the tmux-idle heuristic still runs once guestd is back |
 | Agent payload unparseable | `repose-hook` sends `kind = completed`, `summary = "<agent> event (unparsed)"`; fixture added |
 | Both hook and heuristic fire | dedupe window collapses them |
-| Resend down | retries per 5.5, `failed` after 5, metric and alert if > 5 percent failed in 10 minutes |
+| Resend down | retries per 5.5, `failed` after 7 attempts, metric and alert if > 5 percent failed in 10 minutes |
 | ntfy URL invalid or 4xx | first failure marks `delivered.ntfy = "failed: 404"` with no retry (4xx), the settings page shows a warning banner |
 | User disables email mid-retry | outbox rows for that channel are deleted at the setting change |
 | Event storm (agent looping) | rate limit per 5.5, one digest message |
@@ -208,49 +243,117 @@ path.
 
 ## 8. Rollback
 
-Migrations down for `events_outbox`. Disabling delivery is
-`NOTIFY_CHANNELS=` empty, which keeps ingesting events (they still show in
-status) and delivers nothing. Wrappers writing hook config are idempotent
-and reversible by deleting the `repose-hook` entries; a `repose-hook
-uninstall` subcommand does that for every agent.
+Migrations down for `events_outbox`
+(`internal/db/migrations/0002_outbox_sessions_settings.down.sql`). As built
+there is no operator-level global kill switch: a
+user disables their own channels with `PATCH /me {notify: {email: false,
+ntfy_url: null}}`, or clicks the email's unsubscribe link
+(`GET /v1/notify/unsubscribe`), either of which stops delivery for that
+user immediately (`events.enqueue` checks the current setting, and turning
+a channel off deletes that channel's pending `events_outbox` rows per
+5.5's failure-mode table) while events keep landing in `events` and
+`repose status`/`GET /events`. There is no `NOTIFY_CHANNELS=` env var and
+no `repose-hook uninstall`; wrapper hook config is idempotent (`internal/
+guestd/hooks` never rewrites an existing `repose-hook` entry) but removing
+it means editing the agent's own config file by hand — a documented,
+not-yet-built convenience for later.
 
 ## 9. Checklist
 
-- [ ] Hook socket protocol implemented; `repose-hook` exits 0 in every
-      case including a missing socket. Evidence: test that removes the
-      socket.
-- [ ] Every agent row in 5.3 has a fixture of the native payload and a
-      mapping test; "at time of writing" rows resolved and recorded in
-      `DECISIONS.md`. Evidence: fixtures directory listing and the
-      decision entry.
-- [ ] Wrapper hook config for each agent is written when absent, appended
-      when the user has hooks, never replaces. Evidence: wrapper test
-      output with a pre-existing hook.
-- [ ] tmux-idle state machine covers working, idle, needs_input, exit;
-      suppressed for hooked agents except exit. Evidence: unit test with
-      fake clock and fake pane content.
-- [ ] Pane contents are never logged, stored or sent. Evidence: reviewer
-      grep of guestd for `capture-pane` uses and their sinks.
-- [ ] Dedupe collapses Claude's `Stop` + `agent_completed`. Evidence: test.
-- [ ] Outbox retries at the stated schedule, marks failed after 5, deletes
-      rows when a channel is disabled. Evidence: fake-clock test.
-- [ ] Rate limit sends one digest beyond 30 per hour. Evidence: test.
-- [ ] Email template renders with unsubscribe link that works. Evidence:
-      golden test plus a real email received.
-- [ ] ntfy delivery with priority and tags per kind; 4xx not retried.
-      Evidence: test against a local ntfy.
-- [ ] `POST /me/notify-test` returns per-channel results and the dashboard
-      shows them. Evidence: transcript.
-- [ ] Platform events (`billing_stopped`, `base_updated`,
+- [x] Hook socket protocol implemented; `repose-hook` exits 0 in every
+      case including a missing socket. Evidence: `internal/guestd/hooks`
+      (`hooks_test.go`) and `cmd/repose-hook/main_test.go`; `run()` never
+      calls `os.Exit`, `main()` only prints to stderr.
+- [~] Every agent row in 5.3 has a fixture of the native payload and a
+      mapping test: yes, for the 5 real payload shapes (claude, codex,
+      opencode, plus the pass-through and unparsed cases) — Evidence:
+      `internal/guestd/hooks/testdata/{claude,codex,opencode}/`. "At time
+      of writing" rows checked and recorded (DECISIONS I-50) rather than
+      resolved: Gemini CLI and pi both turn out to have hook mechanisms
+      now, but mapping them needs the real binaries to verify wire shapes
+      against, which this session did not have — implementing from search
+      results alone risks silently dropping every Gemini/pi notification.
+      Left as a follow-up; the heuristic (honest about being one,
+      `"<agent> went idle"`) is what ships.
+- [x] Wrapper hook config for each agent is written when absent, appended
+      when the user has hooks, never replaces. Evidence:
+      `nix/guest/tests/default.nix` subtest "claude hooks merged without
+      clobbering a user hook": plants `echo user-hook` under `hooks.Stop`,
+      runs `repose-agent-setup claude`, asserts both commands present, runs
+      it again and asserts the file is byte-for-byte unchanged (idempotent);
+      also exercises codex and opencode. Needs a NixOS VM build to run
+      (`nix flake check ./nix`), not repeated by this session — 02's
+      "done" status already covers it.
+- [x] tmux-idle state machine covers working, idle, unknown, and heuristic
+      completion; suppressed for hooked agents. Evidence:
+      `internal/guestd/sample/watcher_test.go` (fake clock, no pane
+      content). NOT covered: the exit case (5.4, "Not built"); `needs_input`
+      is never heuristic (DECISIONS I-49) so it is out of this item's scope.
+- [x] Pane contents are never logged, stored or sent. Evidence: `grep -rn
+      capture-pane internal/guestd` finds nothing — the shipped heuristic
+      never reads pane text at all (DECISIONS I-49), stronger than the
+      original "read it but don't persist it" design.
+- [x] Dedupe collapses Claude's `Stop` + `agent_completed`. Evidence:
+      `internal/api/events/events_test.go` `TestDedupeOutboxAndRateCap`:
+      two `completed` inserts 20 s apart collapse to one row with both
+      summaries joined.
+- [x] Outbox retries at the stated schedule (7 attempts, DECISIONS I-49),
+      marks failed after the last one, deletes rows when a channel is
+      disabled. Evidence: `internal/api/notify/notify_test.go`
+      `TestOutboxDeliversOncePerChannelAndRetries` (fake-clock schedule),
+      `TestPermanentFailureIsNotRetried` (4xx skips retry);
+      `internal/api/http/users.go`'s `patchMe` and
+      `internal/api/http/notify.go`'s `unsubscribe` both delete pending
+      rows for a disabled channel, exercised by `TestNotifyUnsubscribe`.
+- [x] Rate limit sends one digest beyond 30 per hour. Evidence:
+      `TestDedupeOutboxAndRateCap`: 40 events in an hour produce exactly
+      one `notifications_paused` row and stop growing the outbox past the
+      cap, while every event still lands in `events`.
+- [x] Email template renders with unsubscribe link that works. Evidence:
+      `internal/api/notify/notify_test.go` `TestEmailTemplate` (golden:
+      title, summary, attach hint, dashboard link, unsubscribe URL all
+      present in the body Resend receives) and
+      `internal/api/http/http_test.go` `TestNotifyUnsubscribe` (the link's
+      target route, end to end against a real Postgres: valid token flips
+      `notify_email` off with no `Authorization` header, forged and
+      malformed tokens refused). NOT done: a real email received (needs a
+      Resend account and a deploy).
+- [x] ntfy delivery with priority and tags per kind; 4xx not retried.
+      Evidence: `internal/api/notify/notify_test.go`
+      `TestNtfyAndEmailSenders`. NOT done: a local ntfy container (the test
+      uses `httptest.Server`, which exercises the same HTTP contract ntfy
+      implements).
+- [x] `POST /me/notify-test` returns per-channel results and the dashboard
+      shows them. Evidence: `internal/api/http/http_test.go`
+      `TestNotifyTestRoute` (email-only, then with ntfy added, then with
+      email disabled). The dashboard rendering them is 08's checklist item.
+- [x] Platform events (`billing_stopped`, `base_updated`,
       `snapshot_failed`, `host_moved`) flow through the same pipeline.
-      Evidence: test per kind.
+      Evidence: `internal/api/ops/ops_test.go` `TestSnapshotFailureNotifies`
+      and `TestRestoreEmitsHostMovedEvent`; `internal/api/basebump` already
+      covered `base_updated`/`base_update_failed` before this workstream.
+      NOT done: `billing_stopped` has no producer yet (workstream 09 is
+      billing-exempt per I-16; `ops.EventSink` is ready for it to call).
 - [ ] Real guest: each of the five agents produces a `completed` and, where
       the mechanism supports it, a `needs_input`, delivered to a phone
       within 60 s. Evidence: `STATUS.md` line per agent with the event ids.
+      NOT done: needs a registered host (M1 bring-up is still blocked on
+      the owner's apply per `STATUS.md`).
 - [ ] `repose status` and the dashboard show last event and agent state.
-      Evidence: screenshot and CLI output.
-- [ ] Metrics in 5.8 exist. Evidence: `/metrics` scrape.
-- [ ] `features/notifications.md` matches. Evidence: implementer re-read.
-- [ ] `ops/RUNBOOK.md` has: no notifications arriving (check outbox depth,
+      Evidence: screenshot and CLI output. NOT done: 07 and 08 render this;
+      this workstream defines the fields (5.7) they read.
+- [x] Metrics in 5.8 exist. Evidence: `internal/api/metrics/metrics.go`
+      registers `repose_api_events_total`, `repose_api_notify_total`,
+      `repose_api_outbox_depth`, `repose_api_outbox_lag_seconds`,
+      `repose_api_notify_delivery_latency_seconds` on the same registry
+      `/metrics` serves (`internal/api/app/app.go`); names differ from the
+      original wording, reconciled in 5.8 and DECISIONS I-49. NOT done: an
+      actual `/metrics` scrape (needs a deploy).
+- [x] `features/notifications.md` matches. Evidence: rewritten this
+      session against the built pipeline (dedupe key, subject format,
+      unsubscribe, default channel state, `repose_api_*` metric names).
+- [x] `ops/RUNBOOK.md` has: no notifications arriving (check outbox depth,
       guestd_ok, hook config), ntfy failing, Resend failing. Evidence:
-      entries exist.
+      "No notifications arriving", "ntfy failing", "Resend failing"
+      entries added this session, alongside the existing "api: secret
+      service unavailable" style.

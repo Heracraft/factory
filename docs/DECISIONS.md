@@ -1001,3 +1001,106 @@ contract, found by reading them side by side:
   the command list from `host-conventions.md` "Network", verbatim.
   Interface text unchanged; the code follows the doc.
 
+**I-49. The tmux-idle heuristic never reads pane content, and its metrics
+carry the `repose_api_*` prefix, not `repose_notify_*`.** (13, review of 04
+and 05) Two places where code merged ahead of this workstream disagreed
+with `13-notifications.md` as written, found by auditing 04 and 05's
+already-built pipeline against it:
+
+- §5.4 described a `needs_input` heuristic that runs `tmux capture-pane`
+  and matches prompt patterns (`❯`, `[y/N]`, ...) against the pane's last
+  three lines. `internal/guestd/sample` (04) never captures pane text at
+  all: `needs_input` comes only from a real hook (`RecordHook`), and the
+  heuristic's only signal is whether the pane's process tree has consumed
+  CPU since the last refresh, per `docs/workstreams/04-guestd.md` §5 and
+  `docs/features/agents.md` (already correct). This is strictly *more*
+  private than the documented design (there is no `patterns.go`, no
+  `capture-pane` call to grep for, so the checklist's "pane contents are
+  never logged, stored or sent" item is satisfied by construction rather
+  than by discipline), and it was the right call: a hookless agent's last
+  line is exactly the terminal content §5.1 says a summary must never carry
+  beyond what a hook payload itself gives, and a heuristic has no hook
+  payload. *Rejected:* implementing capture-pane matching to match the
+  original doc (adds the exact surface area the privacy boundary exists to
+  avoid, for a `needs_input` signal only three of five agents lack, and
+  those three already get it from `RecordHook` once they gain a hook).
+  §5.4 below is rewritten to describe the built heuristic (CPU-busy,
+  90-second quiet window for hookless agents from `features/agents.md`,
+  not the 30/30 split originally written); the `needs_input` row is
+  removed from the heuristic's state table because no code path produces it
+  outside a real hook.
+- 05 gave every api metric the `repose_api_` prefix for one family per
+  component (`repose_api_notify_total`, `repose_api_outbox_depth`, ...),
+  not the bare `repose_notify_*` names §5.8 listed, and `EventsTotal`
+  carries `{kind}` only, with `agent` and `source=hook|heuristic` never
+  added (the heuristic's synthetic completions and a real hook's are the
+  same `kind` in the same table; splitting them needed a label 05 had no
+  reason to add before this workstream existed). This workstream adds
+  `repose_api_notify_delivery_latency_seconds` (a histogram of event ts to
+  delivered ts, the one 5.8 metric with no equivalent) and leaves the
+  `repose_api_*` convention alone rather than renaming a dozen already-
+  deployed families for one workstream's original wording: a consistent
+  per-component prefix is worth more than matching a name picked before
+  the component existed. §5.8 is rewritten to the real names.
+
+Also closed here, because the pipeline existed but the specific behaviour
+did not: the unsubscribe link (`GET /v1/notify/unsubscribe?token=`, a
+non-expiring HMAC-signed user id, keyed by a secret auto-provisioned into
+the platform pseudo-project the first time the api starts — an operator
+step here, unlike `repose-admin ca init`, would leave the very first
+account's unsubscribe link broken until someone remembered to run it);
+`billing_stopped`'s dedicated subject line; and `host_moved` /
+`snapshot_failed` actually reaching `events` (the restore result handler
+and `onFail`'s `snapshot` case previously only logged or set
+`projects.last_error`). `ops.Engine` gained an `EventSink` interface
+(satisfied by `events.Ingest.Platform`, nil in the admin CLI's ad-hoc
+engine) for this. `billing_stopped` still has no producer: workstream 09
+is the one that will call `events.Ingest.Platform` for it. Interfaces:
+`api.md` (`/notify/unsubscribe`).
+
+**I-50. Gemini CLI and pi both gained hook mechanisms since 5.3's "at time
+of writing" rows were written; Gemini CLI itself stopped serving
+individual-tier requests on 2026-06-18.** (13, 2026-09-20) 5.3 and the
+checklist require resolving "at time of writing" rows before calling this
+workstream done. Checking now, against the agents' own current docs:
+
+- **Gemini CLI** ships a hook system (`geminicli.com/docs/hooks/`,
+  `google-gemini/gemini-cli` `docs/hooks/reference.md`) including a
+  `Notification` hook (fires on idle, awaiting-input and tool-confirmation,
+  which is exactly `needs_input`) and a post-agent-loop hook usable as
+  `completed`. The tmux-idle heuristic this workstream ships for Gemini is
+  therefore not "the mechanism" any more, just the fallback for a version
+  where hooks are absent or the platform has not wired them.
+- More urgently: Google stopped serving `gemini-cli` requests for free,
+  Pro and Ultra tier accounts on 2026-06-18, replacing it with a separate,
+  closed-source binary, Antigravity CLI (Google's own developer blog,
+  "Transitioning Gemini CLI to Antigravity CLI"; enterprise accounts with a
+  Code Assist license or a bare API key are unaffected). `nix/overlay/agents`
+  still packages `gemini-cli` (I-46); for any user without an API key or an
+  enterprise license, the agent DESIGN.md lists as one of five now fails to
+  authenticate at all, hook or no hook. This is a product decision beyond
+  this workstream's remit (DESIGN.md §11, R2-11's agent list, and 02/12's
+  packaging), not something to silently patch here.
+- **pi** (`earendil-works/pi`, the coding agent this platform ships) has a
+  real hooks directory, `~/.pi/agent/hooks/`, with `onStop` and
+  `ctx.ui.notify()`. The "its hooks if present in the shipped version"
+  branch of 5.3's row is therefore live, not hypothetical.
+
+None of this is implemented here: mapping Gemini's and pi's actual hook
+JSON into `{agent, kind, summary}` needs the real binaries to verify wire
+shapes against (the fixture-per-shape discipline `internal/guestd/hooks/
+testdata` already follows), which this session does not have, and 04's
+already-reviewed `internal/guestd/hooks` package is not this workstream's
+to extend blind from search-engine snippets — a wrong mapping silently
+drops or mis-labels every Gemini and pi notification, which is worse than
+the honest heuristic currently in place. *Rejected:* implementing the
+mapping now from documentation alone (no way to verify against a real
+payload before shipping); leaving 5.3's "at time of writing" wording
+unresolved (the checklist item exists precisely so this gets checked and
+written down, whichever way it comes out). The heuristic stays as the
+current, working mechanism for both agents; `docs/features/agents.md` and
+`13-notifications.md` §5.3 are annotated to point here rather than
+rewritten to describe an unverified mapping. **The owner should decide
+whether Gemini CLI stays in the agent list at all**, given it no longer
+authenticates for the tier most users are expected to be on.
+
