@@ -21,13 +21,13 @@ func TestRealRendersDocumentedCommands(t *testing.T) {
 	if err := n.AddTap(ctx, "tap-0192abcd"); err != nil {
 		t.Fatal(err)
 	}
-	if err := n.AddGuestRules(ctx, "g1", "10.64.4.2", "tap-0192abcd"); err != nil {
+	if err := n.AddGuestRules(ctx, "g1", "10.64.4.2", "52:54:01:92:ab:cd", "tap-0192abcd"); err != nil {
 		t.Fatal(err)
 	}
 	if err := n.Shape(ctx, "tap-0192abcd", 200); err != nil {
 		t.Fatal(err)
 	}
-	if err := n.DelGuestRules(ctx, "g1", "10.64.4.2", "tap-0192abcd"); err != nil {
+	if err := n.DelGuestRules(ctx, "g1", "10.64.4.2", "52:54:01:92:ab:cd", "tap-0192abcd"); err != nil {
 		t.Fatal(err)
 	}
 	var got []string

@@ -1,7 +1,14 @@
 // Package virtiofs runs one virtiofsd per guest as a transient unit,
 // exporting the host's store export read-only. virtiofsd has no read-only
 // flag; read-only holds because the virtiofsd user cannot write under the
-// export and the guest mounts the tag ro.
+// export (a read-only bind mount) and the guest mounts the tag ro.
+//
+// The sandbox is `namespace`, not `chroot`: chroot(2) needs CAP_SYS_CHROOT,
+// and virtiofsd 1.14 refuses it outright for a non-root user ("sandbox mode
+// 'chroot' can only be used by root"). Namespace mode unshares a user and
+// mount namespace and pivot_roots into the export, which is what an
+// unprivileged process can do (DECISIONS I-42; the host enables user
+// namespaces in nix/hosts/kernel.nix for exactly this).
 package virtiofs
 
 import (
@@ -28,7 +35,7 @@ func Start(ctx context.Context, sd systemd.Systemd, cfg Config, guestID, socket 
 		bin = "virtiofsd"
 	}
 	props := []string{"User=" + cfg.User, "Group=" + cfg.Group, "MemoryMax=1G", "Slice=guests.slice"}
-	argv := []string{bin, "--socket-path", socket, "--shared-dir", cfg.SharedDir, "--sandbox", "chroot", "--cache", "auto", "--xattr"}
+	argv := []string{bin, "--socket-path", socket, "--shared-dir", cfg.SharedDir, "--sandbox", "namespace", "--cache", "auto", "--xattr"}
 	return sd.Run(ctx, Unit(guestID), props, argv)
 }
 
