@@ -54,7 +54,7 @@ func (m *Manager) build(ctx context.Context, commandID string, c *hostdv1.Build)
 	}()
 	var seq uint64
 	res, err := m.d.Nix.Build(ctx, nixbuild.Request{
-		ProjectID: c.ProjectId, RevisionID: c.RevisionId, Fragment: c.Fragment, BaseRef: c.BaseRef,
+		ProjectID: c.ProjectId, RevisionID: c.RevisionId, Fragment: c.Fragment, BaseRef: c.BaseRef, BaseVersion: c.BaseVersion,
 		Limits: nixbuild.Limits{EvalS: lim.EvalS, BuildS: lim.BuildS, Cores: lim.Cores, ClosureBytes: lim.ClosureBytes},
 	}, func(line string) {
 		seq++

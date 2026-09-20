@@ -61,7 +61,7 @@ command_id returns the stored result) and one of:
 | `StopGuest` | guest_id, snapshot_first (bool), timeout_s | snapshot_id if taken (assigned by the api), blob_path, bytes (I-26) |
 | `DestroyGuest` | guest_id, keep_volume (bool) | |
 | `ResizeVolume` | guest_id, new_bytes | |
-| `Build` | project_id, revision_id, fragment (bytes), base_ref (git rev of nix/ in the platform repo), limits {eval_s, build_s, cores, closure_bytes} | system_closure, closure_bytes, kernel_changed (bool) |
+| `Build` | project_id, revision_id, fragment (bytes), base_ref (git rev of nix/ in the platform repo), limits {eval_s, build_s, cores, closure_bytes}, base_version (the `base_versions` label the closure is stamped with, `[A-Za-z0-9._-]{1,64}`; optional, I-118: empty keeps the flake's own stamp) | system_closure, closure_bytes, kernel_changed (bool) |
 | `ApplyConfig` | guest_id, system_closure, force_reboot (bool) | rebooted (bool), reboot_required (bool: the closure changes kernel or initrd and force_reboot was false; nothing was applied) |
 | `Snapshot` | guest_id, reason (`scheduled|stop|manual`) | snapshot_id, blob_path, bytes |
 | `Restore` | project_id, guest_id (new), blob_path, class, volume_bytes, system_closure (I-26; empty means the api rebuilds before StartGuest), plus every CreateGuest field (secrets, env, ssh_ca_pub, principals, hooks_config, host_key, host_cert, user_id, project_slug, remote_url, project_json) | as CreateGuest; the guest ends `stopped` |

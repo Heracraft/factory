@@ -99,6 +99,10 @@ func TestOIDCTokenSourceRefreshes(t *testing.T) {
 }
 
 func TestRunLogoutRemovesCredentialsAndCert(t *testing.T) {
+	// runLogout removes ~/.ssh/repose/id_ed25519-cert.pub under the real
+	// HOME unless it is redirected; without this line the suite deleted an
+	// operator's live certificate (m3 integration, 2026-09-20).
+	withHome(t)
 	oidc := newFakeOIDC()
 	defer oidc.Close()
 	fake := fakeapi.New(fakeapi.Options{})

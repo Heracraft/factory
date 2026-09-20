@@ -144,6 +144,11 @@ message Build {
   bytes fragment = 3;
   string base_ref = 4;
   Limits limits = 5;
+  // The base_versions label the closure is stamped with
+  // (/etc/repose/base-version, the NixOS label); empty keeps the
+  // flake's own stamp, which under hostd's --override-input is "dirty"
+  // (DECISIONS I-118).
+  string base_version = 6;
 }
 message ApplyConfig { string guest_id = 1; string system_closure = 2; bool force_reboot = 3; }
 message Snapshot { string guest_id = 1; string reason = 2; }

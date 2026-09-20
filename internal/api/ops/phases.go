@@ -459,7 +459,7 @@ func (e *Engine) buildBuild(ctx context.Context, op *store.Op, p *store.Project)
 	}
 	l := e.cfg.Limits
 	return &hostdv1.Command{CommandId: newCommandID(), Cmd: &hostdv1.Command_Build{Build: &hostdv1.Build{
-		ProjectId: p.ID.String(), RevisionId: rev.ID.String(), Fragment: []byte(rev.Fragment), BaseRef: ref,
+		ProjectId: p.ID.String(), RevisionId: rev.ID.String(), Fragment: []byte(rev.Fragment), BaseRef: ref, BaseVersion: version,
 		Limits: &hostdv1.Limits{EvalS: l.EvalS, BuildS: l.BuildS, Cores: l.Cores, ClosureBytes: l.ClosureBytes},
 	}}}, *hostID, false, nil
 }

@@ -34,10 +34,15 @@ project's guest wherever it runs.
 For a `Build` with `revision_id` R, `fragment` F, `base_ref` B and `limits`
 L, in order:
 
-1. Writes F to `/var/lib/repose/builds/R/fragment.nix` (0600) and hands the
-   directory to the build user (`--build-user`, `nixbuild` on a host; the
-   builds directory is 0711 so that user reaches its own directory and
-   nothing else).
+1. Writes F to `/var/lib/repose/builds/R/fragment.nix` (0600), and the
+   `Build`'s `base_version` label, when given, to `base-version` beside it
+   (one line; DECISIONS I-118), then hands the directory to the build user
+   (`--build-user`, `nixbuild` on a host; the builds directory is 0711 so
+   that user reaches its own directory and nothing else). The flake's
+   `guestSystem` stamps `repose.baseVersion` (`/etc/repose/base-version`,
+   the NixOS label) from that file; without it the stamp is the flake's
+   own `shortRev`, which a flake evaluated with `--override-input` does not
+   have, so it reads `dirty`.
 2. Reads `/var/lib/repose/base/B/nix/flake.lock` and derives
    `allowed-uris`: every locked input exactly as Nix names it
    (`github:<owner>/<repo>/<rev>?narHash=<hash>`), plus

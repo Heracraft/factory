@@ -1387,12 +1387,17 @@ func (x *ResizeVolume) GetNewBytes() uint64 {
 }
 
 type Build struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	RevisionId    string                 `protobuf:"bytes,2,opt,name=revision_id,json=revisionId,proto3" json:"revision_id,omitempty"`
-	Fragment      []byte                 `protobuf:"bytes,3,opt,name=fragment,proto3" json:"fragment,omitempty"`
-	BaseRef       string                 `protobuf:"bytes,4,opt,name=base_ref,json=baseRef,proto3" json:"base_ref,omitempty"`
-	Limits        *Limits                `protobuf:"bytes,5,opt,name=limits,proto3" json:"limits,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId  string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	RevisionId string                 `protobuf:"bytes,2,opt,name=revision_id,json=revisionId,proto3" json:"revision_id,omitempty"`
+	Fragment   []byte                 `protobuf:"bytes,3,opt,name=fragment,proto3" json:"fragment,omitempty"`
+	BaseRef    string                 `protobuf:"bytes,4,opt,name=base_ref,json=baseRef,proto3" json:"base_ref,omitempty"`
+	Limits     *Limits                `protobuf:"bytes,5,opt,name=limits,proto3" json:"limits,omitempty"`
+	// The base_versions label the closure is stamped with
+	// (/etc/repose/base-version, the NixOS label); empty keeps the
+	// flake's own stamp, which under hostd's --override-input is "dirty"
+	// (DECISIONS I-118).
+	BaseVersion   string `protobuf:"bytes,6,opt,name=base_version,json=baseVersion,proto3" json:"base_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1460,6 +1465,13 @@ func (x *Build) GetLimits() *Limits {
 		return x.Limits
 	}
 	return nil
+}
+
+func (x *Build) GetBaseVersion() string {
+	if x != nil {
+		return x.BaseVersion
+	}
+	return ""
 }
 
 type ApplyConfig struct {
@@ -3810,7 +3822,7 @@ const file_repose_hostd_v1_hostd_proto_rawDesc = "" +
 	"keepVolume\"F\n" +
 	"\fResizeVolume\x12\x19\n" +
 	"\bguest_id\x18\x01 \x01(\tR\aguestId\x12\x1b\n" +
-	"\tnew_bytes\x18\x02 \x01(\x04R\bnewBytes\"\xaf\x01\n" +
+	"\tnew_bytes\x18\x02 \x01(\x04R\bnewBytes\"\xd2\x01\n" +
 	"\x05Build\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1f\n" +
@@ -3818,7 +3830,8 @@ const file_repose_hostd_v1_hostd_proto_rawDesc = "" +
 	"revisionId\x12\x1a\n" +
 	"\bfragment\x18\x03 \x01(\fR\bfragment\x12\x19\n" +
 	"\bbase_ref\x18\x04 \x01(\tR\abaseRef\x12/\n" +
-	"\x06limits\x18\x05 \x01(\v2\x17.repose.hostd.v1.LimitsR\x06limits\"r\n" +
+	"\x06limits\x18\x05 \x01(\v2\x17.repose.hostd.v1.LimitsR\x06limits\x12!\n" +
+	"\fbase_version\x18\x06 \x01(\tR\vbaseVersion\"r\n" +
 	"\vApplyConfig\x12\x19\n" +
 	"\bguest_id\x18\x01 \x01(\tR\aguestId\x12%\n" +
 	"\x0esystem_closure\x18\x02 \x01(\tR\rsystemClosure\x12!\n" +

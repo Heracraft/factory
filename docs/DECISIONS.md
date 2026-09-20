@@ -2609,3 +2609,25 @@ capacity panel rather than 0. `refreshGuestGauge` now sets every
 thirty series from the first refresh. *Rejected:* a separate
 `repose_host_guests_total` gauge (a second name for the same count).
 
+**I-118. `Build` carries `base_version`, hostd writes it beside the
+fragment, and the flake stamps the guest with it.** (m3 integration,
+2026-09-20) Every guest built by hostd on host-01 had
+`/etc/repose/base-version` and its NixOS label reading `dirty`
+(`repose-guest-profile` prints it, `nixos-version` shows it, the build
+log names `nixos-system-repose-guest-dirty`). `nix/flake.nix` derives the
+stamp from `self.shortRev`, which is present for the `git+file://`
+checkout (`nix flake metadata` on host-01 as `nixbuild` shows the
+revision) and absent the moment the evaluation overrides the `fragment`
+input, which every hostd `Build` does (I-28); reproduced on host-01 with
+hostd's exact command. The flake's comment already wanted the api's
+`base_versions` label and the guest file to carry the same string, and
+only the api knows that label. `Build` gains `base_version` (optional;
+the old shape is accepted and keeps today's stamp), hostd writes it as
+`base-version` next to `fragment.nix` after validating it as a label,
+and `guestSystem` reads it into `repose.baseVersion` when present. The
+api sends the revision's base version. *Rejected:* fetching the base with
+`?rev=` and hoping `self.rev` survives the override (it is the override,
+not the ref, that drops it); stamping the git revision from hostd (the
+label users see is the version, `2026.09.20.3`, not a sha). Interfaces:
+`grpc-hostd.md`, `nix-build-contract.md`, `hostd.proto`.
+

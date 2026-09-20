@@ -290,3 +290,26 @@ func TestCacheUnreachableDetection(t *testing.T) {
 		t.Fatal("false positive")
 	}
 }
+
+// Build.base_version lands beside the fragment as `base-version`, a bad
+// label is refused, and an empty one removes a stale file (I-118).
+func TestWriteBaseVersion(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeBaseVersion(dir, "2026.09.20.3"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "base-version"))
+	if err != nil || string(b) != "2026.09.20.3\n" {
+		t.Fatalf("base-version file: %q %v", b, err)
+	}
+	if err := writeBaseVersion(dir, "../etc"); err == nil {
+		t.Fatal("a label with a slash was accepted")
+	}
+	if err := writeBaseVersion(dir, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "base-version")); !os.IsNotExist(err) {
+		t.Fatalf("empty label left the file: %v", err)
+	}
+}
+
