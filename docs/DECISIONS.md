@@ -2310,3 +2310,18 @@ demoted to that case). *Rejected:* a fixed loopback port registered in Logto
 the entry); detecting the failure and falling back (Logto renders the error
 in the browser and never redirects, so the CLI would wait on a callback that
 never comes).
+
+**I-102. Every Logto token request from the CLI carries
+`resource=https://api.repose.herakraft.co`.** (conductor, owner, 2026-09-20)
+The third attempt at the M2 gate logged in through the device flow and then
+failed with `unauthenticated: invalid token` from the api: the CLI sent the
+`resource` parameter only on the browser flow's authorization request, so
+the device-code request, its token poll and the refresh grant got an opaque
+token for Logto's userinfo endpoint, not a JWT with the api as audience,
+and the api's verifier (I-85) refused it. `resource` now goes on the device
+authorization request, the device-code and authorization-code token
+requests and the refresh grant; `internal/fakes/logto` and
+`test/fake-logto` both key the audience on it, so the CLI's tests assert the
+shape. Shipped as v0.1.3. *Rejected:* accepting opaque tokens at the api by
+calling Logto's userinfo (a round trip per request and a token that any
+Logto application could mint).

@@ -207,6 +207,7 @@ func loginPKCE(ctx context.Context, httpClient *http.Client, doc *discoveryDoc, 
 			"code":          {res.code},
 			"redirect_uri":  {redirectURI},
 			"code_verifier": {pkce.verifier},
+			"resource":      {apiResource},
 		}
 		return postForm(ctx, httpClient, doc.TokenEndpoint, form)
 	case <-time.After(5 * time.Minute):
@@ -227,7 +228,11 @@ type deviceAuthResponse struct {
 // loginDeviceCode runs RFC 8628 device authorization (07-cli.md §5.2 step
 // 3). print is called once with the user-facing instructions.
 func loginDeviceCode(ctx context.Context, httpClient *http.Client, doc *discoveryDoc, clientID string, print func(string)) (*tokenResponse, error) {
-	form := url.Values{"client_id": {clientID}, "scope": {loginScope}}
+	// resource on the device request and on every token request: without
+	// it Logto issues an opaque token for its own userinfo endpoint, and the
+	// api answers "invalid token" to a login that looked successful (M2
+	// gate, DECISIONS I-102). The browser flow already sent it.
+	form := url.Values{"client_id": {clientID}, "scope": {loginScope}, "resource": {apiResource}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, doc.DeviceAuthorizationEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
@@ -262,6 +267,7 @@ func loginDeviceCode(ctx context.Context, httpClient *http.Client, doc *discover
 			"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
 			"device_code": {da.DeviceCode},
 			"client_id":   {clientID},
+			"resource":    {apiResource},
 		}
 		tr, err := postForm(ctx, httpClient, doc.TokenEndpoint, tokenForm)
 		if err == nil {
@@ -283,6 +289,7 @@ func refreshToken(ctx context.Context, httpClient *http.Client, doc *discoveryDo
 		"grant_type":    {"refresh_token"},
 		"client_id":     {clientID},
 		"refresh_token": {refresh},
+		"resource":      {apiResource},
 	}
 	return postForm(ctx, httpClient, doc.TokenEndpoint, form)
 }
