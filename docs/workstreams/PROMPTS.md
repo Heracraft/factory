@@ -25,8 +25,8 @@ model choice, and `STATUS.md` carries the state between them.
 
 The repo ships a project skill at `.claude/skills/ws/SKILL.md`. In a worktree,
 start Claude Code and type `/ws 03`; it loads the preamble and the `03`
-block below and begins. `/ws m1` and `/ws m2` run the integration sessions
-("M1 bring-up" and "M2 bring-up" below). The full
+block below and begins. `/ws m1`, `/ws m2`, `/ws m3` and `/ws m3-web` run
+the integration sessions (the "M<n> bring-up" sections below). The full
 text below is what the skill expands to, kept here so it can be read and
 edited in one place.
 
@@ -148,6 +148,91 @@ about the owner's personal server (addresses, keys) goes in any file.
 `docs/ops/coolify.md` "Coolify facts that cost a round trip each" is the
 list of things already learned the hard way; read it before touching a
 Coolify resource.
+
+## M3 bring-up (`/ws m3` and `/ws m3-web`, two sessions)
+
+M2 put the real path together: api and web on Coolify (control VM, a
+server of the owner's Coolify, I-83), the edge on WireGuard with the gateway
+on 22, host-01 registered with the api over the VNet (I-92). The M3 gate
+(`docs/MILESTONES.md`): rolling deploys, Postgres backed up to R2 nightly
+with a rehearsed restore, a secret set in the dashboard appears in a guest,
+a non-Nix user adds a package from the menu and sees it in their guest
+without a reboot. Every checklist row of 05, 08, 10, 12, 13 and 14 that
+says "real host", "real guest", "Coolify" or "Logto" is closed in these two
+sessions with evidence; rows already closed locally are ticked from the
+evidence in the workstream's STATUS lines and commits, not re-run.
+
+### `m3` (Fable 5.1, `../repose-ws/m3-integration`): guests through the api
+
+Owns host-01 and everything on it; nobody else creates guests while it runs.
+In order:
+
+1. A project created through the api lands on host-01 and reaches
+   `running`; `repose run` from the dev box (the owner's login is in
+   `~/.config/repose`, or use the device flow with the owner watching)
+   attaches. Base publish (`repose-admin base publish --rev <main sha>`) if
+   M2 did not.
+2. **Secrets** (`docs/features/secrets.md`, 05 §secrets, 04): set one via
+   the api, see the file in the guest's tmpfs with the documented mode,
+   delete it, see it gone; the value never appears in api logs, hostd logs
+   or the build log.
+3. **Menu and Nix** (12 §5, `docs/features/config.md`): add a package from
+   the catalog through the api, watch the build log stream, confirm the
+   package is in the guest without a reboot; then the fragment edit and
+   takeover flow; `kernel_changed` true for a base kernel bump; the
+   restricted-eval refusals on the real host (readFile /etc/passwd, import
+   <nixpkgs>, fetchurl without a hash); closure cap; GC roots after
+   destroy. Record eval and build timings in `docs/RESEARCH.md`.
+4. **Notifications** (13's two open rows): each of the five agents produces
+   a `completed` event in a real guest; `repose status` and the dashboard
+   show it; the email or ntfy delivery arrives (the owner's ntfy URL, asked
+   through the conductor).
+5. **api resilience on the real path** (05): kill `api-grpc` during an op
+   and see hostd reconnect with nothing lost; ops survive an api restart;
+   base bump job builds unheld projects and skips held ones; snapshot expiry.
+6. **Security on the shared host** (14): every row of the boundary table
+   as a test on host-01, fork bomb and memory hog leaving the neighbour
+   within limits, audit_log rows for every audited action, operator
+   password attempt refused. Coordinate with the conductor before anything
+   that could take host-01 down.
+7. M1 follow-up (a): `nix/hosts/tests` host-services needs a fake api for
+   the repose-register assertion now that the real hostd is installed.
+
+### `m3-web` (Opus 5, `../repose-ws/m3-web`): dashboard, deploys, backups, ops
+
+Does not create guests; project flows that need one wait for `m3`'s step 1
+(ask the conductor). In order:
+
+1. **Dashboard against the real Logto and api** (08): sign-in, callback,
+   refresh, sign-out at `https://repose.herakraft.co`; settings (timezone,
+   email toggle, ntfy URL, test button); account deletion flow; the
+   Lighthouse accessibility score on `/projects` and the project page;
+   landing page with the install command and the pricing table matching
+   `docs/features/pricing.md`. Playwright against the real site where the
+   fake-api suite already passes locally.
+2. **Rolling deploys** (05, 08): deploy `web` twice while `curl` loops
+   against it, then `api` the same way, and record zero failed requests;
+   any redeploy of `api` or `api-grpc` is announced to the conductor first,
+   because `m3` may be mid-operation on host-01.
+3. **Backups**: the R2 token is the owner's (ask through the conductor);
+   then `infra/r2` apply, the S3 destination and nightly schedule on the
+   Postgres Service, one manual backup, `repose-backup-check` green, and
+   the restore rehearsal onto staging's control VM timed and recorded in
+   `docs/CHECKLIST.md`.
+4. **Observability on the real path** (10): the api's, edge's and host's
+   metrics are scrapeable over WireGuard; Fluent Bit on host-01 ships
+   journald and guest console logs; the seven dashboards render with real
+   data and the eleven alerts load. The Prometheus, Loki and Grafana are the
+   owner's (personal server); what they need from the owner (a WireGuard
+   peer for the scraper, endpoints) goes through the conductor with the
+   exact config to paste.
+5. `ops/RUNBOOK.md` rows for 08 and 10; `docs/features/*` match what is
+   live; `docs/SECURITY.md` and the privacy and terms passages (14's text
+   rows).
+
+Both sessions: the rules of the M2 block apply (no apply, no force-unlock,
+no Coolify UI; the owner and the conductor do those on your exact
+instructions). Read `docs/ops/coolify.md` "Coolify facts" first.
 
 ## Shared preamble
 
