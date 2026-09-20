@@ -2254,3 +2254,18 @@ https://repose.herakraft.co/install.sh | sh` is what the page says it is.
 `v0.1.0` is the first tag. *Rejected:* waiting for the rename (the gate is
 today); serving the script from the api (the page prints the dashboard's
 host, and a static file needs no code).
+
+**I-99. The CLI's OAuth client id is Logto's App ID for `repose-cli`, a
+config value with that default, recorded in the credentials file.**
+(conductor, owner, 2026-09-20) The first `repose login` of the M2 gate
+answered `oidc.invalid_client: invalid client repose-cli`: the CLI sent the
+application's *name* as `client_id`, and Logto identifies applications by
+an opaque App ID it assigns (`jccig5bb3i4d78bq4farv` for `repose-cli`, the
+way the dashboard bakes in `PUBLIC_LOGTO_APP_ID`). The id is public, so it
+is the built-in default; `logto_client_id` in `config.toml` overrides it
+for another Logto; and `credentials.json` records the id its refresh token
+was issued to, so a refresh needs no config and an old file (no field)
+falls back to the default. Interface: `docs/interfaces/cli-config.md`.
+Shipped as v0.1.1. *Rejected:* a Logto application whose id equals its
+name (Logto does not offer that); reading the id from the api at login (a
+second round trip before the first, for a value that never changes).

@@ -34,19 +34,20 @@ func runLogin(ctx context.Context, dir string, cfg Config, httpClient *http.Clie
 	}
 	var tr *tokenResponse
 	if browserAvailable(opts.NoBrowser, opts.GuestEnv, opts.Display, opts.GOOS) {
-		tr, err = loginPKCE(ctx, httpClient, doc, open)
+		tr, err = loginPKCE(ctx, httpClient, doc, cfg.LogtoClientID, open)
 	} else {
-		tr, err = loginDeviceCode(ctx, httpClient, doc, func(s string) { fmt.Println(s) })
+		tr, err = loginDeviceCode(ctx, httpClient, doc, cfg.LogtoClientID, func(s string) { fmt.Println(s) })
 	}
 	if err != nil {
 		return exitf(ExitGeneric, "Login failed: %v", err)
 	}
 
 	creds := Credentials{
-		RefreshToken: tr.RefreshToken,
-		AccessToken:  tr.AccessToken,
-		ExpiresAt:    time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second),
-		LogtoIssuer:  cfg.LogtoIssuer,
+		RefreshToken:  tr.RefreshToken,
+		AccessToken:   tr.AccessToken,
+		ExpiresAt:     time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second),
+		LogtoIssuer:   cfg.LogtoIssuer,
+		LogtoClientID: cfg.LogtoClientID,
 	}
 	if err := saveCredentials(dir, creds); err != nil {
 		return err
