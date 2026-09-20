@@ -152,6 +152,23 @@ func (f *Fake) deleteMe(w http.ResponseWriter, r *http.Request) *apiError {
 	return nil
 }
 
+// notifyUnsubscribe fakes the signed-token check with the token being the
+// user id itself: this fixture has no HMAC key to sign against, and no CLI
+// or dashboard code ever calls this route (a user's browser does, from an
+// email), so a real signature has nothing to prove here.
+func (f *Fake) notifyUnsubscribe(w http.ResponseWriter, r *http.Request) *apiError {
+	id := r.URL.Query().Get("token")
+	u, ok := f.users[id]
+	if !ok {
+		return errf("invalid", "this unsubscribe link is invalid or has expired")
+	}
+	u.NotifyEmail = false
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("You have been unsubscribed from repose email notifications.\n"))
+	return nil
+}
+
 func (f *Fake) notifyTest(w http.ResponseWriter, r *http.Request) *apiError {
 	u := userFrom(r)
 	res := map[string]string{"email": "error", "ntfy": "error"}

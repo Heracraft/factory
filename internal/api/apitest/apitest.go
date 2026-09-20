@@ -148,7 +148,7 @@ func (h *Harness) StartEngine(cfg ops.Config) *ops.Engine {
 	}
 	ectx, ecancel := context.WithCancel(h.Ctx)
 	h.engineCancel = ecancel
-	e := ops.New(h.Pool, h.HostMgr, h.CA, h.Secrets, h.Logs, h.Metrics, h.Log, cfg)
+	e := ops.New(h.Pool, h.HostMgr, h.CA, h.Secrets, h.Logs, h.Events, h.Metrics, h.Log, cfg)
 	h.engine.Store(e)
 	h.Engine = e
 	go e.Run(ectx)

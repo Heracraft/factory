@@ -120,7 +120,7 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	a.events = events.New(a.pool, a.m, log)
 	a.meterIn = meter.New(a.pool, a.m, log)
 	a.hostMgr = hostmgr.New(a.pool, a.ca.X509(), cfg.ReplicaID, a.m, log)
-	a.engine = ops.New(a.pool, a.hostMgr, a.ca, a.sec, a.logs, a.m, log, ops.Config{BaseRef: cfg.BaseRef})
+	a.engine = ops.New(a.pool, a.hostMgr, a.ca, a.sec, a.logs, a.events, a.m, log, ops.Config{BaseRef: cfg.BaseRef})
 	a.hostMgr.SetHandlers(hostmgr.Handlers{
 		Hello:   a.engine.OnHello,
 		Result:  a.engine.OnResult,
@@ -135,6 +135,13 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	senders := map[string]notify.Sender{"email": &notify.Email{APIKey: cfg.ResendAPIKey, From: cfg.NotifyFrom}, "ntfy": &notify.Ntfy{}}
 	a.outbox = notify.New(a.pool, senders, a.m, log)
 	a.outbox.Dashboard = cfg.DashboardURL
+	a.outbox.APIBase = cfg.APIResource
+	unsub, err := notify.LoadOrCreateUnsubscriber(ctx, a.sec)
+	if err != nil {
+		log.Warn("unsubscribe key unavailable; email unsubscribe links are disabled", "event", "notify_unsub_unavailable", "err", err.Error())
+	} else {
+		a.outbox.Unsub = unsub
+	}
 	parser, ok := config.NewParser()
 	if !ok {
 		log.Warn("nix-instantiate not found; fragments are accepted without a parse check", "event", "config_parse_unavailable")
@@ -147,7 +154,7 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 		users = auth.NewProvisioner(a.pool, auth.NewLogtoManagement(cfg.LogtoIssuer, cfg.LogtoM2MID, cfg.LogtoM2MSecret, nil))
 	}
 	a.server = httpapi.New(httpapi.Deps{
-		Pool: a.pool, Verifier: verifier, Users: users, CA: a.ca, Secrets: a.sec, Engine: a.engine, Logs: a.logs, Events: a.events, Outbox: a.outbox,
+		Pool: a.pool, Verifier: verifier, Users: users, CA: a.ca, Secrets: a.sec, Engine: a.engine, Logs: a.logs, Events: a.events, Outbox: a.outbox, Unsub: unsub,
 		Parser: parser, Metrics: a.m, Registry: a.reg, Log: log, Billing: billing.DisabledPortal{}, Gateway: httpapi.Gateway{Host: cfg.GatewayHost, Port: cfg.GatewayPort},
 		Migrations: func(ctx context.Context) (int, error) {
 			st, err := db.MigrateStatus(ctx, a.pool)

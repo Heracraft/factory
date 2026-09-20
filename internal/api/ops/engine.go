@@ -34,6 +34,13 @@ type Sender interface {
 	Connected(hostID uuid.UUID) bool
 }
 
+// EventSink records a platform-originated event (13-notifications.md §2,
+// "billing_stopped, base_updated, snapshot_failed, host_moved"). It is nil
+// in the admin CLI's ad-hoc engine, where no user should be paged.
+type EventSink interface {
+	Platform(ctx context.Context, projectID uuid.UUID, kind, summary string) error
+}
+
 // Limits are the Build limits (DECISIONS R5-4).
 type Limits struct {
 	EvalS        uint32
@@ -61,14 +68,15 @@ type Config struct {
 
 // Engine is the op driver.
 type Engine struct {
-	pool *db.Pool
-	send Sender
-	ca   *ca.CA
-	sec  *secrets.Store
-	logs *buildlog.Store
-	m    *metrics.M
-	log  *slog.Logger
-	cfg  Config
+	pool   *db.Pool
+	send   Sender
+	ca     *ca.CA
+	sec    *secrets.Store
+	logs   *buildlog.Store
+	events EventSink
+	m      *metrics.M
+	log    *slog.Logger
+	cfg    Config
 
 	kick    chan struct{}
 	now     func() time.Time
@@ -82,8 +90,8 @@ type Engine struct {
 	onFinished   func(ctx context.Context, op *store.Op)
 }
 
-// New builds an engine.
-func New(pool *db.Pool, send Sender, c *ca.CA, sec *secrets.Store, logs *buildlog.Store, m *metrics.M, log *slog.Logger, cfg Config) *Engine {
+// New builds an engine. events may be nil (the admin CLI's ad-hoc engine).
+func New(pool *db.Pool, send Sender, c *ca.CA, sec *secrets.Store, logs *buildlog.Store, events EventSink, m *metrics.M, log *slog.Logger, cfg Config) *Engine {
 	if cfg.Limits == (Limits{}) {
 		cfg.Limits = DefaultLimits
 	}
@@ -96,7 +104,7 @@ func New(pool *db.Pool, send Sender, c *ca.CA, sec *secrets.Store, logs *buildlo
 	if cfg.Lang == "" {
 		cfg.Lang = "C.UTF-8"
 	}
-	return &Engine{pool: pool, send: send, ca: c, sec: sec, logs: logs, m: m, log: log.With("component", "api"), cfg: cfg,
+	return &Engine{pool: pool, send: send, ca: c, sec: sec, logs: logs, events: events, m: m, log: log.With("component", "api"), cfg: cfg,
 		kick: make(chan struct{}, 1), now: time.Now, waiters: map[uuid.UUID][]chan struct{}{}}
 }
 

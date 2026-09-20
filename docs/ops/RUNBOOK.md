@@ -947,6 +947,68 @@ values already redacted). A fragment that contains a current secret value
 is refused before the build with `invalid: fragment contains the value of
 secret NAME`.
 
+## No notifications arriving
+
+A user reports nothing on their phone or in their inbox for an agent that
+clearly finished.
+
+1. `repose status` / `GET /projects/:id/events` first: if the event is not
+   there at all, the problem is upstream of the outbox (the hook never
+   fired, or the guest never reached the api). Check `guestd_ok` in the
+   project's signals (`GuestdLost` if it is false) and, on the guest,
+   whether `/run/repose/hooks.sock` exists and the agent's wrapper actually
+   ran `repose-agent-setup` (`grep repose-hook` in the agent's own hook
+   config file, `guest-conventions.md` "Agent wrappers").
+2. If the event is there but `delivered` has no key for the channel: the
+   outbox has not picked it up yet, or the channel is disabled
+   (`notify_email` false, `ntfy_url` null) or over the 30/hour rate cap
+   (`kind = 'notifications_paused'` events on the project in the last
+   hour). `repose_api_outbox_depth` and `repose_api_outbox_lag_seconds`
+   rising together mean the worker itself is stuck: it holds
+   `db.LockOutbox`, so `select pg_advisory_lock_...` on the wrong replica
+   or a stuck transaction is what to look for; only one replica runs it
+   (`api: rollup or expiry not running on one replica` is the same shape
+   for a different job).
+3. If `delivered[channel]` says `"error: ..."` or `"failed: ..."`, the
+   channel-specific entries below have the fix. Nothing to do if it says a
+   timestamp: delivery succeeded and the miss is client-side (a stale
+   ntfy subscription, a spam folder).
+
+## ntfy failing
+
+`delivered.ntfy` carries `"error: ..."` (retrying) or `"failed: 404"` (not
+retried, DECISIONS §5's 4xx rule) and the settings page shows a warning.
+
+1. A 4xx (`400`, `404`) means the URL is wrong or the topic does not exist
+   on that server any more: the user re-pastes it from
+   `repose notify set ntfy <url>`, which sends a test push
+   (`POST /me/notify-test`) so a wrong URL is caught immediately rather
+   than on the next real event.
+2. A 5xx or timeout retries on the schedule in `13-notifications.md` §5.5
+   (7 attempts over roughly 24 h) before `failed`; a self-hosted ntfy
+   server that is down for longer than that needs the user to re-set the
+   URL once it is back, which requeues nothing retroactively — only new
+   events are affected.
+3. `repose_api_notify_total{channel="ntfy",result="failed"}` rising across
+   many users means a widely-used relay (`ntfy.sh`) is down, not a
+   per-user URL problem; check its status page before debugging further.
+
+## Resend failing
+
+Every email `delivered.email` value is `"error: ..."` or `"failed: ..."`
+across many users at once (a per-user failure is `email: "user has no
+address"`, permanent, and not a Resend outage).
+
+1. Resend's status page and `RESEND_API_KEY`'s validity
+   (`repose-admin` has no direct check; a `401` in the api's logs under
+   `event=notify_fail` for the email channel is the tell — Resend's API key
+   is a Coolify secret, `ops/coolify/api.env.example`).
+2. A `429` retries like any 5xx (the sender treats both as retryable); a
+   sustained `429` means the account's Resend rate limit needs raising.
+3. `repose_api_notify_total{channel="email",result="failed"}` over 5
+   percent in 10 minutes is `13-notifications.md` §6's alert threshold;
+   page on it rather than waiting for a user to report silence.
+
 ## api: secret service unavailable
 
 `PUT /secrets` returned `internal: key service unavailable`;

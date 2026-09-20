@@ -2,11 +2,13 @@ package notify_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -199,6 +201,83 @@ func TestNtfyAndEmailSenders(t *testing.T) {
 	}
 	if gotAuth != "Bearer re_test" {
 		t.Fatalf("auth %q", gotAuth)
+	}
+}
+
+// TestEmailTemplate is the golden test docs/workstreams/13-notifications.md
+// §9 asks for: title, summary, attach hint, dashboard link and (when set)
+// the unsubscribe link, all present in the body Resend receives.
+func TestEmailTemplate(t *testing.T) {
+	var gotSubject, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Subject string `json:"subject"`
+			Text    string `json:"text"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		gotSubject, gotBody = payload.Subject, payload.Text
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+	e := &notify.Email{APIKey: "re_test", URL: srv.URL}
+	m := notify.Message{
+		Kind: "completed", Agent: "claude", Project: "todo-app", Summary: "ran tests, 3 failures fixed",
+		Email: "u@example.com", Dashboard: "https://repose.herakraft.co",
+		Unsubscribe: "https://api.repose.herakraft.co/v1/notify/unsubscribe?token=abc.def",
+	}
+	if err := e.Send(context.Background(), m); err != nil {
+		t.Fatal(err)
+	}
+	if gotSubject != "[repose] todo-app: claude finished" {
+		t.Fatalf("subject %q", gotSubject)
+	}
+	for _, want := range []string{
+		"todo-app: claude finished",
+		"ran tests, 3 failures fixed",
+		"repose attach --project todo-app",
+		"https://repose.herakraft.co/projects",
+		"https://api.repose.herakraft.co/v1/notify/unsubscribe?token=abc.def",
+	} {
+		if !strings.Contains(gotBody, want) {
+			t.Fatalf("body missing %q, got:\n%s", want, gotBody)
+		}
+	}
+}
+
+// TestEmailTemplateWithoutUnsubscribe covers the no-Unsubscriber-configured
+// case (dev, or a platform secret write that failed): the email still
+// sends, just without the link.
+func TestEmailTemplateWithoutUnsubscribe(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Text string `json:"text"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		gotBody = payload.Text
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+	e := &notify.Email{APIKey: "re_test", URL: srv.URL}
+	if err := e.Send(context.Background(), notify.Message{Kind: "completed", Project: "todo", Summary: "ok", Email: "u@example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(gotBody, "unsubscribe") {
+		t.Fatalf("body should carry no unsubscribe mention without a link: %s", gotBody)
+	}
+}
+
+// TestSubjectUsesPlatformWording is the checklist's "Platform events flow
+// through the same pipeline" for the one kind DESIGN.md §13 gives its own
+// exact subject; the rest fall back to Title.
+func TestSubjectUsesPlatformWording(t *testing.T) {
+	got := notify.Subject(notify.Message{Kind: "billing_stopped", Project: "todo-app"})
+	if got != "Your guests were stopped for non-payment" {
+		t.Fatalf("subject %q", got)
+	}
+	got = notify.Subject(notify.Message{Kind: "snapshot_failed", Project: "todo-app"})
+	if got != "todo-app: snapshot failed" {
+		t.Fatalf("subject %q", got)
 	}
 }
 
