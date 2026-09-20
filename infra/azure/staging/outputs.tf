@@ -13,6 +13,11 @@ output "control_public_ip" {
   value       = module.environment.control_public_ip
 }
 
+output "control_private_ip" {
+  description = "Where hosts reach the api's gRPC listener on the VNet (nix/hosts/<host>.nix apiAddr)."
+  value       = module.environment.control_private_ip
+}
+
 output "guest_egress_ip" {
   description = "Address every guest egresses from."
   value       = module.environment.guest_egress_ip

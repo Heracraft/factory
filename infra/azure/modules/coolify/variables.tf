@@ -127,6 +127,17 @@ variable "connect_timeout" {
   default     = "15m"
 }
 
+variable "private_ip" {
+  type        = string
+  description = <<-EOT
+    The VM's VNet address, allocated statically so that hosts can be built
+    with it: a host reaches the api's gRPC listener here to register, before
+    it has a WireGuard tunnel (DECISIONS I-92). Null keeps Azure's dynamic
+    allocation, which is stable in practice but not promised.
+  EOT
+  default     = null
+}
+
 variable "edge_wireguard_public_key" {
   type        = string
   description = <<-EOT

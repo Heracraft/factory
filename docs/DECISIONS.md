@@ -2004,3 +2004,65 @@ path to infer the version from WrapKey's response, which would leave the
 rewrap job (which needs the current version without wrapping anything)
 with the same need. The policy was also never applied: `api_identity_object_id`
 was in `prod.local.tfvars` after the last apply. Applied 2026-09-20.
+
+**I-92. Hosts dial the api at the control plane's VNet address and get
+WireGuard from registration; the edge reaches `/internal` over a static
+tunnel peer that `wgsync` keeps; the production edge's facts live in
+`nix/edge/edge-01.nix`.** (m2 integration, 2026-09-20) The docs left the
+host bootstrap circular: a host reaches the api "over WireGuard"
+(`ops/coolify/README.md` puts gRPC on `10.255.255.1`), but its own WireGuard
+key, address and the hub's peer arrive in `RegisterResponse`, and the edge
+only admits a peer `wgsync` has read from `/internal/hosts`, which lists a
+host after it registered. Settled as follows:
+
+- *Hosts register and stream over the VNet.* `repose.host.apiAddr` is the
+  control VM's private address on 8443 (`control_private_ip`, allocated
+  statically as the subnet's first usable address so it can be written into
+  a host's configuration), `apiServerName` is `api.repose.herakraft.co` and
+  `apiCA` is the platform x509 host CA certificate (public, printed by
+  `repose-admin ca show`). Azure's `AllowVnetInBound` admits it; the control
+  NSG never opens 8443 on the public IP. Registration then returns the
+  WireGuard material, `repose-host-net` brings `wg0` up, and the edge adds
+  the peer within 30 s. WireGuard carries the gateway-to-guest path and
+  observability, never the api. *Rejected:* the edge's key and endpoint in
+  the host's Nix config so `wg0` is up first (the host's own key and address
+  are assigned by `Register`, and the edge accepts no peer it has not been
+  told about, so nothing could travel before registration either way); a
+  bootstrap hop through the edge on the VNet (a second path for one RPC
+  when the api is on the same VNet); the public name of DESIGN §7 (8443 is
+  neither behind Coolify's proxy nor in the NSG). *Revisit when:* a host
+  outside the VNet (Hetzner, R3-20) needs 8443 reachable from its address.
+- *`GRPC_SERVER_NAMES` carries the addresses as IP SANs*
+  (`api.repose.herakraft.co,10.255.255.1,10.200.3.4`; `pki.IssueServer`
+  already made an IP an IP SAN), so the gateway, which dials the WireGuard
+  address by IP, and hostd both verify the certificate the `api-grpc` app
+  issues at start without a server-name override.
+- *The edge's `API_URL` is `https://10.255.255.1:8444`* (option
+  `repose.edge.controlWgAddress`), not the public name: Coolify's proxy
+  terminates TLS for that and cannot present the gateway's client
+  certificate (I-42). The control VM ⇄ edge tunnel has a static edge-side
+  peer (`repose.edge.staticPeers`, declared to `networking.wireguard` and
+  passed to `wgsync` as `WG_STATIC_PEERS`, which it never removes: without
+  that the reconciler tore down the tunnel it reads `/internal/hosts`
+  through, every 30 s). The VM side is written by hand on a live VM
+  because its `custom_data` is in `ignore_changes`, so
+  `edge_wireguard_public_key` only reaches a VM created after it is set;
+  `infra/README.md` "Wiring the control plane to the edge" has the file.
+- *`nix/edge/edge-01.nix`* holds what makes the production edge differ from
+  the module (operator source addresses, the control plane's public key)
+  and is imported by `nixosConfigurations.edge`: the attribute keeps its
+  name because `infra/azure/modules/edge` re-runs nixos-anywhere when
+  `flake_attr` changes, and a live edge must never be reinstalled by a
+  rename. The operator `/32` is the first committed copy of a value
+  `prod.local.tfvars` keeps local (`operator_cidrs`); the NSG stays the
+  outer gate with the same list. *Rejected:* a runtime file under
+  `/var/lib/repose/edge` read into an nftables set by a unit (machinery
+  for one address, and one more file a reinstall would lose).
+- *`repose-admin ca show` and `ca sign-server`* exist because the edge needs
+  the CA certificate (`api-ca.pem`, and every host's `apiCA`) and a server
+  certificate for the hook-ingest listener, and nothing printed either.
+- *`bootstrap.enable` stays on for host-01*: the token delivery and the
+  post-install checks reach a host on the VNet through the edge, and a
+  reinstalled or re-tokened host needs that path again; sshd binds the
+  WireGuard address alone once `host.json` carries it (`network.nix`),
+  so the provider-NIC rule admits nothing after registration.

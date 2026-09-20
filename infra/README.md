@@ -123,11 +123,11 @@ before the first apply:
 - **Your address is in `operator_cidrs`.** The edge NSG opens the operator
   SSH port to that list and to the VNet, nothing else.
 - **The edge's sshd is on `edge_operator_ssh_port`.** It defaults to 2222,
-  because 22 belongs to the user-facing SSH gateway once workstream 06 lands.
-  Until then, `nix/edge` serves sshd on 22 and there is no gateway competing
-  for it, so **the first apply sets `edge_operator_ssh_port = 22`** in the
-  local tfvars and moves it to 2222 in the same change that gives the edge its
-  gateway.
+  because 22 belongs to the user-facing SSH gateway. The wave-one edge served
+  sshd on 22 and the first apply set `edge_operator_ssh_port = 22`; the M2
+  edge deploy (2026-09-20, DECISIONS I-92) moved it to 2222, and a local
+  tfvars that still says 22 makes every host provisioner fail on the
+  gateway's `certificate required` banner.
 
 The host side needs nothing configured: Azure's built-in `AllowVnetInBound`
 rule is what lets the edge reach a host's sshd, which is why the hosts NSG can
@@ -288,15 +288,45 @@ Until a token exists, create these by hand in the Cloudflare dashboard, as
 ## Wiring the control plane to the edge
 
 The control-plane VM generates its own WireGuard key at first boot and never
-hands the private half to anybody, so the peering is two manual moves:
+hands the private half to anybody, so the peering is two moves, one on each
+side:
 
-```bash
-ssh root@<control ip> cat /etc/wireguard/publickey     # add this as a peer on the edge
-ssh -p 2222 root@<edge ip> cat /etc/wireguard/publickey
-# put that value in prod.local.tfvars as edge_wireguard_public_key
-make apply ENV=prod
-ssh root@<control ip> /usr/local/sbin/repose-wg-setup  # brings wg0 up
-```
+1. **The edge side** is configuration: the VM's public key
+   (`ssh root@<control ip> cat /etc/wireguard/publickey`) goes into
+   `nix/edge/edge-01.nix` as a `repose.edge.staticPeers` entry with
+   `allowedIPs = [ "10.255.255.1/32" ]`, and the edge is rebuilt. `wgsync`
+   never removes a static peer (DECISIONS I-92).
+2. **The VM side** is `/etc/wireguard/wg0.conf`. cloud-init writes it from
+   `edge_wireguard_public_key` only when the VM is *created*: the VM's
+   `custom_data` is in `ignore_changes`, so setting the variable later
+   changes nothing on a live machine. On a live VM write the peer by hand,
+   exactly what `repose-wg-setup` would have written:
+
+   ```bash
+   ssh -p 2222 root@<edge ip> cat /var/lib/repose/edge/wg.pub   # the edge's key
+   ssh root@<control ip> 'umask 077; cat > /etc/wireguard/wg0.conf <<CONF
+   [Interface]
+   Address = 10.255.255.1/16
+   PostUp = wg set %i private-key /etc/wireguard/privatekey
+
+   [Peer]
+   PublicKey = <edge public key>
+   Endpoint = <edge ip>:51820
+   AllowedIPs = 10.255.0.0/16, 10.64.0.0/12
+   PersistentKeepalive = 25
+   CONF
+   systemctl enable --now wg-quick@wg0 && wg show'
+   ```
+
+   Keep `edge_wireguard_public_key` in `prod.local.tfvars` anyway, so a
+   replacement control VM comes up peered.
+
+What travels over the tunnel: the edge reaches the api's `/internal` and
+gRPC listeners at `10.255.255.1:8444` and `:8443` (the `api-grpc` app's port
+mappings, `ops/coolify/README.md`), and the monitoring server, once it is a
+peer too, scrapes the api's metrics there. Hosts do **not** use it to reach
+the api: they dial `control_private_ip:8443` on the VNet, because a host
+registers before it has a tunnel (DECISIONS I-92).
 
 ## Draining and destroying a host
 

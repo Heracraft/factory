@@ -43,9 +43,13 @@ resource "azurerm_network_interface" "main" {
   tags                = local.tags
 
   ip_configuration {
-    name                          = "public"
-    subnet_id                     = var.subnet_id
-    private_ip_address_allocation = "Dynamic"
+    name      = "public"
+    subnet_id = var.subnet_id
+    # Static: hosts dial the api's gRPC listener at this address before they
+    # have a WireGuard tunnel (DECISIONS I-92), and it is written into their
+    # NixOS configuration (nix/hosts/host-01.nix repose.host.apiAddr).
+    private_ip_address_allocation = var.private_ip == null ? "Dynamic" : "Static"
+    private_ip_address            = var.private_ip
     public_ip_address_id          = azurerm_public_ip.main.id
   }
 }

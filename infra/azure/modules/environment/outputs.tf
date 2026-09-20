@@ -13,6 +13,11 @@ output "control_public_ip" {
   value       = one(module.coolify[*].public_ip)
 }
 
+output "control_private_ip" {
+  description = "The control plane's VNet address, where hosts reach the api's gRPC listener (repose.host.apiAddr, DECISIONS I-92); null while coolify_count is 0."
+  value       = one(module.coolify[*].private_ip)
+}
+
 output "guest_egress_ip" {
   description = "Address every guest on every host egresses from, through the NAT gateway."
   value       = module.network.nat_public_ip

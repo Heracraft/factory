@@ -21,9 +21,10 @@ operator_authorized_keys = [
 ]
 
 # The edge's operator sshd port. Every host provisioner jumps through it.
-# 2222 is the target state; until workstream 06 gives the edge its SSH
-# gateway, nix/edge serves sshd on 22 and this must be 22.
-# edge_operator_ssh_port = 22
+# Since the M2 edge deploy (2026-09-20) the gateway owns 22 and the operator
+# sshd is on 2222, the default; an older local file that still says 22 must
+# be changed or the line removed.
+# edge_operator_ssh_port = 2222
 
 # Private key matching one of the above, on the machine running tofu.
 ssh_private_key_path = "/home/azureuser/.ssh/id_ed25519"
@@ -39,6 +40,8 @@ cloudflare_zone_id = "0123456789abcdef0123456789abcdef"
 # registration exists; the Key Vault wrap/unwrap policy is skipped until then.
 # api_identity_object_id = "00000000-0000-0000-0000-000000000000"
 
-# The edge's WireGuard public key, read off the edge after its first install.
-# Leave unset on the first apply.
+# The edge's WireGuard public key (`ssh -p 2222 root@<edge ip> cat
+# /var/lib/repose/edge/wg.pub`). Only a control VM created after this is set
+# gets it through cloud-init; on a live VM the peer is written by hand
+# (infra/README.md, "Wiring the control plane to the edge").
 # edge_wireguard_public_key = "..."

@@ -161,6 +161,10 @@ module "coolify" {
   location            = local.location
   subnet_id           = module.network.control_subnet_id
   network_ready       = module.network.control_subnet_ready
+  # The first usable address of the control subnet (Azure reserves .0-.3),
+  # which is what dynamic allocation handed the first VM; pinning it keeps
+  # the hosts' api address stable (DECISIONS I-92).
+  private_ip = cidrhost(var.control_subnet_cidr, 4)
 
   authorized_keys      = var.operator_authorized_keys
   ssh_private_key_path = var.ssh_private_key_path

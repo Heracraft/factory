@@ -43,6 +43,7 @@ type WGSync struct {
 	m      *obsmetrics.GatewayMetrics
 	clock  func() time.Time
 	routes map[string]string // pubkey -> guest cidr, for removing routes of departed hosts
+	static map[string]bool   // peers declared by the edge configuration, never removed
 }
 
 // NewWGSync builds a syncer for the interface (usually wg0).
@@ -50,7 +51,20 @@ func NewWGSync(api *Client, wg WG, iface string, log *slog.Logger, m *obsmetrics
 	if log == nil {
 		log = obs.Nop(obs.ComponentGateway)
 	}
-	return &WGSync{api: api, wg: wg, iface: iface, log: log, m: m, clock: time.Now, routes: map[string]string{}}
+	return &WGSync{api: api, wg: wg, iface: iface, log: log, m: m, clock: time.Now, routes: map[string]string{}, static: map[string]bool{}}
+}
+
+// KeepStatic names peers the edge configuration declares on the interface
+// (the control plane's WireGuard peer, DECISIONS I-92) so a sync never
+// removes them: they are not hosts, so /internal/hosts never lists them, and
+// without this the reconciler would tear down the tunnel it reaches the api
+// through. Empty entries are ignored.
+func (s *WGSync) KeepStatic(pubkeys []string) {
+	for _, p := range pubkeys {
+		if p = strings.TrimSpace(p); p != "" {
+			s.static[p] = true
+		}
+	}
 }
 
 // Run reconciles every WGSyncInterval until ctx ends.
@@ -122,9 +136,9 @@ func (s *WGSync) Sync(ctx context.Context) error {
 			s.log.Info("wgsync added peer", "event", "wgsync", "host_id", h.HostID)
 		}
 	}
-	// Remove peers that are no longer wanted.
+	// Remove peers that are no longer wanted; a static peer is never removed.
 	for _, pubkey := range current {
-		if _, ok := want[pubkey]; ok {
+		if _, ok := want[pubkey]; ok || s.static[pubkey] {
 			continue
 		}
 		if err := s.wg.RemovePeer(ctx, pubkey); err != nil {

@@ -1357,6 +1357,60 @@ func (e *Env) caCmd(ctx context.Context, args []string) error {
 		}
 		_, _ = fmt.Fprint(e.Stdout, string(certPEM), string(keyPEM))
 		return nil
+	case "show":
+		// The public halves: what a host's `repose.host.apiCA` and the
+		// edge's api-ca.pem carry (the x509 host CA certificate), and the
+		// two SSH CA lines. Never a key.
+		c, err := e.loadCA(ctx)
+		if err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintf(e.Stdout, "# user ca: %s\n# host ca: %s\n%s", c.UserCAPub(), c.HostCAPub(), string(c.X509().CertPEM))
+		return nil
+	case "sign-server":
+		// A server certificate from the x509 host CA for a listener that
+		// hosts, the gateway or guests verify against api-ca.pem: the edge's
+		// hook-ingest listener (06 §5.7). The api's own gRPC and /internal
+		// listeners issue theirs at start (I-87).
+		fs, err := flagsFor("sign-server", args[1:], func(fs *flag.FlagSet) {
+			fs.String("name", "", "comma-separated DNS names or IPs; the first is the CN")
+			fs.String("ttl", "43800h", "validity")
+			fs.String("out", "", "directory for <first name>.crt and .key")
+		})
+		if err != nil {
+			return err
+		}
+		names := strings.Split(fs.Lookup("name").Value.String(), ",")
+		if len(names) == 0 || names[0] == "" {
+			return fmt.Errorf("%w: sign-server needs --name", ErrUsage)
+		}
+		ttl, err := time.ParseDuration(fs.Lookup("ttl").Value.String())
+		if err != nil {
+			return fmt.Errorf("%w: --ttl is a duration", ErrUsage)
+		}
+		c, err := e.loadCA(ctx)
+		if err != nil {
+			return err
+		}
+		certPEM, keyPEM, err := c.X509().IssueServer(ttl, names...)
+		if err != nil {
+			return err
+		}
+		if _, err := e.audited(ctx, "ca_sign_server", names[0], map[string]any{"names": len(names)}); err != nil {
+			return err
+		}
+		if dir := fs.Lookup("out").Value.String(); dir != "" {
+			if err := os.WriteFile(filepath.Join(dir, names[0]+".crt"), certPEM, 0o644); err != nil {
+				return err
+			}
+			if err := os.WriteFile(filepath.Join(dir, names[0]+".key"), keyPEM, 0o600); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(e.Stdout, "wrote %s/%s.crt and %s.key\n", dir, names[0], names[0])
+			return nil
+		}
+		_, _ = fmt.Fprint(e.Stdout, string(certPEM), string(keyPEM))
+		return nil
 	}
 	return fmt.Errorf("%w: ca %s", ErrUsage, args[0])
 }

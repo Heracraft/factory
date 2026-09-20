@@ -58,7 +58,8 @@ const Usage = `repose-admin <command> [args]
   billing   rollup [--hour 2026-09-17T14] | credit HANDLE CENTS REASON | explain PROJECT 2026-09-17T14
             reconcile [--month 2026-10] | suspend HANDLE | unsuspend HANDLE | resync [--user HANDLE]
   base      publish --rev SHA --changelog TEXT [--version V] [--security] | release ... | list | status V | rollback V
-  ca        init | rotate [--user] [--host] | sign-host --principal P... --pubkey FILE | sign-client --name NAME [--operator] [--out DIR]
+  ca        init | show | rotate [--user] [--host] | sign-host --principal P... --pubkey FILE | sign-client --name NAME [--operator] [--out DIR]
+            sign-server --name NAME[,NAME...] [--ttl 43800h] [--out DIR]
   operator-cert --pubkey FILE [--ttl 8h] [--name NAME]
   edge      init --endpoint HOST:PORT --pubkey WGPUB [--out DIR]
   audit     [--user HANDLE] [--since 24h] [--action A]

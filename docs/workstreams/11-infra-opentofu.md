@@ -180,8 +180,9 @@ stock Ubuntu image accepting root SSH. DECISIONS I-25 has the full reasoning.
 
 The edge's operator sshd must be listening on `edge_operator_ssh_port` for
 that to work. It defaults to 2222 because 22 belongs to the user gateway;
-until workstream 06 gives the edge that gateway, `nix/edge` serves sshd on 22
-and the first apply sets `edge_operator_ssh_port = 22`.
+the wave-one edge served sshd on 22 and the first apply set
+`edge_operator_ssh_port = 22`, and the M2 edge deploy moved it to 2222
+(DECISIONS I-92).
 
 ### Why Ubuntu as the install target
 
@@ -432,5 +433,5 @@ Three things still wait on a human rather than on an apply:
 - **The budget alert.** `ops/AZURE-SETUP.md` step 7 sets $1,000 a month; the
   environment with the control plane on is about $1,094.
 
-`edge_operator_ssh_port` stays 22 until workstream 06 moves the edge's
-operator sshd off the port the user gateway wants.
+`edge_operator_ssh_port` was 22 until the M2 edge deploy (2026-09-20) gave
+the edge its gateway; it is 2222 since, the variable's default.

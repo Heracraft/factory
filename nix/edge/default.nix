@@ -41,10 +41,34 @@ in
       description = "The gateway binary (flake packages.gateway). Provides `gateway serve` and `gateway wgsync`.";
     };
 
+    controlWgAddress = lib.mkOption {
+      type = lib.types.str;
+      default = "10.255.255.1";
+      description = "The control plane's address on this hub (infra/azure/modules/coolify `wireguard_address`); the api's gRPC and /internal listeners are reached there, never on its public IP (ops/coolify/README.md).";
+    };
+
     apiUrl = lib.mkOption {
       type = lib.types.str;
-      default = "https://api.repose.herakraft.co";
-      description = "Base URL of the control-plane api the gateway resolves routes and issues certificates through (docs/interfaces/api.md /internal).";
+      default = "https://${cfg.controlWgAddress}:8444";
+      defaultText = "https://<controlWgAddress>:8444";
+      description = "Base URL of the api's /internal listener the gateway resolves routes and issues certificates through (docs/interfaces/api.md /internal; the `api-grpc` app on 8444, DECISIONS I-42). Not the public name: Coolify's proxy terminates TLS there and cannot present the gateway's client certificate.";
+    };
+
+    staticPeers = lib.mkOption {
+      type = lib.types.listOf (lib.types.submodule {
+        options = {
+          publicKey = lib.mkOption { type = lib.types.singleLineStr; description = "The peer's WireGuard public key."; };
+          allowedIPs = lib.mkOption { type = lib.types.listOf lib.types.str; description = "Addresses reached through this peer, e.g. the control plane's /32."; };
+        };
+      });
+      default = [ ];
+      description = ''
+        Peers declared on wg0 that are not hosts: the control plane
+        (DECISIONS I-92). Hosts are added at run time by wgsync from
+        /internal/hosts; these are configured at boot and wgsync never
+        removes them (WG_STATIC_PEERS). The peer dials this hub, so no
+        endpoint is needed here.
+      '';
     };
 
     wgAddress = lib.mkOption {
@@ -106,6 +130,7 @@ in
       ips = [ "${cfg.wgAddress}/16" ];
       listenPort = cfg.wgPort;
       privateKeyFile = "${stateDir}/wg.key";
+      peers = map (p: { inherit (p) publicKey allowedIPs; }) cfg.staticPeers;
     };
     # wg-quick/wireguard-wg0 must not start before its key exists, or the
     # unit fails on a fresh edge; wgsync (below) is what fills the peers.
@@ -228,6 +253,7 @@ in
         GATEWAY_CLIENT_KEY = "${stateDir}/gateway.key";
         API_CA = "${stateDir}/api-ca.pem";
         WG_INTERFACE = "wg0";
+        WG_STATIC_PEERS = lib.concatMapStringsSep "," (p: p.publicKey) cfg.staticPeers;
       };
       serviceConfig = {
         ExecStart = "${cfg.gatewayPackage}/bin/gateway wgsync";

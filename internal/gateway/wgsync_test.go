@@ -186,3 +186,34 @@ func TestExecWGBuildsCommands(t *testing.T) {
 		t.Fatal("ReplaceRoute accepted a bad CIDR")
 	}
 }
+
+// The control plane's peer is declared by the edge configuration, not by
+// /internal/hosts; a sync must leave it alone (DECISIONS I-92).
+func TestWGSyncKeepsStaticPeers(t *testing.T) {
+	api := fakeapi.New(fakeapi.Options{})
+	defer api.Close()
+	client, err := NewClient(api.URL(), nil, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const control = "controlplanepeerkey000000000000000000000000="
+	wg := newFakeWG(control, "staleoldpeerkeythatisnolongerinthelist000000=")
+	s := NewWGSync(client, wg, "wg0", nil, nil)
+	s.KeepStatic([]string{"", " " + control + " "})
+	api.SetHosts([]fakeapi.Host{
+		{HostID: "h1", WGPubkey: "peer1key00000000000000000000000000000000000=", WGIP: "10.255.0.7", GuestCIDR: "10.64.4.0/22", State: "ready"},
+	})
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	peers, _ := wg.snapshot()
+	if _, ok := peers[control]; !ok {
+		t.Fatalf("static peer removed: %v", peers)
+	}
+	if _, ok := peers["staleoldpeerkeythatisnolongerinthelist000000="]; ok {
+		t.Fatalf("stale peer kept: %v", peers)
+	}
+	if len(peers) != 2 {
+		t.Fatalf("peers after sync: %v", peers)
+	}
+}

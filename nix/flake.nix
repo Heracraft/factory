@@ -96,10 +96,14 @@
       nixosConfigurations.host-01 = mkHost { hostName = "host-01"; modules = [ ./hosts/host-01.nix ]; };
 
       # Edge: gateway + WireGuard hub. docs/workstreams/06-gateway-edge.md
+      # The production values (operator addresses, the control plane's
+      # WireGuard peer) are ./edge/edge-01.nix; the attribute keeps the name
+      # `edge` because infra's installer keys its re-install trigger on it
+      # (DECISIONS I-92).
       nixosConfigurations.edge = lib.nixosSystem {
         inherit system;
         specialArgs = { inherit self; };
-        modules = [ disko.nixosModules.disko ./edge { repose.edge.gatewayPackage = goPkgs.gateway; } ];
+        modules = [ disko.nixosModules.disko ./edge ./edge/edge-01.nix { repose.edge.gatewayPackage = goPkgs.gateway; } ];
       };
 
       # Guest base as a module, and the function hostd's build step calls with

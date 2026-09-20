@@ -3,6 +3,8 @@ package admin_test
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"strings"
 	"testing"
@@ -169,6 +171,35 @@ func TestAdminSurface(t *testing.T) {
 	}
 	if _, err := run(t, e, "edge", "init", "--endpoint", "1.2.3.4:51820", "--pubkey", "abc="); err != nil {
 		t.Fatal(err)
+	}
+	// ca show prints the public halves only; sign-server issues a leaf the
+	// CA certificate verifies, with IP names as IP SANs.
+	if out, err := run(t, e, "ca", "show"); err != nil || !strings.Contains(out, "-----BEGIN CERTIFICATE-----") || strings.Contains(out, "PRIVATE KEY") || !strings.Contains(out, "# user ca: ssh-ed25519") {
+		t.Fatalf("ca show: %q %v", out, err)
+	}
+	if out, err := run(t, e, "ca", "sign-server", "--name", "10.255.0.1,edge.internal"); err != nil || !strings.Contains(out, "-----BEGIN CERTIFICATE-----") || !strings.Contains(out, "PRIVATE KEY") {
+		t.Fatalf("ca sign-server: %q %v", out, err)
+	} else {
+		leaf, _ := pem.Decode([]byte(out))
+		cert, err := x509.ParseCertificate(leaf.Bytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(cert.IPAddresses) != 1 || cert.IPAddresses[0].String() != "10.255.0.1" || len(cert.DNSNames) != 1 {
+			t.Fatalf("sign-server SANs: ip %v dns %v", cert.IPAddresses, cert.DNSNames)
+		}
+		show, _ := run(t, e, "ca", "show")
+		caBlock, _ := pem.Decode([]byte(show[strings.Index(show, "-----BEGIN"):]))
+		caCert, err := x509.ParseCertificate(caBlock.Bytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cert.CheckSignatureFrom(caCert); err != nil {
+			t.Fatalf("leaf not signed by the shown CA: %v", err)
+		}
+	}
+	if _, err := run(t, e, "ca", "sign-server"); err == nil {
+		t.Fatal("sign-server without --name should refuse")
 	}
 	if v, _ := store.Setting(ctx, h.Pool, "edge_wg_endpoint"); v != "1.2.3.4:51820" {
 		t.Fatalf("edge setting %q", v)

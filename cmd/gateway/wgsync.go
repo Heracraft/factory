@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"strings"
 
 	"github.com/heracraft/repose/internal/gateway"
 	"github.com/heracraft/repose/internal/obs"
@@ -20,7 +22,11 @@ func wgsyncMain(ctx context.Context) error {
 	}
 	iface := env("WG_INTERFACE", "wg0")
 	s := gateway.NewWGSync(api, gateway.NewExecWG(iface), iface, log, m)
-	log.Info("wgsync starting", "event", "wgsync", "iface", iface)
+	// Peers the NixOS configuration declares on the interface (the control
+	// plane), comma-separated public keys; never removed by a sync.
+	static := strings.Split(os.Getenv("WG_STATIC_PEERS"), ",")
+	s.KeepStatic(static)
+	log.Info("wgsync starting", "event", "wgsync", "iface", iface, "static_peers", len(static))
 	s.Run(ctx)
 	return nil
 }

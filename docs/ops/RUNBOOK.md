@@ -52,10 +52,35 @@ The full click path, with the reasons, is `coolify.md`. The short form:
 
 ### Edge
 
-`make -C infra apply ENV=prod`; nixos-anywhere installs `.#edge`. Then
-`repose-admin edge init` writes the WireGuard hub key into the api and the
-gateway's mTLS client cert. Verify `ssh -p 22 probe.nobody@ssh.repose.herakraft.co`
-returns `certificate required`.
+`make -C infra apply ENV=prod`; nixos-anywhere installs `.#edge` (its
+production values are `nix/edge/edge-01.nix`). Every unit is conditioned on
+its files under `/var/lib/repose/edge/` (0640 `root:repose-edge`), placed
+once, in this order (DECISIONS I-92):
+
+1. `wg.key`: `wg genkey | tee wg.key | wg pubkey > wg.pub` on the edge;
+   the private key never leaves it. `systemctl start wireguard-wg0`.
+2. `repose-admin edge init --endpoint <edge ip>:51820 --pubkey "$(cat
+   wg.pub)"` in the api container (`docker exec` on the control VM):
+   records the hub, so hosts registering from now on receive it.
+3. `api-ca.pem`: `repose-admin ca show` (the x509 host CA certificate; the
+   two SSH CA lines it prints as comments are informational).
+4. `gateway.crt`, `gateway.key`: `repose-admin ca sign-client --name
+   gateway` (the mTLS client for `/internal`).
+5. `ssh_host_ed25519_key` (`ssh-keygen -t ed25519 -N ''`) and its
+   certificate `ssh_host_ed25519_key-cert.pub` from `repose-admin ca
+   sign-host --principal ssh.repose.herakraft.co,<edge ip> --pubkey
+   ssh_host_ed25519_key.pub`, so clients verify the gateway through the
+   `@cert-authority` line the CLI writes.
+6. `tls/edge-internal.crt`, `.key`: `repose-admin ca sign-server --name
+   10.255.0.1` for the hook-ingest listener. `tls/wildcard.*` (the preview
+   stub) waits on a DNS-validated wildcard certificate; without it the
+   gateway logs `listener disabled` for `preview` and serves everything
+   else.
+
+Then `systemctl restart gateway wgsync` and verify `ssh -p 22
+probe.nobody@ssh.repose.herakraft.co` returns `certificate required`, and
+`wg show` on the edge lists the control plane's peer with a recent
+handshake (`infra/README.md`, "Wiring the control plane to the edge").
 
 ### First host
 
@@ -897,15 +922,22 @@ really is wanted, drain the host first
 
 ## Control plane cannot reach the edge network
 
-Prometheus cannot scrape hosts, or the api cannot reach the edge.
+The gateway logs `route_fail` against `https://10.255.255.1:8444`, `wgsync`
+cannot fetch `/internal/hosts`, or Prometheus cannot scrape.
 
-1. `ssh root@<control ip> wg show`. No `wg0`: the edge's public key was not
-   known when the VM was built.
-2. `ssh root@<control ip> cat /etc/wireguard/publickey` and add it as a peer
-   on the edge with allowed-ips `10.255.255.1/32`.
-3. Put the edge's own public key in `prod.local.tfvars` as
-   `edge_wireguard_public_key`, `make -C infra apply ENV=prod`, then
-   `ssh root@<control ip> /usr/local/sbin/repose-wg-setup`.
+1. `ssh root@<control ip> wg show`. No `wg0`: the peer was never written
+   (cloud-init only writes it when the VM is created with
+   `edge_wireguard_public_key` set; `custom_data` is ignored afterwards).
+   Write `/etc/wireguard/wg0.conf` by hand, `infra/README.md` "Wiring the
+   control plane to the edge".
+2. `wg0` up but no handshake: the edge side. `ssh -p 2222 root@<edge ip>
+   wg show` must list the VM's public key (`cat /etc/wireguard/publickey`
+   on the VM) as a peer; it comes from `repose.edge.staticPeers` in
+   `nix/edge/edge-01.nix`, and `wgsync` never removes it. Missing: add it
+   and rebuild the edge. Present but removed every 30 s: `wgsync` is
+   running without `WG_STATIC_PEERS` (an edge older than I-92).
+3. Handshake fine, `curl` from the edge to `https://10.255.255.1:8444`
+   refused: the `api-grpc` app has no port mappings (`ops/coolify/README.md`).
 
 The control plane's WireGuard private key is generated on the machine and
 never leaves it, which is why this is two moves rather than one apply.

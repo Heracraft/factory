@@ -51,12 +51,18 @@ repose-postgres").
   image's `HEALTHCHECK` (`api -healthcheck`) drives the rolling deploy (the
   image is distroless, so Coolify's curl-based check cannot run in it).
 - `api-grpc`: no domain; port mappings `8443:8443`, `8444:8444`,
-  `9104:9103`; Coolify's health check **off** (same reason); deploy after
-  `api`. The control NSG never opens these ports; hosts and the edge use
-  the VM's WireGuard address `10.255.255.1`, and hostd is registered with
-  `apiServerName = api.repose.herakraft.co`, the first of
-  `GRPC_SERVER_NAMES`, for which the gRPC certificate is issued from the
-  api's CA at start.
+  `9104:9103` (Configuration -> Network, "Ports Mappings"; a Dockerfile
+  application publishes nothing until they are set); Coolify's health check
+  **off** (same reason); deploy after `api`. The control NSG never opens
+  these ports on the public IP. Docker publishes them on every address, so
+  they are reached on two private ones (DECISIONS I-92): hosts dial the VNet
+  address (`control_private_ip`, `10.200.3.4`) because a host registers
+  before it has a tunnel, and the edge dials the WireGuard address
+  `10.255.255.1`. `GRPC_SERVER_NAMES` therefore lists all three names,
+  `api.repose.herakraft.co,10.255.255.1,10.200.3.4` (the IPs become IP
+  SANs), so the gateway and hostd verify the certificate the app issues
+  from the api's CA at start without a server-name override; hosts also
+  pass `apiServerName = api.repose.herakraft.co`.
 - `web`: domain `https://repose.herakraft.co:3000`; health check path
   `/healthz`, port 3000.
 
