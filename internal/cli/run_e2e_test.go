@@ -118,9 +118,9 @@ func TestRunWithPromptSendsIntoTmuxWindow(t *testing.T) {
 }
 
 // TestRunClaudeNotLoggedInAttachesInstead is 07-cli.md §5.5 step 7: no
-// ~/.claude/.credentials.json in the guest and no CLAUDE_CODE_OAUTH_TOKEN
-// secret means attach instead of sending, so the user can finish the
-// login themselves.
+// ~/.claude/.credentials.json in the guest (the CLI never copies it; it
+// only checks) and no CLAUDE_CODE_OAUTH_TOKEN secret means attach instead
+// of sending, so the user can finish the login themselves.
 func TestRunClaudeNotLoggedInAttachesInstead(t *testing.T) {
 	fake := fakeapi.New(fakeapi.Options{})
 	defer fake.Close()
