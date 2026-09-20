@@ -178,10 +178,18 @@ func (s *Store) Subscribe(opID uuid.UUID) (<-chan Line, func()) {
 	}
 }
 
-// Read returns stored lines with seq > since, in order.
+// Read returns stored lines with seq > since, in order; lines still in
+// the batch are flushed first so a reader never lags the writer by a
+// flush interval.
 func (s *Store) Read(ctx context.Context, opID uuid.UUID, since int64, limit int) ([]Line, error) {
 	if limit <= 0 {
 		limit = 10000
+	}
+	s.mu.Lock()
+	pending := len(s.pending[opID]) > 0
+	s.mu.Unlock()
+	if pending {
+		s.Flush(ctx)
 	}
 	rows, err := s.pool.Query(ctx, "select seq, line from build_logs where op_id = $1 and seq > $2 order by seq limit $3", opID, since, limit)
 	if err != nil {

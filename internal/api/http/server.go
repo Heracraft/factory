@@ -63,7 +63,19 @@ type Deps struct {
 	Gateway  Gateway
 	// Migrations reports pending migrations for /healthz.
 	Migrations func(ctx context.Context) (pending int, err error)
+	// Limits override the documented per-minute rate limits (tests).
+	Limits *RateLimits
 }
+
+// RateLimits are the per-user limits from docs/interfaces/api.md.
+type RateLimits struct {
+	General int
+	Certs   int
+	Config  int
+}
+
+// DefaultRateLimits are 60/min general, 10/min POST /certs, 5/min PUT /config.
+var DefaultRateLimits = RateLimits{General: 60, Certs: 10, Config: 5}
 
 // Server holds the routers.
 type Server struct {
@@ -87,8 +99,12 @@ func New(d Deps) *Server {
 	if d.Gateway.Host == "" {
 		d.Gateway = Gateway{Host: "ssh.repose.herakraft.co", Port: 22}
 	}
+	lim := DefaultRateLimits
+	if d.Limits != nil {
+		lim = *d.Limits
+	}
 	s := &Server{d: d, user: http.NewServeMux(), internal: http.NewServeMux(),
-		general: ratelimit.New(60), certs: ratelimit.New(10), cfg: ratelimit.New(5), sessions: newSessionTracker()}
+		general: ratelimit.New(lim.General), certs: ratelimit.New(lim.Certs), cfg: ratelimit.New(lim.Config), sessions: newSessionTracker()}
 	s.registerUserRoutes()
 	s.registerInternalRoutes()
 	s.user.HandleFunc("GET /healthz", s.healthz)
