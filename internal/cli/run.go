@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -313,10 +314,55 @@ func basenameFromRemote(remote, cwd string) string {
 	return filepath.Base(cwd)
 }
 
+// localTZ returns the laptop's IANA zone name, or "" when it cannot be
+// known, in which case the request omits tz and the api applies its
+// default. Go names time.Local "Local" unless TZ is set, and the previous
+// fallback sent the abbreviation ("EAT"), which the api rightly refuses as
+// not an IANA name (M2 gate, DECISIONS I-104).
 func localTZ() string {
-	name, _ := time.Now().Zone()
+	if z := os.Getenv("TZ"); z != "" && z != "Local" {
+		if _, err := time.LoadLocation(strings.TrimPrefix(z, ":")); err == nil {
+			return strings.TrimPrefix(z, ":")
+		}
+	}
 	if z := time.Local.String(); z != "" && z != "Local" {
+		if _, err := time.LoadLocation(z); err == nil {
+			return z
+		}
+	}
+	if z := tzFromLocaltime("/etc/localtime"); z != "" {
 		return z
 	}
-	return name
+	if b, err := os.ReadFile("/etc/timezone"); err == nil {
+		if z := strings.TrimSpace(string(b)); z != "" {
+			if _, err := time.LoadLocation(z); err == nil {
+				return z
+			}
+		}
+	}
+	return ""
+}
+
+// tzFromLocaltime resolves a /etc/localtime symlink to the zone name after
+// the zoneinfo directory ("/usr/share/zoneinfo/Europe/Paris" and macOS's
+// "/var/db/timezone/zoneinfo/Europe/Paris" both give Europe/Paris).
+func tzFromLocaltime(path string) string {
+	target, err := os.Readlink(path)
+	if err != nil {
+		return ""
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(path), target)
+	}
+	target = filepath.Clean(target)
+	const marker = "/zoneinfo/"
+	i := strings.LastIndex(target, marker)
+	if i < 0 {
+		return ""
+	}
+	z := target[i+len(marker):]
+	if _, err := time.LoadLocation(z); err != nil {
+		return ""
+	}
+	return z
 }
