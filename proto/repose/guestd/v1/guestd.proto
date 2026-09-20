@@ -22,7 +22,13 @@ message Secret { string name = 1; bytes value = 2; }
 message Ping {}
 message Freeze {}
 message Thaw {}
-message Switch { string system_closure = 1; bool force_reboot = 2; }
+// registration: `nix-store --dump-db` of the closure, loaded into the guest's
+// database before the switch so nix knows the paths that arrived through the
+// shared store (DECISIONS I-55). Empty keeps the pre-I-55 behaviour.
+message Switch { string system_closure = 1; bool force_reboot = 2; bytes registration = 3; }
+// RegisterPaths loads a `nix-store --dump-db` listing into the guest's nix
+// database; hostd sends one for the booted closure right after Ready.
+message RegisterPaths { bytes registration = 1; }
 message GrowFs {}
 message WriteSecrets { repeated Secret secrets = 1; }
 message SetPrincipals { repeated string principals = 1; }
@@ -44,6 +50,7 @@ message Request {
     Sample sample = 9;
     Exec exec = 10;
     Shutdown shutdown = 11;
+    RegisterPaths register_paths = 12;
   }
 }
 

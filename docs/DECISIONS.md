@@ -1073,3 +1073,25 @@ directory unconditionally).
 hypervisor is told. hostd now calls `vm.resize-disk` on `_disk0` first; a
 stopped guest picks the size up at its next boot as before.
 
+**I-55. hostd registers the guest's closure in the guest's nix database:
+`RegisterPaths` after `Ready`, and `registration` inside `Switch`.** (m1
+integration, 2026-09-20) Inside the first running guest on host-01,
+`nix path-info /run/current-system` said "is not valid": the guest's
+database is created empty on its thin volume and the shared store puts
+paths on disk without registering them. So `ApplyConfig` failed at
+guestd's `nix-env --set` ("nix-env exited 1"), `home-manager-dev.service`
+failed at every boot, and a user `nix` command touching a system path
+would have tried to fetch it. The host has the metadata: hostd now sends
+`nix-store --dump-db` of the closure (480 KB for the 6 GB base) as
+`RegisterPaths` right after `Ready` and as the `registration` field of
+every `Switch`; guestd runs `nix-store --load-db` (idempotent) and writes
+`/run/repose/paths-registered`, which `repose-paths.service` waits for
+before `home-manager-dev.service` runs. *Rejected:* a registration file in
+the shared store named on the kernel command line (a store path that would
+need its own GC root and a second delivery path); computing hashes in the
+guest (`nix-store --load-db` needs the NAR hashes only the host has);
+skipping `nix-env` in `Switch` (leaves the database wrong for every later
+nix command). Interfaces: `vsock-guestd.md`, `guest-conventions.md`,
+`proto/repose/guestd/v1/guestd.proto` (old shape accepted: an empty
+registration means the previous behaviour).
+

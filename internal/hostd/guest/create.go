@@ -293,6 +293,17 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 
 // deliver sends secrets, principals and the project setup after Ready.
 func (m *Manager) deliver(ctx context.Context, g *state.Guest, sess vsockclient.Session) error {
+	// The booted closure is on disk in the guest but unknown to its nix
+	// database until registered (DECISIONS I-55).
+	reg, err := m.d.Nix.DumpDB(ctx, g.SystemClosure)
+	if err != nil {
+		return fmt.Errorf("nix-store --dump-db: %w", err)
+	}
+	if len(reg) > 0 {
+		if err := sess.RegisterPaths(ctx, reg); err != nil {
+			return fmt.Errorf("RegisterPaths: %w", err)
+		}
+	}
 	if secrets := m.cachedSecrets(g.GuestID); len(secrets) > 0 {
 		if err := sess.WriteSecrets(ctx, secrets); err != nil {
 			return fmt.Errorf("WriteSecrets: %w", err)

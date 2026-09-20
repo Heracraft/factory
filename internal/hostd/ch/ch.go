@@ -167,7 +167,7 @@ func (h *HTTP) putJSON(ctx context.Context, sock, path string, body any) error {
 	if err != nil {
 		return fmt.Errorf("ch api %s: %w", path, err)
 	}
-	defer func() { _ = resp.Body.Close() }()                // body drained below
+	defer func() { _ = resp.Body.Close() }()               // body drained below
 	out, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // error bodies are informational only
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("ch api %s: status %d: %s", path, resp.StatusCode, strings.TrimSpace(string(out)))
