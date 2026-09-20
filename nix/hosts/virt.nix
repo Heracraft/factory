@@ -26,6 +26,11 @@ let
       if ! mountpoint -q ${exportDir}; then
         mount --bind /nix/store ${exportDir}
       fi
+      # The bind starts in /nix/store's peer group (shared propagation), so
+      # the tmpfs mounted over .links below would also appear on
+      # /nix/store/.links and every store write would fail with EROFS
+      # (DECISIONS I-49). Make the export private first.
+      mount --make-private ${exportDir}
       mount -o remount,bind,ro,nosuid,nodev ${exportDir}
       if ! mountpoint -q ${exportDir}/.links; then
         mount -t tmpfs -o ro,nosuid,nodev,noexec,size=4k,mode=0555 repose-links-mask ${exportDir}/.links

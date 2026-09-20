@@ -81,6 +81,10 @@ func Logger() *slog.Logger {
 	return slog.New(h)
 }
 
+// HostNetUnit renders the bridge, sshd and exporter addresses from
+// host.json (workstream 01); hostd restarts it after registering.
+const HostNetUnit = "repose-host-net.service"
+
 // TokenError is returned by EnsureIdentity when the token is refused.
 var TokenError = register.ErrTokenUsed
 
@@ -106,6 +110,16 @@ func EnsureIdentity(ctx context.Context, o Options, log *slog.Logger, r shell.Ru
 		switch {
 		case err == nil:
 			log.Info("registered", "component", "hostd", "event", "register", "host_id", id.Host.HostID)
+			// host.json is the host's runtime network input; the renderer
+			// that reads it must run again now (docs/interfaces/
+			// host-conventions.md, DECISIONS I-18, I-40). When hostd
+			// registers itself instead of repose-register.service, nothing
+			// else would.
+			if cfg.Runner != nil {
+				if _, rerr := cfg.Runner.Run(ctx, "systemctl", "--no-block", "restart", HostNetUnit); rerr != nil {
+					log.Warn("restart of the host network renderer failed", "component", "hostd", "event", "register", "unit", HostNetUnit, "err", rerr.Error())
+				}
+			}
 			return id, nil
 		case errors.Is(err, register.ErrTokenUsed):
 			log.Error("register: join token already used", "component", "hostd", "event", "register")

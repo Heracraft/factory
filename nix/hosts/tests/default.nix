@@ -292,6 +292,10 @@ in
           assert host.succeed("ls /run/repose/store-export | wc -l").strip() != "0"
           host.fail("touch /run/repose/store-export/x")
           host.fail("touch /run/repose/store-export/.links/x")
+          # The mask must not propagate onto the real store (DECISIONS I-49):
+          # nix itself needs to write /nix/store/.links.
+          host.fail("mountpoint -q /nix/store/.links")
+          host.succeed("nix-store --optimise >/dev/null 2>&1 || true; mount -o remount,bind,rw /nix/store; touch /nix/store/.links/probe; rm /nix/store/.links/probe; mount -o remount,bind,ro /nix/store")
 
       with subtest("a transient guest unit survives hostd restart and kill"):
           host.succeed("systemd-run --unit guest@test --slice guests.slice sleep infinity")

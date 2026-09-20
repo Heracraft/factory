@@ -1001,3 +1001,15 @@ contract, found by reading them side by side:
   the command list from `host-conventions.md` "Network", verbatim.
   Interface text unchanged; the code follows the doc.
 
+**I-49. The store export bind is made private before `.links` is masked.**
+(m1 integration, 2026-09-20) On host-01 every store write failed with
+`Read-only file system` on `/nix/store/.links`: the tmpfs mask
+`repose-store-export.service` mounts over `/run/repose/store-export/.links`
+had propagated onto `/nix/store/.links`, because a bind mount joins its
+source's peer group and NixOS mounts `/` shared. `nix copy` into the host,
+`nix-store --optimise` and hostd's `Build` all write there. The unit now
+runs `mount --make-private` on the export before the remount and the mask,
+and the host-services VM test asserts `/nix/store/.links` is not a mount
+point. *Rejected:* dropping the mask (the enumeration leak 01 §5 closes);
+masking with a bind of an empty directory (propagates the same way).
+
