@@ -70,7 +70,9 @@ scrape_configs:
         replacement: "${1}:2021"
 
   # The edge: the gateway's sessions and auth failures. One edge, so it is a
-  # static target; its WireGuard address is the hub's own (10.255.0.1).
+  # static target. The address is the WireGuard hub's own; workstream 06 owns
+  # the 10.255.0.0/16 plan, so confirm it against `wg show wg0` on the edge
+  # before believing a job that is down.
   - job_name: gateway
     static_configs:
       - targets: ["10.255.0.1:9102"]
@@ -80,6 +82,8 @@ scrape_configs:
   # The Coolify VM: the api. It is a WireGuard peer of the edge for this
   # scrape and for nothing else (docs/workstreams/10-observability.md §2);
   # its HTTP surface is reached by users over the internet, not from here.
+  # The address is whatever the edge's pool gives it (workstream 06); this is
+  # the convention ops/prometheus/wireguard-peer.conf writes down.
   - job_name: api
     static_configs:
       - targets: ["10.255.0.2:9103"]
