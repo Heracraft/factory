@@ -1,0 +1,35 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: repose
+    main: ./cmd/repose
+    binary: repose
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: repose
+    ids: [repose]
+    formats: [tar.gz]
+    # .Tag, not .Version: install.sh resolves "latest" to the literal git
+    # tag (via the releases/latest redirect) and needs the archive name to
+    # match byte for byte, prefix included.
+    name_template: "repose_{{ .Tag }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  disable: true

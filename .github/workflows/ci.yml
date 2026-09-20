@@ -1,7 +1,10 @@
-# The four checks docs/CHECKLIST.md asks for, on every push to main and every
+# The checks docs/CHECKLIST.md asks for, on every push to main and every
 # pull request. VM tests under nix/ need KVM, which hosted runners lack, so
 # the Nix job evaluates every output without building; the VM tests run on
-# the dev box and on hosts (docs/ops/DEV-BOX.md).
+# the dev box and on hosts (docs/ops/DEV-BOX.md). The `cli` and
+# `cli-completions` jobs are 07-cli.md's release checklist: the GoReleaser
+# matrix, install.sh on both platforms, `nix run .#repose`, and every
+# completion script loading cleanly.
 
 name: ci
 
@@ -101,3 +104,81 @@ jobs:
         run: |
           nix profile install nixpkgs#cachix
           nix build --print-out-paths --no-link ./nix#claude-code ./nix#opencode ./nix#codex ./nix#gemini-cli ./nix#pi-coding-agent ./nix#chrome-devtools-mcp ./nix#playwright-mcp             | cachix push repose
+
+  cli-goreleaser:
+    name: cli GoReleaser matrix build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: build --snapshot --clean
+      - name: assert all four targets built
+        run: |
+          test -x dist/repose_darwin_amd64_v1/repose
+          test -x dist/repose_darwin_arm64_v8.0/repose
+          test -x dist/repose_linux_amd64_v1/repose
+          test -x dist/repose_linux_arm64_v8.0/repose
+
+  cli-nix-run:
+    name: nix run .#repose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - run: nix run "git+file://$GITHUB_WORKSPACE?dir=nix#repose" -- version
+
+  cli-install:
+    name: install.sh (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build and package a fake release, like GoReleaser would
+        run: |
+          set -e
+          case "$(uname -s)" in Darwin) os=darwin ;; Linux) os=linux ;; esac
+          case "$(uname -m)" in x86_64|amd64) arch=amd64 ;; arm64|aarch64) arch=arm64 ;; esac
+          mkdir -p /tmp/fake-release
+          go build -ldflags "-s -w -X main.version=v0.0.0-ci" -o /tmp/fake-release/repose ./cmd/repose
+          tar -czf "/tmp/fake-release/repose_v0.0.0-ci_${os}_${arch}.tar.gz" -C /tmp/fake-release repose
+          (cd /tmp/fake-release && shasum -a 256 "repose_v0.0.0-ci_${os}_${arch}.tar.gz" > checksums.txt)
+      - name: serve it locally
+        run: |
+          cd /tmp/fake-release && nohup python3 -m http.server 8791 > /tmp/http.log 2>&1 &
+          sleep 1
+      - name: install.sh --version v0.0.0-ci
+        env:
+          REPOSE_INSTALL_BASE_URL: http://127.0.0.1:8791
+        run: sh install.sh --version v0.0.0-ci
+      - name: repose version prints the tag
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          repose version | grep -q 'v0.0.0-ci'
+
+  cli-completions:
+    name: shell completions load in bash, zsh, fish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: sudo apt-get update && sudo apt-get install -y zsh fish
+      - run: go build -o /tmp/repose ./cmd/repose
+      - run: /tmp/repose completion bash > /tmp/repose.bash && bash -c "source /tmp/repose.bash"
+      - run: /tmp/repose completion zsh > /tmp/repose.zsh && zsh -c "autoload -U compinit && compinit -u && source /tmp/repose.zsh"
+      - run: /tmp/repose completion fish > /tmp/repose.fish && fish -c "source /tmp/repose.fish"

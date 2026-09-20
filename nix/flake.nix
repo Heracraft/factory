@@ -127,7 +127,7 @@
       }).guestSystem;
 
       packages.${system} = {
-        inherit (goPkgs) guestd repose-hook hostd hostdev api repose-admin;
+        inherit (goPkgs) guestd repose-hook hostd hostdev api repose-admin repose;
         # Workstream 01's stand-in, kept for the host VM tests.
         hostd-stub = pkgs.callPackage ./hosts/hostd-stub.nix { };
         # A runner with an empty fragment: what `nix build .#guest-runner`
