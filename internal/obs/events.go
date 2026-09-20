@@ -64,9 +64,9 @@ const (
 	EventBillingStopped  = "billing_stopped"
 	EventBillingMismatch = "billing_mismatch"
 	EventBillingEnforce  = "billing_enforce"
-	EventNotifySend    = "notify_send"
-	EventNotifyFail    = "notify_fail"
-	EventAdminAction   = "admin_action"
+	EventNotifySend      = "notify_send"
+	EventNotifyFail      = "notify_fail"
+	EventAdminAction     = "admin_action"
 	// EventPartitionDropFail is the §6 failure mode: the meter_samples or
 	// proc_samples partition drop did not run, so disk grows and nothing
 	// else breaks.
