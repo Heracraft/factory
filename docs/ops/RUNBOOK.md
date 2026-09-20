@@ -361,7 +361,7 @@ are dropped.
    has been recorded. Fix it centrally with `repose-admin edge loki
    http://<loki>:3100` — a host picks it up at its next `Rotate`, or
    immediately by editing `host.json` and `systemctl restart
-   repose-host-net` (DECISIONS I-95).
+   repose-host-net` (DECISIONS I-97).
 5. Guests are unaffected throughout: nothing in a guest waits on log
    shipping.
 
@@ -480,7 +480,7 @@ list`.
    <name> --reissue` for M1, `repose-admin hosts add --reissue` once the api
    exists), put it in `infra/azure/prod/prod.local.tfvars` and
    `make -C infra apply ENV=prod` (only the token-delivery step re-runs), or
-   by hand `install -d -m 0700 /run/repose && umask 077 && cat >
+   by hand `install -d -m 0755 /run/repose && umask 077 && cat >
    /run/repose/join-token` and `systemctl restart hostd`. The token is never
    passed as a command-line argument, so it does not land in a shell history
    or an apply log.
