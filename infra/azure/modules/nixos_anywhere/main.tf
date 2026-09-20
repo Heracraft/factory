@@ -36,15 +36,21 @@ locals {
   authorized_keys = join("\n", var.authorized_keys)
 }
 
-# Wait until cloud-init has finished on the Ubuntu image, so root's
-# authorized_keys is in place before nixos-anywhere tries to log in.
+# Wait until cloud-init has finished on the Ubuntu image, then put the
+# operator keys on root ourselves. Connecting as root at this point is a race
+# the first apply lost: until cloud-init's ssh module has run, root's
+# authorized_keys is the image's forced-command line that refuses everything
+# with "Please login as the user azureuser", and remote-exec treats that as a
+# hard failure rather than a retry. The provisioning user is always let in,
+# and installing the keys here also repairs a VM whose cloud-init ran with an
+# older template.
 resource "terraform_data" "wait_for_cloud_init" {
   triggers_replace = var.triggers
 
   connection {
     type                = "ssh"
     host                = var.target_host
-    user                = var.target_user
+    user                = var.bootstrap_user
     port                = 22
     private_key         = file(var.ssh_private_key_path)
     timeout             = var.connect_timeout
@@ -54,10 +60,20 @@ resource "terraform_data" "wait_for_cloud_init" {
     bastion_private_key = var.jump_host == null ? null : file(var.ssh_private_key_path)
   }
 
+  provisioner "file" {
+    content     = "${local.authorized_keys}\n"
+    destination = "/tmp/repose-root-authorized_keys"
+  }
+
   provisioner "remote-exec" {
     inline = [
-      "cloud-init status --wait >/dev/null 2>&1 || true",
-      "test -s /root/.ssh/authorized_keys",
+      "sudo cloud-init status --wait >/dev/null 2>&1 || true",
+      "sudo install -d -m 0700 -o root -g root /root/.ssh",
+      "sudo install -m 0600 -o root -g root /tmp/repose-root-authorized_keys /root/.ssh/authorized_keys",
+      "rm -f /tmp/repose-root-authorized_keys",
+      "sudo test -s /root/.ssh/authorized_keys",
+      "! sudo grep -q 'Please login as the user' /root/.ssh/authorized_keys",
+      "sudo systemctl restart ssh || sudo systemctl restart sshd",
     ]
   }
 }

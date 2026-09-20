@@ -10,6 +10,10 @@
 # its public half is written to /etc/wireguard/publickey for the operator to
 # add as a peer on the edge.
 ssh_pwauth: false
+# Ubuntu images default to disable_root: true, whose ssh module runs after
+# write_files and replaces root's authorized_keys with a forced-command line
+# ("Please login as the user azureuser"). That is what the first apply hit.
+disable_root: false
 package_update: true
 packages:
   - ca-certificates

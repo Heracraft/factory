@@ -101,3 +101,9 @@ variable "triggers" {
   description = "Values that force a reinstall when they change (VM id, flake attribute)."
   type        = any
 }
+
+variable "bootstrap_user" {
+  description = "The image's provisioning user, which cloud images always let in. Used only to wait for cloud-init and to put the operator keys on root before nixos-anywhere logs in as target_user."
+  type        = string
+  default     = "azureuser"
+}
