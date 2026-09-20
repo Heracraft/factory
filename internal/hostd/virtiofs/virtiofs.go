@@ -35,7 +35,13 @@ func Start(ctx context.Context, sd systemd.Systemd, cfg Config, guestID, socket 
 		bin = "virtiofsd"
 	}
 	props := []string{"User=" + cfg.User, "Group=" + cfg.Group, "MemoryMax=1G", "Slice=guests.slice"}
-	argv := []string{bin, "--socket-path", socket, "--shared-dir", cfg.SharedDir, "--sandbox", "namespace", "--cache", "auto", "--xattr"}
+	// --no-announce-submounts: the export masks .links with a tmpfs mount
+	// (host-conventions.md). Announced, the guest sees it as a separate
+	// virtiofs mount inside the overlay's lower layer, and overlayfs answers
+	// every lookup crossing into it with EREMOTE ("Object is remote"), which
+	// killed the guest's nix-daemon at its first mkdir of /nix/store/.links
+	// (DECISIONS I-53). Flattened, it is an empty directory like any other.
+	argv := []string{bin, "--socket-path", socket, "--shared-dir", cfg.SharedDir, "--sandbox", "namespace", "--cache", "auto", "--xattr", "--no-announce-submounts"}
 	return sd.Run(ctx, Unit(guestID), props, argv)
 }
 

@@ -1050,3 +1050,18 @@ booted guest on host-01 failed create at step 10. The dev-socket mode and
 the QEMU VM test never exercise the vsock bind, which is why it survived
 until a real host. The listener now binds `VMADDR_CID_ANY`.
 
+**I-53. virtiofsd does not announce submounts.** (m1 integration,
+2026-09-20) Inside the first running guest on host-01 every nix client got
+`Connection reset by peer` and `journalctl -u nix-daemon` said `creating
+directory "/nix/store/.links": Object is remote`. The store export masks
+`.links` with a tmpfs (01 §5), virtiofsd 1.14 announces that mountpoint to
+the guest by default, the guest kernel mounts it as its own virtiofs
+submount under `/nix/.ro-store/.links`, and overlayfs refuses lookups that
+cross a mount boundary inside a lower layer with EREMOTE. The nix daemon
+creates `.links` at startup, so it died on every connection, which also
+failed `home-manager-dev.service` at boot. hostd now passes
+`--no-announce-submounts`; the guest sees an ordinary empty directory and
+the enumeration leak stays closed. *Rejected:* dropping the mask (01 §5's
+reason stands); a guest-side `nix.conf` workaround (the daemon creates the
+directory unconditionally).
+
