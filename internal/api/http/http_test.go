@@ -627,6 +627,15 @@ func TestSignInAndProjectsLifecycle(t *testing.T) {
 		t.Fatalf("restore as new: %d %s", r.status, r.raw)
 	}
 	newID := r.body["project_id"].(string)
+	// The source is destroyed, so its closure has no GC root on the host
+	// (I-115): the restore plan must build before it restores and boots.
+	var phases []string
+	if err := e.h.Pool.QueryRow(ctx, "select array(select jsonb_array_elements_text(params->'phases')) from ops where id = $1", r.body["op_id"].(string)).Scan(&phases); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(phases, ",") != "build,restore,start_guest" {
+		t.Fatalf("restore-as-new of a destroyed project planned %v, want build,restore,start_guest", phases)
+	}
 	if op := e.waitOp(t, r); op.State != "done" {
 		t.Fatalf("restore op: %+v", op.Error)
 	}

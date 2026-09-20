@@ -211,7 +211,10 @@ func ensureRunning(ctx context.Context, e *Env, project *Project) error {
 	// in flight; starting it again is the conflict the first real run hit
 	// ("recruiting is already starting", DECISIONS I-106). Wait on that op
 	// when the api named it, otherwise on the state, then re-read.
-	if project.State == "creating" || project.State == "starting" {
+	// "building" is the create op's first phase (05 §5.3): the project is
+	// in it a moment after POST /projects answers "creating", which is what
+	// the first M3 run hit (DECISIONS I-114).
+	if project.State == "creating" || project.State == "building" || project.State == "starting" {
 		if project.OpID != "" {
 			op, err := waitOp(ctx, e.Client, project.ID, project.OpID, e.Out)
 			if err != nil {
@@ -271,7 +274,7 @@ func waitState(ctx context.Context, c *Client, project *Project) error {
 			return err
 		}
 		*project = *p
-		if p.State != "creating" && p.State != "starting" && p.State != "stopping" {
+		if p.State != "creating" && p.State != "building" && p.State != "starting" && p.State != "stopping" {
 			return nil
 		}
 		select {

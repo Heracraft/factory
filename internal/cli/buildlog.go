@@ -117,17 +117,35 @@ func urlEscape(s string) string {
 
 var fragmentRefRe = regexp.MustCompile(`fragment\.nix:(\d+)(?::(\d+))?`)
 
+// buildErrorPrefix is the CLI prefix nix-build-contract.md "What the user
+// reads" gives each code: config errors and the api's own refusal of a
+// fragment get "config error: ", the closure cap "config too large: ", a
+// failed or timed-out build nothing (its summary line names itself), and
+// anything else the plain "error: ".
+func buildErrorPrefix(code string) string {
+	switch code {
+	case "eval_failed", "invalid":
+		return "config error: "
+	case "closure_too_large":
+		return "config too large: "
+	case "build_failed", "build_timeout":
+		return ""
+	default:
+		return "error: "
+	}
+}
+
 // RenderBuildError implements 07-cli.md §5.8's error block: the message
 // (with the internal "fragment.nix" name swapped for the user's own
 // fragment file), the marked line with two lines of context when the
 // fragment source is available, and exit 10.
-func RenderBuildError(w io.Writer, message, localFragmentPath string, fragmentSource []byte) {
+func RenderBuildError(w io.Writer, code, message, localFragmentPath string, fragmentSource []byte) {
 	base := filepath.Base(localFragmentPath)
 	if base == "" || base == "." {
 		base = "repose.nix"
 	}
 	display := strings.ReplaceAll(message, "fragment.nix", base)
-	_, _ = fmt.Fprintf(w, "error: %s\n", firstLine(display)) // best effort: w is the user's terminal
+	_, _ = fmt.Fprintf(w, "%s%s\n", buildErrorPrefix(code), firstLine(display)) // best effort: w is the user's terminal
 
 	m := fragmentRefRe.FindStringSubmatch(message)
 	if m == nil {
