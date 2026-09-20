@@ -25,13 +25,13 @@ locals {
       "UserKnownHostsFile=/dev/null",
       "ConnectTimeout=10",
     ],
-    # ProxyCommand rather than ProxyJump: the jump connection ProxyJump opens
-    # does not inherit the -o options on the command line, so it refused the
-    # edge's host key after the edge was reinstalled and nixos-anywhere
-    # looped on "Host key verification failed". Spelling the jump out lets
-    # the same two options apply to it.
+    # ProxyJump, with the jump host's key pre-recorded by the install step
+    # below. A ProxyCommand carrying the same -o options was tried first and
+    # fails in nix copy: nix splits NIX_SSHOPTS on whitespace, so a value
+    # with spaces becomes stray ssh arguments ("Bad stdio forwarding
+    # specification '%h:%p'").
     var.jump_host == null ? [] : [
-      "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i ${var.ssh_private_key_path} -W %h:%p -p ${var.jump_port} ${var.jump_user}@${var.jump_host}",
+      "ProxyJump=${var.jump_user}@${var.jump_host}:${var.jump_port}",
     ],
   )
 
@@ -98,6 +98,15 @@ resource "terraform_data" "install" {
     command = <<-EOT
       extra=$(mktemp -d)
       trap 'rm -rf "$extra"' EXIT
+      # The jump connection ProxyJump opens ignores the -o options above, so
+      # it checks the jump host against ~/.ssh/known_hosts; record the edge's
+      # current key there (it changes on every reinstall).
+      %{if var.jump_host != null~}
+      mkdir -p ~/.ssh && touch ~/.ssh/known_hosts
+      ssh-keygen -R '[${var.jump_host}]:${var.jump_port}' >/dev/null 2>&1 || true
+      ssh-keygen -R '${var.jump_host}' >/dev/null 2>&1 || true
+      ssh-keyscan -T 15 -p ${var.jump_port} '${var.jump_host}' >> ~/.ssh/known_hosts 2>/dev/null
+      %{endif~}
       mkdir -p "$extra/root/.ssh"
       printf '%s\n' "$REPOSE_AUTHORIZED_KEYS" > "$extra/root/.ssh/authorized_keys"
       chmod 700 "$extra/root/.ssh"
