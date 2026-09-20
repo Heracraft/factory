@@ -68,8 +68,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Pinned to the dev box's Nix: relative path inputs (the fragment
+      # placeholder, DECISIONS I-28) are locked as "./..." entries that older
+      # releases reject as unlocked.
       - uses: cachix/install-nix-action@v27
         with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
           extra_nix_config: |
             experimental-features = nix-command flakes
             system-features = kvm
