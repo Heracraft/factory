@@ -443,7 +443,7 @@
     {
       "type": "state-timeline",
       "title": "Guest state and guestd",
-      "description": "The guest's own state, with the gaps where guestd was unreachable. Samples continue during those gaps; the signals inside them do not. A null guestd_ok is a sample from before the column existed, which is unknown rather than lost (DECISIONS I-51).",
+      "description": "The guest's own state, with the gaps where guestd was unreachable. Samples continue during those gaps; the signals inside them do not. A null guestd_ok is a sample from before the column existed, which is unknown rather than lost (DECISIONS I-54).",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "repose-postgres"

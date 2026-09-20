@@ -136,6 +136,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v27
         with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
           extra_nix_config: |
             experimental-features = nix-command flakes
       - run: nix run "git+file://$GITHUB_WORKSPACE?dir=nix#repose" -- version

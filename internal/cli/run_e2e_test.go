@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	fakeapi "github.com/heracraft/repose/internal/fakes/api"
 )
@@ -139,9 +140,19 @@ func TestRunClaudeNotLoggedInAttachesInstead(t *testing.T) {
 		t.Fatalf("expected the not-logged-in message, got: %s", out.String())
 	}
 
-	exists, err := windowExists(ctx, f.target, testSlug, "claude")
-	if err != nil {
-		t.Fatal(err)
+	// tmux creates the window asynchronously to the client's return; on a
+	// slow runner the first look can miss it (CI, 2026-09-20).
+	var exists bool
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		var err error
+		exists, err = windowExists(ctx, f.target, testSlug, "claude")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if exists || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 	if !exists {
 		t.Fatal("expected a claude window to be opened even though the prompt was not sent")
