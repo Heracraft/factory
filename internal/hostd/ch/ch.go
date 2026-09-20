@@ -67,7 +67,10 @@ func (s Spec) Args() []string {
 		"--cmdline", s.Cmdline(),
 		"--cpus", fmt.Sprintf("boot=%d", s.VCPUs),
 		"--memory", fmt.Sprintf("size=%dM,shared=on", s.MemMiB),
-		"--disk", "path=" + s.VolumeDev,
+		// image_type=raw: Cloud Hypervisor 53 refuses sector-0 writes on a
+		// disk whose type it auto-detected, and ext4 keeps its superblock
+		// there (DECISIONS I-51).
+		"--disk", "path=" + s.VolumeDev + ",image_type=raw",
 		"--net", fmt.Sprintf("tap=%s,mac=%s", s.Tap, s.MAC),
 		"--fs", fmt.Sprintf("tag=%s,socket=%s", s.StoreTag, VirtiofsSocket(s.GuestDir)),
 		"--vsock", fmt.Sprintf("cid=%d,socket=%s", s.CID, VsockSocket(s.GuestDir)),

@@ -138,7 +138,7 @@ hostd renders the `cloud-hypervisor` argv from the guest's system closure
 (`kernel`, `initrd`, `init`, `kernel-params`) and its record (DECISIONS
 I-27) and runs it with `systemd-run --unit guest@<id> --property
 MemoryMax=<class RAM + 512M> --property CPUQuota=<vcpus*100>% --property
-Slice=guests.slice`. The devices: `--disk path=/dev/vg-guests/g-<id>`,
+Slice=guests.slice`. The devices: `--disk path=/dev/vg-guests/g-<id>,image_type=raw` (I-51),
 `--net tap=tap-<8hex>,mac=52:54:<4 bytes of id>`, `--fs tag=ro-store,socket=
 virtiofsd/virtiofsd.sock`, `--vsock cid=<1000+index>,socket=vsock.sock`, `--serial
 socket=console.sock`, `--memory size=<RAM>M,shared=on`. The CH API socket

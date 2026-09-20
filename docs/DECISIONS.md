@@ -1033,3 +1033,12 @@ socket activation through a transient socket unit (an fd-passing path
 nothing else in hostd uses). Interface: `host-conventions.md` (guest
 directory row and the CH invocation).
 
+**I-51. The guest disk is passed to Cloud Hypervisor with
+`image_type=raw`.** (m1 integration, 2026-09-20) With the type
+auto-detected, Cloud Hypervisor 53 logs "Autodetected raw image type.
+Disabling sector 0 writes" and rejects the guest's first write to sector 0;
+ext4 keeps its primary superblock there, so `/sysroot` failed to mount with
+`I/O error, dev vda, sector 0` and the initrd dropped to emergency mode
+(console log of host-01's second guest). hostd names the type explicitly
+in `ch.args`. Interface: `host-conventions.md` (the CH invocation).
+
