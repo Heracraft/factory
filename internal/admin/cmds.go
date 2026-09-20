@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/curve25519"
 
+	"github.com/heracraft/repose/internal/api/auth"
 	"github.com/heracraft/repose/internal/api/ca"
 	"github.com/heracraft/repose/internal/api/hostmgr"
 	"github.com/heracraft/repose/internal/api/meter"
@@ -551,6 +552,32 @@ func (e *Env) projects(ctx context.Context, args []string) error {
 			_, err = e.enqueue(ctx, ops.NewOp{Kind: ops.KindSnapshot, ProjectID: &pid, Params: map[string]any{"reason": "manual"}, Phases: ops.PlanSnapshot()}, true)
 		}
 		return err
+	case "destroy":
+		// The same op DELETE /projects/:id enqueues: final snapshot (or stop)
+		// then DestroyGuest; the last snapshot is kept 30 days (R4-11). For a
+		// project stuck in `error` whose owner cannot or will not click.
+		fs, err := flagsFor("projects destroy", args[1:], func(fs *flag.FlagSet) {
+			fs.Bool("wait", true, "wait for the op to finish")
+		})
+		if err != nil || fs.NArg() < 1 {
+			return fmt.Errorf("%w: projects destroy ID|SLUG", ErrUsage)
+		}
+		p, err := e.findProject(ctx, fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		pid := p.ID
+		if _, err := e.audited(ctx, "project_destroy", pid.String(), map[string]any{"state": p.State}); err != nil {
+			return err
+		}
+		op, err := e.enqueue(ctx, ops.NewOp{Kind: ops.KindDestroy, ProjectID: &pid, Phases: ops.PlanDestroy(p)}, fs.Lookup("wait").Value.String() == "true")
+		if err != nil {
+			return err
+		}
+		if op != nil {
+			_, _ = fmt.Fprintf(e.Stdout, "destroy %s: %s\n", p.Slug, op.State)
+		}
+		return nil
 	case "resize":
 		fs, err := flagsFor("resize", args[1:], func(fs *flag.FlagSet) { fs.Int64("bytes", 0, "new volume size") })
 		if err != nil || fs.NArg() < 1 {
@@ -823,6 +850,47 @@ func (e *Env) users(ctx context.Context, args []string) error {
 		_, err = e.audited(ctx, "user_unsuspend", u.Handle, nil)
 		_, _ = fmt.Fprintf(e.Stdout, "%s unsuspended\n", u.Handle)
 		return err
+	case "rename":
+		// The handle is fixed at first sign-in from the identity the provider
+		// reported (auth.Provisioner), so a first sign-in without a GitHub
+		// identity leaves a `user-<sub>` handle for ever, and a user row
+		// cannot be deleted (the credit ledger references it and is
+		// append-only). Rename while the user has no projects: the handle is
+		// the SSH login suffix and the certificate key_id, both minted per
+		// project (I-98).
+		fs, err := flagsFor("users rename", args[1:], func(fs *flag.FlagSet) {
+			fs.String("github-login", "", "also record the GitHub login (defaults to the new handle)")
+		})
+		if err != nil || fs.NArg() < 2 {
+			return fmt.Errorf("%w: users rename OLD NEW [--github-login L]", ErrUsage)
+		}
+		u, err := e.findUser(ctx, fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		newHandle := fs.Arg(1)
+		if auth.DeriveHandle(newHandle) != newHandle {
+			return fmt.Errorf("%w: %q is not a valid handle (lowercase [a-z0-9-], at most 32)", ErrUsage, newHandle)
+		}
+		var n int
+		if err := e.pool.QueryRow(ctx, "select count(*) from projects where user_id = $1", u.ID).Scan(&n); err != nil {
+			return err
+		}
+		if n > 0 {
+			return fmt.Errorf("%s has %d projects; a handle with projects is not renamed", u.Handle, n)
+		}
+		gh := fs.Lookup("github-login").Value.String()
+		if gh == "" {
+			gh = newHandle
+		}
+		if _, err := e.pool.Exec(ctx, "update users set handle = $2, github_login = $3, updated_at = now() where id = $1", u.ID, newHandle, gh); err != nil {
+			return err
+		}
+		if _, err := e.audited(ctx, "user_rename", newHandle, map[string]any{"from": u.Handle}); err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintf(e.Stdout, "%s is now %s (github_login %s)\n", u.Handle, newHandle, gh)
+		return nil
 	case "exempt":
 		if len(args) < 2 {
 			return ErrUsage

@@ -87,6 +87,18 @@ func TestAdminSurface(t *testing.T) {
 	if _, err := run(t, e, "users", "limits", "zed", "--projects", "10", "--xl", "10"); err != nil {
 		t.Fatal(err)
 	}
+	// rename: only while the user has no projects; the new handle must be
+	// a valid handle (I-98).
+	h.NewUser("user-abc123")
+	if _, err := run(t, e, "users", "rename", "user-abc123", "Not Valid"); err == nil {
+		t.Fatal("rename to an invalid handle should refuse")
+	}
+	if out, err := run(t, e, "users", "rename", "user-abc123", "octocat"); err != nil || !strings.Contains(out, "is now octocat") {
+		t.Fatalf("rename: %s %v", out, err)
+	}
+	if out, err := run(t, e, "users", "show", "octocat"); err != nil || !strings.Contains(out, "octocat") {
+		t.Fatalf("show after rename: %s %v", out, err)
+	}
 	uu, _ := store.GetUser(ctx, h.Pool, u.ID)
 	if uu.BillingStatus != "exempt" || uu.ProjectLimit != 10 || uu.XLLimit != 10 {
 		t.Fatalf("user after admin: %+v", uu)
@@ -125,6 +137,18 @@ func TestAdminSurface(t *testing.T) {
 	}
 	if out, err := run(t, e, "ops", "list", "--project", "zp"); err != nil || !strings.Contains(out, "restore") {
 		t.Fatalf("ops list: %s %v", out, err)
+	}
+	if _, err := run(t, e, "users", "rename", "zed", "zed2"); err == nil {
+		t.Fatal("rename of a user with projects should refuse")
+	}
+	// destroy: the DELETE /projects op from the admin, for a row an owner
+	// cannot or will not remove (I-98).
+	p2 := h.CreateRunning(u, "zq")
+	if out, err := run(t, e, "projects", "destroy", "zq"); err != nil || !strings.Contains(out, "destroy zq: done") {
+		t.Fatalf("destroy: %s %v", out, err)
+	}
+	if st := h.Project(p2.ID).State; st != "destroyed" {
+		t.Fatalf("state after destroy: %s", st)
 	}
 	if _, err := run(t, e, "users", "suspend", "zed", "--reason", "abuse"); err != nil {
 		t.Fatalf("suspend: %v", err)

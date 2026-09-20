@@ -2238,3 +2238,28 @@ them (scope, in a session whose job is to close what exists); deleting
 the promises without trace (the reasoning behind per-channel delivery
 status — a support call the platform cannot otherwise answer — is worth
 keeping).
+
+**I-98. A first sign-in without a GitHub identity gets a `user-<sub>` handle;
+`repose-admin users rename` and `projects destroy` exist for the operator
+to put that right.** (m2 integration, 2026-09-20) Before the gate, the
+production database held one user, `user-c7fh26yzrl93`, from the owner's
+afternoon dashboard sign-in. Logto's Management API for that subject shows
+`identities: []` and `username: null`: the account was created with email,
+not through the GitHub connector, so `auth.Provisioner`'s fallback did what
+it says, and the handle, which is the SSH login suffix and the certificate
+`key_id`, is fixed at first sign-in and never rederived. A user row cannot
+be deleted (the trial credit's ledger row references it and the ledger is
+append-only, I-78), so the repair is `repose-admin users rename OLD NEW
+[--github-login L]`, refused once the user has projects. The same session
+found no admin way to remove a project whose create failed (`projects` had
+start/stop/restart/snapshot/resize/move/restore/exec); `projects destroy
+ID` enqueues the op `DELETE /projects/:id` would. Both are listed in
+`repose-admin`'s usage. What the owner does in Logto: sign in with GitHub
+(Console → Sign-in experience → Sign-up and sign-in: GitHub under social
+sign-in, and the GitHub connector enabled), or link GitHub on the existing
+account; either way the api's row keeps its handle until renamed.
+*Rejected:* rederiving the handle at every sign-in (a login name that
+changes under a user's SSH config); deleting the user (the ledger);
+provisioning only when a GitHub identity is present (an email sign-in to
+the dashboard must still work, and the handle fallback is the documented
+shape for it).

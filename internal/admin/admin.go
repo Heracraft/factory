@@ -50,9 +50,9 @@ const Usage = `repose-admin <command> [args]
   db        migrate | status | rollback --to NNNN | down [n] | verify
   hosts     add --name N [--provider p --sku s --region r] [--reissue] | list | drain N | undrain N | retire N | mark-lost N | reconcile N [--fix] | rotate-cert N | rotate-wg N | smoke N
   projects  list [--host N] [--sort disk|closure] | show ID|SLUG | start ID | stop ID [--no-snapshot] | restart ID | snapshot ID | resize ID --bytes B
-            move ID --to N | restore ID [--snapshot SID | --latest] [--to N] | exec ID -- ARGV...
+            move ID --to N | restore ID [--snapshot SID | --latest] [--to N] | destroy ID [--wait=false] | exec ID -- ARGV...
   exec      ID -- ARGV...
-  users     list | show HANDLE | suspend HANDLE --reason R | unsuspend HANDLE | exempt HANDLE | limits HANDLE --projects N --xl N
+  users     list | show HANDLE | suspend HANDLE --reason R | unsuspend HANDLE | exempt HANDLE | limits HANDLE --projects N --xl N | rename OLD NEW [--github-login L] (no projects)
   certs     revoke --user HANDLE
   secrets   rewrap
   billing   rollup [--hour 2026-09-17T14] | credit HANDLE CENTS REASON | explain PROJECT 2026-09-17T14
