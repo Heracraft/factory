@@ -1727,3 +1727,46 @@ there (two packages owning one rule); computing the period from
 `created_at` at read time instead of storing it (a period boundary that
 moves when an anchor is corrected silently reprices history); renaming a
 dozen deployed metric families for one workstream's original wording.
+**I-61. The api's user-facing routes answer CORS on every response, with a
+wildcard origin.** (08, found running the dashboard against a real browser)
+`repose.herakraft.co` and `api.repose.herakraft.co` are different origins,
+and nothing in 05's implementation or `api.md` set a CORS header, so a
+browser blocks the dashboard's very first `fetch` with `blocked by CORS
+policy` — a login was never enough to reach `GET /me`; every request failed
+before this fix, found only because 08 ran the real Logto-plus-fetch flow
+in an actual browser rather than trusting `internal/fakes/api`, which had
+the same gap and returned successful test runs anyway. `Server.wrap`'s
+`http` branch (not `internal`, which the gateway calls over mTLS, never a
+browser) now sets `Access-Control-Allow-Origin: *`,
+`Access-Control-Allow-Methods`, and `Access-Control-Allow-Headers:
+Authorization, Content-Type` on every response, and answers `OPTIONS`
+preflights with 204 before the request reaches the mux (which has no
+`OPTIONS` handlers registered and would otherwise 404 them).
+`internal/fakes/api` gets the same middleware, so a consumer testing
+against the fake sees the same behavior the real api now has. *Rejected:*
+an explicit origin allowlist (every route here is bearer-token
+authenticated, never cookie-based, so a wildcard origin leaks no ambient
+credential a page could ride on; an allowlist only adds an origin to
+maintain in step with `repose.herakraft.co`'s eventual own domain, DESIGN
+§16); a reverse proxy adding the header in front of Coolify (a second place
+to keep in sync with the route list, for a header the api can set once).
+Interface: none changed, `api.md`'s routes and bodies are the same; this is
+a missing behavior the doc's "cli, dashboard, gateway" consumer list already
+implied.
+
+**I-62. `internal/fakes/api`'s catalog gains `kind` and `options`, and a
+fragment containing `repose-force-eval-error` answers the first canonical
+`eval_failed` message instead of applying.** (08) Two gaps between the fake
+and what it fakes, found writing the dashboard's tests against it:
+`CatalogItem` predated I-44 and had no `kind` or `options` field, so the
+Menu tab's "Services" grouping and per-package option selects (config.md
+"Menu versus fragment") had nothing to render; and `PUT /config` always
+answered `applied` with no way to reach the config page's error-block and
+fragment-line-highlight path (nix-build-contract.md "What the user reads")
+without a real Nix evaluation. Both are additions to the fake only —
+`api.md` already documented `kind`/`options`, and nix-build-contract.md's
+messages are unchanged, so no interface doc moves. *Rejected:* a build flag
+or admin endpoint to toggle the failure globally (a fragment-content marker
+composes with parallel tests without shared state; the fake's existing
+`Fail`/`FailNext` switch is per-route, not per-payload, so it cannot express
+"this specific fragment fails").

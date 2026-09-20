@@ -89,12 +89,25 @@ type Revision struct {
 	AppliedAt   *time.Time      `json:"-"`
 }
 
-// CatalogItem is one row of GET /catalog.
+// CatalogItem is one row of GET /catalog. Kind and Options were added to
+// api.md by DECISIONS I-44 (internal/menu); this fake predated that entry
+// and is brought in line with it here rather than in a new decision, since
+// the interface doc was already right.
 type CatalogItem struct {
-	ID          string `json:"id"`
-	Label       string `json:"label"`
-	Group       string `json:"group"`
-	Description string `json:"description"`
+	ID          string          `json:"id"`
+	Label       string          `json:"label"`
+	Group       string          `json:"group"`
+	Kind        string          `json:"kind"`
+	Description string          `json:"description"`
+	Options     []CatalogOption `json:"options,omitempty"`
+}
+
+// CatalogOption is one entry of CatalogItem.Options.
+type CatalogOption struct {
+	ID      string   `json:"id"`
+	Type    string   `json:"type"`
+	Values  []string `json:"values"`
+	Default string   `json:"default"`
 }
 
 // Op is GET /projects/:id/ops/:op_id.

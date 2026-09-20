@@ -298,7 +298,19 @@ func (f *Fake) handle(pattern string, h handler) {
 // ServeHTTP stamps X-Request-Id, applies the error switch, authenticates
 // user routes, rate-limits when asked, and then dispatches. Handlers other
 // than the SSE log run under mu so they never lock themselves.
+//
+// CORS headers on every response, and OPTIONS answered without touching the
+// mux (which has no registered OPTIONS handlers): the dashboard fetches
+// this fake cross-origin in the Playwright suite exactly like it fetches
+// the real api cross-origin in production (I-61).
 func (f *Fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	f.mu.Lock()
 	f.reqSeq++
 	w.Header().Set("X-Request-Id", fmt.Sprintf("req-%06d", f.reqSeq))

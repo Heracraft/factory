@@ -24,6 +24,12 @@ const (
 	maxFragmentBytes = 256 << 10
 	maxSecretBytes   = 64 << 10
 	retentionDays    = 30
+
+	// forceEvalErrorMarker in a fragment makes putConfig answer the exact
+	// first canonical eval_failed message from nix-build-contract.md
+	// instead of applying, so a consumer can test the error path without a
+	// real Nix evaluation.
+	forceEvalErrorMarker = "repose-force-eval-error"
 )
 
 var reservedSecretNames = map[string]bool{
@@ -39,13 +45,15 @@ var classes = map[string]int64{
 }
 
 var catalog = []CatalogItem{
-	{ID: "bun", Label: "Bun", Group: "languages", Description: "Bun JavaScript runtime and package manager"},
-	{ID: "nodejs", Label: "Node.js", Group: "languages", Description: "Node.js LTS"},
-	{ID: "python3", Label: "Python 3", Group: "languages", Description: "CPython 3 with pip"},
-	{ID: "postgresql", Label: "PostgreSQL", Group: "databases", Description: "PostgreSQL server as a user service"},
-	{ID: "redis", Label: "Redis", Group: "databases", Description: "Redis server as a user service"},
-	{ID: "chromium", Label: "Chromium", Group: "browsers", Description: "Headless Chromium for browser automation"},
-	{ID: "ripgrep", Label: "ripgrep", Group: "tools", Description: "Fast recursive grep"},
+	{ID: "bun", Label: "Bun", Group: "languages", Kind: "package", Description: "Bun JavaScript runtime and package manager"},
+	{ID: "nodejs", Label: "Node.js", Group: "languages", Kind: "package", Description: "Node.js LTS", Options: []CatalogOption{
+		{ID: "version", Type: "enum", Values: []string{"22", "24"}, Default: "24"},
+	}},
+	{ID: "python3", Label: "Python 3", Group: "languages", Kind: "package", Description: "CPython 3 with pip"},
+	{ID: "postgresql", Label: "PostgreSQL", Group: "databases", Kind: "service", Description: "PostgreSQL server as a user service"},
+	{ID: "redis", Label: "Redis", Group: "databases", Kind: "service", Description: "Redis server as a user service"},
+	{ID: "chromium", Label: "Chromium", Group: "browsers", Kind: "package", Description: "Headless Chromium for browser automation"},
+	{ID: "ripgrep", Label: "ripgrep", Group: "tools", Kind: "package", Description: "Fast recursive grep"},
 }
 
 var catalogServices = map[string]bool{"postgresql": true, "redis": true}
@@ -632,10 +640,24 @@ func (f *Fake) putConfig(w http.ResponseWriter, r *http.Request) *apiError {
 		fragment, menu = rendered, body.Menu
 	}
 	now := f.now()
+	o := f.newOp(p, "config")
+	// A canned eval failure, for the dashboard and CLI to exercise the
+	// error path (08-dashboard.md §7, nix-build-contract.md "What the user
+	// reads" — the exact first canonical message) without a real Nix
+	// evaluation. A failed build changes nothing: the previous revision
+	// stays applied.
+	if strings.Contains(fragment, forceEvalErrorMarker) {
+		msg := "config error: syntax error at fragment.nix:1:32, unexpected ';'"
+		rev := &Revision{ID: f.nextID(), CreatedAt: now, Status: "failed", Error: msg, Fragment: fragment, Menu: menu, BaseVersion: baseVersion}
+		p.revisions = append(p.revisions, rev)
+		o.State, o.Error = "error", msg
+		f.event(p, "config.failed", "", "revision failed: "+msg)
+		writeJSON(w, http.StatusAccepted, map[string]string{"revision_id": rev.ID, "op_id": o.id})
+		return nil
+	}
 	rev := &Revision{ID: f.nextID(), CreatedAt: now, Status: "applied", Fragment: fragment, Menu: menu, BaseVersion: baseVersion, AppliedAt: &now}
 	p.revisions = append(p.revisions, rev)
 	p.ConfigRevisionID = rev.ID
-	o := f.newOp(p, "config")
 	f.event(p, "config.applied", "", "revision applied")
 	writeJSON(w, http.StatusAccepted, map[string]string{"revision_id": rev.ID, "op_id": o.id})
 	return nil

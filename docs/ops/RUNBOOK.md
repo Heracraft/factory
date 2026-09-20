@@ -1119,6 +1119,49 @@ rose; the CLI printed `no capacity right now; you have not been charged`.
 2. Add a host (11 §5) or undrain one. The user runs `repose run` again;
    the project is in `error` with `last_error = capacity` until then.
 
+## dashboard: up but the "Cannot reach the API" bar is showing
+
+The dashboard itself is fine (its `/healthz` is separate from the api's);
+the bar (08-dashboard.md 5.5/6) means the browser's last request to
+`PUBLIC_API_URL` either failed at the network level or came back 5xx.
+
+1. Check the api from outside the browser: `curl -i
+   https://api.repose.herakraft.co/v1/healthz`. A non-200 or a hang points
+   at the api's own runbook rows above (Postgres down, Key Vault
+   unavailable) rather than the dashboard.
+2. If that curl is fine, it's CORS or the wrong origin: open the browser
+   console for a `blocked by CORS policy` message, and check
+   `PUBLIC_API_URL` in the dashboard's Coolify environment matches the
+   api's real origin exactly (scheme and host). The api sends
+   `Access-Control-Allow-Origin: *` on every `/v1` route (I-61); a proxy
+   or CDN in front of it that strips that header reproduces this exact
+   symptom.
+3. The bar clears on its own once a poll succeeds; polling backs off to
+   60 s while it thinks the api is unreachable (5.3), so a fixed api can
+   take up to a minute to clear the bar, or reload the page to force an
+   immediate recheck.
+
+## dashboard: sign-in loop
+
+The browser bounces `/` → `/callback` → `/` without ever reaching
+`/projects`, or keeps landing back on `/` after visiting a page while
+signed in.
+
+1. Open the browser console during the loop. `handleSignInCallback` failing
+   (auth.svelte.ts) means either the code was already consumed (a page
+   refresh on `/callback`, or a browser prefetch hitting it twice — see
+   `data-sveltekit-preload-data="hover"` in app.html) or `PUBLIC_LOGTO_APP_ID`
+   / `PUBLIC_LOGTO_ENDPOINT` don't match the Logto application the CLI and
+   dashboard were both registered under.
+2. If it loops without ever reaching `/callback` at all, `signIn()` itself
+   threw — almost always `PUBLIC_LOGTO_ENDPOINT` unset or unreachable from
+   the browser (check it the same way as the api origin above; Logto needs
+   the same cross-origin discovery fetch the api does).
+3. A user stuck signed in on `/` (authenticated but not redirected to
+   `/projects`) points at the root `+layout.svelte` effect instead: confirm
+   `authState.authenticated` actually resolves (it stays `undefined`
+   forever if `initAuth()` threw), not a Logto problem.
+
 ## api: op stuck waiting for host
 
 `GET /ops/:id` stays `running` and the CLI shows `waiting for host`. The

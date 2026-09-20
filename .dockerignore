@@ -1,0 +1,14 @@
+# apps/web/Dockerfile builds from the repo root so pnpm can see the whole
+# workspace; everything here is dead weight in that build context.
+.git
+node_modules
+**/node_modules
+**/.svelte-kit
+**/build
+apps/web/.env
+apps/web/.env.*
+!apps/web/.env.example
+nix
+infra
+test-results
+playwright-report
