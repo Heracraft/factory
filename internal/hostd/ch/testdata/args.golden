@@ -16,10 +16,12 @@ path=/dev/vg-guests/g-0192f0a1-1111-7000-8000-000000000001
 --net
 tap=tap-0192f0a1,mac=52:54:01:92:f0:a1
 --fs
-tag=ro-store,socket=/var/lib/repose/guests/0192f0a1-1111-7000-8000-000000000001/virtiofsd.sock
+tag=ro-store,socket=/var/lib/repose/guests/0192f0a1-1111-7000-8000-000000000001/virtiofsd/virtiofsd.sock
 --vsock
 cid=1000,socket=/var/lib/repose/guests/0192f0a1-1111-7000-8000-000000000001/vsock.sock
 --serial
 socket=/var/lib/repose/guests/0192f0a1-1111-7000-8000-000000000001/console.sock
 --console
 off
+--seccomp
+true

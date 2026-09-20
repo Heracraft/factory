@@ -60,6 +60,7 @@ type Options struct {
 	BlobIdentity  string
 	StoreExport   string
 	VirtiofsUser  string
+	GuestUser     string
 	VG            string
 	Pool          string
 	MaxOps        int
@@ -195,9 +196,13 @@ func Run(ctx context.Context, o Options, log *slog.Logger) error {
 	cfg := guest.Config{
 		HostID: id.Host.HostID, GuestsDir: o.GuestsDir, GuestCIDR: id.Host.GuestCIDR, TotalMemBytes: total,
 		MaxOps: o.MaxOps, MaxBuilds: o.MaxBuilds, StoreExport: o.StoreExport, VirtiofsUser: o.VirtiofsUser,
+		GuestUser: o.GuestUser,
 	}
 	if os.Getenv("REPOSE_HOSTD_TESTING") == "1" {
 		cfg.FailAtStep = o.FailAtStep
+		// The hostd and virtiofsd accounts exist on hosts only; under the
+		// fakes the guest directory is chowned to hostd's own ids.
+		cfg.Lookup = func(string) (int, int, error) { return os.Getuid(), os.Getgid(), nil }
 	}
 	consoles := &consoleSet{log: log}
 	mgr, err := guest.New(cfg, guest.Deps{

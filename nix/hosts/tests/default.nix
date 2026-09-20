@@ -31,6 +31,11 @@ let
     # The test driver sets a root password file; the host's locked password
     # would conflict with it.
     users.users.root.hashedPassword = lib.mkForce null;
+    # These tests exercise the host's units around hostd with the stub the
+    # header describes (registration from a fixture, the audit hook); the
+    # flake's hostModules wire the real daemon, which needs an api to
+    # register against. The daemon itself is covered by its Go tests.
+    repose.host.hostdPackage = lib.mkForce (pkgs.callPackage ../hostd-stub.nix { });
     boot.loader.systemd-boot.enable = lib.mkForce false;
     boot.loader.efi.canTouchEfiVariables = lib.mkForce false;
     virtualisation = {
@@ -41,7 +46,7 @@ let
     };
     # No DHCP server in the storage and services tests; do not wait 2 min.
     systemd.network.wait-online.enable = false;
-    environment.systemPackages = with pkgs; [ curl iputils netcat-openbsd jq ];
+    environment.systemPackages = with pkgs; [ curl iputils netcat-openbsd jq python3 ];
   };
 
   # The "internet" next to the host: DHCP server for the provider NIC, a
@@ -253,9 +258,25 @@ in
 
       with subtest("a thin volume can be created, used and snapshotted"):
           host.succeed("lvcreate -V 1G -T vg-guests/thin -n g-test")
+          host.succeed("udevadm settle")
+          # I-49: guest volumes are group hostd for the unprivileged guest@ unit;
+          # anything else in the VG keeps root:disk.
+          perm = host.succeed("stat -L -c '%U:%G:%a' /dev/vg-guests/g-test").strip()
+          print(f"g-test node {perm}")
+          assert perm == "root:hostd:660", f"g-test is {perm}, want root:hostd:660"
+          # The guest@ unit's DeviceAllow names the LV symlink; systemd resolves
+          # it to the dm node, and DevicePolicy=closed refuses everything else.
+          host.succeed("systemd-run --wait --pipe --collect -p User=hostd -p DevicePolicy=closed -p 'DeviceAllow=/dev/vg-guests/g-test rw' -- dd if=/dev/vg-guests/g-test of=/dev/null bs=4k count=1")
+          host.fail("systemd-run --wait --pipe --collect -p User=hostd -p DevicePolicy=closed -- dd if=/dev/vg-guests/g-test of=/dev/null bs=4k count=1")
           host.succeed("mkfs.ext4 -q /dev/vg-guests/g-test && mkdir -p /mnt/g && mount /dev/vg-guests/g-test /mnt/g")
           host.succeed("dd if=/dev/urandom of=/mnt/g/blob bs=1M count=64 status=none && umount /mnt/g")
           host.succeed("lvcreate -s -n snap-g-test vg-guests/g-test && lvremove -f vg-guests/snap-g-test")
+          # The udev rule matches g-* only: any other volume in the VG keeps root:disk.
+          host.succeed("lvcreate -V 1G -T vg-guests/thin -n x-test && udevadm settle")
+          other = host.succeed("stat -L -c '%U:%G:%a' /dev/vg-guests/x-test").strip()
+          print(f"x-test node {other}")
+          assert other == "root:disk:660", f"x-test is {other}, want root:disk:660"
+          host.succeed("lvremove -f vg-guests/x-test")
           print(host.succeed("lvs vg-guests"))
 
       with subtest("the pool monitor exports pool usage for node_exporter"):
@@ -308,6 +329,38 @@ in
           print(f"guests.slice MemoryMax={mm}")
           assert mm not in ("infinity", ""), "guests.slice has no memory cap"
           host.succeed("systemctl stop guest@test.service")
+
+      with subtest("guest@ units run as hostd inside the I-49 sandbox"):
+          # The property list is internal/hostd/guest/testdata/unit.golden with
+          # this test's ids substituted; the Go golden pins the list itself.
+          assert "kvm" in host.succeed("id -nG hostd").split(), "hostd is not in kvm"
+          host.succeed("install -d -m 0711 /var/lib/repose/guests")
+          host.succeed("install -d -m 1770 -g hostd /var/lib/repose/guests/h2")
+          host.succeed("install -d -m 0750 -o virtiofsd -g hostd /var/lib/repose/guests/h2/virtiofsd")
+          host.succeed("install -d -m 1770 -g hostd /var/lib/repose/guests/other")
+          host.succeed("ip tuntap add dev tap-h2 mode tap user hostd vnet_hdr")
+          host.succeed("touch /var/lib/repose/guests/other/vsock.sock && chown hostd /var/lib/repose/guests/other/vsock.sock")
+          props = " ".join("-p " + p for p in [
+              "MemoryMax=512M", "CPUQuota=100%", "Restart=no", "Slice=guests.slice", "User=hostd",
+              "NoNewPrivileges=yes", "CapabilityBoundingSet=", "UMask=0077", "ProtectSystem=strict",
+              "ProtectHome=yes", "PrivateTmp=yes", "ProtectKernelTunables=yes", "ProtectKernelModules=yes",
+              "ProtectKernelLogs=yes", "ProtectControlGroups=yes", "ProtectProc=invisible",
+              "RestrictNamespaces=yes", "RestrictRealtime=yes", "RestrictSUIDSGID=yes", "LockPersonality=yes",
+              "SystemCallArchitectures=native", "TemporaryFileSystem=/var/lib/repose/guests",
+              "BindPaths=/var/lib/repose/guests/h2", "ReadWritePaths=/var/lib/repose/guests/h2",
+              "DevicePolicy=closed", "'DeviceAllow=/dev/kvm rw'", "'DeviceAllow=/dev/net/tun rw'",
+              "'RestrictAddressFamilies=AF_UNIX AF_VSOCK'",
+          ])
+          probe = "/var/lib/repose/guests/h2/probe.py"
+          host.succeed("install -m 0644 ${./h2probe.py} " + probe)
+          out = host.succeed("systemd-run --wait --pipe --collect --unit guest@h2 " + props + " -- ${pkgs.python3}/bin/python3 " + probe + " 2>&1")
+          print(out)
+          for line in ["uid " + host.succeed("id -u hostd").strip(), "tap ok", "unix socket ok", "AF_INET refused", "vhost-vsock refused by DevicePolicy"]:
+              assert line in out, f"missing {line!r} in probe output"
+          ch = host.succeed("systemd-run --wait --pipe --collect --unit guest@h2ch " + props + " -- cloud-hypervisor --version 2>&1")
+          print(ch)
+          assert "cloud-hypervisor" in ch
+          host.succeed("ip link del tap-h2 && rm -rf /var/lib/repose/guests/h2 /var/lib/repose/guests/other")
 
       with subtest("the nightly snapshot timer is wired to hostd snapshot-all"):
           host.succeed("systemctl list-timers --all repose-snapshot.timer | grep -q repose-snapshot")

@@ -115,14 +115,21 @@ type Config struct {
 	StoreExport      string
 	VirtiofsUser     string
 	VirtiofsBinary   string
-	MinVolumeBytes   uint64
-	MaxVolumeBytes   uint64
-	PoolRefusePct    float64
-	PoolWarnPct      float64
-	StoreHighPct     float64
-	GuestdRetry      time.Duration
-	GuestdLostAfter  time.Duration
-	UnitPoll         time.Duration
+	// GuestUser is the unprivileged user guest@<id> (Cloud Hypervisor) runs
+	// as (I-49). It owns the taps and is in group kvm; the guest volumes
+	// are group-owned by it through the host's udev rule.
+	GuestUser string
+	// Lookup resolves a user name to uid and primary gid; nil means the
+	// system user database. Tests point it at their own ids.
+	Lookup          func(name string) (uid, gid int, err error)
+	MinVolumeBytes  uint64
+	MaxVolumeBytes  uint64
+	PoolRefusePct   float64
+	PoolWarnPct     float64
+	StoreHighPct    float64
+	GuestdRetry     time.Duration
+	GuestdLostAfter time.Duration
+	UnitPoll        time.Duration
 	// FailAtStep injects a failure into CreateGuest at that step (tests).
 	FailAtStep int
 }
@@ -152,6 +159,9 @@ func (c Config) Defaults() Config {
 	}
 	if c.VirtiofsUser == "" {
 		c.VirtiofsUser = "virtiofsd"
+	}
+	if c.GuestUser == "" {
+		c.GuestUser = "hostd"
 	}
 	if c.MinVolumeBytes == 0 {
 		c.MinVolumeBytes = 10 << 30

@@ -177,6 +177,9 @@ func newHarness(t *testing.T, mut func(*Config)) *harness {
 		HostID: "host-1", GuestsDir: filepath.Join(t.TempDir(), "guests"), GuestCIDR: "10.64.4.0/22",
 		TotalMemBytes: 64 << 30, HostReserveBytes: 8 << 30, ReadyTimeout: 3 * time.Second,
 		GuestdRetry: 30 * time.Millisecond, GuestdLostAfter: 300 * time.Millisecond, UnitPoll: 30 * time.Millisecond,
+		// The hostd and virtiofsd accounts do not exist on a dev box; the
+		// chowns then target the test's own ids, which is allowed unprivileged.
+		Lookup: func(string) (int, int, error) { return os.Getuid(), os.Getgid(), nil },
 	}
 	if mut != nil {
 		mut(&cfg)

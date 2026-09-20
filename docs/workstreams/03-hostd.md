@@ -202,14 +202,22 @@ Inputs: `project_id`, `guest_id`, `class`, `volume_bytes`, `system_closure`,
    `Ready` (step 10) they are delivered with `guestd WriteSecrets` into the
    guest's own tmpfs, per `guest-conventions.md`.
 8. virtiofsd: `systemd-run --unit virtiofsd@<id> --uid virtiofsd
-   virtiofsd --socket-path .../virtiofsd.sock --shared-dir /nix/store
-   --sandbox namespace --cache always`. virtiofsd has no read-only flag;
-   read-only is enforced twice: the `virtiofsd` user has no write
-   permission anywhere under `/nix/store`, and the guest mounts the tag
-   with `ro`.
+   virtiofsd --socket-path .../virtiofsd/virtiofsd.sock --shared-dir
+   /run/repose/store-export --sandbox namespace --cache auto --xattr
+   --socket-group hostd`. virtiofsd has no read-only flag; read-only is
+   enforced twice: the `virtiofsd` user has no write permission anywhere
+   under the export, and the guest mounts the tag with `ro`. The socket
+   directory is `0750 virtiofsd:hostd` inside the `1770 root:hostd` guest
+   directory (host-conventions.md "Filesystem").
 9. Cloud Hypervisor: `systemd-run --unit guest@<id> --property
    MemoryMax=<RAM+512M> --property CPUQuota=<vcpus*100>% --property
-   Restart=no /var/lib/repose/guests/<id>/runner/bin/run <args>`. The
+   Restart=no --property User=hostd` plus the sandbox properties of
+   DECISIONS I-49 (`DevicePolicy=closed` with `/dev/kvm`, `/dev/net/tun`
+   and the guest's volume allowed, a private view of the guests directory,
+   no capabilities, `AF_UNIX`/`AF_VSOCK` only), then
+   `/var/lib/repose/guests/<id>/runner/bin/run <args>`. Cloud Hypervisor
+   never runs as root: an escape lands as `hostd` holding three device
+   nodes and one directory. The
    runner starts CH with `--api-socket .../ch.sock`, `--serial file=...
    console.log`, `--vsock cid=<cid>,socket=...`, `--net tap=tap-<8hex>`,
    `--disk path=/dev/vg-guests/g-<id>`, `--fs tag=store,socket=...`,

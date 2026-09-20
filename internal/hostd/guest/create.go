@@ -201,7 +201,7 @@ func (m *Manager) fail(g *state.Guest, step int, err error) *Error {
 func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Error {
 	class := Classes[g.Class]
 	dir := m.guestDir(g.GuestID)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	if err := m.prepareGuestDir(dir); err != nil {
 		return m.fail(g, firstStep, err)
 	}
 
@@ -242,7 +242,7 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 	if err := m.injected(stepVirtiofsd); err != nil {
 		return m.fail(g, stepVirtiofsd, err)
 	}
-	vcfg := virtiofs.Config{SharedDir: m.cfg.StoreExport, User: m.cfg.VirtiofsUser, Group: m.cfg.VirtiofsUser, Binary: m.cfg.VirtiofsBinary}
+	vcfg := virtiofs.Config{SharedDir: m.cfg.StoreExport, User: m.cfg.VirtiofsUser, Group: m.cfg.VirtiofsUser, SocketGroup: m.cfg.GuestUser, Binary: m.cfg.VirtiofsBinary}
 	if err := virtiofs.Start(ctx, m.d.Systemd, vcfg, g.GuestID, ch.VirtiofsSocket(dir)); err != nil {
 		return m.fail(g, stepVirtiofsd, err)
 	}
@@ -254,11 +254,7 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 	if err := m.setState(g, StateStarting, ""); err != nil {
 		return m.fail(g, stepHypervisr, err)
 	}
-	props := []string{
-		fmt.Sprintf("MemoryMax=%dM", class.MemMiB+OverheadMiB),
-		fmt.Sprintf("CPUQuota=%d%%", class.VCPUs*100),
-		"Restart=no", "Slice=guests.slice",
-	}
+	props := GuestUnitProps(class, m.cfg.GuestUser, m.cfg.GuestsDir, dir, spec.VolumeDev)
 	if err := m.d.Systemd.Run(ctx, GuestUnit(g.GuestID), props, argv); err != nil {
 		return m.fail(g, stepHypervisr, err)
 	}
@@ -320,7 +316,7 @@ func (m *Manager) teardown(ctx context.Context, g *state.Guest) {
 	_ = m.d.Net.Unshape(ctx, g.Tap)                               // same
 	_ = m.d.Net.DelGuestRules(ctx, g.GuestID, g.IP, g.MAC, g.Tap) // same
 	_ = m.d.Net.DelTap(ctx, g.Tap)                                // same
-	for _, s := range []string{"ch.sock", "vsock.sock", "console.sock", "virtiofsd.sock"} {
+	for _, s := range []string{"ch.sock", "vsock.sock", "console.sock", filepath.Join("virtiofsd", "virtiofsd.sock")} {
 		_ = os.Remove(filepath.Join(m.guestDir(g.GuestID), s)) // stale sockets confuse the next boot only if left behind
 	}
 }
