@@ -1,35 +1,40 @@
-# host-01: the first production host (DECISIONS I-14, I-39), a Standard_D16s_v7
-# driven by `hostdev` on the edge until the api exists (I-17, I-40). This
-# file holds only what makes host-01 differ from the generic `host`
-# configuration, and none of it is secret: the edge's static public
-# address, hostdev's CA certificate, an operator public key, and the Blob
-# endpoint and identity the host snapshots with.
-#
-# When the api replaces hostdev: drop apiAddr and apiCA (the defaults are the
-# api behind a public certificate) and, once workstream 06 has the host on
-# WireGuard, drop bootstrap.
+# host-01: the first production host (DECISIONS I-14, I-39), registered with
+# the api since M2 (I-92). This file holds only what makes host-01 differ
+# from the generic `host` configuration, and none of it is secret: the
+# control plane's VNet address, the platform CA certificate, an operator
+# public key, the platform repository and the Blob endpoint and identity the
+# host snapshots with.
 { ... }:
 {
   repose.host = {
-    # The edge's static public IP (infra output edge_public_ip); hostdev
-    # listens on 443 there. The server certificate carries this IP.
-    apiAddr = "20.102.98.254:443";
+    # The api's gRPC listener on the control VM's VNet address (infra output
+    # control_private_ip): a host registers before it has a WireGuard tunnel
+    # (DECISIONS I-92). The certificate is issued from the platform CA for
+    # api.repose.herakraft.co and this address (GRPC_SERVER_NAMES).
+    apiAddr = "10.200.3.4:8443";
+    apiServerName = "api.repose.herakraft.co";
+    # The platform x509 host CA (`repose-admin ca show`); public material.
     apiCA = ''
       -----BEGIN CERTIFICATE-----
-      MIIBaTCCAQ+gAwIBAgIBATAKBggqhkjOPQQDAjAcMRowGAYDVQQDExFyZXBvc2Ug
-      aG9zdGRldiBDQTAeFw0yNjA5MTkyMzA5MDZaFw0zNjA5MTcwMDA5MDZaMBwxGjAY
-      BgNVBAMTEXJlcG9zZSBob3N0ZGV2IENBMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcD
-      QgAE0prMJRbuOtjnfZHM2Zxw0by4Uj01sIGEx8rgw7z/xjhR6ciWt3pYzE7J7Y9E
-      c5Tb/ixVddA7oWyUKY2YGlLDOqNCMEAwDgYDVR0PAQH/BAQDAgKEMA8GA1UdEwEB
-      /wQFMAMBAf8wHQYDVR0OBBYEFKJZ7cUC1DxWiHXNKDDTtE5gd78bMAoGCCqGSM49
-      BAMCA0gAMEUCIQC0VaXK/h2vIIES8eNZUbFzy04eOQ2L79Jg5uMaU3LnTwIgLRMr
-      k5Zib21Mn0oWrs/CcQkz7lLen7bFu/AYEI+/R7U=
+      MIIBYzCCAQmgAwIBAgIBATAKBggqhkjOPQQDAjAZMRcwFQYDVQQDEw5yZXBvc2Ug
+      aG9zdCBjYTAeFw0yNjA5MjAxNDM1NDRaFw0zNjA5MTcxNTM1NDRaMBkxFzAVBgNV
+      BAMTDnJlcG9zZSBob3N0IGNhMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEEf0Z
+      a+ShTl8C17TyIihGfxGA8/+LPSztZO7U+1jkulN/0PyP+u0mFtoz1No7eNIsLQdI
+      4XqvAoE1SQ5NJMb9+6NCMEAwDgYDVR0PAQH/BAQDAgKEMA8GA1UdEwEB/wQFMAMB
+      Af8wHQYDVR0OBBYEFJ3mh/uToG0kXZreInW+yRCV7Vv0MAoGCCqGSM49BAMCA0gA
+      MEUCIQD4CrivKkoYjKlkHwnK7Ors2lohLv4cFQ+yUU5IhKmIUgIgRiWHt/xsWPzy
+      pgFYxi/RgOzA9GSronavaaOscYi+Vng=
       -----END CERTIFICATE-----
     '';
 
-    # No WireGuard until workstream 06: the installer, the join-token
-    # delivery and operators reach this host over the VNet through the
-    # edge, which is sshd on the provider NIC with a plain key.
+    # hostd clones the base checkout it builds fragments from (I-28); the
+    # repository is public.
+    baseRepo.url = "https://github.com/Heracraft/factory.git";
+
+    # Operator SSH on the provider NIC with a plain key until the host is
+    # registered: the installer's checks and the join-token delivery reach
+    # the host over the VNet through the edge; once host.json carries a
+    # WireGuard address sshd binds that alone (I-92).
     bootstrap.enable = true;
     bootstrap.authorizedKeys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEnlaWLqhKDXwKRp74FWyHFmrK5eZXh7U3VL3a3J/EO0 operator"
