@@ -36,12 +36,14 @@ The full click path, with the reasons, is `coolify.md`. The short form:
    `https://api.repose.herakraft.co`, applications `repose-cli` (Native,
    device flow on) and `repose-web` (SPA), and the M2M application
    `repose-api` (Management API role) for `LOGTO_M2M_CLIENT_ID/SECRET`.
-4. Add the control plane as one Docker Compose resource from the repo,
-   `ops/coolify/docker-compose.yml` (I-87): Postgres, `api`, `api-grpc`,
-   `web`, `pg-backup`, `backup-sync`. Values and the two Domains fields:
-   `ops/coolify/README.md`. Secrets (Logto M2M, Entra client, R2 token,
-   later Stripe and Resend) go in its Environment tab, nowhere else. `api`
-   runs the migrations before serving; no pre-deploy command.
+4. Add Postgres as a Docker Compose resource from the repo,
+   `ops/coolify/postgres/docker-compose.yml` (I-87: Postgres, `pg-backup`,
+   `backup-sync`), then `api`, `api-grpc` and `web` as Dockerfile
+   applications, each with its `ops/coolify/*.env.example` pasted in and
+   "Connect to predefined network" on. Domains, port mappings and the
+   health-check settings: `ops/coolify/README.md`. Secrets go in each
+   resource's Environment tab, nowhere else. `api`'s pre-deploy command is
+   `repose-admin db migrate`; `api-grpc` deploys after it.
 5. Deploy. Then `repose-admin ca init` once (`DATABASE_URL` over the VM's
    WireGuard address, I-42), one manual dump (`pg-backup once` in the
    service's terminal), and `ssh root@<control ip> repose-backup-check`
@@ -661,17 +663,20 @@ reconcile is safe to run any time.
 
 ## Coolify deploy failed
 
-The compose resource's deploy did not go green (I-87: not a rolling
-deploy; the previous containers are already gone).
+The api, api-grpc or web app's rolling deploy did not go green.
 
-1. Coolify's deployment log. `api` waits on Postgres and runs the
-   migrations before it listens; a health check timeout on `api` with the
-   container alive is usually a migration running long: wait.
-2. A migration failure leaves `api` restarting and `api-grpc` waiting on
-   it. Fix forward, or `repose-admin db rollback --to <previous>` from the
-   operator machine (it connects to Postgres over the control VM's
-   WireGuard address) and redeploy the previous commit from Coolify.
-3. `api-grpc` unhealthy with `api` healthy: its log. "GRPC_SERVER_NAMES is
+1. Coolify's deployment log. A health check timeout with the container
+   alive is usually the pre-deploy migration running long on `api`: wait,
+   the old container is still serving.
+2. A migration failure leaves the new container crash-looping and the old
+   one serving. Fix forward or `repose-admin db rollback --to <previous>`
+   from the operator machine (it connects to Postgres over the control
+   VM's WireGuard address), then redeploy the previous image tag.
+3. If the deploy fell back to stop-then-start (Coolify does this silently
+   when it has no health signal), check that Coolify's own health check is
+   off on `api` and `api-grpc` and the image's `HEALTHCHECK` is intact
+   (I-87); on `web` that the path is `/healthz` on 3000.
+4. `api-grpc` unhealthy with `api` healthy: its log. "GRPC_SERVER_NAMES is
    required" means the variable was cleared; the certificate is issued
    from the CA for those names at start, and `repose-admin ca init` must
    have run once (a fresh database has no CA yet).
@@ -679,9 +684,9 @@ deploy; the previous containers are already gone).
 ## PostgresBackupStale
 
 No Postgres dump has landed in R2 for more than 36 hours. The dump is the
-`pg-backup` service and the upload the `backup-sync` service of the compose
-resource (I-87); their logs are in Coolify, which nobody is watching at
-02:00, so the check is a command:
+`pg-backup` service and the upload the `backup-sync` service of the
+Postgres compose resource (I-87); their logs are in Coolify, which nobody
+is watching at 02:00, so the check is a command:
 
 ```bash
 ssh root@<control ip> repose-backup-check

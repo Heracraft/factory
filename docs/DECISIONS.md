@@ -1895,32 +1895,33 @@ the tailnet. *Rejected:* a Tailscale auth key in cloud-init (secret in the
 VM model); Tailscale SSH replacing sshd for Coolify (Coolify wants a plain
 key it holds).
 
-**I-87. The control plane deploys as one Docker Compose resource from
-`ops/coolify/docker-compose.yml`; Postgres backups are two compose
-services; the grpc api issues its own server certificate; the Logto M2M
-application is `repose-api`.** (owner, conductor, 2026-09-20) The owner
-wants the deployment in files, not built by hand in Coolify's UI. Coolify's
-"Docker Compose" resource from a git repository is that: Postgres, `api`
-(HTTP, runs `-migrate` first), `api-grpc` (same image, waits for `api`
-healthy), `web`, `pg-backup` (nightly `pg_dump -Fc` into a volume) and
-`backup-sync` (`rclone copy` to R2 every 15 minutes, never delete) in one
-file; Coolify holds only the secrets (`${VAR:?}` in the file) and the two
-domains. Two things are traded until launch and recorded here so nobody
-mistakes them for oversights: a compose deploy recreates the changed
-services rather than rolling them, so the api and dashboard are down for
-the seconds their health checks take; and Coolify's managed-database
-backup UI is replaced by the two services above, verified by
-`repose-backup-check` as before. Moving `api` and `web` back to Coolify
-"Dockerfile" applications for rolling deploys is a UI change later. Found
-on the way: `Validate()` refused the grpc app without certificate files
-that nothing in the repository could issue (`repose-admin ca` signs host
-and client certificates only), while `hostmgr.TLSConfig` already issues a
-server certificate from the CA in Postgres when no file is given; the
-requirement is now `GRPC_SERVER_NAMES` instead, and hosts verify that name
-(`apiServerName`). The distroless api image has no shell, so `api
--healthcheck` probes its own listener for the compose health check. The
-M2M application the api provisions users with is named `repose-api` in the
-owner's Logto. *Rejected:* Coolify's API driven by a script (its surface is
-unstable across 4.x releases and could not be tested against the owner's
-instance from here); a Postgres backup through Coolify's UI for a database
-inside a compose resource (undocumented whether it works).
+**I-87. Postgres and its backup are one Docker Compose resource from
+`ops/coolify/postgres/docker-compose.yml`; api, api-grpc and web stay
+separate Coolify Dockerfile applications with rolling deploys; the grpc api
+issues its own server certificate; the Logto M2M application is
+`repose-api`.** (owner, conductor, 2026-09-20) The owner wants the
+deployment in files, not built by hand in Coolify's UI, and each thing
+deployed on its own. A first draft put everything in one compose file; the
+owner rejected it within the hour: a compose deploy recreates services
+instead of rolling them, and one file means one deploy for all. So: the
+database, which has no rolling deploy to lose, is a compose resource from
+the repository (Postgres, `pg-backup` doing a nightly `pg_dump -Fc` into a
+volume with a 35-day prune, `backup-sync` doing `rclone copy` to R2 every
+15 minutes and never deleting), container `repose-postgres` on Coolify's
+shared network; the three applications are Coolify "Dockerfile" builds
+from the repository, each with an env file in `ops/coolify/` to paste,
+reaching Postgres by that name with the password as a project shared
+variable. Coolify's own health check cannot run in the distroless api
+image (no curl or wget), so the image carries `HEALTHCHECK CMD api
+-healthcheck`, a probe of its own listener, and Coolify's check is turned
+off on `api` and `api-grpc` so the image's drives the rolling deploy.
+Found on the way: `Validate()` refused the grpc app without certificate
+files that nothing in the repository could issue (`repose-admin ca` signs
+host and client certificates only), while `hostmgr.TLSConfig` already
+issues a server certificate from the CA in Postgres when no file is given;
+the requirement is now `GRPC_SERVER_NAMES`, and hosts verify that name
+(`apiServerName`). The M2M application the api provisions users with is
+`repose-api`. *Rejected:* one compose resource for everything (above);
+Coolify's API driven by a script (unstable across 4.x, untestable from
+here); Coolify's managed-database backup UI (a click path; the two
+services are files and `repose-backup-check` verifies them the same way).

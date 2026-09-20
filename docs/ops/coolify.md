@@ -74,16 +74,28 @@ of that is missing.
    `repose-api` with a role granting the Management API, whose id and
    secret are `LOGTO_M2M_CLIENT_ID/SECRET`. The api and CLI take the
    endpoint without `/oidc` and append it.
-6. **Deploy**, then `repose-admin ca init` once against the database
+6. **api, api-grpc, web**: three Coolify "Dockerfile" applications from the
+   repository (`cmd/api/Dockerfile` twice, `apps/web/Dockerfile`), base
+   directory `/`, each with its env file from `ops/coolify/` pasted in and
+   "Connect to predefined network" on. Domains
+   `https://api.repose.herakraft.co:8080` and
+   `https://repose.herakraft.co:3000`; port mappings and health-check
+   settings are in `ops/coolify/README.md`. Secrets — Logto M2M, the Entra
+   client, later Stripe and Resend — go in each app's Environment tab,
+   nowhere else. `api` runs `repose-admin db migrate` as its pre-deploy
+   command; `api-grpc` deploys after it.
+7. **Deploy**, then `repose-admin ca init` once against the database
    (`RUNBOOK.md` "Control plane"), and the WireGuard peer to the edge:
    `infra/README.md`, "Wiring the control plane to the edge". Two moves,
    because the private key never leaves the VM.
 
-Every service in the file has a health check; Coolify's status and the
-`depends_on` ordering (migrations before `api-grpc`) rest on them. A compose
-deploy is not a rolling deploy (I-87): expect a few seconds of 503 on the
-api and dashboard per deploy until launch, when `api` and `web` can become
-Coolify "Dockerfile" applications without a code change.
+A health check on every application is not optional: without one Coolify
+silently falls back to stop-then-start instead of a rolling deploy, and the
+first anybody hears of it is downtime during a routine deploy
+(`RUNBOOK.md` "Coolify deploy failed"). On `api` and `api-grpc` the check
+is the image's own `HEALTHCHECK` (`api -healthcheck`), because Coolify's
+curl-based one cannot run in a distroless image; Coolify's is turned off
+there so the image's drives the deploy (I-87).
 
 ## The Postgres backup to R2
 
@@ -100,7 +112,8 @@ tofu -chdir=infra/r2 output coolify_s3_destination
 
 The token's access key id, secret and the endpoint (with its `https://`)
 are `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_ENDPOINT` on the
-compose resource. The backup itself is two services in the file (I-87):
+Postgres compose resource. The backup itself is two services in that file
+(I-87):
 `pg-backup` dumps nightly at `BACKUP_HOUR_UTC` (02:00) into a volume and
 prunes after 35 days; `backup-sync` copies new dumps to the bucket every 15
 minutes and never deletes there, so the bucket's lifecycle rule and the
@@ -156,8 +169,8 @@ specific to a Coolify version (`DESIGN.md` §Risks).
 - Joining the tailnet and adding the server (above).
 - The Logto applications, the `repose-api` M2M application and the API
   resource in the owner's Logto (above).
-- The values under the compose resource's Environment tab
-  (`ops/coolify/README.md`) and its two Domains fields.
+- The values under each resource's Environment tab and the two Domains
+  fields (`ops/coolify/README.md`).
 - The R2 API token (`DECISIONS.md` I-21).
 - The api's Entra app registration and its client certificate, whose object id
   becomes `api_identity_object_id` and turns on the Key Vault wrap/unwrap

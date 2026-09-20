@@ -29,5 +29,10 @@ COPY --from=build /out/repose-admin /usr/local/bin/repose-admin
 ENV NIX_INSTANTIATE=/usr/local/bin/nix-instantiate
 USER nonroot:nonroot
 EXPOSE 8080 8443 8444 9103
-# Coolify's health check hits GET /healthz on 8080 every 10 s.
+# Distroless has no curl or wget for Coolify's own health check, so the
+# image carries one: `api -healthcheck` probes the API listener's /healthz
+# (http, all) or the metrics listener (grpc). Coolify's rolling deploy
+# waits on this (DECISIONS I-87).
+HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 \
+  CMD ["/usr/local/bin/api", "-healthcheck"]
 ENTRYPOINT ["/usr/local/bin/api"]
