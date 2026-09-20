@@ -651,3 +651,15 @@ design; the snapshot upload of a thin volume is bounded by zstd on one
 core plus Blob throughput at about 10 MB/s of compressed output and is the
 first thing to optimise if stop latency matters.
 
+
+## 12. Edge, identity and CLI timings (M2, 2026-09-20)
+
+Measured by the M2 integration session on host-01 (as in §11), the edge
+(`Standard_D2s_v7`) and the control VM (`Standard_D4s_v7`, api and
+api-grpc as Coolify applications). The table is filled in as the gate is
+reached; a row without a number was not measured.
+
+| Operation | Measured |
+|---|---|
+| `Build` of a one-line home-manager fragment on host-01 against main `abeed670` through `hostdev build` (the first Build ever run on a real host; store already held the M1 base closure) | 35.0 s: eval 13.0 s, build 21.9 s; closure 6.0 GB; `kernel_changed` against the M1 guest's closure |
+| The same Build, first attempt, before DECISIONS I-93 | failed in 56 ms at `eval_failed`: libgit2 refused the root-owned checkout |
