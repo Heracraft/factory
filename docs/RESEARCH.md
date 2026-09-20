@@ -663,3 +663,9 @@ reached; a row without a number was not measured.
 |---|---|
 | `Build` of a one-line home-manager fragment on host-01 against main `abeed670` through `hostdev build` (the first Build ever run on a real host; store already held the M1 base closure) | 35.0 s: eval 13.0 s, build 21.9 s; closure 6.0 GB; `kernel_changed` against the M1 guest's closure |
 | The same Build, first attempt, before DECISIONS I-93 | failed in 56 ms at `eval_failed`: libgit2 refused the root-owned checkout |
+| host-01 `Register` with the real api over the VNet (token delivered by the apply, hostd's 30 s token poll, TLS 1.3 mTLS to 10.200.3.4:8443) to `hosts list` = ready | registered 18:15:12Z, first heartbeat within 15 s; `wg0` up on the host and the edge's `wgsync` had the peer and the /22 route at its next 30 s tick |
+| Control VM ⇄ edge WireGuard (static peer both sides) | handshake within 3 s of `wg-quick up`; 1.0 ms RTT edge ⇄ control, 1.8 ms edge ⇄ host over the tunnel |
+| `repose-admin hosts smoke host-01` through the api's ops engine and the real hostd: `Build` of the smoke fragment at main 49962ad (hostd's own clone, I-93) | build 18.8 s (eval 5.0 s, build 13.2 s), closure cached from the earlier build |
+| the same, `create` (thin volume, taps, virtiofsd, Cloud Hypervisor, Ready, secrets, project setup) | 21.5 s to running |
+| the same, `snapshot` (freeze, LVM snapshot, zstd, Blob) / `stop` / `start` / `destroy` | 16.5 s / 4.5 s / 14.5 s / 22.0 s; whole smoke 79 s |
+| the same smoke, first attempt | failed at create step 8 in 21 s: `/run/repose` was 0700 after the token delivery (I-95) |
