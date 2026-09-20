@@ -79,7 +79,6 @@ resource "azurerm_linux_virtual_machine" "main" {
   custom_data = base64encode(templatefile("${path.module}/templates/cloud-init.yaml.tftpl", {
     authorized_keys       = join("\n", var.authorized_keys)
     coolify_public_key    = var.coolify_public_key
-    backup_bucket         = var.backup_bucket
     backup_max_age_hours  = var.backup_max_age_hours
     edge_public_key       = var.edge_wireguard_public_key == null ? "" : var.edge_wireguard_public_key
     edge_endpoint         = var.edge_wireguard_endpoint

@@ -171,7 +171,6 @@ module "coolify" {
   os_disk_gb           = var.coolify_os_disk_gb
   coolify_public_key   = var.coolify_public_key
 
-  backup_bucket        = var.backup_bucket
   backup_max_age_hours = var.backup_max_age_hours
 
   edge_wireguard_public_key = var.edge_wireguard_public_key

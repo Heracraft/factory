@@ -214,10 +214,14 @@ Does not create guests; project flows that need one wait for `m3`'s step 1
    against it, then `api` the same way, and record zero failed requests;
    any redeploy of `api` or `api-grpc` is announced to the conductor first,
    because `m3` may be mid-operation on host-01.
-3. **Backups**: the R2 token is the owner's (ask through the conductor);
-   then `infra/r2` apply, the S3 destination and nightly schedule on the
-   Postgres Service, one manual backup, `repose-backup-check` green, and
-   the restore rehearsal onto staging's control VM timed and recorded in
+3. **Backups**: the destination is an S3 storage in the owner's own
+   Coolify and no credential for it comes through this repository or a
+   session (DECISIONS I-102), so there is no token to ask for and no
+   `infra/r2` apply. What is left: the nightly schedule on the Postgres
+   Service, one manual backup, `repose-backup-check` green on the
+   control VM (it reads `/data/coolify/backups` and needs nothing), and
+   the restore rehearsal — `ops/restore-rehearsal.sh <dump>` with a file
+   downloaded from that Backups tab — timed and recorded in
    `docs/CHECKLIST.md`.
 4. **Observability on the real path** (10): the api's, edge's and host's
    metrics are scrapeable over WireGuard; Fluent Bit on host-01 ships

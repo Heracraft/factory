@@ -2325,3 +2325,54 @@ requests and the refresh grant; `internal/fakes/logto` and
 shape. Shipped as v0.1.3. *Rejected:* accepting opaque tokens at the api by
 calling Logto's userinfo (a round trip per request and a token that any
 Logto application could mint).
+**I-102. Coolify owns the backups, the destination is the owner's own S3
+storage, and no credential for it comes through this repository or an
+agent session.** (owner, 2026-09-20) `infra/r2` created a bucket, and
+`AZURE-SETUP.md` step 10, `ops/coolify.md`, `ops/coolify/README.md`, the
+control VM's `repose-backup-check` and the m3-web brief all assumed an R2
+API token would arrive and be used here. The owner's decision is that it
+will not: the backup destination is an S3 storage configured in their own
+Coolify — quite possibly one that already exists for their other
+databases — and nothing on the repose side ever holds a credential for
+it. This is the same rule as I-21 and the "secrets have three homes"
+rule, applied to a credential that had been treated as merely
+inconvenient rather than as out of scope.
+
+What changes:
+
+- *`repose-backup-check` checks the near end, with no credential.* It
+  used to list an R2 bucket through an rclone remote an operator had to
+  create from the token. It now reports the age of the newest dump
+  Coolify has written under `/data/coolify/backups` on the control VM,
+  and says in its own output that this proves the dump was **taken**,
+  not that it was **uploaded**. That is worth keeping rather than
+  deleting: a dump that was never taken is the failure that silently
+  leaves no restore point at all, and it is invisible in Coolify's UI
+  until someone looks. The upload is the Backups tab, which is also
+  where Coolify reports its own failures, and `RUNBOOK.md`
+  "PostgresBackupStale" now walks both halves and says which tool
+  answers which. *Rejected:* deleting the check (it would have left the
+  near-end failure unwatched); having it call Coolify's API (unstable
+  across 4.x, and it would need a Coolify token on the VM, which is the
+  same problem one layer along).
+- *`ops/restore-rehearsal.sh` takes a file.* The dump comes from the
+  database's Backups tab, which is where a human already is when they
+  need a restore. `--from-bucket` stays for whoever has a remote of
+  their own, because it is three lines and removing it would not make
+  anything safer.
+- *`infra/r2` stays, marked optional and unused by production*, rather
+  than being deleted: a second environment or a different owner may want
+  a bucket, the module is written and validated, and deleting a working
+  module to express a policy is how the policy gets re-litigated by
+  someone who needs the module. Its header says plainly that production
+  does not use it. `backup_bucket` is gone from
+  `infra/azure/modules/{environment,coolify}`, since nothing on the VM
+  reads a bucket name any more; `backup_max_age_hours` stays.
+
+*Why this is better than the arrangement it replaces:* the credential
+that would have been pasted into an agent's tfvars, an operator's shell
+history and an rclone config on a VM now exists in exactly one place the
+owner already manages. The cost is that this side cannot prove the
+upload happened — which is honest, because it never really could: an
+rclone listing proves an object exists, not that it is last night's
+database.

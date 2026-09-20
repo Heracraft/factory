@@ -104,15 +104,9 @@ variable "coolify_public_key" {
   }
 }
 
-variable "backup_bucket" {
-  type        = string
-  description = "R2 bucket Coolify writes Postgres dumps to (infra/r2 output `bucket_name`). Used only by the repose-backup-check helper; Coolify's own destination is configured in its UI with the token, which is a human step (DECISIONS I-21)."
-  default     = "repose-pg-backups"
-}
-
 variable "backup_max_age_hours" {
   type        = number
-  description = "repose-backup-check reports failure when the newest object in the bucket is older than this. 36 hours: a nightly dump plus a missed night's grace."
+  description = "repose-backup-check reports failure when the newest dump Coolify has written under /data/coolify/backups is older than this. 36 hours: a nightly dump plus a missed night's grace. There is no bucket variable: the destination is an S3 storage in the owner's own Coolify and no credential for it reaches this VM (DECISIONS I-102)."
   default     = 36
 }
 

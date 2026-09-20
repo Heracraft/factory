@@ -17,7 +17,8 @@ its own and the three applications get rolling deploys (DECISIONS I-87):
 The compose file is Postgres alone. Add it as a Coolify **Service** (Add
 resource -> Docker Compose Empty, paste the file): Coolify recognises the
 postgres image inside a Service and gives it a Backups tab, where the
-nightly dump to R2 is scheduled (`docs/ops/coolify.md`). Turn **Connect to
+nightly dump is scheduled, to an S3 storage of the owner's
+(`docs/ops/coolify.md`). Turn **Connect to
 predefined network** **off** for it (Configuration -> Advanced): the file
 joins the shared `coolify` network itself, so the service name
 `repose-postgres` is registered there and is the `DATABASE_URL` host. The
@@ -142,9 +143,12 @@ nobody will thank you for.
 
 ## Backups
 
-Coolify's own: on the Postgres service, Backups, nightly at 02:00 to the R2
-S3 storage, retention 35 days; the destination's fields are
-`tofu -chdir=infra/r2 output coolify_s3_destination`. Verify with
-`ssh root@<control ip> repose-backup-check` (needs the `r2` rclone remote
-on the VM, once, from the same token). Restore: `docs/ops/RUNBOOK.md`
-"Postgres restore".
+Coolify's own: on the Postgres service, Backups, nightly at 02:00,
+retention 35 days, destination an S3 storage configured in the owner's
+own Coolify. No credential for it is in this repository or on the VM
+(DECISIONS I-102), so there is nothing to generate here. Verify with
+`ssh root@<control ip> repose-backup-check`, which needs no credential
+and reports the age of the newest dump Coolify wrote under
+`/data/coolify/backups` — that the dump was taken; the upload is the
+Backups tab. Restore: `docs/ops/RUNBOOK.md` "Postgres restore", or
+`ops/restore-rehearsal.sh <dump>` with a file downloaded from that tab.
