@@ -152,7 +152,10 @@ func (b *Real) Defaults() *Real {
 		b.EvalAttr = "guestSystem.config.system.build.toplevel.drvPath"
 	}
 	if b.Substituters == "" {
-		b.Substituters = "https://cache.nixos.org https://cache.repose.herakraft.co"
+		// The platform overlay cache is a host option
+		// (repose.host.overlayCache), passed as --substituters; the default
+		// is the public cache alone.
+		b.Substituters = "https://cache.nixos.org"
 	}
 	if b.MemoryMax == "" {
 		b.MemoryMax = "16G"

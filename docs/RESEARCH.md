@@ -280,6 +280,24 @@ https://microvm-nix.github.io/microvm.nix/shares.html
   (headless works with `--headless`); `virtiofsd` 1.14.0; `cloud-hypervisor`
   53.0.
 
+Update 2026-09-20 (workstream 12): the overlay no longer takes any agent
+from nixpkgs (DECISIONS I-45). Upstream release artefacts for
+`x86_64-linux`, as pinned in `nix/overlay/agents/versions.json`:
+
+| Agent | Source | Artefact | Linking |
+|---|---|---|---|
+| Claude Code 2.1.278 | `downloads.claude.ai/claude-code-releases/<v>/linux-x64/claude`, version from `.../latest`, sha256 in `<v>/manifest.json` | one bun-compiled ELF, 234 MB | dynamic (`autoPatchelfHook`, alsa-lib) |
+| opencode 1.18.31 | GitHub `anomalyco/opencode` release `opencode-linux-x64.tar.gz` | one bun-compiled ELF | dynamic |
+| Codex 0.155.1 | GitHub `openai/codex` release `rust-v<v>`, `codex-x86_64-unknown-linux-musl.tar.gz` | one static binary | static |
+| Gemini CLI 0.60.0 | npm `@google/gemini-cli` tarball | `bundle/gemini.js` plus chunks, no dependencies | node 24 |
+| pi 0.86.0 | GitHub `earendil-works/pi` release `pi-linux-x64.tar.gz` | bun-compiled ELF plus `package.json`, themes, docs, a wasm module it reads at run time (so the whole tree is installed; `pi --version` prints 0.0.0 without them) | dynamic |
+
+Each printed its version from the built package on the dev box on
+2026-09-20. nixpkgs's `gemini-cli` is marked for removal because Google
+moved unpaid and AI Pro/Ultra accounts to "Antigravity CLI"; the CLI
+itself still ships and works with an API key, which is how a guest
+authenticates (`GEMINI_API_KEY` as a named secret).
+
 https://search.nixos.org/packages?channel=unstable&show=claude-code
 https://mynixos.com/nixpkgs/package/claude-code
 https://github.com/NixOS/nixpkgs/blob/nixos-unstable/pkgs/by-name/cl/claude-code/package.nix
@@ -562,3 +580,31 @@ Repeat on D64s_v6 if any axis fails. If both fail, open the Hetzner decision
 How this was gathered: web research by sub-agents on 2026-09-16 and
 2026-09-17, summarised in the design interview; every URL above is one those
 agents cited. Prices are as quoted on those dates and will drift.
+
+## 11. Fragment evaluation and build timings (dev box, 2026-09-20)
+
+Measured by workstream 12 on the dev box (Azure AMD, `nix` 2.35.2,
+single-user store, `eval-cache` off as in production), with the exact
+command lines of `interfaces/nix-build-contract.md` and the platform
+flake at commit `c863eff`. The base closure was already in the store, as
+it is on a host after its first guest. Not a host measurement (AGENTS.md);
+the shape is what 05 needs to set expectations, the host numbers replace
+these when the M1 session has them.
+
+| Step | Fragment | Wall time | Note |
+|---|---|---|---|
+| `nix eval` of `guestSystem` | empty | 3.6 s | 880 MB RSS; the module system plus nixpkgs instantiation; the 60 s cap is a ceiling for pathological expressions, not a budget |
+| `nix eval` of `guestSystem` | `zig`, `shellcheck`, `programs.direnv` | 4.1 s | |
+| `nix eval` of `guestSystem` | the whole menu catalog (21 entries) | 3.6 s | |
+| `nix build` of that system | `zig`, `shellcheck`, `programs.direnv` | 25 s | one path substituted from cache.nixos.org, the rest was local; a cold host substitutes tens of paths and is bound by its egress |
+| `nix build` of three example systems | `docs/features/config-examples` | 36 s total | `checks.fragment-examples`, includes a fixed-output fetch and a jq rebuild through an overlay |
+| build timeout case | a derivation sleeping 31 minutes, cap 5 s | 5 s to `build_timeout` | `internal/hostd/nixbuild` real-Nix corpus |
+| closure cap case | 120 MB output, cap 100 MB | under 1 s after the build | `closure_too_large` with the ten largest paths |
+
+So a package-only change on a warm host is about 5 s of evaluation plus
+the substitution of what is new, and the CLI's `Building ... 38s` in
+`features/config.md` is the right order of magnitude. The first build on
+a fresh host also pulls the base closure's build-time dependencies that
+the guest itself never needs (home-manager's activation scripts and the
+like), which is what the platform cache (DECISIONS I-45) removes.
+

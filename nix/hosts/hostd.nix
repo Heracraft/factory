@@ -20,7 +20,8 @@ let
       "--snapshot-dir ${lib.escapeShellArg cfg.snapshots.localDir}";
   buildFlags = "--build-user ${lib.escapeShellArg cfg.buildUser}"
     + lib.optionalString (cfg.baseRepo.url != "") " --base-repo-url ${lib.escapeShellArg cfg.baseRepo.url}"
-    + lib.optionalString (cfg.baseRepo.sshKeyFile != "") " --base-repo-ssh-key ${lib.escapeShellArg cfg.baseRepo.sshKeyFile}";
+    + lib.optionalString (cfg.baseRepo.sshKeyFile != "") " --base-repo-ssh-key ${lib.escapeShellArg cfg.baseRepo.sshKeyFile}"
+    + lib.optionalString (cfg.overlayCache.url != "") " --substituters ${lib.escapeShellArg "https://cache.nixos.org ${cfg.overlayCache.url}"}";
   stateDir = "/var/lib/repose/hostd";
 
   # guests.slice gets everything but the host reserve: 8 GiB below 128 GiB

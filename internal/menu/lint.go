@@ -76,7 +76,7 @@ func topLevelPaths(s string) []string {
 		case c == '\'' && i+1 < len(s) && s[i+1] == '\'':
 			ident.Reset()
 			i += 2
-			for i+1 < len(s) && !(s[i] == '\'' && s[i+1] == '\'') {
+			for i+1 < len(s) && (s[i] != '\'' || s[i+1] != '\'') {
 				i++
 			}
 			i += 2

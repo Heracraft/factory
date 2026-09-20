@@ -74,7 +74,7 @@ func options(fs *flag.FlagSet) *app.Options {
 	fs.IntVar(&o.MaxBuilds, "max-builds", 2, "concurrent builds")
 	fs.IntVar(&o.FailAtStep, "fail-at-step", 0, "inject a CreateGuest failure at this step (REPOSE_HOSTD_TESTING=1 only)")
 	fs.BoolVar(&o.NoWG, "no-wg", false, "do not restart wg-quick after registration")
-	fs.StringVar(&o.Substituters, "substituters", "", "nix substituters for builds (default cache.nixos.org and the platform cache)")
+	fs.StringVar(&o.Substituters, "substituters", "", "nix substituters for builds, space separated (default cache.nixos.org; the host module adds the overlay cache)")
 	return o
 }
 

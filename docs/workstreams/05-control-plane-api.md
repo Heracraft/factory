@@ -61,7 +61,7 @@ and billing routes answer `503 billing_disabled`.
 - The gateway's relay: workstream 06. The api serves `/internal/*`.
 - The Nix evaluation policy and menu catalog contents: workstream 12
   supplies the catalog file and the menu-to-fragment renderer as a Go
-  package (`internal/nixmenu`); the api calls it.
+  package (`internal/menu`, DECISIONS I-43); the api calls it.
 - Host provisioning, Coolify configuration, Key Vault creation: workstream
   11. The api needs a Key Vault URL and a managed identity or client
   credentials in env.
@@ -72,7 +72,7 @@ Owned: `interfaces/api.md`, `interfaces/db-schema.md` (except the usage and
 invoices tables, shared with 09), the CA side of `interfaces/ssh-gateway.md`,
 the server side of `interfaces/grpc-hostd.md`.
 
-Consumed: `interfaces/grpc-hostd.md` message shapes (03), `internal/nixmenu`
+Consumed: `interfaces/grpc-hostd.md` message shapes (03), `internal/menu`
 (12), `internal/billing` (09), `internal/notify` senders (13).
 
 Fake it provides: `internal/fakes/api` for the CLI, dashboard and gateway.
@@ -237,7 +237,7 @@ the guest.
 `PUT /projects/:id/config` accepts `fragment` (max 256 KB, must parse as
 Nix, checked by `nix-instantiate --parse` in the api container, which has
 Nix installed for this purpose only) or `menu` (rendered by
-`internal/nixmenu.Render(catalog, selection)` to a fragment). Insert a
+`menu.Catalog.Render(selection)` from `internal/menu` to a fragment). Insert a
 revision `building`, enqueue op `build`, return `revision_id` and `op_id`.
 The build op sends `Build` to the project's host (or, if the project has
 no host yet, to `scheduler.Pick`), streams logs, and on success sets the
