@@ -226,38 +226,42 @@ the live instance, not taken from the docs. Each one changed a file here.
    Coolify removes it. The api now does both itself at start (I-90).
 
 13. **Every rolling deploy loses a request or two per client at the
-   switchover.** Measured on 2026-09-20 with `ops/deploy-probe.sh`: two
-   loops at five requests a second against the dashboard and one against
-   the api, ~31,000 responses, five switchovers.
+   switchover, and how long after depends on the app.** Measured on
+   2026-09-20 with `ops/deploy-probe.sh`: three loops at five requests a
+   second, two against the dashboard and one against the api, **29,841
+   responses, 14 failures, 7 switchovers**.
 
-   | deploy | new container started | failures |
-   |---|---|---|
-   | `web` → `e6dd4fa` | 18:05:04.0Z | 18:05:15Z, both loops |
-   | `web` → `4bcc94b` | 18:22:22.6Z | 18:22:34Z, both loops |
-   | `api` → `4bcc94b` | 18:23:02.2Z | 18:23:28Z |
-   | `web` → `cde2b05` | 18:25:24.2Z | 18:25:35Z, both loops |
-   | `web` → `cc916eb` | 18:28:24.1Z | 18:28:30Z **502**, 18:28:35Z, both loops |
+   | deploy | new container started | failures | after |
+   |---|---|---|---|
+   | `web` → `e6dd4fa` | 18:05:04.0Z | 18:05:15Z, both loops | +11 s |
+   | `web` → `4bcc94b` | 18:22:22.6Z | 18:22:34Z, both loops | +12 s |
+   | `api` → `4bcc94b` | 18:23:02.2Z | 18:23:28Z | +26 s |
+   | `web` → `cde2b05` | 18:25:24.2Z | 18:25:35Z, both loops | +11 s |
+   | `web` → `cc916eb` | 18:28:24.1Z | 18:28:30Z **502**, 18:28:35Z both | +6 s, +11 s |
+   | `api` → `faeaefc` | 18:30:20.3Z | 18:30:46Z | +26 s |
+   | `web` → `faeaefc` | 18:30:28.9Z | 18:30:40Z, both loops | +11 s |
 
-   Five for five, so it is a property of the deployment and not bad luck.
-   The shape, rather than a count, is what to remember: **one or two
-   failures per client, six to thirty seconds after the new container
-   starts** — which is when Coolify removes the old one, not when the new
-   one appears. Almost all are 5-second hangs; the last deploy also
-   produced one clean 502, which is the same gap seen from the other
-   side. The health check is doing its job in every case: the new
-   container was healthy before the old one went.
+   Seven for seven, and the delay is the same each time *per
+   application*: `web` at +11 or +12 seconds, `api` at +26, both times.
+   That tracks each image's `HEALTHCHECK` start period — `web` 5 s,
+   `api` 20 s — which is what Coolify waits on before it removes the old
+   container, and the failure lands at the removal, not at the start. So
+   this is not the health check failing; it is the absence of a drain
+   after it passes. Traefik keeps the outgoing container in its pool for
+   a moment: a request that picks it then either waits out the client's
+   timeout (almost all of them, at 5 s) or gets a clean 502 once the
+   container is actually gone (once, at +6 s).
 
-   What is missing is a drain. Traefik keeps the outgoing container in
-   its pool for a moment; a request that picks it then either waits for
-   the client's timeout or gets a 502 once the container is gone. So
-   "rolling" here means no outage, not no dropped request. On `web` that
-   is a page that takes five seconds; on `api` it is a CLI command or a
-   dashboard poll that fails, which is the one worth deciding about.
+   "Rolling" therefore means no outage, not no dropped request. On `web`
+   that is a page that takes five seconds; on `api` it is a CLI command
+   or a dashboard poll that fails, which is the one worth deciding
+   about. The lever, if it is worth pulling, is the Coolify proxy's
+   graceful-shutdown/drain setting, not anything in these images.
 
    Reading a probe afterwards: a failure within thirty seconds of a
    container start is this, and one on its own with no deploy near it is
    not — a single unexplained 000 appeared at 18:20:39Z on one loop, and
-   folding that into the pattern would have made the pattern wrong.
+   folding it into the pattern would have made the pattern wrong.
 
 14. **A port mapping and a rolling deploy are mutually exclusive.** A
    published host port means the old and the new container cannot both be
