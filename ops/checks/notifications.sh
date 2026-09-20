@@ -20,7 +20,7 @@
 #   ops/checks/notifications.sh          # PROJECT running; NTFY_URL set
 set -euo pipefail
 check=notifications
-# shellcheck disable=SC1091
+# shellcheck source-path=SCRIPTDIR
 . "$(dirname "$0")/lib.sh"
 : "${NTFY_URL:?set NTFY_URL (the owner ntfy topic URL) in ops/checks/m3.env}"
 

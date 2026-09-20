@@ -27,7 +27,7 @@
 #   ops/checks/audit-rows.sh           # PROJECT running
 set -euo pipefail
 check=audit
-# shellcheck disable=SC1091
+# shellcheck source-path=SCRIPTDIR
 . "$(dirname "$0")/lib.sh"
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 pid=$(project_id)

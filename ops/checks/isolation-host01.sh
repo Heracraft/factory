@@ -21,7 +21,7 @@
 #   ops/checks/isolation-host01.sh    # PROJECT and PROJECT_B running
 set -euo pipefail
 check=isolation
-# shellcheck disable=SC1091
+# shellcheck source-path=SCRIPTDIR
 . "$(dirname "$0")/lib.sh"
 : "${PROJECT_B:?set PROJECT_B (the second user project slug) in the environment}"
 : "${LOGIN_B:?set LOGIN_B (<slug>.<handle> of the second user project)}"

@@ -27,7 +27,7 @@
 #   (PROJECT running; --with-build-timeout takes 30 minutes by design)
 set -euo pipefail
 check=menu
-# shellcheck disable=SC1091
+# shellcheck source-path=SCRIPTDIR
 . "$(dirname "$0")/lib.sh"
 frags="$checks_dir/fragments"
 with_destroy=0

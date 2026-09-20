@@ -13,7 +13,7 @@
 #   ops/checks/secrets.sh            # PROJECT must be running
 set -euo pipefail
 check=secrets
-# shellcheck disable=SC1091
+# shellcheck source-path=SCRIPTDIR
 . "$(dirname "$0")/lib.sh"
 
 NAME=M3_CHECK_SECRET

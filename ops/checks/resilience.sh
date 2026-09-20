@@ -25,7 +25,7 @@
 #   ops/checks/resilience.sh all|grpc|http|bump|expiry
 set -euo pipefail
 check=resilience
-# shellcheck disable=SC1091
+# shellcheck source-path=SCRIPTDIR
 . "$(dirname "$0")/lib.sh"
 frags="$checks_dir/fragments"
 what=${1:-all}

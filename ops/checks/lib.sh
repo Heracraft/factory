@@ -14,7 +14,7 @@
 set -euo pipefail
 
 checks_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-# shellcheck disable=SC1091
+# shellcheck source-path=SCRIPTDIR
 [ -f "$checks_dir/m3.env" ] && . "$checks_dir/m3.env"
 
 : "${check:=check}"
