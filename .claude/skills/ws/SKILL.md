@@ -24,6 +24,8 @@ Then:
    the report the preamble asks for.
 
 If `$ARGUMENTS` is `m1` or `m2`, there is no numbered block: read
-`docs/MILESTONES.md` and run the integration session for that milestone
-instead, closing the host-level checklist items the wave's workstreams left
-open, and recording real timings in `docs/RESEARCH.md`.
+`docs/MILESTONES.md` and the matching "M<n> bring-up" section of
+`docs/workstreams/PROMPTS.md`, and run the integration session for that
+milestone instead, closing the host-level checklist items the wave's
+workstreams left open, and recording real timings in `docs/RESEARCH.md`.
+Claim it in STATUS.md as `m<n>-integration`.

@@ -25,7 +25,8 @@ model choice, and `STATUS.md` carries the state between them.
 
 The repo ships a project skill at `.claude/skills/ws/SKILL.md`. In a worktree,
 start Claude Code and type `/ws 03`; it loads the preamble and the `03`
-block below and begins. `/ws m1` runs the M1 integration session. The full
+block below and begins. `/ws m1` and `/ws m2` run the integration sessions
+("M1 bring-up" and "M2 bring-up" below). The full
 text below is what the skill expands to, kept here so it can be read and
 edited in one place.
 
@@ -90,6 +91,63 @@ minutes). Then the M1 integration session (`/ws m1` in
 
 WireGuard between edge and hosts is workstream 06; until it exists the M1
 session reaches guests by jumping edge → host → guest.
+
+## M2 bring-up (`/ws m2` in `../repose-ws/m2-integration`)
+
+Wave three is merged (06, 07, 08, 13 and the rest of 11) and the control
+plane runs as Coolify resources on the control VM (DECISIONS I-83 to I-91):
+`api` answers at `https://api.repose.herakraft.co/healthz` with a Let's
+Encrypt certificate, `web` at `https://repose.herakraft.co`, Postgres is the
+`repose-postgres` Service, the api migrated itself and created the CA at
+first start. Logto is the owner's `accounts.herakraft.co` (I-84) with the
+`repose-cli`, `repose-web` and `repose-api` applications in place. What is
+*not* yet true, and is this session's work, in order:
+
+1. **Control VM ⇄ edge WireGuard.** The VM's key exists
+   (`/etc/wireguard/publickey`); the edge is still the wave-one install
+   (sshd on 22, hostdev on 443, no `wg0`). Redeploy the edge from `main`
+   (`nix/edge`, workstream 06: gateway on 22, operator sshd on 2222, `wg0`,
+   `wgsync`, preview stub, hook ingest), then peer the two per
+   `infra/README.md` "Wiring the control plane to the edge" and record the
+   hub with `repose-admin edge init`. The conductor runs the apply; you
+   prepare the tfvars change and ask.
+2. **api-grpc reachable where hostd and the gateway look for it.** The
+   design puts gRPC (8443) and `/internal` (8444) on the VM's WireGuard
+   address `10.255.255.1`, never on the public IP (`ops/coolify/README.md`);
+   the Coolify `api-grpc` app needs its port mappings and the control VM
+   must route those to the tunnel. Verify with `openssl s_client` from the
+   edge and with the gateway client certificate
+   (`repose-admin ca sign-client --name gateway`), then `wgsync` pulls
+   `/internal/hosts`.
+3. **host-01 registers with the real api.** It is registered with `hostdev`
+   on the edge (M1). Settle the bootstrap order, which the docs leave
+   circular: a host reaches the api over WireGuard, but learns the hub's
+   peer from the api. Candidates: the edge's public key and endpoint in the
+   host's Nix config (not secret, like `apiCA` today) so `wg0` is up before
+   hostd starts, with the edge accepting the host's first handshake through
+   `wgsync` after registration; or a bootstrap path through the edge on the
+   VNet. Pick one, record it as a DECISIONS entry, implement it in
+   `nix/hosts` and `nix/edge` as needed, drop `apiAddr`/`apiCA`/`bootstrap`
+   from `host-01.nix`, issue a join token from the api, and have the
+   conductor apply. `repose-admin hosts list` shows host-01 `ready`; stop
+   `hostdev` on the edge and note it in STATUS.
+4. **Owner-run gate.** You cannot sign in to GitHub. When `repose login`
+   and `repose run` will work, write the exact commands for the owner and
+   for a second person into STATUS.md and your report, and message the
+   conductor. While they run them, verify from the host and the api side
+   that each landed in their own guest, that the second cannot reach the
+   first's guest (`test/isolation`, 14-security's checks on the real host),
+   that sessions were reported to the api, and that the finished-agent
+   notification arrived (13). Close the real-host rows of 06 and 07's
+   checklists with evidence, and record timings in `docs/RESEARCH.md`.
+
+Rules that apply on top of the preamble: never `tofu apply`, never
+`force-unlock`, never touch the Coolify UI yourself; the owner and the
+conductor do those, and you tell them exactly what to click or run. Nothing
+about the owner's personal server (addresses, keys) goes in any file.
+`docs/ops/coolify.md` "Coolify facts that cost a round trip each" is the
+list of things already learned the hard way; read it before touching a
+Coolify resource.
 
 ## Shared preamble
 
