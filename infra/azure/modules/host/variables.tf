@@ -102,15 +102,14 @@ variable "data_disk_lun" {
 
 variable "data_disk_device" {
   description = <<-EOT
-    Device the data disk appears at on the installed system, checked after the
-    install so a wrong LUN or a detached disk fails the apply instead of
-    surfacing later as hostd's pool_missing. Azure's udev rules give a stable
-    by-lun path on SCSI sizes (v5); on NVMe-only sizes (v6, v7) the uncached
-    data disk is the first namespace of the second controller, /dev/nvme1n1,
-    and the host's nix module names the same device (DECISIONS I-40).
+    Path checked after the install so a detached disk, a wrong LUN or a
+    disko layout that never ran fails the apply instead of surfacing later
+    as hostd's pool_missing. The default is the thin pool disko creates on
+    the data disk, which is the same on SCSI and NVMe sizes; the device the
+    disk appears at is resolved by the host's disko hook (DECISIONS I-41).
   EOT
   type        = string
-  default     = "/dev/disk/azure/scsi1/lun10"
+  default     = "/dev/vg-guests/thin"
 }
 
 variable "os_disk_gb" {

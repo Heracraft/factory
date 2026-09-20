@@ -279,7 +279,7 @@ Grafana JSON and Prometheus rules under ops/grafana/.
 Workstream: docs/workstreams/11-infra-opentofu.md, after the human steps in
 docs/ops/AZURE-SETUP.md are done. Build infra/azure: network with NAT
 gateway and no inbound, the host module (Intel Dsv5 size from the host_size
-variable, default Standard_D16s_v5 per DECISIONS I-14, security type
+variable, default Standard_D16s_v7 per DECISIONS I-14 and I-39, security type
 Standard, Premium SSD v2 data disk, cloud-init writing the join token,
 nixos-anywhere provisioner), edge VM, Coolify Ubuntu VM with cloud-init,
 Blob with lifecycle rules, Key Vault with the wrapping key, the remote

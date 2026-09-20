@@ -22,7 +22,7 @@ the directory name under `/home/dev`.
 on a host, booted from a NixOS closure in the host's store, with its own
 thin volume, tap, and vsock. "Guest" never means a container.
 
-**host**, an Azure VM (Intel `D64s_v5`) running NixOS and `hostd`, holding
+**host**, an Azure VM (Intel `D64s_v7`) running NixOS and `hostd`, holding
 many guests from many users. Has no public IP and dials out for everything.
 
 **edge**, the small NixOS VM with a public IP that runs the SSH gateway and

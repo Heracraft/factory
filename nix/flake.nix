@@ -75,7 +75,7 @@
       nixosConfigurations.host-bench = mkHost { hostName = "host-bench"; };
       # Production hosts by name (infra `host_flake_attrs`); each names what
       # differs from `host`: today the api address, its CA and the Blob
-      # account (DECISIONS I-39).
+      # account (DECISIONS I-40).
       nixosConfigurations.host-01 = mkHost { hostName = "host-01"; modules = [ ./hosts/host-01.nix ]; };
 
       # Edge: gateway + WireGuard hub. docs/workstreams/06-gateway-edge.md
@@ -83,12 +83,6 @@
         inherit system;
         specialArgs = { inherit self; };
         modules = [ disko.nixosModules.disko ./edge ];
-      };
-      # The production edge: a v7 (NVMe-only) size, DECISIONS I-40.
-      nixosConfigurations.edge-01 = lib.nixosSystem {
-        inherit system;
-        specialArgs = { inherit self; };
-        modules = [ disko.nixosModules.disko ./edge { networking.hostName = "edge-01"; repose.edge.osDevice = "/dev/nvme0n1"; } ];
       };
 
       # Guest base as a module, and the function hostd's build step calls with

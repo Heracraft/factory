@@ -11,6 +11,9 @@ let
 in
 lib.mkIf (cfg.provider == "azure") {
   boot.initrd.kernelModules = [ "hv_vmbus" "hv_netvsc" "hv_utils" "hv_storvsc" ];
+  # v7 sizes are NVMe-only (DECISIONS I-39); the default list has nvme but
+  # the dependency is load-bearing here, so it is stated.
+  boot.initrd.availableKernelModules = [ "nvme" ];
   boot.kernelParams = [ "console=ttyS0" "earlyprintk=ttyS0" "rootdelay=300" ];
   networking.usePredictableInterfaceNames = false;
 

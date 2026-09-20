@@ -145,11 +145,11 @@ variable "join_tokens" {
 
 variable "host_size" {
   type        = string
-  description = "Azure VM size for hosts. Standard_D16s_v5 pre-launch, Standard_D64s_v5 at launch (DECISIONS I-14)."
-  default     = "Standard_D16s_v5"
+  description = "Azure VM size for hosts. Standard_D16s_v7 pre-launch, Standard_D64s_v7 at launch (DECISIONS I-14)."
+  default     = "Standard_D16s_v7"
 
   validation {
-    condition     = can(regex("^Standard_D[0-9]+s_v[56]$", var.host_size))
+    condition     = can(regex("^Standard_D[0-9]+(l|d|ld)?s_v[567]$", var.host_size))
     error_message = "host_size must be an Intel Dsv5/Dsv6 size. AMD sizes carry an `a` (Da*, *as_v*) and have 50 to 90 percent nested-virtualization penalties; ARM sizes have none at all (docs/DESIGN.md §4)."
   }
 }
@@ -168,7 +168,7 @@ variable "host_security_type" {
 variable "host_class" {
   type        = string
   description = "Provider-neutral capacity class recorded on each host."
-  default     = "azure-d16s-v5"
+  default     = "azure-d16s-v7"
 }
 
 variable "host_data_disk_gb" {
@@ -189,12 +189,6 @@ variable "host_data_disk_mbps" {
   default     = 600
 }
 
-variable "host_data_disk_device" {
-  type        = string
-  description = "Device the data disk appears at on an installed host: /dev/disk/azure/scsi1/lun10 on SCSI sizes (v5), /dev/nvme1n1 on NVMe-only sizes (v6, v7)."
-  default     = "/dev/disk/azure/scsi1/lun10"
-}
-
 variable "host_os_disk_gb" {
   type        = number
   description = "Host OS disk. Holds /nix/store, which every guest's closure is built into and shared from over virtio-fs."
@@ -212,7 +206,7 @@ variable "edge_name" {
 variable "edge_size" {
   type        = string
   description = "Edge VM size."
-  default     = "Standard_D2s_v5"
+  default     = "Standard_D2s_v7"
 }
 
 variable "edge_wireguard_public_key" {
@@ -248,7 +242,7 @@ variable "coolify_name" {
 variable "coolify_size" {
   type        = string
   description = "Control-plane VM size."
-  default     = "Standard_D4s_v5"
+  default     = "Standard_D4s_v7"
 }
 
 variable "coolify_os_disk_gb" {

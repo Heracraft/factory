@@ -51,17 +51,22 @@ in
 
     osDevice = lib.mkOption {
       type = lib.types.str;
-      default = "/dev/sda";
+      # Every size this subscription may use (Intel v7) exposes disks over
+      # NVMe only: the OS disk is nvme0n1 (DECISIONS I-39); a SCSI size
+      # would be /dev/sda. The data disk is resolved at install time (I-41).
+      default = "/dev/nvme0n1";
       description = "OS disk for the disko layout (GPT, ESP, ext4 root).";
     };
 
     dataDevice = lib.mkOption {
       type = lib.types.str;
-      default = "/dev/disk/azure/scsi1/lun0";
+      default = "/dev/disk/repose/data";
       description = ''
-        Data disk that becomes the one PV of `vg-guests`. On Azure this is
-        LUN 0 of the managed data disk; workstream 11 passes the value for
-        the disk it attached.
+        Data disk that becomes the one PV of `vg-guests`. The default is a
+        symlink the disko layout's Azure hook creates at install time from
+        whatever the size exposes: the SCSI by-LUN path, or the one NVMe
+        disk that is not the OS disk (DECISIONS I-41). Set it to a real
+        device to bypass that.
       '';
     };
 

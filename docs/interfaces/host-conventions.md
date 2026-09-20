@@ -52,7 +52,7 @@ rotates keys does the same restart itself.
 
 | Command | Called by | Contract |
 |---|---|---|
-| `hostd --state /var/lib/repose/hostd --api-addr <addr> [--api-ca <pem>] (--blob-url <url> --blob-container <name> [--blob-identity <client id>] \| --snapshot-dir <dir>)` | `hostd.service` | the daemon. The api address, its CA (only for the `hostdev` stand-in, I-17) and the snapshot target come from `repose.host.apiAddr`, `apiCA` and `snapshots.*` (DECISIONS I-39); hostd refuses to start without a snapshot target. Exit status 3 means "join token used or invalid"; the unit does not restart on it. |
+| `hostd --state /var/lib/repose/hostd --api-addr <addr> [--api-ca <pem>] (--blob-url <url> --blob-container <name> [--blob-identity <client id>] \| --snapshot-dir <dir>)` | `hostd.service` | the daemon. The api address, its CA (only for the `hostdev` stand-in, I-17) and the snapshot target come from `repose.host.apiAddr`, `apiCA` and `snapshots.*` (DECISIONS I-40); hostd refuses to start without a snapshot target. Exit status 3 means "join token used or invalid"; the unit does not restart on it. |
 | `hostd register --state <dir> --token /run/repose/join-token` | `repose-register.service`, once, before hostd | exit 0 with `host.json`, `cert.pem`, `key.pem` written and the token deleted; exit 0 doing nothing if `host.json` exists; exit 3 on a rejected token; any other non-zero is retried after 30 s. |
 | `hostd audit-login` | PAM session hook on every sshd login | environment `PAM_TYPE`, `PAM_USER`, `PAM_RHOST`; writes an `audit_log` row (or a journal line until the api exists). Must be quick and never block a login. |
 | `hostd snapshot-all` | `repose-snapshot.timer` at 03:00 local | snapshots every running guest without the api. |
@@ -162,7 +162,7 @@ opens sshd on the provider NIC for a plain operator key.
 `nixos-anywhere --flake .#host-<name> root@<ip>` from a checkout; the
 layout is `nix/hosts/disko-layout.nix` (OS disk GPT with a 1 GB ESP and
 ext4 root; data disk one PV, `vg-guests`, thin pool `thin`). The data
-device defaults to `/dev/disk/azure/scsi1/lun0` and is
+device defaults to `/dev/disk/repose/data`, resolved at install time by the disko hook (DECISIONS I-41), and is
 `repose.host.dataDevice`. The join token arrives through cloud-init
 `write_files` in the instance user-data as `/run/repose/join-token`
 (workstream 11 passes it); cloud-init on the host runs only that module.

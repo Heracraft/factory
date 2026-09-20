@@ -92,7 +92,7 @@ hot overlay data moves to local SSD later. The dev box this repo is developed
 on is a `Standard_D8alds_v7` (AMD) in `eastus`, which is the family to avoid
 for hosts.
 
-### 2a. What this subscription may actually deploy in East US (2026-09-20)
+### 2a. What this subscription may actually deploy in East US (2026-09-20, DECISIONS I-39)
 
 Checked with `az vm list-skus -l eastus --all` during the M1 bring-up
 after the first apply failed with `SkuNotAvailable` on the edge:

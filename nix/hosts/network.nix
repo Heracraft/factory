@@ -56,7 +56,7 @@ let
       guest_cidr=$(jq -er .guest_cidr "$hostJson")
       # WireGuard material and the Host CA arrive with registration by the
       # api; `hostdev` (DECISIONS I-17) registers a host without them, and
-      # the bridge, sshd and the exporters must still come up (I-39).
+      # the bridge, sshd and the exporters must still come up (I-40).
       wg_private_key=$(jq -r '.wg.private_key // empty' "$hostJson")
       wg_address=$(jq -r '.wg.address // empty' "$hostJson")
       wg_edge_pubkey=$(jq -r '.wg.edge_pubkey // empty' "$hostJson")

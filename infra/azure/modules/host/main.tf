@@ -103,8 +103,8 @@ resource "azurerm_linux_virtual_machine" "main" {
       error_message = "Host ${var.name}: security_type must be Standard; Trusted Launch and Confidential VMs disable nested virtualization (docs/DESIGN.md §4)."
     }
     precondition {
-      condition     = can(regex("^Standard_D[0-9]+s_v[567]$", var.size))
-      error_message = "Host ${var.name}: size ${var.size} is not an Intel Dsv5/v6/v7 size. AMD (Da*, *as_v*) and ARM sizes have no usable nested virtualization (docs/DESIGN.md §4, DECISIONS I-14, I-40)."
+      condition     = can(regex("^Standard_D[0-9]+(l|d|ld)?s_v[567]$", var.size))
+      error_message = "Host ${var.name}: size ${var.size} is not an Intel Dsv5/v6/v7 size. AMD (Da*, *as_v*) and ARM sizes have no usable nested virtualization (docs/DESIGN.md §4, DECISIONS I-14)."
     }
     precondition {
       condition     = var.zone != null
@@ -179,7 +179,7 @@ module "install" {
   post_install_commands = [
     "test -e /dev/kvm || { echo 'no /dev/kvm on ${var.name}: wrong VM size or security_type (docs/DESIGN.md §4)' >&2; exit 1; }",
     "test \"$(cat /sys/module/kvm_intel/parameters/nested)\" = Y || { echo 'nested virtualization disabled on ${var.name}' >&2; exit 1; }",
-    "test -b ${var.data_disk_device} || { echo 'data disk ${var.data_disk_device} missing on ${var.name}' >&2; exit 1; }",
+    "test -e ${var.data_disk_device} || { echo 'data disk pool ${var.data_disk_device} missing on ${var.name}' >&2; exit 1; }",
   ]
 
   triggers = {

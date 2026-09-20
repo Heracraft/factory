@@ -699,7 +699,26 @@ inside the build so a stale checkout cannot ship stale stubs. One
 `packages.nix` builds every Go binary (guestd, repose-hook, hostd, hostdev)
 from one vendor hash.
 
-**I-39. A production host is a named configuration; the api CA and the
+**I-39. Sizes are Intel v7 (Granite Rapids): host `Standard_D16s_v7`, edge
+`Standard_D2s_v7`, control plane `Standard_D4s_v7`, launch host
+`Standard_D64s_v7`.** (owner's first apply, 2026-09-20) The first apply
+failed with `SkuNotAvailable`: this subscription has every v5 and v6
+general-purpose size marked NotAvailableForSubscription in East US and East
+US 2, all zones (`az vm list-skus --all`), which is a subscription-level SKU
+gate, not capacity. The v7 families are unrestricted in all three zones with
+a 350 vCPU quota each already granted. Verified against the size pages:
+Intel Xeon 6, x86-64, nested virtualization Supported, Gen2 only, security
+type Standard allowed by setting it explicitly, NVMe disk controller only.
+Consequences: disks are `/dev/nvme0n1` (OS) and `/dev/nvme0n2` (data LUN 0)
+instead of `/dev/sda` and the SCSI udev path; the host module's validation
+accepts `Standard_D<n>(l|d|ld)?s_v[567]`; cost is about $772 a month for the
+host and $96 for the edge, about 40 percent more than the v5 figures in
+`PRICING.md`, which now describe launch economics on a v5 reservation or
+Hetzner. R2-17's AMD exclusion stands: `a`-sizes stay out. *Rejected:*
+requesting v5 SKU enablement through support (days, uncertain); another
+region (same gate); Hetzner now (R3-20's fallback remains available).
+
+**I-40. A production host is a named configuration; the api CA and the
 snapshot target are host module options; a host registered by `hostdev`
 comes up without WireGuard or a Host CA.** (m1 integration, 2026-09-20)
 Bringing host-01 up against `hostdev` on the edge (I-17) found four gaps
@@ -735,29 +754,20 @@ between the merged host configuration and a real host:
   `hostd.service` command line). The edge firewall also opens 443, which
   the NSG already did, for hostdev now and the preview-proxy stub later.
 
-**I-40. Pre-launch host and edge are Intel Dsv7 sizes, because this
-subscription cannot deploy Dsv5 or Dsv6 in East US.** (m1 integration,
-2026-09-20; needs the owner's sign-off, it changes the bill) The first
-apply failed creating the edge with `SkuNotAvailable`, and
-`az vm list-skus` shows every `Standard_D*s_v5` and `_v6` size as
-`NotAvailableForSubscription` in all three zones of `eastus`, with the
-family quota untouched (RESEARCH §2a). `Standard_D16s_v7` (Intel Xeon 6,
-nested virtualization supported, Premium SSD v2, no temp disk) and
-`Standard_D2s_v7` are open in every zone and within quota, so `prod.tfvars`
-selects them: `host_size`, `host_class = azure-d16s-v7`, `edge_size`. The
-v7 generation is NVMe-only, which changes two device names: the OS disk is
-`/dev/nvme0n1` and the uncached data disk `/dev/nvme1n1` (Azure's remote
-NVMe FAQ: cached disks on the first controller, uncached on the second), so
-`host-01` and the new `edge-01` configuration name those devices and the
-root variable `host_data_disk_device` carries the post-install check.
-Cost: about $211 more a month for the host and $26 for the edge than the
-I-14 sizes. DESIGN §4's Intel-with-nested-virtualization rule holds; only
-the generation changes. *Rejected:* a support request to lift the
-restriction (days, and nothing runs meanwhile; worth filing anyway to
-return to v5 pricing); moving the environment to `swedencentral` or
-`koreacentral`, where `D16s_v5` is open (every resource already applied is
-in `eastus`, and the dev box and owner are on the US east coast);
-`Dnsv6` (network-optimised premium for bandwidth the design does not
-use). *Revisit when:* Microsoft lifts the restriction, or at the launch
-resize (I-14), when `D64s_v5` against `D64s_v7` is a fresh price check.
+**I-41. The data disk is found at install time, not named in advance.**
+(m1 integration, 2026-09-20) I-39 named the data disk `/dev/nvme0n2` "LUN
+0", while infra attaches it at LUN 10 and Azure's remote-NVMe FAQ says v7
+sizes put cached disks (the OS disk) on one controller and uncached data
+disks on a second one, which would make a Premium SSD v2 data disk
+`/dev/nvme1n1`. Neither name has been seen on a real v7 host. The disko
+layout's Azure hook, which already runs before the data disk is touched,
+now resolves `/dev/disk/repose/data` itself: the SCSI by-LUN path when the
+size is SCSI, otherwise the single NVMe disk that is not the OS disk, and
+it fails with the list of disks it saw when there is not exactly one.
+`repose.host.dataDevice` defaults to that symlink and the post-install check
+asserts the thin pool `/dev/vg-guests/thin` exists rather than a device
+name. *Rejected:* fixing a namespace number (wrong on one of the two
+controller layouts, and wrong again if the LUN changes); a udev rule in the
+installer (nixos-anywhere's kexec image takes none). *Revisit when:* a host
+has more than one data disk.
 

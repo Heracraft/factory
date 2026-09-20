@@ -6,13 +6,13 @@ variable "name" {
 
 variable "size" {
   description = <<-EOT
-    Azure VM size. Default Standard_D2s_v5 per the size note at the top of
+    Azure VM size. Default Standard_D2s_v7 per the size note at the top of
     docs/workstreams/11-infra-opentofu.md. A burstable B-series size is
     cheaper but throttles once its credits are gone, and the thing that would
     throttle is every user's SSH session.
   EOT
   type        = string
-  default     = "Standard_D2s_v5"
+  default     = "Standard_D2s_v7"
 }
 
 variable "zone" {

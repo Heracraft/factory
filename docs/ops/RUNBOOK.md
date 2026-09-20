@@ -347,7 +347,7 @@ Until workstream 06 lands, hosts are not on WireGuard and the gateway does
 not exist. Operators reach a guest by jumping through the edge and the host:
 
 1. `ssh -J root@<edge ip> root@<host private ip>` (bootstrap sshd on the
-   provider NIC, `repose.host.bootstrap.enable`, DECISIONS I-39).
+   provider NIC, `repose.host.bootstrap.enable`, DECISIONS I-40).
 2. The host's `inet repose` `input` chain sends every frame from
    `br-guests` to `guest_in`, which drops all but rate-limited ICMP, so a
    TCP connection the host opens to a guest never gets its replies. For the

@@ -21,10 +21,12 @@
 let
   poolMetadataSize = ''"$(( m = $(blockdev --getsize64 "''${lvm_devices[0]}") / 100, m < 1073741824 ? 1073741824 : (m > 17179869184 ? 17179869184 : m) ))b"'';
 
-  # nixos-anywhere's kexec installer has no Azure udev rules, so the
-  # /dev/disk/azure/scsi1/lun0 symlink does not exist there yet. Load
-  # waagent's rules from the store and retrigger the block devices before
-  # touching the data disk. A no-op wherever the symlink already exists.
+  # nixos-anywhere's kexec installer has no Azure udev rules, and the v7
+  # sizes expose disks over NVMe with no by-LUN name at all (DECISIONS I-39,
+  # I-41). This runs before disko touches the data disk and makes
+  # ${dataDevice} exist: on a SCSI size by loading waagent's rules and
+  # retriggering, on an NVMe size by pointing the symlink at the one NVMe
+  # disk that is not the OS disk. A no-op wherever the path already exists.
   azureUdevHook = lib.optionalString (azureUdevRules != null) ''
     if [ ! -e "${dataDevice}" ] && [ -d /run/udev ]; then
       mkdir -p /run/udev/rules.d
@@ -32,6 +34,25 @@ let
       udevadm control --reload
       udevadm trigger --subsystem-match=block --action=add
       udevadm settle
+    fi
+    if [ ! -e "${dataDevice}" ]; then
+      os=$(readlink -f "${osDevice}")
+      candidates=""
+      for d in /sys/block/nvme*n* /dev/disk/azure/scsi1/lun*; do
+        [ -e "$d" ] || continue
+        dev=/dev/$(basename "$(readlink -f "$d")")
+        [ "$dev" = "$os" ] && continue
+        candidates="$candidates $dev"
+      done
+      set -- $candidates
+      if [ "$#" -ne 1 ]; then
+        echo "repose: expected exactly one data disk besides ${osDevice}, found:$candidates" >&2
+        lsblk -d -o NAME,SIZE,MODEL >&2 || true
+        exit 1
+      fi
+      mkdir -p "$(dirname "${dataDevice}")"
+      ln -sfn "$1" "${dataDevice}"
+      echo "repose: data disk ${dataDevice} -> $1"
     fi
   '';
 

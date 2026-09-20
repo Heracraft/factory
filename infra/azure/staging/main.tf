@@ -38,7 +38,8 @@ terraform {
 
 provider "azurerm" {
   features {}
-  subscription_id = var.subscription_id
+  storage_use_azuread = true
+  subscription_id     = var.subscription_id
 
   # The subscription's resource providers were registered by hand
   # (docs/ops/AZURE-SETUP.md step 3). Letting the provider re-check them on
@@ -73,12 +74,10 @@ module "environment" {
   hosts       = var.hosts
   join_tokens = var.join_tokens
 
-  host_flake_attrs      = var.host_flake_attrs
-  host_data_disk_device = var.host_data_disk_device
-  edge_flake_attr       = var.edge_flake_attr
+  host_flake_attrs = var.host_flake_attrs
 
-  # DECISIONS I-14: the pre-launch host is a D16s_v5 with a 512 GB data disk.
-  # Launch values are Standard_D64s_v5 and 2048, changed here and applied with
+  # DECISIONS I-14: the pre-launch host is a D16s_v7 with a 512 GB data disk (I-39).
+  # Launch values are Standard_D64s_v7 and 2048, changed here and applied with
   # guests stopped (deallocate, resize, start).
   host_size           = var.host_size
   host_class          = var.host_class

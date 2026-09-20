@@ -7,7 +7,7 @@ variable "name" {
 variable "size" {
   type        = string
   description = "Azure VM size for the control plane."
-  default     = "Standard_D4s_v5"
+  default     = "Standard_D4s_v7"
 }
 
 variable "zone" {
