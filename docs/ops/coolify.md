@@ -106,7 +106,7 @@ Postgres service, Backups: nightly at 02:00, retention 35 days,
 destination an **S3 storage configured in the owner's own Coolify** —
 which may already exist for their other databases. No credential for it
 is in this repository, on the control VM, or in any agent session
-(`DECISIONS.md` I-102). That is the whole configuration; there is no step
+(`DECISIONS.md` I-103). That is the whole configuration; there is no step
 here that creates a bucket or a token.
 
 Two fields of Coolify's S3 storage form are got wrong reliably, whatever
@@ -320,7 +320,7 @@ out (and on Ctrl-C). It reads both shapes of dump, gzipped plain SQL and
 custom format, by looking at the bytes rather than at the name, because
 which one Coolify writes depends on how the backup was set up.
 `--from-bucket` fetches with rclone instead, for whoever has a remote of
-their own; production does not back up that way (I-102). Run it after any schema change that moves a lot of rows: the
+their own; production does not back up that way (I-103). Run it after any schema change that moves a lot of rows: the
 number it prints is what an incident will cost, and a number from before
 the data grew is not that number.
 
@@ -344,7 +344,7 @@ specific to a Coolify version (`DESIGN.md` §Risks).
 - The values under each resource's Environment tab and the two Domains
   fields (`ops/coolify/README.md`).
 - The backup destination: an S3 storage in the owner's own Coolify,
-  which the platform never sees a credential for (`DECISIONS.md` I-102).
+  which the platform never sees a credential for (`DECISIONS.md` I-103).
 - The api's Entra app registration and its client certificate, whose object id
   becomes `api_identity_object_id` and turns on the Key Vault wrap/unwrap
   policy (`DECISIONS.md` I-21).

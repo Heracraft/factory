@@ -106,7 +106,7 @@ variable "coolify_public_key" {
 
 variable "backup_max_age_hours" {
   type        = number
-  description = "repose-backup-check reports failure when the newest dump Coolify has written under /data/coolify/backups is older than this. 36 hours: a nightly dump plus a missed night's grace. There is no bucket variable: the destination is an S3 storage in the owner's own Coolify and no credential for it reaches this VM (DECISIONS I-102)."
+  description = "repose-backup-check reports failure when the newest dump Coolify has written under /data/coolify/backups is older than this. 36 hours: a nightly dump plus a missed night's grace. There is no bucket variable: the destination is an S3 storage in the owner's own Coolify and no credential for it reaches this VM (DECISIONS I-103)."
   default     = 36
 }
 

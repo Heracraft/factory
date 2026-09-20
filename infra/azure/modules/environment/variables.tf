@@ -266,7 +266,7 @@ variable "coolify_manager_cidrs" {
 
 variable "backup_max_age_hours" {
   type        = number
-  description = "Age at which repose-backup-check calls the newest Coolify dump on the control VM stale. No bucket variable: the backup destination is an S3 storage in the owner's own Coolify and no credential for it exists here (DECISIONS I-102)."
+  description = "Age at which repose-backup-check calls the newest Coolify dump on the control VM stale. No bucket variable: the backup destination is an S3 storage in the owner's own Coolify and no credential for it exists here (DECISIONS I-103)."
   default     = 36
 }
 

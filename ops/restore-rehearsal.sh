@@ -16,7 +16,7 @@
 # **Where the dump comes from.** Coolify owns the backups and uploads them
 # to an S3 storage configured in the owner's own Coolify; no credential
 # for that storage is in this repository or on the control VM
-# (DECISIONS I-102). So the normal path is: download the dump from that
+# (DECISIONS I-103). So the normal path is: download the dump from that
 # database's **Backups** tab in Coolify, and pass the file. `--from-bucket`
 # stays for whoever does have an rclone remote — it is three lines — but it
 # is not how production is backed up and nothing here will create one.
@@ -51,7 +51,7 @@ usage: ops/restore-rehearsal.sh <dump-file> [--admin-image IMAGE] [--keep]
                  Backups tab in Coolify (--dump FILE also accepted)
   --from-bucket  fetch the newest object with rclone instead; needs a
                  remote you made yourself (production does not back up
-                 this way, DECISIONS I-102)
+                 this way, DECISIONS I-103)
   --bucket       bucket name for --from-bucket (default repose-pg-backups)
   --remote       rclone remote for --from-bucket (default r2)
   --admin-image  image carrying repose-admin (default: the running `api`

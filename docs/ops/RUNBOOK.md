@@ -38,7 +38,7 @@ The full click path, with the reasons, is `coolify.md`. The short form:
    `repose-api` (Management API role) for `LOGTO_M2M_CLIENT_ID/SECRET`.
 4. Add Postgres as a Service (Docker Compose Empty, paste
    `ops/coolify/postgres/docker-compose.yml`, I-87) with its Backups tab
-   set to nightly against an S3 storage of the owner's (I-102), then
+   set to nightly against an S3 storage of the owner's (I-103), then
    `api`, `api-grpc` and `web` as Dockerfile applications, each with its
    `ops/coolify/*.env.example` pasted in ("Connect to predefined
    network" stays **off** for the Service: the compose file joins the
@@ -790,7 +790,7 @@ The api, api-grpc or web app's rolling deploy did not go green.
 
 No recent Postgres dump. Coolify runs the backup and uploads it to an S3
 storage in the owner's own Coolify; no credential for that storage is
-here (DECISIONS I-102), so the two halves are checked in two places.
+here (DECISIONS I-103), so the two halves are checked in two places.
 
 **Was a dump taken?** On the control VM, and needing nothing:
 
@@ -877,7 +877,7 @@ into a Coolify without that key is a database of ciphertext. Start from both.
 
 1. Get the dump from the database's **Backups** tab in Coolify — that is
    where they are listed and downloadable, and the storage they were
-   uploaded to is the owner's, with no credential on this side (I-102).
+   uploaded to is the owner's, with no credential on this side (I-103).
    Add a scratch server to the same Coolify (staging's control VM), add
    a Postgres database on it, and `pg_restore` into that.
    For the rehearsal — and for finding out how long a restore takes

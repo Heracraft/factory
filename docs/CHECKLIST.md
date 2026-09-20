@@ -81,7 +81,7 @@ written so they cannot happen quietly.
       or a throwaway database, with the time recorded. The dump comes from
       the Postgres service's Backups tab; the destination is the owner's
       own S3 storage and nothing here holds a credential for it
-      (DECISIONS I-102). `ops/restore-rehearsal.sh <dump>` does it and
+      (DECISIONS I-103). `ops/restore-rehearsal.sh <dump>` does it and
       prints the timings.
 - [ ] Snapshot restore of a guest onto a *different* host rehearsed.
 - [ ] Host loss rehearsed: deallocate a host, restore its projects elsewhere

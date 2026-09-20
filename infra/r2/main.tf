@@ -1,6 +1,6 @@
 # Cloudflare R2: an optional bucket for Postgres dumps.
 #
-# NOT what production uses. The owner's decision (DECISIONS I-102) is that
+# NOT what production uses. The owner's decision (DECISIONS I-103) is that
 # Coolify owns the backups and uploads them to an S3 storage configured in
 # the owner's own Coolify, and that no credential for that storage comes
 # through this repository or an agent session. This root is kept for

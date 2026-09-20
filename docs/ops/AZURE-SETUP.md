@@ -62,7 +62,7 @@ a day.
     so: Coolify runs the backups and uploads them to an S3 storage
     configured in your own Coolify, which may already exist for your other
     databases. No credential for it belongs in this repository, on the
-    control VM, or in any agent session (`DECISIONS.md` I-102), so there is
+    control VM, or in any agent session (`DECISIONS.md` I-103), so there is
     nothing to create or paste on this side. Set the schedule and the
     destination on the Postgres service's Backups tab
     (`docs/ops/coolify.md`, "The Postgres backup"); verify with

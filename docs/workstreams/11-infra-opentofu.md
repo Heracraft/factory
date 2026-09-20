@@ -71,7 +71,7 @@ provider module for hosts is an addition, not a rewrite.
     (`coolify_public_key`) on root next to the operator keys, installs
     `rclone` and `postgresql-client` (`pg_restore` for the runbook's
     restore procedure; `rclone` only for an operator who has a remote of
-    their own, DECISIONS I-102) and a `repose-backup-check` helper, then
+    their own, DECISIONS I-103) and a `repose-backup-check` helper, then
     installs a WireGuard peer config so Prometheus and the api can reach
     the edge network. Its NSG allows 80 and 443 from `control_web_cidrs`,
     and 22 from `operator_cidrs` plus `coolify_manager_cidrs` (the
@@ -364,7 +364,7 @@ row says otherwise. Commands were run from the dev box, which is in
       with a provider authentication error. Production does **not** use
       `infra/r2`: the backup destination is an S3 storage in the owner's own
       Coolify and no credential for it comes through this repository
-      (DECISIONS I-102), so the module is optional and unused. The
+      (DECISIONS I-103), so the module is optional and unused. The
       control-plane VM ships `repose-backup-check` (credential-free, reading
       `/data/coolify/backups`) and the `pg_restore` the rehearsal needs, and
       `docs/ops/coolify.md` has the procedure.

@@ -216,7 +216,7 @@ Does not create guests; project flows that need one wait for `m3`'s step 1
    because `m3` may be mid-operation on host-01.
 3. **Backups**: the destination is an S3 storage in the owner's own
    Coolify and no credential for it comes through this repository or a
-   session (DECISIONS I-102), so there is no token to ask for and no
+   session (DECISIONS I-103), so there is no token to ask for and no
    `infra/r2` apply. What is left: the nightly schedule on the Postgres
    Service, one manual backup, `repose-backup-check` green on the
    control VM (it reads `/data/coolify/backups` and needs nothing), and

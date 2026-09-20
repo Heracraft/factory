@@ -146,7 +146,7 @@ nobody will thank you for.
 Coolify's own: on the Postgres service, Backups, nightly at 02:00,
 retention 35 days, destination an S3 storage configured in the owner's
 own Coolify. No credential for it is in this repository or on the VM
-(DECISIONS I-102), so there is nothing to generate here. Verify with
+(DECISIONS I-103), so there is nothing to generate here. Verify with
 `ssh root@<control ip> repose-backup-check`, which needs no credential
 and reports the age of the newest dump Coolify wrote under
 `/data/coolify/backups` — that the dump was taken; the upload is the

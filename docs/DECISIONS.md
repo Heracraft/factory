@@ -2325,7 +2325,7 @@ requests and the refresh grant; `internal/fakes/logto` and
 shape. Shipped as v0.1.3. *Rejected:* accepting opaque tokens at the api by
 calling Logto's userinfo (a round trip per request and a token that any
 Logto application could mint).
-**I-102. Coolify owns the backups, the destination is the owner's own S3
+**I-103. Coolify owns the backups, the destination is the owner's own S3
 storage, and no credential for it comes through this repository or an
 agent session.** (owner, 2026-09-20) `infra/r2` created a bucket, and
 `AZURE-SETUP.md` step 10, `ops/coolify.md`, `ops/coolify/README.md`, the
