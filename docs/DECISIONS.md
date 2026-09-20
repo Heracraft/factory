@@ -1991,3 +1991,16 @@ at once and a third afterwards and asserts one schema and one CA.
 *Rejected:* a Coolify one-off command (needs a running container); an init
 container in a compose file (the api applications are single-container
 Dockerfile apps by I-87).
+
+**I-91. The api's Key Vault policy is Get, WrapKey and UnwrapKey.**
+(conductor, 2026-09-20) The first CA init in production failed with 403
+"does not have keys get permission": the api reads the key's current
+version with GetKey before every wrap, and the policy, written as
+"wrap/unwrap only, never get", withheld it. That rule was borrowed from
+secrets, where Get returns the value; for a Key Vault key, Get returns the
+public half and attributes, and the private key is non-exportable whatever
+the permission, so Get costs nothing. Added rather than reworking the wrap
+path to infer the version from WrapKey's response, which would leave the
+rewrap job (which needs the current version without wrapping anything)
+with the same need. The policy was also never applied: `api_identity_object_id`
+was in `prod.local.tfvars` after the last apply. Applied 2026-09-20.

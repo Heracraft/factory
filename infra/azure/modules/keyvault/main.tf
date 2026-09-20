@@ -71,7 +71,11 @@ resource "azurerm_key_vault_access_policy" "operator" {
   ]
 }
 
-# The api. Wrap and unwrap only; deliberately no Get, no List, no Export.
+# The api. Wrap and unwrap, plus Get: the api reads the key's current
+# version before wrapping (internal/api/secrets/azurekv.go CurrentVersion),
+# and Get on a Key Vault *key* returns the public half and attributes only;
+# the private key never leaves the HSM whatever the permission (DECISIONS
+# I-91). Still no List, Export, Create or Delete.
 resource "azurerm_key_vault_access_policy" "api" {
   count = var.api_identity_object_id == null ? 0 : 1
 
@@ -79,7 +83,7 @@ resource "azurerm_key_vault_access_policy" "api" {
   tenant_id    = var.tenant_id
   object_id    = var.api_identity_object_id
 
-  key_permissions = ["WrapKey", "UnwrapKey"]
+  key_permissions = ["Get", "WrapKey", "UnwrapKey"]
 }
 
 resource "azurerm_key_vault_key" "dek_wrap" {

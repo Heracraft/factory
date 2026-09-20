@@ -89,7 +89,8 @@ provider module for hosts is an addition, not a rewrite.
     Contributor` scoped to that container.
   - `keyvault`: Key Vault with purge protection, one RSA-3072 key
     `repose-dek-wrap` with rotation policy 12 months, and an access policy
-    for the api's identity (wrap/unwrap only, never get) created when
+    for the api's identity (get, wrap and unwrap; get on a key is the
+    public half only, DECISIONS I-91) created when
     `api_identity_object_id` is supplied. The api on the control VM
     authenticates with a client certificate stored in Coolify's secret
     store, since the control VM is not an Azure identity target for
