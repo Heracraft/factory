@@ -27,7 +27,9 @@ say() { printf '\n== %s ==\n' "$1"; }
 
 # promtool comes from nixpkgs#prometheus.cli; the dev shell has it.
 promtool() {
-  if command -v promtool >/dev/null 2>&1; then
+  # type -P, not command -v: the latter reports this very function, so on a
+  # machine without the binary the wrapper called itself and failed.
+  if type -P promtool >/dev/null 2>&1; then
     command promtool "$@"
   else
     nix shell nixpkgs#prometheus.cli -c promtool "$@"
