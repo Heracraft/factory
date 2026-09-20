@@ -2293,3 +2293,20 @@ falls back to the default. Interface: `docs/interfaces/cli-config.md`.
 Shipped as v0.1.1. *Rejected:* a Logto application whose id equals its
 name (Logto does not offer that); reading the id from the api at login (a
 second round trip before the first, for a value that never changes).
+
+**I-101. `repose login` uses the device-code flow by default; the loopback
+PKCE flow is `--browser`.** (conductor, owner, 2026-09-20) The second
+attempt at the M2 gate answered `oidc.invalid_redirect_uri`: the
+`repose-cli` application in the owner's Logto is a Native app with device
+flow enabled and, as that app type's settings page shows, no Redirect URIs
+field, so the loopback redirect the PKCE flow registers on the fly can never
+match. Logto also matches redirect URIs exactly, so the doc's
+`http://127.0.0.1:*/callback` was never registrable. Device code needs
+nothing registered, works in every terminal (including over SSH) and is what
+`gh auth login` does; it is now the default, and `--browser` remains for a
+Logto application that does register loopback URIs (07 §5.2 step 2 is
+demoted to that case). *Rejected:* a fixed loopback port registered in Logto
+(collides with anything else on the laptop, and a second Logto still needs
+the entry); detecting the failure and falling back (Logto renders the error
+in the browser and never redirects, so the CLI would wait on a callback that
+never comes).

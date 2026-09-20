@@ -120,14 +120,16 @@ stderr.
 1. Discover Logto's OIDC config from `config.toml` `logto_issuer` (default
    `https://auth.herakraft.co`, overridable). Cache the discovery document
    for 24 hours.
-2. If a browser is available (not `--no-browser`, `REPOSE_NO_BROWSER`
+2. Only with `--browser` (since v0.1.2, DECISIONS I-101: the Logto Native
+   application has no registered redirect URIs, so this flow cannot
+   succeed against it) and a browser available (`REPOSE_NO_BROWSER`
    unset, `DISPLAY` or macOS, not inside a guest (`REPOSE=1`)): start a
    listener on `127.0.0.1:0`, build the authorization URL with
    `code_challenge` (S256), `scope=openid offline_access profile email`,
    `resource=https://api.repose.herakraft.co`, open the browser, wait up to
    5 minutes for the callback, exchange the code. Print `Logged in as
    <handle> (<email>)`.
-3. Otherwise device code: `POST /oidc/device/auth`, print
+3. Otherwise, and by default, device code: `POST /oidc/device/auth`, print
 
    ```
    Open https://auth.herakraft.co/device and enter code ABCD-EFGH

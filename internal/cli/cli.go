@@ -95,7 +95,7 @@ func newRootCmd(version string) *cobra.Command {
 }
 
 func newLoginCmd() *cobra.Command {
-	var noBrowser bool
+	var noBrowser, browser bool
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: "Log in with Logto",
@@ -105,6 +105,7 @@ func newLoginCmd() *cobra.Command {
 				return err
 			}
 			opts := loginOptions{
+				Browser:   browser,
 				NoBrowser: noBrowser || os.Getenv("REPOSE_NO_BROWSER") == "1",
 				Display:   os.Getenv("DISPLAY"),
 				GOOS:      goos(),
@@ -113,7 +114,8 @@ func newLoginCmd() *cobra.Command {
 			return runLogin(cmd.Context(), e.Dir, e.Cfg, e.httpClient, opts)
 		},
 	}
-	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "use the device-code flow instead of opening a browser")
+	cmd.Flags().BoolVar(&browser, "browser", false, "use the loopback browser flow (PKCE) instead of the device code; needs a Logto application with loopback redirect URIs")
+	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "device-code flow (the default since v0.1.2; kept for scripts)")
 	return cmd
 }
 

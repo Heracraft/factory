@@ -11,6 +11,11 @@ import (
 // loginOptions configures runLogin so tests can stub the browser and the
 // clock; the real command builds this from cobra flags and the OS.
 type loginOptions struct {
+	// Browser asks for the authorization-code-with-PKCE loopback flow. Off
+	// by default since v0.1.2 (DECISIONS I-101): the Logto application is a
+	// Native app with device flow and no registered redirect URIs, so the
+	// loopback flow ends in oidc.invalid_redirect_uri.
+	Browser   bool
 	NoBrowser bool
 	Display   string // GOOS "" means "no DISPLAY env"; darwin/windows ignore it
 	GOOS      string
@@ -33,7 +38,7 @@ func runLogin(ctx context.Context, dir string, cfg Config, httpClient *http.Clie
 		open = openBrowser
 	}
 	var tr *tokenResponse
-	if browserAvailable(opts.NoBrowser, opts.GuestEnv, opts.Display, opts.GOOS) {
+	if opts.Browser && browserAvailable(opts.NoBrowser, opts.GuestEnv, opts.Display, opts.GOOS) {
 		tr, err = loginPKCE(ctx, httpClient, doc, cfg.LogtoClientID, open)
 	} else {
 		tr, err = loginDeviceCode(ctx, httpClient, doc, cfg.LogtoClientID, func(s string) { fmt.Println(s) })

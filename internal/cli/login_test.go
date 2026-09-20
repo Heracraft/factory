@@ -32,7 +32,7 @@ func TestLoginPKCE(t *testing.T) {
 	cfg.APIURL = fake.URL() + "/v1"
 	cfg.LogtoIssuer = oidc.Issuer()
 
-	err := runLogin(context.Background(), dir, cfg, http.DefaultClient, loginOptions{GOOS: "linux", Display: ":0", Open: openViaGet})
+	err := runLogin(context.Background(), dir, cfg, http.DefaultClient, loginOptions{Browser: true, GOOS: "linux", Display: ":0", Open: openViaGet})
 	if err != nil {
 		t.Fatalf("runLogin: %v", err)
 	}
