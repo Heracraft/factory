@@ -44,8 +44,9 @@ the `DATABASE_URL` host lookup fails, `docker inspect` the Postgres
 container's aliases on `coolify` (`RUNBOOK.md` "api cannot resolve
 repose-postgres").
 
-- `api`: domain `https://api.repose.herakraft.co:8080`; port mapping
-  `9103:9103` (metrics, over WireGuard only); **no pre-deploy command**
+- `api`: domain `https://api.repose.herakraft.co:8080`; **no port
+  mappings at all**, and see "The api's metrics" below for why its 9103
+  is not published; **no pre-deploy command**
   (the api migrates itself at start and creates the CA on first start,
   I-90); Coolify's own health check **off** so the
   image's `HEALTHCHECK` (`api -healthcheck`) drives the rolling deploy (the
@@ -72,6 +73,72 @@ Required before anything serves: `LOGTO_M2M_CLIENT_ID/SECRET` (the
 `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (the api's Entra app registration,
 `docs/ops/AZURE-SETUP.md`). Empty until turned on: `RESEND_API_KEY`,
 `STRIPE_*`, `PUBLIC_STRIPE_PUBLISHABLE_KEY`, `OTEL_EXPORTER_OTLP_ENDPOINT`.
+
+## The api's metrics
+
+`API_METRICS_LISTEN=:9103` serves 57 `repose_*` series inside the `api`
+container, and nothing outside that container can reach them. This is the
+one thing on this page that is **not** settled, so it is written down
+rather than guessed at.
+
+**What it cannot be: a port mapping.** An earlier version of this file
+said `9103:9103` on `api`, by analogy with `api-grpc`. A published host
+port means the old and the new container cannot both be up, so Coolify
+cannot roll the app — it is exactly the constraint that made `api-grpc`
+a separate application in the first place (DECISIONS I-2). `api-grpc`
+can carry `9104:9103` precisely because it is the app that accepts
+stop-then-start, hostd's reconnect absorbing the seconds. The HTTP api
+is the one that must keep rolling, so it publishes nothing.
+
+Two ways out, for the owner to choose between:
+
+**A. A Traefik router on the api app.** Coolify passes custom labels
+through to the container, so the proxy already in front of the api can
+serve `/metrics` from the same container port without publishing it. The
+label block, ready to paste into the app's Configuration -> Advanced ->
+Custom labels:
+
+```
+traefik.enable=true
+traefik.http.routers.api-metrics.rule=Host(`api.repose.herakraft.co`) && Path(`/metrics`)
+traefik.http.routers.api-metrics.entryPoints=https
+traefik.http.routers.api-metrics.tls=true
+traefik.http.routers.api-metrics.tls.certresolver=letsencrypt
+traefik.http.routers.api-metrics.service=api-metrics
+traefik.http.routers.api-metrics.middlewares=api-metrics-allow
+traefik.http.services.api-metrics.loadbalancer.server.port=9103
+traefik.http.middlewares.api-metrics-allow.ipallowlist.sourcerange=10.255.0.0/16,10.200.0.0/16
+```
+
+Prometheus then scrapes `https://api.repose.herakraft.co/metrics`
+resolved to the control VM's WireGuard address, and the allow-list keeps
+the internet out even though the router is on the public entry point.
+*For:* nothing new to run, rolling deploys untouched, and it rides the
+certificate Traefik already has. *Against:* the metrics endpoint exists
+on a public hostname and its privacy is one middleware line — a label
+edited by hand in a UI, which is the class of thing this repository
+otherwise keeps in files; and `ipallowlist` reads the source address
+Traefik sees, so it has to be checked against what the proxy actually
+observes over the tunnel rather than assumed.
+
+**B. Grafana Alloy as a Coolify service.** A collector on the `coolify`
+network scrapes `api:9103` and `api-grpc:9103` by container name — no
+published port, no proxy, no allow-list — and remote-writes to the
+owner's Prometheus. *For:* the scrape never leaves the docker network,
+the deployment stays a file, and the same agent can replace Fluent Bit
+on hosts and the edge and push logs and metrics through one path instead
+of two (which would make `ops/prometheus/wireguard-peer.conf`'s whole
+forwarding problem, DECISIONS I-94, go away for hosts as well).
+*Against:* one more thing to run and upgrade, a second way of getting
+metrics out alongside the Prometheus scrape the rest of `ops/` is built
+around, and replacing Fluent Bit is a change to every host's
+configuration that wants its own decision rather than riding along with
+this one.
+
+Until one is chosen, `ops/prometheus/prometheus.yml` scrapes `api-grpc`
+on `10.255.255.1:9104` and the `api` target is commented out with this
+section named, because a target that can never answer is an alert
+nobody will thank you for.
 
 ## Backups
 

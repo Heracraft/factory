@@ -255,6 +255,20 @@ the live instance, not taken from the docs. Each one changed a file here.
    switchover.
 
 
+14. **A port mapping and a rolling deploy are mutually exclusive.** A
+   published host port means the old and the new container cannot both be
+   up, so Coolify falls back to stop-then-start — which is exactly why
+   `api-grpc` is a separate application from `api` (I-2), not a
+   convenience. So the HTTP `api` publishes **nothing**: an earlier
+   version of `ops/coolify/README.md` told an operator to add
+   `9103:9103` to it for metrics, and following that would have quietly
+   cost the api its rolling deploys, which is the one property the split
+   exists to protect. `api-grpc` carries `8443`, `8444` and `9104:9103`
+   because it is the app that accepts the restart. Where the api's own
+   metrics go instead is an open choice, written up with both options
+   and a ready-to-paste label block in `ops/coolify/README.md`, "The
+   api's metrics".
+
 ## The instance's .env is half the backup
 
 Coolify encrypts the credentials it holds — every application's secrets, the

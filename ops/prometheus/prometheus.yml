@@ -83,24 +83,39 @@ scrape_configs:
   # scrape and for nothing else (docs/workstreams/10-observability.md §2);
   # its HTTP surface is reached by users over the internet, not from here.
   #
-  # Two targets, not one: `api` and `api-grpc` are separate Coolify
-  # applications from the same image (DECISIONS I-2), each with its own
-  # process and so its own registry, and the series that matter are split
-  # between them — the HTTP families come from `api`, the stream and ops
-  # families from `api-grpc`. The `app` label is what tells them apart in a
-  # panel.
+  # One target today, two once the api's own route exists: `api` and
+  # `api-grpc` are separate Coolify applications from the same image
+  # (DECISIONS I-2), each with its own process and so its own registry,
+  # and the series split between them — the HTTP families come from
+  # `api`, the stream and ops families from `api-grpc`. The `app` label
+  # is what will tell them apart in a panel; until the api is scraped, a
+  # panel over an HTTP family is empty rather than wrong.
   #
   # 10.255.255.1 is the control VM's address on the hub, fixed by
   # DECISIONS I-92; an earlier draft of this file guessed 10.255.0.2.
-  # 9103 and 9104 are host ports on that VM, published by each
+  # 9104 is a host port on that VM, published by the `api-grpc`
   # application's port mapping (ops/coolify/README.md), because a
   # container's own METRICS_LISTEN is not reachable from the tunnel.
+  #
+  # The `api` application publishes no host port and cannot: a published
+  # port stops the old and new containers coexisting, so Coolify could not
+  # roll it, which is the constraint that split `api-grpc` off in the first
+  # place (DECISIONS I-2). Its 9103 therefore needs a route of its own —
+  # a Traefik router on the app, or a collector on the docker network —
+  # and that choice is open: `ops/coolify/README.md`, "The api's metrics".
+  # Until it is made this target would be permanently down, which is an
+  # alert nobody will thank us for, so it is commented out rather than
+  # aspirational.
+  #
+  #     - targets: ["10.255.255.1:9103"]
+  #       labels:
+  #         role: control-plane
+  #         app: api
+  #
+  # `api-grpc` is the app that takes stop-then-start by design, so it can
+  # publish 9104:9103 and be scraped directly.
   - job_name: api
     static_configs:
-      - targets: ["10.255.255.1:9103"]
-        labels:
-          role: control-plane
-          app: api
       - targets: ["10.255.255.1:9104"]
         labels:
           role: control-plane

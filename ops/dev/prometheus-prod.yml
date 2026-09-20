@@ -44,6 +44,11 @@ scrape_configs:
       - target_label: instance
         replacement: "10.255.0.1:9100"
 
+  # The tunnel reaches the api's 9103 on its container address, which is
+  # a thing only an operator with SSH to the VM can do: the application
+  # publishes no host port and cannot (ops/coolify/README.md, "The api's
+  # metrics"). That is the other reason this file exists — it is the only
+  # way to see these series at all until that choice is made.
   - job_name: api
     static_configs:
       - targets: ["host.docker.internal:19103"]
