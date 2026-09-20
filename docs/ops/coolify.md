@@ -260,8 +260,30 @@ the control VM by cloud-init so that it can be followed without stopping to
 install anything, and the readiness provisioner fails the apply if either is
 missing.
 
-Rehearse onto a scratch server added to the same Coolify (staging's control
-VM, `coolify_count = 1` in `staging.tfvars`), never onto production.
+`ops/restore-rehearsal.sh` is that procedure as one command with a clock
+on it:
+
+```bash
+scp ops/restore-rehearsal.sh root@<control ip>:/root/
+ssh root@<control ip> /root/restore-rehearsal.sh
+```
+
+It finds the newest object in the bucket, restores it into a throwaway
+`postgres:16-alpine` container of its own — never into `repose-postgres`,
+and with no published port — runs `repose-admin db verify` from the api
+image against it, prints fetch, restore and verify times, and removes the
+container on the way out (and on Ctrl-C). It reads both shapes of dump,
+gzipped plain SQL and custom format, by looking at the bytes rather than
+at the name, because which one Coolify writes depends on how the backup
+was set up. Run it after any schema change that moves a lot of rows: the
+number it prints is what an incident will cost, and a number from before
+the data grew is not that number.
+
+Rehearsing onto a scratch *server* added to the same Coolify (staging's
+control VM, `coolify_count = 1` in `staging.tfvars`) is still the fuller
+exercise, because it also proves the Coolify half; the script is the part
+that has to work under pressure, and it can be run on the control VM
+itself without risk.
 
 ## Upgrading Coolify
 

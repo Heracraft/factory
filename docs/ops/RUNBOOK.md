@@ -854,6 +854,10 @@ into a Coolify without that key is a database of ciphertext. Start from both.
    download the newest dump from R2 (`rclone ls r2:repose-pg-backups`),
    `pg_restore` into it. `rclone` and `pg_restore` are installed on the
    control-plane VM by cloud-init, and the apply fails if they are missing.
+   For the rehearsal — and for finding out how long a restore takes before
+   you need to know — `ops/restore-rehearsal.sh` does all of that into a
+   throwaway container of its own and prints the timings
+   (`docs/ops/coolify.md`, "Restore rehearsal").
 2. Point a staging api at it, run `repose-admin db verify` (row counts
    per table against the last rollup), time the whole thing, record it in
    `../CHECKLIST.md`'s release item.
