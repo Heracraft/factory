@@ -74,13 +74,13 @@ variable "join_tokens" {
 variable "host_size" {
   type        = string
   description = "Azure VM size for hosts."
-  default     = "Standard_D16s_v5"
+  default     = "Standard_D16s_v7"
 }
 
 variable "host_class" {
   type        = string
   description = "Capacity class recorded on each host."
-  default     = "azure-d16s-v5"
+  default     = "azure-d16s-v7"
 }
 
 variable "host_security_type" {
@@ -126,7 +126,7 @@ variable "edge_operator_ssh_port" {
 variable "edge_size" {
   type        = string
   description = "Edge VM size."
-  default     = "Standard_D2s_v5"
+  default     = "Standard_D2s_v7"
 }
 
 variable "coolify_count" {
@@ -138,7 +138,7 @@ variable "coolify_count" {
 variable "coolify_size" {
   type        = string
   description = "Control-plane VM size."
-  default     = "Standard_D4s_v5"
+  default     = "Standard_D4s_v7"
 }
 
 variable "edge_wireguard_public_key" {

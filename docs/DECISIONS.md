@@ -698,3 +698,22 @@ works without buf; `nix/packages.nix` regenerates it with local plugins
 inside the build so a stale checkout cannot ship stale stubs. One
 `packages.nix` builds every Go binary (guestd, repose-hook, hostd, hostdev)
 from one vendor hash.
+
+**I-39. Sizes are Intel v7 (Granite Rapids): host `Standard_D16s_v7`, edge
+`Standard_D2s_v7`, control plane `Standard_D4s_v7`, launch host
+`Standard_D64s_v7`.** (owner's first apply, 2026-09-20) The first apply
+failed with `SkuNotAvailable`: this subscription has every v5 and v6
+general-purpose size marked NotAvailableForSubscription in East US and East
+US 2, all zones (`az vm list-skus --all`), which is a subscription-level SKU
+gate, not capacity. The v7 families are unrestricted in all three zones with
+a 350 vCPU quota each already granted. Verified against the size pages:
+Intel Xeon 6, x86-64, nested virtualization Supported, Gen2 only, security
+type Standard allowed by setting it explicitly, NVMe disk controller only.
+Consequences: disks are `/dev/nvme0n1` (OS) and `/dev/nvme0n2` (data LUN 0)
+instead of `/dev/sda` and the SCSI udev path; the host module's validation
+accepts `Standard_D<n>(l|d|ld)?s_v[567]`; cost is about $772 a month for the
+host and $96 for the edge, about 40 percent more than the v5 figures in
+`PRICING.md`, which now describe launch economics on a v5 reservation or
+Hetzner. R2-17's AMD exclusion stands: `a`-sizes stay out. *Rejected:*
+requesting v5 SKU enablement through support (days, uncertain); another
+region (same gate); Hetzner now (R3-20's fallback remains available).

@@ -42,10 +42,10 @@ a day.
 
 7. **Set a budget alert.** Cost Management → Budgets: $1,000 a month for
    the pre-launch month, raised to $2,500 at launch, with emails at 50, 80
-   and 100 percent. A forgotten `D16s_v5` burns $18 a day; a `D64s_v5`, $74.
+   and 100 percent. A forgotten `D16s_v7` burns $25 a day; a `D64s_v7`, about $100.
 
 8. **Know the two settings agents must get right, so you can check them.**
-   Hosts must be Intel Dsv5 (`Standard_D16s_v5` until launch, `D64s_v5` after, DECISIONS I-14) with security type `Standard`.
+   Hosts must be Intel Dsv7 (`Standard_D16s_v7` until launch, `D64s_v7` after, DECISIONS I-14 and I-39) with security type `Standard`. This subscription cannot create v5 or v6 sizes at all (verified 2026-09-20); the v7 families come with a 350 vCPU quota each, so no quota request is needed for them.
    The portal defaults to Trusted Launch, which silently disables nested
    virtualization. AMD sizes (any `a` in the size name, like this dev box's
    `D8alds_v7`) are excluded. If East US has no capacity for the size when a

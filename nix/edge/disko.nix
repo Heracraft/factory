@@ -5,7 +5,7 @@
 {
   disko.devices = import ../hosts/disko-layout.nix {
     inherit lib;
-    osDevice = "/dev/sda";
+    osDevice = "/dev/nvme0n1"; # Azure v7 sizes are NVMe-only (DECISIONS I-39)
     withData = false;
   };
 }

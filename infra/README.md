@@ -259,19 +259,19 @@ small enough surface to port when that day comes.
 Re-checked on **2026-09-19** against the Azure Retail Prices API
 (`https://prices.azure.com/api/retail/prices`, `armRegionName eq 'eastus'`,
 `priceType eq 'Consumption'`), for what `prod.tfvars` actually creates: one
-`D16s_v5` host with a 512 GB Premium SSD v2 data disk (DECISIONS I-14), the
+`D16s_v7` host with a 512 GB Premium SSD v2 data disk (DECISIONS I-14, I-39), the
 edge, and **no control-plane VM** (`coolify_count = 0`, DECISIONS I-24). 730
 hours to the month, Linux rates, no reservation.
 
 | Resource | Unit price | Monthly |
 |---|---|---|
-| Host `Standard_D16s_v5` | $0.768/h | $560.64 |
+| Host `Standard_D16s_v7` | $1.058/h | $772.34 |
 | Host OS disk, Premium SSD P15 (256 GiB) + mount | $38.01 + $1.83 | $39.84 |
 | Host data disk, Premium SSD v2, 512 GiB | $0.00011/GiB/h | $41.12 |
 | — its 16,000 IOPS (3,000 free) | $0.000007/IOPS/h | $66.43 |
 | — its 600 MB/s (125 free) | $0.000055/MBps/h | $19.07 |
 | NAT gateway | $0.045/h + $0.045/GB processed | $32.85 + egress |
-| Edge `Standard_D2s_v5` | $0.096/h | $70.08 |
+| Edge `Standard_D2s_v7` | $0.132/h | $96.36 |
 | Edge OS disk, Premium SSD P6 (64 GiB) + mount | $10.21 + $0.47 | $10.68 |
 | Two Standard static IPv4 (NAT, edge) | $0.005/h each | $7.30 |
 | Blob, 500 GB of snapshots, Cool LRS | $0.0152/GB/month | $7.60 |
@@ -279,11 +279,11 @@ hours to the month, Linux rates, no reservation.
 | R2, 50 GB | $0.015/GB/month | $0.75 |
 | **Total, one host, no control plane, before egress** | | **about $857** |
 
-Adding the control-plane VM in wave 3 — `coolify_count = 1`, a `D4s_v5` at
+Adding the control-plane VM in wave 3 — `coolify_count = 1`, a `D4s_v7` at
 $140.16, its 256 GB OS disk at $39.84 and its static IP at $3.65 — takes it to
 about **$1,040**, which is over the $1,000 monthly budget alert in
 `docs/ops/AZURE-SETUP.md` step 7. Raise the budget to $1,200 at that point, or
-drop the control plane to a `D2s_v5` and save $70.
+drop the control plane to a `D2s_v7` and save about $95.
 
 The other thing this table says that the earlier estimate did not:
 **Premium SSD v2 provisioned performance is most of the disk bill.** Capacity
@@ -293,7 +293,7 @@ reason, and both can be raised in place later without downtime, so the first
 host can start at the free tier (3,000 IOPS, 125 MB/s) and save $85 a month
 until there is a guest whose builds justify more.
 
-At launch sizes (`Standard_D64s_v5`, 2 TB data disk, control plane on) the
+At launch sizes (`Standard_D64s_v7`, 2 TB data disk, control plane on) the
 same table totals about **$2,850**. The $10k credit funds roughly three and a
 half months of that with one host. Reservations generally cannot be bought
 with sponsorship credits; check before assuming a reserved rate applies.

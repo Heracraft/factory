@@ -103,7 +103,7 @@ resource "azurerm_linux_virtual_machine" "main" {
       error_message = "Host ${var.name}: security_type must be Standard; Trusted Launch and Confidential VMs disable nested virtualization (docs/DESIGN.md §4)."
     }
     precondition {
-      condition     = can(regex("^Standard_D[0-9]+s_v[56]$", var.size))
+      condition     = can(regex("^Standard_D[0-9]+(l|d|ld)?s_v[567]$", var.size))
       error_message = "Host ${var.name}: size ${var.size} is not an Intel Dsv5/v6 size. AMD (Da*, *as_v*) and ARM sizes have no usable nested virtualization (docs/DESIGN.md §4, DECISIONS I-14)."
     }
     precondition {

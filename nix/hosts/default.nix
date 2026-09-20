@@ -51,13 +51,17 @@ in
 
     osDevice = lib.mkOption {
       type = lib.types.str;
-      default = "/dev/sda";
+      # Every size this subscription may use (Intel v7) exposes disks over
+      # NVMe only: OS disk nvme0n1, data disk LUN n at nvme0n(n+2)
+      # (DECISIONS I-39). SCSI sizes would be /dev/sda and
+      # /dev/disk/azure/scsi1/lun0.
+      default = "/dev/nvme0n1";
       description = "OS disk for the disko layout (GPT, ESP, ext4 root).";
     };
 
     dataDevice = lib.mkOption {
       type = lib.types.str;
-      default = "/dev/disk/azure/scsi1/lun0";
+      default = "/dev/nvme0n2";
       description = ''
         Data disk that becomes the one PV of `vg-guests`. On Azure this is
         LUN 0 of the managed data disk; workstream 11 passes the value for
