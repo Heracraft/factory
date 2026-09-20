@@ -39,13 +39,15 @@ var classes = map[string]int64{
 }
 
 var catalog = []CatalogItem{
-	{ID: "bun", Label: "Bun", Group: "languages", Description: "Bun JavaScript runtime and package manager"},
-	{ID: "nodejs", Label: "Node.js", Group: "languages", Description: "Node.js LTS"},
-	{ID: "python3", Label: "Python 3", Group: "languages", Description: "CPython 3 with pip"},
-	{ID: "postgresql", Label: "PostgreSQL", Group: "databases", Description: "PostgreSQL server as a user service"},
-	{ID: "redis", Label: "Redis", Group: "databases", Description: "Redis server as a user service"},
-	{ID: "chromium", Label: "Chromium", Group: "browsers", Description: "Headless Chromium for browser automation"},
-	{ID: "ripgrep", Label: "ripgrep", Group: "tools", Description: "Fast recursive grep"},
+	{ID: "bun", Label: "Bun", Group: "languages", Kind: "package", Description: "Bun JavaScript runtime and package manager"},
+	{ID: "nodejs", Label: "Node.js", Group: "languages", Kind: "package", Description: "Node.js LTS", Options: []CatalogOption{
+		{ID: "version", Type: "enum", Values: []string{"22", "24"}, Default: "24"},
+	}},
+	{ID: "python3", Label: "Python 3", Group: "languages", Kind: "package", Description: "CPython 3 with pip"},
+	{ID: "postgresql", Label: "PostgreSQL", Group: "databases", Kind: "service", Description: "PostgreSQL server as a user service"},
+	{ID: "redis", Label: "Redis", Group: "databases", Kind: "service", Description: "Redis server as a user service"},
+	{ID: "chromium", Label: "Chromium", Group: "browsers", Kind: "package", Description: "Headless Chromium for browser automation"},
+	{ID: "ripgrep", Label: "ripgrep", Group: "tools", Kind: "package", Description: "Fast recursive grep"},
 }
 
 var catalogServices = map[string]bool{"postgresql": true, "redis": true}
