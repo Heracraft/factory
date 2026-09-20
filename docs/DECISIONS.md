@@ -2376,3 +2376,25 @@ owner already manages. The cost is that this side cannot prove the
 upload happened — which is honest, because it never really could: an
 rclone listing proves an object exists, not that it is last night's
 database.
+
+**I-105. The provisioner reads the GitHub login from Logto's
+`rawData.userInfo.login`; the fake Logto emits that shape.** (m2 gate,
+2026-09-20) The conductor's device-code login, approved by the owner
+through "Continue with GitHub", provisioned `user-yv7ryeiczbkz` although
+Logto's Management API shows a `github` identity for that subject. The
+connector stores `details = {id, name, avatar, email, rawData}` with
+`rawData = {userInfo, userEmails}`, and GitHub's `login` sits inside
+`userInfo`; `auth.Lookup` tried `details.login` and `rawData.login`, both
+absent, and fell through to the `user-<sub>` fallback of I-100. The unit
+test passed because `internal/fakes/logto` rendered the identity as the
+flat `details.login` no Logto version sends. `Lookup` now tries the three
+shapes in order and the fake renders the real one (a `LegacyShape` flag
+keeps the flat form for the fallback's own test; a `User` without a
+GitHub login renders no identity, the email sign-in case). Existing rows
+are not rederived: `user-c7fh26yzrl93` (an email account, no identity to
+derive from) and `user-yv7ryeiczbkz` (renamed once its test project is
+gone; a handle with projects is never renamed because the guest host
+certificate carries `<slug>.<handle>`, I-42). *Rejected:* fetching GitHub's
+profile from the api with the connector's token (the Management API
+already returns it); a rename that re-signs host certificates (an
+operator path for a one-time repair).

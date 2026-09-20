@@ -131,10 +131,19 @@ func (m *LogtoManagement) Lookup(ctx context.Context, sub string) (Identity, err
 	}
 	id := Identity{Email: u.PrimaryEmail, Username: u.Username}
 	if gh, ok := u.Identities["github"]; ok {
+		// Logto's GitHub connector stores {id, name, avatar, email, rawData}
+		// with rawData = {userInfo: <GitHub's user object>, userEmails};
+		// the login lives at rawData.userInfo.login (seen on the owner's
+		// account at the M2 gate, DECISIONS I-105). The two flatter shapes
+		// are kept for older connector versions.
 		if login, ok := gh.Details["login"].(string); ok {
 			id.GithubLogin = login
 		} else if raw, ok := gh.Details["rawData"].(map[string]any); ok {
-			id.GithubLogin, _ = raw["login"].(string)
+			if login, ok := raw["login"].(string); ok {
+				id.GithubLogin = login
+			} else if info, ok := raw["userInfo"].(map[string]any); ok {
+				id.GithubLogin, _ = info["login"].(string)
+			}
 		}
 		if id.Email == "" {
 			id.Email, _ = gh.Details["email"].(string)

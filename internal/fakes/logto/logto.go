@@ -23,6 +23,9 @@ type User struct {
 	Email       string
 	GithubLogin string
 	Username    string
+	// LegacyShape emits the flat details.login of older GitHub connectors
+	// instead of rawData.userInfo.login (DECISIONS I-105).
+	LegacyShape bool
 }
 
 // Fake is the server.
@@ -149,6 +152,29 @@ func (f *Fake) user(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{ // test server
 		"id": r.PathValue("id"), "primaryEmail": u.Email, "username": u.Username,
-		"identities": map[string]any{"github": map[string]any{"userId": "42", "details": map[string]any{"login": u.GithubLogin, "email": u.Email}}},
+		"identities": githubIdentity(u),
 	})
+}
+
+// githubIdentity renders the identity the way Logto's GitHub connector
+// stores it (verified against accounts.herakraft.co at the M2 gate,
+// DECISIONS I-105): details {id, name, avatar, email, rawData} with the
+// login only inside rawData.userInfo, GitHub's own user object. A User
+// with LegacyShape emits the flat details.login of older connectors, and
+// one with no GithubLogin has no github identity at all (an email
+// sign-in).
+func githubIdentity(u User) map[string]any {
+	if u.GithubLogin == "" {
+		return map[string]any{}
+	}
+	if u.LegacyShape {
+		return map[string]any{"github": map[string]any{"userId": "42", "details": map[string]any{"login": u.GithubLogin, "email": u.Email}}}
+	}
+	return map[string]any{"github": map[string]any{"userId": "42", "details": map[string]any{
+		"id": "42", "name": "Octo Cat", "avatar": "https://avatars.githubusercontent.com/u/42", "email": u.Email,
+		"rawData": map[string]any{
+			"userInfo":   map[string]any{"login": u.GithubLogin, "id": 42, "name": "Octo Cat", "email": u.Email, "avatar_url": "https://avatars.githubusercontent.com/u/42"},
+			"userEmails": []map[string]any{{"email": u.Email, "primary": true, "verified": true}},
+		},
+	}}}
 }
