@@ -68,6 +68,7 @@ func options(fs *flag.FlagSet) *app.Options {
 	fs.StringVar(&o.BlobIdentity, "blob-identity", "", "managed identity client id (empty: default credential)")
 	fs.StringVar(&o.StoreExport, "store-export", "/run/repose/store-export", "directory virtiofsd shares")
 	fs.StringVar(&o.VirtiofsUser, "virtiofsd-user", "virtiofsd", "user virtiofsd runs as")
+	fs.StringVar(&o.GuestUser, "guest-user", "hostd", "unprivileged user the guest@ (Cloud Hypervisor) units run as")
 	fs.StringVar(&o.VG, "vg", "vg-guests", "volume group")
 	fs.StringVar(&o.Pool, "pool", "thin", "thin pool")
 	fs.IntVar(&o.MaxOps, "max-ops", 8, "concurrent guest operations")
@@ -75,6 +76,7 @@ func options(fs *flag.FlagSet) *app.Options {
 	fs.IntVar(&o.FailAtStep, "fail-at-step", 0, "inject a CreateGuest failure at this step (REPOSE_HOSTD_TESTING=1 only)")
 	fs.BoolVar(&o.NoWG, "no-wg", false, "do not restart wg-quick after registration")
 	fs.StringVar(&o.Substituters, "substituters", "", "nix substituters for builds, space separated (default cache.nixos.org; the host module adds the overlay cache)")
+	fs.StringVar(&o.LogLevel, "log-level", "info", "log level: debug, info, notice, warn, error")
 	return o
 }
 
@@ -100,7 +102,7 @@ func main() {
 }
 
 func dispatch(cmd string, args []string, o *app.Options) int {
-	log := app.Logger()
+	log := app.Logger(o.LogLevel)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	cc := control.NewClient(o.ControlSock)

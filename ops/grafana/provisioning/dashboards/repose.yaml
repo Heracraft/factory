@@ -1,0 +1,19 @@
+# Grafana loads the seven dashboards from ops/dashboards/ as files and keeps
+# them in sync with the repository: `allowUiUpdates: false` means an edit in
+# the browser cannot be saved over the file, which is what keeps the JSON in
+# git the truth. To change a panel, edit ops/dashboards/gen.py, run it, and
+# deploy.
+apiVersion: 1
+
+providers:
+  - name: repose
+    orgId: 1
+    folder: repose
+    folderUid: repose
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards/repose
+      foldersFromFilesStructure: false

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -74,11 +75,20 @@ func TestCreateReachesRunningWithEverythingWired(t *testing.T) {
 	if u == nil || !u.Active || u.Props[0] != "MemoryMax=8704M" || u.Props[1] != "CPUQuota=400%" {
 		t.Fatalf("unit %+v", u)
 	}
-	if !strings.Contains(strings.Join(u.Argv, " "), "--memory size=8192M,shared=on") {
+	// H-2: the hypervisor is not root, and the unit is the sandbox
+	// GuestUnitProps renders (its golden pins the full list).
+	dir := filepath.Join(h.cfg.GuestsDir, gid1)
+	for _, want := range []string{"User=hostd", "NoNewPrivileges=yes", "DevicePolicy=closed", "DeviceAllow=/dev/vg-guests/g-" + gid1 + " rw", "BindPaths=" + dir, "TemporaryFileSystem=" + h.cfg.GuestsDir} {
+		if !slices.Contains(u.Props, want) {
+			t.Fatalf("guest unit lacks %q: %v", want, u.Props)
+		}
+	}
+	argv := strings.Join(u.Argv, " ")
+	if !strings.Contains(argv, "--memory size=8192M,shared=on") || !strings.Contains(argv, "--seccomp true") {
 		t.Fatalf("argv %v", u.Argv)
 	}
-	if v := h.sd.Units["virtiofsd@"+gid1]; v == nil || !v.Active {
-		t.Fatal("virtiofsd not started")
+	if v := h.sd.Units["virtiofsd@"+gid1]; v == nil || !v.Active || !strings.Contains(strings.Join(v.Argv, " "), "--socket-path "+filepath.Join(dir, "virtiofsd", "virtiofsd.sock")+" ") || !strings.Contains(strings.Join(v.Argv, " "), "--socket-group hostd") {
+		t.Fatalf("virtiofsd unit %+v", v)
 	}
 	fg := h.guestd(gid1)
 	sec := fg.Secrets()

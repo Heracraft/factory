@@ -32,7 +32,7 @@ func TestSweepBuildsUnheldSkipsHeld(t *testing.T) {
 		t.Fatal(err)
 	}
 	job := basebump.New(h.Pool, h.Engine, h.Events, h.Log)
-	h.Engine.OnFinished = job.OnOpFinished
+	h.Engine.SetOnFinished(job.OnOpFinished)
 	touched, err := job.Sweep(ctx)
 	if err != nil {
 		t.Fatal(err)

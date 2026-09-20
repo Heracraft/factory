@@ -19,11 +19,16 @@ writeShellApplication {
     state=/var/lib/repose/hostd
     token=/run/repose/join-token
     cmd=serve
+    # Every flag the host units pass takes a value (--api-addr, --api-ca,
+    # --snapshot-dir, --build-user, --join-token, ...) except the booleans
+    # named here; a value left behind would be read as the command word.
     while [ $# -gt 0 ]; do
       case "$1" in
         --state) state="$2"; shift 2 ;;
-        --token) token="$2"; shift 2 ;;
-        --*) shift ;;
+        --token|--join-token) token="$2"; shift 2 ;;
+        --no-wg|--guestd-unix) shift ;;
+        --*=*) shift ;;
+        --*) shift 2 ;;
         *) cmd="$1"; shift ;;
       esac
     done

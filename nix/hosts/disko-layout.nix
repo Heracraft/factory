@@ -21,7 +21,10 @@
 let
   # One percent of the PV, clamped to 1 to 16 GiB, in whole MiB: lvcreate
   # rejects a byte count that is not a multiple of 512 (host-01, 2026-09-20).
-  poolMetadataSize = ''"$(( m = $(blockdev --getsize64 "''${lvm_devices[0]}") / 100, m < 1073741824 ? 1073741824 : (m > 17179869184 ? 17179869184 : m), m / 1048576 ))m"'';
+  # The clamp is assigned back to m; as a bare comma operand its value was
+  # discarded, so a 64 GiB test disk got 0.64 GiB and a disk over 1.6 TiB
+  # would have asked for more metadata than a thin pool allows.
+  poolMetadataSize = ''"$(( m = $(blockdev --getsize64 "''${lvm_devices[0]}") / 100, m = (m < 1073741824 ? 1073741824 : (m > 17179869184 ? 17179869184 : m)), m / 1048576 ))m"'';
 
   # nixos-anywhere's kexec installer has no Azure udev rules, and the v7
   # sizes expose disks over NVMe with no by-LUN name at all (DECISIONS I-39,

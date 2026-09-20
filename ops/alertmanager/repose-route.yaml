@@ -1,0 +1,52 @@
+# The Alertmanager route for repose, to merge into the personal server's
+# alertmanager.yml. Everything goes to the owner's ntfy topic; `page` gets its
+# own receiver so the phone can be allowed to make a sound for those and stay
+# quiet for the rest (docs/workstreams/10-observability.md §2).
+#
+# ntfy is reached with a webhook, so the JSON Alertmanager posts arrives as the
+# message body. The ntfy server turns the `X-Title` and `X-Priority` headers
+# into the notification's title and urgency; Alertmanager cannot set headers
+# per alert, so the two receivers differ by topic instead and the phone
+# subscribes to both.
+
+route:
+  receiver: repose-ntfy
+  group_by: [alertname, host_id]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+  routes:
+    - matchers:
+        - stack = "repose"
+        - severity = "page"
+      receiver: repose-ntfy-page
+      group_wait: 0s
+      repeat_interval: 1h
+    - matchers:
+        - stack = "repose"
+      receiver: repose-ntfy
+
+receivers:
+  - name: repose-ntfy
+    webhook_configs:
+      - url: https://ntfy.herakraft.co/repose-alerts
+        send_resolved: true
+
+  - name: repose-ntfy-page
+    webhook_configs:
+      - url: https://ntfy.herakraft.co/repose-page
+        send_resolved: true
+
+# Silences: `amtool silence add alertname=SnapshotStale --duration 2h
+# --comment "why"`. A silence with no comment is deleted by a nightly job
+# (docs/ops/OBSERVABILITY.md), because a silence nobody can explain outlives
+# the reason for it.
+inhibit_rules:
+  # A host Prometheus cannot reach produces every host alert at once as its
+  # series go stale; the scrape failure is the one worth reading.
+  - source_matchers: [alertname = "HostScrapeDown"]
+    target_matchers: [severity =~ "warn|page"]
+    equal: [host_id]
+  # An unreachable host is the api's view of the same thing.
+  - source_matchers: [alertname = "HostUnreachable"]
+    target_matchers: [alertname = "GuestdLost"]

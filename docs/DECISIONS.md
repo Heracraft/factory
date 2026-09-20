@@ -1063,3 +1063,341 @@ hand until a token exists, and `ops/RUNBOOK.md` has it as a symptom entry.
 to read `dig` output would have to rediscover the wildcard); making
 `manage_dns` a required variable (a plan-only CI run has no business
 supplying a Cloudflare value).
+**I-49. The tmux-idle heuristic never reads pane content, and its metrics
+carry the `repose_api_*` prefix, not `repose_notify_*`.** (13, review of 04
+and 05) Two places where code merged ahead of this workstream disagreed
+with `13-notifications.md` as written, found by auditing 04 and 05's
+already-built pipeline against it:
+
+- §5.4 described a `needs_input` heuristic that runs `tmux capture-pane`
+  and matches prompt patterns (`❯`, `[y/N]`, ...) against the pane's last
+  three lines. `internal/guestd/sample` (04) never captures pane text at
+  all: `needs_input` comes only from a real hook (`RecordHook`), and the
+  heuristic's only signal is whether the pane's process tree has consumed
+  CPU since the last refresh, per `docs/workstreams/04-guestd.md` §5 and
+  `docs/features/agents.md` (already correct). This is strictly *more*
+  private than the documented design (there is no `patterns.go`, no
+  `capture-pane` call to grep for, so the checklist's "pane contents are
+  never logged, stored or sent" item is satisfied by construction rather
+  than by discipline), and it was the right call: a hookless agent's last
+  line is exactly the terminal content §5.1 says a summary must never carry
+  beyond what a hook payload itself gives, and a heuristic has no hook
+  payload. *Rejected:* implementing capture-pane matching to match the
+  original doc (adds the exact surface area the privacy boundary exists to
+  avoid, for a `needs_input` signal only three of five agents lack, and
+  those three already get it from `RecordHook` once they gain a hook).
+  §5.4 below is rewritten to describe the built heuristic (CPU-busy,
+  90-second quiet window for hookless agents from `features/agents.md`,
+  not the 30/30 split originally written); the `needs_input` row is
+  removed from the heuristic's state table because no code path produces it
+  outside a real hook.
+- 05 gave every api metric the `repose_api_` prefix for one family per
+  component (`repose_api_notify_total`, `repose_api_outbox_depth`, ...),
+  not the bare `repose_notify_*` names §5.8 listed, and `EventsTotal`
+  carries `{kind}` only, with `agent` and `source=hook|heuristic` never
+  added (the heuristic's synthetic completions and a real hook's are the
+  same `kind` in the same table; splitting them needed a label 05 had no
+  reason to add before this workstream existed). This workstream adds
+  `repose_api_notify_delivery_latency_seconds` (a histogram of event ts to
+  delivered ts, the one 5.8 metric with no equivalent) and leaves the
+  `repose_api_*` convention alone rather than renaming a dozen already-
+  deployed families for one workstream's original wording: a consistent
+  per-component prefix is worth more than matching a name picked before
+  the component existed. §5.8 is rewritten to the real names.
+
+Also closed here, because the pipeline existed but the specific behaviour
+did not: the unsubscribe link (`GET /v1/notify/unsubscribe?token=`, a
+non-expiring HMAC-signed user id, keyed by a secret auto-provisioned into
+the platform pseudo-project the first time the api starts — an operator
+step here, unlike `repose-admin ca init`, would leave the very first
+account's unsubscribe link broken until someone remembered to run it);
+`billing_stopped`'s dedicated subject line; and `host_moved` /
+`snapshot_failed` actually reaching `events` (the restore result handler
+and `onFail`'s `snapshot` case previously only logged or set
+`projects.last_error`). `ops.Engine` gained an `EventSink` interface
+(satisfied by `events.Ingest.Platform`, nil in the admin CLI's ad-hoc
+engine) for this. `billing_stopped` still has no producer: workstream 09
+is the one that will call `events.Ingest.Platform` for it. Interfaces:
+`api.md` (`/notify/unsubscribe`).
+
+**I-50. Gemini CLI and pi both gained hook mechanisms since 5.3's "at time
+of writing" rows were written; Gemini CLI itself stopped serving
+individual-tier requests on 2026-06-18.** (13, 2026-09-20) 5.3 and the
+checklist require resolving "at time of writing" rows before calling this
+workstream done. Checking now, against the agents' own current docs:
+
+- **Gemini CLI** ships a hook system (`geminicli.com/docs/hooks/`,
+  `google-gemini/gemini-cli` `docs/hooks/reference.md`) including a
+  `Notification` hook (fires on idle, awaiting-input and tool-confirmation,
+  which is exactly `needs_input`) and a post-agent-loop hook usable as
+  `completed`. The tmux-idle heuristic this workstream ships for Gemini is
+  therefore not "the mechanism" any more, just the fallback for a version
+  where hooks are absent or the platform has not wired them.
+- More urgently: Google stopped serving `gemini-cli` requests for free,
+  Pro and Ultra tier accounts on 2026-06-18, replacing it with a separate,
+  closed-source binary, Antigravity CLI (Google's own developer blog,
+  "Transitioning Gemini CLI to Antigravity CLI"; enterprise accounts with a
+  Code Assist license or a bare API key are unaffected). `nix/overlay/agents`
+  still packages `gemini-cli` (I-46); for any user without an API key or an
+  enterprise license, the agent DESIGN.md lists as one of five now fails to
+  authenticate at all, hook or no hook. This is a product decision beyond
+  this workstream's remit (DESIGN.md §11, R2-11's agent list, and 02/12's
+  packaging), not something to silently patch here.
+- **pi** (`earendil-works/pi`, the coding agent this platform ships) has a
+  real hooks directory, `~/.pi/agent/hooks/`, with `onStop` and
+  `ctx.ui.notify()`. The "its hooks if present in the shipped version"
+  branch of 5.3's row is therefore live, not hypothetical.
+
+None of this is implemented here: mapping Gemini's and pi's actual hook
+JSON into `{agent, kind, summary}` needs the real binaries to verify wire
+shapes against (the fixture-per-shape discipline `internal/guestd/hooks/
+testdata` already follows), which this session does not have, and 04's
+already-reviewed `internal/guestd/hooks` package is not this workstream's
+to extend blind from search-engine snippets — a wrong mapping silently
+drops or mis-labels every Gemini and pi notification, which is worse than
+the honest heuristic currently in place. *Rejected:* implementing the
+mapping now from documentation alone (no way to verify against a real
+payload before shipping); leaving 5.3's "at time of writing" wording
+unresolved (the checklist item exists precisely so this gets checked and
+written down, whichever way it comes out). The heuristic stays as the
+current, working mechanism for both agents; `docs/features/agents.md` and
+`13-notifications.md` §5.3 are annotated to point here rather than
+rewritten to describe an unverified mapping. **The owner should decide
+whether Gemini CLI stays in the agent list at all**, given it no longer
+authenticates for the tier most users are expected to be on.
+
+
+**I-51. `guest@<id>` runs Cloud Hypervisor as the `hostd` user inside a
+systemd sandbox; hostd itself stays root.** (14 follow-up, review H-2,
+2026-09-20) `docs/SECURITY.md` accepted that a KVM escape lands in the
+Azure VM; as built it landed as root, which is every tenant on the host,
+the host's mTLS identity and its Blob credential. The transient unit now
+carries `User=hostd` and the property list pinned by
+`internal/hostd/guest/testdata/unit.golden`: `NoNewPrivileges`, an empty
+`CapabilityBoundingSet`, `ProtectSystem=strict`, `ProtectHome`,
+`PrivateTmp`, the `ProtectKernel*`/`ProtectControlGroups`/`ProtectProc`
+set, `RestrictNamespaces`, `RestrictRealtime`, `RestrictSUIDSGID`,
+`LockPersonality`, `SystemCallArchitectures=native`, `DevicePolicy=closed`
+with `DeviceAllow` for `/dev/kvm`, `/dev/net/tun` and the guest's own
+`/dev/vg-guests/g-<id>` only, `RestrictAddressFamilies=AF_UNIX AF_VSOCK`
+(Cloud Hypervisor's tap ioctls use AF_UNIX sockets; AF_INET is needed only
+for `--net ip=`, which hostd never passes), and `TemporaryFileSystem=
+/var/lib/repose/guests` with `BindPaths=` of the guest's own directory, so
+one hypervisor cannot see, let alone connect to, another guest's
+`vsock.sock` (a direct line to that guest's guestd). `--seccomp true` is
+written out on the argv. What the host provides for it: `hostd` in group
+`kvm`; a udev rule making `dm-*` nodes with `DM_VG_NAME=vg-guests` and
+`DM_LV_NAME=g-*` group `hostd` mode 0660 (snapshots and the pool stay
+`root:disk`); `/var/lib/repose/guests` 0711 with each guest directory
+`1770 root:hostd` (the sticky bit keeps `ch.args`, `guest.json` and
+`console.log` out of the hypervisor's reach) and a `virtiofsd/`
+subdirectory `0750 virtiofsd:hostd` where virtiofsd binds
+`virtiofsd.sock` with `--socket-group hostd`. The socket path moved from
+`<dir>/virtiofsd.sock` to `<dir>/virtiofsd/virtiofsd.sock`; nothing
+outside hostd read the old path. hostd remains root (LVM, nftables, taps)
+and connects to the guest's sockets with root's override.
+*Rejected:* one system user per guest (`DynamicUser=`): the cleanest
+separation, but taps and volumes need a known owner before the unit
+exists, and the shared-uid gap it would close is already narrowed by
+`DeviceAllow` and the private guests directory; recorded as review L-11
+for a later pass. `AmbientCapabilities=` of any kind: Cloud Hypervisor
+needs none with `kvm` group access. Dropping `ProtectSystem=strict`
+because the store is on `/`: the store is read-only for the unit either
+way and the unit reads only the closure's kernel and initrd.
+*Verify on the first host:* `systemctl show guest@<id> -p User` is
+`hostd`; `ps -o user= -p $(systemctl show -p MainPID --value guest@<id>)`
+is `hostd`; `ls -l /dev/mapper/vg--guests-g--*` is `root hostd`; the
+guest boots and `ls /nix/store` works inside it; `test/isolation`
+`TestHypervisorRunsAsHostdUser`.
+**I-52. The `obs` package fixes what §5 left to call sites, and its
+component and label lists are wider than §5's by two and three.** (10)
+`internal/obs` is the only place a repose binary gets a logger or a metrics
+registry, and both constructors enforce the rules rather than documenting
+them: the log handler adds `component` (so no call site can omit it) and
+redacts the never-log field names; the registry refuses a metric outside the
+`repose_` namespace or with a label outside the low-cardinality list, at
+registration, so a bad name stops the binary at startup. Three list changes
+were needed to describe what exists:
+
+- Components gain `hostdev` and `hook`. §5 names six
+  (`api|hostd|guestd|gateway|cli|admin`), but `cmd/hostdev` (I-17) and
+  `cmd/repose-hook` (04) are separate binaries, and a Loki query that cannot
+  tell hostd from the api stand-in it talks to is not worth running.
+  *Rejected:* logging hostdev as `api` (its lines would be mixed with the
+  real api's in the same query for the rest of the project's life).
+- Metric labels are §5's list (`component, host_id, class, state, kind,
+  reason, route, status`) plus the ones §5's own families use (`result`,
+  `direction`, `method`, `channel`), plus `version` for `repose_build_info`
+  and `phase` for I-54. §5's prose list was incomplete against its own
+  tables; the tables are the law.
+- `repose_host_guestd_unreachable{guest_id}` is deleted. It broke the rule
+  in the same section that defined it ("`project_id` and `guest_id` are
+  never labels in Prometheus"); `repose_host_guestd_lost`, the count, is the
+  metric, and which guest it is comes from the `guestd_lost` log line and
+  the `Warning` the api receives.
+
+The redaction floor is docs/ops/OBSERVABILITY.md's six names plus the
+never-log entries that have an obvious field name (`email`, `handle`,
+`remote_url`, `prompt`, `args`, `argv`, `env`, `cmdline`, `command_line`,
+`user_agent`), matched exactly rather than by prefix so that `cert_serial`,
+`key_id` and `token_used` survive. Guests import `obs` for the logger only
+and pay 2.5 MB of binary for the metrics and trace code that comes with one
+package (19.8 MB to 22.3 MB, measured); §2 asks for one package and 2.5 MB
+in a guest with a 20 GB volume is not a reason to split it.
+
+**I-53. An operator's `Exec` argv is not logged, only its `audit_id` and
+length.** (10, amends 03) hostd logged `argv` on the audited-exec path with a
+comment saying it was the one place that was allowed. It is not: process
+arguments are on the never-log list without an exception for operators, and
+the audit trail that must carry the command is the api's `audit_log` row
+keyed by the same `audit_id` (`db-schema.md`: "every Exec"). A Loki reader
+with the Grafana password is not the same audience as an auditor with
+Postgres access. *Rejected:* keeping it with a redaction filter (the argv of
+`repose-admin exec -- cat /home/dev/app/.env` is exactly what the list
+forbids, whoever typed it).
+
+**I-54. `meter_samples` carries `guestd_ok`.** (10 and 05, independently)
+§5's day-one signals and `grpc-hostd.md`'s `GuestSignals` both carry
+`guestd_ok`, the api receives it on every sample, and `db-schema.md` had
+nowhere to put it, so the per-guest dashboard could not show the gaps where a
+guest's signals are unknown rather than zero. Workstream 10 proposed the
+column and workstream 05 had already added it by the time the two merged; the
+shape kept is 05's, `guestd_ok bool` with no default, because a sample from
+before the column existed is honestly null rather than optimistically true.
+The Per-guest resources dashboard therefore reads `guestd_ok is false`, not
+`not guestd_ok`. *Rejected:* inferring it from null signals (a guest with no
+sessions and a lost guestd would look the same, which is the distinction I-31
+added the `partial` flag for). Interface: `db-schema.md`.
+
+**I-55. Dashboards are generated from `ops/dashboards/gen.py` and the JSON is
+committed; `ops/` is laid out as §2 says, not as PROMPTS.md says.** (10) A
+Grafana dashboard is 400 lines of JSON of which four matter, and the same
+panel shape appears thirty times; seven hand-maintained files drift.
+`gen.py` is the source of truth, the JSON next to it is committed because
+Grafana provisioning reads files, and `ops/check.sh` fails when they
+disagree — the arrangement of I-38. `docs/workstreams/PROMPTS.md` says
+"dashboards and alert rules under `ops/grafana/`" while the workstream doc
+§2 says `ops/dashboards/` and `ops/alerts.yaml`; the workstream doc wins and
+`ops/grafana/` holds Grafana's provisioning files only. *Rejected:* writing
+the JSON by hand (the first panel rename proves why); keeping the generator
+out of the repository and committing only its output (nobody can then
+regenerate it).
+
+**I-56. Two alerts beyond §5's eleven, and the Fluent Bit metrics port is
+open on wg0.** (10) §6 describes two failures whose only symptom is silence:
+Loki unreachable from a host (Fluent Bit buffers and retries forever) and
+Prometheus unable to scrape a host (metering continues over the gRPC stream,
+so nothing else complains). `FluentBitStuck` and `HostScrapeDown` are those,
+with runbook headings of their own. Seeing the first needs Fluent Bit's own
+metrics, so it serves them on the WireGuard address
+(`repose.host.observability.fluentBitMetricsPort`, default 2021) and the
+nftables `input` chain admits that port from `wg0` alongside 22, 9100 and
+9101. *Rejected:* scraping Fluent Bit through node_exporter's textfile
+collector (a shipper's health reported by a cron job that writes a file the
+shipper's failure does not affect); leaving it unmonitored (a host stops
+shipping logs and nobody knows until they go looking for a line that is not
+there). Interface: `host-conventions.md`.
+
+**I-57. `repose_host_build_phase_duration_seconds{phase}` splits eval from
+build.** (10, for 03 and 12) §5's Builds dashboard asks for "eval vs build
+time" and nothing measured either: `nixbuild.Build` runs `nix eval` and then
+`nix build` and timed only the pair. The two have different caps (60 s and
+30 minutes, R5-4) and different causes — a slow eval is the fragment, a slow
+build is a substituter or a source build — so a single number cannot answer
+the question the panel asks. `nixbuild.Result` now carries both durations,
+the manager observes them, and `build_done` logs `eval_ms` and `build_ms`.
+*Rejected:* parsing the phase out of the build log (the log is the tenant's
+Nix output, not a metric source).
+
+**I-58. `repose-hook` reads `REPOSE_HOOK_AGENT`, the name the wrappers
+export.** (10, fixing 02 and 04) The Go binary of workstream 04 read
+`REPOSE_AGENT`; the wrappers of workstream 02
+(`nix/overlay/agents/wrap.nix`) export `REPOSE_HOOK_AGENT`, which is also
+what `docs/interfaces/guest-conventions.md` documents; and `nix/flake.nix`
+ships the Go binary in every guest. So every agent hook in every guest read
+an empty agent name and exited without posting: no `agent_event`, no
+notification, and nothing in any log to say so. The guest-base VM test found
+it by waiting 15 minutes for a hook that could never arrive.
+
+The binary now prefers `REPOSE_HOOK_AGENT` and keeps `REPOSE_AGENT` for one
+release, and accepts the socket under both `REPOSE_HOOK_SOCKET` (its own
+name) and `REPOSE_HOOKS_SOCKET` (the shell implementation's). *Rejected:*
+changing the wrappers instead (the interface doc names the variable, and a
+wrapper is what a user's own agent config may already set); keeping two names
+permanently (a second name for the same thing is how a grep misses half the
+uses). *Why this workstream:* `agent_event` is one of the events
+docs/workstreams/10-observability.md §5 requires guestd to emit, and it could
+not fire. Interface: `guest-conventions.md`.
+
+**I-59. `internal/obs` is three packages, because a guest pays for what it
+imports.** (10, amends I-49) §2 asks for "one Go package used by every
+binary", and one package it was until the guestd VM test failed on
+`docs/workstreams/04-guestd.md` §7's budget: guestd's resident memory came to
+20.2 MB against a 20 MB limit, because importing `obs` for the logger linked
+in the Prometheus client and the OpenTelemetry SDK with their package
+initialisers. guestd has no metrics endpoint and no traces of its own — it
+speaks vsock and nothing else — so it was paying 2.5 MB of binary and 700 KB
+of RSS for code it cannot reach.
+
+The split follows the dependency weight: `internal/obs` is logs and names
+(stdlib only: the logger, the component and event lists, the request-id
+context helpers), `internal/obs/metrics` is the Prometheus registry and the
+api and gateway families, `internal/obs/instrument` is the OpenTelemetry
+setup, the gRPC options and the api's HTTP middleware. The rules are enforced
+in the same places as before, and the naming test covers all three. guestd now
+links neither heavy dependency: `go list -deps ./cmd/guestd | grep -cE
+'prometheus|opentelemetry'` is 0, and the stripped binary is 13.7 MB.
+*Rejected:* raising 04's budget (the budget exists because guestd competes
+with the agent for two vCPUs and 4 GB, and it was right); keeping one package
+and hoping the linker drops the unused half (package initialisers are always
+kept, which is what the measurement showed); a build tag (a binary whose
+behaviour depends on how it was built is worse than a package boundary).
+
+**I-60. One observability package, one tracing setup, one api metric family.**
+(merge of 10 with wave two, 2026-09-20) Workstreams 05 and 10 each built what
+they needed while the other was unmerged, so the merge found three pairs:
+
+- `internal/obs`. 05's version said in its own header "Workstream 10 owns the
+  naming rules; this is the subset the api needs", so 10's is the package and
+  05's is gone. Two things of theirs were better and were kept: redaction
+  matches a *substring* of the field name, because a call site writes
+  `access_token` and `user_email` rather than the bare word, with an exact
+  allowlist for the ids and counts that contain one (`cert_serial`,
+  `key_version`, `secrets_count`, and 10's own `argv_len` and
+  `summary_bytes`); and `WithLogger`/`Logger(ctx, fallback)`, which is how the
+  api gives every handler the request's fields.
+- `internal/otel` and `internal/obs/instrument`. Both installed the OTLP
+  exporters and the noop provider. 05's had the bug 10's on-path test caught
+  the day before: `resource.Merge` of `resource.Default()` (schema 1.43.0)
+  with a `semconv/v1.26.0` resource returns "conflicting Schema URL", so the
+  api would have refused to start the moment anyone set
+  `OTEL_EXPORTER_OTLP_ENDPOINT`. `internal/otel` is gone; `SetupTracing`
+  gained the standard `OTEL_EXPORTER_OTLP_PROTOCOL` switch so 05's OTLP/HTTP
+  deployment and 10's gRPC one both work, and a test covers each. The OTLP
+  *metric* exporter 05 also installed is not replaced: DESIGN §15 and §5 make
+  Prometheus the metrics path, and pushing metrics to a collector nobody runs
+  is weight without a reader.
+- The api metric family. 05 implemented every name §5 lists (and more) in
+  `internal/api/metrics`; 10's `APIMetrics` is gone, and
+  `families_api_test.go` holds 05's to §5 the way `families_host_test.go`
+  holds hostd's. The api's registry now comes from `internal/obs/metrics`, so
+  all 26 of its series are checked for the namespace and the label list at
+  startup — which is how `repose_api_secrets_ops_total{op}` was noticed and
+  `op` added to the list as the bounded enum it is. `HTTPMiddleware` went the
+  same way: 05's server already emits the `request` event with a request id.
+
+Three gaps the same check found in 05's code, fixed here: the no-capacity
+placement path logged nothing and counted nothing (`schedule_fail` and
+`repose_api_schedule_total{result}`), the partition maintenance failure had no
+series for the `PartitionDropFail` alert to read, and `admin_action` had no
+producer — it moves from the api's required events to the admin CLI's, because
+05 built `repose-admin` against Postgres directly and the line belongs where
+the `audit_log` row is written. `stripe_webhook` stays required of the api and
+is listed in `obs.PendingEvents` as owed by workstream 09, which has no
+webhook route yet.
+
+*Why this workstream made the calls:* `docs/workstreams/README.md` gives 10
+the metric and log naming, and a merge that keeps both of everything is how
+`repose_api_*` ends up meaning two things. *Rejected:* keeping 05's obs and
+deleting 10's (it has no component enum, no event registry, no source lint and
+no metrics enforcement); keeping both tracing setups behind a flag.

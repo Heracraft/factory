@@ -62,7 +62,7 @@ func NewServer(dir string, log *slog.Logger) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{st: st, ca: ca, log: log.With("component", "hostdev"), waiters: map[string][]chan *hostdv1.Result{}, logSubs: map[string][]chan string{}}, nil
+	return &Server{st: st, ca: ca, log: log, waiters: map[string][]chan *hostdv1.Result{}, logSubs: map[string][]chan string{}}, nil
 }
 
 // Serve runs gRPC on the configured listen address and the control socket

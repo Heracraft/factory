@@ -41,7 +41,7 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 		if known[id] {
 			continue
 		}
-		m.d.Log.Warn("orphan guest unit", "component", "hostd", "event", "reconcile_orphan", "guest_id", id)
+		m.d.Log.Warn("orphan guest unit", "event", "reconcile_orphan", "guest_id", id)
 		if g := m.guestFromDisk(id); g != nil {
 			if _, err := m.d.State.AllocIndex(g.GuestID, m.maxIndex); err == nil {
 				_ = m.d.State.PutGuest(g) // adopted from guest.json; a failed write is retried at the next reconcile
@@ -122,7 +122,7 @@ func (m *Manager) Rebuild(ctx context.Context) ([]string, error) {
 			continue
 		}
 		if err := m.d.State.ClaimIndex(g.GuestID, g.IPIndex); err != nil {
-			m.d.Log.Warn("rebuild: address in use", "component", "hostd", "event", "reconcile_rebuild", "guest_id", g.GuestID, "err", err.Error())
+			m.d.Log.Warn("rebuild: address in use", "event", "reconcile_rebuild", "guest_id", g.GuestID, "err", err.Error())
 			continue
 		}
 		if err := m.d.State.PutGuest(g); err != nil {

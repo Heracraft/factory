@@ -3,7 +3,7 @@ package guest
 import (
 	"context"
 	"fmt"
-	"log/slog"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,6 +25,7 @@ import (
 	"github.com/heracraft/repose/internal/hostd/state"
 	"github.com/heracraft/repose/internal/hostd/systemd"
 	"github.com/heracraft/repose/internal/hostd/vsockclient"
+	"github.com/heracraft/repose/internal/obs"
 )
 
 type recorder struct {
@@ -177,12 +178,18 @@ func newHarness(t *testing.T, mut func(*Config)) *harness {
 		HostID: "host-1", GuestsDir: filepath.Join(t.TempDir(), "guests"), GuestCIDR: "10.64.4.0/22",
 		TotalMemBytes: 64 << 30, HostReserveBytes: 8 << 30, ReadyTimeout: 3 * time.Second,
 		GuestdRetry: 30 * time.Millisecond, GuestdLostAfter: 300 * time.Millisecond, UnitPoll: 30 * time.Millisecond,
+		// The hostd and virtiofsd accounts do not exist on a dev box; the
+		// chowns then target the test's own ids, which is allowed unprivileged.
+		Lookup: func(string) (int, int, error) { return os.Getuid(), os.Getgid(), nil },
 	}
 	if mut != nil {
 		mut(&cfg)
 	}
 	h.cfg = cfg
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	// The strict test logger: every line the manager writes during these
+	// tests must name an event and carry no never-log field
+	// (docs/workstreams/10-observability.md §5).
+	logger := obs.NewTestLogger(t, obs.ComponentHostd, io.Discard)
 	m, err := New(cfg, Deps{
 		State: st, LVM: h.lvm, Net: h.net, Systemd: h.sd, CH: h.chc, Nix: h.nix, Roots: h.roots, Blob: h.blob,
 		Stream: &snapshot.FakeStreamer{LVM: h.lvm}, Emit: h.rec, Metrics: metrics.New(), Log: logger,

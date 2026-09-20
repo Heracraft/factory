@@ -313,7 +313,7 @@ func (f *Fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, errf(code, "forced by the test's error switch"))
 		return
 	}
-	if !strings.HasPrefix(r.URL.Path, "/v1/internal/") {
+	if !strings.HasPrefix(r.URL.Path, "/v1/internal/") && r.URL.Path != "/v1/notify/unsubscribe" {
 		u, tok, ok := f.authenticate(r, pattern)
 		if !ok {
 			f.mu.Unlock()
@@ -392,6 +392,7 @@ func (f *Fake) register() {
 	f.handle("PATCH /v1/me", f.patchMe)
 	f.handle("DELETE /v1/me", f.deleteMe)
 	f.handle("POST /v1/me/notify-test", f.notifyTest)
+	f.handle("GET /v1/notify/unsubscribe", f.notifyUnsubscribe)
 	// Projects.
 	f.handle("GET /v1/projects", f.listProjects)
 	f.handle("POST /v1/projects", f.createProject)

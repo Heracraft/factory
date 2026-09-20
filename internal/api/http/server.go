@@ -55,6 +55,9 @@ type Deps struct {
 	Logs     *buildlog.Store
 	Events   *events.Ingest
 	Outbox   *notify.Outbox
+	// Unsub verifies the email unsubscribe link (13-notifications.md §5.6);
+	// nil disables GET /notify/unsubscribe with a 500 rather than a panic.
+	Unsub *notify.Unsubscriber
 	Parser   *config.Parser
 	Metrics  *metrics.M
 	Registry *prometheus.Registry
@@ -107,6 +110,7 @@ func New(d Deps) *Server {
 		general: ratelimit.New(lim.General), certs: ratelimit.New(lim.Certs), cfg: ratelimit.New(lim.Config), sessions: newSessionTracker(d.Pool)}
 	s.registerUserRoutes()
 	s.registerInternalRoutes()
+	s.route(s.user, "GET /v1/notify/unsubscribe", s.unsubscribe)
 	s.user.HandleFunc("GET /healthz", s.healthz)
 	s.user.HandleFunc("GET /readyz", s.readyz)
 	if d.Registry != nil {
