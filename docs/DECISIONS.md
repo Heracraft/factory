@@ -1065,3 +1065,11 @@ the enumeration leak stays closed. *Rejected:* dropping the mask (01 §5's
 reason stands); a guest-side `nix.conf` workaround (the daemon creates the
 directory unconditionally).
 
+**I-54. `ResizeVolume` on a running guest calls Cloud Hypervisor's
+`vm.resize-disk` between `lvextend` and `GrowFs`.** (m1 integration,
+2026-09-20) On host-01 a resize from 40 to 60 GB returned ok, LVM showed
+60 GB and guestd ran `resize2fs`, but the guest's `/dev/vda` still reported
+40 GB: virtio-blk keeps the capacity the device was created with until the
+hypervisor is told. hostd now calls `vm.resize-disk` on `_disk0` first; a
+stopped guest picks the size up at its next boot as before.
+

@@ -3,6 +3,7 @@
 package ch
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -85,8 +86,15 @@ type Client interface {
 	Pause(ctx context.Context, sock string) error
 	Resume(ctx context.Context, sock string) error
 	Info(ctx context.Context, sock string) (json.RawMessage, error)
+	// ResizeDisk tells the hypervisor a disk's backing device grew, so the
+	// guest's virtio-blk reports the new capacity (vm.resize-disk).
+	ResizeDisk(ctx context.Context, sock, id string, newSize uint64) error
 	Version(ctx context.Context) (string, error)
 }
+
+// DiskID is the identifier Cloud Hypervisor gives the guest's one disk
+// (the first --disk without an explicit id).
+const DiskID = "_disk0"
 
 // HTTP talks to the API socket over HTTP/unix.
 type HTTP struct {
@@ -145,6 +153,35 @@ func (h *HTTP) get(ctx context.Context, sock, path string) ([]byte, error) {
 	return body, nil
 }
 
+func (h *HTTP) putJSON(ctx context.Context, sock, path string, body any) error {
+	b, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, "http://localhost/api/v1/"+path, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := h.client(sock).Do(req)
+	if err != nil {
+		return fmt.Errorf("ch api %s: %w", path, err)
+	}
+	defer func() { _ = resp.Body.Close() }()                // body drained below
+	out, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // error bodies are informational only
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("ch api %s: status %d: %s", path, resp.StatusCode, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// ResizeDisk implements Client. Without it an lvextend on the host is
+// invisible to the guest: virtio-blk keeps the capacity it was created
+// with and resize2fs has nothing to grow (DECISIONS I-54).
+func (h *HTTP) ResizeDisk(ctx context.Context, sock, id string, newSize uint64) error {
+	return h.putJSON(ctx, sock, "vm.resize-disk", map[string]any{"id": id, "new_size": newSize})
+}
+
 func (h *HTTP) Shutdown(ctx context.Context, sock string) error {
 	_, err := h.put(ctx, sock, "vm.shutdown")
 	return err
@@ -193,6 +230,9 @@ func (f *Fake) record(op, sock string) error {
 func (f *Fake) Shutdown(_ context.Context, sock string) error { return f.record("shutdown", sock) }
 func (f *Fake) Pause(_ context.Context, sock string) error    { return f.record("pause", sock) }
 func (f *Fake) Resume(_ context.Context, sock string) error   { return f.record("resume", sock) }
+func (f *Fake) ResizeDisk(_ context.Context, sock, _ string, _ uint64) error {
+	return f.record("resize-disk", sock)
+}
 func (f *Fake) Info(_ context.Context, sock string) (json.RawMessage, error) {
 	if err := f.record("info", sock); err != nil {
 		return nil, err

@@ -143,7 +143,8 @@ Slice=guests.slice`. The devices: `--disk path=/dev/vg-guests/g-<id>,image_type=
 virtiofsd/virtiofsd.sock`, `--vsock cid=<1000+index>,socket=vsock.sock`, `--serial
 socket=console.sock`, `--memory size=<RAM>M,shared=on`. The CH API socket
 is used for `shutdown` (after guestd's Shutdown timed out), `pause`,
-`resume`, and stats.
+`resume`, `resize-disk` (after `lvextend`, before guestd's `GrowFs`; I-54)
+and stats.
 virtiofsd runs as `virtiofsd:virtiofsd` with `--sandbox namespace` (a
 user and mount namespace with the export pivot_rooted in; `chroot` is
 root-only and virtiofsd refuses it for an unprivileged user, DECISIONS
