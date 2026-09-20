@@ -47,7 +47,7 @@ func needsClaudeLogin(ctx context.Context, t sshTarget, hasOAuthSecret bool) (bo
 	if hasOAuthSecret {
 		return false, nil
 	}
-	err := runSSHOK(ctx, t, "test -f ~/.claude/.credentials.json")
+	err := runSSHOK(ctx, t, "test -f ~/.claude/.credentials.json") // exists-check on the guest only; the file is never read or copied (DECISIONS R2-8)
 	return err != nil, nil // a non-zero test means the file is missing
 }
 
