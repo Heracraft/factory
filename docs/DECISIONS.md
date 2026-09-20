@@ -2435,3 +2435,33 @@ certificate carries `<slug>.<handle>`, I-42). *Rejected:* fetching GitHub's
 profile from the api with the connector's token (the Management API
 already returns it); a rename that re-signs host certificates (an
 operator path for a one-time repair).
+
+**I-110. The relay half-closes towards the client when the guest's side of
+a channel ends; the fake guest reads its agent channel with one reader.**
+(m2 gate, 2026-09-20) The conductor's end-to-end run found that an exec
+through the gateway with agent forwarding (`ssh -A … 'ssh-add -l'`) printed
+its output and never returned, which stalled the CLI's sync (`git fetch`
+over the forwarded agent) for 13 minutes. `pipe` forwarded the client's
+EOF to the guest (`CloseWrite` on the guest channel once the client's
+stdin ended) but never the reverse: when the guest's side of a channel
+ended it waited for the guest's full close and only then closed the
+client's channel. For a session that works, because the program's exit
+closes both directions at once. For the agent channel it deadlocks:
+sshd sends `CHANNEL_EOF` when the program's agent socket closes and sends
+`CHANNEL_CLOSE` only after it has received the peer's EOF; OpenSSH's client
+closes its agent socket, and so sends its own EOF, only when it sees EOF
+from the channel; the gateway sat between them forwarding neither. The
+relay now issues `CloseWrite` towards the client as soon as the guest's
+inbound data (data and extended data) has ended, symmetric with the other
+direction; the full close still follows the rules of I-82. Two things about
+the test: `TestRelayAgentForwarding` passed on the old relay because the
+fake guest closed its agent channel outright, so the fake now ends it the
+way sshd does (EOF, wait for the peer's EOF, then close), and the exec is
+bounded so a regression fails in 15 s rather than hanging CI; and the fake
+hands `agent.NewClient` a plain `io.ReadWriter`, because given a Closer
+x/crypto v0.55 starts a pipelined reader that keeps reading the channel
+after `List` returns, and x/crypto's channel EOF wakes only one of two
+readers, which left the fake's own read asleep and looked, for an hour,
+like the gateway bug it was masking. *Rejected:* closing the client
+channel on the guest's EOF (loses the exit status ordering I-82 fixed);
+a timeout on idle channels (a race is not a timing constant).

@@ -241,8 +241,17 @@ func TestRelayAgentForwarding(t *testing.T) {
 	}
 	var out, errb strings.Builder
 	sess.Stdout, sess.Stderr = &out, &errb
-	if err := sess.Run("agent"); err != nil {
-		t.Fatalf("agent: %v %s", err, errb.String())
+	// The exec must return once the guest is done even though an agent
+	// channel was opened during it (I-110): a hang here is the bug.
+	done := make(chan error, 1)
+	go func() { done <- sess.Run("agent") }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("agent: %v %s", err, errb.String())
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("exec with agent forwarding did not return: the agent channel's EOF was not relayed to the client")
 	}
 	if out.String() != "keys=1\n" {
 		t.Fatalf("guest listed %q", out.String())

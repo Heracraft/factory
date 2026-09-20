@@ -376,6 +376,17 @@ func (s *session) pipe(cch ssh.Channel, creqs <-chan *ssh.Request, gch ssh.Chann
 		c2gData.Wait()
 		_ = gch.CloseWrite() // an error means the guest already closed
 	}()
+	// The same half-close towards the client. For a session this is what
+	// sshd does after the program's stdout ends; for a channel the guest
+	// opened (the agent) it is the only way the client learns the guest's
+	// side is done: OpenSSH's client keeps its agent socket open until it
+	// sees EOF, sends its own EOF only then, and sshd sends CHANNEL_CLOSE
+	// only after both directions are closed. Without this the agent channel
+	// stayed half-open and an exec with -A never returned (DECISIONS I-110).
+	go func() {
+		g2cData.Wait()
+		_ = cch.CloseWrite() // an error means the client already closed
+	}()
 
 	// Closing cch (a full CHANNEL_CLOSE) is what surfaces exit-status to the
 	// client. It must come after two things beyond the guest being done:

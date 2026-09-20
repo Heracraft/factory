@@ -379,7 +379,18 @@ func (g *fakeGuest) exec(sconn *ssh.ServerConn, ch ssh.Channel, command string, 
 			return 1
 		}
 		go ssh.DiscardRequests(areqs)
-		keys, err := agent.NewClient(ach).List()
+		// A plain io.ReadWriter, not the channel itself: given a Closer,
+		// agent.NewClient (x/crypto v0.55) starts a pipelined reader that
+		// keeps reading the channel after List returns, and x/crypto's
+		// channel EOF wakes only one of two readers, which would leave the
+		// io.Copy below asleep. sshd has one reader; so does this fake.
+		keys, err := agent.NewClient(struct{ io.ReadWriter }{ach}).List()
+		// Tear the agent channel down the way sshd does once the program's
+		// agent socket closes: EOF towards the peer, then wait for the
+		// peer's EOF before the full close. A gateway that does not relay
+		// the EOF to the client leaves this waiting for ever (I-110).
+		_ = ach.CloseWrite()
+		_, _ = io.Copy(io.Discard, ach)
 		_ = ach.Close()
 		if err != nil {
 			_, _ = fmt.Fprintf(ch.Stderr(), "agent list: %v\n", err)
