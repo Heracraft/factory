@@ -39,7 +39,7 @@ func (m *Manager) CollectSamples(ctx context.Context) *hostdv1.Samples {
 	s := &hostdv1.Samples{Ts: m.d.Now().Unix(), Host: m.hostSample()}
 	gs, err := m.d.State.ListGuests()
 	if err != nil {
-		m.d.Log.Error("samples: state read failed", "component", "hostd", "event", "samples", "err", err.Error())
+		m.d.Log.Error("samples: state read failed", "event", "samples", "err", err.Error())
 		return s
 	}
 	lost := 0
@@ -119,13 +119,13 @@ func (m *Manager) poolWarning() {
 	pct, err := m.poolUsedPct()
 	if err == nil && pct >= m.cfg.PoolWarnPct && m.d.Now().Sub(m.poolWarned) >= 10*time.Minute {
 		m.poolWarned = m.d.Now()
-		m.d.Log.Warn("thin pool high", "component", "hostd", "event", "pool_warning", "pct", int(pct))
+		m.d.Log.Warn("thin pool high", "event", "pool_warning", "pct", int(pct))
 		m.Warn("pool_high", strconv.Itoa(int(pct))+"% of the thin pool is used")
 	}
 	spct, ok := m.storeUsedPct()
 	if ok && spct >= m.cfg.StoreHighPct && m.d.Now().Sub(m.storeWarned) >= 10*time.Minute {
 		m.storeWarned = m.d.Now()
-		m.d.Log.Warn("store high", "component", "hostd", "event", "store_warning", "pct", int(spct))
+		m.d.Log.Warn("store high", "event", "store_warning", "pct", int(spct))
 		m.Warn("store_high", strconv.Itoa(int(spct))+"% of the host store filesystem is used")
 	}
 }

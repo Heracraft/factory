@@ -32,6 +32,7 @@ import (
 	"github.com/heracraft/repose/internal/hostd/state"
 	"github.com/heracraft/repose/internal/hostd/systemd"
 	"github.com/heracraft/repose/internal/hostd/vsockclient"
+	"github.com/heracraft/repose/internal/obs"
 )
 
 // Guest states, the enum in docs/interfaces/README.md.
@@ -273,7 +274,7 @@ func New(cfg Config, d Deps) (*Manager, error) {
 		d.Now = time.Now
 	}
 	if d.Log == nil {
-		d.Log = slog.Default()
+		d.Log = obs.Nop(obs.ComponentHostd)
 	}
 	m := &Manager{
 		cfg: cfg, d: d,
@@ -377,7 +378,7 @@ func GuestUnit(guestID string) string { return "guest@" + guestID }
 // --- state helpers ----------------------------------------------------
 
 func (m *Manager) log(g *state.Guest) *slog.Logger {
-	l := m.d.Log.With("component", "hostd")
+	l := m.d.Log
 	if g != nil {
 		l = l.With("guest_id", g.GuestID, "project_id", g.ProjectID)
 	}
@@ -442,7 +443,7 @@ func (m *Manager) emitEvent(ev any) {
 
 // Warn emits a host_warning event.
 func (m *Manager) Warn(kind, detail string) {
-	m.d.Log.Warn("host warning", "component", "hostd", "event", "host_warning", "kind", kind)
+	m.d.Log.Warn("host warning", "event", "host_warning", "kind", kind)
 	m.emitEvent(&hostdv1.Event_HostWarning{HostWarning: &hostdv1.HostWarning{Kind: kind, Detail: detail}})
 }
 
@@ -811,7 +812,7 @@ func (m *Manager) run(ctx context.Context, cmd *hostdv1.Command) *hostdv1.Result
 	defer m.clearInflight(cmd.CommandId)
 	start := m.d.Now()
 	kind := Kind(cmd)
-	m.d.Log.Info("command start", "component", "hostd", "event", "command_start", "command_id", cmd.CommandId, "kind", kind, "guest_id", Target(cmd))
+	m.d.Log.Info("command start", "event", "command_start", "command_id", cmd.CommandId, "kind", kind, "guest_id", Target(cmd))
 	res := m.execute(ctx, cmd)
 	m.finish(cmd, res, start)
 	return res
@@ -834,9 +835,9 @@ func (m *Manager) finish(cmd *hostdv1.Command, res *hostdv1.Result, start time.T
 		err = m.d.State.FinishCommand(cmd.CommandId, b)
 	}
 	if err != nil {
-		m.d.Log.Error("result not stored", "component", "hostd", "event", "command_result", "command_id", cmd.CommandId, "kind", kind, "err", err.Error())
+		m.d.Log.Error("result not stored", "event", "command_result", "command_id", cmd.CommandId, "kind", kind, "err", err.Error())
 	}
-	m.d.Log.Info("command done", "component", "hostd", "event", "command_result", "command_id", cmd.CommandId, "kind", kind, "result", result, "guest_id", Target(cmd))
+	m.d.Log.Info("command done", "event", "command_result", "command_id", cmd.CommandId, "kind", kind, "result", result, "guest_id", Target(cmd))
 }
 
 func (m *Manager) execute(ctx context.Context, cmd *hostdv1.Command) *hostdv1.Result {

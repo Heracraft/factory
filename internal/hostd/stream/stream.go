@@ -22,6 +22,7 @@ import (
 
 	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
 	"github.com/heracraft/repose/internal/hostd/metrics"
+	"github.com/heracraft/repose/internal/obs"
 )
 
 // Host is what the stream needs from the guest Manager.
@@ -103,10 +104,10 @@ func New(cfg Config, dialer Dialer, host Host, m *metrics.M, log *slog.Logger) *
 		cfg.BackoffBase = time.Second
 	}
 	if log == nil {
-		log = slog.Default()
+		log = obs.Nop(obs.ComponentHostd)
 	}
 	return &Stream{
-		cfg: cfg, dialer: dialer, host: host, metrics: m, log: log.With("component", "hostd"),
+		cfg: cfg, dialer: dialer, host: host, metrics: m, log: log,
 		out: make(chan *hostdv1.HostMessage, 8192), events: map[string]*hostdv1.Event{},
 		kick: make(chan struct{}, 1), reconnect: make(chan struct{}, 1),
 	}

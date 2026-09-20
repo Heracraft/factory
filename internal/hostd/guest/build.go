@@ -37,7 +37,7 @@ func (m *Manager) build(ctx context.Context, commandID string, c *hostdv1.Build)
 	if pct, ok := m.storeUsedPct(); ok && pct >= m.cfg.StoreHighPct {
 		return nil, errf(CodeInsufficientCapacity, "host store full")
 	}
-	log := m.d.Log.With("component", "hostd", "project_id", c.ProjectId, "command_id", commandID)
+	log := m.d.Log.With("project_id", c.ProjectId, "command_id", commandID)
 	log.Info("build start", "event", "build_start", "revision_id", c.RevisionId)
 	start := m.d.Now()
 	if m.d.Metrics != nil {
