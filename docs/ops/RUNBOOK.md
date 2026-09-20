@@ -361,7 +361,7 @@ are dropped.
    has been recorded. Fix it centrally with `repose-admin edge loki
    http://<loki>:3100` — a host picks it up at its next `Rotate`, or
    immediately by editing `host.json` and `systemctl restart
-   repose-host-net` (DECISIONS I-95).
+   repose-host-net` (DECISIONS I-97).
 5. Guests are unaffected throughout: nothing in a guest waits on log
    shipping.
 

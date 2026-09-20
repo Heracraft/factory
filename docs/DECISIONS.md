@@ -2086,7 +2086,7 @@ direction); cloning as the build user (hostd would need the deploy key
 readable by that user, which is the key a tenant's evaluation runs next
 to).
 
-**I-95. `/run/repose` is 0755; the join-token delivery no longer makes it
+**I-97. `/run/repose` is 0755; the join-token delivery no longer makes it
 0700.** (m2 integration, 2026-09-20) The first `repose-admin hosts smoke`
 against host-01 on the real api built its guest in 19 s and then failed
 `CreateGuest` at step 8: virtiofsd logged `/run/repose/store-export does

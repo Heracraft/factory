@@ -668,4 +668,4 @@ reached; a row without a number was not measured.
 | `repose-admin hosts smoke host-01` through the api's ops engine and the real hostd: `Build` of the smoke fragment at main 49962ad (hostd's own clone, I-93) | build 18.8 s (eval 5.0 s, build 13.2 s), closure cached from the earlier build |
 | the same, `create` (thin volume, taps, virtiofsd, Cloud Hypervisor, Ready, secrets, project setup) | 21.5 s to running |
 | the same, `snapshot` (freeze, LVM snapshot, zstd, Blob) / `stop` / `start` / `destroy` | 16.5 s / 4.5 s / 14.5 s / 22.0 s; whole smoke 79 s |
-| the same smoke, first attempt | failed at create step 8 in 21 s: `/run/repose` was 0700 after the token delivery (I-95) |
+| the same smoke, first attempt | failed at create step 8 in 21 s: `/run/repose` was 0700 after the token delivery (I-97) |

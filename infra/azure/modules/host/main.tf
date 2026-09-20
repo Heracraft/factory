@@ -226,7 +226,7 @@ resource "terraform_data" "join_token" {
   # 0755, not 0700: /run/repose also holds the store export every guest's
   # unprivileged virtiofsd traverses, and repose-host-net's own files. A
   # 0700 directory here left every guest create failing at step 8 with
-  # "/run/repose/store-export does not exist" (DECISIONS I-95). The token
+  # "/run/repose/store-export does not exist" (DECISIONS I-97). The token
   # itself is 0600.
   provisioner "remote-exec" {
     inline = ["install -d -m 0755 -o root -g root /run/repose"]
