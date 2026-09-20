@@ -2446,6 +2446,20 @@ profile from the api with the connector's token (the Management API
 already returns it); a rename that re-signs host certificates (an
 operator path for a one-time repair).
 
+**I-109. The guest base disables NixOS's systemd ssh proxy include.**
+(conductor, 2026-09-20) The first `git fetch origin` inside a real guest
+failed with `Bad owner or permissions on
+/nix/store/...-systemd/lib/systemd/ssh_config.d/20-systemd-ssh-proxy.conf`:
+NixOS's `programs.ssh` includes systemd's drop-in from the store in every
+client invocation, and over the shared virtio-fs store that file is owned
+by `nobody:nogroup` as far as the guest can tell, which ssh refuses for
+any config it reads. The proxy exists for reaching VMs over AF_VSOCK from
+a host, which a guest never does; `programs.ssh.systemd-ssh-proxy.enable =
+false` removes the include. Verified by the guest-base VM test and the
+live guest on base 2026.09.20.2. *Rejected:* mapping store ownership to
+root in the guest (virtio-fs's uid squashing is what keeps the shared
+store read-only and tenant-safe, DESIGN §6).
+
 **I-111. The guest pins GitHub's SSH host key and trusts other forges on
 first use.** (conductor, 2026-09-20) With `origin` set by guestd (I-107) the
 first real sync on the new base failed with `Host key verification failed`:
