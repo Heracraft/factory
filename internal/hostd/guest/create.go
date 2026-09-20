@@ -201,7 +201,7 @@ func (m *Manager) fail(g *state.Guest, step int, err error) *Error {
 func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Error {
 	class := Classes[g.Class]
 	dir := m.guestDir(g.GuestID)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	if err := m.prepareGuestDir(dir); err != nil {
 		return m.fail(g, firstStep, err)
 	}
 
@@ -242,7 +242,7 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 	if err := m.injected(stepVirtiofsd); err != nil {
 		return m.fail(g, stepVirtiofsd, err)
 	}
-	vcfg := virtiofs.Config{SharedDir: m.cfg.StoreExport, User: m.cfg.VirtiofsUser, Group: m.cfg.VirtiofsUser, Binary: m.cfg.VirtiofsBinary}
+	vcfg := virtiofs.Config{SharedDir: m.cfg.StoreExport, User: m.cfg.VirtiofsUser, Group: m.cfg.VirtiofsUser, SocketGroup: m.cfg.GuestUser, Binary: m.cfg.VirtiofsBinary}
 	if err := virtiofs.Start(ctx, m.d.Systemd, vcfg, g.GuestID, ch.VirtiofsSocket(dir)); err != nil {
 		return m.fail(g, stepVirtiofsd, err)
 	}
@@ -254,11 +254,7 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 	if err := m.setState(g, StateStarting, ""); err != nil {
 		return m.fail(g, stepHypervisr, err)
 	}
-	props := []string{
-		fmt.Sprintf("MemoryMax=%dM", class.MemMiB+OverheadMiB),
-		fmt.Sprintf("CPUQuota=%d%%", class.VCPUs*100),
-		"Restart=no", "Slice=guests.slice",
-	}
+	props := GuestUnitProps(class, m.cfg.GuestUser, m.cfg.GuestsDir, dir, spec.VolumeDev)
 	if err := m.d.Systemd.Run(ctx, GuestUnit(g.GuestID), props, argv); err != nil {
 		return m.fail(g, stepHypervisr, err)
 	}
@@ -320,7 +316,7 @@ func (m *Manager) teardown(ctx context.Context, g *state.Guest) {
 	_ = m.d.Net.Unshape(ctx, g.Tap)                               // same
 	_ = m.d.Net.DelGuestRules(ctx, g.GuestID, g.IP, g.MAC, g.Tap) // same
 	_ = m.d.Net.DelTap(ctx, g.Tap)                                // same
-	for _, s := range []string{"ch.sock", "vsock.sock", "console.sock", "virtiofsd.sock"} {
+	for _, s := range []string{"ch.sock", "vsock.sock", "console.sock", filepath.Join("virtiofsd", "virtiofsd.sock")} {
 		_ = os.Remove(filepath.Join(m.guestDir(g.GuestID), s)) // stale sockets confuse the next boot only if left behind
 	}
 }
@@ -549,9 +545,10 @@ func (mon *monitor) checkLost() {
 	if !mon.lost && m.d.Now().Sub(mon.lostAt) >= m.cfg.GuestdLostAfter {
 		mon.lost = true
 		m.log(mon.g).Warn("guestd lost", "event", "guestd_lost")
-		if m.d.Metrics != nil {
-			m.d.Metrics.GuestdUnreachable.WithLabelValues(mon.g.GuestID).Set(1)
-		}
+		// The metric is the count, repose_host_guestd_lost, recomputed by the
+		// samples loop: guest_id is never a Prometheus label
+		// (docs/workstreams/10-observability.md §5). Which guest it is comes
+		// from this line in Loki and from the Warning the api receives.
 		m.Warn("guestd_lost", "guest "+mon.g.GuestID+": no vsock connection for "+m.cfg.GuestdLostAfter.String())
 	}
 }
@@ -562,9 +559,6 @@ func (mon *monitor) regained() {
 		m.log(mon.g).Info("guestd regained", "event", "guestd_regained")
 	}
 	mon.lost = false
-	if m.d.Metrics != nil {
-		m.d.Metrics.GuestdUnreachable.WithLabelValues(mon.g.GuestID).Set(0)
-	}
 }
 
 func (mon *monitor) handleNotify(n *guestdv1.Notify) {

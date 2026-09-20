@@ -52,9 +52,23 @@ See `../workstreams/11-infra-opentofu.md` §5 "Adding a host". Then
 
 ### Observability
 
-On the personal server: add `ops/prometheus/repose.yaml` to Prometheus's
-scrape configs, `ops/alerts.yaml` to its rule files, `ops/dashboards/*.json`
-to Grafana provisioning, and the Loki labels are already in Fluent Bit.
+On the personal server, from this repository's `ops/` (its README has the
+copy-paste version):
+
+- `ops/prometheus/prometheus.yml` is the scrape config; hosts are listed in
+  `ops/prometheus/targets/hosts.yml`, which Prometheus re-reads every minute,
+  so adding a host needs no restart. Run Prometheus with
+  `--storage.tsdb.retention.time=90d`.
+- `ops/alerts.yaml` goes in its rule files, `ops/alertmanager/repose-route.yaml`
+  into Alertmanager (ntfy to the owner).
+- `ops/grafana/provisioning/` and `ops/dashboards/*.json` are Grafana's
+  provisioning; the seven dashboards appear in a `repose` folder.
+- `ops/loki/retention.yaml` sets 90 days for component logs and 30 for guest
+  console logs, and needs the compactor enabled to do anything.
+- The server joins the edge's WireGuard as one more peer:
+  `ops/prometheus/wireguard-peer.conf`. Nothing is scraped over the internet.
+- Locally, `docker compose -f ops/dev/docker-compose.yml up -d` is the same
+  Grafana with the same dashboards and no data.
 
 ## Common operations
 
@@ -195,6 +209,48 @@ hostd cannot talk to a guest's guestd for 5 minutes.
 3. Sampling for that guest is missing for the window; billing uses the
    last known state, so a running guest is still billed.
 
+## HostScrapeDown
+
+Prometheus cannot scrape a host: `up{job=~"hosts|hostd"} == 0` for 5 minutes,
+and that host's panels on Host capacity go blank. Metering is *not* affected:
+hostd sends samples to the api over its own gRPC stream, so billing data
+keeps arriving (docs/workstreams/10-observability.md §6).
+
+1. From the monitoring server: `curl -s http://<host wg addr>:9101/metrics |
+   head -1`. A timeout is the tunnel, a connection refused is hostd.
+2. Tunnel: "HostWgDown" above. The scrape and the logs use the same path, so
+   a FluentBitStuck alert for the same host confirms it.
+3. hostd itself: on the host, `systemctl status hostd` and
+   `ss -tlnp | grep 9101`. hostd binds the WireGuard address, so a hostd that
+   started before wg0 existed still listens (`ip_nonlocal_bind`); if it does
+   not, `systemctl restart hostd`.
+4. nftables: `nft list chain inet repose input` must admit 9100, 9101 and the
+   Fluent Bit metrics port from `wg0`.
+5. Nothing to do about the gap: Prometheus has no backfill. Say so in the
+   incident note rather than wondering later why a graph has a hole.
+
+## FluentBitStuck
+
+A host's Fluent Bit has been failing to ship to Loki for 30 minutes
+(`increase(fluentbit_output_retries_failed_total[30m]) > 0`). It buffers to
+disk and retries forever, so nothing is lost yet; at 1 GB the oldest chunks
+are dropped.
+
+1. Is Loki up? `curl -s http://<loki>:3100/ready` from the monitoring server.
+   If Loki is the problem, every host alerts at once.
+2. On the host: `systemctl status fluent-bit`, `journalctl -u fluent-bit -n
+   50`. `ConditionPathExists=/run/repose/host.env` unmet means the host never
+   registered ("HostUnregistered"); the unit is `partOf`
+   `repose-host-net.service`, so `systemctl restart repose-host-net` restarts
+   it with freshly rendered addresses.
+3. Buffer size: `du -sh /var/lib/fluent-bit/storage`. Approaching 1 GB is the
+   deadline for fixing Loki before lines are dropped.
+4. Wrong Loki address: `grep LOKI /run/repose/host.env`. It comes from
+   `loki_url` in `host.json`, which the api sends at registration; correct it
+   there and `systemctl restart repose-host-net`.
+5. Guests are unaffected throughout: nothing in a guest waits on log
+   shipping.
+
 ## Guestd not ready
 
 A guest is `starting` and never reaches `running`, or the api shows
@@ -268,6 +324,27 @@ The hourly usage rollup is more than 2 hours behind.
    is retried; a poisoned row (a sample with a negative delta from a
    hostd restart) is skipped and logged with the project id.
 2. `repose-admin billing rollup --hour <hour>` to re-run one hour.
+
+## PartitionDropFail
+
+The hourly `repose_partitions_maintain()` is failing: `meter_samples` and
+`proc_samples` keep partitions past their 90 and 30 day retention, so
+Postgres grows. Nothing else breaks and no data is lost
+(docs/workstreams/10-observability.md §6).
+
+1. The api's log says why: `{component="api"} | json | event="partition_drop_fail"`.
+2. By hand, as the api's role: `select * from repose_partitions_maintain();`
+   It prints one row per create and drop. A permission error means the role
+   cannot `drop table`; a lock timeout means something is reading a partition
+   it wants to drop, and the next hour will get it.
+3. Space now, if that is the pressure:
+   `select relname, pg_size_pretty(pg_total_relation_size(oid)) from pg_class
+   where relname like 'proc_samples_%' order by relname;` then
+   `drop table proc_samples_YYYYMM` for a month wholly past retention.
+4. If the *create* half failed, inserts for the new month will fail at 00:00
+   on the first: `select repose_partition_create('meter_samples',
+   date_trunc('month', now())::date);` is the fix, and hostd's sample buffer
+   holds what did not land (workstream 03).
 
 ## StripePushFail
 
@@ -430,7 +507,13 @@ hostd reports `guest did not become ready` (no `Ready` from guestd within
    /nix/var/nix/gcroots/repose/<id>`).
 2. `systemctl status guest@<id> virtiofsd@<id>` on the host. If virtiofsd
    is not running, the guest is stuck in the initrd waiting for the
-   `ro-store` tag: start it and restart the guest.
+   `ro-store` tag: start it and restart the guest. `guest@<id>` runs as
+   the `hostd` user (I-51): `Permission denied` on `/dev/kvm`, the tap or
+   `/dev/vg-guests/g-<id>` in `journalctl -u guest@<id>` means the host
+   lost `hostd`'s `kvm` membership, the tap's owner, or the udev rule
+   that makes `g-*` volumes group `hostd` (`ls -l /dev/mapper/vg--guests-g--*`
+   should say `root hostd`); a create that fails at step 5 naming a user
+   means the `hostd` or `virtiofsd` account is missing.
 3. If boot completed (`multi-user.target` in the console) but no `Ready`:
    guestd crashed. The console carries guestd's own stderr (it logs to the
    console so a frozen root never blocks it); `repose-admin exec <id> --
@@ -946,6 +1029,68 @@ exits 10. The guest is untouched and the previous revision stays applied.
 values already redacted). A fragment that contains a current secret value
 is refused before the build with `invalid: fragment contains the value of
 secret NAME`.
+
+## No notifications arriving
+
+A user reports nothing on their phone or in their inbox for an agent that
+clearly finished.
+
+1. `repose status` / `GET /projects/:id/events` first: if the event is not
+   there at all, the problem is upstream of the outbox (the hook never
+   fired, or the guest never reached the api). Check `guestd_ok` in the
+   project's signals (`GuestdLost` if it is false) and, on the guest,
+   whether `/run/repose/hooks.sock` exists and the agent's wrapper actually
+   ran `repose-agent-setup` (`grep repose-hook` in the agent's own hook
+   config file, `guest-conventions.md` "Agent wrappers").
+2. If the event is there but `delivered` has no key for the channel: the
+   outbox has not picked it up yet, or the channel is disabled
+   (`notify_email` false, `ntfy_url` null) or over the 30/hour rate cap
+   (`kind = 'notifications_paused'` events on the project in the last
+   hour). `repose_api_outbox_depth` and `repose_api_outbox_lag_seconds`
+   rising together mean the worker itself is stuck: it holds
+   `db.LockOutbox`, so `select pg_advisory_lock_...` on the wrong replica
+   or a stuck transaction is what to look for; only one replica runs it
+   (`api: rollup or expiry not running on one replica` is the same shape
+   for a different job).
+3. If `delivered[channel]` says `"error: ..."` or `"failed: ..."`, the
+   channel-specific entries below have the fix. Nothing to do if it says a
+   timestamp: delivery succeeded and the miss is client-side (a stale
+   ntfy subscription, a spam folder).
+
+## ntfy failing
+
+`delivered.ntfy` carries `"error: ..."` (retrying) or `"failed: 404"` (not
+retried, DECISIONS §5's 4xx rule) and the settings page shows a warning.
+
+1. A 4xx (`400`, `404`) means the URL is wrong or the topic does not exist
+   on that server any more: the user re-pastes it from
+   `repose notify set ntfy <url>`, which sends a test push
+   (`POST /me/notify-test`) so a wrong URL is caught immediately rather
+   than on the next real event.
+2. A 5xx or timeout retries on the schedule in `13-notifications.md` §5.5
+   (7 attempts over roughly 24 h) before `failed`; a self-hosted ntfy
+   server that is down for longer than that needs the user to re-set the
+   URL once it is back, which requeues nothing retroactively — only new
+   events are affected.
+3. `repose_api_notify_total{channel="ntfy",result="failed"}` rising across
+   many users means a widely-used relay (`ntfy.sh`) is down, not a
+   per-user URL problem; check its status page before debugging further.
+
+## Resend failing
+
+Every email `delivered.email` value is `"error: ..."` or `"failed: ..."`
+across many users at once (a per-user failure is `email: "user has no
+address"`, permanent, and not a Resend outage).
+
+1. Resend's status page and `RESEND_API_KEY`'s validity
+   (`repose-admin` has no direct check; a `401` in the api's logs under
+   `event=notify_fail` for the email channel is the tell — Resend's API key
+   is a Coolify secret, `ops/coolify/api.env.example`).
+2. A `429` retries like any 5xx (the sender treats both as retryable); a
+   sustained `429` means the account's Resend rate limit needs raising.
+3. `repose_api_notify_total{channel="email",result="failed"}` over 5
+   percent in 10 minutes is `13-notifications.md` §6's alert threshold;
+   page on it rather than waiting for a user to report silence.
 
 ## api: secret service unavailable
 

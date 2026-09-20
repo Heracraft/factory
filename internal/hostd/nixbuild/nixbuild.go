@@ -52,6 +52,13 @@ type Result struct {
 	// CacheUnreachable is set when Nix reported a substituter it could not
 	// reach; the build fell back to source and hostd warns the api.
 	CacheUnreachable bool
+	// EvalDuration and BuildDuration split the wall time between `nix eval`
+	// of the fragment and `nix build` of the derivation. The Builds dashboard
+	// shows them apart because they fail for different reasons and have
+	// different caps (60 s and 30 minutes, DECISIONS R5-4): a slow eval is a
+	// fragment problem, a slow build is a substituter or a source build.
+	EvalDuration  time.Duration
+	BuildDuration time.Duration
 }
 
 // CacheUnreachable recognises Nix's substituter failure lines.
@@ -345,6 +352,7 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 		}
 		return nil, fmt.Errorf("nix eval: %w", err)
 	}
+	evalDuration := time.Since(start)
 	drv := strings.TrimSpace(string(res.Stdout))
 	if !strings.HasPrefix(drv, "/nix/store/") || !strings.HasSuffix(drv, ".drv") {
 		return nil, &Error{Code: "internal", Message: "nix eval did not return a derivation path: " + shell.Tail([]byte(drv), 200)}
@@ -361,6 +369,7 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 	})
 	start = time.Now()
 	out, tail, err := b.stream(ctx, buildArgv, log)
+	buildDuration := time.Since(start)
 	if err != nil {
 		if isTimeout(err, time.Since(start), req.Limits.BuildS) {
 			return nil, BuildTimeout(req.Limits.BuildS, tail)
@@ -405,7 +414,11 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 		return nil, &Error{Code: "internal", Message: "built closure is not a bootable system: " + err.Error()}
 	}
 	log("built " + outPath)
-	return &Result{SystemClosure: outPath, ClosureBytes: size, Kernel: info.Kernel, Initrd: info.Initrd, CacheUnreachable: CacheUnreachable(tail)}, nil
+	return &Result{
+		SystemClosure: outPath, ClosureBytes: size, Kernel: info.Kernel, Initrd: info.Initrd,
+		CacheUnreachable: CacheUnreachable(tail),
+		EvalDuration:     evalDuration, BuildDuration: buildDuration,
+	}, nil
 }
 
 // stream runs argv, feeding stderr lines to log; it returns stdout, the

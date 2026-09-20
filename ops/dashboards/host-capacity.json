@@ -1,0 +1,899 @@
+{
+  "uid": "repose-host-capacity",
+  "title": "repose / Host capacity",
+  "description": "Whether the fleet can take another guest, and whether each host is healthy. Capacity is added by hand at 80 percent reserved memory (DECISIONS R3-5).",
+  "tags": [
+    "repose"
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "host_id",
+        "label": "host",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "repose-prometheus"
+        },
+        "query": {
+          "query": "label_values(repose_host_mem_free_bytes, host_id)",
+          "refId": "hosts"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "regex": "",
+        "current": {},
+        "options": [],
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Reserved memory",
+      "description": "The HostMemory80 expression. Memory is never oversubscribed, so this is the capacity figure.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "repose_host_mem_reserved_bytes{host_id=~\"$host_id\"} / (repose_host_mem_reserved_bytes{host_id=~\"$host_id\"} + repose_host_mem_free_bytes{host_id=~\"$host_id\"})",
+          "legendFormat": "{{host_id}}",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.7
+              },
+              {
+                "color": "red",
+                "value": 0.8
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1
+    },
+    {
+      "type": "stat",
+      "title": "Stream connected",
+      "description": "1 while hostd holds its Session stream to the api. A zero here and a HostUnreachable alert are the same incident.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "min by (host_id) (repose_host_stream_connected{host_id=~\"$host_id\"})",
+          "legendFormat": "{{host_id}}",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "Builds running",
+      "description": "At most two per host (DECISIONS R5-4). Two for 45 minutes with nothing finishing is BuildQueueStuck.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host_id) (repose_host_builds_running{host_id=~\"$host_id\"})",
+          "legendFormat": "{{host_id}}",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 2
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "Guests with guestd lost",
+      "description": "Guests that cannot be frozen, resized or switched. Which guest it is comes from the guestd_lost line in Loki.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host_id) (repose_host_guestd_lost{host_id=~\"$host_id\"})",
+          "legendFormat": "{{host_id}}",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "id": 4
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory: reserved and free",
+      "description": "Reserved is the sum of running guests' RAM; free is what is left after the host reserve (8 GiB below 128 GiB of RAM, 16 above).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "repose_host_mem_reserved_bytes{host_id=~\"$host_id\"}",
+          "legendFormat": "reserved {{host_id}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "repose_host_mem_free_bytes{host_id=~\"$host_id\"}",
+          "legendFormat": "free {{host_id}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0
+          },
+          "unit": "bytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "id": 5
+    },
+    {
+      "type": "timeseries",
+      "title": "Guests by state",
+      "description": "The guest state enum of docs/interfaces/README.md. Anything stuck in creating, building or stopping is worth a look in Loki.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (state) (repose_host_guests{host_id=~\"$host_id\"})",
+          "legendFormat": "{{state}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 40,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "axisSoftMin": 0
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "id": 6
+    },
+    {
+      "type": "timeseries",
+      "title": "Thin pool",
+      "description": "vg-guests/thin. Under 10 percent free pages (PoolFull): every guest's writes fail at once.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "repose_host_pool_free_bytes{host_id=~\"$host_id\"}",
+          "legendFormat": "free {{host_id}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "repose_host_pool_bytes{host_id=~\"$host_id\"}",
+          "legendFormat": "size {{host_id}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0
+          },
+          "unit": "bytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "id": 7
+    },
+    {
+      "type": "timeseries",
+      "title": "Store and root filesystem",
+      "description": "Every guest reads /nix/store over virtio-fs, so the store is on the host root filesystem. Over 85 percent used is StoreFull.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "repose_host_store_bytes{host_id=~\"$host_id\"}",
+          "legendFormat": "store {{host_id}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "node_filesystem_size_bytes{job=\"hosts\",mountpoint=\"/\",fstype!~\"tmpfs|ramfs\",host_id=~\"$host_id\"} - node_filesystem_avail_bytes{job=\"hosts\",mountpoint=\"/\",fstype!~\"tmpfs|ramfs\",host_id=~\"$host_id\"}",
+          "legendFormat": "root used {{host_id}}",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0
+          },
+          "unit": "bytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "id": 8
+    },
+    {
+      "type": "timeseries",
+      "title": "Guest CPU seconds by class",
+      "description": "CPU is oversubscribed 2:1 against the host's vCPU (DESIGN \u00a74); this is what is actually being used, by size class.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (class) (rate(repose_host_guest_cpu_seconds_total{host_id=~\"$host_id\"}[5m]))",
+          "legendFormat": "{{class}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0
+          },
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 22
+      },
+      "id": 9
+    },
+    {
+      "type": "timeseries",
+      "title": "Guest network bytes",
+      "description": "From the per-guest nftables counters. Egress is shaped at 200 Mbit/s per guest (DECISIONS R5-5); the per-project view is on the Abuse dashboard.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (direction) (rate(repose_host_guest_net_bytes_total{host_id=~\"$host_id\"}[5m]))",
+          "legendFormat": "{{direction}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0
+          },
+          "unit": "Bps",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 22
+      },
+      "id": 10
+    },
+    {
+      "type": "timeseries",
+      "title": "Commands by result",
+      "description": "Every command of docs/interfaces/grpc-hostd.md. A repeated error on one kind is the first sign of a host-level failure.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (kind, result) (rate(repose_host_commands_total{host_id=~\"$host_id\"}[15m]))",
+          "legendFormat": "{{kind}} {{result}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0
+          },
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 30
+      },
+      "id": 11
+    },
+    {
+      "type": "timeseries",
+      "title": "Version",
+      "description": "Which hostd is running where, so a rollout can be seen finishing.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "repose_build_info{component=\"hostd\"}",
+          "legendFormat": "{{version}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 30
+      },
+      "id": 12
+    }
+  ]
+}

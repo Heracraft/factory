@@ -29,7 +29,10 @@ var (
 	dataDir  string
 	started  bool
 	counter  atomic.Int64
-	template = "repose_template"
+	// Per process: `go test ./...` runs packages in parallel against one
+	// DATABASE_URL server, and a shared template name let one package drop
+	// the template another was still cloning (CI, 2026-09-20).
+	template = fmt.Sprintf("repose_template_%d", os.Getpid())
 )
 
 // Run wraps testing.M so the cluster is stopped when the package's tests

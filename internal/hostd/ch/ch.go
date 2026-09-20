@@ -36,10 +36,13 @@ type Spec struct {
 }
 
 // Paths under the guest directory.
-func APISocket(dir string) string      { return filepath.Join(dir, "ch.sock") }
-func VsockSocket(dir string) string    { return filepath.Join(dir, "vsock.sock") }
-func ConsoleSocket(dir string) string  { return filepath.Join(dir, "console.sock") }
-func VirtiofsSocket(dir string) string { return filepath.Join(dir, "virtiofsd.sock") }
+func APISocket(dir string) string     { return filepath.Join(dir, "ch.sock") }
+func VsockSocket(dir string) string   { return filepath.Join(dir, "vsock.sock") }
+func ConsoleSocket(dir string) string { return filepath.Join(dir, "console.sock") }
+
+// VirtiofsSocket lives in a subdirectory virtiofsd owns, since the guest
+// directory itself is writable only by hostd and the hypervisor's user.
+func VirtiofsSocket(dir string) string { return filepath.Join(dir, "virtiofsd", "virtiofsd.sock") }
 
 // Cmdline renders the kernel command line: the closure's init and params,
 // the serial console, and the static address the guest's networkd reads.
@@ -69,6 +72,9 @@ func (s Spec) Args() []string {
 		"--vsock", fmt.Sprintf("cid=%d,socket=%s", s.CID, VsockSocket(s.GuestDir)),
 		"--serial", "socket=" + ConsoleSocket(s.GuestDir),
 		"--console", "off",
+		// Cloud Hypervisor's default; written out so a build that flips the
+		// default, or an operator reading ch.args, sees the filter is on.
+		"--seccomp", "true",
 	}
 }
 
