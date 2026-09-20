@@ -62,3 +62,7 @@ context/
 /repose
 /repose-admin
 /repose-hook
+
+# M3 checks: per-operator addresses and the evidence they write (ops/checks/README.md)
+ops/checks/m3.env
+ops/checks/out/
