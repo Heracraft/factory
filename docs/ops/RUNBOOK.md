@@ -428,20 +428,17 @@ not exist. Operators reach a guest by jumping through the edge and the host:
 
 1. `ssh -J root@<edge ip> root@<host private ip>` (bootstrap sshd on the
    provider NIC, `repose.host.bootstrap.enable`, DECISIONS I-40).
-2. The host's `inet repose` `input` chain sends every frame from
-   `br-guests` to `guest_in`, which drops all but rate-limited ICMP, so a
-   TCP connection the host opens to a guest never gets its replies. For the
-   length of the session, and only on a host driven by `hostdev`, admit
-   replies to host-initiated flows:
-   `nft insert rule inet repose input iifname "br-guests" ct state established,related accept`.
-   The rule is runtime only: a `systemctl reload nftables` or a reboot
-   removes it. Guests still cannot open anything towards the host.
+2. Nothing to do: `guest_in` admits replies to flows the host itself
+   opened (`ct direction reply ct state established,related`, DECISIONS
+   I-70), so the host reaches a guest's sshd and a reload does not undo it.
+   Guests still cannot open anything towards the host; on a host built
+   before I-70 the equivalent is the runtime
+   `nft insert rule inet repose input iifname "br-guests" ct state established,related accept`,
+   removed again with `nft -a list chain inet repose input` and
+   `nft delete rule inet repose input handle <n>`.
 3. `hostdev ssh-cert --project <p> --pubkey ~/.ssh/id_ed25519.pub >
    ~/.ssh/id_ed25519-cert.pub` on the edge, then
    `ssh -J root@<edge ip>,root@<host ip> dev@<guest ip>`.
-
-Remove the rule when done (`nft -a list chain inet repose input`, then
-`nft delete rule inet repose input handle <n>`).
 
 ## Host never configured its bridge (registration ran, br-guests has no address)
 

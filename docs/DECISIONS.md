@@ -1469,3 +1469,23 @@ nothing under the store export, which is what the user exists to protect.
 socket directory under `/run` outside the guest directory (a second
 layout for one file).
 
+
+**I-70. The host reaches its guests through a declared `ct direction reply`
+rule, not a rule an operator inserts by hand.** (01/03 follow-up,
+2026-09-20) Until the gateway exists (workstream 06), an operator reaches a
+guest by jumping edge → host → guest, and the host's `input` chain sends
+every frame from `br-guests` to `guest_in`, which dropped all but
+rate-limited ICMP: the host could open a TCP connection to a guest and
+never see the reply. The M1 session worked around it with a runtime
+`nft insert rule inet repose input iifname "br-guests" ct state
+established,related accept` that a `systemctl reload nftables` or a reboot
+removed, and that also let a repeated ICMP echo from a guest count as
+established and skip the rate limit. `guest_in` now starts with
+`ct direction reply ct state established,related accept`: only packets in
+the reply direction of a flow the host itself opened match, so a guest's
+own first packet is still dropped and the ICMP limit still holds, and the
+rule survives a reload because it is in the ruleset. *Rejected:* keeping it
+manual until 06 (an operator procedure that a reload silently undoes, and
+`hostd` has no other way to reach a guest's sshd today); narrowing it to
+tcp sport 22 (the host also curls a guest's noVNC relay, and "replies to
+what the host opened" is the honest rule).

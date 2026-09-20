@@ -86,8 +86,13 @@ rotates keys does the same restart itself.
   - `inet repose`: chains `input` (policy drop: lo, established, wg0 for
     ssh/9100/9101 and the Fluent Bit metrics port 2021 (DECISIONS I-56),
     DHCP and ICMP on the provider NIC; from `br-guests` jump
-    `guest_in`), `guest_in` (ICMP echo to the host rate-limited to
-    5/second, everything else dropped; no DHCP), `guest_fwd` (policy drop;
+    `guest_in`), `guest_in` (replies to flows the host itself opened,
+    matched as `ct direction reply ct state established,related`, so an
+    operator can reach a guest on 22 by jumping through the host until the
+    gateway exists (DECISIONS I-70); ICMP echo to the host rate-limited to
+    5/second; everything else dropped, and a guest's own first packet is
+    the original direction, so nothing a guest opens reaches the host; no
+    DHCP), `guest_fwd` (policy drop;
     established; `wg0 → br-guests` tcp 22 for the gateway; from
     `br-guests`: IPv6 dropped, jump `guest_dyn`, then drop
     `169.254.169.254` and `168.63.129.16`, drop `10.64.0.0/12`, allow the

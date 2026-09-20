@@ -177,6 +177,26 @@ in
           host.fail(f"{ga} nc -z -w3 10.64.4.1 22")
           host.fail(f"{ga} nc -z -w3 {host_ip} 22")
 
+      with subtest("the host reaches a guest on 22, and only in that direction"):
+          # What the runbook's manual `nft insert` used to do until this rule
+          # was declared (DECISIONS I-70): an operator jumps edge -> host ->
+          # guest for SSH while the gateway does not exist yet.
+          # Absolute paths: a transient unit gets systemd's PATH, and
+          # `ip netns exec` execs its command from that.
+          host.succeed(
+              "systemd-run --unit ga-listen --collect ip netns exec ga"
+              " ${pkgs.bash}/bin/sh -c '${pkgs.netcat-openbsd}/bin/nc -l 22 > /tmp/ga-in'"
+          )
+          host.wait_until_succeeds("ip netns exec ga ss -tlnH | grep -c ':22' >/dev/null")
+          host.succeed("echo host-to-guest-22 | nc -N -w5 10.64.4.2 22")
+          host.wait_until_succeeds("grep -q host-to-guest-22 /tmp/ga-in")
+          host.succeed("ping -c1 -W2 10.64.4.2")
+          print(host.succeed("nft list chain inet repose guest_in"))
+          # The rule is `ct direction reply` only: a guest's own first packet
+          # is the original direction, so nothing above opened a way in.
+          host.fail(f"{ga} nc -z -w3 10.64.4.1 22")
+          host.fail(f"{ga} nc -z -w3 10.64.4.1 9100")
+
       with subtest("a guest cannot use another guest's address"):
           host.succeed("ip -n ga addr add 10.64.4.3/22 dev veth-ga")
           host.fail(f"{ga} curl -sf -m3 --interface 10.64.4.3 http://203.0.113.9/")
@@ -195,6 +215,9 @@ in
           host.succeed("nft list set bridge repose guests | grep -q 'tap-ga'")
           host.succeed(f"{ga} curl -sf -m5 http://203.0.113.9/ >/dev/null")
           host.fail(f"{ga} ping -c1 -W2 10.64.4.3")
+          # host -> guest is declared in the ruleset, not inserted by hand,
+          # so it comes back with the reload (DECISIONS I-70).
+          host.succeed("ping -c1 -W2 10.64.4.2")
 
       with subtest("sshd and node_exporter listen on wg0 only; nothing on the provider NIC"):
           # grep -c reads to EOF; grep -q would SIGPIPE curl under pipefail and never succeed
