@@ -160,7 +160,7 @@ module "coolify" {
   resource_group_name = data.azurerm_resource_group.main.name
   location            = local.location
   subnet_id           = module.network.control_subnet_id
-  network_ready       = module.network.hosts_subnet_ready
+  network_ready       = module.network.control_subnet_ready
 
   authorized_keys      = var.operator_authorized_keys
   ssh_private_key_path = var.ssh_private_key_path

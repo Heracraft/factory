@@ -99,6 +99,8 @@ resource "azurerm_linux_virtual_machine" "main" {
 
   boot_diagnostics {}
 
+  depends_on = [var.network_ready]
+
   lifecycle {
     # Postgres and every Coolify application definition live on this VM's OS
     # disk. Re-imaging it because the marketplace published a new Ubuntu

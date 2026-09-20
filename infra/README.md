@@ -204,6 +204,12 @@ same signal the installer itself waits on — and fails if `rclone` or
 `docs/ops/RUNBOOK.md` "Postgres restore" and a restore that stops to install
 something is a restore nobody has rehearsed.
 
+**The machine running `tofu apply` must be in `operator_cidrs`.** The readiness
+provisioner reaches the VM over its public IP on 22, and the control subnet
+NSG opens that port to that list alone; from anywhere else the apply looks
+like a twenty-minute hang rather than a refusal. This is the same requirement
+as for hosts, which reach their installer through the edge.
+
 Two things are pinned on purpose. `coolify_version` is an exact release
 (`4.3.23`), not the installer's moving `latest`, so rebuilding this VM
 reproduces the control plane; and `AUTOUPDATE=false`, because an unattended
