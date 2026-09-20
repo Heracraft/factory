@@ -1489,3 +1489,31 @@ manual until 06 (an operator procedure that a reload silently undoes, and
 `hostd` has no other way to reach a guest's sshd today); narrowing it to
 tcp sport 22 (the host also curls a guest's noVNC relay, and "replies to
 what the host opened" is the honest rule).
+
+**I-71. `repose.host.apiCAFile` names an api CA that only exists at run
+time.** (01/03 follow-up, 2026-09-20) `repose.host.apiCA` puts a PEM in the
+store, which is how host-01 names the `hostdev` CA (I-40), but the CA the
+host-services VM test registers against is generated when its `hostdev`
+state is built, and reading it back at evaluation time would be an import
+from derivation in every `nix flake check`. The option takes a path
+instead, passed straight to `hostd --api-ca`, and an assertion refuses both
+being set. It is also what a host whose CA is delivered beside the join
+token needs. *Rejected:* IFD on the generated CA (a `flake check` that
+builds a derivation to evaluate); a fixed CA keypair committed under
+`nix/hosts/tests/fixtures` (a private key in the repository, and `hostdev`
+has no flag to adopt one).
+
+**I-72. hostd takes an identity `repose-register.service` wrote while it was
+running.** (01/03 follow-up, 2026-09-20) `EnsureIdentity` read the state
+directory once and then looped on the join token alone, so a hostd that
+started before the token arrived kept logging `waiting for join token` for
+ever after the register unit consumed that token and wrote `host.json`:
+only a restart moved it. On a host the unit is ordered before hostd, so
+this is the operator path of ops/RUNBOOK.md (write the token, then
+`systemctl start repose-register`). The `ErrNoToken` branch now re-reads
+the identity before waiting again. Pinned by
+`TestEnsureIdentityTakesTheIdentityTheUnitWrote`, which fails on the old
+code. *Rejected:* watching the state directory with inotify (30 s is soon
+enough for a host that has just booted); having the unit restart hostd (a
+restart in the middle of registration is what `RestartPreventExitStatus=3`
+exists to avoid).

@@ -92,6 +92,10 @@ const HostNetUnit = "repose-host-net.service"
 // TokenError is returned by EnsureIdentity when the token is refused.
 var TokenError = register.ErrTokenUsed
 
+// registerRetry is the wait between registration attempts; a variable so
+// the test of the loop does not take half a minute.
+var registerRetry = 30 * time.Second
+
 // EnsureIdentity loads the identity or registers with the join token,
 // retrying every 30 s while the token is missing or the api unreachable.
 func EnsureIdentity(ctx context.Context, o Options, log *slog.Logger, r shell.Runner, l lvm.LVM) (*register.Identity, error) {
@@ -129,6 +133,13 @@ func EnsureIdentity(ctx context.Context, o Options, log *slog.Logger, r shell.Ru
 			log.Error("register: join token already used", "event", "register")
 			return nil, err
 		case errors.Is(err, register.ErrNoToken):
+			// The token may be gone because repose-register.service used it:
+			// it writes the identity and exits, and nothing else tells a
+			// hostd that started before the token arrived (DECISIONS I-72).
+			if id, lerr := register.Load(o.StateDir); lerr == nil {
+				log.Info("registered", "event", "register", "host_id", id.Host.HostID)
+				return id, nil
+			}
 			log.Warn("waiting for join token", "event", "register")
 		default:
 			log.Warn("register failed; retrying", "event", "register", "err", err.Error())
@@ -136,7 +147,7 @@ func EnsureIdentity(ctx context.Context, o Options, log *slog.Logger, r shell.Ru
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(30 * time.Second):
+		case <-time.After(registerRetry):
 		}
 	}
 }
