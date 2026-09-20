@@ -2085,3 +2085,52 @@ check everywhere for a user that evaluates tenant input is the wrong
 direction); cloning as the build user (hostd would need the deploy key
 readable by that user, which is the key a tenant's evaluation runs next
 to).
+
+**I-94. A scrape is a forwarded packet, so the edge needs a forward rule;
+the control plane is `10.255.255.1` on the hub, and its two applications
+are two scrape targets.** (m3-web, 2026-09-20) `ops/prometheus/
+wireguard-peer.conf` said in as many words that "the edge's firewall needs
+nothing new" for the monitoring peer. Read against the edge as built, and
+against the live edge's ruleset, that is wrong three times over, and each
+of the three would have presented as the same symptom: a WireGuard
+handshake that looks perfect and a Prometheus with every target down.
+
+- *The forward chain.* `nix/edge/default.nix` gives `forward` a policy of
+  drop with `ct state established,related accept` and nothing else, and
+  its comment says why: "hosts never route through the edge to one
+  another". But Prometheus is not in Azure and hosts have no inbound, so
+  every scrape of a host, and of the control plane, is a packet the edge
+  forwards from one peer to another, and so is every Fluent Bit push to
+  Loki. Both were dropped. `repose.edge.monitoring.{peerCIDRs,
+  scrapePorts, logPorts}` adds exactly two rules when a monitoring peer is
+  declared and none when it is not: that peer may reach 9100, 9101, 2021,
+  9103 and 9104 on another peer, and another peer may reach 3100 on it.
+  *Rejected:* `iifname "wg0" oifname "wg0" accept` (it would also let one
+  tenant's host reach another's, and the control plane's gRPC listener,
+  which is the thing per-host AllowedIPs and this policy exist to
+  prevent); a route on the monitoring server straight to each host (hosts
+  have no address anyone outside the mesh can route to, which is the
+  point).
+- *The control plane's address.* The same file, and the `api` job of
+  `ops/prometheus/prometheus.yml`, put the control VM at `10.255.0.2`.
+  DECISIONS I-92 put it at `10.255.255.1` and that is what `wg show` on
+  both machines says today. The file with the wrong address was the one an
+  operator would have followed.
+- *One job, two targets.* `api` and `api-grpc` are separate Coolify
+  applications from the same image (I-2), so they are two processes with
+  two registries, and the families split between them: the HTTP families
+  come from `api`, the stream, ops and outbox families from `api-grpc`.
+  The job now has both with an `app` label. Verified on the control VM:
+  `api` serves 57 `repose_*` series on its container address and
+  `api-grpc` 62 on the host's 9104.
+
+Also found and *not* fixed here, because it is a Coolify field and this
+session does not touch the UI: `ops/coolify/README.md` prescribes a
+`9103:9103` port mapping on the `api` application and the live application
+has no port mappings at all, so its metrics are reachable only from inside
+the container network. `api-grpc`'s `9104:9103` is in place. One field,
+for the conductor.
+
+Interfaces: none. `ops/prometheus/prometheus.yml`,
+`ops/prometheus/wireguard-peer.conf` and `nix/edge/default.nix` change
+together because they are three halves of one path.
