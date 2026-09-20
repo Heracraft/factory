@@ -79,7 +79,7 @@ func newEnvLimits(t *testing.T, limits *httpapi.RateLimits) *env {
 		CA: h.CA, Secrets: h.Secrets, Engine: h.Engine, Logs: h.Logs, Events: h.Events, Parser: parser, Metrics: h.Metrics, Registry: reg, Log: log,
 		Outbox:  notify.New(h.Pool, map[string]notify.Sender{"email": sender, "ntfy": sender}, h.Metrics, log),
 		Unsub:   unsub,
-		Gateway: httpapi.Gateway{Host: "ssh.test", Port: 22}, Limits: limits,
+		Gateway: httpapi.Gateway{Host: "ssh.test", Port: 22}, Limits: limits, BillingEnforce: true,
 		Migrations: func(ctx context.Context) (int, error) {
 			st, err := db.MigrateStatus(ctx, h.Pool)
 			return len(st.Pending), err

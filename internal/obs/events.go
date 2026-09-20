@@ -56,6 +56,14 @@ const (
 	EventCommandResult = "command_result"
 	EventRollupDone    = "rollup_done"
 	EventStripeWebhook = "stripe_webhook"
+	// Billing (workstream 09). billing_gap is the §6 failure mode "sample
+	// gap for a running guest": the minutes are under-billed, never
+	// estimated, and the gap is visible rather than silent.
+	EventBillingGap      = "billing_gap"
+	EventStripePushFail  = "stripe_push_fail"
+	EventBillingStopped  = "billing_stopped"
+	EventBillingMismatch = "billing_mismatch"
+	EventBillingEnforce  = "billing_enforce"
 	EventNotifySend    = "notify_send"
 	EventNotifyFail    = "notify_fail"
 	EventAdminAction   = "admin_action"
@@ -116,12 +124,10 @@ var RequiredEvents = map[Component][]string{
 // workstream that owes each one. The coverage test reports them instead of
 // failing, so that a missing producer is visible without blocking the
 // workstreams that are built.
-var PendingEvents = map[string]string{
-	// The Stripe webhook route is workstream 09 (billing); the api starts
-	// without STRIPE_* set and its billing routes return 503 (DECISIONS
-	// I-16), so there is nothing to log yet.
-	EventStripeWebhook: "workstream 09 (billing): no webhook route exists yet",
-}
+//
+// It is empty: workstream 09 built POST /billing/webhook, which is the last
+// §5 event that had no producer.
+var PendingEvents = map[string]string{}
 
 // AllRequiredEvents is every event in RequiredEvents, sorted and deduped.
 func AllRequiredEvents() []string {

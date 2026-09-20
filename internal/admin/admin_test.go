@@ -42,7 +42,7 @@ func TestAdminSurface(t *testing.T) {
 	if _, err := run(t, e, "db", "down", "1"); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := run(t, e, "db", "status"); err != nil || !strings.Contains(out, "pending: [2]") {
+	if out, err := run(t, e, "db", "status"); err != nil || !strings.Contains(out, "pending: [3]") {
 		t.Fatalf("after down: %s %v", out, err)
 	}
 	if _, err := run(t, e, "db", "migrate"); err != nil {

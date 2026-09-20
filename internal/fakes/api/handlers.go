@@ -1007,6 +1007,20 @@ func (f *Fake) billingInvoices(w http.ResponseWriter, r *http.Request) *apiError
 	return nil
 }
 
+// billingWebhook stands in for Stripe's endpoint: it verifies nothing (the
+// fake has no webhook secret) and answers what the real route answers, so a
+// dashboard or CLI test that pokes it sees the documented shape.
+func (f *Fake) billingWebhook(w http.ResponseWriter, r *http.Request) *apiError {
+	if e := f.billingDisabled(); e != nil {
+		return e
+	}
+	if r.Header.Get("Stripe-Signature") == "" {
+		return errf("invalid", "stripe signature verification failed")
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"received": true})
+	return nil
+}
+
 // Internal (gateway).
 
 func (f *Fake) internalRoute(w http.ResponseWriter, r *http.Request) *apiError {

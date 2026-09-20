@@ -430,6 +430,7 @@ func (f *Fake) register() {
 	f.handle("POST /v1/billing/portal", f.billingPortal)
 	f.handle("POST /v1/billing/setup", f.billingSetup)
 	f.handle("GET /v1/billing/invoices", f.billingInvoices)
+	f.handle("POST /v1/billing/webhook", f.billingWebhook)
 	// Internal (gateway).
 	f.handle("GET /v1/internal/route", f.internalRoute)
 	f.handle("GET /v1/internal/revoked", f.internalRevoked)

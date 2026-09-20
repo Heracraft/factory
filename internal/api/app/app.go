@@ -54,6 +54,9 @@ type App struct {
 	events  *events.Ingest
 	meterIn *meter.Ingest
 	outbox  *notify.Outbox
+	stripe  *billing.Stripe
+	hooks   *billing.Webhooks
+	bcfg    billing.Config
 	server  *httpapi.Server
 	version string
 	otelOff func(context.Context) error
@@ -155,6 +158,30 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	} else {
 		a.outbox.Unsub = unsub
 	}
+	// Billing (workstream 09). With no STRIPE_SECRET_KEY the api starts
+	// normally and the billing routes answer 503 billing_disabled
+	// (DECISIONS I-16); with one, a half-configured Stripe is refused
+	// rather than silently billing nothing.
+	bcfg, stripeOn := billing.ConfigFromEnv()
+	a.bcfg = bcfg
+	var portal billing.Portal = billing.DisabledPortal{}
+	if stripeOn {
+		st, err := billing.NewStripe(bcfg, a.pool, log)
+		if err != nil {
+			return nil, fmt.Errorf("billing: %w", err)
+		}
+		a.stripe = st
+		portal = st
+		a.hooks = billing.NewWebhooks(a.pool, bcfg.WebhookSecret, log)
+		a.hooks.OnCardAttached = st.OnCardAttached
+		log.Info("billing enabled", "event", "billing_enabled", "enforced", bcfg.Enforce, "automatic_tax", bcfg.AutomaticTax)
+	} else {
+		log.Info("billing disabled until STRIPE_SECRET_KEY is set (DECISIONS I-16)", "event", "billing_disabled")
+	}
+	if _, err := billing.RecordEnforcement(ctx, a.pool, bcfg.Enforce, "api", log); err != nil {
+		return nil, err
+	}
+
 	parser, ok := config.NewParser()
 	if !ok {
 		log.Warn("nix-instantiate not found; fragments are accepted without a parse check", "event", "config_parse_unavailable")
@@ -168,13 +195,13 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	}
 	a.server = httpapi.New(httpapi.Deps{
 		Pool: a.pool, Verifier: verifier, Users: users, CA: a.ca, Secrets: a.sec, Engine: a.engine, Logs: a.logs, Events: a.events, Outbox: a.outbox, Unsub: unsub,
-		Parser: parser, Metrics: a.m, Registry: a.reg, Log: log, Billing: billing.DisabledPortal{}, Gateway: httpapi.Gateway{Host: cfg.GatewayHost, Port: cfg.GatewayPort},
+		Parser: parser, Metrics: a.m, Registry: a.reg, Log: log, Billing: portal, Webhooks: a.hooks, BillingEnforce: bcfg.Enforce,
+		Gateway: httpapi.Gateway{Host: cfg.GatewayHost, Port: cfg.GatewayPort},
 		Migrations: func(ctx context.Context) (int, error) {
 			st, err := db.MigrateStatus(ctx, a.pool)
 			return len(st.Pending), err
 		},
 	})
-	log.Info("billing disabled until STRIPE_* is configured and workstream 09 is wired", "event", "billing_disabled")
 	return a, nil
 }
 
@@ -309,7 +336,15 @@ func (a *App) loops(ctx context.Context) {
 	}
 	expiry := snapshots.New(a.pool, blob, a.m, a.log)
 	go expiry.Run(ctx, 24*time.Hour)
-	rollup := meter.NewRollup(a.pool, billing.Disabled{}, a.m, a.log)
+	var pusher billing.UsagePusher = billing.Disabled{}
+	var reader billing.Reader
+	if a.stripe != nil {
+		pusher = a.stripe
+		reader = a.stripe
+	}
+	rollup := billing.NewRollup(a.pool, pusher, a.m, a.log)
+	dunning := billing.NewDunning(a.pool, a.engine, a.events, a.log, a.bcfg.Enforce)
+	reconciler := billing.NewReconciler(a.pool, reader, a.m, a.log)
 	bump := basebump.New(a.pool, a.engine, a.events, a.log)
 	a.engine.SetOnFinished(bump.OnOpFinished)
 	go bump.Run(ctx)
@@ -345,6 +380,11 @@ func (a *App) loops(ctx context.Context) {
 			if _, err := rollup.Due(ctx); err != nil && ctx.Err() == nil {
 				a.log.Error("rollup", "event", "rollup_fail", "err", err.Error())
 			}
+			// Past-due accounts are stopped from the same hourly tick and
+			// under the same lock, so only one replica acts (§5.6).
+			if _, err := dunning.Run(ctx); err != nil && ctx.Err() == nil {
+				a.log.Error("dunning", "event", "dunning_fail", "err", err.Error())
+			}
 			release()
 			lastRollup = now
 		case <-daily.C:
@@ -367,6 +407,16 @@ func (a *App) loops(ctx context.Context) {
 			}
 			if n, err := a.logs.Trim(ctx, 20); err == nil && n > 0 {
 				a.log.Info("build logs trimmed", "event", "buildlog_trim", "rows", n)
+			}
+			// The nightly reconciliation for the current period (§5.7). It
+			// reports and never fixes; `repose-admin billing reconcile
+			// --month` is the same comparison for a closed period.
+			if ms, err := reconciler.Reconcile(ctx, time.Now()); errors.Is(err, billing.ErrNoReader) {
+				a.log.Info("reconciliation skipped: Stripe is not readable", "event", "reconcile_skip")
+			} else if err != nil {
+				a.log.Error("reconciliation", "event", "reconcile_fail", "err", err.Error())
+			} else if len(ms) > 0 {
+				a.log.Error("reconciliation found differences", "event", "reconcile_mismatch", "users", len(ms))
 			}
 			release()
 		case <-limiters.C:

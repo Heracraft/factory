@@ -50,6 +50,9 @@ func (s *Server) registerUserRoutes() {
 	s.route(m, "POST /v1/billing/portal", a(s.billingPortal))
 	s.route(m, "POST /v1/billing/setup", a(s.billingSetup))
 	s.route(m, "GET /v1/billing/invoices", a(s.billingInvoices))
+	// Stripe authenticates itself with the Stripe-Signature header, so the
+	// webhook carries no bearer token (09-billing.md §5.6).
+	s.route(m, "POST /v1/billing/webhook", s.billingWebhook)
 }
 
 // registerInternalRoutes lists the gateway routes; the listener's mTLS

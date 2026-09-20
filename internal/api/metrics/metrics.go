@@ -27,23 +27,34 @@ type M struct {
 	OutboxDepth                  prometheus.Gauge
 	OutboxLagSeconds             prometheus.Gauge
 	StripeUsagePushTotal         *prometheus.CounterVec
-	SnapshotAgeSeconds           prometheus.Gauge
-	GRPCStreams                  prometheus.Gauge
-	OpsTotal                     *prometheus.CounterVec
-	OpsOpen                      *prometheus.GaugeVec
-	BuildDuration                *prometheus.HistogramVec
-	SecretsOpsTotal              *prometheus.CounterVec
-	CommandsTotal                *prometheus.CounterVec
-	SamplesTotal                 prometheus.Counter
-	EventsTotal                  *prometheus.CounterVec
-	HostWarningsTotal            *prometheus.CounterVec
-	EgressAlertProjects          prometheus.Gauge
+	// StripeWebhookTotal counts webhook deliveries by result; the §6 alert
+	// on five bad signatures in ten minutes reads it.
+	StripeWebhookTotal  *prometheus.CounterVec
+	SnapshotAgeSeconds  prometheus.Gauge
+	GRPCStreams         prometheus.Gauge
+	OpsTotal            *prometheus.CounterVec
+	OpsOpen             *prometheus.GaugeVec
+	BuildDuration       *prometheus.HistogramVec
+	SecretsOpsTotal     *prometheus.CounterVec
+	CommandsTotal       *prometheus.CounterVec
+	SamplesTotal        prometheus.Counter
+	EventsTotal         *prometheus.CounterVec
+	HostWarningsTotal   *prometheus.CounterVec
+	EgressAlertProjects prometheus.Gauge
 	// PartitionDropFailTotal is the input of the PartitionDropFail alert
 	// (ops/alerts.yaml): the sample tables keep partitions past retention, so
 	// Postgres grows and nothing else breaks.
 	PartitionDropFailTotal prometheus.Counter
 	BillingGapMinutes      prometheus.Counter
-	KeyVaultErrorsTotal    prometheus.Counter
+	// StripePushBacklogSeconds is the age of the oldest usage_hours row
+	// that still owes Stripe a usage record; the stripe_push_backlog alert
+	// of 09-billing.md §6 fires when it passes six hours.
+	StripePushBacklogSeconds prometheus.Gauge
+	// BillingMismatchCents is the largest difference the last
+	// reconciliation found between usage_hours and Stripe (§5.7). The job
+	// never fixes a difference silently; this is what alerts on one.
+	BillingMismatchCents prometheus.Gauge
+	KeyVaultErrorsTotal  prometheus.Counter
 }
 
 // New registers every family on reg.
@@ -63,6 +74,7 @@ func New(reg prometheus.Registerer) *M {
 		OutboxDepth:                  prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_outbox_depth", Help: "Undelivered outbox rows."}),
 		OutboxLagSeconds:             prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_outbox_lag_seconds", Help: "Age of the oldest undelivered outbox row."}),
 		StripeUsagePushTotal:         prometheus.NewCounterVec(prometheus.CounterOpts{Name: "repose_api_stripe_usage_push_total", Help: "Usage record pushes by result."}, []string{"result"}),
+		StripeWebhookTotal:           prometheus.NewCounterVec(prometheus.CounterOpts{Name: "repose_api_stripe_webhook_total", Help: "Stripe webhook deliveries by result."}, []string{"result"}),
 		SnapshotAgeSeconds:           prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_snapshot_age_seconds", Help: "Oldest newest-snapshot age over running projects."}),
 		GRPCStreams:                  prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_grpc_streams", Help: "Connected host streams."}),
 		OpsTotal:                     prometheus.NewCounterVec(prometheus.CounterOpts{Name: "repose_api_ops_total", Help: "Ops finished by kind and state."}, []string{"kind", "state"}),
@@ -76,12 +88,14 @@ func New(reg prometheus.Registerer) *M {
 		PartitionDropFailTotal:       prometheus.NewCounter(prometheus.CounterOpts{Name: "repose_api_partition_drop_fail_total", Help: "Partition maintenance runs that failed (docs/workstreams/10-observability.md §6)."}),
 		EgressAlertProjects:          prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_egress_alert_projects", Help: "Projects over 1 TB egress in 24 h."}),
 		BillingGapMinutes:            prometheus.NewCounter(prometheus.CounterOpts{Name: "repose_api_billing_gap_minutes_total", Help: "Minutes a running project had no sample."}),
+		StripePushBacklogSeconds:     prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_billing_stripe_push_backlog_seconds", Help: "Age of the oldest usage_hours row with no Stripe usage record."}),
+		BillingMismatchCents:         prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_billing_mismatch_cents", Help: "Largest usage_hours minus Stripe difference found by the last reconciliation."}),
 		KeyVaultErrorsTotal:          prometheus.NewCounter(prometheus.CounterOpts{Name: "repose_api_keyvault_errors_total", Help: "Key Vault failures."}),
 	}
 	reg.MustRegister(m.RequestsTotal, m.RequestDuration, m.Hosts, m.Projects, m.ScheduleTotal, m.CertsIssuedTotal, m.CertsRevokedTotal,
-		m.RollupLagSeconds, m.RollupDuration, m.NotifyTotal, m.NotifyDeliveryLatencySeconds, m.OutboxDepth, m.OutboxLagSeconds, m.StripeUsagePushTotal, m.SnapshotAgeSeconds,
+		m.RollupLagSeconds, m.RollupDuration, m.NotifyTotal, m.NotifyDeliveryLatencySeconds, m.OutboxDepth, m.OutboxLagSeconds, m.StripeUsagePushTotal, m.StripeWebhookTotal, m.SnapshotAgeSeconds,
 		m.GRPCStreams, m.OpsTotal, m.OpsOpen, m.BuildDuration, m.SecretsOpsTotal, m.CommandsTotal, m.SamplesTotal, m.EventsTotal,
-		m.HostWarningsTotal, m.EgressAlertProjects, m.BillingGapMinutes, m.KeyVaultErrorsTotal,
+		m.HostWarningsTotal, m.EgressAlertProjects, m.BillingGapMinutes, m.StripePushBacklogSeconds, m.BillingMismatchCents, m.KeyVaultErrorsTotal,
 		m.PartitionDropFailTotal)
 	return m
 }
