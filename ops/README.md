@@ -24,7 +24,7 @@ other end of those.
 | `dashboards/validate.py` | Structure, datasource uids, forbidden Prometheus labels, SQL against `db-schema.md`, and `--query` to see which panels have data. |
 | `sql/partitions.sql` | Monthly partitions for `meter_samples` and `proc_samples`, and the drop that implements retention. |
 | `check.sh` | Everything above that can be checked without a host. `--grafana` also loads the dashboards into a real Grafana. |
-| `dev/` | Prometheus, Loki, Grafana and Postgres in Docker, plus `seedmetrics` and `pgcheck.sh`. |
+| `dev/` | Prometheus, Loki, Grafana and Postgres in Docker, plus `seedmetrics`, `seedlogs.sh` and `pgcheck.sh`. |
 
 ## Installing it on the personal server
 
@@ -54,6 +54,7 @@ other end of those.
 ```
 docker compose -f ops/dev/docker-compose.yml up -d
 go run ./ops/dev/seedmetrics          # plausible values for every family
+ops/dev/seedlogs.sh                   # a few lines of the documented shape into Loki
 ops/dev/pgcheck.sh                    # schema, synthetic samples, every panel's SQL
 ```
 

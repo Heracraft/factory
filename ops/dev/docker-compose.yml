@@ -39,7 +39,7 @@ services:
     command: ["-config.file=/etc/loki/loki.yaml"]
     volumes:
       - ./loki.yaml:/etc/loki/loki.yaml:ro
-      - loki:/var/lib/loki
+      - loki:/loki
     ports:
       - "0.0.0.0:3100:3100"
 

@@ -41,6 +41,7 @@ obs-dev:
     @echo "grafana:    http://$(tailscale ip -4 | head -1):3000"
     @echo "prometheus: http://$(tailscale ip -4 | head -1):9090"
     @echo "metrics:    go run ./ops/dev/seedmetrics"
+    @echo "logs:       ops/dev/seedlogs.sh"
     @echo "postgres:   ops/dev/pgcheck.sh"
 
 obs-dev-down:
