@@ -630,6 +630,12 @@ these are the absolute numbers the design can be checked against.
 | Restore from Blob into a new 70 GB thin volume (download, zstd, e2fsck) | 75 s, then 12.5 s to start |
 | `hostdev resize` 40 → 70 GB on a running guest (lvextend, CH resize-disk, resize2fs) | 0.17 s |
 | `hostdev exec`, `secrets set`, `principals` round trip | under 0.2 s |
+| `hostdev create` of a `small` guest under the I-49 sandbox (guest@ as `hostd`) | 15 s to `running` |
+| `ApplyConfig` in place (new closure adds one package; `RegisterPaths` 480 KB, `switch-to-configuration switch`), tmux session kept | 2.2 s |
+| `ApplyConfig` with a kernel change: refused without `force_reboot` | 0.3 s |
+| `ApplyConfig --force-reboot` (snapshot to Blob, stop, start on the new kernel) | 75 s |
+| `hostd` restart and `kill -9` under running guests: guests untouched, interrupted Snapshot replayed to completion | replay finished 57 s after the restart |
+| `nix-collect-garbage` on the host with two guests running | 1.1 GiB freed, both rooted closures kept, guests unaffected |
 | In-guest `docker pull node:24` (1.14 GB extracted), overlay2 | 37 s |
 | In-guest `git clone` of NixOS/nix, full history (163 MB) | 11 s |
 | In-guest `go build std` (CPU-bound) | 21 s wall, 28 s user on 4 vCPU |
@@ -639,7 +645,8 @@ these are the absolute numbers the design can be checked against.
 
 Reading: the 5 s start in DESIGN §5 is not met yet (12.5 s; the guest's own
 systemd boot is 11 s of it, the hypervisor and virtiofsd start under a
-second). The host-side numbers (create, resize, freeze) are well inside the
+second; `home-manager-dev.service` and Docker are the long poles in the
+guest's boot and neither is needed before `Ready`). The host-side numbers (create, resize, freeze) are well inside the
 design; the snapshot upload of a thin volume is bounded by zstd on one
 core plus Blob throughput at about 10 MB/s of compressed output and is the
 first thing to optimise if stop latency matters.
