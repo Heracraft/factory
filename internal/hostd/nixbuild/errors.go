@@ -9,7 +9,10 @@ import (
 // Error is a mapped Nix failure, per docs/interfaces/grpc-hostd.md: the
 // code, a message whose first line is a summary followed by a blank line
 // and the verbatim Nix output (capped at 32 KB), and the fragment line when
-// the location parsed.
+// the location parsed. The summaries are the exact first lines of
+// docs/workstreams/12-nix-config-pipeline.md "The five canonical error
+// cases"; the CLI prefixes them by code (docs/interfaces/nix-build-contract.md
+// "What the user reads").
 type Error struct {
 	Code         string
 	Message      string
@@ -27,6 +30,10 @@ var (
 	didYouMean  = regexp.MustCompile(`(?m)^\s*(Did you mean .*\?)\s*$`)
 	buildingRe  = regexp.MustCompile(`(?m)building '(/nix/store/[^']+\.drv)'`)
 	drvFailRe   = regexp.MustCompile(`(?m)(?:Cannot build|builder for) '(/nix/store/[^']+\.drv)'`)
+	assertionRe = regexp.MustCompile(`(?m)^\s*- (.*)$`)
+	hmOptionRe  = regexp.MustCompile("The option `home-manager\\.users\\.dev\\.([^']+)' does not exist")
+	nixPathRe   = regexp.MustCompile(`cannot look up '(<[^>]+>)' in pure evaluation mode`)
+	uriRe       = regexp.MustCompile(`access to URI '([^']+)' is forbidden`)
 )
 
 func firstLine(s string) string {
@@ -85,23 +92,42 @@ func MapEvalError(stderr string) *Error {
 		msg = "evaluation failed"
 	}
 	line, loc := fragmentLine(stderr)
-	summary := msg
+	at := ""
 	if loc != "" {
-		summary += " at fragment.nix:" + loc
+		at = " at fragment.nix:" + loc
 	}
+	var summary string
 	switch {
-	case strings.Contains(msg, "forbidden in restricted mode") && strings.Contains(msg, "URI"):
-		summary = "eval-time fetch not allowed"
-		if loc != "" {
-			summary += " at fragment.nix:" + loc
-		}
-		summary += "; use pkgs.fetchurl { url = ...; hash = ...; }"
-	case strings.Contains(msg, "cannot fetch") && strings.Contains(msg, "pure evaluation mode"):
-		summary += "; use pkgs.fetchurl with a hash instead of builtins.fetch*"
+	case strings.HasPrefix(msg, "syntax error, "):
+		// "syntax error, unexpected ';'" -> "syntax error at fragment.nix:1:32, unexpected ';'"
+		summary = "syntax error" + at + ", " + strings.TrimPrefix(msg, "syntax error, ")
+	case uriRe.MatchString(msg) && strings.Contains(msg, "restricted mode"):
+		summary = "eval-time fetch not allowed" + at + "; use pkgs.fetchurl { url = ...; hash = ...; }"
+	case strings.Contains(msg, "cannot fetch") && strings.Contains(msg, "pure evaluation mode"),
+		strings.Contains(msg, "doesn't fetch unlocked input"):
+		summary = "eval-time fetch not allowed" + at + "; use pkgs.fetchgit or pkgs.fetchurl with a hash instead of builtins.fetch*"
 	case strings.Contains(msg, "access to absolute path") && strings.Contains(msg, "pure evaluation mode"):
-		summary += "; a fragment may only read files it carries"
+		summary = msg + at + "; a fragment may only read files it carries"
+	case nixPathRe.MatchString(msg):
+		m := nixPathRe.FindStringSubmatch(msg)
+		summary = m[1] + " is not available" + at + "; use the pkgs argument, which is the platform's pinned nixpkgs"
+	case strings.Contains(msg, "allow-import-from-derivation"):
+		summary = "import-from-derivation is not allowed" + at + "; a fragment cannot import a file that a build produces"
+	case hmOptionRe.MatchString(msg):
+		m := hmOptionRe.FindStringSubmatch(msg)
+		summary = "option '" + m[1] + "' does not exist in a fragment" + at + "; system services come from the menu or `repose config menu`"
 	case strings.Contains(msg, "does not exist") && strings.Contains(msg, "The option"):
-		summary += "; system services come from the menu or `repose config menu`"
+		summary = msg + at + "; system services come from the menu or `repose config menu`"
+	case strings.Contains(stderr, "Failed assertions:"):
+		// The fragment contract's own refusals (nix/guest/fragment.nix) and
+		// the base's assertions arrive as a list; the first is the summary.
+		if m := assertionRe.FindStringSubmatch(stderr[strings.Index(stderr, "Failed assertions:"):]); m != nil {
+			summary = strings.TrimSpace(m[1])
+		} else {
+			summary = msg
+		}
+	default:
+		summary = msg + at
 	}
 	if m := didYouMean.FindStringSubmatch(stderr); m != nil {
 		summary += " (" + strings.ToLower(m[1][:1]) + m[1][1:] + ")"
@@ -124,6 +150,15 @@ func LastDerivation(log string) string {
 	return drvName(ms[len(ms)-1][1])
 }
 
+// FailedDerivation is the store path of the derivation Nix reported as
+// failed, or "".
+func FailedDerivation(stderr string) string {
+	if m := drvFailRe.FindStringSubmatch(stderr); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
 func drvName(p string) string {
 	base := p[strings.LastIndexByte(p, '/')+1:]
 	base = strings.TrimSuffix(base, ".drv")
@@ -136,8 +171,8 @@ func drvName(p string) string {
 // MapBuildError turns `nix build` output into a build_failed Error.
 func MapBuildError(stderr string) *Error {
 	summary := "build failed"
-	if m := drvFailRe.FindStringSubmatch(stderr); m != nil {
-		summary = "build of " + drvName(m[1]) + " failed"
+	if d := FailedDerivation(stderr); d != "" {
+		summary = "build of " + drvName(d) + " failed"
 	} else if msg, _ := lastError(stderr); msg != "" {
 		summary = msg
 	}
@@ -147,11 +182,31 @@ func MapBuildError(stderr string) *Error {
 	return &Error{Code: "build_failed", Message: compose(summary, stderr)}
 }
 
-// BuildTimeout is the build_timeout Error for a `timeout` exit.
-func BuildTimeout(buildS uint32, log string) *Error {
-	s := "build exceeded " + strconv.FormatUint(uint64(buildS), 10) + " s"
-	if d := LastDerivation(log); d != "" {
-		s += "; last derivation: " + d
+// duration prints a cap the way the workstream doc's messages do: whole
+// minutes when the cap is one, seconds otherwise.
+func duration(secs uint32) string {
+	if secs >= 60 && secs%60 == 0 {
+		m := secs / 60
+		if m == 1 {
+			return "1 minute"
+		}
+		return strconv.FormatUint(uint64(m), 10) + " minutes"
 	}
-	return &Error{Code: "build_timeout", Message: s}
+	return strconv.FormatUint(uint64(secs), 10) + " s"
+}
+
+// BuildTimeout is the build_timeout Error for a `timeout` exit:
+// "build timed out after 30 minutes while building sleep-forever-1.0".
+func BuildTimeout(buildS uint32, log string) *Error {
+	s := "build timed out after " + duration(buildS)
+	if d := LastDerivation(log); d != "" {
+		s += " while building " + d
+	}
+	return &Error{Code: "build_timeout", Message: compose(s, log)}
+}
+
+// ClosureTooLarge is the closure_too_large Error:
+// "closure is 31.2 GB, limit is 20 GB; largest paths:" then ten lines.
+func ClosureTooLarge(size, limit uint64, largest string) *Error {
+	return &Error{Code: "closure_too_large", Message: "closure is " + humanBytes(size) + ", limit is " + humanBytes(limit) + "; largest paths:\n" + strings.TrimRight(largest, "\n")}
 }

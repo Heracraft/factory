@@ -703,10 +703,120 @@ its timer; `SnapshotStale` fires if a running project stays without one.
 
 ## hostd: build exceeds time
 
-`build_timeout: build exceeded 1800 s; last derivation: <name>` and the
-CLI exits 10. The named derivation is what was compiling when `timeout`
-fired; the tenant either pulls a cached variant or accepts the cap.
-`BuildQueueStuck` above covers a build that ignored the cap.
+`build_timeout: build timed out after 30 minutes while building <name>`
+and the CLI exits 10. The named derivation is what was compiling when
+`timeout` fired (the scope's `RuntimeMaxSec` is the backstop 30 s later);
+the tenant either pulls a cached variant or accepts the cap. "Build
+stuck" and `BuildQueueStuck` above cover a build that ignored the cap.
+
+## Build stuck (no BuildLog line for 10 minutes)
+
+A `Build` op is `running`, its SSE log has not moved, and hostd's
+`builds_running` gauge holds. Distinguish a slow build from a wedged one:
+
+1. On the host: `systemctl list-units 'repose-build-*'` shows the scope
+   (`repose-build-<revision>` for the build, `-eval` for the evaluation)
+   with its `RuntimeMaxSec`; `systemctl status <scope>` shows the `nix`
+   process tree under user `nixbuild`. A build is alive when `nix log
+   --follow` on its derivation (`journalctl -u hostd | grep build_start`
+   names the revision; `nix log <drv>`) still grows.
+2. A build compiling something big (a browser, CUDA) is slow, not stuck;
+   the 30-minute cap ends it as `build_timeout` naming the derivation and
+   the tenant reads it in the CLI. Nothing to do.
+3. If the scope is past `RuntimeMaxSec` and still present, systemd's kill
+   failed: `systemctl kill --signal=KILL <scope>`; hostd reports
+   `build_timeout`. If the `nix` client is gone but `nix-daemon` still runs
+   the builder (`ps -o pid,user,etime,args -C nix-daemon`), the daemon lost
+   the client's cancellation: `nix build --no-link <drv>` from a root shell
+   attaches to the running build so you can watch it, or `systemctl restart
+   nix-daemon` kills every build on the host (both hostd builds restart
+   from their last substituted path; nothing tenant-visible is lost).
+4. `BuildQueueStuck` above covers the metric-level alert.
+
+## Build: cache unreachable
+
+`host_warning{kind: cache_unreachable}` and BuildLog lines `warning:
+unable to download 'https://<cache>/...'`. Builds go on from
+cache.nixos.org or source; only speed is lost.
+
+1. `curl -sI https://repose.cachix.org/nix-cache-info` from the host. A
+   DNS or TLS failure from the host and not from your laptop is the host's
+   egress (NAT gateway, `HostWgDown` is unrelated). A 5xx is Cachix; check
+   status.cachix.org and wait.
+2. If the cache is fine but every host warns, the public key changed:
+   `repose.host.overlayCache.publicKey` must equal the key on the cache's
+   page, else Nix refuses its narinfos with `signature ... invalid` and
+   falls back to building the agents from their release tarballs
+   (downloads, not compiles; minutes).
+3. `nix store info --store https://repose.cachix.org` proves the host
+   reaches it after the fix. The warning is per build and stops by itself.
+
+## Build: base unavailable
+
+`Build` fails `internal: base <rev> unavailable: ...` for every project;
+no tenant config changes.
+
+1. `ls /var/lib/repose/base/` on the host. Each directory is a git
+   checkout of this repository at a `base_versions.nix_rev`.
+2. `clone failed`: hostd's `--base-repo-url` is empty or the repository
+   refused it. A private repository needs `repose.host.baseRepo.sshKeyFile`
+   pointing at a deploy key delivered like the join token (never in the
+   store); `journalctl -u hostd | grep base` has git's stderr. Place the
+   checkout by hand from a machine that can: `git clone --no-checkout
+   <url> /var/lib/repose/base/<rev> && git -C /var/lib/repose/base/<rev>
+   checkout <rev>`, then resend the build (`repose-admin projects
+   rebuild <id>`, or `repose config apply` as the user).
+3. `checkout failed`: the revision is not in the repository (a
+   `base publish` of a rev that was never pushed). Publish a rev that
+   exists.
+4. `flake.lock` errors: the checkout is not a complete repository
+   (interrupted clone). Remove the directory and let hostd clone again.
+
+## Base bump failures
+
+`repose-admin base status <version>` lists projects `failed` with the
+error's first line; each has a `base_update_failed` event the user saw.
+
+1. One or two projects failing with `eval_failed` or `build_failed` is a
+   fragment that stopped building on the new base (a renamed attribute, a
+   removed package). The project keeps its old base and is skipped by
+   later bumps until the user's next successful `repose config apply`;
+   nothing to do on the platform side, but the error text tells you which
+   nixpkgs change caused it.
+2. Many projects failing the same way is the base's bug: `repose-admin
+   base rollback <previous version>` re-applies the previous closure to
+   every project the bump reached (still rooted, so no rebuild), then fix
+   the base and publish again.
+3. `needs_reboot` is not a failure: the kernel changed, the guest was
+   built and the user decides when to reboot (`repose config apply
+   --reboot`); `repose status` says `base X (Y ready; reboot when
+   convenient)`.
+4. A bump that never started: the daily job runs at 04:00 UTC (05); a
+   `--security` publish runs at once. `repose-admin ops list --kind build`
+   shows the queued builds and their `not_before` times, spread over 24 h
+   (2 h security), two per host at a time.
+
+## Closure collected under a running guest
+
+`Warning{kind: store_path_missing}` from a guest, or a tenant's shell
+saying `No such file or directory` for a store path. The host garbage
+collected a path the guest's running system references, which means its
+GC root was missing (a hostd bug) or was removed by hand.
+
+1. `ls -l /nix/var/nix/gcroots/repose/` on the host: the guest's root is
+   `<guest_id>` and the newest three revisions are
+   `rev-<project_id>-<revision_id>`; `nix-store --gc --print-dead | grep
+   <closure>` is empty when the closure is protected.
+2. Rebuild the revision (deterministic): `repose-admin projects rebuild
+   <id>` sends `Build` with the same fragment and base; hostd re-roots the
+   result. A guest that only lost a leaf package keeps running from page
+   cache and picks the path up at its next `switch`; one that lost its
+   `init`, kernel or a service binary is wedged: `repose-admin projects
+   restart <id>` (stop with a snapshot, start) boots it from the rebuilt
+   closure.
+3. Find why the root was gone: `journalctl -u hostd | grep gcroot`
+   (hostd logs every root it sets and removes) and the weekly
+   `nix-gc.service` run time. A root removed by hand is an audit finding.
 
 ## hostd: command for unknown guest
 

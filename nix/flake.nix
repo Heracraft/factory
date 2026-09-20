@@ -15,9 +15,17 @@
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # The user fragment for `guestSystem`. The placeholder keeps the lock
+    # file valid; hostd overrides it per Build with
+    # `--override-input fragment path:/var/lib/repose/builds/<rev>`
+    # (docs/interfaces/nix-build-contract.md, DECISIONS I-28).
+    fragment = {
+      url = "path:./guest/fragment-placeholder";
+      flake = false;
+    };
   };
 
-  outputs = { self, nixpkgs, home-manager, microvm, disko }:
+  outputs = { self, nixpkgs, home-manager, microvm, disko, fragment }:
     let
       system = "x86_64-linux";
       lib = nixpkgs.lib;
@@ -25,8 +33,7 @@
       pkgs = import nixpkgs {
         inherit system;
         overlays = [ overlay ];
-        config.allowUnfreePredicate = pkg:
-          builtins.elem (lib.getName pkg) [ "claude-code" "codex" "gemini-cli" ];
+        config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) (import ./guest/unfree-allowlist.nix);
       };
 
       # The platform base version: the revision of this repository. The api's
@@ -43,6 +50,14 @@
 
       mkGuestRunner = import ./guest/microvm.nix {
         inherit nixpkgs home-manager microvm system overlay self;
+      };
+      composeGuest = import ./guest/compose.nix { inherit mkGuestRunner; };
+      # The fragment pipeline's checks: every example fragment composes and
+      # builds, and the contract's refusals refuse (nix/guest/checks.nix).
+      fragmentChecks = import ./guest/checks.nix {
+        inherit pkgs lib composeGuest guestd baseVersion;
+        hook = reposeHook;
+        examplesDir = ../docs/features/config-examples;
       };
 
       guestTests = import ./guest/tests {
@@ -96,10 +111,20 @@
       };
 
       lib = {
-        inherit mkGuestRunner mkHost baseVersion;
+        inherit mkGuestRunner mkHost baseVersion composeGuest;
         # Name used by the scaffold; same function.
         mkGuest = mkGuestRunner;
       };
+
+      # What hostd evaluates for a Build (docs/interfaces/nix-build-contract.md):
+      # the base plus the fragment at "${fragment}/fragment.nix" applied to
+      # dev. `config.system.build.toplevel` is the system closure; the class
+      # is not baked in (DECISIONS I-34, I-42).
+      guestSystem = (composeGuest {
+        fragmentPath = "${fragment}/fragment.nix";
+        inherit guestd baseVersion;
+        hook = reposeHook;
+      }).guestSystem;
 
       packages.${system} = {
         inherit (goPkgs) guestd repose-hook hostd hostdev api repose-admin;
@@ -127,7 +152,7 @@
       # NixOS VM tests for the host (nix/hosts/tests) and the guest
       # (nix/guest/tests). They need KVM on the builder: `system-features =
       # kvm` in nix.conf.
-      checks.${system} = hostChecks // guestTests // {
+      checks.${system} = hostChecks // guestTests // fragmentChecks // {
         # The base closure must stay under 6 GB (02 §7): every host's store
         # grows by it, and every first boot registers its metadata.
         guest-closure-size = pkgs.runCommand "guest-closure-size" {

@@ -853,3 +853,116 @@ a doc disagreed with a contract:
   `repose-admin` talks to Postgres directly and has no `login`; the
   runbook's `repose-admin login` line is withdrawn. Rate-limit buckets are
   per replica.
+**I-42. The fragment contract is enforced by a NixOS module,
+`nix/guest/contract.nix`: `repose.overlays` from a pre-pass, `repose.system`
+through a static allowlist, and one class-independent closure.** (12)
+`workstreams/12-nix-config-pipeline.md` sketched `composeGuest { baseRef,
+fragment, menuSnippet, guestParams }` with the menu's NixOS snippet as a
+separate module. The wire carries one file (`Build.fragment`, I-28), so
+the snippet travels inside the fragment as `repose.system = [ { ... } ]`,
+a list of plain attribute sets whose first two levels must be in
+`nix/guest/system-allowlist.json`; the composer defines each allowlisted
+path statically and refuses anything else through an assertion naming the
+option. A hand-written fragment may use the same door under the same list,
+which is what makes the boundary real whatever produced the file. Two
+things the sketch could not have known: home-manager's module list itself
+needs `pkgs`, so `nixpkgs.overlays` cannot be read back from the evaluated
+home-manager configuration (infinite recursion); `repose.overlays` is
+instead read off the fragment in a pre-pass that calls a function fragment
+once with the platform's own `pkgs` and `lib`, and may use nothing else.
+And `Build` carries no class, so the browser slice's ceiling is a
+percentage of guest memory (37.5 percent: 1.5/3/6 GB) instead of a
+per-class constant, which makes the closure serve any class (I-34). Errors
+are attributed to `fragment.nix` because `compose.nix` hands the path to
+home-manager unimported; the contract module is not called `fragment.nix`
+so the error mapping's `fragment.nix:L:C` can only mean the user's file.
+`composeGuest { fragment | fragmentPath, class, baseVersion, guestd, hook,
+extraModules }` replaces the sketch's signature; `guestSystem` is
+`composeGuest { fragmentPath = "${fragment}/fragment.nix"; }`. *Rejected:*
+trusting the api to be the only producer of `repose.system` (nothing
+distinguishes its file from a user's); overlays as a home-manager option
+(recursion); a second `Build` field for the snippet (a second file, a
+second override input, and the takeover flow would have two things to
+copy). Interfaces: `nix-build-contract.md`, `guest-conventions.md`
+(browser slice), `features/config.md` "Writing a fragment".
+
+**I-43. The menu package is `internal/menu`; `GET /catalog` carries `kind`
+and `options`.** (12, for 05 and 08) `05-control-plane-api.md` named it
+`internal/nixmenu`; the workstream that owns it (12) names it
+`internal/menu`, and 05's text is corrected. The catalog is a YAML file
+embedded in the package; `Load` validates it and lints every `nixos`
+snippet against the allowlist, so a catalog entry outside the list fails
+`go test`, not a build on a host. `api.md`'s `[{id, label, group,
+description}]` gains `kind` and `options` (enum id, values, default),
+which the dashboard needs to render a select; the old fields keep their
+meaning. A generated fragment's second line, `# repose-menu: <json>`, is
+the selection, so a menu-managed project round-trips without a second
+store. Playwright MCP stays nixpkgs's (02's coupling to
+`playwright-driver`), so `versions.json` does not list it.
+
+**I-44. Fragment evaluation and builds run as `nixbuild` inside a
+transient scope, against a `git+file://` flake, with `allowed-uris`
+derived from the base checkout's lock file, and `--show-trace`.** (12, 03)
+Four things the contract as written could not do, found by running it:
+`path:<checkout>/nix` copies only `nix/` into the store, and
+`nix/packages.nix` builds guestd from `../.`, so the flake must be named
+`git+file://<checkout>?dir=nix` (the checkout is a git clone anyway);
+restricted mode refuses the locked inputs the flake machinery fetches
+during evaluation unless each exact URI (`github:owner/repo/rev?narHash=`)
+is in `allowed-uris`, so hostd derives that list from `flake.lock` and adds
+the fragment's directory, which admits those trees and nothing a fragment
+can name; a truncated trace loses the fragment's line and column for
+errors raised inside the module system, so the eval passes `--show-trace`
+and the mapping takes the innermost `fragment.nix:L:C`; and `systemd-run
+--scope` cannot switch user, so hostd runs `setpriv` to `nixbuild` (all
+capabilities dropped, no new privileges) inside the scope, with
+`RuntimeMaxSec` as a backstop 30 s past `timeout`. The messages are the
+workstream doc's exact first lines (`syntax error at fragment.nix:L:C,
+...`, `build timed out after 30 minutes while building X`, `closure is
+31.2 GB, limit is 20 GB; largest paths:`); the doc's `eval_timeout` code
+is the interface's `eval_failed` with "evaluation exceeded 60 s", because
+`grpc-hostd.md`'s enum is what the api and CLI switch on. `nixbuild`
+exists on every host (`nix/hosts/hostd.nix`), `/var/lib/repose/builds` is
+0711, and the platform cache is a host option (`repose.host.overlayCache`)
+passed as `--substituters`, not a constant in hostd. *Rejected:* keeping
+`internal/nixbuild` as a second package next to 03's
+`internal/hostd/nixbuild` (one implementation of one contract; 03's
+package is extended in place, and the fixtures stay where the contract
+says).
+
+**I-45. The agent overlay is built from upstream release binaries pinned
+in `versions.json` and cached on Cachix.** (12) Claude Code from
+Anthropic's release bucket (the ELF the npm installer fetches), opencode
+and pi from their GitHub release tarballs (bun-compiled, dynamically
+linked, `autoPatchelfHook`), Codex from its static musl tarball, Gemini
+CLI from the npm registry (a single bundle with no dependencies, run with
+the guest's node). `scripts/bump-agents.sh` reads each upstream's latest,
+prefetches, rewrites `versions.json`, builds, runs `--version`, and with
+`--pr` opens the pull request; `.github/workflows/bump-agents.yml` runs it
+daily. The binary cache is the Cachix cache `repose`
+(`https://repose.cachix.org`): CI pushes the seven overlay packages on
+every push to `main` when `CACHIX_AUTH_TOKEN` is set, and hosts add it
+through `repose.host.overlayCache` once the owner has created the cache
+and pasted its public key (`ops/AZURE-SETUP.md` step 16). *Rejected:*
+nixpkgs as the source (R3-19; it also now marks `gemini-cli` for removal,
+which is Google's tiering change, not a reason to drop an agent that works
+with an API key); an S3 bucket served by `nix-serve` on the Coolify VM (a
+service to run and a signing key to keep, for a cache of public
+binaries); R2 through Nix's S3 support (works, but is a second credential
+in CI for no gain until Cachix's free tier is outgrown). *Revisit when:*
+the cache passes 5 GB or a private overlay package appears.
+
+**I-46. Base bumps are a planner and a runner in `internal/basebump` over
+two interfaces the api implements.** (12, for 05) The api does not exist
+yet, so the policy is a package with `NewPlan` (which projects a version
+reaches: not held, last build not failed, running or stopped, not already
+on it; spread over 24 h, 2 h for `--security`, two at a time per host),
+`Runner.Run` (build, then `ApplyConfig` for a running guest; a stopped
+guest is `built` and boots the closure at its next start; `kernel_changed`
+ends as `needs_reboot` with the `base_update_ready` event; any failure is
+`failed` with `base_update_failed` and the project keeps its base),
+`Summarize` for `repose-admin base status`, `Rollback` for `base rollback`
+and `StatusLine` for the base part of `repose status`. Workstream 05 wires
+`Dispatcher` and `Recorder` to Postgres and the stream and schedules the
+run from `base publish`. The checklist's "three projects" evidence is the
+package's test until the api exists.
