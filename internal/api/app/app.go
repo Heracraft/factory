@@ -291,7 +291,7 @@ func (a *App) loops(ctx context.Context) {
 	go expiry.Run(ctx, 24*time.Hour)
 	rollup := meter.NewRollup(a.pool, billing.Disabled{}, a.m, a.log)
 	bump := basebump.New(a.pool, a.engine, a.events, a.log)
-	a.engine.OnFinished = bump.OnOpFinished
+	a.engine.SetOnFinished(bump.OnOpFinished)
 	go bump.Run(ctx)
 	sweep := time.NewTicker(15 * time.Second)
 	hourly := time.NewTicker(time.Minute)

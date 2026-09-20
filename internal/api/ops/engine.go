@@ -74,8 +74,12 @@ type Engine struct {
 	now     func() time.Time
 	mu      sync.Mutex
 	waiters map[uuid.UUID][]chan struct{}
-	// OnFinished is called after an op reaches done or error (events).
-	OnFinished func(ctx context.Context, op *store.Op)
+	// onFinished is called after an op reaches done or error (events). Set
+	// through SetOnFinished: callers install it after Run has started (the
+	// base-bump job in app.go and the tests), so the engine goroutine reads
+	// it concurrently.
+	onFinishedMu sync.RWMutex
+	onFinished   func(ctx context.Context, op *store.Op)
 }
 
 // New builds an engine.
@@ -518,8 +522,8 @@ func (e *Engine) failWithLine(ctx context.Context, op *store.Op, code, msg strin
 	}
 	op.State = "error"
 	e.notifyWaiters(op)
-	if e.OnFinished != nil {
-		e.OnFinished(ctx, op)
+	if f := e.finishedHook(); f != nil {
+		f(ctx, op)
 	}
 }
 
@@ -538,8 +542,8 @@ func (e *Engine) finish(ctx context.Context, op *store.Op) {
 	}
 	op.State = "done"
 	e.notifyWaiters(op)
-	if e.OnFinished != nil {
-		e.OnFinished(ctx, op)
+	if f := e.finishedHook(); f != nil {
+		f(ctx, op)
 	}
 }
 
@@ -580,4 +584,18 @@ func (e *Engine) Wait(ctx context.Context, id uuid.UUID) (*store.Op, error) {
 func (e *Engine) setResult(ctx context.Context, op *store.Op, fields map[string]any) error {
 	_, err := e.pool.Exec(ctx, "update ops set result = coalesce(result, '{}'::jsonb) || $2::jsonb where id = $1", op.ID, fields)
 	return err
+}
+
+// SetOnFinished installs the hook called after an op reaches done or error.
+// Safe to call while the engine is running.
+func (e *Engine) SetOnFinished(f func(ctx context.Context, op *store.Op)) {
+	e.onFinishedMu.Lock()
+	defer e.onFinishedMu.Unlock()
+	e.onFinished = f
+}
+
+func (e *Engine) finishedHook() func(ctx context.Context, op *store.Op) {
+	e.onFinishedMu.RLock()
+	defer e.onFinishedMu.RUnlock()
+	return e.onFinished
 }
