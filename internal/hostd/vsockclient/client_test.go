@@ -41,7 +41,7 @@ func TestUnixDialerAgainstFake(t *testing.T) {
 	if string(srv.Secrets()["A"]) != "1" {
 		t.Fatal("secret not delivered")
 	}
-	sw, err := s.Switch(ctx, "/nix/store/k", false)
+	sw, err := s.Switch(ctx, "/nix/store/k", false, nil)
 	if err != nil || !sw.NeedsReboot {
 		t.Fatalf("switch: %v %v", sw, err)
 	}

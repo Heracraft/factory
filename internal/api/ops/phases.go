@@ -424,9 +424,19 @@ func (e *Engine) buildBuild(ctx context.Context, op *store.Op, p *store.Project)
 			return err
 		})
 		if errors.Is(err, scheduler.ErrNoCapacity) {
+			// docs/workstreams/10-observability.md §5 requires schedule_fail
+			// and counts placements by result; without these two lines a
+			// fleet that has run out of memory is invisible until a user
+			// complains.
+			e.m.ScheduleTotal.WithLabelValues("no_capacity").Inc()
+			e.log.Warn("no host has capacity", "event", "schedule_fail",
+				"project_id", p.ID.String(), "class", p.Class, "reason", "no_capacity")
 			return nil, uuid.Nil, false, errCapacity()
 		}
 		if err != nil {
+			e.m.ScheduleTotal.WithLabelValues("error").Inc()
+			e.log.Error("placement failed", "event", "schedule_fail",
+				"project_id", p.ID.String(), "class", p.Class, "reason", "error", "err", err.Error())
 			return nil, uuid.Nil, false, err
 		}
 		e.m.ScheduleTotal.WithLabelValues("ok").Inc()
@@ -691,6 +701,7 @@ func (e *Engine) onResult(ctx context.Context, op *store.Op, phase string, res *
 				return err
 			}
 			e.log.Info("project restored", "event", "host_moved", "project_id", p.ID.String(), "host_id", p.HostID.String())
+			e.notifyPlatform(ctx, p.ID, "host_moved", p.Slug+" was restored onto a new host from its latest snapshot")
 		}
 		return e.setResult(ctx, op, map[string]any{"guest_ip": c.GuestIp})
 	case PhaseStartGuest:
@@ -833,7 +844,21 @@ func (e *Engine) onFail(ctx context.Context, op *store.Op, code, msg string, lin
 			_, _ = e.pool.Exec(ctx, "update projects set host_id = null where id = $1", p.ID) // free the placement
 		}
 		_, _ = e.pool.Exec(ctx, "update projects set state = 'error', last_error = $2 where id = $1 and state <> 'destroyed'", p.ID, code+": "+short)
+	case KindSnapshot:
+		_, _ = e.pool.Exec(ctx, "update projects set last_error = $2 where id = $1", p.ID, code+": "+short)
+		e.notifyPlatform(ctx, p.ID, "snapshot_failed", "snapshot failed: "+short)
 	default:
 		_, _ = e.pool.Exec(ctx, "update projects set last_error = $2 where id = $1", p.ID, code+": "+short)
+	}
+}
+
+// notifyPlatform records a platform-originated event (13-notifications.md
+// §2), best effort: a failure to notify must never fail the op it reports.
+func (e *Engine) notifyPlatform(ctx context.Context, projectID uuid.UUID, kind, summary string) {
+	if e.events == nil {
+		return
+	}
+	if err := e.events.Platform(ctx, projectID, kind, summary); err != nil {
+		e.log.Warn("platform event", "event", "notify_fail", "kind", kind, "project_id", projectID.String(), "err", err.Error())
 	}
 }

@@ -608,3 +608,46 @@ a fresh host also pulls the base closure's build-time dependencies that
 the guest itself never needs (home-manager's activation scripts and the
 like), which is what the platform cache (DECISIONS I-46) removes.
 
+## 11. First host timings (M1, host-01, 2026-09-20)
+
+Measured by the M1 integration session on the first real host, in place of
+the deferred M0 benchmark (DECISIONS I-12). Host: `Standard_D16s_v7`
+(Intel Xeon 6973P-C, 16 vCPU, 64 GB, NVMe-only, I-39), NixOS 26.11
+`b1b8759`, kernel 6.18.52, Cloud Hypervisor 53.0, virtiofsd 1.14.0, thin
+pool 476 GiB on a 512 GB Premium SSD v2 (16,000 IOPS, 600 MB/s). Guest:
+class `large` (4 vCPU, 8 GB), base closure 6.35 GB, root on a thin volume,
+store over virtio-fs with the writable overlay. No comparison VM was run;
+these are the absolute numbers the design can be checked against.
+
+| Operation | Measured |
+|---|---|
+| `nix copy` of a 6.35 GB guest closure into the host through the edge (daemon store) | 24 s once the store paths were mostly present; first transfers were interrupted by the `.links` bug (I-61) |
+| `hostdev create` (thin volume, mkfs, tap, nft, virtiofsd, CH, Ready, secrets, project) | 20 s to `running` |
+| Guest boot to `Ready` (serial console timestamp) | 17 s on first boot, 11.7 s on restart (multi-user target at 11.2 s) |
+| `hostdev start` of a stopped guest | 12.5 s to `running` |
+| `hostdev stop --snapshot` (fsfreeze, LVM snapshot, zstd, Blob upload of 558 MB, shutdown) | 62 s; the upload alone 57 s |
+| Freeze window under a `dd conv=fsync` loop, 4 samples | all under 0.5 s (histogram sum 0.75 s) |
+| Restore from Blob into a new 70 GB thin volume (download, zstd, e2fsck) | 75 s, then 12.5 s to start |
+| `hostdev resize` 40 → 70 GB on a running guest (lvextend, CH resize-disk, resize2fs) | 0.17 s |
+| `hostdev exec`, `secrets set`, `principals` round trip | under 0.2 s |
+| `hostdev create` of a `small` guest under the I-49 sandbox (guest@ as `hostd`) | 15 s to `running` |
+| `ApplyConfig` in place (new closure adds one package; `RegisterPaths` 480 KB, `switch-to-configuration switch`), tmux session kept | 2.2 s |
+| `ApplyConfig` with a kernel change: refused without `force_reboot` | 0.3 s |
+| `ApplyConfig --force-reboot` (snapshot to Blob, stop, start on the new kernel) | 75 s |
+| `hostd` restart and `kill -9` under running guests: guests untouched, interrupted Snapshot replayed to completion | replay finished 57 s after the restart |
+| `nix-collect-garbage` on the host with two guests running | 1.1 GiB freed, both rooted closures kept, guests unaffected |
+| In-guest `docker pull node:24` (1.14 GB extracted), overlay2 | 37 s |
+| In-guest `git clone` of NixOS/nix, full history (163 MB) | 11 s |
+| In-guest `go build std` (CPU-bound) | 21 s wall, 28 s user on 4 vCPU |
+| In-guest headless Chromium screenshot of example.com | 2.0 s |
+| `nix profile install` of a cached package in the guest (cowsay, from cache.nixos.org) | 2.5 s |
+| Install of the host with nixos-anywhere through the edge (owner's apply) | about ten minutes including the kexec and closure copy |
+
+Reading: the 5 s start in DESIGN §5 is not met yet (12.5 s; the guest's own
+systemd boot is 11 s of it, the hypervisor and virtiofsd start under a
+second; `home-manager-dev.service` and Docker are the long poles in the
+guest's boot and neither is needed before `Ready`). The host-side numbers (create, resize, freeze) are well inside the
+design; the snapshot upload of a thin volume is bounded by zstd on one
+core plus Blob throughput at about 10 MB/s of compressed output and is the
+first thing to optimise if stop latency matters.
+

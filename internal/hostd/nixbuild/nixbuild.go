@@ -52,6 +52,13 @@ type Result struct {
 	// CacheUnreachable is set when Nix reported a substituter it could not
 	// reach; the build fell back to source and hostd warns the api.
 	CacheUnreachable bool
+	// EvalDuration and BuildDuration split the wall time between `nix eval`
+	// of the fragment and `nix build` of the derivation. The Builds dashboard
+	// shows them apart because they fail for different reasons and have
+	// different caps (60 s and 30 minutes, DECISIONS R5-4): a slow eval is a
+	// fragment problem, a slow build is a substituter or a source build.
+	EvalDuration  time.Duration
+	BuildDuration time.Duration
 }
 
 // CacheUnreachable recognises Nix's substituter failure lines.
@@ -64,6 +71,10 @@ func CacheUnreachable(stderr string) bool {
 type Builder interface {
 	Build(ctx context.Context, req Request, log func(line string)) (*Result, error)
 	PathExists(ctx context.Context, path string) (bool, error)
+	// DumpDB returns `nix-store --dump-db` for the closure of path: what a
+	// guest loads so the paths it sees through the shared store are valid in
+	// its own database (DECISIONS I-67).
+	DumpDB(ctx context.Context, path string) ([]byte, error)
 }
 
 // Info is what a system closure exposes for booting.
@@ -170,6 +181,23 @@ func (b *Real) Defaults() *Real {
 		b.Home = "/var/lib/repose/" + b.User
 	}
 	return b
+}
+
+// DumpDB implements Builder.
+func (b *Real) DumpDB(ctx context.Context, path string) ([]byte, error) {
+	res, err := b.R.Run(ctx, "nix-store", "-qR", path)
+	if err != nil {
+		return nil, fmt.Errorf("nix-store -qR: %w", err)
+	}
+	paths := strings.Fields(string(res.Stdout))
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("nix-store -qR %s: empty closure", path)
+	}
+	res, err = b.R.Run(ctx, append([]string{"nix-store", "--dump-db"}, paths...)...)
+	if err != nil {
+		return nil, fmt.Errorf("nix-store --dump-db: %w", err)
+	}
+	return res.Stdout, nil
 }
 
 // PathExists implements Builder.
@@ -345,6 +373,7 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 		}
 		return nil, fmt.Errorf("nix eval: %w", err)
 	}
+	evalDuration := time.Since(start)
 	drv := strings.TrimSpace(string(res.Stdout))
 	if !strings.HasPrefix(drv, "/nix/store/") || !strings.HasSuffix(drv, ".drv") {
 		return nil, &Error{Code: "internal", Message: "nix eval did not return a derivation path: " + shell.Tail([]byte(drv), 200)}
@@ -361,6 +390,7 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 	})
 	start = time.Now()
 	out, tail, err := b.stream(ctx, buildArgv, log)
+	buildDuration := time.Since(start)
 	if err != nil {
 		if isTimeout(err, time.Since(start), req.Limits.BuildS) {
 			return nil, BuildTimeout(req.Limits.BuildS, tail)
@@ -405,7 +435,11 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 		return nil, &Error{Code: "internal", Message: "built closure is not a bootable system: " + err.Error()}
 	}
 	log("built " + outPath)
-	return &Result{SystemClosure: outPath, ClosureBytes: size, Kernel: info.Kernel, Initrd: info.Initrd, CacheUnreachable: CacheUnreachable(tail)}, nil
+	return &Result{
+		SystemClosure: outPath, ClosureBytes: size, Kernel: info.Kernel, Initrd: info.Initrd,
+		CacheUnreachable: CacheUnreachable(tail),
+		EvalDuration:     evalDuration, BuildDuration: buildDuration,
+	}, nil
 }
 
 // stream runs argv, feeding stderr lines to log; it returns stdout, the
@@ -555,6 +589,9 @@ func (f *Fake) Build(ctx context.Context, req Request, log func(string)) (*Resul
 	}
 	return &Result{SystemClosure: f.Closure, ClosureBytes: f.ClosureBytes, Kernel: f.Kernel, Initrd: f.Initrd}, nil
 }
+
+// DumpDB implements Builder with an empty listing.
+func (f *Fake) DumpDB(context.Context, string) ([]byte, error) { return nil, nil }
 
 // PathExists implements Builder.
 func (f *Fake) PathExists(_ context.Context, path string) (bool, error) {

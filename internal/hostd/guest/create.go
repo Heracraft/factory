@@ -201,7 +201,7 @@ func (m *Manager) fail(g *state.Guest, step int, err error) *Error {
 func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Error {
 	class := Classes[g.Class]
 	dir := m.guestDir(g.GuestID)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	if err := m.prepareGuestDir(dir); err != nil {
 		return m.fail(g, firstStep, err)
 	}
 
@@ -242,8 +242,11 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 	if err := m.injected(stepVirtiofsd); err != nil {
 		return m.fail(g, stepVirtiofsd, err)
 	}
-	vcfg := virtiofs.Config{SharedDir: m.cfg.StoreExport, User: m.cfg.VirtiofsUser, Group: m.cfg.VirtiofsUser, Binary: m.cfg.VirtiofsBinary}
+	vcfg := virtiofs.Config{SharedDir: m.cfg.StoreExport, User: m.cfg.VirtiofsUser, Group: m.cfg.VirtiofsUser, SocketGroup: m.cfg.GuestUser, Binary: m.cfg.VirtiofsBinary}
 	if err := virtiofs.Start(ctx, m.d.Systemd, vcfg, g.GuestID, ch.VirtiofsSocket(dir)); err != nil {
+		return m.fail(g, stepVirtiofsd, err)
+	}
+	if err := m.waitVirtiofsSocket(ctx, g.GuestID, ch.VirtiofsSocket(dir)); err != nil {
 		return m.fail(g, stepVirtiofsd, err)
 	}
 
@@ -254,11 +257,7 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 	if err := m.setState(g, StateStarting, ""); err != nil {
 		return m.fail(g, stepHypervisr, err)
 	}
-	props := []string{
-		fmt.Sprintf("MemoryMax=%dM", class.MemMiB+OverheadMiB),
-		fmt.Sprintf("CPUQuota=%d%%", class.VCPUs*100),
-		"Restart=no", "Slice=guests.slice",
-	}
+	props := GuestUnitProps(class, m.cfg.GuestUser, m.cfg.GuestsDir, dir, spec.VolumeDev)
 	if err := m.d.Systemd.Run(ctx, GuestUnit(g.GuestID), props, argv); err != nil {
 		return m.fail(g, stepHypervisr, err)
 	}
@@ -288,6 +287,17 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 
 // deliver sends secrets, principals and the project setup after Ready.
 func (m *Manager) deliver(ctx context.Context, g *state.Guest, sess vsockclient.Session) error {
+	// The booted closure is on disk in the guest but unknown to its nix
+	// database until registered (DECISIONS I-67).
+	reg, err := m.d.Nix.DumpDB(ctx, g.SystemClosure)
+	if err != nil {
+		return fmt.Errorf("nix-store --dump-db: %w", err)
+	}
+	if len(reg) > 0 {
+		if err := sess.RegisterPaths(ctx, reg); err != nil {
+			return fmt.Errorf("RegisterPaths: %w", err)
+		}
+	}
 	if secrets := m.cachedSecrets(g.GuestID); len(secrets) > 0 {
 		if err := sess.WriteSecrets(ctx, secrets); err != nil {
 			return fmt.Errorf("WriteSecrets: %w", err)
@@ -320,8 +330,40 @@ func (m *Manager) teardown(ctx context.Context, g *state.Guest) {
 	_ = m.d.Net.Unshape(ctx, g.Tap)                               // same
 	_ = m.d.Net.DelGuestRules(ctx, g.GuestID, g.IP, g.MAC, g.Tap) // same
 	_ = m.d.Net.DelTap(ctx, g.Tap)                                // same
-	for _, s := range []string{"ch.sock", "vsock.sock", "console.sock", "virtiofsd.sock"} {
+	for _, s := range []string{"ch.sock", "vsock.sock", "console.sock", filepath.Join("virtiofsd", "virtiofsd.sock")} {
 		_ = os.Remove(filepath.Join(m.guestDir(g.GuestID), s)) // stale sockets confuse the next boot only if left behind
+	}
+}
+
+// waitVirtiofsSocket waits for virtiofsd to bind its socket, failing early
+// when its unit has already exited. Cloud Hypervisor would otherwise retry
+// the connection for a full minute and the create would fail at step 10
+// with "guest did not become ready", which names the wrong step.
+func (m *Manager) waitVirtiofsSocket(ctx context.Context, guestID, socket string) error {
+	if m.cfg.VirtiofsSocketWait <= 0 {
+		return nil
+	}
+	deadline := time.Now().Add(m.cfg.VirtiofsSocketWait)
+	unit := virtiofs.Unit(guestID)
+	for {
+		if _, err := os.Stat(socket); err == nil {
+			return nil
+		}
+		active, err := m.d.Systemd.IsActive(ctx, unit)
+		if err != nil {
+			return err
+		}
+		if !active {
+			return fmt.Errorf("virtiofsd exited before creating its socket; see journalctl -u %s", unit)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("virtiofsd did not create %s within %s", filepath.Base(socket), m.cfg.VirtiofsSocketWait)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
 }
 
@@ -549,9 +591,10 @@ func (mon *monitor) checkLost() {
 	if !mon.lost && m.d.Now().Sub(mon.lostAt) >= m.cfg.GuestdLostAfter {
 		mon.lost = true
 		m.log(mon.g).Warn("guestd lost", "event", "guestd_lost")
-		if m.d.Metrics != nil {
-			m.d.Metrics.GuestdUnreachable.WithLabelValues(mon.g.GuestID).Set(1)
-		}
+		// The metric is the count, repose_host_guestd_lost, recomputed by the
+		// samples loop: guest_id is never a Prometheus label
+		// (docs/workstreams/10-observability.md §5). Which guest it is comes
+		// from this line in Loki and from the Warning the api receives.
 		m.Warn("guestd_lost", "guest "+mon.g.GuestID+": no vsock connection for "+m.cfg.GuestdLostAfter.String())
 	}
 }
@@ -562,9 +605,6 @@ func (mon *monitor) regained() {
 		m.log(mon.g).Info("guestd regained", "event", "guestd_regained")
 	}
 	mon.lost = false
-	if m.d.Metrics != nil {
-		m.d.Metrics.GuestdUnreachable.WithLabelValues(mon.g.GuestID).Set(0)
-	}
 }
 
 func (mon *monitor) handleNotify(n *guestdv1.Notify) {

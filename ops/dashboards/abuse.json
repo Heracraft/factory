@@ -1,0 +1,404 @@
+{
+  "uid": "repose-abuse",
+  "title": "repose / Abuse",
+  "description": "What abuse looks like from outside a guest: a process name nobody recognises at the top of the CPU list, egress in the terabytes, a guest at full CPU with nobody attached. Confirm with `repose-admin exec` (audited), then the runbook's Suspend a user.",
+  "tags": [
+    "repose"
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "refresh": "5m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Projects over 1 TB in 24 hours",
+      "description": "The EgressHigh input, recomputed hourly by the api from meter_samples.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max(repose_api_egress_alert_projects)",
+          "legendFormat": "projects",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1
+    },
+    {
+      "type": "stat",
+      "title": "Fleet egress in the window",
+      "description": "Everything every guest sent, for scale: one project's terabyte is obvious against it.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "repose-postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "repose-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select coalesce(sum(net_tx), 0) as bytes from meter_samples where $__timeFilter(ts)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "bytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "Guests busy with nobody attached",
+      "description": "Over 90 percent of a core for a day with no session and no tmux client. An unattended agent looks like this too, which is exactly why the signals are recorded before any policy is written (DECISIONS R1-5).",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "repose-postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "repose-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select count(*) from ( select project_id from meter_samples where ts > now() - interval '24 hours' group by project_id having avg(cpu_ns) / 60e9 > 0.9 and max(ssh_sessions) = 0 and max(tmux_clients) = 0 ) s",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "id": 3
+    },
+    {
+      "type": "table",
+      "title": "Top 20 process names by CPU, fleet-wide, 24 hours",
+      "description": "A miner is a name you do not recognise at the top of this list. Process names only, never arguments (DECISIONS R5-3).",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "repose-postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "repose-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select comm, sum(cpu_ns) / 1e9 as cpu_seconds, count(distinct project_id) as projects, max(rss) as max_rss from proc_samples where ts > now() - interval '24 hours' group by comm order by cpu_seconds desc limit 20",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "max_rss"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "id": 4
+    },
+    {
+      "type": "table",
+      "title": "Top projects by egress, 24 hours",
+      "description": "Egress is shaped at 200 Mbit/s per guest, which is 2 TB a day if it runs flat out; a terabyte is not a build cache.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "repose-postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "repose-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select p.slug as project, u.handle as owner, p.class, sum(m.net_tx) as egress, sum(m.net_rx) as ingress, max(m.ssh_sessions) as max_sessions from meter_samples m join projects p on p.id = m.project_id join users u on u.id = p.user_id where m.ts > now() - interval '24 hours' group by 1,2,3 order by egress desc limit 20",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "egress"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ingress"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "id": 5
+    },
+    {
+      "type": "table",
+      "title": "Guests at full CPU with no session for over 24 hours",
+      "description": "The third panel \u00a75 asks for, as a list. Check the agent state on Per-guest resources before acting: an agent working alone for a day is the product working.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "repose-postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "repose-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select p.slug as project, u.handle as owner, p.class, avg(m.cpu_ns) / 60e9 as avg_cores_busy, max(m.ssh_sessions) as max_sessions, max(m.tmux_clients) as max_tmux, max(m.docker_containers) as max_containers, sum(m.net_tx) as egress from meter_samples m join projects p on p.id = m.project_id join users u on u.id = p.user_id where m.ts > now() - interval '24 hours' and m.state = 'running' group by 1,2,3 having avg(m.cpu_ns) / 60e9 > 0.9 and max(m.ssh_sessions) = 0 and max(m.tmux_clients) = 0 order by avg_cores_busy desc",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "egress"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 6
+    }
+  ]
+}

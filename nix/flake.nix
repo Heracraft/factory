@@ -174,6 +174,10 @@
         guestd = import ./guest/tests/guestd.nix {
           inherit pkgs;
           guestdPackage = guestd;
+          # The hook subtest runs repose-hook; without the package the node
+          # has no such command and the test fails on PATH rather than on
+          # anything it is checking.
+          hookPackage = reposeHook;
         };
       };
 
@@ -184,6 +188,10 @@
             go_1_26 gopls golangci-lint buf protoc-gen-go protoc-gen-go-grpc
             opentofu azure-cli just nixos-anywhere nixos-rebuild
             postgresql_16 sqlc wireguard-tools
+            # Observability (docs/workstreams/10-observability.md): promtool
+            # checks and tests ops/alerts.yaml, python3 generates and
+            # validates the dashboards, docker compose runs the local stack.
+            prometheus.cli python3 docker-compose
           ]);
         };
 

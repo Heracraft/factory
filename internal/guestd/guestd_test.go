@@ -14,10 +14,15 @@ import (
 
 	guestdv1 "github.com/heracraft/repose/internal/gen/guestd/v1"
 	"github.com/heracraft/repose/internal/guestd/sysdep"
+	"github.com/heracraft/repose/internal/obs"
 	"github.com/heracraft/repose/internal/vsockrpc"
 )
 
-func quietLog() *slog.Logger { return slog.New(slog.NewJSONHandler(io.Discard, nil)) }
+// testLog writes nowhere but fails the test on any line that breaks
+// docs/workstreams/10-observability.md §5: a line with no event field, or a
+// field name on the never-log list. Every guestd test runs through it, so the
+// rules are checked by this workstream's own suite and not only by obslint.
+func testLog(t *testing.T) *slog.Logger { return obs.NewTestLogger(t, obs.ComponentGuestd, io.Discard) }
 
 // harness is a guestd serving a dev socket over a fake guest root, with a
 // hostd-side client attached.
@@ -90,7 +95,7 @@ func newHarness(t *testing.T) *harness {
 		Root:           root,
 		DevSocket:      filepath.Join(root, "run", "repose", "guestd.sock"),
 		HookSocket:     filepath.Join(root, "run", "repose", "hooks.sock"),
-		Log:            quietLog(),
+		Log:            testLog(t),
 		Runner:         h.runner,
 		Freezer:        h.freezer,
 		Docker:         h.docker,
@@ -436,7 +441,7 @@ func TestNotificationsAreDroppedAndCountedWithNoHostd(t *testing.T) {
 		Root:           root,
 		DevSocket:      filepath.Join(root, "run", "repose", "guestd.sock"),
 		HookSocket:     filepath.Join(root, "run", "repose", "hooks.sock"),
-		Log:            quietLog(),
+		Log:            testLog(t),
 		Runner:         sysdep.NewFakeRunner(),
 		Freezer:        &sysdep.FakeFreezer{},
 		Docker:         &sysdep.FakeDocker{Up: true},

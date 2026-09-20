@@ -369,6 +369,77 @@ func TestEnqueueRefusesConcurrentOps(t *testing.T) {
 	h.WaitOp(opID)
 }
 
+// TestSnapshotFailureNotifies is 13-notifications.md §9's "Platform events
+// ... flow through the same pipeline" for snapshot_failed: a failed
+// Snapshot command must reach the events table and its outbox, not just
+// projects.last_error.
+func TestSnapshotFailureNotifies(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	u := h.NewUser("ivy")
+	p := h.CreateRunning(u, "snap")
+	pid := p.ID
+	h.Fake.SetFail("Snapshot", "internal")
+	op := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindSnapshot, ProjectID: &pid, Phases: ops.PlanSnapshot()}))
+	if op.State != "error" {
+		t.Fatalf("snapshot: %+v", op)
+	}
+	if h.Project(pid).LastError == nil {
+		t.Fatal("last_error not set")
+	}
+	evs, err := store.ListEvents(h.Ctx, h.Pool, pid, time.Time{}, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found *store.Event
+	for i := range evs {
+		if evs[i].Kind == "snapshot_failed" {
+			found = &evs[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("no snapshot_failed event among %+v", evs)
+	}
+	var channels int
+	if err := h.Pool.QueryRow(h.Ctx, "select count(*) from events_outbox where event_id = $1", found.ID).Scan(&channels); err != nil {
+		t.Fatal(err)
+	}
+	if channels == 0 {
+		t.Fatal("snapshot_failed was not queued for delivery (user has an email and notify_email defaults true)")
+	}
+}
+
+// TestRestoreEmitsHostMovedEvent is the host_moved half of the same
+// checklist item.
+func TestRestoreEmitsHostMovedEvent(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	u := h.NewUser("jack")
+	p := h.CreateRunning(u, "mov")
+	pid := p.ID
+	op := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindStop, ProjectID: &pid, Phases: ops.PlanStop()}))
+	if op.State != "done" || op.SnapshotID == nil {
+		t.Fatalf("stop: %+v", op.Error)
+	}
+	sid := *op.SnapshotID
+	p = h.Project(pid)
+	rop := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindRestore, ProjectID: &pid, SnapshotID: &sid, Phases: ops.PlanRestore(p, true, true)}))
+	if rop.State != "done" {
+		t.Fatalf("restore: %+v", rop.Error)
+	}
+	evs, err := store.ListEvents(h.Ctx, h.Pool, pid, time.Time{}, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, e := range evs {
+		if e.Kind == "host_moved" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no host_moved event among %+v", evs)
+	}
+}
+
 func TestDrainAndHelloReconcile(t *testing.T) {
 	h := apitest.New(t, apitest.Options{})
 	u := h.NewUser("hank")

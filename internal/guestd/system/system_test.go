@@ -68,7 +68,7 @@ func TestSwitchAppliesWithoutReboot(t *testing.T) {
 	run.Results["switch-to-configuration"] = sysdep.RunResult{Stdout: []byte("activating the configuration...\n")}
 	h := New(p, run, 0, quietLog())
 
-	res, err := h.Switch(context.Background(), same, false)
+	res, err := h.Switch(context.Background(), same, false, nil)
 	if err != nil {
 		t.Fatalf("switch: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestSwitchRefusesWhenKernelChanged(t *testing.T) {
 	run := sysdep.NewFakeRunner()
 	h := New(p, run, 0, quietLog())
 
-	res, err := h.Switch(context.Background(), different, false)
+	res, err := h.Switch(context.Background(), different, false, nil)
 	if err != nil {
 		t.Fatalf("switch: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestSwitchForceRebootActivatesForBoot(t *testing.T) {
 	h := New(p, run, 0, quietLog())
 	h.rebootArgv = []string{"true"} // do not reboot the test machine
 
-	res, err := h.Switch(context.Background(), different, true)
+	res, err := h.Switch(context.Background(), different, true, nil)
 	if err != nil {
 		t.Fatalf("switch: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestSwitchFailureReturnsOutputAndLeavesOldSystem(t *testing.T) {
 	}
 	h := New(p, run, 0, quietLog())
 
-	res, err := h.Switch(context.Background(), same, false)
+	res, err := h.Switch(context.Background(), same, false, nil)
 	if err == nil {
 		t.Fatal("a non-zero switch-to-configuration must be an error")
 	}
@@ -152,7 +152,7 @@ func TestSwitchRejectsPathsOutsideTheStore(t *testing.T) {
 	h := New(p, sysdep.NewFakeRunner(), 0, quietLog())
 
 	for _, closure := range []string{"", "/etc/passwd", "/nix/store/../etc"} {
-		if _, err := h.Switch(context.Background(), closure, false); err == nil {
+		if _, err := h.Switch(context.Background(), closure, false, nil); err == nil {
 			t.Fatalf("%q was accepted", closure)
 		} else if sysdep.CodeOf(err) != sysdep.CodeInvalidArgument {
 			t.Fatalf("%q: code = %s, want invalid_argument", closure, sysdep.CodeOf(err))
@@ -164,7 +164,7 @@ func TestSwitchMissingClosureIsNotFound(t *testing.T) {
 	p, _, _ := guestRoot(t)
 	h := New(p, sysdep.NewFakeRunner(), 0, quietLog())
 
-	_, err := h.Switch(context.Background(), "/nix/store/zzzz-collected-by-gc", false)
+	_, err := h.Switch(context.Background(), "/nix/store/zzzz-collected-by-gc", false, nil)
 	if err == nil {
 		t.Fatal("a closure that is not in the share was accepted")
 	}

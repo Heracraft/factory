@@ -929,7 +929,7 @@ func (e *Env) billing(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		r := meter.NewRollup(e.pool, billing.Disabled{}, metrics.NewNop(), obs.NewLogger("admin", e.Stderr, 0))
+		r := meter.NewRollup(e.pool, billing.Disabled{}, metrics.NewNop(), obs.NewLogger(obs.LogOptions{Component: obs.ComponentAdmin, Writer: e.Stderr}))
 		if hs := fs.Lookup("hour").Value.String(); hs != "" {
 			h, err := time.Parse("2006-01-02T15", hs)
 			if err != nil {

@@ -26,6 +26,11 @@ let
       if ! mountpoint -q ${exportDir}; then
         mount --bind /nix/store ${exportDir}
       fi
+      # The bind starts in /nix/store's peer group (shared propagation), so
+      # the tmpfs mounted over .links below would also appear on
+      # /nix/store/.links and every store write would fail with EROFS
+      # (DECISIONS I-61). Make the export private first.
+      mount --make-private ${exportDir}
       mount -o remount,bind,ro,nosuid,nodev ${exportDir}
       if ! mountpoint -q ${exportDir}/.links; then
         mount -t tmpfs -o ro,nosuid,nodev,noexec,size=4k,mode=0555 repose-links-mask ${exportDir}/.links
@@ -44,22 +49,37 @@ in
   users.users.virtiofsd = {
     isSystemUser = true;
     group = "virtiofsd";
+    # In group hostd for two reasons the first host found (DECISIONS I-69):
+    # the per-guest directory is 1770 root:hostd (I-49), which it must
+    # traverse to reach its own socket directory, and `--socket-group hostd`
+    # is a chgrp an unprivileged process may only do into a group it is in.
+    # Group membership gives it no write access under the store export.
+    extraGroups = [ "hostd" ];
     description = "virtiofsd store share (no write access anywhere under the store)";
   };
 
-  # hostd runs as root; this account exists so taps can be owned by it
-  # (`ip tuntap add ... user hostd`, 03-hostd §5.5).
+  # hostd itself runs as root (LVM, nftables, taps). The guest@<id> units
+  # it starts, Cloud Hypervisor, run as this account (DECISIONS I-51,
+  # security review H-2): it owns the taps (`ip tuntap add ... user hostd`),
+  # is in `kvm` for /dev/kvm, and is the group of every guest volume through
+  # the udev rule below. The unit's DeviceAllow then narrows a guest's
+  # hypervisor to /dev/kvm, /dev/net/tun and its own volume.
   users.groups.hostd = { };
   users.users.hostd = {
     isSystemUser = true;
     group = "hostd";
-    description = "owner of guest tap devices";
+    extraGroups = [ "kvm" ];
+    description = "runs guest hypervisors; owner of guest tap devices";
   };
 
   services.udev.extraRules = ''
     KERNEL=="kvm", GROUP="kvm", MODE="0660"
     KERNEL=="vhost-vsock", GROUP="kvm", MODE="0660"
     KERNEL=="vhost-net", GROUP="kvm", MODE="0660"
+    # Guest volumes g-<id> in vg-guests are group hostd so an unprivileged
+    # guest@<id> can open its disk; snapshots (snap-*) and the pool stay
+    # root:disk. DM_* come from lvm's own rules, which run first.
+    SUBSYSTEM=="block", KERNEL=="dm-*", ENV{DM_VG_NAME}=="vg-guests", ENV{DM_LV_NAME}=="g-*", GROUP="hostd", MODE="0660"
   '';
 
   systemd.services.repose-store-export = {

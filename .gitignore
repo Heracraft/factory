@@ -51,12 +51,14 @@ infra/**/*.local.tfvars
 #context for ages
 context/
 
-# go build ./cmd/<name> drops a binary here
+# Go binaries a bare `go build ./...` drops in the checkout; the ones that
+# matter are built by nix or run with `go run`.
+/seedmetrics
 /hostd
-/guestd
 /hostdev
-/api
+/guestd
 /gateway
+/api
 /repose
 /repose-admin
 /repose-hook

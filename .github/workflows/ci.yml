@@ -71,8 +71,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Pinned to the dev box's Nix: relative path inputs (the fragment
+      # placeholder, DECISIONS I-28) are locked as "./..." entries that older
+      # releases reject as unlocked.
       - uses: cachix/install-nix-action@v27
         with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
           extra_nix_config: |
             experimental-features = nix-command flakes
             system-features = kvm
@@ -182,3 +186,18 @@ jobs:
       - run: /tmp/repose completion bash > /tmp/repose.bash && bash -c "source /tmp/repose.bash"
       - run: /tmp/repose completion zsh > /tmp/repose.zsh && zsh -c "autoload -U compinit && compinit -u && source /tmp/repose.zsh"
       - run: /tmp/repose completion fish > /tmp/repose.fish && fish -c "source /tmp/repose.fish"
+
+  ops:
+    name: alert rules, dashboards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+        with:
+          # The same pin as the nix job above, so CI runs one Nix.
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      # ops/check.sh falls back to `nix shell nixpkgs#prometheus.cli` when
+      # promtool is not on PATH, which is the case here.
+      - run: ops/check.sh

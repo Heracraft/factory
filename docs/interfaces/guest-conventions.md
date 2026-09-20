@@ -24,6 +24,7 @@ here exists in that module under exactly this name.
 | `/run/repose/secrets.env` | `export NAME='...'` lines, 0400 dev, sourced by login shells |
 | `/run/repose/hooks.sock` | hook ingest, HTTP over unix, 0660 root:dev, created by guestd |
 | `/run/repose/guestd.sock` | dev-only stand-in for vsock (absent in real guests) |
+| `/run/repose/paths-registered` | written by guestd after the first `RegisterPaths`; `repose-paths.service` waits for it (up to 180 s) and `home-manager-dev.service` runs after that (DECISIONS I-67) |
 | `/run/repose/desktop/vnc-password` | the noVNC/VNC password for the current desktop start, 0600 dev (DECISIONS I-33) |
 | `/run/repose/desktop/last-client` | mtime of the last observed desktop client; the idle stop reads it |
 | `/nix/.ro-store` | read-only virtio-fs mount of the host store (tag `ro-store`) |
@@ -71,9 +72,13 @@ Each agent binary is wrapped (`nix/overlay/agents/wrap.nix`) to:
    `REPOSE_HOOK_AGENT=<binary>` so `repose-hook` knows who called it.
 3. Exec the real binary with `"$@"`.
 
-`repose-hook` reads the hook JSON from stdin (or from `argv[1]`, which is
-how Codex's `notify` passes it), maps it to `{agent, kind, summary,
-window?}`, POSTs it to the socket, and exits 0 always so a hook failure
+`repose-hook` takes the agent from `REPOSE_HOOK_AGENT` or `--agent`
+(`REPOSE_AGENT` is accepted for one release, DECISIONS I-58) and the socket
+from `REPOSE_HOOK_SOCKET`, `REPOSE_HOOKS_SOCKET` or `--socket`, defaulting to
+`/run/repose/hooks.sock`. It reads the hook JSON from stdin (or from
+`argv[1]`, which is how Codex's `notify` passes it), maps it to `{agent, kind,
+summary, window?}`, POSTs it to the socket, and exits 0 always so a hook
+failure
 never blocks an agent. Mapping:
 
 | Agent | Payload | kind | summary |

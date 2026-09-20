@@ -69,7 +69,7 @@ func (s *Server) handle(ctx context.Context, req *guestdv1.Request) *guestdv1.Re
 		return empty(s.freeze.Thaw())
 
 	case *guestdv1.Request_Switch:
-		res, err := s.system.Switch(ctx, r.Switch.GetSystemClosure(), r.Switch.GetForceReboot())
+		res, err := s.system.Switch(ctx, r.Switch.GetSystemClosure(), r.Switch.GetForceReboot(), r.Switch.GetRegistration())
 		if err != nil {
 			// The output is returned even on failure: it is the only thing
 			// that tells the user why their config did not apply.
@@ -115,6 +115,9 @@ func (s *Server) handle(ctx context.Context, req *guestdv1.Request) *guestdv1.Re
 
 	case *guestdv1.Request_Shutdown:
 		return empty(s.shutdown(ctx, r.Shutdown.GetTimeoutS()))
+
+	case *guestdv1.Request_RegisterPaths:
+		return empty(s.system.RegisterPaths(ctx, r.RegisterPaths.GetRegistration()))
 
 	default:
 		// An unknown request from a newer hostd. Saying so by code is what
