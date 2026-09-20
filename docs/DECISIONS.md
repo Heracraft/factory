@@ -2078,7 +2078,7 @@ clone has no owner. `ensureBase` now runs `chown -R <user>: <checkout>`
 after a clone and on an existing checkout too, so a checkout an operator
 placed by hand (`ops/RUNBOOK.md` "Build: base unavailable") is handed over
 the same way. With that, the build ran through: eval plus build of the
-6.0 GB guest closure from a cold host store took the time recorded in
+6.0 GB guest closure, on a store that already held the M1 base, took 35 s (eval 13.0 s, build 21.9 s), recorded in
 `docs/RESEARCH.md` §11. *Rejected:* `safe.directory = *` in a git config
 for the build user (libgit2 honours it, but a directive that disables the
 check everywhere for a user that evaluates tenant input is the wrong
