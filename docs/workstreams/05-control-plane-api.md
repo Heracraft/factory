@@ -320,14 +320,26 @@ runtime plus a second stage for the Nix parse check (`nixos/nix` slim, only
 `nix-instantiate`), user `nonroot`. Coolify app `api`: Dockerfile build,
 health check `GET /healthz` every 10 s, rolling deploy on. Env from
 Coolify: `DATABASE_URL`, `LOGTO_ISSUER`, `LOGTO_M2M_CLIENT_ID/SECRET`,
-`API_RESOURCE`, `KEYVAULT_URL`, `AZURE_CLIENT_ID/SECRET/TENANT_ID`,
-`BLOB_ACCOUNT_URL`, `STRIPE_*` (09), `RESEND_API_KEY` (13),
-`OTEL_EXPORTER_OTLP_ENDPOINT` (optional), `HOST_CA_CERT`, `GRPC_SERVER_CERT/
-KEY`. Coolify app `api-grpc`: same image, `--mode grpc`, port mapping
-8443, no rolling deploy.
+`API_RESOURCE`, `KEYVAULT_URL`, `KEYVAULT_KEY_NAME`,
+`AZURE_CLIENT_ID/SECRET/TENANT_ID`, `BLOB_ACCOUNT_URL`, `BLOB_CONTAINER`,
+`STRIPE_*` (09), `RESEND_API_KEY` (13), `OTEL_EXPORTER_OTLP_ENDPOINT`
+(optional), `GRPC_SERVER_CERT/KEY`, `GATEWAY_HOST/PORT`, `API_MODE`. The
+full list with defaults is `ops/coolify/api.env.example`; the CA material
+is not an environment variable (I-42). Coolify app `api-grpc`: same
+image, `API_MODE=grpc`, port mappings 8443 (gRPC) and 8444 (`/internal`
+over mTLS, I-42), no rolling deploy. The image is `cmd/api/Dockerfile`.
 
 Migrations run by a Coolify pre-deploy command `repose-admin db migrate`
 so a new image never starts against an old schema.
+
+### 5.14a What the implementation settled (I-42)
+
+The ops engine, the placement of `/internal`, where the CA keys live, the
+guest host-certificate principals, the sample insert path and the schema
+additions are recorded in `DECISIONS.md` I-42; `interfaces/db-schema.md`
+is the schema as built. Workstreams 09, 12 and 13 replace the interfaces
+in `internal/billing`, `internal/nixmenu` and `internal/api/notify`
+without touching the routes.
 
 ### 5.15 Observability
 

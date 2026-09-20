@@ -1,0 +1,583 @@
+// Package ops drives every long operation (05-control-plane-api.md §5.3,
+// §5.4): an op is a row with a kind and a list of phases; each phase is
+// one hostd command whose command_id is stored before it is sent, whose
+// result lands in the row when it arrives, and which is rebuilt and
+// re-sent with the same command_id after an api restart or on the host's
+// next Hello. The command builders here are the only callers of
+// secrets.DecryptForGuest.
+package ops
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+	"google.golang.org/protobuf/encoding/protojson"
+
+	"github.com/heracraft/repose/internal/api/buildlog"
+	"github.com/heracraft/repose/internal/api/ca"
+	"github.com/heracraft/repose/internal/api/metrics"
+	"github.com/heracraft/repose/internal/api/secrets"
+	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/db"
+	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
+)
+
+// Sender delivers commands to hosts (hostmgr).
+type Sender interface {
+	Send(ctx context.Context, hostID uuid.UUID, cmd *hostdv1.Command) error
+	Connected(hostID uuid.UUID) bool
+}
+
+// Limits are the Build limits (DECISIONS R5-4).
+type Limits struct {
+	EvalS        uint32
+	BuildS       uint32
+	Cores        uint32
+	ClosureBytes uint64
+}
+
+// DefaultLimits are the documented caps.
+var DefaultLimits = Limits{EvalS: 60, BuildS: 1800, Cores: 8, ClosureBytes: 20 << 30}
+
+// Config tunes the engine.
+type Config struct {
+	// BaseRef is the nix/ git revision used when no base_versions row
+	// exists yet (dev); `repose-admin base publish` supersedes it.
+	BaseRef string
+	Limits  Limits
+	// HostUnreachableGrace is how long an op waits for a silent host
+	// before failing with host unreachable.
+	HostUnreachableGrace time.Duration
+	// KeyVaultRetry is how long a guest start retries a failed Key Vault.
+	KeyVaultRetry time.Duration
+	Lang          string
+}
+
+// Engine is the op driver.
+type Engine struct {
+	pool *db.Pool
+	send Sender
+	ca   *ca.CA
+	sec  *secrets.Store
+	logs *buildlog.Store
+	m    *metrics.M
+	log  *slog.Logger
+	cfg  Config
+
+	kick    chan struct{}
+	now     func() time.Time
+	mu      sync.Mutex
+	waiters map[uuid.UUID][]chan struct{}
+	// OnFinished is called after an op reaches done or error (events).
+	OnFinished func(ctx context.Context, op *store.Op)
+}
+
+// New builds an engine.
+func New(pool *db.Pool, send Sender, c *ca.CA, sec *secrets.Store, logs *buildlog.Store, m *metrics.M, log *slog.Logger, cfg Config) *Engine {
+	if cfg.Limits == (Limits{}) {
+		cfg.Limits = DefaultLimits
+	}
+	if cfg.HostUnreachableGrace == 0 {
+		cfg.HostUnreachableGrace = 10 * time.Minute
+	}
+	if cfg.KeyVaultRetry == 0 {
+		cfg.KeyVaultRetry = 30 * time.Minute
+	}
+	if cfg.Lang == "" {
+		cfg.Lang = "C.UTF-8"
+	}
+	return &Engine{pool: pool, send: send, ca: c, sec: sec, logs: logs, m: m, log: log.With("component", "api"), cfg: cfg,
+		kick: make(chan struct{}, 1), now: time.Now, waiters: map[uuid.UUID][]chan struct{}{}}
+}
+
+// NewOp describes an op to enqueue.
+type NewOp struct {
+	Kind       string
+	ProjectID  *uuid.UUID
+	HostID     *uuid.UUID
+	Params     map[string]any
+	Phases     []string
+	RevisionID *uuid.UUID
+	SnapshotID *uuid.UUID
+	AuditID    *uuid.UUID
+}
+
+// ErrOpInProgress is returned when a project already has an open op.
+var ErrOpInProgress = errors.New("an operation is in progress")
+
+// Enqueue inserts a pending op inside q. A project with an open op refuses
+// a second one unless allowQueue is set (secrets pushes queue behind).
+func (e *Engine) Enqueue(ctx context.Context, q store.Querier, n NewOp, allowQueue bool) (uuid.UUID, error) {
+	if n.ProjectID != nil && !allowQueue {
+		var open int
+		if err := q.QueryRow(ctx, "select count(*) from ops where project_id = $1 and state in ('pending','running')", *n.ProjectID).Scan(&open); err != nil {
+			return uuid.Nil, err
+		}
+		if open > 0 {
+			return uuid.Nil, ErrOpInProgress
+		}
+	}
+	params := n.Params
+	if params == nil {
+		params = map[string]any{}
+	}
+	ph := make([]any, len(n.Phases))
+	for i, p := range n.Phases {
+		ph[i] = p
+	}
+	params["phases"] = ph
+	id := store.NewID()
+	_, err := q.Exec(ctx, `insert into ops (id, project_id, host_id, kind, state, params, revision_id, snapshot_id, audit_id) values ($1, $2, $3, $4, 'pending', $5, $6, $7, $8)`,
+		id, n.ProjectID, n.HostID, n.Kind, params, n.RevisionID, n.SnapshotID, n.AuditID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	e.m.OpsOpen.WithLabelValues(n.Kind).Inc()
+	return id, nil
+}
+
+// Kick wakes the loop.
+func (e *Engine) Kick() {
+	select {
+	case e.kick <- struct{}{}:
+	default:
+	}
+}
+
+// Run drives ops until ctx ends. Only one replica drives at a time
+// (advisory lock); the others poll for the lock.
+func (e *Engine) Run(ctx context.Context) {
+	for {
+		release, ok, err := db.TryLock(ctx, e.pool, db.LockOps)
+		if err != nil {
+			e.log.Error("ops lock", "event", "ops_lock_fail", "err", err.Error())
+		}
+		if ok {
+			e.loop(ctx)
+			release()
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
+func (e *Engine) loop(ctx context.Context) {
+	t := time.NewTicker(500 * time.Millisecond)
+	defer t.Stop()
+	for {
+		e.Tick(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		case <-e.kick:
+		}
+	}
+}
+
+// Tick advances every op that has work: pending, a result waiting, or a
+// phase not yet sent; then applies timeouts. Exposed for tests.
+func (e *Engine) Tick(ctx context.Context) {
+	rows, err := e.pool.Query(ctx, `select distinct on (coalesce(project_id, id)) id from ops
+		where state in ('pending','running') order by coalesce(project_id, id), created_at`)
+	if err != nil {
+		e.log.Error("ops query", "event", "ops_query_fail", "err", err.Error())
+		return
+	}
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	for _, id := range ids {
+		op, err := store.GetOp(ctx, e.pool, id)
+		if err != nil {
+			continue
+		}
+		if op.State == "running" && op.CommandID != nil && op.CommandResult == nil {
+			e.checkTimeout(ctx, op)
+			continue
+		}
+		e.advance(ctx, op)
+	}
+}
+
+func phaseTimeout(phase string) time.Duration {
+	switch phase {
+	case "build":
+		return 40 * time.Minute
+	case "restore":
+		return 60 * time.Minute
+	case "stop_guest", "snapshot":
+		return 30 * time.Minute
+	default:
+		return 10 * time.Minute
+	}
+}
+
+func phases(op *store.Op) []string {
+	raw, _ := op.Params["phases"].([]any)
+	out := make([]string, 0, len(raw))
+	for _, r := range raw {
+		if s, ok := r.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func currentPhase(op *store.Op) string {
+	ph := phases(op)
+	if op.Step < len(ph) {
+		return ph[op.Step]
+	}
+	return ""
+}
+
+func (e *Engine) checkTimeout(ctx context.Context, op *store.Op) {
+	if op.SentAt == nil {
+		return
+	}
+	age := e.now().Sub(*op.SentAt)
+	if op.HostID != nil {
+		h, err := store.GetHost(ctx, e.pool, *op.HostID)
+		if err == nil && h.State == "unreachable" && age > e.cfg.HostUnreachableGrace {
+			e.fail(ctx, op, "host_unreachable", "host unreachable")
+			return
+		}
+	}
+	if age > phaseTimeout(currentPhase(op)) {
+		e.fail(ctx, op, "timeout", fmt.Sprintf("%s did not complete in %s", currentPhase(op), phaseTimeout(currentPhase(op))))
+	}
+}
+
+// advance processes a waiting result and sends the next phase.
+func (e *Engine) advance(ctx context.Context, op *store.Op) {
+	log := e.log.With("op_id", op.ID.String(), "kind", op.Kind)
+	if op.ProjectID != nil {
+		log = log.With("project_id", op.ProjectID.String())
+	}
+	if op.State == "pending" {
+		if _, err := e.pool.Exec(ctx, "update ops set state = 'running', started_at = now() where id = $1 and state = 'pending'", op.ID); err != nil {
+			log.Error("op start", "event", "op_fail", "err", err.Error())
+			return
+		}
+		op.State = "running"
+	}
+	if op.CommandResult != nil {
+		res, err := decodeResult(op.CommandResult)
+		if err != nil {
+			e.fail(ctx, op, "internal", "malformed command result")
+			return
+		}
+		if op.CommandID != nil {
+			e.logs.Unbind(op.CommandID.String())
+		}
+		e.m.CommandsTotal.WithLabelValues(currentPhase(op), resultLabel(res)).Inc()
+		if !res.Ok {
+			code, msg, line := "internal", "command failed", 0
+			if res.Error != nil {
+				code, msg, line = res.Error.Code, res.Error.Message, int(res.Error.FragmentLine)
+			}
+			e.failWithLine(ctx, op, code, msg, line)
+			return
+		}
+		ph := currentPhase(op)
+		if err := e.onResult(ctx, op, ph, res); err != nil {
+			log.Error("result handling failed", "event", "op_fail", "phase", ph, "err", err.Error())
+			e.fail(ctx, op, "internal", "result handling failed: "+err.Error())
+			return
+		}
+		op.Step++
+		op.CommandID, op.CommandResult, op.SentAt = nil, nil, nil
+		if _, err := e.pool.Exec(ctx, "update ops set step = $2, command_id = null, command_result = null, sent_at = null where id = $1", op.ID, op.Step); err != nil {
+			log.Error("op step", "event", "op_fail", "err", err.Error())
+			return
+		}
+	}
+	for {
+		ph := currentPhase(op)
+		if ph == "" {
+			e.finish(ctx, op)
+			return
+		}
+		cmd, hostID, skip, err := e.buildCommand(ctx, op, ph)
+		if err != nil {
+			var oe *opError
+			if errors.As(err, &oe) {
+				e.failWithLine(ctx, op, oe.code, oe.msg, oe.line)
+				return
+			}
+			if errors.Is(err, secrets.ErrKeyServiceUnavailable) {
+				e.m.KeyVaultErrorsTotal.Inc()
+				if op.StartedAt != nil && e.now().Sub(*op.StartedAt) > e.cfg.KeyVaultRetry {
+					e.fail(ctx, op, "internal", "key service unavailable")
+					return
+				}
+				log.Warn("key service unavailable; retrying", "event", "op_retry", "phase", ph)
+				return // next tick retries
+			}
+			log.Error("command build failed", "event", "op_fail", "phase", ph, "err", err.Error())
+			e.fail(ctx, op, "internal", err.Error())
+			return
+		}
+		if skip {
+			op.Step++
+			if _, err := e.pool.Exec(ctx, "update ops set step = $2 where id = $1", op.ID, op.Step); err != nil {
+				return
+			}
+			continue
+		}
+		if op.CommandID == nil {
+			id := uuid.MustParse(cmd.CommandId)
+			op.CommandID = &id
+		}
+		cmd.CommandId = op.CommandID.String()
+		op.HostID = &hostID
+		now := e.now()
+		op.SentAt = &now
+		if _, err := e.pool.Exec(ctx, "update ops set command_id = $2, host_id = $3, sent_at = $4, params = $5 where id = $1", op.ID, *op.CommandID, hostID, now, op.Params); err != nil {
+			log.Error("op send record", "event", "op_fail", "err", err.Error())
+			return
+		}
+		if ph == "build" {
+			e.logs.Bind(cmd.CommandId, op.ID)
+		}
+		if err := e.send.Send(ctx, hostID, cmd); err != nil {
+			log.Warn("host not connected; command queued for the next Hello", "event", "command_queued", "host_id", hostID.String(), "phase", ph)
+		}
+		return
+	}
+}
+
+func resultLabel(r *hostdv1.Result) string {
+	if r.Ok {
+		return "ok"
+	}
+	if r.Error != nil && r.Error.Code != "" {
+		return r.Error.Code
+	}
+	return "error"
+}
+
+func decodeResult(m map[string]any) (*hostdv1.Result, error) {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	r := &hostdv1.Result{}
+	if err := protojson.Unmarshal(b, r); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+// OnResult stores a host's result on its op and wakes the loop. A result
+// for an unknown or already finished command is ignored (duplicate).
+func (e *Engine) OnResult(ctx context.Context, hostID uuid.UUID, r *hostdv1.Result) {
+	id, err := uuid.Parse(r.CommandId)
+	if err != nil {
+		return
+	}
+	b, err := protojson.Marshal(r)
+	if err != nil {
+		return
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return
+	}
+	tag, err := e.pool.Exec(ctx, "update ops set command_result = $2 where command_id = $1 and host_id = $3 and state = 'running' and command_result is null", id, m, hostID)
+	if err != nil {
+		e.log.Error("result store", "event", "command_result", "command_id", r.CommandId, "err", err.Error())
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		e.log.Info("duplicate or unknown result ignored", "event", "command_result", "command_id", r.CommandId, "host_id", hostID.String())
+		return
+	}
+	e.log.Info("command result", "event", "command_result", "command_id", r.CommandId, "host_id", hostID.String(), "result", resultLabel(r))
+	e.Kick()
+}
+
+// OnHello reconciles guest states from the host's view and re-sends every
+// unfinished command on that host with its stored command_id.
+func (e *Engine) OnHello(ctx context.Context, hostID uuid.UUID, h *hostdv1.Hello) {
+	known := map[uuid.UUID]bool{}
+	for _, g := range h.Guests {
+		gid, err := uuid.Parse(g.GuestId)
+		if err != nil {
+			continue
+		}
+		known[gid] = true
+		p, err := store.GetProjectByGuest(ctx, e.pool, gid)
+		if err != nil {
+			e.log.Warn("host reports a guest the api does not know", "event", "reconcile_orphan", "host_id", hostID.String(), "guest_id", g.GuestId, "state", g.State)
+			continue
+		}
+		open, _ := store.OpenOpsForProject(ctx, e.pool, p.ID)
+		if len(open) > 0 {
+			continue // the op's result settles the state
+		}
+		if settled(g.State) && settled(p.State) && g.State != p.State {
+			e.log.Info("reconciling project state from Hello", "event", "reconcile", "project_id", p.ID.String(), "from", p.State, "to", g.State)
+			if err := store.SetProjectState(ctx, e.pool, p.ID, g.State); err != nil {
+				e.log.Error("reconcile update", "event", "reconcile", "err", err.Error())
+			}
+		}
+	}
+	projects, _ := store.ListProjectsOnHost(ctx, e.pool, hostID)
+	for _, p := range projects {
+		if p.GuestID != nil && !known[*p.GuestID] && p.State == "running" {
+			open, _ := store.OpenOpsForProject(ctx, e.pool, p.ID)
+			if len(open) == 0 {
+				e.log.Warn("host no longer has a running project's guest", "event", "reconcile_missing", "project_id", p.ID.String())
+				_ = store.SetProjectState(ctx, e.pool, p.ID, "error") // best effort; the next start re-creates
+			}
+		}
+	}
+	rows, err := e.pool.Query(ctx, "select id from ops where host_id = $1 and state = 'running' and command_id is not null and command_result is null order by created_at", hostID)
+	if err != nil {
+		return
+	}
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	for _, id := range ids {
+		op, err := store.GetOp(ctx, e.pool, id)
+		if err != nil {
+			continue
+		}
+		cmd, hid, skip, err := e.buildCommand(ctx, op, currentPhase(op))
+		if err != nil || skip || hid != hostID {
+			continue
+		}
+		cmd.CommandId = op.CommandID.String()
+		if currentPhase(op) == "build" {
+			e.logs.Bind(cmd.CommandId, op.ID)
+		}
+		e.log.Info("re-sending unfinished command after Hello", "event", "command_resend", "op_id", op.ID.String(), "command_id", cmd.CommandId)
+		_ = e.send.Send(ctx, hostID, cmd) // a failed send is retried on the next Hello
+	}
+	e.Kick()
+}
+
+func settled(state string) bool {
+	return state == "running" || state == "stopped" || state == "error"
+}
+
+type opError struct {
+	code, msg string
+	line      int
+}
+
+func (o *opError) Error() string { return o.code + ": " + o.msg }
+
+func errCapacity() error { return &opError{code: "capacity", msg: "no host with capacity"} }
+
+func (e *Engine) fail(ctx context.Context, op *store.Op, code, msg string) {
+	e.failWithLine(ctx, op, code, msg, 0)
+}
+
+func (e *Engine) failWithLine(ctx context.Context, op *store.Op, code, msg string, line int) {
+	if op.CommandID != nil {
+		e.logs.Unbind(op.CommandID.String())
+	}
+	e.logs.ClearRedactions(op.ID)
+	errObj := map[string]any{"code": code, "message": msg}
+	if line > 0 {
+		errObj["fragment_line"] = line
+	}
+	if _, err := e.pool.Exec(ctx, "update ops set state = 'error', error = $2, finished_at = now() where id = $1", op.ID, errObj); err != nil {
+		e.log.Error("op fail record", "event", "op_fail", "op_id", op.ID.String(), "err", err.Error())
+	}
+	e.onFail(ctx, op, code, msg, line)
+	e.log.Warn("op failed", "event", "op_fail", "op_id", op.ID.String(), "kind", op.Kind, "phase", currentPhase(op), "code", code)
+	e.m.OpsTotal.WithLabelValues(op.Kind, "error").Inc()
+	e.m.OpsOpen.WithLabelValues(op.Kind).Dec()
+	if code == "capacity" {
+		e.m.ScheduleTotal.WithLabelValues("capacity").Inc()
+	}
+	op.State = "error"
+	e.notifyWaiters(op)
+	if e.OnFinished != nil {
+		e.OnFinished(ctx, op)
+	}
+}
+
+func (e *Engine) finish(ctx context.Context, op *store.Op) {
+	e.logs.ClearRedactions(op.ID)
+	if _, err := e.pool.Exec(ctx, "update ops set state = 'done', finished_at = now(), result = coalesce(result, '{}'::jsonb), reboot_required = $2 where id = $1", op.ID, op.RebootRequired); err != nil {
+		e.log.Error("op done record", "event", "op_done", "op_id", op.ID.String(), "err", err.Error())
+	}
+	e.log.Info("op done", "event", "op_done", "op_id", op.ID.String(), "kind", op.Kind)
+	e.m.OpsTotal.WithLabelValues(op.Kind, "done").Inc()
+	e.m.OpsOpen.WithLabelValues(op.Kind).Dec()
+	if op.Kind == "build" || op.Kind == "create" {
+		if op.StartedAt != nil {
+			e.m.BuildDuration.WithLabelValues("ok").Observe(e.now().Sub(*op.StartedAt).Seconds())
+		}
+	}
+	op.State = "done"
+	e.notifyWaiters(op)
+	if e.OnFinished != nil {
+		e.OnFinished(ctx, op)
+	}
+}
+
+func (e *Engine) notifyWaiters(op *store.Op) {
+	e.mu.Lock()
+	ws := e.waiters[op.ID]
+	delete(e.waiters, op.ID)
+	e.mu.Unlock()
+	for _, w := range ws {
+		close(w)
+	}
+}
+
+// Wait blocks until the op finishes or ctx ends and returns the row.
+func (e *Engine) Wait(ctx context.Context, id uuid.UUID) (*store.Op, error) {
+	for {
+		op, err := store.GetOp(ctx, e.pool, id)
+		if err != nil {
+			return nil, err
+		}
+		if op.State == "done" || op.State == "error" {
+			return op, nil
+		}
+		ch := make(chan struct{})
+		e.mu.Lock()
+		e.waiters[id] = append(e.waiters[id], ch)
+		e.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return op, ctx.Err()
+		case <-ch:
+		case <-time.After(time.Second):
+		}
+	}
+}
+
+// setResult merges fields into ops.result.
+func (e *Engine) setResult(ctx context.Context, op *store.Op, fields map[string]any) error {
+	_, err := e.pool.Exec(ctx, "update ops set result = coalesce(result, '{}'::jsonb) || $2::jsonb where id = $1", op.ID, fields)
+	return err
+}
