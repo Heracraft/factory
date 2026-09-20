@@ -85,6 +85,13 @@ func (f *Fake) Guests() []*Guest {
 	var out []*Guest
 	for _, g := range f.guests {
 		cp := *g
+		// The struct copy shared the Secrets map with the live guest, which
+		// UpdateSecrets writes under f.mu while a test reads the copy
+		// without it (race detector, CI 2026-09-20).
+		cp.Secrets = make(map[string][]byte, len(g.Secrets))
+		for k, v := range g.Secrets {
+			cp.Secrets[k] = v
+		}
 		out = append(out, &cp)
 	}
 	return out
