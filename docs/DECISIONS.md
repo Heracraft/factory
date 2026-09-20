@@ -1042,3 +1042,11 @@ ext4 keeps its primary superblock there, so `/sysroot` failed to mount with
 (console log of host-01's second guest). hostd names the type explicitly
 in `ch.args`. Interface: `host-conventions.md` (the CH invocation).
 
+**I-52. guestd binds its vsock listener to any CID.** (m1 integration,
+2026-09-20) `internal/vsockrpc.Listen` bound `VMADDR_CID_HOST` (2), which a
+guest kernel refuses with `cannot assign requested address`; guestd
+restarted every two seconds and never sent `Ready`, so the first fully
+booted guest on host-01 failed create at step 10. The dev-socket mode and
+the QEMU VM test never exercise the vsock bind, which is why it survived
+until a real host. The listener now binds `VMADDR_CID_ANY`.
+
