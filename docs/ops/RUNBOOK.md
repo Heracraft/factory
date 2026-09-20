@@ -1133,7 +1133,7 @@ the bar (08-dashboard.md 5.5/6) means the browser's last request to
    console for a `blocked by CORS policy` message, and check
    `PUBLIC_API_URL` in the dashboard's Coolify environment matches the
    api's real origin exactly (scheme and host). The api sends
-   `Access-Control-Allow-Origin: *` on every `/v1` route (I-61); a proxy
+   `Access-Control-Allow-Origin: *` on every `/v1` route (I-79); a proxy
    or CDN in front of it that strips that header reproduces this exact
    symptom.
 3. The bar clears on its own once a poll succeeds; polling backs off to

@@ -276,7 +276,7 @@ func (w *statusWriter) Flush() {
 }
 
 // corsAllowedHeaders and corsAllowedMethods cover every header and verb the
-// dashboard and CLI send from a browser (I-61): the SSE log route is a GET
+// dashboard and CLI send from a browser (I-79): the SSE log route is a GET
 // with no custom headers, so it needs no preflight at all, and every other
 // route sends at most a bearer token and a JSON body.
 const corsAllowedHeaders = "Authorization, Content-Type"
@@ -289,7 +289,7 @@ func (s *Server) wrap(mux *http.ServeMux, component string) http.Handler {
 			// (api.repose.herakraft.co) are different origins, and every
 			// route here is authenticated by a bearer token, never a
 			// cookie, so a wildcard origin leaks no ambient credential
-			// (I-61). /internal is never called from a browser and gets
+			// (I-79). /internal is never called from a browser and gets
 			// no CORS headers at all.
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Methods", corsAllowedMethods)

@@ -1727,7 +1727,7 @@ there (two packages owning one rule); computing the period from
 `created_at` at read time instead of storing it (a period boundary that
 moves when an anchor is corrected silently reprices history); renaming a
 dozen deployed metric families for one workstream's original wording.
-**I-61. The api's user-facing routes answer CORS on every response, with a
+**I-79. The api's user-facing routes answer CORS on every response, with a
 wildcard origin.** (08, found running the dashboard against a real browser)
 `repose.herakraft.co` and `api.repose.herakraft.co` are different origins,
 and nothing in 05's implementation or `api.md` set a CORS header, so a
@@ -1754,7 +1754,7 @@ Interface: none changed, `api.md`'s routes and bodies are the same; this is
 a missing behavior the doc's "cli, dashboard, gateway" consumer list already
 implied.
 
-**I-62. `internal/fakes/api`'s catalog gains `kind` and `options`, and a
+**I-80. `internal/fakes/api`'s catalog gains `kind` and `options`, and a
 fragment containing `repose-force-eval-error` answers the first canonical
 `eval_failed` message instead of applying.** (08) Two gaps between the fake
 and what it fakes, found writing the dashboard's tests against it:

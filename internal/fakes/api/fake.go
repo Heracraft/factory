@@ -302,7 +302,7 @@ func (f *Fake) handle(pattern string, h handler) {
 // CORS headers on every response, and OPTIONS answered without touching the
 // mux (which has no registered OPTIONS handlers): the dashboard fetches
 // this fake cross-origin in the Playwright suite exactly like it fetches
-// the real api cross-origin in production (I-61).
+// the real api cross-origin in production (I-79).
 func (f *Fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
