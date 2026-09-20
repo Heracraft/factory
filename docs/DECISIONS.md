@@ -2546,3 +2546,17 @@ dropped request happens on **every merge**, not only on deliberate
 deploys, which is what turns it from a curiosity into the owner's
 decision about the proxy's drain. Recorded as `coolify.md` facts 15
 and 16.
+
+**I-117. Build-log flushes are serialised and `Read` always flushes first,
+so a reader never misses the batch a flush is inserting.** (conductor,
+2026-09-20) CI failed `TestSSELiveStreamAndConcurrentLoad` with "stream 0
+saw 1 lines" of 3: `Flush` took the pending batch out under the mutex,
+released it, then inserted the rows in a transaction; a `Read` in that
+window saw nothing pending, skipped its own flush and queried the table
+before the insert committed. With the op already finished at connect time
+the SSE handler does exactly one catch-up read, so the stream ended short.
+`Flush` now holds a flush mutex for its whole run and `Read` calls `Flush`
+unconditionally, which makes it wait for one in flight; a test races
+appends and flushes against a reader. *Rejected:* publishing to subscribers
+before the insert (a subscriber would then see lines the table does not
+yet have, and a `since` replay could skip them).

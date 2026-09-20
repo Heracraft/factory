@@ -28,7 +28,13 @@ type Store struct {
 	pool *db.Pool
 	log  *slog.Logger
 
-	mu       sync.Mutex
+	mu sync.Mutex
+	// flushMu is held for the whole of Flush, so a Read that flushes first
+	// waits for a flush already in flight: Flush takes the batch out of
+	// pending under mu and only then inserts it, and a reader that saw
+	// "nothing pending" in that window read the table without the batch
+	// (an SSE stream ending with 1 of 3 lines on CI, DECISIONS I-117).
+	flushMu  sync.Mutex
 	pending  map[uuid.UUID][]Line
 	redact   map[uuid.UUID][]string
 	subs     map[uuid.UUID]map[chan Line]struct{}
@@ -120,8 +126,11 @@ func (s *Store) Run(ctx context.Context) {
 	}
 }
 
-// Flush persists every pending line and publishes it.
+// Flush persists every pending line and publishes it. Flushes are
+// serialised; a caller with nothing to flush still waits for one in flight.
 func (s *Store) Flush(ctx context.Context) {
+	s.flushMu.Lock()
+	defer s.flushMu.Unlock()
 	s.mu.Lock()
 	batch := s.pending
 	s.pending = map[uuid.UUID][]Line{}
@@ -188,12 +197,9 @@ func (s *Store) Read(ctx context.Context, opID uuid.UUID, since int64, limit int
 	if limit <= 0 {
 		limit = 10000
 	}
-	s.mu.Lock()
-	pending := len(s.pending[opID]) > 0
-	s.mu.Unlock()
-	if pending {
-		s.Flush(ctx)
-	}
+	// Unconditional: a flush in flight has already emptied pending, and the
+	// reader must not query the table until that batch is inserted.
+	s.Flush(ctx)
 	rows, err := s.pool.Query(ctx, "select seq, line from build_logs where op_id = $1 and seq > $2 order by seq limit $3", opID, since, limit)
 	if err != nil {
 		return nil, err
