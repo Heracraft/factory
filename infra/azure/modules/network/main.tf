@@ -285,6 +285,26 @@ resource "azurerm_network_security_group" "control" {
   ]
 
   tags = local.tags
+
+  lifecycle {
+    # Coolify's own dashboard listens on 8000 over plain HTTP with no
+    # authentication until an admin account is created, and its realtime and
+    # terminal services on 6001 and 6002. None of them may ever be an inbound
+    # rule here: operators reach the dashboard through an SSH tunnel on 22,
+    # which is already open to operator_cidrs (docs/ops/coolify.md). The rules
+    # above are 80, 443 and 22 and nothing else; this is what catches the edit
+    # that adds a fourth "just for setup".
+    postcondition {
+      condition = length([
+        for r in self.security_rule : r.name
+        if r.direction == "Inbound" && anytrue([
+          for p in concat([r.destination_port_range], tolist(r.destination_port_ranges)) :
+          contains(["8000", "6001", "6002", "*"], p)
+        ])
+      ]) == 0
+      error_message = "The control subnet NSG must not open 8000, 6001, 6002 or every port: Coolify's dashboard is unauthenticated until its admin account exists, and the way in is `ssh -L 8000:127.0.0.1:8000` (docs/ops/coolify.md)."
+    }
+  }
 }
 
 resource "azurerm_subnet_network_security_group_association" "control" {

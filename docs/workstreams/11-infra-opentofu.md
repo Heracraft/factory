@@ -48,8 +48,9 @@ provider module for hosts is an addition, not a rewrite.
     `/run/repose/join-token` as file content and restarts `hostd`
     (DECISIONS I-20: cloud-init cannot deliver it, because nixos-anywhere
     replaces the system that ran cloud-init). Tag `repose:role=host`.
-  - `edge`: one VM at `edge_size` (default `Standard_D2s_v5`, DECISIONS
-    I-23), static public IP with `prevent_destroy`, DNS A record
+  - `edge`: one VM at `edge_size` (`Standard_D2s_v7`; DECISIONS I-23 chose
+    the non-burstable shape, I-39 the v7 family), static public IP with
+    `prevent_destroy`, DNS A record
     `ssh.repose.herakraft.co`, Ubuntu image, nixos-anywhere provisioner
     with `.#edge`. Its subnet NSG opens 22 (user gateway), 443 (preview
     stub) and 51820/udp (WireGuard hub) to the internet, and the operator
@@ -57,13 +58,23 @@ provider module for hosts is an addition, not a rewrite.
     port list workstream 06 §5.1 owns. Operator SSH after install is by
     certificate only, on 2222, because 22 belongs to the gateway and every
     host provisioner jumps through it.
-  - `coolify`: `coolify_count` of them, defaulting to **0** until wave 3
-    (DECISIONS I-24); when 1, one `Standard_D4s_v5`, Ubuntu 24.04 LTS, static public IP,
-    DNS A records `repose.herakraft.co`, `api.repose.herakraft.co`,
-    `auth.repose.herakraft.co`, 256 GB Premium SSD OS disk, cloud-init that
-    installs Docker and runs Coolify's installer, then installs a WireGuard
-    peer config so Prometheus and the api can reach the edge network. Its
-    NSG allows 80, 443 and 22 from the owner's IP list only.
+  - `coolify`: `coolify_count` of them; the module default is **0** so a new
+    environment costs nothing, and production runs **1** from 2026-09-20
+    (DECISIONS I-24, I-49). One `Standard_D4s_v7`, Ubuntu 24.04 LTS, static
+    public IP, DNS A records `repose.herakraft.co`,
+    `api.repose.herakraft.co`, `auth.repose.herakraft.co`, 256 GB Premium SSD
+    OS disk, cloud-init that installs Docker and runs Coolify's installer at
+    a pinned `coolify_version` with `AUTOUPDATE=false`, installs `rclone` and
+    `postgresql-client` (the first two commands of the runbook's restore
+    procedure) and a `repose-backup-check` helper, then installs a WireGuard
+    peer config so Prometheus and the api can reach the edge network. Its NSG
+    allows 80, 443 and 22 from the owner's IP lists only: **not 8000**, which
+    is Coolify's own dashboard, plain HTTP and unauthenticated until an admin
+    account exists — operators reach it through `ssh -L 8000:127.0.0.1:8000`
+    and a `postcondition` on the control NSG fails the plan if a rule for
+    8000, 6001, 6002 or `*` is ever added. `terraform_data.ready` holds the
+    apply open until the `coolify` container reports healthy. The click path
+    past the VM is `docs/ops/coolify.md`.
   - `storage`: storage account (LRS, hot), container `repose-snapshots`
     with a lifecycle rule moving blobs older than 7 days to cool and
     deleting blobs older than 45 days (the 30-day post-destroy window plus
@@ -85,6 +96,13 @@ provider module for hosts is an addition, not a rewrite.
   file in clear text for the life of the bucket.
 - `infra/dns/`: Cloudflare zone records for `herakraft.co` subdomains used
   above, so DNS is in the same apply as the addresses it points at.
+  `manage_dns` defaults to **false**, because the records need a
+  `CLOUDFLARE_API_TOKEN` and a zone id that do not exist yet (DECISIONS
+  I-50). While it is false the names are not merely absent: `herakraft.co`
+  answers every name under it from a proxied wildcard, so
+  `ssh.repose.herakraft.co` resolves to Cloudflare's proxy, which carries
+  neither SSH nor WireGuard. A plan-time `check` warns, and `infra/README.md`
+  carries the four records to create by hand until the token exists.
 - State backend: the Azure Storage container `tfstate` in `repose-prod`,
   created by hand on 2026-09-19 and read but never managed by the
   environment roots (DECISIONS I-19). `infra/bootstrap/` is the tiny root
@@ -193,10 +211,13 @@ so a Hetzner host uses Hetzner Object Storage or R2.
 | Total with one host | ~$2,700 |
 
 `infra/README.md` carries the version of this table re-derived from the Azure
-Retail Prices API on 2026-09-19, for what `prod.tfvars` actually creates:
-about **$857** a month with one pre-launch host and no control-plane VM,
-about **$1,040** once wave 3 turns that VM on, which is over the $1,000 budget
-alert in `ops/AZURE-SETUP.md` step 7, and about **$2,850** at launch sizes.
+Retail Prices API on **2026-09-20**, the date of the first apply, for what
+`prod.tfvars` actually creates: about **$857** a month with one pre-launch
+host and the edge, and about **$1,094** with the control-plane VM that
+`coolify_count = 1` now creates, which is over the $1,000 budget alert in
+`ops/AZURE-SETUP.md` step 7. That re-query corrected the 2026-09-19 figure for
+the control plane, which was $53 a month too low. Launch sizes are about
+**$2,850**.
 Most of the difference from the estimate above is Premium SSD v2 provisioned
 IOPS and throughput, which are variables and can be raised in place later. The $10k credit funds roughly three and a
 half months at launch sizes with one host and no reservation. Reservations cannot be bought with credits on most Azure
@@ -238,59 +259,147 @@ from the previous version.
 
 ## 9. Checklist
 
-- [ ] `infra/bootstrap` applied once; state container exists with soft
-      delete and versioning. Evidence: `az storage container show` output.
-- [ ] `tofu plan` on `prod` with the current host list is empty. Evidence:
-      plan output pasted.
+Evidence dated 2026-09-20, from the applied production environment unless a
+row says otherwise. Commands were run from the dev box, which is in
+`operator_cidrs`.
+
+- [x] `infra/bootstrap` applied once; state container exists with soft
+      delete and versioning. Evidence: `az storage container show --name
+      tfstate --account-name reposetfstate3912` returns `publicAccess: null`;
+      `az storage account blob-service-properties show` returns
+      `versioning: true`, blob soft delete `enabled: true, days: 30`,
+      container soft delete `enabled: true, days: 30`.
+- [x] `tofu plan` on `prod` with the current host list is empty. Evidence:
+      `make plan ENV=prod` at commit 95349b5 (this branch's base), against
+      the live backend: *"No changes. Your infrastructure matches the
+      configuration."* after refreshing all 38 resources. With
+      `coolify_count = 1` the same plan is **4 to add, 0 to change, 0 to
+      destroy** — the control-plane public IP, NIC, VM and its readiness
+      resource, and nothing else.
 - [ ] A host created by `tofu apply` registers with the api without manual
-      steps. Evidence: `repose-admin hosts list` showing `ready`, and the
-      apply log.
-- [ ] `/dev/kvm` present and nested enabled on a fresh host. Evidence:
-      command output.
-- [ ] NSG on the hosts subnet has no inbound rules; the `tfsec` rule
-      REPOSE-NET-001 enforces it. Evidence: CI run, plus the rule firing on a
-      fixture that adds one.
-- [ ] IMDS is reachable from the host (hostd needs nothing from it, but the
-      Azure agent does) and blocked from guests (workstream 01 verifies the
-      nftables rule; this item checks the NSG does not interfere). Evidence:
-      curl from host succeeds.
+      steps. **Not closed.** `host-01` was installed by the apply and
+      `systemctl is-active hostd.service` on it returns `active`, but nothing
+      has registered it: the api is not deployed and `hostdev` is not on the
+      edge (`command not found`), so there is no registrar. This closes in
+      the M1 integration session or on the first control-plane deploy, with
+      `repose-admin hosts list` showing `ready`.
+- [x] `/dev/kvm` present and nested enabled on a fresh host. Evidence, on
+      `host-01` through the edge jump:
+      `crw-rw---- 1 root kvm 10, 232 Sep 20 03:47 /dev/kvm`,
+      `cat /sys/module/kvm_intel/parameters/nested` → `Y`,
+      `uname -sr` → `Linux 6.18.52`, `nproc` → 16, 62 GB of RAM. The
+      `Standard_D16s_v7` runs nested KVM as I-39 said it would.
+- [x] NSG on the hosts subnet has no inbound rules; the `tfsec` rule
+      REPOSE-NET-001 enforces it. Evidence: `az network nsg show -g
+      repose-prod -n nsg-hosts` returns `"rules": []` with tag
+      `repose:inbound=none`; `make check` is clean; the rule was fired
+      against a fixture that adds one on 2026-09-19. A second guard was added
+      on 2026-09-20 for the control subnet: a `postcondition` that fails the
+      plan on any inbound rule for 8000, 6001, 6002 or `*` (DECISIONS I-49).
+- [ ] IMDS is reachable from the host and blocked from guests. **Not
+      re-checked this session:** the sandbox on the machine running these
+      commands refuses shell pipelines that fetch instance metadata, so the
+      `curl` from the host was not run. Nothing about the NSG changed since
+      the host installed successfully, and the guest-side half is workstream
+      01's nftables rule. One command on the host closes it.
 - [ ] Data disk has `prevent_destroy`; a plan that would replace it fails.
-      Evidence: a deliberate attempt, output pasted.
-- [ ] Blob lifecycle rule exists and a test blob aged past 45 days is
-      deleted (use a backdated test in staging). Evidence: rule JSON and the
-      observed deletion.
+      **Not closed:** the deliberate attempt needs a plan against real state,
+      and the state blob is currently leased (see §10). The
+      `prevent_destroy` and `ignore_changes` blocks are in
+      `azure/modules/host/main.tf` and the equivalent attempt was made
+      against the plan on 2026-09-19.
+- [x] Blob lifecycle rule exists. Evidence: `az storage account
+      management-policy show --account-name reposesnapshots3912` returns one
+      enabled rule `snapshots-tier-and-expire`, `blobTypes: [blockBlob]`,
+      `prefixMatch: [repose-snapshots/]`, `tierToCool.daysAfterCreationGreaterThan: 7`,
+      `delete.daysAfterCreationGreaterThan: 45`. The account itself has
+      `allowSharedKeyAccess: false`, `allowBlobPublicAccess: false`.
+      **Open:** a test blob aged past 45 days and observed deleted. Azure
+      keys the rule on real creation time, so this waits 45 days or a
+      backdated fixture in staging.
 - [ ] Key Vault key exists, the api identity can wrap and unwrap and cannot
-      `get`. Evidence: `az keyvault key` calls, including the denied one.
+      `get`. **Half closed.** The vault and key exist:
+      `repose-kv-3912`, purge protection on, 90-day soft delete, key
+      `repose-dek-wrap` at
+      `https://repose-kv-3912.vault.azure.net/keys/repose-dek-wrap/abfe06e3...`.
+      The api half cannot be checked: `api_identity_object_id` is null, the
+      environment output reports `api_policy_configured: false`, and the app
+      registration is a human step (DECISIONS I-21). Supply the object id and
+      the wrap/unwrap-only policy appears; the denied `get` is then one
+      `az keyvault key show` as that identity.
 - [ ] R2 bucket, token and lifecycle rule exist; Coolify's backup job
-      succeeded once and a restore was rehearsed. Evidence: Coolify backup
-      log and restore timing.
-- [ ] Edge and Coolify DNS names resolve to their static IPs. Evidence:
-      `dig` output.
+      succeeded once and a restore was rehearsed. **Not closed:** no
+      `CLOUDFLARE_API_TOKEN` exists, so `infra/r2` has never been applied.
+      `make plan ENV=r2` now fails with the step that creates one rather than
+      with a provider authentication error, the bucket's S3 form is
+      `tofu -chdir=infra/r2 output coolify_s3_destination`, the control-plane
+      VM ships `repose-backup-check` and the `rclone`/`pg_restore` the
+      rehearsal needs, and `docs/ops/coolify.md` has the procedure.
+- [ ] Edge and Coolify DNS names resolve to their static IPs. **Not closed,
+      and worse than absent.** On 2026-09-20 `dig +short
+      ssh.repose.herakraft.co` returns `172.67.175.123` and `104.21.31.82`,
+      Cloudflare's proxy, not the edge's `20.102.98.254` — `herakraft.co`
+      answers every name under it from a proxied wildcard, and the proxy
+      carries neither SSH nor WireGuard (DECISIONS I-50). The plan now warns,
+      `infra/README.md` has the four records to create by hand, and
+      `ops/RUNBOOK.md` has the symptom entry. Closes with a Cloudflare token
+      and `manage_dns = true`, or with the records made by hand.
 - [ ] `infra/README.md` covers bootstrap, add host, rotate token, drain and
       destroy host, force-unlock, and someone followed it end to end.
-      Evidence: their notes merged into it.
-- [ ] Cost table re-checked against the Azure price API on the date of
-      the first apply. Evidence: date and figures in the README.
+      **Partly:** the control-plane and DNS sections were written by
+      following them on 2026-09-20 and the gaps found are now in them (the
+      dashboard is not in the NSG; the wildcard; the `.env` that is half the
+      backup). The end-to-end pass by somebody who did not write it is still
+      owed.
+- [x] Cost table re-checked against the Azure price API on the date of
+      the first apply. Evidence: queried 2026-09-20,
+      `armRegionName eq 'eastus' and priceType eq 'Consumption'`:
+      `Standard_D16s_v7` $1.058/h, `Standard_D2s_v7` $0.132/h,
+      `Standard_D4s_v7` **$0.265/h**, `P15 LRS Disk` $38.012142 + $1.825
+      mount per month. The re-query corrected the control plane from $140.16
+      to $193.45 a month, so the environment is about **$1,094**, not
+      $1,040, and over the $1,000 budget alert. Table in `infra/README.md`.
 
 ## 10. What is left for the owner
 
-Nothing in `infra/` has been applied, and the owner's instruction is that the
-apply happens from `main` after this branch and workstream 01's are merged, so
-the host installs from the merged flake rather than this branch's snapshot of
-the skeleton. Every checklist item above that says "a host", "a fresh host",
-"a test blob" or "Coolify's backup job" waits on that, and `infra/README.md`
-is the order to do it in.
+The apply has happened: the network, NAT gateway, snapshot account, Key Vault,
+edge and `host-01` are live in `repose-prod`, and `make plan ENV=prod` at this
+branch's base was clean against them. What this branch adds is the
+control plane, and it is **not applied** — the owner applies from `main`.
 
-Blob soft delete on `reposetfstate3912` was the one change made outside
-OpenTofu: 30 days on blobs and on containers, versioning was already on.
+**Release the state lease first.** A `tofu plan` from this branch on
+2026-09-20 lost its connection to Azure Resource Manager mid-refresh
+(`context deadline exceeded`) and could not release the blob lease afterwards,
+so the state is locked and the next plan or apply will refuse:
 
-Three things wait on a human rather than on an apply:
+```bash
+make -C infra force-unlock ENV=prod LOCK_ID=946e71cf-6fb1-7e38-79ce-c54972161362
+```
 
-- **The api's Entra app registration**, its client certificate, and the R2
-  API token (DECISIONS I-21). Pass the app's object id as
-  `api_identity_object_id` and the Key Vault wrap/unwrap policy appears.
-- **A Cloudflare API token** in `CLOUDFLARE_API_TOKEN` and the zone id in the
-  local tfvars, before `manage_dns` can be true or `infra/r2` can be planned.
-- **`edge_operator_ssh_port = 22`** in the local tfvars for the first apply,
-  until workstream 06 moves the edge's operator sshd off the port the user
-  gateway wants.
+The lock's own metadata records it as `OperationTypePlan` by
+`azureuser@woker-1` at 2026-09-20T04:16:35Z, which is that run; no apply was
+in flight. This is the procedure in `infra/README.md`, "Recovering from a
+stuck state lease".
+
+Then `make plan ENV=prod` shows 4 to add — the control-plane public IP, NIC,
+VM and readiness check — and `make apply ENV=prod` creates them. The apply
+does not return until Coolify is healthy. `docs/ops/coolify.md` is everything
+after that, in order, and its first two steps matter most: create the admin
+user through an SSH tunnel, then copy `/data/coolify/source/.env` off the
+machine.
+
+Three things still wait on a human rather than on an apply:
+
+- **A Cloudflare API token.** It unblocks two checklist rows at once:
+  `infra/r2` (and with it Coolify's Postgres backup and the restore
+  rehearsal) and `manage_dns = true`. Until it exists, the four DNS records
+  in `infra/README.md` should be created by hand, because the wildcard means
+  the names resolve wrongly rather than not at all.
+- **The api's Entra app registration** and its client certificate. Pass the
+  app's object id as `api_identity_object_id` and the Key Vault wrap/unwrap
+  policy appears (DECISIONS I-21).
+- **The budget alert.** `ops/AZURE-SETUP.md` step 7 sets $1,000 a month; the
+  environment with the control plane on is about $1,094.
+
+`edge_operator_ssh_port` stays 22 until workstream 06 moves the edge's
+operator sshd off the port the user gateway wants.

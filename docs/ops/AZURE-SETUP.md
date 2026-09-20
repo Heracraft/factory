@@ -58,15 +58,35 @@ a day.
 
 ## Outside Azure
 
-10. **Cloudflare R2.** Create a bucket `repose-pg-backups` and an API token
-    with object read/write on that bucket only. Coolify's Postgres backups
-    go here. Note the account id, access key, secret and endpoint.
+10. **Cloudflare R2 and the API token.** The *bucket* is not a manual step:
+    `infra/r2` creates `repose-pg-backups` with its 35-day lifecycle rule.
+    What is manual is the credential — an API token with object read/write on
+    that bucket only — because a token created by OpenTofu would sit in the
+    state file in clear text for the life of the bucket (`DECISIONS.md`
+    I-21). Create the token, note the account id (an identifier, not a
+    secret; it goes in `infra/r2/r2.tfvars`), then:
 
-11. **DNS for `herakraft.co`.** Nothing to create yet, but confirm you can
-    add records. Agents will need these once IPs exist:
-    `repose` (dashboard), `api.repose`, `ssh.repose`, and later
-    `*.repose` for previews. If Logto stays on your personal server, its
-    hostname stays as it is.
+    ```bash
+    export CLOUDFLARE_API_TOKEN=...
+    make -C infra apply ENV=r2
+    tofu -chdir=infra/r2 output coolify_s3_destination   # the form Coolify asks for
+    ```
+
+    The same token, scoped to DNS edit on `herakraft.co`, is what
+    `manage_dns = true` needs (step 11). Coolify's backup destination and the
+    restore rehearsal are `docs/ops/coolify.md`.
+
+11. **DNS for `herakraft.co`.** The zone already answers every name under it
+    from a **proxied wildcard**, so the repose names resolve today — to
+    Cloudflare's proxy, which carries neither SSH nor WireGuard. That makes
+    `ssh.repose.herakraft.co` actively wrong rather than merely missing
+    (`DECISIONS.md` I-50). Until a token is in `CLOUDFLARE_API_TOKEN` and
+    `manage_dns = true`, create these four by hand as A records **with the
+    proxy off**: `ssh.repose` → the edge's IP, and `repose`, `api.repose`,
+    `auth.repose` → the control plane's. The table with the reasons is in
+    `infra/README.md`, "DNS while manage_dns is false"; `*.repose` for
+    previews is later. If Logto stays on your personal server, its hostname
+    stays as it is.
 
 12. **Logto.** In your existing Logto: create an API resource with
     identifier `https://api.repose.herakraft.co`; a Native application

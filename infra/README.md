@@ -188,6 +188,97 @@ The token never travels as a command-line argument, so it is not in the apply
 log, and it lands on a tmpfs, so it is not on the disk
 (`docs/DECISIONS.md` I-19).
 
+## The control plane
+
+`coolify_count = 1` creates it: an Ubuntu `Standard_D4s_v7` with a 256 GB
+Premium OS disk and a static public IP in the `control` subnet, running
+Coolify, and under Coolify the api, the dashboard, Logto and the platform
+Postgres. It stays Ubuntu because Coolify rejects NixOS as a host or a managed
+server (`docs/DECISIONS.md` R4-2), which is why this is the one machine here
+that `nix/` knows nothing about.
+
+The apply does not return until Coolify is up. `terraform_data.ready` waits
+for cloud-init, reads the `coolify` container's Docker health status — the
+same signal the installer itself waits on — and fails if `rclone` or
+`pg_restore` is missing, because those are the first two commands of
+`docs/ops/RUNBOOK.md` "Postgres restore" and a restore that stops to install
+something is a restore nobody has rehearsed.
+
+Two things are pinned on purpose. `coolify_version` is an exact release
+(`4.3.23`), not the installer's moving `latest`, so rebuilding this VM
+reproduces the control plane; and `AUTOUPDATE=false`, because an unattended
+upgrade of the thing that deploys the api is a deploy nobody reviewed.
+Upgrading is a deliberate step in `docs/ops/coolify.md`.
+
+**Coolify's own dashboard is not in the NSG.** It listens on 8000 over plain
+HTTP and anyone who reaches it before an admin account exists can create one,
+so the way in is the port that is already open to `operator_cidrs`:
+
+```bash
+ssh -N -L 8000:127.0.0.1:8000 root@$(tofu -chdir=azure/prod output -raw control_public_ip)
+# http://127.0.0.1:8000
+```
+
+`azure/modules/network/main.tf` carries a `postcondition` that fails the plan
+if 8000, 6001, 6002 or `*` ever appears as an inbound rule on that subnet.
+
+Everything past the VM is a click path Coolify keeps in its own database, not
+in state: `docs/ops/coolify.md` is that path, including the R2 backup
+destination, the restore rehearsal, and the one fact that ruins a restore if
+it is learned late — Coolify encrypts its stored credentials with `APP_KEY`
+from `/data/coolify/source/.env`, so a Postgres dump without that file
+restores a database of ciphertext.
+
+Setting `coolify_count` back to 0 destroys the VM and its OS disk, Postgres
+and every application definition included. The retention that matters is the
+R2 dump plus that `.env`.
+
+## DNS
+
+`manage_dns` defaults to **false**, because the records need a
+`CLOUDFLARE_API_TOKEN` in the environment and a `cloudflare_zone_id`, and a
+plan without them fails inside the provider with an authentication error that
+names neither. With a token:
+
+```bash
+export CLOUDFLARE_API_TOKEN=...
+# cloudflare_zone_id = "..." and manage_dns = true in the local tfvars
+make plan ENV=prod
+```
+
+The records are created in the same apply as the addresses they point at, so a
+name never outlives the IP it names, and `infra/dns` refuses to proxy anything
+under `ssh.`: Cloudflare's proxy carries neither SSH nor WireGuard.
+
+### DNS while manage_dns is false
+
+**"No record" is not "no answer" here.** `herakraft.co` serves every name
+under it from a proxied wildcard, so with `manage_dns` off the repose names
+resolve to Cloudflare's proxy rather than failing:
+
+```
+$ dig +short ssh.repose.herakraft.co
+172.67.175.123
+104.21.31.82                       # Cloudflare, not the edge (2026-09-20)
+```
+
+A user following the documented `ssh ssh.repose.herakraft.co` reaches
+Cloudflare's proxy, which does not carry SSH, and every host configured with
+that hostname as its WireGuard endpoint fails the same way. The environment
+module raises this as a plan-time warning (`check "dns_is_managed_or_manual"`)
+rather than letting it be discovered from a connection that hangs.
+
+Until a token exists, create these by hand in the Cloudflare dashboard, as
+**A records with the proxy off**, and delete them in the same change that sets
+`manage_dns = true` so OpenTofu can create them itself:
+
+| Name | Points at | Proxy | Why |
+|---|---|---|---|
+| `ssh.repose` | `edge_public_ip` output | **off** | SSH gateway and every host's WireGuard endpoint; the proxy carries neither |
+| `repose` | `control_public_ip` output | off | dashboard; Coolify terminates TLS itself |
+| `api.repose` | `control_public_ip` output | off | proxying hides client addresses from the api's rate limits |
+| `auth.repose` | `control_public_ip` output | off | Logto's issuer must match the certificate it presents |
+
 ## Wiring the control plane to the edge
 
 The control-plane VM generates its own WireGuard key at first boot and never
@@ -256,12 +347,13 @@ small enough surface to port when that day comes.
 
 ## Cost
 
-Re-checked on **2026-09-19** against the Azure Retail Prices API
-(`https://prices.azure.com/api/retail/prices`, `armRegionName eq 'eastus'`,
-`priceType eq 'Consumption'`), for what `prod.tfvars` actually creates: one
-`D16s_v7` host with a 512 GB Premium SSD v2 data disk (DECISIONS I-14, I-39), the
-edge, and **no control-plane VM** (`coolify_count = 0`, DECISIONS I-24). 730
-hours to the month, Linux rates, no reservation.
+Re-checked on **2026-09-20**, the date of the first apply, against the Azure
+Retail Prices API (`https://prices.azure.com/api/retail/prices`,
+`armRegionName eq 'eastus'`, `priceType eq 'Consumption'`), for what
+`prod.tfvars` actually creates: one `D16s_v7` host with a 512 GB Premium SSD
+v2 data disk (DECISIONS I-14, I-39), the edge, and **the control-plane VM**
+(`coolify_count = 1`, DECISIONS I-49). 730 hours to the month, Linux rates, no
+reservation.
 
 | Resource | Unit price | Monthly |
 |---|---|---|
@@ -277,13 +369,23 @@ hours to the month, Linux rates, no reservation.
 | Blob, 500 GB of snapshots, Cool LRS | $0.0152/GB/month | $7.60 |
 | Key Vault standard, operations | $0.03 per 10K | under $1 |
 | R2, 50 GB | $0.015/GB/month | $0.75 |
-| **Total, one host, no control plane, before egress** | | **about $857** |
+| **Subtotal, one host and the edge, before egress** | | **about $857** |
+| Control plane `Standard_D4s_v7` | $0.265/h | $193.45 |
+| — its OS disk, Premium SSD P15 (256 GiB) + mount | $38.01 + $1.83 | $39.84 |
+| — its static IPv4 | $0.005/h | $3.65 |
+| **Total, one host and the control plane, before egress** | | **about $1,094** |
 
-Adding the control-plane VM in wave 3 — `coolify_count = 1`, a `D4s_v7` at
-$140.16, its 256 GB OS disk at $39.84 and its static IP at $3.65 — takes it to
-about **$1,040**, which is over the $1,000 monthly budget alert in
-`docs/ops/AZURE-SETUP.md` step 7. Raise the budget to $1,200 at that point, or
-drop the control plane to a `D2s_v7` and save about $95.
+**The 2026-09-19 table had the control plane $53 a month too cheap.** It
+listed the `D4s_v7` at $140.16 a month; the API returns $0.265 an hour, which
+is $193.45. The re-query above is what caught it, which is the whole reason
+this item is on the checklist and dated.
+
+So the control plane is about **$237** a month, and one host plus the control
+plane is about **$1,094** — over the $1,000 monthly budget alert in
+`docs/ops/AZURE-SETUP.md` step 7. Raise the budget to $1,200, or drop the
+control plane to a `D2s_v7` (2 vCPU, 8 GB) and save $97. Coolify, Logto,
+Postgres, the api and the dashboard on 8 GB is tight but not absurd for a
+month of testing alone; 16 GB is the size that does not need thinking about.
 
 The other thing this table says that the earlier estimate did not:
 **Premium SSD v2 provisioned performance is most of the disk bill.** Capacity

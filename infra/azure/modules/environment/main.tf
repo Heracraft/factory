@@ -64,6 +64,19 @@ check "every_host_has_a_join_token" {
   }
 }
 
+# herakraft.co answers every name under it from a proxied wildcard record, so
+# "no record" is not the same as "no answer": with manage_dns off,
+# ssh.repose.herakraft.co resolves to Cloudflare's proxy, which carries
+# neither SSH nor WireGuard, and the edge's real address is reachable only as
+# a literal IP. Observed on 2026-09-20; infra/README.md, "DNS while manage_dns
+# is false", has the records to create by hand until a token exists.
+check "dns_is_managed_or_manual" {
+  assert {
+    condition     = var.manage_dns
+    error_message = "manage_dns is false: the repose names resolve to the herakraft.co wildcard, not to the edge or the control plane. Create them by hand (infra/README.md) or set manage_dns = true once CLOUDFLARE_API_TOKEN and cloudflare_zone_id exist."
+  }
+}
+
 module "network" {
   source = "../network"
 
@@ -149,9 +162,15 @@ module "coolify" {
   subnet_id           = module.network.control_subnet_id
   network_ready       = module.network.hosts_subnet_ready
 
-  authorized_keys     = var.operator_authorized_keys
-  os_disk_gb          = var.coolify_os_disk_gb
-  coolify_install_url = var.coolify_install_url
+  authorized_keys      = var.operator_authorized_keys
+  ssh_private_key_path = var.ssh_private_key_path
+  os_disk_gb           = var.coolify_os_disk_gb
+  coolify_install_url  = var.coolify_install_url
+  coolify_version      = var.coolify_version
+  coolify_autoupdate   = var.coolify_autoupdate
+
+  backup_bucket        = var.backup_bucket
+  backup_max_age_hours = var.backup_max_age_hours
 
   edge_wireguard_public_key = var.edge_wireguard_public_key
   edge_wireguard_endpoint   = "${module.edge.public_ip}:51820"
