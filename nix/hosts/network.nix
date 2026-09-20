@@ -25,6 +25,10 @@ let
       hostJson=${hostJson}
       run=${runDir}
       mkdir -p "$run"
+      # 0755 whatever created it first: the join-token delivery once made
+      # it 0700 and every guest's unprivileged virtiofsd then failed to
+      # reach the store export (DECISIONS I-95).
+      chmod 0755 "$run"
       umask 022
 
       write_sshd() {

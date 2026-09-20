@@ -2085,3 +2085,22 @@ check everywhere for a user that evaluates tenant input is the wrong
 direction); cloning as the build user (hostd would need the deploy key
 readable by that user, which is the key a tenant's evaluation runs next
 to).
+
+**I-95. `/run/repose` is 0755; the join-token delivery no longer makes it
+0700.** (m2 integration, 2026-09-20) The first `repose-admin hosts smoke`
+against host-01 on the real api built its guest in 19 s and then failed
+`CreateGuest` at step 8: virtiofsd logged `/run/repose/store-export does
+not exist`. The export was there; `/run/repose` had just been recreated
+`0700 root` by infra's token-delivery provisioner (`install -d -m 0700`),
+so the unprivileged `virtiofsd` user (I-48) could not traverse to it, and
+virtiofsd reports a failed `stat` as "does not exist". It never showed on
+M1 because that host's `/run/repose` had been made by `repose-host-net`
+(0755) before the token arrived, and the M1 guests were created hours
+later; on M2 the re-tokening came after the reboot-free switch and the
+first create followed within a minute. The directory holds the export, the
+rendered network files and the control socket, none of them secret (the
+token file inside stays 0600); the provisioner, the runbook's by-hand line
+and `repose-host-net` (which now `chmod 0755`s the directory whatever made
+it) agree on 0755. *Rejected:* moving the token to its own 0700 directory
+(a second path in the runbook, the host module and hostd for one file's
+mode, which the file already carries).
