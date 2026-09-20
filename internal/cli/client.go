@@ -160,3 +160,48 @@ func (c *Client) patch(ctx context.Context, path string, body, out any) error {
 func (c *Client) delete(ctx context.Context, path string, out any) error {
 	return c.do(ctx, http.MethodDelete, path, nil, out)
 }
+
+// getNDJSON is GET /projects/:id/logs's shape (api.md: "JSON lines", the
+// fake serves it as application/x-ndjson): a stream of concatenated JSON
+// values rather than one JSON array, decoded one at a time into a slice
+// built from a zero-value template via a factory so callers keep type
+// safety without generics duplicating this per type.
+func (c *Client) getNDJSON(ctx context.Context, path string, decodeLine func(dec *json.Decoder) error) error {
+	var refreshed bool
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+path, nil)
+		if err != nil {
+			return err
+		}
+		if c.Tokens != nil {
+			tok, err := c.Tokens.AccessToken(ctx, refreshed)
+			if err != nil {
+				return &notLoggedInError{cause: err}
+			}
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		resp, err := c.HTTP.Do(req)
+		if err != nil {
+			return &unreachableError{cause: err}
+		}
+		if resp.StatusCode >= 400 {
+			apiErr, decodeErr := readResponse(resp, nil)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			if apiErr.Code == "unauthenticated" && !refreshed && c.Tokens != nil {
+				refreshed = true
+				continue
+			}
+			return apiErr
+		}
+		defer func() { _ = resp.Body.Close() }()
+		dec := json.NewDecoder(resp.Body)
+		for dec.More() {
+			if err := decodeLine(dec); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}

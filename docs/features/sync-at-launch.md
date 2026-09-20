@@ -9,71 +9,71 @@ Work comes back only through git. Nothing syncs continuously.
 
 ```
 $ repose run
-Syncing todo-app to a1b2c3d (main): fetching ... checking out ... done
-Applying local changes: 3 modified, 1 untracked (12 KB) ... done
+Connected to todo-app (large)
+Synced: 3 modified, 1 untracked
 ```
 
 Local commit not on the remote yet:
 
 ```
 $ repose run
-Your HEAD (a1b2c3d) is not on origin. Push it now? [Y/n] y
-Pushing main to origin ... done
+Commit a1b2c3d is not on origin. Push main now? [Y/n] y
+Connected to todo-app (large)
+Synced: 0 modified, 0 untracked
 ```
 
 Guest tree is dirty:
 
 ```
 $ repose run
-error: the guest's working tree has uncommitted changes (2 modified, 1 untracked):
-  src/auth.ts  src/routes/login.ts  src/lib/session.ts
-An agent may still be working. Choose:
-  repose run --stash-remote     stash the guest's changes, then sync
-  repose run --discard-remote   throw them away, then sync
-  repose run --no-sync          attach without syncing
+The guest's working tree has uncommitted changes (3 files):
+  M src/auth.ts
+  M src/routes/login.ts
+  ?? notes.md
+An agent may still be working. Re-run with --stash-remote (keeps them in
+`git stash`) or --discard-remote (throws them away), or `repose attach`
+to look first.
 ```
 
 ## Behaviour that must hold
 
 - Sync runs only as part of `repose run`, never on `attach`, `start`, or
-  any other command. `repose sync` exists as the same step on its own.
-- Step one is the commit. The guest runs `git fetch origin` and checks out
-  the laptop's `HEAD` commit by hash, on the laptop's branch name if it
-  exists on the remote, detached otherwise. If the hash is not reachable
-  from origin, the CLI offers to push the current branch; declining exits 1
-  with nothing changed on either side. It never force-pushes.
-- Step two is the diff. The CLI builds a tar stream of: every file `git diff
-  HEAD --name-only` lists (modified, added, deleted are represented; deleted
-  files are sent as a deletion list), plus every untracked file that
-  `git ls-files --others --exclude-standard` lists. Extra exclusions from
-  `sync.exclude` in `config.toml` apply on top. The stream goes over the
-  SSH session's stdin to `repose-guest-sync apply` in the guest, which
-  writes files, applies deletions, and sets executable bits.
-- Size: over 50 MB the CLI stops and says which files are large and how to
-  exclude them, because an accidental `node_modules` or a video is the usual
-  cause and the user wants to know.
-- Refuse-on-dirty: before writing anything, the guest checks `git status
-  --porcelain` in `/home/dev/<slug>`. If it is non-empty, the CLI prints the
-  block above and exits 6. Nothing is written. This rule exists because the
-  common case for a dirty guest tree is an unattended agent mid-task, and
-  silently overwriting its work is the exact thing the product promises not
-  to do.
-- `--stash-remote` runs `git stash push -u -m "repose sync <timestamp>"`
-  in the guest first, then syncs. The stash name is printed so the user can
-  find it.
-- `--discard-remote` runs `git checkout -- . && git clean -fd` in the guest
-  first. It asks for confirmation unless `--yes`.
-- Files ignored by gitignore never travel in either direction. `.env` files
-  that are gitignored therefore do not sync; that is deliberate and
+  any other command. There is no standalone `repose sync`.
+- The guest checks `git status --porcelain` in `/home/dev/<slug>` first
+  (this includes untracked files, so an agent's scratch file counts as
+  dirty too). If it is non-empty and neither `--stash-remote` nor
+  `--discard-remote` was given, the CLI prints the block above and exits
+  6; nothing else in the sync step runs. `--stash-remote` runs `git stash
+  push -u -m "repose run"` in the guest first; `--discard-remote` runs
+  `git reset --hard && git clean -fd`. Neither asks for confirmation —
+  the flag itself is the confirmation.
+- Then the guest runs `git fetch origin` and checks whether the laptop's
+  `HEAD` commit is reachable (`git cat-file -e`). If not, the CLI offers
+  to push the current branch (`Commit <hash> is not on origin. Push
+  <branch> now? [Y/n]`); declining fails the run with nothing changed on
+  either side. It never force-pushes.
+- The guest then checks out that commit detached, and rides the local
+  branch name instead only if that branch already sits at the same commit
+  (a `git fetch` moves remote-tracking refs, never local branches, so a
+  stale local branch is left alone rather than silently overwriting the
+  detached checkout).
+- The diff, not a tar, carries tracked changes: `git diff HEAD --binary`
+  on the laptop, piped as stdin to `git apply --index` in the guest. Only
+  the untracked files (`git ls-files --others --exclude-standard`,
+  filtered by `sync.exclude` in `config.toml`) travel as a tar, extracted
+  with `tar -x -C ~/<slug>`. Nothing writes a custom sync helper into the
+  guest; both commands are stock git and tar.
+- Size: a file over 100 MB is skipped with a warning rather than sent,
+  because an accidental `node_modules` or a video is the usual cause and
+  the user wants to know.
+- Files ignored by gitignore never travel in either direction. `.env`
+  files that are gitignored therefore do not sync; that is deliberate and
   documented, and named secrets (secrets.md) are the supported path.
-- An empty diff produces one line, `nothing to sync`, and takes under one
-  second beyond the fetch.
-- The guest's checkout is at `/home/dev/<slug>`. If the directory is not a
-  git repository (project created with `--name` in a directory that was not
-  one), the guest initialises it and adds the remote if there is one.
-- After sync, `git status` in the guest shows exactly the laptop's
-  uncommitted changes and nothing else. A test asserts that with a fixture
-  of modified, added, deleted, untracked, and executable files.
+- The summary line always prints, `Synced: <n> modified, <m> untracked`,
+  even when both are zero.
+- The guest's checkout is at `/home/dev/<slug>` and is assumed to already
+  exist and be a clone with an `origin` remote (guestd's `SetupProject`,
+  02/04's contract); the CLI does not initialise a repository there.
 
 Back to the laptop:
 
@@ -83,9 +83,9 @@ Back to the laptop:
 
 ## Depends on
 
-Workstreams 07 (cli tar builder, prompts), 04 (`repose-guest-sync apply`
-lives in the guest base and is called over SSH, not vsock), 02 (guest base
-ships the helper).
+Workstreams 07 (cli: the diff/tar builder and the git commands, all run
+over the SSH session, never vsock), 04/02 (guestd's `SetupProject`
+guarantees the guest checkout exists before the CLI's first sync).
 
 ## Deferred
 

@@ -117,6 +117,44 @@ func TestRunWithPromptSendsIntoTmuxWindow(t *testing.T) {
 	}
 }
 
+// TestRunClaudeNotLoggedInAttachesInstead is 07-cli.md §5.5 step 7: no
+// ~/.claude/.credentials.json in the guest and no CLAUDE_CODE_OAUTH_TOKEN
+// secret means attach instead of sending, so the user can finish the
+// login themselves.
+func TestRunClaudeNotLoggedInAttachesInstead(t *testing.T) {
+	fake := fakeapi.New(fakeapi.Options{})
+	defer fake.Close()
+	f := newRunFixture(t, fake)
+	ctx := context.Background()
+
+	var out strings.Builder
+	f.env.Out = &out
+
+	if err := runRun(ctx, f.env, RunOptions{
+		Name: testSlug, Agent: "claude", Prompt: "finish the feature", NoAttach: true,
+	}, false); err != nil {
+		t.Fatalf("runRun: %v", err)
+	}
+	if !strings.Contains(out.String(), "Claude Code is not logged in") {
+		t.Fatalf("expected the not-logged-in message, got: %s", out.String())
+	}
+
+	exists, err := windowExists(ctx, f.target, testSlug, "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		t.Fatal("expected a claude window to be opened even though the prompt was not sent")
+	}
+	pane, err := capturePane(ctx, f.target, testSlug, "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(pane, "finish the feature") {
+		t.Fatalf("prompt must not have been sent: %s", pane)
+	}
+}
+
 func TestRunDirtyRemoteTreeRefusesWithExitSix(t *testing.T) {
 	fake := fakeapi.New(fakeapi.Options{})
 	defer fake.Close()

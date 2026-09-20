@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"time"
@@ -280,7 +281,6 @@ type LogLine struct {
 }
 
 func (c *Client) ProjectLogs(ctx context.Context, id, kind, since string) ([]LogLine, error) {
-	var lines []LogLine
 	q := url.Values{}
 	if kind != "" {
 		q.Set("kind", kind)
@@ -292,7 +292,16 @@ func (c *Client) ProjectLogs(ctx context.Context, id, kind, since string) ([]Log
 	if enc := q.Encode(); enc != "" {
 		path += "?" + enc
 	}
-	if err := c.get(ctx, path, &lines); err != nil {
+	var lines []LogLine
+	err := c.getNDJSON(ctx, path, func(dec *json.Decoder) error {
+		var l LogLine
+		if err := dec.Decode(&l); err != nil {
+			return err
+		}
+		lines = append(lines, l)
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	return lines, nil

@@ -8,38 +8,37 @@ here and built later, so the gateway is written with that path in mind.
 
 ```
 $ repose open 3000
-Forwarding http://localhost:3000 -> todo-app:3000. Ctrl-C to stop.
-```
-
-```
-$ repose open 3000 5173 --background
-Forwarding 3000, 5173 in the background (pid 48213). `repose open --stop` ends it.
+http://localhost:3000 → todo-app:3000 (Ctrl-C to stop)
 ```
 
 ```
 $ repose open --desktop
+http://localhost:6080/vnc.html?autoconnect=1 (Ctrl-C stops the forward; the desktop keeps running)
 ```
 
 (browser.md covers the desktop.)
 
 ## Behaviour that must hold
 
-- `repose open <port>...` runs `ssh -N -L <port>:127.0.0.1:<port>
-  <slug>.repose` using the CLI's SSH config, so anything the CLI can reach,
-  a plain `ssh -L` can reach too.
-- The local port defaults to the same number. `repose open 3000:8080` maps
-  a local 3000 to the guest's 8080. A busy local port is reported with the
-  process using it when that can be determined.
-- Forwards die with the CLI unless `--background`, which detaches and
-  records the pid in `~/.config/repose/forwards.json`; `repose open
-  --list` and `--stop` manage them.
+- `repose open PORT [--local-port N] [--no-browser]` runs `ssh -N -L
+  <local>:127.0.0.1:<port> <slug>.repose` using the CLI's SSH config, so
+  anything the CLI can reach, a plain `ssh -L` can reach too, and opens
+  the URL in the default browser unless `--no-browser`. One port per
+  invocation; there is no multi-port, `--background`, `--list` or
+  `--stop` form in the first release (that needs a forwards registry this
+  workstream did not build).
+- The local port defaults to the port number. If it is taken, the CLI
+  picks a free one and forwards to that instead, with a message saying
+  so, rather than failing.
+- Forwards run in the foreground and die with the CLI (Ctrl-C, or the
+  parent process exiting); nothing survives the CLI process to reattach
+  to later.
 - Anything bound on `0.0.0.0` or `127.0.0.1` in the guest is reachable this
   way. Nothing in the guest is reachable any other way; the guest has no
   inbound path except through the gateway.
-- Forwards survive a certificate refresh because SSH keeps the established
-  connection; a new forward after expiry triggers a refresh first.
-- `repose status` shows the ports the guest is listening on (from guestd,
-  via `ss -ltn`), so the user knows which number to open.
+- `repose open --desktop` starts the guest's desktop chain over SSH
+  (`systemctl --user start repose-desktop`) and forwards 6080; Ctrl-C
+  stops only the forward, not the desktop.
 
 ## Designed for later: preview URLs
 
@@ -82,7 +81,7 @@ demand.
 
 ## Depends on
 
-Workstreams 07 (`open`, forwards file), 04 (listening ports in signals),
+Workstreams 07 (`open`), 04 (listening ports in signals),
 06 (preview proxy, later), 11 (wildcard DNS and certificate, later), 05
 (route by slug and owner, `preview` flag, later), 08 (preview links, later).
 

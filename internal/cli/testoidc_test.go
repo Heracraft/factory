@@ -27,10 +27,10 @@ type fakeOIDC struct {
 func newFakeOIDC() *fakeOIDC {
 	f := &fakeOIDC{challenge: map[string]string{}, refresh: map[string]string{}}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/.well-known/openid-configuration", f.discovery)
-	mux.HandleFunc("/authorize", f.authorize)
-	mux.HandleFunc("/token", f.token)
-	mux.HandleFunc("/device/auth", f.deviceAuth)
+	mux.HandleFunc("/oidc/.well-known/openid-configuration", f.discovery)
+	mux.HandleFunc("/oidc/auth", f.authorize)
+	mux.HandleFunc("/oidc/token", f.token)
+	mux.HandleFunc("/oidc/device/auth", f.deviceAuth)
 	f.Server = httptest.NewServer(mux)
 	return f
 }
@@ -40,9 +40,9 @@ func (f *fakeOIDC) Issuer() string { return f.Server.URL }
 
 func (f *fakeOIDC) discovery(w http.ResponseWriter, r *http.Request) {
 	writeJSONTest(w, map[string]string{
-		"authorization_endpoint":        f.Server.URL + "/authorize",
-		"token_endpoint":                f.Server.URL + "/token",
-		"device_authorization_endpoint": f.Server.URL + "/device/auth",
+		"authorization_endpoint":        f.Server.URL + "/oidc/auth",
+		"token_endpoint":                f.Server.URL + "/oidc/token",
+		"device_authorization_endpoint": f.Server.URL + "/oidc/device/auth",
 	})
 }
 
