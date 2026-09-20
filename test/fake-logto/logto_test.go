@@ -23,13 +23,13 @@ func TestDiscovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	res, err := http.Get(f.Issuer() + "/oidc/.well-known/openid-configuration")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", res.StatusCode)
 	}
@@ -66,7 +66,7 @@ func runFlow(t *testing.T, f *Fake, verifier, challenge, redirectURI string) map
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("GET /oidc/auth status = %d", res.StatusCode)
 	}
@@ -86,7 +86,7 @@ func runFlow(t *testing.T, f *Fake, verifier, challenge, redirectURI string) map
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res2.Body.Close()
+	defer func() { _ = res2.Body.Close() }()
 	if res2.StatusCode != http.StatusFound {
 		t.Fatalf("POST /oidc/auth/approve status = %d", res2.StatusCode)
 	}
@@ -113,7 +113,7 @@ func runFlow(t *testing.T, f *Fake, verifier, challenge, redirectURI string) map
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res3.Body.Close()
+	defer func() { _ = res3.Body.Close() }()
 	if res3.StatusCode != http.StatusOK {
 		t.Fatalf("POST /oidc/token status = %d", res3.StatusCode)
 	}
@@ -129,7 +129,7 @@ func TestAuthorizationCodeFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	verifier, challenge := newVerifier()
 	body := runFlow(t, f, verifier, challenge, "https://dashboard.test/callback")
@@ -159,7 +159,7 @@ func TestWrongVerifierRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	_, challenge := newVerifier()
 	jar, _ := cookiejar.New(nil)
@@ -174,7 +174,7 @@ func TestWrongVerifierRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	loc, _ := res.Location()
 	code := loc.Query().Get("code")
 
@@ -187,7 +187,7 @@ func TestWrongVerifierRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res2.Body.Close()
+	defer func() { _ = res2.Body.Close() }()
 	if res2.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", res2.StatusCode)
 	}
@@ -203,7 +203,7 @@ func TestRefreshToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	verifier, challenge := newVerifier()
 	body := runFlow(t, f, verifier, challenge, "https://dashboard.test/callback")
@@ -218,7 +218,7 @@ func TestRefreshToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", res.StatusCode)
 	}

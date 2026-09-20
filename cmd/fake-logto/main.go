@@ -19,7 +19,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "fake-logto:", err)
 		os.Exit(1)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// The one line of stdout this process ever prints.
 	fmt.Printf("FAKELOGTO_URL=%s\n", f.Issuer())

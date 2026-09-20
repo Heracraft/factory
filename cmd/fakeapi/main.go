@@ -33,7 +33,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "fakeapi:", err)
 		os.Exit(1)
 	}
-	defer admin.Close()
+	defer func() { _ = admin.Close() }()
 
 	// The two lines of stdout this process ever prints, so a harness's
 	// line-reader never has to guess which line is which.

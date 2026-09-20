@@ -190,7 +190,7 @@ func (f *Fake) authorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html><html><body>
+	_, _ = fmt.Fprintf(w, `<!doctype html><html><body>
 <h1>Sign in to repose (fake Logto)</h1>
 <form method="post" action="/oidc/auth/approve">%s
 <button type="submit">Continue as heracraft</button>
