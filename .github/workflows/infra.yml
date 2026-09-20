@@ -42,9 +42,18 @@ jobs:
       - name: tofu validate
         run: make -C infra validate
 
+      # Pinned and fetched from the release asset directly: the upstream
+      # install script resolves "latest" through api.github.com, which an
+      # unauthenticated runner gets rate-limited on (main 4bcc94b, curl 22).
       - name: install tfsec
+        env:
+          TFSEC_VERSION: v1.28.14
         run: |
-          curl -fsSL https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+          for i in 1 2 3; do
+            curl -fsSL "https://github.com/aquasecurity/tfsec/releases/download/${TFSEC_VERSION}/tfsec-linux-amd64" -o /usr/local/bin/tfsec && break
+            sleep 15
+          done
+          chmod +x /usr/local/bin/tfsec && tfsec --version
 
       # REPOSE-NET-001 is the one that matters: an inbound rule on the hosts
       # subnet fails the build (docs/DESIGN.md §4, §7).
