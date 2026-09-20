@@ -13,8 +13,11 @@
   config = {
     boot.loader.systemd-boot.enable = true;
     # Azure guest essentials; the edge is a Standard_D2s_v7 (NVMe-only).
-    boot.initrd.kernelModules = [ "hv_vmbus" "hv_netvsc" "hv_utils" "hv_storvsc" ];
-    boot.initrd.availableKernelModules = [ "nvme" ];
+    # pci-hyperv before nvme: Azure NVMe controllers sit on Hyper-V's virtual
+    # PCI bus; without it the installed initrd never finds the root disk (see
+    # nix/hosts/azure.nix).
+    boot.initrd.kernelModules = [ "hv_vmbus" "hv_netvsc" "hv_utils" "hv_storvsc" "pci-hyperv" "nvme" ];
+    boot.initrd.availableKernelModules = [ "nvme" "pci-hyperv" ];
     boot.kernelParams = [ "console=ttyS0" "earlyprintk=ttyS0" "rootdelay=300" ];
     networking.usePredictableInterfaceNames = false;
     boot.loader.efi.canTouchEfiVariables = true;
