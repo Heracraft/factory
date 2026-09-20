@@ -38,6 +38,7 @@ func (a *apiStub) Register(_ context.Context, req *hostdv1.RegisterRequest) (*ho
 		return nil, err
 	}
 	return &hostdv1.RegisterResponse{HostId: "host-1", ClientCert: cert, ClientKey: key, GuestCidr: "10.64.4.0/22",
+		LokiUrl: "http://10.255.0.3:3100",
 		WgPrivateKey: "wgpriv", Edge: &hostdv1.WireguardPeer{Endpoint: "edge:51820", PublicKey: "edgepub", Address: "10.255.0.7/16", AllowedIps: []string{"10.255.0.0/16"}}}, nil
 }
 
@@ -84,6 +85,12 @@ func TestRegisterThenRotate(t *testing.T) {
 	if id.Host.HostID != "host-1" || id.Host.GuestCIDR != "10.64.4.0/22" || id.Host.WG.EdgeEndpoint != "edge:51820" {
 		t.Fatalf("host.json %+v", id.Host)
 	}
+	// loki_url reaches host.json, which is what repose-host-net renders
+	// LOKI_HOST from and what fluent-bit.service refuses to start without
+	// (DECISIONS I-95).
+	if id.Host.LokiURL != "http://10.255.0.3:3100" {
+		t.Fatalf("host.json loki_url %q", id.Host.LokiURL)
+	}
 	for _, f := range []string{CertFile, KeyFile, HostFile, WGFile} {
 		st, err := os.Stat(filepath.Join(cfg.Dir, f))
 		if err != nil || st.Mode().Perm() != 0o600 {
@@ -120,6 +127,12 @@ func TestRegisterThenRotate(t *testing.T) {
 	}
 	if rotated.Host.WG.EdgeEndpoint != "edge:51820" {
 		t.Fatal("rotation lost host.json fields")
+	}
+	// The stub's Rotate sends no loki_url, as an api older than I-95
+	// would; the host keeps the one it has rather than losing its log
+	// sink at the 30-day rotation.
+	if rotated.Host.LokiURL != "http://10.255.0.3:3100" {
+		t.Fatalf("rotation cleared loki_url: %q", rotated.Host.LokiURL)
 	}
 	// The rotated cert authenticates against the api.
 	if _, err := Rotate(context.Background(), cfg, rotated); err != nil {

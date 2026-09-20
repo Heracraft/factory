@@ -15,6 +15,7 @@ import (
 
 	"github.com/heracraft/repose/internal/admin"
 	"github.com/heracraft/repose/internal/api/apitest"
+	"github.com/heracraft/repose/internal/api/hostmgr"
 	"github.com/heracraft/repose/internal/api/store"
 	"github.com/heracraft/repose/internal/db/testdb"
 )
@@ -229,6 +230,24 @@ func TestAdminSurface(t *testing.T) {
 	}
 	if v, _ := store.Setting(ctx, h.Pool, "edge_wg_endpoint"); v != "1.2.3.4:51820" {
 		t.Fatalf("edge setting %q", v)
+	}
+	// edge loki: prints, records, refuses a URL with no scheme, clears
+	// (DECISIONS I-95). Every host's Fluent Bit output address, so a typo
+	// here is a fleet that ships nowhere.
+	if out, err := run(t, e, "edge", "loki"); err != nil || !strings.Contains(out, "no Loki recorded") {
+		t.Fatalf("edge loki (empty): %q %v", out, err)
+	}
+	if _, err := run(t, e, "edge", "loki", "10.255.0.3:3100"); err == nil {
+		t.Fatal("edge loki should refuse a URL with no scheme")
+	}
+	if out, err := run(t, e, "edge", "loki", "http://10.255.0.3:3100"); err != nil || !strings.Contains(out, "Loki recorded") {
+		t.Fatalf("edge loki: %q %v", out, err)
+	}
+	if v, _ := store.Setting(ctx, h.Pool, hostmgr.SettingLokiURL); v != "http://10.255.0.3:3100" {
+		t.Fatalf("loki setting %q", v)
+	}
+	if out, err := run(t, e, "edge", "loki"); err != nil || !strings.Contains(out, "http://10.255.0.3:3100") {
+		t.Fatalf("edge loki (show): %q %v", out, err)
 	}
 	if _, err := run(t, e, "hosts", "mark-lost", "host-02"); err != nil {
 		t.Fatal(err)

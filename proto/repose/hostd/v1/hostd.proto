@@ -41,6 +41,12 @@ message RegisterResponse {
   string guest_cidr = 4;
   WireguardPeer edge = 5;
   string wg_private_key = 6;
+  // Where this host's Fluent Bit ships journald and guest console logs,
+  // as scheme://host[:port]. host.json has carried a `loki_url` field
+  // since workstream 01 and nothing ever filled it, so every host
+  // rendered an empty LOKI_HOST. Empty is still accepted and still means
+  // "do not ship" (DECISIONS I-95).
+  string loki_url = 7;
 }
 
 message ApiMessage {

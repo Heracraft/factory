@@ -47,10 +47,16 @@ const UnreachableAfter = 90 * time.Second
 // JoinTokenValidity is how long a minted join token can be used.
 const JoinTokenValidity = 24 * time.Hour
 
-// Settings keys for the edge WireGuard hub (`repose-admin edge init`).
+// Settings keys for the edge WireGuard hub (`repose-admin edge init`) and
+// for the Loki every host ships to (`repose-admin edge loki`). They are
+// settings rather than environment variables for the same reason: they
+// name machines outside this deployment, they change without the api
+// changing, and a redeploy of the api to move a log sink is a redeploy
+// nobody should need (DECISIONS I-95).
 const (
 	SettingEdgeWGPubkey   = "edge_wg_pubkey"
 	SettingEdgeWGEndpoint = "edge_wg_endpoint"
+	SettingLokiURL        = "loki_url"
 )
 
 // Handlers are called for incoming messages. Every handler is optional.
@@ -285,6 +291,11 @@ func (s *Server) Register(ctx context.Context, req *hostdv1.RegisterRequest) (*h
 			resp.WgPrivateKey = wgPriv
 			resp.Edge = &hostdv1.WireguardPeer{Endpoint: edgeEndpoint, PublicKey: edgePub, Address: wgIP.String() + "/16", AllowedIps: []string{"10.255.0.0/16"}}
 		}
+		// Empty when no Loki has been recorded, which the host renders as
+		// an empty LOKI_HOST and Fluent Bit reads as "do not ship".
+		if resp.LokiUrl, err = store.Setting(ctx, tx, SettingLokiURL); err != nil {
+			return err
+		}
 		_, err = store.Audit(ctx, tx, "host:"+h.ID.String(), "host_register", h.Name, map[string]any{"guest_cidr": cidr.String()})
 		return err
 	})
@@ -321,6 +332,12 @@ func (s *Server) Rotate(ctx context.Context, req *hostdv1.RegisterRequest) (*hos
 	resp := &hostdv1.RegisterResponse{HostId: h.ID.String(), ClientCert: certPEM, ClientKey: keyPEM}
 	if h.GuestCIDR != nil {
 		resp.GuestCidr = h.GuestCIDR.String()
+	}
+	// Rotate is the only later chance to tell a host about a Loki that was
+	// recorded after it registered, so it carries the current value too.
+	if resp.LokiUrl, err = store.Setting(ctx, s.pool, SettingLokiURL); err != nil {
+		s.log.Error("rotate: loki setting", "event", "rotate", "err", err.Error())
+		return nil, status.Error(codes.Internal, "rotate failed")
 	}
 	return resp, nil
 }

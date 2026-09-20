@@ -237,13 +237,19 @@ func (x *RegisterRequest) GetInfo() *HostInfo {
 }
 
 type RegisterResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	HostId        string                 `protobuf:"bytes,1,opt,name=host_id,json=hostId,proto3" json:"host_id,omitempty"`
-	ClientCert    []byte                 `protobuf:"bytes,2,opt,name=client_cert,json=clientCert,proto3" json:"client_cert,omitempty"`
-	ClientKey     []byte                 `protobuf:"bytes,3,opt,name=client_key,json=clientKey,proto3" json:"client_key,omitempty"`
-	GuestCidr     string                 `protobuf:"bytes,4,opt,name=guest_cidr,json=guestCidr,proto3" json:"guest_cidr,omitempty"`
-	Edge          *WireguardPeer         `protobuf:"bytes,5,opt,name=edge,proto3" json:"edge,omitempty"`
-	WgPrivateKey  string                 `protobuf:"bytes,6,opt,name=wg_private_key,json=wgPrivateKey,proto3" json:"wg_private_key,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	HostId       string                 `protobuf:"bytes,1,opt,name=host_id,json=hostId,proto3" json:"host_id,omitempty"`
+	ClientCert   []byte                 `protobuf:"bytes,2,opt,name=client_cert,json=clientCert,proto3" json:"client_cert,omitempty"`
+	ClientKey    []byte                 `protobuf:"bytes,3,opt,name=client_key,json=clientKey,proto3" json:"client_key,omitempty"`
+	GuestCidr    string                 `protobuf:"bytes,4,opt,name=guest_cidr,json=guestCidr,proto3" json:"guest_cidr,omitempty"`
+	Edge         *WireguardPeer         `protobuf:"bytes,5,opt,name=edge,proto3" json:"edge,omitempty"`
+	WgPrivateKey string                 `protobuf:"bytes,6,opt,name=wg_private_key,json=wgPrivateKey,proto3" json:"wg_private_key,omitempty"`
+	// Where this host's Fluent Bit ships journald and guest console logs,
+	// as scheme://host[:port]. host.json has carried a `loki_url` field
+	// since workstream 01 and nothing ever filled it, so every host
+	// rendered an empty LOKI_HOST. Empty is still accepted and still means
+	// "do not ship" (DECISIONS I-95).
+	LokiUrl       string `protobuf:"bytes,7,opt,name=loki_url,json=lokiUrl,proto3" json:"loki_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -316,6 +322,13 @@ func (x *RegisterResponse) GetEdge() *WireguardPeer {
 func (x *RegisterResponse) GetWgPrivateKey() string {
 	if x != nil {
 		return x.WgPrivateKey
+	}
+	return ""
+}
+
+func (x *RegisterResponse) GetLokiUrl() string {
+	if x != nil {
+		return x.LokiUrl
 	}
 	return ""
 }
@@ -3692,7 +3705,7 @@ const file_repose_hostd_v1_hostd_proto_rawDesc = "" +
 	"\x0fRegisterRequest\x12\x1d\n" +
 	"\n" +
 	"join_token\x18\x01 \x01(\tR\tjoinToken\x12-\n" +
-	"\x04info\x18\x02 \x01(\v2\x19.repose.hostd.v1.HostInfoR\x04info\"\xe4\x01\n" +
+	"\x04info\x18\x02 \x01(\v2\x19.repose.hostd.v1.HostInfoR\x04info\"\xff\x01\n" +
 	"\x10RegisterResponse\x12\x17\n" +
 	"\ahost_id\x18\x01 \x01(\tR\x06hostId\x12\x1f\n" +
 	"\vclient_cert\x18\x02 \x01(\fR\n" +
@@ -3702,7 +3715,8 @@ const file_repose_hostd_v1_hostd_proto_rawDesc = "" +
 	"\n" +
 	"guest_cidr\x18\x04 \x01(\tR\tguestCidr\x122\n" +
 	"\x04edge\x18\x05 \x01(\v2\x1e.repose.hostd.v1.WireguardPeerR\x04edge\x12$\n" +
-	"\x0ewg_private_key\x18\x06 \x01(\tR\fwgPrivateKey\"s\n" +
+	"\x0ewg_private_key\x18\x06 \x01(\tR\fwgPrivateKey\x12\x19\n" +
+	"\bloki_url\x18\a \x01(\tR\alokiUrl\"s\n" +
 	"\n" +
 	"ApiMessage\x124\n" +
 	"\acommand\x18\x01 \x01(\v2\x18.repose.hostd.v1.CommandH\x00R\acommand\x12(\n" +

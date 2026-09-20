@@ -1535,7 +1535,13 @@ func (e *Env) operatorCert(ctx context.Context, args []string) error {
 }
 
 func (e *Env) edge(ctx context.Context, args []string) error {
-	if len(args) == 0 || args[0] != "init" {
+	if len(args) == 0 {
+		return ErrUsage
+	}
+	if args[0] == "loki" {
+		return e.edgeLoki(ctx, args[1:])
+	}
+	if args[0] != "init" {
 		return ErrUsage
 	}
 	fs, err := flagsFor("edge init", args[1:], func(fs *flag.FlagSet) {
@@ -1568,6 +1574,49 @@ func (e *Env) edge(ctx context.Context, args []string) error {
 		return nil
 	}
 	return e.caCmd(ctx, []string{"sign-client", "--name", "gateway", "--out", out})
+}
+
+// edgeLoki records, or prints, the Loki every host's Fluent Bit ships to.
+// A setting rather than an api environment variable: it names a machine
+// outside this deployment, and moving a log sink should not need a
+// redeploy of the api (DECISIONS I-95). A host learns it at `Register`,
+// and an already-registered host at its next `Rotate` or by an edit of
+// its host.json (ops/RUNBOOK.md "FluentBitStuck").
+func (e *Env) edgeLoki(ctx context.Context, args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("%w: edge loki takes one URL, or none to print the current one", ErrUsage)
+	}
+	if err := e.connect(ctx); err != nil {
+		return err
+	}
+	if len(args) == 0 {
+		cur, err := store.Setting(ctx, e.pool, hostmgr.SettingLokiURL)
+		if err != nil {
+			return err
+		}
+		if cur == "" {
+			_, _ = fmt.Fprintln(e.Stdout, "no Loki recorded; hosts ship nothing")
+			return nil
+		}
+		_, _ = fmt.Fprintln(e.Stdout, cur)
+		return nil
+	}
+	url := args[0]
+	if url != "" && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		return fmt.Errorf("%w: the Loki URL carries its scheme, e.g. http://10.255.0.3:3100", ErrUsage)
+	}
+	if err := store.SetSetting(ctx, e.pool, hostmgr.SettingLokiURL, url); err != nil {
+		return err
+	}
+	if _, err := e.audited(ctx, "edge_loki", url, nil); err != nil {
+		return err
+	}
+	if url == "" {
+		_, _ = fmt.Fprintln(e.Stdout, "Loki cleared; hosts registering from now on ship nothing")
+		return nil
+	}
+	_, _ = fmt.Fprintf(e.Stdout, "Loki recorded: %s; hosts registering or rotating from now on receive it\n", url)
+	return nil
 }
 
 // --- audit, ops -------------------------------------------------------------------

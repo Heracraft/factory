@@ -353,9 +353,15 @@ are dropped.
    it with freshly rendered addresses.
 3. Buffer size: `du -sh /var/lib/fluent-bit/storage`. Approaching 1 GB is the
    deadline for fixing Loki before lines are dropped.
-4. Wrong Loki address: `grep LOKI /run/repose/host.env`. It comes from
-   `loki_url` in `host.json`, which the api sends at registration; correct it
-   there and `systemctl restart repose-host-net`.
+4. Wrong or missing Loki address: `grep LOKI /run/repose/host.env`. It
+   comes from `loki_url` in `host.json`, which the api sends at
+   registration from the `loki_url` setting. An **empty** `LOKI_HOST` is
+   not a failure of this alert but of its precondition: the unit refuses
+   to start and says so (`systemctl status fluent-bit`), because no Loki
+   has been recorded. Fix it centrally with `repose-admin edge loki
+   http://<loki>:3100` — a host picks it up at its next `Rotate`, or
+   immediately by editing `host.json` and `systemctl restart
+   repose-host-net` (DECISIONS I-95).
 5. Guests are unaffected throughout: nothing in a guest waits on log
    shipping.
 

@@ -293,7 +293,7 @@ func (*Thaw) Descriptor() ([]byte, []int) {
 
 // registration: `nix-store --dump-db` of the closure, loaded into the guest's
 // database before the switch so nix knows the paths that arrived through the
-// shared store (DECISIONS I-55). Empty keeps the pre-I-55 behaviour.
+// shared store (DECISIONS I-67). Empty keeps the pre-I-55 behaviour.
 type Switch struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SystemClosure string                 `protobuf:"bytes,1,opt,name=system_closure,json=systemClosure,proto3" json:"system_closure,omitempty"`
