@@ -337,3 +337,25 @@ func (h *Harness) CreateRunning(u *store.User, name string) *store.Project {
 	}
 	return h.Project(pid)
 }
+
+// WaitIdle blocks until the project has no pending or running op. Handlers
+// that push to a running guest (secrets, principals) queue an op the caller
+// never sees an id for, and a lifecycle request issued while it is still
+// open answers 409 (CI, 2026-09-20).
+func (h *Harness) WaitIdle(projectID uuid.UUID) {
+	h.T.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		var open int
+		if err := h.Pool.QueryRow(h.Ctx, "select count(*) from ops where project_id = $1 and state in ('pending','running')", projectID).Scan(&open); err != nil {
+			h.T.Fatal(err)
+		}
+		if open == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			h.T.Fatalf("project %s still has %d open ops", projectID, open)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}

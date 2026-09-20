@@ -36,11 +36,6 @@ let
     # The test driver sets a root password file; the host's locked password
     # would conflict with it.
     users.users.root.hashedPassword = lib.mkForce null;
-    # These tests exercise the host's units around hostd with the stub the
-    # header describes (registration from a fixture, the audit hook); the
-    # flake's hostModules wire the real daemon, which needs an api to
-    # register against. The daemon itself is covered by its Go tests.
-    repose.host.hostdPackage = lib.mkForce (pkgs.callPackage ../hostd-stub.nix { });
     boot.loader.systemd-boot.enable = lib.mkForce false;
     boot.loader.efi.canTouchEfiVariables = lib.mkForce false;
     virtualisation = {
