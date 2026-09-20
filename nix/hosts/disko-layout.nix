@@ -40,11 +40,15 @@ let
     fi
     if [ ! -e "${dataDevice}" ]; then
       os=$(readlink -f "${osDevice}")
+      # lsblk rather than a glob: disko's script runs with globbing off, so
+      # /sys/block/nvme*n* stayed literal and no disk was ever seen
+      # (host-01, 2026-09-20). Whole disks only; loop devices and the
+      # virtual DVD are not disks.
       candidates=""
-      for d in /sys/block/nvme*n* /dev/disk/azure/scsi1/lun*; do
-        [ -e "$d" ] || continue
-        dev=/dev/$(basename "$(readlink -f "$d")")
+      for name in $(lsblk -dn -o NAME,TYPE | awk '$2 == "disk" { print $1 }'); do
+        dev=/dev/$name
         [ "$dev" = "$os" ] && continue
+        case "$name" in nvme*|sd*) ;; *) continue ;; esac
         candidates="$candidates $dev"
       done
       set -- $candidates
