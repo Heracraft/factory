@@ -110,37 +110,37 @@ func exitCodeFor(err error, stderr io.Writer) int {
 	var ee *exitError
 	if errors.As(err, &ee) {
 		if ee.msg != "" {
-			fmt.Fprintln(stderr, ee.msg)
+			_, _ = fmt.Fprintln(stderr, ee.msg)
 		}
 		return ee.code
 	}
 	var notLoggedIn *notLoggedInError
 	if errors.As(err, &notLoggedIn) {
-		fmt.Fprintln(stderr, "Not logged in. Run `repose login`.")
+		_, _ = fmt.Fprintln(stderr, "Not logged in. Run `repose login`.")
 		return ExitNotLoggedIn
 	}
 	var unreachable *unreachableError
 	if errors.As(err, &unreachable) {
-		fmt.Fprintf(stderr, "Cannot reach the api: %v\n", unreachable.cause)
+		_, _ = fmt.Fprintf(stderr, "Cannot reach the api: %v\n", unreachable.cause)
 		return ExitGeneric
 	}
 	var apiErr *APIError
 	if errors.As(err, &apiErr) {
 		switch apiErr.Code {
 		case "unauthenticated":
-			fmt.Fprintln(stderr, "Not logged in. Run `repose login`.")
+			_, _ = fmt.Fprintln(stderr, "Not logged in. Run `repose login`.")
 			return ExitNotLoggedIn
 		case "payment_required":
-			fmt.Fprintln(stderr, "Add a card at https://repose.herakraft.co/billing first.")
+			_, _ = fmt.Fprintln(stderr, "Add a card at https://repose.herakraft.co/billing first.")
 			return ExitPaymentRequired
 		case "capacity":
-			fmt.Fprintln(stderr, "No capacity right now; try again in a few minutes. (We have been alerted.)")
+			_, _ = fmt.Fprintln(stderr, "No capacity right now; try again in a few minutes. (We have been alerted.)")
 			return ExitCapacity
 		default:
-			fmt.Fprintf(stderr, "%s: %s\n", apiErr.Code, apiErr.Message)
+			_, _ = fmt.Fprintf(stderr, "%s: %s\n", apiErr.Code, apiErr.Message)
 			return ExitGeneric
 		}
 	}
-	fmt.Fprintln(stderr, err)
+	_, _ = fmt.Fprintln(stderr, err)
 	return ExitGeneric
 }

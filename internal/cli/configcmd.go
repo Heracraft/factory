@@ -25,7 +25,7 @@ func ConfigShowCmd(ctx context.Context, e *Env, projectArg string, revisions boo
 			if r.Error != "" {
 				line += "\t" + r.Error
 			}
-			fmt.Fprintln(e.Out, line)
+			_, _ = fmt.Fprintln(e.Out, line)
 		}
 		return nil
 	}
@@ -36,7 +36,7 @@ func ConfigShowCmd(ctx context.Context, e *Env, projectArg string, revisions boo
 	if e.JSON {
 		return writeJSONOut(e.Out, cfg)
 	}
-	fmt.Fprint(e.Out, cfg.Fragment)
+	_, _ = fmt.Fprint(e.Out, cfg.Fragment)
 	return nil
 }
 
@@ -53,7 +53,7 @@ func applyFragmentAndRender(ctx context.Context, e *Env, project *Project, fragm
 		return err
 	}
 	if opID == "" {
-		fmt.Fprintf(e.Out, "configuration unchanged; %s is still active\n", revisionID)
+		_, _ = fmt.Fprintf(e.Out, "configuration unchanged; %s is still active\n", revisionID)
 		return nil
 	}
 	op, err := waitOp(ctx, e.Client, project.ID, opID, e.Out)
@@ -64,11 +64,11 @@ func applyFragmentAndRender(ctx context.Context, e *Env, project *Project, fragm
 		RenderBuildError(e.Out, op.Error, localFragmentPath, mustReadFragment(localFragmentPath))
 		return silent(ExitBuildFailed)
 	}
-	fmt.Fprintf(e.Out, "Applied revision %s\n", revisionID)
+	_, _ = fmt.Fprintf(e.Out, "Applied revision %s\n", revisionID)
 	if revs, err := e.Client.ListRevisions(ctx, project.ID); err == nil {
 		for _, r := range revs {
 			if r.ID == revisionID && r.RebootRequired {
-				fmt.Fprintln(e.Out, "This change needs a reboot; run `repose stop && repose start` when the agent is idle.")
+				_, _ = fmt.Fprintln(e.Out, "This change needs a reboot; run `repose stop && repose start` when the agent is idle.")
 			}
 		}
 	}
@@ -119,7 +119,7 @@ func ConfigEditCmd(ctx context.Context, e *Env, projectArg string, editor func(p
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	defer func() { _ = os.Remove(tmp.Name()) }()
 	if _, err := tmp.WriteString(cfg.Fragment); err != nil {
 		return err
 	}

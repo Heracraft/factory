@@ -36,7 +36,7 @@ func NotifySetCmd(ctx context.Context, e *Env, email *bool, ntfy *string) error 
 	if me.Notify.NtfyURL != nil {
 		ntfyURL = *me.Notify.NtfyURL
 	}
-	fmt.Fprintf(e.Out, "email: %s\nntfy: %s\n", onOff(me.Notify.Email), ntfyURL)
+	_, _ = fmt.Fprintf(e.Out, "email: %s\nntfy: %s\n", onOff(me.Notify.Email), ntfyURL)
 	return nil
 }
 
@@ -53,7 +53,7 @@ func NotifyTestCmd(ctx context.Context, e *Env) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(e.Out, "email: %s\nntfy: %s\n", res.Email, res.Ntfy)
+	_, _ = fmt.Fprintf(e.Out, "email: %s\nntfy: %s\n", res.Email, res.Ntfy)
 	if res.Email != "ok" && res.Ntfy != "ok" {
 		return silent(ExitGeneric)
 	}

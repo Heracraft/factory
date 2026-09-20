@@ -32,9 +32,9 @@ func TestStreamBuildLogRendersLinesAndDoneState(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("id: 1\ndata: {\"seq\":1,\"line\":\"evaluating configuration\"}\n\n"))
-		w.Write([]byte("id: 2\ndata: {\"seq\":2,\"line\":\"built\"}\n\n"))
-		w.Write([]byte("event: done\ndata: {\"state\":\"done\"}\n\n"))
+		_, _ = w.Write([]byte("id: 1\ndata: {\"seq\":1,\"line\":\"evaluating configuration\"}\n\n"))
+		_, _ = w.Write([]byte("id: 2\ndata: {\"seq\":2,\"line\":\"built\"}\n\n"))
+		_, _ = w.Write([]byte("event: done\ndata: {\"state\":\"done\"}\n\n"))
 	}))
 	defer srv.Close()
 

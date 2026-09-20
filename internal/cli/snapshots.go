@@ -19,7 +19,7 @@ func SnapshotsListCmd(ctx context.Context, e *Env, projectArg string) error {
 		return writeJSONOut(e.Out, snaps)
 	}
 	for _, s := range snaps {
-		fmt.Fprintf(e.Out, "%s\t%s\t%s\t%s\n", s.ID, s.CreatedAt.Format("2006-01-02 15:04"), humanBytes(s.Bytes), s.Reason)
+		_, _ = fmt.Fprintf(e.Out, "%s\t%s\t%s\t%s\n", s.ID, s.CreatedAt.Format("2006-01-02 15:04"), humanBytes(s.Bytes), s.Reason)
 	}
 	return nil
 }
@@ -41,7 +41,7 @@ func SnapshotsCreateCmd(ctx context.Context, e *Env, projectArg string) error {
 	if op.State == "error" {
 		return exitf(ExitGeneric, "%s", op.Error)
 	}
-	fmt.Fprintln(e.Out, "Snapshot created.")
+	_, _ = fmt.Fprintln(e.Out, "Snapshot created.")
 	return nil
 }
 
@@ -63,7 +63,7 @@ func SnapshotsRestoreCmd(ctx context.Context, e *Env, projectArg, snapshotID, as
 				return err
 			}
 			if !ok {
-				fmt.Fprintln(e.Out, "Not restored.")
+				_, _ = fmt.Fprintln(e.Out, "Not restored.")
 				return nil
 			}
 		}
@@ -79,6 +79,6 @@ func SnapshotsRestoreCmd(ctx context.Context, e *Env, projectArg, snapshotID, as
 	if op.State == "error" {
 		return exitf(ExitGeneric, "%s", op.Error)
 	}
-	fmt.Fprintln(e.Out, "Restored.")
+	_, _ = fmt.Fprintln(e.Out, "Restored.")
 	return nil
 }

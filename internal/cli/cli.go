@@ -25,7 +25,7 @@ func Execute(version string) int {
 		return ExitOK
 	}
 	if usageErr, ok := err.(cobraUsageError); ok {
-		fmt.Fprintln(os.Stderr, usageErr.Error())
+		_, _ = fmt.Fprintln(os.Stderr, usageErr.Error())
 		return ExitUsage
 	}
 	return exitCodeFor(err, os.Stderr)
@@ -344,7 +344,7 @@ func readSecretValue(name, fromFile string, fromEnv bool) ([]byte, error) {
 		}
 		return []byte(v), nil
 	default:
-		fmt.Fprintf(os.Stderr, "Value for %s: ", name)
+		_, _ = fmt.Fprintf(os.Stderr, "Value for %s: ", name)
 		v, err := readHiddenLine()
 		if err != nil {
 			return nil, err
@@ -630,7 +630,7 @@ func goos() string {
 // did.
 func interactiveAskPush(repoDir string) func(commit, branch string) (bool, error) {
 	return func(commit, branch string) (bool, error) {
-		fmt.Fprintf(os.Stderr, "Commit %s is not on origin. Push %s now? [Y/n] ", commit, branch)
+		_, _ = fmt.Fprintf(os.Stderr, "Commit %s is not on origin. Push %s now? [Y/n] ", commit, branch)
 		yes, err := interactiveConfirm("")()
 		if err != nil || !yes {
 			return false, err
@@ -645,7 +645,7 @@ func interactiveAskPush(repoDir string) func(commit, branch string) (bool, error
 func interactiveConfirm(prompt string) func() (bool, error) {
 	return func() (bool, error) {
 		if prompt != "" {
-			fmt.Fprint(os.Stderr, prompt)
+			_, _ = fmt.Fprint(os.Stderr, prompt)
 		}
 		line, _ := readLine()
 		line = strings.TrimSpace(strings.ToLower(line))
@@ -654,7 +654,7 @@ func interactiveConfirm(prompt string) func() (bool, error) {
 }
 
 func interactiveTypedConfirm(slug string) (string, error) {
-	fmt.Fprintf(os.Stderr, "Type %q to destroy it: ", slug)
+	_, _ = fmt.Fprintf(os.Stderr, "Type %q to destroy it: ", slug)
 	return readLine()
 }
 

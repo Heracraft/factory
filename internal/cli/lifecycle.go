@@ -2,8 +2,39 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 )
+
+const opConflictRetryWindow = 10 * time.Second
+const opConflictRetryInterval = 250 * time.Millisecond
+
+// retryOnOpConflict retries fn while it fails with a 409 conflict:
+// DECISIONS I-70 says a secret or principal push to a running guest
+// queues an update_secrets op the caller gets no id for, and
+// stop/start/resize/destroy answer 409 conflict "an operation is in
+// progress" while it runs, usually well under a second — the only
+// conflict these four routes ever produce. Any other error returns
+// immediately.
+func retryOnOpConflict(ctx context.Context, fn func() error) error {
+	deadline := time.Now().Add(opConflictRetryWindow)
+	for {
+		err := fn()
+		var apiErr *APIError
+		if err == nil || !errors.As(err, &apiErr) || apiErr.Code != "conflict" {
+			return err
+		}
+		if time.Now().After(deadline) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(opConflictRetryInterval):
+		}
+	}
+}
 
 // StartCmd implements `repose start` (07-cli.md §5.6): start, wait, print
 // the connected line. Does not sync.
@@ -15,7 +46,7 @@ func StartCmd(ctx context.Context, e *Env, projectArg string) error {
 	if err := ensureRunning(ctx, e, project); err != nil {
 		return err
 	}
-	fmt.Fprintf(e.Out, "Connected to %s (%s)\n", project.Slug, project.Class)
+	_, _ = fmt.Fprintf(e.Out, "Connected to %s (%s)\n", project.Slug, project.Class)
 	return nil
 }
 
@@ -25,7 +56,12 @@ func StopCmd(ctx context.Context, e *Env, projectArg string, snapshot bool) erro
 	if err != nil {
 		return err
 	}
-	opID, err := e.Client.StopProject(ctx, project.ID, snapshot)
+	var opID string
+	err = retryOnOpConflict(ctx, func() error {
+		var err error
+		opID, err = e.Client.StopProject(ctx, project.ID, snapshot)
+		return err
+	})
 	if err != nil {
 		return err
 	}
@@ -46,9 +82,9 @@ func StopCmd(ctx context.Context, e *Env, projectArg string, snapshot bool) erro
 		snapID, snapBytes = latest.ID, latest.Bytes
 	}
 	if snapshot && snapID != "" {
-		fmt.Fprintf(e.Out, "Stopped %s. Snapshot %s (%s). Disk is still billed; `repose destroy` to stop that.\n", p.Slug, snapID, humanBytes(snapBytes))
+		_, _ = fmt.Fprintf(e.Out, "Stopped %s. Snapshot %s (%s). Disk is still billed; `repose destroy` to stop that.\n", p.Slug, snapID, humanBytes(snapBytes))
 	} else {
-		fmt.Fprintf(e.Out, "Stopped %s. Disk is still billed; `repose destroy` to stop that.\n", p.Slug)
+		_, _ = fmt.Fprintf(e.Out, "Stopped %s. Disk is still billed; `repose destroy` to stop that.\n", p.Slug)
 	}
 	return nil
 }
@@ -71,14 +107,14 @@ func DestroyCmd(ctx context.Context, e *Env, projectArg string, yes bool, confir
 			return exitf(ExitUsage, "typed name did not match %q; nothing destroyed", project.Slug)
 		}
 	}
-	if err := e.Client.DestroyProject(ctx, project.ID); err != nil {
+	if err := retryOnOpConflict(ctx, func() error { return e.Client.DestroyProject(ctx, project.ID) }); err != nil {
 		return err
 	}
 	until := "30 days from now"
 	if project.LastSnapshotAt != nil {
 		until = project.LastSnapshotAt.AddDate(0, 0, 30).Format("2006-01-02")
 	}
-	fmt.Fprintf(e.Out, "Destroyed. Last snapshot kept until %s; `repose snapshots restore <id> --as-new NAME` brings it back.\n", until)
+	_, _ = fmt.Fprintf(e.Out, "Destroyed. Last snapshot kept until %s; `repose snapshots restore <id> --as-new NAME` brings it back.\n", until)
 	return nil
 }
 
@@ -89,7 +125,12 @@ func ResizeCmd(ctx context.Context, e *Env, projectArg string, bytes int64) erro
 	if err != nil {
 		return err
 	}
-	opID, err := e.Client.ResizeProject(ctx, project.ID, bytes)
+	var opID string
+	err = retryOnOpConflict(ctx, func() error {
+		var err error
+		opID, err = e.Client.ResizeProject(ctx, project.ID, bytes)
+		return err
+	})
 	if err != nil {
 		return err
 	}
@@ -100,7 +141,7 @@ func ResizeCmd(ctx context.Context, e *Env, projectArg string, bytes int64) erro
 	if op.State == "error" {
 		return exitf(ExitGeneric, "%s", op.Error)
 	}
-	fmt.Fprintf(e.Out, "Resized %s to %s.\n", project.Slug, humanBytes(bytes))
+	_, _ = fmt.Fprintf(e.Out, "Resized %s to %s.\n", project.Slug, humanBytes(bytes))
 	return nil
 }
 

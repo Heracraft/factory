@@ -28,11 +28,11 @@ func OpenPortCmd(ctx context.Context, e *Env, projectArg string, port int, local
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(e.ErrOut, "port %d is taken; forwarding to %d instead\n", localPort, freed)
+		_, _ = fmt.Fprintf(e.ErrOut, "port %d is taken; forwarding to %d instead\n", localPort, freed)
 		localPort = freed
 	}
 	url := fmt.Sprintf("http://localhost:%d", localPort)
-	fmt.Fprintf(e.Out, "%s → %s:%d (Ctrl-C to stop)\n", url, project.Slug, port)
+	_, _ = fmt.Fprintf(e.Out, "%s → %s:%d (Ctrl-C to stop)\n", url, project.Slug, port)
 	if !noBrowser {
 		_ = openBrowser(url)
 	}
@@ -54,7 +54,7 @@ func OpenDesktopCmd(ctx context.Context, e *Env, projectArg string, noBrowser bo
 		return err
 	}
 	url := "http://localhost:6080/vnc.html?autoconnect=1"
-	fmt.Fprintf(e.Out, "%s (Ctrl-C stops the forward; the desktop keeps running)\n", url)
+	_, _ = fmt.Fprintf(e.Out, "%s (Ctrl-C stops the forward; the desktop keeps running)\n", url)
 	if !noBrowser {
 		_ = openBrowser(url)
 	}
@@ -66,7 +66,7 @@ func portFree(port int) bool {
 	if err != nil {
 		return false
 	}
-	l.Close()
+	_ = l.Close()
 	return true
 }
 
@@ -75,7 +75,7 @@ func freePort() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 	_, portStr, err := net.SplitHostPort(l.Addr().String())
 	if err != nil {
 		return 0, err

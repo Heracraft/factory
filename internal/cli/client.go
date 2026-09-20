@@ -107,7 +107,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 }
 
 func readResponse(resp *http.Response, out any) (*APIError, error) {
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err

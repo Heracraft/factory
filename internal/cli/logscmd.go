@@ -27,7 +27,7 @@ func LogsCmd(ctx context.Context, e *Env, projectArg, kind, since string, follow
 				}
 				continue
 			}
-			fmt.Fprintf(e.Out, "%s %s %s\n", l.TS.Format(time.RFC3339), l.Kind, l.Line)
+			_, _ = fmt.Fprintf(e.Out, "%s %s %s\n", l.TS.Format(time.RFC3339), l.Kind, l.Line)
 		}
 		if !follow {
 			return nil
@@ -72,7 +72,7 @@ func EventsCmd(ctx context.Context, e *Env, projectArg, since string, follow boo
 				}
 				continue
 			}
-			fmt.Fprintf(e.Out, "%s\t%s\t%s\t%s\n", ev.TS.Format(time.RFC3339), ev.Agent, ev.Kind, ev.Summary)
+			_, _ = fmt.Fprintf(e.Out, "%s\t%s\t%s\t%s\n", ev.TS.Format(time.RFC3339), ev.Agent, ev.Kind, ev.Summary)
 		}
 		if !follow {
 			return nil

@@ -34,22 +34,22 @@ func ProjectsCmd(ctx context.Context, e *Env) error {
 		return writeJSONOut(e.Out, projects)
 	}
 	for _, p := range projects {
-		fmt.Fprintln(e.Out, statusFirstLine(&p))
+		_, _ = fmt.Fprintln(e.Out, statusFirstLine(&p))
 	}
 	return nil
 }
 
 func writeStatusLines(w io.Writer, p *Project, route *Route, snaps []Snapshot, events []Event) {
-	fmt.Fprintln(w, statusFirstLine(p))
+	_, _ = fmt.Fprintln(w, statusFirstLine(p))
 	if route != nil {
 		disk := ""
 		if p.VolumeBytes > 0 {
 			disk = fmt.Sprintf("%s/%s", humanBytes(p.DiskUsedBytes), humanBytes(p.VolumeBytes))
 		}
-		fmt.Fprintf(w, "  host %s   ip %s   disk %s   snapshot %s\n", route.HostID, route.GuestIP, disk, snapshotAge(snaps))
+		_, _ = fmt.Fprintf(w, "  host %s   ip %s   disk %s   snapshot %s\n", route.HostID, route.GuestIP, disk, snapshotAge(snaps))
 	}
 	if p.Signals != nil {
-		fmt.Fprintf(w, "  sessions %d   tmux clients %d   docker %d\n", p.Signals.SSHSessions, p.Signals.TmuxClients, p.Signals.Docker)
+		_, _ = fmt.Fprintf(w, "  sessions %d   tmux clients %d   docker %d\n", p.Signals.SSHSessions, p.Signals.TmuxClients, p.Signals.Docker)
 	}
 	if len(events) > 0 {
 		last := events[len(events)-1]
@@ -57,7 +57,7 @@ func writeStatusLines(w io.Writer, p *Project, route *Route, snaps []Snapshot, e
 		if agent != "" {
 			agent += " "
 		}
-		fmt.Fprintf(w, "  last event %s: %s%s %q\n", humanAge(last.TS), agent, last.Kind, last.Summary)
+		_, _ = fmt.Fprintf(w, "  last event %s: %s%s %q\n", humanAge(last.TS), agent, last.Kind, last.Summary)
 	}
 }
 

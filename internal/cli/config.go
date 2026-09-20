@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -54,14 +53,6 @@ func loadConfig(dir string) (Config, error) {
 		cfg.LogtoIssuer = defaultLogtoIssuer
 	}
 	return cfg, nil
-}
-
-func saveConfig(dir string, cfg Config) error {
-	var buf bytes.Buffer
-	if err := toml.NewEncoder(&buf).Encode(cfg); err != nil {
-		return err
-	}
-	return writeFileAtomic(configPath(dir), buf.Bytes(), 0o600)
 }
 
 // Credentials is credentials.json. On macOS the refresh token lives in the

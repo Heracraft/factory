@@ -58,7 +58,7 @@ func discover(ctx context.Context, httpClient *http.Client, configDirPath, issue
 	if err != nil {
 		return nil, fmt.Errorf("discovering %s: %w", issuer, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -116,7 +116,7 @@ func postForm(ctx context.Context, httpClient *http.Client, endpoint string, for
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var tr tokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
 		return nil, err
@@ -135,7 +135,7 @@ func loginPKCE(ctx context.Context, httpClient *http.Client, doc *discoveryDoc, 
 	if err != nil {
 		return nil, err
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", listener.Addr().(*net.TCPAddr).Port)
 
 	pkce, err := newPKCE()
@@ -172,7 +172,7 @@ func loginPKCE(ctx context.Context, httpClient *http.Client, doc *discoveryDoc, 
 		q := r.URL.Query()
 		if q.Get("error") != "" {
 			once.Do(func() { resultCh <- result{err: fmt.Errorf("%s: %s", q.Get("error"), q.Get("error_description"))} })
-			fmt.Fprintln(w, "Login failed; you can close this tab.")
+			_, _ = fmt.Fprintln(w, "Login failed; you can close this tab.")
 			return
 		}
 		if q.Get("state") != state {
@@ -181,13 +181,13 @@ func loginPKCE(ctx context.Context, httpClient *http.Client, doc *discoveryDoc, 
 			return
 		}
 		once.Do(func() { resultCh <- result{code: q.Get("code")} })
-		fmt.Fprintln(w, "Logged in. You can close this tab and return to the terminal.")
+		_, _ = fmt.Fprintln(w, "Logged in. You can close this tab and return to the terminal.")
 	})}
-	go srv.Serve(listener)
-	defer srv.Close()
+	go func() { _ = srv.Serve(listener) }()
+	defer func() { _ = srv.Close() }()
 
 	if err := open(authURL.String()); err != nil {
-		fmt.Fprintf(os.Stderr, "Open this URL to log in:\n%s\n", authURL.String())
+		_, _ = fmt.Fprintf(os.Stderr, "Open this URL to log in:\n%s\n", authURL.String())
 	}
 
 	select {
@@ -231,7 +231,7 @@ func loginDeviceCode(ctx context.Context, httpClient *http.Client, doc *discover
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var da deviceAuthResponse
 	if err := json.NewDecoder(resp.Body).Decode(&da); err != nil {
 		return nil, err

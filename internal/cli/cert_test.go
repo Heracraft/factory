@@ -19,8 +19,8 @@ func withHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	old := os.Getenv("HOME")
-	os.Setenv("HOME", home)
-	t.Cleanup(func() { os.Setenv("HOME", old) })
+	_ = os.Setenv("HOME", home)
+	t.Cleanup(func() { _ = os.Setenv("HOME", old) })
 	return home
 }
 
@@ -178,7 +178,9 @@ func TestEnsureCertReusesValidCertificate(t *testing.T) {
 func TestEnsureCertReissuesWhenProjectAdded(t *testing.T) {
 	home := withHome(t)
 	sd := filepath.Join(home, ".ssh", "repose")
-	os.MkdirAll(sd, 0o700)
+	if err := os.MkdirAll(sd, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := ensureIdentityKey(); err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +212,9 @@ func TestEnsureCertReissuesWhenProjectAdded(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldLine := sshca.Marshal(old) + "\n"
-	os.WriteFile(filepath.Join(sd, "id_ed25519-cert.pub"), []byte(oldLine), 0o600)
+	if err := os.WriteFile(filepath.Join(sd, "id_ed25519-cert.pub"), []byte(oldLine), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	certPath, err := ensureCert(ctx, client, certParams{Handle: "heracraft", Projects: projects}, nil)
 	if err != nil {

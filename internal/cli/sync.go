@@ -37,9 +37,9 @@ type dirtyTreeError struct{ files []string }
 
 func (e *dirtyTreeError) Error() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "The guest's working tree has uncommitted changes (%d files):\n", len(e.files))
+	_, _ = fmt.Fprintf(&b, "The guest's working tree has uncommitted changes (%d files):\n", len(e.files))
 	for _, f := range e.files {
-		fmt.Fprintf(&b, "  %s\n", f)
+		_, _ = fmt.Fprintf(&b, "  %s\n", f)
 	}
 	b.WriteString("An agent may still be working. Re-run with --stash-remote (keeps them in `git stash`) or --discard-remote (throws them away), or `repose attach` to look first.")
 	return b.String()
@@ -111,6 +111,12 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		}
 	}
 
+	localDirty, err := gitTrackedDirty(localRepoDir)
+	if err != nil {
+		return nil, fmt.Errorf("git status --porcelain: %w", err)
+	}
+	summary.Modified = len(localDirty)
+
 	diff, err := gitDiffBinary(localRepoDir)
 	if err != nil {
 		return nil, fmt.Errorf("git diff HEAD --binary: %w", err)
@@ -118,10 +124,6 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	if strings.TrimSpace(diff) != "" {
 		if _, err := runSSH(ctx, t, fmt.Sprintf("cd ~/%s && git apply --index", slug), strings.NewReader(diff)); err != nil {
 			return nil, fmt.Errorf("applying local diff: %w", err)
-		}
-		summary.Modified = strings.Count(diff, "\ndiff --git ")
-		if strings.HasPrefix(diff, "diff --git ") {
-			summary.Modified++
 		}
 	}
 

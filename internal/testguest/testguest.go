@@ -77,7 +77,7 @@ func New(home string, authorizedKey ssh.PublicKey) (*Guest, error) {
 // Close stops accepting connections and kills any tmux server the fake
 // guest started.
 func (g *Guest) Close() {
-	g.listener.Close()
+	_ = g.listener.Close()
 	g.wg.Wait()
 	killTmux(g.sockDir)
 }
@@ -98,11 +98,11 @@ func (g *Guest) handleConn(nc net.Conn) {
 	if err != nil {
 		return // auth failure or reset; nothing to report from a background goroutine
 	}
-	defer sc.Close()
+	defer func() { _ = sc.Close() }()
 	go ssh.DiscardRequests(reqs)
 	for ch := range chans {
 		if ch.ChannelType() != "session" {
-			ch.Reject(ssh.UnknownChannelType, "only session channels are supported")
+			_ = ch.Reject(ssh.UnknownChannelType, "only session channels are supported")
 			continue
 		}
 		channel, requests, err := ch.Accept()
@@ -114,20 +114,20 @@ func (g *Guest) handleConn(nc net.Conn) {
 }
 
 func (g *Guest) handleSession(channel ssh.Channel, requests <-chan *ssh.Request) {
-	defer channel.Close()
+	defer func() { _ = channel.Close() }()
 	for req := range requests {
 		switch req.Type {
 		case "exec":
 			var payload struct{ Command string }
-			ssh.Unmarshal(req.Payload, &payload)
-			req.Reply(true, nil)
+			_ = ssh.Unmarshal(req.Payload, &payload)
+			_ = req.Reply(true, nil)
 			code := g.run(payload.Command, channel)
-			channel.SendRequest("exit-status", false, ssh.Marshal(struct{ Code uint32 }{uint32(code)}))
+			_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ Code uint32 }{uint32(code)}))
 			return
 		case "pty-req", "shell", "env", "window-change":
-			req.Reply(true, nil)
+			_ = req.Reply(true, nil)
 		default:
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 	}
 }
@@ -149,7 +149,7 @@ func (g *Guest) run(command string, channel ssh.Channel) int {
 		if ee, ok := err.(*exec.ExitError); ok {
 			return ee.ExitCode()
 		}
-		fmt.Fprintln(channel.Stderr(), err)
+		_, _ = fmt.Fprintln(channel.Stderr(), err)
 		return 1
 	}
 	return 0

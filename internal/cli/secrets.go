@@ -33,9 +33,9 @@ func SecretsSetCmd(ctx context.Context, e *Env, projectArg, name string, value [
 		return err
 	}
 	if res != nil && res.Pushed {
-		fmt.Fprintf(e.Out, "Set %s (pushed to running guest)\n", name)
+		_, _ = fmt.Fprintf(e.Out, "Set %s (pushed to running guest)\n", name)
 	} else {
-		fmt.Fprintf(e.Out, "Set %s (will be delivered at next start)\n", name)
+		_, _ = fmt.Fprintf(e.Out, "Set %s (will be delivered at next start)\n", name)
 	}
 	return nil
 }
@@ -54,7 +54,7 @@ func SecretsListCmd(ctx context.Context, e *Env, projectArg string) error {
 		return writeJSONOut(e.Out, secrets)
 	}
 	for _, s := range secrets {
-		fmt.Fprintf(e.Out, "%s\t%s\n", s.Name, s.UpdatedAt.Format("2006-01-02 15:04"))
+		_, _ = fmt.Fprintf(e.Out, "%s\t%s\n", s.Name, s.UpdatedAt.Format("2006-01-02 15:04"))
 	}
 	return nil
 }
@@ -68,6 +68,6 @@ func SecretsRmCmd(ctx context.Context, e *Env, projectArg, name string) error {
 	if err := e.Client.DeleteSecret(ctx, project.ID, name); err != nil {
 		return err
 	}
-	fmt.Fprintf(e.Out, "Removed %s\n", name)
+	_, _ = fmt.Fprintf(e.Out, "Removed %s\n", name)
 	return nil
 }

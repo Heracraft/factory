@@ -77,7 +77,7 @@ func StreamBuildLog(ctx context.Context, c *Client, projectID, opID string, w io
 	if err != nil {
 		return "", sinceSeq, &unreachableError{cause: err}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		apiErr, decodeErr := readResponse(resp, nil)
 		if decodeErr != nil {
@@ -101,7 +101,7 @@ func StreamBuildLog(ctx context.Context, c *Client, projectID, opID string, w io
 			Line string `json:"line"`
 		}
 		if err := json.Unmarshal([]byte(f.Data), &line); err == nil {
-			fmt.Fprintf(w, "nix › %s\n", line.Line)
+			_, _ = fmt.Fprintf(w, "nix › %s\n", line.Line) // a gone client is noticed by ctx
 			lastSeq = line.Seq
 		}
 	})
@@ -127,7 +127,7 @@ func RenderBuildError(w io.Writer, message, localFragmentPath string, fragmentSo
 		base = "repose.nix"
 	}
 	display := strings.ReplaceAll(message, "fragment.nix", base)
-	fmt.Fprintf(w, "error: %s\n", firstLine(display))
+	_, _ = fmt.Fprintf(w, "error: %s\n", firstLine(display)) // best effort: w is the user's terminal
 
 	m := fragmentRefRe.FindStringSubmatch(message)
 	if m == nil {
@@ -138,11 +138,11 @@ func RenderBuildError(w io.Writer, message, localFragmentPath string, fragmentSo
 	if m[2] != "" {
 		col, _ = strconv.Atoi(m[2])
 	}
-	fmt.Fprintf(w, "   at %s:%d", base, line)
+	_, _ = fmt.Fprintf(w, "   at %s:%d", base, line)
 	if col > 0 {
-		fmt.Fprintf(w, ":%d", col)
+		_, _ = fmt.Fprintf(w, ":%d", col)
 	}
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
 	if len(fragmentSource) == 0 || line < 1 {
 		return
 	}
@@ -152,14 +152,14 @@ func RenderBuildError(w io.Writer, message, localFragmentPath string, fragmentSo
 	}
 	numWidth := len(strconv.Itoa(line))
 	if line > 1 {
-		fmt.Fprintf(w, "      %*d | %s\n", numWidth, line-1, lines[line-2])
+		_, _ = fmt.Fprintf(w, "      %*d | %s\n", numWidth, line-1, lines[line-2])
 	}
-	fmt.Fprintf(w, "      %*d | %s\n", numWidth, line, lines[line-1])
+	_, _ = fmt.Fprintf(w, "      %*d | %s\n", numWidth, line, lines[line-1])
 	caretCol := col
 	if caretCol <= 0 {
 		caretCol = leadingSpaces(lines[line-1]) + 1
 	}
-	fmt.Fprintf(w, "      %*s | %s^\n", numWidth, "", strings.Repeat(" ", max0(caretCol-1)))
+	_, _ = fmt.Fprintf(w, "      %*s | %s^\n", numWidth, "", strings.Repeat(" ", max0(caretCol-1)))
 }
 
 func firstLine(s string) string {

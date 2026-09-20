@@ -62,10 +62,11 @@ func gitCurrentBranch(dir string) (string, error) {
 	return name, nil
 }
 
-// gitStatusPorcelain lists tracked-file changes ("git status --porcelain",
-// which does not include untracked files unless asked).
-func gitStatusPorcelain(dir string) ([]string, error) {
-	out, err := gitCmd(dir, "status", "--porcelain")
+// gitTrackedDirty is the local "dirty list" of 07-cli.md §5.5a: modified
+// tracked files only, since untracked ones are counted separately by
+// gitUntrackedFiles and the two must not double up in the sync summary.
+func gitTrackedDirty(dir string) ([]string, error) {
+	out, err := gitCmd(dir, "status", "--porcelain", "--untracked-files=no")
 	if err != nil {
 		return nil, err
 	}

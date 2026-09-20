@@ -83,7 +83,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	if err := waitForSSH(ctx, target); err != nil {
 		return err
 	}
-	fmt.Fprintf(e.Out, "Connected to %s (%s)\n", project.Slug, project.Class)
+	_, _ = fmt.Fprintf(e.Out, "Connected to %s (%s)\n", project.Slug, project.Class)
 
 	if attachOnly {
 		return attachTmux(target, project.Slug, "")
@@ -101,14 +101,14 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(e.Out, summary.String())
+		_, _ = fmt.Fprintln(e.Out, summary.String())
 
 		copied, err := syncCredentials(ctx, target, e.HomeDir, repoRoot)
 		if err != nil {
 			return err
 		}
 		if len(copied) > 0 {
-			fmt.Fprintf(e.Out, "Credentials: %s\n", strings.Join(copied, ", "))
+			_, _ = fmt.Fprintf(e.Out, "Credentials: %s\n", strings.Join(copied, ", "))
 		}
 	}
 
@@ -127,7 +127,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		}
 		window = name
 		if existed {
-			fmt.Fprintf(e.ErrOut, "Another %s window is open; two agents share one working tree.\n", agent)
+			_, _ = fmt.Fprintf(e.ErrOut, "Another %s window is open; two agents share one working tree.\n", agent)
 		}
 
 		attachInstead := false
@@ -145,7 +145,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			return err
 		}
 		if attachInstead {
-			fmt.Fprintln(e.Out, "Claude Code is not logged in on this guest yet. Finish the login in the window that opens, then re-run with your prompt.")
+			_, _ = fmt.Fprintln(e.Out, "Claude Code is not logged in on this guest yet. Finish the login in the window that opens, then re-run with your prompt.")
 		}
 	}
 
@@ -206,7 +206,12 @@ func ensureRunning(ctx context.Context, e *Env, project *Project) error {
 	if project.State == "running" {
 		return nil
 	}
-	opID, err := e.Client.StartProject(ctx, project.ID)
+	var opID string
+	err = retryOnOpConflict(ctx, func() error {
+		var err error
+		opID, err = e.Client.StartProject(ctx, project.ID)
+		return err
+	})
 	if err != nil {
 		var apiErr *APIError
 		if errors.As(err, &apiErr) && apiErr.Code == "payment_required" {
@@ -293,7 +298,7 @@ func createProjectForRun(ctx context.Context, e *Env, remote string, opts RunOpt
 		}
 		if errors.As(err, &apiErr) && apiErr.Code == "conflict" {
 			req.Name = fmt.Sprintf("%s-%d", name, attempt+1)
-			fmt.Fprintf(e.ErrOut, "%q is taken; trying %q\n", name, req.Name)
+			_, _ = fmt.Fprintf(e.ErrOut, "%q is taken; trying %q\n", name, req.Name)
 			continue
 		}
 		return nil, err

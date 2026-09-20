@@ -25,11 +25,10 @@ var credRows = []credRow{
 	{Label: "opencode", Rel: filepath.Join(".local", "share", "opencode", "auth.json"), Mode: 0o600},
 }
 
-// Names the CLI never copies, however they are named on the laptop
-// (07-cli.md §5.5 step 6 and its checklist).
-var neverSyncedNames = []string{".claude/.credentials.json", ".gemini/oauth_creds.json", ".ssh/id_ed25519", ".ssh/id_rsa"}
-
-// syncCredentials implements 07-cli.md §5.5 step 6. homeDir is the
+// syncCredentials implements 07-cli.md §5.5 step 6: never
+// ~/.claude/.credentials.json, ~/.gemini/oauth_creds.json or any SSH
+// private key, however they are named on the laptop — credRows above is
+// an allowlist, so nothing outside it ever travels. homeDir is the
 // laptop's $HOME; repoDir is the project checkout, whose git config
 // supplies user.name/user.email (falling back to the global config the
 // normal way `git config` does). It returns the labels copied, in table
