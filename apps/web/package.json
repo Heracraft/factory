@@ -13,7 +13,9 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "eslint .",
 		"test:integration": "playwright test",
-		"test:unit": "vitest run"
+		"test:unit": "vitest run",
+		"live": "playwright test --config playwright.live.config.ts",
+		"live:auth": "node tests-live/capture-auth.mjs"
 	},
 	"dependencies": {
 		"@logto/browser": "^3.0.14",
