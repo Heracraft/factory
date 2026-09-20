@@ -52,9 +52,23 @@ See `../workstreams/11-infra-opentofu.md` §5 "Adding a host". Then
 
 ### Observability
 
-On the personal server: add `ops/prometheus/repose.yaml` to Prometheus's
-scrape configs, `ops/alerts.yaml` to its rule files, `ops/dashboards/*.json`
-to Grafana provisioning, and the Loki labels are already in Fluent Bit.
+On the personal server, from this repository's `ops/` (its README has the
+copy-paste version):
+
+- `ops/prometheus/prometheus.yml` is the scrape config; hosts are listed in
+  `ops/prometheus/targets/hosts.yml`, which Prometheus re-reads every minute,
+  so adding a host needs no restart. Run Prometheus with
+  `--storage.tsdb.retention.time=90d`.
+- `ops/alerts.yaml` goes in its rule files, `ops/alertmanager/repose-route.yaml`
+  into Alertmanager (ntfy to the owner).
+- `ops/grafana/provisioning/` and `ops/dashboards/*.json` are Grafana's
+  provisioning; the seven dashboards appear in a `repose` folder.
+- `ops/loki/retention.yaml` sets 90 days for component logs and 30 for guest
+  console logs, and needs the compactor enabled to do anything.
+- The server joins the edge's WireGuard as one more peer:
+  `ops/prometheus/wireguard-peer.conf`. Nothing is scraped over the internet.
+- Locally, `docker compose -f ops/dev/docker-compose.yml up -d` is the same
+  Grafana with the same dashboards and no data.
 
 ## Common operations
 
@@ -191,6 +205,48 @@ hostd cannot talk to a guest's guestd for 5 minutes.
    freeze needs guestd, then start).
 3. Sampling for that guest is missing for the window; billing uses the
    last known state, so a running guest is still billed.
+
+## HostScrapeDown
+
+Prometheus cannot scrape a host: `up{job=~"hosts|hostd"} == 0` for 5 minutes,
+and that host's panels on Host capacity go blank. Metering is *not* affected:
+hostd sends samples to the api over its own gRPC stream, so billing data
+keeps arriving (docs/workstreams/10-observability.md §6).
+
+1. From the monitoring server: `curl -s http://<host wg addr>:9101/metrics |
+   head -1`. A timeout is the tunnel, a connection refused is hostd.
+2. Tunnel: "HostWgDown" above. The scrape and the logs use the same path, so
+   a FluentBitStuck alert for the same host confirms it.
+3. hostd itself: on the host, `systemctl status hostd` and
+   `ss -tlnp | grep 9101`. hostd binds the WireGuard address, so a hostd that
+   started before wg0 existed still listens (`ip_nonlocal_bind`); if it does
+   not, `systemctl restart hostd`.
+4. nftables: `nft list chain inet repose input` must admit 9100, 9101 and the
+   Fluent Bit metrics port from `wg0`.
+5. Nothing to do about the gap: Prometheus has no backfill. Say so in the
+   incident note rather than wondering later why a graph has a hole.
+
+## FluentBitStuck
+
+A host's Fluent Bit has been failing to ship to Loki for 30 minutes
+(`increase(fluentbit_output_retries_failed_total[30m]) > 0`). It buffers to
+disk and retries forever, so nothing is lost yet; at 1 GB the oldest chunks
+are dropped.
+
+1. Is Loki up? `curl -s http://<loki>:3100/ready` from the monitoring server.
+   If Loki is the problem, every host alerts at once.
+2. On the host: `systemctl status fluent-bit`, `journalctl -u fluent-bit -n
+   50`. `ConditionPathExists=/run/repose/host.env` unmet means the host never
+   registered ("HostUnregistered"); the unit is `partOf`
+   `repose-host-net.service`, so `systemctl restart repose-host-net` restarts
+   it with freshly rendered addresses.
+3. Buffer size: `du -sh /var/lib/fluent-bit/storage`. Approaching 1 GB is the
+   deadline for fixing Loki before lines are dropped.
+4. Wrong Loki address: `grep LOKI /run/repose/host.env`. It comes from
+   `loki_url` in `host.json`, which the api sends at registration; correct it
+   there and `systemctl restart repose-host-net`.
+5. Guests are unaffected throughout: nothing in a guest waits on log
+   shipping.
 
 ## Guestd not ready
 

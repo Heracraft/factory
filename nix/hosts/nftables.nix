@@ -1,7 +1,8 @@
 # The `repose` nftables tables from docs/interfaces/host-conventions.md.
 #
 # inet repose
-#   input      policy drop: lo, established, wg0 (ssh, exporters), DHCP and
+#   input      policy drop: lo, established, wg0 (ssh, exporters, Fluent Bit
+#              metrics), DHCP and
 #              ICMP on the provider NIC, ssh on the provider NIC only while
 #              bootstrap is on; frames from guests go to guest_in.
 #   guest_in   guests to the host: ICMP echo rate-limited, everything else
@@ -82,7 +83,7 @@ in
           ct state invalid drop
 
           # Operators and scrapes come over WireGuard only.
-          iifname "wg0" tcp dport { 22, 9100, 9101 } accept
+          iifname "wg0" tcp dport { 22, 9100, 9101, ${toString cfg.observability.fluentBitMetricsPort} } accept
           iifname "wg0" icmp type echo-request accept
 
           # The provider NIC: DHCP, ICMP that keeps TCP working, IPv6 ND.

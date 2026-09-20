@@ -1,0 +1,558 @@
+{
+  "uid": "repose-builds",
+  "title": "repose / Builds",
+  "description": "Every guest system closure is built on the project's host (DECISIONS R4-4). A build that fails is a user watching a stream of Nix output.",
+  "tags": [
+    "repose"
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "host_id",
+        "label": "host",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "repose-prometheus"
+        },
+        "query": {
+          "query": "label_values(repose_host_mem_free_bytes, host_id)",
+          "refId": "hosts"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "regex": "",
+        "current": {},
+        "options": [],
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Builds in the window",
+      "description": "Completed builds, successful or not.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(repose_host_build_duration_seconds_count{host_id=~\"$host_id\"}[$__range]))",
+          "legendFormat": "builds",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1
+    },
+    {
+      "type": "stat",
+      "title": "Failure rate",
+      "description": "A fragment that does not evaluate is a user error and normal; a rate that climbs across projects is ours.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(repose_host_build_duration_seconds_count{host_id=~\"$host_id\",result!=\"ok\"}[$__range])) / clamp_min(sum(increase(repose_host_build_duration_seconds_count{host_id=~\"$host_id\"}[$__range])), 1)",
+          "legendFormat": "failed",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 0.3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "Queue depth",
+      "description": "Builds waiting for one of the two slots.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host_id) (repose_host_build_queue_depth{host_id=~\"$host_id\"})",
+          "legendFormat": "{{host_id}}",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "p90 build duration",
+      "description": "The cap is 30 minutes (DECISIONS R5-4); p90 near it means users are waiting.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.9, sum by (le) (rate(repose_host_build_duration_seconds_bucket{host_id=~\"$host_id\"}[$__range])))",
+          "legendFormat": "p90",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 300
+              },
+              {
+                "color": "red",
+                "value": 1500
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "id": 4
+    },
+    {
+      "type": "heatmap",
+      "title": "Build duration distribution",
+      "description": "The histogram \u00a75 asks for: most builds are substituted and fast, and the tail is source builds.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (le) (increase(repose_host_build_duration_seconds_bucket{host_id=~\"$host_id\"}[$__interval]))",
+          "legendFormat": "{{le}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "calculate": false,
+        "color": {
+          "mode": "scheme",
+          "scheme": "Turbo",
+          "steps": 64
+        },
+        "yAxis": {
+          "unit": "s"
+        },
+        "cellGap": 1
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "id": 5
+    },
+    {
+      "type": "timeseries",
+      "title": "Eval versus build time",
+      "description": "Evaluation is capped at 60 s and the build at 30 minutes. A slow eval is the fragment; a slow build is a substituter or a source build.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.9, sum by (le) (rate(repose_host_build_phase_duration_seconds_bucket{host_id=~\"$host_id\",phase=\"eval\"}[15m])))",
+          "legendFormat": "eval p90",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.9, sum by (le) (rate(repose_host_build_phase_duration_seconds_bucket{host_id=~\"$host_id\",phase=\"build\"}[15m])))",
+          "legendFormat": "build p90",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0
+          },
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "id": 6
+    },
+    {
+      "type": "timeseries",
+      "title": "Failures by error code",
+      "description": "The result label carries the error code of docs/interfaces/nix-build-contract.md: eval_failed, build_failed, closure_too_large, eval_timeout, build_timeout.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (result) (increase(repose_host_build_duration_seconds_count{host_id=~\"$host_id\",result!=\"ok\"}[15m]))",
+          "legendFormat": "{{result}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 40,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "axisSoftMin": 0
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 15
+      },
+      "id": 7
+    },
+    {
+      "type": "table",
+      "title": "Recent build failures",
+      "description": "From Loki. The full Nix output of any of them is in build_logs, not here: `repose-admin ops log <op id>`.",
+      "datasource": {
+        "type": "loki",
+        "uid": "repose-loki"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "repose-loki"
+          },
+          "editorMode": "code",
+          "expr": "{component=\"hostd\"} | json | event=\"build_fail\" | line_format \"{{.code}} project={{.project_id}} revision={{.revision_id}} {{.duration_ms}}ms\"",
+          "legendFormat": "__auto",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "id": 8
+    }
+  ]
+}

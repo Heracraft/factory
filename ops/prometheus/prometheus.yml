@@ -1,0 +1,87 @@
+# Prometheus on the owner's personal server (the one that already runs Loki,
+# Grafana and Alertmanager: DECISIONS R2-9). It scrapes repose over the edge's
+# WireGuard and nothing over the internet, which is why every job's targets
+# are 10.255.0.0/16 addresses (docs/ops/OBSERVABILITY.md "Where things are").
+#
+# Retention is 90 days, which is a command-line flag, not a config key:
+#
+#   prometheus --config.file=/etc/prometheus/prometheus.yml \
+#              --storage.tsdb.path=/var/lib/prometheus \
+#              --storage.tsdb.retention.time=90d \
+#              --web.enable-lifecycle
+#
+# A host is added by appending it to targets/hosts.yml; three jobs (node
+# exporter, hostd, Fluent Bit) pick it up from the same file, because the
+# file lists bare addresses and each job relabels its own port on. That is
+# one edit per host instead of three.
+global:
+  scrape_interval: 30s
+  scrape_timeout: 10s
+  evaluation_interval: 1m
+  external_labels:
+    env: prod
+    stack: repose
+
+rule_files:
+  - /etc/prometheus/repose/alerts.yaml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["127.0.0.1:9093"]
+
+scrape_configs:
+  # node_exporter on every host: CPU, memory, filesystems (StoreFull reads
+  # node_filesystem_* from this job), systemd unit states, and the textfile
+  # collector the pool monitor writes into.
+  - job_name: hosts
+    file_sd_configs:
+      - files: ["/etc/prometheus/repose/targets/hosts.yml"]
+        refresh_interval: 1m
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __address__
+        regex: "([^:]+)(:.*)?"
+        replacement: "${1}:9100"
+
+  # hostd's own surface: every repose_host_* series of
+  # docs/workstreams/10-observability.md §5.
+  - job_name: hostd
+    file_sd_configs:
+      - files: ["/etc/prometheus/repose/targets/hosts.yml"]
+        refresh_interval: 1m
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __address__
+        regex: "([^:]+)(:.*)?"
+        replacement: "${1}:9101"
+
+  # Fluent Bit's own metrics, for the one failure only it can see: a host
+  # that has stopped shipping logs (§6, alert FluentBitStuck).
+  - job_name: fluent-bit
+    metrics_path: /api/v1/metrics/prometheus
+    file_sd_configs:
+      - files: ["/etc/prometheus/repose/targets/hosts.yml"]
+        refresh_interval: 1m
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __address__
+        regex: "([^:]+)(:.*)?"
+        replacement: "${1}:2021"
+
+  # The edge: the gateway's sessions and auth failures. One edge, so it is a
+  # static target; its WireGuard address is the hub's own (10.255.0.1).
+  - job_name: gateway
+    static_configs:
+      - targets: ["10.255.0.1:9102"]
+        labels:
+          role: edge
+
+  # The Coolify VM: the api. It is a WireGuard peer of the edge for this
+  # scrape and for nothing else (docs/workstreams/10-observability.md §2);
+  # its HTTP surface is reached by users over the internet, not from here.
+  - job_name: api
+    static_configs:
+      - targets: ["10.255.0.2:9103"]
+        labels:
+          role: control-plane

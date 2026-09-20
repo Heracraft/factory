@@ -35,6 +35,10 @@ var allowedLabels = map[string]bool{
 	"kind": true, "reason": true, "route": true, "status": true,
 	"result": true, "direction": true, "method": true, "channel": true,
 	"version": true,
+	// A build has two phases, eval and build, with different caps and
+	// different failure modes (docs/workstreams/10-observability.md
+	// "Dashboards": "eval vs build time").
+	"phase": true,
 }
 
 // AllowedLabels lists the permitted metric label names, sorted.

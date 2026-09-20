@@ -1,0 +1,366 @@
+# promtool unit tests for ops/alerts.yaml: one case per alert, each feeding
+# the series the rule reads and asserting the alert fires when the condition
+# holds and does not fire just below it.
+#
+#   nix shell nixpkgs#prometheus.cli -c promtool test rules ops/alerts_test.yaml
+#
+# The failure this prevents: an alert whose expression is subtly wrong
+# (a label that does not match, a division by a counter, a `for` longer than
+# the incident) is indistinguishable from a quiet system, and is discovered
+# during the outage it was written for.
+rule_files:
+  - alerts.yaml
+
+evaluation_interval: 1m
+
+tests:
+  # --- HostMemory80 -------------------------------------------------------
+  - interval: 1m
+    name: HostMemory80 fires above 80 percent reserved and not below
+    input_series:
+      - series: 'repose_host_mem_reserved_bytes{job="hostd",instance="10.255.0.7:9101",host_id="host-01"}'
+        values: "85+0x20"
+      - series: 'repose_host_mem_free_bytes{job="hostd",instance="10.255.0.7:9101",host_id="host-01"}'
+        values: "15+0x20"
+      - series: 'repose_host_mem_reserved_bytes{job="hostd",instance="10.255.0.8:9101",host_id="host-02"}'
+        values: "70+0x20"
+      - series: 'repose_host_mem_free_bytes{job="hostd",instance="10.255.0.8:9101",host_id="host-02"}'
+        values: "30+0x20"
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: HostMemory80
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: HostMemory80
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: hostd
+              instance: 10.255.0.7:9101
+              host_id: host-01
+            exp_annotations:
+              summary: "host host-01 is over 80 percent reserved memory"
+              description: "85% of usable memory is reserved by running guests. Add a host before the next XL create fails."
+              runbook: "docs/ops/RUNBOOK.md#hostmemory80"
+
+  # --- PoolFull -----------------------------------------------------------
+  - interval: 1m
+    name: PoolFull pages under 10 percent free
+    input_series:
+      - series: 'repose_host_pool_free_bytes{job="hostd",instance="10.255.0.7:9101",host_id="host-01"}'
+        values: "50+0x10"
+      - series: 'repose_host_pool_bytes{job="hostd",instance="10.255.0.7:9101",host_id="host-01"}'
+        values: "1000+0x10"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: PoolFull
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: PoolFull
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              job: hostd
+              instance: 10.255.0.7:9101
+              host_id: host-01
+            exp_annotations:
+              summary: "thin pool on host-01 is over 90 percent full"
+              description: "5% of vg-guests/thin is free. Autoextend has run out of PV or the disk needs growing."
+              runbook: "docs/ops/RUNBOOK.md#poolfull"
+
+  # --- StoreFull ----------------------------------------------------------
+  - interval: 1m
+    name: StoreFull fires on the host root filesystem only
+    input_series:
+      - series: 'node_filesystem_avail_bytes{job="hosts",instance="10.255.0.7:9100",host_id="host-01",mountpoint="/",fstype="ext4"}'
+        values: "10+0x20"
+      - series: 'node_filesystem_size_bytes{job="hosts",instance="10.255.0.7:9100",host_id="host-01",mountpoint="/",fstype="ext4"}'
+        values: "100+0x20"
+      # A full tmpfs is not a full store.
+      - series: 'node_filesystem_avail_bytes{job="hosts",instance="10.255.0.7:9100",host_id="host-01",mountpoint="/run",fstype="tmpfs"}'
+        values: "1+0x20"
+      - series: 'node_filesystem_size_bytes{job="hosts",instance="10.255.0.7:9100",host_id="host-01",mountpoint="/run",fstype="tmpfs"}'
+        values: "100+0x20"
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: StoreFull
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: StoreFull
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: hosts
+              instance: 10.255.0.7:9100
+              host_id: host-01
+              mountpoint: /
+              fstype: ext4
+            exp_annotations:
+              summary: "root filesystem on host-01 is over 85 percent full"
+              description: "90% used. The store is the usual cause; check the per-project closure cap before deleting anything."
+              runbook: "docs/ops/RUNBOOK.md#storefull"
+
+  # --- GuestdLost ---------------------------------------------------------
+  - interval: 1m
+    name: GuestdLost fires on one lost guest
+    input_series:
+      - series: 'repose_host_guestd_lost{job="hostd",instance="10.255.0.7:9101",host_id="host-01"}'
+        values: "0 0 1 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: GuestdLost
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: GuestdLost
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: hostd
+              instance: 10.255.0.7:9101
+              host_id: host-01
+            exp_annotations:
+              summary: "1 guest(s) on host-01 have lost guestd"
+              description: "No vsock connection for over a minute. Snapshots, resize and config apply are blocked for those guests."
+              runbook: "docs/ops/RUNBOOK.md#guestdlost"
+
+  # --- BuildQueueStuck ----------------------------------------------------
+  - interval: 1m
+    name: BuildQueueStuck fires when both slots are busy and nothing completes
+    input_series:
+      - series: 'repose_host_builds_running{job="hostd",instance="10.255.0.7:9101",host_id="host-01"}'
+        values: "2+0x60"
+      - series: 'repose_host_build_duration_seconds_count{job="hostd",instance="10.255.0.7:9101",host_id="host-01",result="ok"}'
+        values: "7+0x60"
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: BuildQueueStuck
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: hostd
+              instance: 10.255.0.7:9101
+              host_id: host-01
+            exp_annotations:
+              summary: "build queue on host-01 has not completed a build in 45 minutes"
+              description: "Both build slots are busy and no build has finished. A build past its 30-minute cap is not being killed."
+              runbook: "docs/ops/RUNBOOK.md#buildqueuestuck"
+
+  - interval: 1m
+    name: BuildQueueStuck stays quiet while builds complete
+    input_series:
+      - series: 'repose_host_builds_running{job="hostd",instance="10.255.0.7:9101",host_id="host-01"}'
+        values: "2+0x60"
+      - series: 'repose_host_build_duration_seconds_count{job="hostd",instance="10.255.0.7:9101",host_id="host-01",result="ok"}'
+        values: "0+1x60"
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: BuildQueueStuck
+        exp_alerts: []
+
+  # --- HostScrapeDown -----------------------------------------------------
+  - interval: 1m
+    name: HostScrapeDown fires for a host exporter that stops answering
+    input_series:
+      - series: 'up{job="hosts",instance="10.255.0.7:9100",host_id="host-01"}'
+        values: "1 1 0 0 0 0 0 0 0 0"
+      - series: 'up{job="api",instance="10.255.0.9:9103"}'
+        values: "0+0x10"
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: HostScrapeDown
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: hosts
+              instance: 10.255.0.7:9100
+              host_id: host-01
+            exp_annotations:
+              summary: "Prometheus cannot scrape hosts on host-01"
+              description: "The WireGuard tunnel or the exporter is down. Metering continues through the api stream; metrics and the host dashboards do not."
+              runbook: "docs/ops/RUNBOOK.md#hostwgdown"
+
+  # --- FluentBitStuck -----------------------------------------------------
+  - interval: 1m
+    name: FluentBitStuck fires when Loki refuses for half an hour
+    input_series:
+      - series: 'fluentbit_output_retries_failed_total{job="fluent-bit",instance="10.255.0.7:2021",host_id="host-01",name="loki.0"}'
+        values: "0+1x70"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: FluentBitStuck
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: fluent-bit
+              instance: 10.255.0.7:2021
+              host_id: host-01
+              name: loki.0
+            exp_annotations:
+              summary: "Fluent Bit on host-01 cannot ship to Loki"
+              description: "Retries have been failing for 30 minutes. Chunks buffer to /var/lib/fluent-bit up to 1 GB, then the oldest are dropped."
+              runbook: "docs/ops/RUNBOOK.md#observability"
+
+  - interval: 1m
+    name: FluentBitStuck stays quiet while retries succeed
+    input_series:
+      - series: 'fluentbit_output_retries_failed_total{job="fluent-bit",instance="10.255.0.7:2021",host_id="host-01",name="loki.0"}'
+        values: "3+0x70"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: FluentBitStuck
+        exp_alerts: []
+
+  # --- HostUnreachable ----------------------------------------------------
+  - interval: 1m
+    name: HostUnreachable pages after two minutes
+    input_series:
+      - series: 'repose_api_hosts{job="api",instance="10.255.0.9:9103",state="unreachable"}'
+        values: "0 1 1 1 1 1"
+      - series: 'repose_api_hosts{job="api",instance="10.255.0.9:9103",state="ready"}'
+        values: "3 2 2 2 2 2"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: HostUnreachable
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: HostUnreachable
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              job: api
+              instance: 10.255.0.9:9103
+              state: unreachable
+            exp_annotations:
+              summary: "1 host(s) are unreachable from the api"
+              description: "No heartbeat for over 90 seconds. Placements are already refused; guests on that host cannot be started, stopped or snapshotted."
+              runbook: "docs/ops/RUNBOOK.md#hostunreachable"
+
+  # --- SnapshotStale ------------------------------------------------------
+  - interval: 1m
+    name: SnapshotStale fires past 36 hours
+    input_series:
+      - series: 'repose_api_snapshot_age_seconds{job="api",instance="10.255.0.9:9103"}'
+        values: "129601+0x15"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: SnapshotStale
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: api
+              instance: 10.255.0.9:9103
+            exp_annotations:
+              summary: "a running project has no snapshot for over 36 hours"
+              description: "Oldest last-snapshot is 1d 12h 0m 1s. A host loss now loses up to that much of a tenant's work."
+              runbook: "docs/ops/RUNBOOK.md#snapshotstale"
+
+  - interval: 1m
+    name: SnapshotStale stays quiet at 35 hours
+    input_series:
+      - series: 'repose_api_snapshot_age_seconds{job="api",instance="10.255.0.9:9103"}'
+        values: "126000+0x15"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: SnapshotStale
+        exp_alerts: []
+
+  # --- GatewayAuthSpike ---------------------------------------------------
+  - interval: 1m
+    name: GatewayAuthSpike fires over one failure a second
+    input_series:
+      # 120 failures a minute is two a second, summed over both reasons.
+      - series: 'repose_gateway_auth_fail_total{job="gateway",instance="10.255.0.1:9102",reason="bad_cert"}'
+        values: "0+60x20"
+      - series: 'repose_gateway_auth_fail_total{job="gateway",instance="10.255.0.1:9102",reason="not_found"}'
+        values: "0+60x20"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: GatewayAuthSpike
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              instance: 10.255.0.1:9102
+            exp_annotations:
+              summary: "gateway is refusing over one login a second"
+              description: "Break it down by reason: bad_cert and not_found are a scan, expired and revoked are the CLI's refresh path."
+              runbook: "docs/ops/RUNBOOK.md#gatewayauthspike"
+
+  - interval: 1m
+    name: GatewayAuthSpike ignores a user with a stale certificate
+    input_series:
+      - series: 'repose_gateway_auth_fail_total{job="gateway",instance="10.255.0.1:9102",reason="expired"}'
+        values: "0 1 2 3 3 3 3 3 3 3 3 3 3 3 3"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: GatewayAuthSpike
+        exp_alerts: []
+
+  # --- EgressHigh ---------------------------------------------------------
+  - interval: 1m
+    name: EgressHigh fires when the api counts a project over a terabyte
+    input_series:
+      - series: 'repose_api_egress_alert_projects{job="api",instance="10.255.0.9:9103"}'
+        values: "0 0 2 2 2 2 2 2 2 2 2 2 2 2 2"
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: EgressHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: api
+              instance: 10.255.0.9:9103
+            exp_annotations:
+              summary: "2 project(s) sent over 1 TB in 24 hours"
+              description: "Find them on the Abuse dashboard's egress panel, then the runbook's Suspend a user."
+              runbook: "docs/ops/RUNBOOK.md#egresshigh"
+
+  # --- RollupLag ----------------------------------------------------------
+  - interval: 1m
+    name: RollupLag fires past two hours
+    input_series:
+      - series: 'repose_api_rollup_lag_seconds{job="api",instance="10.255.0.9:9103"}'
+        values: "7201+0x15"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: RollupLag
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: api
+              instance: 10.255.0.9:9103
+            exp_annotations:
+              summary: "usage rollup is 2h 0m 1s behind"
+              description: "meter_samples are arriving but usage_hours is not being written. Invoices are built from usage_hours."
+              runbook: "docs/ops/RUNBOOK.md#rolluplag"
+
+  # --- StripePushFail -----------------------------------------------------
+  - interval: 1m
+    name: StripePushFail fires on one failed push in an hour
+    input_series:
+      - series: 'repose_api_stripe_usage_push_total{job="api",instance="10.255.0.9:9103",result="error"}'
+        values: "0 0 0 1 1 1 1 1 1 1 1 1"
+      - series: 'repose_api_stripe_usage_push_total{job="api",instance="10.255.0.9:9103",result="ok"}'
+        values: "0+5x11"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: StripePushFail
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: api
+              instance: 10.255.0.9:9103
+              result: error
+            exp_annotations:
+              summary: "Stripe usage records are failing"
+              description: "1 failed pushes in the last hour. The reconciliation job repairs it; if it does not, the invoice undercharges."
+              runbook: "docs/ops/RUNBOOK.md#stripepushfail"
+
+  - interval: 1m
+    name: StripePushFail stays quiet while every push succeeds
+    input_series:
+      - series: 'repose_api_stripe_usage_push_total{job="api",instance="10.255.0.9:9103",result="ok"}'
+        values: "0+5x11"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: StripePushFail
+        exp_alerts: []

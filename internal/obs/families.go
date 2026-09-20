@@ -64,6 +64,14 @@ func NewAPIMetrics(m *Metrics) *APIMetrics {
 		SnapshotAge:         f.gauge("snapshot_age_seconds", "Age of the oldest last-snapshot among running projects."),
 		EgressAlertProjects: f.gauge("egress_alert_projects", "Projects over 1 TB of egress in the last 24 hours."),
 	}
+	// The StripePushFail alert is an increase() over the error series, and the
+	// Billing dashboard shows failures as a panel of their own; both read
+	// better when the series exists at zero than when it appears on the first
+	// failure.
+	for _, r := range []string{"ok", "error"} {
+		a.StripePushTotal.WithLabelValues(r)
+		a.ScheduleTotal.WithLabelValues(r)
+	}
 	return a
 }
 

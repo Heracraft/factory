@@ -1,0 +1,35 @@
+# Point the two uids the dashboards use at the dev stack's own Prometheus and
+# Loki. Provisioning applies files in order and the later one wins, so this
+# overrides the URLs in ops/grafana/provisioning/datasources/repose.yaml
+# without duplicating the rest of it.
+apiVersion: 1
+
+datasources:
+  - name: repose-prometheus
+    uid: repose-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+  - name: repose-loki
+    uid: repose-loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+  # The dev Postgres, loaded by ops/dev/pgcheck.sh. On the server this is the
+  # control plane's database through a read-only role.
+  - name: repose-postgres
+    uid: repose-postgres
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: postgres:5432
+    user: postgres
+    editable: false
+    jsonData:
+      database: repose
+      sslmode: disable
+      postgresVersion: 1600
+    secureJsonData:
+      password: repose

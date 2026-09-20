@@ -26,6 +26,7 @@ type M struct {
 	BuildQueueDepth       prometheus.Gauge
 	BuildsRunning         prometheus.Gauge
 	BuildDuration         *prometheus.HistogramVec
+	BuildPhaseDuration    *prometheus.HistogramVec
 	SnapshotBytesTotal    prometheus.Counter
 	SnapshotBytes         prometheus.Gauge
 	SnapshotFreezeSeconds prometheus.Histogram
@@ -52,13 +53,16 @@ func NewVersion(version string) *M {
 	om := obs.NewMetricsVersion(obs.ComponentHostd, version)
 	f := promauto{om}
 	m := &M{
-		obs:                   om,
-		Guests:                f.gaugeVec("guests", "Guests on this host by state and class.", "state", "class"),
-		CommandsTotal:         f.counterVec("commands_total", "Commands handled by kind and result.", "kind", "result"),
-		CommandDuration:       f.histVec("command_duration_seconds", "Command execution time by kind.", []float64{.1, .5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1800}, "kind"),
-		BuildQueueDepth:       f.gauge("build_queue_depth", "Builds waiting for a worker."),
-		BuildsRunning:         f.gauge("builds_running", "Builds executing now."),
-		BuildDuration:         f.histVec("build_duration_seconds", "Build wall time by result.", []float64{5, 15, 30, 60, 120, 300, 600, 1200, 1800}, "result"),
+		obs:             om,
+		Guests:          f.gaugeVec("guests", "Guests on this host by state and class.", "state", "class"),
+		CommandsTotal:   f.counterVec("commands_total", "Commands handled by kind and result.", "kind", "result"),
+		CommandDuration: f.histVec("command_duration_seconds", "Command execution time by kind.", []float64{.1, .5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1800}, "kind"),
+		BuildQueueDepth: f.gauge("build_queue_depth", "Builds waiting for a worker."),
+		BuildsRunning:   f.gauge("builds_running", "Builds executing now."),
+		BuildDuration:   f.histVec("build_duration_seconds", "Build wall time by result.", []float64{5, 15, 30, 60, 120, 300, 600, 1200, 1800}, "result"),
+		// Eval and build have different caps (60 s and 30 minutes) and fail
+		// for different reasons, so the Builds dashboard shows them apart.
+		BuildPhaseDuration:    f.histVec("build_phase_duration_seconds", "Wall time of one build phase.", []float64{.5, 1, 2, 5, 10, 20, 30, 60, 120, 300, 600, 1200, 1800}, "phase"),
 		SnapshotBytesTotal:    f.counter("snapshot_bytes_total", "Bytes uploaded to the snapshot store."),
 		SnapshotBytes:         f.gauge("snapshot_bytes", "Bytes of the most recent snapshot upload."),
 		SnapshotFreezeSeconds: f.hist("snapshot_freeze_seconds", "Freeze window per snapshot.", []float64{.05, .1, .25, .5, 1, 2, 5, 10}),
