@@ -661,6 +661,25 @@ directory` for store paths, or guestd sends `Warning{store_path_missing}`.
 and recomputes reservations. Happens after an api crash mid-command; the
 reconcile is safe to run any time.
 
+## api cannot resolve repose-postgres
+
+`api` or `api-grpc` logs a DNS failure for `repose-postgres` at start
+(`DATABASE_URL` host). The Postgres compose Service is on its own network
+unless "Connect to predefined network" is on for it (`coolify.md`, facts
+1 and 2).
+
+1. On the VM: `docker inspect $(docker ps -qf name=repose-postgres) --format
+   '{{json .NetworkSettings.Networks}}' | jq 'keys'` must list the
+   server's `coolify` network. If not, the toggle is off, or hit the known
+   Coolify bug where it does not attach: turn it off and on and redeploy
+   the Service.
+2. The alias is the service name, `repose-postgres`. If somebody renamed
+   the service in the compose file, the hostname in every env file
+   changed with it; `container_name` and `aliases` in the file are not
+   honoured by Coolify.
+3. From the api container's network: `docker run --rm --network coolify
+   busybox nslookup repose-postgres` resolves once 1 is right.
+
 ## Coolify deploy failed
 
 The api, api-grpc or web app's rolling deploy did not go green.
