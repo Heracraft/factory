@@ -24,7 +24,7 @@ host_security_type = "Standard"
 edge_size = "Standard_D2s_v7"
 
 # Wave 3 is here: the api and repose-admin are merged, so the control plane is
-# worth its ~$185 a month (DECISIONS I-24, I-49). The VM's OS disk holds
+# worth its ~$237 a month (DECISIONS I-24, I-61; infra/README.md "Cost"). The VM's OS disk holds
 # Postgres and every Coolify application definition, so setting this back to 0
 # destroys the control plane; the retention that matters is the R2 dump.
 coolify_count   = 1

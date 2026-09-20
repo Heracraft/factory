@@ -352,7 +352,7 @@ Retail Prices API (`https://prices.azure.com/api/retail/prices`,
 `armRegionName eq 'eastus'`, `priceType eq 'Consumption'`), for what
 `prod.tfvars` actually creates: one `D16s_v7` host with a 512 GB Premium SSD
 v2 data disk (DECISIONS I-14, I-39), the edge, and **the control-plane VM**
-(`coolify_count = 1`, DECISIONS I-49). 730 hours to the month, Linux rates, no
+(`coolify_count = 1`, DECISIONS I-61). 730 hours to the month, Linux rates, no
 reservation.
 
 | Resource | Unit price | Monthly |

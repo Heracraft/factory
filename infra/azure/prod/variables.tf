@@ -133,7 +133,7 @@ variable "coolify_count" {
   type        = number
   description = <<-EOT
     Control-plane VMs: 0 or 1. Production runs 1 from wave 3 (DECISIONS I-24,
-    I-49); the default stays 0 so a new environment costs nothing until
+    I-61); the default stays 0 so a new environment costs nothing until
     somebody asks for a control plane. Setting it back to 0 destroys the VM
     and its OS disk, Postgres and every Coolify application definition
     included.
