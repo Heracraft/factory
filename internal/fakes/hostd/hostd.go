@@ -218,7 +218,12 @@ func (f *Fake) event(ev *hostdv1.Event) {
 }
 
 func (f *Fake) setState(g *Guest, st, reason string) {
+	// Under f.mu: the heartbeat goroutine reads every guest's State under
+	// the same lock, and callers of setState hold no lock (CI race,
+	// 2026-09-20).
+	f.mu.Lock()
 	g.State = st
+	f.mu.Unlock()
 	f.event(&hostdv1.Event{Ev: &hostdv1.Event_GuestStateChanged{GuestStateChanged: &hostdv1.GuestStateChanged{GuestId: g.GuestID, State: st, Reason: reason}}})
 }
 
