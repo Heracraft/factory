@@ -2239,7 +2239,7 @@ the promises without trace (the reasoning behind per-channel delivery
 status — a support call the platform cannot otherwise answer — is worth
 keeping).
 
-**I-98. A first sign-in without a GitHub identity gets a `user-<sub>` handle;
+**I-100. A first sign-in without a GitHub identity gets a `user-<sub>` handle;
 `repose-admin users rename` and `projects destroy` exist for the operator
 to put that right.** (m2 integration, 2026-09-20) Before the gate, the
 production database held one user, `user-c7fh26yzrl93`, from the owner's

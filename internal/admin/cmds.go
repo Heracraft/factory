@@ -857,7 +857,7 @@ func (e *Env) users(ctx context.Context, args []string) error {
 		// cannot be deleted (the credit ledger references it and is
 		// append-only). Rename while the user has no projects: the handle is
 		// the SSH login suffix and the certificate key_id, both minted per
-		// project (I-98).
+		// project (I-100).
 		fs, err := flagsFor("users rename", args[1:], func(fs *flag.FlagSet) {
 			fs.String("github-login", "", "also record the GitHub login (defaults to the new handle)")
 		})

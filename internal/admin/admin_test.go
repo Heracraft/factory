@@ -88,7 +88,7 @@ func TestAdminSurface(t *testing.T) {
 		t.Fatal(err)
 	}
 	// rename: only while the user has no projects; the new handle must be
-	// a valid handle (I-98).
+	// a valid handle (I-100).
 	h.NewUser("user-abc123")
 	if _, err := run(t, e, "users", "rename", "user-abc123", "Not Valid"); err == nil {
 		t.Fatal("rename to an invalid handle should refuse")
@@ -142,7 +142,7 @@ func TestAdminSurface(t *testing.T) {
 		t.Fatal("rename of a user with projects should refuse")
 	}
 	// destroy: the DELETE /projects op from the admin, for a row an owner
-	// cannot or will not remove (I-98).
+	// cannot or will not remove (I-100).
 	p2 := h.CreateRunning(u, "zq")
 	if out, err := run(t, e, "projects", "destroy", "zq"); err != nil || !strings.Contains(out, "destroy zq: done") {
 		t.Fatalf("destroy: %s %v", out, err)
