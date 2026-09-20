@@ -82,7 +82,8 @@ line stored by us:**
 - Stripe card details of any kind, including last four
 
 `internal/obs` is where the rules live rather than where they are written
-down:
+down (in three packages, so that guestd links a logger and not an exporter:
+DECISIONS I-49):
 
 - Every logger comes from `obs.NewLogger`, which puts `component` on the line
   itself, so a call site cannot omit it, and replaces the value of any field
@@ -90,10 +91,10 @@ down:
   `email`, `handle`, `remote_url`, `prompt`, `args`, `argv`, `env`,
   `cmdline`, `command_line` or `user_agent` with `[redacted]`. Matching is on
   the exact name, so `cert_serial`, `key_id` and `token_used` still read.
-- Every metric comes from a registry `obs.NewMetrics` built, which refuses a
-  name outside `repose_` and any label outside the low-cardinality list, at
-  registration: a series labelled by `project_id` stops the binary at
-  startup instead of filling Prometheus.
+- Every metric comes from a registry `internal/obs/metrics` built, which
+  refuses a name outside `repose_` and any label outside the low-cardinality
+  list, at registration: a series labelled by `project_id` stops the binary
+  at startup instead of filling Prometheus.
 - `internal/obs/obslint`, run by a unit test over `cmd/` and `internal/`,
   refuses the standard library's `log`, a logger or registry built outside
   `obs`, a log call that does not name its `event`, and a never-log field

@@ -2,8 +2,8 @@
 // docs/workstreams/03-hostd.md §5.14 and the host family in
 // docs/workstreams/10-observability.md, under the repose_host_ prefix.
 //
-// The registry comes from internal/obs, which refuses a name outside the
-// repose_ namespace and a label outside the low-cardinality list, so a
+// The registry comes from internal/obs/metrics, which refuses a name outside
+// the repose_ namespace and a label outside the low-cardinality list, so a
 // series added here cannot break §5 without failing at startup.
 package metrics
 
@@ -14,11 +14,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/heracraft/repose/internal/obs"
+	obsmetrics "github.com/heracraft/repose/internal/obs/metrics"
 )
 
 // M holds the registry and every instrument.
 type M struct {
-	obs *obs.Metrics
+	obs *obsmetrics.Metrics
 
 	Guests                *prometheus.GaugeVec
 	CommandsTotal         *prometheus.CounterVec
@@ -50,7 +51,7 @@ func New() *M { return NewVersion("dev") }
 
 // NewVersion is New with the binary's version for repose_build_info.
 func NewVersion(version string) *M {
-	om := obs.NewMetricsVersion(obs.ComponentHostd, version)
+	om := obsmetrics.NewVersion(obs.ComponentHostd, version)
 	f := promauto{om}
 	m := &M{
 		obs:             om,
@@ -93,44 +94,44 @@ func (m *M) Registry() *prometheus.Registry { return m.obs.Registry() }
 // an interface: docs/ops/OBSERVABILITY.md requires the WireGuard address.
 func (m *M) Serve(ctx context.Context, addr string) error { return m.obs.Serve(ctx, addr) }
 
-type promauto struct{ reg *obs.Metrics }
+type promauto struct{ reg *obsmetrics.Metrics }
 
-// Every series is repose_host_<name>; obs.Namespace is the one definition of
-// the prefix, and the registry checks it again at registration.
+// Every series is repose_host_<name>; obsmetrics.Namespace is the one
+// definition of the prefix, and the registry checks it again at registration.
 const sub = "host"
 
 func (p promauto) gauge(name, help string) prometheus.Gauge {
-	g := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: obs.Namespace, Subsystem: sub, Name: name, Help: help})
+	g := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: obsmetrics.Namespace, Subsystem: sub, Name: name, Help: help})
 	p.reg.MustRegister(g)
 	return g
 }
 
 func (p promauto) gaugeVec(name, help string, labels ...string) *prometheus.GaugeVec {
-	g := prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: obs.Namespace, Subsystem: sub, Name: name, Help: help}, labels)
+	g := prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: obsmetrics.Namespace, Subsystem: sub, Name: name, Help: help}, labels)
 	p.reg.MustRegister(g)
 	return g
 }
 
 func (p promauto) counter(name, help string) prometheus.Counter {
-	c := prometheus.NewCounter(prometheus.CounterOpts{Namespace: obs.Namespace, Subsystem: sub, Name: name, Help: help})
+	c := prometheus.NewCounter(prometheus.CounterOpts{Namespace: obsmetrics.Namespace, Subsystem: sub, Name: name, Help: help})
 	p.reg.MustRegister(c)
 	return c
 }
 
 func (p promauto) counterVec(name, help string, labels ...string) *prometheus.CounterVec {
-	c := prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: obs.Namespace, Subsystem: sub, Name: name, Help: help}, labels)
+	c := prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: obsmetrics.Namespace, Subsystem: sub, Name: name, Help: help}, labels)
 	p.reg.MustRegister(c)
 	return c
 }
 
 func (p promauto) hist(name, help string, buckets []float64) prometheus.Histogram {
-	h := prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: obs.Namespace, Subsystem: sub, Name: name, Help: help, Buckets: buckets})
+	h := prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: obsmetrics.Namespace, Subsystem: sub, Name: name, Help: help, Buckets: buckets})
 	p.reg.MustRegister(h)
 	return h
 }
 
 func (p promauto) histVec(name, help string, buckets []float64, labels ...string) *prometheus.HistogramVec {
-	h := prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: obs.Namespace, Subsystem: sub, Name: name, Help: help, Buckets: buckets}, labels)
+	h := prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: obsmetrics.Namespace, Subsystem: sub, Name: name, Help: help, Buckets: buckets}, labels)
 	p.reg.MustRegister(h)
 	return h
 }

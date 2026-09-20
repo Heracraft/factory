@@ -886,3 +886,27 @@ permanently (a second name for the same thing is how a grep misses half the
 uses). *Why this workstream:* `agent_event` is one of the events
 docs/workstreams/10-observability.md §5 requires guestd to emit, and it could
 not fire. Interface: `guest-conventions.md`.
+
+**I-49. `internal/obs` is three packages, because a guest pays for what it
+imports.** (10, amends I-42) §2 asks for "one Go package used by every
+binary", and one package it was until the guestd VM test failed on
+`docs/workstreams/04-guestd.md` §7's budget: guestd's resident memory came to
+20.2 MB against a 20 MB limit, because importing `obs` for the logger linked
+in the Prometheus client and the OpenTelemetry SDK with their package
+initialisers. guestd has no metrics endpoint and no traces of its own — it
+speaks vsock and nothing else — so it was paying 2.5 MB of binary and 700 KB
+of RSS for code it cannot reach.
+
+The split follows the dependency weight: `internal/obs` is logs and names
+(stdlib only: the logger, the component and event lists, the request-id
+context helpers), `internal/obs/metrics` is the Prometheus registry and the
+api and gateway families, `internal/obs/instrument` is the OpenTelemetry
+setup, the gRPC options and the api's HTTP middleware. The rules are enforced
+in the same places as before, and the naming test covers all three. guestd now
+links neither heavy dependency: `go list -deps ./cmd/guestd | grep -cE
+'prometheus|opentelemetry'` is 0, and the stripped binary is 13.7 MB.
+*Rejected:* raising 04's budget (the budget exists because guestd competes
+with the agent for two vCPUs and 4 GB, and it was right); keeping one package
+and hoping the linker drops the unused half (package initialisers are always
+kept, which is what the measurement showed); a build tag (a binary whose
+behaviour depends on how it was built is worse than a package boundary).

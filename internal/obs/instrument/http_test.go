@@ -1,20 +1,52 @@
-package obs
+package instrument
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/heracraft/repose/internal/obs"
+	"github.com/heracraft/repose/internal/obs/metrics"
 )
+
+// line decodes the single JSON object a logger wrote, as obs's own tests do.
+func line(t *testing.T, buf *bytes.Buffer) map[string]any {
+	t.Helper()
+	s := strings.TrimSpace(buf.String())
+	if s == "" {
+		t.Fatal("nothing was logged")
+	}
+	if strings.ContainsRune(s, '\n') {
+		t.Fatalf("more than one line: %q", s)
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		t.Fatalf("not JSON: %v: %s", err, s)
+	}
+	return m
+}
+
+// scrape renders a registry, as obs/metrics's own tests do.
+func scrape(t *testing.T, m *metrics.Metrics) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/metrics", nil))
+	if rec.Code != 200 {
+		t.Fatalf("/metrics returned %d: %s", rec.Code, rec.Body.String())
+	}
+	return rec.Body.String()
+}
 
 // TestMiddlewareLogsAndCounts: one `request` line with the route template,
 // and the two api series §5 names.
 func TestMiddlewareLogsAndCounts(t *testing.T) {
 	var buf bytes.Buffer
-	log := NewLogger(LogOptions{Component: ComponentAPI, Writer: &buf})
-	met := NewMetrics(ComponentAPI)
-	m := NewAPIMetrics(met)
+	log := obs.NewLogger(obs.LogOptions{Component: obs.ComponentAPI, Writer: &buf})
+	met := metrics.New(obs.ComponentAPI)
+	m := metrics.NewAPIMetrics(met)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /projects/{id}", func(w http.ResponseWriter, _ *http.Request) {
@@ -28,13 +60,13 @@ func TestMiddlewareLogsAndCounts(t *testing.T) {
 	if rec.Code != http.StatusTeapot {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	if rec.Header().Get(RequestIDHeader) == "" {
+	if rec.Header().Get(obs.RequestIDHeader) == "" {
 		t.Error("no request id was returned")
 	}
 	out := buf.String()
 	fields := line(t, &buf)
-	if fields["event"] != EventRequest {
-		t.Errorf("event = %v, want %s", fields["event"], EventRequest)
+	if fields["event"] != obs.EventRequest {
+		t.Errorf("event = %v, want %s", fields["event"], obs.EventRequest)
 	}
 	if fields["route"] != "GET /projects/{id}" {
 		t.Errorf("route = %v, want the pattern, not the path", fields["route"])
@@ -61,7 +93,7 @@ func TestMiddlewareLogsAndCounts(t *testing.T) {
 // unknown path into Prometheus.
 func TestMiddlewareUnmatchedRoute(t *testing.T) {
 	var buf bytes.Buffer
-	log := NewLogger(LogOptions{Component: ComponentAPI, Writer: &buf})
+	log := obs.NewLogger(obs.LogOptions{Component: obs.ComponentAPI, Writer: &buf})
 	h := HTTPMiddleware(HTTPOptions{Log: log})(http.NewServeMux())
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/nope/nope/nope", nil))
 	if got := line(t, &buf)["route"]; got != "unmatched" {
@@ -72,12 +104,12 @@ func TestMiddlewareUnmatchedRoute(t *testing.T) {
 // TestRequestIDFlowsToHandlers: a handler's own lines join the request line.
 func TestRequestIDFlowsToHandlers(t *testing.T) {
 	var buf bytes.Buffer
-	log := NewLogger(LogOptions{Component: ComponentAPI, Writer: &buf})
+	log := obs.NewLogger(obs.LogOptions{Component: obs.ComponentAPI, Writer: &buf})
 	var inner string
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /x", func(_ http.ResponseWriter, r *http.Request) {
-		inner = RequestID(r.Context())
-		LogWithRequest(r.Context(), log).Info("scheduled", "event", EventSchedule, "host_id", "h-1")
+		inner = obs.RequestID(r.Context())
+		obs.LogWithRequest(r.Context(), log).Info("scheduled", "event", obs.EventSchedule, "host_id", "h-1")
 	})
 	h := HTTPMiddleware(HTTPOptions{Log: log})(mux)
 	rec := httptest.NewRecorder()
@@ -86,8 +118,8 @@ func TestRequestIDFlowsToHandlers(t *testing.T) {
 	if inner == "" {
 		t.Fatal("the handler saw no request id")
 	}
-	if inner != rec.Header().Get(RequestIDHeader) {
-		t.Errorf("the handler's id %q is not the one returned %q", inner, rec.Header().Get(RequestIDHeader))
+	if inner != rec.Header().Get(obs.RequestIDHeader) {
+		t.Errorf("the handler's id %q is not the one returned %q", inner, rec.Header().Get(obs.RequestIDHeader))
 	}
 	if n := strings.Count(buf.String(), inner); n != 2 {
 		t.Errorf("request id appears on %d lines, want 2:\n%s", n, buf.String())
@@ -98,10 +130,10 @@ func TestRequestIDFlowsToHandlers(t *testing.T) {
 func TestRequestIDFromTheClientIsKept(t *testing.T) {
 	h := HTTPMiddleware(HTTPOptions{})(http.NewServeMux())
 	req := httptest.NewRequest("GET", "/x", nil)
-	req.Header.Set(RequestIDHeader, "cli-123")
+	req.Header.Set(obs.RequestIDHeader, "cli-123")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
-	if got := rec.Header().Get(RequestIDHeader); got != "cli-123" {
+	if got := rec.Header().Get(obs.RequestIDHeader); got != "cli-123" {
 		t.Errorf("request id = %q, want cli-123", got)
 	}
 }

@@ -1,22 +1,22 @@
 // The host family lives in internal/hostd/metrics (workstream 03 registers
-// it), so the check that it matches §5 is in an external test package: obs
-// cannot import hostd, but obs_test can.
-package obs_test
+// it), so the check that it matches §5 is in an external test package: this
+// package cannot import hostd's, but its external test can.
+package metrics_test
 
 import (
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/heracraft/repose/internal/hostd/metrics"
-	"github.com/heracraft/repose/internal/obs"
+	hostmetrics "github.com/heracraft/repose/internal/hostd/metrics"
+	obsmetrics "github.com/heracraft/repose/internal/obs/metrics"
 )
 
 // TestHostFamily is the hostd half of the metric list in
 // docs/workstreams/10-observability.md §5: every name, with the labels §5
 // gives it.
 func TestHostFamily(t *testing.T) {
-	m := metrics.New()
+	m := hostmetrics.New()
 	// One series per vector, so the scrape carries its labels.
 	m.Guests.WithLabelValues("running", "large").Set(1)
 	m.CommandsTotal.WithLabelValues("CreateGuest", "ok").Inc()
@@ -55,7 +55,7 @@ func TestHostFamily(t *testing.T) {
 // forbids, and hostd once labelled guestd_unreachable by guest_id.
 func TestHostFamilyHasNoPerProjectLabel(t *testing.T) {
 	rec := httptest.NewRecorder()
-	metrics.New().Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/metrics", nil))
+	hostmetrics.New().Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/metrics", nil))
 	for _, bad := range []string{"guest_id=", "project_id=", "user_id="} {
 		if strings.Contains(rec.Body.String(), bad) {
 			t.Errorf("host metrics carry the label %s", bad)
@@ -66,7 +66,7 @@ func TestHostFamilyHasNoPerProjectLabel(t *testing.T) {
 // TestHostMetricsUseTheCheckedRegistry: every series is in the namespace, so
 // hostd's own constructor cannot drift from obs.
 func TestHostMetricsUseTheCheckedRegistry(t *testing.T) {
-	fams, err := metrics.New().Registry().Gather()
+	fams, err := hostmetrics.New().Registry().Gather()
 	if err != nil {
 		t.Fatalf("gather: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestHostMetricsUseTheCheckedRegistry(t *testing.T) {
 	}
 	for _, f := range fams {
 		n := f.GetName()
-		if strings.HasPrefix(n, obs.Namespace+"_") || strings.HasPrefix(n, "go_") || strings.HasPrefix(n, "process_") {
+		if strings.HasPrefix(n, obsmetrics.Namespace+"_") || strings.HasPrefix(n, "go_") || strings.HasPrefix(n, "process_") {
 			continue
 		}
 		t.Errorf("series %s is outside the repose_ namespace", n)

@@ -4,7 +4,8 @@
 //
 // It is a development tool, not part of the product: it imports the real
 // metric definitions (internal/hostd/metrics for the host family,
-// internal/obs for the api and gateway families) and moves them around, so a
+// internal/obs/metrics for the api and gateway families) and moves them
+// around, so a
 // panel that queries a series nobody defines renders empty here too. What it
 // cannot tell you is whether a real host produces sensible values; that is a
 // real-host checklist item.
@@ -28,6 +29,7 @@ import (
 
 	"github.com/heracraft/repose/internal/hostd/metrics"
 	"github.com/heracraft/repose/internal/obs"
+	obsmetrics "github.com/heracraft/repose/internal/obs/metrics"
 )
 
 func main() {
@@ -37,10 +39,10 @@ func main() {
 	flag.Parse()
 
 	host := metrics.NewVersion("dev-seed")
-	gwM := obs.NewMetricsVersion(obs.ComponentGateway, "dev-seed")
-	gw := obs.NewGatewayMetrics(gwM)
-	apiM := obs.NewMetricsVersion(obs.ComponentAPI, "dev-seed")
-	api := obs.NewAPIMetrics(apiM)
+	gwM := obsmetrics.NewVersion(obs.ComponentGateway, "dev-seed")
+	gw := obsmetrics.NewGatewayMetrics(gwM)
+	apiM := obsmetrics.NewVersion(obs.ComponentAPI, "dev-seed")
+	api := obsmetrics.NewAPIMetrics(apiM)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

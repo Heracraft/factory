@@ -1,4 +1,14 @@
-package obs
+// Package metrics is the Prometheus half of the observability rules: a
+// registry that refuses a metric outside the repose_ namespace or with a
+// label outside the low-cardinality list, and the api and gateway families of
+// docs/workstreams/10-observability.md §5.
+//
+// It is a package of its own rather than part of internal/obs because a guest
+// pays for what it imports: guestd has no metrics endpoint at all (it speaks
+// vsock and nothing else), and linking the client library into it cost 2.5 MB
+// of binary and 700 KB of resident memory against the 20 MB budget of
+// docs/workstreams/04-guestd.md §7. See DECISIONS I-49.
+package metrics
 
 import (
 	"context"
@@ -14,6 +24,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/heracraft/repose/internal/obs"
 )
 
 // Namespace prefixes every metric repose exports.
@@ -59,25 +71,24 @@ var ErrMetricName = errors.New("obs: metric breaks the repose naming rules")
 // metric outside the repose_ namespace or with a label outside
 // AllowedLabels, the Go and process collectors, and repose_build_info.
 type Metrics struct {
-	component Component
+	component obs.Component
 	registry  *prometheus.Registry
 }
 
-// NewMetrics builds the registry for a component. Panics on an unknown
+// New builds the registry for a component. Panics on an unknown
 // component or if the built-in collectors cannot be registered, both of
 // which are programming errors visible on the first run.
-func NewMetrics(c Component) *Metrics {
+func New(c obs.Component) *Metrics {
 	return newMetrics(c, "dev")
 }
 
-// NewMetricsVersion is NewMetrics with the binary's version for
-// repose_build_info.
-func NewMetricsVersion(c Component, version string) *Metrics {
+// NewVersion is New with the binary's version for repose_build_info.
+func NewVersion(c obs.Component, version string) *Metrics {
 	return newMetrics(c, version)
 }
 
-func newMetrics(c Component, version string) *Metrics {
-	if err := c.check(); err != nil {
+func newMetrics(c obs.Component, version string) *Metrics {
+	if err := checkComponent(c); err != nil {
 		// A component name is a constant in the calling binary, so this is a
 		// programming error that every run reproduces; failing at startup is
 		// better than exporting series nothing scrapes.
@@ -103,11 +114,20 @@ func newMetrics(c Component, version string) *Metrics {
 	return m
 }
 
+// checkComponent refuses a component obs does not know; the name is a
+// constant in the calling binary, so this fires on the first run.
+func checkComponent(c obs.Component) error {
+	if !c.Valid() {
+		return fmt.Errorf("obs/metrics: unknown component %q; use one of %v", c, obs.Components)
+	}
+	return nil
+}
+
 // Registry is the registry to gather from.
 func (m *Metrics) Registry() *prometheus.Registry { return m.registry }
 
 // Component is the component this surface belongs to.
-func (m *Metrics) Component() Component { return m.component }
+func (m *Metrics) Component() obs.Component { return m.component }
 
 // Register adds a collector after checking its names and labels.
 func (m *Metrics) Register(c prometheus.Collector) error {

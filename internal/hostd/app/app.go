@@ -34,6 +34,7 @@ import (
 	"github.com/heracraft/repose/internal/hostd/systemd"
 	"github.com/heracraft/repose/internal/hostd/vsockclient"
 	"github.com/heracraft/repose/internal/obs"
+	"github.com/heracraft/repose/internal/obs/instrument"
 )
 
 // Options are the daemon's flags.
@@ -155,7 +156,7 @@ func Run(ctx context.Context, o Options, log *slog.Logger) error {
 	// Tracing is wired and off: with no OTEL_EXPORTER_OTLP_ENDPOINT there is
 	// no exporter and no connection, and the spans the gRPC stream starts go
 	// to the noop provider (docs/workstreams/10-observability.md §5).
-	_, shutdownTracing, err := obs.SetupTracing(ctx, obs.TraceOptions{Component: obs.ComponentHostd, Version: o.Version, Insecure: true})
+	_, shutdownTracing, err := instrument.SetupTracing(ctx, instrument.TraceOptions{Component: obs.ComponentHostd, Version: o.Version, Insecure: true})
 	if err != nil {
 		return fmt.Errorf("set up tracing: %w", err)
 	}
@@ -166,7 +167,7 @@ func Run(ctx context.Context, o Options, log *slog.Logger) error {
 			log.Warn("tracer shutdown failed", "event", "shutdown", "err", err.Error())
 		}
 	}()
-	if obs.TracingEnabled() {
+	if instrument.TracingEnabled() {
 		log.Info("tracing enabled", "event", "start", "part", "tracing")
 	}
 

@@ -3,13 +3,14 @@
 // naming rules of docs/workstreams/10-observability.md §5 built into the
 // types rather than left to each call site.
 //
-// Three entry points. The workstream doc calls them obs.Logger, obs.Metrics
-// and obs.Tracer; in Go they are a constructor each, and Metrics is also the
-// type's name:
+// The workstream doc calls the three entry points obs.Logger, obs.Metrics and
+// obs.Tracer. In Go they are a constructor each, and the two that carry heavy
+// dependencies live in subpackages so that a guest links only what it uses
+// (DECISIONS I-49):
 //
-//	log := obs.NewLogger(obs.LogOptions{Component: obs.ComponentHostd})
-//	met := obs.NewMetrics(obs.ComponentHostd)
-//	tr, shutdown, err := obs.SetupTracing(ctx, obs.TraceOptions{Component: obs.ComponentHostd})
+//	log := obs.NewLogger(obs.LogOptions{Component: obs.ComponentHostd})   // this package, stdlib only
+//	met := metrics.New(obs.ComponentHostd)                                 // internal/obs/metrics
+//	tr, shutdown, err := instrument.SetupTracing(ctx, instrument.TraceOptions{Component: obs.ComponentHostd})
 //
 // What the types guarantee, so that no call site has to remember it:
 //
@@ -21,9 +22,10 @@
 //     and the source rules in obslint, which refuse a forbidden field name
 //     at build time; redaction is what catches the one that slips through
 //     into a release.
-//   - every metric registered through a Metrics is in the repose_ namespace
-//     and carries only labels from the low-cardinality list. Registration
-//     fails otherwise, so a metric labelled by project_id cannot ship.
+//   - every metric registered through a metrics.Metrics is in the repose_
+//     namespace and carries only labels from the low-cardinality list.
+//     Registration fails otherwise, so a metric labelled by project_id cannot
+//     ship.
 //   - with OTEL_EXPORTER_OTLP_ENDPOINT unset there is no exporter and no
 //     connection: SetupTracing returns the noop tracer provider.
 package obs

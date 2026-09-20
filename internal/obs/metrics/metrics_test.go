@@ -1,4 +1,4 @@
-package obs
+package metrics
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/heracraft/repose/internal/obs"
 )
 
 // gathered returns every series name in the registry with its label names.
@@ -49,7 +51,7 @@ func wantFamilies(t *testing.T, got map[string][]string, want map[string][]strin
 // TestAPIFamily is the api half of the metric list in
 // docs/workstreams/10-observability.md §5, name by name and label by label.
 func TestAPIFamily(t *testing.T) {
-	m := NewMetrics(ComponentAPI)
+	m := New(obs.ComponentAPI)
 	a := NewAPIMetrics(m)
 	// Give every vector one series so Gather sees its labels.
 	a.RequestsTotal.WithLabelValues("GET /projects", "GET", "200").Inc()
@@ -85,7 +87,7 @@ func TestAPIFamily(t *testing.T) {
 
 // TestGatewayFamily is the gateway half of the same list.
 func TestGatewayFamily(t *testing.T) {
-	m := NewMetrics(ComponentGateway)
+	m := New(obs.ComponentGateway)
 	g := NewGatewayMetrics(m)
 	g.Sessions.Set(0)
 	g.SessionsTotal.Inc()
@@ -104,7 +106,7 @@ func TestGatewayFamily(t *testing.T) {
 // TestAuthFailReasonsArePresentAtZero: GatewayAuthSpike is a rate() over this
 // counter, and a rate over a series that has never appeared is nothing.
 func TestAuthFailReasonsArePresentAtZero(t *testing.T) {
-	m := NewMetrics(ComponentGateway)
+	m := New(obs.ComponentGateway)
 	NewGatewayMetrics(m)
 	body := scrape(t, m)
 	for _, r := range AuthFailReasons {
@@ -116,7 +118,7 @@ func TestAuthFailReasonsArePresentAtZero(t *testing.T) {
 
 // TestBuildInfo: which version of which binary is running.
 func TestBuildInfo(t *testing.T) {
-	m := NewMetricsVersion(ComponentHostd, "1.2.3")
+	m := NewVersion(obs.ComponentHostd, "1.2.3")
 	if body := scrape(t, m); !strings.Contains(body, `repose_build_info{component="hostd",version="1.2.3"} 1`) {
 		t.Errorf("repose_build_info missing or wrong:\n%s", body)
 	}
@@ -124,7 +126,7 @@ func TestBuildInfo(t *testing.T) {
 
 // TestNamespaceEnforced: a metric outside repose_ cannot be registered.
 func TestNamespaceEnforced(t *testing.T) {
-	m := NewMetrics(ComponentAPI)
+	m := New(obs.ComponentAPI)
 	err := m.Register(prometheus.NewGauge(prometheus.GaugeOpts{Name: "guests"}))
 	if !errors.Is(err, ErrMetricName) {
 		t.Fatalf("Register(guests) = %v, want ErrMetricName", err)
@@ -137,7 +139,7 @@ func TestNamespaceEnforced(t *testing.T) {
 // TestLabelsEnforced: the labels that make Prometheus fall over are refused,
 // whether they are variable or constant.
 func TestLabelsEnforced(t *testing.T) {
-	m := NewMetrics(ComponentHostd)
+	m := New(obs.ComponentHostd)
 	for _, label := range []string{"project_id", "guest_id", "user_id", "slug", "remote_url"} {
 		err := m.Register(prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{Namespace: Namespace, Subsystem: "host", Name: "thing_" + label},
@@ -169,13 +171,13 @@ func TestMustRegisterPanics(t *testing.T) {
 			t.Error("MustRegister should panic on a bad name")
 		}
 	}()
-	NewMetrics(ComponentAPI).MustRegister(prometheus.NewCounter(prometheus.CounterOpts{Name: "oops_total"}))
+	New(obs.ComponentAPI).MustRegister(prometheus.NewCounter(prometheus.CounterOpts{Name: "oops_total"}))
 }
 
 // TestGoAndProcessCollectors: the two families every Go dashboard expects are
 // the documented exception to the repose_ rule.
 func TestGoAndProcessCollectors(t *testing.T) {
-	body := scrape(t, NewMetrics(ComponentAPI))
+	body := scrape(t, New(obs.ComponentAPI))
 	for _, name := range []string{"go_goroutines", "process_open_fds"} {
 		if !strings.Contains(body, name) {
 			t.Errorf("%s is not exported", name)
@@ -187,7 +189,7 @@ func TestGoAndProcessCollectors(t *testing.T) {
 // observability-related is reachable from the internet, and a host's NSG is
 // not the only thing that should be enforcing it.
 func TestServeRefusesEveryInterface(t *testing.T) {
-	m := NewMetrics(ComponentHostd)
+	m := New(obs.ComponentHostd)
 	for _, addr := range []string{":9101", "0.0.0.0:9101", "[::]:9101"} {
 		if err := m.Serve(context.Background(), addr); err == nil {
 			t.Errorf("Serve(%q) was accepted", addr)
@@ -198,7 +200,7 @@ func TestServeRefusesEveryInterface(t *testing.T) {
 // TestServeStopsWithTheContext, and answers /metrics and /healthz while it
 // runs.
 func TestServeStopsWithTheContext(t *testing.T) {
-	m := NewMetrics(ComponentHostd)
+	m := New(obs.ComponentHostd)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- m.Serve(ctx, "127.0.0.1:0") }()
@@ -219,9 +221,9 @@ func scrape(t *testing.T, m *Metrics) string {
 }
 
 func TestMetricsPorts(t *testing.T) {
-	for c, want := range map[Component]int{
-		ComponentHostd: 9101, ComponentGateway: 9102, ComponentAPI: 9103,
-		ComponentGuestd: 0, ComponentCLI: 0,
+	for c, want := range map[obs.Component]int{
+		obs.ComponentHostd: 9101, obs.ComponentGateway: 9102, obs.ComponentAPI: 9103,
+		obs.ComponentGuestd: 0, obs.ComponentCLI: 0,
 	} {
 		if got := c.MetricsPort(); got != want {
 			t.Errorf("%s.MetricsPort() = %d, want %d", c, got, want)

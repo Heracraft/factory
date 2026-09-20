@@ -149,6 +149,10 @@
         guestd = import ./guest/tests/guestd.nix {
           inherit pkgs;
           guestdPackage = guestd;
+          # The hook subtest runs repose-hook; without the package the node
+          # has no such command and the test fails on PATH rather than on
+          # anything it is checking.
+          hookPackage = reposeHook;
         };
       };
 

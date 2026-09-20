@@ -5,8 +5,8 @@
 //
 // Three of the rules are structural rather than textual, which is the point:
 // a logger can only come from obs.NewLogger, so `component` cannot be
-// missing; a metric can only be registered through obs.Metrics, so it cannot
-// be outside the repose_ namespace or carry a per-project label. What is left
+// missing; a metric can only be registered through obs/metrics.Metrics, so it
+// cannot be outside the repose_ namespace or carry a per-project label. What is left
 // for a source check is that nobody bypasses those two constructors, that
 // every log call names an event, and that no call site passes a field name
 // the never-log list forbids.
@@ -303,7 +303,7 @@ func checkFile(rel string, fset *token.FileSet, f *ast.File) []Finding {
 				}
 			case pkg == "prometheus" && (name == "NewRegistry" || name == "NewPedanticRegistry"):
 				if !inObs {
-					add(x.Pos(), RuleMetricsCtor, fmt.Sprintf("prometheus.%s outside internal/obs; use obs.NewMetrics so the repose_ namespace and the label list are enforced", name))
+					add(x.Pos(), RuleMetricsCtor, fmt.Sprintf("prometheus.%s outside internal/obs; use metrics.New (internal/obs/metrics) so the repose_ namespace and the label list are enforced", name))
 				}
 			case pkg == "promauto":
 				if !inObs {

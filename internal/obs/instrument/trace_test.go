@@ -1,4 +1,4 @@
-package obs
+package instrument
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+
+	"github.com/heracraft/repose/internal/obs"
 )
 
 // TestTracingOffByDefault is the §9 checklist item: with
@@ -17,7 +19,7 @@ func TestTracingOffByDefault(t *testing.T) {
 	if TracingEnabled() {
 		t.Fatal("TracingEnabled with no endpoint set")
 	}
-	tr, shutdown, err := SetupTracing(context.Background(), TraceOptions{Component: ComponentAPI})
+	tr, shutdown, err := SetupTracing(context.Background(), TraceOptions{Component: obs.ComponentAPI})
 	if err != nil {
 		t.Fatalf("SetupTracing: %v", err)
 	}
@@ -52,7 +54,7 @@ func TestNoDialWithoutAnEndpoint(t *testing.T) {
 			return nil, context.Canceled
 		},
 	}
-	tr, shutdown, err := SetupTracing(context.Background(), TraceOptions{Component: ComponentHostd})
+	tr, shutdown, err := SetupTracing(context.Background(), TraceOptions{Component: obs.ComponentHostd})
 	if err != nil {
 		t.Fatalf("SetupTracing: %v", err)
 	}
@@ -70,7 +72,7 @@ func TestNoDialWithoutAnEndpoint(t *testing.T) {
 // is passed on, so turning one component on does not need them all on.
 func TestPropagatorIsSetEvenWhenOff(t *testing.T) {
 	t.Setenv(EndpointEnv, "")
-	if _, _, err := SetupTracing(context.Background(), TraceOptions{Component: ComponentGateway}); err != nil {
+	if _, _, err := SetupTracing(context.Background(), TraceOptions{Component: obs.ComponentGateway}); err != nil {
 		t.Fatalf("SetupTracing: %v", err)
 	}
 	fields := otel.GetTextMapPropagator().Fields()
@@ -88,7 +90,7 @@ func TestPropagatorIsSetEvenWhenOff(t *testing.T) {
 // TestSetupTracingRejectsAnUnknownComponent, and still returns a shutdown
 // that can be deferred.
 func TestSetupTracingRejectsAnUnknownComponent(t *testing.T) {
-	_, shutdown, err := SetupTracing(context.Background(), TraceOptions{Component: Component("worker")})
+	_, shutdown, err := SetupTracing(context.Background(), TraceOptions{Component: obs.Component("worker")})
 	if err == nil {
 		t.Fatal("an unknown component was accepted")
 	}
@@ -125,7 +127,7 @@ func TestTracingOnWithAnEndpoint(t *testing.T) {
 
 	t.Setenv(EndpointEnv, "http://"+ln.Addr().String())
 	tr, shutdown, err := SetupTracing(context.Background(), TraceOptions{
-		Component: ComponentAPI, Version: "test", Insecure: true,
+		Component: obs.ComponentAPI, Version: "test", Insecure: true,
 	})
 	if err != nil {
 		t.Fatalf("SetupTracing: %v", err)

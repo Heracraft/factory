@@ -1,7 +1,6 @@
-package obs
+package instrument
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -9,38 +8,15 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	"github.com/heracraft/repose/internal/obs"
+	"github.com/heracraft/repose/internal/obs/metrics"
 )
-
-// RequestIDHeader is the header the api echoes so a user's bug report and a
-// Loki line can be joined by request_id.
-const RequestIDHeader = "X-Request-Id"
-
-type requestIDKey struct{}
-
-// WithRequestID puts a request id on a context.
-func WithRequestID(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, requestIDKey{}, id)
-}
-
-// RequestID returns the request id on a context, or "".
-func RequestID(ctx context.Context) string {
-	s, _ := ctx.Value(requestIDKey{}).(string)
-	return s
-}
-
-// LogWithRequest returns a logger carrying the context's request_id, so a
-// handler's own lines join the `request` line.
-func LogWithRequest(ctx context.Context, log *slog.Logger) *slog.Logger {
-	if id := RequestID(ctx); id != "" {
-		return log.With("request_id", id)
-	}
-	return log
-}
 
 // HTTPOptions configures HTTPMiddleware.
 type HTTPOptions struct {
 	Log     *slog.Logger
-	Metrics *APIMetrics
+	Metrics *metrics.APIMetrics
 	// Route names the request for the `route` label and log field. The
 	// default uses the pattern http.ServeMux matched, which is a template
 	// ("GET /projects/{id}") and therefore bounded; a path would put one
@@ -71,12 +47,12 @@ func HTTPMiddleware(o HTTPOptions) func(http.Handler) http.Handler {
 	}
 	return func(next http.Handler) http.Handler {
 		h := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			id := r.Header.Get(RequestIDHeader)
+			id := r.Header.Get(obs.RequestIDHeader)
 			if id == "" {
 				id = uuid.NewString()
 			}
-			w.Header().Set(RequestIDHeader, id)
-			r = r.WithContext(WithRequestID(r.Context(), id))
+			w.Header().Set(obs.RequestIDHeader, id)
+			r = r.WithContext(obs.WithRequestID(r.Context(), id))
 
 			rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 			start := time.Now()
@@ -96,7 +72,7 @@ func HTTPMiddleware(o HTTPOptions) func(http.Handler) http.Handler {
 				if rec.status >= 500 {
 					lvl = slog.LevelError
 				}
-				o.Log.Log(r.Context(), lvl, "http request", "event", EventRequest,
+				o.Log.Log(r.Context(), lvl, "http request", "event", obs.EventRequest,
 					"request_id", id, "method", r.Method, "route", rt,
 					"status", rec.status, "duration_ms", d.Milliseconds())
 			}

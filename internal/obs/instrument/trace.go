@@ -1,10 +1,12 @@
-package obs
+package instrument
 
 import (
 	"context"
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/heracraft/repose/internal/obs"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -20,6 +22,14 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
+// Package instrument is the OpenTelemetry half of the observability rules
+// plus the api's request layer: tracing that is a no-op until an OTLP
+// endpoint is set, the gRPC options for the Session stream, and the HTTP
+// middleware that emits the `request` event and the two api request series.
+//
+// Like internal/obs/metrics it is separate from internal/obs so that guestd
+// does not link an exporter it will never use (DECISIONS I-49).
+
 // EndpointEnv is the one environment variable that turns tracing on. It is
 // unset everywhere today: DESIGN §15 says traces are exported to nothing yet,
 // and this workstream does not choose a backend.
@@ -27,7 +37,7 @@ const EndpointEnv = "OTEL_EXPORTER_OTLP_ENDPOINT"
 
 // TraceOptions configures SetupTracing.
 type TraceOptions struct {
-	Component Component
+	Component obs.Component
 	// Version goes on the resource as service.version.
 	Version string
 	// Endpoint defaults to $OTEL_EXPORTER_OTLP_ENDPOINT. Empty means no
@@ -54,8 +64,9 @@ type Shutdown func(context.Context) error
 // docs/workstreams/10-observability.md §5 means by "the exporter is a no-op
 // when OTEL_EXPORTER_OTLP_ENDPOINT is unset".
 func SetupTracing(ctx context.Context, o TraceOptions) (trace.Tracer, Shutdown, error) {
-	if err := o.Component.check(); err != nil {
-		return nil, func(context.Context) error { return nil }, err
+	if !o.Component.Valid() {
+		return nil, func(context.Context) error { return nil },
+			fmt.Errorf("obs/instrument: unknown component %q; use one of %v", o.Component, obs.Components)
 	}
 	name := "github.com/heracraft/repose/" + string(o.Component)
 	endpoint := o.Endpoint
