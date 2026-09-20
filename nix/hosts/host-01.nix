@@ -11,6 +11,12 @@
 { ... }:
 {
   repose.host = {
+    # Standard_D16s_v7 is NVMe-only (DECISIONS I-40): the OS disk is the
+    # cached controller's first namespace, the uncached data disk the second
+    # controller's. Neither /dev/sda nor /dev/disk/azure/scsi1/lun10 exists.
+    osDevice = "/dev/nvme0n1";
+    dataDevice = "/dev/nvme1n1";
+
     # The edge's static public IP (infra output edge_public_ip); hostdev
     # listens on 443 there. The server certificate carries this IP.
     apiAddr = "20.102.98.254:443";

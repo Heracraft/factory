@@ -84,6 +84,12 @@
         specialArgs = { inherit self; };
         modules = [ disko.nixosModules.disko ./edge ];
       };
+      # The production edge: a v7 (NVMe-only) size, DECISIONS I-40.
+      nixosConfigurations.edge-01 = lib.nixosSystem {
+        inherit system;
+        specialArgs = { inherit self; };
+        modules = [ disko.nixosModules.disko ./edge { networking.hostName = "edge-01"; repose.edge.osDevice = "/dev/nvme0n1"; } ];
+      };
 
       # Guest base as a module, and the function hostd's build step calls with
       # a user fragment to produce a runner. docs/workstreams/02-guest-base.md

@@ -735,3 +735,29 @@ between the merged host configuration and a real host:
   `hostd.service` command line). The edge firewall also opens 443, which
   the NSG already did, for hostdev now and the preview-proxy stub later.
 
+**I-40. Pre-launch host and edge are Intel Dsv7 sizes, because this
+subscription cannot deploy Dsv5 or Dsv6 in East US.** (m1 integration,
+2026-09-20; needs the owner's sign-off, it changes the bill) The first
+apply failed creating the edge with `SkuNotAvailable`, and
+`az vm list-skus` shows every `Standard_D*s_v5` and `_v6` size as
+`NotAvailableForSubscription` in all three zones of `eastus`, with the
+family quota untouched (RESEARCH §2a). `Standard_D16s_v7` (Intel Xeon 6,
+nested virtualization supported, Premium SSD v2, no temp disk) and
+`Standard_D2s_v7` are open in every zone and within quota, so `prod.tfvars`
+selects them: `host_size`, `host_class = azure-d16s-v7`, `edge_size`. The
+v7 generation is NVMe-only, which changes two device names: the OS disk is
+`/dev/nvme0n1` and the uncached data disk `/dev/nvme1n1` (Azure's remote
+NVMe FAQ: cached disks on the first controller, uncached on the second), so
+`host-01` and the new `edge-01` configuration name those devices and the
+root variable `host_data_disk_device` carries the post-install check.
+Cost: about $211 more a month for the host and $26 for the edge than the
+I-14 sizes. DESIGN §4's Intel-with-nested-virtualization rule holds; only
+the generation changes. *Rejected:* a support request to lift the
+restriction (days, and nothing runs meanwhile; worth filing anyway to
+return to v5 pricing); moving the environment to `swedencentral` or
+`koreacentral`, where `D16s_v5` is open (every resource already applied is
+in `eastus`, and the dev box and owner are on the US east coast);
+`Dnsv6` (network-optimised premium for bandwidth the design does not
+use). *Revisit when:* Microsoft lifts the restriction, or at the launch
+resize (I-14), when `D64s_v5` against `D64s_v7` is a fresh price check.
+

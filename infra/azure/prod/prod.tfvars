@@ -9,19 +9,27 @@ subscription_id     = "5f27aace-dd8c-4dc0-95bf-b59ee8de7d70"
 resource_group_name = "repose-prod"
 zone                = "1"
 
-# DECISIONS I-14: the pre-launch host. Launch values are Standard_D64s_v5,
-# azure-d64s-v5 and 2048, applied with guests stopped.
-host_size           = "Standard_D16s_v5"
-host_class          = "azure-d16s-v5"
-host_data_disk_gb   = 512
-host_data_disk_iops = 16000
-host_data_disk_mbps = 600
+# DECISIONS I-14: the pre-launch host, sized as the D16s_v5 of the design;
+# I-40: this subscription cannot deploy any Dsv5 or Dsv6 size in eastus
+# (RESEARCH §2a), so the v7 generation is used. Launch values are the 64 vCPU
+# size of the same family and 2048, applied with guests stopped.
+host_size         = "Standard_D16s_v7"
+host_class        = "azure-d16s-v7"
+host_data_disk_gb = 512
+# v7 is NVMe-only: the uncached data disk is the first namespace of the second
+# controller (I-40). SCSI sizes use /dev/disk/azure/scsi1/lun10.
+host_data_disk_device = "/dev/nvme1n1"
+host_data_disk_iops   = 16000
+host_data_disk_mbps   = 600
 
 # The portal defaults to Trusted Launch, which silently disables nested
 # virtualization. Only "Standard" is accepted and the variable has no default.
 host_security_type = "Standard"
 
-edge_size = "Standard_D2s_v5"
+# I-40: same subscription restriction as the host; edge-01 is the NVMe-aware
+# edge configuration (nix/flake.nix).
+edge_size       = "Standard_D2s_v7"
+edge_flake_attr = "edge-01"
 
 # The control plane arrives in wave 3 with workstreams 05 and 08; until then
 # it is about $180 a month of nothing (DECISIONS I-23). Set to 1 then.

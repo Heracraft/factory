@@ -3,9 +3,13 @@
 > **Host size is a variable (DECISIONS I-14).** `host_size` defaults to
 > `Standard_D16s_v5` and `host_data_disk_gb` to 512 for the pre-launch month;
 > launch values are `Standard_D64s_v5` and 2048. Validation rejects any size
-> whose name is not `Standard_D[0-9]+s_v[56]` so an AMD or ARM size cannot be
+> whose name is not `Standard_D[0-9]+s_v[567]` so an AMD or ARM size cannot be
 > applied by mistake. The Coolify VM is `Standard_D4s_v5`, the edge
-> `Standard_D2s_v5`.
+> `Standard_D2s_v5`. Production actually runs the v7 generation of the same
+> sizes because the subscription cannot deploy v5 or v6 in East US
+> (DECISIONS I-40); v6 and v7 are NVMe-only, so `host_data_disk_device`
+> and the named `host-01`/`edge-01` nix configurations carry the NVMe
+> device names.
 
 > **State backend (created 2026-09-19):** resource group `repose-prod`,
 > storage account `reposetfstate3912`, container `tfstate`, key
