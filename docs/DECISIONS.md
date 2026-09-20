@@ -2182,3 +2182,41 @@ Interfaces: `grpc-hostd.md` (`RegisterResponse.loki_url`),
 `host-conventions.md` (where the field comes from and what an empty one
 means), `proto/repose/hostd/v1/hostd.proto`. The old shape stays accepted:
 field 7 is additive and an absent value means what it meant before.
+
+**I-96. Where `features/` promised a dashboard that was never specified,
+the feature doc is corrected, not the dashboard.** (m3-web, 08, 2026-09-20)
+The M3 web session's last item is "`docs/features/*` match what is live".
+Two of them did not, and in both cases the feature doc was written before
+`workstreams/08-dashboard.md` §5.2 fixed the page list, and promised more
+than §5.2 ever asked for:
+
+- `features/status-and-logs.md` "Dashboard" promised a sortable project
+  list with a cost sparkline, and a project page with a state timeline,
+  a ports card and a cost breakdown by meter, and an account page
+  carrying limits. §5.2 specifies none of those: the list is a plain
+  table, the project page is seven cards, secrets and config are their
+  own pages, and billing, settings and account are three pages. The
+  section now describes the built pages route by route, and each promise
+  it dropped is named in "Deferred" rather than deleted, so the next
+  person to want a state timeline finds that it was considered.
+- `features/notifications.md` promised the project page would show
+  "delivery status per channel, so a user who got nothing can see ...
+  whether the delivery failed". `GET /projects/:id/events` returns
+  `{id, ts, kind, agent, summary}` and has no per-channel outcome in it;
+  the outbox's state is in `events_outbox`, which no user route exposes.
+  The doc now says what the Events card does answer (did the event
+  happen), points the other half at `ops/RUNBOOK.md` "No notifications
+  arriving", and defers the feature with the route change it needs.
+
+*Why the doc and not the code:* AGENTS.md's rule is that the code follows
+the docs, and the tie-break when two docs disagree is the one that owns
+the thing. `workstreams/08-dashboard.md` owns the dashboard, its §9
+checklist is what 08 was built and tested against, and `features/` is
+meant to describe user-visible behaviour rather than to widen scope by
+prose. Building four features in an integration session to make a sketch
+true is the wrong direction, and shipping a doc that describes a product
+nobody has is worse than shipping a shorter doc. *Rejected:* building
+them (scope, in a session whose job is to close what exists); deleting
+the promises without trace (the reasoning behind per-channel delivery
+status — a support call the platform cannot otherwise answer — is worth
+keeping).
