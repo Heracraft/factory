@@ -283,9 +283,20 @@ in
     testScript = ''
       host.wait_for_unit("multi-user.target")
 
-      with subtest("hostd runs the stub and no sudo exists"):
+      with subtest("hostd runs, logs the documented JSON shape, and no sudo exists"):
           host.wait_for_unit("hostd.service")
-          host.succeed("journalctl -u hostd --no-pager | grep -q stub_start")
+          # The unit runs the real hostd (nix/flake.nix sets
+          # repose.host.hostdPackage to packages.hostd), which on a host with
+          # no join token waits for one; the stub's `stub_start` line has not
+          # existed since workstream 03 merged. What is asserted instead is
+          # the log contract of docs/workstreams/10-observability.md §5: every
+          # line is JSON with ts, level, component and event.
+          host.wait_until_succeeds(
+              "journalctl -u hostd --no-pager -o cat"
+              " | grep '\"component\":\"hostd\"' | tail -1"
+              " | jq -e '.ts and .level and .component == \"hostd\" and .event and .msg' >/dev/null"
+          )
+          print(host.succeed("journalctl -u hostd --no-pager -o cat | tail -3"))
           host.fail("command -v sudo")
 
       with subtest("the store export is read-only with .links masked"):
@@ -315,8 +326,14 @@ in
 
       with subtest("the nightly snapshot timer is wired to hostd snapshot-all"):
           host.succeed("systemctl list-timers --all repose-snapshot.timer | grep -q repose-snapshot")
-          host.succeed("systemctl start repose-snapshot.service")
-          host.succeed("journalctl -u repose-snapshot --no-pager | grep -q snapshot_skip")
+          host.succeed("systemctl cat repose-snapshot.service | grep -q 'snapshot-all'")
+          # The real hostd (not the stub) is on this host and has no join
+          # token yet, so it has not opened its control socket: the unit is
+          # expected to fail, with the message the runbook quotes. A host
+          # that has registered runs it for real, which is a host-level
+          # checklist item of workstream 03.
+          host.fail("systemctl start repose-snapshot.service")
+          host.succeed("journalctl -u repose-snapshot --no-pager | grep -q 'hostd is not running'")
 
       with subtest("registration consumes the join token once and is idempotent"):
           host.succeed("test ! -e /var/lib/repose/hostd/host.json")
