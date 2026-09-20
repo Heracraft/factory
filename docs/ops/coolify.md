@@ -225,35 +225,39 @@ the live instance, not taken from the docs. Each one changed a file here.
    in, because an api that exits on a missing CA never goes healthy and
    Coolify removes it. The api now does both itself at start (I-90).
 
-13. **A rolling deploy drops exactly one request per client at the
-   switchover, every time.** Measured on 2026-09-20 with
-   `ops/deploy-probe.sh`, two loops at five requests a second against the
-   dashboard and one against the api, ~26,000 responses in all. Four
-   switchovers, four identical results:
+13. **Every rolling deploy loses a request or two per client at the
+   switchover.** Measured on 2026-09-20 with `ops/deploy-probe.sh`: two
+   loops at five requests a second against the dashboard and one against
+   the api, ~31,000 responses, five switchovers.
 
-   | deploy | container started | failure | delay |
-   |---|---|---|---|
-   | `web` → `e6dd4fa` | 18:05:04.0Z | 18:05:15Z, both loops | +11 s |
-   | `web` → `4bcc94b` | 18:22:22.6Z | 18:22:34Z, both loops | +12 s |
-   | `api` → `4bcc94b` | 18:23:02.2Z | 18:23:28Z | +26 s |
-   | `web` → `cde2b05` | 18:25:24.2Z | 18:25:35Z, both loops | +11 s |
+   | deploy | new container started | failures |
+   |---|---|---|
+   | `web` → `e6dd4fa` | 18:05:04.0Z | 18:05:15Z, both loops |
+   | `web` → `4bcc94b` | 18:22:22.6Z | 18:22:34Z, both loops |
+   | `api` → `4bcc94b` | 18:23:02.2Z | 18:23:28Z |
+   | `web` → `cde2b05` | 18:25:24.2Z | 18:25:35Z, both loops |
+   | `web` → `cc916eb` | 18:28:24.1Z | 18:28:30Z **502**, 18:28:35Z, both loops |
 
-   Every failure is a 5-second **hang**, never a 502, and every one lands
-   eleven to twenty-six seconds after the new container starts — which
-   is when Coolify removes the old one, not when the new one appears. The health
-   check is doing its job: the new container was healthy first every
-   time. What is missing is a drain: Traefik keeps the outgoing
-   container in its pool for a moment, and a request that picks it in
-   that instant waits for the client's timeout.
+   Five for five, so it is a property of the deployment and not bad luck.
+   The shape, rather than a count, is what to remember: **one or two
+   failures per client, six to thirty seconds after the new container
+   starts** — which is when Coolify removes the old one, not when the new
+   one appears. Almost all are 5-second hangs; the last deploy also
+   produced one clean 502, which is the same gap seen from the other
+   side. The health check is doing its job in every case: the new
+   container was healthy before the old one went.
 
-   So "rolling" here means no outage, not no dropped request, and it is
-   reproducible rather than bad luck. On `web` it is a page that takes
-   five seconds; on `api` it is a CLI command or a dashboard poll that
-   fails, which is the one worth deciding about. One unexplained extra
-   timeout appeared on a single loop at 18:20:39Z with no deploy near
-   it, so treat one isolated 000 as noise and a simultaneous pair as a
-   switchover.
+   What is missing is a drain. Traefik keeps the outgoing container in
+   its pool for a moment; a request that picks it then either waits for
+   the client's timeout or gets a 502 once the container is gone. So
+   "rolling" here means no outage, not no dropped request. On `web` that
+   is a page that takes five seconds; on `api` it is a CLI command or a
+   dashboard poll that fails, which is the one worth deciding about.
 
+   Reading a probe afterwards: a failure within thirty seconds of a
+   container start is this, and one on its own with no deploy near it is
+   not — a single unexplained 000 appeared at 18:20:39Z on one loop, and
+   folding that into the pattern would have made the pattern wrong.
 
 14. **A port mapping and a rolling deploy are mutually exclusive.** A
    published host port means the old and the new container cannot both be
