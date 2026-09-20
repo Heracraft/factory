@@ -2447,3 +2447,49 @@ policy a laptop's first clone applies and never overrides a pinned key.
 *Rejected:* `StrictHostKeyChecking no` (accepts a changed key too);
 seeding known_hosts from the laptop at sync (one more file the CLI copies,
 and the laptop may never have connected either).
+**I-104. Backups are entirely Coolify's, and Coolify redeploys on every
+push to `main`.** (owner, 2026-09-20) Supersedes what is left of I-103,
+which had kept a foot in the door: an on-VM check, a restore rehearsal
+script, a runbook alert entry and `infra/r2` as an "optional" module. The
+owner's position is simpler and better: the Postgres backup and its
+restore are configured on the Postgres service's Backups tab in their own
+Coolify, and this repository has no part in them at all.
+
+Removed rather than reworded, because a half-owned responsibility is the
+one nobody holds: `repose-backup-check` and its `backup_max_age_hours`
+variable are out of the control VM's cloud-init and out of both infra
+modules; the readiness provisioner no longer asserts `rclone` and
+`pg_restore`, and cloud-init no longer installs them, since the restore
+procedure that justified them is gone; `ops/restore-rehearsal.sh` is
+deleted; `infra/r2` is deleted along with the Makefile's `ENV=r2` root and
+its Cloudflare token guard (a token is still needed for `manage_dns`, a
+different scope); the backup and restore sections are out of
+`ops/coolify.md`, `ops/coolify/README.md`, `AZURE-SETUP.md` step 10 and
+`RUNBOOK.md`, and the release checklist's item is now "configured in the
+owner's Coolify; nothing here".
+
+*What this costs, recorded so nobody rediscovers it as a surprise:* the
+near-end failure — a dump that was never taken — is no longer watched
+from this side, and it is invisible until someone opens the Backups tab.
+I argued for keeping the check for exactly that reason and the owner
+overruled it, correctly: a check that proves a dump exists but not that
+it is last night's database, on a machine whose backups somebody else
+owns, is a second place to look that can disagree with the first. One
+owner, one place. *Also kept deliberately:* `ops/coolify.md`'s note that
+Coolify encrypts its stored credentials with `APP_KEY`, so a dump
+restored without it is ciphertext. That is not backup machinery, it is a
+fact about the owner's own restore, and it is worth more to them now that
+the whole procedure is theirs.
+
+*And the second half.* Coolify watches the repository, so `api`,
+`api-grpc` and `web` rebuild and roll on every push to `main`: a deploy
+is a consequence of merging, not a step. Every "then redeploy X"
+instruction is therefore wrong and is gone from `coolify.md`, the ops
+README, the runbook and the launch prompts. Two survive as what they
+are: a rollback (Coolify's deployment history — the one deploy nobody
+gets automatically) and a re-paste of the Postgres Service, which is a
+pasted resource rather than a watched one. It also means fact 13's
+dropped request happens on **every merge**, not only on deliberate
+deploys, which is what turns it from a curiosity into the owner's
+decision about the proxy's drain. Recorded as `coolify.md` facts 15
+and 16.

@@ -163,8 +163,11 @@ writes them; placeholders until then must be visibly marked draft).
 
 ## 8. Rollback
 
-Coolify keeps previous images; redeploy the previous build. The dashboard
-holds no state, so there is nothing to migrate. If a new dashboard depends on
+Coolify keeps previous images; roll back to the previous one from its
+deployment history. That is the one deploy that is not automatic — a push
+to `main` redeploys forward on its own (`docs/ops/coolify.md` fact 16),
+so a rollback is always a deliberate act. The dashboard holds no state,
+so there is nothing to migrate. If a new dashboard depends on
 an API route the API does not have yet, the page must degrade (see the
 notify-test row), never break the whole app.
 

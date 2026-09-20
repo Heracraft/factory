@@ -77,12 +77,9 @@ written so they cannot happen quietly.
       missing attribute, (c) runs 31 minutes, (d) exceeds the closure cap,
       (e) uses `builtins.fetchurl` to an arbitrary URL each produces the
       documented error and nothing else happens.
-- [ ] Postgres restore rehearsed from a real backup, on a scratch Coolify
-      or a throwaway database, with the time recorded. The dump comes from
-      the Postgres service's Backups tab; the destination is the owner's
-      own S3 storage and nothing here holds a credential for it
-      (DECISIONS I-103). `ops/restore-rehearsal.sh <dump>` does it and
-      prints the timings.
+- [ ] Postgres backup and restore are configured in the owner's Coolify
+      (Backups tab); nothing here. Evidence: the schedule exists there
+      (DECISIONS I-104).
 - [ ] Snapshot restore of a guest onto a *different* host rehearsed.
 - [ ] Host loss rehearsed: deallocate a host, restore its projects elsewhere
       from Blob, users notified.

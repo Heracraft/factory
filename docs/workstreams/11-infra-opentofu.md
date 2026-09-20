@@ -69,9 +69,6 @@ provider module for hosts is an addition, not a rewrite.
     from Docker's apt repository and Tailscale (not joined; the instance
     reaches the VM over the tailnet, I-86), puts the instance's public key
     (`coolify_public_key`) on root next to the operator keys, installs
-    `rclone` and `postgresql-client` (`pg_restore` for the runbook's
-    restore procedure; `rclone` only for an operator who has a remote of
-    their own, DECISIONS I-103) and a `repose-backup-check` helper, then
     installs a WireGuard peer config so Prometheus and the api can reach
     the edge network. Its NSG allows 80 and 443 from `control_web_cidrs`,
     and 22 from `operator_cidrs` plus `coolify_manager_cidrs` (the
@@ -97,11 +94,6 @@ provider module for hosts is an addition, not a rewrite.
     store, since the control VM is not an Azure identity target for
     containers; the app registration and that certificate are a human step
     (DECISIONS I-21).
-- `infra/r2/`: Cloudflare provider, one bucket `repose-pg-backups` with a
-  lifecycle rule deleting objects older than 35 days and aborting multipart
-  uploads left incomplete for 7. The API token scoped to that bucket stays a
-  human step (DECISIONS I-21): a token created here would sit in the state
-  file in clear text for the life of the bucket.
 - `infra/dns/`: Cloudflare zone records for `herakraft.co` subdomains used
   above, so DNS is in the same apply as the addresses it points at.
   `manage_dns` defaults to **false**, because the records need a
@@ -357,17 +349,13 @@ row says otherwise. Commands were run from the dev box, which is in
       registration is a human step (DECISIONS I-21). Supply the object id and
       the wrap/unwrap-only policy appears; the denied `get` is then one
       `az keyvault key show` as that identity.
-- [ ] R2 bucket, token and lifecycle rule exist; Coolify's backup job
-      succeeded once and a restore was rehearsed. **Not closed:** no
-      `CLOUDFLARE_API_TOKEN` exists, so `infra/r2` has never been applied.
-      `make plan ENV=r2` now fails with the step that creates one rather than
-      with a provider authentication error. Production does **not** use
-      `infra/r2`: the backup destination is an S3 storage in the owner's own
-      Coolify and no credential for it comes through this repository
-      (DECISIONS I-103), so the module is optional and unused. The
-      control-plane VM ships `repose-backup-check` (credential-free, reading
-      `/data/coolify/backups`) and the `pg_restore` the rehearsal needs, and
-      `docs/ops/coolify.md` has the procedure.
+- [x] Postgres backups. **Withdrawn, not closed.** This row used to ask
+      for an R2 bucket, its token and lifecycle rule, a successful Coolify
+      backup job and a rehearsed restore. Backups are Coolify's, against a
+      destination in the owner's own Coolify, and nothing on this side
+      takes part (DECISIONS I-104): `infra/r2` is deleted, the on-VM
+      check and the rehearsal script are gone, and there is nothing here
+      left to verify.
 - [ ] Edge and Coolify DNS names resolve to their static IPs. **Not closed,
       and worse than absent.** On 2026-09-20 `dig +short
       ssh.repose.herakraft.co` returns `172.67.175.123` and `104.21.31.82`,
@@ -424,13 +412,12 @@ does not return until the VM is what Coolify's server validation expects
 and its first two steps matter most: put the owner's Coolify address in
 `coolify_manager_cidrs`, then add the VM as a server in that instance.
 
-Three things still wait on a human rather than on an apply:
+Two things still wait on a human rather than on an apply:
 
-- **A Cloudflare API token.** It unblocks two checklist rows at once:
-  `infra/r2` (and with it Coolify's Postgres backup and the restore
-  rehearsal) and `manage_dns = true`. Until it exists, the four DNS records
-  in `infra/README.md` should be created by hand, because the wildcard means
-  the names resolve wrongly rather than not at all.
+- **A Cloudflare API token**, for `manage_dns = true` and nothing else
+  now that `infra/r2` is gone (DECISIONS I-104). Until it exists, the four
+  DNS records in `infra/README.md` should be created by hand, because the
+  wildcard means the names resolve wrongly rather than not at all.
 - **The api's Entra app registration** and its client certificate. Pass the
   app's object id as `api_identity_object_id` and the Key Vault wrap/unwrap
   policy appears (DECISIONS I-21).

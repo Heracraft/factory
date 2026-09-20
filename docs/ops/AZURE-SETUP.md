@@ -58,21 +58,12 @@ a day.
 
 ## Outside Azure
 
-10. **The Postgres backup destination.** Not a step here, and deliberately
-    so: Coolify runs the backups and uploads them to an S3 storage
-    configured in your own Coolify, which may already exist for your other
-    databases. No credential for it belongs in this repository, on the
-    control VM, or in any agent session (`DECISIONS.md` I-103), so there is
-    nothing to create or paste on this side. Set the schedule and the
-    destination on the Postgres service's Backups tab
-    (`docs/ops/coolify.md`, "The Postgres backup"); verify with
-    `ssh root@<control ip> repose-backup-check`, which needs no credential.
-
-    `infra/r2` stays in the repository as an optional module for whoever
-    wants a bucket of their own — it creates one with a 35-day lifecycle
-    rule and needs a `CLOUDFLARE_API_TOKEN` — and production does not use
-    it. A Cloudflare token is still needed for **DNS** (step 11); that is a
-    different scope and a different question.
+10. **Postgres backups.** Nothing here, and deliberately: Coolify runs
+    them and the destination is configured in your own Coolify, on the
+    Postgres service's Backups tab (`DECISIONS.md` I-104). No bucket, no
+    token, no schedule and no check exist on the repose side. The one
+    thing worth reading before you need it is `docs/ops/coolify.md`,
+    "The instance's .env is half any backup".
 
 11. **DNS for `herakraft.co`.** The zone already answers every name under it
     from a **proxied wildcard**, so the repose names resolve today — to
