@@ -201,6 +201,8 @@ func kindOf(req *guestdv1.Request) string {
 		return "Thaw"
 	case *guestdv1.Request_Switch:
 		return "Switch"
+	case *guestdv1.Request_RegisterPaths:
+		return "RegisterPaths"
 	case *guestdv1.Request_GrowFs:
 		return "GrowFs"
 	case *guestdv1.Request_WriteSecrets:
@@ -262,6 +264,8 @@ func (s *Server) Handle(_ context.Context, req *guestdv1.Request) *guestdv1.Resp
 		} else {
 			ok.Result = &guestdv1.Response_Switch{Switch: &guestdv1.SwitchResult{Rebooted: r.Switch.ForceReboot, Output: []byte("activating the configuration...\n")}}
 		}
+	case *guestdv1.Request_RegisterPaths:
+		// nothing to record beyond the call itself
 	case *guestdv1.Request_GrowFs:
 		ok.Result = &guestdv1.Response_GrowFs{GrowFs: &guestdv1.GrowFsResult{NewBytes: 1 << 30}}
 	case *guestdv1.Request_WriteSecrets:

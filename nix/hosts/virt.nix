@@ -26,6 +26,11 @@ let
       if ! mountpoint -q ${exportDir}; then
         mount --bind /nix/store ${exportDir}
       fi
+      # The bind starts in /nix/store's peer group (shared propagation), so
+      # the tmpfs mounted over .links below would also appear on
+      # /nix/store/.links and every store write would fail with EROFS
+      # (DECISIONS I-61). Make the export private first.
+      mount --make-private ${exportDir}
       mount -o remount,bind,ro,nosuid,nodev ${exportDir}
       if ! mountpoint -q ${exportDir}/.links; then
         mount -t tmpfs -o ro,nosuid,nodev,noexec,size=4k,mode=0555 repose-links-mask ${exportDir}/.links
@@ -44,6 +49,12 @@ in
   users.users.virtiofsd = {
     isSystemUser = true;
     group = "virtiofsd";
+    # In group hostd for two reasons the first host found (DECISIONS I-69):
+    # the per-guest directory is 1770 root:hostd (I-49), which it must
+    # traverse to reach its own socket directory, and `--socket-group hostd`
+    # is a chgrp an unprivileged process may only do into a group it is in.
+    # Group membership gives it no write access under the store export.
+    extraGroups = [ "hostd" ];
     description = "virtiofsd store share (no write access anywhere under the store)";
   };
 

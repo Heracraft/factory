@@ -43,7 +43,10 @@ type Session interface {
 	Ping(ctx context.Context) (*guestdv1.PingResult, error)
 	Freeze(ctx context.Context) error
 	Thaw(ctx context.Context) error
-	Switch(ctx context.Context, closure string, forceReboot bool) (*guestdv1.SwitchResult, error)
+	Switch(ctx context.Context, closure string, forceReboot bool, registration []byte) (*guestdv1.SwitchResult, error)
+	// RegisterPaths loads a `nix-store --dump-db` listing into the guest's
+	// database (DECISIONS I-67).
+	RegisterPaths(ctx context.Context, registration []byte) error
 	GrowFs(ctx context.Context) (uint64, error)
 	WriteSecrets(ctx context.Context, secrets []*guestdv1.Secret) error
 	SetPrincipals(ctx context.Context, principals []string) error
@@ -144,8 +147,13 @@ func (s *session) Thaw(ctx context.Context) error {
 	return err
 }
 
-func (s *session) Switch(ctx context.Context, closure string, force bool) (*guestdv1.SwitchResult, error) {
-	r, err := s.call(ctx, SwitchTimeout, &guestdv1.Request{Req: &guestdv1.Request_Switch{Switch: &guestdv1.Switch{SystemClosure: closure, ForceReboot: force}}})
+func (s *session) RegisterPaths(ctx context.Context, registration []byte) error {
+	_, err := s.call(ctx, SwitchTimeout, &guestdv1.Request{Req: &guestdv1.Request_RegisterPaths{RegisterPaths: &guestdv1.RegisterPaths{Registration: registration}}})
+	return err
+}
+
+func (s *session) Switch(ctx context.Context, closure string, force bool, registration []byte) (*guestdv1.SwitchResult, error) {
+	r, err := s.call(ctx, SwitchTimeout, &guestdv1.Request{Req: &guestdv1.Request_Switch{Switch: &guestdv1.Switch{SystemClosure: closure, ForceReboot: force, Registration: registration}}})
 	if err != nil {
 		if r != nil && r.GetSwitch() != nil {
 			return r.GetSwitch(), err

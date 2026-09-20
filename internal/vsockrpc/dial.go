@@ -12,9 +12,12 @@ import (
 // Port is the vsock port guestd listens on (docs/interfaces/vsock-guestd.md).
 const Port uint32 = 5000
 
-// Listen listens on the guest side of vsock, on any CID.
+// Listen listens on the guest side of vsock, on any CID. Binding
+// VMADDR_CID_HOST (2) inside a guest fails with EADDRNOTAVAIL, which is what
+// the first guest on host-01 logged every two seconds (DECISIONS I-64);
+// vsock.Listen binds VMADDR_CID_ANY.
 func Listen(port uint32) (net.Listener, error) {
-	l, err := vsock.ListenContextID(vsock.Host, port, nil)
+	l, err := vsock.Listen(port, nil)
 	if err != nil {
 		return nil, fmt.Errorf("listen vsock port %d: %w", port, err)
 	}

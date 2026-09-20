@@ -85,6 +85,10 @@ func Logger(level string) *slog.Logger {
 	return log
 }
 
+// HostNetUnit renders the bridge, sshd and exporter addresses from
+// host.json (workstream 01); hostd restarts it after registering.
+const HostNetUnit = "repose-host-net.service"
+
 // TokenError is returned by EnsureIdentity when the token is refused.
 var TokenError = register.ErrTokenUsed
 
@@ -110,6 +114,16 @@ func EnsureIdentity(ctx context.Context, o Options, log *slog.Logger, r shell.Ru
 		switch {
 		case err == nil:
 			log.Info("registered", "event", "register", "host_id", id.Host.HostID)
+			// host.json is the host's runtime network input; the renderer
+			// that reads it must run again now (docs/interfaces/
+			// host-conventions.md, DECISIONS I-18, I-40). When hostd
+			// registers itself instead of repose-register.service, nothing
+			// else would.
+			if cfg.Runner != nil {
+				if _, rerr := cfg.Runner.Run(ctx, "systemctl", "--no-block", "restart", HostNetUnit); rerr != nil {
+					log.Warn("restart of the host network renderer failed", "event", "register", "unit", HostNetUnit, "err", rerr.Error())
+				}
+			}
 			return id, nil
 		case errors.Is(err, register.ErrTokenUsed):
 			log.Error("register: join token already used", "event", "register")
@@ -217,7 +231,8 @@ func Run(ctx context.Context, o Options, log *slog.Logger) error {
 	cfg := guest.Config{
 		HostID: id.Host.HostID, GuestsDir: o.GuestsDir, GuestCIDR: id.Host.GuestCIDR, TotalMemBytes: total,
 		MaxOps: o.MaxOps, MaxBuilds: o.MaxBuilds, StoreExport: o.StoreExport, VirtiofsUser: o.VirtiofsUser,
-		GuestUser: o.GuestUser,
+		VirtiofsSocketWait: 10 * time.Second,
+		GuestUser:          o.GuestUser,
 	}
 	if os.Getenv("REPOSE_HOSTD_TESTING") == "1" {
 		cfg.FailAtStep = o.FailAtStep

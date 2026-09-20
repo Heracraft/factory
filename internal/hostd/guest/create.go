@@ -246,6 +246,9 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 	if err := virtiofs.Start(ctx, m.d.Systemd, vcfg, g.GuestID, ch.VirtiofsSocket(dir)); err != nil {
 		return m.fail(g, stepVirtiofsd, err)
 	}
+	if err := m.waitVirtiofsSocket(ctx, g.GuestID, ch.VirtiofsSocket(dir)); err != nil {
+		return m.fail(g, stepVirtiofsd, err)
+	}
 
 	// Step 9: Cloud Hypervisor.
 	if err := m.injected(stepHypervisr); err != nil {
@@ -284,6 +287,17 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 
 // deliver sends secrets, principals and the project setup after Ready.
 func (m *Manager) deliver(ctx context.Context, g *state.Guest, sess vsockclient.Session) error {
+	// The booted closure is on disk in the guest but unknown to its nix
+	// database until registered (DECISIONS I-67).
+	reg, err := m.d.Nix.DumpDB(ctx, g.SystemClosure)
+	if err != nil {
+		return fmt.Errorf("nix-store --dump-db: %w", err)
+	}
+	if len(reg) > 0 {
+		if err := sess.RegisterPaths(ctx, reg); err != nil {
+			return fmt.Errorf("RegisterPaths: %w", err)
+		}
+	}
 	if secrets := m.cachedSecrets(g.GuestID); len(secrets) > 0 {
 		if err := sess.WriteSecrets(ctx, secrets); err != nil {
 			return fmt.Errorf("WriteSecrets: %w", err)
@@ -318,6 +332,38 @@ func (m *Manager) teardown(ctx context.Context, g *state.Guest) {
 	_ = m.d.Net.DelTap(ctx, g.Tap)                                // same
 	for _, s := range []string{"ch.sock", "vsock.sock", "console.sock", filepath.Join("virtiofsd", "virtiofsd.sock")} {
 		_ = os.Remove(filepath.Join(m.guestDir(g.GuestID), s)) // stale sockets confuse the next boot only if left behind
+	}
+}
+
+// waitVirtiofsSocket waits for virtiofsd to bind its socket, failing early
+// when its unit has already exited. Cloud Hypervisor would otherwise retry
+// the connection for a full minute and the create would fail at step 10
+// with "guest did not become ready", which names the wrong step.
+func (m *Manager) waitVirtiofsSocket(ctx context.Context, guestID, socket string) error {
+	if m.cfg.VirtiofsSocketWait <= 0 {
+		return nil
+	}
+	deadline := time.Now().Add(m.cfg.VirtiofsSocketWait)
+	unit := virtiofs.Unit(guestID)
+	for {
+		if _, err := os.Stat(socket); err == nil {
+			return nil
+		}
+		active, err := m.d.Systemd.IsActive(ctx, unit)
+		if err != nil {
+			return err
+		}
+		if !active {
+			return fmt.Errorf("virtiofsd exited before creating its socket; see journalctl -u %s", unit)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("virtiofsd did not create %s within %s", filepath.Base(socket), m.cfg.VirtiofsSocketWait)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
 }
 

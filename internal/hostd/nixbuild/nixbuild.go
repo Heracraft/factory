@@ -71,6 +71,10 @@ func CacheUnreachable(stderr string) bool {
 type Builder interface {
 	Build(ctx context.Context, req Request, log func(line string)) (*Result, error)
 	PathExists(ctx context.Context, path string) (bool, error)
+	// DumpDB returns `nix-store --dump-db` for the closure of path: what a
+	// guest loads so the paths it sees through the shared store are valid in
+	// its own database (DECISIONS I-67).
+	DumpDB(ctx context.Context, path string) ([]byte, error)
 }
 
 // Info is what a system closure exposes for booting.
@@ -177,6 +181,23 @@ func (b *Real) Defaults() *Real {
 		b.Home = "/var/lib/repose/" + b.User
 	}
 	return b
+}
+
+// DumpDB implements Builder.
+func (b *Real) DumpDB(ctx context.Context, path string) ([]byte, error) {
+	res, err := b.R.Run(ctx, "nix-store", "-qR", path)
+	if err != nil {
+		return nil, fmt.Errorf("nix-store -qR: %w", err)
+	}
+	paths := strings.Fields(string(res.Stdout))
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("nix-store -qR %s: empty closure", path)
+	}
+	res, err = b.R.Run(ctx, append([]string{"nix-store", "--dump-db"}, paths...)...)
+	if err != nil {
+		return nil, fmt.Errorf("nix-store --dump-db: %w", err)
+	}
+	return res.Stdout, nil
 }
 
 // PathExists implements Builder.
@@ -568,6 +589,9 @@ func (f *Fake) Build(ctx context.Context, req Request, log func(string)) (*Resul
 	}
 	return &Result{SystemClosure: f.Closure, ClosureBytes: f.ClosureBytes, Kernel: f.Kernel, Initrd: f.Initrd}, nil
 }
+
+// DumpDB implements Builder with an empty listing.
+func (f *Fake) DumpDB(context.Context, string) ([]byte, error) { return nil, nil }
 
 // PathExists implements Builder.
 func (f *Fake) PathExists(_ context.Context, path string) (bool, error) {

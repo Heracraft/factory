@@ -39,6 +39,33 @@
       };
     };
 
+    # The guest's nix database does not know the paths it sees through the
+    # shared store until hostd sends RegisterPaths after Ready (DECISIONS
+    # I-67). home-manager's activation is the first thing at boot that asks
+    # nix about them, so it waits for guestd's stamp; a guest whose hostd
+    # never comes proceeds after the timeout and the unit fails as before.
+    systemd.services.repose-paths = {
+      description = "Wait for hostd to register the shared store paths";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "guestd.service" ];
+      wants = [ "guestd.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = "${pkgs.writeShellScript "repose-paths-wait" ''
+          for _ in $(seq 1 360); do
+            [ -e /run/repose/paths-registered ] && exit 0
+            sleep 0.5
+          done
+          echo "no path registration from hostd after 180 s; continuing"
+        ''}";
+      };
+    };
+    systemd.services.home-manager-dev = {
+      after = [ "repose-paths.service" ];
+      wants = [ "repose-paths.service" ];
+    };
+
     environment.systemPackages = [ config.repose.guestd.package ];
   };
 }
