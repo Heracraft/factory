@@ -683,8 +683,9 @@ network" would register only the container name (`coolify.md`, fact 11).
 The api, api-grpc or web app's rolling deploy did not go green.
 
 1. Coolify's deployment log. A health check timeout with the container
-   alive is usually the pre-deploy migration running long on `api`: wait,
-   the old container is still serving.
+   alive is usually a migration running long at `api` start (the api
+   applies pending migrations itself, I-90): wait, the old container is
+   still serving.
 2. A migration failure leaves the new container crash-looping and the old
    one serving. Fix forward or `repose-admin db rollback --to <previous>`
    from the operator machine (it connects to Postgres over the control

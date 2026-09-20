@@ -83,12 +83,13 @@ of that is missing.
    `https://repose.herakraft.co:3000`; port mappings and health-check
    settings are in `ops/coolify/README.md`. Secrets — Logto M2M, the Entra
    client, later Stripe and Resend — go in each app's Environment tab,
-   nowhere else. `api` runs `repose-admin db migrate` as its pre-deploy
-   command; `api-grpc` deploys after it.
-7. **Deploy**, then `repose-admin ca init` once against the database
-   (`RUNBOOK.md` "Control plane"), and the WireGuard peer to the edge:
-   `infra/README.md`, "Wiring the control plane to the edge". Two moves,
-   because the private key never leaves the VM.
+   nowhere else. No pre-deploy command on either: the api applies its own
+   migrations at start and generates the platform CA the first time it
+   finds none, both idempotent (fact 12, I-90). `api-grpc` deploys after
+   `api`.
+7. **Deploy**, then the WireGuard peer to the edge: `infra/README.md`,
+   "Wiring the control plane to the edge". Two moves, because the private
+   key never leaves the VM.
 
 A health check on every application is not optional: without one Coolify
 silently falls back to stop-then-start instead of a rolling deploy, and the
@@ -214,6 +215,15 @@ the live instance, not taken from the docs. Each one changed a file here.
    `coolify` came out as the container name, `repose-postgres` and the
    explicit alias, and a busybox reached 5432 by name. The toggle stays
    off for this Service.
+12. **A pre-deployment command runs in the previous container, or not at
+   all.** `ApplicationDeploymentJob::run_pre_deployment_command` (4.3.23)
+   does `docker exec` into a currently running container of the app and
+   logs "No running containers found. Skipping." when there is none. So
+   `repose-admin db migrate` as a pre-deploy command never ran on the first
+   deploy, and on later ones would have run the old image's migrations;
+   `repose-admin ca init` "after the first deploy" had no container to run
+   in, because an api that exits on a missing CA never goes healthy and
+   Coolify removes it. The api now does both itself at start (I-90).
 
 ## The instance's .env is half the backup
 

@@ -110,7 +110,9 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	a.reg = om.Registry()
 	a.m = metrics.New(om)
 	var kvs secrets.KeyVault
-	if cfg.KeyVaultURL != "" {
+	if cfg.KeyVault != nil {
+		kvs = cfg.KeyVault
+	} else if cfg.KeyVaultURL != "" {
 		azkv, err := secrets.NewAzureKV(cfg.KeyVaultURL, cfg.KeyVaultKeyName, nil)
 		if err != nil {
 			return nil, err
@@ -122,12 +124,8 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	}
 	a.sec = secrets.New(a.pool, kvs)
 	a.ca, err = ca.Load(ctx, a.pool, a.sec)
-	if errors.Is(err, ca.ErrNotInitialised) && cfg.Dev {
-		log.Warn("REPOSE_DEV=1: initialising the CA in the in-memory key vault", "event", "dev_ca")
-		if err := ca.Init(ctx, a.sec); err != nil {
-			return nil, err
-		}
-		a.ca, err = ca.Load(ctx, a.pool, a.sec)
+	if errors.Is(err, ca.ErrNotInitialised) {
+		a.ca, err = a.initCA(ctx, log)
 	}
 	if err != nil {
 		return nil, err
@@ -207,6 +205,51 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 		},
 	})
 	return a, nil
+}
+
+// initCA creates the platform CA on the first start against an empty
+// database. Until 2026-09-20 this was `repose-admin ca init`, a human step
+// after the first deploy; on Coolify that step needs a running container,
+// and a container whose api exits on ErrNotInitialised never runs long
+// enough to exec into (DECISIONS I-90). Idempotent: ca.Init refuses when
+// the CA exists, which is treated as done. Replicas serialise on an
+// advisory lock: the one that gets it generates the keys, the others wait
+// and load what it wrote. The keys are wrapped by the same Key Vault key
+// as every other platform secret, so nothing about their storage changes.
+func (a *App) initCA(ctx context.Context, log *slog.Logger) (*ca.CA, error) {
+	if a.cfg.Dev {
+		log.Warn("REPOSE_DEV=1: initialising the CA in the in-memory key vault", "event", "dev_ca")
+	} else {
+		log.Info("CA not initialised; generating the platform CA", "event", "ca_init")
+	}
+	for {
+		release, ok, err := db.TryLock(ctx, a.pool, db.LockCAInit)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			err := ca.Init(ctx, a.sec)
+			release()
+			if err != nil && !errors.Is(err, ca.ErrAlreadyInitialised) {
+				return nil, fmt.Errorf("ca init: %w", err)
+			}
+			return ca.Load(ctx, a.pool, a.sec)
+		}
+		// Another replica holds the lock and is generating; poll until its
+		// secrets are readable.
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
+		c, err := ca.Load(ctx, a.pool, a.sec)
+		if err == nil {
+			return c, nil
+		}
+		if !errors.Is(err, ca.ErrNotInitialised) {
+			return nil, err
+		}
+	}
 }
 
 // HostCA exposes the X.509 host authority (tests, repose-admin).

@@ -45,8 +45,9 @@ container's aliases on `coolify` (`RUNBOOK.md` "api cannot resolve
 repose-postgres").
 
 - `api`: domain `https://api.repose.herakraft.co:8080`; port mapping
-  `9103:9103` (metrics, over WireGuard only); pre-deploy command
-  `repose-admin db migrate`; Coolify's own health check **off** so the
+  `9103:9103` (metrics, over WireGuard only); **no pre-deploy command**
+  (the api migrates itself at start and creates the CA on first start,
+  I-90); Coolify's own health check **off** so the
   image's `HEALTHCHECK` (`api -healthcheck`) drives the rolling deploy (the
   image is distroless, so Coolify's curl-based check cannot run in it).
 - `api-grpc`: no domain; port mappings `8443:8443`, `8444:8444`,

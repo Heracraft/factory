@@ -33,7 +33,10 @@ const (
 )
 
 // ErrNotInitialised is returned by Load before `repose-admin ca init`.
-var ErrNotInitialised = errors.New("ca: not initialised; run `repose-admin ca init`")
+var (
+	ErrNotInitialised     = errors.New("ca: not initialised")
+	ErrAlreadyInitialised = errors.New("ca: already initialised")
+)
 
 // ErrNotOwner is returned when a project id in a cert request is not the
 // user's.
@@ -50,7 +53,7 @@ type CA struct {
 // Init generates every CA key and stores it, refusing to overwrite.
 func Init(ctx context.Context, sec *secrets.Store) error {
 	if _, err := sec.GetPlatform(ctx, SecretUserCA); err == nil {
-		return errors.New("ca: already initialised")
+		return ErrAlreadyInitialised
 	} else if !errors.Is(err, db.ErrNotFound) {
 		return err
 	}

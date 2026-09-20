@@ -27,7 +27,7 @@ func main() {
 	}
 	fs := flag.NewFlagSet("api", flag.ContinueOnError)
 	mode := fs.String("mode", "", "http, grpc or all (default $API_MODE or all)")
-	migrate := fs.Bool("migrate", false, "apply pending migrations before serving")
+	migrate := fs.Bool("migrate", false, "apply pending migrations before serving (also $API_MIGRATE, default on)")
 	healthcheck := fs.Bool("healthcheck", false, "probe this container's own listener and exit 0 when healthy (compose healthcheck; the image has no shell or curl)")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		os.Exit(2)
@@ -44,7 +44,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "api:", err)
 		os.Exit(2)
 	}
-	cfg.Migrate = *migrate
+	if *migrate {
+		cfg.Migrate = true
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	a, err := app.New(ctx, cfg, version)

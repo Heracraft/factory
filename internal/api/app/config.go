@@ -7,6 +7,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"github.com/heracraft/repose/internal/api/secrets"
 	"os"
 	"strconv"
 	"strings"
@@ -20,6 +21,9 @@ type Config struct {
 	InternalListen string
 	MetricsListen  string
 	Migrate        bool
+	// KeyVault, when set, replaces the Azure Key Vault (or the in-memory
+	// dev vault); tests use it to share one vault across processes.
+	KeyVault secrets.KeyVault
 
 	DatabaseURL     string
 	LogtoIssuer     string
@@ -79,6 +83,12 @@ func FromEnv() (Config, error) {
 		BaseRef:         os.Getenv("BASE_REF"),
 		ReplicaID:       env("REPLICA_ID", ""),
 		Dev:             os.Getenv("REPOSE_DEV") == "1",
+		// On by default: a Coolify pre-deployment command runs in the
+		// previous container and is skipped when there is none, so the
+		// process that serves the new schema is the one that has to apply
+		// it (DECISIONS I-90). db.MigrateUp serialises replicas on an
+		// advisory lock.
+		Migrate: os.Getenv("API_MIGRATE") != "0",
 	}
 	if names := os.Getenv("GRPC_SERVER_NAMES"); names != "" {
 		c.GRPCServerNames = strings.Split(names, ",")

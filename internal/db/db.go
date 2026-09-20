@@ -68,6 +68,7 @@ const (
 	LockOps         int64 = 1006
 	LockSweeper     int64 = 1007
 	LockPartitions  int64 = 1008
+	LockCAInit      int64 = 1009
 )
 
 // TryLock takes a session-level advisory lock on a dedicated connection
@@ -98,19 +99,27 @@ func IsNoRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }
 // proc_samples covering ts and the following month, idempotently.
 func EnsurePartitions(ctx context.Context, pool *Pool, ts time.Time) error {
 	ts = ts.UTC()
-	for i := 0; i < 2; i++ {
-		start := time.Date(ts.Year(), ts.Month()+time.Month(i), 1, 0, 0, 0, 0, time.UTC)
-		end := start.AddDate(0, 1, 0)
-		for _, t := range []string{"meter_samples", "proc_samples"} {
-			name := fmt.Sprintf("%s_%s", t, start.Format("2006_01"))
-			q := fmt.Sprintf("create table if not exists %s partition of %s for values from ('%s') to ('%s')",
-				name, t, start.Format("2006-01-02"), end.Format("2006-01-02"))
-			if _, err := pool.Exec(ctx, q); err != nil {
-				return fmt.Errorf("partition %s: %w", name, err)
+	// One transaction under LockPartitions: "create table if not exists"
+	// for a partition is not atomic across sessions, and two api replicas
+	// starting together both tried to create the same month (2026-09-20).
+	return InTx(ctx, pool, func(tx Tx) error {
+		if _, err := tx.Exec(ctx, "select pg_advisory_xact_lock($1)", LockPartitions); err != nil {
+			return err
+		}
+		for i := 0; i < 2; i++ {
+			start := time.Date(ts.Year(), ts.Month()+time.Month(i), 1, 0, 0, 0, 0, time.UTC)
+			end := start.AddDate(0, 1, 0)
+			for _, t := range []string{"meter_samples", "proc_samples"} {
+				name := fmt.Sprintf("%s_%s", t, start.Format("2006_01"))
+				q := fmt.Sprintf("create table if not exists %s partition of %s for values from ('%s') to ('%s')",
+					name, t, start.Format("2006-01-02"), end.Format("2006-01-02"))
+				if _, err := tx.Exec(ctx, q); err != nil {
+					return fmt.Errorf("partition %s: %w", name, err)
+				}
 			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // DropExpiredPartitions drops sample partitions entirely older than the

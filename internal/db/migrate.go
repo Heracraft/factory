@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"sort"
@@ -116,8 +117,14 @@ func MigrateStatus(ctx context.Context, pool *Pool) (Status, error) {
 	return st, nil
 }
 
+// errAlreadyApplied is returned from inside a migration's transaction when
+// another session applied that version first; the caller skips it.
+var errAlreadyApplied = errors.New("migration already applied")
+
 // MigrateUp applies every pending migration in order, each in its own
-// transaction, and returns the versions applied.
+// transaction, and returns the versions applied. Safe to run from several
+// processes at once: each version is applied under an advisory lock and
+// re-checked there.
 func MigrateUp(ctx context.Context, pool *Pool) ([]int, error) {
 	st, err := MigrateStatus(ctx, pool)
 	if err != nil {
@@ -140,12 +147,26 @@ func MigrateUp(ctx context.Context, pool *Pool) ([]int, error) {
 			if _, err := tx.Exec(ctx, "select pg_advisory_xact_lock($1)", int64(9000)); err != nil {
 				return err
 			}
+			// Re-check under the lock: the pending set above was read
+			// before it, and a replica starting at the same moment may have
+			// applied this version in between (two api replicas against an
+			// empty database, 2026-09-20). Idempotent by construction.
+			var n int
+			if err := tx.QueryRow(ctx, "select count(*) from schema_migrations where version = $1", m.Version).Scan(&n); err != nil {
+				return err
+			}
+			if n > 0 {
+				return errAlreadyApplied
+			}
 			if _, err := tx.Exec(ctx, m.Up); err != nil {
 				return fmt.Errorf("migration %04d_%s up: %w", m.Version, m.Name, err)
 			}
 			_, err := tx.Exec(ctx, "insert into schema_migrations (version, name) values ($1, $2)", m.Version, m.Name)
 			return err
 		})
+		if errors.Is(err, errAlreadyApplied) {
+			continue
+		}
 		if err != nil {
 			return done, err
 		}

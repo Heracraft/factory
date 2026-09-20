@@ -332,6 +332,12 @@ over mTLS, I-42), no rolling deploy. The image is `cmd/api/Dockerfile`.
 Migrations run by a Coolify pre-deploy command `repose-admin db migrate`
 so a new image never starts against an old schema.
 
+> Amended by DECISIONS I-90 (2026-09-20): Coolify's pre-deploy command runs
+> in the previous container and is skipped when there is none, so the api
+> applies migrations itself at start (`API_MIGRATE`, default on) and
+> generates the CA on its first start; `repose-admin db migrate` and
+> `ca init` remain as manual commands.
+
 > Amended by DECISIONS I-87 (2026-09-20): Postgres and its backup are a
 > compose resource, `ops/coolify/postgres/docker-compose.yml`; the apps
 > stay as above, with `ops/coolify/*.env.example` as their env; the grpc

@@ -1964,3 +1964,30 @@ three env files. "Connect to predefined network" stays off for the
 Service; its after-the-fact `docker network connect` is what registered
 the container name alone. *Rejected:* the container-name host of I-88
 (changes when the Service is recreated, and lives in every env file).
+
+**I-90. The api bootstraps itself: it applies pending migrations at start
+and generates the platform CA when none exists, both idempotent and
+serialised across replicas on advisory locks.** (owner, conductor,
+2026-09-20) 05 §5 had migrations as a Coolify pre-deploy command and
+`docs/ops/coolify.md` had `repose-admin ca init` as a step after the first
+deploy. Coolify's source (`ApplicationDeploymentJob::run_pre_deployment_command`,
+4.3.23) runs that command with `docker exec` in a currently running
+container of the app and skips it when there is none: on the first deploy
+nothing ran, and the api exited on "relation secrets does not exist"; had it
+survived, it would have exited on the missing CA, and an unhealthy
+container is removed before anyone can exec into it. Both documents assumed
+Coolify behaviour nobody had read. Now: `API_MIGRATE` (default `1`) makes
+the api call `db.MigrateUp` at start, and a missing CA triggers `ca.Init`
+under `LockCAInit`; a replica that loses the lock waits and loads what the
+winner wrote. Writing the test for two replicas against an empty database
+exposed two pre-existing races that the same fix closes: `MigrateUp` chose
+the pending set before taking its lock (now re-checked under it, "already
+applied" is a skip), and `EnsurePartitions` ran `create table if not
+exists` outside any lock (now one transaction under `LockPartitions`).
+`repose-admin db migrate` and `ca init` remain for operators; `ca init`
+now refuses with a typed `ErrAlreadyInitialised`. The owner's condition
+was idempotence; `internal/api/app/bootstrap_test.go` starts two replicas
+at once and a third afterwards and asserts one schema and one CA.
+*Rejected:* a Coolify one-off command (needs a running container); an init
+container in a compose file (the api applications are single-container
+Dockerfile apps by I-87).
