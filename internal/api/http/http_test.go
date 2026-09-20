@@ -124,7 +124,7 @@ func (e *env) do(t *testing.T, token, method, path string, body any) resp {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	raw, _ := io.ReadAll(res.Body)
 	out := resp{status: res.StatusCode, raw: raw, hdr: res.Header}
 	if len(raw) > 0 && raw[0] == '{' {
@@ -147,7 +147,7 @@ func (e *env) internalDo(t *testing.T, method, path string, body any) resp {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	raw, _ := io.ReadAll(res.Body)
 	out := resp{status: res.StatusCode, raw: raw, hdr: res.Header}
 	if len(raw) > 0 && raw[0] == '{' {
@@ -675,7 +675,7 @@ func TestSSEDeliversEveryLineInOrderWithSince(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer res.Body.Close()
+		defer func() { _ = res.Body.Close() }()
 		if res.StatusCode != 200 || !strings.HasPrefix(res.Header.Get("Content-Type"), "text/event-stream") {
 			t.Fatalf("sse status %d %s", res.StatusCode, res.Header.Get("Content-Type"))
 		}
@@ -687,7 +687,7 @@ func TestSSEDeliversEveryLineInOrderWithSince(t *testing.T) {
 			l := sc.Text()
 			if strings.HasPrefix(l, "id: ") {
 				var n int64
-				fmt.Sscanf(l, "id: %d", &n)
+				_, _ = fmt.Sscanf(l, "id: %d", &n)
 				seqs = append(seqs, n)
 			}
 			if l == "event: done" {
@@ -743,7 +743,7 @@ func TestSSELiveStreamAndConcurrentLoad(t *testing.T) {
 			if err != nil {
 				return
 			}
-			defer res.Body.Close()
+			defer func() { _ = res.Body.Close() }()
 			n := 0
 			sc := bufio.NewScanner(res.Body)
 			for sc.Scan() {
@@ -783,7 +783,7 @@ func TestSSELiveStreamAndConcurrentLoad(t *testing.T) {
 			res, err := http.DefaultClient.Do(req)
 			if err == nil {
 				_, _ = io.Copy(io.Discard, res.Body)
-				res.Body.Close()
+				_ = res.Body.Close()
 			}
 			durations[i] = time.Since(start)
 		}(i)
@@ -803,13 +803,13 @@ func TestHealthz(t *testing.T) {
 	if err != nil || res.StatusCode != 200 {
 		t.Fatalf("healthz %v %v", res, err)
 	}
-	res.Body.Close()
+	_ = res.Body.Close()
 	if _, err := db.MigrateDown(e.h.Ctx, e.h.Pool, 1); err != nil {
 		t.Fatal(err)
 	}
 	res, _ = http.Get(e.api.URL + "/healthz")
 	body, _ := io.ReadAll(res.Body)
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != 503 || !strings.Contains(string(body), "migrations pending") {
 		t.Fatalf("healthz with pending migration: %d %s", res.StatusCode, body)
 	}

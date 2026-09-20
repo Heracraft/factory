@@ -332,7 +332,7 @@ func (s *Server) authed(h handler, queryToken bool) handler {
 			}
 			return err
 		}
-		if u.SuspendedAt != nil && !(r.Pattern == "GET /v1/me" || r.Pattern == "POST /v1/billing/portal") {
+		if u.SuspendedAt != nil && r.Pattern != "GET /v1/me" && r.Pattern != "POST /v1/billing/portal" {
 			return errf("forbidden", "account suspended")
 		}
 		if ok, retry := s.general.Allow(u.ID.String()); !ok {

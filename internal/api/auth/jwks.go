@@ -48,7 +48,6 @@ type Verifier struct {
 	cacheTTL  time.Duration
 	staleMax  time.Duration
 	nowFunc   func() time.Time
-	fetching  bool
 	lastError error
 }
 
@@ -104,15 +103,23 @@ func (k jwk) public() (any, error) {
 		default:
 			return nil, fmt.Errorf("unsupported curve %s", k.Crv)
 		}
-		x, err := decodeBig(k.X)
+		xb, err := base64.RawURLEncoding.DecodeString(k.X)
 		if err != nil {
 			return nil, err
 		}
-		y, err := decodeBig(k.Y)
+		yb, err := base64.RawURLEncoding.DecodeString(k.Y)
 		if err != nil {
 			return nil, err
 		}
-		return &ecdsa.PublicKey{Curve: curve, X: x, Y: y}, nil
+		size := (curve.Params().BitSize + 7) / 8
+		if len(xb) > size || len(yb) > size {
+			return nil, errors.New("jwk: coordinate too long")
+		}
+		point := make([]byte, 1+2*size)
+		point[0] = 4
+		copy(point[1+size-len(xb):], xb)
+		copy(point[1+2*size-len(yb):], yb)
+		return ecdsa.ParseUncompressedPublicKey(curve, point)
 	}
 	return nil, fmt.Errorf("unsupported key type %s", k.Kty)
 }

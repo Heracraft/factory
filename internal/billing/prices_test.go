@@ -14,7 +14,7 @@ func TestPricesMatchPricingDoc(t *testing.T) {
 	if err != nil {
 		t.Skip("PRICING.md not found")
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	want := map[string][2]int64{"small": {HourSmall, CapSmall}, "large": {HourLarge, CapLarge}, "xl": {HourXL, CapXL}}
 	seen := 0
 	sc := bufio.NewScanner(f)

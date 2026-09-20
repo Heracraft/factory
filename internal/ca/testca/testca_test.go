@@ -43,7 +43,7 @@ func TestUserCertCarriesPrincipalsAndExtensions(t *testing.T) {
 	if err := checker.CheckCert("p3", c); err == nil {
 		t.Fatal("cert accepted for a principal it does not carry")
 	}
-	if time.Unix(int64(c.ValidBefore), 0).Sub(time.Now()) > 13*time.Hour {
+	if time.Until(time.Unix(int64(c.ValidBefore), 0)) > 13*time.Hour {
 		t.Fatal("validity too long")
 	}
 }

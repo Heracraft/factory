@@ -45,14 +45,14 @@ func (e *Env) db(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(e.Stdout, "applied %d migration(s): %v\n", len(applied), applied)
+		_, _ = fmt.Fprintf(e.Stdout, "applied %d migration(s): %v\n", len(applied), applied)
 		return nil
 	case "status":
 		st, err := db.MigrateStatus(ctx, e.pool)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(e.Stdout, "applied: %v\npending: %v\n", st.Applied, st.Pending)
+		_, _ = fmt.Fprintf(e.Stdout, "applied: %v\npending: %v\n", st.Applied, st.Pending)
 		return nil
 	case "down":
 		n := 1
@@ -67,7 +67,7 @@ func (e *Env) db(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(e.Stdout, "reverted %v\n", reverted)
+		_, _ = fmt.Fprintf(e.Stdout, "reverted %v\n", reverted)
 		return nil
 	case "rollback":
 		fs, err := flagsFor("rollback", args[1:], func(fs *flag.FlagSet) { fs.Int("to", -1, "version to keep") })
@@ -82,7 +82,7 @@ func (e *Env) db(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(e.Stdout, "reverted %v; newest applied is now %d\n", reverted, to)
+		_, _ = fmt.Fprintf(e.Stdout, "reverted %v; newest applied is now %d\n", reverted, to)
 		return nil
 	case "verify":
 		var rows [][]string
@@ -139,8 +139,8 @@ func (e *Env) hosts(ctx context.Context, args []string) error {
 		if _, err := e.audited(ctx, "host_add", name, map[string]any{"reissue": reissue}); err != nil {
 			return err
 		}
-		fmt.Fprintf(e.Stderr, "join token for %s (valid %s, single use; put it in infra/azure/prod/prod.local.tfvars or /run/repose/join-token):\n", name, hostmgr.JoinTokenValidity)
-		fmt.Fprintln(e.Stdout, token)
+		_, _ = fmt.Fprintf(e.Stderr, "join token for %s (valid %s, single use; put it in infra/azure/prod/prod.local.tfvars or /run/repose/join-token):\n", name, hostmgr.JoinTokenValidity)
+		_, _ = fmt.Fprintln(e.Stdout, token) // stdout
 		return nil
 	case "list":
 		hosts, err := store.ListHosts(ctx, e.pool)
@@ -181,7 +181,7 @@ func (e *Env) hosts(ctx context.Context, args []string) error {
 				return err
 			}
 			_, err = e.audited(ctx, "host_undrain", h.Name, nil)
-			fmt.Fprintf(e.Stdout, "%s marked ready on the api side. Drain has no inverse on the wire (docs/interfaces/grpc-hostd.md): hostd keeps refusing placements and reports draining=true in every heartbeat until `hostd undrain` runs on the host or hostd restarts.\n", h.Name)
+			_, _ = fmt.Fprintf(e.Stdout, "%s marked ready on the api side. Drain has no inverse on the wire (docs/interfaces/grpc-hostd.md): hostd keeps refusing placements and reports draining=true in every heartbeat until `hostd undrain` runs on the host or hostd restarts.\n", h.Name)
 			return err
 		}
 		if _, err := e.pool.Exec(ctx, "update hosts set draining = true, state = case when state = 'ready' then 'draining' else state end where id = $1", h.ID); err != nil {
@@ -192,7 +192,7 @@ func (e *Env) hosts(ctx context.Context, args []string) error {
 		}
 		hid := h.ID
 		_, err = e.enqueue(ctx, ops.NewOp{Kind: ops.KindDrain, HostID: &hid, Phases: ops.PlanDrain()}, false)
-		fmt.Fprintf(e.Stdout, "%s draining: no new placements; Drain sent to hostd\n", h.Name)
+		_, _ = fmt.Fprintf(e.Stdout, "%s draining: no new placements; Drain sent to hostd\n", h.Name)
 		return err
 	case "retire":
 		if len(args) < 2 {
@@ -213,7 +213,7 @@ func (e *Env) hosts(ctx context.Context, args []string) error {
 			return err
 		}
 		_, err = e.audited(ctx, "host_retire", h.Name, nil)
-		fmt.Fprintf(e.Stdout, "%s retired\n", h.Name)
+		_, _ = fmt.Fprintf(e.Stdout, "%s retired\n", h.Name)
 		return err
 	case "mark-lost":
 		if len(args) < 2 {
@@ -237,7 +237,7 @@ func (e *Env) hosts(ctx context.Context, args []string) error {
 			if _, err := e.pool.Exec(ctx, "insert into events (id, project_id, ts, ts_second, kind, summary, source) values ($1, $2, now(), extract(epoch from now())::bigint, 'host_moved', $3, 'api')", store.NewID(), p.ID, "the host holding "+p.Slug+" was lost; the platform will restore it from the latest snapshot"); err != nil {
 				return err
 			}
-			fmt.Fprintf(e.Stdout, "%s (%s): error host_lost; restore with: repose-admin projects restore %s --latest --to <host>\n", p.Slug, p.ID, p.ID)
+			_, _ = fmt.Fprintf(e.Stdout, "%s (%s): error host_lost; restore with: repose-admin projects restore %s --latest --to <host>\n", p.Slug, p.ID, p.ID)
 		}
 		_, err = e.audited(ctx, "host_mark_lost", h.Name, map[string]any{"projects": len(projects)})
 		return err
@@ -281,7 +281,7 @@ func (e *Env) hosts(ctx context.Context, args []string) error {
 		e.table(rows)
 		var reserved int64
 		_ = e.pool.QueryRow(ctx, "select coalesce(reserved_bytes,0) from host_reservations where host_id = $1", h.ID).Scan(&reserved)
-		fmt.Fprintf(e.Stdout, "reserved memory recomputed: %s\n", gb(reserved))
+		_, _ = fmt.Fprintf(e.Stdout, "reserved memory recomputed: %s\n", gb(reserved))
 		_, err = e.audited(ctx, "host_reconcile", h.Name, map[string]any{"fix": fix})
 		return err
 	case "rotate-cert":
@@ -306,9 +306,9 @@ func (e *Env) hosts(ctx context.Context, args []string) error {
 		if _, err := e.audited(ctx, "host_rotate_cert", h.Name, map[string]any{"serial": serial}); err != nil {
 			return err
 		}
-		fmt.Fprintf(e.Stderr, "write these to /var/lib/repose/hostd/cert.pem and key.pem on %s (via the edge jump), then systemctl restart hostd\n", h.Name)
-		fmt.Fprint(e.Stdout, string(certPEM))
-		fmt.Fprint(e.Stdout, string(keyPEM))
+		_, _ = fmt.Fprintf(e.Stderr, "write these to /var/lib/repose/hostd/cert.pem and key.pem on %s (via the edge jump), then systemctl restart hostd\n", h.Name)
+		_, _ = fmt.Fprint(e.Stdout, string(certPEM)) // stdout
+		_, _ = fmt.Fprint(e.Stdout, string(keyPEM))
 		return nil
 	case "rotate-wg":
 		if len(args) < 2 {
@@ -335,8 +335,8 @@ func (e *Env) hosts(ctx context.Context, args []string) error {
 		if _, err := e.audited(ctx, "host_rotate_wg", h.Name, nil); err != nil {
 			return err
 		}
-		fmt.Fprintf(e.Stderr, "new public key stored; the edge's wgsync picks it up within 30 s. Put this private key in host.json wg.private_key on %s and systemctl restart repose-host-net:\n", h.Name)
-		fmt.Fprintln(e.Stdout, base64.StdEncoding.EncodeToString(k[:]))
+		_, _ = fmt.Fprintf(e.Stderr, "new public key stored; the edge's wgsync picks it up within 30 s. Put this private key in host.json wg.private_key on %s and systemctl restart repose-host-net:\n", h.Name)
+		_, _ = fmt.Fprintln(e.Stdout, base64.StdEncoding.EncodeToString(k[:])) // stdout
 		return nil
 	case "smoke":
 		if len(args) < 2 {
@@ -386,7 +386,7 @@ func (e *Env) smoke(ctx context.Context, hostRef string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(e.Stdout, "smoke project %s (%s) on %s\n", name, pid, h.Name)
+	_, _ = fmt.Fprintf(e.Stdout, "smoke project %s (%s) on %s\n", name, pid, h.Name)
 	steps := []struct {
 		label string
 		op    func() (uuid.UUID, error)
@@ -438,7 +438,7 @@ func (e *Env) smoke(ctx context.Context, hostRef string) error {
 		if op.State != "done" {
 			return fmt.Errorf("%s failed: %v", st.label, op.Error)
 		}
-		fmt.Fprintf(e.Stdout, "%-9s ok in %s\n", st.label, time.Since(start).Round(time.Millisecond))
+		_, _ = fmt.Fprintf(e.Stdout, "%-9s ok in %s\n", st.label, time.Since(start).Round(time.Millisecond))
 	}
 	_, err = e.audited(ctx, "host_smoke", h.Name, map[string]any{"project_id": pid.String()})
 	return err
@@ -698,7 +698,7 @@ func (e *Env) exec(ctx context.Context, args []string) error {
 		}
 	}
 	if len(argv) == 0 {
-		return fmt.Errorf("%w: exec ID -- argv...", ErrUsage)
+		return fmt.Errorf("%w: exec needs an id and, after --, the command to run", ErrUsage)
 	}
 	p, err := e.findProject(ctx, ref)
 	if err != nil {
@@ -719,11 +719,11 @@ func (e *Env) exec(ctx context.Context, args []string) error {
 	}
 	if s, ok := op.Result["stdout"].(string); ok {
 		b, _ := base64.StdEncoding.DecodeString(s)
-		fmt.Fprint(e.Stdout, string(b))
+		_, _ = fmt.Fprint(e.Stdout, string(b))
 	}
 	if s, ok := op.Result["stderr"].(string); ok {
 		b, _ := base64.StdEncoding.DecodeString(s)
-		fmt.Fprint(e.Stderr, string(b))
+		_, _ = fmt.Fprint(e.Stderr, string(b))
 	}
 	if code, ok := op.Result["exit_code"].(float64); ok && code != 0 {
 		return fmt.Errorf("exit status %d", int(code))
@@ -796,19 +796,19 @@ func (e *Env) users(ctx context.Context, args []string) error {
 				return err
 			}
 		} else {
-			fmt.Fprintf(e.Stderr, "warning: certificates not revoked: %v\n", err)
+			_, _ = fmt.Fprintf(e.Stderr, "warning: certificates not revoked: %v\n", err)
 		}
 		projects, _ := store.ListUserProjects(ctx, e.pool, u.ID)
 		for _, p := range projects {
 			if p.State == "running" || p.State == "starting" {
 				pid := p.ID
 				if _, err := e.enqueue(ctx, ops.NewOp{Kind: ops.KindStop, ProjectID: &pid, Params: map[string]any{"snapshot": true}, Phases: ops.PlanStop()}, false); err != nil {
-					fmt.Fprintf(e.Stderr, "warning: stop %s: %v\n", p.Slug, err)
+					_, _ = fmt.Fprintf(e.Stderr, "warning: stop %s: %v\n", p.Slug, err)
 				}
 			}
 		}
 		_, err = e.audited(ctx, "user_suspend", u.Handle, map[string]any{"reason": reason, "retain": fs.Lookup("retain").Value.String() == "true", "projects": len(projects)})
-		fmt.Fprintf(e.Stdout, "%s suspended; %d project(s) stopping\n", u.Handle, len(projects))
+		_, _ = fmt.Fprintf(e.Stdout, "%s suspended; %d project(s) stopping\n", u.Handle, len(projects))
 		return err
 	case "unsuspend":
 		if len(args) < 2 {
@@ -822,7 +822,7 @@ func (e *Env) users(ctx context.Context, args []string) error {
 			return err
 		}
 		_, err = e.audited(ctx, "user_unsuspend", u.Handle, nil)
-		fmt.Fprintf(e.Stdout, "%s unsuspended\n", u.Handle)
+		_, _ = fmt.Fprintf(e.Stdout, "%s unsuspended\n", u.Handle)
 		return err
 	case "exempt":
 		if len(args) < 2 {
@@ -836,7 +836,7 @@ func (e *Env) users(ctx context.Context, args []string) error {
 			return err
 		}
 		_, err = e.audited(ctx, "user_exempt", u.Handle, nil)
-		fmt.Fprintf(e.Stdout, "%s is billing-exempt (DECISIONS I-16)\n", u.Handle)
+		_, _ = fmt.Fprintf(e.Stdout, "%s is billing-exempt (DECISIONS I-16)\n", u.Handle)
 		return err
 	case "limits":
 		fs, err := flagsFor("limits", args[1:], func(fs *flag.FlagSet) {
@@ -862,7 +862,7 @@ func (e *Env) users(ctx context.Context, args []string) error {
 			return err
 		}
 		_, err = e.audited(ctx, "user_limits", u.Handle, map[string]any{"projects": pl, "xl": xl})
-		fmt.Fprintf(e.Stdout, "%s: %d projects, %d xl\n", u.Handle, pl, xl)
+		_, _ = fmt.Fprintf(e.Stdout, "%s: %d projects, %d xl\n", u.Handle, pl, xl)
 		return err
 	}
 	return fmt.Errorf("%w: users %s", ErrUsage, args[0])
@@ -893,7 +893,7 @@ func (e *Env) certs(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(e.Stdout, "revoked %d certificate(s) of %s; the gateway sees them within 30 s\n", n, u.Handle)
+	_, _ = fmt.Fprintf(e.Stdout, "revoked %d certificate(s) of %s; the gateway sees them within 30 s\n", n, u.Handle)
 	return nil
 }
 
@@ -912,7 +912,7 @@ func (e *Env) secretsCmd(ctx context.Context, args []string) error {
 	if _, err := e.audited(ctx, "secrets_rewrap", "", map[string]any{"rows": n}); err != nil {
 		return err
 	}
-	fmt.Fprintf(e.Stdout, "rewrapped %d row(s) under the current key version; ciphertext untouched\n", n)
+	_, _ = fmt.Fprintf(e.Stdout, "rewrapped %d row(s) under the current key version; ciphertext untouched\n", n)
 	return nil
 }
 
@@ -952,7 +952,7 @@ func (e *Env) billing(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(e.Stdout, "rolled up %d hour(s)\n", n)
+		_, _ = fmt.Fprintf(e.Stdout, "rolled up %d hour(s)\n", n)
 		_, err = e.audited(ctx, "billing_rollup", "due", map[string]any{"hours": n})
 		return err
 	case "resync":
@@ -1018,7 +1018,7 @@ func (e *Env) base(ctx context.Context, args []string) error {
 		if security {
 			when = "the next security sweep (within 10 minutes)"
 		}
-		fmt.Fprintf(e.Stdout, "base %s (%s) published; unheld projects rebuild at %s\n", version, rev, when)
+		_, _ = fmt.Fprintf(e.Stdout, "base %s (%s) published; unheld projects rebuild at %s\n", version, rev, when)
 		return nil
 	case "list":
 		bases, err := store.ListBases(ctx, e.pool)
@@ -1078,7 +1078,7 @@ func (e *Env) base(ctx context.Context, args []string) error {
 		if _, err := e.audited(ctx, "base_rollback", v, map[string]any{"removed": tag.RowsAffected()}); err != nil {
 			return err
 		}
-		fmt.Fprintf(e.Stdout, "%d newer base(s) withdrawn; %s is the latest again and unheld projects on a newer base rebuild at the next sweep\n", tag.RowsAffected(), v)
+		_, _ = fmt.Fprintf(e.Stdout, "%d newer base(s) withdrawn; %s is the latest again and unheld projects on a newer base rebuild at the next sweep\n", tag.RowsAffected(), v)
 		return nil
 	}
 	return fmt.Errorf("%w: base %s", ErrUsage, args[0])
@@ -1113,7 +1113,7 @@ func (e *Env) caCmd(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(e.Stdout, "user ca: %s\nhost ca: %s\nx509 host ca: initialised\n", c.UserCAPub(), c.HostCAPub())
+		_, _ = fmt.Fprintf(e.Stdout, "user ca: %s\nhost ca: %s\nx509 host ca: initialised\n", c.UserCAPub(), c.HostCAPub())
 		return nil
 	case "rotate":
 		fs, err := flagsFor("ca rotate", args[1:], func(fs *flag.FlagSet) {
@@ -1134,7 +1134,7 @@ func (e *Env) caCmd(ctx context.Context, args []string) error {
 		if _, err := e.audited(ctx, "ca_rotate", "", map[string]any{"user": user, "host": host}); err != nil {
 			return err
 		}
-		fmt.Fprintln(e.Stdout, "rotated; restart the api so it loads the new keys. User certificates signed by the old CA expire within 12 h; guests get new host certificates at their next start; hosts need `hosts rotate-cert` after a host CA rotation.")
+		_, _ = fmt.Fprintln(e.Stdout, "rotated; restart the api so it loads the new keys. User certificates signed by the old CA expire within 12 h; guests get new host certificates at their next start; hosts need `hosts rotate-cert` after a host CA rotation.")
 		return nil
 	case "sign-host":
 		fs, err := flagsFor("sign-host", args[1:], func(fs *flag.FlagSet) {
@@ -1178,10 +1178,10 @@ func (e *Env) caCmd(ctx context.Context, args []string) error {
 			if err := os.WriteFile(filepath.Join(dir, name+".key"), keyPEM, 0o600); err != nil {
 				return err
 			}
-			fmt.Fprintf(e.Stdout, "wrote %s/%s.crt and %s.key (mTLS client for /internal and the gRPC listener)\n", dir, name, name)
+			_, _ = fmt.Fprintf(e.Stdout, "wrote %s/%s.crt and %s.key (mTLS client for /internal and the gRPC listener)\n", dir, name, name)
 			return nil
 		}
-		fmt.Fprint(e.Stdout, string(certPEM), string(keyPEM))
+		_, _ = fmt.Fprint(e.Stdout, string(certPEM), string(keyPEM))
 		return nil
 	}
 	return fmt.Errorf("%w: ca %s", ErrUsage, args[0])
@@ -1210,7 +1210,7 @@ func (e *Env) signSSH(ctx context.Context, fs *flag.FlagSet, operator bool) erro
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(e.Stdout, line)
+		_, _ = fmt.Fprintln(e.Stdout, line)
 		return nil
 	}
 	principals := strings.Split(fs.Lookup("principal").Value.String(), ",")
@@ -1228,7 +1228,7 @@ func (e *Env) signSSH(ctx context.Context, fs *flag.FlagSet, operator bool) erro
 	if _, err := e.audited(ctx, "ca_sign_host", strings.Join(principals, ","), nil); err != nil {
 		return err
 	}
-	fmt.Fprintln(e.Stdout, line)
+	_, _ = fmt.Fprintln(e.Stdout, line)
 	return nil
 }
 
@@ -1270,8 +1270,8 @@ func (e *Env) operatorCert(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(e.Stdout, line)
-	fmt.Fprintf(e.Stderr, "save as %s-cert.pub next to the key, or `ssh-add` the key after writing it; valid %s\n", strings.TrimSuffix(pkFile, ".pub"), ttl)
+	_, _ = fmt.Fprintln(e.Stdout, line)
+	_, _ = fmt.Fprintf(e.Stderr, "save as %s-cert.pub next to the key, or `ssh-add` the key after writing it; valid %s\n", strings.TrimSuffix(pkFile, ".pub"), ttl)
 	return nil
 }
 
@@ -1303,7 +1303,7 @@ func (e *Env) edge(ctx context.Context, args []string) error {
 	if _, err := e.audited(ctx, "edge_init", endpoint, nil); err != nil {
 		return err
 	}
-	fmt.Fprintf(e.Stdout, "edge hub recorded: %s; hosts registering from now on receive it\n", endpoint)
+	_, _ = fmt.Fprintf(e.Stdout, "edge hub recorded: %s; hosts registering from now on receive it\n", endpoint)
 	out := fs.Lookup("out").Value.String()
 	if out == "" {
 		return nil
@@ -1442,11 +1442,11 @@ func (e *Env) opsCmd(ctx context.Context, args []string) error {
 			if err := rows.Scan(&seq, &line); err != nil {
 				return err
 			}
-			fmt.Fprintln(e.Stdout, line)
+			_, _ = fmt.Fprintln(e.Stdout, line)
 		}
 		op, err := store.GetOp(ctx, e.pool, id)
 		if err == nil && op.Error != nil {
-			fmt.Fprintf(e.Stderr, "op %s: %v\n", id, op.Error)
+			_, _ = fmt.Fprintf(e.Stderr, "op %s: %v\n", id, op.Error)
 		}
 		return rows.Err()
 	}

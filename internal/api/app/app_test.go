@@ -24,7 +24,7 @@ func freePort(t *testing.T) string {
 		t.Fatal(err)
 	}
 	addr := ln.Addr().String()
-	ln.Close()
+	_ = ln.Close()
 	return addr
 }
 
@@ -48,7 +48,7 @@ func TestProcessDevModeAndInternalMTLS(t *testing.T) {
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if res, err := http.Get("http://" + cfg.Listen + "/healthz"); err == nil {
-			res.Body.Close()
+			_ = res.Body.Close()
 			if res.StatusCode == 200 {
 				break
 			}
@@ -59,7 +59,7 @@ func TestProcessDevModeAndInternalMTLS(t *testing.T) {
 	if err != nil || res.StatusCode != 200 {
 		t.Fatalf("healthz: %v %v", res, err)
 	}
-	res.Body.Close()
+	_ = res.Body.Close()
 	// /internal without a client certificate: the TLS handshake fails.
 	noCert := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, Timeout: 5 * time.Second}
 	if _, err := noCert.Get("https://" + cfg.InternalListen + "/v1/internal/ca"); err == nil {
@@ -78,7 +78,7 @@ func TestProcessDevModeAndInternalMTLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(res.Body)
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != 200 || !strings.Contains(string(body), "user_ca_pub") {
 		t.Fatalf("with client cert: %d %s", res.StatusCode, body)
 	}
@@ -88,7 +88,7 @@ func TestProcessDevModeAndInternalMTLS(t *testing.T) {
 		t.Fatalf("metrics: %v", err)
 	}
 	mb, _ := io.ReadAll(res.Body)
-	res.Body.Close()
+	_ = res.Body.Close()
 	if !strings.Contains(string(mb), "repose_api_grpc_streams") || !strings.Contains(string(mb), "repose_api_requests_total") {
 		t.Fatal("metrics missing repose_api_ families")
 	}

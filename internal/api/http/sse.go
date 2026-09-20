@@ -44,7 +44,7 @@ func (s *Server) opLog(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return
 		}
-		fmt.Fprintf(w, "id: %d\ndata: %s\n\n", l.Seq, b)
+		_, _ = fmt.Fprintf(w, "id: %d\ndata: %s\n\n", l.Seq, b) // a gone client is noticed by ctx
 		last = l.Seq
 	}
 	catchUp := func() error {
@@ -66,8 +66,8 @@ func (s *Server) opLog(w http.ResponseWriter, r *http.Request) error {
 		return nil
 	}
 	finish := func(op *store.Op) {
-		_ = catchUp() // best effort tail before done
-		fmt.Fprintf(w, "event: done\ndata: {\"state\":%q}\n\n", op.State)
+		_ = catchUp()                                                            // best effort tail before done
+		_, _ = fmt.Fprintf(w, "event: done\ndata: {\"state\":%q}\n\n", op.State) // same
 		flusher.Flush()
 	}
 	if op.State == "done" || op.State == "error" {
@@ -103,7 +103,7 @@ func (s *Server) opLog(w http.ResponseWriter, r *http.Request) error {
 				finish(cur)
 				return nil
 			}
-			fmt.Fprint(w, ": keepalive\n\n")
+			_, _ = fmt.Fprint(w, ": keepalive\n\n") // same
 			flusher.Flush()
 		}
 	}

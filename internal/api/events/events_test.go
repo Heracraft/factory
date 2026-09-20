@@ -69,7 +69,9 @@ func TestDedupeOutboxAndRateCap(t *testing.T) {
 	// The hostd event path: same event id twice is one row; a state change
 	// updates the project when no op is open.
 	ev := &hostdv1.Event{EventId: "ev-1", Ts: now.Unix(), Ev: &hostdv1.Event_AgentEvent{AgentEvent: &hostdv1.AgentEvent{GuestId: gid.String(), Agent: "codex", Kind: "error", Summary: "exit 1"}}}
-	if !ing.OnEvent(ctx, uuid.Nil, ev) || !ing.OnEvent(ctx, uuid.Nil, ev) {
+	first := ing.OnEvent(ctx, uuid.Nil, ev)
+	second := ing.OnEvent(ctx, uuid.Nil, ev)
+	if !first || !second {
 		t.Fatal("events not acked")
 	}
 	_ = pool.QueryRow(ctx, "select count(*) from events where host_event_id = 'ev-1'").Scan(&n)

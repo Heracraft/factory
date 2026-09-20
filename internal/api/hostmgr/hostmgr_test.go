@@ -99,14 +99,13 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 func TestRegisterSessionSendSweep(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
-	token, err := hostmgr.MintJoinToken(ctx, h.pool, "host-01", "azure", "Standard_D16s_v7", "eastus", false)
-	if err != nil {
+	if _, err := hostmgr.MintJoinToken(ctx, h.pool, "host-01", "azure", "Standard_D16s_v7", "eastus", false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := hostmgr.MintJoinToken(ctx, h.pool, "host-01", "", "", "", false); err != nil {
 		t.Fatalf("reminting for an unregistered host should work: %v", err)
 	}
-	token, err = hostmgr.MintJoinToken(ctx, h.pool, "host-01", "", "", "", false)
+	token, err := hostmgr.MintJoinToken(ctx, h.pool, "host-01", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}

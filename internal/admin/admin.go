@@ -204,7 +204,7 @@ func (e *Env) audited(ctx context.Context, action, target string, detail map[str
 func (e *Env) table(rows [][]string) {
 	tw := tabwriter.NewWriter(e.Stdout, 0, 2, 2, ' ', 0)
 	for _, r := range rows {
-		fmt.Fprintln(tw, strings.Join(r, "\t"))
+		_, _ = fmt.Fprintln(tw, strings.Join(r, "\t")) // stdout
 	}
 	_ = tw.Flush() // stdout
 }
@@ -252,7 +252,7 @@ func (e *Env) waitOp(ctx context.Context, id uuid.UUID, timeout time.Duration) (
 		}
 		cur := fmt.Sprintf("%s step %d", op.State, op.Step)
 		if cur != last {
-			fmt.Fprintf(e.Stderr, "op %s: %s\n", id, cur)
+			_, _ = fmt.Fprintf(e.Stderr, "op %s: %s\n", id, cur) // stderr
 			last = cur
 		}
 		if op.State == "done" || op.State == "error" {
@@ -283,7 +283,7 @@ func (e *Env) enqueue(ctx context.Context, n ops.NewOp, wait bool) (*store.Op, e
 	if err != nil {
 		return nil, err
 	}
-	fmt.Fprintf(e.Stdout, "op %s enqueued\n", id)
+	_, _ = fmt.Fprintf(e.Stdout, "op %s enqueued\n", id)
 	if !wait {
 		return store.GetOp(ctx, e.pool, id)
 	}
