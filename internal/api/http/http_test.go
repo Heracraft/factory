@@ -506,6 +506,9 @@ func TestSignInAndProjectsLifecycle(t *testing.T) {
 	if ir := e.internalDo(t, "GET", "/internal/hosts", nil); ir.status != 200 || len(ir.list) != 1 {
 		t.Fatalf("hosts: %d %s", ir.status, ir.raw)
 	}
+	// The secret put and delete above each queued an update_secrets op for
+	// the running guest; let them drain or the stop answers 409.
+	e.h.WaitIdle(uuid.MustParse(pid))
 	// Stop with snapshot, then start; ops are visible.
 	r = e.do(t, tok, "POST", "/projects/"+pid+"/stop", map[string]any{"snapshot": true})
 	if r.status != 202 {
