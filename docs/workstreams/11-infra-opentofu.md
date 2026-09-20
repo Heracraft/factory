@@ -60,7 +60,7 @@ provider module for hosts is an addition, not a rewrite.
     host provisioner jumps through it.
   - `coolify`: `coolify_count` of them; the module default is **0** so a new
     environment costs nothing, and production runs **1** from 2026-09-20
-    (DECISIONS I-24, I-70). One `Standard_D4s_v7`, Ubuntu 24.04 LTS, static
+    (DECISIONS I-24, I-71). One `Standard_D4s_v7`, Ubuntu 24.04 LTS, static
     public IP, DNS A records `repose.herakraft.co`,
     `api.repose.herakraft.co`, `auth.repose.herakraft.co`, 256 GB Premium SSD
     OS disk, cloud-init that installs Docker and runs Coolify's installer at
@@ -98,7 +98,7 @@ provider module for hosts is an addition, not a rewrite.
   above, so DNS is in the same apply as the addresses it points at.
   `manage_dns` defaults to **false**, because the records need a
   `CLOUDFLARE_API_TOKEN` and a zone id that do not exist yet (DECISIONS
-  I-71). While it is false the names are not merely absent: `herakraft.co`
+  I-72). While it is false the names are not merely absent: `herakraft.co`
   answers every name under it from a proxied wildcard, so
   `ssh.repose.herakraft.co` resolves to Cloudflare's proxy, which carries
   neither SSH nor WireGuard. A plan-time `check` warns, and `infra/README.md`
@@ -303,7 +303,7 @@ row says otherwise. Commands were run from the dev box, which is in
       `repose:inbound=none`; `make check` is clean; the rule was fired
       against a fixture that adds one on 2026-09-19. A second guard was added
       on 2026-09-20 for the control subnet: a `postcondition` that fails the
-      plan on any inbound rule for 8000, 6001, 6002 or `*` (DECISIONS I-70).
+      plan on any inbound rule for 8000, 6001, 6002 or `*` (DECISIONS I-71).
       Fired deliberately by adding a `TEMP-coolify-dashboard` rule for 8000
       to the module and planning against a scratch local-state root; it
       failed with *"The control subnet NSG must not open 8000, 6001, 6002 or
@@ -358,7 +358,7 @@ row says otherwise. Commands were run from the dev box, which is in
       ssh.repose.herakraft.co` returns `172.67.175.123` and `104.21.31.82`,
       Cloudflare's proxy, not the edge's `20.102.98.254` — `herakraft.co`
       answers every name under it from a proxied wildcard, and the proxy
-      carries neither SSH nor WireGuard (DECISIONS I-71). The plan now warns,
+      carries neither SSH nor WireGuard (DECISIONS I-72). The plan now warns,
       `infra/README.md` has the four records to create by hand, and
       `ops/RUNBOOK.md` has the symptom entry. Closes with a Cloudflare token
       and `manage_dns = true`, or with the records made by hand.

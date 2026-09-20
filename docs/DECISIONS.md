@@ -1478,7 +1478,7 @@ while it runs, usually well under a second. The CLI (07) retries such a 409
 for up to 10 s before surfacing it; the api test harness drains with
 `WaitIdle`. *Rejected:* exempting `update_secrets` from the one-op rule
 (a stop racing a secrets push is exactly what the rule prevents).
-**I-70. The control plane is created now, with its Coolify pinned and its
+**I-71. The control plane is created now, with its Coolify pinned and its
 dashboard off the network.** (11, owner, 2026-09-20) `coolify_count = 1` in
 `prod.tfvars`. I-24 deferred the VM until "wave 3" on the grounds that it
 would bill for nothing while the api did not exist; the api and `repose-admin`
@@ -1516,7 +1516,7 @@ definition; the retention that matters is the R2 dump *and*
 dump. `ops/coolify.md` is the click path and holds that last point where it
 will be read before a restore rather than after one.
 
-**I-71. `manage_dns` defaults to false, and the absence of a record is not
+**I-72. `manage_dns` defaults to false, and the absence of a record is not
 the absence of an answer.** (11, 2026-09-20) The roots defaulted `manage_dns`
 to true while no `CLOUDFLARE_API_TOKEN` existed, so every plan depended on the
 local tfvars turning it off, and a plan without them failed inside the

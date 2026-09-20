@@ -80,7 +80,7 @@ a day.
     from a **proxied wildcard**, so the repose names resolve today — to
     Cloudflare's proxy, which carries neither SSH nor WireGuard. That makes
     `ssh.repose.herakraft.co` actively wrong rather than merely missing
-    (`DECISIONS.md` I-71). Until a token is in `CLOUDFLARE_API_TOKEN` and
+    (`DECISIONS.md` I-72). Until a token is in `CLOUDFLARE_API_TOKEN` and
     `manage_dns = true`, create these four by hand as A records **with the
     proxy off**: `ssh.repose` → the edge's IP, and `repose`, `api.repose`,
     `auth.repose` → the control plane's. The table with the reasons is in
