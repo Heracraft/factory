@@ -194,7 +194,10 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) error {
 	}
 	pid := store.NewID()
 	rid := store.NewID()
-	var opID uuid.UUID
+	var (
+		opID uuid.UUID
+		p    *store.Project
+	)
 	err := db.InTx(ctx, s.d.Pool, func(tx db.Tx) error {
 		// Limits are checked under a row lock on the user so two creates
 		// cannot both pass.
@@ -223,7 +226,14 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) error {
 		if _, err := tx.Exec(ctx, "insert into config_revisions (id, project_id, fragment, status) values ($1, $2, $3, 'building')", rid, pid, DefaultFragment); err != nil {
 			return err
 		}
-		opID, err = s.d.Engine.Enqueue(ctx, tx, ops.NewOp{Kind: ops.KindCreate, ProjectID: &pid, Phases: ops.PlanCreate()}, false)
+		if opID, err = s.d.Engine.Enqueue(ctx, tx, ops.NewOp{Kind: ops.KindCreate, ProjectID: &pid, Phases: ops.PlanCreate()}, false); err != nil {
+			return err
+		}
+		// Read the row inside the transaction: once it commits and the
+		// engine is kicked, the op can move the project to "building"
+		// before a read on the pool sees it, and the 201 body would show a
+		// state the caller never asked for (CI, 2026-09-20).
+		p, err = store.GetProject(ctx, tx, pid)
 		return err
 	})
 	if err != nil {
@@ -231,10 +241,6 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) error {
 	}
 	s.d.Engine.Kick()
 	obs.Logger(ctx, s.d.Log).Info("project created", "event", "project_create", "project_id", pid.String(), "class", body.Class)
-	p, err := store.GetProject(ctx, s.d.Pool, pid)
-	if err != nil {
-		return err
-	}
 	j, err := s.projectJSON(ctx, p, u)
 	if err != nil {
 		return err
