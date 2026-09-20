@@ -89,9 +89,15 @@ Dashboard and CLI:
 - `repose status` shows the last event per agent window.
 - `repose events`, its own command, lists
   the last 50 events with timestamps.
-- The dashboard project page shows the event stream and delivery status per
-  channel, so a user who got nothing can see whether the event happened and
-  whether the delivery failed.
+- The dashboard project page's Events card shows the event stream, newest
+  first, with the agent and the summary. It answers the first half of "I
+  got nothing": whether the event happened at all. It does not yet answer
+  the second half — whether a delivery failed — because
+  `GET /projects/:id/events` returns `{id, ts, kind, agent, summary}` and
+  carries no per-channel outcome (DECISIONS I-96). Until it does, that
+  half is an operator question: `repose-admin` and the
+  `repose_api_outbox_*` metrics, and `ops/RUNBOOK.md` "No notifications
+  arriving" is written for exactly that call.
 
 ## Depends on
 
@@ -105,4 +111,6 @@ producer, not yet built — see `DECISIONS.md` I-16 and I-49).
 ## Deferred
 
 Telegram and Discord webhooks. Web push from the dashboard. A platform
-mobile app. Per-project channel overrides. Digest mode.
+mobile app. Per-project channel overrides. Digest mode. Per-channel
+delivery status on the event stream, which needs `events_outbox`'s state
+on the events route before the dashboard can render it.

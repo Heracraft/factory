@@ -71,14 +71,26 @@ Logs:
 - Retention: console 7 days, build logs 90 days, ops forever with the
   project row.
 
-Dashboard:
+Dashboard (as built; `workstreams/08-dashboard.md` §5.2 is the page list
+this describes, and it is narrower than an earlier draft of this section
+promised, DECISIONS I-96):
 
-- Project list with the same columns, sortable, with cost sparkline for
-  the month.
-- Project page: state timeline, agent events, build history with logs,
-  snapshots, secrets (names), config (menu or fragment), ports with (later)
-  preview links, and a cost breakdown by meter.
-- Account page: card status, invoices, notification channels, limits.
+- `/projects`: one row per project — name, class, state, uptime, agent
+  state, cost today, cost this month. The same figures as `status`, from
+  the same `usage_hours` rows. Not sortable, and no sparkline.
+- `/projects/[id]`: cards for connect (the `repose run` and `ssh` lines),
+  signals, cost (today, this month, and the month projected at the
+  current run rate), disk with a resize control, events newest first, the
+  last build with a link to the config page, and snapshots with restore
+  and restore-as-new. Start, Stop, Resize and Destroy are the header
+  actions; Destroy makes you type the slug.
+- `/projects/[id]/config` and `/projects/[id]/secrets` are their own
+  pages, not cards: the config page carries the menu, the Nix editor, the
+  streaming build log and the revision list, and the secrets page the
+  names and their dates.
+- `/billing`: card on file, invoices, usage for the month by class.
+  `/settings`: timezone, email toggle, ntfy URL and its test button.
+  `/account`: handle, email, GitHub login, and deletion.
 
 ## Depends on
 
@@ -90,3 +102,7 @@ Workstreams 05 (project and usage routes, ops history, log storage), 03
 
 Application log shipping from the guest (opt-in). Historical resource
 graphs per project in the dashboard beyond cost. A `repose top` live view.
+A state timeline and a per-meter cost breakdown on the project page, a
+sortable project list with a cost sparkline, a ports card, and the account
+limits on a page of their own: each was in an early draft of the Dashboard
+section above and none is built (DECISIONS I-96).

@@ -225,6 +225,21 @@ the live instance, not taken from the docs. Each one changed a file here.
    in, because an api that exits on a missing CA never goes healthy and
    Coolify removes it. The api now does both itself at start (I-90).
 
+13. **A rolling deploy still drops a request or two at the switchover.**
+   Measured on `web`, 2026-09-20: two loops at five requests a second
+   against `https://repose.herakraft.co/` and `/healthz` saw ~10,400
+   responses and exactly one failure each, both at 18:05:15Z, eleven
+   seconds after the new container started (created 18:05:02.851Z,
+   started 18:05:04.014Z, image `e6dd4fa`). The failures were 5-second
+   *hangs*, not 502s, which points at Traefik keeping the outgoing
+   container in its pool for a moment after Coolify removes it rather
+   than at the health check — the new container was healthy before the
+   old one went. So "rolling" here means "no outage", not "no dropped
+   request": a user reloading at that instant waits five seconds. It is
+   worth knowing before it is measured on `api`, where the same gap is a
+   CLI command failing rather than a page taking a moment.
+   `ops/deploy-probe.sh` is the loop that measures it.
+
 ## The instance's .env is half the backup
 
 Coolify encrypts the credentials it holds — every application's secrets, the

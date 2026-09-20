@@ -99,7 +99,10 @@ agent hook ─unix socket─▶ guestd ─vsock Event─▶ hostd ─gRPC Event�
 1. **Guest ↔ host**: KVM. A guest sees a virtio-fs mount of the store
    (read-only, no `.links`, no db), a block device, a tap, a vsock, a serial
    console. The virtiofsd process runs as an unprivileged user with the store
-   as its only view.
+   as its only view, and Cloud Hypervisor itself runs as the unprivileged
+   `hostd` user in a systemd sandbox whose device list is `/dev/kvm`,
+   `/dev/net/tun` and that guest's own volume (DECISIONS I-51), so an escape
+   lands next to the hypervisor rather than as root on the host.
 2. **Guest ↔ guest**: no L2 or L3 path (nftables on the bridge, per-guest
    tap, no VLAN sharing). Different users' guests may share a host.
 3. **Host ↔ control plane**: mTLS with a certificate issued at registration

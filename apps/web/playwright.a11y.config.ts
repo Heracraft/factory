@@ -15,9 +15,13 @@ const config: PlaywrightTestConfig = {
 		baseURL: BASE_URL,
 		trace: 'retain-on-failure',
 		launchOptions: {
-			args: [`--remote-debugging-port=${CDP_PORT}`],
+			// The debugging port is the whole point of this config; --no-sandbox
+			// rides with the Nix chromium, which cannot use the sandbox here.
+			args: process.env.PLAYWRIGHT_CHROMIUM_PATH
+				? [`--remote-debugging-port=${CDP_PORT}`, '--no-sandbox']
+				: [`--remote-debugging-port=${CDP_PORT}`],
 			...(process.env.PLAYWRIGHT_CHROMIUM_PATH
-				? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH, args: [`--remote-debugging-port=${CDP_PORT}`, '--no-sandbox'] }
+				? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH }
 				: {})
 		}
 	},

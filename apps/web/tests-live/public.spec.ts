@@ -163,3 +163,54 @@ test('the deploy serves no api of its own', async ({ request }) => {
 		}
 	}
 });
+
+// The dashboard's api client reads `json.error.{code,message}` and turns it
+// into an ApiError the pages switch on (payment_required, capacity,
+// rate_limited, not_found). Every test of that mapping runs against
+// internal/fakes/api, so nothing checks that the deployed api still sends
+// that envelope — which is the shape of bug I-79 was: a whole class of
+// browser-to-api behaviour that passed against the fake and could not work
+// in production. These two assert against the real api instead.
+const API_URL = (process.env.REPOSE_LIVE_API_URL ?? 'https://api.repose.herakraft.co').replace(
+	/\/$/,
+	''
+);
+
+test('the live api refuses a bad token in the envelope the client parses', async ({ request }) => {
+	for (const path of ['/v1/me', '/v1/projects', '/v1/catalog', '/v1/usage']) {
+		const res = await request.get(`${API_URL}${path}`, {
+			headers: { Authorization: 'Bearer not-a-real-token' },
+			failOnStatusCode: false
+		});
+		expect(res.status(), path).toBe(401);
+		const body = await res.json();
+		expect(body.error?.code, path).toBe('unauthenticated');
+		expect(typeof body.error?.message, path).toBe('string');
+	}
+});
+
+// I-79: the dashboard and the api are different origins, and without these
+// headers the browser blocks the first fetch of every session.
+test('the live api sends the CORS headers the dashboard needs', async ({ request }) => {
+	const preflight = await request.fetch(`${API_URL}/v1/me`, {
+		method: 'OPTIONS',
+		headers: {
+			Origin: LIVE_URL,
+			'Access-Control-Request-Method': 'GET',
+			'Access-Control-Request-Headers': 'authorization'
+		},
+		failOnStatusCode: false
+	});
+	expect(preflight.status()).toBe(204);
+	const h = preflight.headers();
+	expect(h['access-control-allow-origin']).toBe('*');
+	expect(h['access-control-allow-headers']).toContain('Authorization');
+	expect(h['access-control-allow-methods']).toContain('GET');
+
+	// And on the response itself, not only on the preflight.
+	const real = await request.get(`${API_URL}/v1/me`, {
+		headers: { Origin: LIVE_URL },
+		failOnStatusCode: false
+	});
+	expect(real.headers()['access-control-allow-origin']).toBe('*');
+});
