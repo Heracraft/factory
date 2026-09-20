@@ -661,6 +661,12 @@ func TestSSEDeliversEveryLineInOrderWithSince(t *testing.T) {
 		e.h.Logs.Append(oid, i, fmt.Sprintf("line %d", i))
 	}
 	e.h.Logs.Flush(e.h.Ctx)
+	// The background flusher may still be inserting the batches it took.
+	e.h.WaitFor("all lines stored", func() bool {
+		var n int
+		_ = e.h.Pool.QueryRow(e.h.Ctx, "select count(*) from build_logs where op_id = $1", oid).Scan(&n)
+		return n == 10003
+	})
 	read := func(since int64, query bool) []int64 {
 		url := e.api.URL + "/v1/projects/" + pid + "/ops/" + opID + "/log"
 		if query {

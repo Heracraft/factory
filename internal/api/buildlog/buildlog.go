@@ -146,9 +146,12 @@ func (s *Store) Flush(ctx context.Context) {
 			continue
 		}
 		s.mu.Lock()
-		subs := s.subs[opID]
+		subs := make([]chan Line, 0, len(s.subs[opID]))
+		for ch := range s.subs[opID] {
+			subs = append(subs, ch)
+		}
 		s.mu.Unlock()
-		for ch := range subs {
+		for _, ch := range subs {
 			for _, l := range lines {
 				select {
 				case ch <- l:
