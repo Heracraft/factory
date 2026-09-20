@@ -78,6 +78,9 @@ func NewMetricsVersion(c Component, version string) *Metrics {
 
 func newMetrics(c Component, version string) *Metrics {
 	if err := c.check(); err != nil {
+		// A component name is a constant in the calling binary, so this is a
+		// programming error that every run reproduces; failing at startup is
+		// better than exporting series nothing scrapes.
 		panic(err)
 	}
 	m := &Metrics{component: c, registry: prometheus.NewRegistry()}
@@ -121,6 +124,9 @@ func (m *Metrics) Register(c prometheus.Collector) error {
 func (m *Metrics) MustRegister(cs ...prometheus.Collector) {
 	for _, c := range cs {
 		if err := m.Register(c); err != nil {
+			// A metric name and its labels are constants too: this panic is
+			// the enforcement of §5, and it fires on the first run and in the
+			// component's own unit tests rather than in production.
 			panic(err)
 		}
 	}

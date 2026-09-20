@@ -56,3 +56,16 @@ jobs:
         run: nix flake check --no-build ./nix
       - name: build the Go binaries through the flake
         run: nix build --no-link "git+file://$GITHUB_WORKSPACE?dir=nix#guestd" "git+file://$GITHUB_WORKSPACE?dir=nix#hostd"
+
+  ops:
+    name: alert rules, dashboards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      # ops/check.sh falls back to `nix shell nixpkgs#prometheus.cli` when
+      # promtool is not on PATH, which is the case here.
+      - run: ops/check.sh

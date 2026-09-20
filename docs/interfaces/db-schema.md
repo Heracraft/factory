@@ -53,6 +53,7 @@ meter_samples (ts timestamptz, project_id fk, host_id fk, state text, class text
               cpu_ns bigint, mem_rss bigint, net_tx bigint, net_rx bigint,
               disk_alloc bigint, disk_used bigint, ssh_sessions int,
               tmux_clients int, agents jsonb, docker_containers int,
+              guestd_ok bool not null default true,  -- I-44; false means the signals are unknown, not zero
               primary key (project_id, ts))  -- partitioned by month, 90-day retention
 
 proc_samples (ts, project_id fk, comm text, cpu_ns bigint, rss bigint,
@@ -81,6 +82,12 @@ Rules:
 - No `delete` of `projects` rows; `destroyed_at` is set and the row stays for
   usage history. `users.deleted_at` likewise.
 - `meter_samples` and `proc_samples` are append-only and never joined to
-  from request paths; the hourly rollup reads them once.
+  from request paths; the hourly rollup reads them once. Both are partitioned
+  by month; `ops/sql/partitions.sql` creates the current and next month's
+  partitions and drops the ones past retention, and the api calls
+  `repose_partitions_maintain()` hourly, logging `partition_drop_fail` if it
+  errors. A partition is dropped only once its whole month is past the
+  retention period, so the effective retention is 90 or 30 days plus up to a
+  month.
 - Secrets values never appear in `audit_log.detail` or anywhere but
   `secrets.ciphertext`.

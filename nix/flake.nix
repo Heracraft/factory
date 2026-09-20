@@ -159,6 +159,10 @@
             go_1_26 gopls golangci-lint buf protoc-gen-go protoc-gen-go-grpc
             opentofu azure-cli just nixos-anywhere nixos-rebuild
             postgresql_16 sqlc wireguard-tools
+            # Observability (docs/workstreams/10-observability.md): promtool
+            # checks and tests ops/alerts.yaml, python3 generates and
+            # validates the dashboards, docker compose runs the local stack.
+            prometheus.cli python3 docker-compose
           ]);
         };
 

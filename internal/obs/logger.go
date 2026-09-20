@@ -72,6 +72,9 @@ type LogOptions struct {
 // present, and the never-log fields redacted.
 func NewLogger(o LogOptions) *slog.Logger {
 	if err := o.Component.check(); err != nil {
+		// As in NewMetrics: the component is a constant, and a log line with
+		// the wrong component is invisible to every query in
+		// docs/ops/OBSERVABILITY.md, which is worse than not starting.
 		panic(err)
 	}
 	w := o.Writer

@@ -771,3 +771,98 @@ controller layouts, and wrong again if the LUN changes); a udev rule in the
 installer (nixos-anywhere's kexec image takes none). *Revisit when:* a host
 has more than one data disk.
 
+**I-42. The `obs` package fixes what §5 left to call sites, and its
+component and label lists are wider than §5's by two and three.** (10)
+`internal/obs` is the only place a repose binary gets a logger or a metrics
+registry, and both constructors enforce the rules rather than documenting
+them: the log handler adds `component` (so no call site can omit it) and
+redacts the never-log field names; the registry refuses a metric outside the
+`repose_` namespace or with a label outside the low-cardinality list, at
+registration, so a bad name stops the binary at startup. Three list changes
+were needed to describe what exists:
+
+- Components gain `hostdev` and `hook`. §5 names six
+  (`api|hostd|guestd|gateway|cli|admin`), but `cmd/hostdev` (I-17) and
+  `cmd/repose-hook` (04) are separate binaries, and a Loki query that cannot
+  tell hostd from the api stand-in it talks to is not worth running.
+  *Rejected:* logging hostdev as `api` (its lines would be mixed with the
+  real api's in the same query for the rest of the project's life).
+- Metric labels are §5's list (`component, host_id, class, state, kind,
+  reason, route, status`) plus the ones §5's own families use (`result`,
+  `direction`, `method`, `channel`), plus `version` for `repose_build_info`
+  and `phase` for I-47. §5's prose list was incomplete against its own
+  tables; the tables are the law.
+- `repose_host_guestd_unreachable{guest_id}` is deleted. It broke the rule
+  in the same section that defined it ("`project_id` and `guest_id` are
+  never labels in Prometheus"); `repose_host_guestd_lost`, the count, is the
+  metric, and which guest it is comes from the `guestd_lost` log line and
+  the `Warning` the api receives.
+
+The redaction floor is docs/ops/OBSERVABILITY.md's six names plus the
+never-log entries that have an obvious field name (`email`, `handle`,
+`remote_url`, `prompt`, `args`, `argv`, `env`, `cmdline`, `command_line`,
+`user_agent`), matched exactly rather than by prefix so that `cert_serial`,
+`key_id` and `token_used` survive. Guests import `obs` for the logger only
+and pay 2.5 MB of binary for the metrics and trace code that comes with one
+package (19.8 MB to 22.3 MB, measured); §2 asks for one package and 2.5 MB
+in a guest with a 20 GB volume is not a reason to split it.
+
+**I-43. An operator's `Exec` argv is not logged, only its `audit_id` and
+length.** (10, amends 03) hostd logged `argv` on the audited-exec path with a
+comment saying it was the one place that was allowed. It is not: process
+arguments are on the never-log list without an exception for operators, and
+the audit trail that must carry the command is the api's `audit_log` row
+keyed by the same `audit_id` (`db-schema.md`: "every Exec"). A Loki reader
+with the Grafana password is not the same audience as an auditor with
+Postgres access. *Rejected:* keeping it with a redaction filter (the argv of
+`repose-admin exec -- cat /home/dev/app/.env` is exactly what the list
+forbids, whoever typed it).
+
+**I-44. `meter_samples` gains `guestd_ok bool not null default true`.** (10,
+for 05) §5's day-one signals and `grpc-hostd.md`'s `GuestSignals` both carry
+`guestd_ok`, the api receives it on every sample, and `db-schema.md` had
+nowhere to put it, so the per-guest dashboard could not show the gaps where
+a guest's signals are unknown rather than zero. *Rejected:* inferring it from
+null signals (a guest with no sessions and a lost guestd would look the
+same, which is the distinction I-31 added the `partial` flag for).
+Interface: `db-schema.md`.
+
+**I-45. Dashboards are generated from `ops/dashboards/gen.py` and the JSON is
+committed; `ops/` is laid out as §2 says, not as PROMPTS.md says.** (10) A
+Grafana dashboard is 400 lines of JSON of which four matter, and the same
+panel shape appears thirty times; seven hand-maintained files drift.
+`gen.py` is the source of truth, the JSON next to it is committed because
+Grafana provisioning reads files, and `ops/check.sh` fails when they
+disagree — the arrangement of I-38. `docs/workstreams/PROMPTS.md` says
+"dashboards and alert rules under `ops/grafana/`" while the workstream doc
+§2 says `ops/dashboards/` and `ops/alerts.yaml`; the workstream doc wins and
+`ops/grafana/` holds Grafana's provisioning files only. *Rejected:* writing
+the JSON by hand (the first panel rename proves why); keeping the generator
+out of the repository and committing only its output (nobody can then
+regenerate it).
+
+**I-46. Two alerts beyond §5's eleven, and the Fluent Bit metrics port is
+open on wg0.** (10) §6 describes two failures whose only symptom is silence:
+Loki unreachable from a host (Fluent Bit buffers and retries forever) and
+Prometheus unable to scrape a host (metering continues over the gRPC stream,
+so nothing else complains). `FluentBitStuck` and `HostScrapeDown` are those,
+with runbook headings of their own. Seeing the first needs Fluent Bit's own
+metrics, so it serves them on the WireGuard address
+(`repose.host.observability.fluentBitMetricsPort`, default 2021) and the
+nftables `input` chain admits that port from `wg0` alongside 22, 9100 and
+9101. *Rejected:* scraping Fluent Bit through node_exporter's textfile
+collector (a shipper's health reported by a cron job that writes a file the
+shipper's failure does not affect); leaving it unmonitored (a host stops
+shipping logs and nobody knows until they go looking for a line that is not
+there). Interface: `host-conventions.md`.
+
+**I-47. `repose_host_build_phase_duration_seconds{phase}` splits eval from
+build.** (10, for 03 and 12) §5's Builds dashboard asks for "eval vs build
+time" and nothing measured either: `nixbuild.Build` runs `nix eval` and then
+`nix build` and timed only the pair. The two have different caps (60 s and
+30 minutes, R5-4) and different causes — a slow eval is the fragment, a slow
+build is a substituter or a source build — so a single number cannot answer
+the question the panel asks. `nixbuild.Result` now carries both durations,
+the manager observes them, and `build_done` logs `eval_ms` and `build_ms`.
+*Rejected:* parsing the phase out of the build log (the log is the tenant's
+Nix output, not a metric source).
