@@ -430,7 +430,13 @@ hostd reports `guest did not become ready` (no `Ready` from guestd within
    /nix/var/nix/gcroots/repose/<id>`).
 2. `systemctl status guest@<id> virtiofsd@<id>` on the host. If virtiofsd
    is not running, the guest is stuck in the initrd waiting for the
-   `ro-store` tag: start it and restart the guest.
+   `ro-store` tag: start it and restart the guest. `guest@<id>` runs as
+   the `hostd` user (I-49): `Permission denied` on `/dev/kvm`, the tap or
+   `/dev/vg-guests/g-<id>` in `journalctl -u guest@<id>` means the host
+   lost `hostd`'s `kvm` membership, the tap's owner, or the udev rule
+   that makes `g-*` volumes group `hostd` (`ls -l /dev/mapper/vg--guests-g--*`
+   should say `root hostd`); a create that fails at step 5 naming a user
+   means the `hostd` or `virtiofsd` account is missing.
 3. If boot completed (`multi-user.target` in the console) but no `Ready`:
    guestd crashed. The console carries guestd's own stderr (it logs to the
    console so a frozen root never blocks it); `repose-admin exec <id> --

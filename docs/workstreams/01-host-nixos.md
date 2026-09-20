@@ -46,10 +46,12 @@ tenants' guests, and nothing else. Every path, device and rule in
   minutes that exports pool usage to a textfile for node_exporter.
 - `nix/hosts/virt.nix`: `cloud-hypervisor`, `virtiofsd`, `ch-remote` in
   `environment.systemPackages`; a `virtiofsd` user and group; udev rule
-  giving `kvm` group access to `/dev/kvm`; `hostd` runs as root (it needs
-  LVM, nftables, tap creation) and drops to `virtiofsd:virtiofsd` when
+  giving `kvm` group access to `/dev/kvm` and group `hostd` to the
+  `g-<id>` volumes of `vg-guests`; `hostd` runs as root (it needs LVM,
+  nftables, tap creation), starts every `guest@<id>` as the `hostd` user
+  (in `kvm`; DECISIONS I-49) and drops to `virtiofsd:virtiofsd` when
   spawning virtiofsd with `--sandbox namespace --shared-dir /run/repose/store-export
-  --cache auto --xattr`. virtiofsd sees only `/nix/store`; the store's
+  --cache auto --xattr --socket-group hostd`. virtiofsd sees only `/nix/store`; the store's
   `.links` directory is excluded by mounting a bind of `/nix/store` at
   `/run/repose/store-export` with `.links` masked by an empty tmpfs mount on
   top, and sharing that path.
@@ -189,8 +191,9 @@ by drain, `nixos-rebuild boot`, reboot, undrain. `system.autoUpgrade` is off.
 - Only `root` exists as a human-usable account, and only via the Host CA.
 - The Azure NIC accepts nothing inbound (NSG in 11, and nftables `input`
   chain drops everything not on `wg0` or `lo` except waagent's needs).
-- `/dev/kvm` is group `kvm`, mode 0660; hostd runs as root anyway, virtiofsd
-  does not need it.
+- `/dev/kvm` is group `kvm`, mode 0660; the `hostd` user that runs the
+  `guest@<id>` units is in `kvm` (I-49), virtiofsd does not need it, hostd
+  itself is root.
 - Guests cannot reach the host: nftables `guest_in` drops all traffic from
   `br-guests` to the host's addresses, including the bridge `.1`, except
   ICMP echo for debugging (rate-limited), which is a deliberate exception
