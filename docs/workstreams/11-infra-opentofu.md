@@ -61,11 +61,13 @@ provider module for hosts is an addition, not a rewrite.
   - `coolify`: `coolify_count` of them; the module default is **0** so a new
     environment costs nothing, and production runs **1** from 2026-09-20
     (DECISIONS I-24, I-71). One `Standard_D4s_v7`, Ubuntu 24.04 LTS, static
-    public IP, DNS A records `repose.herakraft.co`,
-    `api.repose.herakraft.co`, `auth.repose.herakraft.co`, 256 GB Premium SSD
+    public IP, DNS A records `repose.herakraft.co` and
+    `api.repose.herakraft.co` (Logto is the owner's `accounts.herakraft.co`,
+    DECISIONS I-84), 256 GB Premium SSD
     OS disk. It is a server of the owner's existing Coolify instance, not a
     Coolify install of its own (DECISIONS I-83): cloud-init installs Docker
-    from Docker's apt repository, puts the instance's public key
+    from Docker's apt repository and Tailscale (not joined; the instance
+    reaches the VM over the tailnet, I-86), puts the instance's public key
     (`coolify_public_key`) on root next to the operator keys, installs
     `rclone` and `postgresql-client` (the first two commands of the
     runbook's restore procedure) and a `repose-backup-check` helper, then

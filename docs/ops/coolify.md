@@ -21,43 +21,52 @@ server (`DECISIONS.md` R4-2). cloud-init leaves it exactly as Coolify's
 server validation wants to find it: root login by key, with the operator keys
 and the instance's key (`coolify_public_key` in `prod.tfvars`) in
 `/root/.ssh/authorized_keys`; Docker Engine and the compose plugin from
-Docker's apt repository; `rclone` and `pg_restore` for the runbook's restore
-procedure; the WireGuard peer script; and nothing listening but sshd.
-`terraform_data.ready` fails the apply if any of that is missing.
+Docker's apt repository; Tailscale installed but not joined; `rclone` and
+`pg_restore` for the runbook's restore procedure; the WireGuard peer script;
+and nothing listening but sshd. `terraform_data.ready` fails the apply if any
+of that is missing.
 
 ## Adding the server, in order
 
-1. **Open the NSG to the instance.** `coolify_manager_cidrs` in
-   `prod.local.tfvars` is the public address the owner's Coolify connects
-   from, as a `/32`. Apply. Without it "Validate & configure" times out and
-   looks like a dead machine.
+1. **Join the tailnet.** Coolify reaches the VM over Tailscale, so no
+   address of the owner's server goes in any file and nothing breaks when
+   that server moves (`DECISIONS.md` I-86). Once, over SSH:
+
+   ```bash
+   ssh root@<control ip> tailscale up          # prints a login URL; approve it
+   ssh root@<control ip> tailscale ip -4       # the address Coolify will use
+   ```
+
+   A tagged node (`--advertise-tags=tag:repose`) keeps the machine out of a
+   personal account; the tag must exist in the tailnet ACL first. Without
+   Tailscale, the fallback is `coolify_manager_cidrs` in `prod.local.tfvars`
+   (the instance's public `/32`) and an apply; that rule goes stale when the
+   owner's server moves, and the failure is a silent hang in step 2.
 2. **Add the server** in Coolify: Servers, Add. Name it after the VM
-   (`coolify-01`), address `tofu -chdir=infra/azure/prod output
-   control_public_ip`, user `root`, port `22`, and pick the private key
-   whose public half is `coolify_public_key`. Then **Validate & configure**.
-   Coolify checks SSH, finds Docker already installed, writes its
-   `/etc/docker/daemon.json`, and starts its proxy (Traefik) on 80 and 443.
-   A validation that fails on "permission denied" is the key: compare
-   `Keys & Tokens` with `prod.tfvars`. One that hangs is the NSG (step 1).
-3. **Wildcard and proxy.** The proxy on this server is what serves
-   `repose.herakraft.co`, `api.repose.herakraft.co` and
-   `auth.repose.herakraft.co`; the DNS A records for all three point at the
-   VM's public IP (`infra/README.md`, "DNS"). Pre-launch, 80 and 443 are open
-   to `control_web_cidrs` only, so Let's Encrypt HTTP-01 cannot reach the
-   proxy: either add the instance's own address and Let's Encrypt to that
-   list, or use DNS-01 on the proxy. At launch `control_web_cidrs` becomes
-   `["0.0.0.0/0"]` and HTTP-01 works as it does everywhere else.
+   (`coolify-01`), address the tailnet IP from step 1, user `root`, port
+   `22`, and pick the private key whose public half is `coolify_public_key`.
+   Then **Validate & configure**. Coolify checks SSH, finds Docker already
+   installed, writes its `/etc/docker/daemon.json`, and starts its proxy
+   (Traefik) on 80 and 443. A validation that fails on "permission denied"
+   is the key: compare `Keys & Tokens` with `prod.tfvars`. One that hangs is
+   the network: `tailscale status` on the VM, or the NSG if using the
+   fallback.
+3. **Names and proxy.** The proxy on this server is what serves
+   `repose.herakraft.co` and `api.repose.herakraft.co`; both A records point
+   at the VM's public IP (`infra/README.md`, "DNS"). 80 and 443 are open to
+   the internet (`control_web_cidrs = ["0.0.0.0/0"]`, owner's call
+   2026-09-20), so Let's Encrypt HTTP-01 works as it does everywhere.
 4. **Postgres**: on the new server, add the platform database as a
    Coolify-managed Postgres. Then the backup destination (below), then
    `repose-admin db migrate`.
-5. **Logto**: a Docker Image resource on the server, `ghcr.io/logto-io/logto`,
-   with `ENDPOINT` and `ADMIN_ENDPOINT` at `auth.repose.herakraft.co`.
-   Configure the GitHub connector, the API resource
-   `https://api.repose.herakraft.co`, and two applications: `repose-cli`
-   (Native, device flow on) and `repose-web` (SPA). If the owner's existing
-   Logto is preferred over a second one, the api only needs its issuer and
-   JWKS URL (`ops/coolify/api.env.example`); the two applications and the
-   API resource are the same either way.
+5. **Logto** is the owner's existing instance, `https://accounts.herakraft.co`
+   (`DECISIONS.md` I-84); nothing is deployed for it. In that Logto: the API
+   resource `https://api.repose.herakraft.co`, two applications,
+   `repose-cli` (Native, device flow on, redirect
+   `http://127.0.0.1:*/callback`) and `repose-web` (SPA, redirect
+   `https://repose.herakraft.co/callback`), and an M2M application with the
+   Management API role for the api's `LOGTO_M2M_CLIENT_ID/SECRET`. The api
+   and CLI take the endpoint without `/oidc` and append it.
 6. **api and web**: Dockerfile applications from the repository, on the
    server, health checks `/healthz` and `/`, environment from
    `ops/coolify/api.env.example`. The gRPC listener is a second app from the
@@ -140,7 +149,8 @@ specific to a Coolify version (`DESIGN.md` §Risks).
 
 ## What is still a human step
 
-- Adding the server, and `coolify_manager_cidrs` (above).
+- Joining the tailnet and adding the server (above).
+- The Logto applications and API resource in the owner's Logto (above).
 - The R2 API token (`DECISIONS.md` I-21).
 - The api's Entra app registration and its client certificate, whose object id
   becomes `api_identity_object_id` and turns on the Key Vault wrap/unwrap

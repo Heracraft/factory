@@ -26,17 +26,16 @@ The full click path, with the reasons, is `coolify.md`. The short form:
    (`prod.local.tfvars`). The apply does not return until the VM is what
    Coolify's validation expects: root login by the instance's key, Docker
    with the compose plugin, `rclone` and `pg_restore`.
-2. In the owner's Coolify: Servers, Add. Address `control_public_ip`, user
-   `root`, port 22, the private key whose public half is
-   `coolify_public_key`. Validate & configure; Coolify starts its proxy on
-   80 and 443. Nothing of Coolify runs on the VM itself (I-83), so there
-   is no admin account, no port 8000 and no `.env` to copy off it.
-3. On that server, add Logto as a Docker Image resource
-   (`ghcr.io/logto-io/logto`), Postgres as a Coolify database, run its
-   migration, set `ENDPOINT` and `ADMIN_ENDPOINT` to
-   `auth.repose.herakraft.co`. Configure the GitHub connector and two
-   applications: `repose-cli` (Native, device flow on) and `repose-web`
-   (SPA). Create API resource `https://api.repose.herakraft.co`.
+2. `ssh root@<control ip> tailscale up` once (I-86), then in the owner's
+   Coolify: Servers, Add. Address the VM's tailnet IP, user `root`, port
+   22, the private key whose public half is `coolify_public_key`. Validate
+   & configure; Coolify starts its proxy on 80 and 443. Nothing of Coolify
+   runs on the VM itself (I-83), so there is no admin account, no port 8000
+   and no `.env` to copy off it.
+3. Logto is the owner's `accounts.herakraft.co` (I-84). There: API resource
+   `https://api.repose.herakraft.co`, applications `repose-cli` (Native,
+   device flow on) and `repose-web` (SPA), and an M2M application for the
+   api. On the server: Postgres as a Coolify database.
 4. Add `api` and `web` as Dockerfile applications from the repo, health
    checks `/healthz` and `/`, env from `ops/coolify/api.env.example`.
    Secrets (CA keys, Key Vault client cert, Stripe keys, Resend key) as
@@ -709,9 +708,11 @@ all.
 "Validate & configure" on the server hangs or fails. Nothing of Coolify runs
 on the VM (I-83); this is Coolify on the owner's server failing to SSH in.
 
-1. A hang is the NSG: the instance's public address must be in
-   `coolify_manager_cidrs` (`prod.local.tfvars`), applied. `ssh root@<control
-   ip>` from an operator address still works while this is wrong.
+1. A hang is the network. Over Tailscale (I-86): `tailscale status` on the
+   VM, and the server's address in Coolify must be the tailnet IP. Over the
+   public IP: the instance's address must be in `coolify_manager_cidrs`
+   (`prod.local.tfvars`), applied. `ssh root@<control ip>` from an operator
+   address still works while either is wrong.
 2. "Permission denied" is the key: the private key picked in Coolify must be
    the one whose public half is `coolify_public_key` in `prod.tfvars`.
    `grep -c ssh-ed25519 /root/.ssh/authorized_keys` on the VM should count
@@ -1127,9 +1128,10 @@ unavailable`. Logto's JWKS could not be fetched and the cached copy is
 older than 24 hours (fresh copies are served for up to an hour without a
 fetch).
 
-1. `curl -s https://auth.repose.herakraft.co/oidc/jwks` from the Coolify
-   VM. Logto down: its container in Coolify. A 200 here means the api
-   container cannot reach it (DNS inside the Coolify network).
+1. `curl -s https://accounts.herakraft.co/oidc/jwks` from the control VM.
+   Logto down: it is the owner's instance on their personal server (I-84).
+   A 200 here means the api container cannot reach it (DNS or egress from
+   the Coolify network).
 2. The api recovers on the next request once the fetch succeeds; nothing
    to restart.
 
@@ -1347,7 +1349,7 @@ and then `device code expired`.
    browser extension can block `http://127.0.0.1:<port>/callback`;
    `--no-browser` (or `REPOSE_NO_BROWSER=1`) forces device code, which
    only needs outbound HTTPS.
-2. `curl -s https://auth.repose.herakraft.co/oidc/.well-known/openid-configuration`
+2. `curl -s https://accounts.herakraft.co/oidc/.well-known/openid-configuration`
    from the user's machine: a failure here means the CLI cannot even
    start (`Cannot reach <issuer>`, exit 1), independent of the flow.
 3. Confirm the `repose-cli` Native application in Logto still has the

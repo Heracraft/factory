@@ -203,7 +203,10 @@ cloud-init leaves the VM as Coolify's "Validate & configure" expects to find
 it: root login by key, with the operator keys and the instance's own key
 (`coolify_public_key`, a public key, in `prod.tfvars`) in
 `/root/.ssh/authorized_keys`; Docker Engine and the compose plugin from
-Docker's apt repository; `rclone` and `pg_restore`, because those are the
+Docker's apt repository; Tailscale, installed but not joined, so that the
+owner's Coolify reaches the VM by a tailnet address instead of a public-IP
+rule that goes stale (`docs/DECISIONS.md` I-86); `rclone` and `pg_restore`,
+because those are the
 first two commands of `docs/ops/RUNBOOK.md` "Postgres restore" and a restore
 that stops to install something is a restore nobody has rehearsed; the
 WireGuard peer script; and nothing listening but sshd. The apply does not
@@ -212,16 +215,17 @@ return until `terraform_data.ready` has checked each of those over SSH.
 **Two address lists must be right.** The machine running `tofu apply` must be
 in `operator_cidrs`: the readiness provisioner reaches the VM over its public
 IP on 22, and from anywhere else the apply looks like a fifteen-minute hang
-rather than a refusal. And the owner's Coolify instance must be in
+rather than a refusal. The owner's Coolify instance reaches the VM over
+Tailscale and needs no rule; a Coolify that is not on the tailnet goes in
 `coolify_manager_cidrs` (`prod.local.tfvars`), which the control NSG adds to
-the same port-22 rule; without it Coolify's validation of the server times
-out and looks like a dead machine.
+the same port-22 rule, and without it that validation times out and looks
+like a dead machine.
 
 **There is no port 8000.** Coolify's dashboard is the owner's instance, not
 this VM; `azure/modules/network/main.tf` carries a `postcondition` that fails
 the plan if 8000, 6001, 6002 or `*` ever appears as an inbound rule on the
 control subnet. 80 and 443 are open to `control_web_cidrs` for the proxy
-Coolify installs on the server, which terminates TLS for the three names in
+Coolify installs on the server, which terminates TLS for the two names in
 "DNS" below.
 
 Everything past the VM is a click path Coolify keeps in its own database, not
@@ -280,7 +284,6 @@ Until a token exists, create these by hand in the Cloudflare dashboard, as
 | `ssh.repose` | `edge_public_ip` output | **off** | SSH gateway and every host's WireGuard endpoint; the proxy carries neither |
 | `repose` | `control_public_ip` output | off | dashboard; the proxy Coolify installs on the server terminates TLS |
 | `api.repose` | `control_public_ip` output | off | proxying hides client addresses from the api's rate limits |
-| `auth.repose` | `control_public_ip` output | off | Logto's issuer must match the certificate it presents |
 
 ## Wiring the control plane to the edge
 

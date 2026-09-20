@@ -30,8 +30,8 @@ resource "azurerm_public_ip" "main" {
   tags                = local.tags
 
   lifecycle {
-    # repose.herakraft.co, api.repose.herakraft.co and auth.repose.herakraft.co
-    # all resolve here; a replacement is a DNS outage plus a Logto issuer change.
+    # repose.herakraft.co and api.repose.herakraft.co resolve here; a
+    # replacement is a DNS outage.
     prevent_destroy = true
   }
 }
@@ -146,6 +146,7 @@ resource "terraform_data" "ready" {
       "command -v docker >/dev/null || { echo 'docker is not installed on ${var.name}; see /var/log/cloud-init-output.log' >&2; exit 1; }",
       "systemctl is-active --quiet docker || { echo 'docker is installed but not running on ${var.name}' >&2; exit 1; }",
       "docker compose version >/dev/null 2>&1 || { echo 'the docker compose plugin is missing; Coolify validation needs it' >&2; exit 1; }",
+      "command -v tailscale >/dev/null || { echo 'tailscale is not installed on ${var.name}; the owner cannot join it to the tailnet' >&2; exit 1; }",
       # The key Coolify will connect with. If it is not here, Coolify's
       # "Validate & configure" fails with a permission error that looks like
       # a firewall problem.

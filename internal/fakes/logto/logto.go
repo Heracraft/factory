@@ -56,7 +56,8 @@ func New(audience string) *Fake {
 // Close stops the server.
 func (f *Fake) Close() { f.Server.Close() }
 
-// Issuer is the OIDC issuer URL.
+// Issuer is the Logto endpoint, what LOGTO_ISSUER carries. As with real
+// Logto, tokens carry iss = Issuer() + "/oidc" (DECISIONS I-85).
 func (f *Fake) Issuer() string { return f.Server.URL }
 
 // AddUser registers a subject's identity.
@@ -80,7 +81,7 @@ func (f *Fake) Token(sub string) string {
 
 // TokenWith mints a token with a chosen audience and lifetime.
 func (f *Fake) TokenWith(sub, aud string, ttl time.Duration) string {
-	claims := jwt.MapClaims{"sub": sub, "aud": aud, "iss": f.Issuer(), "exp": time.Now().Add(ttl).Unix(), "iat": time.Now().Unix()}
+	claims := jwt.MapClaims{"sub": sub, "aud": aud, "iss": f.Issuer() + "/oidc", "exp": time.Now().Add(ttl).Unix(), "iat": time.Now().Unix()}
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	tok.Header["kid"] = f.kid
 	s, err := tok.SignedString(f.key)
@@ -93,7 +94,7 @@ func (f *Fake) TokenWith(sub, aud string, ttl time.Duration) string {
 // TokenWrongKey mints a token signed by an unknown key.
 func (f *Fake) TokenWrongKey(sub string) string {
 	other, _ := rsa.GenerateKey(rand.Reader, 2048)
-	claims := jwt.MapClaims{"sub": sub, "aud": f.audience, "iss": f.Issuer(), "exp": time.Now().Add(time.Hour).Unix()}
+	claims := jwt.MapClaims{"sub": sub, "aud": f.audience, "iss": f.Issuer() + "/oidc", "exp": time.Now().Add(time.Hour).Unix()}
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	tok.Header["kid"] = f.kid
 	s, _ := tok.SignedString(other)

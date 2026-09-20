@@ -7,7 +7,7 @@
 # dashboard, Logto and the platform Postgres onto it (DECISIONS I-83). What
 # cloud-init leaves behind is exactly what Coolify's "Validate & configure"
 # expects to find: root login by key, Docker Engine with the compose plugin,
-# and nothing listening.
+# Tailscale installed (not joined), and nothing listening.
 #
 # This one stays Ubuntu. Coolify refuses NixOS as a managed server
 # (DECISIONS R4-2), which is the whole reason this VM is not part of nix/.
@@ -28,12 +28,21 @@ package_update: true
 # here means the readiness check below can prove the machine is ready before
 # anyone opens Coolify. Coolify rewrites /etc/docker/daemon.json when it
 # takes the server over, so none is written here.
+# Tailscale so the owner's Coolify reaches this server over the tailnet
+# rather than through a public-IP rule that goes stale when the owner's
+# server moves (DECISIONS I-86). Installed only: joining needs an auth key,
+# which is a secret, so `tailscale up` is the operator's one command after
+# the apply (docs/ops/coolify.md).
 apt:
   sources:
     docker:
       source: "deb [arch=amd64 signed-by=$KEY_FILE] https://download.docker.com/linux/ubuntu $RELEASE stable"
       keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
       keyserver: https://download.docker.com/linux/ubuntu/gpg
+    tailscale:
+      source: "deb [signed-by=$KEY_FILE] https://pkgs.tailscale.com/stable/ubuntu $RELEASE main"
+      keyid: 458CA832957F5868
+      keyserver: https://pkgs.tailscale.com/stable/ubuntu/$RELEASE.noarmor.gpg
 packages:
   - ca-certificates
   - curl
@@ -44,6 +53,7 @@ packages:
   - containerd.io
   - docker-compose-plugin
   - docker-buildx-plugin
+  - tailscale
   # The two the runbook's restore procedure calls by name: rclone lists and
   # fetches the dumps from R2, pg_restore loads them. Installing them here is
   # the difference between following "Postgres restore" and stopping on the

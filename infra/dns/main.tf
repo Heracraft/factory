@@ -6,8 +6,8 @@
 # resolving to somebody else's VM.
 #
 # Names: docs/DECISIONS.md R4-12 and I-15. repose.herakraft.co (dashboard),
-# api.repose.herakraft.co, auth.repose.herakraft.co (Logto),
-# ssh.repose.herakraft.co (gateway). The wildcard for preview URLs is not
+# api.repose.herakraft.co, ssh.repose.herakraft.co (gateway). Logto is the
+# owner's existing accounts.herakraft.co (I-84), not a name here. The wildcard for preview URLs is not
 # created; previews are out of scope for the first release (DESIGN §18).
 
 terraform {

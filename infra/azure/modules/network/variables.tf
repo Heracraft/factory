@@ -63,7 +63,7 @@ variable "operator_cidrs" {
 
 variable "coolify_manager_cidrs" {
   type        = list(string)
-  description = "Addresses the owner's Coolify instance manages the control VM from, over SSH on 22 (DECISIONS I-83). Added to the operator rule; never the whole internet."
+  description = "Addresses the owner's Coolify instance manages the control VM from, over SSH on 22, when not over Tailscale (DECISIONS I-83, I-86). Added to the operator rule; never the whole internet. Empty when Coolify reaches the VM by its tailnet address."
   default     = []
 
   validation {

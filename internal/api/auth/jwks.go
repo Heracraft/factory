@@ -1,4 +1,4 @@
-// Package auth verifies Logto access tokens against the issuer's JWKS,
+// Package auth verifies Logto access tokens against the endpoint's JWKS,
 // creates users on first sign-in with a handle derived from the GitHub
 // login, and is the middleware every user route sits behind
 // (05-control-plane-api.md §5.2).
@@ -193,9 +193,15 @@ func (v *Verifier) key(ctx context.Context, kid string) (any, error) {
 }
 
 // Verify checks signature, issuer, audience and expiry.
+//
+// The configured issuer is the Logto endpoint (https://accounts.example);
+// the tokens it signs carry iss = <endpoint>/oidc, the same base the JWKS
+// and token URLs above hang off. Until 2026-09-20 this compared iss with
+// the bare endpoint, which only internal/fakes/logto ever produced: a real
+// Logto token would have been refused as "invalid issuer" (DECISIONS I-85).
 func (v *Verifier) Verify(ctx context.Context, token string) (Claims, error) {
 	var claims jwt.RegisteredClaims
-	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256", "ES256", "ES384", "ES512"}), jwt.WithIssuer(v.issuer), jwt.WithAudience(v.audience), jwt.WithExpirationRequired(), jwt.WithLeeway(30*time.Second))
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256", "ES256", "ES384", "ES512"}), jwt.WithIssuer(v.issuer+"/oidc"), jwt.WithAudience(v.audience), jwt.WithExpirationRequired(), jwt.WithLeeway(30*time.Second))
 	_, err := parser.ParseWithClaims(token, &claims, func(t *jwt.Token) (any, error) {
 		kid, _ := t.Header["kid"].(string)
 		return v.key(ctx, kid)

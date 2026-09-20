@@ -42,7 +42,6 @@ locals {
 
   dashboard_fqdn = "${var.dns_prefix}.${var.dns_zone}"
   api_fqdn       = "api.${var.dns_prefix}.${var.dns_zone}"
-  auth_fqdn      = "auth.${var.dns_prefix}.${var.dns_zone}"
   ssh_fqdn       = "ssh.${var.dns_prefix}.${var.dns_zone}"
 }
 
@@ -242,11 +241,6 @@ module "dns" {
         address = one(module.coolify[*].public_ip)
         proxied = var.proxy_web_records
         comment = "repose api (${var.env})"
-      }
-      (local.auth_fqdn) = {
-        address = one(module.coolify[*].public_ip)
-        proxied = var.proxy_web_records
-        comment = "Logto (${var.env})"
       }
     },
   )

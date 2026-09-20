@@ -9,7 +9,7 @@ output "edge_ssh_jump" {
 }
 
 output "control_public_ip" {
-  description = "Where repose.herakraft.co, api.repose.herakraft.co and auth.repose.herakraft.co resolve."
+  description = "Where repose.herakraft.co and api.repose.herakraft.co resolve."
   value       = module.environment.control_public_ip
 }
 

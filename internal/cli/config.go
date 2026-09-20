@@ -10,7 +10,7 @@ import (
 )
 
 const defaultAPIURL = "https://api.repose.herakraft.co/v1"
-const defaultLogtoIssuer = "https://auth.herakraft.co"
+const defaultLogtoIssuer = "https://accounts.herakraft.co" // the owner's Logto (DECISIONS I-84); /oidc is appended
 const apiResource = "https://api.repose.herakraft.co"
 
 // Config is config.toml (docs/interfaces/cli-config.md).

@@ -1853,3 +1853,44 @@ itself (the api must sit in the Azure VNet next to the edge and the hosts,
 DESIGN §15). `coolify_version`, `coolify_autoupdate` and
 `coolify_install_url` are gone from every root; upgrading Coolify is the
 owner's existing routine, not a step here.
+
+**I-84. Logto is the owner's existing instance at `accounts.herakraft.co`;
+no Logto container, and no `auth.repose.herakraft.co`.** (owner, 2026-09-20)
+The owner already runs Logto with the GitHub connector configured; a second
+one would be a second user database for the same people. `LOGTO_ISSUER`
+(api) and `PUBLIC_LOGTO_ENDPOINT` (dashboard) and the CLI's default issuer
+are `https://accounts.herakraft.co`; the issuer claim, JWKS and token
+endpoints are under `/oidc` of that. What is still created there: the API
+resource `https://api.repose.herakraft.co` and the `repose-cli` (Native,
+device flow) and `repose-web` (SPA) applications, plus the M2M application
+the api provisions users with. The `auth.` DNS record and the Logto step in
+`docs/ops/coolify.md` are gone. *Rejected:* a Logto on the control VM
+(DECISIONS R4-2's text; superseded here for the identity provider only,
+Postgres, api and dashboard stay on the VM).
+
+**I-85. The api verifies `iss` as `<LOGTO_ISSUER>/oidc`.** (conductor,
+2026-09-20) `LOGTO_ISSUER` has always been the Logto *endpoint*: the api
+fetched `<it>/oidc/jwks` and posted to `<it>/oidc/token`, and the CLI
+discovers `<it>/oidc/.well-known/openid-configuration`. But the verifier
+compared the token's `iss` with the bare endpoint, which only
+`internal/fakes/logto` ever minted; real Logto (and `test/fake-logto`, the
+dashboard's fake, which copies it) sets `iss = <endpoint>/oidc`. Every real
+token would have been refused as "invalid issuer" at M2. The verifier now
+expects `<endpoint>/oidc` and the api's fake mints that. The variable keeps
+its name; renaming it would touch every env example and the docs of three
+workstreams for no behaviour change.
+
+**I-86. The owner's Coolify reaches the control VM over Tailscale; the
+public-IP rule is the fallback.** (owner, 2026-09-20) The NSG rule for
+`coolify_manager_cidrs` needs the owner's personal server to keep a fixed
+public address, which it will not when that server moves, and the failure
+mode is a silent hang in "Validate & configure". The owner's server and dev
+box are already on a tailnet. cloud-init installs Tailscale on the control
+VM (not joined: the auth key is a secret and `custom_data` is readable
+through IMDS); the owner runs `tailscale up` once over SSH and adds the
+server in Coolify by its tailnet address. Nothing about the owner's server
+appears in any file, git-ignored or not, and port 22 on the public IP stays
+operators-only. `coolify_manager_cidrs` remains for a Coolify that is not on
+the tailnet. *Rejected:* a Tailscale auth key in cloud-init (secret in the
+VM model); Tailscale SSH replacing sshd for Coolify (Coolify wants a plain
+key it holds).
