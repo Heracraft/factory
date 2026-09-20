@@ -54,12 +54,6 @@ packages:
   - docker-compose-plugin
   - docker-buildx-plugin
   - tailscale
-  # The two the runbook's restore procedure calls by name: rclone lists and
-  # fetches the dumps from R2, pg_restore loads them. Installing them here is
-  # the difference between following "Postgres restore" and stopping on the
-  # first line to apt-get something.
-  - rclone
-  - postgresql-client
 write_files:
   # Operator keys, then the key Coolify connects with. Root, because that is
   # the user Coolify manages a server as; sshd below limits root to keys.
@@ -111,50 +105,6 @@ write_files:
       CONF
       chmod 0600 /etc/wireguard/wg0.conf
       systemctl enable --now wg-quick@wg0
-  - path: /usr/local/sbin/repose-backup-check
-    owner: root:root
-    permissions: "0755"
-    content: |
-      #!/usr/bin/env bash
-      # Did last night's Postgres dump get taken on this machine?
-      #
-      # Coolify runs the backup and uploads it to whatever S3 storage the
-      # owner configured in their own Coolify; no credential for that
-      # storage exists on this VM or in the repose repository, by the
-      # owner's decision, so this cannot check the far end. What it can
-      # check is the near end: Coolify writes each dump under
-      # /data/coolify/backups on the server before uploading it, and a
-      # dump that was never taken is the failure that silently produces
-      # no restore point at all.
-      #
-      # So: this answers "was a dump made here, recently". Whether it
-      # reached the storage is Coolify's Backups tab, which also shows the
-      # failures, and docs/ops/RUNBOOK.md "PostgresBackupStale" is written
-      # around both halves.
-      set -euo pipefail
-      dir="$${1:-/data/coolify/backups}"
-      max_age_hours=$${2:-${backup_max_age_hours}}
-
-      if [ ! -d "$${dir}" ]; then
-        echo "repose-backup-check: $${dir} does not exist; Coolify has never run a backup on this server" >&2
-        exit 1
-      fi
-
-      newest=$(find "$${dir}" -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1)
-      if [ -z "$${newest}" ]; then
-        echo "repose-backup-check: no dump under $${dir}; Coolify has never completed a backup here" >&2
-        exit 1
-      fi
-      ts=$${newest%% *}
-      path=$${newest#* }
-      age_hours=$(( ( $(date -u +%s) - $${ts%.*} ) / 3600 ))
-
-      if [ "$${age_hours}" -gt "$${max_age_hours}" ]; then
-        echo "repose-backup-check: newest dump is $${age_hours}h old (limit $${max_age_hours}h): $${path}" >&2
-        exit 1
-      fi
-      echo "repose-backup-check: newest dump is $${age_hours}h old: $${path}"
-      echo "repose-backup-check: this proves the dump was taken, not that it was uploaded; Coolify's Backups tab has the upload."
 runcmd:
   - [ chmod, "0700", /root/.ssh ]
   - [ systemctl, restart, ssh ]

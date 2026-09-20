@@ -79,7 +79,6 @@ resource "azurerm_linux_virtual_machine" "main" {
   custom_data = base64encode(templatefile("${path.module}/templates/cloud-init.yaml.tftpl", {
     authorized_keys       = join("\n", var.authorized_keys)
     coolify_public_key    = var.coolify_public_key
-    backup_max_age_hours  = var.backup_max_age_hours
     edge_public_key       = var.edge_wireguard_public_key == null ? "" : var.edge_wireguard_public_key
     edge_endpoint         = var.edge_wireguard_endpoint
     wireguard_address     = var.wireguard_address
@@ -154,10 +153,6 @@ resource "terraform_data" "ready" {
       # "Validate & configure" fails with a permission error that looks like
       # a firewall problem.
       "grep -qF '${trimspace(var.coolify_public_key)}' /root/.ssh/authorized_keys || { echo 'coolify_public_key is not in root authorized_keys on ${var.name}' >&2; exit 1; }",
-      # The two commands docs/ops/RUNBOOK.md "Postgres restore" opens with.
-      # A restore that stops to apt-get something is a restore nobody has
-      # rehearsed.
-      "command -v rclone >/dev/null && command -v pg_restore >/dev/null || { echo 'rclone or pg_restore missing; the restore procedure cannot be followed on this VM' >&2; exit 1; }",
     ]
   }
 }

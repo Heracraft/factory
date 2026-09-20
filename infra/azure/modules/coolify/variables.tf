@@ -104,12 +104,6 @@ variable "coolify_public_key" {
   }
 }
 
-variable "backup_max_age_hours" {
-  type        = number
-  description = "repose-backup-check reports failure when the newest dump Coolify has written under /data/coolify/backups is older than this. 36 hours: a nightly dump plus a missed night's grace. There is no bucket variable: the destination is an S3 storage in the owner's own Coolify and no credential for it reaches this VM (DECISIONS I-103)."
-  default     = 36
-}
-
 variable "ssh_private_key_path" {
   type        = string
   description = "Operator private key used by the readiness provisioner. The same key as the first entry of authorized_keys."

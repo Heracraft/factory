@@ -4,12 +4,12 @@
 #   make apply ENV=prod        change it (the owner's call, never an agent's)
 #   make check                 fmt, validate and policy across every root
 #
-# ENV is prod, staging or r2. `make bootstrap ENV=staging` applies
+# ENV is prod or staging. `make bootstrap ENV=staging` applies
 # infra/bootstrap, the one root with local state.
 #
 # Authentication is `az login` on the machine running this (docs/ops/
-# AZURE-SETUP.md step 6), plus CLOUDFLARE_API_TOKEN in the environment for
-# anything touching DNS or R2.
+# AZURE-SETUP.md step 6), plus CLOUDFLARE_API_TOKEN in the environment when
+# manage_dns is true.
 
 SHELL := /usr/bin/env bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -23,22 +23,19 @@ ifeq ($(ENV),prod)
 else ifeq ($(ENV),staging)
   ROOT := azure/staging
   VARFILE := staging.tfvars
-else ifeq ($(ENV),r2)
-  ROOT := r2
-  VARFILE := r2.tfvars
 else
-  $(error ENV must be prod, staging or r2; got "$(ENV)")
+  $(error ENV must be prod or staging; got "$(ENV)")
 endif
 
 LOCAL_VARFILE := $(ENV).local.tfvars
 VAR_ARGS := -var-file=$(VARFILE) $(if $(wildcard $(ROOT)/$(LOCAL_VARFILE)),-var-file=$(LOCAL_VARFILE),)
 
-ROOTS := azure/prod azure/staging r2 bootstrap
+ROOTS := azure/prod azure/staging bootstrap
 POLICY_DIR := policy/tfsec
 
 .PHONY: help
 help:
-	@echo "make plan ENV=prod|staging|r2      show the diff"
+	@echo "make plan ENV=prod|staging         show the diff"
 	@echo "make apply ENV=...                 apply it"
 	@echo "make output ENV=...                show outputs"
 	@echo "make init ENV=...                  initialise one root"
@@ -49,24 +46,14 @@ help:
 	@echo "make bootstrap ENV=staging         apply infra/bootstrap (local state)"
 	@echo "make force-unlock ENV=... LOCK_ID=...  release a stuck state lease"
 	@echo ""
-	@echo "az login for Azure; CLOUDFLARE_API_TOKEN for ENV=r2 and for manage_dns=true"
+	@echo "az login for Azure; CLOUDFLARE_API_TOKEN when manage_dns=true"
 
 # The Cloudflare provider reads its token from the environment, and without
 # one it fails deep inside a resource read with an authentication error that
-# names neither the variable nor the step that creates it. ENV=r2 always needs
-# it; azure/ needs it only when manage_dns is true, which the roots default to
-# false for exactly this reason.
-.PHONY: require-cloudflare-token
-require-cloudflare-token:
-	@test -n "$${CLOUDFLARE_API_TOKEN:-}" || { \
-	  echo "CLOUDFLARE_API_TOKEN is not set. Create a token with R2 object read/write (or DNS edit on the zone) and export it; docs/ops/AZURE-SETUP.md step 10." >&2; \
-	  exit 1; }
-
-ifeq ($(ENV),r2)
-  TOKEN_GUARD := require-cloudflare-token
-else
-  TOKEN_GUARD :=
-endif
+# names neither the variable nor the step that creates it. azure/ needs it
+# only when manage_dns is true, which the roots default to false for exactly
+# this reason, so no root requires it unconditionally any more.
+TOKEN_GUARD :=
 
 .PHONY: init
 init: $(TOKEN_GUARD)
