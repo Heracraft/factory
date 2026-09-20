@@ -216,6 +216,12 @@ func write(dir string, resp *hostdv1.RegisterResponse, prev *HostJSON) (*Identit
 		id.Host = *prev
 		id.Host.HostID, id.Host.GuestCIDR = resp.HostId, resp.GuestCidr
 	}
+	// An empty loki_url from an api that predates the field leaves
+	// whatever the previous host.json had, so a rotate against an older
+	// api does not silently stop a host shipping logs.
+	if resp.LokiUrl != "" {
+		id.Host.LokiURL = resp.LokiUrl
+	}
 	if resp.Edge != nil || resp.WgPrivateKey != "" {
 		id.Host.WG = WG{PrivateKey: resp.WgPrivateKey}
 		if resp.Edge != nil {

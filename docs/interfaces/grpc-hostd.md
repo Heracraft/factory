@@ -14,7 +14,8 @@ heartbeat for 90 seconds as `unreachable`.
 rpc Register(RegisterRequest) returns (RegisterResponse)
 RegisterRequest  { string join_token; HostInfo info }        // join token from infra, single use
 RegisterResponse { string host_id; bytes client_cert; bytes client_key;
-                   string guest_cidr; WireguardPeer edge; string wg_private_key; }
+                   string guest_cidr; WireguardPeer edge; string wg_private_key;
+                   string loki_url; }
 HostInfo { string hostname; string sku; uint64 mem_bytes; uint32 vcpus;
            string nixos_system; string ch_version; uint64 pool_bytes; }
 ```
@@ -23,6 +24,15 @@ The join token is minted by `repose-admin hosts add` and placed in the
 host's `/run/repose/join-token` by cloud-init. Register is called once; the
 certificate is stored at `/var/lib/repose/hostd/{cert,key}.pem` and rotated
 by `Rotate` (unary, same shape) every 30 days.
+
+`loki_url` is where that host's Fluent Bit ships journald and every guest's
+console log, as `scheme://host[:port]`; it lands in `host.json` under the
+same name, which `host-conventions.md` has documented since workstream 01
+and nothing filled until DECISIONS I-95. It is a setting
+(`repose-admin edge loki`), not a per-host value, and `Rotate` carries the
+current one so a host registered before a Loki existed learns it. Empty
+means the host ships nothing, which is also what an api that predates the
+field sends; hostd then keeps whatever `host.json` already had.
 
 ## Stream
 

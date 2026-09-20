@@ -2134,3 +2134,51 @@ for the conductor.
 Interfaces: none. `ops/prometheus/prometheus.yml`,
 `ops/prometheus/wireguard-peer.conf` and `nix/edge/default.nix` change
 together because they are three halves of one path.
+
+**I-95. `RegisterResponse` carries `loki_url`, from a setting an operator
+records with `repose-admin edge loki`; Fluent Bit refuses to start without
+one.** (m3-web, 10 and 05, 2026-09-20) `docs/interfaces/host-conventions.md`
+has documented a `loki_url` field of `host.json` since workstream 01,
+`nix/hosts/network.nix` renders `LOKI_HOST` and `LOKI_PORT` from it,
+`nix/hosts/fluent-bit.nix` uses them as its Loki output's address, and
+`ops/RUNBOOK.md`'s FluentBitStuck entry says in as many words that the value
+"comes from `loki_url` in `host.json`, which the api sends at registration".
+Nothing sent it: `RegisterResponse` had six fields and none of them was
+this one, and `internal/hostd/register` declared the struct field and never
+assigned it. Every host would have rendered `LOKI_HOST=` and shipped
+nothing, and the symptom — a Fluent Bit retrying a connection to an empty
+host name for ever — is indistinguishable in the journal from a Loki that
+is down. So M3's "Fluent Bit on host-01 ships journald and guest console
+logs" could not have been closed by configuration alone.
+
+- *A setting, not an environment variable.* The Loki names a machine
+  outside this deployment, it changes without the api changing, and
+  moving a log sink should not need a redeploy of the api — the same
+  three reasons the edge's WireGuard endpoint and public key are already
+  settings written by `repose-admin edge init`. `repose-admin edge loki
+  [URL]` prints, records, or (with an empty string) clears it, refuses a
+  URL with no scheme because that is the mistake that produces a fleet
+  shipping nowhere, and writes an `audit_log` row like every other admin
+  action. *Rejected:* a `LOKI_URL` variable in `ops/coolify/api.env`
+  (a redeploy of the api to change where hosts send logs, and the api
+  redeploy is the one this milestone coordinates most carefully); a
+  per-host column (there is one Loki, and a per-host value is a per-host
+  mistake).
+- *`Rotate` carries it too.* A host registers once, so a Loki recorded
+  after the fleet exists would never reach it. `Rotate` runs every 30
+  days and already returns a `RegisterResponse`; it now carries the
+  current value, which bounds "an operator recorded a Loki" to at most a
+  month, and the runbook's edit-and-restart is the immediate path.
+- *Empty is still the old behaviour, both ways.* An api that predates the
+  field sends nothing, and hostd then keeps whatever `host.json` already
+  had rather than clearing a working host's sink at its next rotation; a
+  host that has never been told renders an empty `LOKI_HOST`, and
+  `fluent-bit.service` now refuses to start with that reason in the
+  journal instead of retrying nothing for ever. *Rejected:* defaulting to
+  the edge's address (the edge is not a log store, and guessing an
+  address is how a fleet ships to a machine nobody is reading).
+
+Interfaces: `grpc-hostd.md` (`RegisterResponse.loki_url`),
+`host-conventions.md` (where the field comes from and what an empty one
+means), `proto/repose/hostd/v1/hostd.proto`. The old shape stays accepted:
+field 7 is additive and an absent value means what it meant before.
