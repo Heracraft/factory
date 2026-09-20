@@ -7,7 +7,7 @@
 // pays for what it imports: guestd has no metrics endpoint at all (it speaks
 // vsock and nothing else), and linking the client library into it cost 2.5 MB
 // of binary and 700 KB of resident memory against the 20 MB budget of
-// docs/workstreams/04-guestd.md §7. See DECISIONS I-49.
+// docs/workstreams/04-guestd.md §7. See DECISIONS I-56.
 package metrics
 
 import (
@@ -51,6 +51,10 @@ var allowedLabels = map[string]bool{
 	// different failure modes (docs/workstreams/10-observability.md
 	// "Dashboards": "eval vs build time").
 	"phase": true,
+	// The api counts secrets operations and ops by the operation's name
+	// (set, get, rm, rewrap; create, start, stop, ...): a bounded enum from
+	// docs/interfaces/api.md, not an identifier.
+	"op": true,
 }
 
 // AllowedLabels lists the permitted metric label names, sorted.

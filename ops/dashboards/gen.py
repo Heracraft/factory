@@ -391,9 +391,11 @@ def per_guest() -> dict:
             ),
             panel(
                 "state-timeline", "Guest state and guestd",
-                [sql(f"""select ts as time, state || (case when guestd_ok then '' else ' (guestd lost)' end) as state
+                [sql(f"""select ts as time,
+                         state || (case when guestd_ok is false then ' (guestd lost)'
+                                        when guestd_ok is null then ' (guestd unknown)' else '' end) as state
                          from meter_samples {where} order by ts""")],
-                desc="The guest's own state, with the gaps where guestd was unreachable. Samples continue during those gaps; the signals inside them do not.",
+                desc="The guest's own state, with the gaps where guestd was unreachable. Samples continue during those gaps; the signals inside them do not. A null guestd_ok is a sample from before the column existed, which is unknown rather than lost (DECISIONS I-51).",
             ),
             panel(
                 "table", "Top processes in the window",

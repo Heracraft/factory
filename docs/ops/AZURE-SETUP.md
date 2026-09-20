@@ -86,6 +86,16 @@ a day.
 15. **GitHub.** The repo should be private until the leaked-key history is
     handled (see `CHECKLIST.md`). Agents need push access to `main`.
 
+16. **Cachix.** Create a cache named `repose` at cachix.org (public; the
+    agents are public binaries). Copy its public key (`repose.cachix.org-1:
+    ...`) into `repose.host.overlayCache.publicKey` with the URL
+    `https://repose.cachix.org` in `nix/hosts/host-01.nix` (or the generic
+    host), and add the cache's auth token to the GitHub repository as the
+    secret `CACHIX_AUTH_TOKEN`. CI then pushes the agent overlay on every
+    push to `main` and hosts substitute the agents instead of fetching
+    upstream (DECISIONS I-46). Until then builds fetch the release
+    binaries themselves, which is slower, not wrong.
+
 ## What you do not need to do
 
 - Create VMs, networks, disks, Key Vault, Blob containers: OpenTofu does

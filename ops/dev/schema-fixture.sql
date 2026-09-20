@@ -108,7 +108,7 @@ create table if not exists meter_samples (
   tmux_clients int,
   agents jsonb,
   docker_containers int,
-  guestd_ok bool not null default true,
+  guestd_ok bool,
   primary key (project_id, ts)
 ) partition by range (ts);
 

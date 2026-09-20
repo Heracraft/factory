@@ -61,7 +61,7 @@ func TestCreateReachesRunningWithEverythingWired(t *testing.T) {
 	if g.State != StateRunning || g.Tap != "tap-0192f0a1" || g.MAC != "52:54:01:92:f0:a1" {
 		t.Fatalf("guest record %+v", g)
 	}
-	if !h.net.Taps[g.Tap] || h.net.Shaped[g.Tap] != 200 || h.net.Elements[gid1] != "10.64.4.2 . tap-0192f0a1" {
+	if !h.net.Taps[g.Tap] || h.net.Shaped[g.Tap] != 200 || h.net.Elements[gid1] != "52:54:01:92:f0:a1 . 10.64.4.2 . tap-0192f0a1" {
 		t.Fatalf("network not wired: %+v", h.net)
 	}
 	if v := h.lvm.Volumes["g-"+gid1]; v == nil || !v.HasFS || v.Size != 40<<30 {

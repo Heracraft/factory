@@ -2,22 +2,21 @@
 # here, not nixpkgs, so the platform decides when a tenant's agent changes.
 #
 # Split of ownership (docs/workstreams/02-guest-base.md §3): workstream 12
-# owns the *package definitions* (`reposeAgentsUnwrapped`, to be replaced by
-# builds from versions.json and bumped by scripts/bump-agents.sh); this
-# workstream owns the wrappers, the hook plumbing and the MCP servers.
-# Until 12 lands, each unwrapped agent resolves to nixpkgs at the flake's
-# locked revision, which is a pin, not a moving target.
+# owns the *package definitions* (`reposeAgentsUnwrapped`: each agent from
+# its upstream release binary, pinned by version and hash in versions.json,
+# bumped by scripts/bump-agents.sh); workstream 02 owns the wrappers, the
+# hook plumbing and the MCP servers.
 final: prev:
 let
   wrap = import ./wrap.nix { pkgs = final; };
 in
 {
   reposeAgentsUnwrapped = {
-    claude-code = prev.claude-code;
-    opencode = prev.opencode;
-    codex = prev.codex;
-    gemini-cli = prev.gemini-cli;
-    pi-coding-agent = prev.pi-coding-agent;
+    claude-code = final.callPackage ./claude-code.nix { };
+    opencode = final.callPackage ./opencode.nix { };
+    codex = final.callPackage ./codex.nix { };
+    gemini-cli = final.callPackage ./gemini-cli.nix { };
+    pi-coding-agent = final.callPackage ./pi-coding-agent.nix { };
   };
 
   # The five agents, each wrapped per guest-conventions.md "Agent wrappers".

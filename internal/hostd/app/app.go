@@ -45,6 +45,8 @@ type Options struct {
 	BuildsDir     string
 	BaseDir       string
 	BaseRepoURL   string
+	BaseSSHKey    string
+	BuildUser     string
 	GCRootsDir    string
 	APIAddr       string
 	APIServerName string
@@ -209,7 +211,8 @@ func Run(ctx context.Context, o Options, log *slog.Logger) error {
 	if o.GuestdUnix {
 		dialer = vsockclient.UnixDialer{}
 	}
-	nix := (&nixbuild.Real{R: r, BuildsDir: o.BuildsDir, BaseDir: o.BaseDir, BaseRepoURL: o.BaseRepoURL, Roots: gcroot.Roots{Dir: o.GCRootsDir}, UseScope: true, Timeout: "timeout", Substituters: o.Substituters}).Defaults()
+	nix := (&nixbuild.Real{R: r, BuildsDir: o.BuildsDir, BaseDir: o.BaseDir, BaseRepoURL: o.BaseRepoURL, BaseSSHKey: o.BaseSSHKey,
+		Roots: gcroot.Roots{Dir: o.GCRootsDir}, UseScope: true, User: o.BuildUser, Timeout: "timeout", Substituters: o.Substituters}).Defaults()
 	cfg := guest.Config{
 		HostID: id.Host.HostID, GuestsDir: o.GuestsDir, GuestCIDR: id.Host.GuestCIDR, TotalMemBytes: total,
 		MaxOps: o.MaxOps, MaxBuilds: o.MaxBuilds, StoreExport: o.StoreExport, VirtiofsUser: o.VirtiofsUser,

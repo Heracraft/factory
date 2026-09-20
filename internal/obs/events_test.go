@@ -68,12 +68,16 @@ func TestEventsEmitted(t *testing.T) {
 		t.Logf("--- %s (%d events, %s) ---", c, len(events), map[bool]string{true: "built", false: "not built yet"}[isBuilt])
 		for _, ev := range events {
 			sites := sitesFor(found[ev], c)
+			why, owed := obs.PendingEvents[ev]
 			switch {
 			case len(sites) > 0:
 				t.Logf("  %-20s %s", ev, strings.Join(sites, ", "))
 			case !isBuilt:
 				pending = append(pending, string(c)+"/"+ev)
 				t.Logf("  %-20s (component not built yet)", ev)
+			case owed:
+				pending = append(pending, string(c)+"/"+ev)
+				t.Logf("  %-20s (%s)", ev, why)
 			default:
 				t.Errorf("%s must emit %q and no call site does", c, ev)
 			}

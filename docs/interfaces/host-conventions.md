@@ -84,7 +84,7 @@ rotates keys does the same restart itself.
 - nftables, two tables, both declared by the host and reloaded without
   touching what hostd added:
   - `inet repose`: chains `input` (policy drop: lo, established, wg0 for
-    ssh/9100/9101 and the Fluent Bit metrics port 2021 (DECISIONS I-46),
+    ssh/9100/9101 and the Fluent Bit metrics port 2021 (DECISIONS I-53),
     DHCP and ICMP on the provider NIC; from `br-guests` jump
     `guest_in`), `guest_in` (ICMP echo to the host rate-limited to
     5/second, everything else dropped; no DHCP), `guest_fwd` (policy drop;
@@ -148,8 +148,10 @@ virtiofsd.sock`, `--vsock cid=<1000+index>,socket=vsock.sock`, `--serial
 socket=console.sock`, `--memory size=<RAM>M,shared=on`. The CH API socket
 is used for `shutdown` (after guestd's Shutdown timed out), `pause`,
 `resume`, and stats.
-virtiofsd runs as `virtiofsd:virtiofsd` in a chroot sandbox sharing
-`/run/repose/store-export` (never `/nix/store` directly).
+virtiofsd runs as `virtiofsd:virtiofsd` with `--sandbox namespace` (a
+user and mount namespace with the export pivot_rooted in; `chroot` is
+root-only and virtiofsd refuses it for an unprivileged user, DECISIONS
+I-48) sharing `/run/repose/store-export` (never `/nix/store` directly).
 
 ## Operator access
 

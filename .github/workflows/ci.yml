@@ -17,6 +17,18 @@ jobs:
   go:
     name: go build, vet, test, lint
     runs-on: ubuntu-latest
+    # The api's integration tests run against a real Postgres
+    # (docs/workstreams/05-control-plane-api.md §7).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+        ports: ["5432:5432"]
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -25,6 +37,15 @@ jobs:
       - run: go build ./...
       - run: go vet ./...
       - run: go test -race ./...
+      # Rollback is exercised on a seeded database: migrate, seed, down 1, up.
+      - name: repose-admin db migrate --down 1 on a seeded database
+        run: |
+          go run ./cmd/repose-admin db migrate
+          psql "$DATABASE_URL" -c "insert into users (id, handle) values ('00000000-0000-7000-8000-000000000001', 'ci-seed')"
+          go run ./cmd/repose-admin db down 1
+          go run ./cmd/repose-admin db status
+          go run ./cmd/repose-admin db migrate
+          go run ./cmd/repose-admin db verify
       # Built from source with the same toolchain go.mod pins; the prebuilt
       # action binaries lag the Go release and refuse newer go.mod versions.
       - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
@@ -47,8 +68,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Pinned to the dev box's Nix: relative path inputs (the fragment
+      # placeholder, DECISIONS I-28) are locked as "./..." entries that older
+      # releases reject as unlocked.
       - uses: cachix/install-nix-action@v27
         with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
           extra_nix_config: |
             experimental-features = nix-command flakes
             system-features = kvm
@@ -56,6 +81,30 @@ jobs:
         run: nix flake check --no-build ./nix
       - name: build the Go binaries through the flake
         run: nix build --no-link "git+file://$GITHUB_WORKSPACE?dir=nix#guestd" "git+file://$GITHUB_WORKSPACE?dir=nix#hostd"
+      # The fragment pipeline's real-Nix corpus (docs/interfaces/nix-build-contract.md
+      # "Fixtures and the test corpus") and the menu's full-catalog evaluation.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: real-nix corpus
+        env:
+          REPOSE_NIX_TESTS: "1"
+          REPOSE_NIX_NETWORK: "1"
+        run: go test -run 'TestRealNix' -v ./internal/hostd/nixbuild/ ./internal/menu/
+      - name: fragment contract and examples
+        run: nix build --no-link ./nix#checks.x86_64-linux.fragment-contract ./nix#checks.x86_64-linux.fragment-examples
+      # The agent overlay, built and pushed to the platform cache
+      # (DECISIONS I-46) when the Cachix token is configured; hosts then
+      # substitute the agents instead of fetching upstream.
+      - name: build the agent overlay
+        run: nix build --no-link ./nix#claude-code ./nix#opencode ./nix#codex ./nix#gemini-cli ./nix#pi-coding-agent ./nix#chrome-devtools-mcp ./nix#playwright-mcp
+      - name: push the overlay to Cachix
+        if: env.CACHIX_AUTH_TOKEN != '' && github.ref == 'refs/heads/main'
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: |
+          nix profile install nixpkgs#cachix
+          nix build --print-out-paths --no-link ./nix#claude-code ./nix#opencode ./nix#codex ./nix#gemini-cli ./nix#pi-coding-agent ./nix#chrome-devtools-mcp ./nix#playwright-mcp             | cachix push repose
 
   ops:
     name: alert rules, dashboards
@@ -64,6 +113,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v27
         with:
+          # The same pin as the nix job above, so CI runs one Nix.
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
           extra_nix_config: |
             experimental-features = nix-command flakes
       # ops/check.sh falls back to `nix shell nixpkgs#prometheus.cli` when

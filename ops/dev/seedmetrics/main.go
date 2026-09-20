@@ -4,8 +4,8 @@
 //
 // It is a development tool, not part of the product: it imports the real
 // metric definitions (internal/hostd/metrics for the host family,
-// internal/obs/metrics for the api and gateway families) and moves them
-// around, so a
+// internal/api/metrics for the api's, internal/obs/metrics for the gateway's)
+// and moves them around, so a
 // panel that queries a series nobody defines renders empty here too. What it
 // cannot tell you is whether a real host produces sensible values; that is a
 // real-host checklist item.
@@ -27,6 +27,7 @@ import (
 	"syscall"
 	"time"
 
+	apimetrics "github.com/heracraft/repose/internal/api/metrics"
 	"github.com/heracraft/repose/internal/hostd/metrics"
 	"github.com/heracraft/repose/internal/obs"
 	obsmetrics "github.com/heracraft/repose/internal/obs/metrics"
@@ -42,7 +43,7 @@ func main() {
 	gwM := obsmetrics.NewVersion(obs.ComponentGateway, "dev-seed")
 	gw := obsmetrics.NewGatewayMetrics(gwM)
 	apiM := obsmetrics.NewVersion(obs.ComponentAPI, "dev-seed")
-	api := obsmetrics.NewAPIMetrics(apiM)
+	api := apimetrics.New(apiM)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -114,7 +115,7 @@ func main() {
 			// evaluate, a snapshot that failed, a Stripe push that errored.
 			host.BuildDuration.WithLabelValues("eval_failed").Observe(3 + rand.Float64()*4)
 			host.SnapshotDuration.WithLabelValues("stop", "error").Observe(12 + rand.Float64()*20)
-			api.StripePushTotal.WithLabelValues("error").Inc()
+			api.StripeUsagePushTotal.WithLabelValues("error").Inc()
 		}
 
 		gw.Sessions.Set(float64(2 + rand.N(4)))
@@ -137,10 +138,10 @@ func main() {
 		api.RequestDuration.WithLabelValues("GET /projects").Observe(0.01 + rand.Float64()*0.1)
 		api.CertsIssuedTotal.Add(float64(rand.N(2)))
 		api.RollupLagSeconds.Set(float64(600 + rand.N(1200)))
-		api.SnapshotAge.Set(float64(20*3600 + rand.N(3600)))
+		api.SnapshotAgeSeconds.Set(float64(20*3600 + rand.N(3600)))
 		api.NotifyTotal.WithLabelValues("email", "ok").Add(float64(rand.N(2)))
 		api.NotifyTotal.WithLabelValues("ntfy", "ok").Add(float64(rand.N(2)))
-		api.StripePushTotal.WithLabelValues("ok").Add(float64(rand.N(2)))
+		api.StripeUsagePushTotal.WithLabelValues("ok").Add(float64(rand.N(2)))
 		api.EgressAlertProjects.Set(0)
 
 		select {

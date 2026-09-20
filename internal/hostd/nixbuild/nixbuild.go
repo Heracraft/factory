@@ -1,8 +1,10 @@
 // Package nixbuild runs a project's fragment through the platform flake:
 // write it, evaluate it under the restricted flags, build the derivation
-// inside a bounded scope streaming the log, check the closure size, root
-// the result. The flake contract hostd invokes is
-// docs/interfaces/nix-build-contract.md.
+// inside a bounded scope as an unprivileged user streaming the log, check
+// the closure size, root the result. The flake contract hostd invokes is
+// docs/interfaces/nix-build-contract.md; the policy (flags, limits, the
+// error mapping in errors.go) is workstream 12's
+// (docs/workstreams/12-nix-config-pipeline.md §5).
 package nixbuild
 
 import (
@@ -12,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -50,11 +53,10 @@ type Result struct {
 	// reach; the build fell back to source and hostd warns the api.
 	CacheUnreachable bool
 	// EvalDuration and BuildDuration split the wall time between `nix eval`
-	// of the fragment and `nix build` of the derivation. The Builds
-	// dashboard shows them apart because they fail for different reasons and
-	// have different caps (60 s and 30 minutes, DECISIONS R5-4): a slow eval
-	// is a fragment problem, a slow build is a substituter or a source
-	// build.
+	// of the fragment and `nix build` of the derivation. The Builds dashboard
+	// shows them apart because they fail for different reasons and have
+	// different caps (60 s and 30 minutes, DECISIONS R5-4): a slow eval is a
+	// fragment problem, a slow build is a substituter or a source build.
 	EvalDuration  time.Duration
 	BuildDuration time.Duration
 }
@@ -102,30 +104,47 @@ func ClosureInfo(closure string) (Info, error) {
 	return in, nil
 }
 
+// KernelChanged is the `kernel_changed` rule of the Build result: a new
+// closure needs a reboot when its kernel or initrd is a different store
+// path from the one the guest runs (docs/workstreams/12-nix-config-pipeline.md
+// "Flags and limits"). A package-only change keeps both.
+func KernelChanged(current, next Info) bool {
+	return current.Kernel != next.Kernel || current.Initrd != next.Initrd
+}
+
 // Real runs nix through a shell.Runner.
 type Real struct {
-	R             shell.Runner
-	BuildsDir     string // /var/lib/repose/builds
-	BaseDir       string // /var/lib/repose/base
-	BaseRepoURL   string // cloned when a base checkout is missing; empty means it must exist
-	BaseSubdir    string // nix
+	R           shell.Runner
+	BuildsDir   string // /var/lib/repose/builds
+	BaseDir     string // /var/lib/repose/base
+	BaseRepoURL string // cloned when a base checkout is missing; empty means it must exist
+	// BaseSSHKey is a private key file for cloning BaseRepoURL over SSH;
+	// empty means git's own configuration decides.
+	BaseSSHKey string
+	BaseSubdir string // nix
+	// BaseScheme is how the checkout is named as a flake: "git"
+	// (git+file://<checkout>?dir=nix, the contract: the flake reads files
+	// above nix/) or "path" (path:<checkout>/nix, for a self-contained test
+	// flake).
+	BaseScheme    string
 	EvalAttr      string // guestSystem.config.system.build.toplevel.drvPath
 	Substituters  string
 	MemoryMax     string // 16G
 	Roots         gcroot.Roots
 	KeepRevisions int
-	UseScope      bool
-	Timeout       string // the timeout binary; "" disables the wrapper (tests)
-	// Now is the clock the phase timings use; nil means time.Now.
-	Now func() time.Time
-}
-
-// now is the clock, so a test can measure phases without sleeping.
-func (b *Real) now() time.Time {
-	if b.Now == nil {
-		return time.Now()
-	}
-	return b.Now()
+	// UseScope wraps eval and build in `systemd-run --scope` with CPUQuota,
+	// MemoryMax and a RuntimeMaxSec backstop above the timeout.
+	UseScope bool
+	// User is the unprivileged account eval and build run as ("nixbuild"
+	// on a host); empty runs as the caller (tests). Needs root and setpriv.
+	User string
+	// Home is that user's HOME (its nix cache lives there).
+	Home string
+	// Timeout is the timeout binary; "" disables the wrapper (tests).
+	Timeout string
+	// LogLines is how many lines of the failed builder's log go into a
+	// build_failed message (200 in the workstream doc).
+	LogLines int
 }
 
 // Defaults fills the documented values into zero fields.
@@ -133,17 +152,29 @@ func (b *Real) Defaults() *Real {
 	if b.BaseSubdir == "" {
 		b.BaseSubdir = "nix"
 	}
+	if b.BaseScheme == "" {
+		b.BaseScheme = "git"
+	}
 	if b.EvalAttr == "" {
 		b.EvalAttr = "guestSystem.config.system.build.toplevel.drvPath"
 	}
 	if b.Substituters == "" {
-		b.Substituters = "https://cache.nixos.org https://cache.repose.herakraft.co"
+		// The platform overlay cache is a host option
+		// (repose.host.overlayCache), passed as --substituters; the default
+		// is the public cache alone.
+		b.Substituters = "https://cache.nixos.org"
 	}
 	if b.MemoryMax == "" {
 		b.MemoryMax = "16G"
 	}
 	if b.KeepRevisions == 0 {
 		b.KeepRevisions = 3
+	}
+	if b.LogLines == 0 {
+		b.LogLines = 200
+	}
+	if b.User != "" && b.Home == "" {
+		b.Home = "/var/lib/repose/" + b.User
 	}
 	return b
 }
@@ -158,21 +189,33 @@ func (b *Real) PathExists(ctx context.Context, path string) (bool, error) {
 	return err == nil, err
 }
 
+func validRef(s string) bool {
+	return s != "" && !strings.ContainsAny(s, "/\\ ") && !strings.HasPrefix(s, ".")
+}
+
+// ensureBase returns the checkout directory for ref, cloning it when the
+// repository URL is configured and the checkout is missing.
 func (b *Real) ensureBase(ctx context.Context, ref string) (string, error) {
-	if ref == "" || strings.ContainsAny(ref, "/\\ ") || strings.HasPrefix(ref, ".") {
+	if !validRef(ref) {
 		return "", &Error{Code: "invalid_argument", Message: "base_ref must be a git revision"}
 	}
 	dir := filepath.Join(b.BaseDir, ref)
-	flake := filepath.Join(dir, b.BaseSubdir)
-	if _, err := os.Stat(filepath.Join(flake, "flake.nix")); err == nil {
-		return flake, nil
+	if _, err := os.Stat(filepath.Join(dir, b.BaseSubdir, "flake.nix")); err == nil {
+		return dir, nil
 	}
 	if b.BaseRepoURL == "" {
 		return "", &Error{Code: "internal", Message: "base " + ref + " unavailable: no checkout under " + b.BaseDir}
 	}
+	if err := os.MkdirAll(b.BaseDir, 0o755); err != nil {
+		return "", fmt.Errorf("base dir: %w", err)
+	}
 	tmp := dir + ".tmp"
 	_ = os.RemoveAll(tmp) // leftover from an interrupted clone
-	if _, err := b.R.Run(ctx, "git", "clone", "--quiet", "--no-checkout", b.BaseRepoURL, tmp); err != nil {
+	clone := []string{"git", "clone", "--quiet", "--no-checkout", b.BaseRepoURL, tmp}
+	if b.BaseSSHKey != "" {
+		clone = append([]string{"env", "GIT_SSH_COMMAND=ssh -i " + b.BaseSSHKey + " -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"}, clone...)
+	}
+	if _, err := b.R.Run(ctx, clone...); err != nil {
 		return "", &Error{Code: "internal", Message: "base " + ref + " unavailable: clone failed: " + err.Error()}
 	}
 	if _, err := b.R.Run(ctx, "git", "-C", tmp, "checkout", "--quiet", ref); err != nil {
@@ -182,24 +225,86 @@ func (b *Real) ensureBase(ctx context.Context, ref string) (string, error) {
 	if err := os.Rename(tmp, dir); err != nil && !errors.Is(err, os.ErrExist) {
 		return "", fmt.Errorf("base checkout: %w", err)
 	}
-	return flake, nil
+	return dir, nil
 }
 
-func (b *Real) withTimeout(secs uint32, argv []string) []string {
-	if b.Timeout == "" || secs == 0 {
-		return argv
+// flakeRef names the checkout's nix/ directory as a flake.
+func (b *Real) flakeRef(checkout string) string {
+	if b.BaseScheme == "path" {
+		return "path:" + filepath.Join(checkout, b.BaseSubdir)
 	}
-	return append([]string{b.Timeout, strconv.FormatUint(uint64(secs), 10)}, argv...)
+	return "git+file://" + checkout + "?dir=" + b.BaseSubdir
 }
 
-func isTimeout(err error) bool {
+// wrap builds the command line around a nix invocation: the scope with its
+// resource properties and the RuntimeMaxSec backstop, the user switch, the
+// environment the unprivileged user needs, and the timeout.
+func (b *Real) wrap(unit string, secs uint32, cores uint32, argv []string) []string {
+	if b.Timeout != "" && secs > 0 {
+		argv = append([]string{b.Timeout, "-k", "5", strconv.FormatUint(uint64(secs), 10)}, argv...)
+	}
+	if b.User != "" {
+		argv = append([]string{
+			"setpriv", "--reuid=" + b.User, "--regid=" + b.User, "--init-groups",
+			"--bounding-set=-all", "--inh-caps=-all", "--no-new-privs", "--",
+			"env", "HOME=" + b.Home, "USER=" + b.User, "LOGNAME=" + b.User, "NIX_REMOTE=daemon",
+		}, argv...)
+	}
+	if b.UseScope {
+		if cores == 0 {
+			cores = 8
+		}
+		props := []string{"systemd-run", "--scope", "--quiet", "--unit", unit,
+			"-p", fmt.Sprintf("CPUQuota=%d%%", cores*100),
+			"-p", "MemoryMax=" + b.MemoryMax}
+		if secs > 0 {
+			props = append(props, "-p", "RuntimeMaxSec="+strconv.FormatUint(uint64(secs)+30, 10))
+		}
+		argv = append(append(props, "--"), argv...)
+	}
+	return argv
+}
+
+// isTimeout reports whether a failed command was stopped by the time cap:
+// `timeout` exits 124, and the scope's RuntimeMaxSec backstop kills with
+// SIGTERM (143) or SIGKILL (137) once the cap is past.
+func isTimeout(err error, elapsed time.Duration, secs uint32) bool {
 	var ee *shell.ExitError
-	return errors.As(err, &ee) && ee.Result.ExitCode == 124
+	if !errors.As(err, &ee) {
+		return false
+	}
+	switch ee.Result.ExitCode {
+	case 124:
+		return true
+	case 137, 143:
+		return secs > 0 && elapsed >= time.Duration(secs)*time.Second
+	}
+	return false
+}
+
+// chownTree hands the build directory to the build user so the
+// unprivileged eval can read the fragment.
+func (b *Real) chownTree(dir string) error {
+	if b.User == "" {
+		return nil
+	}
+	u, err := user.Lookup(b.User)
+	if err != nil {
+		return fmt.Errorf("build user: %w", err)
+	}
+	uid, _ := strconv.Atoi(u.Uid)
+	gid, _ := strconv.Atoi(u.Gid)
+	return filepath.WalkDir(dir, func(p string, _ os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		return os.Lchown(p, uid, gid)
+	})
 }
 
 // Build implements Builder.
 func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Result, error) {
-	if req.RevisionID == "" || strings.ContainsAny(req.RevisionID, "/\\ ") || strings.HasPrefix(req.RevisionID, ".") {
+	if !validRef(req.RevisionID) {
 		return nil, &Error{Code: "invalid_argument", Message: "revision_id required"}
 	}
 	dir := filepath.Join(b.BuildsDir, req.RevisionID)
@@ -209,25 +314,36 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 	if err := os.WriteFile(filepath.Join(dir, "fragment.nix"), req.Fragment, 0o600); err != nil {
 		return nil, fmt.Errorf("write fragment: %w", err)
 	}
-	flake, err := b.ensureBase(ctx, req.BaseRef)
+	if err := b.chownTree(dir); err != nil {
+		return nil, err
+	}
+	checkout, err := b.ensureBase(ctx, req.BaseRef)
 	if err != nil {
 		return nil, err
 	}
+	allowed, err := AllowedURIs(filepath.Join(checkout, b.BaseSubdir, "flake.lock"))
+	if err != nil {
+		return nil, &Error{Code: "internal", Message: "base " + req.BaseRef + " unavailable: " + err.Error()}
+	}
+	allowed = append(allowed, "path:"+dir)
+	unit := "repose-build-" + req.RevisionID
+
 	log("evaluating configuration")
-	evalStart := b.now()
-	evalArgv := b.withTimeout(req.Limits.EvalS, []string{
-		"nix", "eval", "--raw", "--no-write-lock-file",
+	evalArgv := b.wrap(unit+"-eval", req.Limits.EvalS, req.Limits.Cores, []string{
+		"nix", "eval", "--raw", "--no-write-lock-file", "--show-trace",
 		"--option", "restrict-eval", "true",
 		"--option", "allow-import-from-derivation", "false",
 		"--option", "pure-eval", "true",
 		"--option", "eval-cache", "false",
+		"--option", "allowed-uris", strings.Join(allowed, " "),
 		"--max-call-depth", "10000",
 		"--override-input", "fragment", "path:" + dir,
-		"path:" + flake + "#" + b.EvalAttr,
+		b.flakeRef(checkout) + "#" + b.EvalAttr,
 	})
+	start := time.Now()
 	res, err := b.R.Run(ctx, evalArgv...)
 	if err != nil {
-		if isTimeout(err) {
+		if isTimeout(err, time.Since(start), req.Limits.EvalS) {
 			return nil, EvalTimeout(req.Limits.EvalS)
 		}
 		var ee *shell.ExitError
@@ -236,36 +352,37 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 		}
 		return nil, fmt.Errorf("nix eval: %w", err)
 	}
-	evalDuration := b.now().Sub(evalStart)
+	evalDuration := time.Since(start)
 	drv := strings.TrimSpace(string(res.Stdout))
 	if !strings.HasPrefix(drv, "/nix/store/") || !strings.HasSuffix(drv, ".drv") {
 		return nil, &Error{Code: "internal", Message: "nix eval did not return a derivation path: " + shell.Tail([]byte(drv), 200)}
 	}
+
 	log("building " + drvName(drv))
-	buildArgv := []string{
+	buildArgv := b.wrap(unit, req.Limits.BuildS, req.Limits.Cores, []string{
 		"nix", "build", "--no-link", "--print-out-paths", "--print-build-logs",
 		"--option", "sandbox", "true",
 		"--max-jobs", "1",
 		"--cores", strconv.FormatUint(uint64(req.Limits.Cores), 10),
 		"--option", "substituters", b.Substituters,
 		drv + "^*",
-	}
-	buildArgv = b.withTimeout(req.Limits.BuildS, buildArgv)
-	if b.UseScope {
-		buildArgv = append([]string{"systemd-run", "--scope", "--quiet",
-			"-p", fmt.Sprintf("CPUQuota=%d%%", req.Limits.Cores*100),
-			"-p", "MemoryMax=" + b.MemoryMax, "--"}, buildArgv...)
-	}
-	buildStart := b.now()
+	})
+	start = time.Now()
 	out, tail, err := b.stream(ctx, buildArgv, log)
-	buildDuration := b.now().Sub(buildStart)
+	buildDuration := time.Since(start)
 	if err != nil {
-		if isTimeout(err) {
+		if isTimeout(err, time.Since(start), req.Limits.BuildS) {
 			return nil, BuildTimeout(req.Limits.BuildS, tail)
 		}
 		var ee *shell.ExitError
 		if errors.As(err, &ee) {
-			return nil, MapBuildError(tail)
+			e := MapBuildError(tail)
+			if d := FailedDerivation(tail); d != "" {
+				if l, lerr := b.R.Run(ctx, "nix", "log", d); lerr == nil {
+					e.Message = e.Message + "\n\n" + drvName(d) + " log (last " + strconv.Itoa(b.LogLines) + " lines):\n" + lastLines(string(l.Stdout), b.LogLines)
+				}
+			}
+			return nil, e
 		}
 		return nil, fmt.Errorf("nix build: %w", err)
 	}
@@ -284,8 +401,7 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 	}
 	if req.Limits.ClosureBytes > 0 && size > req.Limits.ClosureBytes {
 		largest, _ := b.largestPaths(ctx, outPath, 10) // best effort detail for the message
-		msg := fmt.Sprintf("closure is %s, limit is %s; largest paths:\n%s", humanBytes(size), humanBytes(req.Limits.ClosureBytes), largest)
-		return nil, &Error{Code: "closure_too_large", Message: msg}
+		return nil, ClosureTooLarge(size, req.Limits.ClosureBytes, largest)
 	}
 	if err := b.Roots.Set(gcroot.RevisionRoot(req.ProjectID+"-"+req.RevisionID), outPath); err != nil {
 		return nil, err
@@ -351,6 +467,14 @@ func (t *tailBuf) Write(s string) {
 
 func (t *tailBuf) String() string { return string(t.buf) }
 
+func lastLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (b *Real) closureSize(ctx context.Context, path string) (uint64, error) {
 	res, err := b.R.Run(ctx, "nix", "path-info", "-S", path)
 	if err != nil {
@@ -364,7 +488,7 @@ func (b *Real) closureSize(ctx context.Context, path string) (uint64, error) {
 }
 
 func (b *Real) largestPaths(ctx context.Context, path string, n int) (string, error) {
-	res, err := b.R.Run(ctx, "nix", "path-info", "-rS", path)
+	res, err := b.R.Run(ctx, "nix", "path-info", "-rs", path)
 	if err != nil {
 		return "", err
 	}
@@ -395,14 +519,16 @@ func (b *Real) largestPaths(ctx context.Context, path string, n int) (string, er
 	return sb.String(), nil
 }
 
+// humanBytes prints sizes the way the messages in the workstream doc do:
+// "31.2 GB", "20 GB", "512.0 MB".
 func humanBytes(n uint64) string {
 	const gb = 1 << 30
 	const mb = 1 << 20
 	switch {
 	case n >= gb:
-		return fmt.Sprintf("%.1f GB", float64(n)/gb)
+		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/gb), ".0") + " GB"
 	case n >= mb:
-		return fmt.Sprintf("%.1f MB", float64(n)/mb)
+		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/mb), ".0") + " MB"
 	}
 	return fmt.Sprintf("%d B", n)
 }

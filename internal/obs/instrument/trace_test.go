@@ -68,6 +68,62 @@ func TestNoDialWithoutAnEndpoint(t *testing.T) {
 	}
 }
 
+// TestGlobalTracerIsNoopWhenOff: the api takes its tracer from the global
+// provider, not from the returned one, so the global must be the noop
+// provider too. (From workstream 05's own otel package, kept at the merge:
+// DECISIONS I-56.)
+func TestGlobalTracerIsNoopWhenOff(t *testing.T) {
+	t.Setenv(EndpointEnv, "")
+	if _, _, err := SetupTracing(context.Background(), TraceOptions{Component: obs.ComponentAPI}); err != nil {
+		t.Fatalf("SetupTracing: %v", err)
+	}
+	_, span := otel.Tracer("t").Start(context.Background(), "op")
+	if span.SpanContext().IsValid() {
+		t.Fatal("the global provider produced a recording span")
+	}
+	span.End()
+}
+
+// TestProtocolSwitch: OTEL_EXPORTER_OTLP_PROTOCOL picks the exporter, and
+// both must reach a collector. The listener accepts and says nothing; what is
+// asserted is that setup succeeds and spans record either way.
+func TestProtocolSwitch(t *testing.T) {
+	for _, proto := range []string{"", "grpc", "http/protobuf"} {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("listen: %v", err)
+		}
+		go func() {
+			for {
+				c, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				_ = c.Close()
+			}
+		}()
+		t.Setenv(ProtocolEnv, proto)
+		t.Setenv(EndpointEnv, "http://"+ln.Addr().String())
+		tr, shutdown, err := SetupTracing(context.Background(), TraceOptions{
+			Component: obs.ComponentAPI, Insecure: true,
+		})
+		if err != nil {
+			t.Fatalf("%s: SetupTracing: %v", proto, err)
+		}
+		_, span := tr.Start(context.Background(), "op")
+		if !span.IsRecording() {
+			t.Errorf("%s: a span is not recording", proto)
+		}
+		span.End()
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		if err := shutdown(ctx); err != nil {
+			t.Logf("%s: shutdown: %v (the collector is a bare listener)", proto, err)
+		}
+		cancel()
+		_ = ln.Close()
+	}
+}
+
 // TestPropagatorIsSetEvenWhenOff: a trace context that arrives on a request
 // is passed on, so turning one component on does not need them all on.
 func TestPropagatorIsSetEvenWhenOff(t *testing.T) {

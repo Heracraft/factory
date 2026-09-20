@@ -210,7 +210,7 @@ in
       with subtest("Fluent Bit ships journald and console logs to Loki with the documented labels"):
           host.wait_for_unit("fluent-bit.service")
           # Its own metrics, on wg0 only, are what the FluentBitStuck alert
-          # reads (DECISIONS I-46, ops/alerts.yaml).
+          # reads (DECISIONS I-53, ops/alerts.yaml).
           host.wait_until_succeeds("curl -sf -m3 http://10.255.0.7:2021/api/v1/metrics/prometheus | grep -c fluentbit_output_retries_failed_total >/dev/null")
           inet.fail(f"curl -sf -m3 http://{host_ip}:2021/api/v1/metrics/prometheus")
           host.succeed("logger -t repose-test 'repose fluent-bit smoke line'")

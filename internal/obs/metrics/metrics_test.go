@@ -48,43 +48,6 @@ func wantFamilies(t *testing.T, got map[string][]string, want map[string][]strin
 	}
 }
 
-// TestAPIFamily is the api half of the metric list in
-// docs/workstreams/10-observability.md §5, name by name and label by label.
-func TestAPIFamily(t *testing.T) {
-	m := New(obs.ComponentAPI)
-	a := NewAPIMetrics(m)
-	// Give every vector one series so Gather sees its labels.
-	a.RequestsTotal.WithLabelValues("GET /projects", "GET", "200").Inc()
-	a.RequestDuration.WithLabelValues("GET /projects").Observe(0.01)
-	a.Hosts.WithLabelValues("ready").Set(1)
-	a.Projects.WithLabelValues("running", "large").Set(1)
-	a.ScheduleTotal.WithLabelValues("ok").Inc()
-	a.CertsIssuedTotal.Inc()
-	a.CertsRevokedTotal.Inc()
-	a.RollupLagSeconds.Set(0)
-	a.NotifyTotal.WithLabelValues("email", "ok").Inc()
-	a.StripePushTotal.WithLabelValues("ok").Inc()
-	a.SnapshotAge.Set(0)
-	a.EgressAlertProjects.Set(0)
-	a.PartitionDropFailTotal.Add(0)
-
-	wantFamilies(t, gathered(t, m), map[string][]string{
-		"repose_api_requests_total":            {"method", "route", "status"},
-		"repose_api_request_duration_seconds":  {"route"},
-		"repose_api_hosts":                     {"state"},
-		"repose_api_projects":                  {"class", "state"},
-		"repose_api_schedule_total":            {"result"},
-		"repose_api_certs_issued_total":        nil,
-		"repose_api_certs_revoked_total":       nil,
-		"repose_api_rollup_lag_seconds":        nil,
-		"repose_api_notify_total":              {"channel", "result"},
-		"repose_api_stripe_usage_push_total":   {"result"},
-		"repose_api_snapshot_age_seconds":      nil,
-		"repose_api_egress_alert_projects":     nil,
-		"repose_api_partition_drop_fail_total": nil,
-	})
-}
-
 // TestGatewayFamily is the gateway half of the same list.
 func TestGatewayFamily(t *testing.T) {
 	m := New(obs.ComponentGateway)

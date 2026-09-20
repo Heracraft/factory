@@ -231,7 +231,7 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 	if err := m.d.Net.AddTap(ctx, g.Tap); err != nil {
 		return m.fail(g, stepNetwork, err)
 	}
-	if err := m.d.Net.AddGuestRules(ctx, g.GuestID, g.IP, g.Tap); err != nil {
+	if err := m.d.Net.AddGuestRules(ctx, g.GuestID, g.IP, g.MAC, g.Tap); err != nil {
 		return m.fail(g, stepNetwork, err)
 	}
 	if err := m.d.Net.Shape(ctx, g.Tap, m.cfg.EgressMbit); err != nil {
@@ -315,11 +315,11 @@ func (m *Manager) teardown(ctx context.Context, g *state.Guest) {
 	if mon := m.removeMonitor(g.GuestID); mon != nil {
 		mon.stop()
 	}
-	_ = m.d.Systemd.Stop(ctx, GuestUnit(g.GuestID))        // best effort in reverse order; each step's absence is fine
-	_ = virtiofs.Stop(ctx, m.d.Systemd, g.GuestID)         // same
-	_ = m.d.Net.Unshape(ctx, g.Tap)                        // same
-	_ = m.d.Net.DelGuestRules(ctx, g.GuestID, g.IP, g.Tap) // same
-	_ = m.d.Net.DelTap(ctx, g.Tap)                         // same
+	_ = m.d.Systemd.Stop(ctx, GuestUnit(g.GuestID))               // best effort in reverse order; each step's absence is fine
+	_ = virtiofs.Stop(ctx, m.d.Systemd, g.GuestID)                // same
+	_ = m.d.Net.Unshape(ctx, g.Tap)                               // same
+	_ = m.d.Net.DelGuestRules(ctx, g.GuestID, g.IP, g.MAC, g.Tap) // same
+	_ = m.d.Net.DelTap(ctx, g.Tap)                                // same
 	for _, s := range []string{"ch.sock", "vsock.sock", "console.sock", "virtiofsd.sock"} {
 		_ = os.Remove(filepath.Join(m.guestDir(g.GuestID), s)) // stale sockets confuse the next boot only if left behind
 	}

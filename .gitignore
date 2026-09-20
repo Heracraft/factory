@@ -51,8 +51,8 @@ infra/**/*.local.tfvars
 #context for ages
 context/
 
-# Go binaries built into the checkout by `go build ./...` (the packages that
-# matter are built by nix or `go run`).
+# Go binaries a bare `go build ./...` drops in the checkout; the ones that
+# matter are built by nix or run with `go run`.
 /seedmetrics
 /hostd
 /hostdev

@@ -22,7 +22,7 @@ other end of those.
 | `dashboards/*.json` | The seven dashboards. Generated: edit `dashboards/gen.py` and re-run it. |
 | `dashboards/gen.py` | The dashboards' source of truth. `--check` fails if the JSON is stale. |
 | `dashboards/validate.py` | Structure, datasource uids, forbidden Prometheus labels, SQL against `db-schema.md`, and `--query` to see which panels have data. |
-| `sql/partitions.sql` | Monthly partitions for `meter_samples` and `proc_samples`, and the drop that implements retention. |
+| `sql/partitions.sql` | The operator's copy of the partition maintenance the api does in Go: create this month and next, drop what is past retention. |
 | `check.sh` | Everything above that can be checked without a host. `--grafana` also loads the dashboards into a real Grafana. |
 | `dev/` | Prometheus, Loki, Grafana and Postgres in Docker, plus `seedmetrics`, `seedlogs.sh` and `pgcheck.sh`. |
 
@@ -44,10 +44,10 @@ other end of those.
    `dashboards/` mounted at `/etc/grafana/dashboards/repose`. Create the
    read-only Postgres role in the datasource file's comment first, or the four
    Postgres-backed dashboards are empty.
-6. **Postgres.** `psql -f sql/partitions.sql`, then
-   `select * from repose_partitions_backfill();`. The api calls
-   `repose_partitions_maintain()` hourly; until the api exists, a cron entry
-   does.
+6. **Postgres.** Nothing to install: the api creates and drops the sample
+   tables' partitions itself. `sql/partitions.sql` is the same maintenance as
+   SQL functions, for an operator whose api is down (`psql -f
+   sql/partitions.sql`, then `select * from repose_partitions_maintain();`).
 
 ## Locally
 

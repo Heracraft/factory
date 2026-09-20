@@ -207,6 +207,8 @@ func TestComponentOf(t *testing.T) {
 		"internal/obs/logger.go":       "",
 		"internal/vsockrpc/rpc.go":     "",
 		"cmd/repose-admin/main.go":     "admin",
+		"internal/admin/admin.go":      "admin",
+		"internal/api/http/server.go":  "api",
 		"internal/fakes/hostd/f.go":    "",
 		"internal/obs/obslint/l.go":    "",
 		"internal/gen/x/y.pb.go":       "",

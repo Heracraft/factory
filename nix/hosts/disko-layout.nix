@@ -19,7 +19,9 @@
   azureUdevRules ? null,
 }:
 let
-  poolMetadataSize = ''"$(( m = $(blockdev --getsize64 "''${lvm_devices[0]}") / 100, m < 1073741824 ? 1073741824 : (m > 17179869184 ? 17179869184 : m) ))b"'';
+  # One percent of the PV, clamped to 1 to 16 GiB, in whole MiB: lvcreate
+  # rejects a byte count that is not a multiple of 512 (host-01, 2026-09-20).
+  poolMetadataSize = ''"$(( m = $(blockdev --getsize64 "''${lvm_devices[0]}") / 100, m < 1073741824 ? 1073741824 : (m > 17179869184 ? 17179869184 : m), m / 1048576 ))m"'';
 
   # nixos-anywhere's kexec installer has no Azure udev rules, and the v7
   # sizes expose disks over NVMe with no by-LUN name at all (DECISIONS I-39,
@@ -28,20 +30,27 @@ let
   # retriggering, on an NVMe size by pointing the symlink at the one NVMe
   # disk that is not the OS disk. A no-op wherever the path already exists.
   azureUdevHook = lib.optionalString (azureUdevRules != null) ''
-    if [ ! -e "${dataDevice}" ] && [ -d /run/udev ]; then
+    # The SCSI branch is best effort: this waagent build ships no rules at
+    # that path, and on host-01 the unguarded cp aborted the whole hook
+    # before the NVMe branch below ever ran (2026-09-20).
+    if [ ! -e "${dataDevice}" ] && [ -d /run/udev ] && [ -d "${azureUdevRules}" ]; then
       mkdir -p /run/udev/rules.d
-      cp ${azureUdevRules}/*.rules /run/udev/rules.d/
-      udevadm control --reload
-      udevadm trigger --subsystem-match=block --action=add
-      udevadm settle
+      cp "${azureUdevRules}"/*.rules /run/udev/rules.d/ 2>/dev/null || true
+      udevadm control --reload || true
+      udevadm trigger --subsystem-match=block --action=add || true
+      udevadm settle || true
     fi
     if [ ! -e "${dataDevice}" ]; then
       os=$(readlink -f "${osDevice}")
+      # lsblk rather than a glob: disko's script runs with globbing off, so
+      # /sys/block/nvme*n* stayed literal and no disk was ever seen
+      # (host-01, 2026-09-20). Whole disks only; loop devices and the
+      # virtual DVD are not disks.
       candidates=""
-      for d in /sys/block/nvme*n* /dev/disk/azure/scsi1/lun*; do
-        [ -e "$d" ] || continue
-        dev=/dev/$(basename "$(readlink -f "$d")")
+      for name in $(lsblk -dn -o NAME,TYPE | awk '$2 == "disk" { print $1 }'); do
+        dev=/dev/$name
         [ "$dev" = "$os" ] && continue
+        case "$name" in nvme*|sd*) ;; *) continue ;; esac
         candidates="$candidates $dev"
       done
       set -- $candidates

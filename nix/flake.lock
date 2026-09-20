@@ -20,6 +20,18 @@
         "type": "github"
       }
     },
+    "fragment": {
+      "flake": false,
+      "locked": {
+        "path": "./guest/fragment-placeholder",
+        "type": "path"
+      },
+      "original": {
+        "path": "./guest/fragment-placeholder",
+        "type": "path"
+      },
+      "parent": []
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -80,6 +92,7 @@
     "root": {
       "inputs": {
         "disko": "disko",
+        "fragment": "fragment",
         "home-manager": "home-manager",
         "microvm": "microvm",
         "nixpkgs": "nixpkgs"

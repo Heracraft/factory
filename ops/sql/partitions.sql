@@ -9,10 +9,14 @@
 -- indexes and hold locks on the table the rollup reads. Dropping a partition
 -- is instant and gives the space back.
 --
--- Who runs this: the api, hourly, through `repose_partitions_maintain()`
--- (workstream 05 schedules it and logs `partition_drop_fail` on error, which
--- is the §6 failure mode: disk grows and nothing else breaks). An operator
--- can run it by hand with `repose-admin db verify --partitions` or psql.
+-- Who runs this: nobody, in production. The api does the same work in Go
+-- (`db.EnsurePartitions` and `db.DropExpiredPartitions`, called at start and
+-- by its daily job, logging `partition_drop_fail` and counting
+-- `repose_api_partition_drop_fail_total` when it fails: the §6 failure mode
+-- where disk grows and nothing else breaks). This file is the operator's
+-- version of it — a psql session on a control plane whose api is down, and
+-- the fixture ops/dev/pgcheck.sh exercises so that a retention that never
+-- deletes anything cannot pass unnoticed.
 --
 -- Idempotent throughout: every create is `if not exists`, and the drop only
 -- touches partitions whose whole range is older than the retention.

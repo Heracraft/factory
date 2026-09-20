@@ -89,7 +89,7 @@ func TestWithKeepsComponentOnce(t *testing.T) {
 	}
 }
 
-// TestRedaction covers every field name on the never-log list of
+// TestRedaction covers every substring on the never-log list of
 // docs/ops/OBSERVABILITY.md: the value must not reach the writer.
 func TestRedaction(t *testing.T) {
 	const canary = "SUPER-SECRET-VALUE"
@@ -106,9 +106,65 @@ func TestRedaction(t *testing.T) {
 	}
 }
 
-// TestRedactionIsExactName: the names next to a forbidden one are ids and
+// TestRedactionCatchesDerivedNames is the reason matching is on a substring:
+// a call site does not use the bare word, it writes access_token, host_key,
+// user_email. One planted value across every name the api and hostd have
+// reached for, none of which may appear in the output. (From workstream 05's
+// own obs package, kept at the merge: DECISIONS I-56.)
+func TestRedactionCatchesDerivedNames(t *testing.T) {
+	var buf bytes.Buffer
+	log := NewLogger(LogOptions{Component: ComponentAPI, Writer: &buf})
+	const planted = "PLANTED-VALUE-9f8e"
+	keys := []string{
+		"token", "access_token", "join_token", "secret", "secret_value", "password",
+		"authorization", "cert", "host_cert", "key", "host_key", "private_key",
+		"email", "user_email", "handle", "remote_url", "argv", "environ", "prompt",
+		"summary", "fragment", "ntfy_url", "github_login", "public_key", "ciphertext",
+	}
+	for _, k := range keys {
+		log.Info("x", "event", EventRequest, k, planted)
+	}
+	out := buf.String()
+	if strings.Contains(out, planted) {
+		t.Fatalf("planted value leaked:\n%s", out)
+	}
+	for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(l), &m); err != nil {
+			t.Fatalf("not json: %s", l)
+		}
+		for _, f := range []string{"ts", "level", "component", "event", "msg"} {
+			if _, ok := m[f]; !ok {
+				t.Fatalf("line lacks %s: %s", f, l)
+			}
+		}
+		if m["component"] != "api" {
+			t.Fatalf("component: %s", l)
+		}
+	}
+}
+
+// TestAllowedKeysPass pins the names that contain a forbidden substring and
+// are logged anyway, because they are ids, enums or counts.
+func TestAllowedKeysPass(t *testing.T) {
+	var buf bytes.Buffer
+	log := NewLogger(LogOptions{Component: ComponentAPI, Writer: &buf})
+	log.Info("x", "event", EventCertIssue, "kind", "user", "cert_serial", 42,
+		"project_id", "p1", "key_version", "v2", "secrets_count", 3)
+	out := buf.String()
+	for _, want := range []string{
+		`"kind":"user"`, `"cert_serial":42`, `"project_id":"p1"`,
+		`"key_version":"v2"`, `"secrets_count":3`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected %s in %s", want, out)
+		}
+	}
+}
+
+// TestBoundedIdsStayReadable: the names next to a forbidden one are ids and
 // counts, and stay readable.
-func TestRedactionIsExactName(t *testing.T) {
+func TestBoundedIdsStayReadable(t *testing.T) {
 	var buf bytes.Buffer
 	log := NewLogger(LogOptions{Component: ComponentAPI, Writer: &buf})
 	log.Info("m", "event", EventCertIssue, "cert_serial", "42", "key_id", "kv-1", "token_used", true)

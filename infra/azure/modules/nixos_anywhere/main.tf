@@ -25,13 +25,20 @@ locals {
       "UserKnownHostsFile=/dev/null",
       "ConnectTimeout=10",
     ],
+    # ProxyJump, with the jump host's key pre-recorded by the install step
+    # below. A ProxyCommand carrying the same -o options was tried first and
+    # fails in nix copy: nix splits NIX_SSHOPTS on whitespace, so a value
+    # with spaces becomes stray ssh arguments ("Bad stdio forwarding
+    # specification '%h:%p'").
     var.jump_host == null ? [] : [
       "ProxyJump=${var.jump_user}@${var.jump_host}:${var.jump_port}",
     ],
   )
 
-  ssh_option_flags = join(" ", [for o in local.ssh_common : "--ssh-option ${o}"])
-  ssh_cli_flags    = join(" ", [for o in local.ssh_common : "-o ${o}"])
+  # Single-quoted: the ProxyCommand value contains spaces, and unquoted it
+  # split into stray arguments that made nixos-anywhere print its usage.
+  ssh_option_flags = join(" ", [for o in local.ssh_common : "--ssh-option '${o}'"])
+  ssh_cli_flags    = join(" ", [for o in local.ssh_common : "-o '${o}'"])
 
   authorized_keys = join("\n", var.authorized_keys)
 }
@@ -91,6 +98,15 @@ resource "terraform_data" "install" {
     command = <<-EOT
       extra=$(mktemp -d)
       trap 'rm -rf "$extra"' EXIT
+      # The jump connection ProxyJump opens ignores the -o options above, so
+      # it checks the jump host against ~/.ssh/known_hosts; record the edge's
+      # current key there (it changes on every reinstall).
+      %{if var.jump_host != null~}
+      mkdir -p ~/.ssh && touch ~/.ssh/known_hosts
+      ssh-keygen -R '[${var.jump_host}]:${var.jump_port}' >/dev/null 2>&1 || true
+      ssh-keygen -R '${var.jump_host}' >/dev/null 2>&1 || true
+      ssh-keyscan -T 15 -p ${var.jump_port} '${var.jump_host}' >> ~/.ssh/known_hosts 2>/dev/null
+      %{endif~}
       mkdir -p "$extra/root/.ssh"
       printf '%s\n' "$REPOSE_AUTHORIZED_KEYS" > "$extra/root/.ssh/authorized_keys"
       chmod 700 "$extra/root/.ssh"

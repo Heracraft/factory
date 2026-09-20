@@ -5,7 +5,7 @@ import "fmt"
 // Component is the value of the `component` field on every log line and the
 // job a metrics endpoint belongs to. docs/workstreams/10-observability.md §5
 // names six; two binaries that the same design added later have their own
-// (DECISIONS I-42) because a Loki query that cannot separate hostd from the
+// (DECISIONS I-49) because a Loki query that cannot separate hostd from the
 // stand-in it talks to is not worth running.
 type Component string
 

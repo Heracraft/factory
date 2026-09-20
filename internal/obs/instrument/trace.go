@@ -4,13 +4,16 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/heracraft/repose/internal/obs"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -28,7 +31,7 @@ import (
 // middleware that emits the `request` event and the two api request series.
 //
 // Like internal/obs/metrics it is separate from internal/obs so that guestd
-// does not link an exporter it will never use (DECISIONS I-49).
+// does not link an exporter it will never use (DECISIONS I-56).
 
 // EndpointEnv is the one environment variable that turns tracing on. It is
 // unset everywhere today: DESIGN §15 says traces are exported to nothing yet,
@@ -99,11 +102,7 @@ func SetupTracing(ctx context.Context, o TraceOptions) (trace.Tracer, Shutdown, 
 		return nil, func(context.Context) error { return nil }, fmt.Errorf("build the trace resource: %w", err)
 	}
 
-	opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpointURL(endpoint)}
-	if o.Insecure {
-		opts = append(opts, otlptracegrpc.WithInsecure())
-	}
-	exp, err := otlptracegrpc.New(ctx, opts...)
+	exp, err := exporter(ctx, endpoint, o.Insecure)
 	if err != nil {
 		return nil, func(context.Context) error { return nil }, fmt.Errorf("start the OTLP exporter for %s: %w", endpoint, err)
 	}
@@ -123,6 +122,28 @@ func SetupTracing(ctx context.Context, o TraceOptions) (trace.Tracer, Shutdown, 
 		}
 		return nil
 	}, nil
+}
+
+// ProtocolEnv selects the OTLP protocol, as the OpenTelemetry specification
+// defines it: `http/protobuf` uses OTLP over HTTP (port 4318 by default),
+// anything else the gRPC exporter (4317). The variable exists because the two
+// halves of this repository picked different ones before they were merged
+// (DECISIONS I-56), and both deployments must keep working.
+const ProtocolEnv = "OTEL_EXPORTER_OTLP_PROTOCOL"
+
+func exporter(ctx context.Context, endpoint string, insecure bool) (*otlptrace.Exporter, error) {
+	if strings.HasPrefix(os.Getenv(ProtocolEnv), "http") {
+		opts := []otlptracehttp.Option{otlptracehttp.WithEndpointURL(endpoint)}
+		if insecure {
+			opts = append(opts, otlptracehttp.WithInsecure())
+		}
+		return otlptracehttp.New(ctx, opts...)
+	}
+	opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpointURL(endpoint)}
+	if insecure {
+		opts = append(opts, otlptracegrpc.WithInsecure())
+	}
+	return otlptracegrpc.New(ctx, opts...)
 }
 
 // TracingEnabled reports whether an OTLP endpoint is configured, for a log

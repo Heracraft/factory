@@ -1,0 +1,35 @@
+# Daily: bump the agent overlay to upstream's latest releases and open a PR
+# (docs/workstreams/12-nix-config-pipeline.md "Agent overlay"). Merging the
+# PR changes no guest until `repose-admin base publish`.
+
+name: bump-agents
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: git identity
+        run: |
+          git config user.name "repose-bot"
+          git config user.email "repose-bot@users.noreply.github.com"
+      - name: bump, build, open PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: scripts/bump-agents.sh --pr

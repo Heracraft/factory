@@ -87,7 +87,7 @@ func run() string {
 // agentDefault reads the variable the agent wrappers export.
 // docs/interfaces/guest-conventions.md names it REPOSE_HOOK_AGENT, and
 // nix/overlay/agents/wrap.nix exports that; REPOSE_AGENT is the name this
-// binary shipped with and stays accepted for one release (DECISIONS I-48).
+// binary shipped with and stays accepted for one release (DECISIONS I-55).
 func agentDefault() string {
 	if a := os.Getenv("REPOSE_HOOK_AGENT"); a != "" {
 		return a

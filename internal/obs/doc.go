@@ -6,7 +6,7 @@
 // The workstream doc calls the three entry points obs.Logger, obs.Metrics and
 // obs.Tracer. In Go they are a constructor each, and the two that carry heavy
 // dependencies live in subpackages so that a guest links only what it uses
-// (DECISIONS I-49):
+// (DECISIONS I-56):
 //
 //	log := obs.NewLogger(obs.LogOptions{Component: obs.ComponentHostd})   // this package, stdlib only
 //	met := metrics.New(obs.ComponentHostd)                                 // internal/obs/metrics

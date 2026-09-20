@@ -10,10 +10,13 @@ let
   cfg = config.repose.host;
 in
 lib.mkIf (cfg.provider == "azure") {
-  boot.initrd.kernelModules = [ "hv_vmbus" "hv_netvsc" "hv_utils" "hv_storvsc" ];
-  # v7 sizes are NVMe-only (DECISIONS I-39); the default list has nvme but
-  # the dependency is load-bearing here, so it is stated.
-  boot.initrd.availableKernelModules = [ "nvme" ];
+  # v7 sizes are NVMe-only (DECISIONS I-39), and on Azure the NVMe controllers
+  # hang off Hyper-V's virtual PCI bus: without pci-hyperv in the initrd the
+  # root disk never appears and boot stops in emergency mode waiting for
+  # /dev/disk/by-partlabel/disk-os-root (seen on the first edge install).
+  # Force-loaded rather than left to udev so the order is not a race.
+  boot.initrd.kernelModules = [ "hv_vmbus" "hv_netvsc" "hv_utils" "hv_storvsc" "pci-hyperv" "nvme" ];
+  boot.initrd.availableKernelModules = [ "nvme" "pci-hyperv" ];
   boot.kernelParams = [ "console=ttyS0" "earlyprintk=ttyS0" "rootdelay=300" ];
   networking.usePredictableInterfaceNames = false;
 

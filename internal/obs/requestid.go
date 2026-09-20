@@ -24,6 +24,22 @@ func RequestID(ctx context.Context) string {
 	return s
 }
 
+type loggerKey struct{}
+
+// WithLogger attaches a logger to a context, for the per-request fields the
+// api adds once and every handler below it inherits.
+func WithLogger(ctx context.Context, l *slog.Logger) context.Context {
+	return context.WithValue(ctx, loggerKey{}, l)
+}
+
+// Logger returns the context's logger, or the fallback when there is none.
+func Logger(ctx context.Context, fallback *slog.Logger) *slog.Logger {
+	if l, ok := ctx.Value(loggerKey{}).(*slog.Logger); ok && l != nil {
+		return l
+	}
+	return fallback
+}
+
 // LogWithRequest returns a logger carrying the context's request_id, so a
 // handler's own lines join the `request` line.
 func LogWithRequest(ctx context.Context, log *slog.Logger) *slog.Logger {

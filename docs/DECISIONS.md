@@ -771,7 +771,237 @@ controller layouts, and wrong again if the LUN changes); a udev rule in the
 installer (nixos-anywhere's kexec image takes none). *Revisit when:* a host
 has more than one data disk.
 
-**I-42. The `obs` package fixes what §5 left to call sites, and its
+
+**I-42. The api's implementation shape: phased ops driven by one replica,
+/internal on the gRPC app, CA material in the secrets table, guest host
+certificates re-signed once the address is known.** (05, 2026-09-20)
+Recorded where the code had to choose beyond what the docs said, or where
+a doc disagreed with a contract:
+
+- *Ops.* Every long operation is an `ops` row with a list of phases fixed
+  at enqueue (`create` = build, create_guest; `destroy` = final snapshot,
+  destroy_guest; `restore` = destroy old guest, build if no closure,
+  restore, start; ...). Each phase is one hostd command whose
+  `command_id` is written to the row before it is sent and whose result
+  lands in `command_result`; the command is rebuilt from the database and
+  re-sent with the same id after an api restart or on the host's next
+  `Hello`, so nothing but the row has to survive. The driver runs on the
+  replica holding advisory lock `LockOps`; a second replica serves HTTP and
+  the stream but would need the internal forwarding hop 05 §5.1 describes
+  before it can drive ops for hosts connected to it. *Rejected:* a
+  goroutine per op (lost on restart); storing the serialised command
+  (secrets in plaintext in a fourth place).
+- *The gRPC app also serves `/internal`.* Coolify's proxy terminates TLS
+  for the HTTP app, so it cannot require the gateway's client
+  certificate. `/internal/*` is served by the `api-grpc` process on
+  `API_INTERNAL_LISTEN` (8444) over HTTPS with
+  `RequireAndVerifyClientCert` against the platform's X.509 host CA, the
+  same authority that signs host certificates at `Register`; `repose-admin
+  ca sign-client --name gateway` issues the client certificate. Gateway
+  session reports are persisted in `gateway_sessions` so the HTTP app can
+  show them.
+- *CA material lives in the secrets table.* The two SSH CAs and the X.509
+  host CA (certificate and key) are rows of the platform pseudo-project
+  (`00000000-0000-7000-8000-000000000000`, owned by the pseudo-user
+  `repose-platform`), envelope-encrypted like any secret, created by
+  `repose-admin ca init` and loaded at start. The `HOST_CA_CERT` and
+  `HOST_CA_KEY` variables 05 §5.14 listed are gone; `GRPC_SERVER_CERT/KEY`
+  remain for the public listener. *Rejected:* PEM files in Coolify
+  secrets (a fourth home for a signing key, and no rotation path).
+- *Guest sshd keys are reserved secrets.* The key I-3 says the api
+  generates is stored under the reserved names of I-10 in the project's
+  secrets rows, so every `StartGuest` and `Restore` delivers the same key.
+  At `CreateGuest` the host certificate can only carry
+  `<slug>.<handle>`: the guest's address is assigned by hostd and comes
+  back in the result. The api then re-signs the certificate with both
+  principals for the next start. The gateway therefore verifies a guest's
+  host key with `<slug>.<handle>` as the expected principal, which it
+  knows from the login name, not with the address. Interface:
+  `ssh-gateway.md`.
+- *Samples are inserted, not copied.* `Samples` messages are written with
+  `insert ... on conflict do nothing` in one batch per message rather than
+  the single `COPY` of 05 §5.4, because hostd re-sends buffered samples
+  after a reconnect and a duplicate primary key would fail the whole
+  `COPY`.
+- *Schema additions.* `hosts` gained `name`, the heartbeat columns and the
+  join-token hash; `ops` gained phases, `params`, `command_result`,
+  `result`, `revision_id`, `snapshot_id`, `audit_id`, `reboot_required`;
+  `config_revisions` gained `kernel_changed` and `reboot_required`;
+  `events` gained `tmux_window` (`window` is reserved in SQL),
+  `ts_second`, `source`, `skew_seconds`, `host_event_id`, and its dedupe
+  index applies only to hook kinds so state changes may repeat within a
+  second; `snapshots` gained `restoring_op_id` (the guard the expiry job
+  respects); `usage_hours` gained the three cost parts and the storage
+  remainder the cap rule needs (shared with 09); new tables
+  `events_outbox` (13's shape), `host_sessions`, `gateway_sessions`,
+  `settings`. `db-schema.md` is the reference.
+- *Consumed packages that do not exist yet.* `internal/billing` carries the
+  price table and a `Disabled` pusher and portal (`503 billing_disabled`,
+  I-16); the notification senders live in `internal/api/notify` with the
+  documented headers; `internal/nixmenu` is the api's view of the catalog
+  with a package-only menu (12 owns the contents and the service
+  snippets). When 09, 12 and 13 land, the api swaps the implementation
+  behind the same interfaces.
+- *Small contract points.* `POST /projects` validates the name as 05 §5.3
+  says (`[A-Za-z0-9._-]{1,64}`; a space is refused rather than slugged as
+  `features/projects.md` suggests), and refuses with `payment_required
+  {reason: card_required}` when the user has no card rather than creating
+  a row that can never boot. `GET /logs?kind=console` returns the console
+  excerpts hostd attaches to failed ops; the full console is in Loki. The
+  SSE route's `data:` is `{seq, line}` JSON and `POST /internal/sessions`
+  takes `{project_id, event: opened|closed, cert_serial}` (`api.md`).
+  `repose-admin` talks to Postgres directly and has no `login`; the
+  runbook's `repose-admin login` line is withdrawn. Rate-limit buckets are
+  per replica.
+**I-43. The fragment contract is enforced by a NixOS module,
+`nix/guest/contract.nix`: `repose.overlays` from a pre-pass, `repose.system`
+through a static allowlist, and one class-independent closure.** (12)
+`workstreams/12-nix-config-pipeline.md` sketched `composeGuest { baseRef,
+fragment, menuSnippet, guestParams }` with the menu's NixOS snippet as a
+separate module. The wire carries one file (`Build.fragment`, I-28), so
+the snippet travels inside the fragment as `repose.system = [ { ... } ]`,
+a list of plain attribute sets whose first two levels must be in
+`nix/guest/system-allowlist.json`; the composer defines each allowlisted
+path statically and refuses anything else through an assertion naming the
+option. A hand-written fragment may use the same door under the same list,
+which is what makes the boundary real whatever produced the file. Two
+things the sketch could not have known: home-manager's module list itself
+needs `pkgs`, so `nixpkgs.overlays` cannot be read back from the evaluated
+home-manager configuration (infinite recursion); `repose.overlays` is
+instead read off the fragment in a pre-pass that calls a function fragment
+once with the platform's own `pkgs` and `lib`, and may use nothing else.
+And `Build` carries no class, so the browser slice's ceiling is a
+percentage of guest memory (37.5 percent: 1.5/3/6 GB) instead of a
+per-class constant, which makes the closure serve any class (I-34). Errors
+are attributed to `fragment.nix` because `compose.nix` hands the path to
+home-manager unimported; the contract module is not called `fragment.nix`
+so the error mapping's `fragment.nix:L:C` can only mean the user's file.
+`composeGuest { fragment | fragmentPath, class, baseVersion, guestd, hook,
+extraModules }` replaces the sketch's signature; `guestSystem` is
+`composeGuest { fragmentPath = "${fragment}/fragment.nix"; }`. *Rejected:*
+trusting the api to be the only producer of `repose.system` (nothing
+distinguishes its file from a user's); overlays as a home-manager option
+(recursion); a second `Build` field for the snippet (a second file, a
+second override input, and the takeover flow would have two things to
+copy). Interfaces: `nix-build-contract.md`, `guest-conventions.md`
+(browser slice), `features/config.md` "Writing a fragment".
+
+**I-44. The menu package is `internal/menu`; `GET /catalog` carries `kind`
+and `options`.** (12, for 05 and 08) `05-control-plane-api.md` named it
+`internal/nixmenu`; the workstream that owns it (12) names it
+`internal/menu`, and 05's text is corrected. The catalog is a YAML file
+embedded in the package; `Load` validates it and lints every `nixos`
+snippet against the allowlist, so a catalog entry outside the list fails
+`go test`, not a build on a host. `api.md`'s `[{id, label, group,
+description}]` gains `kind` and `options` (enum id, values, default),
+which the dashboard needs to render a select; the old fields keep their
+meaning. A generated fragment's second line, `# repose-menu: <json>`, is
+the selection, so a menu-managed project round-trips without a second
+store. Playwright MCP stays nixpkgs's (02's coupling to
+`playwright-driver`), so `versions.json` does not list it.
+
+**I-45. Fragment evaluation and builds run as `nixbuild` inside a
+transient scope, against a `git+file://` flake, with `allowed-uris`
+derived from the base checkout's lock file, and `--show-trace`.** (12, 03)
+Four things the contract as written could not do, found by running it:
+`path:<checkout>/nix` copies only `nix/` into the store, and
+`nix/packages.nix` builds guestd from `../.`, so the flake must be named
+`git+file://<checkout>?dir=nix` (the checkout is a git clone anyway);
+restricted mode refuses the locked inputs the flake machinery fetches
+during evaluation unless each exact URI (`github:owner/repo/rev?narHash=`)
+is in `allowed-uris`, so hostd derives that list from `flake.lock` and adds
+the fragment's directory, which admits those trees and nothing a fragment
+can name; a truncated trace loses the fragment's line and column for
+errors raised inside the module system, so the eval passes `--show-trace`
+and the mapping takes the innermost `fragment.nix:L:C`; and `systemd-run
+--scope` cannot switch user, so hostd runs `setpriv` to `nixbuild` (all
+capabilities dropped, no new privileges) inside the scope, with
+`RuntimeMaxSec` as a backstop 30 s past `timeout`. The messages are the
+workstream doc's exact first lines (`syntax error at fragment.nix:L:C,
+...`, `build timed out after 30 minutes while building X`, `closure is
+31.2 GB, limit is 20 GB; largest paths:`); the doc's `eval_timeout` code
+is the interface's `eval_failed` with "evaluation exceeded 60 s", because
+`grpc-hostd.md`'s enum is what the api and CLI switch on. `nixbuild`
+exists on every host (`nix/hosts/hostd.nix`), `/var/lib/repose/builds` is
+0711, and the platform cache is a host option (`repose.host.overlayCache`)
+passed as `--substituters`, not a constant in hostd. *Rejected:* keeping
+`internal/nixbuild` as a second package next to 03's
+`internal/hostd/nixbuild` (one implementation of one contract; 03's
+package is extended in place, and the fixtures stay where the contract
+says).
+
+**I-46. The agent overlay is built from upstream release binaries pinned
+in `versions.json` and cached on Cachix.** (12) Claude Code from
+Anthropic's release bucket (the ELF the npm installer fetches), opencode
+and pi from their GitHub release tarballs (bun-compiled, dynamically
+linked, `autoPatchelfHook`), Codex from its static musl tarball, Gemini
+CLI from the npm registry (a single bundle with no dependencies, run with
+the guest's node). `scripts/bump-agents.sh` reads each upstream's latest,
+prefetches, rewrites `versions.json`, builds, runs `--version`, and with
+`--pr` opens the pull request; `.github/workflows/bump-agents.yml` runs it
+daily. The binary cache is the Cachix cache `repose`
+(`https://repose.cachix.org`): CI pushes the seven overlay packages on
+every push to `main` when `CACHIX_AUTH_TOKEN` is set, and hosts add it
+through `repose.host.overlayCache` once the owner has created the cache
+and pasted its public key (`ops/AZURE-SETUP.md` step 16). *Rejected:*
+nixpkgs as the source (R3-19; it also now marks `gemini-cli` for removal,
+which is Google's tiering change, not a reason to drop an agent that works
+with an API key); an S3 bucket served by `nix-serve` on the Coolify VM (a
+service to run and a signing key to keep, for a cache of public
+binaries); R2 through Nix's S3 support (works, but is a second credential
+in CI for no gain until Cachix's free tier is outgrown). *Revisit when:*
+the cache passes 5 GB or a private overlay package appears.
+
+**I-47. Base bumps are a planner and a runner in `internal/basebump` over
+two interfaces the api implements.** (12, for 05) The api does not exist
+yet, so the policy is a package with `NewPlan` (which projects a version
+reaches: not held, last build not failed, running or stopped, not already
+on it; spread over 24 h, 2 h for `--security`, two at a time per host),
+`Runner.Run` (build, then `ApplyConfig` for a running guest; a stopped
+guest is `built` and boots the closure at its next start; `kernel_changed`
+ends as `needs_reboot` with the `base_update_ready` event; any failure is
+`failed` with `base_update_failed` and the project keeps its base),
+`Summarize` for `repose-admin base status`, `Rollback` for `base rollback`
+and `StatusLine` for the base part of `repose status`. Workstream 05 wires
+`Dispatcher` and `Recorder` to Postgres and the stream and schedules the
+run from `base publish`. The checklist's "three projects" evidence is the
+package's test until the api exists.
+**I-48. virtiofsd's sandbox is `namespace`, and hostd attaches taps with
+exactly the host-conventions sequence.** (14, review of 01 and 03,
+2026-09-20) Two places where merged code disagreed with the merged
+contract, found by reading them side by side:
+
+- `internal/hostd/virtiofs` started virtiofsd as user `virtiofsd` with
+  `--sandbox chroot`. chroot(2) needs CAP_SYS_CHROOT, and virtiofsd 1.14.0
+  refuses the combination outright: `Error entering sandbox: sandbox mode
+  'chroot' can only be used by root (Use '--sandbox namespace' instead)`
+  (reproduced on the dev box, exit 1). Every guest create would have failed
+  at step 8 on a real host, and the tempting "fix" of dropping `User=`
+  would have put a root virtiofsd with the whole store in front of every
+  tenant. Namespace mode is what `03-hostd.md` §5.5 and the runner's
+  `bin/virtiofsd` already said; `host-conventions.md` and `01-host-nixos.md`
+  said chroot and now say namespace. The host enables unprivileged user
+  namespaces (`security.allowUserNamespaces`, `kernel.nix`) for this.
+  *Rejected:* `AmbientCapabilities=CAP_SYS_CHROOT` on the unit (a
+  capability on a process that faces tenant-controlled FUSE traffic, to
+  keep a mode whose only advantage is not needing user namespaces).
+  *Verify on the first host:* `systemctl status virtiofsd@<guest>` is
+  active and `ls /nix/store` works in the guest; the dev box cannot run
+  namespace mode itself (Ubuntu's `apparmor_restrict_unprivileged_userns`).
+- `internal/hostd/net` created taps with `ip tuntap add ... mode tap` and
+  attached them with a bare `ip link set master`, then added the guest to
+  a set `inet repose guests { ip . tap }` that no host declares: I-18
+  moved admission into the `bridge repose` table with type `ether_addr .
+  ipv4_addr . ifname`, and 03's code predates that. On a host, `nft add
+  element` fails and every create stops at step 6; had the set been
+  declared to make it pass, taps without `learning off` and a static FDB
+  entry would let a guest claim another guest's MAC and receive its
+  inbound frames (the bridge learns before the nftables input hook
+  drops). The `Net` interface now carries the MAC and the golden test is
+  the command list from `host-conventions.md` "Network", verbatim.
+  Interface text unchanged; the code follows the doc.
+
+**I-49. The `obs` package fixes what §5 left to call sites, and its
 component and label lists are wider than §5's by two and three.** (10)
 `internal/obs` is the only place a repose binary gets a logger or a metrics
 registry, and both constructors enforce the rules rather than documenting
@@ -790,7 +1020,7 @@ were needed to describe what exists:
 - Metric labels are §5's list (`component, host_id, class, state, kind,
   reason, route, status`) plus the ones §5's own families use (`result`,
   `direction`, `method`, `channel`), plus `version` for `repose_build_info`
-  and `phase` for I-47. §5's prose list was incomplete against its own
+  and `phase` for I-54. §5's prose list was incomplete against its own
   tables; the tables are the law.
 - `repose_host_guestd_unreachable{guest_id}` is deleted. It broke the rule
   in the same section that defined it ("`project_id` and `guest_id` are
@@ -807,7 +1037,7 @@ and pay 2.5 MB of binary for the metrics and trace code that comes with one
 package (19.8 MB to 22.3 MB, measured); §2 asks for one package and 2.5 MB
 in a guest with a 20 GB volume is not a reason to split it.
 
-**I-43. An operator's `Exec` argv is not logged, only its `audit_id` and
+**I-50. An operator's `Exec` argv is not logged, only its `audit_id` and
 length.** (10, amends 03) hostd logged `argv` on the audited-exec path with a
 comment saying it was the one place that was allowed. It is not: process
 arguments are on the never-log list without an exception for operators, and
@@ -818,16 +1048,20 @@ Postgres access. *Rejected:* keeping it with a redaction filter (the argv of
 `repose-admin exec -- cat /home/dev/app/.env` is exactly what the list
 forbids, whoever typed it).
 
-**I-44. `meter_samples` gains `guestd_ok bool not null default true`.** (10,
-for 05) §5's day-one signals and `grpc-hostd.md`'s `GuestSignals` both carry
+**I-51. `meter_samples` carries `guestd_ok`.** (10 and 05, independently)
+§5's day-one signals and `grpc-hostd.md`'s `GuestSignals` both carry
 `guestd_ok`, the api receives it on every sample, and `db-schema.md` had
-nowhere to put it, so the per-guest dashboard could not show the gaps where
-a guest's signals are unknown rather than zero. *Rejected:* inferring it from
-null signals (a guest with no sessions and a lost guestd would look the
-same, which is the distinction I-31 added the `partial` flag for).
-Interface: `db-schema.md`.
+nowhere to put it, so the per-guest dashboard could not show the gaps where a
+guest's signals are unknown rather than zero. Workstream 10 proposed the
+column and workstream 05 had already added it by the time the two merged; the
+shape kept is 05's, `guestd_ok bool` with no default, because a sample from
+before the column existed is honestly null rather than optimistically true.
+The Per-guest resources dashboard therefore reads `guestd_ok is false`, not
+`not guestd_ok`. *Rejected:* inferring it from null signals (a guest with no
+sessions and a lost guestd would look the same, which is the distinction I-31
+added the `partial` flag for). Interface: `db-schema.md`.
 
-**I-45. Dashboards are generated from `ops/dashboards/gen.py` and the JSON is
+**I-52. Dashboards are generated from `ops/dashboards/gen.py` and the JSON is
 committed; `ops/` is laid out as §2 says, not as PROMPTS.md says.** (10) A
 Grafana dashboard is 400 lines of JSON of which four matter, and the same
 panel shape appears thirty times; seven hand-maintained files drift.
@@ -841,7 +1075,7 @@ the JSON by hand (the first panel rename proves why); keeping the generator
 out of the repository and committing only its output (nobody can then
 regenerate it).
 
-**I-46. Two alerts beyond §5's eleven, and the Fluent Bit metrics port is
+**I-53. Two alerts beyond §5's eleven, and the Fluent Bit metrics port is
 open on wg0.** (10) §6 describes two failures whose only symptom is silence:
 Loki unreachable from a host (Fluent Bit buffers and retries forever) and
 Prometheus unable to scrape a host (metering continues over the gRPC stream,
@@ -856,7 +1090,7 @@ shipper's failure does not affect); leaving it unmonitored (a host stops
 shipping logs and nobody knows until they go looking for a line that is not
 there). Interface: `host-conventions.md`.
 
-**I-47. `repose_host_build_phase_duration_seconds{phase}` splits eval from
+**I-54. `repose_host_build_phase_duration_seconds{phase}` splits eval from
 build.** (10, for 03 and 12) §5's Builds dashboard asks for "eval vs build
 time" and nothing measured either: `nixbuild.Build` runs `nix eval` and then
 `nix build` and timed only the pair. The two have different caps (60 s and
@@ -867,7 +1101,7 @@ the manager observes them, and `build_done` logs `eval_ms` and `build_ms`.
 *Rejected:* parsing the phase out of the build log (the log is the tenant's
 Nix output, not a metric source).
 
-**I-48. `repose-hook` reads `REPOSE_HOOK_AGENT`, the name the wrappers
+**I-55. `repose-hook` reads `REPOSE_HOOK_AGENT`, the name the wrappers
 export.** (10, fixing 02 and 04) The Go binary of workstream 04 read
 `REPOSE_AGENT`; the wrappers of workstream 02
 (`nix/overlay/agents/wrap.nix`) export `REPOSE_HOOK_AGENT`, which is also
@@ -887,8 +1121,8 @@ uses). *Why this workstream:* `agent_event` is one of the events
 docs/workstreams/10-observability.md §5 requires guestd to emit, and it could
 not fire. Interface: `guest-conventions.md`.
 
-**I-49. `internal/obs` is three packages, because a guest pays for what it
-imports.** (10, amends I-42) §2 asks for "one Go package used by every
+**I-56. `internal/obs` is three packages, because a guest pays for what it
+imports.** (10, amends I-49) §2 asks for "one Go package used by every
 binary", and one package it was until the guestd VM test failed on
 `docs/workstreams/04-guestd.md` §7's budget: guestd's resident memory came to
 20.2 MB against a 20 MB limit, because importing `obs` for the logger linked
@@ -910,3 +1144,52 @@ with the agent for two vCPUs and 4 GB, and it was right); keeping one package
 and hoping the linker drops the unused half (package initialisers are always
 kept, which is what the measurement showed); a build tag (a binary whose
 behaviour depends on how it was built is worse than a package boundary).
+
+**I-57. One observability package, one tracing setup, one api metric family.**
+(merge of 10 with wave two, 2026-09-20) Workstreams 05 and 10 each built what
+they needed while the other was unmerged, so the merge found three pairs:
+
+- `internal/obs`. 05's version said in its own header "Workstream 10 owns the
+  naming rules; this is the subset the api needs", so 10's is the package and
+  05's is gone. Two things of theirs were better and were kept: redaction
+  matches a *substring* of the field name, because a call site writes
+  `access_token` and `user_email` rather than the bare word, with an exact
+  allowlist for the ids and counts that contain one (`cert_serial`,
+  `key_version`, `secrets_count`, and 10's own `argv_len` and
+  `summary_bytes`); and `WithLogger`/`Logger(ctx, fallback)`, which is how the
+  api gives every handler the request's fields.
+- `internal/otel` and `internal/obs/instrument`. Both installed the OTLP
+  exporters and the noop provider. 05's had the bug 10's on-path test caught
+  the day before: `resource.Merge` of `resource.Default()` (schema 1.43.0)
+  with a `semconv/v1.26.0` resource returns "conflicting Schema URL", so the
+  api would have refused to start the moment anyone set
+  `OTEL_EXPORTER_OTLP_ENDPOINT`. `internal/otel` is gone; `SetupTracing`
+  gained the standard `OTEL_EXPORTER_OTLP_PROTOCOL` switch so 05's OTLP/HTTP
+  deployment and 10's gRPC one both work, and a test covers each. The OTLP
+  *metric* exporter 05 also installed is not replaced: DESIGN §15 and §5 make
+  Prometheus the metrics path, and pushing metrics to a collector nobody runs
+  is weight without a reader.
+- The api metric family. 05 implemented every name §5 lists (and more) in
+  `internal/api/metrics`; 10's `APIMetrics` is gone, and
+  `families_api_test.go` holds 05's to §5 the way `families_host_test.go`
+  holds hostd's. The api's registry now comes from `internal/obs/metrics`, so
+  all 26 of its series are checked for the namespace and the label list at
+  startup — which is how `repose_api_secrets_ops_total{op}` was noticed and
+  `op` added to the list as the bounded enum it is. `HTTPMiddleware` went the
+  same way: 05's server already emits the `request` event with a request id.
+
+Three gaps the same check found in 05's code, fixed here: the no-capacity
+placement path logged nothing and counted nothing (`schedule_fail` and
+`repose_api_schedule_total{result}`), the partition maintenance failure had no
+series for the `PartitionDropFail` alert to read, and `admin_action` had no
+producer — it moves from the api's required events to the admin CLI's, because
+05 built `repose-admin` against Postgres directly and the line belongs where
+the `audit_log` row is written. `stripe_webhook` stays required of the api and
+is listed in `obs.PendingEvents` as owed by workstream 09, which has no
+webhook route yet.
+
+*Why this workstream made the calls:* `docs/workstreams/README.md` gives 10
+the metric and log naming, and a merge that keeps both of everything is how
+`repose_api_*` ends up meaning two things. *Rejected:* keeping 05's obs and
+deleting 10's (it has no component enum, no event registry, no source lint and
+no metrics enforcement); keeping both tracing setups behind a flag.

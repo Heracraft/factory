@@ -83,7 +83,7 @@ line stored by us:**
 
 `internal/obs` is where the rules live rather than where they are written
 down (in three packages, so that guestd links a logger and not an exporter:
-DECISIONS I-49):
+DECISIONS I-56):
 
 - Every logger comes from `obs.NewLogger`, which puts `component` on the line
   itself, so a call site cannot omit it, and replaces the value of any field

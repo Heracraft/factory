@@ -1,0 +1,145 @@
+package events_test
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/heracraft/repose/internal/api/events"
+	"github.com/heracraft/repose/internal/api/metrics"
+	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/db"
+	"github.com/heracraft/repose/internal/db/testdb"
+	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
+)
+
+func TestMain(m *testing.M) { os.Exit(testdb.Run(m)) }
+
+func seed(t *testing.T, pool *db.Pool) (uuid.UUID, uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	uid, pid, gid := store.NewID(), store.NewID(), store.NewID()
+	if _, err := pool.Exec(ctx, "insert into users (id, handle, email, ntfy_url) values ($1, $2, 'e@example.com', 'https://ntfy.example/t')", uid, "u"+uid.String()[24:]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "insert into projects (id, user_id, name, slug, class, state, volume_bytes, guest_id, guest_ip) values ($1, $2, 'todo', 'todo', 'large', 'running', 1, $3, '10.64.4.9')", pid, uid, gid); err != nil {
+		t.Fatal(err)
+	}
+	return pid, gid
+}
+
+func TestDedupeOutboxAndRateCap(t *testing.T) {
+	pool := testdb.Open(t)
+	ctx := context.Background()
+	ing := events.New(pool, metrics.NewNop(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	pid, gid := seed(t, pool)
+	now := time.Now()
+	// Claude's Stop and agent_completed within a minute collapse to one
+	// event with both summaries.
+	id1, ins1, err := ing.Insert(ctx, events.Incoming{ProjectID: pid, TS: now, Kind: "completed", Agent: "claude", Summary: "ran tests"})
+	if err != nil || !ins1 {
+		t.Fatal(err)
+	}
+	id2, ins2, err := ing.Insert(ctx, events.Incoming{ProjectID: pid, TS: now.Add(20 * time.Second), Kind: "completed", Agent: "claude", Summary: "3 failures fixed"})
+	if err != nil || ins2 || id2 != id1 {
+		t.Fatalf("second within window: inserted=%v id=%s (first %s) err=%v", ins2, id2, id1, err)
+	}
+	var summary string
+	var n int
+	_ = pool.QueryRow(ctx, "select summary from events where id = $1", id1).Scan(&summary)
+	if summary != "ran tests\n3 failures fixed" {
+		t.Fatalf("merged summary %q", summary)
+	}
+	_ = pool.QueryRow(ctx, "select count(*) from events_outbox where event_id = $1", id1).Scan(&n)
+	if n != 2 {
+		t.Fatalf("outbox rows %d", n)
+	}
+	// A different kind is its own event; a repeat past the window too.
+	if _, ins, _ := ing.Insert(ctx, events.Incoming{ProjectID: pid, TS: now.Add(30 * time.Second), Kind: "needs_input", Agent: "claude", Summary: "?"}); !ins {
+		t.Fatal("different kind collapsed")
+	}
+	if _, ins, _ := ing.Insert(ctx, events.Incoming{ProjectID: pid, TS: now.Add(2 * time.Minute), Kind: "completed", Agent: "claude", Summary: "later"}); !ins {
+		t.Fatal("event past the window collapsed")
+	}
+	// The hostd event path: same event id twice is one row; a state change
+	// updates the project when no op is open.
+	ev := &hostdv1.Event{EventId: "ev-1", Ts: now.Unix(), Ev: &hostdv1.Event_AgentEvent{AgentEvent: &hostdv1.AgentEvent{GuestId: gid.String(), Agent: "codex", Kind: "error", Summary: "exit 1"}}}
+	first := ing.OnEvent(ctx, uuid.Nil, ev)
+	second := ing.OnEvent(ctx, uuid.Nil, ev)
+	if !first || !second {
+		t.Fatal("events not acked")
+	}
+	_ = pool.QueryRow(ctx, "select count(*) from events where host_event_id = 'ev-1'").Scan(&n)
+	if n != 1 {
+		t.Fatalf("duplicate host event stored %d times", n)
+	}
+	st := &hostdv1.Event{EventId: "ev-2", Ts: now.Unix(), Ev: &hostdv1.Event_GuestStateChanged{GuestStateChanged: &hostdv1.GuestStateChanged{GuestId: gid.String(), State: "stopped", Reason: "hypervisor exited"}}}
+	ing.OnEvent(ctx, uuid.Nil, st)
+	p, _ := store.GetProject(ctx, pool, pid)
+	if p.State != "stopped" {
+		t.Fatalf("state after host event: %s", p.State)
+	}
+	// Two state changes in the same second both land (no dedupe on them).
+	st2 := &hostdv1.Event{EventId: "ev-3", Ts: now.Unix(), Ev: &hostdv1.Event_GuestStateChanged{GuestStateChanged: &hostdv1.GuestStateChanged{GuestId: gid.String(), State: "running"}}}
+	ing.OnEvent(ctx, uuid.Nil, st2)
+	_ = pool.QueryRow(ctx, "select count(*) from events where kind = 'guest_state_changed'").Scan(&n)
+	if n != 2 {
+		t.Fatalf("state change events %d", n)
+	}
+	// snapshot_done inserts a row once.
+	sd := &hostdv1.Event{EventId: "ev-4", Ts: now.Unix(), Ev: &hostdv1.Event_SnapshotDone{SnapshotDone: &hostdv1.SnapshotDone{GuestId: gid.String(), BlobPath: "u/p/1.img.zst", Bytes: 5}}}
+	ing.OnEvent(ctx, uuid.Nil, sd)
+	ing.OnEvent(ctx, uuid.Nil, sd)
+	_ = pool.QueryRow(ctx, "select count(*) from snapshots where blob_path = 'u/p/1.img.zst'").Scan(&n)
+	if n != 1 {
+		t.Fatalf("snapshot rows %d", n)
+	}
+	// The edge's HTTP path maps the source ip and dedupes with the vsock path.
+	if _, err := ing.FromEdge(ctx, "10.64.4.9", "codex", "error", "exit 1"); err != nil {
+		t.Fatal(err)
+	}
+	_ = pool.QueryRow(ctx, "select count(*) from events where kind = 'error' and agent = 'codex'").Scan(&n)
+	if n != 1 {
+		t.Fatalf("http path duplicated the event: %d", n)
+	}
+	if _, err := ing.FromEdge(ctx, "10.64.9.9", "codex", "error", "x"); err == nil {
+		t.Fatal("unknown source ip accepted")
+	}
+	// Rate cap: past 30 notified events in an hour, one digest and no more
+	// outbox rows.
+	base := now.Add(10 * time.Minute)
+	for i := 0; i < 40; i++ {
+		ts := base.Add(time.Duration(i) * 61 * time.Second)
+		ing.SetNow(func() time.Time { return ts })
+		if _, _, err := ing.Insert(ctx, events.Incoming{ProjectID: pid, TS: ts, Kind: "completed", Agent: "pi", Summary: fmt.Sprint("loop ", i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ing.SetNow(time.Now)
+	var outboxEvents, paused int
+	_ = pool.QueryRow(ctx, "select count(distinct event_id) from events_outbox").Scan(&outboxEvents)
+	_ = pool.QueryRow(ctx, "select count(*) from events where kind = 'notifications_paused'").Scan(&paused)
+	if paused != 1 {
+		t.Fatalf("digest events %d", paused)
+	}
+	if outboxEvents > 36 {
+		t.Fatalf("outbox kept growing past the cap: %d events", outboxEvents)
+	}
+	_ = pool.QueryRow(ctx, "select count(*) from events where agent = 'pi'").Scan(&n)
+	if n != 40 {
+		t.Fatalf("capped events were dropped: %d stored", n)
+	}
+	// Clock skew over five minutes is replaced and recorded.
+	id, _, _ := ing.Insert(ctx, events.Incoming{ProjectID: pid, TS: now.Add(-time.Hour), Kind: "error", Agent: "gemini", Summary: "old clock"})
+	var skew *int
+	var ts time.Time
+	_ = pool.QueryRow(ctx, "select ts, skew_seconds from events where id = $1", id).Scan(&ts, &skew)
+	if skew == nil || *skew < 3500 || time.Since(ts) > time.Minute {
+		t.Fatalf("skew handling: ts=%v skew=%v", ts, skew)
+	}
+}

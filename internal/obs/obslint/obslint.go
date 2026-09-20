@@ -166,23 +166,42 @@ func Events(root string, dirs []string) (map[string][]Site, error) {
 	}
 
 	out := map[string][]Site{}
+	add := func(rel string, fset *token.FileSet, pos token.Pos, raw string) {
+		name, ok := resolveEvent(raw, consts)
+		if !ok {
+			return
+		}
+		out[name] = append(out[name], Site{
+			Event:     name,
+			File:      rel,
+			Line:      fset.Position(pos).Line,
+			Component: componentOf(rel),
+		})
+	}
 	err := walk(root, dirs, func(rel string, fset *token.FileSet, f *ast.File) {
 		ast.Inspect(f, func(n ast.Node) bool {
+			// A slice of attributes built before the call and spread into it:
+			// `attrs := []any{"event", "request", ...}; log.Log(ctx, lv, msg,
+			// attrs...)`. The api's request line is written that way, and a
+			// scanner that only reads call arguments cannot see it.
+			if lit, ok := n.(*ast.CompositeLit); ok {
+				elts := lit.Elts
+				for i := 0; i+1 < len(elts); i++ {
+					if k, ok := stringValue(elts[i]); ok && k == "event" {
+						if v, ok := stringValue(elts[i+1]); ok {
+							add(rel, fset, lit.Pos(), v)
+						} else if n := lastSegment(elts[i+1]); n != "" {
+							add(rel, fset, lit.Pos(), n)
+						}
+					}
+				}
+			}
 			call, ok := n.(*ast.CallExpr)
 			if !ok || !isLogCall(call) {
 				return true
 			}
 			for _, raw := range eventNames(call) {
-				name, ok := resolveEvent(raw, consts)
-				if !ok {
-					continue
-				}
-				out[name] = append(out[name], Site{
-					Event:     name,
-					File:      rel,
-					Line:      fset.Position(call.Pos()).Line,
-					Component: componentOf(rel),
-				})
+				add(rel, fset, call.Pos(), raw)
 			}
 			return true
 		})
@@ -201,7 +220,7 @@ func componentOf(rel string) string {
 		return "hook"
 	case strings.HasPrefix(rel, "cmd/hostdev/"), strings.HasPrefix(rel, "internal/hostdev/"):
 		return "hostdev"
-	case strings.HasPrefix(rel, "cmd/repose-admin/"):
+	case strings.HasPrefix(rel, "cmd/repose-admin/"), strings.HasPrefix(rel, "internal/admin/"):
 		return "admin"
 	case strings.HasPrefix(rel, "cmd/repose/"), strings.HasPrefix(rel, "internal/cli/"):
 		return "cli"
@@ -354,8 +373,10 @@ func checkFile(rel string, fset *token.FileSet, f *ast.File) []Finding {
 			return true
 		case *ast.Field:
 			// rule loggerName: a *slog.Logger must be named so that the
-			// log-call rule recognises calls on it.
-			if !isSlogLoggerType(x.Type) {
+			// log-call rule recognises calls on it. internal/obs is exempt:
+			// it passes loggers around as values (WithLogger, Logger(ctx,
+			// fallback)) rather than logging through them.
+			if inObs || !isSlogLoggerType(x.Type) {
 				return true
 			}
 			for _, nm := range x.Names {

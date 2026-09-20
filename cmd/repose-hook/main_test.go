@@ -152,7 +152,7 @@ func TestHookAlwaysExitsZero(t *testing.T) {
 // TestHookReadsTheAgentFromTheEnvironment covers both names: the wrappers in
 // nix/overlay/agents export REPOSE_HOOK_AGENT, which is what
 // docs/interfaces/guest-conventions.md documents, and REPOSE_AGENT is
-// accepted for one release (DECISIONS I-48). Every hook in every guest is
+// accepted for one release (DECISIONS I-55). Every hook in every guest is
 // silent if this is wrong, and silence is what it looks like when it works.
 func TestHookReadsTheAgentFromTheEnvironment(t *testing.T) {
 	for _, env := range []string{"REPOSE_HOOK_AGENT=claude", "REPOSE_AGENT=claude"} {

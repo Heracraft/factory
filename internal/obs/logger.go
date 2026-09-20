@@ -21,30 +21,63 @@ const LevelNotice = slog.Level(2)
 // line must be able to tell "we refused to log this" from "this was empty".
 const Redacted = "[redacted]"
 
-// redactedFields are replaced with Redacted wherever they appear as a log
-// field name, at any nesting depth. The first six are the floor
-// docs/ops/OBSERVABILITY.md promises; the rest are never-log entries from
-// the same document that have an obvious field name, so that the floor
-// covers the mistake as well as the malice.
+// forbidden are substrings of a log field name whose value is never logged.
+// Matching is on a substring rather than the whole name so that `user_email`,
+// `access_token` and `wrapped_key` are caught without being listed: the
+// never-log list of docs/ops/OBSERVABILITY.md is about the value, and a
+// value's name is whatever the call site felt like. The reviewer is the real
+// check; this is the floor.
 //
-// Matching is on the exact lowercased name, never a prefix, because the
-// names next to them are legitimate: cert_serial is an id, key_id names a
-// Key Vault key, token_used is a boolean.
-var redactedFields = map[string]bool{
-	"token": true, "secret": true, "password": true,
-	"authorization": true, "cert": true, "key": true,
-	"email": true, "handle": true, "remote_url": true,
-	"prompt": true, "args": true, "argv": true, "env": true,
-	"cmdline": true, "command_line": true, "user_agent": true,
+// The list is the union of what workstreams 10 and 05 each arrived at
+// independently (DECISIONS I-56).
+var forbidden = []string{
+	"token", "secret", "password", "authorization", "cert", "key",
+	"email", "handle", "remote_url", "argv", "args", "environ", "env",
+	"prompt", "summary", "fragment", "ntfy_url", "github_login",
+	"public_key", "ciphertext", "cmdline", "command_line", "user_agent",
+	"transcript",
 }
 
-// RedactedFields lists the field names NewLogger redacts, for tests and for
-// the obslint rules that refuse them at build time.
-func RedactedFields() []string {
-	out := make([]string, 0, len(redactedFields))
-	for k := range redactedFields {
-		out = append(out, k)
+// allowed are exact field names that contain a forbidden substring and carry
+// no tenant data: bounded enums, identifiers and counts. Each one is here
+// because it is in use and defensible, not because it was convenient.
+var allowed = map[string]bool{
+	// A serial, a fingerprint or a version identifies without carrying.
+	"cert_serial": true, "cert_fingerprint": true, "cert_kind": true,
+	"key_id": true, "key_version": true, "kind": true,
+	// Counts, lengths and presence, never values. argv_len and summary_bytes
+	// are the shapes that replaced an argv and a summary on the two lines
+	// that used to carry them (DECISIONS I-50).
+	"certs": true, "keys": true, "secrets": true, "secret_count": true,
+	"secret_names_count": true, "secrets_count": true, "token_used": true,
+	"has_token": true, "cert_bytes": true, "key_bytes": true,
+	"argv_len": true, "summary_bytes": true, "env_count": true,
+	"secrets_bytes": true, "prompt_len": true,
+	// A store path or a unit path on the host is the platform's own
+	// business; a path inside a guest is not, and cannot be told apart by
+	// name, so `store_path` is allowed and `path` is refused by obslint.
+	"store_path": true, "unit_path": true,
+}
+
+// IsForbidden reports whether a field name must be redacted.
+func IsForbidden(key string) bool {
+	k := strings.ToLower(key)
+	if allowed[k] {
+		return false
 	}
+	for _, f := range forbidden {
+		if strings.Contains(k, f) {
+			return true
+		}
+	}
+	return false
+}
+
+// RedactedFields lists the forbidden substrings, for tests and for the
+// obslint rules that refuse them at build time.
+func RedactedFields() []string {
+	out := make([]string, len(forbidden))
+	copy(out, forbidden)
 	return out
 }
 
@@ -150,7 +183,7 @@ func replaceAttr(groups []string, a slog.Attr) slog.Attr {
 			return a
 		}
 	}
-	if redactedFields[strings.ToLower(a.Key)] {
+	if IsForbidden(a.Key) {
 		return slog.String(a.Key, Redacted)
 	}
 	return a
@@ -175,7 +208,7 @@ func (h *handler) Handle(ctx context.Context, r slog.Record) error {
 		switch {
 		case a.Key == "event":
 			hasEvent = true
-		case redactedFields[strings.ToLower(a.Key)]:
+		case IsForbidden(a.Key):
 			bad = append(bad, a.Key)
 		case a.Key == "component":
 			// A call site that sets component itself is harmless but
