@@ -18,6 +18,9 @@ let
       + lib.optionalString (cfg.snapshots.identityClientId != "") " --blob-identity ${lib.escapeShellArg cfg.snapshots.identityClientId}"
     else
       "--snapshot-dir ${lib.escapeShellArg cfg.snapshots.localDir}";
+  buildFlags = "--build-user ${lib.escapeShellArg cfg.buildUser}"
+    + lib.optionalString (cfg.baseRepo.url != "") " --base-repo-url ${lib.escapeShellArg cfg.baseRepo.url}"
+    + lib.optionalString (cfg.baseRepo.sshKeyFile != "") " --base-repo-ssh-key ${lib.escapeShellArg cfg.baseRepo.sshKeyFile}";
   stateDir = "/var/lib/repose/hostd";
 
   # guests.slice gets everything but the host reserve: 8 GiB below 128 GiB
@@ -88,13 +91,15 @@ in
       e2fsprogs
       systemd
       nix
+      git
+      openssh
       cloud-hypervisor
       virtiofsd
       zstd
       coreutils
     ];
     serviceConfig = {
-      ExecStart = "${hostd}/bin/hostd --state ${stateDir} ${apiFlags} ${snapshotFlags}";
+      ExecStart = "${hostd}/bin/hostd --state ${stateDir} ${apiFlags} ${snapshotFlags} ${buildFlags}";
       Restart = "always";
       RestartSec = 2;
       # A join token that has been used is not retried (03-hostd §6).
@@ -103,7 +108,8 @@ in
       # must not stop them.
       KillMode = "process";
       LimitNOFILE = 1048576;
-      StateDirectory = "repose/hostd repose/guests repose/builds";
+      # repose/builds is a tmpfiles rule below: the build user must traverse it.
+      StateDirectory = "repose/hostd repose/guests";
       StateDirectoryMode = "0700";
       LogsDirectory = "repose";
       OOMScoreAdjust = -900;
@@ -132,10 +138,26 @@ in
     };
   };
 
+  # Fragment evaluation and builds run as this account inside a transient
+  # scope (12-nix-config-pipeline §5 "Flags and limits"): it owns each
+  # revision's build directory (hostd chowns it), talks to nix-daemon, and
+  # can read the base checkouts. /var/lib/repose/builds is 0711 so it can
+  # traverse to its own directories and nothing else.
+  users.groups.${cfg.buildUser} = { };
+  users.users.${cfg.buildUser} = {
+    isSystemUser = true;
+    group = cfg.buildUser;
+    home = "/var/lib/repose/${cfg.buildUser}";
+    createHome = true;
+    description = "repose tenant fragment builds";
+  };
+  nix.settings.allowed-users = [ cfg.buildUser ];
+
   systemd.tmpfiles.rules = [
     "d /var/lib/repose 0755 root root -"
     "d /var/lib/repose/guests 0700 root root -"
-    "d /var/lib/repose/builds 0700 root root -"
+    "d /var/lib/repose/builds 0711 root root -"
+    "d /var/lib/repose/base 0755 root root -"
     "d /var/log/repose 0750 root root -"
   ] ++ lib.optional (cfg.snapshots.blobUrl == "") "d ${cfg.snapshots.localDir} 0700 root root -";
 }

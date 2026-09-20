@@ -52,6 +52,8 @@ func options(fs *flag.FlagSet) *app.Options {
 	fs.StringVar(&o.BuildsDir, "builds-dir", "/var/lib/repose/builds", "fragment build directories")
 	fs.StringVar(&o.BaseDir, "base-dir", "/var/lib/repose/base", "platform checkouts by base_ref")
 	fs.StringVar(&o.BaseRepoURL, "base-repo-url", "", "git URL to clone a missing base checkout from")
+	fs.StringVar(&o.BaseSSHKey, "base-repo-ssh-key", "", "private key file for cloning --base-repo-url over SSH")
+	fs.StringVar(&o.BuildUser, "build-user", "nixbuild", "unprivileged user fragment evaluation and builds run as (empty: hostd's own)")
 	fs.StringVar(&o.GCRootsDir, "gcroots", "/nix/var/nix/gcroots/repose", "GC roots directory")
 	fs.StringVar(&o.APIAddr, "api-addr", "api.repose.herakraft.co:443", "api gRPC address")
 	fs.StringVar(&o.APIServerName, "api-server-name", "", "TLS server name when it differs from the address")

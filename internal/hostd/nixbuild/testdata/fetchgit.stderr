@@ -720,7 +720,7 @@ error:
 
        (12 duplicate frames omitted)
 
-       … while evaluating definitions from `/nix/store/82hmvc6hpgyd7qg7kak3z7m7xk0qdc15-source/fragment.nix':
+       … while evaluating definitions from `/nix/store/4v13g6azfdadxwm2dp73vm9i0p6gn76p-source/fragment.nix':
 
        … from call site
          at «github:NixOS/nixpkgs/b1b875982b17dabde9b4a37f3e229e74913e6db3?narHash=sha256-zVxLZiSnmaaPLwnhj7pwmqe3axBg/C6nG5JZsJMh2g4%3D»/lib/modules.nix:1255:82:
@@ -750,10 +750,10 @@ error:
              |                     ^
           867|           }) module.config
 
-       … while calling the 'fetchurl' builtin
-         at /nix/store/82hmvc6hpgyd7qg7kak3z7m7xk0qdc15-source/fragment.nix:1:39:
-            1| { pkgs, ... }: { home.file.x.source = builtins.fetchurl "https://example.com/x"; }
+       … while calling the 'fetchGit' builtin
+         at /nix/store/4v13g6azfdadxwm2dp73vm9i0p6gn76p-source/fragment.nix:1:39:
+            1| { pkgs, ... }: { home.file.x.source = builtins.fetchGit { url = "https://github.com/NixOS/patchelf"; rev = "0000000000000000000000000000000000000000"; }; }
              |                                       ^
             2|
 
-       error: access to URI 'https://example.com/x' is forbidden in restricted mode
+       error: in pure evaluation mode, 'fetchGit' doesn't fetch unlocked input 'git+https://github.com/NixOS/patchelf?exportIgnore=1&rev=0000000000000000000000000000000000000000'

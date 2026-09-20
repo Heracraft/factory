@@ -48,7 +48,7 @@ let
   defaultMem = if mem != null then mem else classDefaults.mem;
 
   # The platform's pkgs without user overlays, for the fragment's
-  # repose.overlays pre-pass (nix/guest/fragment.nix). Same instantiation
+  # repose.overlays pre-pass (nix/guest/contract.nix). Same instantiation
   # as the flake's `pkgs`.
   prePassPkgs = import nixpkgs {
     inherit system;
@@ -64,8 +64,8 @@ let
       home-manager.nixosModules.home-manager
       ./base
       # The fragment contract: repose.fragment applied to dev, repose.overlays
-      # onto pkgs, repose.system through the allowlist (nix/guest/fragment.nix).
-      ./fragment.nix
+      # onto pkgs, repose.system through the allowlist (nix/guest/contract.nix).
+      ./contract.nix
       {
         repose.class = class;
         repose.baseVersion = baseVersion;
