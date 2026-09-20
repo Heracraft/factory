@@ -29,6 +29,10 @@ a project-level shared variable, so the api apps reference the same one as
 resolves a reference that is a variable's whole value, so the password is
 not embedded in `DATABASE_URL`; pgx takes it from `PGPASSWORD`.
 
+Coolify's DNS validation must be off (Settings -> Advanced): it compares each
+domain with the server's tailnet address, not the public IP the proxy serves
+on (`docs/ops/coolify.md`, fact 10).
+
 ## The three applications
 
 Each is Coolify "Dockerfile" build pack from this repository with base

@@ -192,6 +192,13 @@ the live instance, not taken from the docs. Each one changed a file here.
    its own variable, `PGPASSWORD={{project.POSTGRES_PASSWORD}}`, and
    `DATABASE_URL` carries no password; pgx reads `PGPASSWORD` (libpq's
    convention) when the URL omits one, verified against pgx v5.
+10. **DNS validation compares a domain with the server's address as
+   entered, not with where the proxy listens.** The server is registered by
+   its tailnet IP (I-86), so Coolify refused `api.repose.herakraft.co`
+   because the record points at the public IP (2026-09-20). The check has
+   no notion of a management address distinct from a served one; turn it
+   off under Settings -> Advanced, "DNS validation". The records stay as
+   `infra/README.md` "DNS" lists them.
 
 ## The instance's .env is half the backup
 
