@@ -112,14 +112,14 @@ func TestTracingOnWithAnEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }() // closing the fixture's listener cannot fail usefully
 	go func() {
 		for {
 			c, err := ln.Accept()
 			if err != nil {
 				return
 			}
-			defer c.Close()
+			_ = c.Close() // the exporter's connection; nothing is read from it
 		}
 	}()
 
