@@ -12,8 +12,8 @@ machine.
 ```bash
 nix develop                                  # go, tofu, az, wg, promtool, grafana-cli
 az login
-repose-admin login                          # Logto, operator role
-repose-admin operator-cert                  # 8h Host-CA cert into ssh-agent
+export DATABASE_URL=...                      # repose-admin talks to Postgres directly (I-42); over the Coolify VM's WireGuard address
+repose-admin operator-cert                  # 8h Host-CA cert, add it next to ~/.ssh/id_ed25519
 sudo wg-quick up ops/wg/operator.conf        # 10.255.0.0/16 reachable
 ```
 
@@ -75,6 +75,9 @@ to Grafana provisioning, and the Loki labels are already in Fluent Bit.
 | Rotate the Key Vault wrapping key | `az keyvault key rotate` then `repose-admin secrets rewrap` |
 | Query audit log | `repose-admin audit --user <handle> --since 24h` |
 | Publish a base version | `repose-admin base publish --rev <git sha> --changelog "..." [--security]` |
+| Smoke-test a host | `repose-admin hosts smoke host-NN` (create, snapshot, stop, start, destroy a throwaway guest) |
+| Initialise the CAs (once) | `repose-admin ca init`; then `repose-admin ca sign-client --name gateway --out <dir>` for the edge |
+| Record the edge WireGuard hub | `repose-admin edge init --endpoint <ip>:51820 --pubkey <wg pub> [--out <dir>]` |
 | Re-run the hourly rollup | `repose-admin billing rollup --hour 2026-09-17T14` |
 | Database migration | `repose-admin db migrate` / `repose-admin db rollback --to NNNN` |
 
@@ -727,6 +730,112 @@ commands; every command but Exec re-executes safely.
 The second prints `hostd already running` and exits 1: bbolt holds a
 file lock on `state.db`. Nothing to do; `systemctl status hostd` shows
 the real one.
+
+## api: login service unavailable
+
+The CLI prints `login service unavailable, retry in a minute`; the api
+logs `request` lines with status 401 and the message `identity provider
+unavailable`. Logto's JWKS could not be fetched and the cached copy is
+older than 24 hours (fresh copies are served for up to an hour without a
+fetch).
+
+1. `curl -s https://auth.repose.herakraft.co/oidc/jwks` from the Coolify
+   VM. Logto down: its container in Coolify. A 200 here means the api
+   container cannot reach it (DNS inside the Coolify network).
+2. The api recovers on the next request once the fetch succeeds; nothing
+   to restart.
+
+## api: could not create your account
+
+A first sign-in failed with `internal: identity provider unavailable`
+and no user row exists. The Management API call
+(`GET <issuer>/api/users/<sub>` with the M2M client) failed.
+
+1. Check `LOGTO_M2M_CLIENT_ID/SECRET` on the api app and that the M2M app
+   in Logto holds the Management API `all` scope.
+2. The user retries; the api creates the row on the first successful
+   lookup. Nothing is half-created.
+
+## api: no capacity right now
+
+An op ended `capacity`; `repose_api_schedule_total{result="capacity"}`
+rose; the CLI printed `no capacity right now; you have not been charged`.
+
+1. `repose-admin hosts list`: no host is `ready` with free memory above
+   the reserve for the class and pool room for the volume. Draining,
+   unreachable and stale-heartbeat hosts do not count.
+2. Add a host (11 §5) or undrain one. The user runs `repose run` again;
+   the project is in `error` with `last_error = capacity` until then.
+
+## api: op stuck waiting for host
+
+`GET /ops/:id` stays `running` and the CLI shows `waiting for host`. The
+host's stream dropped mid-command.
+
+1. `repose-admin ops list --state running` and `hosts list`: the host's
+   heartbeat age. Under 90 s: hostd reconnects with backoff and the api
+   re-sends the command on `Hello` with the same command_id
+   (`command_resend` in the log); nothing to do.
+2. Unreachable for more than 10 minutes: the op fails
+   `host_unreachable`, the project goes to `error`. See
+   "HostUnreachable"; `repose-admin projects start` once the host is back.
+
+## api: build failed
+
+The revision is `failed` with the Nix error and `fragment_line`; the CLI
+exits 10. The guest is untouched and the previous revision stays applied.
+`repose-admin ops log <op>` has the full output (`build_logs`, secret
+values already redacted). A fragment that contains a current secret value
+is refused before the build with `invalid: fragment contains the value of
+secret NAME`.
+
+## api: secret service unavailable
+
+`PUT /secrets` returned `internal: key service unavailable`;
+`repose_api_keyvault_errors_total` rose. Guest starts retry for 30
+minutes (`op_retry` in the log) before failing with the same message.
+
+1. `az keyvault key show --vault-name <kv> --name repose-dek-kek` with the
+   api's identity; a 403 means the access policy lost the api's object id
+   (11 §Key Vault); a timeout means egress from the Coolify VM.
+2. Reads keep working from the 10-minute DEK cache; writes and cold starts
+   do not. Nothing to restart once Key Vault answers.
+
+## api: Postgres down
+
+`/healthz` returns 503 (`db unreachable` or `migrations pending`) and
+Coolify stops routing; host streams drop and hostd buffers samples for 60
+minutes. Fix the database (Coolify's Postgres resource, disk, or run
+`repose-admin db migrate` for the pending case); the api needs no restart.
+
+## api: rollup or expiry not running on one replica
+
+`rollup: not leader` (`rollup_skip`) means another replica holds the
+advisory lock; only one runs the hourly rollup, the outbox, snapshot
+expiry and the ops driver. Expected with two replicas. If no replica logs
+`rollup_done` for two hours, `RollupLag` fires: `repose-admin billing
+rollup` runs it by hand.
+
+## api: snapshot deleted under a restore
+
+Cannot happen by construction: the restore op marks
+`snapshots.restoring_op_id` inside the same row lock the expiry job takes
+with `for update skip locked`, and the job skips rows a restore holds. If
+a restore fails with `not_found: snapshot was deleted`, the snapshot had
+expired before the restore was enqueued; pick a newer one.
+
+## api: duplicate results or events
+
+Ignored by design: `ops.command_id` is unique and a result for a finished
+command logs `duplicate or unknown result ignored`; `events.host_event_id`
+is unique and hook events collapse on `(project, agent, kind, second)`.
+Nothing to do.
+
+## api: user reports "account suspended"
+
+`forbidden: account suspended` on every route but `GET /me` and the
+billing portal. `repose-admin users show <handle>` for the reason;
+`users unsuspend` reverses it.
 
 ## Suspend a user
 

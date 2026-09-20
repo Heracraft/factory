@@ -771,3 +771,85 @@ controller layouts, and wrong again if the LUN changes); a udev rule in the
 installer (nixos-anywhere's kexec image takes none). *Revisit when:* a host
 has more than one data disk.
 
+
+**I-42. The api's implementation shape: phased ops driven by one replica,
+/internal on the gRPC app, CA material in the secrets table, guest host
+certificates re-signed once the address is known.** (05, 2026-09-20)
+Recorded where the code had to choose beyond what the docs said, or where
+a doc disagreed with a contract:
+
+- *Ops.* Every long operation is an `ops` row with a list of phases fixed
+  at enqueue (`create` = build, create_guest; `destroy` = final snapshot,
+  destroy_guest; `restore` = destroy old guest, build if no closure,
+  restore, start; ...). Each phase is one hostd command whose
+  `command_id` is written to the row before it is sent and whose result
+  lands in `command_result`; the command is rebuilt from the database and
+  re-sent with the same id after an api restart or on the host's next
+  `Hello`, so nothing but the row has to survive. The driver runs on the
+  replica holding advisory lock `LockOps`; a second replica serves HTTP and
+  the stream but would need the internal forwarding hop 05 §5.1 describes
+  before it can drive ops for hosts connected to it. *Rejected:* a
+  goroutine per op (lost on restart); storing the serialised command
+  (secrets in plaintext in a fourth place).
+- *The gRPC app also serves `/internal`.* Coolify's proxy terminates TLS
+  for the HTTP app, so it cannot require the gateway's client
+  certificate. `/internal/*` is served by the `api-grpc` process on
+  `API_INTERNAL_LISTEN` (8444) over HTTPS with
+  `RequireAndVerifyClientCert` against the platform's X.509 host CA, the
+  same authority that signs host certificates at `Register`; `repose-admin
+  ca sign-client --name gateway` issues the client certificate. Gateway
+  session reports are persisted in `gateway_sessions` so the HTTP app can
+  show them.
+- *CA material lives in the secrets table.* The two SSH CAs and the X.509
+  host CA (certificate and key) are rows of the platform pseudo-project
+  (`00000000-0000-7000-8000-000000000000`, owned by the pseudo-user
+  `repose-platform`), envelope-encrypted like any secret, created by
+  `repose-admin ca init` and loaded at start. The `HOST_CA_CERT` and
+  `HOST_CA_KEY` variables 05 §5.14 listed are gone; `GRPC_SERVER_CERT/KEY`
+  remain for the public listener. *Rejected:* PEM files in Coolify
+  secrets (a fourth home for a signing key, and no rotation path).
+- *Guest sshd keys are reserved secrets.* The key I-3 says the api
+  generates is stored under the reserved names of I-10 in the project's
+  secrets rows, so every `StartGuest` and `Restore` delivers the same key.
+  At `CreateGuest` the host certificate can only carry
+  `<slug>.<handle>`: the guest's address is assigned by hostd and comes
+  back in the result. The api then re-signs the certificate with both
+  principals for the next start. The gateway therefore verifies a guest's
+  host key with `<slug>.<handle>` as the expected principal, which it
+  knows from the login name, not with the address. Interface:
+  `ssh-gateway.md`.
+- *Samples are inserted, not copied.* `Samples` messages are written with
+  `insert ... on conflict do nothing` in one batch per message rather than
+  the single `COPY` of 05 §5.4, because hostd re-sends buffered samples
+  after a reconnect and a duplicate primary key would fail the whole
+  `COPY`.
+- *Schema additions.* `hosts` gained `name`, the heartbeat columns and the
+  join-token hash; `ops` gained phases, `params`, `command_result`,
+  `result`, `revision_id`, `snapshot_id`, `audit_id`, `reboot_required`;
+  `config_revisions` gained `kernel_changed` and `reboot_required`;
+  `events` gained `tmux_window` (`window` is reserved in SQL),
+  `ts_second`, `source`, `skew_seconds`, `host_event_id`, and its dedupe
+  index applies only to hook kinds so state changes may repeat within a
+  second; `snapshots` gained `restoring_op_id` (the guard the expiry job
+  respects); `usage_hours` gained the three cost parts and the storage
+  remainder the cap rule needs (shared with 09); new tables
+  `events_outbox` (13's shape), `host_sessions`, `gateway_sessions`,
+  `settings`. `db-schema.md` is the reference.
+- *Consumed packages that do not exist yet.* `internal/billing` carries the
+  price table and a `Disabled` pusher and portal (`503 billing_disabled`,
+  I-16); the notification senders live in `internal/api/notify` with the
+  documented headers; `internal/nixmenu` is the api's view of the catalog
+  with a package-only menu (12 owns the contents and the service
+  snippets). When 09, 12 and 13 land, the api swaps the implementation
+  behind the same interfaces.
+- *Small contract points.* `POST /projects` validates the name as 05 §5.3
+  says (`[A-Za-z0-9._-]{1,64}`; a space is refused rather than slugged as
+  `features/projects.md` suggests), and refuses with `payment_required
+  {reason: card_required}` when the user has no card rather than creating
+  a row that can never boot. `GET /logs?kind=console` returns the console
+  excerpts hostd attaches to failed ops; the full console is in Loki. The
+  SSE route's `data:` is `{seq, line}` JSON and `POST /internal/sessions`
+  takes `{project_id, event: opened|closed, cert_serial}` (`api.md`).
+  `repose-admin` talks to Postgres directly and has no `login`; the
+  runbook's `repose-admin login` line is withdrawn. Rate-limit buckets are
+  per replica.
