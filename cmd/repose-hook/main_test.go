@@ -134,7 +134,7 @@ func TestHookAlwaysExitsZero(t *testing.T) {
 		args  []string
 	}{
 		{"no socket", `{"hook_event_name":"Stop"}`, []string{"REPOSE_HOOK_SOCKET=/nonexistent/hooks.sock"}, []string{"--agent", "claude"}},
-		{"no agent", `{"hook_event_name":"Stop"}`, []string{"REPOSE_AGENT="}, nil},
+		{"no agent", `{"hook_event_name":"Stop"}`, []string{"REPOSE_AGENT=", "REPOSE_HOOK_AGENT="}, nil},
 		{"unknown agent", `{}`, nil, []string{"--agent", "aider"}},
 		{"malformed payload", `{not json`, nil, []string{"--agent", "claude"}},
 		{"empty payload", "", nil, []string{"--agent", "claude"}},
@@ -149,11 +149,33 @@ func TestHookAlwaysExitsZero(t *testing.T) {
 	}
 }
 
+// TestHookReadsTheAgentFromTheEnvironment covers both names: the wrappers in
+// nix/overlay/agents export REPOSE_HOOK_AGENT, which is what
+// docs/interfaces/guest-conventions.md documents, and REPOSE_AGENT is
+// accepted for one release (DECISIONS I-48). Every hook in every guest is
+// silent if this is wrong, and silence is what it looks like when it works.
 func TestHookReadsTheAgentFromTheEnvironment(t *testing.T) {
+	for _, env := range []string{"REPOSE_HOOK_AGENT=claude", "REPOSE_AGENT=claude"} {
+		sink := newHookSink(t)
+		bin := buildHook(t)
+		code, out := runHook(t, bin, `{"hook_event_name":"Stop"}`,
+			[]string{"REPOSE_HOOK_SOCKET=" + sink.path, env})
+		if code != 0 {
+			t.Fatalf("%s: exit = %d; output: %s", env, code, out)
+		}
+		if got := sink.all(); len(got) != 1 {
+			t.Fatalf("%s: posted = %v", env, got)
+		}
+	}
+}
+
+// TestHookReadsTheSocketFromEitherName: the shell implementation the guest
+// shipped before used REPOSE_HOOKS_SOCKET.
+func TestHookReadsTheSocketFromEitherName(t *testing.T) {
 	sink := newHookSink(t)
 	bin := buildHook(t)
 	code, out := runHook(t, bin, `{"hook_event_name":"Stop"}`,
-		[]string{"REPOSE_HOOK_SOCKET=" + sink.path, "REPOSE_AGENT=claude"})
+		[]string{"REPOSE_HOOKS_SOCKET=" + sink.path, "REPOSE_HOOK_AGENT=claude"})
 	if code != 0 {
 		t.Fatalf("exit = %d; output: %s", code, out)
 	}

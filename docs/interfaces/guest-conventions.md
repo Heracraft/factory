@@ -71,9 +71,13 @@ Each agent binary is wrapped (`nix/overlay/agents/wrap.nix`) to:
    `REPOSE_HOOK_AGENT=<binary>` so `repose-hook` knows who called it.
 3. Exec the real binary with `"$@"`.
 
-`repose-hook` reads the hook JSON from stdin (or from `argv[1]`, which is
-how Codex's `notify` passes it), maps it to `{agent, kind, summary,
-window?}`, POSTs it to the socket, and exits 0 always so a hook failure
+`repose-hook` takes the agent from `REPOSE_HOOK_AGENT` or `--agent`
+(`REPOSE_AGENT` is accepted for one release, DECISIONS I-48) and the socket
+from `REPOSE_HOOK_SOCKET`, `REPOSE_HOOKS_SOCKET` or `--socket`, defaulting to
+`/run/repose/hooks.sock`. It reads the hook JSON from stdin (or from
+`argv[1]`, which is how Codex's `notify` passes it), maps it to `{agent, kind,
+summary, window?}`, POSTs it to the socket, and exits 0 always so a hook
+failure
 never blocks an agent. Mapping:
 
 | Agent | Payload | kind | summary |

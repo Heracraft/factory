@@ -43,7 +43,7 @@ func run() string {
 	fs := flag.NewFlagSet("repose-hook", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	var (
-		agent   = fs.String("agent", os.Getenv("REPOSE_AGENT"), "which agent is reporting")
+		agent   = fs.String("agent", agentDefault(), "which agent is reporting")
 		socket  = fs.String("socket", socketDefault(), "guestd hook socket")
 		window  = fs.String("window", os.Getenv("REPOSE_AGENT_WINDOW"), "tmux window name, if the wrapper knows it")
 		showVer = fs.Bool("version", false, "print the version and exit")
@@ -56,7 +56,7 @@ func run() string {
 		return ""
 	}
 	if *agent == "" {
-		return "no agent given; pass --agent or set REPOSE_AGENT"
+		return "no agent given; pass --agent or set REPOSE_HOOK_AGENT"
 	}
 
 	payload, err := readPayload(fs.Args())
@@ -84,8 +84,25 @@ func run() string {
 	return ""
 }
 
+// agentDefault reads the variable the agent wrappers export.
+// docs/interfaces/guest-conventions.md names it REPOSE_HOOK_AGENT, and
+// nix/overlay/agents/wrap.nix exports that; REPOSE_AGENT is the name this
+// binary shipped with and stays accepted for one release (DECISIONS I-48).
+func agentDefault() string {
+	if a := os.Getenv("REPOSE_HOOK_AGENT"); a != "" {
+		return a
+	}
+	return os.Getenv("REPOSE_AGENT")
+}
+
+// socketDefault reads REPOSE_HOOK_SOCKET, or REPOSE_HOOKS_SOCKET, which is
+// the name the shell implementation in nix/overlay/agents used; both point at
+// the same socket and the default path is the same either way.
 func socketDefault() string {
 	if s := os.Getenv("REPOSE_HOOK_SOCKET"); s != "" {
+		return s
+	}
+	if s := os.Getenv("REPOSE_HOOKS_SOCKET"); s != "" {
 		return s
 	}
 	return DefaultSocket

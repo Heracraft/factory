@@ -866,3 +866,23 @@ the question the panel asks. `nixbuild.Result` now carries both durations,
 the manager observes them, and `build_done` logs `eval_ms` and `build_ms`.
 *Rejected:* parsing the phase out of the build log (the log is the tenant's
 Nix output, not a metric source).
+
+**I-48. `repose-hook` reads `REPOSE_HOOK_AGENT`, the name the wrappers
+export.** (10, fixing 02 and 04) The Go binary of workstream 04 read
+`REPOSE_AGENT`; the wrappers of workstream 02
+(`nix/overlay/agents/wrap.nix`) export `REPOSE_HOOK_AGENT`, which is also
+what `docs/interfaces/guest-conventions.md` documents; and `nix/flake.nix`
+ships the Go binary in every guest. So every agent hook in every guest read
+an empty agent name and exited without posting: no `agent_event`, no
+notification, and nothing in any log to say so. The guest-base VM test found
+it by waiting 15 minutes for a hook that could never arrive.
+
+The binary now prefers `REPOSE_HOOK_AGENT` and keeps `REPOSE_AGENT` for one
+release, and accepts the socket under both `REPOSE_HOOK_SOCKET` (its own
+name) and `REPOSE_HOOKS_SOCKET` (the shell implementation's). *Rejected:*
+changing the wrappers instead (the interface doc names the variable, and a
+wrapper is what a user's own agent config may already set); keeping two names
+permanently (a second name for the same thing is how a grep misses half the
+uses). *Why this workstream:* `agent_event` is one of the events
+docs/workstreams/10-observability.md §5 requires guestd to emit, and it could
+not fire. Interface: `guest-conventions.md`.
