@@ -39,8 +39,9 @@ The full click path, with the reasons, is `coolify.md`. The short form:
 4. Add Postgres as a Service (Docker Compose Empty, paste
    `ops/coolify/postgres/docker-compose.yml`, I-87) with its Backups tab
    set to R2 nightly, then `api`, `api-grpc` and `web` as Dockerfile
-   applications, each with its `ops/coolify/*.env.example` pasted in and
-   "Connect to predefined network" on. Domains, port mappings and the
+   applications, each with its `ops/coolify/*.env.example` pasted in
+   (the Postgres service has "Connect to predefined network" on; the apps
+   are on that network already). Domains, port mappings and the
    health-check settings: `ops/coolify/README.md`. Secrets go in each
    resource's Environment tab, nowhere else. `api`'s pre-deploy command is
    `repose-admin db migrate`; `api-grpc` deploys after it.

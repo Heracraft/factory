@@ -17,9 +17,13 @@ its own and the three applications get rolling deploys (DECISIONS I-87):
 The compose file is Postgres alone. Add it as a Coolify **Service** (Add
 resource -> Docker Compose Empty, paste the file): Coolify recognises the
 postgres image inside a Service and gives it a Backups tab, where the
-nightly dump to R2 is scheduled (`docs/ops/coolify.md`). The container is
-named `repose-postgres` and joins the shared `coolify` network so the api
-applications reach it by that name. Its one value is `POSTGRES_PASSWORD`,
+nightly dump to R2 is scheduled (`docs/ops/coolify.md`). Turn **Connect to
+predefined network** on for it (Configuration -> Advanced): the service is
+named `repose-postgres`, and that name is the DNS alias Compose gives it on
+the shared `coolify` network, where the Dockerfile applications already
+are. Coolify rewrites `container_name` to `<service>-<uuid>` and strips
+`aliases`, so the service name is the only name that survives; do not
+rename it. Its one value is `POSTGRES_PASSWORD`,
 a project-level shared variable, so the api apps reference the same one as
 `{{project.POSTGRES_PASSWORD}}`.
 
@@ -27,9 +31,11 @@ a project-level shared variable, so the api apps reference the same one as
 
 Each is Coolify "Dockerfile" build pack from this repository with base
 directory `/` and the Dockerfile path above. Paste the matching env file
-into the app's Environment (developer view) and fill the blanks. On every
-app: **Connect to predefined network** on (that is how they reach
-`repose-postgres`).
+into the app's Environment (developer view) and fill the blanks.
+Applications sit on the server's `coolify` network by default, which is
+where `repose-postgres` answers once the Postgres service has "Connect to
+predefined network" on; if a `DATABASE_URL` host lookup fails, that toggle
+is the first thing to check.
 
 - `api`: domain `https://api.repose.herakraft.co:8080`; port mapping
   `9103:9103` (metrics, over WireGuard only); pre-deploy command

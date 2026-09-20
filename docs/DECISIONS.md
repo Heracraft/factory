@@ -1905,8 +1905,12 @@ deployed on its own. A first draft put everything in one compose file; the
 owner rejected it within the hour: a compose deploy recreates services
 instead of rolling them, and one file means one deploy for all. So: the
 database, which has no rolling deploy to lose, is a compose file in the
-repository added as a Coolify Service (Postgres alone, container
-`repose-postgres` on Coolify's shared network); its backup is Coolify's
+repository added as a Coolify Service (Postgres alone, the *service* named
+`repose-postgres` and "Connect to predefined network" on: Coolify's parser
+overwrites `container_name` with `<service>-<uuid>` and drops network
+`aliases`, but Compose aliases every service by its name on each network
+it joins, so the service name is the hostname that survives on the shared
+`coolify` network where the applications already are); its backup is Coolify's
 own scheduled dump to R2 on that service, which the owner already runs
 elsewhere and which `repose-backup-check` verifies, rather than two
 sidecar services the first draft wrote and the owner struck the same day

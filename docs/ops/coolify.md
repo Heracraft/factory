@@ -60,9 +60,11 @@ of that is missing.
    Compose Empty, paste `ops/coolify/postgres/docker-compose.yml`, server
    the one just added (`DECISIONS.md` I-87). A Service rather than a git
    application because Coolify gives the postgres image inside a Service
-   its Backups tab. `POSTGRES_PASSWORD` is a project-level shared variable
-   so the api applications reference the same one. Then the backup
-   destination, below.
+   its Backups tab. Turn "Connect to predefined network" on for it, so the
+   applications reach it as `repose-postgres` (the service name; Coolify
+   rewrites container names and strips aliases, I-87). `POSTGRES_PASSWORD`
+   is a project-level shared variable so the api applications reference
+   the same one. Then the backup destination, below.
 5. **Logto** is the owner's existing instance, `https://accounts.herakraft.co`
    (`DECISIONS.md` I-84); nothing is deployed for it. In that Logto: the API
    resource `https://api.repose.herakraft.co`, two applications,
@@ -74,8 +76,8 @@ of that is missing.
    endpoint without `/oidc` and append it.
 6. **api, api-grpc, web**: three Coolify "Dockerfile" applications from the
    repository (`cmd/api/Dockerfile` twice, `apps/web/Dockerfile`), base
-   directory `/`, each with its env file from `ops/coolify/` pasted in and
-   "Connect to predefined network" on. Domains
+   directory `/`, each with its env file from `ops/coolify/` pasted in.
+   Domains
    `https://api.repose.herakraft.co:8080` and
    `https://repose.herakraft.co:3000`; port mappings and health-check
    settings are in `ops/coolify/README.md`. Secrets — Logto M2M, the Entra
