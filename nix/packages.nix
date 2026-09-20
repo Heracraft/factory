@@ -6,8 +6,8 @@
 # network and no remote plugin is involved.
 #
 # Builds every Go binary in the repo: guestd and repose-hook (04), hostd and
-# hostdev (03). Used by the flake's packages, nix/guest/base (02) and
-# nix/hosts (01).
+# hostdev (03), api and repose-admin (05). Used by the flake's packages,
+# nix/guest/base (02) and nix/hosts (01).
 { pkgs, lib, version ? "dev" }:
 
 let
@@ -87,4 +87,6 @@ in
   repose-hook = mkBin "repose-hook";
   hostd = mkBin "hostd";
   hostdev = mkBin "hostdev";
+  api = mkBin "api";
+  repose-admin = mkBin "repose-admin";
 }
