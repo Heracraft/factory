@@ -12,6 +12,12 @@ import "github.com/prometheus/client_golang/prometheus"
 //
 // hostd's family is in internal/hostd/metrics, registered through the same
 // checked registry.
+//
+// Two series here are not in §5's list because §5's alert table and failure
+// modes ask for them and nothing else could carry them:
+// repose_api_egress_alert_projects (the EgressHigh input, which cannot be a
+// per-project series) and repose_api_partition_drop_fail_total (the §6
+// failure mode that says the api "logs partition_drop_fail and alerts").
 
 // Buckets shared by the duration histograms. An api request that takes more
 // than 10 s is a bug; a gateway route lookup more than 1 s is one too, so
@@ -45,6 +51,10 @@ type APIMetrics struct {
 	// by the api from meter_samples. It is a count, not a label per project,
 	// for the reason in allowedLabels.
 	EgressAlertProjects prometheus.Gauge
+	// PartitionDropFailTotal is the §6 failure mode "proc_samples partition
+	// drop fails": the api logs partition_drop_fail and alerts, and an alert
+	// needs a series. Disk grows and nothing else breaks, so it is a warning.
+	PartitionDropFailTotal prometheus.Counter
 }
 
 // NewAPIMetrics registers the api family.
@@ -63,6 +73,8 @@ func NewAPIMetrics(m *Metrics) *APIMetrics {
 		StripePushTotal:     f.counterVec("stripe_usage_push_total", "Stripe usage record pushes by result.", "result"),
 		SnapshotAge:         f.gauge("snapshot_age_seconds", "Age of the oldest last-snapshot among running projects."),
 		EgressAlertProjects: f.gauge("egress_alert_projects", "Projects over 1 TB of egress in the last 24 hours."),
+		PartitionDropFailTotal: f.counter("partition_drop_fail_total",
+			"Hourly partition maintenance runs that failed (docs/workstreams/10-observability.md §6)."),
 	}
 	// The StripePushFail alert is an increase() over the error series and the
 	// Billing dashboard has a panel for it, so both series exist at zero

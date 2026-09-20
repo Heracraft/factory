@@ -1,7 +1,8 @@
 # Prometheus alert rules for repose. One rule per alert in
-# docs/CHECKLIST.md and docs/workstreams/10-observability.md §5, plus the two
-# §6 failure modes that are only visible from outside (a host that stopped
-# shipping logs, a host Prometheus cannot scrape).
+# docs/CHECKLIST.md and docs/workstreams/10-observability.md §5, plus the
+# three §6 failure modes that are only visible from outside: a host that
+# stopped shipping logs, a host Prometheus cannot scrape, and partition
+# maintenance that is not running.
 #
 # Every alert name is a heading in docs/ops/RUNBOOK.md, and `promtool test
 # rules ops/alerts_test.yaml` has a case per rule. Alertmanager routes them to
@@ -179,6 +180,19 @@ groups:
           summary: "usage rollup is {{ $value | humanizeDuration }} behind"
           description: "meter_samples are arriving but usage_hours is not being written. Invoices are built from usage_hours."
           runbook: "docs/ops/RUNBOOK.md#rolluplag"
+
+      - alert: PartitionDropFail
+        # docs/workstreams/10-observability.md §6: the sample tables' monthly
+        # partitions are not being dropped, so Postgres grows and nothing
+        # else breaks. It is only urgent on the way to a full disk.
+        expr: increase(repose_api_partition_drop_fail_total[6h]) > 0
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: "partition maintenance is failing"
+          description: "{{ $value }} failed runs in six hours. meter_samples and proc_samples keep their old partitions; check the disk before it matters."
+          runbook: "docs/ops/RUNBOOK.md#partitiondropfail"
 
       - alert: StripePushFail
         # A failed usage push is money that will not appear on an invoice.

@@ -333,6 +333,35 @@ tests:
               description: "meter_samples are arriving but usage_hours is not being written. Invoices are built from usage_hours."
               runbook: "docs/ops/RUNBOOK.md#rolluplag"
 
+  # --- PartitionDropFail --------------------------------------------------
+  - interval: 1m
+    name: PartitionDropFail fires on a failed maintenance run
+    input_series:
+      - series: 'repose_api_partition_drop_fail_total{job="api",instance="10.255.0.9:9103"}'
+        values: "0 0 1 1 1 1 1 1 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: PartitionDropFail
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: api
+              instance: 10.255.0.9:9103
+            exp_annotations:
+              summary: "partition maintenance is failing"
+              description: "1 failed runs in six hours. meter_samples and proc_samples keep their old partitions; check the disk before it matters."
+              runbook: "docs/ops/RUNBOOK.md#partitiondropfail"
+
+  - interval: 1m
+    name: PartitionDropFail stays quiet while maintenance succeeds
+    input_series:
+      - series: 'repose_api_partition_drop_fail_total{job="api",instance="10.255.0.9:9103"}'
+        values: "0+0x15"
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: PartitionDropFail
+        exp_alerts: []
+
   # --- StripePushFail -----------------------------------------------------
   - interval: 1m
     name: StripePushFail fires on one failed push in an hour

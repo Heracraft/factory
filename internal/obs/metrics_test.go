@@ -64,20 +64,22 @@ func TestAPIFamily(t *testing.T) {
 	a.StripePushTotal.WithLabelValues("ok").Inc()
 	a.SnapshotAge.Set(0)
 	a.EgressAlertProjects.Set(0)
+	a.PartitionDropFailTotal.Add(0)
 
 	wantFamilies(t, gathered(t, m), map[string][]string{
-		"repose_api_requests_total":           {"method", "route", "status"},
-		"repose_api_request_duration_seconds": {"route"},
-		"repose_api_hosts":                    {"state"},
-		"repose_api_projects":                 {"class", "state"},
-		"repose_api_schedule_total":           {"result"},
-		"repose_api_certs_issued_total":       nil,
-		"repose_api_certs_revoked_total":      nil,
-		"repose_api_rollup_lag_seconds":       nil,
-		"repose_api_notify_total":             {"channel", "result"},
-		"repose_api_stripe_usage_push_total":  {"result"},
-		"repose_api_snapshot_age_seconds":     nil,
-		"repose_api_egress_alert_projects":    nil,
+		"repose_api_requests_total":            {"method", "route", "status"},
+		"repose_api_request_duration_seconds":  {"route"},
+		"repose_api_hosts":                     {"state"},
+		"repose_api_projects":                  {"class", "state"},
+		"repose_api_schedule_total":            {"result"},
+		"repose_api_certs_issued_total":        nil,
+		"repose_api_certs_revoked_total":       nil,
+		"repose_api_rollup_lag_seconds":        nil,
+		"repose_api_notify_total":              {"channel", "result"},
+		"repose_api_stripe_usage_push_total":   {"result"},
+		"repose_api_snapshot_age_seconds":      nil,
+		"repose_api_egress_alert_projects":     nil,
+		"repose_api_partition_drop_fail_total": nil,
 	})
 }
 

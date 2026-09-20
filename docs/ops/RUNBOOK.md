@@ -322,6 +322,27 @@ The hourly usage rollup is more than 2 hours behind.
    hostd restart) is skipped and logged with the project id.
 2. `repose-admin billing rollup --hour <hour>` to re-run one hour.
 
+## PartitionDropFail
+
+The hourly `repose_partitions_maintain()` is failing: `meter_samples` and
+`proc_samples` keep partitions past their 90 and 30 day retention, so
+Postgres grows. Nothing else breaks and no data is lost
+(docs/workstreams/10-observability.md §6).
+
+1. The api's log says why: `{component="api"} | json | event="partition_drop_fail"`.
+2. By hand, as the api's role: `select * from repose_partitions_maintain();`
+   It prints one row per create and drop. A permission error means the role
+   cannot `drop table`; a lock timeout means something is reading a partition
+   it wants to drop, and the next hour will get it.
+3. Space now, if that is the pressure:
+   `select relname, pg_size_pretty(pg_total_relation_size(oid)) from pg_class
+   where relname like 'proc_samples_%' order by relname;` then
+   `drop table proc_samples_YYYYMM` for a month wholly past retention.
+4. If the *create* half failed, inserts for the new month will fail at 00:00
+   on the first: `select repose_partition_create('meter_samples',
+   date_trunc('month', now())::date);` is the fix, and hostd's sample buffer
+   holds what did not land (workstream 03).
+
 ## StripePushFail
 
 Usage records failed to push.
