@@ -24,6 +24,7 @@ here exists in that module under exactly this name.
 | `/run/repose/secrets.env` | `export NAME='...'` lines, 0400 dev, sourced by login shells |
 | `/run/repose/hooks.sock` | hook ingest, HTTP over unix, 0660 root:dev, created by guestd |
 | `/run/repose/guestd.sock` | dev-only stand-in for vsock (absent in real guests) |
+| `/run/repose/paths-registered` | written by guestd after the first `RegisterPaths`; `repose-paths.service` waits for it (up to 180 s) and `home-manager-dev.service` runs after that (DECISIONS I-67) |
 | `/run/repose/desktop/vnc-password` | the noVNC/VNC password for the current desktop start, 0600 dev (DECISIONS I-33) |
 | `/run/repose/desktop/last-client` | mtime of the last observed desktop client; the idle stop reads it |
 | `/nix/.ro-store` | read-only virtio-fs mount of the host store (tag `ro-store`) |

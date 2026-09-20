@@ -202,6 +202,8 @@ func (f *Fake) answer(req *guestdv1.Request) *guestdv1.Response {
 		return &guestdv1.Response{Ok: true}
 	case *guestdv1.Request_Switch:
 		return &guestdv1.Response{Ok: true, Result: &guestdv1.Response_Switch{Switch: f.SwitchResult}}
+	case *guestdv1.Request_RegisterPaths:
+		return &guestdv1.Response{Ok: true}
 	case *guestdv1.Request_GrowFs:
 		return &guestdv1.Response{Ok: true, Result: &guestdv1.Response_GrowFs{
 			GrowFs: &guestdv1.GrowFsResult{NewBytes: f.GrowBytes},
@@ -228,6 +230,8 @@ func Kind(req *guestdv1.Request) string {
 		return "thaw"
 	case *guestdv1.Request_Switch:
 		return "switch"
+	case *guestdv1.Request_RegisterPaths:
+		return "register_paths"
 	case *guestdv1.Request_GrowFs:
 		return "grow_fs"
 	case *guestdv1.Request_WriteSecrets:

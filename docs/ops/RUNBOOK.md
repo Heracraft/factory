@@ -443,6 +443,35 @@ not exist. Operators reach a guest by jumping through the edge and the host:
 Remove the rule when done (`nft -a list chain inet repose input`, then
 `nft delete rule inet repose input handle <n>`).
 
+## Host never configured its bridge (registration ran, br-guests has no address)
+
+`hostd status` says registered and `stream_connected`, but `ip addr show
+br-guests` has no `10.64.x.1` address, `/run/repose/host.env` is missing,
+and node_exporter or Fluent Bit are inactive. `repose-host-net` renders
+those from `host.json` and is restarted by `repose-register.service`'s
+ExecStartPost; when the unit failed for any reason other than the token
+(seen 2026-09-20: it exited 2 on an unknown flag, DECISIONS I-40) hostd
+registered by itself and nothing restarted the renderer.
+
+1. `journalctl -u repose-register -u repose-host-net` for the cause.
+2. `systemctl restart repose-host-net.service`; then `ip -br addr show
+   br-guests` shows the `.1/22` address and `cat /run/repose/host.env` has
+   `HOST_ID` and `GUEST_CIDR`.
+3. hostd restarts `repose-host-net` itself after a self-registration since
+   I-40, so on a current host this entry means the renderer itself failed.
+
+## Store writes fail with `Read-only file system` on `/nix/store/.links`
+
+`nix copy` to the host, hostd's `Build`, or `nix-store --optimise` fail with
+`creating hard link ... /nix/store/.links/...: Read-only file system`, while
+`/nix/store` itself is the usual read-only bind. `findmnt /nix/store/.links`
+shows the `repose-links-mask` tmpfs: the mask `repose-store-export.service`
+puts over `/run/repose/store-export/.links` propagated back to the store
+because the bind shared `/`'s peer group (DECISIONS I-61, fixed by making
+the export mount private). On a host built before the fix:
+`umount /nix/store/.links`, and confirm
+`ls -A /run/repose/store-export/.links` is still empty.
+
 ## HostWgDown
 
 The edge cannot reach a host's guests: `wg show` on the edge shows no
@@ -797,6 +826,12 @@ and its tap, tc, nft membership and units are gone; the volume stays.
 3. A boot that reaches login but never Ready: guestd is not running in the
    guest; the base image is at fault (workstream 02).
 4. Fix, then `repose-admin projects start <id>` (or `hostdev start`).
+
+Since I-62 a virtiofsd that exits before creating its socket fails the
+create at step 8 instead; on an older hostd, `systemctl status
+virtiofsd@<guest id>` and `journalctl -u guest@<guest id>` (Cloud
+Hypervisor "Failed connecting the backend ... virtiofsd.sock") are the
+first things to read when this message appears at once after a create.
 
 ## hostd: virtiofsd exited under a running guest
 

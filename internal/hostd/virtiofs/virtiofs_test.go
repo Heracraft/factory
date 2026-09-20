@@ -18,7 +18,7 @@ func TestStartRendersUnprivilegedNamespaceSandbox(t *testing.T) {
 	if u == nil {
 		t.Fatal("unit not started")
 	}
-	wantArgv := "virtiofsd --socket-path /var/lib/repose/guests/g1/virtiofsd/virtiofsd.sock --shared-dir /run/repose/store-export --sandbox namespace --cache auto --xattr --socket-group hostd"
+	wantArgv := "virtiofsd --socket-path /var/lib/repose/guests/g1/virtiofsd/virtiofsd.sock --shared-dir /run/repose/store-export --sandbox namespace --cache auto --xattr --no-announce-submounts --socket-group hostd"
 	if got := strings.Join(u.Argv, " "); got != wantArgv {
 		t.Fatalf("argv %q", got)
 	}

@@ -130,7 +130,11 @@ func (m *Manager) apply(ctx context.Context, c *hostdv1.ApplyConfig) (*hostdv1.A
 	if serr != nil {
 		return nil, serr
 	}
-	sw, err := sess.Switch(ctx, c.SystemClosure, false)
+	reg, derr := m.d.Nix.DumpDB(ctx, c.SystemClosure)
+	if derr != nil {
+		return nil, errf(CodeInternal, "nix-store --dump-db: %v", derr)
+	}
+	sw, err := sess.Switch(ctx, c.SystemClosure, false, reg)
 	if err != nil {
 		if re, ok := vsockclient.IsRemote(err); ok {
 			out := ""

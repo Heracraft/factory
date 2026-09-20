@@ -26,6 +26,11 @@ let
       hostName = "host-test";
       provider = "none";
       uplinkInterface = "eth1";
+      # These tests exercise the host's units, not the daemon: the stub
+      # answers `register` from a fixture and `snapshot-all` by logging,
+      # which the real hostd (what hostModules installs) cannot do without
+      # an api.
+      hostdPackage = lib.mkForce (pkgs.callPackage ../hostd-stub.nix { });
     };
     disko.enableConfig = false;
     # The test driver sets a root password file; the host's locked password
@@ -328,6 +333,10 @@ in
           assert host.succeed("ls /run/repose/store-export | wc -l").strip() != "0"
           host.fail("touch /run/repose/store-export/x")
           host.fail("touch /run/repose/store-export/.links/x")
+          # The mask must not propagate onto the real store (DECISIONS I-61):
+          # nix itself needs to write /nix/store/.links.
+          host.fail("mountpoint -q /nix/store/.links")
+          host.succeed("nix-store --optimise >/dev/null 2>&1 || true; mount -o remount,bind,rw /nix/store; touch /nix/store/.links/probe; rm /nix/store/.links/probe; mount -o remount,bind,ro /nix/store")
 
       with subtest("a transient guest unit survives hostd restart and kill"):
           host.succeed("systemd-run --unit guest@test --slice guests.slice sleep infinity")

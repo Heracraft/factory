@@ -110,12 +110,18 @@ type Config struct {
 	MaxBuilds        int
 	MaxBuildQueue    int
 	ReadyTimeout     time.Duration
-	StopTimeoutS     uint32
-	EgressMbit       int
-	StoreTag         string
-	StoreExport      string
-	VirtiofsUser     string
-	VirtiofsBinary   string
+	// VirtiofsSocketWait bounds how long step 8 waits for virtiofsd to create
+	// its socket before Cloud Hypervisor is started; zero skips the wait
+	// (unit tests with a fake systemd). A virtiofsd that exits first fails
+	// the create at step 8 with its unit named, instead of step 10 a minute
+	// later (DECISIONS I-62).
+	VirtiofsSocketWait time.Duration
+	StopTimeoutS       uint32
+	EgressMbit         int
+	StoreTag           string
+	StoreExport        string
+	VirtiofsUser       string
+	VirtiofsBinary     string
 	// GuestUser is the unprivileged user guest@<id> (Cloud Hypervisor) runs
 	// as (I-51). It owns the taps and is in group kvm; the guest volumes
 	// are group-owned by it through the host's udev rule.

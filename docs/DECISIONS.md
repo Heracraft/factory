@@ -1001,6 +1001,13 @@ contract, found by reading them side by side:
   the command list from `host-conventions.md` "Network", verbatim.
   Interface text unchanged; the code follows the doc.
 
+
+
+
+
+
+
+
 **I-49. The tmux-idle heuristic never reads pane content, and its metrics
 carry the `repose_api_*` prefix, not `repose_notify_*`.** (13, review of 04
 and 05) Two places where code merged ahead of this workstream disagreed
@@ -1339,3 +1346,126 @@ the metric and log naming, and a merge that keeps both of everything is how
 `repose_api_*` ends up meaning two things. *Rejected:* keeping 05's obs and
 deleting 10's (it has no component enum, no event registry, no source lint and
 no metrics enforcement); keeping both tracing setups behind a flag.
+
+**I-61. The store export bind is made private before `.links` is masked.**
+(m1 integration, 2026-09-20) On host-01 every store write failed with
+`Read-only file system` on `/nix/store/.links`: the tmpfs mask
+`repose-store-export.service` mounts over `/run/repose/store-export/.links`
+had propagated onto `/nix/store/.links`, because a bind mount joins its
+source's peer group and NixOS mounts `/` shared. `nix copy` into the host,
+`nix-store --optimise` and hostd's `Build` all write there. The unit now
+runs `mount --make-private` on the export before the remount and the mask,
+and the host-services VM test asserts `/nix/store/.links` is not a mount
+point. *Rejected:* dropping the mask (the enumeration leak 01 §5 closes);
+masking with a bind of an empty directory (propagates the same way).
+
+**I-62. virtiofsd's socket lives in a subdirectory it owns, and hostd fails
+step 8 when virtiofsd exits.** (m1 integration, 2026-09-20) The first
+guest on host-01 died a minute after start with "guest did not become
+ready": virtiofsd, which I-48 runs as the unprivileged `virtiofsd` user in
+namespace sandbox mode, had exited at once because it could not create
+`virtiofsd.sock` in the root-only guest directory (0750 under a 0700
+parent), and Cloud Hypervisor retried the missing socket for 60 s. hostd
+now creates `/var/lib/repose/guests/<id>/` as root 0710 with group
+`virtiofsd` and `<id>/virtiofsd/` owned by that user, the socket is
+`virtiofsd/virtiofsd.sock`, `/var/lib/repose/guests` is a 0710
+root:virtiofsd tmpfiles directory instead of a `StateDirectory`, and step 8
+waits up to 10 s for the socket while checking the unit, so a dead
+virtiofsd fails the create as step 8 with its unit named. *Rejected:*
+making the guest directory group-writable (virtiofsd could then rewrite
+`ch.args`, which hostd hands to a root Cloud Hypervisor at the next start);
+running virtiofsd as root in chroot mode (what I-48 moved away from);
+socket activation through a transient socket unit (an fd-passing path
+nothing else in hostd uses). Interface: `host-conventions.md` (guest
+directory row and the CH invocation).
+
+**I-63. The guest disk is passed to Cloud Hypervisor with
+`image_type=raw`.** (m1 integration, 2026-09-20) With the type
+auto-detected, Cloud Hypervisor 53 logs "Autodetected raw image type.
+Disabling sector 0 writes" and rejects the guest's first write to sector 0;
+ext4 keeps its primary superblock there, so `/sysroot` failed to mount with
+`I/O error, dev vda, sector 0` and the initrd dropped to emergency mode
+(console log of host-01's second guest). hostd names the type explicitly
+in `ch.args`. Interface: `host-conventions.md` (the CH invocation).
+
+**I-64. guestd binds its vsock listener to any CID.** (m1 integration,
+2026-09-20) `internal/vsockrpc.Listen` bound `VMADDR_CID_HOST` (2), which a
+guest kernel refuses with `cannot assign requested address`; guestd
+restarted every two seconds and never sent `Ready`, so the first fully
+booted guest on host-01 failed create at step 10. The dev-socket mode and
+the QEMU VM test never exercise the vsock bind, which is why it survived
+until a real host. The listener now binds `VMADDR_CID_ANY`.
+
+**I-65. virtiofsd does not announce submounts.** (m1 integration,
+2026-09-20) Inside the first running guest on host-01 every nix client got
+`Connection reset by peer` and `journalctl -u nix-daemon` said `creating
+directory "/nix/store/.links": Object is remote`. The store export masks
+`.links` with a tmpfs (01 §5), virtiofsd 1.14 announces that mountpoint to
+the guest by default, the guest kernel mounts it as its own virtiofs
+submount under `/nix/.ro-store/.links`, and overlayfs refuses lookups that
+cross a mount boundary inside a lower layer with EREMOTE. The nix daemon
+creates `.links` at startup, so it died on every connection, which also
+failed `home-manager-dev.service` at boot. hostd now passes
+`--no-announce-submounts`; the guest sees an ordinary empty directory and
+the enumeration leak stays closed. *Rejected:* dropping the mask (01 §5's
+reason stands); a guest-side `nix.conf` workaround (the daemon creates the
+directory unconditionally).
+
+**I-66. `ResizeVolume` on a running guest calls Cloud Hypervisor's
+`vm.resize-disk` between `lvextend` and `GrowFs`.** (m1 integration,
+2026-09-20) On host-01 a resize from 40 to 60 GB returned ok, LVM showed
+60 GB and guestd ran `resize2fs`, but the guest's `/dev/vda` still reported
+40 GB: virtio-blk keeps the capacity the device was created with until the
+hypervisor is told. hostd now calls `vm.resize-disk` on `_disk0` first; a
+stopped guest picks the size up at its next boot as before.
+
+**I-67. hostd registers the guest's closure in the guest's nix database:
+`RegisterPaths` after `Ready`, and `registration` inside `Switch`.** (m1
+integration, 2026-09-20) Inside the first running guest on host-01,
+`nix path-info /run/current-system` said "is not valid": the guest's
+database is created empty on its thin volume and the shared store puts
+paths on disk without registering them. So `ApplyConfig` failed at
+guestd's `nix-env --set` ("nix-env exited 1"), `home-manager-dev.service`
+failed at every boot, and a user `nix` command touching a system path
+would have tried to fetch it. The host has the metadata: hostd now sends
+`nix-store --dump-db` of the closure (480 KB for the 6 GB base) as
+`RegisterPaths` right after `Ready` and as the `registration` field of
+every `Switch`; guestd runs `nix-store --load-db` (idempotent) and writes
+`/run/repose/paths-registered`, which `repose-paths.service` waits for
+before `home-manager-dev.service` runs. *Rejected:* a registration file in
+the shared store named on the kernel command line (a store path that would
+need its own GC root and a second delivery path); computing hashes in the
+guest (`nix-store --load-db` needs the NAR hashes only the host has);
+skipping `nix-env` in `Switch` (leaves the database wrong for every later
+nix command). Interfaces: `vsock-guestd.md`, `guest-conventions.md`,
+`proto/repose/guestd/v1/guestd.proto` (old shape accepted: an empty
+registration means the previous behaviour).
+
+**I-68. Reconcile removes `snap-*` volumes left by an interrupted
+snapshot.** (m1 integration, 2026-09-20) `kill -9` of hostd on host-01
+between the LVM snapshot and its removal, with a Blob upload in flight,
+replayed the Snapshot command correctly after the restart (same
+`command_id`, a fresh snapshot, result ok) but left
+`snap-<guest>-<ts>` from the killed attempt in `vg-guests`, holding thin
+pool space for ever. Reconcile at start now removes every `snap-*`
+volume: hostd has no snapshot in flight when it starts, and a replayed
+command makes its own. *Rejected:* naming the snapshot after the
+`command_id` and reusing it on replay (an upload that died half way would
+resume from a snapshot taken before the guest wrote more, which is
+correct but the same as a fresh one, for extra state).
+
+**I-69. The `virtiofsd` user is in group `hostd`.** (m1 integration,
+2026-09-20) The first create on host-01 under the I-49 sandbox failed at
+step 8: virtiofsd logged "`<guest dir>/virtiofsd` does not exist or is not
+a directory" because the guest directory is `1770 root:hostd` and the
+virtiofsd user was in no group but its own, so it could not traverse it;
+and `--socket-group hostd` needs the same membership, since an
+unprivileged process can only chgrp into a group it belongs to. The user
+gains `extraGroups = [ "hostd" ]`. What that widens: virtiofsd can create
+files in a guest directory before it sandboxes itself (the sticky bit
+keeps it from removing hostd's, and `ch.args` is `0640 root`); it gains
+nothing under the store export, which is what the user exists to protect.
+*Rejected:* `1771` on the guest directory (does not fix the chgrp); a
+socket directory under `/run` outside the guest directory (a second
+layout for one file).
+

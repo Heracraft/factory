@@ -53,7 +53,7 @@ rotates keys does the same restart itself.
 | Command | Called by | Contract |
 |---|---|---|
 | `hostd --state /var/lib/repose/hostd --api-addr <addr> [--api-ca <pem>] (--blob-url <url> --blob-container <name> [--blob-identity <client id>] \| --snapshot-dir <dir>)` | `hostd.service` | the daemon. The api address, its CA (only for the `hostdev` stand-in, I-17) and the snapshot target come from `repose.host.apiAddr`, `apiCA` and `snapshots.*` (DECISIONS I-40); hostd refuses to start without a snapshot target. Exit status 3 means "join token used or invalid"; the unit does not restart on it. |
-| `hostd register --state <dir> --token /run/repose/join-token` | `repose-register.service`, once, before hostd | exit 0 with `host.json`, `cert.pem`, `key.pem` written and the token deleted; exit 0 doing nothing if `host.json` exists; exit 3 on a rejected token; any other non-zero is retried after 30 s. |
+| `hostd register --state <dir> --join-token /run/repose/join-token` | `repose-register.service`, once, before hostd | exit 0 with `host.json`, `cert.pem`, `key.pem` written and the token deleted; exit 0 doing nothing if `host.json` exists; exit 3 on a rejected token; any other non-zero is retried after 30 s. |
 | `hostd audit-login` | PAM session hook on every sshd login | environment `PAM_TYPE`, `PAM_USER`, `PAM_RHOST`; writes an `audit_log` row (or a journal line until the api exists). Must be quick and never block a login. |
 | `hostd snapshot-all` | `repose-snapshot.timer` at 03:00 local | snapshots every running guest without the api. |
 
@@ -157,14 +157,14 @@ rw`, `DeviceAllow=/dev/vg-guests/g-<id> rw`, `RestrictAddressFamilies=AF_UNIX
 AF_VSOCK`. Cloud Hypervisor therefore runs as `hostd` (in group `kvm`,
 owner of the tap, group of its own volume through the udev rule in
 `virt.nix`), sees only its own guest directory, and can open exactly three
-device nodes. The devices: `--disk path=/dev/vg-guests/g-<id>`,
+device nodes. The devices: `--disk path=/dev/vg-guests/g-<id>,image_type=raw` (I-63),
 `--net tap=tap-<8hex>,mac=52:54:<4 bytes of id>`, `--fs tag=ro-store,socket=
 virtiofsd/virtiofsd.sock`, `--vsock cid=<1000+index>,socket=vsock.sock`,
 `--serial socket=console.sock`, `--console off`, `--memory
 size=<RAM>M,shared=on`, `--seccomp true` (the default, written out). The CH
 API socket is used for `shutdown` (after guestd's Shutdown timed out),
-`pause`, `resume`, and stats; hostd connects to the guest's sockets as
-root.
+`pause`, `resume`, `resize-disk` (after `lvextend`, before guestd's
+`GrowFs`; I-66) and stats; hostd connects to the guest's sockets as root.
 virtiofsd runs as `virtiofsd:virtiofsd` with `--sandbox namespace` (a
 user and mount namespace with the export pivot_rooted in; `chroot` is
 root-only and virtiofsd refuses it for an unprivileged user, DECISIONS
