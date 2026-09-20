@@ -1770,7 +1770,7 @@ or admin endpoint to toggle the failure globally (a fragment-content marker
 composes with parallel tests without shared state; the fake's existing
 `Fail`/`FailNext` switch is per-route, not per-payload, so it cannot express
 "this specific fragment fails").
-**I-73. The gateway's metrics live in `internal/obs/metrics` as an extended
+**I-81. The gateway's metrics live in `internal/obs/metrics` as an extended
 `GatewayMetrics` family, and `auth_fail_total`'s reason enum is the union the
 gateway actually distinguishes.** (06, 2026-09-20) Workstream 10 owns metric
 naming (`AGENTS.md`, `workstreams/README.md`) and had already merged a
@@ -1803,7 +1803,7 @@ the distinction the runbook's `GatewayAuthSpike` triage needs). Interfaces:
 `internal/obs/metrics/families.go`, `06-gateway-edge.md` §5.5,
 `10-observability.md` §5.
 
-**I-74. The gateway relay closes the client channel only after the guest's
+**I-82. The gateway relay closes the client channel only after the guest's
 in-flight request replies are delivered, and the connection tears down guest
 first.** (06, 2026-09-20) Two ordering bugs found by the §7 soak (100
 concurrent relays): an OpenSSH-style client surfaces a command's exit status

@@ -178,7 +178,7 @@ not a refusal.
 
 Metrics `repose_gateway_` live in `internal/obs/metrics` as the
 `GatewayMetrics` family workstream 10 owns, extended by this workstream
-(DECISIONS I-73): `sessions` (open relays), `sessions_total`,
+(DECISIONS I-81): `sessions` (open relays), `sessions_total`,
 `auth_fail_total{reason}` with reasons `no_cert`, `bad_ca`, `expired`,
 `revoked`, `wrong_principal`, `stopped`, `route_error`, `rate_limited`,
 `not_found`, `bad_login`, `busy`; `dial_fail_total`;

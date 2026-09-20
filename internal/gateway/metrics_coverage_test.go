@@ -9,7 +9,7 @@ import (
 )
 
 // TestGatewayMetricsExposed asserts every metric of 06-gateway-edge.md §5.5
-// exists under repose_gateway_ (DECISIONS I-73). This is the checklist item
+// exists under repose_gateway_ (DECISIONS I-81). This is the checklist item
 // "Every metric in 5.5 is exposed."
 func TestGatewayMetricsExposed(t *testing.T) {
 	reg := obsmetrics.New(obs.ComponentGateway)
