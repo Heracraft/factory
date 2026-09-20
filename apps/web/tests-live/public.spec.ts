@@ -214,3 +214,19 @@ test('the live api sends the CORS headers the dashboard needs', async ({ request
 	});
 	expect(real.headers()['access-control-allow-origin']).toBe('*');
 });
+
+// The landing page's install command is only true if the script is
+// actually served there (DECISIONS I-98 put it in the build's static
+// output). 08 §9's landing row and docs/CHECKLIST.md's release row both
+// rest on it, and the failure mode is silent: the page keeps printing a
+// command that 404s.
+test('the install command on the landing page resolves to the script', async ({ request }) => {
+	const res = await request.get('/install.sh');
+	expect(res.status()).toBe(200);
+	const body = await res.text();
+	expect(body.startsWith('#!/bin/sh')).toBeTruthy();
+	// The two things a reader of the landing page is about to pipe into a
+	// shell: it installs `repose`, and it is the documented URL's script.
+	expect(body).toContain('repose');
+	expect(body).toContain('https://repose.herakraft.co/install.sh');
+});

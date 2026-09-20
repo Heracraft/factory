@@ -228,20 +228,21 @@ the live instance, not taken from the docs. Each one changed a file here.
 13. **A rolling deploy drops exactly one request per client at the
    switchover, every time.** Measured on 2026-09-20 with
    `ops/deploy-probe.sh`, two loops at five requests a second against the
-   dashboard and one against the api, ~23,000 responses in all. Three
-   switchovers, three identical results:
+   dashboard and one against the api, ~26,000 responses in all. Four
+   switchovers, four identical results:
 
    | deploy | container started | failure | delay |
    |---|---|---|---|
    | `web` → `e6dd4fa` | 18:05:04.0Z | 18:05:15Z, both loops | +11 s |
    | `web` → `4bcc94b` | 18:22:22.6Z | 18:22:34Z, both loops | +12 s |
    | `api` → `4bcc94b` | 18:23:02.2Z | 18:23:28Z | +26 s |
+   | `web` → `cde2b05` | 18:25:24.2Z | 18:25:35Z, both loops | +11 s |
 
    Every failure is a 5-second **hang**, never a 502, and every one lands
-   ten to thirty seconds after the new container starts — which is when
-   Coolify removes the old one, not when the new one appears. The health
-   check is doing its job: the new container was healthy first in all
-   three. What is missing is a drain: Traefik keeps the outgoing
+   eleven to twenty-six seconds after the new container starts — which
+   is when Coolify removes the old one, not when the new one appears. The health
+   check is doing its job: the new container was healthy first every
+   time. What is missing is a drain: Traefik keeps the outgoing
    container in its pool for a moment, and a request that picks it in
    that instant waits for the client's timeout.
 
