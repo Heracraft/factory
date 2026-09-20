@@ -131,6 +131,17 @@ func TestRunClaudeNotLoggedInAttachesInstead(t *testing.T) {
 	var out strings.Builder
 	f.env.Out = &out
 
+	// The window runs `claude`, which a guest has and a CI runner does
+	// not: there the pane exits as soon as it opens and the window is
+	// gone before the check below (CI, 2026-09-20). remain-on-exit keeps
+	// the window, dead pane and all; what the test asserts is that it was
+	// opened and nothing was typed into it. Global: with a session target
+	// tmux sets this window option on the current window only, and the
+	// fixture's tmux server is private to this test.
+	if _, err := runSSH(ctx, f.target, "tmux set-option -g -w remain-on-exit on", nil); err != nil {
+		t.Fatalf("remain-on-exit on the guest session: %v", err)
+	}
+
 	if err := runRun(ctx, f.env, RunOptions{
 		Name: testSlug, Agent: "claude", Prompt: "finish the feature", NoAttach: true,
 	}, false); err != nil {

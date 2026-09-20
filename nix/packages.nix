@@ -20,8 +20,12 @@ let
     src = root;
     filter = path: type:
       let rel = lib.removePrefix (toString root + "/") (toString path);
-      in lib.any (p: rel == p || lib.hasPrefix (p + "/") rel)
-        [ "go.mod" "go.sum" "cmd" "internal" "proto" "buf.yaml" ];
+      # An entry names a file or a directory; a directory's ancestors are
+      # kept too, or cleanSourceWith never descends to it. test/fake-logto
+      # is imported by cmd/fake-logto (the dashboard's dev login), so the
+      # vendor step needs it without the rest of test/.
+      in lib.any (p: rel == p || lib.hasPrefix (p + "/") rel || lib.hasPrefix (rel + "/") p)
+        [ "go.mod" "go.sum" "cmd" "internal" "proto" "buf.yaml" "test/fake-logto" ];
   };
 
   bufTemplate = pkgs.writeText "buf.gen.nix.yaml" (builtins.toJSON {
@@ -59,7 +63,7 @@ let
 
     # `nix build ./nix#guestd` prints the expected value when a dependency
     # changes and this no longer matches.
-    vendorHash = "sha256-3qSMwOlbKth6Net2bei63JPosCWOgqdV0Vm4INJ/CaU=";
+    vendorHash = "sha256-WETEBQGHpxv4ECXQ6Vp9/arsGTl4vtqsMtw9DSdc/Z4=";
 
     postPatch = ''
       mkdir -p internal/gen
