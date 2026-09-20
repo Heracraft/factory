@@ -25,7 +25,7 @@ model choice, and `STATUS.md` carries the state between them.
 
 The repo ships a project skill at `.claude/skills/ws/SKILL.md`. In a worktree,
 start Claude Code and type `/ws 03`; it loads the preamble and the `03`
-block below and begins. `/ws m1`, `/ws m2`, `/ws m3` and `/ws m3-web` run
+block below and begins. `/ws m1` through `/ws m5` (and `/ws m3-web`) run
 the integration sessions (the "M<n> bring-up" sections below). The full
 text below is what the skill expands to, kept here so it can be read and
 edited in one place.
@@ -233,6 +233,72 @@ Does not create guests; project flows that need one wait for `m3`'s step 1
 Both sessions: the rules of the M2 block apply (no apply, no force-unlock,
 no Coolify UI; the owner and the conductor do those on your exact
 instructions). Read `docs/ops/coolify.md` "Coolify facts" first.
+
+## M4 bring-up (`/ws m4`, Opus 5, `../repose-ws/m4-billing`)
+
+Gate (`docs/MILESTONES.md` M4): a real card is charged the right amount
+for a known usage pattern (one large guest, 100 hours, 40 GB, 10 GB
+egress) and the Stripe invoice matches the `usage` rows to the cent; trial
+credit depletes and blocks a start at zero; a failed payment stops guests
+after 3 days. Workstream 09 is merged and passes its fixture locally
+(`internal/billing`, DECISIONS I-16, I-77); nothing has talked to a real
+Stripe account yet. In order:
+
+1. **Stripe objects in test mode** (`docs/ops/AZURE-SETUP.md` step 17): the
+   owner creates the account and hands the test secret key, webhook secret
+   and the three prices plus meter ids through the conductor; they go in
+   the api's Coolify environment (`ops/coolify/api.env.example`, the
+   `STRIPE_*` block), never in a file here. Redeploy api through the
+   conductor.
+2. **The fixed usage pattern, end to end**: drive it through the api
+   against host-01 where a real guest can produce it (a large guest left
+   running for the hours with the volume and egress the pattern names;
+   the rollup fixture in 09 §7 for what the hours cannot wait for), run
+   the hourly rollup, push usage, and compare the Stripe test invoice to
+   `repose-admin billing explain` to the cent. Then the six webhooks
+   against the real endpoint (Stripe CLI forwarding is fine), the past-due
+   3-day stop with snapshot and notification, the trial-credit depletion
+   blocking a start at zero, and the limit change after the first paid
+   invoice. Close every row of 09 §9 with evidence.
+3. **Live mode, one charge**: the owner adds their own card at
+   `https://repose.herakraft.co/billing` and is charged for a known short
+   pattern; the invoice, `explain` and the `usage` rows agree to the cent;
+   the Stripe Tax address is collected. Refund is the owner's call.
+4. `docs/PRICING.md` and `features/pricing.md` match what Stripe shows;
+   `ops/RUNBOOK.md` rows for push backlog, mismatch, "user says they were
+   overcharged".
+
+Rules as in the M2 block. Anything that costs money is announced to the
+conductor before it runs.
+
+## M5 bring-up (`/ws m5`, Fable 5.1, `../repose-ws/m5-release`)
+
+Gate (`docs/MILESTONES.md` M5): `docs/CHECKLIST.md` "Release (M5)" closed
+and the landing page live. This session is 14's final review plus the
+release checklist, in order:
+
+1. **Adversarial review of `main` as deployed** (14 §final): every boundary
+   in `docs/SECURITY.md` re-verified on host-01 and the edge as they run
+   today, the audit log, operator access, the never-log list against the
+   live journals and Loki. Findings are fixed on the branch or filed as
+   DECISIONS entries with an owner and a date.
+2. **Rehearsals the checklist names**: snapshot restore onto a different
+   host (needs a second host; the conductor adds one from `prod.tfvars`
+   for the rehearsal and removes it after), host loss (deallocate that
+   host, restore its projects elsewhere, users notified), the five bad
+   fragments (syntax error, missing attribute, 31 minutes, closure cap,
+   arbitrary fetchurl) each producing the documented error and nothing
+   else.
+3. **A second human**: login, run, attach, stop, start, secrets, config
+   apply, snapshot restore, destroy on their own laptop, unassisted, with
+   the steps they had to guess written into the docs.
+4. **Release mechanics**: `repose --version`, `install.sh` on the four
+   targets, Grafana dashboards and alerts wired to the owner's stack with
+   runbook rows for every alert, privacy and terms published, the leaked
+   key's commit (`b1a5915`) either rewritten out of history or the repo
+   private before it is shared (owner's decision, recorded).
+5. Tick every row of `docs/CHECKLIST.md` "Release (M5)" with its evidence,
+   and the workstream checklists' remaining rows with theirs.
 
 ## Shared preamble
 
