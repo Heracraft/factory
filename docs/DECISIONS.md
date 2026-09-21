@@ -3006,3 +3006,27 @@ the stale file until its next switch; it is inert, and the operator may
 delete it. *Rejected:* keeping the file as a fallback for a host without
 `repose-host-net` (every host has it; a fallback nobody runs is a second
 truth).
+
+**I-138. A project without a remote syncs its whole tracked tree and
+commits it in the guest.** (m5-release, 07, 2026-09-21; review M5-9)
+`repose run --name X` in a directory with no git remote, the case
+`cli-config.md` gives `--name` for, created and booted its guest and then
+failed at step 5c with `fatal: 'origin' does not appear to be a git
+repository`: guestd sets `origin` only from the project's `remote_url`
+(I-107) and the sync fetched it regardless. With `remote_url` empty the
+sync now skips the fetch, the push prompt and the checkout; the tracked
+files travel as a tar of their working-tree contents, are `git add`ed and
+committed in the guest under a placeholder identity
+(`repose <repose@localhost>`, a commit that exists only in the guest since
+there is no remote it could reach), and the untracked files follow as
+before. The commit is what keeps the guest tree clean, so the next run's
+dirty-tree check still means what it means for every other project. A
+file deleted on the laptop is not deleted in the guest: with no remote
+there is no commit to derive the deletion from, and `git clean` against
+an agent's tree is the one thing the sync must never do. *Rejected:* a
+diff against the empty tree with `git apply --index` (a second run fails
+on "already exists in index" unless the index and tree are cleared first,
+which is the `git clean` above); leaving the staged files uncommitted (the
+next run's dirty check refuses its own previous sync); refusing `--name`
+without a remote (the flag exists for that directory). Interfaces: none;
+`07-cli.md` §5.5f and `features/sync-at-launch.md` describe it.

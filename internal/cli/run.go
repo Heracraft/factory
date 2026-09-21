@@ -98,6 +98,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		summary, err := syncGuest(ctx, target, repoRoot, project.Slug, SyncOptions{
 			StashRemote: opts.StashRemote, DiscardRemote: opts.DiscardRemote,
 			Exclude: e.Cfg.SyncExclude, AskPush: opts.AskPush,
+			NoRemote: project.RemoteURL == "",
 		})
 		if err != nil {
 			return err

@@ -150,7 +150,19 @@ written so they cannot happen quietly.
       private before it is shared with contributors.
 - [ ] `repose --version` prints a version, and `curl -fsSL
       https://repose.herakraft.co/install.sh | sh` installs it on macOS
-      arm64, macOS x86_64, Linux x86_64, Linux arm64.
+      arm64, macOS x86_64, Linux x86_64, Linux arm64. Partial (M5 session,
+      2026-09-21 02:16Z): the served `install.sh` (200 from the dashboard)
+      run in a fresh `$HOME` on Linux x86_64 downloaded
+      `repose_v0.1.4_linux_amd64.tar.gz`, verified it against
+      `checksums.txt`, installed `~/.local/bin/repose` and added the PATH
+      line; `repose version` prints `repose 0.1.4 (herakraft)`; all four
+      release archives match `checksums.txt`; the Linux arm64 binary runs
+      under `qemu-aarch64` and prints the same; the two macOS archives are
+      valid Mach-O for their architectures. `repose --version` was
+      `unknown flag` in v0.1.4 and is fixed on `main` for the next tag.
+      Still owed: the install on a real macOS arm64, macOS x86_64 and Linux
+      arm64 machine (the second human, M5 step 3), and a tag carrying
+      `--version`.
 - [x] `ops/RUNBOOK.md` has entries for every alert above. Evidence:
       `ops/check.sh` fails when an alert in `ops/alerts.yaml` has no
       RUNBOOK heading and passes on `main` (17 rules, 17 headings,

@@ -106,3 +106,12 @@ func gitDiffBinary(dir string) (string, error) {
 	}
 	return string(out), nil
 }
+
+// gitTrackedFiles lists what git tracks, for the no-remote sync.
+func gitTrackedFiles(dir string) ([]string, error) {
+	out, err := gitCmd(dir, "ls-files")
+	if err != nil {
+		return nil, err
+	}
+	return nonEmptyLines(out), nil
+}

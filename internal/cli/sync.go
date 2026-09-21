@@ -17,6 +17,12 @@ type SyncOptions struct {
 	StashRemote   bool
 	DiscardRemote bool
 	Exclude       []string
+	// NoRemote is a project created with --name in a directory that has no
+	// git remote (cli-config.md): the guest's checkout has no origin to
+	// fetch from, so the tracked tree travels whole and is committed in
+	// the guest instead of a fetch plus a diff against HEAD
+	// (security/review-2026-09-21.md M5-9).
+	NoRemote bool
 	// AskPush is called when the local HEAD commit is not on origin; it
 	// should push (or not) and report whether it did.
 	AskPush func(commit, branch string) (pushed bool, err error)
@@ -29,6 +35,10 @@ type SyncSummary struct {
 	Detached   bool
 	Branch     string
 	SkippedBig []string
+	// WholeTree: the project has no remote, so every tracked file was sent
+	// rather than a diff on top of a fetched commit.
+	WholeTree bool
+	Tracked   int
 }
 
 // dirtyTreeError is 07-cli.md §6's exit 6, carrying the file list for the
@@ -74,6 +84,10 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	branch, err := gitCurrentBranch(localRepoDir)
 	if err != nil {
 		return nil, fmt.Errorf("git rev-parse --abbrev-ref HEAD: %w", err)
+	}
+
+	if opts.NoRemote {
+		return syncWholeTree(ctx, t, localRepoDir, slug, branch, opts)
 	}
 
 	if _, err := runSSH(ctx, t, fmt.Sprintf("cd ~/%s && git fetch origin", slug), nil); err != nil {
@@ -127,6 +141,63 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		}
 	}
 
+	untracked, err := gitUntrackedFiles(localRepoDir)
+	if err != nil {
+		return nil, fmt.Errorf("git ls-files --others: %w", err)
+	}
+	untracked, skipped, err := filterUntracked(localRepoDir, untracked, opts.Exclude)
+	if err != nil {
+		return nil, err
+	}
+	summary.SkippedBig = skipped
+	if len(untracked) > 0 {
+		buf, err := tarFiles(localRepoDir, untracked)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := runSSH(ctx, t, fmt.Sprintf("tar -x -C ~/%s", slug), bytes.NewReader(buf)); err != nil {
+			return nil, fmt.Errorf("copying untracked files: %w", err)
+		}
+		summary.Untracked = len(untracked)
+	}
+	return summary, nil
+}
+
+// syncWholeTree is the sync of a project without a remote: nothing to
+// fetch, so every tracked file travels as a tar of its working-tree
+// contents, is added and committed in the guest (a placeholder identity;
+// the commit exists only there, since there is no remote it could go to),
+// and untracked files follow as usual. The commit is what keeps the guest
+// tree clean, so the next run's dirty-tree check still means "an agent
+// changed something". A file deleted on the laptop stays in the guest;
+// there is no remote to derive the deletion from.
+func syncWholeTree(ctx context.Context, t sshTarget, localRepoDir, slug, branch string, opts SyncOptions) (*SyncSummary, error) {
+	summary := &SyncSummary{WholeTree: true, Branch: branch}
+	tracked, err := gitTrackedFiles(localRepoDir)
+	if err != nil {
+		return nil, fmt.Errorf("git ls-files: %w", err)
+	}
+	tracked, _, err = filterUntracked(localRepoDir, tracked, nil)
+	if err != nil {
+		return nil, err
+	}
+	summary.Tracked = len(tracked)
+	localDirty, err := gitTrackedDirty(localRepoDir)
+	if err != nil {
+		return nil, fmt.Errorf("git status --porcelain: %w", err)
+	}
+	summary.Modified = len(localDirty)
+	if len(tracked) > 0 {
+		buf, err := tarFiles(localRepoDir, tracked)
+		if err != nil {
+			return nil, err
+		}
+		commit := `git -c user.name=repose -c user.email=repose@localhost commit -q -m "repose run: the laptop's tree"`
+		script := fmt.Sprintf("cd ~/%s && tar -x && git add -A -- . && (git diff --cached --quiet || %s)", slug, commit)
+		if _, err := runSSH(ctx, t, script, bytes.NewReader(buf)); err != nil {
+			return nil, fmt.Errorf("copying the tracked tree: %w", err)
+		}
+	}
 	untracked, err := gitUntrackedFiles(localRepoDir)
 	if err != nil {
 		return nil, fmt.Errorf("git ls-files --others: %w", err)
@@ -209,5 +280,8 @@ func tarFiles(root string, files []string) ([]byte, error) {
 }
 
 func (s *SyncSummary) String() string {
+	if s.WholeTree {
+		return fmt.Sprintf("Synced the whole tree (no git remote): %d tracked files, %d untracked", s.Tracked, s.Untracked)
+	}
 	return fmt.Sprintf("Synced: %d modified, %d untracked", s.Modified, s.Untracked)
 }
