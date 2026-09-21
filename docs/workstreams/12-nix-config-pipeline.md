@@ -360,10 +360,22 @@ and whose host half is one of the `ops/checks/menu.sh` or
       (I-126): closed by the M5 session on the api image `74d45e3`,
       project repose-m5-frag, 2026-09-21 02:29Z, `config error: syntax
       error at syntax.nix:1:34, unexpected ';'` with the caret under the
-      `;`, exit 10; (d) `--with-closure-cap` and (c) `--with-build-timeout`
-      are the remaining runs; (d) closed below; (c) is held by the
-      conductor until m3's kernel sweep on host-01 settles, so the two
-      loads do not confound the 30-minute cap.
+      `;`, exit 10; (d) `--with-closure-cap` closed below; (c) closed by the M5
+      session on host-01, project repose-m5-frag, 2026-09-21: `repose
+      config apply build-timeout.nix` (the `ops/checks/fragments` sleep
+      1860 derivation) at 03:03:10Z ran as `nixbuild` in
+      `repose-build-<rev>.scope` under `timeout -k 5 1800`; hostd logged
+      `build_fail` with `code=build_timeout`, `duration_ms=1805018`
+      (03:33:15Z); the api's op error is `{code: build_timeout, message:
+      "build timed out after 30 minutes while building sleep-forever-1.0"
+      + the verbatim block}`, the revision `failed`, and the guest was
+      untouched (its journal for the window: `build_start`,
+      `build_fail`, the 03:00 nightly snapshot; no switch). The CLI
+      process on the dev box was killed by that box's memory pressure at
+      03:04Z, so the CLI's rendering of `build_timeout` (no prefix, the
+      summary line, then the block) rests on its unit tests
+      (`TestRenderBuildErrorPrintsTheVerbatimBlock`, I-114, I-128) rather
+      than a transcript.
 - [~] `nix eval` of a fragment containing `builtins.readFile "/etc/passwd"`
       fails with `access to absolute path` (restrict-eval works). Evidence:
       `testdata/abspath.stderr` pinned by `TestMapEvalErrorFixtures`; on
