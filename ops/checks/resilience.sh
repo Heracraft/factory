@@ -116,11 +116,15 @@ expiry_section() {
 	psql_q "update snapshots set taken_at = now() - interval '8 days' where id in ('$s1','$s2')" >/dev/null
 	"$REPOSE" stop --no-snapshot --project "$PROJECT" 2>&1 | tail -2 | evidence "repose stop before the restore"
 	wait_state stopped 600
-	op=$("$REPOSE" snapshots restore "$s2" --project "$PROJECT" 2>&1 | tee /dev/stderr | grep -oE '[0-9a-f-]{36}' | tail -1 || true)
-	log "restore of $s2 started (op ${op:-unknown}); restarting api-grpc so expiry runs now"
-	sleep 5
+	# Through the api, not `repose snapshots restore`: the CLI waits for the
+	# op (26 s for a small volume on 2026-09-21), and the expiry guard
+	# (restoring_op_id) is released with it, so the run below would find
+	# nothing to spare and the row would be proved by nothing.
+	op=$(api_body POST "/projects/$pid/snapshots/$s2/restore" '{}' | jsonq 'd["op_id"]')
+	log "restore of $s2 started (op $op); restarting api-grpc so expiry runs now"
+	psql_q "select id, restoring_op_id from snapshots where id='$s2'" | evidence "the restore holds $s2 (restoring_op_id = $op)"
 	control_sh "docker restart $API_GRPC_CTR" | evidence "docker restart api-grpc (expiry runs at start; the restore op is re-driven)"
-	sleep 30
+	sleep 20
 	psql_q "select id, taken_at, deleted_at, restoring_op_id from snapshots where id in ('$s1','$s2','$s3') order by taken_at" | evidence "snapshots during the restore: $s1 must be deleted, $s2 (being restored) must not, $s3 (newest) must not"
 	assert_zero "aged snapshot $s1 still live" "$(psql_q "select count(*) from snapshots where id='$s1' and deleted_at is null")"
 	assert_eq "restoring snapshot $s2 kept" "$(psql_q "select count(*) from snapshots where id='$s2' and deleted_at is null")" "1"
