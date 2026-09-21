@@ -365,3 +365,27 @@ func TestTmuxFailureClassification(t *testing.T) {
 		}
 	}
 }
+
+// Gemini CLI runs as `node` (the bundle under the guest's node, I-46): the
+// window is still gemini's and the heuristic still fires (I-122). On
+// host-01 the pane's command was `node` and no completion ever came.
+func TestHeuristicCompletionForGeminiRunningAsNode(t *testing.T) {
+	procs := []fakeProc{
+		{pid: 200, ppid: 1, comm: "bash"},
+		{pid: 201, ppid: 200, comm: "node", ticks: 5},
+	}
+	w, run, rec, clk, _ := newWatcherFixture(t, procs)
+	activity := clk.now().Unix()
+	run.Match["list-windows"] = tmuxOutput([4]string{"gemini", "201", "node", fmt.Sprint(activity)})
+	ctx := context.Background()
+	w.Refresh(ctx)
+	clk.advance(HeuristicIdleAfter + time.Second)
+	w.Refresh(ctx)
+	_, events, _ := rec.snapshot()
+	if len(events) != 1 || !strings.Contains(events[0], "completed:gemini went idle") {
+		t.Fatalf("events = %v, want one heuristic completion for gemini running as node", events)
+	}
+	if !isAgentCommand("gemini", "node") || isAgentCommand("pi", "node") || !isAgentCommand("pi", "pi") {
+		t.Fatal("isAgentCommand does not follow the binaries table")
+	}
+}

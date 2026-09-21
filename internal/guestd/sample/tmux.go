@@ -15,12 +15,27 @@ var Agents = []string{"claude", "opencode", "codex", "gemini", "pi"}
 
 // binaries maps an agent to the process name to look for in the pane's
 // process tree (features/agents.md's "Binary" column).
-var binaries = map[string]string{
-	"claude":   "claude",
-	"opencode": "opencode",
-	"codex":    "codex",
-	"gemini":   "gemini",
-	"pi":       "pi",
+var binaries = map[string][]string{
+	"claude":   {"claude"},
+	"opencode": {"opencode"},
+	"codex":    {"codex"},
+	// Gemini CLI is a bundle the guest's node runs (DECISIONS I-46), so
+	// its process is `node`, never `gemini`; without that name here the
+	// window was never an agent window and the heuristic never fired on
+	// host-01 (I-122).
+	"gemini": {"gemini", "node"},
+	"pi":     {"pi"},
+}
+
+// isAgentCommand reports whether comm is one of the process names the
+// agent runs as.
+func isAgentCommand(agent, comm string) bool {
+	for _, b := range binaries[agent] {
+		if b == comm {
+			return true
+		}
+	}
+	return false
 }
 
 // HookedAgents are the agents whose completion is reported by a real hook.

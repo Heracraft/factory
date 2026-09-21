@@ -217,7 +217,7 @@ func (w *Watcher) refreshTmux(ctx context.Context) {
 		if agent == "" {
 			continue
 		}
-		if !w.procs.treeHasComm(children, win.PanePID, binaries[agent]) {
+		if !w.procs.treeHasAnyComm(children, win.PanePID, binaries[agent]) {
 			// A window named after an agent whose process is not running is
 			// not an agent window; the user renamed a shell.
 			continue
@@ -305,7 +305,7 @@ func (w *Watcher) heuristicCompletion(ws *windowState, win tmuxWindow, now time.
 	if HookedAgents[ws.agent] || ws.heuristicSent {
 		return "", "", false
 	}
-	if win.PaneCommand != "" && win.PaneCommand != binaries[ws.agent] {
+	if win.PaneCommand != "" && !isAgentCommand(ws.agent, win.PaneCommand) {
 		return "", "", false
 	}
 	quiet := now.Sub(ws.lastActive)

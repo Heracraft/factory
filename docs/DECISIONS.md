@@ -2705,3 +2705,17 @@ gains `tmux_window = 5` (old shape accepted, empty means unknown), hostd
 forwards guestd's value, the api's ingest stores it; the mapper falls back
 to "claude finished". Interface: `grpc-hostd.md`.
 
+**I-122. guestd's watcher accepts every process name an agent runs as;
+Gemini CLI is `node`.** (m3 integration, 2026-09-21) On host-01 the
+pane-idle heuristic (I-49) fired for pi 101 s after its window went quiet
+and never for Gemini CLI: the watcher took a window for an agent's only
+when the pane's process tree held a process named exactly after the agent
+(`gemini`), and Gemini CLI is a bundle the guest's node runs (I-46), so
+its process is `node`. The window was never an agent window, so neither
+`AgentState` nor the completion existed for it. `binaries` is now a list
+per agent (`gemini: gemini, node`) used by both the liveness check and the
+foreground-command check. *Rejected:* matching the window name alone (a
+user's shell renamed `gemini` would be reported as an idle agent, which
+is what the process check exists to prevent). Verify on the next base:
+`ops/checks/notifications.sh`'s gemini row.
+

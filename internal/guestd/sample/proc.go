@@ -241,6 +241,16 @@ func (r *procReader) childIndex() (map[int][]int, bool) {
 // treeHasComm reports whether the process tree rooted at rootPID contains a
 // process whose name is comm. It is what makes a window named "claude" an
 // agent window only when claude is actually running in it.
+// treeHasAnyComm is treeHasComm over the names an agent may run as.
+func (r *procReader) treeHasAnyComm(children map[int][]int, rootPID int, wants []string) bool {
+	for _, w := range wants {
+		if r.treeHasComm(children, rootPID, w) {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *procReader) treeHasComm(children map[int][]int, rootPID int, want string) bool {
 	if children == nil {
 		return false

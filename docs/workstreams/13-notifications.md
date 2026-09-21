@@ -123,7 +123,8 @@ per window:
   time, or with a state the debounce below has not yet confirmed).
 - Heuristic completion (agents with no hook: Gemini CLI, pi, and opencode or
   Codex if their hook is ever absent): no pane activity for 90 seconds while
-  the foreground process is still the agent binary emits one synthetic
+  the foreground process is still the agent binary (or, for Gemini CLI,
+  `node`, which runs its bundle; DECISIONS I-122) emits one synthetic
   `completed` with `summary = "<agent> went idle"`, once per quiet period.
   Suppressed for Claude, Codex and opencode, which have real hooks.
 - A state change is debounced 5 s before it is announced as `AgentState`,
