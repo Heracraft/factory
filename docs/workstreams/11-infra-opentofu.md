@@ -84,7 +84,10 @@ provider module for hosts is an addition, not a rewrite.
     deleting blobs older than 45 days (the 30-day post-destroy window plus
     slack; the api deletes on schedule and this is the backstop). A
     user-assigned managed identity for hosts with `Storage Blob Data
-    Contributor` scoped to that container.
+    Contributor` scoped to that container, and the same role on the same
+    container for the api's service principal once
+    `api_identity_object_id` is supplied, since the api's expiry job is
+    what deletes blobs (DECISIONS I-131).
   - `keyvault`: Key Vault with purge protection, one RSA-3072 key
     `repose-dek-wrap` with rotation policy 12 months, and an access policy
     for the api's identity (get, wrap and unwrap; get on a key is the

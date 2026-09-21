@@ -119,3 +119,16 @@ resource "azurerm_role_assignment" "host_snapshots" {
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azurerm_user_assigned_identity.host.principal_id
 }
+
+# The api deletes expired snapshot blobs on schedule (05 §5.8) with its own
+# service principal, the same one Key Vault trusts for DEK wrapping. Without
+# this assignment every delete is refused with AuthorizationPermissionMismatch
+# and the retention rule never runs to the end (DECISIONS I-131). Scoped to
+# the one container like the host's.
+resource "azurerm_role_assignment" "api_snapshots" {
+  count = var.api_identity_object_id == null ? 0 : 1
+
+  scope                = azurerm_storage_container.snapshots.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = var.api_identity_object_id
+}

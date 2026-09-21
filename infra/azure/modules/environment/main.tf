@@ -107,6 +107,8 @@ module "storage" {
   tier_to_cool_days = var.snapshot_tier_to_cool_days
   delete_after_days = var.snapshot_delete_after_days
 
+  api_identity_object_id = var.api_identity_object_id
+
   tags = local.tags
 }
 

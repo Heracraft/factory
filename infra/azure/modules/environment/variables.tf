@@ -83,7 +83,7 @@ variable "operator_object_id" {
 
 variable "api_identity_object_id" {
   type        = string
-  description = "Entra object id of the api's service principal; gets wrap and unwrap on the DEK-wrapping key. Null until it exists."
+  description = "Entra object id of the api's service principal; gets wrap and unwrap on the DEK-wrapping key and Storage Blob Data Contributor on the snapshots container. Null until it exists."
   default     = null
 }
 

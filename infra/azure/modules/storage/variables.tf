@@ -20,6 +20,12 @@ variable "host_identity_name" {
   default     = "id-repose-host"
 }
 
+variable "api_identity_object_id" {
+  type        = string
+  description = "Entra object id of the api's service principal; gets Storage Blob Data Contributor on the snapshots container so the expiry job can delete blobs (DECISIONS I-131). Null until it exists."
+  default     = null
+}
+
 variable "resource_group_name" {
   type        = string
   description = "Resource group the storage account is created in."

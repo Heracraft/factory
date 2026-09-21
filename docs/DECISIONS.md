@@ -2827,3 +2827,22 @@ I-102, I-104..I-111, I-120), which is what the two-person gate exists to
 surface; the owner judged the remaining risk to be in the second laptop,
 not the second account. *Rejected:* keeping M2 open until a second person
 appears (M3 work on the shared host was waiting on it).
+
+**I-131. The api's service principal gets Storage Blob Data Contributor on
+the snapshots container.** (conductor, 2026-09-21) 05 §5.8 has the expiry
+job delete expired snapshot blobs "through the Blob SDK with the api's
+identity", and workstream 11 assigned that role to the hosts' managed
+identity only. In production the first real expiry run (01:27Z, two
+snapshots aged to 8 days on m3-check) was refused on its first delete with
+`403 AuthorizationPermissionMismatch`, so the retention rule had never
+deleted a blob; the lifecycle rule's 45-day delete was the only thing that
+would ever have run. `modules/storage` now takes `api_identity_object_id`
+(the same value `modules/keyvault` already uses for wrap and unwrap) and
+assigns the role scoped to the container, created only when the id is
+supplied, and `modules/environment` passes it through. Applied by the
+owner with the usual `tofu apply`; until then the expiry row of 05 stays
+open. *Rejected:* a custom role with only `blobs/delete` (a second role
+definition to maintain for one verb, and the api already has read on the
+same blobs through restore); running deletes from the hosts (the host's
+identity is the one a compromised host holds, and retention is the
+control plane's decision).
