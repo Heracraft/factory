@@ -671,3 +671,37 @@ reached; a row without a number was not measured.
 | the same smoke, first attempt | failed at create step 8 in 21 s: `/run/repose` was 0700 after the token delivery (I-97) |
 | The conductor's `repose run` (v0.1.3 build of main) for project `recruiting`, class small, base 2026.09.20 already in the store | build 5 s, create 14 s to running (22:38:36 → 22:38:50); first gateway relay into the guest 90 s later, exec sessions 105–267 ms each |
 | Smoke against base 2026.09.20.2 (d315339: guestd and the guest ssh config changed, so a fresh guest closure) | hostd's own clone of the base, build 18.9 s, create → running 16 s, snapshot/stop/start/destroy all done within 2 min |
+
+## 13. Guests through the api on host-01 (M3, 2026-09-20/21)
+
+Measured by the M3 integration session on host-01 (as in §11, switched to
+main `d3568d4` at 00:16Z) against the production api on the control VM
+(`api` and `api-grpc` at `d90b31d`, then `d3568d4`), with the
+`ops/checks/` scripts; every figure is from the evidence file the script
+wrote (`ops/checks/out/`). Guests are class `small`; the store already
+held the base closure.
+
+| Operation | Measured |
+|---|---|
+| `repose run --name` from the dev box to `running` (create op: build of the empty fragment on a warm store, CreateGuest, boot to Ready), base 2026.09.20.3 | 84 s (23:42:08 to 23:43:32) |
+| `repose-admin projects create` to `running`, one guest | 47 s (00:00:33 to 00:01:20) |
+| Two `projects create` in the same second, both to `running` (I-120, distinct taps) | 31 s |
+| `PUT /config {menu: bun}` to op done: eval and build of the bun addition as `nixbuild` in a scope (CPUQuota 8 s/s, MemoryMax 16 GiB, RuntimeMaxSec 30 min 30 s) | 5 s; 40 `BuildLog` lines over SSE; `bun` 1.4.2 on PATH in a new login shell with the same boot_id and tmux session |
+| `repose secrets set` to the file in the guest's tmpfs (`0400 dev`, exported in a login shell) | under 5 s (the script's first check after 5 s found it) |
+| `repose secrets rm` to the file gone and `secrets.env` rewritten | under 5 s |
+| A fragment carrying a current secret value, `repose config apply` | refused before evaluation (`fragment contains the value of secret M3_CHECK_SECRET`) |
+| Hook event to `ntfy` and email delivery: Claude `Stop` replayed through `repose-hook` in the agent's tmux window | 1 s |
+| The same for Codex and opencode | 7 s each (the outbox poll) |
+| pi's pane-idle heuristic, the real binary idle in its window, to delivery | 101 s (the 90 s quiet window, the 5 s debounce, the outbox) |
+| `POST /certs/revoke` to the gateway refusing that certificate | 7 s (the gateway's 30 s revocation poll) |
+| `repose-admin projects destroy` of a running small guest (stop with snapshot, DestroyGuest) | about 60 s (23:45:48 to 23:46:19 for `stopping`, the row gone by 23:46:19) |
+| `repose-admin hosts smoke host-01` on base 2026.09.21.1 (the api driving every op) | create 43.1 s, snapshot 17.0 s, stop 5.0 s (no snapshot), start 14.5 s, destroy 21.1 s |
+
+Reading: on a warm host the api path adds nothing measurable over the
+hostd numbers of §11; the 5 s menu apply is the eval of an already-built
+system plus a substitution, and the create is dominated by the guest's
+own boot (§11's 11.7 s) plus the api's two phases and the CLI's polling.
+The notification path is the outbox's 2 s poll plus delivery; the 7 s of
+Codex and opencode against Claude's 1 s is where in the poll the event
+landed.
+

@@ -47,7 +47,9 @@ export M3_AUDIT_PROBE
 "$REPOSE" secrets set M3_AUDIT_PROBE --from-env --project "$PROJECT" >/dev/null
 "$REPOSE" secrets rm M3_AUDIT_PROBE --project "$PROJECT" >/dev/null
 unset M3_AUDIT_PROBE
-# exec (gRPC Exec with an audit id, guestd Exec as dev)
+# exec (gRPC Exec with an audit id, guestd Exec as dev); the secrets rm
+# above is an op that must finish first (I-70)
+wait_idle "$pid"
 admin exec "$pid" -- id -un | evidence "repose-admin exec $pid -- id -un"
 # a repose-admin command on the project (a host drain would be another,
 # but it refuses placements for the seconds it lasts, which is not a

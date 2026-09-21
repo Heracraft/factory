@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/heracraft/repose/internal/admin"
 	"github.com/heracraft/repose/internal/api/apitest"
@@ -197,6 +198,19 @@ func TestAdminSurface(t *testing.T) {
 	}
 	if _, err := run(t, e, "projects", "create", "--user", "repose-m3", "--name", "bad class", "--class", "huge"); err == nil {
 		t.Fatal("projects create with a bad class should refuse")
+	}
+	// projects destroy is the counterpart: the destroy op runs and the row
+	// keeps its destroyed_at (no delete of projects rows, db-schema.md).
+	if _, err := run(t, e, "projects", "destroy", "iso-a"); err != nil {
+		t.Fatalf("projects destroy: %v", err)
+	}
+	var destroyedState string
+	var destroyedAt *time.Time
+	if err := h.Pool.QueryRow(ctx, "select state, destroyed_at from projects where slug = 'iso-a'").Scan(&destroyedState, &destroyedAt); err != nil {
+		t.Fatal(err)
+	}
+	if destroyedAt == nil || destroyedState != "destroyed" {
+		t.Fatalf("after destroy: state %q destroyed_at %v", destroyedState, destroyedAt)
 	}
 	// smoke: create, snapshot, stop, start, destroy on host-01
 	if out, err := run(t, e, "hosts", "smoke", "host-01"); err != nil || !strings.Contains(out, "destroy   ok") {
