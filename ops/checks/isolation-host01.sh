@@ -73,11 +73,20 @@ export REPOSE_ISOLATION_PROJECT_A="$A_PID" REPOSE_ISOLATION_PROJECT_B="$B_PID"
 # evidence.
 root=$(cd "$checks_dir/../.." && pwd)
 (cd "$root" && go test ./test/isolation/ -run . -skip TestRevokedCertificateRejected -v -count=1 2>&1) | tee "$OUT/isolation-go-$stamp.txt" | grep -E '^(=== RUN|--- (PASS|FAIL|SKIP)|PASS|FAIL|ok|\s+.*_test.go)' | evidence "go test ./test/isolation/ against host $HOST_ID, every row but revocation (full output: $OUT/isolation-go-$stamp.txt)" || true
-(cd "$root" && go test ./test/isolation/ -run TestRevokedCertificateRejected -v -count=1 2>&1) | tee -a "$OUT/isolation-go-$stamp.txt" | grep -E '^(=== RUN|--- (PASS|FAIL|SKIP)|\s+.*_test.go)' | evidence "TestRevokedCertificateRejected, last" || true
+# The revocation row revokes CERT_A, which is a certificate of the account
+# this box is logged in as. It runs only when REVOKE_A=1 says that account
+# is not one whose other certificates matter (the conductor's rule,
+# 2026-09-21: never the owner's row); otherwise it is recorded as skipped.
+if [ "${REVOKE_A:-0}" = 1 ]; then
+	(cd "$root" && go test ./test/isolation/ -run TestRevokedCertificateRejected -v -count=1 2>&1) | tee -a "$OUT/isolation-go-$stamp.txt" | grep -E '^(=== RUN|--- (PASS|FAIL|SKIP)|\s+.*_test.go)' | evidence "TestRevokedCertificateRejected, last" || true
+	# It left CERT_A revoked; the CLI does not notice revocation (07 finding),
+	# so the file is removed and `repose run` mints a new one.
+	rm -f "$REPOSE_ISOLATION_CERT_A"
+	"$REPOSE" run --no-attach --no-sync --project "$PROJECT" >/dev/null 2>&1 || log "repose run could not reissue the certificate; run it by hand"
+else
+	echo "TestRevokedCertificateRejected: SKIPPED by this runner (REVOKE_A unset): it would revoke a certificate of the logged-in account, and the only account on this box is the owner's. It ran once on 2026-09-21 00:15Z against this box's own certificate: rejected 7 s after revocation." | evidence "TestRevokedCertificateRejected"
+fi
 grep -E '^--- (PASS|FAIL|SKIP)' "$OUT/isolation-go-$stamp.txt" | sort | uniq -c | evidence "row summary"
-# The revocation row left CERT_A revoked: reissue it so the alias works
-# again (and so the operator is not locked out of their own guest).
-"$REPOSE" run --no-attach --no-sync --project "$PROJECT" >/dev/null 2>&1 || log "repose run could not reissue the certificate; run it by hand"
 
 # Operator access: a password attempt is refused and logged, on the host
 # and on the edge (14 §9). Certificate-only is the design; today the host
