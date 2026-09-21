@@ -89,10 +89,10 @@ written so they cannot happen quietly.
       operator key on the host to try it directly was declined. The
       mechanisms as deployed are re-read in
       `security/review-2026-09-21.md` "Verified as deployed".
-- [ ] A user Nix fragment that (a) has a syntax error, (b) references a
+- [x] A user Nix fragment that (a) has a syntax error, (b) references a
       missing attribute, (c) runs 31 minutes, (d) exceeds the closure cap,
       (e) uses `builtins.fetchurl` to an arbitrary URL each produces the
-      documented error and nothing else happens. Four of five closed on
+      documented error and nothing else happens. All five closed on
       host-01 through the deployed api and the CLI (`workstreams/
       12-nix-config-pipeline.md` §9 first row for the transcripts): (a)
       `config error: syntax error at syntax.nix:1:34, unexpected ';'`
@@ -101,9 +101,11 @@ written so they cannot happen quietly.
       allowed at fetch.nix:1:33; use pkgs.fetchurl { url = ...; hash =
       ...; }`, (d) `closure is 26.6 GB, limit is 20 GB; largest paths:`
       with ten paths (M3 session, 2026-09-21 00:47Z); each exit 10 and
-      the guest untouched. (c) waits: `ops/checks/menu.sh
-      --with-build-timeout` takes 30 minutes of host-01 by design and is
-      held until the M3 kernel sweep is off the host.
+      the guest untouched; (c) `build timed out after 30 minutes while
+      building sleep-forever-1.0` from the api's op error, hostd
+      `build_fail code=build_timeout duration_ms=1805018` at 03:33:15Z on
+      repose-m5-frag, the revision `failed` and nothing applied (M5
+      session, 2026-09-21).
 - [ ] Postgres backup and restore are configured in the owner's Coolify
       (Backups tab); nothing here. Evidence: the schedule exists there
       (DECISIONS I-112).
