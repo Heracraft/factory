@@ -267,11 +267,11 @@ two open rows are the two that need a machine of the owner's.
       real host. Evidence: all seven load into a real Grafana 12.4.0 with
       no provisioning error (`ops/check.sh --grafana`: host capacity 12
       panels, per-guest 8, builds 8, gateway 8, snapshots 6, billing 11,
-      abuse 6), and against production series **38 of 43 Prometheus panel
-      queries return data** (`ops/dashboards/validate.py --query`). The
-      five that do not are honest and none is a broken panel: two are
-      Stripe's (off by I-16), two are build-*failure* panels with no
-      failure to show, and one is "Guests by state" — see below.
+      abuse 6), and against production series **41 of 43 Prometheus panel
+      queries return data** (`ops/dashboards/validate.py --query`,
+      host-01, 2026-09-21 04:15Z). The two that do not are Stripe's, off
+      by I-16 — there is no panel left that is empty for a reason of its
+      own.
 - [x] All eleven alerts exist, have a `promtool` test, and have a RUNBOOK
       entry. Evidence: 17 rules now (the eleven plus I-56's two and
       billing's three); `ops/check.sh` runs `promtool check rules`,
@@ -297,13 +297,15 @@ two open rows are the two that need a machine of the owner's.
       `TestNoDialWithoutAnEndpoint`, plus `TestTracingOffByDefault` and
       `TestGlobalTracerIsNoopWhenOff`.
 
-**Found while closing these, and handed to whoever owns hostd:**
-`repose_host_guests` has no series at all on host-01 with three guests
-running — not even a HELP line — so Host capacity's "Guests by state" is
-blank in production. Everything else from the same metrics struct is
-present, so it is not a nil registry. `refreshGuestGauge()` is called
-from `setState`, `stop` and `reconcile` and opens with
-`if m.d.Metrics == nil { return }`; the untested hypothesis is startup
-order — reconcile returns early before Metrics is wired, and nothing
-calls it again until a guest changes state, which is exactly a host that
-has been up a while with stable guests.
+**A finding of mine that is already fixed, corrected here so the record
+does not mislead:** at 2026-09-20 23:50Z `repose_host_guests` had no
+series at all on host-01 with three guests running, so "Guests by state"
+was blank, and I handed it over with a hypothesis about startup order.
+The m3 session had found it independently and fixed it as
+**DECISIONS I-116**, with the better diagnosis: a `GaugeVec` with no
+children exposes no series at all, so the panel read "no data" where it
+should have read 0. `refreshGuestGauge` now pre-initialises every state
+and class at zero before counting. Verified on host-01 after that
+shipped: 30 series, `running=5` across two classes, and the panel
+returns data. My startup-order hypothesis was never confirmed and is
+moot — the pre-initialisation makes the symptom impossible either way.
