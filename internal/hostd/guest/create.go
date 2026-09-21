@@ -139,6 +139,16 @@ func (m *Manager) create(ctx context.Context, c *hostdv1.CreateGuest) (*hostdv1.
 	}
 	tap, _ := TapName(c.GuestId)
 	mac, _ := MACAddr(c.GuestId)
+	// A tap or MAC another guest on this host already holds is refused
+	// rather than shared (DECISIONS I-120); a replay of this same create
+	// finds its own record and passes.
+	if others, err := m.d.State.ListGuests(); err == nil {
+		for _, o := range others {
+			if o.GuestID != c.GuestId && (o.Tap == tap || o.MAC == mac) {
+				return nil, errf(CodeAlreadyExists, "tap %s or mac %s already belongs to guest %s", tap, mac, o.GuestID)
+			}
+		}
+	}
 	g := &state.Guest{
 		GuestID: c.GuestId, ProjectID: c.ProjectId, UserID: c.UserId, ProjectSlug: c.ProjectSlug, RemoteURL: c.RemoteUrl,
 		Class: c.Class, VolumeBytes: c.VolumeBytes, SystemClosure: c.SystemClosure,

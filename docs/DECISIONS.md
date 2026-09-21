@@ -2661,3 +2661,30 @@ only, no selection line) still counts as menu-managed through its
 deleted. Found by `ops/checks/menu.sh` on host-01, whose bun menu apply
 worked either way (built in 5 s, on PATH without a reboot).
 
+**I-120. The tap name and MAC come from a hash of the guest id, not its
+first eight hex; a create refuses a tap or MAC another guest holds.** (m3
+integration, 2026-09-21) Two synthetic tenants created on host-01 within
+the same minute (`repose-admin projects create`, 00:00:33Z) got guest ids
+`01a0c143-f202-…` and `01a0c143-f36d-…`: a UUIDv7 starts with its
+millisecond timestamp, so the first eight hex, which `host-conventions.md`
+made the tap name and the first four bytes the MAC, are the same for every
+guest created within about 65 seconds. The second create failed at step 6
+on the first guest's htb root (`tc: Change operation not supported by
+specified qdisc`), and its retry attached a second Cloud Hypervisor to
+`tap-01a0c143` with MAC `52:54:01:a0:c1:43`: two tenants, one tap, one MAC,
+both admitted by the bridge set. A guest is a per-project microVM behind
+a per-guest tap (DESIGN §7, SECURITY boundary 2); the name was the hole.
+Now `tap-<first 8 hex of sha256(guest id)>` and `52:54:<first 4 bytes of
+sha256(guest id)>`, and `CreateGuest` returns `already_exists` when
+another record on the host has that tap or MAC rather than adopting the
+device (`AddTap` was written to be re-run for the same guest and could
+not tell the two apart). Existing records keep the tap and MAC stored in
+`state.db`, so guests running through the hostd upgrade are untouched;
+only new guests are named by the hash. *Rejected:* `tap-<index>` from the
+address allocator (an index is reused after a destroy while the previous
+guest's nftables objects may still be going away); the last eight hex of
+the id (random, but a name should not depend on which part of an id
+format is random). Interface: `host-conventions.md`. Verify on host-01
+after the next host switch: two creates in the same minute, two taps,
+`nft list set bridge repose guests` with two distinct tuples.
+

@@ -6,6 +6,7 @@ package guest
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -343,18 +344,33 @@ func hexPrefix(guestID string) (string, error) {
 	return h[:8], nil
 }
 
-// TapName is tap-<8 hex of guest id>.
+// netID is the first eight hex characters of sha256(guest id): the part
+// of the id that names the tap and the MAC. The id's own first eight hex
+// are the top of its UUIDv7 timestamp and are shared by every guest
+// created within the same ~65 s, which put two tenants on one tap on
+// host-01 (DECISIONS I-120). Records made before then keep the tap and
+// MAC stored in them; only new guests are named this way.
+func netID(guestID string) (string, error) {
+	if _, err := hexPrefix(guestID); err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(guestID))
+	return hex.EncodeToString(sum[:4]), nil
+}
+
+// TapName is tap-<8 hex of sha256(guest id)>.
 func TapName(guestID string) (string, error) {
-	h, err := hexPrefix(guestID)
+	h, err := netID(guestID)
 	if err != nil {
 		return "", err
 	}
 	return "tap-" + h, nil
 }
 
-// MACAddr is 52:54: plus the first four bytes of the guest id.
+// MACAddr is 52:54: plus the first four bytes of sha256(guest id); 0x52
+// has the locally-administered bit set and the multicast bit clear.
 func MACAddr(guestID string) (string, error) {
-	h, err := hexPrefix(guestID)
+	h, err := netID(guestID)
 	if err != nil {
 		return "", err
 	}

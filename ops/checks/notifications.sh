@@ -8,7 +8,8 @@
 #   claude, codex, opencode: if the agent is logged in inside the guest
 #     (its credential file exists), a real prompt is run through `repose
 #     run --agent` and the agent's own hook fires. Otherwise the agent's
-#     native hook payload is replayed through `repose-hook <agent>` from a
+#     native hook payload is replayed through `repose-hook` (the agent in
+#     REPOSE_HOOK_AGENT, as the wrappers set it) from a
 #     tmux window named after the agent, which exercises the wrapper's hook
 #     command, the socket, guestd's mapping and window resolution, hostd,
 #     the api's ingest, dedupe and outbox, and the delivery: everything
@@ -97,15 +98,15 @@ run_agent() {
 # shellcheck disable=SC2088
 run_agent claude '~/.claude/.credentials.json' \
 	"Reply with exactly the words m3 notification check and nothing else." \
-	"printf '%s' '{\"hook_event_name\":\"Stop\",\"session_id\":\"m3\",\"transcript_path\":\"/nonexistent\"}' | repose-hook claude"
+	"printf '%s' '{\"hook_event_name\":\"Stop\",\"session_id\":\"m3\",\"transcript_path\":\"/nonexistent\"}' | REPOSE_HOOK_AGENT=claude repose-hook"
 # shellcheck disable=SC2088
 run_agent codex '~/.codex/auth.json' \
 	"Reply with exactly the words m3 notification check and nothing else." \
-	"repose-hook codex '{\"type\":\"agent-turn-complete\",\"last-assistant-message\":\"m3 codex check\"}'"
+	"REPOSE_HOOK_AGENT=codex repose-hook '{\"type\":\"agent-turn-complete\",\"last-assistant-message\":\"m3 codex check\"}'"
 # shellcheck disable=SC2088
 run_agent opencode '~/.local/share/opencode/auth.json' \
 	"Reply with exactly the words m3 notification check and nothing else." \
-	"printf '%s' '{\"agent\":\"opencode\",\"kind\":\"completed\",\"summary\":\"m3 opencode check\"}' | repose-hook opencode"
+	"printf '%s' '{\"agent\":\"opencode\",\"kind\":\"completed\",\"summary\":\"m3 opencode check\"}' | REPOSE_HOOK_AGENT=opencode repose-hook"
 
 # The two heuristic agents: the real binary, idle in its window.
 heuristic_agent() {

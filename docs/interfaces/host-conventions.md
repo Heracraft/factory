@@ -71,10 +71,14 @@ rotates keys does the same restart itself.
   gateway on the subnet.
 - `br-guests` bridge (systemd-networkd netdev, STP off), host address `.1`
   of the host's `/22`, configured at boot from `host.json`.
-- Guest address = `.2 + index` allocated by hostd from `state.db`, MAC
-  derived from guest id.
-- Tap per guest `tap-<8 hex of guest id>`, attached to the bridge by hostd
-  with exactly these settings, which the nftables bridge table depends on:
+- Guest address = `.2 + index` allocated by hostd from `state.db`; MAC
+  `52:54:` plus the first four bytes of sha256(guest id) (DECISIONS
+  I-120; a guest record created before then keeps the MAC stored in it).
+- Tap per guest `tap-<8 hex of sha256(guest id)>` (I-120: the id's own
+  first eight hex are its UUIDv7 timestamp, shared by guests created in
+  the same minute; hostd refuses a create whose tap or MAC another record
+  holds), attached to the bridge by hostd with exactly these settings,
+  which the nftables bridge table depends on:
 
   ```
   ip tuntap add tap-<8hex> mode tap user hostd
@@ -170,7 +174,7 @@ AF_VSOCK`. Cloud Hypervisor therefore runs as `hostd` (in group `kvm`,
 owner of the tap, group of its own volume through the udev rule in
 `virt.nix`), sees only its own guest directory, and can open exactly three
 device nodes. The devices: `--disk path=/dev/vg-guests/g-<id>,image_type=raw` (I-63),
-`--net tap=tap-<8hex>,mac=52:54:<4 bytes of id>`, `--fs tag=ro-store,socket=
+`--net tap=tap-<8hex>,mac=52:54:<4 bytes of the id's sha256>`, `--fs tag=ro-store,socket=
 virtiofsd/virtiofsd.sock`, `--vsock cid=<1000+index>,socket=vsock.sock`,
 `--serial socket=console.sock`, `--console off`, `--memory
 size=<RAM>M,shared=on`, `--seccomp true` (the default, written out). The CH

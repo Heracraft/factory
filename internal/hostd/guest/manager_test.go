@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/heracraft/repose/internal/hostd/state"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -60,10 +62,12 @@ func TestCreateReachesRunningWithEverythingWired(t *testing.T) {
 		t.Fatalf("create result %v", res.GetCreate())
 	}
 	g := h.guest(gid1)
-	if g.State != StateRunning || g.Tap != "tap-0192f0a1" || g.MAC != "52:54:01:92:f0:a1" {
+	wantTap, _ := TapName(gid1)
+	wantMAC, _ := MACAddr(gid1)
+	if g.State != StateRunning || g.Tap != wantTap || g.MAC != wantMAC {
 		t.Fatalf("guest record %+v", g)
 	}
-	if !h.net.Taps[g.Tap] || h.net.Shaped[g.Tap] != 200 || h.net.Elements[gid1] != "52:54:01:92:f0:a1 . 10.64.4.2 . tap-0192f0a1" {
+	if !h.net.Taps[g.Tap] || h.net.Shaped[g.Tap] != 200 || h.net.Elements[gid1] != wantMAC+" . 10.64.4.2 . "+wantTap {
 		t.Fatalf("network not wired: %+v", h.net)
 	}
 	if v := h.lvm.Volumes["g-"+gid1]; v == nil || !v.HasFS || v.Size != 40<<30 {
@@ -838,4 +842,41 @@ func TestPoolHighWarning(t *testing.T) {
 		}
 	}
 	t.Fatal("no pool_high warning")
+}
+
+// Two guest ids minted in the same window share their first eight hex
+// (the UUIDv7 timestamp); their taps and MACs must still differ, and a
+// create whose tap another guest holds is refused (I-120).
+func TestTapCollision(t *testing.T) {
+	// Same first eight hex, as two UUIDv7 ids minted in one minute have.
+	a := "0192f0a1-1111-7000-8000-000000000001"
+	b := "0192f0a1-2222-7000-8000-000000000002"
+	ta, err := TapName(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb, _ := TapName(b)
+	ma, _ := MACAddr(a)
+	mb, _ := MACAddr(b)
+	if ta == tb || ma == mb {
+		t.Fatalf("collision: %s/%s %s/%s", ta, tb, ma, mb)
+	}
+	if !regexp.MustCompile(`^tap-[0-9a-f]{8}$`).MatchString(ta) || !regexp.MustCompile(`^52:54(:[0-9a-f]{2}){4}$`).MatchString(ma) {
+		t.Fatalf("shape: %s %s", ta, ma)
+	}
+	if again, _ := TapName(a); again != ta {
+		t.Fatal("tap name is not deterministic")
+	}
+	if _, err := TapName("not-an-id"); err == nil {
+		t.Fatal("a non-id was accepted")
+	}
+
+	h := newHarness(t, nil)
+	h.create(a)
+	// Plant a record whose tap is what b would get: the create must refuse.
+	tbName, _ := TapName(b)
+	if err := h.st.PutGuest(&state.Guest{GuestID: "0192f0a1-2222-7000-8000-000000000009", ProjectID: "proj-x", Tap: tbName, MAC: "52:54:00:00:00:09", Class: "small", State: StateStopped}); err != nil {
+		t.Fatal(err)
+	}
+	h.mustFail(cmd(&hostdv1.CreateGuest{ProjectId: "proj-b", GuestId: b, Class: "small", VolumeBytes: 20 << 30, SystemClosure: h.closure}), CodeAlreadyExists)
 }
