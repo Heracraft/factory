@@ -71,7 +71,7 @@ func (e *Expiry) Run(ctx context.Context, every time.Duration) {
 
 // Once deletes every expired snapshot and returns the ids deleted. A blob
 // that cannot be deleted is logged and skipped so the rest of the sweep
-// goes on (I-129); the error it returns then names the count, so the job
+// goes on (I-130); the error it returns then names the count, so the job
 // still reports the run as failed.
 func (e *Expiry) Once(ctx context.Context) ([]uuid.UUID, error) {
 	deleted, failed, err := e.Sweep(ctx)
