@@ -214,27 +214,96 @@ the commit.
 
 ## 9. Checklist
 
-- [ ] `internal/obs` exists, every binary uses it, and no binary imports
-      `log` or `fmt.Print*` for logging. Evidence: `rg '"log"|fmt.Print' cmd
-      internal` shows only `main` bootstrap lines.
-- [ ] Every event in §5 is emitted by its component. Evidence: a script
-      greps each event name and lists the call site.
-- [ ] Every metric family in §5 exists with exactly those labels. Evidence:
-      `curl :9101/metrics` output on a host pasted, and the naming test.
+Closed 2026-09-20/21 by the m3-web session unless marked otherwise. The
+two open rows are the two that need a machine of the owner's.
+
+- [x] `internal/obs` exists, every binary uses it, and no binary imports
+      `log` or `fmt.Print*` for logging. Evidence: `internal/obs/obslint`
+      is a test over `cmd` and `internal` rather than a grep anyone has
+      to remember to run, and it passes; the remaining `"log"` and
+      `fmt.Print` hits are `main` bootstrap lines, the linter's own
+      fixtures, and the two test fixtures `cmd/fakeapi` and
+      `cmd/fake-logto`. `go test ./internal/obs/...` green across obs,
+      instrument, metrics and obslint.
+- [x] Every event in §5 is emitted by its component. Evidence:
+      `go test ./internal/obs -run TestEventsEmitted`, which lists each
+      event's call site and fails on one a built component does not
+      emit; `obs.PendingEvents` carries the ones owed by unbuilt
+      workstreams (`stripe_webhook`, 09) so the test does not pass by
+      silence.
+- [x] Every metric family in §5 exists with exactly those labels.
+      Evidence: `families_host_test.go` and `families_api_test.go` hold
+      the families to §5, and the registry refuses a metric outside
+      `repose_` or with a label off the low-cardinality list *at
+      registration*, so a bad name stops the binary at start. Against a
+      real host: hostd on host-01 serves **195 `repose_host_*` series**
+      on `10.255.0.2:9101`. One family is registered and emits nothing —
+      see the last row.
 - [ ] Fluent Bit on a real host ships journald and guest console logs with
       the documented labels. Evidence: Loki query screenshot or output for
-      one guest.
+      one guest. **Open: needs the Loki URL.** Everything below it is
+      ready — the api carries `loki_url` in `RegisterResponse` and fills
+      it from a setting (I-95), `repose-admin edge loki <url>` is live on
+      the deployed image and answers "no Loki recorded; hosts ship
+      nothing", and `fluent-bit.service` refuses to start without one
+      rather than retrying an empty host name for ever. Fluent Bit
+      itself answers on host-01 (`10.255.0.2:2021`,
+      `/api/v1/metrics/prometheus`, 200).
 - [ ] Prometheus scrapes hosts, edge and api over WireGuard. Evidence:
-      `up` series listed.
-- [ ] All seven dashboards load and every panel renders with data from a
-      real host. Evidence: screenshots in the PR.
-- [ ] All eleven alerts exist, have a `promtool` test, and have a RUNBOOK
-      entry. Evidence: `promtool test rules ops/alerts_test.yaml` output;
-      grep of RUNBOOK headings.
-- [ ] Retention set: Loki 30/90 days, Prometheus 90 days, partition drops
-      scheduled and exercised once. Evidence: config lines and a log of one
-      drop.
-- [ ] The never-log list is enforced by redaction and stated in
-      `../ops/OBSERVABILITY.md`. Evidence: redaction test.
-- [ ] `OTEL_EXPORTER_OTLP_ENDPOINT` unset produces no network calls.
-      Evidence: `strace -e network` or a test with a fake exporter.
+      `up` series listed. **Open: needs the monitoring server's
+      WireGuard public key.** Two of the three halves are done: the
+      exporters answer (edge `9100`/`9102`, host-01 `9100`/`9101`/`2021`,
+      `api-grpc` `9104`), and I-94 gave the edge the forward rules a
+      scrape needs — but they are *inert* until a peer is declared, and
+      the live edge's forward chain is still `established,related` and a
+      drop, because `edge-01.nix` sets no `monitoring.peerCIDRs`. When
+      the key arrives it is a `staticPeers` entry plus that option and
+      one rebuild; `ops/prometheus/wireguard-peer.conf` has all three
+      parts and the `/etc/hosts` line the api's router needs (I-133).
+      Closing this row also means checking that
+      `curl https://api.repose.herakraft.co/metrics` from outside
+      answers 403.
+- [x] All seven dashboards load and every panel renders with data from a
+      real host. Evidence: all seven load into a real Grafana 12.4.0 with
+      no provisioning error (`ops/check.sh --grafana`: host capacity 12
+      panels, per-guest 8, builds 8, gateway 8, snapshots 6, billing 11,
+      abuse 6), and against production series **38 of 43 Prometheus panel
+      queries return data** (`ops/dashboards/validate.py --query`). The
+      five that do not are honest and none is a broken panel: two are
+      Stripe's (off by I-16), two are build-*failure* panels with no
+      failure to show, and one is "Guests by state" — see below.
+- [x] All eleven alerts exist, have a `promtool` test, and have a RUNBOOK
+      entry. Evidence: 17 rules now (the eleven plus I-56's two and
+      billing's three); `ops/check.sh` runs `promtool check rules`,
+      `promtool test rules` (17 cases) and a grep asserting every alert
+      name is a RUNBOOK heading, and all three pass. Loaded against
+      production series they evaluate healthy, none firing and none in
+      error.
+- [x] Retention set: Loki 30/90 days, Prometheus 90 days, partition drops
+      scheduled and exercised once. Evidence: `ops/loki/retention.yaml`
+      with the compactor, the retention flag in
+      `ops/prometheus/prometheus.yml`'s header, and
+      `EnsurePartitions`/`repose_partitions_maintain()` with the
+      `PartitionDropFail` series and alert behind it.
+- [x] The never-log list is enforced by redaction and stated in
+      `../ops/OBSERVABILITY.md`. Evidence: the log handler redacts by
+      substring match with an exact allowlist for the ids that contain
+      one (I-60), pinned by the naming and redaction tests in
+      `internal/obs`; the same sentence is in `docs/SECURITY.md` and in
+      the published privacy policy, which `tests-live/public.spec.ts`
+      asserts verbatim on the served page.
+- [x] `OTEL_EXPORTER_OTLP_ENDPOINT` unset produces no network calls.
+      Evidence: `internal/obs/instrument/trace_test.go`
+      `TestNoDialWithoutAnEndpoint`, plus `TestTracingOffByDefault` and
+      `TestGlobalTracerIsNoopWhenOff`.
+
+**Found while closing these, and handed to whoever owns hostd:**
+`repose_host_guests` has no series at all on host-01 with three guests
+running — not even a HELP line — so Host capacity's "Guests by state" is
+blank in production. Everything else from the same metrics struct is
+present, so it is not a nil registry. `refreshGuestGauge()` is called
+from `setState`, `stop` and `reconcile` and opens with
+`if m.d.Metrics == nil { return }`; the untested hypothesis is startup
+order — reconcile returns early before Metrics is wired, and nothing
+calls it again until a guest changes state, which is exactly a host that
+has been up a while with stable guests.

@@ -137,14 +137,18 @@ in
 
       scrapePorts = lib.mkOption {
         type = lib.types.listOf lib.types.port;
-        default = [ 9100 9101 2021 9103 9104 ];
+        default = [ 9100 9101 2021 9104 443 ];
         description = ''
-          Ports the monitoring peer may reach on other peers: node_exporter
-          (9100), hostd (9101) and Fluent Bit (2021) on a host, and the
-          `api` and `api-grpc` applications' metrics on the control plane
-          (9103 and 9104, ops/coolify/README.md). Nothing else is
-          forwarded, so the monitoring peer cannot reach a host's sshd or a
-          guest.
+          Ports the monitoring peer may reach on other peers:
+          node_exporter (9100), hostd (9101) and Fluent Bit (2021) on a
+          host; `api-grpc`'s published metrics port (9104) and the
+          control plane's Traefik (443) on the control VM, because the
+          `api` application publishes no port of its own and its
+          /metrics is served by a router behind an IP allow-list
+          (DECISIONS I-133, ops/coolify/README.md "The api's metrics").
+          Not 9103: nothing listens on it outside the container.
+          Nothing else is forwarded, so the monitoring peer cannot reach
+          a host's sshd or a guest.
         '';
       };
 
