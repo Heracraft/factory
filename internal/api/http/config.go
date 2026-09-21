@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 
@@ -11,7 +12,7 @@ import (
 	"github.com/heracraft/repose/internal/api/ops"
 	"github.com/heracraft/repose/internal/api/store"
 	"github.com/heracraft/repose/internal/db"
-	"github.com/heracraft/repose/internal/nixmenu"
+	"github.com/heracraft/repose/internal/menu"
 	"github.com/heracraft/repose/internal/obs"
 )
 
@@ -58,8 +59,8 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) error {
 	}
 	ctx := r.Context()
 	var body struct {
-		Fragment *string           `json:"fragment"`
-		Menu     nixmenu.Selection `json:"menu"`
+		Fragment *string        `json:"fragment"`
+		Menu     menu.Selection `json:"menu"`
 	}
 	if err := decode(r, &body); err != nil {
 		return err
@@ -75,19 +76,24 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	var fragment string
-	var menu map[string]any
+	var menuJSON map[string]any
 	if body.Menu != nil {
-		if cur.Menu == nil && !nixmenu.IsGenerated(cur.Fragment) && strings.TrimSpace(cur.Fragment) != strings.TrimSpace(DefaultFragment) {
+		if cur.Menu == nil && !menu.IsGenerated(cur.Fragment) && strings.TrimSpace(cur.Fragment) != strings.TrimSpace(DefaultFragment) {
 			return errf("conflict", "project uses a custom fragment; use fragment mode or reset")
 		}
-		fragment, err = nixmenu.Render(body.Menu)
+		cat, err := menuCatalog()
 		if err != nil {
-			if errors.Is(err, nixmenu.ErrUnknownItem) || errors.Is(err, nixmenu.ErrBadOption) {
-				return errf("invalid", "%v", err)
+			return err
+		}
+		fragment, err = cat.Render(body.Menu)
+		if err != nil {
+			var me *menu.Error
+			if errors.As(err, &me) {
+				return errf("invalid", "%s", me.Message)
 			}
 			return err
 		}
-		menu = map[string]any{"selection": body.Menu}
+		menuJSON = map[string]any{"selection": body.Menu}
 	} else {
 		fragment = *body.Fragment
 	}
@@ -121,7 +127,7 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) error {
 	var opID uuid.UUID
 	pid := p.ID
 	err = db.InTx(ctx, s.d.Pool, func(tx db.Tx) error {
-		if _, err := tx.Exec(ctx, "insert into config_revisions (id, project_id, fragment, menu, base_version, status) values ($1, $2, $3, $4, $5, 'building')", rid, pid, fragment, menu, p.BaseVersion); err != nil {
+		if _, err := tx.Exec(ctx, "insert into config_revisions (id, project_id, fragment, menu, base_version, status) values ($1, $2, $3, $4, $5, 'building')", rid, pid, fragment, menuJSON, p.BaseVersion); err != nil {
 			return err
 		}
 		var err error
@@ -186,6 +192,15 @@ func (s *Server) applyRevision(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Server) catalog(w http.ResponseWriter, r *http.Request) error {
-	writeJSON(w, http.StatusOK, nixmenu.Catalog())
+	cat, err := menuCatalog()
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, cat.Public())
 	return nil
 }
+
+// menuCatalog is workstream 12's catalog (`internal/menu`, DECISIONS
+// I-44), loaded and validated once; the api's own stand-in
+// (`internal/nixmenu`, I-42) is gone (I-119).
+var menuCatalog = sync.OnceValues(menu.Load)

@@ -128,7 +128,14 @@
       # is not baked in (DECISIONS I-34, I-43).
       guestSystem = (composeGuest {
         fragmentPath = "${fragment}/fragment.nix";
-        inherit guestd baseVersion;
+        inherit guestd;
+        # The label hostd writes next to the fragment (Build.base_version,
+        # DECISIONS I-118): under `--override-input fragment` this flake
+        # has no shortRev, so the stamp would read "dirty" for every guest.
+        baseVersion =
+          if builtins.pathExists "${fragment}/base-version"
+          then lib.removeSuffix "\n" (builtins.readFile "${fragment}/base-version")
+          else baseVersion;
         hook = reposeHook;
       }).guestSystem;
 

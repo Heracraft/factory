@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,7 +41,10 @@ type Request struct {
 	RevisionID string
 	Fragment   []byte
 	BaseRef    string
-	Limits     Limits
+	// BaseVersion is the label the closure is stamped with; written next
+	// to the fragment as `base-version` when set (DECISIONS I-118).
+	BaseVersion string
+	Limits      Limits
 }
 
 // Result is a successful build.
@@ -351,6 +355,9 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 	if err := os.WriteFile(filepath.Join(dir, "fragment.nix"), req.Fragment, 0o600); err != nil {
 		return nil, fmt.Errorf("write fragment: %w", err)
 	}
+	if err := writeBaseVersion(dir, req.BaseVersion); err != nil {
+		return nil, err
+	}
 	if err := b.chownTree(dir); err != nil {
 		return nil, err
 	}
@@ -617,4 +624,28 @@ func (f *Fake) PathExists(_ context.Context, path string) (bool, error) {
 		return true, nil
 	}
 	return f.Exists[path], nil
+}
+
+var baseVersionRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
+// writeBaseVersion puts the label next to fragment.nix as `base-version`
+// (one line), which the flake reads into repose.baseVersion; an empty
+// label removes a stale file so the flake's own stamp applies. The label
+// is validated because it becomes a file the build user reads and a
+// string every guest shows (DECISIONS I-118).
+func writeBaseVersion(dir, label string) error {
+	path := filepath.Join(dir, "base-version")
+	if label == "" {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove base-version: %w", err)
+		}
+		return nil
+	}
+	if !baseVersionRe.MatchString(label) {
+		return &Error{Code: "invalid_argument", Message: "base_version must match [A-Za-z0-9._-]{1,64}"}
+	}
+	if err := os.WriteFile(path, []byte(label+"\n"), 0o600); err != nil {
+		return fmt.Errorf("write base-version: %w", err)
+	}
+	return nil
 }
