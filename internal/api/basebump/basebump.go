@@ -137,7 +137,16 @@ func (j *Job) OnOpFinished(ctx context.Context, op *store.Op) {
 		return
 	}
 	if op.State == "done" {
-		_ = j.events.Platform(ctx, *op.ProjectID, "base_updated", "base "+v+" applied") // best effort; the revision row carries the truth
+		// The kind stays base_updated for both outcomes (13 §5 lists it;
+		// interfaces keep their shape one release); the summary tells the
+		// two apart (I-132): a kernel change ends built with
+		// reboot_required, and "applied" then was a lie the owner's
+		// projects received on 2026-09-21.
+		summary := "base " + v + " applied"
+		if op.RebootRequired {
+			summary = "base " + v + " built; it changes the kernel, so it takes effect at the next `repose stop && repose start` (run it when the agent is idle)"
+		}
+		_ = j.events.Platform(ctx, *op.ProjectID, "base_updated", summary) // best effort; the revision row carries the truth
 		return
 	}
 	msg := "base " + v + " failed to build"

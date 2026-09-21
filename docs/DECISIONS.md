@@ -2869,6 +2869,39 @@ same blobs through restore); running deletes from the hosts (the host's
 identity is the one a compromised host holds, and retention is the
 control plane's decision).
 
+**I-132. A base bump that needs a reboot says so in its event.** (m3
+integration, 2026-09-21) `basebump.OnOpFinished` raised `base_updated`
+with the summary "base X applied" for every finished bump op, including
+one whose apply ended with `reboot_required` (a kernel change on a running
+guest, which 12 §5 leaves for the next stop/start): the owner would have
+read "applied" on the notification while the guest still ran the old
+kernel. The summary now says the base is built, that it changes the
+kernel, and that it takes effect at the next `repose stop && repose start`;
+the kind stays `base_updated` (13 §5 lists it, and an interface keeps its
+shape one release). `TestBumpNeedingRebootSaysSo` (the fake hostd reporting
+`kernel_changed`). *Rejected:* a new kind `base_update_ready` (a second
+kind for one outcome of one job, which every channel and the CLI's
+`events` would have to learn).
+
+**I-134. The build phase takes its base from the revision, not the
+project.** (m3 integration, 2026-09-21) `Engine.baseRef` read
+`projects.base_version`, so a base bump, whose revision names the new base
+while the project still records the old one, was built against the base
+it was leaving, then the apply phase set the project's base to the new
+version from the revision. On host-01 the 02:08Z security publish of the
+kernel-flip base (38d1cbf) swept four projects in 5 s each, `build_ms`
+around 330, `kernel_changed` false, no new checkout under
+`/var/lib/repose/base`, and `repose-admin base status` reporting every
+one "applied on 2026.09.21-m3-0208": the api believed the fleet was on a
+base no guest had been built from; every earlier sweep on host-01 went
+the same way, unnoticed because no published base had differed in
+anything a 5 s eval would show. The revision's base wins now, then the project's,
+then the newest published, then the dev checkout;
+`TestBumpNeedingRebootSaysSo` asserts the fake hostd received the new
+base's `nix_rev` and version in the Build. *Rejected:* setting the
+project's base_version at enqueue time (a failed bump would then have
+moved the project to a base it does not run).
+
 **I-133. The api's `/metrics` is a Traefik router on the app, behind an
 IP allow-list; no collector and no host port.** (owner via conductor,
 2026-09-21) The `api` application publishes no port and cannot: a

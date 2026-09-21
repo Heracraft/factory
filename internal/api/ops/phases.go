@@ -230,7 +230,21 @@ func (e *Engine) resignHostCert(ctx context.Context, p *store.Project, u *store.
 	return nil
 }
 
-func (e *Engine) baseRef(ctx context.Context, p *store.Project) (version, rev string, err error) {
+// baseRef picks the base a build runs against: the revision's own
+// base_version first (a base bump's revision names the new base while the
+// project still records the old one; until I-134 the project's base won
+// and every bump was built against the base it was leaving), then the
+// project's, then the newest published, then the dev checkout.
+func (e *Engine) baseRef(ctx context.Context, p *store.Project, rev *store.Revision) (version, ref string, err error) {
+	if rev != nil && rev.BaseVersion != nil {
+		b, err := store.GetBase(ctx, e.pool, *rev.BaseVersion)
+		if err == nil {
+			return b.Version, b.NixRev, nil
+		}
+		if !errors.Is(err, db.ErrNotFound) {
+			return "", "", err
+		}
+	}
 	if p.BaseVersion != nil {
 		b, err := store.GetBase(ctx, e.pool, *p.BaseVersion)
 		if err == nil {
@@ -395,7 +409,7 @@ func (e *Engine) buildBuild(ctx context.Context, op *store.Op, p *store.Project)
 		}
 	}
 	e.logs.SetRedactions(op.ID, redact)
-	version, ref, err := e.baseRef(ctx, p)
+	version, ref, err := e.baseRef(ctx, p, rev)
 	if err != nil {
 		return nil, uuid.Nil, false, err
 	}

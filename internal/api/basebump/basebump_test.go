@@ -2,6 +2,7 @@ package basebump_test
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/heracraft/repose/internal/api/apitest"
@@ -108,5 +109,58 @@ func TestSweepBuildsUnheldSkipsHeld(t *testing.T) {
 	h.Fake.SetFail("Build", "")
 	if touched, _ := job.Sweep(ctx); len(touched) != 0 {
 		t.Fatalf("projects with a failed bump were retried: %v", touched)
+	}
+}
+
+// A bump whose build changes the kernel ends built with reboot_required
+// on a running project; the base_updated event must say so instead of
+// "applied" (I-132).
+func TestBumpNeedingRebootSaysSo(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	u := h.NewUser("kay")
+	a := h.CreateRunning(u, "a")
+	ctx := h.Ctx
+	// The project runs on an older published base; the bump must build
+	// against the new one, not this.
+	if _, err := h.Pool.Exec(ctx, "insert into base_versions (version, nix_rev, changelog, released_at) values ('2026.09.22', 'old01', 'lts', now() - interval '7 days'), ('2026.09.23', 'kern01', 'kernel 7.2.6', now())"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Pool.Exec(ctx, "update projects set base_version = '2026.09.22' where id = $1", a.ID); err != nil {
+		t.Fatal(err)
+	}
+	job := basebump.New(h.Pool, h.Engine, h.Events, h.Log)
+	h.Engine.SetOnFinished(job.OnOpFinished)
+	h.Fake.SetKernelChanged(true)
+	touched, err := job.Sweep(ctx)
+	if err != nil || len(touched) != 1 {
+		t.Fatalf("sweep: %v %v", touched, err)
+	}
+	ops, _ := store.ListProjectOps(ctx, h.Pool, a.ID, 1)
+	got := h.WaitOp(ops[0].ID)
+	// The build ran against the new base's revision, not the one the
+	// project was on (I-134: on host-01 every bump had been built from the
+	// old checkout, so no base bump ever changed a guest).
+	var builds []string
+	for _, c := range h.Fake.Commands() {
+		if b := c.GetBuild(); b != nil && b.ProjectId == a.ID.String() {
+			builds = append(builds, b.BaseRef+"@"+b.BaseVersion)
+		}
+	}
+	if len(builds) == 0 || builds[len(builds)-1] != "kern01@2026.09.23" {
+		t.Fatalf("bump build base refs: %v", builds)
+	}
+	if got.State != "done" || !got.RebootRequired {
+		t.Fatalf("bump op: state=%s reboot_required=%v err=%+v", got.State, got.RebootRequired, got.Error)
+	}
+	revs, _ := store.ListRevisions(ctx, h.Pool, a.ID)
+	if revs[0].Status != "built" || !revs[0].RebootRequired || !revs[0].KernelChanged {
+		t.Fatalf("revision: status=%s reboot_required=%v kernel_changed=%v", revs[0].Status, revs[0].RebootRequired, revs[0].KernelChanged)
+	}
+	var summary string
+	h.WaitFor("base_updated event", func() bool {
+		return h.Pool.QueryRow(ctx, "select summary from events where project_id = $1 and kind = 'base_updated'", a.ID).Scan(&summary) == nil
+	})
+	if !strings.Contains(summary, "built") || !strings.Contains(summary, "repose stop && repose start") || strings.Contains(summary, "applied") {
+		t.Fatalf("summary %q", summary)
 	}
 }
