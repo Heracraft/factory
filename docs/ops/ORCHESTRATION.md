@@ -71,7 +71,11 @@ least once between 2026-09-19 and 2026-09-20.
 - **`go.mod` and `go.sum`**: take one side, run `go mod tidy`, rebuild.
 - **`nix/packages.nix` vendor hash**: it changes whenever any branch adds a
   Go dependency. Set it to `lib.fakeHash`, build once, paste the reported
-  hash. A wave usually changes it exactly once.
+  hash. A wave usually changes it exactly once. Do this whenever `go.sum`
+  differs from the last hash update, even if a local `nix build` passes:
+  the fixed-output derivation's old output can still be in the local
+  store and gets reused, so only CI (no cache) sees the mismatch
+  (d90b31d, 2026-09-21).
 - **The flake**: several branches add outputs to `nix/flake.nix`. Rewrite it
   as one file rather than resolving hunks; a duplicated `packages.${system}`
   attribute is an evaluation error that `nix flake check` catches.
