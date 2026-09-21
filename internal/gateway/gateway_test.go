@@ -290,9 +290,17 @@ func TestSessionReportsAndCertCache(t *testing.T) {
 			} else {
 				closed++
 			}
+			// A close is reported only after its open (I-123): in report
+			// order, closes never outnumber opens.
+			if closed > opened {
+				t.Fatalf("a session's close was reported before its open: %+v", reports)
+			}
 		}
 		if opened == 3 && closed == 3 {
 			break
+		}
+		if opened > 3 || closed > 3 {
+			t.Fatalf("a session report was delivered twice: %+v", reports)
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("session reports: %+v", reports)
