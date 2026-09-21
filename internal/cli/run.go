@@ -301,8 +301,19 @@ func waitOp(ctx context.Context, c *Client, projectID, opID string, out io.Write
 			state, lastSeq, err := StreamBuildLog(ctx, c, projectID, opID, out, seq)
 			if err == nil {
 				seq = lastSeq
-				if state == "error" {
-					op.State = "error"
+				if state == "done" || state == "error" {
+					// The op read before the stream has no result yet; the
+					// error (code, message, fragment line) is on the op the
+					// api wrote when the stream ended, so read it again
+					// rather than returning the stale one with its state
+					// flipped, which rendered every build failure as
+					// "error:" and nothing (I-127).
+					if fresh, err := c.GetOp(ctx, projectID, opID); err == nil {
+						op = fresh
+					}
+					if state == "error" {
+						op.State = "error"
+					}
 				}
 			}
 		}

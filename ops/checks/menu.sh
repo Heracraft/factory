@@ -125,7 +125,9 @@ if [ "${SKIP_SYNTAX_ROW:-0}" = 1 ]; then
 else
 	refuse "$frags/syntax.nix" "config error: syntax error at syntax.nix:1:[0-9]+, unexpected ';'"
 fi
-refuse "$frags/missing.nix" "config error: attribute 'ripgrepp' missing at missing.nix:1:[0-9]+ \(did you mean ripgrep\?\)"
+# Nix's suggestion text is its own ("did you mean ripgrep?" or "did you
+# mean one of ripgrep, ipgrep or repgrep?"); the contract pins the shape.
+refuse "$frags/missing.nix" "config error: attribute 'ripgrepp' missing at missing.nix:1:[0-9]+ \(did you mean .*ripgrep.*\?\)"
 refuse "$frags/fetch.nix" "config error: eval-time fetch not allowed at fetch.nix:1:[0-9]+; use pkgs.fetchurl \{ url = ...; hash = ...; \}"
 refuse "$frags/abspath.nix" "config error: access to absolute path '/etc/passwd' is forbidden in pure evaluation mode .* at abspath.nix:1:[0-9]+; a fragment may only read files it carries"
 refuse "$frags/nixpath.nix" "config error: <nixpkgs> is not available at nixpath.nix:1:[0-9]+; use the pkgs argument, which is the platform's pinned nixpkgs"

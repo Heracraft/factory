@@ -2782,3 +2782,16 @@ output: it prints the local file's name in place of `fragment.nix`
 (`RenderBuildError`), so the same refusal reads `at syntax.nix:1:34` on
 a laptop.
 
+**I-127. The CLI reads the op again when the build log stream ends.** (m3
+integration, 2026-09-21) With I-114 in place, `repose config apply` on
+host-01 still printed `error:` and nothing for a build that failed after
+streaming: `waitOp` read the op once (running, no result), streamed the
+SSE log, and when the stream's `done` event said `error` it returned that
+stale op with its state flipped, so the code, message and fragment line
+the api had written by then never reached `RenderBuildError`. A failure
+the api knows at `PUT` time (the parse check, the secret-in-fragment
+refusal) has no stream and was unaffected once I-114 landed. `waitOp`
+now reads the op again after the stream ends.
+`TestWaitOpReadsTheOpAgainAfterTheStreamEnds` (an httptest server that
+answers running, streams, then answers the error).
+

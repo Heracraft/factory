@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -105,5 +107,44 @@ func TestOpErrorDecodesObjectAndStringAndPrefixes(t *testing.T) {
 	RenderBuildError(&buf, "build_timeout", "build timed out after 30 minutes while building sleep-forever-1.0", "./repose.nix", nil)
 	if buf.String() != "build timed out after 30 minutes while building sleep-forever-1.0\n" {
 		t.Fatalf("build_timeout rendering: %q", buf.String())
+	}
+}
+
+// A build failure is known only when the log stream ends, and the op the
+// CLI read before streaming has no error yet: waitOp must read the op
+// again rather than return the stale one with its state flipped, which
+// rendered every failed build as "error:" and nothing on host-01 (I-127).
+func TestWaitOpReadsTheOpAgainAfterTheStreamEnds(t *testing.T) {
+	var reads int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/projects/p/ops/o", func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&reads, 1)
+		w.Header().Set("Content-Type", "application/json")
+		if n == 1 {
+			_, _ = io.WriteString(w, `{"state":"running","log_url":"/v1/projects/p/ops/o/log"}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"state":"error","error":{"code":"eval_failed","fragment_line":1,"message":"attribute 'ripgrepp' missing at fragment.nix:1:36"}}`)
+	})
+	mux.HandleFunc("/v1/projects/p/ops/o/log", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "id: 1\ndata: {\"seq\":1,\"line\":\"evaluating configuration\"}\n\nevent: done\ndata: {\"state\":\"error\"}\n\n")
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	c := newClient(srv.URL+"/v1", staticToken("t"))
+	var out bytes.Buffer
+	op, err := waitOp(context.Background(), c, "p", "o", &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if op.State != "error" || op.Error.Code != "eval_failed" || !strings.Contains(op.Error.Message, "ripgrepp") {
+		t.Fatalf("op after the stream: state %q error %+v", op.State, op.Error)
+	}
+	if !strings.Contains(out.String(), "evaluating configuration") {
+		t.Fatalf("log not streamed: %q", out.String())
+	}
+	if atomic.LoadInt32(&reads) < 2 {
+		t.Fatal("the op was not read again after the stream ended")
 	}
 }
