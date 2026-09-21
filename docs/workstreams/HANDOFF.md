@@ -76,6 +76,37 @@ state is `repose-admin projects list`, `hosts list` and `base list`.
    recreate them under `heracraft`. A `repose-admin projects transfer` is a
    small feature worth adding before there are more users.
 
+## The local observability stack (ephemeral, and how to get it back)
+
+Not on the list above because nothing depends on it, but it existed and
+will not when this session's shell ends, so nobody wonders later.
+
+The owner's Prometheus is not a WireGuard peer yet (item 3), so the
+m3-web session stood one up here instead: SSH forwards from the dev box
+to the real endpoints, and the local dev stack scraping through them.
+That is how "38 of 43 panels" and then "41 of 43" were measured, and how
+`repose_host_guests` was found empty and then found fixed. It proves the
+exporters and the panel queries; it proves **nothing** about the
+WireGuard path, because the edge originates a forwarded connection
+itself and so never crosses the `forward` chain a real scrape would
+(DECISIONS I-94). Do not read a working tunnel as a working peer.
+
+```
+ops/dev/tunnel-prod.sh --stop            # if any are lingering
+BIND_ADDR=172.17.0.1 ops/dev/tunnel-prod.sh 20.102.98.254 20.121.138.150 &
+docker compose -f ops/dev/docker-compose.yml \
+               -f ops/dev/docker-compose.prod-scrape.yml up -d
+python3 ops/dashboards/validate.py --query http://127.0.0.1:9090 --host-id host-01
+```
+
+Grafana answers on this box's Tailscale address, port 3000, folder
+"repose" (the dev box is remote; localhost is no use to the owner). The
+forwards are children of whatever shell started them and die with it;
+the docker stack survives and will simply show a dead target until they
+are restarted. One forward targets the api's *container* address, so it
+breaks on every api redeploy and the script re-resolves it on restart —
+which stops mattering once item 5's Traefik route exists.
+
 ## Findings filed, not fixed
 
 - 07: the `Include ~/.ssh/repose/config` line the CLI writes was not
@@ -119,4 +150,7 @@ state is `repose-admin projects list`, `hosts list` and `base list`.
    (I-148's hostd retry) at a quiet moment; both are the owner's to run
    (`switch` buffer shape in "How the sessions were run"); the edge one
    drops live gateway sessions for a second.
-4. Then the owner's list above, in the order their values arrive.
+4. Then the owner's list above, in the order their values arrive. Items
+   3 and 4 are one value each and each closes a whole row; item 4 (the
+   Loki URL) also retires the six-hour silent-failure mode recorded in
+   `RUNBOOK.md` "FluentBitLogShipperDown".
