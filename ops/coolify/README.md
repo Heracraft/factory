@@ -77,26 +77,16 @@ Required before anything serves: `LOGTO_M2M_CLIENT_ID/SECRET` (the
 ## The api's metrics
 
 `API_METRICS_LISTEN=:9103` serves 57 `repose_*` series inside the `api`
-container, and nothing outside that container can reach them. This is the
-one thing on this page that is **not** settled, so it is written down
-rather than guessed at.
+container. The application publishes no host port and cannot — a
+published port stops the old and the new container coexisting, so
+Coolify could not roll the app, which is the constraint that made
+`api-grpc` a separate application in the first place (DECISIONS I-2).
+`api-grpc` carries `9104:9103` precisely because it is the app that
+accepts stop-then-start.
 
-**What it cannot be: a port mapping.** An earlier version of this file
-said `9103:9103` on `api`, by analogy with `api-grpc`. A published host
-port means the old and the new container cannot both be up, so Coolify
-cannot roll the app — it is exactly the constraint that made `api-grpc`
-a separate application in the first place (DECISIONS I-2). `api-grpc`
-can carry `9104:9103` precisely because it is the app that accepts
-stop-then-start, hostd's reconnect absorbing the seconds. The HTTP api
-is the one that must keep rolling, so it publishes nothing.
-
-Two ways out, for the owner to choose between:
-
-**A. A Traefik router on the api app.** Coolify passes custom labels
-through to the container, so the proxy already in front of the api can
-serve `/metrics` from the same container port without publishing it. The
-label block, ready to paste into the app's Configuration -> Advanced ->
-Custom labels:
+So the proxy already in front of the api serves `/metrics` from the same
+container port. **Paste this into the `api` app's Configuration ->
+Advanced -> Custom labels** (DECISIONS I-133):
 
 ```
 traefik.enable=true
@@ -110,35 +100,26 @@ traefik.http.services.api-metrics.loadbalancer.server.port=9103
 traefik.http.middlewares.api-metrics-allow.ipallowlist.sourcerange=10.255.0.0/16,10.200.0.0/16
 ```
 
-Prometheus then scrapes `https://api.repose.herakraft.co/metrics`
-resolved to the control VM's WireGuard address, and the allow-list keeps
-the internet out even though the router is on the public entry point.
-*For:* nothing new to run, rolling deploys untouched, and it rides the
-certificate Traefik already has. *Against:* the metrics endpoint exists
-on a public hostname and its privacy is one middleware line — a label
-edited by hand in a UI, which is the class of thing this repository
-otherwise keeps in files; and `ipallowlist` reads the source address
-Traefik sees, so it has to be checked against what the proxy actually
-observes over the tunnel rather than assumed.
+Three things about it that are easy to get wrong:
 
-**B. Grafana Alloy as a Coolify service.** A collector on the `coolify`
-network scrapes `api:9103` and `api-grpc:9103` by container name — no
-published port, no proxy, no allow-list — and remote-writes to the
-owner's Prometheus. *For:* the scrape never leaves the docker network,
-the deployment stays a file, and the same agent can replace Fluent Bit
-on hosts and the edge and push logs and metrics through one path instead
-of two (which would make `ops/prometheus/wireguard-peer.conf`'s whole
-forwarding problem, DECISIONS I-94, go away for hosts as well).
-*Against:* one more thing to run and upgrade, a second way of getting
-metrics out alongside the Prometheus scrape the rest of `ops/` is built
-around, and replacing Fluent Bit is a change to every host's
-configuration that wants its own decision rather than riding along with
-this one.
-
-Until one is chosen, `ops/prometheus/prometheus.yml` scrapes `api-grpc`
-on `10.255.255.1:9104` and the `api` target is commented out with this
-section named, because a target that can never answer is an alert
-nobody will thank you for.
+1. **The router matches on the `Host` header**, so a scrape aimed at
+   `10.255.255.1:443` does not match it — the header would be the
+   address. The monitoring server resolves `api.repose.herakraft.co` to
+   the control VM's WireGuard address with one `/etc/hosts` line and
+   scrapes the name, which keeps the header, the SNI and the
+   certificate all correct
+   (`ops/prometheus/wireguard-peer.conf`, step 4).
+2. **The allow-list is the only thing keeping `/metrics` off the
+   internet**, since the router is on the public entry point, and it
+   matches the source address *Traefik sees*. Over WireGuard that should
+   be the monitoring peer's `10.255.0.x`, but it is worth one check with
+   a real request rather than an assumption: the failure is silent and
+   open, not loud and closed. `curl https://api.repose.herakraft.co/metrics`
+   from anywhere else must answer 403.
+3. **It is a label edited in a UI**, which is the class of thing I-87
+   otherwise keeps in files. It lives here so the file is still the
+   source of truth even though the paste is manual; a label that drifts
+   from this block is a bug in the deployment, not a local improvement.
 
 ## Backups
 
