@@ -143,9 +143,7 @@ host_sh "ls -l /nix/var/nix/gcroots/repose/ | grep -E '$gid|rev-$pid' ; echo dea
 
 # 7. Timings from hostd's build_done lines since the start (I-57), for
 #    docs/RESEARCH.md.
-host_sh "journalctl -u hostd --since '$since' --no-pager -o cat | grep '\"event\":\"build_done\"' | python3 -c 'import json,sys
-for l in sys.stdin:
-    d=json.loads(l); print(d.get(\"revision_id\",\"\")[:8], \"eval_ms\", d.get(\"eval_ms\"), \"build_ms\", d.get(\"build_ms\"), \"closure_bytes\", d.get(\"closure_bytes\"))'" | evidence "hostd build_done timings since $since"
+host_sh "journalctl -u hostd --since '$since' --no-pager -o cat | grep '\"event\":\"build_done\"' | sed -E 's/.*\"revision_id\":\"([0-9a-f]{8})[^\"]*\".*\"eval_ms\":([0-9]+).*\"build_ms\":([0-9]+).*\"closure_bytes\":([0-9]+).*/revision \\1 eval_ms \\2 build_ms \\3 closure_bytes \\4/'" | evidence "hostd build_done timings since $since"
 
 # 8. Optional: a throwaway project's roots and volume are gone after destroy.
 if [ $with_destroy = 1 ]; then

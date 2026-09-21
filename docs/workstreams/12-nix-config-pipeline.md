@@ -349,27 +349,43 @@ and whose host half is one of the `ops/checks/menu.sh` or
       `realnix_test.go` `TestRealNixCanonicalCases`,
       `TestRealNixBuildTimeout`, `TestRealNixClosureCap`
       (`REPOSE_NIX_TESTS=1`, timeout 5 s and cap 100 MB). Through the CLI
-      on host-01: `ops/checks/menu.sh` for (a), (b), (e), and
-      `--with-closure-cap` and `--with-build-timeout` for (d) and (c).
+      on host-01 (`ops/checks/menu.sh`, m3-check, 2026-09-21 00:47Z; the
+      CLI prints the local file's name in place of `fragment.nix`): (b)
+      `config error: attribute 'ripgrepp' missing at missing.nix:1:36 (did
+      you mean one of ripgrep, ipgrep or repgrep?)`, exit 10; (e) `config
+      error: eval-time fetch not allowed at fetch.nix:1:33; use
+      pkgs.fetchurl { url = ...; hash = ...; }`, exit 10; (a) reads
+      `syntax error, unexpected ';' at …` from the api's parse-time check on
+      the deployed api, the contract's order on the next api deploy
+      (I-126); (d) `--with-closure-cap` and (c) `--with-build-timeout` are
+      the remaining runs.
 - [~] `nix eval` of a fragment containing `builtins.readFile "/etc/passwd"`
       fails with `access to absolute path` (restrict-eval works). Evidence:
       `testdata/abspath.stderr` pinned by `TestMapEvalErrorFixtures`; on
-      host-01, `ops/checks/menu.sh` (`fragments/abspath.nix`).
+      host-01 (00:47Z): `config error: access to absolute path
+      '/etc/passwd' is forbidden in pure evaluation mode (use '--impure'
+      to override) at abspath.nix:1:31; a fragment may only read files it
+      carries`, exit 10.
 - [~] A fragment containing `import <nixpkgs>` fails (no `NIX_PATH`,
       pure eval). Evidence: `testdata/nixpath.stderr` pinned by
-      `TestMapEvalErrorFixtures`; on host-01, `ops/checks/menu.sh`
-      (`fragments/nixpath.nix`).
+      `TestMapEvalErrorFixtures`; on host-01 (00:47Z): `config error:
+      <nixpkgs> is not available at nixpath.nix:1:38; use the pkgs
+      argument, which is the platform's pinned nixpkgs`, exit 10.
 - [~] A fragment with `pkgs.fetchurl { url; hash }` for a file not in any
       cache builds (sandbox network for fixed-output works). Evidence:
       `realnix_test.go` `TestRealNixFixedOutputFetch`
-      (`REPOSE_NIX_NETWORK=1`); on host-01, `ops/checks/menu.sh`
-      (`fragments/fetchurl-ok.nix`).
-- [ ] The build runs as `nixbuild`, not root, inside a scope with the
-      documented `CPUQuota`, `MemoryMax`, `RuntimeMaxSec`. Evidence:
-      `systemctl show <scope>` pasted during a build. Locally the argv is
-      pinned by `TestWrapArgv` (`systemd-run --scope`, `setpriv` to
-      `nixbuild`, the three properties); `ops/checks/menu.sh` captures the
-      scopes on host-01 during the menu build.
+      (`REPOSE_NIX_NETWORK=1`); on host-01 (00:47Z) `fragments/fetchurl-ok.nix`
+      (nixpkgs' COPYING by url and sha256) built and applied, and
+      `~/.m3-copying` in the guest begins "Copyright (c) 2003-2026 Eelco
+      Dolstra and the Nixpkgs/NixOS".
+- [x] The build runs as `nixbuild`, not root, inside a scope with the
+      documented `CPUQuota`, `MemoryMax`, `RuntimeMaxSec`. Evidence
+      (host-01 during the bun menu build, 2026-09-20 23:55Z,
+      `ops/checks/menu.sh`): `repose-build-<revision>.scope` with
+      `CPUQuotaPerSecUSec=8s`, `MemoryMax=17179869184`,
+      `RuntimeMaxUSec=30min 30s`, `ControlGroup=/system.slice/repose-build-
+      <revision>.scope`, and `ps -eo user,pid,comm` showing `nixbuild 95717
+      nix`. Locally `TestWrapArgv`.
 - [~] Closure cap test with the cap lowered passes; a real 20 GB+ fragment
       on a host returns `closure_too_large` with ten paths. Evidence:
       `TestRealNixClosureCap` (cap 100 MB, ten paths); on host-01,
@@ -380,9 +396,14 @@ and whose host half is one of the `ops/checks/menu.sh` or
       closure. Evidence: `TestRealNixSuccessRootAndKernelChanged` (the
       root under `gcroots/repose`); `nix-collect-garbage` on host-01 with
       two guests running kept both rooted closures (M1 session,
-      `docs/RESEARCH.md` §11: 1.1 GiB freed, guests unaffected); the
-      root after a destroy through the api is `ops/checks/menu.sh
-      --with-destroy`.
+      `docs/RESEARCH.md` §11: 1.1 GiB freed, guests unaffected). On host-01
+      after three builds (00:47Z): `gcroots/repose/<guest id>` plus the
+      newest three `rev-<project>-<revision>` roots, and the applied
+      closure absent from `nix-store --gc --print-dead` (count 0). After a
+      destroy: the guest's root went, the project's `rev-*` roots stayed
+      (m3-check, 23:46Z), fixed as DECISIONS I-115 and on host-01 since the
+      00:16Z switch; the three synthetic projects destroyed after it left
+      no roots.
 - [~] `kernel_changed` is true when the base kernel is bumped and false for
       a package-only change. Evidence: `TestKernelChanged` and
       `TestRealNixSuccessRootAndKernelChanged` (a package-only change and
@@ -399,10 +420,19 @@ and whose host half is one of the `ops/checks/menu.sh` or
       `internal/menu/menu_test.go` `TestEveryEntryRendersAndRoundTrips`,
       `TestRealNixAllEntriesEvaluate`, `TestLintRejectsForbiddenPrefix`
       (`networking.firewall`), `TestAllowlistMatchesNix`; CI `go` job.
-- [ ] Menu → fragment → edit → takeover flow works end to end through the
-      api. Evidence: the sequence of API calls and responses.
-      `internal/api/http/http_test.go` `TestConfigRoutes` covers the routes
-      against the fake hostd; the sequence on host-01 is `ops/checks/menu.sh`.
+- [x] Menu → fragment → edit → takeover flow works end to end through the
+      api. Evidence (`ops/checks/menu.sh`, host-01, 2026-09-21 00:47Z, api
+      at main with I-119): `PUT /projects/:id/config {menu:[{id:bun}]}` →
+      `{revision_id, op_id}`, 40 SSE lines, op done in 5 s, `bun` 1.4.2 on
+      PATH in a new login shell with the same boot_id and tmux session;
+      `GET /config` → `menu: [{"id":"bun"}]`, fragment beginning `#
+      generated by repose from your menu selection…` then `# repose-menu:
+      [{"id":"bun"}]`; the fragment edited (a comment before the header)
+      and applied with `repose config apply`; then `PUT {menu}` → 409
+      `project uses a custom fragment; use fragment mode or reset`;
+      applying the api's default fragment puts the project back in menu
+      mode. Before I-119 the deployed api served its own 23-entry stand-in
+      catalog with no selection line.
 - [~] Base bump: publishing a version applies to a non-held project and
       not a held one; a project whose bump fails shows
       `base_update_failed` and keeps working. Evidence:
