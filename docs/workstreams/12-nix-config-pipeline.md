@@ -415,17 +415,27 @@ and whose host half is one of the `ops/checks/menu.sh` or
       (m3-check, 23:46Z), fixed as DECISIONS I-115 and on host-01 since the
       00:16Z switch; the three synthetic projects destroyed after it left
       no roots.
-- [~] `kernel_changed` is true when the base kernel is bumped and false for
+- [x] `kernel_changed` is true when the base kernel is bumped and false for
       a package-only change. Evidence: `TestKernelChanged` and
-      `TestRealNixSuccessRootAndKernelChanged` (a package-only change and
-      a kernel bump across two toplevels); on host-01, the first real
-      `Build` reported `kernel_changed` against the M1 guest's closure
-      (`docs/RESEARCH.md` §12) and `ApplyConfig` refused the kernel change
-      until forced (M1 session). Two `Build` results from the api path
-      need a published base whose kernel differs; every merged `main`
-      locks the same nixpkgs, so `ops/checks/resilience.sh bump` takes
-      `BASE_REV` and the conductor decides when a `nix flake update`
-      commit is published (`ops/checks/README.md`).
+      `TestRealNixSuccessRootAndKernelChanged`; on host-01 through the api
+      (2026-09-21, `ops/checks/resilience.sh bump`, evidence
+      `ops/checks/out/resilience-20260921T022007Z.txt`): the security
+      publish of test base 2026.09.21-m3-0220 (commit 38d1cbf, linux
+      7.2.6 instead of the LTS 6.18.52) swept nuru-playground,
+      age-calculator, m3-check and m3-iso-c at 02:29:22Z; every `Build`
+      reported `kernel_changed` true, every revision ended `built` with
+      `reboot_required`, hostd logged "apply needs reboot" and no guest
+      rebooted (unit start times unchanged); m3-held (held) got no op.
+      `repose stop && repose start` of m3-check booted 7.2.6 (`uname -r`).
+      The LTS republish 2026.09.21.3 (main 9d4cb40) at 02:59:18Z gave the
+      second result: `kernel_changed` true for m3-check and repose-m5-frag
+      (7.2.6 back to 6.18.52, `built` with `reboot_required`) and false
+      for age-calculator, m3-iso-c and m3-held (package-only against their
+      running kernel, switched in place). The first attempt (02:12Z) found
+      every bump built against the base it was leaving (DECISIONS I-134),
+      and the LTS sweep found the activation stranding guestd (I-143), the
+      clone race (I-144), the wording (I-145) and the skip rule (I-146).
+
 - [x] Menu: every catalog entry has a test; the allowlist lint runs in CI
       and rejects a test entry with `networking.firewall`. Evidence:
       `internal/menu/menu_test.go` `TestEveryEntryRendersAndRoundTrips`,

@@ -508,9 +508,17 @@ waits on host-01 (`ops/checks/README.md` names the script that closes it).
       Evidence: `internal/api/basebump/basebump_test.go`
       `TestSweepBuildsUnheldSkipsHeld` and `internal/basebump`
       `TestThreeProjects`. On the real path: `ops/checks/resilience.sh bump`
-      (waits for "gate done"; base 2026.09.21.1 was published and smoked
-      2026-09-21 00:25Z: create 43 s, snapshot 17 s, stop 5 s, start 15 s,
-      destroy 21 s).
+      (base 2026.09.21.1 was published and smoked 2026-09-21 00:25Z:
+      create 43 s, snapshot 17 s, stop 5 s, start 15 s, destroy 21 s). Real
+      sweeps 2026-09-21: 02:29:22Z (2026.09.21-m3-0220, security) built
+      the four unheld projects and skipped the held one, 4 min to 9 min
+      after the publish; 02:59:18Z (2026.09.21.3) built six. What those
+      sweeps exposed and what fixed it: bumps built against the old base
+      (I-134), a sweep lost to an api-grpc redeploy (I-141), the
+      activation stranding guestd (I-143), the clone race (I-144), the
+      failure wording (I-145) and the skip rule (I-146); the base
+      published after I-143..I-146 deployed is the sweep's proof
+      (12 §9 `kernel_changed` row).
 - [x] Snapshot expiry removes blobs on schedule and never one referenced
       by a running restore. Evidence: `internal/api/snapshots/expiry_test.go`
       `TestExpiryRules` with the fake blob store (`restoring_op_id` guard).
