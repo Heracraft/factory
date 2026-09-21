@@ -2,7 +2,9 @@
 # M3 step 5 (docs/workstreams/PROMPTS.md "M3 bring-up / m3"): the api's
 # resilience rows of 05 §9 on the real path.
 #
-#   grpc    kill api-grpc during a build: hostd reconnects, the op completes,
+#   grpc    SIGKILL the api-grpc process during a build (Docker restarts
+#           the container; a `docker kill` would leave it exited): hostd
+#           reconnects, the op completes,
 #           nothing is lost ("api-grpc restarts are absorbed by hostd
 #           reconnect with no lost commands").
 #   http    restart api during a snapshot op: the op completes ("ops survive
@@ -50,8 +52,12 @@ grpc_section() {
 	op=$(api_body PUT "/projects/$pid/config" "{\"fragment\": $(python3 -c 'import json,sys; print(json.dumps(open(sys.argv[1]).read()))' "$f")}" | jsonq 'd["op_id"]')
 	log "build op $op started; killing api-grpc in 8 s"
 	sleep 8
-	control_sh "docker kill $API_GRPC_CTR; sleep 3; docker ps --format '{{.Names}} {{.Status}}' | grep $API_GRPC_CTR || echo 'api-grpc not back yet'" | evidence "docker kill api-grpc during op $op"
-	control_sh "for i in \$(seq 1 30); do docker ps --format '{{.Names}} {{.Status}}' | grep -q \"$API_GRPC_CTR.*Up\" && break; sleep 2; done; docker ps --format '{{.Names}} {{.Status}}' | grep $API_GRPC_CTR" | evidence "api-grpc back (Docker's restart policy; if not, redeploy through the conductor)"
+	# A crash, not an operator stop: `docker kill` counts as a stop under
+	# `restart: unless-stopped` and Docker leaves the container exited
+	# (learned 2026-09-21 01:15Z, api-grpc down three minutes); SIGKILL to
+	# the api process from the VM is what Docker restarts.
+	control_sh "kill -9 \$(docker inspect -f '{{.State.Pid}}' $API_GRPC_CTR); sleep 3; docker ps -a --format '{{.Names}} {{.Status}}' | grep $API_GRPC_CTR" | evidence "kill -9 of the api-grpc process during op $op"
+	control_sh "for i in \$(seq 1 45); do docker inspect -f '{{.State.Health.Status}}' $API_GRPC_CTR 2>/dev/null | grep -q healthy && break; sleep 2; done; docker ps -a --format '{{.Names}} {{.Status}}' | grep $API_GRPC_CTR" | evidence "api-grpc back through Docker's restart policy"
 	wait_op "$pid" "$op" 1800 || fail "the build op did not complete after the api-grpc kill"
 	stream_events "$since" | evidence "hostd stream_disconnect / stream_connect on the host"
 	admin ops log "$op" | tail -15 | evidence "repose-admin ops log $op"

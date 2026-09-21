@@ -758,6 +758,25 @@ network" would register only the container name (`coolify.md`, fact 11).
 2. From the api container's network: `docker run --rm --network coolify
    busybox:1.36 nc -z -w 3 repose-postgres 5432` exits 0 once 1 is right.
 
+## api-grpc stopped and did not come back
+
+Symptom: `repose-admin ops list --state running` grows, hostd's journal
+repeats `stream_disconnect` with `retry_ms` climbing to 30000, `docker ps`
+on the control VM shows the api-grpc container `Exited (137)` (or absent
+from `docker ps`), and the api itself is healthy.
+
+Cause: the container was stopped by an operator action, `docker kill`
+or `docker stop`, and Docker's `restart: unless-stopped` treats that as a
+stop, never restarting it (m3 integration, 2026-09-21: three minutes of
+no ops). A crash of the process (SIGKILL to its pid, an OOM, a panic) is
+restarted within seconds; a stopped container is not.
+
+Fix: `docker start <api-grpc container>` on the control VM (same
+container, same image), or a redeploy from Coolify. hostd reconnects
+within its 30 s backoff, sends `Hello` with its guest list, and the api
+re-sends every unfinished command with its `command_id`; guests are
+untouched throughout.
+
 ## Coolify deploy failed
 
 The api, api-grpc or web app's rolling deploy did not go green.
