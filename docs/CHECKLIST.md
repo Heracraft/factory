@@ -143,8 +143,8 @@ written so they cannot happen quietly.
       RequiredPassages` pins the source; since the M5 review both routes
       are prerendered so the passages are in the served HTML (`curl -s
       https://repose.herakraft.co/privacy | tr -s '[:space:]' ' ' | grep -c
-      'We sample the processes'` is 1 after the web roll; the built
-      `build/prerendered/privacy.html` carried it at 2026-09-21 02:18Z).
+      'We sample the processes'` is 1, verified live at 2026-09-21 02:47Z
+      after the web roll, and the terms phrase likewise).
 - [ ] The Anthropic API key leaked in commit `b1a5915` has been rotated
       (done 2026-09-17) and the history has been rewritten or the repo made
       private before it is shared with contributors.
