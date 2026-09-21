@@ -249,6 +249,33 @@ func (i *Ingest) OnEvent(ctx context.Context, hostID uuid.UUID, ev *hostdv1.Even
 		i.m.HostWarningsTotal.WithLabelValues(e.HostWarning.Kind).Inc()
 		i.log.Warn("host warning", "event", "host_warning", "host_id", hostID.String(), "kind", e.HostWarning.Kind, "detail", e.HostWarning.Detail)
 		return true
+	case *hostdv1.Event_OperatorLogin:
+		// The audit row 14 §5 requires for every operator SSH login
+		// (I-140). The host re-sends an event whose ack was lost, so the
+		// host event id in the detail is what keeps it to one row.
+		ol := e.OperatorLogin
+		var dup bool
+		if err := i.pool.QueryRow(ctx, "select exists(select 1 from audit_log where action = 'operator_login' and detail->>'host_event_id' = $1)", ev.EventId).Scan(&dup); err != nil {
+			i.log.Error("operator login lookup", "event", "operator_login", "err", err.Error())
+			return false
+		}
+		if dup {
+			return true
+		}
+		actor := "operator"
+		switch {
+		case ol.KeyId != "":
+			actor = ol.KeyId
+		case ol.KeyFingerprint != "":
+			actor = "operator:key:" + ol.KeyFingerprint
+		}
+		detail := map[string]any{"pam_type": ol.PamType, "user_present": ol.UserPresent, "key_id": ol.KeyId, "serial": ol.Serial, "key_fingerprint": ol.KeyFingerprint, "host_event_id": ev.EventId, "ts": ts.UTC().Format(time.RFC3339)}
+		if _, err := store.Audit(ctx, i.pool, actor, "operator_login", hostID.String(), detail); err != nil {
+			i.log.Error("operator login audit insert", "event", "operator_login", "err", err.Error())
+			return false
+		}
+		i.log.Log(ctx, slog.Level(2), "operator login", "event", "operator_login", "host_id", hostID.String(), "key_id", ol.KeyId, "cert_serial", ol.Serial)
+		return true
 	}
 	return true
 }

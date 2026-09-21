@@ -143,3 +143,39 @@ func TestDedupeOutboxAndRateCap(t *testing.T) {
 		t.Fatalf("skew handling: ts=%v skew=%v", ts, skew)
 	}
 }
+
+// An operator's SSH login on a host becomes exactly one audit_log row,
+// keyed by the certificate's key id, however often the host re-sends the
+// event (I-140; 14 §5 "every operator SSH login to a host").
+func TestOperatorLoginWritesOneAuditRow(t *testing.T) {
+	pool := testdb.Open(t)
+	ctx := context.Background()
+	ing := events.New(pool, metrics.NewNop(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	hostID := store.NewID()
+	ev := &hostdv1.Event{EventId: store.NewID().String(), Ts: time.Now().Unix(), Ev: &hostdv1.Event_OperatorLogin{OperatorLogin: &hostdv1.OperatorLogin{PamType: "open_session", UserPresent: true, KeyId: "operator:alice", Serial: 42, KeyFingerprint: "SHA256:abc"}}}
+	first := ing.OnEvent(ctx, hostID, ev)
+	resent := ing.OnEvent(ctx, hostID, ev) // the host re-sends when an ack is lost
+	if !first || !resent {
+		t.Fatalf("operator login acked: first %v, re-sent %v", first, resent)
+	}
+	var n int
+	var actor, target string
+	var detail map[string]any
+	if err := pool.QueryRow(ctx, "select count(*) from audit_log where action = 'operator_login'").Scan(&n); err != nil || n != 1 {
+		t.Fatalf("rows %d %v", n, err)
+	}
+	if err := pool.QueryRow(ctx, "select actor, target, detail from audit_log where action = 'operator_login'").Scan(&actor, &target, &detail); err != nil {
+		t.Fatal(err)
+	}
+	if actor != "operator:alice" || target != hostID.String() || detail["serial"] != float64(42) || detail["key_id"] != "operator:alice" || detail["host_event_id"] != ev.EventId {
+		t.Fatalf("row %s %s %v", actor, target, detail)
+	}
+	// A plain key (the bootstrap key) is identified by its fingerprint.
+	ev2 := &hostdv1.Event{EventId: store.NewID().String(), Ts: time.Now().Unix(), Ev: &hostdv1.Event_OperatorLogin{OperatorLogin: &hostdv1.OperatorLogin{PamType: "open_session", UserPresent: true, KeyFingerprint: "SHA256:boot"}}}
+	if !ing.OnEvent(ctx, hostID, ev2) {
+		t.Fatal("second login not acked")
+	}
+	if err := pool.QueryRow(ctx, "select actor from audit_log where detail->>'host_event_id' = $1", ev2.EventId).Scan(&actor); err != nil || actor != "operator:key:SHA256:boot" {
+		t.Fatalf("plain-key actor %q %v", actor, err)
+	}
+}

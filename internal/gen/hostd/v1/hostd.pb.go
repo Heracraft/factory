@@ -3587,6 +3587,87 @@ func (x *HostWarning) GetDetail() string {
 	return ""
 }
 
+// An operator's SSH login to the host, from the PAM hook that runs
+// `hostd audit-login`: what the api turns into the audit_log row 14 §5
+// requires (DECISIONS I-140). Carries the certificate's key id and serial
+// and a key fingerprint, never a key or certificate body, and never the
+// source address.
+type OperatorLogin struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	PamType        string                 `protobuf:"bytes,1,opt,name=pam_type,json=pamType,proto3" json:"pam_type,omitempty"` // open_session|close_session
+	UserPresent    bool                   `protobuf:"varint,2,opt,name=user_present,json=userPresent,proto3" json:"user_present,omitempty"`
+	KeyId          string                 `protobuf:"bytes,3,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`                            // certificate key_id (operator:<name>), empty for a plain key
+	Serial         uint64                 `protobuf:"varint,4,opt,name=serial,proto3" json:"serial,omitempty"`                                      // certificate serial, 0 for a plain key
+	KeyFingerprint string                 `protobuf:"bytes,5,opt,name=key_fingerprint,json=keyFingerprint,proto3" json:"key_fingerprint,omitempty"` // SHA256:... of the key (the bootstrap key when key_id is empty)
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *OperatorLogin) Reset() {
+	*x = OperatorLogin{}
+	mi := &file_repose_hostd_v1_hostd_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OperatorLogin) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OperatorLogin) ProtoMessage() {}
+
+func (x *OperatorLogin) ProtoReflect() protoreflect.Message {
+	mi := &file_repose_hostd_v1_hostd_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OperatorLogin.ProtoReflect.Descriptor instead.
+func (*OperatorLogin) Descriptor() ([]byte, []int) {
+	return file_repose_hostd_v1_hostd_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *OperatorLogin) GetPamType() string {
+	if x != nil {
+		return x.PamType
+	}
+	return ""
+}
+
+func (x *OperatorLogin) GetUserPresent() bool {
+	if x != nil {
+		return x.UserPresent
+	}
+	return false
+}
+
+func (x *OperatorLogin) GetKeyId() string {
+	if x != nil {
+		return x.KeyId
+	}
+	return ""
+}
+
+func (x *OperatorLogin) GetSerial() uint64 {
+	if x != nil {
+		return x.Serial
+	}
+	return 0
+}
+
+func (x *OperatorLogin) GetKeyFingerprint() string {
+	if x != nil {
+		return x.KeyFingerprint
+	}
+	return ""
+}
+
 type Event struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	EventId string                 `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
@@ -3597,6 +3678,7 @@ type Event struct {
 	//	*Event_AgentEvent
 	//	*Event_SnapshotDone
 	//	*Event_HostWarning
+	//	*Event_OperatorLogin
 	Ev            isEvent_Ev `protobuf_oneof:"ev"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3604,7 +3686,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_repose_hostd_v1_hostd_proto_msgTypes[45]
+	mi := &file_repose_hostd_v1_hostd_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3616,7 +3698,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_repose_hostd_v1_hostd_proto_msgTypes[45]
+	mi := &file_repose_hostd_v1_hostd_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3629,7 +3711,7 @@ func (x *Event) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Event.ProtoReflect.Descriptor instead.
 func (*Event) Descriptor() ([]byte, []int) {
-	return file_repose_hostd_v1_hostd_proto_rawDescGZIP(), []int{45}
+	return file_repose_hostd_v1_hostd_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *Event) GetEventId() string {
@@ -3689,6 +3771,15 @@ func (x *Event) GetHostWarning() *HostWarning {
 	return nil
 }
 
+func (x *Event) GetOperatorLogin() *OperatorLogin {
+	if x != nil {
+		if x, ok := x.Ev.(*Event_OperatorLogin); ok {
+			return x.OperatorLogin
+		}
+	}
+	return nil
+}
+
 type isEvent_Ev interface {
 	isEvent_Ev()
 }
@@ -3709,6 +3800,10 @@ type Event_HostWarning struct {
 	HostWarning *HostWarning `protobuf:"bytes,13,opt,name=host_warning,json=hostWarning,proto3,oneof"`
 }
 
+type Event_OperatorLogin struct {
+	OperatorLogin *OperatorLogin `protobuf:"bytes,14,opt,name=operator_login,json=operatorLogin,proto3,oneof"`
+}
+
 func (*Event_GuestStateChanged) isEvent_Ev() {}
 
 func (*Event_AgentEvent) isEvent_Ev() {}
@@ -3716,6 +3811,8 @@ func (*Event_AgentEvent) isEvent_Ev() {}
 func (*Event_SnapshotDone) isEvent_Ev() {}
 
 func (*Event_HostWarning) isEvent_Ev() {}
+
+func (*Event_OperatorLogin) isEvent_Ev() {}
 
 var File_repose_hostd_v1_hostd_proto protoreflect.FileDescriptor
 
@@ -4035,7 +4132,13 @@ const file_repose_hostd_v1_hostd_proto_rawDesc = "" +
 	"\x05bytes\x18\x04 \x01(\x04R\x05bytes\"9\n" +
 	"\vHostWarning\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x16\n" +
-	"\x06detail\x18\x02 \x01(\tR\x06detail\"\xd7\x02\n" +
+	"\x06detail\x18\x02 \x01(\tR\x06detail\"\xa5\x01\n" +
+	"\rOperatorLogin\x12\x19\n" +
+	"\bpam_type\x18\x01 \x01(\tR\apamType\x12!\n" +
+	"\fuser_present\x18\x02 \x01(\bR\vuserPresent\x12\x15\n" +
+	"\x06key_id\x18\x03 \x01(\tR\x05keyId\x12\x16\n" +
+	"\x06serial\x18\x04 \x01(\x04R\x06serial\x12'\n" +
+	"\x0fkey_fingerprint\x18\x05 \x01(\tR\x0ekeyFingerprint\"\xa0\x03\n" +
 	"\x05Event\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x0e\n" +
 	"\x02ts\x18\x02 \x01(\x03R\x02ts\x12T\n" +
@@ -4044,7 +4147,8 @@ const file_repose_hostd_v1_hostd_proto_rawDesc = "" +
 	"\vagent_event\x18\v \x01(\v2\x1b.repose.hostd.v1.AgentEventH\x00R\n" +
 	"agentEvent\x12D\n" +
 	"\rsnapshot_done\x18\f \x01(\v2\x1d.repose.hostd.v1.SnapshotDoneH\x00R\fsnapshotDone\x12A\n" +
-	"\fhost_warning\x18\r \x01(\v2\x1c.repose.hostd.v1.HostWarningH\x00R\vhostWarningB\x04\n" +
+	"\fhost_warning\x18\r \x01(\v2\x1c.repose.hostd.v1.HostWarningH\x00R\vhostWarning\x12G\n" +
+	"\x0eoperator_login\x18\x0e \x01(\v2\x1e.repose.hostd.v1.OperatorLoginH\x00R\roperatorLoginB\x04\n" +
 	"\x02ev2\xf7\x01\n" +
 	"\vHostService\x12O\n" +
 	"\bRegister\x12 .repose.hostd.v1.RegisterRequest\x1a!.repose.hostd.v1.RegisterResponse\x12M\n" +
@@ -4063,7 +4167,7 @@ func file_repose_hostd_v1_hostd_proto_rawDescGZIP() []byte {
 	return file_repose_hostd_v1_hostd_proto_rawDescData
 }
 
-var file_repose_hostd_v1_hostd_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
+var file_repose_hostd_v1_hostd_proto_msgTypes = make([]protoimpl.MessageInfo, 50)
 var file_repose_hostd_v1_hostd_proto_goTypes = []any{
 	(*HostInfo)(nil),          // 0: repose.hostd.v1.HostInfo
 	(*WireguardPeer)(nil),     // 1: repose.hostd.v1.WireguardPeer
@@ -4110,10 +4214,11 @@ var file_repose_hostd_v1_hostd_proto_goTypes = []any{
 	(*AgentEvent)(nil),        // 42: repose.hostd.v1.AgentEvent
 	(*SnapshotDone)(nil),      // 43: repose.hostd.v1.SnapshotDone
 	(*HostWarning)(nil),       // 44: repose.hostd.v1.HostWarning
-	(*Event)(nil),             // 45: repose.hostd.v1.Event
-	nil,                       // 46: repose.hostd.v1.CreateGuest.EnvEntry
-	nil,                       // 47: repose.hostd.v1.StartGuest.EnvEntry
-	nil,                       // 48: repose.hostd.v1.Restore.EnvEntry
+	(*OperatorLogin)(nil),     // 45: repose.hostd.v1.OperatorLogin
+	(*Event)(nil),             // 46: repose.hostd.v1.Event
+	nil,                       // 47: repose.hostd.v1.CreateGuest.EnvEntry
+	nil,                       // 48: repose.hostd.v1.StartGuest.EnvEntry
+	nil,                       // 49: repose.hostd.v1.Restore.EnvEntry
 }
 var file_repose_hostd_v1_hostd_proto_depIdxs = []int32{
 	0,  // 0: repose.hostd.v1.RegisterRequest.info:type_name -> repose.hostd.v1.HostInfo
@@ -4124,16 +4229,16 @@ var file_repose_hostd_v1_hostd_proto_depIdxs = []int32{
 	9,  // 5: repose.hostd.v1.HostMessage.heartbeat:type_name -> repose.hostd.v1.Heartbeat
 	27, // 6: repose.hostd.v1.HostMessage.result:type_name -> repose.hostd.v1.Result
 	40, // 7: repose.hostd.v1.HostMessage.samples:type_name -> repose.hostd.v1.Samples
-	45, // 8: repose.hostd.v1.HostMessage.event:type_name -> repose.hostd.v1.Event
+	46, // 8: repose.hostd.v1.HostMessage.event:type_name -> repose.hostd.v1.Event
 	34, // 9: repose.hostd.v1.HostMessage.log:type_name -> repose.hostd.v1.BuildLog
 	7,  // 10: repose.hostd.v1.Hello.guests:type_name -> repose.hostd.v1.GuestStatus
 	10, // 11: repose.hostd.v1.CreateGuest.secrets:type_name -> repose.hostd.v1.Secret
-	46, // 12: repose.hostd.v1.CreateGuest.env:type_name -> repose.hostd.v1.CreateGuest.EnvEntry
+	47, // 12: repose.hostd.v1.CreateGuest.env:type_name -> repose.hostd.v1.CreateGuest.EnvEntry
 	10, // 13: repose.hostd.v1.StartGuest.secrets:type_name -> repose.hostd.v1.Secret
-	47, // 14: repose.hostd.v1.StartGuest.env:type_name -> repose.hostd.v1.StartGuest.EnvEntry
+	48, // 14: repose.hostd.v1.StartGuest.env:type_name -> repose.hostd.v1.StartGuest.EnvEntry
 	11, // 15: repose.hostd.v1.Build.limits:type_name -> repose.hostd.v1.Limits
 	10, // 16: repose.hostd.v1.Restore.secrets:type_name -> repose.hostd.v1.Secret
-	48, // 17: repose.hostd.v1.Restore.env:type_name -> repose.hostd.v1.Restore.EnvEntry
+	49, // 17: repose.hostd.v1.Restore.env:type_name -> repose.hostd.v1.Restore.EnvEntry
 	10, // 18: repose.hostd.v1.UpdateSecrets.secrets:type_name -> repose.hostd.v1.Secret
 	12, // 19: repose.hostd.v1.Command.create_guest:type_name -> repose.hostd.v1.CreateGuest
 	13, // 20: repose.hostd.v1.Command.start_guest:type_name -> repose.hostd.v1.StartGuest
@@ -4164,17 +4269,18 @@ var file_repose_hostd_v1_hostd_proto_depIdxs = []int32{
 	42, // 45: repose.hostd.v1.Event.agent_event:type_name -> repose.hostd.v1.AgentEvent
 	43, // 46: repose.hostd.v1.Event.snapshot_done:type_name -> repose.hostd.v1.SnapshotDone
 	44, // 47: repose.hostd.v1.Event.host_warning:type_name -> repose.hostd.v1.HostWarning
-	2,  // 48: repose.hostd.v1.HostService.Register:input_type -> repose.hostd.v1.RegisterRequest
-	2,  // 49: repose.hostd.v1.HostService.Rotate:input_type -> repose.hostd.v1.RegisterRequest
-	5,  // 50: repose.hostd.v1.HostService.Session:input_type -> repose.hostd.v1.HostMessage
-	3,  // 51: repose.hostd.v1.HostService.Register:output_type -> repose.hostd.v1.RegisterResponse
-	3,  // 52: repose.hostd.v1.HostService.Rotate:output_type -> repose.hostd.v1.RegisterResponse
-	4,  // 53: repose.hostd.v1.HostService.Session:output_type -> repose.hostd.v1.ApiMessage
-	51, // [51:54] is the sub-list for method output_type
-	48, // [48:51] is the sub-list for method input_type
-	48, // [48:48] is the sub-list for extension type_name
-	48, // [48:48] is the sub-list for extension extendee
-	0,  // [0:48] is the sub-list for field type_name
+	45, // 48: repose.hostd.v1.Event.operator_login:type_name -> repose.hostd.v1.OperatorLogin
+	2,  // 49: repose.hostd.v1.HostService.Register:input_type -> repose.hostd.v1.RegisterRequest
+	2,  // 50: repose.hostd.v1.HostService.Rotate:input_type -> repose.hostd.v1.RegisterRequest
+	5,  // 51: repose.hostd.v1.HostService.Session:input_type -> repose.hostd.v1.HostMessage
+	3,  // 52: repose.hostd.v1.HostService.Register:output_type -> repose.hostd.v1.RegisterResponse
+	3,  // 53: repose.hostd.v1.HostService.Rotate:output_type -> repose.hostd.v1.RegisterResponse
+	4,  // 54: repose.hostd.v1.HostService.Session:output_type -> repose.hostd.v1.ApiMessage
+	52, // [52:55] is the sub-list for method output_type
+	49, // [49:52] is the sub-list for method input_type
+	49, // [49:49] is the sub-list for extension type_name
+	49, // [49:49] is the sub-list for extension extendee
+	0,  // [0:49] is the sub-list for field type_name
 }
 
 func init() { file_repose_hostd_v1_hostd_proto_init() }
@@ -4217,11 +4323,12 @@ func file_repose_hostd_v1_hostd_proto_init() {
 		(*Result_Snapshot)(nil),
 		(*Result_Exec)(nil),
 	}
-	file_repose_hostd_v1_hostd_proto_msgTypes[45].OneofWrappers = []any{
+	file_repose_hostd_v1_hostd_proto_msgTypes[46].OneofWrappers = []any{
 		(*Event_GuestStateChanged)(nil),
 		(*Event_AgentEvent)(nil),
 		(*Event_SnapshotDone)(nil),
 		(*Event_HostWarning)(nil),
+		(*Event_OperatorLogin)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -4229,7 +4336,7 @@ func file_repose_hostd_v1_hostd_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_repose_hostd_v1_hostd_proto_rawDesc), len(file_repose_hostd_v1_hostd_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   49,
+			NumMessages:   50,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -117,7 +117,13 @@ I-121)}`,
 `snapshot_done`, `host_warning {kind, detail}` with kinds `pool_high` (80
 percent), `store_high` (80 percent), `build_queue_deep`, `cache_unreachable`
 (substituter down; builds fall back to source and will be slow),
-`guestd_lost` (no vsock for 60 s), `freeze_timeout`.
+`guestd_lost` (no vsock for 60 s), `freeze_timeout`; `operator_login
+{pam_type, user_present, key_id, serial, key_fingerprint}` for every SSH
+login to the host, from the PAM hook that runs `hostd audit-login`
+(DECISIONS I-140): the certificate's key id and serial, or a plain key's
+SHA256 fingerprint, never a key or certificate body and never the source
+address; the api writes the `audit_log` row 14 §5 requires, one per host
+event id however often the event is re-sent.
 
 ## Idempotency and ordering
 

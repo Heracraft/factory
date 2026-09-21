@@ -224,8 +224,11 @@ lines of 2026-09-20), `docs/security/review-2026-09-20.md` and the tree;
       `exec` 22 matching the api-driven `exec_audit` lines on host-01
       (`audit_id`, `argv_len`, no argv), `cert_issue` 20, `cert_revoke` 4,
       `secret_put` 5, `secret_delete` 3, `project_*`, `host_*`, `ca_*`,
-      `base_*`, `user_*`, `billing_enforce`; still no `operator_login`
-      producer (L-13).
+      `base_*`, `user_*`, `billing_enforce`; the `operator_login`
+      producer is I-140 (same session: PAM hook to control socket to host
+      event to `audit_log`, with the certificate's key id and serial),
+      live on host-01 at the next switch; the user-route restore row is
+      still open (L-13's other half, 05).
 - [~] Operator access works only with a certificate; a password attempt is
       logged. Evidence (2026-09-21 00:38Z): `ssh -o
       PreferredAuthentications=password -o PubkeyAuthentication=no` to

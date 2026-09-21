@@ -8,11 +8,15 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
+	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
+	"golang.org/x/crypto/ssh"
 	"io"
 	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -453,13 +457,59 @@ func (c *consoleSet) stopAll() {
 	}
 }
 
-// AuditLogin writes the journald line the PAM hook produces for an
-// operator login (the api-side audit row is workstream 05's).
-func AuditLogin(log *slog.Logger, hostID string) {
+// AuditLogin is the PAM hook's side of an operator login (DECISIONS
+// I-140): the journald line, now with the certificate's key id and serial
+// (or a plain key's fingerprint) taken from sshd's SSH_AUTH_INFO_0, and a
+// report to the running daemon over the control socket so the api writes
+// the audit_log row. Nothing here may block a login: the socket call has a
+// short timeout and a daemon that is not running loses the row, not the
+// session; the journal line is the record in that case.
+func AuditLogin(log *slog.Logger, hostID, controlSock string) {
 	user := os.Getenv("PAM_USER")
 	kind := os.Getenv("PAM_TYPE")
 	if kind == "" {
 		kind = "unknown"
 	}
-	log.Log(context.Background(), slog.Level(2), "operator login", "event", "operator_login", "host_id", hostID, "pam_type", kind, "user_present", user != "")
+	keyID, serial, fp := ParseAuthInfo(os.Getenv("SSH_AUTH_INFO_0"))
+	log.Log(context.Background(), slog.Level(2), "operator login", "event", "operator_login", "host_id", hostID, "pam_type", kind, "user_present", user != "", "key_id", keyID, "cert_serial", serial, "key_fp", fp)
+	if kind != "open_session" || controlSock == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	rep := control.OperatorLoginReport{PAMType: kind, UserPresent: user != "", KeyID: keyID, Serial: serial, KeyFingerprint: fp}
+	if err := control.NewClient(controlSock).OperatorLogin(ctx, rep); err != nil {
+		log.Warn("operator login not handed to hostd; the journal line is the record", "event", "operator_login", "host_id", hostID, "err", err.Error())
+	}
+}
+
+// ParseAuthInfo reads the identifiers out of sshd's SSH_AUTH_INFO_0 ("<method>
+// <keytype> <base64>" per line): for a certificate its key id, serial and
+// the fingerprint of the key inside it, for a plain key its fingerprint.
+// The body never leaves this function.
+func ParseAuthInfo(info string) (keyID string, serial uint64, fingerprint string) {
+	for _, line := range strings.Split(info, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 || fields[0] != "publickey" {
+			continue
+		}
+		pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(fields[1] + " " + fields[2]))
+		if err != nil {
+			continue
+		}
+		if cert, ok := pub.(*ssh.Certificate); ok {
+			return cert.KeyId, cert.Serial, ssh.FingerprintSHA256(cert.Key)
+		}
+		return "", 0, ssh.FingerprintSHA256(pub)
+	}
+	return "", 0, ""
+}
+
+// OperatorLogin is the control-socket side: the report becomes a host
+// Event the api turns into an audit_log row (I-140).
+func (d *Daemon) OperatorLogin(r control.OperatorLoginReport) error {
+	ev := &hostdv1.Event{EventId: uuid.Must(uuid.NewV7()).String(), Ts: time.Now().Unix(),
+		Ev: &hostdv1.Event_OperatorLogin{OperatorLogin: &hostdv1.OperatorLogin{PamType: r.PAMType, UserPresent: r.UserPresent, KeyId: r.KeyID, Serial: r.Serial, KeyFingerprint: r.KeyFingerprint}}}
+	d.strm.Event(ev)
+	return nil
 }

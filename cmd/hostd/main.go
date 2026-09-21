@@ -276,7 +276,7 @@ func dispatch(cmd string, args []string, o *app.Options) int {
 		if id, err := register.Load(o.StateDir); err == nil {
 			hostID = id.Host.HostID
 		}
-		app.AuditLogin(log, hostID)
+		app.AuditLogin(log, hostID, o.ControlSock)
 		return 0
 	case "info":
 		r := shell.Exec{}

@@ -3065,3 +3065,33 @@ results; identity material travels on the unary path with the
 certificate); hostd polling `/internal/ca` (hostd holds no gateway client
 certificate). Interfaces: `grpc-hostd.md`, `host-conventions.md`,
 `hostd.proto` (old shape accepted: field 8 is additive).
+
+**I-140. Operator SSH logins reach `audit_log` as an `operator_login` host
+event carrying the certificate's key id and serial, never its body.**
+(m5-release, 14 final review, closes review L-13 and L-7, 2026-09-21) 14
+§5 lists "every operator SSH login to a host or the edge" among the
+audited actions; on host-01 as deployed the PAM hook wrote a journal line
+(`pam_type`, `user_present`) and nothing reached Postgres: 750 accepted
+logins in 24 hours, zero rows. And the line could not say which
+certificate logged in (L-7). Now `hostd audit-login` parses sshd's
+`SSH_AUTH_INFO_0` with `x/crypto/ssh`, keeps a certificate's `KeyId` and
+`Serial` and the SHA256 fingerprint of the key (a plain key gives the
+fingerprint alone, which is how the bootstrap key shows up), logs them,
+and on `open_session` posts them to the daemon's control socket
+(`POST /operator-login`, a 2 s timeout, failure logged and the login
+never blocked); the daemon emits `Event.operator_login = 14` on the
+stream with the usual event id and ack; the api's ingest writes
+`audit_log (actor = key_id | "operator:key:" + fingerprint, action =
+operator_login, target = host id, detail = {pam_type, user_present,
+key_id, serial, key_fingerprint, host_event_id, ts})` and refuses a
+second row for the same host event id, since a host re-sends an event
+whose ack was lost. `PAM_RHOST` is read by nothing: the source address
+is on the never-log list and an operator's address is not the audit's
+business. *Rejected:* the api tailing the host's journal through Loki (a
+log store is not an audit store, and no Loki is wired); writing the row
+from the hook directly (the hook has no database and no api client, and
+must never block a login on either); a separate unary RPC (the stream's
+event path already has ids, acks and a re-send buffer). Interfaces:
+`grpc-hostd.md` (Event kinds), `host-conventions.md` (`hostd
+audit-login`), `hostd.proto` (old shape accepted: an api that predates
+the kind ignores it and acks).
