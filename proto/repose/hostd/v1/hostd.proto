@@ -249,7 +249,15 @@ message HostSample { uint64 mem_free = 1; uint64 pool_free = 2; double load1 = 3
 message Samples { int64 ts = 1; repeated GuestSample guests = 2; HostSample host = 3; }
 
 message GuestStateChanged { string guest_id = 1; string state = 2; string reason = 3; }
-message AgentEvent { string guest_id = 1; string agent = 2; string kind = 3; string summary = 4; }
+message AgentEvent {
+  string guest_id = 1;
+  string agent = 2;
+  string kind = 3;
+  string summary = 4;
+  // The tmux window the hook came from, as guestd resolved it (the
+  // `window` of 13-notifications.md §5.1); empty when unknown. I-121.
+  string tmux_window = 5;
+}
 message SnapshotDone { string guest_id = 1; string snapshot_id = 2; string blob_path = 3; uint64 bytes = 4; }
 message HostWarning { string kind = 1; string detail = 2; }
 message Event {

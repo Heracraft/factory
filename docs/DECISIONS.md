@@ -2688,3 +2688,20 @@ format is random). Interface: `host-conventions.md`. Verify on host-01
 after the next host switch: two creates in the same minute, two taps,
 `nft list set bridge repose guests` with two distinct tuples.
 
+**I-121. `AgentEvent` on the host stream carries `tmux_window`, and a
+Claude `Stop` without a readable transcript is summarised as "claude
+finished".** (m3 integration, 2026-09-21) The first hook events from a
+real guest on host-01 (`ops/checks/notifications.sh`, 00:08Z) reached the
+api and were delivered to ntfy and email within a second, and every row
+had `tmux_window` null and, for Claude's `Stop`, an empty summary. Two
+gaps between three contracts: guestd's `AgentEvent` (vsock) carries
+`tmux_window`, the `events` table and `13-notifications.md` §5.1 carry
+`window`, but hostd's `AgentEvent` (gRPC, `grpc-hostd.md`) had no such
+field, so hostd dropped what guestd had resolved and `repose status` could
+never say which window finished. And `guest-conventions.md` says a `Stop`
+summary is the transcript's last assistant line "else `claude finished`";
+`mapClaude` sent the empty string instead. `hostd.proto` `AgentEvent`
+gains `tmux_window = 5` (old shape accepted, empty means unknown), hostd
+forwards guestd's value, the api's ingest stores it; the mapper falls back
+to "claude finished". Interface: `grpc-hostd.md`.
+

@@ -224,7 +224,7 @@ func (i *Ingest) OnEvent(ctx context.Context, hostID uuid.UUID, ev *hostdv1.Even
 		if !notifyKinds[kind] {
 			kind = "error"
 		}
-		_, _, err = i.Insert(ctx, Incoming{ProjectID: p.ID, TS: ts, Kind: kind, Agent: e.AgentEvent.Agent, Summary: e.AgentEvent.Summary, Source: "host", HostEventID: ev.EventId})
+		_, _, err = i.Insert(ctx, Incoming{ProjectID: p.ID, TS: ts, Kind: kind, Agent: e.AgentEvent.Agent, Window: e.AgentEvent.TmuxWindow, Summary: e.AgentEvent.Summary, Source: "host", HostEventID: ev.EventId})
 		if err != nil {
 			i.log.Error("agent event insert", "event", "agent_event", "err", err.Error())
 			return false

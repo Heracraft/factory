@@ -99,7 +99,9 @@ HostSample { uint64 mem_free; uint64 pool_free; double load1; uint32 builds_runn
 
 **Event** (host-originated, at most once each, api acks by `event_id`):
 `guest_state_changed {guest_id, state, reason}`, `agent_event {guest_id,
-agent, kind (completed|needs_input|error), summary (capped 1 KB)}`,
+agent, kind (completed|needs_input|error), summary (capped 1 KB),
+tmux_window (the window guestd resolved for the hook, empty when unknown;
+I-121)}`,
 `snapshot_done`, `host_warning {kind, detail}` with kinds `pool_high` (80
 percent), `store_high` (80 percent), `build_queue_deep`, `cache_unreachable`
 (substituter down; builds fall back to source and will be slow),

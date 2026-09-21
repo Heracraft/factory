@@ -44,8 +44,8 @@ func TestMapClaudeStopWithoutATranscript(t *testing.T) {
 	if p.Kind != "completed" {
 		t.Fatalf("kind = %q, want completed even with no transcript", p.Kind)
 	}
-	if p.Summary != "" {
-		t.Fatalf("summary = %q, want empty", p.Summary)
+	if p.Summary != "claude finished" {
+		t.Fatalf("summary = %q, want the guest-conventions fallback %q (I-121)", p.Summary, "claude finished")
 	}
 }
 

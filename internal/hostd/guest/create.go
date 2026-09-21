@@ -628,7 +628,7 @@ func (mon *monitor) handleNotify(n *guestdv1.Notify) {
 			summary = summary[:1024]
 		}
 		m.log(mon.g).Info("agent event", "event", "agent_event", "agent", v.AgentEvent.Agent, "kind", v.AgentEvent.Kind)
-		m.emitEvent(&hostdv1.Event_AgentEvent{AgentEvent: &hostdv1.AgentEvent{GuestId: mon.g.GuestID, Agent: v.AgentEvent.Agent, Kind: v.AgentEvent.Kind, Summary: summary}})
+		m.emitEvent(&hostdv1.Event_AgentEvent{AgentEvent: &hostdv1.AgentEvent{GuestId: mon.g.GuestID, Agent: v.AgentEvent.Agent, Kind: v.AgentEvent.Kind, Summary: summary, TmuxWindow: v.AgentEvent.TmuxWindow}})
 	case *guestdv1.Notify_AgentState:
 		m.log(mon.g).Debug("agent state", "event", "agent_state", "agent", v.AgentState.Agent, "state", v.AgentState.State)
 	case *guestdv1.Notify_Warning:

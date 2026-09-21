@@ -312,4 +312,3 @@ func TestWriteBaseVersion(t *testing.T) {
 		t.Fatalf("empty label left the file: %v", err)
 	}
 }
-

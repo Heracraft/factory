@@ -727,6 +727,10 @@ func TestGuestdNotificationsBecomeEvents(t *testing.T) {
 		var gotAgent, gotWarn bool
 		for _, e := range h.rec.events {
 			if a := e.GetAgentEvent(); a != nil && a.GuestId == gid1 && a.Kind == "completed" {
+				// The window guestd resolved travels to the api (I-121).
+				if a.TmuxWindow != "claude" || a.Summary != "done" {
+					t.Errorf("agent event lost fields: window %q summary %q", a.TmuxWindow, a.Summary)
+				}
 				gotAgent = true
 			}
 			if w := e.GetHostWarning(); w != nil && w.Kind == "disk_high" && strings.Contains(w.Detail, gid1) {

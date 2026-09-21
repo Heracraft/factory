@@ -3375,11 +3375,14 @@ func (x *GuestStateChanged) GetReason() string {
 }
 
 type AgentEvent struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	GuestId       string                 `protobuf:"bytes,1,opt,name=guest_id,json=guestId,proto3" json:"guest_id,omitempty"`
-	Agent         string                 `protobuf:"bytes,2,opt,name=agent,proto3" json:"agent,omitempty"`
-	Kind          string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
-	Summary       string                 `protobuf:"bytes,4,opt,name=summary,proto3" json:"summary,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	GuestId string                 `protobuf:"bytes,1,opt,name=guest_id,json=guestId,proto3" json:"guest_id,omitempty"`
+	Agent   string                 `protobuf:"bytes,2,opt,name=agent,proto3" json:"agent,omitempty"`
+	Kind    string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
+	Summary string                 `protobuf:"bytes,4,opt,name=summary,proto3" json:"summary,omitempty"`
+	// The tmux window the hook came from, as guestd resolved it (the
+	// `window` of 13-notifications.md §5.1); empty when unknown. I-121.
+	TmuxWindow    string `protobuf:"bytes,5,opt,name=tmux_window,json=tmuxWindow,proto3" json:"tmux_window,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3438,6 +3441,13 @@ func (x *AgentEvent) GetKind() string {
 func (x *AgentEvent) GetSummary() string {
 	if x != nil {
 		return x.Summary
+	}
+	return ""
+}
+
+func (x *AgentEvent) GetTmuxWindow() string {
+	if x != nil {
+		return x.TmuxWindow
 	}
 	return ""
 }
@@ -3992,13 +4002,15 @@ const file_repose_hostd_v1_hostd_proto_rawDesc = "" +
 	"\x11GuestStateChanged\x12\x19\n" +
 	"\bguest_id\x18\x01 \x01(\tR\aguestId\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\"k\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"\x8c\x01\n" +
 	"\n" +
 	"AgentEvent\x12\x19\n" +
 	"\bguest_id\x18\x01 \x01(\tR\aguestId\x12\x14\n" +
 	"\x05agent\x18\x02 \x01(\tR\x05agent\x12\x12\n" +
 	"\x04kind\x18\x03 \x01(\tR\x04kind\x12\x18\n" +
-	"\asummary\x18\x04 \x01(\tR\asummary\"}\n" +
+	"\asummary\x18\x04 \x01(\tR\asummary\x12\x1f\n" +
+	"\vtmux_window\x18\x05 \x01(\tR\n" +
+	"tmuxWindow\"}\n" +
 	"\fSnapshotDone\x12\x19\n" +
 	"\bguest_id\x18\x01 \x01(\tR\aguestId\x12\x1f\n" +
 	"\vsnapshot_id\x18\x02 \x01(\tR\n" +

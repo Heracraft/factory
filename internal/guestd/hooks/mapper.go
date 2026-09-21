@@ -88,11 +88,14 @@ func mapClaude(payload []byte) (Payload, error) {
 	}
 	switch h.HookEventName {
 	case "Stop":
-		return Payload{
-			Agent:   "claude",
-			Kind:    "completed",
-			Summary: lastAssistantLine(h.TranscriptPath),
-		}, nil
+		// The last assistant line from the transcript tail, else the
+		// fallback guest-conventions.md names (an empty summary reached
+		// the api from the first real Stop on host-01, I-121).
+		summary := lastAssistantLine(h.TranscriptPath)
+		if summary == "" {
+			summary = "claude finished"
+		}
+		return Payload{Agent: "claude", Kind: "completed", Summary: summary}, nil
 	case "Notification":
 		// Older builds carry only `message`; classify from it when the
 		// explicit type is absent, so the wrapper works on both.
