@@ -19,6 +19,7 @@
 #     after 90 s guestd emits `completed "<agent> went idle"`.
 #
 #   ops/checks/notifications.sh          # PROJECT running; NTFY_URL set
+#   AGENTS="gemini" ops/checks/notifications.sh   # one agent only
 set -euo pipefail
 check=notifications
 # shellcheck source-path=SCRIPTDIR
@@ -71,8 +72,12 @@ status_line() {
 	printf '%s | %s | %s | event %s | ntfy %s | %ss after trigger\n' "$agent" "$mech" "$PROJECT" "$id" "$deliv" "$(( $(date +%s) - ts0 ))"
 }
 
+# AGENTS="gemini pi" limits the run to those agents (default: all five).
+: "${AGENTS:=claude codex opencode gemini pi}"
+wants() { case " $AGENTS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 results=()
 run_agent() {
+	wants "$1" || return 0
 	local agent=$1 cred=$2 real_prompt=$3 replay_cmd=$4 mech from ts0 id deliv
 	from=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 	ts0=$(date +%s)
@@ -111,6 +116,7 @@ run_agent opencode '~/.local/share/opencode/auth.json' \
 # The two heuristic agents: the real binary, idle in its window.
 heuristic_agent() {
 	local agent=$1 from ts0 id deliv
+	wants "$agent" || return 0
 	from=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 	ts0=$(date +%s)
 	in_window "$agent" "$agent"
