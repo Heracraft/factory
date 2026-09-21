@@ -273,8 +273,8 @@ two open rows are the two that need a machine of the owner's.
       by I-16 — there is no panel left that is empty for a reason of its
       own.
 - [x] All eleven alerts exist, have a `promtool` test, and have a RUNBOOK
-      entry. Evidence: 17 rules now (the eleven plus I-56's two and
-      billing's three); `ops/check.sh` runs `promtool check rules`,
+      entry. Evidence: 18 rules now (the eleven plus I-56's two,
+      billing's three, and `FluentBitLogShipperDown`, below); `ops/check.sh` runs `promtool check rules`,
       `promtool test rules` (17 cases) and a grep asserting every alert
       name is a RUNBOOK heading, and all three pass. Loaded against
       production series they evaluate healthy, none firing and none in

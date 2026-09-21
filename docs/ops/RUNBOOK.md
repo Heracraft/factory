@@ -340,6 +340,43 @@ direction (DECISIONS I-94).
    numbers through SSH forwards: `ops/dev/tunnel-prod.sh <edge> <control>`
    plus the local stack with `ops/dev/prometheus-prod.yml`.
 
+## FluentBitLogShipperDown
+
+`up{job="fluent-bit"} == 0` for a host, for 15 minutes: Prometheus cannot
+reach that host's Fluent Bit at all. Its journald and every guest's
+console log are going nowhere, and unlike "FluentBitStuck" nothing is
+buffering them for later — a shipper that is not running is not
+collecting either.
+
+This alert exists because the other one cannot see this case.
+`FluentBitStuck` reads `fluentbit_output_retries_failed_total`, which a
+process that is not running does not publish, so the loudest failure was
+the quietest signal.
+
+1. **Has a Loki been recorded at all?** `docker exec <api container>
+   /usr/local/bin/repose-admin edge loki`. "no Loki recorded" is the
+   answer on a fresh platform, and it is the cause: the unit has an
+   `ExecCondition` that refuses to start it with an empty `LOKI_HOST`
+   rather than retrying a connection to nothing for ever (DECISIONS
+   I-95). Fix it centrally — `repose-admin edge loki http://<loki>:3100`
+   — and the host picks it up at its next `Rotate`, or immediately with
+   an edit of `host.json` and `systemctl restart repose-host-net`.
+2. If a Loki *is* recorded, the host has not received it: `grep LOKI
+   /run/repose/host.env` on the host. Empty means the value post-dates
+   its registration; same fix as above, the immediate half.
+3. With `LOKI_HOST` set and the unit still down, it is the unit:
+   `systemctl status fluent-bit` and `journalctl -u fluent-bit -n 50`.
+   `ConditionPathExists=/run/repose/host.env` unmet means the host never
+   registered ("HostUnregistered").
+4. If the unit is running and only the *scrape* fails, this is the
+   tunnel rather than the shipper: "HostScrapeDown", and check the
+   edge's forward chain ("Every Prometheus target is down and WireGuard
+   looks fine").
+
+Nothing in a guest waits on log shipping, so tenants are unaffected
+throughout; what is lost is the operator's view, and the logs for the
+window are lost rather than delayed.
+
 ## FluentBitStuck
 
 A host's Fluent Bit has been failing to ship to Loki for 30 minutes

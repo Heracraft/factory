@@ -210,6 +210,36 @@ tests:
         alertname: FluentBitStuck
         exp_alerts: []
 
+  # --- FluentBitLogShipperDown --------------------------------------------
+  - interval: 1m
+    name: FluentBitLogShipperDown fires when the shipper is not there at all
+    input_series:
+      - series: 'up{job="fluent-bit",instance="10.255.0.2:2021",host_id="host-01"}'
+        values: "0+0x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: FluentBitLogShipperDown
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: fluent-bit
+              instance: 10.255.0.2:2021
+              host_id: host-01
+            exp_annotations:
+              summary: "No log shipper on host-01"
+              description: "Fluent Bit is not answering. A host with no Loki recorded does not start it at all (repose-admin edge loki); otherwise the unit has failed. Either way this host's journald and guest console logs are going nowhere."
+              runbook: "docs/ops/RUNBOOK.md#fluentbitlogshipperdown"
+
+  - interval: 1m
+    name: FluentBitLogShipperDown stays quiet while the shipper answers
+    input_series:
+      - series: 'up{job="fluent-bit",instance="10.255.0.2:2021",host_id="host-01"}'
+        values: "1+0x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: FluentBitLogShipperDown
+        exp_alerts: []
+
   # --- HostUnreachable ----------------------------------------------------
   - interval: 1m
     name: HostUnreachable pages after two minutes
