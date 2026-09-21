@@ -2795,3 +2795,14 @@ now reads the op again after the stream ends.
 `TestWaitOpReadsTheOpAgainAfterTheStreamEnds` (an httptest server that
 answers running, streams, then answers the error).
 
+**I-128. The CLI prints the verbatim block of a build error.** (m3
+integration, 2026-09-21) `nix-build-contract.md` "What the user reads"
+makes the message a summary line, a blank line, then the verbatim output,
+and 07-cli.md §5.10 has the CLI print the summary, the fragment context,
+then that block. `RenderBuildError` printed the summary and the context
+only, so the first real closure over the cap on host-01 (`closure is
+26.6 GB, limit is 20 GB; largest paths:`) named no path, and a
+`build_failed` showed none of the builder's log. The block now follows
+the context, newlines trimmed, indentation kept.
+`TestRenderBuildErrorPrintsTheVerbatimBlock`.
+

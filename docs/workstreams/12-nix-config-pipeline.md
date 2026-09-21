@@ -386,11 +386,17 @@ and whose host half is one of the `ops/checks/menu.sh` or
       `RuntimeMaxUSec=30min 30s`, `ControlGroup=/system.slice/repose-build-
       <revision>.scope`, and `ps -eo user,pid,comm` showing `nixbuild 95717
       nix`. Locally `TestWrapArgv`.
-- [~] Closure cap test with the cap lowered passes; a real 20 GB+ fragment
+- [x] Closure cap test with the cap lowered passes; a real 20 GB+ fragment
       on a host returns `closure_too_large` with ten paths. Evidence:
-      `TestRealNixClosureCap` (cap 100 MB, ten paths); on host-01,
-      `ops/checks/menu.sh --with-closure-cap` (`fragments/closure-cap.nix`,
-      a 21 GB sparse output).
+      `TestRealNixClosureCap` (cap 100 MB, ten paths); on host-01
+      (`ops/checks/menu.sh --only-closure-cap`, m3-check, 2026-09-21
+      00:52Z, `fragments/closure-cap.nix`, a 21 GB sparse output): `config
+      too large: closure is 26.6 GB, limit is 20 GB; largest paths:` then
+      ten paths, the 21 GB one first (`21 GB
+      /nix/store/…-m3-twenty-one-gb`, then chromium 701.7 MB, the
+      playwright browsers, codex, claude-code, go, …), exit 10; no
+      `gcroots/repose` entry for it and the path gone after
+      `nix-collect-garbage`. The CLI printed no path until DECISIONS I-128.
 - [~] GC root exists after a build and is removed after destroy; `nix-
       collect-garbage` on the host does not remove a running guest's
       closure. Evidence: `TestRealNixSuccessRootAndKernelChanged` (the

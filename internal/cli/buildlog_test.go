@@ -148,3 +148,22 @@ func TestWaitOpReadsTheOpAgainAfterTheStreamEnds(t *testing.T) {
 		t.Fatal("the op was not read again after the stream ended")
 	}
 }
+
+// The verbatim block after the summary is printed (I-128): for a closure
+// over the cap that is the ten largest paths, which host-01's run never
+// showed.
+func TestRenderBuildErrorPrintsTheVerbatimBlock(t *testing.T) {
+	var buf bytes.Buffer
+	msg := "closure is 26.6 GB, limit is 20 GB; largest paths:\n  21 GB  /nix/store/aaaa-m3-twenty-one-gb\n  701.7 MB  /nix/store/bbbb-chromium\n"
+	RenderBuildError(&buf, "closure_too_large", msg, "./repose.nix", nil)
+	want := "config too large: closure is 26.6 GB, limit is 20 GB; largest paths:\n\n  21 GB  /nix/store/aaaa-m3-twenty-one-gb\n  701.7 MB  /nix/store/bbbb-chromium\n"
+	if buf.String() != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", buf.String(), want)
+	}
+	buf.Reset()
+	RenderBuildError(&buf, "eval_failed", "attribute 'x' missing at fragment.nix:1:5\n\nerror: attribute 'x' missing\n       at /var/lib/repose/builds/r/fragment.nix:1:5:", "./f.nix", []byte("{ x = y; }\n"))
+	out := buf.String()
+	if !strings.HasPrefix(out, "config error: attribute 'x' missing at f.nix:1:5\n   at f.nix:1:5\n") || !strings.Contains(out, "\n\nerror: attribute 'x' missing\n") {
+		t.Fatalf("context then the verbatim block:\n%s", out)
+	}
+}

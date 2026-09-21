@@ -687,6 +687,8 @@ held the base closure.
 | `repose-admin projects create` to `running`, one guest | 47 s (00:00:33 to 00:01:20) |
 | Two `projects create` in the same second, both to `running` (I-120, distinct taps) | 31 s |
 | `PUT /config {menu: bun}` to op done: eval and build of the bun addition as `nixbuild` in a scope (CPUQuota 8 s/s, MemoryMax 16 GiB, RuntimeMaxSec 30 min 30 s) | 5 s; 40 `BuildLog` lines over SSE; `bun` 1.4.2 on PATH in a new login shell with the same boot_id and tmux session |
+| hostd `build_done` for four consecutive fragment builds of the same project (menu, takeover, package, fetch), warm store | 5.1 s each: eval 4.7 s, build 0.33 s; closure 6.0 GB |
+| A fragment whose output is a 21 GB sparse file (`ops/checks/fragments/closure-cap.nix`) | refused after the build: `closure is 26.6 GB, limit is 20 GB`, the 21 GB path first among the ten largest, no GC root |
 | `repose secrets set` to the file in the guest's tmpfs (`0400 dev`, exported in a login shell) | under 5 s (the script's first check after 5 s found it) |
 | `repose secrets rm` to the file gone and `secrets.env` rewritten | under 5 s |
 | A fragment carrying a current secret value, `repose config apply` | refused before evaluation (`fragment contains the value of secret M3_CHECK_SECRET`) |

@@ -146,6 +146,17 @@ func RenderBuildError(w io.Writer, code, message, localFragmentPath string, frag
 	}
 	display := strings.ReplaceAll(message, "fragment.nix", base)
 	_, _ = fmt.Fprintf(w, "%s%s\n", buildErrorPrefix(code), firstLine(display)) // best effort: w is the user's terminal
+	// The contract's message is a summary line, a blank line, then the
+	// verbatim block (Nix's output, or the ten largest paths of a closure
+	// over the cap); the block follows the fragment context (07-cli.md
+	// §5.10). It was never printed before I-128, so `closure_too_large` on
+	// host-01 named no path.
+	defer func() {
+		if rest := strings.Trim(restAfterFirstLine(display), "\n"); strings.TrimSpace(rest) != "" {
+			_, _ = fmt.Fprintln(w)
+			_, _ = fmt.Fprintln(w, rest)
+		}
+	}()
 
 	m := fragmentRefRe.FindStringSubmatch(message)
 	if m == nil {
@@ -178,6 +189,13 @@ func RenderBuildError(w io.Writer, code, message, localFragmentPath string, frag
 		caretCol = leadingSpaces(lines[line-1]) + 1
 	}
 	_, _ = fmt.Fprintf(w, "      %*s | %s^\n", numWidth, "", strings.Repeat(" ", max0(caretCol-1)))
+}
+
+func restAfterFirstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[i+1:]
+	}
+	return ""
 }
 
 func firstLine(s string) string {

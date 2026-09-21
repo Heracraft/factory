@@ -23,7 +23,7 @@
 # kernel_changed for a base kernel bump is resilience.sh's base-bump section
 # (it needs a published base whose kernel differs; README.md).
 #
-#   ops/checks/menu.sh [--with-destroy] [--with-closure-cap] [--with-build-timeout]
+#   ops/checks/menu.sh [--with-destroy] [--with-closure-cap] [--with-build-timeout] [--only-closure-cap]
 #   (PROJECT running; --with-build-timeout takes 30 minutes by design)
 set -euo pipefail
 check=menu
@@ -33,11 +33,13 @@ frags="$checks_dir/fragments"
 with_destroy=0
 with_cap=0
 with_timeout=0
+only_cap=0
 for a in "$@"; do
 	case $a in
 	--with-destroy) with_destroy=1 ;;
 	--with-closure-cap) with_cap=1 ;;
 	--with-build-timeout) with_timeout=1 ;;
+	--only-closure-cap) with_cap=1; only_cap=1 ;;
 	*) echo "usage: $0 [--with-destroy] [--with-closure-cap] [--with-build-timeout]" >&2; exit 2 ;;
 	esac
 done
@@ -47,6 +49,23 @@ pid=$(project_id)
 gid=$(guest_id)
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 log "project $pid guest $gid"
+
+closure_cap_row() {
+	set +e
+	out=$("$REPOSE" config apply "$frags/closure-cap.nix" --project "$PROJECT" 2>&1)
+	rc=$?
+	set -e
+	printf '%s\n' "$out" | grep -A12 'config too large' | evidence "closure cap (exit $rc): the first line and the ten largest paths"
+	[ $rc -ne 0 ] || fail "the 21 GB fragment was accepted"
+	printf '%s' "$out" | grep -Eq 'config too large: closure is [0-9.]+ GB, limit is 20 GB; largest paths:' || fail "closure_too_large message is not the documented one"
+	assert_eq "ten paths listed" "$(printf '%s\n' "$out" | grep -A12 'largest paths:' | grep -c '/nix/store/')" "10"
+	host_sh "ls /nix/var/nix/gcroots/repose/ | grep -c m3-twenty-one-gb || true; nix-collect-garbage >/dev/null 2>&1; ls /nix/store | grep -c m3-twenty-one-gb || true" | evidence "no GC root for the oversized result; store after nix-collect-garbage"
+}
+if [ $only_cap = 1 ]; then
+	closure_cap_row
+	log "closure cap row finished; evidence in $report"
+	exit 0
+fi
 
 # A project that went through the takeover below is in fragment mode and
 # refuses a menu PUT (409); the api's default fragment, applied verbatim,
@@ -172,15 +191,7 @@ fi
 
 # 9. Optional: the closure cap on the real host.
 if [ $with_cap = 1 ]; then
-	set +e
-	out=$("$REPOSE" config apply "$frags/closure-cap.nix" --project "$PROJECT" 2>&1)
-	rc=$?
-	set -e
-	printf '%s\n' "$out" | grep -A12 'config too large' | evidence "closure cap (exit $rc): the first line and the ten largest paths"
-	[ $rc -ne 0 ] || fail "the 21 GB fragment was accepted"
-	printf '%s' "$out" | grep -Eq 'config too large: closure is [0-9.]+ GB, limit is 20 GB; largest paths:' || fail "closure_too_large message is not the documented one"
-	assert_eq "ten paths listed" "$(printf '%s\n' "$out" | grep -A12 'largest paths:' | grep -c '/nix/store/')" "10"
-	host_sh "ls /nix/var/nix/gcroots/repose/ | grep -c m3-twenty-one-gb || true; nix-collect-garbage >/dev/null 2>&1; ls /nix/store | grep -c m3-twenty-one-gb || true" | evidence "no GC root for the oversized result; store after nix-collect-garbage"
+	closure_cap_row
 fi
 
 # Leave the project on a plain package fragment so later checks start clean.
