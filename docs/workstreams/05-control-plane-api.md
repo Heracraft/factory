@@ -516,12 +516,17 @@ waits on host-01 (`ops/checks/README.md` names the script that closes it).
       On the real path: `ops/checks/resilience.sh expiry`. A refused blob
       delete no longer ends the run: `TestExpiryContinuesPastOneFailedBlob`
       (I-130).
-- [ ] Expiry has deleted a real blob in production. Evidence to paste: the
-      `deleted_at` of the two aged m3-check snapshots from
-      `ops/checks/resilience.sh expiry` and the container listing showing
-      their paths gone. Open until I-131's role assignment is applied: the
-      2026-09-21 01:27Z run was refused with `403
-      AuthorizationPermissionMismatch` on its first delete.
+- [x] Expiry has deleted a real blob in production. Evidence: after
+      I-131's role assignment (applied 01:52Z), the first run at 01:58Z
+      deleted the two rows the 01:27Z run had been refused on,
+      `01a0c191-7345-7672-987b-876f81e0ca3d` and
+      `01a0c191-c412-7ba6-b233-e227e58625ba`, both `deleted_at 2026-09-21
+      01:58:24.774Z`, each with an api `snapshot_expired` line at 01:58:25Z
+      and no 403; a rerun at 02:00Z with the restore started through the
+      api kept the snapshot the restore held (`restoring_op_id` set),
+      deleted the other aged row at 02:01:20Z and the held one at
+      02:02:37Z once the restore finished, and kept the newest
+      (`ops/checks/out/resilience-20260921T015959Z.txt`).
 - [x] Outbox delivers each event once per channel and retries failures.
       Evidence: `internal/api/notify/notify_test.go`
       `TestOutboxDeliversOncePerChannelAndRetries`,
