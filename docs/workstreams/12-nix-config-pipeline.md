@@ -358,7 +358,7 @@ and whose host half is one of the `ops/checks/menu.sh` or
       `syntax error, unexpected ';' at …` from the api's parse-time check on
       the deployed api, the contract's order on the next api deploy
       (I-126); (d) `--with-closure-cap` and (c) `--with-build-timeout` are
-      the remaining runs.
+      the remaining runs; (d) closed below.
 - [~] `nix eval` of a fragment containing `builtins.readFile "/etc/passwd"`
       fails with `access to absolute path` (restrict-eval works). Evidence:
       `testdata/abspath.stderr` pinned by `TestMapEvalErrorFixtures`; on
@@ -456,11 +456,12 @@ and whose host half is one of the `ops/checks/menu.sh` or
       `copying path ... from <cache>`). Evidence: pasted. Waits on the
       owner's Cachix cache and `CACHIX_AUTH_TOKEN` (`ops/AZURE-SETUP.md`
       step 16, DECISIONS I-46).
-- [~] `RESEARCH.md` records eval and build timings for the base plus a
+- [x] `RESEARCH.md` records eval and build timings for the base plus a
       typical fragment on a host (so 05 can set user expectations).
-      Evidence: `docs/RESEARCH.md` §11 (dev box) and §12 (host-01: the
-      first `Build`, 35.0 s, eval 13.0 s, build 21.9 s); more host rows come
-      from `ops/checks/menu.sh`'s `build_done` capture.
+      Evidence: `docs/RESEARCH.md` §11 (dev box), §12 (host-01: the first
+      `Build`, 35.0 s, eval 13.0 s, build 21.9 s) and §13 (host-01 through
+      the api: four consecutive fragment builds at 5.1 s each, eval 4.7 s,
+      build 0.33 s, closure 6.0 GB; the bun menu apply in 5 s).
 - [x] `ops/RUNBOOK.md` entries: build stuck, cache unreachable, base bump
       failures, closure collected. Evidence: "Build stuck (no BuildLog line
       for 10 minutes)", "Build: cache unreachable", "Base bump failures",
