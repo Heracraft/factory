@@ -8,7 +8,9 @@
 #   exec-b.sh <control ip> <api container> <project id> <script>
 set -uo pipefail
 control=$1 ctr=$2 pid=$3 script=$4
-out=$(ssh -o BatchMode=yes -o ConnectTimeout=20 "root@$control" "docker exec -i $ctr /usr/local/bin/repose-admin exec $pid -- sh -c $(printf '%q' "$script")" 2>&1)
+# repose-admin's own lines (the admin_action log, the op progress) go to
+# its stderr; only the command's stdout comes back on stdout.
+out=$(ssh -o BatchMode=yes -o ConnectTimeout=20 "root@$control" "docker exec -i $ctr /usr/local/bin/repose-admin exec $pid -- sh -c $(printf '%q' "$script")" 2>/dev/null)
 rc=$?
 printf '%s\n' "$out" | grep -vE '^op [0-9a-f-]{36} enqueued$'
 exit $rc
