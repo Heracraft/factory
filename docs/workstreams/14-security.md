@@ -219,7 +219,13 @@ lines of 2026-09-20), `docs/security/review-2026-09-20.md` and the tree;
       L-13): an operator SSH login (journal line `operator_login` from
       `hostd audit-login`, seen on host-01 at every operator login tonight,
       nothing in `audit_log`); a restore through the user route. User
-      suspension not triggered (it stops the user's guests).
+      suspension not triggered (it stops the user's guests). M5 review,
+      `audit_log` 48 h on production (2026-09-21 02:05Z): 22 actions,
+      `exec` 22 matching the api-driven `exec_audit` lines on host-01
+      (`audit_id`, `argv_len`, no argv), `cert_issue` 20, `cert_revoke` 4,
+      `secret_put` 5, `secret_delete` 3, `project_*`, `host_*`, `ca_*`,
+      `base_*`, `user_*`, `billing_enforce`; still no `operator_login`
+      producer (L-13).
 - [~] Operator access works only with a certificate; a password attempt is
       logged. Evidence (2026-09-21 00:38Z): `ssh -o
       PreferredAuthentications=password -o PubkeyAuthentication=no` to
@@ -232,7 +238,16 @@ lines of 2026-09-20), `docs/security/review-2026-09-20.md` and the tree;
       TrustedUserCAKeys /run/repose/host_ca.pub, ListenAddress 10.255.0.2.
       Half open: the host still admits the bootstrap key on the WireGuard
       address rather than a certificate (review M-1, `RegisterResponse` has
-      no Host CA), so "only with a certificate" is not yet true.
+      no Host CA), so "only with a certificate" is not yet true. Re-read
+      as deployed by the M5 review (2026-09-21 02:00Z,
+      `security/review-2026-09-21.md`): edge `sshd -T` on 2222 has
+      password and keyboard-interactive off, `prohibit-password`, verbose
+      logging, admitted by nft only from the tunnel and the operator
+      address (the 1,597 brute-force lines of the day all predate the
+      23:36Z switch; 3 auth lines since, all accepted operator keys), so
+      the 2026-09-20 review's M-2 is closed; host-01 `host_ca.pub` is
+      still 0 bytes and its 750 operator logins in 24 h are all by the
+      bootstrap key, each with a `hostd audit-login` journal line.
 - [~] Secrets review comments exist in `STATUS.md` for workstreams 04, 05,
       07. Evidence: the lines. 04: 2026-09-20 (14 review line). 05 and
       07: 2026-09-20 (M3 integration session lines, below the 14 lines).

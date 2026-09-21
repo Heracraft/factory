@@ -65,14 +65,30 @@ written so they cannot happen quietly.
 
 ## Release (M5)
 
-- [ ] Benchmark numbers in `RESEARCH.md`, gate passed or Hetzner decision
-      recorded.
+- [x] Benchmark numbers in `RESEARCH.md`, gate passed or Hetzner decision
+      recorded. Evidence: the standalone M0 benchmark was deferred by the
+      owner (DECISIONS I-12) and the first real host measures itself
+      instead: `RESEARCH.md` §11 "First host timings" (host-01,
+      `Standard_D16s_v7`, create 20 s, freeze p99 under 0.5 s), §12 (M2:
+      build 38.6 s, snapshot 24.6 s, stop 4.5 s, start 14.5 s) and §13 (M3:
+      create to running 47 s, menu apply 5 s, eval and build timings). No
+      axis came close to the 20 percent question, so the Hetzner fallback
+      (R3-20) stays a fallback; I-39 records the v7 sizes actually used.
 - [ ] A second human has completed login, run, attach, stop, start, secrets,
       config apply, snapshot restore, destroy on their own laptop.
-- [ ] Tenant isolation verified on a shared host: guest A cannot ping,
+- [x] Tenant isolation verified on a shared host: guest A cannot ping,
       ARP, or port-scan guest B or the host; guest A cannot read the store's
       `.links`; guest A cannot reach 169.254.169.254; a certificate for A is
-      rejected by B's sshd and by the gateway route.
+      rejected by B's sshd and by the gateway route. Evidence: `test/isolation`
+      on host-01 with two tenants, 2026-09-21 00:37Z and 00:39Z
+      (`ops/checks/out/isolation-go-20260921T003759Z.txt`, `...003951Z.txt`:
+      18 PASS, 1 SKIP by design), rows listed in `workstreams/14-security.md`
+      §9; the gateway half of the certificate row is
+      `TestCertificateForACannotOpenBAtGateway`, the sshd half is the guest
+      base's `AuthorizedPrincipalsFile` (02's VM test) since putting an
+      operator key on the host to try it directly was declined. The
+      mechanisms as deployed are re-read in
+      `security/review-2026-09-21.md` "Verified as deployed".
 - [ ] A user Nix fragment that (a) has a syntax error, (b) references a
       missing attribute, (c) runs 31 minutes, (d) exceeds the closure cap,
       (e) uses `builtins.fetchurl` to an arbitrary URL each produces the
@@ -107,13 +123,26 @@ written so they cannot happen quietly.
       error. *Wired* here means loaded and tested, not yet delivering:
       routing them to the owner's Alertmanager is part of the WireGuard
       peer that `10-observability.md` §9 still has open.
-- [ ] Privacy policy and terms published, containing the process-sample
+- [x] Privacy policy and terms published, containing the process-sample
       boundary verbatim and the Anthropic hosted-use statement (users
       authenticate with their own credentials; the platform stores none).
+      Evidence: `https://repose.herakraft.co/privacy` and `/terms` (the
+      m3-web live Playwright suite asserts both passages in a real browser,
+      11/11 green 2026-09-20); `test/isolation` `TestPolicyTextContainsThe
+      RequiredPassages` pins the source; since the M5 review both routes
+      are prerendered so the passages are in the served HTML (`curl -s
+      https://repose.herakraft.co/privacy | tr -s '[:space:]' ' ' | grep -c
+      'We sample the processes'` is 1 after the web roll; the built
+      `build/prerendered/privacy.html` carried it at 2026-09-21 02:18Z).
 - [ ] The Anthropic API key leaked in commit `b1a5915` has been rotated
       (done 2026-09-17) and the history has been rewritten or the repo made
       private before it is shared with contributors.
 - [ ] `repose --version` prints a version, and `curl -fsSL
       https://repose.herakraft.co/install.sh | sh` installs it on macOS
       arm64, macOS x86_64, Linux x86_64, Linux arm64.
-- [ ] `ops/RUNBOOK.md` has entries for every alert above.
+- [x] `ops/RUNBOOK.md` has entries for every alert above. Evidence:
+      `ops/check.sh` fails when an alert in `ops/alerts.yaml` has no
+      RUNBOOK heading and passes on `main` (17 rules, 17 headings,
+      2026-09-21); HostMemory80, HostUnreachable, SnapshotStale,
+      BuildQueueStuck, GatewayAuthSpike and EgressHigh are the six the
+      row names.

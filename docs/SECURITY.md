@@ -212,9 +212,10 @@ Written down so nobody believes otherwise.
   keyboard-interactive off, `prohibit-password`, verbose logging, admitted
   only from the tunnel and the operator address
   ([security/review-2026-09-21.md](security/review-2026-09-21.md)).
-- **hostdev's M1 state is still on the edge's disk** (review M-4, M5
-  review): `hostdev` is stopped but `/var/lib/repose-hostdev/state.json`
-  and its dev CAs remain; removal is an announced operator step.
+- ~~hostdev holds secrets in plaintext on the edge (review M-4)~~
+  Closed 2026-09-21: `hostdev` is gone from the edge (unit not found)
+  and its state directory and the M1 identity on host-01 were removed
+  with no copies kept (the M5 review).
 - **The api's `/metrics` was on the public entry point** until I-136
   (M5 review, High): fixed in the application; I-133's allow-list router
   is now defence in depth.
