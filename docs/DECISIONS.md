@@ -2719,3 +2719,28 @@ user's shell renamed `gemini` would be reported as an idle agent, which
 is what the process check exists to prevent). Verify on the next base:
 `ops/checks/notifications.sh`'s gemini row.
 
+
+**I-123. Gateway session reports are ordered and sent at most once.** (m2
+gate, 2026-09-21) CI saw `TestSessionReportsAndCertCache` collect
+`[opened, closed, opened, closed, closed]` for three connections: one
+session's open never arrived and one close arrived twice. Both came from
+`session.report`: the open was posted on the session's own context, so a
+client that connected and left within the round trip cancelled its own
+"opened" mid-flight (both attempts, since the retry shared the context),
+and every report retried on any error, so a close whose answer was lost
+after the api had recorded it was posted again. Nothing ordered the two,
+either. Now both reports run on a context the session's end does not
+cancel, the close report waits for the open report to finish, and a retry
+happens only when the request never reached the api (a connection error),
+never after a timeout or a refused answer. The api's `/internal/sessions`
+keeps its set semantics per `(project_id, cert_serial)`, so a duplicate
+would be harmless there but an open after its close would leave a
+phantom `ssh_sessions` signal, which is the case the ordering closes. The
+test asserts that closes never outnumber opens in report order and that no
+event is delivered twice, run under the race detector twenty times.
+*Recorded, not fixed:* `gateway_sessions` is keyed by `(project_id,
+cert_serial)`, so several connections under one certificate count as one
+session in `ssh_sessions`; a per-relay session id in the report would fix
+the count and is an interface change for a later pass. *Rejected:*
+retrying on every error with idempotent bodies (no session id exists to
+make them idempotent).

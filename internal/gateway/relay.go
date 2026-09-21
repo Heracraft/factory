@@ -62,7 +62,15 @@ func (s *session) run(ctx context.Context) {
 	g.cfg.Metrics.Sessions.Inc()
 	g.cfg.Metrics.SessionsTotal.Inc()
 	s.log.Info("session opened", "event", "session_open", "source_prefix", s.prefix)
-	s.report(ctx, true)
+	// Reported on a context the session's end does not cancel: a client
+	// that connects and leaves within the round trip used to cancel its
+	// own "opened" mid-flight, and the "closed" below waits for this so the
+	// api never sees a close before its open (I-123).
+	opened := make(chan struct{})
+	go func() {
+		defer close(opened)
+		s.report(context.WithoutCancel(ctx), true)
+	}()
 
 	var wg sync.WaitGroup
 	done := func() { cancel() }
@@ -118,7 +126,10 @@ func (s *session) run(ctx context.Context) {
 	g.cfg.Metrics.SessionSeconds.Observe(dur.Seconds())
 	s.log.Info("session closed", "event", "session_close", "source_prefix", s.prefix,
 		"duration_ms", dur.Milliseconds(), "bytes_to_guest", s.toGuest.Load(), "bytes_to_client", s.toClient.Load())
-	s.report(context.WithoutCancel(ctx), false)
+	go func() {
+		<-opened
+		s.report(context.WithoutCancel(ctx), false)
+	}()
 }
 
 // dialGuest opens the SSH client connection to guest_ip:22 with a
@@ -555,17 +566,22 @@ func (s *session) ping(ctx context.Context, c ssh.Conn) bool {
 
 // report posts the session event with one retry; a failure is a log line
 // (§5.5).
+// report posts one session event, synchronously, retrying once only when
+// the request never reached the api (a connection error): a retry after a
+// timeout or a refused answer could deliver the same event twice, and the
+// api's `/internal/sessions` is what feeds the ssh_sessions signal (I-123).
 func (s *session) report(ctx context.Context, opened bool) {
-	go func() {
-		var err error
-		for attempt := 0; attempt < 2; attempt++ {
-			rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			err = s.gw.cfg.API.ReportSession(rctx, s.route.ProjectID, opened, s.serial)
-			cancel()
-			if err == nil {
-				return
-			}
+	var err error
+	for attempt := 0; attempt < 2; attempt++ {
+		rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err = s.gw.cfg.API.ReportSession(rctx, s.route.ProjectID, opened, s.serial)
+		cancel()
+		var ne *net.OpError
+		if err == nil || !errors.As(err, &ne) {
+			break
 		}
+	}
+	if err != nil {
 		s.log.Warn("session report failed", "event", "route_fail", "reason", "sessions", "opened", opened, "err", err.Error())
-	}()
+	}
 }
