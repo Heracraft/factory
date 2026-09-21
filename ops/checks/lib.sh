@@ -147,3 +147,18 @@ stream_op_log() {
 	t=$(token)
 	curl -sS -N -H "Authorization: Bearer $t" "$API_URL/projects/$1/ops/$2/log" >"$3" 2>&1 || true
 }
+
+# wait_idle <project id> [timeout s]: until the project has no pending or
+# running op. A secrets push is an op (DECISIONS I-70), so an exec or a
+# lifecycle request right after `repose secrets set|rm` answers "an
+# operation is in progress" unless it waits.
+wait_idle() {
+	local pid=$1 t=${2:-120} s n
+	for ((s = 0; s < t; s += 3)); do
+		n=$(psql_q "select count(*) from ops where project_id='$pid' and state in ('pending','running')")
+		[ "$n" = "0" ] && return 0
+		sleep 3
+	done
+	fail "$pid still has an op in flight after ${t}s"
+}
+
