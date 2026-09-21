@@ -48,6 +48,11 @@ gid=$(guest_id)
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 log "project $pid guest $gid"
 
+# A project that went through the takeover below is in fragment mode and
+# refuses a menu PUT (409); the api's default fragment, applied verbatim,
+# is what puts it back (internal/api/http DefaultFragment). Idempotent
+# on a fresh project ("configuration unchanged").
+"$REPOSE" config apply "$frags/default.nix" --project "$PROJECT" 2>&1 | tail -1 | evidence "reset to the default fragment (menu mode)"
 before=$(guest_sh "$PROJECT" 'cat /proc/sys/kernel/random/boot_id; tmux list-sessions -F "#{session_name}" 2>/dev/null | head -1; command -v bun || echo no-bun')
 boot0=$(printf '%s\n' "$before" | sed -n 1p)
 printf '%s\n' "$before" | evidence "guest before: boot_id, tmux session, bun on PATH"
@@ -114,11 +119,16 @@ refuse() { # <fragment file> <expected first-line regex>
 	[ $rc -ne 0 ] || fail "$(basename "$f") was accepted"
 	printf '%s' "$first" | grep -Eq -- "$want" || fail "$(basename "$f"): first line '$first' does not match '$want'"
 }
-refuse "$frags/syntax.nix" "config error: syntax error at fragment.nix:1:[0-9]+, unexpected ';'"
-refuse "$frags/missing.nix" "config error: attribute 'ripgrepp' missing at fragment.nix:1:[0-9]+ \(did you mean ripgrep\?\)"
-refuse "$frags/fetch.nix" "config error: eval-time fetch not allowed at fragment.nix:1:[0-9]+; use pkgs.fetchurl \{ url = ...; hash = ...; \}"
-refuse "$frags/abspath.nix" "config error: access to absolute path '/etc/passwd' is forbidden in pure evaluation mode .* at fragment.nix:1:[0-9]+; a fragment may only read files it carries"
-refuse "$frags/nixpath.nix" "config error: <nixpkgs> is not available at fragment.nix:1:[0-9]+; use the pkgs argument, which is the platform's pinned nixpkgs"
+# The CLI prints the local file's name in place of fragment.nix (07).
+if [ "${SKIP_SYNTAX_ROW:-0}" = 1 ]; then
+	echo "syntax.nix: SKIPPED by SKIP_SYNTAX_ROW (the deployed api predates I-126 and words the parse-time error differently)" | evidence "refusal: syntax.nix"
+else
+	refuse "$frags/syntax.nix" "config error: syntax error at syntax.nix:1:[0-9]+, unexpected ';'"
+fi
+refuse "$frags/missing.nix" "config error: attribute 'ripgrepp' missing at missing.nix:1:[0-9]+ \(did you mean ripgrep\?\)"
+refuse "$frags/fetch.nix" "config error: eval-time fetch not allowed at fetch.nix:1:[0-9]+; use pkgs.fetchurl \{ url = ...; hash = ...; \}"
+refuse "$frags/abspath.nix" "config error: access to absolute path '/etc/passwd' is forbidden in pure evaluation mode .* at abspath.nix:1:[0-9]+; a fragment may only read files it carries"
+refuse "$frags/nixpath.nix" "config error: <nixpkgs> is not available at nixpath.nix:1:[0-9]+; use the pkgs argument, which is the platform's pinned nixpkgs"
 
 # 5. A fixed-output fetch with a hash builds and lands in the guest.
 "$REPOSE" config apply "$frags/fetchurl-ok.nix" --project "$PROJECT" 2>&1 | tail -3 | evidence "repose config apply fetchurl-ok.nix"

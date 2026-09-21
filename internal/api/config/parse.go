@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -121,7 +120,17 @@ func summarise(msg string) string {
 		first = "syntax error"
 	}
 	first = cleanPath(first)
-	if loc := locRe.FindString(msg); loc != "" && !strings.Contains(first, loc) {
+	loc := locRe.FindString(msg)
+	// The contract's first line for a syntax error is hostd's,
+	// `syntax error at fragment.nix:L:C, unexpected ';'`
+	// (nix-build-contract.md "What the user reads"); Nix itself prints
+	// `syntax error, unexpected ';'` and the location on the next line. A
+	// user sees the same words whether the parse check or the host refused
+	// the fragment (I-126).
+	if rest, ok := strings.CutPrefix(first, "syntax error, "); ok && loc != "" {
+		return "syntax error at " + loc + ", " + rest
+	}
+	if loc != "" && !strings.Contains(first, loc) {
 		first += " at " + loc
 	}
 	return first
@@ -135,9 +144,6 @@ func cleanPath(s string) string { return pathRe.ReplaceAllString(s, "fragment.ni
 func (p *Parser) CheckFuncFor() func(context.Context, string) error { return p.Check }
 
 // Fmt renders a parse error for the api's error envelope.
-func Fmt(e *ParseError) string {
-	if e.Line > 0 {
-		return fmt.Sprintf("%s (fragment.nix:%d)", e.Message, e.Line)
-	}
-	return e.Message
-}
+// The line travels in the error's `detail.fragment_line`; the message is
+// the contract's summary line alone (I-126).
+func Fmt(e *ParseError) string { return e.Message }

@@ -2768,3 +2768,17 @@ whatever the thread is called; `cmdline` and `environ` stay unread, as
 `docs/SECURITY.md` promises and the strace test pins. Process samples
 keep `comm` as their name. Next base.
 
+**I-126. The api's parse-time syntax error is worded like hostd's.** (m3
+integration, 2026-09-21) `PUT /config` checks syntax with
+`nix-instantiate --parse` before any build (05 §5.7), so a syntax error
+never reaches hostd's mapping and the user read Nix's own order, `syntax
+error, unexpected ';' at fragment.nix:1:34 (fragment.nix:1)`, where
+`nix-build-contract.md`, the fake api and the dashboard's tests all say
+`syntax error at fragment.nix:1:34, unexpected ';'` (`ops/checks/menu.sh`
+on host-01). The api's summariser now renders the contract's line and
+the `invalid` message carries no `(fragment.nix:N)` suffix; the line is
+in `detail.fragment_line` as before. Note for readers of the CLI's
+output: it prints the local file's name in place of `fragment.nix`
+(`RenderBuildError`), so the same refusal reads `at syntax.nix:1:34` on
+a laptop.
+
