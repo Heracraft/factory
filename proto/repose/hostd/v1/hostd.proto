@@ -47,6 +47,14 @@ message RegisterResponse {
   // rendered an empty LOKI_HOST. Empty is still accepted and still means
   // "do not ship" (DECISIONS I-95).
   string loki_url = 7;
+  // The SSH Host CA's public key as an authorized_keys line. It lands in
+  // host.json as host_ca_pub, which the host renders into
+  // /run/repose/host_ca.pub for sshd's TrustedUserCAKeys, so an operator
+  // certificate from `repose-admin operator-cert` opens the host
+  // (host-conventions.md "Operator access"). Register and Rotate both
+  // carry it; empty keeps what host.json already has (DECISIONS I-139;
+  // security review M-1).
+  string host_ca_pub = 8;
 }
 
 message ApiMessage {

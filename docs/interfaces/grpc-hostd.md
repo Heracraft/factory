@@ -15,7 +15,7 @@ rpc Register(RegisterRequest) returns (RegisterResponse)
 RegisterRequest  { string join_token; HostInfo info }        // join token from infra, single use
 RegisterResponse { string host_id; bytes client_cert; bytes client_key;
                    string guest_cidr; WireguardPeer edge; string wg_private_key;
-                   string loki_url; }
+                   string loki_url; string host_ca_pub; }
 HostInfo { string hostname; string sku; uint64 mem_bytes; uint32 vcpus;
            string nixos_system; string ch_version; uint64 pool_bytes; }
 ```
@@ -33,6 +33,18 @@ and nothing filled until DECISIONS I-95. It is a setting
 current one so a host registered before a Loki existed learns it. Empty
 means the host ships nothing, which is also what an api that predates the
 field sends; hostd then keeps whatever `host.json` already had.
+
+`host_ca_pub` is the SSH Host CA's public key as one authorized_keys line
+(what `repose-admin ca show` prints as `# host ca:`). It lands in
+`host.json` under the same name and `repose-host-net` renders it into
+`/run/repose/host_ca.pub`, sshd's `TrustedUserCAKeys`, so an operator
+certificate from `repose-admin operator-cert` (principals `root`,
+`operator`, 8 hours) opens the host (`host-conventions.md` "Operator
+access"). Until DECISIONS I-139 nothing sent it and the file was always
+empty (security review M-1). `Rotate` carries the current value too, and
+hostd re-runs the renderer when a rotate changes it or `loki_url`; empty
+keeps what `host.json` has, so an older api leaves a host's trust as it
+was.
 
 ## Stream
 

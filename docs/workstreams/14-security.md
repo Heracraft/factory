@@ -247,7 +247,12 @@ lines of 2026-09-20), `docs/security/review-2026-09-20.md` and the tree;
       23:36Z switch; 3 auth lines since, all accepted operator keys), so
       the 2026-09-20 review's M-2 is closed; host-01 `host_ca.pub` is
       still 0 bytes and its 750 operator logins in 24 h are all by the
-      bootstrap key, each with a `hostd audit-login` journal line.
+      bootstrap key, each with a `hostd audit-login` journal line. I-139
+      (same session) puts the Host CA in `RegisterResponse` and
+      `host.json`; host-01 gets it at the switch carrying I-137 and I-139
+      with the runbook's by-hand step, after which an operator
+      certificate opens it; "only" then waits on `bootstrap.enable` being
+      turned off (01/11).
 - [~] Secrets review comments exist in `STATUS.md` for workstreams 04, 05,
       07. Evidence: the lines. 04: 2026-09-20 (14 review line). 05 and
       07: 2026-09-20 (M3 integration session lines, below the 14 lines).

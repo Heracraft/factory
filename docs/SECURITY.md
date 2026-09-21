@@ -203,10 +203,14 @@ Written down so nobody believes otherwise.
 - **One Blob identity for every host** (review M-3). Each host can read
   and delete every tenant's snapshots fleet-wide. Per-host containers or
   api-issued SAS tokens close it.
-- **No Host CA reaches hosts yet** (review M-1). Operator access is the
-  bootstrap key on the provider NIC until `RegisterResponse` carries the
-  CA; certificate-only, audited-by-serial operator access is the design,
-  not the state.
+- **Hosts registered before I-139 trust no Host CA until their first
+  rotate** (review M-1, closed in code 2026-09-21 by I-139:
+  `RegisterResponse.host_ca_pub`). host-01 is one of them; the runbook's
+  "Operator certificate refused by a host" is the by-hand step at the
+  next switch. And the bootstrap key stays on every host while
+  `repose.host.bootstrap.enable` is on (I-92), so operator access is
+  "certificate or the bootstrap key", not certificate-only, until 01/11
+  turn bootstrap off.
 - ~~The edge's sshd runs with NixOS defaults (review M-2)~~ Closed on
   the live edge 2026-09-21: operator sshd on 2222 with password and
   keyboard-interactive off, `prohibit-password`, verbose logging, admitted

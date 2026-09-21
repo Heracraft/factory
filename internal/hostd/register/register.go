@@ -219,6 +219,11 @@ func write(dir string, resp *hostdv1.RegisterResponse, prev *HostJSON) (*Identit
 	if resp.LokiUrl != "" {
 		id.Host.LokiURL = resp.LokiUrl
 	}
+	// The same rule for the Host CA (I-139): an api that predates the field
+	// sends nothing and the host keeps trusting what it trusted.
+	if resp.HostCaPub != "" {
+		id.Host.HostCAPub = strings.TrimSpace(resp.HostCaPub)
+	}
 	if resp.Edge != nil || resp.WgPrivateKey != "" {
 		id.Host.WG = WG{PrivateKey: resp.WgPrivateKey}
 		if resp.Edge != nil {

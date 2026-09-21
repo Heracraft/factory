@@ -77,6 +77,9 @@ type Server struct {
 	m         *metrics.M
 	replicaID string
 	handlers  Handlers
+	// hostCAPub returns the SSH Host CA's public line for RegisterResponse
+	// (I-139); nil when no SSH CA is wired (some tests), which sends none.
+	hostCAPub func() string
 
 	mu       sync.Mutex
 	sessions map[uuid.UUID]*session
@@ -91,6 +94,17 @@ type session struct {
 // New builds a server.
 func New(pool *db.Pool, ca *pki.CA, replicaID string, m *metrics.M, log *slog.Logger) *Server {
 	return &Server{pool: pool, ca: ca, log: log.With("component", "api"), m: m, replicaID: replicaID, sessions: map[uuid.UUID]*session{}}
+}
+
+// SetHostCAPub wires the SSH Host CA's public line into Register and
+// Rotate responses (before serving).
+func (s *Server) SetHostCAPub(f func() string) { s.hostCAPub = f }
+
+func (s *Server) hostCAPubLine() string {
+	if s.hostCAPub == nil {
+		return ""
+	}
+	return strings.TrimSpace(s.hostCAPub())
 }
 
 // SetHandlers installs the message handlers (before serving).
@@ -278,7 +292,7 @@ func (s *Server) Register(ctx context.Context, req *hostdv1.RegisterRequest) (*h
 			serial, time.Now().Add(pki.HostCertValidity)); err != nil {
 			return err
 		}
-		resp = &hostdv1.RegisterResponse{HostId: h.ID.String(), ClientCert: certPEM, ClientKey: keyPEM, GuestCidr: cidr.String()}
+		resp = &hostdv1.RegisterResponse{HostId: h.ID.String(), ClientCert: certPEM, ClientKey: keyPEM, GuestCidr: cidr.String(), HostCaPub: s.hostCAPubLine()}
 		edgePub, err := store.Setting(ctx, tx, SettingEdgeWGPubkey)
 		if err != nil {
 			return err
@@ -329,7 +343,7 @@ func (s *Server) Rotate(ctx context.Context, req *hostdv1.RegisterRequest) (*hos
 		return nil, status.Error(codes.Internal, "rotate failed")
 	}
 	s.log.Info("certificate rotated", "event", "rotate", "host_id", h.ID.String())
-	resp := &hostdv1.RegisterResponse{HostId: h.ID.String(), ClientCert: certPEM, ClientKey: keyPEM}
+	resp := &hostdv1.RegisterResponse{HostId: h.ID.String(), ClientCert: certPEM, ClientKey: keyPEM, HostCaPub: s.hostCAPubLine()}
 	if h.GuestCIDR != nil {
 		resp.GuestCidr = h.GuestCIDR.String()
 	}

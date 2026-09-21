@@ -327,6 +327,15 @@ func (d *Daemon) rotationLoop(ctx context.Context, roots *x509.CertPool) {
 		d.idMu.Lock()
 		d.id = next
 		d.idMu.Unlock()
+		// host.json's rendered fields (the Host CA sshd trusts, the Loki
+		// Fluent Bit ships to) only reach /run/repose when the renderer runs
+		// again; a rotate is the one time they change without a boot
+		// (I-95, I-139).
+		if next.Host.HostCAPub != cur.Host.HostCAPub || next.Host.LokiURL != cur.Host.LokiURL {
+			if _, rerr := (shell.Exec{}).Run(ctx, "systemctl", "--no-block", "restart", HostNetUnit); rerr != nil {
+				d.log.Warn("restart of the host network renderer failed", "event", "rotate", "unit", HostNetUnit, "err", rerr.Error())
+			}
+		}
 		d.dialer.mu.Lock()
 		d.dialer.inner = stream.GRPCDialer{Addr: d.o.APIAddr, TLS: next.TLSConfig(roots, d.o.APIServerName)}
 		d.dialer.mu.Unlock()

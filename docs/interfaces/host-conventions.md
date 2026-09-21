@@ -44,6 +44,13 @@ runtime; hostd does not write `wg0.conf` or any other network file
 }
 ```
 
+`host_ca_pub` comes from `RegisterResponse.host_ca_pub` (the api's SSH
+Host CA, DECISIONS I-139; hostdev sends its own CA), on `Register` and on
+every `Rotate`, and hostd restarts `repose-host-net` after a rotate that
+changed it so `/run/repose/host_ca.pub` follows. A host registered before
+I-139 has an empty one until its first rotate; `ops/RUNBOOK.md` "Operator
+certificate refused by a host" is the by-hand step for the interval.
+
 `loki_url` comes from `RegisterResponse.loki_url`, which the api fills
 from the `loki_url` setting (`repose-admin edge loki`, DECISIONS I-95).
 It is absent when no Loki has been recorded; `repose-host-net` then

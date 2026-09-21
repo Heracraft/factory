@@ -249,7 +249,15 @@ type RegisterResponse struct {
 	// since workstream 01 and nothing ever filled it, so every host
 	// rendered an empty LOKI_HOST. Empty is still accepted and still means
 	// "do not ship" (DECISIONS I-95).
-	LokiUrl       string `protobuf:"bytes,7,opt,name=loki_url,json=lokiUrl,proto3" json:"loki_url,omitempty"`
+	LokiUrl string `protobuf:"bytes,7,opt,name=loki_url,json=lokiUrl,proto3" json:"loki_url,omitempty"`
+	// The SSH Host CA's public key as an authorized_keys line. It lands in
+	// host.json as host_ca_pub, which the host renders into
+	// /run/repose/host_ca.pub for sshd's TrustedUserCAKeys, so an operator
+	// certificate from `repose-admin operator-cert` opens the host
+	// (host-conventions.md "Operator access"). Register and Rotate both
+	// carry it; empty keeps what host.json already has (DECISIONS I-139;
+	// security review M-1).
+	HostCaPub     string `protobuf:"bytes,8,opt,name=host_ca_pub,json=hostCaPub,proto3" json:"host_ca_pub,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -329,6 +337,13 @@ func (x *RegisterResponse) GetWgPrivateKey() string {
 func (x *RegisterResponse) GetLokiUrl() string {
 	if x != nil {
 		return x.LokiUrl
+	}
+	return ""
+}
+
+func (x *RegisterResponse) GetHostCaPub() string {
+	if x != nil {
+		return x.HostCaPub
 	}
 	return ""
 }
@@ -3727,7 +3742,7 @@ const file_repose_hostd_v1_hostd_proto_rawDesc = "" +
 	"\x0fRegisterRequest\x12\x1d\n" +
 	"\n" +
 	"join_token\x18\x01 \x01(\tR\tjoinToken\x12-\n" +
-	"\x04info\x18\x02 \x01(\v2\x19.repose.hostd.v1.HostInfoR\x04info\"\xff\x01\n" +
+	"\x04info\x18\x02 \x01(\v2\x19.repose.hostd.v1.HostInfoR\x04info\"\x9f\x02\n" +
 	"\x10RegisterResponse\x12\x17\n" +
 	"\ahost_id\x18\x01 \x01(\tR\x06hostId\x12\x1f\n" +
 	"\vclient_cert\x18\x02 \x01(\fR\n" +
@@ -3738,7 +3753,8 @@ const file_repose_hostd_v1_hostd_proto_rawDesc = "" +
 	"guest_cidr\x18\x04 \x01(\tR\tguestCidr\x122\n" +
 	"\x04edge\x18\x05 \x01(\v2\x1e.repose.hostd.v1.WireguardPeerR\x04edge\x12$\n" +
 	"\x0ewg_private_key\x18\x06 \x01(\tR\fwgPrivateKey\x12\x19\n" +
-	"\bloki_url\x18\a \x01(\tR\alokiUrl\"s\n" +
+	"\bloki_url\x18\a \x01(\tR\alokiUrl\x12\x1e\n" +
+	"\vhost_ca_pub\x18\b \x01(\tR\thostCaPub\"s\n" +
 	"\n" +
 	"ApiMessage\x124\n" +
 	"\acommand\x18\x01 \x01(\v2\x18.repose.hostd.v1.CommandH\x00R\acommand\x12(\n" +

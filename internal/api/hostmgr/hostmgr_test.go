@@ -115,6 +115,10 @@ func TestRegisterSessionSendSweep(t *testing.T) {
 	if err := store.SetSetting(ctx, h.pool, hostmgr.SettingLokiURL, "http://10.255.0.3:3100"); err != nil {
 		t.Fatal(err)
 	}
+	// The Host CA reaches the host in the same message (I-139); before
+	// it, /run/repose/host_ca.pub was always empty and operator access was
+	// the bootstrap key (security review M-1).
+	h.srv.SetHostCAPub(func() string { return "ssh-ed25519 AAAAtest repose-host-ca\n" })
 	client := hostdv1.NewHostServiceClient(h.dial(t, nil))
 	info := &hostdv1.HostInfo{Hostname: "host-01", Sku: "Standard_D16s_v7", MemBytes: 64 << 30, Vcpus: 16, PoolBytes: 500 << 30, NixosSystem: "/nix/store/x", ChVersion: "53"}
 	if _, err := client.Register(ctx, &hostdv1.RegisterRequest{JoinToken: "wrong", Info: info}); err == nil {
@@ -129,6 +133,9 @@ func TestRegisterSessionSendSweep(t *testing.T) {
 	}
 	if resp.LokiUrl != "http://10.255.0.3:3100" {
 		t.Fatalf("register loki_url %q: a host with none renders an empty LOKI_HOST and ships nothing", resp.LokiUrl)
+	}
+	if resp.HostCaPub != "ssh-ed25519 AAAAtest repose-host-ca" {
+		t.Fatalf("register host_ca_pub %q: the host would trust no operator certificate", resp.HostCaPub)
 	}
 	if _, err := client.Register(ctx, &hostdv1.RegisterRequest{JoinToken: token, Info: info}); err == nil {
 		t.Fatal("token accepted twice")

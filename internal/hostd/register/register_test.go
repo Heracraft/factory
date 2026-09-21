@@ -38,6 +38,7 @@ func (a *apiStub) Register(_ context.Context, req *hostdv1.RegisterRequest) (*ho
 	}
 	return &hostdv1.RegisterResponse{HostId: "host-1", ClientCert: cert, ClientKey: key, GuestCidr: "10.64.4.0/22",
 		LokiUrl:      "http://10.255.0.3:3100",
+		HostCaPub:    "ssh-ed25519 AAAAtest repose-host-ca\n",
 		WgPrivateKey: "wgpriv", Edge: &hostdv1.WireguardPeer{Endpoint: "edge:51820", PublicKey: "edgepub", Address: "10.255.0.7/16", AllowedIps: []string{"10.255.0.0/16"}}}, nil
 }
 
@@ -88,6 +89,11 @@ func TestRegisterThenRotate(t *testing.T) {
 	// (DECISIONS I-95).
 	if id.Host.LokiURL != "http://10.255.0.3:3100" {
 		t.Fatalf("host.json loki_url %q", id.Host.LokiURL)
+	}
+	// host_ca_pub is what repose-host-net renders into /run/repose/
+	// host_ca.pub for sshd's TrustedUserCAKeys (I-139).
+	if id.Host.HostCAPub != "ssh-ed25519 AAAAtest repose-host-ca" {
+		t.Fatalf("host.json host_ca_pub %q", id.Host.HostCAPub)
 	}
 	for _, f := range []string{CertFile, KeyFile, HostFile} {
 		st, err := os.Stat(filepath.Join(cfg.Dir, f))

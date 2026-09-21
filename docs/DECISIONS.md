@@ -3030,3 +3030,38 @@ which is the `git clean` above); leaving the staged files uncommitted (the
 next run's dirty check refuses its own previous sync); refusing `--name`
 without a remote (the flag exists for that directory). Interfaces: none;
 `07-cli.md` §5.5f and `features/sync-at-launch.md` describe it.
+
+**I-139. `RegisterResponse` carries the SSH Host CA's public key; hostd
+writes it to `host.json` and re-renders the host's network files after a
+rotate that changes it.** (m5-release, 14 final review, closes review
+M-1, 2026-09-21) `host-conventions.md` has documented `host_ca_pub` in
+`host.json` since workstream 01, `repose-host-net` renders it into
+`/run/repose/host_ca.pub`, sshd's `TrustedUserCAKeys` points there and
+`repose-admin operator-cert` signs certificates for it; nothing ever sent
+it. On host-01 as deployed the file is 0 bytes and every operator login
+(750 in 24 hours) is by the bootstrap key in
+`/etc/ssh/authorized_keys.d/root`, a static key with no serial in the
+audit line, which is what `docs/SECURITY.md` "Not mitigated" recorded as
+M-1. `RegisterResponse.host_ca_pub = 8` now carries `ca.HostCAPub()` from
+the api (the same line `GET /internal/ca` and `POST /certs` already give
+the gateway and the CLI), on `Register` and on `Rotate`; hostdev sends
+its own SSH CA (the one it signs guest host keys and operator user
+certificates with, review L-3); hostd's `write` keeps the previous value
+when the field is empty, the same rule as `loki_url`, so an api that
+predates the field changes nothing. Because the renderer runs at boot
+and after registration only, the rotation loop now restarts
+`repose-host-net` when a rotate changed `host_ca_pub` or `loki_url`
+(I-95 said `Rotate` carries the Loki and never said how it reached the
+file). What this does not do: remove the bootstrap key. host-01 keeps
+`repose.host.bootstrap.enable` for the token and reinstall path (I-92);
+"only with a certificate" (14 §9) needs that turned off once operators
+hold certificates, which is 01/11's row. host-01 itself learns the CA at
+its first rotate (about 2026-10-15) or by the runbook's by-hand step
+("Operator certificate refused by a host"), taken at the host switch
+that carries this change. *Rejected:* a separate unary RPC to fetch the
+CA (a second round trip for one line that registration already answers);
+delivering it in `Hello`'s ack on the stream (the stream is commands and
+results; identity material travels on the unary path with the
+certificate); hostd polling `/internal/ca` (hostd holds no gateway client
+certificate). Interfaces: `grpc-hostd.md`, `host-conventions.md`,
+`hostd.proto` (old shape accepted: field 8 is additive).

@@ -134,6 +134,7 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	a.events = events.New(a.pool, a.m, log)
 	a.meterIn = meter.New(a.pool, a.m, log)
 	a.hostMgr = hostmgr.New(a.pool, a.ca.X509(), cfg.ReplicaID, a.m, log)
+	a.hostMgr.SetHostCAPub(a.ca.HostCAPub)
 	a.engine = ops.New(a.pool, a.hostMgr, a.ca, a.sec, a.logs, a.events, a.m, log, ops.Config{BaseRef: cfg.BaseRef})
 	a.hostMgr.SetHandlers(hostmgr.Handlers{
 		Hello:   a.engine.OnHello,
