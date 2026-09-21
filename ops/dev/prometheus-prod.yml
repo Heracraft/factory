@@ -74,9 +74,10 @@ scrape_configs:
 
   # The tunnel reaches the api's 9103 on its container address, which is
   # a thing only an operator with SSH to the VM can do: the application
-  # publishes no host port and cannot (ops/coolify/README.md, "The api's
-  # metrics"). That is the other reason this file exists — it is the only
-  # way to see these series at all until that choice is made.
+  # publishes no host port and cannot. In production the same series come
+  # through the Traefik router in front of it (DECISIONS I-133); this
+  # path needs neither that router nor the allow-list, which is what
+  # makes it the one to reach for when the router is what is broken.
   - job_name: api
     static_configs:
       - targets: ["host.docker.internal:19103"]

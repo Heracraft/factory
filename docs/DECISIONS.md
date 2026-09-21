@@ -2868,3 +2868,57 @@ definition to maintain for one verb, and the api already has read on the
 same blobs through restore); running deletes from the hosts (the host's
 identity is the one a compromised host holds, and retention is the
 control plane's decision).
+
+**I-133. The api's `/metrics` is a Traefik router on the app, behind an
+IP allow-list; no collector and no host port.** (owner via conductor,
+2026-09-21) The `api` application publishes no port and cannot: a
+published host port stops the old and the new container coexisting, so
+Coolify could not roll it, which is the constraint that split `api-grpc`
+off in the first place (I-2). Its 57 `repose_*` series therefore needed
+a route of their own, and the choice between two was left open for the
+owner. It is the router.
+
+The proxy that already fronts the api serves `/metrics` from the same
+container port, through custom labels on the app:
+`Host(api.repose.herakraft.co) && Path(/metrics)` on the https entry
+point, `loadbalancer.server.port=9103`, and an `ipallowlist` middleware
+for `10.255.0.0/16, 10.200.0.0/16`. Nothing new runs, the rolling deploy
+is untouched, and it rides the certificate Traefik already has.
+
+*Rejected: Grafana Alloy as a Coolify service*, scraping `api:9103` and
+`api-grpc:9103` by name on the docker network and remote-writing out. It
+is the tidier shape on paper — the scrape never leaves the network, no
+allow-list, and the same agent could later replace Fluent Bit on hosts
+and the edge and make I-94's forwarding problem disappear. It loses on
+two concrete grounds: it is a second resource to run, upgrade and back
+up for one endpoint, and it needs a `remote_write` receiver that the
+owner's Prometheus does not currently expose, so choosing it would have
+meant changing the owner's stack to suit ours. The Alloy argument
+survives intact for the day Fluent Bit is reconsidered; it just should
+not have ridden in on this decision.
+
+Three consequences worth writing down, because each is a way to get it
+wrong:
+
+- *The router matches on the `Host` header*, so a scrape aimed at
+  `10.255.255.1:443` does not match it. The monitoring server resolves
+  `api.repose.herakraft.co` to the tunnel address in `/etc/hosts` and
+  scrapes the name, which keeps header, SNI and certificate correct;
+  `prometheus.yml`'s `api` job is the name, not the address.
+- *The allow-list is the only thing keeping `/metrics` off the
+  internet*, since the router sits on the public entry point, and it
+  matches the source address **Traefik sees**. That should be the
+  monitoring peer's `10.255.0.x` over WireGuard, but it is unverified
+  until the peer exists, and the failure mode is silent and open rather
+  than loud and closed. `curl https://api.repose.herakraft.co/metrics`
+  from anywhere else must answer 403; that check is part of closing 10's
+  scrape row, not an optional extra.
+- *The edge must forward 443 to the control plane*, not 9103, so
+  `repose.edge.monitoring.scrapePorts` drops 9103 and gains 443. An edge
+  built before this change would admit a port nothing listens on and
+  refuse the one that answers.
+
+Interfaces: none. `ops/coolify/README.md` holds the label block as the
+documented step — a manual paste, which is the one thing here that I-87
+would rather have in a file, so the block in the repository stays the
+source of truth and a label that drifts from it is a bug.

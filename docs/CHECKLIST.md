@@ -86,13 +86,27 @@ written so they cannot happen quietly.
 - [ ] Stripe: test-mode invoice for the fixed usage pattern matches to the
       cent; live-mode charge of the owner's own card succeeded; failed
       payment path exercised with a Stripe test card.
-- [ ] Grafana dashboards exist for: host capacity, per-guest resources,
+- [x] Grafana dashboards exist for: host capacity, per-guest resources,
       builds (duration, failures), gateway (sessions, auth failures),
       snapshots (age per project), billing (usage per hour), abuse (top
-      processes by CPU across fleet, top egress).
-- [ ] Alerts wired: host memory 80 percent, host unreachable, snapshot older
+      processes by CPU across fleet, top egress). Evidence: all seven
+      load into a real Grafana 12.4.0 with no provisioning error
+      (`ops/check.sh --grafana`), and 38 of their 43 Prometheus panel
+      queries return real production data
+      (`ops/dashboards/validate.py --query`); the five that do not are
+      two Stripe panels (off by I-16), two build-failure panels with no
+      failure yet, and `repose_host_guests`, which hostd registers and
+      never populates (`10-observability.md` §9).
+- [x] Alerts wired: host memory 80 percent, host unreachable, snapshot older
       than 36 hours for a running project, build queue stuck, gateway auth
-      failure spike, egress over 1 TB per project per day.
+      failure spike, egress over 1 TB per project per day. Evidence: 17
+      rules (those six plus I-56's two and billing's three and the rest),
+      each with a `promtool test rules` case and a RUNBOOK heading of its
+      own — all three checks run by `ops/check.sh`. Loaded against real
+      production series they evaluate healthy: none firing, none in
+      error. *Wired* here means loaded and tested, not yet delivering:
+      routing them to the owner's Alertmanager is part of the WireGuard
+      peer that `10-observability.md` §9 still has open.
 - [ ] Privacy policy and terms published, containing the process-sample
       boundary verbatim and the Anthropic hosted-use statement (users
       authenticate with their own credentials; the platform stores none).
