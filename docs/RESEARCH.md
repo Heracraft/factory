@@ -695,6 +695,7 @@ held the base closure.
 | pi's pane-idle heuristic, the real binary idle in its window, to delivery | 101 s (the 90 s quiet window, the 5 s debounce, the outbox) |
 | `POST /certs/revoke` to the gateway refusing that certificate | 7 s (the gateway's 30 s revocation poll) |
 | `repose-admin projects destroy` of a running small guest (stop with snapshot, DestroyGuest) | about 60 s (23:45:48 to 23:46:19 for `stopping`, the row gone by 23:46:19) |
+| `repose-admin hosts smoke host-01` on base 2026.09.21.1 (the api driving every op) | create 43.1 s, snapshot 17.0 s, stop 5.0 s (no snapshot), start 14.5 s, destroy 21.1 s |
 
 Reading: on a warm host the api path adds nothing measurable over the
 hostd numbers of §11; the 5 s menu apply is the eval of an already-built
