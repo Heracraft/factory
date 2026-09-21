@@ -2922,3 +2922,54 @@ Interfaces: none. `ops/coolify/README.md` holds the label block as the
 documented step — a manual paste, which is the one thing here that I-87
 would rather have in a file, so the block in the repository stays the
 source of truth and a label that drifts from it is a bug.
+
+**I-134. The api's user listener does not serve `/metrics`; the metrics
+listener is the only place the registry is served.** (m5-release, 14 final
+review, 2026-09-21) `internal/api/http.Server.New` mounted `GET /metrics`
+on the user mux beside `/healthz` and `/readyz`, and the user mux is what
+Coolify's proxy fronts on `api.repose.herakraft.co` with a `PathPrefix(/)`
+router. So `curl https://api.repose.herakraft.co/metrics` answered 200 to
+the internet: verified 2026-09-21 02:05Z from the dev box, from the edge's
+public address and from the control VM, 57 `repose_*` series plus the Go
+runtime's, no token asked. `docs/ops/OBSERVABILITY.md` promises "nothing
+is reachable from the internet: every scrape and ship goes over the
+edge's WireGuard", and I-133 built its whole argument on the allow-list
+being "the only thing keeping `/metrics` off the internet" while the
+application itself was serving it on the public port underneath. The
+mount is gone; `MetricsHandler` on `API_METRICS_LISTEN` (`:9103`) is the
+one metrics endpoint, which is also the port I-133's router already
+points at (`loadbalancer.server.port=9103`), so the router keeps working
+and the allow-list becomes defence in depth rather than the only gate.
+`TestMetricsIsNotOnTheUserListener` pins it. What the series exposed:
+counts of hosts, guests by state, ops, schedule results, secrets
+operations, build failures, notification deliveries, rate-limit hits; no
+tenant identifier (the registry refuses those labels, I-52) but a live
+picture of the platform's size and activity, and an unauthenticated
+handler on the public entry point that any scanner can hammer.
+*Rejected:* keeping the mount and relying on I-133's `ipallowlist`
+router (a label pasted by hand into Coolify, absent on the live app as of
+this review; a defence that has to be present to work is not the layer
+the application should depend on); a bearer check on the user-mux
+`/metrics` (a second auth path for one endpoint that already has its own
+listener). Interfaces: none (`api.md` never listed `/metrics`);
+`05-control-plane-api.md` §5.1 corrected.
+
+**I-135. hostd writes `host.json` and nothing else at registration; the
+second `wg0.conf` under its state directory is gone.** (m5-release, 14
+final review, 2026-09-21; closes review M-5) I-18 made `host.json` the
+host's only runtime network input, rendered into `/run/repose/wg0.conf`
+by `repose-host-net`; `internal/hostd/register.Register` still wrote
+`/var/lib/repose/hostd/wg0.conf` and restarted `wg-quick-wg0.service`
+itself, so a registration had two writers of one tunnel and a second copy
+of the WireGuard private key on the persistent disk. Seen on host-01 as
+deployed: `/var/lib/repose/hostd/wg0.conf`, 0600 root, dated the
+registration (2026-09-20 18:15Z), unread by any unit. `writeWG`, the
+`WGFile` constant and `Config.{Runner, WGUnit}` are removed; `WGConf`
+stays as the renderer tests and operators compare against; `--no-wg` is
+accepted for one release and ignored (its only effect was to skip the
+restart that no longer happens; the `repose-host-net` restart after a
+self-registration stays, per I-40). A host registered before this carries
+the stale file until its next switch; it is inert, and the operator may
+delete it. *Rejected:* keeping the file as a fallback for a host without
+`repose-host-net` (every host has it; a fallback nobody runs is a second
+truth).

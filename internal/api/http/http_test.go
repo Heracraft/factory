@@ -945,6 +945,31 @@ func TestSSELiveStreamAndConcurrentLoad(t *testing.T) {
 	}
 }
 
+// The user listener is what the public proxy fronts, so /metrics must not
+// be reachable through it: the registry is served by the metrics listener
+// alone (DECISIONS I-134; found answering 200 from the internet on
+// 2026-09-21).
+func TestMetricsIsNotOnTheUserListener(t *testing.T) {
+	e := newEnv(t)
+	res, err := http.Get(e.api.URL + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != 404 {
+		t.Fatalf("GET /metrics on the user listener: %d, want 404", res.StatusCode)
+	}
+	req, _ := http.NewRequest("GET", e.api.URL+"/v1/metrics", nil)
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode == 200 {
+		t.Fatalf("GET /v1/metrics on the user listener answered 200")
+	}
+}
+
 func TestHealthz(t *testing.T) {
 	e := newEnv(t)
 	res, err := http.Get(e.api.URL + "/healthz")

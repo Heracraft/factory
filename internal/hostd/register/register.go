@@ -22,7 +22,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
-	"github.com/heracraft/repose/internal/hostd/shell"
 )
 
 // ExitTokenUsed is the exit status for a consumed or invalid join token;
@@ -73,7 +72,6 @@ const (
 	CertFile = "cert.pem"
 	KeyFile  = "key.pem"
 	HostFile = "host.json"
-	WGFile   = "wg0.conf"
 )
 
 // Load reads an existing identity; os.ErrNotExist when there is none.
@@ -132,9 +130,6 @@ type Config struct {
 	ServerName string
 	Roots      *x509.CertPool // nil: system roots
 	Info       *hostdv1.HostInfo
-	// Runner restarts wg-quick after writing wg0.conf; nil skips it.
-	Runner shell.Runner
-	WGUnit string // wg-quick-wg0.service
 }
 
 // Register performs first registration: token in, identity out, token
@@ -169,9 +164,11 @@ func Register(ctx context.Context, cfg Config) (*Identity, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := writeWG(cfg, id); err != nil {
-		return nil, err
-	}
+	// host.json is the only file hostd writes for the network: the host
+	// renders /run/repose/wg0.conf from it and the unit that runs hostd
+	// register restarts repose-host-net (host-conventions.md, DECISIONS
+	// I-18, I-135). A second wg0.conf under the state directory was the
+	// review's M-5.
 	if err := os.Remove(cfg.TokenPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("delete join token: %w", err)
 	}
@@ -257,7 +254,9 @@ func atomicWrite(path string, data []byte, mode os.FileMode) error {
 	return os.Rename(tmp, path)
 }
 
-// WGConf renders wg0.conf for wg-quick.
+// WGConf renders a wg-quick config from the registration material. hostd
+// no longer writes one (I-135); it stays for tests and operators comparing
+// what the host rendered with what registration returned.
 func WGConf(w WG) string {
 	allowed := strings.Join(w.AllowedIPs, ", ")
 	if allowed == "" {
@@ -265,22 +264,6 @@ func WGConf(w WG) string {
 	}
 	return fmt.Sprintf("[Interface]\nPrivateKey = %s\nAddress = %s\n\n[Peer]\nPublicKey = %s\nEndpoint = %s\nAllowedIPs = %s\nPersistentKeepalive = 25\n",
 		w.PrivateKey, w.Address, w.EdgePubkey, w.EdgeEndpoint, allowed)
-}
-
-func writeWG(cfg Config, id *Identity) error {
-	w := id.Host.WG
-	if w.PrivateKey == "" || w.EdgeEndpoint == "" {
-		return nil // no edge yet (hostdev without one); nothing to configure
-	}
-	if err := atomicWrite(filepath.Join(cfg.Dir, WGFile), []byte(WGConf(w)), 0o600); err != nil {
-		return err
-	}
-	if cfg.Runner != nil && cfg.WGUnit != "" {
-		if _, err := cfg.Runner.Run(context.Background(), "systemctl", "restart", cfg.WGUnit); err != nil {
-			return fmt.Errorf("restart %s: %w", cfg.WGUnit, err)
-		}
-	}
-	return nil
 }
 
 // LoadRoots reads a PEM bundle into a pool; nil path means system roots.

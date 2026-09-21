@@ -75,7 +75,7 @@ func options(fs *flag.FlagSet) *app.Options {
 	fs.IntVar(&o.MaxOps, "max-ops", 8, "concurrent guest operations")
 	fs.IntVar(&o.MaxBuilds, "max-builds", 2, "concurrent builds")
 	fs.IntVar(&o.FailAtStep, "fail-at-step", 0, "inject a CreateGuest failure at this step (REPOSE_HOSTD_TESTING=1 only)")
-	fs.BoolVar(&o.NoWG, "no-wg", false, "do not restart wg-quick after registration")
+	fs.BoolVar(&o.NoWG, "no-wg", false, "accepted for one release and ignored: hostd writes host.json only and the host renders wg0.conf from it (DECISIONS I-135)")
 	fs.StringVar(&o.Substituters, "substituters", "", "nix substituters for builds, space separated (default cache.nixos.org; the host module adds the overlay cache)")
 	fs.StringVar(&o.LogLevel, "log-level", "info", "log level: debug, info, notice, warn, error")
 	return o

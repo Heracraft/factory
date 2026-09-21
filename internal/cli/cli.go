@@ -49,7 +49,12 @@ func newRootCmd(version string) *cobra.Command {
 		Short:         "repose: persistent remote environments for coding agents",
 		SilenceErrors: true,
 		SilenceUsage:  true,
+		// Version makes cobra accept `repose --version` (docs/CHECKLIST.md
+		// "Release (M5)"); the template keeps it byte-identical to
+		// `repose version`, herakraft suffix included.
+		Version: version,
 	}
+	root.SetVersionTemplate("repose {{.Version}} (herakraft)\n")
 	root.PersistentFlags().StringVar(&g.project, "project", "", "project id or slug (or $REPOSE_PROJECT)")
 	root.PersistentFlags().StringVar(&g.apiURL, "api-url", "", "api base url (or $REPOSE_API_URL)")
 	root.PersistentFlags().BoolVarP(&g.verbose, "verbose", "v", false, "debug logging to stderr")

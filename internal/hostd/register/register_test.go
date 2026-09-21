@@ -16,7 +16,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
-	"github.com/heracraft/repose/internal/hostd/shell"
 	"github.com/heracraft/repose/internal/hostd/testca"
 )
 
@@ -73,8 +72,7 @@ func TestRegisterThenRotate(t *testing.T) {
 	dir := t.TempDir()
 	tokenPath := filepath.Join(dir, "join-token")
 	_ = os.WriteFile(tokenPath, []byte("tok-1\n"), 0o600)
-	r := &shell.Fake{}
-	cfg := Config{Dir: filepath.Join(dir, "hostd"), TokenPath: tokenPath, APIAddr: ln.Addr().String(), ServerName: "127.0.0.1", Roots: ca.Pool(), Info: &hostdv1.HostInfo{Hostname: "h"}, Runner: r, WGUnit: "wg-quick-wg0.service"}
+	cfg := Config{Dir: filepath.Join(dir, "hostd"), TokenPath: tokenPath, APIAddr: ln.Addr().String(), ServerName: "127.0.0.1", Roots: ca.Pool(), Info: &hostdv1.HostInfo{Hostname: "h"}}
 	if _, err := Load(cfg.Dir); !os.IsNotExist(err) {
 		t.Fatalf("expected no identity yet, got %v", err)
 	}
@@ -91,21 +89,22 @@ func TestRegisterThenRotate(t *testing.T) {
 	if id.Host.LokiURL != "http://10.255.0.3:3100" {
 		t.Fatalf("host.json loki_url %q", id.Host.LokiURL)
 	}
-	for _, f := range []string{CertFile, KeyFile, HostFile, WGFile} {
+	for _, f := range []string{CertFile, KeyFile, HostFile} {
 		st, err := os.Stat(filepath.Join(cfg.Dir, f))
 		if err != nil || st.Mode().Perm() != 0o600 {
 			t.Fatalf("%s: %v %v", f, st, err)
 		}
 	}
+	// host.json is the only network input the host takes (I-18); the
+	// wg0.conf hostd used to write beside it was the review's M-5 (I-135).
+	if _, err := os.Stat(filepath.Join(cfg.Dir, "wg0.conf")); !os.IsNotExist(err) {
+		t.Fatalf("hostd wrote wg0.conf: %v", err)
+	}
 	if _, err := os.Stat(tokenPath); !os.IsNotExist(err) {
 		t.Fatal("join token not deleted")
 	}
-	if len(r.CallsWithPrefix("systemctl", "restart", "wg-quick-wg0.service")) != 1 {
-		t.Fatalf("wg-quick not restarted: %v", r.Calls)
-	}
-	wg, _ := os.ReadFile(filepath.Join(cfg.Dir, WGFile))
-	if string(wg) != "[Interface]\nPrivateKey = wgpriv\nAddress = 10.255.0.7/16\n\n[Peer]\nPublicKey = edgepub\nEndpoint = edge:51820\nAllowedIPs = 10.255.0.0/16\nPersistentKeepalive = 25\n" {
-		t.Fatalf("wg0.conf:\n%s", wg)
+	if got, want := WGConf(id.Host.WG), "[Interface]\nPrivateKey = wgpriv\nAddress = 10.255.0.7/16\n\n[Peer]\nPublicKey = edgepub\nEndpoint = edge:51820\nAllowedIPs = 10.255.0.0/16\nPersistentKeepalive = 25\n"; got != want {
+		t.Fatalf("WGConf:\n%s", got)
 	}
 	loaded, err := Load(cfg.Dir)
 	if err != nil || loaded.Host.HostID != "host-1" {

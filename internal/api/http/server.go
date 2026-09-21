@@ -1,6 +1,7 @@
 // Package httpapi serves docs/interfaces/api.md: the user routes behind
 // Logto JWT verification on the HTTP app, the /internal routes behind
-// the gateway's client certificate, and /healthz, /readyz and /metrics.
+// the gateway's client certificate, and /healthz and /readyz; /metrics is
+// the separate metrics listener only (DECISIONS I-134).
 // Every response carries X-Request-Id; errors use the documented
 // envelope; ids are validated as UUIDs before the database is touched.
 package httpapi
@@ -124,9 +125,10 @@ func New(d Deps) *Server {
 	s.route(s.user, "GET /v1/notify/unsubscribe", s.unsubscribe)
 	s.user.HandleFunc("GET /healthz", s.healthz)
 	s.user.HandleFunc("GET /readyz", s.readyz)
-	if d.Registry != nil {
-		s.user.Handle("GET /metrics", promhttp.HandlerFor(d.Registry, promhttp.HandlerOpts{}))
-	}
+	// /metrics is not on this mux. The user listener sits behind the public
+	// proxy, so anything mounted here is on the internet; the metrics
+	// listener (MetricsHandler, API_METRICS_LISTEN) is the only place the
+	// registry is served (DECISIONS I-134).
 	return s
 }
 

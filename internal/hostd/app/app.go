@@ -108,10 +108,7 @@ func EnsureIdentity(ctx context.Context, o Options, log *slog.Logger, r shell.Ru
 	if err != nil {
 		return nil, err
 	}
-	cfg := register.Config{Dir: o.StateDir, TokenPath: o.TokenPath, APIAddr: o.APIAddr, ServerName: o.APIServerName, Roots: roots, Runner: r, WGUnit: "wg-quick-wg0.service"}
-	if o.NoWG {
-		cfg.Runner = nil
-	}
+	cfg := register.Config{Dir: o.StateDir, TokenPath: o.TokenPath, APIAddr: o.APIAddr, ServerName: o.APIServerName, Roots: roots}
 	for {
 		cfg.Info = hostinfo.Collect(ctx, r, l)
 		id, err := register.Register(ctx, cfg)
@@ -123,8 +120,8 @@ func EnsureIdentity(ctx context.Context, o Options, log *slog.Logger, r shell.Ru
 			// host-conventions.md, DECISIONS I-18, I-40). When hostd
 			// registers itself instead of repose-register.service, nothing
 			// else would.
-			if cfg.Runner != nil {
-				if _, rerr := cfg.Runner.Run(ctx, "systemctl", "--no-block", "restart", HostNetUnit); rerr != nil {
+			if r != nil {
+				if _, rerr := r.Run(ctx, "systemctl", "--no-block", "restart", HostNetUnit); rerr != nil {
 					log.Warn("restart of the host network renderer failed", "event", "register", "unit", HostNetUnit, "err", rerr.Error())
 				}
 			}
