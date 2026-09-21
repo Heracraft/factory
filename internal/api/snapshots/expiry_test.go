@@ -121,3 +121,39 @@ func TestExpiryRules(t *testing.T) {
 	}
 	e.UpdateAgeGauge(ctx)
 }
+
+// One blob the store refuses (production 2026-09-21: 403 on the first
+// delete) must not stop the sweep: the rest are deleted in the same run,
+// the refused row stays for the next one, and the run reports the failure
+// (I-130).
+func TestExpiryContinuesPastOneFailedBlob(t *testing.T) {
+	pool := testdb.Open(t)
+	ctx := context.Background()
+	b := blob.New()
+	e := snapshots.New(pool, b, metrics.NewNop(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	live := project(t, pool, false)
+	stuck := snap(t, pool, b, live, 10*24*time.Hour, nil)
+	old := snap(t, pool, b, live, 8*24*time.Hour, nil)
+	_ = snap(t, pool, b, live, time.Hour, nil)
+	s, _ := store.GetSnapshot(ctx, pool, stuck)
+	b.FailPaths = map[string]error{s.BlobPath: blob.ErrDown}
+
+	deleted, err := e.Once(ctx)
+	if err == nil {
+		t.Fatal("a refused blob must make the run report failure")
+	}
+	if len(deleted) != 1 || deleted[0] != old {
+		t.Fatalf("the other expired snapshot should have gone in the same run: %v", deleted)
+	}
+	if s, _ := store.GetSnapshot(ctx, pool, stuck); s.DeletedAt != nil || !b.Exists(s.BlobPath) {
+		t.Fatal("refused row marked deleted or blob gone")
+	}
+	if s, _ := store.GetSnapshot(ctx, pool, old); s.DeletedAt == nil || b.Exists(s.BlobPath) {
+		t.Fatal("the deletable snapshot survived")
+	}
+
+	b.FailPaths = nil
+	if d, err := e.Once(ctx); err != nil || len(d) != 1 || d[0] != stuck {
+		t.Fatalf("retry: %v %v", d, err)
+	}
+}

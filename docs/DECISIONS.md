@@ -2828,6 +2828,28 @@ surface; the owner judged the remaining risk to be in the second laptop,
 not the second account. *Rejected:* keeping M2 open until a second person
 appears (M3 work on the shared host was waiting on it).
 
+**I-130. One refused blob delete does not end the expiry run.** (m3
+integration, 2026-09-21) `snapshots.Expiry.Once` looped "next expired row,
+delete its blob, mark it" and returned on the first error, so the run that
+hit I-131's `403 AuthorizationPermissionMismatch` (01:27:06Z, request id
+`97d95da0-001e-0101-4468-49cafa000000`, the first of two aged m3-check
+snapshots) deleted nothing, and would have re-selected the same row at
+every run for as long as that one blob was refused: a single bad blob (a
+lease, a mismatched name, a permission) would have held the whole
+retention rule hostage. The run now reads its candidates once, then
+handles each in its own transaction (`for update skip locked`, re-checked
+against the rule so a restore that started meanwhile still holds its
+snapshot); a refused delete logs `snapshot_expiry_fail` with the
+snapshot id, leaves the row for the next run and moves on; the run ends
+with an error naming how many rows it kept, so the job's own
+`snapshot_expiry_fail` line still marks the run failed and the gauge of
+oldest live snapshot still rises. `TestExpiryContinuesPastOneFailedBlob`
+(fake store refusing one path). *Rejected:* marking the row deleted
+anyway and letting the 45-day lifecycle rule collect the blob (the row is
+the audit of what is in the container; a row that says deleted while the
+blob is there is the shape 05 §5.8 forbids); retrying the same blob inside
+the run (the failures seen are not transient at the run's timescale).
+
 **I-131. The api's service principal gets Storage Blob Data Contributor on
 the snapshots container.** (conductor, 2026-09-21) 05 §5.8 has the expiry
 job delete expired snapshot blobs "through the Blob SDK with the api's

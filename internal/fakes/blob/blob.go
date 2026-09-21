@@ -14,6 +14,9 @@ type Fake struct {
 	Blobs   map[string]int64
 	Deleted []string
 	Fail    error
+	// FailPaths fails the delete of these paths only, the shape of one
+	// blob the store refuses while the rest go through.
+	FailPaths map[string]error
 }
 
 // New returns an empty store.
@@ -33,6 +36,9 @@ func (f *Fake) Delete(ctx context.Context, path string) error {
 	defer f.mu.Unlock()
 	if f.Fail != nil {
 		return f.Fail
+	}
+	if err := f.FailPaths[path]; err != nil {
+		return err
 	}
 	delete(f.Blobs, path)
 	f.Deleted = append(f.Deleted, path)

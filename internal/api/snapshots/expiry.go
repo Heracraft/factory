@@ -69,26 +69,58 @@ func (e *Expiry) Run(ctx context.Context, every time.Duration) {
 	}
 }
 
-// Once deletes every expired snapshot and returns the ids deleted.
+// Once deletes every expired snapshot and returns the ids deleted. A blob
+// that cannot be deleted is logged and skipped so the rest of the sweep
+// goes on (I-129); the error it returns then names the count, so the job
+// still reports the run as failed.
 func (e *Expiry) Once(ctx context.Context) ([]uuid.UUID, error) {
+	deleted, failed, err := e.Sweep(ctx)
+	if err != nil {
+		return deleted, err
+	}
+	if failed > 0 {
+		return deleted, fmt.Errorf("%d snapshot(s) kept: blob delete failed (snapshot_expiry_fail)", failed)
+	}
+	return deleted, nil
+}
+
+// expiredWhere selects the rows the retention rule retires: a destroyed
+// project's past expires_at, a live project's older than Retention except
+// its newest; never one a restore holds (restoring_op_id).
+const expiredWhere = `s.deleted_at is null and s.restoring_op_id is null
+	and (
+	  (p.destroyed_at is not null and s.expires_at is not null and s.expires_at < $1)
+	  or (p.destroyed_at is null and s.taken_at < $2 and s.id <> (select id from snapshots n where n.project_id = s.project_id and n.deleted_at is null order by n.taken_at desc, n.created_at desc limit 1))
+	)`
+
+// Sweep is one run: the candidates are read once, then each is locked,
+// re-checked, deleted from Blob and marked in its own transaction. failed
+// counts rows whose blob delete failed; they stay for the next run.
+func (e *Expiry) Sweep(ctx context.Context) (deleted []uuid.UUID, failed int, err error) {
 	now := e.Now()
-	var deleted []uuid.UUID
-	for {
+	rows, err := e.pool.Query(ctx, `select s.id from snapshots s join projects p on p.id = s.project_id where `+expiredWhere+` order by s.taken_at`, now, now.Add(-Retention))
+	if err != nil {
+		return nil, 0, err
+	}
+	var ids []uuid.UUID
+	for rows.Next() {
 		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, 0, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	for _, id := range ids {
 		var path string
-		// One row per transaction: locked, checked, deleted from Blob, then
-		// marked; a restore holding the row (restoring_op_id) is skipped.
 		err := db.InTx(ctx, e.pool, func(tx db.Tx) error {
-			err := tx.QueryRow(ctx, `select s.id, s.blob_path from snapshots s join projects p on p.id = s.project_id
-				where s.deleted_at is null and s.restoring_op_id is null and s.id not in (select id from snapshots x where x.deleted_at is null and x.restoring_op_id is not null)
-				  and (
-				    (p.destroyed_at is not null and s.expires_at is not null and s.expires_at < $1)
-				    or (p.destroyed_at is null and s.taken_at < $2 and s.id <> (select id from snapshots n where n.project_id = s.project_id and n.deleted_at is null order by n.taken_at desc, n.created_at desc limit 1))
-				  )
-				order by s.taken_at limit 1 for update of s skip locked`, now, now.Add(-Retention)).Scan(&id, &path)
+			// Still expired, not taken by a restore since the candidate list,
+			// and not locked by another replica's sweep.
+			err := tx.QueryRow(ctx, `select s.blob_path from snapshots s join projects p on p.id = s.project_id where s.id = $3 and `+expiredWhere+` for update of s skip locked`, now, now.Add(-Retention), id).Scan(&path)
 			if err != nil {
 				if db.IsNoRows(err) {
-					return errDone
+					return errSkip
 				}
 				return err
 			}
@@ -98,18 +130,21 @@ func (e *Expiry) Once(ctx context.Context) ([]uuid.UUID, error) {
 			_, err = tx.Exec(ctx, "update snapshots set deleted_at = $2 where id = $1", id, now)
 			return err
 		})
-		if errors.Is(err, errDone) {
-			return deleted, nil
-		}
-		if err != nil {
-			return deleted, err
+		switch {
+		case errors.Is(err, errSkip):
+			continue
+		case err != nil:
+			failed++
+			e.log.Error("snapshot not expired", "event", "snapshot_expiry_fail", "snapshot_id", id.String(), "err", err.Error())
+			continue
 		}
 		deleted = append(deleted, id)
 		e.log.Info("snapshot expired", "event", "snapshot_expired", "snapshot_id", id.String())
 	}
+	return deleted, failed, nil
 }
 
-var errDone = errors.New("no more expired snapshots")
+var errSkip = errors.New("snapshot no longer expired")
 
 // UpdateAgeGauge sets repose_api_snapshot_age_seconds to the oldest
 // newest-snapshot age over running projects (the SnapshotStale input).
