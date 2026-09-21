@@ -178,13 +178,17 @@ lines of 2026-09-20), `docs/security/review-2026-09-20.md` and the tree;
       passed once at 00:15Z (rejected 7 s after `POST /certs/revoke`) and is
       opt-in since, because it revokes a certificate of the logged-in
       account (the owner's). SKIP by design: the direct-sshd half of the
-      certificate row (it would put the operator's key on the host). Open:
-      "hostd for host X cannot act on host Y" (one host); "guest cannot
-      escape memory or CPU limits" is the next row.
-- [ ] The fork bomb and memory hog test leaves the neighbour within 10
-      percent. Evidence: numbers.
-      `TestForkBombAndMemoryHogLeaveNeighbourWithinTenPercent` in the same
-      run.
+      certificate row (it would put the operator's key on the host). The
+      limits row is the next item (run 00:39Z, same file set:
+      `isolation-go-20260921T003951Z.txt`, 18 PASS, 1 SKIP). Open: "hostd
+      for host X cannot act on host Y" (one host).
+- [x] The fork bomb and memory hog test leaves the neighbour within 10
+      percent. Evidence (`TestForkBombAndMemoryHogLeaveNeighbourWithinTenPercent`,
+      host-01, 2026-09-21 00:40Z, A = m3-check running a real fork bomb
+      under `systemd-run -p TasksMax=8000` and a python memory hog to
+      MemoryError, B = m3-iso-c hashing 256 MiB from /dev/zero, best of 3):
+      baseline in B 0.256 s, during the bomb and hog 0.260 s, ratio 1.02;
+      A answered afterwards.
 - [~] Privacy policy and terms contain the two required passages. Evidence:
       the page URL and a grep of the source. `test/isolation/policy_test.go`
       `TestPolicyTextContainsTheRequiredPassages` pins both passages in
