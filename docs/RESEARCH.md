@@ -709,6 +709,10 @@ held the base closure.
 | Security base publish to the sweep's first build op (basebump's ten-minute tick) | 4 min 21 s (02:08:16 to 02:12:37Z) and 9 min 13 s (02:20:09 to 02:29:22Z); a redeploy of api-grpc inside the window lost the sweep until 04:00 before I-138 |
 | Sweep build of a kernel-changing base (38d1cbf, linux 7.2.6 already in the host store) per project, four projects | 5.2 s each: eval 4.8 s, build 0.35 s; `ApplyConfig` on the running guest: "apply needs reboot", revision `built` with `reboot_required`, nothing rebooted; ntfy delivery of the base_updated event 2 s after the op |
 | `repose stop && repose start` of that project to boot the new kernel | 89 s (02:30:41 to 02:32:10Z; stop with a 1.5 MB snapshot, start onto 7.2.6, `uname -r` 7.2.6, revision `applied`) |
+| The LTS republish's sweep (2026.09.21.3, 02:59Z, main 9d4cb40): builds of a base whose closure differs from the running one, four projects | 23 s to 24 s for the first two (eval 5.5 s, build 18 s: the new guestd and its dependents built on the host), 5 s for the rest (substituted from the first); the package-only switches on a running guest ended `guestd Switch: vsockrpc: EOF` (I-143) |
+| First base with I-143 (2026.09.21.4, 04:32Z, main 0b68f82): publish to the sweep's first op | 1 min 57 s (the tick landed 2 min after the publish, across an api-grpc roll at 04:33Z, I-141); one clone of the new ref for five builds (I-144) |
+| That sweep's package-only switch on a guest running a pre-I-143 base (nuru-playground, m3-held) | build 24 s / 5 s, switch 3 s; guestd never stopped (the new activation leaves it alone), no `guestd_lost`; the running guestd stays the old binary until the next boot |
+| `repose-admin projects restart` of a guest stranded with no guestd (m3-iso-c) | stop 60 s (no guestd to freeze; the unit's stop timeout), start 17 s, the built revision applied at boot, running |
 
 Reading: on a warm host the api path adds nothing measurable over the
 hostd numbers of §11; the 5 s menu apply is the eval of an already-built
