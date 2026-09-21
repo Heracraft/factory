@@ -516,9 +516,17 @@ waits on host-01 (`ops/checks/README.md` names the script that closes it).
       sweeps exposed and what fixed it: bumps built against the old base
       (I-134), a sweep lost to an api-grpc redeploy (I-141), the
       activation stranding guestd (I-143), the clone race (I-144), the
-      failure wording (I-145) and the skip rule (I-146); the base
-      published after I-143..I-146 deployed is the sweep's proof
-      (12 §9 `kernel_changed` row).
+      failure wording (I-145) and the skip rule (I-146). Proof sweeps
+      after those deployed: 2026.09.21.4 (04:34Z) rebuilt every project,
+      retried nuru-playground's failed clone through one serialized
+      checkout, switched the LTS guests in place with guestd untouched,
+      and left the 7.2.6 guest with reboot_required; 2026.09.21.5
+      (05:00Z, guests already on a base with I-143) switched m3-held and
+      m3-iso-c through the transient unit, the op `done` at 05:00:22Z,
+      guestd's self-restart 5 s later onto the new binary with no
+      `guestd_lost` (the gap is under the 60 s threshold). age-calculator
+      (guestd stopped since 02:59Z, awaiting the owner) got the I-145
+      wording each time and nothing else.
 - [x] Snapshot expiry removes blobs on schedule and never one referenced
       by a running restore. Evidence: `internal/api/snapshots/expiry_test.go`
       `TestExpiryRules` with the fake blob store (`restoring_op_id` guard).

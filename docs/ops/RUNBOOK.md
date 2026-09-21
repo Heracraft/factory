@@ -851,8 +851,11 @@ stopped guestd, whose child the activation was, so the switch died before
 its start step (base 2026.09.21.3 on host-01, 2026-09-21 02:59Z: three
 guests). Bases from I-143 on do not restart guestd from the activation;
 guestd restarts itself 3 s after answering, and hostd then logs
-`guestd_lost` followed by `guestd_regained` within its reconnect, which
-is the healthy shape of a switch onto a new guestd.
+nothing at all when guestd is back within a minute, or `guestd_lost`
+followed by `guestd_regained` when it is not; both are the healthy shape
+of a switch onto a new guestd (2026.09.21.5 on m3-held, 05:00Z: op
+`done` at 05:00:22, "guestd restart scheduled", guestd active again at
+05:00:27 on the new binary, no `guestd_lost`).
 
 Recovery, in this order:
 
