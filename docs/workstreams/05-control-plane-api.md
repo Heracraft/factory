@@ -351,7 +351,8 @@ The ops engine, the placement of `/internal`, where the CA keys live, the
 guest host-certificate principals, the sample insert path and the schema
 additions are recorded in `DECISIONS.md` I-42; `interfaces/db-schema.md`
 is the schema as built. Workstreams 09, 12 and 13 replace the interfaces
-in `internal/billing`, `internal/nixmenu` and `internal/api/notify`
+in `internal/billing`, `internal/menu` (which replaced the api's own
+`internal/nixmenu` stand-in, I-119) and `internal/api/notify`
 without touching the routes.
 
 ### 5.15 Observability
