@@ -978,6 +978,35 @@ cannot fetch `/internal/hosts`, or Prometheus cannot scrape.
 The control plane's WireGuard private key is generated on the machine and
 never leaves it, which is why this is two moves rather than one apply.
 
+## Operator certificate refused by a host
+
+Symptom: `ssh root@10.255.0.x` with a certificate from `repose-admin
+operator-cert` is refused (`Permission denied (publickey)`) while the
+bootstrap key still works; on the host `wc -c /run/repose/host_ca.pub`
+is 0 and `sshd -T | grep trustedusercakeys` names that file.
+
+Cause: the host registered before the api sent the Host CA
+(`RegisterResponse.host_ca_pub`, DECISIONS I-139). It learns it at its
+first `Rotate` (30 days after registration), when hostd rewrites
+`host.json` and restarts `repose-host-net`.
+
+Fix now, on the host, from the api's public line
+(`repose-admin ca show`, the `# host ca:` line; also the `@cert-authority`
+line the CLI writes to `~/.ssh/repose/known_hosts`):
+
+```
+jq --arg ca 'ssh-ed25519 AAAA... repose-host-ca' '. + {host_ca_pub: $ca}' \
+  /var/lib/repose/hostd/host.json > /var/lib/repose/hostd/host.json.new
+mv /var/lib/repose/hostd/host.json.new /var/lib/repose/hostd/host.json
+chmod 0600 /var/lib/repose/hostd/host.json
+systemctl restart repose-host-net
+wc -c /run/repose/host_ca.pub          # non-zero
+```
+
+sshd reads `TrustedUserCAKeys` at each authentication, so no sshd
+restart. Then log in with the certificate and read the journal line:
+`Accepted publickey for root ... ID operator:<name> (serial N)`.
+
 ## hostd: join token already used
 
 `systemctl status hostd` shows `status=3` and the unit is not retrying

@@ -44,6 +44,13 @@ runtime; hostd does not write `wg0.conf` or any other network file
 }
 ```
 
+`host_ca_pub` comes from `RegisterResponse.host_ca_pub` (the api's SSH
+Host CA, DECISIONS I-139; hostdev sends its own CA), on `Register` and on
+every `Rotate`, and hostd restarts `repose-host-net` after a rotate that
+changed it so `/run/repose/host_ca.pub` follows. A host registered before
+I-139 has an empty one until its first rotate; `ops/RUNBOOK.md` "Operator
+certificate refused by a host" is the by-hand step for the interval.
+
 `loki_url` comes from `RegisterResponse.loki_url`, which the api fills
 from the `loki_url` setting (`repose-admin edge loki`, DECISIONS I-95).
 It is absent when no Loki has been recorded; `repose-host-net` then
@@ -61,7 +68,7 @@ rotates keys does the same restart itself.
 |---|---|---|
 | `hostd --state /var/lib/repose/hostd --api-addr <addr> [--api-ca <pem>] (--blob-url <url> --blob-container <name> [--blob-identity <client id>] \| --snapshot-dir <dir>)` | `hostd.service` | the daemon. The api address, its CA (only for the `hostdev` stand-in, I-17) and the snapshot target come from `repose.host.apiAddr`, `apiCA` (a PEM in the store) or `apiCAFile` (a path on the host, I-75), and `snapshots.*` (DECISIONS I-40); hostd refuses to start without a snapshot target. The binary is on the operator's PATH: the `hostd status`, `hostd guests` and `hostd reconcile` of docs/ops/RUNBOOK.md are this same binary over the control socket. Exit status 3 means "join token used or invalid"; the unit does not restart on it. |
 | `hostd register --state <dir> --join-token /run/repose/join-token` | `repose-register.service`, once, before hostd | exit 0 with `host.json`, `cert.pem`, `key.pem` written and the token deleted; exit 0 doing nothing if `host.json` exists; exit 3 on a rejected token; any other non-zero is retried after 30 s. |
-| `hostd audit-login` | PAM session hook on every sshd login | environment `PAM_TYPE`, `PAM_USER`, `PAM_RHOST`; writes an `audit_log` row (or a journal line until the api exists). Must be quick and never block a login. |
+| `hostd audit-login` | PAM session hook on every sshd login | environment `PAM_TYPE`, `PAM_USER` and sshd's `SSH_AUTH_INFO_0`; writes the journal line `operator_login` with the certificate's `key_id` and `cert_serial` (or a plain key's `key_fp`), never a key body, and on `open_session` hands the same identifiers to the running daemon over `/run/repose/hostd.sock` (`POST /operator-login`), which sends them to the api as the `operator_login` host event for the `audit_log` row (DECISIONS I-140). Must be quick and never block a login: a 2 s timeout, and without a daemon the journal line is the record. `PAM_RHOST` is never recorded. |
 | `hostd snapshot-all` | `repose-snapshot.timer` at 03:00 local | snapshots every running guest without the api. |
 
 ## Network

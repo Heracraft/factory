@@ -254,6 +254,15 @@ $ repose run
       over SSH, then a tar of the untracked list piped to `tar -x -C ~/<slug>`.
       Skip files over 100 MB with a warning. Respect `sync.exclude`.
    e. Print `Synced: 4 modified, 2 untracked`.
+   f. A project created with `--name` in a directory that has no git
+      remote skips c and d: there is no origin in the guest to fetch
+      (guestd sets one only from `remote_url`, I-107). The tracked files
+      travel as a tar of their working-tree contents, are `git add`ed and
+      committed in the guest under a placeholder identity so the tree is
+      clean for the next run's step b, untracked files follow as in d, and
+      the line reads `Synced the whole tree (no git remote): 12 tracked
+      files, 2 untracked`. A file deleted on the laptop stays in the guest
+      (DECISIONS I-138).
 6. Credential sync (unless `--no-sync`): for each row of the table in
    `interfaces/guest-conventions.md`, if the laptop file exists, `tar` it
    over SSH to the guest path, `chmod 0600`. Print one line

@@ -33,6 +33,7 @@ type Server struct {
 	hostdv1.UnimplementedHostServiceServer
 	st  *Store
 	ca  *testca.CA
+	ssh *SSHCA // the SSH CA hostdev signs with; its public line travels as host_ca_pub (I-139)
 	log *slog.Logger
 
 	mu        sync.Mutex
@@ -62,7 +63,11 @@ func NewServer(dir string, log *slog.Logger) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{st: st, ca: ca, log: log, waiters: map[string][]chan *hostdv1.Result{}, logSubs: map[string][]chan string{}}, nil
+	sshCA, err := LoadSSHCA(dir)
+	if err != nil {
+		return nil, err
+	}
+	return &Server{st: st, ca: ca, ssh: sshCA, log: log, waiters: map[string][]chan *hostdv1.Result{}, logSubs: map[string][]chan string{}}, nil
 }
 
 // Serve runs gRPC on the configured listen address and the control socket
@@ -133,7 +138,7 @@ func (s *Server) Register(ctx context.Context, req *hostdv1.RegisterRequest) (*h
 		st.Host.HostID = hostID
 		st.Host.Registered = time.Now().UTC()
 		st.Host.Info = rawProto(req.Info)
-		resp = &hostdv1.RegisterResponse{HostId: hostID, ClientCert: cert, ClientKey: key, GuestCidr: st.GuestCIDR}
+		resp = &hostdv1.RegisterResponse{HostId: hostID, ClientCert: cert, ClientKey: key, GuestCidr: st.GuestCIDR, HostCaPub: s.hostCAPub()}
 	})
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -159,7 +164,17 @@ func (s *Server) Rotate(ctx context.Context, _ *hostdv1.RegisterRequest) (*hostd
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	s.log.Info("certificate rotated", "event", "rotate", "host_id", hostID)
-	return &hostdv1.RegisterResponse{HostId: hostID, ClientCert: cert, ClientKey: key, GuestCidr: cidr}, nil
+	return &hostdv1.RegisterResponse{HostId: hostID, ClientCert: cert, ClientKey: key, GuestCidr: cidr, HostCaPub: s.hostCAPub()}, nil
+}
+
+// hostCAPub is hostdev's one SSH CA (review L-3: it signs both kinds),
+// sent as the Host CA so an operator certificate it issues opens the host
+// (I-139).
+func (s *Server) hostCAPub() string {
+	if s.ssh == nil {
+		return ""
+	}
+	return strings.TrimSpace(s.ssh.Pub)
 }
 
 // Session is the long-lived stream.

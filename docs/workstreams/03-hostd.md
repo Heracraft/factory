@@ -115,9 +115,12 @@ and systemd retries every 30 seconds; a token that has been consumed
 produces `register: join token already used`, logged and the unit stops
 retrying (`Restart=on-failure` with `RestartPreventExitStatus=3`).
 
-WireGuard keys returned at registration are written to
-`/var/lib/repose/hostd/wg0.conf` and `wg-quick@wg0` is restarted; workstream
-01's host config points `wg-quick` at that file.
+WireGuard keys returned at registration land in `host.json` and nowhere
+else: `repose-register.service` restarts `repose-host-net`, which renders
+`/run/repose/wg0.conf` for `wg-quick-wg0.service` (DECISIONS I-18). hostd
+wrote a second `wg0.conf` under its state directory until I-137 removed
+it (security review M-5: two writers of one tunnel and a second copy of
+the private key on the persistent disk).
 
 Rotation: 5 days before `cert_expires_at`, call `Rotate` on the unary API
 with the current certificate; on success swap files atomically (`rename`)

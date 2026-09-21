@@ -47,6 +47,14 @@ message RegisterResponse {
   // rendered an empty LOKI_HOST. Empty is still accepted and still means
   // "do not ship" (DECISIONS I-95).
   string loki_url = 7;
+  // The SSH Host CA's public key as an authorized_keys line. It lands in
+  // host.json as host_ca_pub, which the host renders into
+  // /run/repose/host_ca.pub for sshd's TrustedUserCAKeys, so an operator
+  // certificate from `repose-admin operator-cert` opens the host
+  // (host-conventions.md "Operator access"). Register and Rotate both
+  // carry it; empty keeps what host.json already has (DECISIONS I-139;
+  // security review M-1).
+  string host_ca_pub = 8;
 }
 
 message ApiMessage {
@@ -260,6 +268,18 @@ message AgentEvent {
 }
 message SnapshotDone { string guest_id = 1; string snapshot_id = 2; string blob_path = 3; uint64 bytes = 4; }
 message HostWarning { string kind = 1; string detail = 2; }
+// An operator's SSH login to the host, from the PAM hook that runs
+// `hostd audit-login`: what the api turns into the audit_log row 14 §5
+// requires (DECISIONS I-140). Carries the certificate's key id and serial
+// and a key fingerprint, never a key or certificate body, and never the
+// source address.
+message OperatorLogin {
+  string pam_type = 1;        // open_session|close_session
+  bool user_present = 2;
+  string key_id = 3;          // certificate key_id (operator:<name>), empty for a plain key
+  uint64 serial = 4;          // certificate serial, 0 for a plain key
+  string key_fingerprint = 5; // SHA256:... of the key (the bootstrap key when key_id is empty)
+}
 message Event {
   string event_id = 1;
   int64 ts = 2;
@@ -268,5 +288,6 @@ message Event {
     AgentEvent agent_event = 11;
     SnapshotDone snapshot_done = 12;
     HostWarning host_warning = 13;
+    OperatorLogin operator_login = 14;
   }
 }

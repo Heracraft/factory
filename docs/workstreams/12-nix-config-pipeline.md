@@ -357,8 +357,13 @@ and whose host half is one of the `ops/checks/menu.sh` or
       pkgs.fetchurl { url = ...; hash = ...; }`, exit 10; (a) reads
       `syntax error, unexpected ';' at …` from the api's parse-time check on
       the deployed api, the contract's order on the next api deploy
-      (I-126); (d) `--with-closure-cap` and (c) `--with-build-timeout` are
-      the remaining runs; (d) closed below.
+      (I-126): closed by the M5 session on the api image `74d45e3`,
+      project repose-m5-frag, 2026-09-21 02:29Z, `config error: syntax
+      error at syntax.nix:1:34, unexpected ';'` with the caret under the
+      `;`, exit 10; (d) `--with-closure-cap` and (c) `--with-build-timeout`
+      are the remaining runs; (d) closed below; (c) is held by the
+      conductor until m3's kernel sweep on host-01 settles, so the two
+      loads do not confound the 30-minute cap.
 - [~] `nix eval` of a fragment containing `builtins.readFile "/etc/passwd"`
       fails with `access to absolute path` (restrict-eval works). Evidence:
       `testdata/abspath.stderr` pinned by `TestMapEvalErrorFixtures`; on

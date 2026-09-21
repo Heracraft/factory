@@ -211,6 +211,76 @@ func TestSyncAppliesDiffAndUntracked(t *testing.T) {
 	}
 }
 
+// A --name project has no remote, so the guest's repository has no origin
+// (guestd sets one only from the project's remote_url, I-107). Before the
+// M5 review the sync ran `git fetch origin` regardless and `repose run`
+// failed after the guest had booted (security/review-2026-09-21.md M5-9).
+func TestSyncNoRemoteSendsTheWholeTree(t *testing.T) {
+	f := newSyncFixture(t)
+	local := t.TempDir()
+	mustRun(t, local, "git", "init", "-q", "-b", "main", ".")
+	mustRun(t, local, "git", "config", "user.email", "dev@example.com")
+	mustRun(t, local, "git", "config", "user.name", "Dev Laptop")
+	if err := os.WriteFile(filepath.Join(local, "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, local, "git", "add", "main.go")
+	mustRun(t, local, "git", "commit", "-q", "-m", "local only")
+	if err := os.WriteFile(filepath.Join(local, "main.go"), []byte("package main // edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(local, "notes.md"), []byte("scratch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The guest's side is what guestd's SetupProject leaves for a project
+	// without a remote: `git init`, no origin, no commit.
+	guestRepo := f.guestRepo()
+	if err := os.RemoveAll(guestRepo); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(guestRepo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, guestRepo, "git", "init", "-q", "-b", "main", ".")
+
+	summary, err := syncGuest(context.Background(), f.target, local, testSlug, SyncOptions{NoRemote: true})
+	if err != nil {
+		t.Fatalf("syncGuest: %v", err)
+	}
+	if !summary.WholeTree || summary.Tracked != 1 || summary.Untracked != 1 || summary.Modified != 1 {
+		t.Fatalf("summary = %+v", summary)
+	}
+	if got := summary.String(); !strings.Contains(got, "no git remote") {
+		t.Fatalf("summary line %q does not say why", got)
+	}
+	body, err := os.ReadFile(filepath.Join(guestRepo, "main.go"))
+	if err != nil || string(body) != "package main // edited\n" {
+		t.Fatalf("tracked file with its uncommitted edit not in the guest: %q %v", body, err)
+	}
+	if committed := mustRun(t, guestRepo, "git", "ls-tree", "--name-only", "HEAD"); committed != "main.go" {
+		t.Fatalf("committed in the guest: %q, want main.go", committed)
+	}
+	if notes, err := os.ReadFile(filepath.Join(guestRepo, "notes.md")); err != nil || string(notes) != "scratch\n" {
+		t.Fatalf("untracked file: %q %v", notes, err)
+	}
+	// The tracked tree is committed, so the guest is clean for the next
+	// run's dirty check and an unchanged tree makes no second commit; the
+	// untracked file counts as dirty exactly as it does for a project with
+	// a remote, so it is removed before the second run.
+	if err := os.Remove(filepath.Join(guestRepo, "notes.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(local, "notes.md")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := syncGuest(context.Background(), f.target, local, testSlug, SyncOptions{NoRemote: true}); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+	if n := mustRun(t, guestRepo, "git", "rev-list", "--count", "HEAD"); n != "1" {
+		t.Fatalf("an unchanged tree made a second commit: %s", n)
+	}
+}
+
 func TestSyncCredentialsCopiesExactlyTheFourRows(t *testing.T) {
 	f := newSyncFixture(t)
 	home := t.TempDir()

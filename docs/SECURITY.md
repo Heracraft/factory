@@ -165,8 +165,11 @@ every release and against the staging host nightly; `ops/RUNBOOK.md`
 tests pin the sample message shape, the verbatim policy sentence, the
 watch list and the credentials exclusion, and run in ordinary CI.
 
-Dated reviews of the code against this document live in `security/`;
-the first is [security/review-2026-09-20.md](security/review-2026-09-20.md).
+Dated reviews of the code against this document live in `security/`:
+[security/review-2026-09-20.md](security/review-2026-09-20.md) (the tree
+before deployment) and [security/review-2026-09-21.md](security/review-2026-09-21.md)
+(`main` as deployed on host-01, the edge and the control VM, the M5
+final review).
 
 ## Reviewing a workstream
 
@@ -200,14 +203,26 @@ Written down so nobody believes otherwise.
 - **One Blob identity for every host** (review M-3). Each host can read
   and delete every tenant's snapshots fleet-wide. Per-host containers or
   api-issued SAS tokens close it.
-- **No Host CA reaches hosts yet** (review M-1). Operator access is the
-  bootstrap key on the provider NIC until `RegisterResponse` carries the
-  CA; certificate-only, audited-by-serial operator access is the design,
-  not the state.
-- **hostdev holds secrets in plaintext on the edge** (review M-4) for
-  the owner-only M1 period; it does not outlive the api.
-- **The edge's sshd runs with NixOS defaults** (review M-2) until 06
-  configures it: no password can succeed, but the settings do not say so.
+- **Hosts registered before I-139 trust no Host CA until their first
+  rotate** (review M-1, closed in code 2026-09-21 by I-139:
+  `RegisterResponse.host_ca_pub`). host-01 is one of them; the runbook's
+  "Operator certificate refused by a host" is the by-hand step at the
+  next switch. And the bootstrap key stays on every host while
+  `repose.host.bootstrap.enable` is on (I-92), so operator access is
+  "certificate or the bootstrap key", not certificate-only, until 01/11
+  turn bootstrap off.
+- ~~The edge's sshd runs with NixOS defaults (review M-2)~~ Closed on
+  the live edge 2026-09-21: operator sshd on 2222 with password and
+  keyboard-interactive off, `prohibit-password`, verbose logging, admitted
+  only from the tunnel and the operator address
+  ([security/review-2026-09-21.md](security/review-2026-09-21.md)).
+- ~~hostdev holds secrets in plaintext on the edge (review M-4)~~
+  Closed 2026-09-21: `hostdev` is gone from the edge (unit not found)
+  and its state directory and the M1 identity on host-01 were removed
+  with no copies kept (the M5 review).
+- **The api's `/metrics` was on the public entry point** until I-136
+  (M5 review, High): fixed in the application; I-133's allow-list router
+  is now defence in depth.
 
 - **Operator access to tenant volumes.** Root on a host can read any thin
   volume. Mitigation is per-project LUKS with keys held by the api

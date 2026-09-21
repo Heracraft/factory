@@ -74,6 +74,14 @@ to look first.
 - The guest's checkout is at `/home/dev/<slug>` and is assumed to already
   exist and be a clone with an `origin` remote (guestd's `SetupProject`,
   02/04's contract); the CLI does not initialise a repository there.
+- A project made with `--name` in a directory with no git remote has no
+  `origin` in the guest either, so nothing is fetched: every tracked file
+  travels with its current contents and is committed in the guest (a
+  placeholder author; the commit exists only there), untracked files
+  follow as above, and the line reads `Synced the whole tree (no git
+  remote): 12 tracked files, 2 untracked`. Deletions do not propagate for
+  such a project: with no remote there is nothing to derive them from
+  (DECISIONS I-138).
 
 Back to the laptop:
 

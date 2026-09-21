@@ -4,6 +4,7 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -29,6 +30,18 @@ type StatusReply struct {
 	Uptime    string         `json:"uptime"`
 }
 
+// OperatorLoginReport is what `hostd audit-login` hands the daemon for an
+// SSH login, so the api can write the audit_log row (DECISIONS I-140).
+// Identifiers only: a key id, a serial and a fingerprint, never a key or
+// certificate body, never the source address.
+type OperatorLoginReport struct {
+	PAMType        string `json:"pam_type"`
+	UserPresent    bool   `json:"user_present"`
+	KeyID          string `json:"key_id,omitempty"`
+	Serial         uint64 `json:"serial,omitempty"`
+	KeyFingerprint string `json:"key_fingerprint,omitempty"`
+}
+
 // Backend is what the server needs from the daemon.
 type Backend interface {
 	Status(ctx context.Context) (*StatusReply, error)
@@ -37,6 +50,7 @@ type Backend interface {
 	Drain(on bool) error
 	Reconcile(ctx context.Context, rebuild bool) ([]string, error)
 	ExportState(w io.Writer) error
+	OperatorLogin(r OperatorLoginReport) error
 }
 
 // Serve listens on the socket until ctx ends.
@@ -85,6 +99,14 @@ func Serve(ctx context.Context, path string, b Backend) error {
 		ids, err := b.Reconcile(r.Context(), r.URL.Query().Get("rebuild") == "1")
 		writeJSON(w, ids, err)
 	})
+	mux.HandleFunc("POST /operator-login", func(w http.ResponseWriter, r *http.Request) {
+		var rep OperatorLoginReport
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&rep); err != nil {
+			http.Error(w, "operator-login: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, "ok", b.OperatorLogin(rep))
+	})
 	mux.HandleFunc("GET /state", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if err := b.ExportState(w); err != nil {
@@ -126,9 +148,16 @@ func NewClient(path string) *Client {
 var ErrNotRunning = errors.New("hostd is not running (no control socket)")
 
 func (c *Client) do(ctx context.Context, method, path string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, method, "http://hostd"+path, nil)
+	return c.doBody(ctx, method, path, nil, out)
+}
+
+func (c *Client) doBody(ctx context.Context, method, path string, in io.Reader, out any) error {
+	req, err := http.NewRequestWithContext(ctx, method, "http://hostd"+path, in)
 	if err != nil {
 		return err
+	}
+	if in != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -185,6 +214,15 @@ func (c *Client) Reconcile(ctx context.Context, rebuild bool) ([]string, error) 
 	}
 	var ids []string
 	return ids, c.do(ctx, http.MethodPost, "/reconcile"+q, &ids)
+}
+
+// OperatorLogin hands the daemon an SSH login for the api's audit_log.
+func (c *Client) OperatorLogin(ctx context.Context, r OperatorLoginReport) error {
+	b, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	return c.doBody(ctx, http.MethodPost, "/operator-login", bytes.NewReader(b), nil)
 }
 
 func (c *Client) ExportState(ctx context.Context, w io.Writer) error {

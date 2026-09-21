@@ -2974,3 +2974,143 @@ Interfaces: none. `ops/coolify/README.md` holds the label block as the
 documented step — a manual paste, which is the one thing here that I-87
 would rather have in a file, so the block in the repository stays the
 source of truth and a label that drifts from it is a bug.
+
+**I-136. The api's user listener does not serve `/metrics`; the metrics
+listener is the only place the registry is served.** (m5-release, 14 final
+review, 2026-09-21) `internal/api/http.Server.New` mounted `GET /metrics`
+on the user mux beside `/healthz` and `/readyz`, and the user mux is what
+Coolify's proxy fronts on `api.repose.herakraft.co` with a `PathPrefix(/)`
+router. So `curl https://api.repose.herakraft.co/metrics` answered 200 to
+the internet: verified 2026-09-21 02:05Z from the dev box, from the edge's
+public address and from the control VM, 57 `repose_*` series plus the Go
+runtime's, no token asked. `docs/ops/OBSERVABILITY.md` promises "nothing
+is reachable from the internet: every scrape and ship goes over the
+edge's WireGuard", and I-133 built its whole argument on the allow-list
+being "the only thing keeping `/metrics` off the internet" while the
+application itself was serving it on the public port underneath. The
+mount is gone; `MetricsHandler` on `API_METRICS_LISTEN` (`:9103`) is the
+one metrics endpoint, which is also the port I-133's router already
+points at (`loadbalancer.server.port=9103`), so the router keeps working
+and the allow-list becomes defence in depth rather than the only gate.
+`TestMetricsIsNotOnTheUserListener` pins it. What the series exposed:
+counts of hosts, guests by state, ops, schedule results, secrets
+operations, build failures, notification deliveries, rate-limit hits; no
+tenant identifier (the registry refuses those labels, I-52) but a live
+picture of the platform's size and activity, and an unauthenticated
+handler on the public entry point that any scanner can hammer.
+*Rejected:* keeping the mount and relying on I-133's `ipallowlist`
+router (a label pasted by hand into Coolify, absent on the live app as of
+this review; a defence that has to be present to work is not the layer
+the application should depend on); a bearer check on the user-mux
+`/metrics` (a second auth path for one endpoint that already has its own
+listener). Interfaces: none (`api.md` never listed `/metrics`);
+`05-control-plane-api.md` §5.1 corrected.
+
+**I-137. hostd writes `host.json` and nothing else at registration; the
+second `wg0.conf` under its state directory is gone.** (m5-release, 14
+final review, 2026-09-21; closes review M-5) I-18 made `host.json` the
+host's only runtime network input, rendered into `/run/repose/wg0.conf`
+by `repose-host-net`; `internal/hostd/register.Register` still wrote
+`/var/lib/repose/hostd/wg0.conf` and restarted `wg-quick-wg0.service`
+itself, so a registration had two writers of one tunnel and a second copy
+of the WireGuard private key on the persistent disk. Seen on host-01 as
+deployed: `/var/lib/repose/hostd/wg0.conf`, 0600 root, dated the
+registration (2026-09-20 18:15Z), unread by any unit. `writeWG`, the
+`WGFile` constant and `Config.{Runner, WGUnit}` are removed; `WGConf`
+stays as the renderer tests and operators compare against; `--no-wg` is
+accepted for one release and ignored (its only effect was to skip the
+restart that no longer happens; the `repose-host-net` restart after a
+self-registration stays, per I-40). A host registered before this carries
+the stale file until its next switch; it is inert, and the operator may
+delete it. *Rejected:* keeping the file as a fallback for a host without
+`repose-host-net` (every host has it; a fallback nobody runs is a second
+truth).
+
+**I-138. A project without a remote syncs its whole tracked tree and
+commits it in the guest.** (m5-release, 07, 2026-09-21; review M5-9)
+`repose run --name X` in a directory with no git remote, the case
+`cli-config.md` gives `--name` for, created and booted its guest and then
+failed at step 5c with `fatal: 'origin' does not appear to be a git
+repository`: guestd sets `origin` only from the project's `remote_url`
+(I-107) and the sync fetched it regardless. With `remote_url` empty the
+sync now skips the fetch, the push prompt and the checkout; the tracked
+files travel as a tar of their working-tree contents, are `git add`ed and
+committed in the guest under a placeholder identity
+(`repose <repose@localhost>`, a commit that exists only in the guest since
+there is no remote it could reach), and the untracked files follow as
+before. The commit is what keeps the guest tree clean, so the next run's
+dirty-tree check still means what it means for every other project. A
+file deleted on the laptop is not deleted in the guest: with no remote
+there is no commit to derive the deletion from, and `git clean` against
+an agent's tree is the one thing the sync must never do. *Rejected:* a
+diff against the empty tree with `git apply --index` (a second run fails
+on "already exists in index" unless the index and tree are cleared first,
+which is the `git clean` above); leaving the staged files uncommitted (the
+next run's dirty check refuses its own previous sync); refusing `--name`
+without a remote (the flag exists for that directory). Interfaces: none;
+`07-cli.md` §5.5f and `features/sync-at-launch.md` describe it.
+
+**I-139. `RegisterResponse` carries the SSH Host CA's public key; hostd
+writes it to `host.json` and re-renders the host's network files after a
+rotate that changes it.** (m5-release, 14 final review, closes review
+M-1, 2026-09-21) `host-conventions.md` has documented `host_ca_pub` in
+`host.json` since workstream 01, `repose-host-net` renders it into
+`/run/repose/host_ca.pub`, sshd's `TrustedUserCAKeys` points there and
+`repose-admin operator-cert` signs certificates for it; nothing ever sent
+it. On host-01 as deployed the file is 0 bytes and every operator login
+(750 in 24 hours) is by the bootstrap key in
+`/etc/ssh/authorized_keys.d/root`, a static key with no serial in the
+audit line, which is what `docs/SECURITY.md` "Not mitigated" recorded as
+M-1. `RegisterResponse.host_ca_pub = 8` now carries `ca.HostCAPub()` from
+the api (the same line `GET /internal/ca` and `POST /certs` already give
+the gateway and the CLI), on `Register` and on `Rotate`; hostdev sends
+its own SSH CA (the one it signs guest host keys and operator user
+certificates with, review L-3); hostd's `write` keeps the previous value
+when the field is empty, the same rule as `loki_url`, so an api that
+predates the field changes nothing. Because the renderer runs at boot
+and after registration only, the rotation loop now restarts
+`repose-host-net` when a rotate changed `host_ca_pub` or `loki_url`
+(I-95 said `Rotate` carries the Loki and never said how it reached the
+file). What this does not do: remove the bootstrap key. host-01 keeps
+`repose.host.bootstrap.enable` for the token and reinstall path (I-92);
+"only with a certificate" (14 §9) needs that turned off once operators
+hold certificates, which is 01/11's row. host-01 itself learns the CA at
+its first rotate (about 2026-10-15) or by the runbook's by-hand step
+("Operator certificate refused by a host"), taken at the host switch
+that carries this change. *Rejected:* a separate unary RPC to fetch the
+CA (a second round trip for one line that registration already answers);
+delivering it in `Hello`'s ack on the stream (the stream is commands and
+results; identity material travels on the unary path with the
+certificate); hostd polling `/internal/ca` (hostd holds no gateway client
+certificate). Interfaces: `grpc-hostd.md`, `host-conventions.md`,
+`hostd.proto` (old shape accepted: field 8 is additive).
+
+**I-140. Operator SSH logins reach `audit_log` as an `operator_login` host
+event carrying the certificate's key id and serial, never its body.**
+(m5-release, 14 final review, closes review L-13 and L-7, 2026-09-21) 14
+§5 lists "every operator SSH login to a host or the edge" among the
+audited actions; on host-01 as deployed the PAM hook wrote a journal line
+(`pam_type`, `user_present`) and nothing reached Postgres: 750 accepted
+logins in 24 hours, zero rows. And the line could not say which
+certificate logged in (L-7). Now `hostd audit-login` parses sshd's
+`SSH_AUTH_INFO_0` with `x/crypto/ssh`, keeps a certificate's `KeyId` and
+`Serial` and the SHA256 fingerprint of the key (a plain key gives the
+fingerprint alone, which is how the bootstrap key shows up), logs them,
+and on `open_session` posts them to the daemon's control socket
+(`POST /operator-login`, a 2 s timeout, failure logged and the login
+never blocked); the daemon emits `Event.operator_login = 14` on the
+stream with the usual event id and ack; the api's ingest writes
+`audit_log (actor = key_id | "operator:key:" + fingerprint, action =
+operator_login, target = host id, detail = {pam_type, user_present,
+key_id, serial, key_fingerprint, host_event_id, ts})` and refuses a
+second row for the same host event id, since a host re-sends an event
+whose ack was lost. `PAM_RHOST` is read by nothing: the source address
+is on the never-log list and an operator's address is not the audit's
+business. *Rejected:* the api tailing the host's journal through Loki (a
+log store is not an audit store, and no Loki is wired); writing the row
+from the hook directly (the hook has no database and no api client, and
+must never block a login on either); a separate unary RPC (the stream's
+event path already has ids, acks and a re-send buffer). Interfaces:
+`grpc-hostd.md` (Event kinds), `host-conventions.md` (`hostd
+audit-login`), `hostd.proto` (old shape accepted: an api that predates
+the kind ignores it and acks).
