@@ -629,15 +629,40 @@ func (e *Engine) buildRestore(ctx context.Context, op *store.Op, p *store.Projec
 	}}}, hostID, false, nil
 }
 
+// PendingRevisionSQL selects the revision a start applies: the newest
+// built one with a closure, newer than the project's current revision
+// ($2, nullable). The http start route asks the same question (I-147).
+const pendingRevisionSQL = `select id from config_revisions
+	where project_id = $1 and status = 'built' and system_closure is not null
+	  and created_at > coalesce((select created_at from config_revisions where id = $2), 'epoch'::timestamptz)
+	order by created_at desc limit 1`
+
+// PendingRevision reports whether a start of p would apply a revision.
+func PendingRevision(ctx context.Context, pool *db.Pool, p *store.Project) (bool, error) {
+	var rid uuid.UUID
+	err := pool.QueryRow(ctx, pendingRevisionSQL, p.ID, p.ConfigRevisionID).Scan(&rid)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 func (e *Engine) buildApply(ctx context.Context, op *store.Op, p *store.Project) (*hostdv1.Command, uuid.UUID, bool, error) {
 	if p.GuestID == nil || p.HostID == nil || p.State != "running" {
 		return nil, uuid.Nil, true, nil // applies at the next start
 	}
-	// A start applies the newest built-but-unapplied revision, fixed on
-	// the op so the result handler sees the same one.
+	// A start applies the newest built-but-unapplied revision that is newer
+	// than the one the guest runs, fixed on the op so the result handler
+	// sees the same one. A `built` row older than the applied one is
+	// superseded, not pending (I-147: m3-held's start on 2026-09-21
+	// re-applied its 2026.09.21.3 row over the applied .4 and ran that
+	// older base's activation).
 	if op.Kind == KindStart && op.RevisionID == nil {
 		var rid uuid.UUID
-		err := e.pool.QueryRow(ctx, "select id from config_revisions where project_id = $1 and status = 'built' and system_closure is not null order by created_at desc limit 1", p.ID).Scan(&rid)
+		err := e.pool.QueryRow(ctx, pendingRevisionSQL, p.ID, p.ConfigRevisionID).Scan(&rid)
 		if err != nil {
 			if db.IsNoRows(err) {
 				return nil, uuid.Nil, true, nil

@@ -35,6 +35,10 @@ type Options struct {
 	NeedsReboot map[string]bool
 	// Fail makes a request kind answer with the given error.
 	Fail map[string]*guestdv1.Error
+	// DropOnce closes the connection instead of answering the first request
+	// of that kind (the shape of guestd restarted by an activation, I-148);
+	// the next connection answers normally.
+	DropOnce map[string]bool
 	// Sample is the canned Sample reply; nil gives a small default.
 	Sample *guestdv1.SampleResult
 	// Version and BootID for Ping.
@@ -50,6 +54,7 @@ type Server struct {
 
 	mu       sync.Mutex
 	calls    []Call
+	dropped  map[string]bool
 	secrets  map[string][]byte
 	princ    []string
 	frozen   bool
@@ -233,6 +238,18 @@ func (s *Server) Handle(_ context.Context, req *guestdv1.Request) *guestdv1.Resp
 	if e := s.opts.Fail[kind]; e != nil {
 		s.mu.Unlock()
 		return &guestdv1.Response{Ok: false, Error: e}
+	}
+	if s.opts.DropOnce[kind] && !s.dropped[kind] {
+		if s.dropped == nil {
+			s.dropped = map[string]bool{}
+		}
+		s.dropped[kind] = true
+		conn := s.conn
+		s.mu.Unlock()
+		if conn != nil {
+			_ = conn.Close() // the peer sees EOF mid-call, as with a restarted guestd
+		}
+		return fail("dropped", "connection closed by the fake")
 	}
 	s.mu.Unlock()
 	ok := &guestdv1.Response{Ok: true}

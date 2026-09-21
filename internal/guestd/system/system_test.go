@@ -65,7 +65,16 @@ func guestRoot(t *testing.T) (sysdep.Paths, string, string) {
 func TestSwitchAppliesWithoutReboot(t *testing.T) {
 	p, same, _ := guestRoot(t)
 	run := sysdep.NewFakeRunner()
-	run.Results["switch-to-configuration"] = sysdep.RunResult{Stdout: []byte("activating the configuration...\n")}
+	// The activation's output reaches guestd through the log file the
+	// transient unit appends to (I-148), not a pipe.
+	if err := os.MkdirAll(filepath.Dir(p.SwitchLog()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run.Hook = func(spec sysdep.RunSpec) {
+		if strings.Contains(strings.Join(spec.Argv, " "), "switch-to-configuration switch") {
+			_ = os.WriteFile(p.SwitchLog(), []byte("activating the configuration...\n"), 0o644)
+		}
+	}
 	h := New(p, run, 0, quietLog())
 
 	res, err := h.Switch(context.Background(), same, false, nil)
@@ -84,8 +93,9 @@ func TestSwitchAppliesWithoutReboot(t *testing.T) {
 	}
 	// The activation is a transient unit of its own, not guestd's child
 	// (I-143), waited for with its output piped back.
-	if len(call.Argv) < 6 || call.Argv[0] != "systemd-run" || call.Argv[1] != "--wait" || call.Argv[2] != "--pipe" {
-		t.Fatalf("switch not run through systemd-run --wait --pipe: %v", call.Argv)
+	joined := strings.Join(call.Argv, " ")
+	if call.Argv[0] != "systemd-run" || call.Argv[1] != "--wait" || strings.Contains(joined, "--pipe") || !strings.Contains(joined, "StandardOutput=append:"+p.SwitchLog()) {
+		t.Fatalf("switch must run through systemd-run --wait with its output in the log file, no pipe: %v", call.Argv)
 	}
 	// The same binary: no restart of guestd scheduled.
 	if _, ok := run.Ran("systemctl restart guestd"); ok {

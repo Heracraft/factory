@@ -494,6 +494,25 @@ func (m *Manager) session(id string) (vsockclient.Session, *Error) {
 	return s, nil
 }
 
+// awaitSession waits up to max for a fresh guestd session of guest id,
+// polling the monitor; the monitor's own retry timer paces reconnects.
+func (m *Manager) awaitSession(ctx context.Context, id string, max time.Duration) (vsockclient.Session, *Error) {
+	deadline := time.Now().Add(max)
+	for {
+		if s, err := m.session(id); err == nil {
+			return s, nil
+		}
+		if time.Now().After(deadline) {
+			return nil, errf(CodeGuestUnresponsive, "guestd unreachable for guest %s", id)
+		}
+		select {
+		case <-ctx.Done():
+			return nil, errf(CodeGuestUnresponsive, "guestd unreachable for guest %s", id)
+		case <-time.After(m.cfg.GuestdRetry / 2):
+		}
+	}
+}
+
 func (mon *monitor) stop() {
 	mon.cancel()
 	<-mon.done

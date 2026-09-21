@@ -3186,3 +3186,32 @@ on the latest base already; a newer base is a new attempt.
 2026.09.29). A fragment that is really broken fails again on the next
 base and the user gets one `base_update_failed` per base, which is the
 right amount of noise.
+
+**I-147. A start applies only a built revision newer than the one the
+guest runs.** (m3 integration, 2026-09-21) `buildApply` picked the newest
+`built` row with a closure, and the http start route asked whether any
+such row existed. A bump that ends `built` and is later superseded by an
+applied newer revision leaves that row `built` forever; m3-held's start
+at 04:38Z (its 2026.09.21.3 bump `built` with a reboot pending, then
+2026.09.21.4 applied in place) applied the .3 closure over the running .4,
+and that older base's pre-I-143 activation stopped guestd. Both now
+select the newest built row created after the project's current revision
+(`ops.PendingRevision`); a superseded row is not pending. *Rejected:*
+marking superseded rows `stale` (a fourth status for what a timestamp
+comparison says).
+
+**I-148. The activation's output goes to a file, and hostd asks again
+once when guestd went away mid-switch.** (m3 integration, 2026-09-21)
+I-143 ran the activation as a transient unit with `systemd-run --pipe`;
+when an older base's activation stopped guestd (I-147's case) the pipe's
+reader was gone and the activation died of SIGPIPE before its start step,
+which is the strand again by another route. The unit now appends to
+`/run/repose/switch.log`, which guestd reads after `--wait`; nothing the
+activation does to guestd can end it. On hostd's side a transport error
+from Switch (EOF, not a remote error) waits for the guest's next session,
+up to `guestd_lost_after` plus 30 s, and sends the same Switch once more:
+the profile is set and the activation of the same system is a no-op, so
+the retry is idempotent, and an activation that restarted guestd ends as
+`done` instead of `guest_unresponsive`. `TestSwitchAppliesWithoutReboot`
+(the log file, no pipe) and hostd's `TestBuildAndApply` (the fake guestd
+dropping the first Switch, answered on the second connection).

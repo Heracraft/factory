@@ -808,7 +808,16 @@ Recovery, in this order:
    sweep builds a new revision on it, and the next start or the sweep's
    own switch applies that one cleanly.
 3. A guest with no SSH path (a second tenant's) stays as in 2 until that
-   base: `repose-admin projects restart` after it.
+   base: `repose-admin projects restart` after it (m3-iso-c, 04:36Z:
+   stop 60 s, start 17 s, the built revision applied at boot, running).
+4. From I-147 on, `repose-admin projects restart` is the operator
+   recovery for any stranded guest whose newest built revision is newer
+   than its current system: the start applies that revision and nothing
+   older. Before I-147 a start applied the newest `built` row even when
+   an applied newer one existed (m3-held, 04:38Z: the 2026.09.21.3 row
+   over the applied .4, that older base's activation stopped guestd
+   again). A guest whose newest revision is already applied starts with
+   no apply at all.
 
 ## Coolify deploy failed
 

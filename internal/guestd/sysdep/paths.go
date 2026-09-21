@@ -106,3 +106,7 @@ func (p Paths) RootMount() string {
 	}
 	return p.Root
 }
+
+// SwitchLog is where a system activation's output lands (the transient
+// unit writes it, guestd reads it back after the wait, I-148).
+func (p Paths) SwitchLog() string { return p.join("run", "repose", "switch.log") }

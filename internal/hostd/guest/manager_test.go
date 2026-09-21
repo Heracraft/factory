@@ -535,6 +535,23 @@ func TestBuildAndApply(t *testing.T) {
 	if tgt, _ := h.roots.Get(gid1); tgt != closure2 {
 		t.Fatal("gc root not moved")
 	}
+	// guestd goes away during the Switch (an activation restarting it):
+	// hostd waits for it and asks again, once (I-148).
+	h.gopts.DropOnce = map[string]bool{"Switch": true}
+	h.mustOK(cmd(&hostdv1.StopGuest{GuestId: gid1}))
+	h.mustOK(cmd(&hostdv1.StartGuest{GuestId: gid1})) // new fake guestd with the option
+	h.mustOK(cmd(&hostdv1.ApplyConfig{GuestId: gid1, SystemClosure: closure2}))
+	if n := 0; true {
+		for _, k := range h.guestds[gid1].Kinds() {
+			if k == "Switch" {
+				n++
+			}
+		}
+		if n != 2 {
+			t.Fatalf("Switch asked %d times across the drop, want 2", n)
+		}
+	}
+	h.gopts.DropOnce = nil
 	// Apply with kernel change: reboot_required, nothing done.
 	closure3 := fakeClosure(t, "nixos-system-v3")
 	h.gopts.NeedsReboot = map[string]bool{closure3: true}

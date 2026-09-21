@@ -370,8 +370,8 @@ func (s *Server) startProject(w http.ResponseWriter, r *http.Request) error {
 			return withDetail(errf("conflict", "%s's host is %s; restore its latest snapshot onto another host", p.Slug, h.State), map[string]any{"host_state": h.State})
 		}
 	}
-	var pending bool
-	if err := s.d.Pool.QueryRow(r.Context(), "select exists(select 1 from config_revisions where project_id = $1 and status = 'built' and system_closure is not null)", p.ID).Scan(&pending); err != nil {
+	pending, err := ops.PendingRevision(r.Context(), s.d.Pool, p)
+	if err != nil {
 		return err
 	}
 	pid := p.ID

@@ -88,17 +88,24 @@ func (h *Handler) Switch(ctx context.Context, closure string, force bool, regist
 	}
 	// The activation runs as a transient unit of its own, not a child of
 	// guestd: a stop of guestd for any reason then cannot kill a switch
-	// half way (I-143). --wait --pipe keeps the call synchronous with the
-	// output on our pipes; --collect drops the unit whatever its exit.
+	// half way (I-143). --wait keeps the call synchronous; the output goes
+	// to a file rather than a pipe back to guestd, because a pipe whose
+	// reader has gone (guestd stopped by an older base's activation) ends
+	// the activation with SIGPIPE before its start step (I-148, m3-held
+	// 2026-09-21 04:38Z); --collect drops the unit whatever its exit.
+	logPath := h.paths.SwitchLog()
+	_ = os.Remove(logPath)
 	res, runErr := h.run.Run(ctx, sysdep.RunSpec{
-		Argv: []string{"systemd-run", "--wait", "--pipe", "--collect", "--quiet",
+		Argv: []string{"systemd-run", "--wait", "--collect", "--quiet",
 			"--unit", "repose-switch-" + strconv.FormatInt(time.Now().UnixNano(), 36),
 			"--setenv=PATH=" + sysdep.GuestPATH,
+			"-p", "StandardOutput=append:" + logPath, "-p", "StandardError=append:" + logPath,
 			filepath.Join(real, "bin", "switch-to-configuration"), action},
 		MaxOutput: OutputCap,
 		Env:       sysdep.DevEnv(h.paths, "root"),
 	})
-	output := combine(res.Stdout, res.Stderr, OutputCap)
+	logged, _ := os.ReadFile(logPath)
+	output := combine(append(logged, res.Stdout...), res.Stderr, OutputCap)
 	if runErr != nil {
 		h.log.Error("switch-to-configuration did not run",
 			"event", "switch", "result", "error", "action", action)

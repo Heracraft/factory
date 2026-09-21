@@ -517,3 +517,49 @@ func TestDestroyWithoutAGuestMarksTheProjectDestroyed(t *testing.T) {
 		t.Fatalf("after an empty-plan destroy: state %q destroyed_at %v", state, destroyedAt)
 	}
 }
+
+// A start applies only a built revision newer than the one the guest runs
+// (I-147): m3-held's start on 2026-09-21 re-applied a superseded `built`
+// row from an older base over the applied newer one.
+func TestStartAppliesOnlyANewerBuiltRevision(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	u := h.NewUser("nia")
+	p := h.CreateRunning(u, "st")
+	pid := p.ID
+	cur := h.Project(pid)
+	if cur.ConfigRevisionID == nil {
+		t.Fatal("no current revision after create")
+	}
+	// An older built row (a bump that was never applied), created before
+	// the current revision.
+	old := store.NewID()
+	if _, err := h.Pool.Exec(h.Ctx, "insert into config_revisions (id, project_id, fragment, status, system_closure, created_at) values ($1, $2, '{}', 'built', '/nix/store/old-system', now() - interval '1 hour')", old, pid); err != nil {
+		t.Fatal(err)
+	}
+	if pending, err := ops.PendingRevision(h.Ctx, h.Pool, cur); err != nil || pending {
+		t.Fatalf("a superseded built row must not be pending (pending=%v err=%v)", pending, err)
+	}
+	h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindStop, ProjectID: &pid, Phases: ops.PlanStop()}))
+	sop := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindStart, ProjectID: &pid, Phases: ops.PlanStart(true)}))
+	if sop.State != "done" {
+		t.Fatalf("start: %+v", sop.Error)
+	}
+	for _, c := range h.Fake.Commands() {
+		if a := c.GetApplyConfig(); a != nil && a.SystemClosure == "/nix/store/old-system" {
+			t.Fatal("the start applied the superseded revision")
+		}
+	}
+	// A newer built row is pending and gets applied.
+	newer := store.NewID()
+	if _, err := h.Pool.Exec(h.Ctx, "insert into config_revisions (id, project_id, fragment, status, system_closure) values ($1, $2, '{}', 'built', '/nix/store/new-system')", newer, pid); err != nil {
+		t.Fatal(err)
+	}
+	if pending, err := ops.PendingRevision(h.Ctx, h.Pool, h.Project(pid)); err != nil || !pending {
+		t.Fatalf("a newer built row must be pending (pending=%v err=%v)", pending, err)
+	}
+	h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindStop, ProjectID: &pid, Phases: ops.PlanStop()}))
+	sop = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindStart, ProjectID: &pid, Phases: ops.PlanStart(true)}))
+	if sop.State != "done" || sop.RevisionID == nil || *sop.RevisionID != newer {
+		t.Fatalf("start with a newer built row: state=%s revision=%v err=%+v", sop.State, sop.RevisionID, sop.Error)
+	}
+}

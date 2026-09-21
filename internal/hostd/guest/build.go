@@ -136,6 +136,19 @@ func (m *Manager) apply(ctx context.Context, c *hostdv1.ApplyConfig) (*hostdv1.A
 	}
 	sw, err := sess.Switch(ctx, c.SystemClosure, false, reg)
 	if err != nil {
+		if _, ok := vsockclient.IsRemote(err); !ok {
+			// The connection went, not the guest: an activation that
+			// restarts guestd ends the session mid-call. Switch is
+			// idempotent (profile set, activation of the same system a
+			// no-op), so once guestd is back it is asked again, once
+			// (I-148). Longer than that is the guestd_lost path.
+			m.log(g).Warn("guestd went away during Switch; waiting for it", "event", "switch_retry", "err", err.Error())
+			if again, serr := m.awaitSession(ctx, g.GuestID, m.cfg.GuestdLostAfter+30*time.Second); serr == nil {
+				sw, err = again.Switch(ctx, c.SystemClosure, false, reg)
+			}
+		}
+	}
+	if err != nil {
 		if re, ok := vsockclient.IsRemote(err); ok {
 			out := ""
 			if sw != nil {
