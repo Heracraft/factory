@@ -486,8 +486,14 @@ waits on host-01 (`ops/checks/README.md` names the script that closes it).
       StartGuest, Restore and UpdateSecrets builders), `phases.go:383` (the
       same values for build-log redaction and the secret-in-fragment
       refusal, I-42) and `secrets.go:370` (the platform's own CA rows);
-      `GET /secrets` reads `secrets.Meta`, which has no value field. On the
-      real path: `ops/checks/secrets.sh`.
+      `GET /secrets` reads `secrets.Meta`, which has no value field. Real
+      path (`ops/checks/secrets.sh`, host-01, m3-check, 2026-09-20 23:50Z):
+      the value was in no response, in neither api container's logs, not
+      in hostd's journal, `build_logs`, `events` or `audit_log`; the guest
+      file was `dev dev 400` on tmpfs in a `dev 700` directory, exported
+      in a login shell, gone within 5 s of `rm`; a fragment carrying it
+      was refused (`fragment contains the value of secret
+      M3_CHECK_SECRET`).
 - [~] Config: fragment with a parse error is rejected at `PUT` with the
       line; menu selection renders to a fragment that builds. Evidence:
       `internal/api/config/parse_test.go` `TestParseCheck` and
@@ -500,7 +506,10 @@ waits on host-01 (`ops/checks/README.md` names the script that closes it).
 - [x] Base bump job builds every unheld project and skips held ones.
       Evidence: `internal/api/basebump/basebump_test.go`
       `TestSweepBuildsUnheldSkipsHeld` and `internal/basebump`
-      `TestThreeProjects`. On the real path: `ops/checks/resilience.sh bump`.
+      `TestThreeProjects`. On the real path: `ops/checks/resilience.sh bump`
+      (waits for "gate done"; base 2026.09.21.1 was published and smoked
+      2026-09-21 00:25Z: create 43 s, snapshot 17 s, stop 5 s, start 15 s,
+      destroy 21 s).
 - [x] Snapshot expiry removes blobs on schedule and never one referenced
       by a running restore. Evidence: `internal/api/snapshots/expiry_test.go`
       `TestExpiryRules` with the fake blob store (`restoring_op_id` guard).

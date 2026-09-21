@@ -153,13 +153,34 @@ lines of 2026-09-20), `docs/security/review-2026-09-20.md` and the tree;
       other than the author, main `afc5411` ("m3-web(14): the
       SECURITY/ARCHITECTURE boundary review, by someone else",
       2026-09-20).
-- [ ] Every row in the boundary table has a passing test on a shared host
-      with two guests from two users. Evidence: test output pasted with
-      host id and date. `test/isolation/` has one test per row (STATUS 14,
-      2026-09-20); `ops/checks/isolation-host01.sh` fills its environment
-      for host-01 with the owner's guest through the gateway and a second
-      user's guest through audited `repose-admin exec`, and runs it. The
-      row "hostd for host X cannot act on host Y" needs a second host.
+- [~] Every row in the boundary table has a passing test on a shared host
+      with two guests from two users. Evidence: `ops/checks/out/
+      isolation-go-20260921T003759Z.txt`, host 01a0bfd8-120c-7ec8-b0a0-
+      ed83a33edd41, 2026-09-21 00:37Z, A = m3-check (heracraft, through
+      the gateway), B = m3-iso-c (repose-m3-b, through audited exec): PASS
+      TestGuestACannotReachGuestB (ping, arping, 22, 5000 refused; tcpdump
+      on B's tap saw nothing from A's MAC), TestGuestCannotReachHost (22,
+      9100, 9101, 8080 refused, echo flood rate-limited),
+      TestGuestCannotReachIMDS (IMDS and the wire server),
+      TestGuestCannotReachOtherHostsGuests (the next /22 and every private
+      range refused, cache.nixos.org reachable),
+      TestGuestCannotSpoofAnotherAddress, TestGuestCannotWriteStore
+      (`.links` empty and unwritable), TestGuestSeesOneDisk (vda only;
+      zram is the guest's own), TestHypervisorRunsAsHostdUser (User=hostd,
+      NoNewPrivileges, DevicePolicy=closed, ProtectSystem=strict, the
+      volume node root:hostd:660), TestCertificateForACannotOpenBAtGateway
+      (`certificate not valid for this project`),
+      TestForgedHookPayloadCannotNameAnotherProject (204 and 400,
+      `hook_bad_payload`, hostd carried neither forged id nor the summary),
+      TestConsoleLogCarriesNoTerminalContents,
+      TestOtherUsersProjectIs404NotForbidden (project and its five
+      sub-routes), TestSecretsListHasNoValues. TestRevokedCertificateRejected
+      passed once at 00:15Z (rejected 7 s after `POST /certs/revoke`) and is
+      opt-in since, because it revokes a certificate of the logged-in
+      account (the owner's). SKIP by design: the direct-sshd half of the
+      certificate row (it would put the operator's key on the host). Open:
+      "hostd for host X cannot act on host Y" (one host); "guest cannot
+      escape memory or CPU limits" is the next row.
 - [ ] The fork bomb and memory hog test leaves the neighbour within 10
       percent. Evidence: numbers.
       `TestForkBombAndMemoryHogLeaveNeighbourWithinTenPercent` in the same
@@ -184,23 +205,30 @@ lines of 2026-09-20), `docs/security/review-2026-09-20.md` and the tree;
       `internal/cli/run_integration_test.go` (a laptop home holding
       `.claude/.credentials.json`, `.gemini/oauth_creds.json` and an SSH
       key: none travels).
-- [ ] Every audited action in §5 writes an `audit_log` row. Evidence: one
-      row per action type, triggered deliberately.
-      `ops/checks/audit-rows.sh` triggers cert issue and revoke, secret
-      put and delete, `exec`, `hosts drain|undrain`, `projects snapshot`
-      and prints the rows by action. Found reading the producers
-      (2026-09-20): an operator SSH login writes a journal line (`hostd
-      audit-login`, event `operator_login`) and no api ingests it into
-      `audit_log`; a restore through the user route (`POST
-      .../snapshots/:sid/restore`) writes no row, only `repose-admin
-      projects restore` does (`project_restore`). Both are open until 05
-      adds the producers.
-- [ ] Operator access works only with a certificate; a password attempt is
-      logged. Evidence: sshd log lines. `ops/checks/isolation-host01.sh`
-      makes the attempt against host-01 and the edge and pastes both sshd
-      journals and `sshd -T`. Note: until `RegisterResponse` carries a
-      Host CA (review M-1), the host admits the bootstrap key on the
-      WireGuard address (I-92) rather than a certificate.
+- [~] Every audited action in §5 writes an `audit_log` row. Evidence
+      (`ops/checks/audit-rows.sh`, 2026-09-21 00:22Z, project m3-check):
+      rows since the start by action, cert_issue 2, cert_revoke 1,
+      secret_put 1, secret_delete 1, exec 1 (the gRPC Exec, hostd's journal
+      carrying `audit_id` and length, no argv, I-53), project_snapshot 1;
+      plus project_create and project_destroy rows from the synthetic
+      tenants (I-113) and host_smoke. No producer, still open (review
+      L-13): an operator SSH login (journal line `operator_login` from
+      `hostd audit-login`, seen on host-01 at every operator login tonight,
+      nothing in `audit_log`); a restore through the user route. User
+      suspension not triggered (it stops the user's guests).
+- [~] Operator access works only with a certificate; a password attempt is
+      logged. Evidence (2026-09-21 00:38Z): `ssh -o
+      PreferredAuthentications=password -o PubkeyAuthentication=no` to
+      root@10.255.0.2 through the edge and to root@<edge>:2222 both exit
+      255; host sshd journal `Connection closed by authenticating user root
+      10.255.0.1 port 41694 [preauth]`, edge sshd journal `Connection
+      closed by authenticating user root 20.102.97.100 port 53484
+      [preauth]`; host `sshd_config`: PasswordAuthentication no,
+      KbdInteractiveAuthentication no, PermitRootLogin prohibit-password,
+      TrustedUserCAKeys /run/repose/host_ca.pub, ListenAddress 10.255.0.2.
+      Half open: the host still admits the bootstrap key on the WireGuard
+      address rather than a certificate (review M-1, `RegisterResponse` has
+      no Host CA), so "only with a certificate" is not yet true.
 - [~] Secrets review comments exist in `STATUS.md` for workstreams 04, 05,
       07. Evidence: the lines. 04: 2026-09-20 (14 review line). 05 and
       07: 2026-09-20 (M3 integration session lines, below the 14 lines).

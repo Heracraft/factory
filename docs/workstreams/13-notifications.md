@@ -335,16 +335,24 @@ not-yet-built convenience for later.
       covered `base_updated`/`base_update_failed` before this workstream.
       NOT done: `billing_stopped` has no producer yet (workstream 09 is
       billing-exempt per I-16; `ops.EventSink` is ready for it to call).
-- [ ] Real guest: each of the five agents produces a `completed` and, where
+- [~] Real guest: each of the five agents produces a `completed` and, where
       the mechanism supports it, a `needs_input`, delivered to a phone
-      within 60 s. Evidence: `STATUS.md` line per agent with the event ids.
-      Owner: the M3 integration session, `ops/checks/notifications.sh` on
-      host-01 (2026-09-20): a real `repose run` for Claude, Codex and
-      opencode when the owner is logged in inside the guest, else their
-      native payload replayed through `repose-hook` from the agent's tmux
-      window; the shipped pane-idle heuristic for Gemini and pi; the
-      script prints the STATUS line per agent with the event id and the
-      ntfy delivery time.
+      within 60 s. Evidence (`ops/checks/notifications.sh` on host-01,
+      guest m3-check, 2026-09-21 00:08Z, ntfy topic of the session, email
+      on): claude `completed` event 01a0c14a-f7e3-7926-be1c-75e7728878a1,
+      ntfy 1 s after the hook; codex 01a0c14a-fdb3-78af-9c30-5abd8fce0a84,
+      7 s; opencode 01a0c14b-1867-72a2-ac6f-66f872fc7c78, 7 s (these three
+      replayed their native payload through `repose-hook` from a tmux
+      window named after the agent, the agents not being logged in inside
+      the guest); pi through the real binary idle in its window,
+      01a0c150-d29f-7153-b87d-147f6bedb2b8, 101 s (the 90 s window, the
+      debounce, the outbox). Gemini: none, twice: the heuristic never saw
+      the window as an agent's, because Gemini CLI runs under node and
+      node's main thread is `MainThread` (DECISIONS I-122, I-125; the
+      guestd fix ships with the next base and the row reruns then).
+      `needs_input` was not exercised (no agent logged in). Also found:
+      the events arrived with no tmux window and an empty Stop summary
+      (I-121, fixed).
 - [~] `repose status` and the dashboard show last event and agent state.
       Evidence: screenshot and CLI output. The CLI half is built:
       `internal/cli/status.go` prints `last event <age>: <agent> <kind>
