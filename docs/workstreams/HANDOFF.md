@@ -1,0 +1,122 @@
+# Conductor handoff, 2026-09-21 (after M2 and most of M3, M5 step 1)
+
+Read this before `STATUS.md` when picking the project up. It says where
+every machine, session and milestone stood when the conductor stopped at
+about 05:00 UTC on 2026-09-21, what the owner still owes, and what the
+next session must do first. Facts here are as of that time; the live
+state is `repose-admin projects list`, `hosts list` and `base list`.
+
+## Where the milestones stand
+
+- **M1, M2: closed.** M2 closed on the owner's call with one person plus a
+  second account (DECISIONS I-129); a second human on their own laptop is
+  still required at M5 step 3.
+- **M3: api side done and proven on host-01, dashboard side owner-gated.** Every 05/12/13/14 row
+  that one host can prove is closed with evidence (`12 §9`, `05 §9`, the
+  security review). Open: the four owner values below and the last
+  kernel-row proof (I-147/I-148, see "Live state").
+- **M4: not started.** Needs the Stripe test-mode objects in the api's
+  Coolify environment (`PROMPTS.md` M4 step 1), then `/ws m4` (Opus 5)
+  in `../repose-ws/m4-billing`.
+- **M5: steps 1 and 4 done as far as one host allows** (deployed-state
+  review `docs/security/review-2026-09-21.md`, "At a glance" section).
+  Steps 2 (second host, host loss) and 3 (second human) need the owner.
+
+## Live environment
+
+| Thing | State |
+|---|---|
+| main | see `git log`; every push tonight passed CI (a `-race` flake in hostmgr fixed at a5ca589) |
+| Coolify apps (api, api-grpc, web) | redeploy on every push to main; api container prefix `8kpqxzfejbbsgwjhooep2ymc`, api-grpc `v2feqwjqar150xgjqed1wpzz`, web `kw2gthh3iy0rwovbfraahlth` on the control VM `20.121.138.150` (`root@`, operator key) |
+| edge `20.102.98.254` | main 65d336e (I-110); **not yet switched** for I-123 (session reports) and I-133's `scrapePorts` change; `NIX_SSHOPTS="-p 2222" nixos-rebuild switch --flake ./nix#edge --target-host root@20.102.98.254` |
+| host-01 (`10.255.0.2` via `-J root@20.102.98.254:2222`) | switched by the owner at 04:30Z to main 73491f2 (I-137, I-139, I-140, I-142..I-146 hostd halves); **not** I-148's hostd half (retry the Switch once after guestd is regained), which needs the next host switch |
+| bases | latest `2026.09.21.5` (e1d7984, security; carries I-143, I-147, I-148's guestd half); proven at 05:00Z with a second switch on a guest already on the fixed guestd: op `done`, guestd restarted itself from the transient unit, no guestd_lost |
+| Fluent Bit on host-01 | inactive by design (I-95, no Loki URL); alert `FluentBitLogShipperDown` and its runbook entry explain it |
+| public `/metrics` | 404 since 02:30Z (I-136); the Traefik router labels for the scraper are the owner's paste (`ops/coolify/README.md`, I-133) |
+| Blob role for the api | applied by the owner 01:52Z (I-131); expiry proven deleting real blobs |
+
+## Live projects on host-01 and what each needs
+
+- `nuru-playground`, `age-calculator` (email row `user-c7fh26yzrl93`):
+  the owner's. nuru-playground is on 2026.09.21.4 and fine. age-calculator
+  is running with **guestd dead** since the 02:59Z sweep (RUNBOOK "guestd_lost
+  after a base switch"); its newest built revision is 2026.09.21.4. Recovery
+  is either the owner's `ssh age-calculator.repose 'sudo systemctl start
+  guestd'` **with the email account's certificate** (their laptop is now
+  logged in as `heracraft`, whose certificate the gateway rightly refuses
+  for this project), or `repose-admin projects restart` (I-147 is
+  deployed, so the start applies its newest built revision, 2026.09.21.5,
+  cleanly; it is a reboot and agents inside end). Do nothing to it
+  without the owner.
+- `m3-check`, `m3-held` (row `heracraft`) and `m3-iso-c` (row
+  `repose-m3-b`): m3's test projects, left alive for the next session's
+  checks (m3-check on the 7.2.6 test kernel with .5 built and a reboot
+  pending; m3-held and m3-iso-c on .5). Destroy them when no longer
+  useful; m3-iso-c is the second tenant the isolation runner needs.
+
+## What the owner still owes (each unblocks named rows)
+
+1. Stripe test-mode key, webhook secret, three prices and meter ids in the
+   api's Coolify env: M4 entirely, plus two dashboard panels.
+2. Dashboard session capture (`pnpm --filter web run live:auth` from
+   `apps/web`): 08's seven live Logto tests.
+3. Monitoring server's WireGuard public key and address: I-94's edge rules,
+   10's scrape row (then an edge rebuild).
+4. Loki push URL (`repose-admin edge loki <url>`): Fluent Bit on every
+   host, 10's shipping row, the log-shipper alert's quiet state.
+5. Paste the api's `/metrics` router labels in Coolify (I-133).
+6. Decide b1a5915 (the rotated key in public history): rewrite and force
+   push, or make the repo private before sharing. Recorded as a DECISIONS
+   entry once chosen.
+7. Coolify watch paths on the three apps, so docs-only pushes stop rolling
+   them (optional; they roll cleanly).
+8. Account: the owner now has two rows (`heracraft` by GitHub, the email
+   row) and projects under both. There is no transfer command; the choice
+   is to log in as the email account for those two projects or destroy and
+   recreate them under `heracraft`. A `repose-admin projects transfer` is a
+   small feature worth adding before there are more users.
+
+## Findings filed, not fixed
+
+- 07: the `Include ~/.ssh/repose/config` line the CLI writes was not
+  effective on the owner's laptop (`ssh age-calculator.repose` did not
+  resolve); the CLI should verify the alias resolves after writing it and
+  say what to fix.
+- 07: no certificate re-issue on a gateway "certificate revoked" (STATUS
+  2026-09-21 00:16Z finding).
+- 05/12: `base publish --rev` accepts unresolvable or short shas.
+- 05: the `gateway_sessions` key is (project, cert_serial); interface
+  change later.
+- 14: M-1's other half (bootstrap key stays while `bootstrap.enable`),
+  api-grpc's 9104 reachable in-VNet over plain HTTP, Traefik 8080 mapped
+  but not listening; all in the review's open list with owners.
+
+## How the sessions were run (so the next conductor can repeat it)
+
+- One tmux window per session (`0:m2`, `0:m3`, `0:m3-web`, `0:m5`), each
+  `claude --model <id> --permission-mode auto` in its own worktree under
+  `../repose-ws/<name>` on branch `ws/<name>`, started with `/ws m<n>`;
+  they message the conductor by session name and never push to main.
+- The conductor trial-merges each batch in a detached scratch worktree,
+  runs the touched packages' tests, fast-forwards main, pushes (Coolify
+  redeploys), watches the roll with a `Monitor` and CI with `gh run watch`.
+- Decision numbers collide across parallel sessions; the conductor assigns
+  the next free number in each message and renumbers on merge.
+- `tofu apply` and `nixos-rebuild switch` to a host with tenant guests
+  are the owner's (the conductor's permission classifier refuses them);
+  queue the exact command in a tmux buffer (`apply`, `switch`) and ask.
+- Rules every session followed: never touch the owner's projects, at most
+  two test projects alive per row, announce anything host-affecting to the
+  conductor first, no Coolify UI, no force-unlock.
+
+## First things for the next session
+
+1. Read the last five lines of `STATUS.md` (m3, m3-web, m5, conductor).
+2. If I-147/I-148 are on main but no base carries them, publish
+   `2026.09.21.5` from main's sha and run the second-switch proof on a
+   test guest (m3's RUNBOOK entry says how).
+3. Switch the edge to main (I-123, I-133 scrape ports) and host-01 again
+   (I-148's hostd retry) at a quiet moment; both are the owner's to run
+   (`switch` buffer shape in "How the sessions were run"); the edge one
+   drops live gateway sessions for a second.
+4. Then the owner's list above, in the order their values arrive.

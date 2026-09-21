@@ -51,6 +51,9 @@ them.
 ## Claiming and coordinating
 
 - Work on `main`. Do not create a branch without asking (repo rule).
+- After a conducted run, `HANDOFF.md` in this directory says where every
+  machine, session and milestone stood and what the next session does
+  first; read it before `STATUS.md`.
 - Before starting, add a line to `STATUS.md` in this directory: workstream,
   who (session id or agent name), date, what you intend to finish. Update it
   when you stop, with what is done and what is not. Sequential sessions read
