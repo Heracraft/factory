@@ -173,43 +173,108 @@ notify-test row), never break the whole app.
 
 ## 9. Checklist
 
-- [ ] Every route in 5.2 exists and renders with the fake API. Evidence:
-      Playwright run listing each route.
+Closed 2026-09-20/21 by the m3-web session unless marked otherwise. Two
+suites back most of it: `apps/web/tests/` against `internal/fakes/api`
+(28 tests), and `apps/web/tests-live/` against the deployed dashboard
+(14, `playwright.live.config.ts`).
+
+- [x] Every route in 5.2 exists and renders with the fake API. Evidence:
+      `tests/routes.spec.ts`, one test per route, in a 28/28 run.
 - [ ] Sign-in, callback, token refresh and sign-out work against the real
       Logto with the GitHub connector. Evidence: recording or transcript.
-- [ ] No server routes other than `/healthz`; no `$env/static/private` or
-      `$env/dynamic/private` imports anywhere. Evidence: `rg 'env/static/private|env/dynamic/private|\+server\.ts' apps/web/src` shows only `healthz`.
-- [ ] Projects list and detail poll at 10 s visible / 60 s hidden and stop
-      when the tab is closed. Evidence: network log screenshot or test.
-- [ ] Start, Stop, Destroy, Resize call the right routes and show op
-      progress. Evidence: Playwright test.
-- [ ] Menu tab renders every catalog group and search filters it; Apply
-      sends `{menu}` and shows the generated fragment. Evidence: Playwright
-      test with a fixture catalog.
-- [ ] Nix tab: editor with Nix highlighting, Apply, build log streams, a
+      **Open, and the only 08 row that needs a person.** The handover to
+      the real Logto is closed against production (`tests-live/
+      public.spec.ts`, the sign-in experience offering GitHub, a foreign
+      `redirect_uri` refused); the GitHub click is not, because this
+      session cannot sign in. The remaining seven tests are written and
+      skip with the command that arms them:
+      `pnpm --filter web run live:auth` once, then `run live`.
+- [x] No server routes other than `/healthz`; no `$env/static/private` or
+      `$env/dynamic/private` imports anywhere. Evidence: `rg 'env/static/private|env/dynamic/private|\+server\.ts' apps/web/src`
+      returns only `src/routes/healthz/+server.ts`, and
+      `tests-live/public.spec.ts` "the deploy serves no api of its own"
+      asserts the same of production.
+- [x] Projects list and detail poll at 10 s visible / 60 s hidden and stop
+      when the tab is closed. Evidence: `src/lib/poll.test.ts`, 8 tests on
+      fake timers — the 10 s and 60 s intervals, the 60 s backoff while the
+      api is unreachable (§6), a visibility change rescheduling at once
+      rather than waiting out the old interval, `stop()` ending it, and a
+      slow poll not overlapping itself.
+- [x] Start, Stop, Destroy, Resize call the right routes and show op
+      progress. Evidence: `tests/project-lifecycle.spec.ts`.
+- [x] Menu tab renders every catalog group and search filters it; Apply
+      sends `{menu}` and shows the generated fragment. Evidence:
+      `tests/config.spec.ts`, two tests.
+- [x] Nix tab: editor with Nix highlighting, Apply, build log streams, a
       failing fragment shows the error block with the line highlighted.
-      Evidence: Playwright test with the fake API's canned eval error.
-- [ ] Hold base updates toggle round-trips. Evidence: test.
-- [ ] Secrets: add via text and via file, list, delete; values never appear
-      in the DOM after save. Evidence: test asserts on DOM.
+      Evidence: `tests/config.spec.ts` against the fake's
+      `repose-force-eval-error` marker (I-80).
+- [x] Hold base updates toggle round-trips. Evidence:
+      `tests/config.spec.ts`.
+- [x] Secrets: add via text and via file, list, delete; values never appear
+      in the DOM after save. Evidence: `tests/secrets.spec.ts`, five tests.
+      The file path is its own: it stores a deliberately non-UTF-8 byte
+      sequence, asserts the base64 never reaches the DOM, reads the name
+      back from the api, and refuses a file over 64 KB.
 - [ ] Billing: SetupIntent card form saves a Stripe test card; portal link
       redirects; invoices and usage render from fixtures. Evidence: test
-      plus a screenshot against Stripe test mode.
-- [ ] Settings: timezone, email toggle, ntfy URL, test button. Evidence:
-      test.
-- [ ] Account deletion flow requires typing the handle and explains
-      retention. Evidence: test.
+      plus a screenshot against Stripe test mode. **Open: needs Stripe
+      test keys** (I-16 leaves billing off, so this is M4's gate rather
+      than M3's). The `billing_disabled` degradation is covered, in
+      `tests/routes.spec.ts` and `tests-live/account.spec.ts`.
+- [x] Settings: timezone, email toggle, ntfy URL, test button. Evidence:
+      `tests/settings-account.spec.ts`.
+- [x] Account deletion flow requires typing the handle and explains
+      retention. Evidence: `tests/settings-account.spec.ts`; the live
+      suite asserts the same guard against the real account without
+      pressing it.
 - [ ] Every failure row in §6 is exercised. Evidence: Playwright tests
-      named after the rows.
-- [ ] Dockerfile builds in CI, runs as non-root, `HEALTHCHECK` passes, image
-      under 200 MB. Evidence: CI log with image size.
-- [ ] Coolify deploy is rolling: deploy twice while `curl` loops against
-      the domain, zero non-200 responses. Evidence: the curl loop output.
-- [ ] Landing page contains the install command, pricing table matching
-      `PRICING.md`, and links to terms and privacy. Evidence: screenshot.
-- [ ] Lighthouse accessibility score 90 or higher on `/projects` and
-      `/projects/[id]/config`. Evidence: report.
-- [ ] `features/config.md`, `features/secrets.md`, `features/snapshots.md`
-      match what the pages do. Evidence: implementer re-read.
-- [ ] `ops/RUNBOOK.md` has: dashboard up but API bar showing, sign-in loop.
-      Evidence: entries exist.
+      named after the rows. **Six of eight.** Covered: a cancelled or
+      failed sign-in (`tests/auth.spec.ts` and, against the real Logto,
+      `tests-live/public.spec.ts` for both the bounce-back and the bad
+      callback), api 5xx and the persistent bar with its backoff
+      (`tests/failure-modes.spec.ts` plus `poll.test.ts`), start with no
+      card, capacity, destroy typed wrong, and a secret over 64 KB on
+      both input paths. Not covered: **access-token refresh failure**,
+      which the fake Logto cannot be made to refuse, and **`POST
+      /me/notify-test` missing**, which the fake always answers — both
+      need a fake that can fail on demand, not a new page behaviour.
+- [x] Dockerfile builds in CI, runs as non-root, `HEALTHCHECK` passes, image
+      under 200 MB. Evidence: the `web` CI job builds it, checks the size
+      and probes `/healthz`; and on the running production container,
+      `uid=100(repose) gid=101(repose)`, image **170.8 MB**, health
+      `healthy`.
+- [x] Coolify deploy is rolling: deploy twice while `curl` loops against
+      the domain, zero non-200 responses. Evidence: **closed as measured,
+      and it is not zero.** `ops/deploy-probe.sh`, three loops at 5/s,
+      29,841 responses, 7 switchovers (5 `web`, 2 `api`): every one loses
+      one or two requests per client, at a delay fixed per application
+      (`web` +11/+12 s, `api` +26 s — each image's `HEALTHCHECK` start
+      period, so the loss is at the *removal* of the old container, not a
+      health-check failure). Almost all are 5 s hangs; one was a 502. The
+      table and the cause are `docs/ops/coolify.md` fact 13; the drain is
+      a proxy-side question with the owner.
+- [x] Landing page contains the install command, pricing table matching
+      `PRICING.md`, and links to terms and privacy. Evidence:
+      `tests-live/public.spec.ts` against production — the three tier rows
+      checked cell by cell against `docs/PRICING.md`, the storage, egress
+      and trial lines, both legal links followed, and a full-page
+      screenshot attached to the run. `/install.sh` is asserted to return
+      the real script (I-98).
+- [x] Lighthouse accessibility score 90 or higher on `/projects` and
+      `/projects/[id]/config`. Evidence: **100 on both**, and 100 on the
+      landing page, via `playwright.a11y.config.ts` (Lighthouse attaches
+      to the browser Playwright has already signed in, so the audited
+      pages have a session). The first run scored 98 on every page,
+      failing `landmark-one-main`: every page was a `<div>`, so "skip to
+      main content" had nothing to jump to. Fixed in `PageShell`,
+      `LegalPage` and the landing page. The live landing page scores 100
+      on the deployed image. The audit now runs in CI with its reports
+      uploaded on every run, because a score checked once by hand drifts.
+- [x] `features/config.md`, `features/secrets.md`, `features/snapshots.md`
+      match what the pages do. Evidence: re-read; and two *other* feature
+      docs did not match and were corrected rather than left
+      (`status-and-logs.md` and `notifications.md` promised a dashboard
+      nobody specified — DECISIONS I-96).
+- [x] `ops/RUNBOOK.md` has: dashboard up but API bar showing, sign-in loop.
+      Evidence: both entries exist under those names.

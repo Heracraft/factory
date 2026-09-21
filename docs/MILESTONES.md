@@ -56,12 +56,20 @@ in for the second human, who is still required at M5.*
 ## M3. Control plane on Coolify, dashboard, secrets, config menu
 
 Workstreams: `05-control-plane-api` (rest), `08-dashboard`, `13-notifications`,
-`11-infra-opentofu` (Coolify VM, R2), `14-security` (policy text, review).
+`11-infra-opentofu` (Coolify VM), `14-security` (policy text, review).
 
-Gate: the API and dashboard run on Coolify with rolling deploys, Postgres backs
-up to R2 nightly and a restore has been rehearsed, secrets set in the
-dashboard appear in a guest, a non-Nix user adds a package from the menu and
-sees it in their guest without a reboot.
+Gate: the API and dashboard run on Coolify with rolling deploys, Postgres is
+backed up on a schedule, secrets set in the dashboard appear in a guest, a
+non-Nix user adds a package from the menu and sees it in their guest without
+a reboot.
+
+*The backup clause used to read "Postgres backs up to R2 nightly and a
+restore has been rehearsed". `DECISIONS.md` I-112 withdrew all of that from
+this side: backups and their restore are configured on the Postgres
+service's Backups tab in the owner's own Coolify, against a destination no
+credential for which exists in this repository, so there is no R2 bucket, no
+on-VM check and no rehearsal script left to gate on. What remains gateable
+here is that the schedule exists, which is a look at that tab.*
 
 ## M4. Billing
 
