@@ -122,7 +122,12 @@ func KernelChanged(current, next Info) bool {
 
 // Real runs nix through a shell.Runner.
 type Real struct {
-	R           shell.Runner
+	R shell.Runner
+	// baseMu serializes ensureBase: two builds that need the same new base
+	// at once cloned into the same `.tmp` dir and broke each other's pack
+	// (host-01, 2026-09-21, I-144); the second now finds the first's
+	// checkout.
+	baseMu      sync.Mutex
 	BuildsDir   string // /var/lib/repose/builds
 	BaseDir     string // /var/lib/repose/base
 	BaseRepoURL string // cloned when a base checkout is missing; empty means it must exist
@@ -224,6 +229,8 @@ func (b *Real) ensureBase(ctx context.Context, ref string) (string, error) {
 	if !validRef(ref) {
 		return "", &Error{Code: "invalid_argument", Message: "base_ref must be a git revision"}
 	}
+	b.baseMu.Lock()
+	defer b.baseMu.Unlock()
 	dir := filepath.Join(b.BaseDir, ref)
 	if _, err := os.Stat(filepath.Join(dir, b.BaseSubdir, "flake.nix")); err == nil {
 		return dir, b.ownBase(ctx, dir)

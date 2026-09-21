@@ -112,17 +112,17 @@ func (j *Job) Sweep(ctx context.Context) ([]uuid.UUID, error) {
 		if err != nil {
 			continue
 		}
-		// Skip a project whose newest revision failed (the user fixes it
-		// first) or is already on the latest base and waiting to apply at
-		// the next start.
+		// Skip a project whose newest revision is already on the latest
+		// base: built and waiting to apply at the next start, or failed
+		// against it (the user, or the next base, gets it out of that). A
+		// revision that failed against an older base is tried again on the
+		// new one (I-146): nuru-playground's bump onto 2026.09.21.3 failed
+		// in hostd's clone, not in its fragment, and the old rule would
+		// have held it on 2026.09.21-m3-0208 until the owner applied
+		// something by hand.
 		revs, _ := store.ListRevisions(ctx, j.pool, pid)
-		if len(revs) > 0 {
-			if revs[0].Status == "failed" {
-				continue
-			}
-			if revs[0].BaseVersion != nil && *revs[0].BaseVersion == latest.Version && revs[0].Status != "applied" {
-				continue
-			}
+		if len(revs) > 0 && revs[0].BaseVersion != nil && *revs[0].BaseVersion == latest.Version && revs[0].Status != "applied" {
+			continue
 		}
 		rid := store.NewID()
 		err = db.InTx(ctx, j.pool, func(tx db.Tx) error {
@@ -163,7 +163,16 @@ func (j *Job) OnOpFinished(ctx context.Context, op *store.Op) {
 		_ = j.events.Platform(ctx, *op.ProjectID, "base_updated", summary) // best effort; the revision row carries the truth
 		return
 	}
+	// A bump op fails in its build or, the build done, in the switch of
+	// the running guest; the revision row tells which (I-145: the
+	// 2026.09.21.3 sweep told the owner "failed to build" for three
+	// projects whose builds had succeeded and whose switch had not).
 	msg := "base " + v + " failed to build"
+	if op.RevisionID != nil {
+		if rev, err := store.GetRevision(ctx, j.pool, *op.RevisionID); err == nil && rev.Status == "built" {
+			msg = "base " + v + " built, but switching the running guest to it failed; the guest keeps its current system"
+		}
+	}
 	if op.Error != nil {
 		if m, ok := op.Error["message"].(string); ok {
 			msg += ": " + m

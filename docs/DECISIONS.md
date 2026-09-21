@@ -3130,3 +3130,59 @@ covers both directions (a same-host restore, then a project whose host
 row is unreachable). *Rejected:* a `restored` notification kind for the
 same-host case (the user asked for the restore and the CLI reports it; 13
 §5's kinds are for what happens without them).
+
+**I-143. The system activation leaves guestd running; guestd restarts
+itself after a switch.** (m3 integration, 2026-09-21) A switch is run by
+guestd. With the guestd unit at NixOS defaults, the new system's
+activation stopped guestd whenever its binary had changed, and because
+`switch-to-configuration` was guestd's child the stop killed it before
+guestd's start step: the 2026.09.21.3 sweep on host-01 (02:59Z) left
+age-calculator, m3-iso-c and m3-held with no guestd, `/run/current-system`
+on the old system, the op `guest_unresponsive` (`guestd Switch: vsockrpc:
+EOF`) and every later start re-applying the same revision with the same
+result. `nix/guest/base/guestd.nix` sets `restartIfChanged = false` and
+`stopIfChanged = false`, so the activation of any base from here on never
+touches guestd, whichever guestd runs it: that is what makes the fix reach
+the stranded guests, since it is the new closure's activation that
+decides. guestd then compares the new system's `guestd.service` ExecStart
+with its own binary and, when they differ, schedules `systemctl restart
+guestd` 3 s later through `systemd-run --on-active`, after its Switch
+result has reached hostd; hostd logs `guestd_lost` then `guestd_regained`.
+The activation itself runs through `systemd-run --wait --pipe` as a
+transient unit, so no stop of guestd can kill a switch again.
+`TestSwitchAppliesWithoutReboot` (the wrapper, no restart for the same
+binary) and `TestSwitchSchedulesGuestdRestartWhenItsBinaryChanged`.
+*Rejected:* `KillMode=process` on guestd's unit (it is the old unit's
+KillMode that applies, so it would not have helped the guests already
+running); hostd re-checking the guest after an EOF (guestd was stopped,
+not restarting, so there was nothing to wait for).
+
+**I-144. One clone per base ref.** (m3 integration, 2026-09-21) Two
+builds that needed the same new base at once each cloned into
+`<ref>.tmp`; the second clone's pack landed in the first's directory and
+one of them failed with `fatal: fetch-pack: invalid index-pack output`
+(nuru-playground's bump onto 2026.09.21.3, 02:59:18Z, its revision
+`failed`). `ensureBase` is serialized on the builder; the second build
+finds the first's checkout. `TestEnsureBaseClonesOnceUnderConcurrency`.
+*Rejected:* a per-ref lock (a map to maintain for a lock held for the
+seconds of a clone a few times a week).
+
+**I-145. A bump that built but could not switch says so.** (m3
+integration, 2026-09-21) `base_update_failed` read "base X failed to
+build" for every failed bump op; three of the 02:59Z sweep's had built and
+failed at the switch. When the revision row is `built` the summary is
+"base X built, but switching the running guest to it failed; the guest
+keeps its current system", then the op's message.
+`TestBumpSwitchFailureSaysSwitch`.
+
+**I-146. A bump that failed against an older base is tried again on the
+next.** (m3 integration, 2026-09-21) The sweep skipped every project whose
+newest revision was `failed`, meant for a fragment the user has to fix
+first. A bump can fail for the platform's reasons (I-144's clone), and the
+rule then held the project on its old base until the user applied
+something by hand. The skip now applies only when the failed revision is
+on the latest base already; a newer base is a new attempt.
+`TestSweepBuildsUnheldSkipsHeld` (2026.09.30 after the failed
+2026.09.29). A fragment that is really broken fails again on the next
+base and the user gets one `base_update_failed` per base, which is the
+right amount of noise.

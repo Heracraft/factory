@@ -5,7 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/heracraft/repose/internal/hostd/gcroot"
 	"github.com/heracraft/repose/internal/hostd/shell"
@@ -310,5 +313,42 @@ func TestWriteBaseVersion(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "base-version")); !os.IsNotExist(err) {
 		t.Fatalf("empty label left the file: %v", err)
+	}
+}
+
+// Two builds needing the same new base at once share one clone (I-144):
+// on host-01 the first sweep onto 9d4cb40 had two clones into the same
+// `.tmp` dir and one failed with "invalid index-pack output".
+func TestEnsureBaseClonesOnceUnderConcurrency(t *testing.T) {
+	base := t.TempDir()
+	var clones atomic.Int32
+	r := &shell.Fake{Scripts: []shell.Script{
+		{Prefix: []string{"git", "clone"}, Handle: func(argv []string) (shell.Result, error) {
+			clones.Add(1)
+			time.Sleep(50 * time.Millisecond) // the other build arrives meanwhile
+			dst := argv[len(argv)-1]
+			_ = os.MkdirAll(filepath.Join(dst, "nix"), 0o755)
+			_ = os.WriteFile(filepath.Join(dst, "nix", "flake.nix"), []byte("{}"), 0o644)
+			return shell.Result{}, nil
+		}},
+	}}
+	b := (&Real{R: r, BaseDir: base, BaseRepoURL: "https://github.com/heracraft/repose.git", User: "nixbuild"}).Defaults()
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	for i := range errs {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, errs[i] = b.ensureBase(context.Background(), "cafebabe")
+		}(i)
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("build %d: %v", i, err)
+		}
+	}
+	if n := clones.Load(); n != 1 {
+		t.Fatalf("%d clones for one ref", n)
 	}
 }

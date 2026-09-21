@@ -777,6 +777,39 @@ within its 30 s backoff, sends `Hello` with its guest list, and the api
 re-sends every unfinished command with its `command_id`; guests are
 untouched throughout.
 
+## guestd_lost after a base switch
+
+Symptom: hostd logs `guestd_lost` for a guest seconds after an
+`ApplyConfig` that ended `guest_unresponsive` with `guestd Switch:
+vsockrpc: EOF`; the guest's unit is `active`, SSH through the gateway
+works, `systemctl is-active guestd` inside says `inactive`,
+`/run/current-system` still names the previous system, and the revision
+row is `built`. Hooks, `repose-admin exec`, snapshots and applies fail for
+that guest until guestd runs again.
+
+Cause: the new system carried another guestd binary and its activation
+stopped guestd, whose child the activation was, so the switch died before
+its start step (base 2026.09.21.3 on host-01, 2026-09-21 02:59Z: three
+guests). Bases from I-143 on do not restart guestd from the activation;
+guestd restarts itself 3 s after answering, and hostd then logs
+`guestd_lost` followed by `guestd_regained` within its reconnect, which
+is the healthy shape of a switch onto a new guestd.
+
+Recovery, in this order:
+
+1. Inside the guest, as the owner over SSH (`ssh <slug>.repose 'sudo
+   systemctl start guestd'`): guestd comes back on the old binary, hostd
+   logs `guestd_regained` within a minute (m3-held, 03:02Z), and the
+   project keeps working on its previous system. `repose-admin exec`
+   cannot do this: it goes through guestd.
+2. Do not stop/start the project while its pending revision is a base
+   from before I-143: the start applies it and strands guestd again
+   (m3-iso-c, 03:05Z). Wait for a base with I-143 to be published; the
+   sweep builds a new revision on it, and the next start or the sweep's
+   own switch applies that one cleanly.
+3. A guest with no SSH path (a second tenant's) stays as in 2 until that
+   base: `repose-admin projects restart` after it.
+
 ## Coolify deploy failed
 
 The api, api-grpc or web app's rolling deploy did not go green.

@@ -111,6 +111,55 @@ func TestSweepBuildsUnheldSkipsHeld(t *testing.T) {
 	if touched, _ := job.Sweep(ctx); len(touched) != 0 {
 		t.Fatalf("projects with a failed bump were retried: %v", touched)
 	}
+	// A newer base gets another try (I-146): the failure was against
+	// 2026.09.29, not against this one.
+	if _, err := h.Pool.Exec(ctx, "insert into base_versions (version, nix_rev, released_at) values ('2026.09.30', 'fed789', now() + interval '1 second')"); err != nil {
+		t.Fatal(err)
+	}
+	touched, _ = job.Sweep(ctx)
+	if len(touched) != 2 {
+		t.Fatalf("a failed bump on an older base blocked the next base: touched %v", touched)
+	}
+	for _, id := range touched {
+		ops, _ := store.ListProjectOps(ctx, h.Pool, id, 1)
+		if got := h.WaitOp(ops[0].ID); got.State != "done" {
+			t.Fatalf("retry on 2026.09.30: %+v", got.Error)
+		}
+	}
+}
+
+// A bump whose build succeeds and whose switch of the running guest fails
+// tells the user that, not "failed to build" (I-145).
+func TestBumpSwitchFailureSaysSwitch(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	u := h.NewUser("lou")
+	a := h.CreateRunning(u, "a")
+	ctx := h.Ctx
+	if _, err := h.Pool.Exec(ctx, "insert into base_versions (version, nix_rev, changelog) values ('2026.09.24', 'sw0001', 'guestd')"); err != nil {
+		t.Fatal(err)
+	}
+	job := basebump.New(h.Pool, h.Engine, h.Events, h.Log)
+	h.Engine.SetOnFinished(job.OnOpFinished)
+	h.Fake.SetFail("ApplyConfig", "guest_unresponsive")
+	touched, err := job.Sweep(ctx)
+	if err != nil || len(touched) != 1 {
+		t.Fatalf("sweep: %v %v", touched, err)
+	}
+	ops, _ := store.ListProjectOps(ctx, h.Pool, a.ID, 1)
+	if got := h.WaitOp(ops[0].ID); got.State != "error" {
+		t.Fatalf("op should have failed at the switch: %+v", got)
+	}
+	revs, _ := store.ListRevisions(ctx, h.Pool, a.ID)
+	if revs[0].Status != "built" {
+		t.Fatalf("revision after a failed switch: %s", revs[0].Status)
+	}
+	var summary string
+	h.WaitFor("base_update_failed event", func() bool {
+		return h.Pool.QueryRow(ctx, "select summary from events where project_id = $1 and kind = 'base_update_failed'", a.ID).Scan(&summary) == nil
+	})
+	if !strings.Contains(summary, "built, but switching") || strings.Contains(summary, "failed to build") {
+		t.Fatalf("summary %q", summary)
+	}
 }
 
 // A bump whose build changes the kernel ends built with reboot_required

@@ -68,6 +68,22 @@ func (f *FakeRunner) Run(_ context.Context, spec RunSpec) (RunResult, error) {
 
 func (f *FakeRunner) key(spec RunSpec) string {
 	argv := spec.Argv
+	// Skip a synchronous systemd-run wrapper (the switch runs as a transient
+	// unit, I-143) so tests key on the real command: the program is the
+	// first argument that is neither an option nor an option's value.
+	if argv[0] == "systemd-run" && len(argv) > 1 && argv[1] == "--wait" {
+		for i := 1; i < len(argv); i++ {
+			a := argv[i]
+			if strings.HasPrefix(a, "-") {
+				if (a == "--unit" || a == "--setenv" || a == "-p" || a == "--property") && i+1 < len(argv) {
+					i++
+				}
+				continue
+			}
+			argv = argv[i:]
+			break
+		}
+	}
 	// Skip a setpriv wrapper so tests key on the real command.
 	if strings.HasSuffix(argv[0], "setpriv") {
 		for i, a := range argv {

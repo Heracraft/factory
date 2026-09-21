@@ -26,6 +26,15 @@
       after = [ "systemd-tmpfiles-setup.service" "network.target" "docker.service" ];
       wants = [ "docker.service" ];
       environment.GOMAXPROCS = "1";
+      # A switch is run by guestd itself. Left to its defaults, the new
+      # system's activation stops guestd when its binary changed, and the
+      # stop kills the switch it is a child of before guestd is started
+      # again (host-01, 2026-09-21, base 2026.09.21.3: three guests left
+      # with no guestd, DECISIONS I-143). The activation now leaves guestd
+      # alone; guestd restarts itself 3 s after it has answered hostd,
+      # from a transient unit that is not its child.
+      restartIfChanged = false;
+      stopIfChanged = false;
       serviceConfig = {
         ExecStart = "${config.repose.guestd.package}/bin/guestd";
         Restart = "always";

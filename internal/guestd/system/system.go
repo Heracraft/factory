@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -85,8 +86,15 @@ func (h *Handler) Switch(ctx context.Context, closure string, force bool, regist
 	if changed {
 		action = "boot"
 	}
+	// The activation runs as a transient unit of its own, not a child of
+	// guestd: a stop of guestd for any reason then cannot kill a switch
+	// half way (I-143). --wait --pipe keeps the call synchronous with the
+	// output on our pipes; --collect drops the unit whatever its exit.
 	res, runErr := h.run.Run(ctx, sysdep.RunSpec{
-		Argv:      []string{filepath.Join(real, "bin", "switch-to-configuration"), action},
+		Argv: []string{"systemd-run", "--wait", "--pipe", "--collect", "--quiet",
+			"--unit", "repose-switch-" + strconv.FormatInt(time.Now().UnixNano(), 36),
+			"--setenv=PATH=" + sysdep.GuestPATH,
+			filepath.Join(real, "bin", "switch-to-configuration"), action},
 		MaxOutput: OutputCap,
 		Env:       sysdep.DevEnv(h.paths, "root"),
 	})
@@ -108,6 +116,7 @@ func (h *Handler) Switch(ctx context.Context, closure string, force bool, regist
 
 	if !changed {
 		h.log.Info("system switched", "event", "switch", "result", "ok")
+		h.restartSelfIfChanged(ctx, real)
 		return &guestdv1.SwitchResult{Output: output}, nil
 	}
 
@@ -242,4 +251,46 @@ func combine(stdout, stderr []byte, limit int) []byte {
 		out = out[len(out)-limit:]
 	}
 	return out
+}
+
+// restartSelfIfChanged schedules a restart of guestd when the system just
+// switched to carries another guestd binary. The unit's activation no
+// longer restarts guestd (restartIfChanged = false, I-143), so this is
+// where the new binary takes over: a transient timer unit, not a child of
+// guestd, runs `systemctl restart guestd` 3 s from now, after the Switch
+// result has reached hostd; hostd sees guestd_lost then guestd_regained.
+func (h *Handler) restartSelfIfChanged(ctx context.Context, real string) {
+	unit, err := os.ReadFile(filepath.Join(real, "etc", "systemd", "system", "guestd.service"))
+	if err != nil {
+		return // no guestd unit in that system: nothing to restart into
+	}
+	next := execStart(string(unit))
+	self, _ := os.Executable()
+	if self, err = filepath.EvalSymlinks(self); err != nil || next == "" || next == self {
+		return
+	}
+	_, err = h.run.Run(ctx, sysdep.RunSpec{
+		Argv: []string{"systemd-run", "--collect", "--quiet", "--unit", "repose-guestd-restart",
+			"--on-active=3", "systemctl", "restart", "guestd.service"},
+		MaxOutput: 4 << 10,
+	})
+	if err != nil {
+		h.log.Warn("guestd restart not scheduled; the new guestd runs at the next boot",
+			"event", "switch", "result", "restart_not_scheduled")
+		return
+	}
+	h.log.Info("guestd restart scheduled for the new binary", "event", "switch", "result", "restart_scheduled")
+}
+
+// execStart returns the program of a unit file's ExecStart line.
+func execStart(unit string) string {
+	for _, line := range strings.Split(unit, "\n") {
+		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), "ExecStart="); ok {
+			rest = strings.TrimLeft(rest, "-@:+!")
+			if f := strings.Fields(rest); len(f) > 0 {
+				return f[0]
+			}
+		}
+	}
+	return ""
 }
