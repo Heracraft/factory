@@ -52,7 +52,7 @@ LOGIN_A=$(awk -v h="Host $PROJECT.repose" '$0==h{f=1} f&&/^ *User/{print $2; exi
 
 export REPOSE_ISOLATION_HOST_ID="$HOST_ID"
 export REPOSE_ISOLATION_EXEC_A="ssh -o BatchMode=yes -o ConnectTimeout=20 $PROJECT.repose"
-export REPOSE_ISOLATION_EXEC_B="ssh -o BatchMode=yes -o ConnectTimeout=20 root@$CONTROL_IP docker exec -i $API_CTR /usr/local/bin/repose-admin exec $B_PID -- sh -c"
+export REPOSE_ISOLATION_EXEC_B="$checks_dir/exec-b.sh $CONTROL_IP $API_CTR $B_PID"
 export REPOSE_ISOLATION_HOST_EXEC="ssh -o BatchMode=yes -o ConnectTimeout=20 -J root@$EDGE:$EDGE_SSH_PORT root@$HOST_WG_IP"
 export REPOSE_ISOLATION_A_IP="$A_IP" REPOSE_ISOLATION_B_IP="$B_IP" REPOSE_ISOLATION_A_MAC="$A_MAC"
 export REPOSE_ISOLATION_B_TAP="$B_TAP" REPOSE_ISOLATION_A_GUEST_ID="$A_GID" REPOSE_ISOLATION_A_SLUG="$PROJECT"
@@ -66,11 +66,18 @@ export REPOSE_ISOLATION_PROJECT_A="$A_PID" REPOSE_ISOLATION_PROJECT_B="$B_PID"
 [ -n "${LOKI_URL:-}" ] && export REPOSE_ISOLATION_LOKI_URL="$LOKI_URL"
 # DIRECT_SSH stays unset: it would put the owner's private key on the host.
 
-# TestRevokedCertificateRejected revokes CERT_A; `repose run` reissues one
-# afterwards, so it runs last and the order is pinned here.
+# TestRevokedCertificateRejected revokes CERT_A, and Go runs test files in
+# name order (certs_test.go second), so it runs on its own after every
+# other row; `repose run` then reissues the certificate. A failing row
+# must not stop the script: the summary and the rows after it are the
+# evidence.
 root=$(cd "$checks_dir/../.." && pwd)
-(cd "$root" && go test ./test/isolation/ -run . -v -count=1 2>&1) | tee "$OUT/isolation-go-$stamp.txt" | grep -E '^(=== RUN|--- (PASS|FAIL|SKIP)|PASS|FAIL|ok|\s+.*_test.go)' | evidence "go test ./test/isolation/ against host $HOST_ID (full output: $OUT/isolation-go-$stamp.txt)"
+(cd "$root" && go test ./test/isolation/ -run . -skip TestRevokedCertificateRejected -v -count=1 2>&1) | tee "$OUT/isolation-go-$stamp.txt" | grep -E '^(=== RUN|--- (PASS|FAIL|SKIP)|PASS|FAIL|ok|\s+.*_test.go)' | evidence "go test ./test/isolation/ against host $HOST_ID, every row but revocation (full output: $OUT/isolation-go-$stamp.txt)" || true
+(cd "$root" && go test ./test/isolation/ -run TestRevokedCertificateRejected -v -count=1 2>&1) | tee -a "$OUT/isolation-go-$stamp.txt" | grep -E '^(=== RUN|--- (PASS|FAIL|SKIP)|\s+.*_test.go)' | evidence "TestRevokedCertificateRejected, last" || true
 grep -E '^--- (PASS|FAIL|SKIP)' "$OUT/isolation-go-$stamp.txt" | sort | uniq -c | evidence "row summary"
+# The revocation row left CERT_A revoked: reissue it so the alias works
+# again (and so the operator is not locked out of their own guest).
+"$REPOSE" run --no-attach --no-sync --project "$PROJECT" >/dev/null 2>&1 || log "repose run could not reissue the certificate; run it by hand"
 
 # Operator access: a password attempt is refused and logged, on the host
 # and on the edge (14 §9). Certificate-only is the design; today the host
