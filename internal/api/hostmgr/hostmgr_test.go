@@ -211,10 +211,12 @@ func TestRegisterSessionSendSweep(t *testing.T) {
 		hr, _ := store.GetHost(ctx, h.pool, hostID)
 		return hr != nil && hr.State == "ready"
 	})
-	h.mu.Lock()
-	hellos := h.hello
-	h.mu.Unlock()
-	if hellos != 2 {
-		t.Fatalf("hello handler called %d times", hellos)
-	}
+	// The host row turns ready before the hello handler has necessarily
+	// returned, so wait for the second call rather than asserting at once
+	// (a -race run on CI saw 1 at this point on 2026-09-21).
+	waitFor(t, "second hello", func() bool {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		return h.hello == 2
+	})
 }

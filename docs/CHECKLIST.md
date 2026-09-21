@@ -120,12 +120,11 @@ written so they cannot happen quietly.
       snapshots (age per project), billing (usage per hour), abuse (top
       processes by CPU across fleet, top egress). Evidence: all seven
       load into a real Grafana 12.4.0 with no provisioning error
-      (`ops/check.sh --grafana`), and 38 of their 43 Prometheus panel
-      queries return real production data
-      (`ops/dashboards/validate.py --query`); the five that do not are
-      two Stripe panels (off by I-16), two build-failure panels with no
-      failure yet, and `repose_host_guests`, which hostd registers and
-      never populates (`10-observability.md` §9).
+      (`ops/check.sh --grafana`), and **41 of their 43** Prometheus panel
+      queries return real production data against host-01
+      (`ops/dashboards/validate.py --query`, 2026-09-21). The two that do
+      not are Stripe's, off by I-16; no panel is empty for a reason of
+      its own.
 - [x] Alerts wired: host memory 80 percent, host unreachable, snapshot older
       than 36 hours for a running project, build queue stuck, gateway auth
       failure spike, egress over 1 TB per project per day. Evidence: 17

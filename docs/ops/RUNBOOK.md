@@ -340,6 +340,65 @@ direction (DECISIONS I-94).
    numbers through SSH forwards: `ops/dev/tunnel-prod.sh <edge> <control>`
    plus the local stack with `ops/dev/prometheus-prod.yml`.
 
+## FluentBitLogShipperDown
+
+`up{job="fluent-bit"} == 0` for a host, for 15 minutes: Prometheus cannot
+reach that host's Fluent Bit at all. Its journald and every guest's
+console log are going nowhere, and unlike "FluentBitStuck" nothing is
+buffering them for later — a shipper that is not running is not
+collecting either.
+
+This alert exists because the other one cannot see this case.
+`FluentBitStuck` reads `fluentbit_output_retries_failed_total`, which a
+process that is not running does not publish, so the loudest failure was
+the quietest signal.
+
+1. **Has a Loki been recorded at all?** `docker exec <api container>
+   /usr/local/bin/repose-admin edge loki`. "no Loki recorded" is the
+   answer on a fresh platform, and it is the cause: the unit has an
+   `ExecCondition` that refuses to start it with an empty `LOKI_HOST`
+   rather than retrying a connection to nothing for ever (DECISIONS
+   I-95). Fix it centrally — `repose-admin edge loki http://<loki>:3100`
+   — and the host picks it up at its next `Rotate`, or immediately with
+   an edit of `host.json` and `systemctl restart repose-host-net`.
+2. If a Loki *is* recorded, the host has not received it: `grep LOKI
+   /run/repose/host.env` on the host. Empty means the value post-dates
+   its registration; same fix as above, the immediate half.
+3. With `LOKI_HOST` set and the unit still down, it is the unit:
+   `systemctl status fluent-bit` and `journalctl -u fluent-bit -n 50`.
+   `ConditionPathExists=/run/repose/host.env` unmet means the host never
+   registered ("HostUnregistered").
+4. If the unit is running and only the *scrape* fails, this is the
+   tunnel rather than the shipper: "HostScrapeDown", and check the
+   edge's forward chain ("Every Prometheus target is down and WireGuard
+   looks fine").
+
+Nothing in a guest waits on log shipping, so tenants are unaffected
+throughout; what is lost is the operator's view, and the logs for the
+window are lost rather than delayed.
+
+**The reference case**, host-01, 2026-09-21, which is what step 1 looks
+like when it is the answer:
+
+```
+systemctl status fluent-bit
+  inactive (dead) (Result: exec-condition)
+  ExecCondition=/nix/store/…-repose-fluent-bit-has-loki (code=exited, status=1)
+  "Started with unmet condition" / "Skipped due to 'exec-condition'"
+grep LOKI /run/repose/host.env
+  LOKI_HOST=          # present and empty
+```
+
+The journal is the useful half. Fluent Bit **ran for 6h 1min before the
+host switch at 00:16:43Z** and was refused on the restart at 00:16:44Z
+— because those six hours were spent retrying an empty target, shipping
+nothing, and looking in the journal exactly like a Loki that was down.
+That is the failure I-95 exists to convert into a refusal with a reason,
+and `FluentBitLogShipperDown` exists so the refusal is not itself
+silent. A host in this state is correct, not broken; it is waiting for
+`repose-admin edge loki <url>`, which is the owner's step because the
+Loki is theirs.
+
 ## FluentBitStuck
 
 A host's Fluent Bit has been failing to ship to Loki for 30 minutes

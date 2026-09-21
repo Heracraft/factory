@@ -116,6 +116,23 @@ groups:
           description: "Retries have been failing for 30 minutes. Chunks buffer to /var/lib/fluent-bit up to 1 GB, then the oldest are dropped."
           runbook: "docs/ops/RUNBOOK.md#observability"
 
+      - alert: FluentBitLogShipperDown
+        # FluentBitStuck only fires while Fluent Bit is running and
+        # failing: a shipper that is not running emits no series at all,
+        # so the loudest failure (no logs leaving the host) was the
+        # quietest signal. That became the *expected* state for a host
+        # with no Loki recorded when I-95 gave the unit an ExecCondition,
+        # which is the right behaviour for the process and the wrong
+        # thing to be silent about.
+        expr: up{job="fluent-bit"} == 0
+        for: 15m
+        labels:
+          severity: warn
+        annotations:
+          summary: "No log shipper on {{ $labels.host_id }}"
+          description: "Fluent Bit is not answering. A host with no Loki recorded does not start it at all (repose-admin edge loki); otherwise the unit has failed. Either way this host's journald and guest console logs are going nowhere."
+          runbook: "docs/ops/RUNBOOK.md#fluentbitlogshipperdown"
+
   - name: repose-control-plane
     interval: 1m
     rules:
