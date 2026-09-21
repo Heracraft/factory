@@ -33,7 +33,7 @@ func New(pool *db.Pool, engine *ops.Engine, ev *events.Ingest, log *slog.Logger)
 // Run sweeps daily at 04:00 UTC and, checking every ten minutes, when a
 // security release is newer than this process's last sweep, until ctx
 // ends. "Newer than the last sweep" rather than "released in the last ten
-// minutes" (I-138): api-grpc is redeployed on every push to main, and a
+// minutes" (I-141): api-grpc is redeployed on every push to main, and a
 // restart inside a release's ten-minute window lost its sweep until 04:00
 // on host-01 (2026.09.21.3, 2026-09-21 02:32Z). After a restart the first
 // tick re-sweeps the newest security base; a project already on it is

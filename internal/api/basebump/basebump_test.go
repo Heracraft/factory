@@ -167,7 +167,7 @@ func TestBumpNeedingRebootSaysSo(t *testing.T) {
 }
 
 // A restart inside a security release's ten-minute window must not lose
-// its sweep (I-138): what is due is "newer than this process's last
+// its sweep (I-141): what is due is "newer than this process's last
 // sweep", and a fresh process has none.
 func TestSecurityDueSurvivesRestart(t *testing.T) {
 	rel := time.Date(2026, 9, 21, 2, 32, 36, 0, time.UTC)
