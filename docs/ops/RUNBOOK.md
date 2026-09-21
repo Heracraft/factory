@@ -377,6 +377,28 @@ Nothing in a guest waits on log shipping, so tenants are unaffected
 throughout; what is lost is the operator's view, and the logs for the
 window are lost rather than delayed.
 
+**The reference case**, host-01, 2026-09-21, which is what step 1 looks
+like when it is the answer:
+
+```
+systemctl status fluent-bit
+  inactive (dead) (Result: exec-condition)
+  ExecCondition=/nix/store/…-repose-fluent-bit-has-loki (code=exited, status=1)
+  "Started with unmet condition" / "Skipped due to 'exec-condition'"
+grep LOKI /run/repose/host.env
+  LOKI_HOST=          # present and empty
+```
+
+The journal is the useful half. Fluent Bit **ran for 6h 1min before the
+host switch at 00:16:43Z** and was refused on the restart at 00:16:44Z
+— because those six hours were spent retrying an empty target, shipping
+nothing, and looking in the journal exactly like a Loki that was down.
+That is the failure I-95 exists to convert into a refusal with a reason,
+and `FluentBitLogShipperDown` exists so the refusal is not itself
+silent. A host in this state is correct, not broken; it is waiting for
+`repose-admin edge loki <url>`, which is the owner's step because the
+Loki is theirs.
+
 ## FluentBitStuck
 
 A host's Fluent Bit has been failing to ship to Loki for 30 minutes
