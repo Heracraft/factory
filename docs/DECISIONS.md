@@ -3114,3 +3114,19 @@ projects rebuild at the next security sweep (within 10 minutes)"); recording the
 sweep in Postgres (a second replica's sweep would then hide a restart of
 the first, which is fine, but the row is more state for a decision one
 query answers).
+
+**I-142. `host_moved` is raised only when a restore leaves the project's
+host.** (m3 integration, 2026-09-21) The restore phase notified
+`host_moved` ("was restored onto a new host") for every restore, including
+`repose snapshots restore` over the stopped project's own volume on the
+same host; on host-01 the three restores of 2026-09-21 (01:26, 01:57,
+02:02Z) each sent the owner of m3-check that message while the project
+never left host-01. `buildRestore` now records `host_moved` in the op's
+params once it has picked the host (the project's when ready, else the
+scheduler's), fixed on the first build like `new_guest_id` so a re-sent
+command says the same; the restore result raises the event only when that
+is true, and logs `restored` otherwise. `TestRestoreEmitsHostMovedEvent`
+covers both directions (a same-host restore, then a project whose host
+row is unreachable). *Rejected:* a `restored` notification kind for the
+same-host case (the user asked for the restore and the CLI reports it; 13
+§5's kinds are for what happens without them).

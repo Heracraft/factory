@@ -809,6 +809,13 @@ The api, api-grpc or web app's rolling deploy did not go green.
    the domain during a deploy is how to tell that from a real outage: a
    failure or two and then 200s is the known drain gap, a run of them is
    not.
+6. Evidence after a rollout: Coolify removes the replaced container, and
+   `docker logs` of the old api or api-grpc goes with it (the notify_send
+   lines of a delivery made minutes before a deploy were gone on
+   2026-09-21). Loki has them (Coolify's log drain ships the api and web
+   containers' stdout, `docs/ops/OBSERVABILITY.md`); on the VM itself only
+   the live container's log is readable, so read it before pushing to
+   `main`, or query Loki by container name.
 
 ## Coolify cannot validate the control VM
 

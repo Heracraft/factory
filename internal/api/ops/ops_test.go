@@ -409,7 +409,9 @@ func TestSnapshotFailureNotifies(t *testing.T) {
 }
 
 // TestRestoreEmitsHostMovedEvent is the host_moved half of the same
-// checklist item.
+// checklist item: a restore over the same host's volume is not a move
+// (I-142: on host-01 every restore had said "restored onto a new host"),
+// a restore that comes up on another host is.
 func TestRestoreEmitsHostMovedEvent(t *testing.T) {
 	h := apitest.New(t, apitest.Options{})
 	u := h.NewUser("jack")
@@ -420,23 +422,47 @@ func TestRestoreEmitsHostMovedEvent(t *testing.T) {
 		t.Fatalf("stop: %+v", op.Error)
 	}
 	sid := *op.SnapshotID
+	hostMoved := func() int {
+		evs, err := store.ListEvents(h.Ctx, h.Pool, pid, time.Time{}, 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, e := range evs {
+			if e.Kind == "host_moved" {
+				n++
+			}
+		}
+		return n
+	}
+	// Same host: the project's host is ready, the restore lands on it.
 	p = h.Project(pid)
-	rop := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindRestore, ProjectID: &pid, SnapshotID: &sid, Phases: ops.PlanRestore(p, true, true)}))
+	rop := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindRestore, ProjectID: &pid, SnapshotID: &sid, Phases: ops.PlanRestore(p, true, false)}))
 	if rop.State != "done" {
 		t.Fatalf("restore: %+v", rop.Error)
 	}
-	evs, err := store.ListEvents(h.Ctx, h.Pool, pid, time.Time{}, 50)
-	if err != nil {
+	if moved, _ := rop.Params["host_moved"].(bool); moved || hostMoved() != 0 {
+		t.Fatalf("a restore over the same host raised host_moved (params %v)", rop.Params)
+	}
+	// Another host: the project's host is gone (its row unknown, the guest
+	// with it), the scheduler places the restore on the one that is left.
+	lost := store.NewID()
+	if _, err := h.Pool.Exec(h.Ctx, "insert into hosts (id, name, state, draining) values ($1, 'host-lost', 'unreachable', true)", lost); err != nil {
 		t.Fatal(err)
 	}
-	var found bool
-	for _, e := range evs {
-		if e.Kind == "host_moved" {
-			found = true
-		}
+	if _, err := h.Pool.Exec(h.Ctx, "update projects set host_id = $2, guest_id = null where id = $1", pid, lost); err != nil {
+		t.Fatal(err)
 	}
-	if !found {
-		t.Fatalf("no host_moved event among %+v", evs)
+	p = h.Project(pid)
+	rop = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindRestore, ProjectID: &pid, SnapshotID: &sid, Phases: ops.PlanRestore(p, true, true)}))
+	if rop.State != "done" {
+		t.Fatalf("restore onto another host: %+v", rop.Error)
+	}
+	if moved, _ := rop.Params["host_moved"].(bool); !moved || hostMoved() != 1 {
+		t.Fatalf("a restore onto another host must raise host_moved once (params %v)", rop.Params)
+	}
+	if np := h.Project(pid); np.HostID == nil || *np.HostID == lost {
+		t.Fatal("project still on the lost host")
 	}
 }
 

@@ -587,6 +587,13 @@ func (e *Engine) buildRestore(ctx context.Context, op *store.Op, p *store.Projec
 			return nil, uuid.Nil, false, err
 		}
 	}
+	// Whether this restore leaves the project's host, fixed on the first
+	// build so a re-send says the same (I-142): the host_moved event is
+	// for a project that came up somewhere else, not for a restore over
+	// the same host's volume.
+	if _, ok := op.Params["host_moved"]; !ok {
+		op.Params["host_moved"] = p.HostID == nil || *p.HostID != hostID
+	}
 	if _, err := e.pool.Exec(ctx, "update projects set host_id = $2, guest_id = $3, guest_ip = null, vsock_cid = null where id = $1", p.ID, hostID, gidStr); err != nil {
 		return nil, uuid.Nil, false, err
 	}
@@ -714,8 +721,12 @@ func (e *Engine) onResult(ctx context.Context, op *store.Op, phase string, res *
 			if err := e.setState(ctx, p, "stopped"); err != nil {
 				return err
 			}
-			e.log.Info("project restored", "event", "host_moved", "project_id", p.ID.String(), "host_id", p.HostID.String())
-			e.notifyPlatform(ctx, p.ID, "host_moved", p.Slug+" was restored onto a new host from its latest snapshot")
+			if moved, _ := op.Params["host_moved"].(bool); moved {
+				e.log.Info("project restored onto another host", "event", "host_moved", "project_id", p.ID.String(), "host_id", p.HostID.String())
+				e.notifyPlatform(ctx, p.ID, "host_moved", p.Slug+" was restored onto a new host from its latest snapshot")
+			} else {
+				e.log.Info("project restored", "event", "restored", "project_id", p.ID.String(), "host_id", p.HostID.String())
+			}
 		}
 		return e.setResult(ctx, op, map[string]any{"guest_ip": c.GuestIp})
 	case PhaseStartGuest:
