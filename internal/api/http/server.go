@@ -1,7 +1,7 @@
 // Package httpapi serves docs/interfaces/api.md: the user routes behind
 // Logto JWT verification on the HTTP app, the /internal routes behind
 // the gateway's client certificate, and /healthz and /readyz; /metrics is
-// the separate metrics listener only (DECISIONS I-134).
+// the separate metrics listener only (DECISIONS I-136).
 // Every response carries X-Request-Id; errors use the documented
 // envelope; ids are validated as UUIDs before the database is touched.
 package httpapi
@@ -128,7 +128,7 @@ func New(d Deps) *Server {
 	// /metrics is not on this mux. The user listener sits behind the public
 	// proxy, so anything mounted here is on the internet; the metrics
 	// listener (MetricsHandler, API_METRICS_LISTEN) is the only place the
-	// registry is served (DECISIONS I-134).
+	// registry is served (DECISIONS I-136).
 	return s
 }
 

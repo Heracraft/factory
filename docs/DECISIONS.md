@@ -2923,7 +2923,7 @@ documented step — a manual paste, which is the one thing here that I-87
 would rather have in a file, so the block in the repository stays the
 source of truth and a label that drifts from it is a bug.
 
-**I-134. The api's user listener does not serve `/metrics`; the metrics
+**I-136. The api's user listener does not serve `/metrics`; the metrics
 listener is the only place the registry is served.** (m5-release, 14 final
 review, 2026-09-21) `internal/api/http.Server.New` mounted `GET /metrics`
 on the user mux beside `/healthz` and `/readyz`, and the user mux is what
@@ -2954,7 +2954,7 @@ the application should depend on); a bearer check on the user-mux
 listener). Interfaces: none (`api.md` never listed `/metrics`);
 `05-control-plane-api.md` §5.1 corrected.
 
-**I-135. hostd writes `host.json` and nothing else at registration; the
+**I-137. hostd writes `host.json` and nothing else at registration; the
 second `wg0.conf` under its state directory is gone.** (m5-release, 14
 final review, 2026-09-21; closes review M-5) I-18 made `host.json` the
 host's only runtime network input, rendered into `/run/repose/wg0.conf`

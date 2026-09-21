@@ -118,7 +118,7 @@ retrying (`Restart=on-failure` with `RestartPreventExitStatus=3`).
 WireGuard keys returned at registration land in `host.json` and nowhere
 else: `repose-register.service` restarts `repose-host-net`, which renders
 `/run/repose/wg0.conf` for `wg-quick-wg0.service` (DECISIONS I-18). hostd
-wrote a second `wg0.conf` under its state directory until I-135 removed
+wrote a second `wg0.conf` under its state directory until I-137 removed
 it (security review M-5: two writers of one tunnel and a second copy of
 the private key on the persistent disk).
 

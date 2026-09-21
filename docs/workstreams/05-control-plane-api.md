@@ -85,7 +85,7 @@ It consumes `internal/fakes/hostd` in its own tests.
 ```
 main
  ├─ db.Connect, db.Migrate (when --migrate)
- ├─ http.Server :8080         user routes, /healthz, /readyz (never /metrics: I-134)
+ ├─ http.Server :8080         user routes, /healthz, /readyz (never /metrics: I-136)
  ├─ http.Server :9103         /metrics alone (API_METRICS_LISTEN; /internal is on the grpc app, I-42)
  ├─ grpc.Server :8443         hosts (mTLS), same process
  ├─ hostmgr                    one goroutine per connected host stream

@@ -947,7 +947,7 @@ func TestSSELiveStreamAndConcurrentLoad(t *testing.T) {
 
 // The user listener is what the public proxy fronts, so /metrics must not
 // be reachable through it: the registry is served by the metrics listener
-// alone (DECISIONS I-134; found answering 200 from the internet on
+// alone (DECISIONS I-136; found answering 200 from the internet on
 // 2026-09-21).
 func TestMetricsIsNotOnTheUserListener(t *testing.T) {
 	e := newEnv(t)

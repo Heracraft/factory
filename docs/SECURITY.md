@@ -215,7 +215,7 @@ Written down so nobody believes otherwise.
 - **hostdev's M1 state is still on the edge's disk** (review M-4, M5
   review): `hostdev` is stopped but `/var/lib/repose-hostdev/state.json`
   and its dev CAs remain; removal is an announced operator step.
-- **The api's `/metrics` was on the public entry point** until I-134
+- **The api's `/metrics` was on the public entry point** until I-136
   (M5 review, High): fixed in the application; I-133's allow-list router
   is now defence in depth.
 

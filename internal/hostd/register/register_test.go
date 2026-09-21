@@ -96,7 +96,7 @@ func TestRegisterThenRotate(t *testing.T) {
 		}
 	}
 	// host.json is the only network input the host takes (I-18); the
-	// wg0.conf hostd used to write beside it was the review's M-5 (I-135).
+	// wg0.conf hostd used to write beside it was the review's M-5 (I-137).
 	if _, err := os.Stat(filepath.Join(cfg.Dir, "wg0.conf")); !os.IsNotExist(err) {
 		t.Fatalf("hostd wrote wg0.conf: %v", err)
 	}

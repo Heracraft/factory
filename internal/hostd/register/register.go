@@ -167,7 +167,7 @@ func Register(ctx context.Context, cfg Config) (*Identity, error) {
 	// host.json is the only file hostd writes for the network: the host
 	// renders /run/repose/wg0.conf from it and the unit that runs hostd
 	// register restarts repose-host-net (host-conventions.md, DECISIONS
-	// I-18, I-135). A second wg0.conf under the state directory was the
+	// I-18, I-137). A second wg0.conf under the state directory was the
 	// review's M-5.
 	if err := os.Remove(cfg.TokenPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("delete join token: %w", err)
@@ -255,7 +255,7 @@ func atomicWrite(path string, data []byte, mode os.FileMode) error {
 }
 
 // WGConf renders a wg-quick config from the registration material. hostd
-// no longer writes one (I-135); it stays for tests and operators comparing
+// no longer writes one (I-137); it stays for tests and operators comparing
 // what the host rendered with what registration returned.
 func WGConf(w WG) string {
 	allowed := strings.Join(w.AllowedIPs, ", ")
