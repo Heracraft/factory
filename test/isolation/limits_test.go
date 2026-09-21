@@ -12,12 +12,15 @@ func bench(t *testing.T, n int) float64 {
 	t.Helper()
 	best := 0.0
 	for i := 0; i < n; i++ {
-		r := inB(t, "s=$(date +%s.%N); head -c 268435456 /dev/zero | sha256sum >/dev/null; e=$(date +%s.%N); echo \"$e - $s\" | bc -l")
+		// Milliseconds through shell arithmetic: a guest has coreutils and
+		// sh, not necessarily bc.
+		r := inB(t, "s=$(date +%s%N); head -c 268435456 /dev/zero | sha256sum >/dev/null; e=$(date +%s%N); echo $(( (e - s) / 1000000 ))")
 		mustSucceed(t, r, "benchmark in B")
-		v, err := strconv.ParseFloat(strings.TrimSpace(r.out), 64)
+		ms, err := strconv.ParseFloat(strings.TrimSpace(r.out), 64)
 		if err != nil {
 			t.Fatalf("benchmark output %q: %v", r.out, err)
 		}
+		v := ms / 1000
 		if best == 0 || v < best {
 			best = v
 		}
@@ -30,8 +33,8 @@ func bench(t *testing.T, n int) float64 {
 // benchmark within 10 percent of its baseline.
 func TestForkBombAndMemoryHogLeaveNeighbourWithinTenPercent(t *testing.T) {
 	need(t, "EXEC_A", "EXEC_B")
-	if r := inB(t, "command -v bc && command -v sha256sum"); r.code != 0 {
-		t.Skip("B needs bc and sha256sum for the benchmark")
+	if r := inB(t, "command -v sha256sum"); r.code != 0 {
+		t.Skip("B needs sha256sum for the benchmark")
 	}
 	baseline := bench(t, 3)
 	t.Logf("baseline in B: %.3fs", baseline)

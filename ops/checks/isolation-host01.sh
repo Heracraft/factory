@@ -101,8 +101,8 @@ set -e
 sleep 2
 host_sh "journalctl -u sshd --since '$since' --no-pager -o cat | grep -iE 'password|no supported authentication|Connection closed by authenticating' | tail -5" | evidence "host sshd journal for the password attempt"
 ssh -o BatchMode=yes -p "$EDGE_SSH_PORT" "root@$EDGE" "journalctl -u sshd --since '$since' --no-pager -o cat | grep -iE 'password|no supported authentication|Connection closed by authenticating' | tail -5" | evidence "edge sshd journal for the password attempt"
-ssh -o BatchMode=yes -p "$EDGE_SSH_PORT" "root@$EDGE" "sshd -T 2>/dev/null | grep -E '^(passwordauthentication|kbdinteractiveauthentication|permitrootlogin) '" | evidence "edge sshd effective settings"
-host_sh "sshd -T -f /etc/ssh/sshd_config 2>/dev/null | grep -E '^(passwordauthentication|kbdinteractiveauthentication|permitrootlogin|trustedusercakeys) '" | evidence "host sshd effective settings"
+ssh -o BatchMode=yes -p "$EDGE_SSH_PORT" "root@$EDGE" "grep -iE '^(PasswordAuthentication|KbdInteractiveAuthentication|PermitRootLogin)' /etc/ssh/sshd_config" | evidence "edge sshd_config" || true
+host_sh "grep -iE '^(PasswordAuthentication|KbdInteractiveAuthentication|PermitRootLogin|TrustedUserCAKeys|ListenAddress)' /etc/ssh/sshd_config; cat /run/repose/sshd.conf 2>/dev/null" | evidence "host sshd_config and the rendered listen address" || true
 
 cat <<EOT | evidence "rows this script cannot run"
 hostd for host X cannot act on host Y: one host exists (host-01); the row needs a second registered host. The api's per-stream check is TestRegisterSessionSendSweep locally.

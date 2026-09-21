@@ -27,7 +27,10 @@ func TestGuestCannotWriteStore(t *testing.T) {
 // virtio-blk device.
 func TestGuestSeesOneDisk(t *testing.T) {
 	need(t, "EXEC_A")
-	r := inA(t, "lsblk -dn -o NAME,TYPE | awk '$2==\"disk\"{print $1}'")
+	// zram (the guest's swap), loop and ram devices are the guest's own
+	// kernel, not something the hypervisor exposed; the row is about block
+	// devices reaching the guest from the host (host-01 showed [zram0 vda]).
+	r := inA(t, "lsblk -dn -o NAME,TYPE | awk '$2==\"disk\" && $1 !~ /^(zram|loop|ram)/{print $1}'")
 	mustSucceed(t, r, "lsblk in A")
 	disks := strings.Fields(r.out)
 	if len(disks) != 1 {
