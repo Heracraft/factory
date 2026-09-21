@@ -174,8 +174,8 @@ func TestAdminSurface(t *testing.T) {
 	if out, err := run(t, e, "base", "list"); err != nil || !strings.Contains(out, "2026.09.20") {
 		t.Fatalf("base list: %s %v", out, err)
 	}
-	if out, err := run(t, e, "base", "status", "2026.09.20"); err != nil || !strings.Contains(out, "zp") {
-		t.Fatalf("base status: %s %v", out, err)
+	if out, err := run(t, e, "base", "status", "2026.09.20"); err != nil || !strings.Contains(out, "zp") || strings.Contains(out, "0x") {
+		t.Fatalf("base status (the BASE column printed a pointer on host-01): %s %v", out, err)
 	}
 	// projects create (I-113): a synthetic exempt user gets a project and
 	// a create op the engine drives; the slug follows the api's rule.

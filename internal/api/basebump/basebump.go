@@ -30,9 +30,16 @@ func New(pool *db.Pool, engine *ops.Engine, ev *events.Ingest, log *slog.Logger)
 	return &Job{pool: pool, engine: engine, events: ev, log: log.With("component", "api")}
 }
 
-// Run sweeps daily at 04:00 UTC and immediately when a security release
-// is newer than the last sweep, until ctx ends.
+// Run sweeps daily at 04:00 UTC and, checking every ten minutes, when a
+// security release is newer than this process's last sweep, until ctx
+// ends. "Newer than the last sweep" rather than "released in the last ten
+// minutes" (I-138): api-grpc is redeployed on every push to main, and a
+// restart inside a release's ten-minute window lost its sweep until 04:00
+// on host-01 (2026.09.21.3, 2026-09-21 02:32Z). After a restart the first
+// tick re-sweeps the newest security base; a project already on it is
+// not touched.
 func (j *Job) Run(ctx context.Context) {
+	var lastSweep time.Time
 	for {
 		next := nextRun(time.Now().UTC())
 		select {
@@ -41,10 +48,11 @@ func (j *Job) Run(ctx context.Context) {
 		case <-time.After(time.Until(next)):
 		case <-time.After(10 * time.Minute):
 			b, err := store.LatestBase(ctx, j.pool)
-			if err != nil || !b.Security || time.Since(b.ReleasedAt) > 10*time.Minute {
+			if err != nil || !securityDue(b, lastSweep) {
 				continue
 			}
 		}
+		lastSweep = time.Now()
 		release, ok, err := db.TryLock(ctx, j.pool, db.LockBaseBump)
 		if err != nil || !ok {
 			continue
@@ -54,6 +62,12 @@ func (j *Job) Run(ctx context.Context) {
 		}
 		release()
 	}
+}
+
+// securityDue reports whether a security release still needs a sweep from
+// this process: it is newer than the last sweep this process ran.
+func securityDue(b *store.BaseVersion, lastSweep time.Time) bool {
+	return b != nil && b.Security && b.ReleasedAt.After(lastSweep)
 }
 
 func nextRun(now time.Time) time.Time {

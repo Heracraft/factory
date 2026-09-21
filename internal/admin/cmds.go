@@ -1399,7 +1399,11 @@ func (e *Env) base(ctx context.Context, args []string) error {
 					newest += ": " + firstLine(*revs[0].Error)
 				}
 			}
-			rows = append(rows, []string{p.Slug, p.State, fmt.Sprint(p.BaseVersion), strconv.FormatBool(p.HoldBaseUpdates), newest})
+			base := "-"
+			if p.BaseVersion != nil {
+				base = *p.BaseVersion // fmt.Sprint of the pointer printed an address on host-01 (2026-09-21)
+			}
+			rows = append(rows, []string{p.Slug, p.State, base, strconv.FormatBool(p.HoldBaseUpdates), newest})
 		}
 		e.table(rows)
 		return nil

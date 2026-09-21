@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/heracraft/repose/internal/api/apitest"
 	"github.com/heracraft/repose/internal/api/basebump"
@@ -162,5 +163,28 @@ func TestBumpNeedingRebootSaysSo(t *testing.T) {
 	})
 	if !strings.Contains(summary, "built") || !strings.Contains(summary, "repose stop && repose start") || strings.Contains(summary, "applied") {
 		t.Fatalf("summary %q", summary)
+	}
+}
+
+// A restart inside a security release's ten-minute window must not lose
+// its sweep (I-138): what is due is "newer than this process's last
+// sweep", and a fresh process has none.
+func TestSecurityDueSurvivesRestart(t *testing.T) {
+	rel := time.Date(2026, 9, 21, 2, 32, 36, 0, time.UTC)
+	sec := &store.BaseVersion{Version: "2026.09.21.3", Security: true, ReleasedAt: rel}
+	if !basebump.SecurityDue(sec, time.Time{}) {
+		t.Fatal("a fresh process must sweep a security release, however old")
+	}
+	if basebump.SecurityDue(sec, rel.Add(time.Minute)) {
+		t.Fatal("a release already swept is not due again")
+	}
+	if !basebump.SecurityDue(sec, rel.Add(-time.Minute)) {
+		t.Fatal("a release newer than the last sweep is due")
+	}
+	if basebump.SecurityDue(&store.BaseVersion{Version: "2026.09.22", ReleasedAt: rel}, time.Time{}) {
+		t.Fatal("a routine release waits for 04:00")
+	}
+	if basebump.SecurityDue(nil, time.Time{}) {
+		t.Fatal("no base, no sweep")
 	}
 }

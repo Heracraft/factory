@@ -2902,6 +2902,25 @@ base's `nix_rev` and version in the Build. *Rejected:* setting the
 project's base_version at enqueue time (a failed bump would then have
 moved the project to a base it does not run).
 
+**I-138. A security sweep is due while the release is newer than this
+process's last sweep.** (m3 integration, 2026-09-21) `basebump.Run`
+checked every ten minutes for a security base released in the last ten
+minutes. api-grpc is redeployed on every push to main, and a redeploy
+inside that window restarts the ticker, so the release's only chance came
+after its ten minutes were up and it waited for 04:00 UTC: the LTS
+republish 2026.09.21.3 (02:32:36Z) met the 02:39:58Z rollout on host-01
+and no project was rebuilt. The tick now sweeps when the newest base is a
+security release newer than the last sweep this process ran, so a fresh
+process sweeps it at its first tick and an old one does not repeat a
+sweep it already made; a project already on the base is not touched by
+either. `TestSecurityDueSurvivesRestart`. *Rejected:* a sweep at start
+(a rollout of two replicas would race for the lock for nothing, and the
+ten-minute tick is what `repose-admin base publish` promises: "unheld
+projects rebuild at the next security sweep (within 10 minutes)"); recording the last
+sweep in Postgres (a second replica's sweep would then hide a restart of
+the first, which is fine, but the row is more state for a decision one
+query answers).
+
 **I-133. The api's `/metrics` is a Traefik router on the app, behind an
 IP allow-list; no collector and no host port.** (owner via conductor,
 2026-09-21) The `api` application publishes no port and cannot: a
