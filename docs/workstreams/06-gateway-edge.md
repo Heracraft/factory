@@ -335,3 +335,41 @@ except keys and certificates, which are not changed by deploys.
 - [ ] `ops/RUNBOOK.md` has an entry per row in section 6.
 - [ ] No `TODO`, `FIXME`, `panic(` outside main, `_ = err` under
       `cmd/gateway`, `internal/gateway`, `nix/edge`. Evidence: grep.
+
+### Real-edge evidence (M2, 2026-09-20/21)
+
+Closed on the production edge by the M2 integration session; rows not
+listed here keep the local evidence of the 06 session.
+
+- Builds and deploys: `nixos-rebuild switch --flake main#edge` at 23:36Z
+  on 2026-09-20 (I-92, I-110 builds); gateway, wgsync, wireguard-wg0 active.
+- `wg0` with the address plan; `wgsync` added host-01 as a peer with its
+  `/22` route at its next 30 s tick after registration (18:15Z); the
+  static control-plane peer survives every sync. Removing a retired host:
+  not exercised (no host retired).
+- nftables exactly §5.1: `nft list ruleset` on the edge (22, 443,
+  51820/udp public; 2222 from the tunnel and the operator /32; 8443, 6081,
+  9100, 9102 from wg0 only); external scan of 20.102.98.254: 22, 443 open,
+  2222 open from the operator address, 997 ports filtered.
+- Plain keys refused: `ssh probe.nobody@ssh.repose.herakraft.co` answers
+  `permission denied (certificate required)`; wrong principal at the real
+  gateway and at a real guest's sshd: m3's isolation suite, two accounts.
+- The guest dialed with the gateway-issued certificate: every relay into
+  the owner's and the conductor's guests (`session_open` lines with the
+  cert serial; dial and host-cert check ok, 105–441 ms per exec).
+- Exec, pty, exit status, `-A` with OpenSSH: the conductor's run (`echo`,
+  `ssh-add -l` through the forwarded agent, `git fetch` through it);
+  `-L`/`-R` with OpenSSH and VS Code Remote-SSH: not done on the real edge.
+- Sessions reported: `POST /internal/sessions` per relay; ordering and
+  at-most-once fixed by I-123. `git push` over the forwarded agent: the
+  fetch path is proven, a push was not run.
+- Gateway restart with tmux surviving: the 23:36Z switch restarted the
+  gateway under two running guests; relays resumed 20 s later into the
+  same guests, sessions intact.
+- Every §5.5 metric: `curl http://10.255.0.1:9102/metrics` lists all 15
+  `repose_gateway_*` families.
+- Logs: `source_prefix` is a /24, no login names, no channel bytes beyond
+  counts (journal reviewed while the gate ran).
+- Hook ingest on 8443 from a real guest, and the preview stub's wildcard
+  certificate: not done (no wildcard certificate exists; the hook path was
+  not exercised from a guest).

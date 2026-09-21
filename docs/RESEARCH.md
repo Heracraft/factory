@@ -671,6 +671,10 @@ reached; a row without a number was not measured.
 | the same smoke, first attempt | failed at create step 8 in 21 s: `/run/repose` was 0700 after the token delivery (I-97) |
 | The conductor's `repose run` (v0.1.3 build of main) for project `recruiting`, class small, base 2026.09.20 already in the store | build 5 s, create 14 s to running (22:38:36 → 22:38:50); first gateway relay into the guest 90 s later, exec sessions 105–267 ms each |
 | Smoke against base 2026.09.20.2 (d315339: guestd and the guest ssh config changed, so a fresh guest closure) | hostd's own clone of the base, build 18.9 s, create → running 16 s, snapshot/stop/start/destroy all done within 2 min |
+| Smoke against base 2026.09.20.3 (65d336e, another fresh closure) | build 38.6 s, create ok, snapshot 24.6 s (the client was cut by the api's automatic redeploy; the orphan was destroyed) |
+| Edge switch under two running guests (2026-09-20 23:36Z, I-110 + m3's I-94) | gateway back in 20 s; the next relay into the same guest at 23:37:18 |
+| The owner's gate run (v0.1.4, laptop, base 2026.09.20.3): `nuru-playground` (large) | create op 00:30 → build 5 s → guest running 00:31:42; first relay from the laptop 13 s later, exec round trips 201–441 ms |
+| The owner's second project `age-calculator` (large), while three other guests ran | create op 00:32 → running 00:33 |
 
 ## 13. Guests through the api on host-01 (M3, 2026-09-20/21)
 

@@ -48,7 +48,10 @@ routing), `07-cli`, `11-infra-opentofu` (edge, hosts, blob, kv).
 Gate: a second person with a GitHub account runs `repose login` and `repose
 run` on their laptop and lands in tmux in their own guest on the shared host,
 cannot reach the first person's guest, and gets a notification when their
-agent finishes.
+agent finishes. *Closed 2026-09-21 on the owner's call with one person plus
+a second account (DECISIONS I-129): the owner's laptop run, the isolation
+suite on host-01 under two accounts, and the notification deliveries stood
+in for the second human, who is still required at M5.*
 
 ## M3. Control plane on Coolify, dashboard, secrets, config menu
 

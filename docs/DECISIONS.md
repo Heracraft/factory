@@ -2806,3 +2806,24 @@ only, so the first real closure over the cap on host-01 (`closure is
 the context, newlines trimmed, indentation kept.
 `TestRenderBuildErrorPrintsTheVerbatimBlock`.
 
+
+**I-129. M2's two-person gate was closed with one person and a second
+account.** (owner, 2026-09-21) `MILESTONES.md` asked for a second person
+with a GitHub account to run `repose login` and `repose run` on their own
+laptop, be refused the first person's guest, and get a notification. No
+second person was available on the night, and the owner waived the clause
+for M2 at 01:02Z on this evidence: the owner's own laptop run through the
+released CLI (v0.1.4 by `install.sh`, device-code login on the email
+account `user-c7fh26yzrl93`, `nuru-playground` and `age-calculator` created,
+built and running on host-01, relays from the laptop through the switched
+edge); m3's isolation suite on host-01 under two accounts (18 rows pass,
+neighbour ratio 1.02, password attempts refused and logged on host and
+edge); and the finished-agent deliveries to ntfy for claude, codex,
+opencode and pi. What the waiver does not cover and stays open: a second
+*human*'s laptop, OS keychain and SSH agent meeting the gateway, which
+M5 step 3 still requires unchanged. The rehearsal that preceded the run
+found and fixed twelve gate-blocking defects on the day (I-99, I-101,
+I-102, I-104..I-111, I-120), which is what the two-person gate exists to
+surface; the owner judged the remaining risk to be in the second laptop,
+not the second account. *Rejected:* keeping M2 open until a second person
+appears (M3 work on the shared host was waiting on it).

@@ -486,3 +486,23 @@ removes all of them including the `Include` line.
       re-read and diffed by the implementer.
 - [ ] `ops/RUNBOOK.md` has entries for: user cannot log in, certificate
       rejected, SSH timeout after running. Evidence: entries exist.
+
+### Real-API evidence (M2, 2026-09-20/21)
+
+- Login against the real Logto: device code (I-101) with the App ID
+  (I-99) and the api audience on the device grant (I-102); the owner's
+  laptop and the conductor's box both logged in on v0.1.3/v0.1.4.
+- `install.sh`: the owner installed v0.1.4 with it on 2026-09-21 (I-98
+  release).
+- `repose run` end to end on the real api and host-01: the conductor's
+  runs (login, notify, create, build, boot, sync over HTTPS and over the
+  forwarded agent with an SSH origin, stop with snapshot 22 s, start, the
+  `<slug>.repose` alias from a plain terminal, sessions) and the owner's
+  two projects (`nuru-playground`, `age-calculator`: create op to running
+  in about 60 s each with the base closure cached).
+- Dirty-tree refusal, credential sync (`Credentials: gh, git` printed),
+  prompt send and the not-logged-in Claude path: the conductor's runs.
+- Gate findings fixed on the day: I-99, I-101, I-102, I-104, I-106, I-107,
+  I-108, I-109, I-111, I-114, I-127, I-128.
+- Not done on a real laptop: `open PORT`, `open --desktop`, macOS keychain
+  storage, the second person's run (waived for M2 by I-129).
