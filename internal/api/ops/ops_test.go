@@ -461,3 +461,33 @@ func TestDrainAndHelloReconcile(t *testing.T) {
 	h.WaitFor("state reconciled from Hello", func() bool { return h.Project(p.ID).State == "running" })
 	_ = fakehostd.Options{}
 }
+
+// A project whose create failed before CreateGuest has no guest, so its
+// destroy plan is empty; the op must still end with the project destroyed
+// (I-124: the stale smoke row on host-01, and a user's DELETE of such a
+// project, stayed in `error` for ever).
+func TestDestroyWithoutAGuestMarksTheProjectDestroyed(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	u := h.NewUser("dora")
+	p := h.NewProject(u, "dead", "small")
+	pid := p.ID
+	if _, err := h.Pool.Exec(h.Ctx, "update projects set state = 'error', host_id = (select id from hosts limit 1) where id = $1", pid); err != nil {
+		t.Fatal(err)
+	}
+	p = h.Project(pid)
+	if phases := ops.PlanDestroy(p); len(phases) != 0 {
+		t.Fatalf("plan for a guestless project = %v, want empty", phases)
+	}
+	op := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindDestroy, ProjectID: &pid, Phases: ops.PlanDestroy(p)}))
+	if op.State != "done" {
+		t.Fatalf("destroy op: %+v", op)
+	}
+	var state string
+	var destroyedAt *time.Time
+	if err := h.Pool.QueryRow(h.Ctx, "select state, destroyed_at from projects where id = $1", pid).Scan(&state, &destroyedAt); err != nil {
+		t.Fatal(err)
+	}
+	if state != "destroyed" || destroyedAt == nil {
+		t.Fatalf("after an empty-plan destroy: state %q destroyed_at %v", state, destroyedAt)
+	}
+}

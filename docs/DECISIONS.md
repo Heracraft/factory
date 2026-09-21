@@ -2744,3 +2744,27 @@ session in `ssh_sessions`; a per-relay session id in the report would fix
 the count and is an interface change for a later pass. *Rejected:*
 retrying on every error with idempotent bodies (no session id exists to
 make them idempotent).
+
+**I-124. A destroy whose plan is empty still ends with the project
+destroyed.** (m3 integration, 2026-09-21) The smoke project of the
+mistyped base (create failed at the checkout, before `CreateGuest`) could
+not be destroyed: `PlanDestroy` is empty for a project with no guest, the
+op finished `done` at once, and the finaliser that sets `destroyed_at`
+runs only from the `destroy_guest` phase, so the row stayed `error` with
+its host set, and a user's `DELETE /projects/:id` on such a project would
+have left them a dead project counting against their limit. `finish`
+now calls the same finaliser for a `destroy` op whose project is not yet
+destroyed; the phase result path is unchanged.
+`TestDestroyWithoutAGuestMarksTheProjectDestroyed`.
+
+**I-125. guestd's watcher also matches an agent by the executable's
+name.** (m3 integration, 2026-09-21, amends I-122) On base 2026.09.21.1,
+with `node` in gemini's name list, the gemini window still never counted
+as an agent's: node renames its main thread, so `/proc/<pid>/comm` of
+every Gemini CLI process reads `MainThread` (seen in m3-stamp: pids 909,
+919, 1139, 1149, all `MainThread`, all `exe` = node). `treeHasComm` now
+also compares the basename of the `exe` link, which names the binary
+whatever the thread is called; `cmdline` and `environ` stay unread, as
+`docs/SECURITY.md` promises and the strace test pins. Process samples
+keep `comm` as their name. Next base.
+

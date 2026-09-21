@@ -17,6 +17,7 @@ type fakeProc struct {
 	ticks     uint64
 	rssPages  uint64
 	uid       int
+	exe       string // basename of the exe link, when the process has one
 }
 
 func writeProc(t *testing.T, p sysdep.Paths, procs []fakeProc) {
@@ -37,6 +38,11 @@ func writeProc(t *testing.T, p sysdep.Paths, procs []fakeProc) {
 		fields[11] = "0"
 		fields[20] = fmt.Sprint(pr.rssPages)
 		line := fmt.Sprintf("%d (%s) S %s\n", pr.pid, pr.comm, joinFields(fields))
+		if pr.exe != "" {
+			if err := os.Symlink("/nix/store/0000000000000000000000000000000-fake/bin/"+pr.exe, filepath.Join(dir, "exe")); err != nil {
+				t.Fatal(err)
+			}
+		}
 		if err := os.WriteFile(filepath.Join(dir, "stat"), []byte(line), 0o644); err != nil {
 			t.Fatal(err)
 		}

@@ -541,6 +541,13 @@ func (e *Engine) failWithLine(ctx context.Context, op *store.Op, code, msg strin
 
 func (e *Engine) finish(ctx context.Context, op *store.Op) {
 	e.logs.ClearRedactions(op.ID)
+	if op.Kind == KindDestroy && op.ProjectID != nil {
+		// A destroy with no phases (no guest to stop or destroy) still
+		// ends with the project destroyed (I-124).
+		if err := e.markDestroyed(ctx, *op.ProjectID); err != nil {
+			e.log.Error("destroy finalise", "event", "op_done", "op_id", op.ID.String(), "err", err.Error())
+		}
+	}
 	if _, err := e.pool.Exec(ctx, "update ops set state = 'done', finished_at = now(), result = coalesce(result, '{}'::jsonb), reboot_required = $2 where id = $1", op.ID, op.RebootRequired); err != nil {
 		e.log.Error("op done record", "event", "op_done", "op_id", op.ID.String(), "err", err.Error())
 	}

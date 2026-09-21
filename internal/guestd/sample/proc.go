@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
@@ -267,9 +268,26 @@ func (r *procReader) treeHasComm(children map[int][]int, rootPID int, want strin
 		if comm, _, _, ok := r.readStat(strconv.Itoa(pid)); ok && comm == want {
 			return true
 		}
+		// comm is the thread name, which a runtime may rename: node's main
+		// thread is "MainThread", so Gemini CLI's process never read as
+		// `node` and its window was never an agent's (I-125). The
+		// executable's name is read from the exe link, never from cmdline
+		// or environ (docs/SECURITY.md).
+		if r.readExeBase(pid) == want {
+			return true
+		}
 		stack = append(stack, children[pid]...)
 	}
 	return false
+}
+
+// readExeBase is the basename of /proc/<pid>/exe, or "".
+func (r *procReader) readExeBase(pid int) string {
+	target, err := os.Readlink(filepath.Join(r.paths.ProcPID(strconv.Itoa(pid)), "exe"))
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(strings.TrimSuffix(target, " (deleted)"))
 }
 
 // procUID reads the real uid from /proc/<pid>/status, or -1.

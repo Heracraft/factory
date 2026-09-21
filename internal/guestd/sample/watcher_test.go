@@ -372,7 +372,9 @@ func TestTmuxFailureClassification(t *testing.T) {
 func TestHeuristicCompletionForGeminiRunningAsNode(t *testing.T) {
 	procs := []fakeProc{
 		{pid: 200, ppid: 1, comm: "bash"},
-		{pid: 201, ppid: 200, comm: "node", ticks: 5},
+		// node names its main thread MainThread (what host-01 showed, I-125);
+		// the exe link is what says node.
+		{pid: 201, ppid: 200, comm: "MainThread", exe: "node", ticks: 5},
 	}
 	w, run, rec, clk, _ := newWatcherFixture(t, procs)
 	activity := clk.now().Unix()

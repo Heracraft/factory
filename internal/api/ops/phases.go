@@ -733,13 +733,7 @@ func (e *Engine) onResult(ctx context.Context, op *store.Op, phase string, res *
 		if op.Kind != KindDestroy {
 			return nil // restore: the old guest is gone, the new one follows
 		}
-		_, err := e.pool.Exec(ctx, `update projects set state = 'destroyed', destroyed_at = now(), host_id = null, guest_id = null, guest_ip = null, vsock_cid = null where id = $1`, p.ID)
-		if err != nil {
-			return err
-		}
-		e.log.Info("project destroyed", "event", "guest_destroy", "project_id", p.ID.String())
-		_, err = e.pool.Exec(ctx, "update snapshots set expires_at = coalesce(expires_at, now() + interval '30 days') where project_id = $1 and deleted_at is null", p.ID)
-		return err
+		return e.markDestroyed(ctx, p.ID)
 	case PhaseResize:
 		nb, _ := op.Params["volume_bytes"].(float64)
 		_, err := e.pool.Exec(ctx, "update projects set volume_bytes = $2 where id = $1", p.ID, int64(nb))
@@ -861,4 +855,20 @@ func (e *Engine) notifyPlatform(ctx context.Context, projectID uuid.UUID, kind, 
 	if err := e.events.Platform(ctx, projectID, kind, summary); err != nil {
 		e.log.Warn("platform event", "event", "notify_fail", "kind", kind, "project_id", projectID.String(), "err", err.Error())
 	}
+}
+
+// markDestroyed is the end of a destroy: the row keeps its history with
+// destroyed_at set and the last snapshot expires in 30 days (R4-11). It
+// runs from the destroy_guest phase, and from finish for a destroy whose
+// plan was empty because the project never had a guest (a create that
+// failed before CreateGuest), which used to leave the project in `error`
+// for ever (I-124).
+func (e *Engine) markDestroyed(ctx context.Context, projectID uuid.UUID) error {
+	_, err := e.pool.Exec(ctx, `update projects set state = 'destroyed', destroyed_at = now(), host_id = null, guest_id = null, guest_ip = null, vsock_cid = null where id = $1 and destroyed_at is null`, projectID)
+	if err != nil {
+		return err
+	}
+	e.log.Info("project destroyed", "event", "guest_destroy", "project_id", projectID.String())
+	_, err = e.pool.Exec(ctx, "update snapshots set expires_at = coalesce(expires_at, now() + interval '30 days') where project_id = $1 and deleted_at is null", projectID)
+	return err
 }
