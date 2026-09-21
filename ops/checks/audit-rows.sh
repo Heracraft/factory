@@ -11,9 +11,8 @@
 #   secret_put/delete PUT and DELETE a throwaway secret
 #   exec              repose-admin exec (an audited Exec over gRPC and vsock)
 #   project_snapshot  repose-admin projects snapshot (a repose-admin command)
-#   host_add?         not triggered (it mints a join token); host_drain and
-#                     host_undrain are, back to back, on host-01: the
-#                     scheduler places nothing during the seconds between
+#   host_add, host_drain  not triggered (a token minted for nothing; a drain
+#                     refuses placements on a shared host for its seconds)
 #   user_suspend/unsuspend  not triggered: it stops every guest of the user
 #   project_restore   the admin path is audited (`repose-admin projects
 #                     restore`); the user route POST .../restore is not
@@ -50,11 +49,9 @@ export M3_AUDIT_PROBE
 unset M3_AUDIT_PROBE
 # exec (gRPC Exec with an audit id, guestd Exec as dev)
 admin exec "$pid" -- id -un | evidence "repose-admin exec $pid -- id -un"
-# a repose-admin command that changes something reversible: drain/undrain
-hostname=$(admin hosts list | awk 'NR>1 && $0 ~ /ready|draining/ {print $1; exit}')
-admin hosts drain "$hostname" >/dev/null
-admin hosts undrain "$hostname" >/dev/null
-# another admin command on the project
+# a repose-admin command on the project (a host drain would be another,
+# but it refuses placements for the seconds it lasts, which is not a
+# thing to do on a shared host while someone may be creating a guest)
 admin projects snapshot "$pid" | tail -1 | evidence "repose-admin projects snapshot $pid"
 # an operator login on the host: the journal line, and its absence in audit_log
 host_sh "journalctl -t hostd-audit --since '-5 min' --no-pager -o cat | tail -2" | evidence "hostd audit-login journal lines on the host (the login this script's own ssh made)"
@@ -62,7 +59,7 @@ host_sh "journalctl -t hostd-audit --since '-5 min' --no-pager -o cat | tail -2"
 sleep 3
 psql_q "select action, count(*), min(actor), min(target) from audit_log where ts >= '$since' group by action order by action" | evidence "audit_log rows since $since, by action"
 admin audit --since 1h | head -40 | evidence "repose-admin audit --since 1h (head)"
-for a in cert_issue cert_revoke secret_put secret_delete exec host_drain host_undrain project_snapshot; do
+for a in cert_issue cert_revoke secret_put secret_delete exec project_snapshot; do
 	n=$(psql_q "select count(*) from audit_log where ts >= '$since' and action='$a'")
 	[ "$n" != "0" ] || fail "no audit_log row for $a"
 	log "ok: $a: $n row(s)"
