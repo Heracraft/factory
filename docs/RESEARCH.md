@@ -702,6 +702,13 @@ held the base closure.
 | `POST /certs/revoke` to the gateway refusing that certificate | 7 s (the gateway's 30 s revocation poll) |
 | `repose-admin projects destroy` of a running small guest (stop with snapshot, DestroyGuest) | about 60 s (23:45:48 to 23:46:19 for `stopping`, the row gone by 23:46:19) |
 | `repose-admin hosts smoke host-01` on base 2026.09.21.1 (the api driving every op) | create 43.1 s, snapshot 17.0 s, stop 5.0 s (no snapshot), start 14.5 s, destroy 21.1 s |
+| api-grpc SIGKILLed 8 s into a build (the crash row of 05 §9) | container back in 6 s (Docker's restart policy), hostd `stream_connect` 33 s after the kill, the build op done with no lost command; a `docker kill` instead left the container `Exited (137)` for as long as nobody started it (RUNBOOK) |
+| api restarted 3 s into a snapshot op | op re-driven and done 15 s after the restart; an attached session saw 0 gaps |
+| Snapshot expiry, first delete after the api's identity got Blob delete (I-131): four aged rows of one project | all four deleted in the same second (01:58:24Z), each `snapshot_expired` 1 s later; a snapshot under a running restore kept until the restore's op finished, then deleted at the next run |
+| `repose snapshots restore` of a 1.5 MB snapshot over a stopped small volume, to `running` | 26 s (the op), 45 s to `running` through the CLI's poll |
+| Security base publish to the sweep's first build op (basebump's ten-minute tick) | 4 min 21 s (02:08:16 to 02:12:37Z) and 9 min 13 s (02:20:09 to 02:29:22Z); a redeploy of api-grpc inside the window lost the sweep until 04:00 before I-138 |
+| Sweep build of a kernel-changing base (38d1cbf, linux 7.2.6 already in the host store) per project, four projects | 5.2 s each: eval 4.8 s, build 0.35 s; `ApplyConfig` on the running guest: "apply needs reboot", revision `built` with `reboot_required`, nothing rebooted; ntfy delivery of the base_updated event 2 s after the op |
+| `repose stop && repose start` of that project to boot the new kernel | 89 s (02:30:41 to 02:32:10Z; stop with a 1.5 MB snapshot, start onto 7.2.6, `uname -r` 7.2.6, revision `applied`) |
 
 Reading: on a warm host the api path adds nothing measurable over the
 hostd numbers of §11; the 5 s menu apply is the eval of an already-built
