@@ -26,6 +26,7 @@ import (
 var notifyKinds = map[string]bool{
 	"completed": true, "needs_input": true, "error": true,
 	"billing_stopped": true, "base_updated": true, "base_update_failed": true, "snapshot_failed": true, "host_moved": true,
+	"destroy_failed":       true,
 	"notifications_paused": true,
 }
 

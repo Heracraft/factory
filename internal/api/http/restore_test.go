@@ -1,0 +1,126 @@
+package httpapi_test
+
+import (
+	"testing"
+)
+
+// TestRestoreByName is I-167: after a destroy, the project is listed
+// under /projects/destroyed with its snapshot and expiry, and
+// POST /projects/restore {slug} brings it back under the same name, with
+// its remote; a taken name is a 409 the CLI can ask about; a project with
+// nothing left to restore is a 404 that says so.
+func TestRestoreByName(t *testing.T) {
+	e := newEnv(t)
+	ctx := e.h.Ctx
+	tok := e.signIn(t, "sub-rita", "rita")
+	if _, err := e.h.Pool.Exec(ctx, "update users set has_card = true where logto_sub = 'sub-rita'"); err != nil {
+		t.Fatal(err)
+	}
+	r := e.do(t, tok, "POST", "/projects", map[string]any{"name": "izma", "class": "large", "remote_url": "github.com/rita/izma"})
+	if r.status != 201 {
+		t.Fatalf("create: %d %s", r.status, r.raw)
+	}
+	pid := r.body["id"].(string)
+	if op := e.waitOp(t, r); op.State != "done" {
+		t.Fatalf("create op: %+v", op.Error)
+	}
+
+	// Nothing destroyed yet.
+	if r := e.do(t, tok, "GET", "/projects/destroyed", nil); r.status != 200 || len(r.list) != 0 {
+		t.Fatalf("destroyed list before a destroy: %d %s", r.status, r.raw)
+	}
+
+	r = e.do(t, tok, "DELETE", "/projects/"+pid, nil)
+	if r.status != 202 {
+		t.Fatalf("destroy: %d %s", r.status, r.raw)
+	}
+	// The project reads destroying from the moment the DELETE answers
+	// (or is already gone): never running while the CLI has moved on.
+	if g := e.do(t, tok, "GET", "/projects/"+pid, nil); g.status == 200 && g.body["state"] != "destroying" {
+		t.Fatalf("state right after DELETE: %v", g.body["state"])
+	}
+	if op := e.waitOp(t, r); op.State != "done" {
+		t.Fatalf("destroy op: %+v", op.Error)
+	}
+
+	r = e.do(t, tok, "GET", "/projects/destroyed", nil)
+	if r.status != 200 || len(r.list) != 1 {
+		t.Fatalf("destroyed list: %d %s", r.status, r.raw)
+	}
+	d := r.list[0].(map[string]any)
+	snap, _ := d["snapshot"].(map[string]any)
+	if d["slug"] != "izma" || d["name_free"] != true || d["restorable_until"] == nil || snap == nil || snap["reason"] != "stop" {
+		t.Fatalf("destroyed entry: %s", r.raw)
+	}
+
+	// Unknown name, bad body.
+	if r := e.do(t, tok, "POST", "/projects/restore", map[string]any{"slug": "nope"}); r.status != 404 {
+		t.Fatalf("unknown slug: %d %s", r.status, r.raw)
+	}
+	if r := e.do(t, tok, "POST", "/projects/restore", map[string]any{}); r.status != 400 {
+		t.Fatalf("empty body: %d %s", r.status, r.raw)
+	}
+
+	// By name, same name, same remote.
+	r = e.do(t, tok, "POST", "/projects/restore", map[string]any{"slug": "IZMA"})
+	if r.status != 202 || r.body["slug"] != "izma" || r.body["snapshot_id"] != snap["id"] || r.body["from_project_id"] != pid {
+		t.Fatalf("restore by name: %d %s", r.status, r.raw)
+	}
+	newID := r.body["project_id"].(string)
+	if op := e.waitOp(t, r); op.State != "done" {
+		t.Fatalf("restore op: %+v", op.Error)
+	}
+	g := e.do(t, tok, "GET", "/projects/"+newID, nil)
+	if g.status != 200 || g.body["state"] != "running" || g.body["remote_url"] != "github.com/rita/izma" {
+		t.Fatalf("restored project: %d %s", g.status, g.raw)
+	}
+	// The destroyed entry now says its name is taken.
+	r = e.do(t, tok, "GET", "/projects/destroyed", nil)
+	if len(r.list) != 1 || r.list[0].(map[string]any)["name_free"] != false {
+		t.Fatalf("destroyed list after the restore: %s", r.raw)
+	}
+
+	// izma is live again, so `restore izma` means the live one: its newest
+	// snapshot, and the name is taken.
+	if r := e.do(t, tok, "POST", "/projects/"+newID+"/snapshots", nil); r.status != 202 {
+		t.Fatalf("snapshot: %d %s", r.status, r.raw)
+	} else if op := e.waitOp(t, r); op.State != "done" {
+		t.Fatalf("snapshot op: %+v", op.Error)
+	}
+	r = e.do(t, tok, "POST", "/projects/restore", map[string]any{"slug": "izma"})
+	if r.status != 409 || errCode(r) != "conflict" {
+		t.Fatalf("restore onto a taken name: %d %s", r.status, r.raw)
+	}
+	if det, _ := r.body["error"].(map[string]any)["detail"].(map[string]any); det["reason"] != "name_taken" || det["name"] != "izma" {
+		t.Fatalf("taken-name detail: %s", r.raw)
+	}
+	// An older snapshot of the destroyed one, under another name; the
+	// remote stays with the live project.
+	r = e.do(t, tok, "POST", "/projects/restore", map[string]any{"snapshot_id": snap["id"], "name": "izma-old"})
+	if r.status != 202 || r.body["from_project_id"] != pid {
+		t.Fatalf("restore a named snapshot as another name: %d %s", r.status, r.raw)
+	}
+	if op := e.waitOp(t, r); op.State != "done" {
+		t.Fatalf("restore op: %+v", op.Error)
+	}
+	if g := e.do(t, tok, "GET", "/projects/"+r.body["project_id"].(string), nil); g.body["remote_url"] != nil {
+		t.Fatalf("a second project took the live one's remote: %s", g.raw)
+	}
+
+	// Another user's snapshot id is not found.
+	other := e.signIn(t, "sub-otto", "otto")
+	if r := e.do(t, other, "POST", "/projects/restore", map[string]any{"snapshot_id": snap["id"]}); r.status != 404 {
+		t.Fatalf("someone else's snapshot: %d %s", r.status, r.raw)
+	}
+
+	// A destroyed project whose snapshots are gone cannot be restored.
+	if _, err := e.h.Pool.Exec(ctx, "update snapshots set expires_at = now() - interval '1 day' where project_id = $1", pid); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.do(t, tok, "GET", "/projects/destroyed", nil); len(r.list) != 0 {
+		t.Fatalf("an expired destroy is still listed: %s", r.raw)
+	}
+	if r := e.do(t, tok, "POST", "/projects/restore", map[string]any{"project_id": pid}); r.status != 404 {
+		t.Fatalf("restore of an expired destroy: %d %s", r.status, r.raw)
+	}
+}

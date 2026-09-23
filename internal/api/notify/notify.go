@@ -357,7 +357,7 @@ func (n *Ntfy) Send(ctx context.Context, m Message) error {
 	switch m.Kind {
 	case "needs_input":
 		prio, tag = "5", "question"
-	case "error", "snapshot_failed", "base_update_failed", "billing_stopped":
+	case "error", "snapshot_failed", "base_update_failed", "billing_stopped", "destroy_failed":
 		prio, tag = "4", "x"
 	}
 	req.Header.Set("Priority", prio)

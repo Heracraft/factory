@@ -1,11 +1,9 @@
 package httpapi
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/heracraft/repose/internal/api/ops"
 	"github.com/heracraft/repose/internal/api/store"
@@ -74,57 +72,16 @@ func (s *Server) restoreSnapshot(w http.ResponseWriter, r *http.Request) error {
 	if err := s.billingGate(u); err != nil {
 		return err
 	}
-	target := src
 	if body.AsNewProject != nil {
-		name := *body.AsNewProject
-		if !nameRe.MatchString(name) || Slug(name) == "" {
-			return errf("invalid", "as_new_project must match [A-Za-z0-9._-]{1,64}")
-		}
-		newID := store.NewID()
-		rid := store.NewID()
-		err := db.InTx(ctx, s.d.Pool, func(tx db.Tx) error {
-			var count int
-			if err := tx.QueryRow(ctx, "select count(*) from projects where user_id = (select id from users where id = $1 for update) and destroyed_at is null", u.ID).Scan(&count); err != nil {
-				return err
-			}
-			if count >= u.ProjectLimit {
-				return withDetail(errf("invalid", "you have %d of %d projects", count, u.ProjectLimit), map[string]any{"limit": u.ProjectLimit})
-			}
-			_, err := tx.Exec(ctx, `insert into projects (id, user_id, name, slug, class, state, volume_bytes, tz, agent_default, base_version, config_revision_id) values ($1, $2, $3, $4, $5, 'stopped', $6, $7, $8, $9, $10)`,
-				newID, u.ID, name, Slug(name), src.Class, src.VolumeBytes, src.TZ, src.AgentDefault, src.BaseVersion, rid)
-			if err != nil {
-				var pgErr *pgconn.PgError
-				if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-					return errf("conflict", "a project named %s already exists", Slug(name))
-				}
-				return err
-			}
-			if src.ConfigRevisionID != nil {
-				cur, err := store.GetRevision(ctx, tx, *src.ConfigRevisionID)
-				if err != nil {
-					return err
-				}
-				// A destroyed project's closure lost its GC roots with its
-				// guest (DECISIONS I-115), so the copy carries no closure
-				// and the restore plan rebuilds before it boots.
-				if src.DestroyedAt != nil {
-					cur.SystemClosure, cur.ClosureBytes = nil, nil
-				}
-				_, err = tx.Exec(ctx, "insert into config_revisions (id, project_id, fragment, menu, base_version, status, system_closure, closure_bytes, kernel_changed, built_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())",
-					rid, newID, cur.Fragment, cur.Menu, cur.BaseVersion, revisionStatusForCopy(cur), cur.SystemClosure, cur.ClosureBytes, cur.KernelChanged)
-				return err
-			}
-			_, err = tx.Exec(ctx, "insert into config_revisions (id, project_id, fragment, status) values ($1, $2, $3, 'building')", rid, newID, DefaultFragment)
-			return err
-		})
+		target, id, err := s.restoreAsNew(ctx, u, src, snap, *body.AsNewProject, start)
 		if err != nil {
 			return err
 		}
-		target, err = store.GetProject(ctx, s.d.Pool, newID)
-		if err != nil {
-			return err
-		}
-	} else if src.State != "stopped" && src.State != "error" {
+		writeJSON(w, http.StatusAccepted, map[string]any{"op_id": id, "project_id": target.ID})
+		return nil
+	}
+	target := src
+	if src.State != "stopped" && src.State != "error" {
 		return errf("conflict", "%s must be stopped before a restore replaces its volume", src.Slug)
 	}
 	hasClosure := false

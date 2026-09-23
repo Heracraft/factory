@@ -262,7 +262,7 @@ func (f *Fake) run(p *project) {
 		p.GuestIP = fmt.Sprintf("10.64.4.%d", 10+f.ipSeq)
 	}
 	p.StartedAt = &now
-	p.Signals = &Signals{Agents: []AgentSignal{}}
+	p.Signals = &Signals{Agents: []AgentSignal{}, GuestdOK: true}
 	f.event(p, "guest.started", "", "guest started on "+hostID)
 }
 
@@ -434,11 +434,19 @@ func (f *Fake) destroyProject(w http.ResponseWriter, r *http.Request) *apiError 
 	if p.State == "running" {
 		f.stop(p, false)
 	}
-	f.snapshot(p, "destroy")
+	// The real destroy stops, then snapshots the stopped volume (I-165).
+	f.snapshot(p, "stop")
 	p.State = "destroyed"
 	p.HostID = ""
 	p.destroyed = true
+	p.destroyedAt = f.now()
 	p.retained = f.now().Add(retentionDays * 24 * time.Hour)
+	for _, s := range p.snapshots {
+		if s.ExpiresAt == nil {
+			t := p.retained
+			s.ExpiresAt = &t
+		}
+	}
 	f.event(p, "project.destroyed", "", "volume deleted, last snapshot kept 30 days")
 	// api.md: 202 {op_id, state} (I-156); the fake's ops finish at once.
 	writeJSON(w, http.StatusAccepted, map[string]string{"op_id": o.id, "state": o.State})
@@ -952,12 +960,12 @@ func (f *Fake) restoreSnapshot(w http.ResponseWriter, r *http.Request) *apiError
 		return notFound("snapshot")
 	}
 	if body.AsNewProject != "" {
-		np, e := f.create(u, body.AsNewProject, "", p.Class)
+		np, e := f.restoreAsNew(u, p, snap, body.AsNewProject)
 		if e != nil {
 			return e
 		}
-		f.event(np, "volume.restored", "", "restored from snapshot "+snap.ID+" of "+p.Name)
-		return opResult(w, f.newOp(np, "restore"))
+		writeJSON(w, http.StatusAccepted, map[string]string{"op_id": f.newOp(np, "restore").id, "project_id": np.ID})
+		return nil
 	}
 	if p.State != "stopped" {
 		return invalid("restore in place requires the project to be stopped").withDetail(map[string]any{"state": p.State})
@@ -965,6 +973,132 @@ func (f *Fake) restoreSnapshot(w http.ResponseWriter, r *http.Request) *apiError
 	o := f.newOp(p, "restore")
 	f.event(p, "volume.restored", "", "volume replaced from snapshot "+snap.ID)
 	return opResult(w, o)
+}
+
+// restoreAsNew is the as-new restore: a new project from p's class and,
+// when no live project has it, p's remote (I-167).
+func (f *Fake) restoreAsNew(u *userRec, p *project, snap *Snapshot, name string) (*project, *apiError) {
+	remote := p.RemoteURL
+	for _, q := range f.userProjects(u) {
+		if remote != "" && q.RemoteURL == remote {
+			remote = ""
+		}
+		if q.Slug == slugOf(name) {
+			return nil, errf("conflict", "a project named %s already exists; pick another name for the restored one", slugOf(name)).withDetail(map[string]any{"reason": "name_taken", "name": slugOf(name)})
+		}
+	}
+	np, e := f.create(u, name, remote, p.Class)
+	if e != nil {
+		return nil, e
+	}
+	f.event(np, "volume.restored", "", "restored from snapshot "+snap.ID+" of "+p.Name)
+	return np, nil
+}
+
+// restorable is p's newest snapshot that has not expired, or nil.
+func (f *Fake) restorable(p *project) *Snapshot {
+	var best *Snapshot
+	for _, s := range p.snapshots {
+		if s.ExpiresAt != nil && !s.ExpiresAt.After(f.now()) {
+			continue
+		}
+		if best == nil || !s.CreatedAt.Before(best.CreatedAt) {
+			best = s
+		}
+	}
+	return best
+}
+
+// listDestroyed is GET /projects/destroyed (I-167).
+func (f *Fake) listDestroyed(w http.ResponseWriter, r *http.Request) *apiError {
+	u := userFrom(r)
+	live := map[string]bool{}
+	for _, p := range f.userProjects(u) {
+		live[p.Slug] = true
+	}
+	out := []DestroyedProject{}
+	for _, p := range f.projects {
+		if p.owner != u.ID || !p.destroyed {
+			continue
+		}
+		s := f.restorable(p)
+		if s == nil {
+			continue
+		}
+		out = append(out, DestroyedProject{ID: p.ID, Name: p.Name, Slug: p.Slug, Class: p.Class, RemoteURL: p.RemoteURL,
+			VolumeBytes: p.VolumeBytes, DestroyedAt: p.destroyedAt, NameFree: !live[p.Slug], RestorableUntil: s.ExpiresAt, Snapshot: *s})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].DestroyedAt.After(out[j].DestroyedAt) })
+	writeJSON(w, http.StatusOK, out)
+	return nil
+}
+
+// restoreByName is POST /projects/restore (I-167).
+func (f *Fake) restoreByName(w http.ResponseWriter, r *http.Request) *apiError {
+	var body struct {
+		Slug       string  `json:"slug"`
+		ProjectID  string  `json:"project_id"`
+		SnapshotID string  `json:"snapshot_id"`
+		Name       *string `json:"name"`
+		Start      *bool   `json:"start"`
+	}
+	if e := decodeBody(r, &body, false); e != nil {
+		return e
+	}
+	u := userFrom(r)
+	if body.Slug == "" && body.ProjectID == "" && body.SnapshotID == "" {
+		return invalid("name the project (slug or project_id) or the snapshot (snapshot_id) to restore")
+	}
+	var src *project
+	var snap *Snapshot
+	switch {
+	case body.SnapshotID != "":
+		for _, p := range f.projects {
+			for _, s := range p.snapshots {
+				if s.ID == body.SnapshotID && p.owner == u.ID && (s.ExpiresAt == nil || s.ExpiresAt.After(f.now())) {
+					src, snap = p, s
+				}
+			}
+		}
+		if src == nil || (body.Slug != "" && slugOf(body.Slug) != src.Slug) || (body.ProjectID != "" && body.ProjectID != src.ID) {
+			return errf("not_found", "that snapshot does not exist or has expired")
+		}
+	default:
+		var cands []*project
+		for _, p := range f.projects {
+			if p.owner != u.ID || (body.ProjectID != "" && p.ID != body.ProjectID) || (body.ProjectID == "" && p.Slug != slugOf(body.Slug)) {
+				continue
+			}
+			if !p.destroyed && body.ProjectID == "" {
+				cands = []*project{p} // a live project with the name is the one meant
+				break
+			}
+			cands = append(cands, p)
+		}
+		if len(cands) == 0 {
+			return errf("not_found", "you have no project called %s", slugOf(body.Slug))
+		}
+		for _, p := range cands {
+			if s := f.restorable(p); s != nil && (snap == nil || s.CreatedAt.After(snap.CreatedAt)) {
+				src, snap = p, s
+			}
+		}
+		if snap == nil {
+			return errf("not_found", "%s has no snapshot left to restore", cands[0].Slug).withDetail(map[string]any{"reason": "no_snapshot"})
+		}
+	}
+	name := src.Name
+	if body.Name != nil {
+		name = *body.Name
+	}
+	np, e := f.restoreAsNew(u, src, snap, name)
+	if e != nil {
+		return e
+	}
+	o := f.newOp(np, "restore")
+	writeJSON(w, http.StatusAccepted, map[string]any{"op_id": o.id, "project_id": np.ID, "name": np.Name, "slug": np.Slug,
+		"snapshot_id": snap.ID, "snapshot_created_at": snap.CreatedAt, "from_project_id": src.ID})
+	return nil
 }
 
 // Events and logs.
@@ -1171,7 +1305,7 @@ func (f *Fake) internalSessions(w http.ResponseWriter, r *http.Request) *apiErro
 	}
 	f.sessions = append(f.sessions, SessionReport{ProjectID: body.ProjectID, Event: body.Event, CertSerial: body.CertSerial})
 	if p.Signals == nil {
-		p.Signals = &Signals{Agents: []AgentSignal{}}
+		p.Signals = &Signals{Agents: []AgentSignal{}, GuestdOK: true}
 	}
 	if body.Event == "opened" {
 		p.Signals.SSHSessions++

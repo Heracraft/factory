@@ -167,9 +167,15 @@ The `create` op:
 `start`, `stop`, `destroy`, `resize`, `snapshot`, `restore` are ops of the
 same shape, each mapping to one or two hostd commands. `stop` sends
 `StopGuest{snapshot_first: true}` unless `snapshot: false` in the body.
-`destroy` sends `DestroyGuest{keep_volume: false}` after a final
-`Snapshot{reason: manual}` whose row gets `expires_at = now() + 30 days`,
-then sets `destroyed_at`.
+`destroy` sets the project `destroying` in the DELETE's transaction, sends
+`StopGuest{snapshot_first: false}` (skipped when already stopped), then a
+final `Snapshot{reason: stop}` of the stopped volume whose row gets
+`expires_at = now() + 30 days`, then `DestroyGuest{keep_volume: false}`,
+then sets `destroyed_at` (DECISIONS I-165). A failed destroy leaves the
+project in `error` with `last_error` and a `destroy_failed` event.
+`GET /projects/destroyed` and `POST /projects/restore` (I-167) list the
+destroyed projects that can still be restored and restore one by name as
+a new project.
 
 `PATCH /projects/:id {class}` requires `state = stopped`; it updates the
 reservation and the next `start` uses the new class.
@@ -613,5 +619,12 @@ waits on host-01 (`ops/checks/README.md` names the script that closes it).
       events", "api: snapshot deleted under a restore", "api: rollup or
       expiry not running on one replica", "api: user reports \"account
       suspended\"".
+- [ ] A destroy of a running project on host-01 reads `destroying` at
+      once and ends with a `stop`-reason snapshot expiring in 30 days,
+      and `POST /projects/restore {slug}` brings it back under its name
+      (I-165, I-167). Evidence: `repose projects` right after `repose
+      destroy`, the destroy op's phases, and `repose restore NAME`
+      reaching `running`; locally `TestRestoreByName` and
+      `TestDestroyStopsFirstAndReportsItsFailure` pass.
 - [x] `docs/DECISIONS.md` carries I-2 (separate gRPC app) and I-3 (guest
       host keys in CreateGuest). Evidence: the entries.

@@ -402,6 +402,22 @@ func GetSnapshot(ctx context.Context, q Querier, id uuid.UUID) (*Snapshot, error
 	return one[Snapshot](ctx, q, "select "+snapshotCols+" from snapshots where id = $1", id)
 }
 
+// ListUserProjectsBySlug lists every project of the user with that slug,
+// live first, then destroyed ones newest destroy first (I-167).
+func ListUserProjectsBySlug(ctx context.Context, q Querier, userID uuid.UUID, slug string) ([]Project, error) {
+	return many[Project](ctx, q, "select "+projectCols+" from projects where user_id = $1 and slug = $2 order by destroyed_at desc nulls first, created_at desc", userID, slug)
+}
+
+// RestorableSnapshotWhere is a snapshot (aliased s) that can still be
+// restored: not deleted by the retention job and not past its expiry.
+const RestorableSnapshotWhere = `s.deleted_at is null and (s.expires_at is null or s.expires_at > now())`
+
+// NewestRestorableSnapshot is a project's newest snapshot that can still
+// be restored, or db.ErrNotFound.
+func NewestRestorableSnapshot(ctx context.Context, q Querier, projectID uuid.UUID) (*Snapshot, error) {
+	return one[Snapshot](ctx, q, "select "+snapshotCols+" from snapshots s where s.project_id = $1 and "+RestorableSnapshotWhere+" order by s.taken_at desc, s.created_at desc limit 1", projectID)
+}
+
 // ListSnapshots lists a project's live snapshots, newest first.
 func ListSnapshots(ctx context.Context, q Querier, projectID uuid.UUID) ([]Snapshot, error) {
 	return many[Snapshot](ctx, q, "select "+snapshotCols+" from snapshots where project_id = $1 and deleted_at is null order by taken_at desc, created_at desc", projectID)

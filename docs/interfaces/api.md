@@ -29,9 +29,11 @@ unique; it is the second half of the SSH login name.
 |---|---|---|
 | GET | `/projects` | `[Project]` |
 | POST | `/projects` | `{name, remote_url?, class, tz?}` → `Project` (409 if `(user, remote_url)` or `(user, name)` exists) |
+| GET | `/projects/destroyed` | `[DestroyedProject]`: the user's destroyed projects that still have a restorable snapshot, newest destroy first (I-167). New in this release |
+| POST | `/projects/restore` | `{slug \| project_id \| snapshot_id, name?, start?: bool=true}` → `202 {op_id, project_id, name, slug, snapshot_id, snapshot_created_at, from_project_id}`. Restores as a new project called `name` (default: the source's name). `slug` means the live project with that slug if there is one, else the user's destroyed projects with it; the newest restorable snapshot among them is used unless `snapshot_id` names one. `404 not_found` when nothing can be restored (`detail.reason: "no_snapshot"` when the project exists); `409 conflict` with `detail: {reason: "name_taken", name}` when a live project holds the name. The new project gets the source's class, volume size, configuration and, when no live project has it, its `remote_url` (I-167). New in this release |
 | GET | `/projects/:id` | `Project` |
 | PATCH | `/projects/:id` | `{class?, hold_base_updates?, agent_default?}` (class change requires stopped) |
-| DELETE | `/projects/:id` | destroy (volume deleted, last snapshot kept 30 days) → `202 {op_id, state}`; the destroy is finished only when that op is `done` (`GET /projects/:id` then answers `404`). A DELETE while a destroy op is open answers with that op. A dead guestd does not fail it (I-156). `state` is new in this release; `op_id` was always there |
+| DELETE | `/projects/:id` | destroy (volume deleted, last snapshot kept 30 days) → `202 {op_id, state}`; the destroy is finished only when that op is `done` (`GET /projects/:id` then answers `404`). The project's state is `destroying` from the moment the DELETE answers; the op stops the guest, snapshots the stopped volume (reason `stop`) and deletes it (I-165). A failed destroy leaves the project in `error` with `last_error` and records a `destroy_failed` event, which notifies. A DELETE while a destroy op is open answers with that op. A dead guestd does not fail it (I-156). `state` is new in the previous release; `op_id` was always there |
 | POST | `/projects/:id/start` | → `{op_id, restart}`; `restart: true` when the project was in `error` or running with its guestd not answering, and the op stops and reboots it on its newest built revision (I-157). `restart` is new in this release |
 | POST | `/projects/:id/stop` | `{snapshot: bool=true}` → `{op_id}` |
 | GET | `/projects/:id/ops/:op_id` | `{state: pending\|running\|done\|error, error?: {code, message, detail?, fragment_line?}, log_url?}`; `message` is the sentence to show the user, `detail` the host's own wording for operators (I-159). Answers for a destroyed project's ops too |
@@ -43,9 +45,26 @@ unique; it is the second half of the SSH login name.
 Project { id, name, slug, remote_url, class, state, host_id?, guest_ip?,
           agent_default, hold_base_updates, base_version, config_revision_id,
           volume_bytes, disk_used_bytes?, created_at, started_at?,
-          signals?: {ssh_sessions, tmux_clients, agents: [{agent, window, state}]},
-          cost_today_cents, cost_month_cents, last_snapshot_at? }
+          signals?: {ssh_sessions, tmux_clients, agents: [{agent, window, state}],
+                     guestd_ok},
+          cost_today_cents, cost_month_cents, last_snapshot_at?,
+          last_error?, host_unreachable }
+
+DestroyedProject { id, name, slug, class, remote_url?, volume_bytes,
+          destroyed_at, name_free, restorable_until?,
+          snapshot: {id, created_at, bytes, reason, expires_at?} }
 ```
+
+`last_error` is the sentence the last failed op left (I-159), `null`
+once an op succeeds; `host_unreachable` is true while the project's host
+has missed heartbeats for 90 seconds; `signals.guestd_ok` is false when
+the newest sample found the environment's agent not answering (I-157).
+The api has returned all three since I-157/I-159; they are documented
+here since I-167. `signals` is absent until the first sample.
+
+A `DestroyedProject`'s `snapshot` is its newest restorable snapshot and
+`restorable_until` that snapshot's `expires_at` (30 days after the
+destroy); `name_free` says whether a restore can take the old name.
 
 `slug` is `name` lowercased, `[a-z0-9-]`, unique per user; it is the first
 half of the SSH login name and the tmux session name.
@@ -86,7 +105,7 @@ sshd material (delivered by hostd into the same tmpfs from the explicit
 |---|---|---|
 | GET | `/projects/:id/snapshots` | `[{id, created_at, bytes, reason}]` |
 | POST | `/projects/:id/snapshots` | manual snapshot → `{op_id}` |
-| POST | `/projects/:id/snapshots/:sid/restore` | `{as_new_project?: name}` → `{op_id}`; without `as_new_project`, replaces the stopped project's volume |
+| POST | `/projects/:id/snapshots/:sid/restore` | `{as_new_project?: name, start?: bool=true}` → `{op_id, project_id}`; without `as_new_project`, replaces the stopped project's volume. `:id` may be a destroyed project. `POST /projects/restore` is the same restore resolved by name |
 
 ## Events and logs
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -64,18 +65,20 @@ func PlanStart(pendingRevision bool) []string {
 // PlanStop is one stop.
 func PlanStop() []string { return []string{PhaseStopGuest} }
 
-// PlanDestroy takes a final snapshot (stopping first when running) and
-// destroys; a project that never got a guest has nothing to send.
+// PlanDestroy stops the guest (without a snapshot), takes the final
+// snapshot of the stopped volume and destroys (I-165); a project that
+// never got a guest has nothing to send. A stopped guest skips the stop.
+// Stopping first ends the guest's hours and sessions at once and gives a
+// clean snapshot without guestd's freeze, which also makes a dead guestd
+// (I-156) the ordinary path rather than a recovery.
 func PlanDestroy(p *store.Project) []string {
 	if p.GuestID == nil || p.HostID == nil {
 		return []string{}
 	}
-	switch p.State {
-	case "running", "starting", "stopping":
-		return []string{PhaseStopGuest, PhaseDestroyGuest}
-	default:
+	if p.State == "stopped" {
 		return []string{PhaseSnapshot, PhaseDestroyGuest}
 	}
+	return []string{PhaseStopGuest, PhaseSnapshot, PhaseDestroyGuest}
 }
 
 // PlanResize is one resize.
@@ -294,11 +297,19 @@ func (e *Engine) buildCommand(ctx context.Context, op *store.Op, phase string) (
 		if p.GuestID == nil || p.HostID == nil {
 			return nil, uuid.Nil, true, nil
 		}
-		snap := true
+		// A destroy's stop does not snapshot when a snapshot phase follows
+		// it (I-165); a destroy enqueued before I-165 with the old plan
+		// (stop, destroy) still takes its snapshot in the stop. Every other
+		// stop snapshots unless told not to.
+		snap := op.Kind != KindDestroy || !slices.Contains(phases(op), PhaseSnapshot)
 		if v, ok := op.Params["snapshot"].(bool); ok {
 			snap = v
 		}
-		if err := e.setState(ctx, p, "stopping"); err != nil {
+		state := "stopping"
+		if op.Kind == KindDestroy {
+			state = "destroying" // the user asked for a destroy; that is what every list shows
+		}
+		if err := e.setState(ctx, p, state); err != nil {
 			return nil, uuid.Nil, false, err
 		}
 		return &hostdv1.Command{CommandId: newCommandID(), Cmd: &hostdv1.Command_StopGuest{StopGuest: &hostdv1.StopGuest{GuestId: p.GuestID.String(), SnapshotFirst: snap, TimeoutS: 60}}}, *p.HostID, false, nil
@@ -306,9 +317,11 @@ func (e *Engine) buildCommand(ctx context.Context, op *store.Op, phase string) (
 		if p.GuestID == nil || p.HostID == nil {
 			return nil, uuid.Nil, true, nil
 		}
-		reason := "manual"
-		if r, ok := op.Params["reason"].(string); ok && r != "" {
-			reason = r
+		reason := snapshotReason(op)
+		if op.Kind == KindDestroy {
+			if err := e.setState(ctx, p, "destroying"); err != nil {
+				return nil, uuid.Nil, false, err
+			}
 		}
 		return &hostdv1.Command{CommandId: newCommandID(), Cmd: &hostdv1.Command_Snapshot{Snapshot: &hostdv1.Snapshot{GuestId: p.GuestID.String(), Reason: reason}}}, *p.HostID, false, nil
 	case PhaseDestroyGuest:
@@ -362,6 +375,19 @@ func (e *Engine) buildCommand(ctx context.Context, op *store.Op, phase string) (
 		return &hostdv1.Command{CommandId: newCommandID(), Cmd: &hostdv1.Command_Exec{Exec: &hostdv1.Exec{GuestId: p.GuestID.String(), Argv: argv, TimeoutS: uint32(timeout), AuditId: op.AuditID.String()}}}, *p.HostID, false, nil
 	}
 	return nil, uuid.Nil, false, fmt.Errorf("unknown phase %q", phase)
+}
+
+// snapshotReason is the reason a snapshot phase records: the op's, else
+// `stop` for a destroy's final snapshot (taken of the stopped volume,
+// I-165) and `manual` for anything else.
+func snapshotReason(op *store.Op) string {
+	if r, ok := op.Params["reason"].(string); ok && r != "" {
+		return r
+	}
+	if op.Kind == KindDestroy {
+		return "stop"
+	}
+	return "manual"
 }
 
 func (e *Engine) setState(ctx context.Context, p *store.Project, state string) error {
@@ -834,11 +860,7 @@ func (e *Engine) onResult(ctx context.Context, op *store.Op, phase string, res *
 		if s == nil || s.BlobPath == "" {
 			return errors.New("snapshot result without a blob path")
 		}
-		reason := "manual"
-		if r, ok := op.Params["reason"].(string); ok && r != "" {
-			reason = r
-		}
-		return e.recordSnapshot(ctx, op, p, s.BlobPath, int64(s.Bytes), reason)
+		return e.recordSnapshot(ctx, op, p, s.BlobPath, int64(s.Bytes), snapshotReason(op))
 	case PhaseDestroyGuest:
 		if op.Kind != KindDestroy {
 			return nil // restore: the old guest is gone, the new one follows
@@ -949,7 +971,13 @@ func (e *Engine) onFail(ctx context.Context, op *store.Op, code, msg string, lin
 		// snapshot is reported like any other.
 		_, _ = e.pool.Exec(ctx, "update projects set last_error = $2 where id = $1", p.ID, code+": "+short) // best effort; the op carries the error
 		e.notifyPlatform(ctx, p.ID, "snapshot_failed", "the snapshot after stopping failed: "+short)
-	case op.Kind == KindCreate || op.Kind == KindStart || op.Kind == KindStop || op.Kind == KindDestroy || op.Kind == KindRestore:
+	case op.Kind == KindDestroy:
+		// The CLI no longer waits for a destroy (I-166), so the failure
+		// has to reach the user some other way: the project's state and
+		// reason in every list, and a notification.
+		_, _ = e.pool.Exec(ctx, "update projects set state = 'error', last_error = $2 where id = $1 and state <> 'destroyed'", p.ID, code+": "+short) // best effort; the op carries the error
+		e.notifyPlatform(ctx, p.ID, "destroy_failed", "destroying "+p.Slug+" failed: "+short+". `repose destroy "+p.Slug+"` tries again.")
+	case op.Kind == KindCreate || op.Kind == KindStart || op.Kind == KindStop || op.Kind == KindRestore:
 		if code == "capacity" {
 			_, _ = e.pool.Exec(ctx, "update projects set host_id = null where id = $1", p.ID) // free the placement
 		}

@@ -55,8 +55,9 @@ func kinds(cmds []*hostdv1.Command) string {
 
 // TestDestroyWithDeadGuestdReachesDone is I-156: every destroy of
 // age-calculator failed at step 0 with guest_unresponsive and left the
-// project in error. The op now stops the unit without guestd, snapshots
-// the stopped volume, deletes the guest and ends done.
+// project in error. The op stops the unit without guestd, snapshots the
+// stopped volume, deletes the guest and ends done. Since I-165 that is
+// every destroy's plan, so a dead guestd needs no recovery at all.
 func TestDestroyWithDeadGuestdReachesDone(t *testing.T) {
 	for _, state := range []string{"error", "running"} {
 		t.Run(state, func(t *testing.T) {
@@ -71,11 +72,7 @@ func TestDestroyWithDeadGuestdReachesDone(t *testing.T) {
 				t.Fatalf("destroy: state %s error %+v", op.State, op.Error)
 			}
 			got := kinds(commandsSince(h, n))
-			want := "Snapshot,StopGuest,Snapshot,DestroyGuest"
-			if state == "running" {
-				want = "StopGuest+snap,StopGuest,Snapshot,DestroyGuest"
-			}
-			if got != want {
+			if want := "StopGuest,Snapshot,DestroyGuest"; got != want {
 				t.Fatalf("commands %s, want %s", got, want)
 			}
 			if p := h.Project(pid); p.State != "destroyed" || p.DestroyedAt == nil {
@@ -88,8 +85,11 @@ func TestDestroyWithDeadGuestdReachesDone(t *testing.T) {
 			if len(snaps) != 1 || snaps[0].ExpiresAt == nil || time.Until(*snaps[0].ExpiresAt) < 29*24*time.Hour {
 				t.Fatalf("final snapshot: %+v", snaps)
 			}
-			if r, _ := op.Params["recovered"].(string); !strings.HasSuffix(r, ":guest_unresponsive") {
-				t.Fatalf("op does not record the recovery: %v", op.Params["recovered"])
+			if r, ok := op.Params["recovered"]; ok {
+				t.Fatalf("the ordinary plan needed a recovery: %v", r)
+			}
+			if snaps[0].Reason != "stop" {
+				t.Fatalf("final snapshot reason %q, want stop", snaps[0].Reason)
 			}
 		})
 	}
@@ -252,5 +252,58 @@ func TestUnresponsiveErrorsAreSentences(t *testing.T) {
 	}
 	if h.Project(pid).State != "running" {
 		t.Fatal("a failed snapshot or resize must not change the state")
+	}
+}
+
+// TestDestroyStopsFirstAndReportsItsFailure is I-165: a running project's
+// destroy stops without a snapshot, snapshots the stopped volume (reason
+// stop, 30 days) and destroys; a destroy enqueued with the pre-I-165 plan
+// still snapshots in its stop; and a destroy that fails leaves the project
+// in error with its reason and a destroy_failed event, because the CLI no
+// longer waits to say so (I-166).
+func TestDestroyStopsFirstAndReportsItsFailure(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	u := h.NewUser("cleo")
+
+	p := h.CreateRunning(u, "izma")
+	pid := p.ID
+	n := len(h.Fake.Commands())
+	op := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindDestroy, ProjectID: &pid, Phases: ops.PlanDestroy(p)}))
+	if op.State != "done" {
+		t.Fatalf("destroy: %+v", op.Error)
+	}
+	if got, want := kinds(commandsSince(h, n)), "StopGuest,Snapshot,DestroyGuest"; got != want {
+		t.Fatalf("commands %s, want %s", got, want)
+	}
+	if op.SnapshotID == nil {
+		t.Fatal("the destroy op does not name its final snapshot")
+	}
+
+	old := h.CreateRunning(u, "old-plan")
+	oid := old.ID
+	n = len(h.Fake.Commands())
+	op = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindDestroy, ProjectID: &oid, Phases: []string{ops.PhaseStopGuest, ops.PhaseDestroyGuest}}))
+	if got, want := kinds(commandsSince(h, n)), "StopGuest+snap,DestroyGuest"; op.State != "done" || got != want {
+		t.Fatalf("pre-I-165 plan: %s %s, want %s", op.State, got, want)
+	}
+
+	bad := h.CreateRunning(u, "stuck")
+	bid := bad.ID
+	h.Fake.SetFail("DestroyGuest", "internal")
+	op = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindDestroy, ProjectID: &bid, Phases: ops.PlanDestroy(bad)}))
+	if op.State != "error" {
+		t.Fatalf("destroy with a failing host: %s", op.State)
+	}
+	got := h.Project(bid)
+	if got.State != "error" || got.LastError == nil || got.DestroyedAt != nil {
+		t.Fatalf("after a failed destroy: state %s last_error %v", got.State, got.LastError)
+	}
+	evs, _ := store.ListEvents(h.Ctx, h.Pool, bid, time.Time{}, 50)
+	found := false
+	for _, e := range evs {
+		found = found || (e.Kind == "destroy_failed" && strings.Contains(e.Summary, "repose destroy stuck"))
+	}
+	if !found {
+		t.Fatalf("no destroy_failed event: %+v", evs)
 	}
 }

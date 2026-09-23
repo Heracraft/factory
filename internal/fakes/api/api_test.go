@@ -312,11 +312,37 @@ func TestWalkthrough(t *testing.T) {
 	r = call(t, f, "GET", "/v1/projects/"+p.ID+"/snapshots", tok, nil)
 	want(t, r, 200)
 	r.json(t, &snaps)
-	if len(snaps) != 2 || snaps[1].Reason != "destroy" {
+	if len(snaps) != 2 || snaps[1].Reason != "stop" || snaps[1].ExpiresAt == nil {
 		t.Fatalf("snapshots kept after destroy: %+v", snaps)
+	}
+	// Listed as restorable (I-167).
+	r = call(t, f, "GET", "/v1/projects/destroyed", tok, nil)
+	want(t, r, 200)
+	var gone []DestroyedProject
+	r.json(t, &gone)
+	if len(gone) != 1 || gone[0].Slug != "todo-app" || !gone[0].NameFree || gone[0].Snapshot.ID != snaps[1].ID || gone[0].RestorableUntil == nil {
+		t.Fatalf("destroyed list: %s", r.body)
 	}
 	// The name is free again.
 	mkProject(t, f, tok, "todo-app", "github.com/heracraft/todo-app")
+	// Restoring by name now meets the live todo-app, which has its own
+	// snapshot-less history: nothing to restore under that name...
+	wantErr(t, call(t, f, "POST", "/v1/projects/restore", tok, map[string]any{"slug": "todo-app"}), 404, "not_found")
+	// ...but the destroyed one's id restores under another name.
+	r = call(t, f, "POST", "/v1/projects/restore", tok, map[string]any{"project_id": p.ID})
+	wantErr(t, r, 409, "conflict")
+	r = call(t, f, "POST", "/v1/projects/restore", tok, map[string]any{"project_id": p.ID, "name": "todo-back"})
+	want(t, r, 202)
+	var res struct {
+		OpID       string `json:"op_id"`
+		ProjectID  string `json:"project_id"`
+		Slug       string `json:"slug"`
+		SnapshotID string `json:"snapshot_id"`
+	}
+	r.json(t, &res)
+	if res.OpID == "" || res.Slug != "todo-back" || res.SnapshotID != snaps[1].ID {
+		t.Fatalf("restore by id: %s", r.body)
+	}
 }
 
 func TestOpLogSSE(t *testing.T) {

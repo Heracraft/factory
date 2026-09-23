@@ -424,6 +424,8 @@ func (f *Fake) register() {
 	// Projects.
 	f.handle("GET /v1/projects", f.listProjects)
 	f.handle("POST /v1/projects", f.createProject)
+	f.handle("GET /v1/projects/destroyed", f.listDestroyed)
+	f.handle("POST /v1/projects/restore", f.restoreByName)
 	f.handle("GET /v1/projects/{id}", f.getProject)
 	f.handle("PATCH /v1/projects/{id}", f.patchProject)
 	f.handle("DELETE /v1/projects/{id}", f.destroyProject)

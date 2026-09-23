@@ -37,6 +37,22 @@ type Project struct {
 	CostTodayCents   int64      `json:"cost_today_cents"`
 	CostMonthCents   int64      `json:"cost_month_cents"`
 	LastSnapshotAt   *time.Time `json:"last_snapshot_at,omitempty"`
+	LastError        *string    `json:"last_error"`
+	HostUnreachable  bool       `json:"host_unreachable"`
+}
+
+// DestroyedProject is one row of GET /projects/destroyed (I-167).
+type DestroyedProject struct {
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	Slug            string     `json:"slug"`
+	Class           string     `json:"class"`
+	RemoteURL       string     `json:"remote_url,omitempty"`
+	VolumeBytes     int64      `json:"volume_bytes"`
+	DestroyedAt     time.Time  `json:"destroyed_at"`
+	NameFree        bool       `json:"name_free"`
+	RestorableUntil *time.Time `json:"restorable_until"`
+	Snapshot        Snapshot   `json:"snapshot"`
 }
 
 // Signals is Project.signals.
@@ -44,6 +60,7 @@ type Signals struct {
 	SSHSessions int           `json:"ssh_sessions"`
 	TmuxClients int           `json:"tmux_clients"`
 	Agents      []AgentSignal `json:"agents"`
+	GuestdOK    bool          `json:"guestd_ok"`
 }
 
 // AgentSignal is one entry of Signals.Agents.
@@ -55,10 +72,11 @@ type AgentSignal struct {
 
 // Snapshot is one row of GET /projects/:id/snapshots.
 type Snapshot struct {
-	ID        string    `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	Bytes     int64     `json:"bytes"`
-	Reason    string    `json:"reason"`
+	ID        string     `json:"id"`
+	CreatedAt time.Time  `json:"created_at"`
+	Bytes     int64      `json:"bytes"`
+	Reason    string     `json:"reason"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 // Event is one row of GET /projects/:id/events.
@@ -148,14 +166,15 @@ type userRec struct {
 
 type project struct {
 	Project
-	owner     string
-	destroyed bool
-	retained  time.Time // destroyed projects keep their last snapshot until then
-	secrets   map[string]*SecretMeta
-	revisions []*Revision
-	snapshots []*Snapshot
-	events    []*Event
-	eventKeys map[string]bool // (agent, kind, ts second) dedupe for /internal/events
+	owner       string
+	destroyed   bool
+	destroyedAt time.Time
+	retained    time.Time // destroyed projects keep their last snapshot until then
+	secrets     map[string]*SecretMeta
+	revisions   []*Revision
+	snapshots   []*Snapshot
+	events      []*Event
+	eventKeys   map[string]bool // (agent, kind, ts second) dedupe for /internal/events
 }
 
 type op struct {

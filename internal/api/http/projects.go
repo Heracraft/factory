@@ -352,10 +352,23 @@ func (s *Server) destroyProject(w http.ResponseWriter, r *http.Request) error {
 			return nil
 		}
 	}
-	id, err := s.enqueue(r.Context(), ops.NewOp{Kind: ops.KindDestroy, ProjectID: &pid, Phases: ops.PlanDestroy(p)}, false)
+	// The project reads `destroying` from the moment the destroy is
+	// accepted, in the same transaction, because the CLI returns right
+	// away (I-166) and the next `repose projects` must not show it running.
+	var id uuid.UUID
+	ctx := r.Context()
+	err = db.InTx(ctx, s.d.Pool, func(tx db.Tx) error {
+		var err error
+		if id, err = s.d.Engine.Enqueue(ctx, tx, ops.NewOp{Kind: ops.KindDestroy, ProjectID: &pid, Phases: ops.PlanDestroy(p)}, false); err != nil {
+			return err
+		}
+		return store.SetProjectState(ctx, tx, pid, "destroying")
+	})
 	if err != nil {
 		return err
 	}
+	s.d.Engine.Kick()
+	obs.Logger(ctx, s.d.Log).Info("project destroy accepted", "event", "guest_destroy", "project_id", pid.String(), "op_id", id.String())
 	writeJSON(w, http.StatusAccepted, map[string]any{"op_id": id, "state": "pending"})
 	return nil
 }

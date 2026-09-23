@@ -16,6 +16,8 @@ func (s *Server) registerUserRoutes() {
 	// Projects
 	s.route(m, "GET /v1/projects", a(s.listProjects))
 	s.route(m, "POST /v1/projects", a(s.createProject))
+	s.route(m, "GET /v1/projects/destroyed", a(s.listDestroyed))
+	s.route(m, "POST /v1/projects/restore", a(s.restoreByName))
 	s.route(m, "GET /v1/projects/{id}", a(s.getProject))
 	s.route(m, "PATCH /v1/projects/{id}", a(s.patchProject))
 	s.route(m, "DELETE /v1/projects/{id}", a(s.destroyProject))

@@ -3641,3 +3641,67 @@ and exporting it later in the background (a host-side queue to reconcile
 across restarts for seconds of upload nobody waits on once the CLI
 returns at once, I-166, and a destroyed project whose only copy is on
 one host is not restorable elsewhere until it lands).
+
+**I-165. A destroy stops the guest first, reads `destroying` from the
+moment it is accepted, and says so when it fails.** (destroy-restore, 05,
+2026-09-23) izma's destroy froze the running guest, snapshotted it for
+33 s (I-164) with the guest still running and billed, then stopped it.
+`PlanDestroy` is now stop (no snapshot), snapshot of the stopped volume
+(reason `stop`, 30-day expiry), destroy; a stopped project skips the
+stop. Ending the guest first ends its hours and its sessions at once, and
+the snapshot of a shut-down filesystem is clean without guestd's freeze,
+so the dead-guestd case of I-156 is now the ordinary path (the recovery
+stays for ops enqueued before this). `DELETE` sets the project to
+`destroying` in the same transaction as the enqueue, and the engine keeps
+it there through the stop and the snapshot (it used to read `stopping`,
+then `running` again during the snapshot of a stopped project, and
+`destroying` only for the last 0.1 s). A destroy that fails leaves the
+project in `error` with `last_error` as before and now also records a
+`destroy_failed` event, which notifies like `snapshot_failed`: the CLI no
+longer waits for the destroy (I-166), so the failure has to reach the
+user by itself. A destroy op enqueued before this release with the old
+plan (stop, destroy) still snapshots inside its stop, because the stop
+snapshots unless a snapshot phase follows. Timeline for izma, api-only
+(before a host switch): DELETE → `destroying` at once; stop 3.5 s;
+snapshot 33 s (the guest already down); destroy 0.1 s. With I-164 on the
+host: stop 3.5 s, snapshot about 1 s plus the upload of what the volume
+holds, destroy 0.1 s. `TestDestroyStopsFirstAndReportsItsFailure`,
+`TestDestroyWithDeadGuestdReachesDone` (no recovery needed now),
+`TestRestoreByName` (the state right after DELETE). *Rejected:* keeping
+the freeze-then-stop order (the guest runs and bills through the whole
+upload for a snapshot that is less clean); marking the project
+`destroyed` right after the stop and finishing the snapshot and the
+volume in the background (a project listed as destroyed whose final
+snapshot may still fail is a promise the list cannot keep; I-164 makes the
+remaining work seconds).
+
+**I-167. Restore by name: `GET /projects/destroyed`, `POST
+/projects/restore`, `repose restore NAME`.** (destroy-restore, 05/07/08,
+2026-09-23; owner: "the restore command is too complicated") The destroy
+message ended with `repose snapshots restore <snapshot id> --project
+<project id> --as-new NAME`, because a destroyed project no longer
+resolves by name. `GET /projects/destroyed` lists the user's destroyed
+projects that still have a restorable snapshot (not deleted, not past
+`expires_at`), newest destroy first, with that snapshot, its expiry as
+`restorable_until`, and `name_free`. `POST /projects/restore {slug |
+project_id | snapshot_id, name?, start?}` resolves a slug the way a user
+means it (the live project with that slug if there is one, else every
+destroyed project that had it), takes the newest restorable snapshot
+unless one is named, and restores it as a new project called `name`,
+default the source's name; a taken name is `409 conflict` with
+`detail.reason = "name_taken"` so a client can ask for another, and a
+project with nothing left is `404` with `detail.reason = "no_snapshot"`.
+The new project also gets the source's `remote_url` when no live project
+has it (the old as-new restore dropped it, so a checkout never found the
+restored project), and `POST /projects/:id/snapshots/:sid/restore
+{as_new_project}` now shares that code. Both routes are new, nothing old
+changes shape. api.md also gains the Project fields the api has returned
+since I-157/I-159 (`last_error`, `host_unreachable`, `signals.guestd_ok`)
+and the restore route's `start` and `project_id`. The fake api has both
+routes, `destroyed_at`-ordered, and the three fields.
+`TestRestoreByName` (api, against Postgres), `TestWalkthrough` (fake).
+*Rejected:* restoring in place when the name is live (that replaces a
+running project's disk; `repose snapshots restore ID` still does it, with
+its stop prompt); a `?destroyed=true` switch on `GET /projects` (one
+route, two shapes); resolving by slug inside the existing snapshot route
+(its path starts with a project id, which is what the user does not have).
