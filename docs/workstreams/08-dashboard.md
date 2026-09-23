@@ -190,7 +190,9 @@ suites back most of it: `apps/web/tests/` against `internal/fakes/api`
       `redirect_uri` refused); the GitHub click is not, because this
       session cannot sign in. The remaining seven tests are written and
       skip with the command that arms them:
-      `pnpm --filter web run live:auth` once, then `run live`.
+      `pnpm --filter web run live:auth` once, then `run live`. — waits on:
+      owner (the GitHub sign-in in a browser: `pnpm --filter web run
+      live:auth` from apps/web, then `run live`; HANDOFF owner item 2).
 - [x] No server routes other than `/healthz`; no `$env/static/private` or
       `$env/dynamic/private` imports anywhere. Evidence: `rg 'env/static/private|env/dynamic/private|\+server\.ts' apps/web/src`
       returns only `src/routes/healthz/+server.ts`, and
@@ -232,7 +234,9 @@ suites back most of it: `apps/web/tests/` against `internal/fakes/api`
       back to it on file, a cancelled Checkout, invoices with amount,
       number and Stripe links, the portal redirect, billing off).
       **Open: the screenshot against Stripe test mode, `docs/ops/M4-GATE.md`
-      §3.2, waiting for the test key.**
+      §3.2, waiting for the test key.** — waits on: owner (the Stripe test key
+      in the api's Coolify env; then docs/ops/M4-GATE.md §3.2 gives the
+      screenshot).
 - [x] Settings: timezone, email toggle, ntfy URL, test button. Evidence:
       `tests/settings-account.spec.ts`.
 - [x] Account deletion flow requires typing the handle and explains
@@ -249,7 +253,10 @@ suites back most of it: `apps/web/tests/` against `internal/fakes/api`
       both input paths. Not covered: **access-token refresh failure**,
       which the fake Logto cannot be made to refuse, and **`POST
       /me/notify-test` missing**, which the fake always answers — both
-      need a fake that can fail on demand, not a new page behaviour.
+      need a fake that can fail on demand, not a new page behaviour. — open:
+      tests for access-token refresh failure and a missing `POST
+      /me/notify-test`, which need the fake Logto and `internal/fakes/api` to
+      fail on demand.
 - [x] Dockerfile builds in CI, runs as non-root, `HEALTHCHECK` passes, image
       under 200 MB. Evidence: the `web` CI job builds it, checks the size
       and probes `/healthz`; and on the running production container,

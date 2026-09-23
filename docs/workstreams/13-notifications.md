@@ -275,7 +275,10 @@ not-yet-built convenience for later.
       against, which this session did not have — implementing from search
       results alone risks silently dropping every Gemini/pi notification.
       Left as a follow-up; the heuristic (honest about being one,
-      `"<agent> went idle"`) is what ships.
+      `"<agent> went idle"`) is what ships. — open: native payload fixtures
+      and mapping tests for Gemini CLI and pi (testdata/gemini and testdata/pi
+      hold only the heuristic); needs the real binaries' hook payloads
+      captured in a guest (DECISIONS I-50).
 - [x] Wrapper hook config for each agent is written when absent, appended
       when the user has hooks, never replaces. Evidence:
       `nix/guest/tests/default.nix` subtest "claude hooks merged without
@@ -363,7 +366,11 @@ not-yet-built convenience for later.
       "<summary>"` and one `<agent>: <state>` line per window (07,
       STATUS 2026-09-20); its output on host-01 is in
       `ops/checks/notifications.sh`'s report. The dashboard events card
-      is 08's row, closed by the m3-web session against the real api.
+      is 08's row, closed by the m3-web session against the real api. — open:
+      `repose status` output from a real guest showing the `last event` line
+      and the per-window agent state is not pasted (the notifications.sh
+      report is under the gitignored ops/checks/out/); run it after a hook
+      fires in a real guest.
 - [x] Metrics in 5.8 exist. Evidence: `internal/api/metrics/metrics.go`
       registers `repose_api_events_total`, `repose_api_notify_total`,
       `repose_api_outbox_depth`, `repose_api_outbox_lag_seconds`,

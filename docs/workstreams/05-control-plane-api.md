@@ -444,7 +444,11 @@ waits on host-01 (`ops/checks/README.md` names the script that closes it).
       (the row read back: `trial_credit_cents`, `project_limit`,
       `xl_limit`, `billing_status`). Real first sign-in: the M2 owner-run
       gate (2026-09-20, in progress on host-01) is the first real token;
-      the row is pasted by that session.
+      the row is pasted by that session. — open: no production user row from a
+      first GitHub sign-in is pasted (the owner's first sign-in was email,
+      I-100; `heracraft` came by rename; the second human is M5 step 3); the
+      trial figure is now 336 cents (I-205), so the pasted row should read
+      336, not 1000.
 - [x] Handle collision produces `-2`. Evidence: `TestDeriveHandle` and
       `TestFirstSignInCreatesUserAndCollisionsSuffix` (`internal/api/auth`).
 - [x] `POST /projects` enforces project and XL limits and
@@ -493,7 +497,10 @@ waits on host-01 (`ops/checks/README.md` names the script that closes it).
       `TestDEKCacheLimitsKeyVaultCalls`, `TestKeyVaultDownFailsClosed`.
       Real Key Vault: the CA init at first start in production wrapped and
       unwrapped a real DEK (DECISIONS I-91, 2026-09-20); `repose-admin
-      secrets rewrap` against the real key is not yet run.
+      secrets rewrap` against the real key is not yet run. — open: `az
+      keyvault key rotate` then `repose-admin secrets rewrap` (RUNBOOK)
+      against the production Key Vault, with the before/after key version and
+      a secret read back, is not recorded.
 - [x] No route ever returns a secret value; `rg` for the decrypt function
       shows callers only in the hostd command builders. Evidence
       (2026-09-20): `rg -n 'DecryptForGuest\(' internal/api cmd` finds the
@@ -509,13 +516,16 @@ waits on host-01 (`ops/checks/README.md` names the script that closes it).
       in a login shell, gone within 5 s of `rm`; a fragment carrying it
       was refused (`fragment contains the value of secret
       M3_CHECK_SECRET`).
-- [~] Config: fragment with a parse error is rejected at `PUT` with the
+- [x] Config: fragment with a parse error is rejected at `PUT` with the
       line; menu selection renders to a fragment that builds. Evidence:
       `internal/api/config/parse_test.go` `TestParseCheck` and
       `internal/api/http/http_test.go` `TestConfigRoutes` (the `invalid`
       with `fragment_line`); `internal/menu` `TestEveryEntryRendersAndRoundTrips`
       and `TestRealNixAllEntriesEvaluate`. The real build on host-01 is
-      `ops/checks/menu.sh`.
+      `ops/checks/menu.sh`. — closed: parse error rejected with its line on
+      the deployed api (12 §9 canonical-cases row, M5 session 2026-09-21
+      02:29Z, `syntax.nix:1:34`, exit 10); menu build on host-01 in RESEARCH
+      §13 (`PUT /config {menu: bun}`, op done in 5 s, `bun` 1.4.2 on PATH).
 - [x] `reboot_required` blocks apply until confirmed. Evidence:
       `internal/api/ops/ops_test.go` `TestBuildFailureAndRebootRequired`.
 - [x] Base bump job builds every unheld project and skips held ones.
@@ -567,34 +577,53 @@ waits on host-01 (`ops/checks/README.md` names the script that closes it).
       Stripe test mode. Evidence: `internal/api/meter/meter_test.go`
       `TestIngestAndSyntheticDayRollup` (153 cents for the synthetic day,
       STATUS 05). The Stripe test-mode push and screenshot are M4 (09, I-16).
-- [~] `/internal/*` rejects requests without the gateway client cert.
+      — waits on: owner (Stripe test-mode key in the api's env; then
+      docs/ops/M4-GATE.md §2 is the push and screenshot).
+- [x] `/internal/*` rejects requests without the gateway client cert.
       Evidence: `internal/api/app/app_test.go`
       `TestProcessDevModeAndInternalMTLS`. On the live control plane the
       edge reaches `/internal` at `10.255.255.1:8444` only with the
       gateway certificate signed by `repose-admin ca sign-client`
       (DECISIONS I-92, M2 session); the `curl` outputs without a
-      certificate are pasted by the M2 session.
+      certificate are pasted by the M2 session. — closed: STATUS 2026-09-20
+      m2-integration progress line (steps 1-2: `/internal/hosts` answers with
+      the gateway certificate, refused without) and
+      security/review-2026-09-21.md M5-4 (8444 from the edge: a bare TLS
+      connection is refused).
 - [x] Rate limits return `rate_limited` with `Retry-After`. Evidence:
       `internal/api/http/http_test.go` `TestRateLimits` and
       `internal/api/ratelimit/ratelimit_test.go` `TestBucket`.
-- [~] `repose-admin` subcommands all exist and `hosts add` produces a
+- [x] `repose-admin` subcommands all exist and `hosts add` produces a
       token that registers a host exactly once. Evidence:
       `internal/admin/admin_test.go` `TestAdminSurface` (every I-9
       subcommand); host-01 registered with the real api on 2026-09-20
       through a token from `hosts add` and is `ready` (`repose-admin hosts
       list`, M2 session, STATUS); the second-use refusal on the real host
       is `nix/hosts/tests` host-services against `hostdev` (a second token
-      after `host.json` exists is not consumed).
+      after `host.json` exists is not consumed). — closed: host-01's real
+      registration (STATUS 2026-09-20 m2-integration step 3 line, 18:15Z); the
+      once-only half is `TestRegisterSessionSendSweep` in internal/api/hostmgr
+      ("token accepted twice") and nix/hosts/tests host-services (second token
+      not consumed, host.json untouched).
 - [~] `/healthz` fails when Postgres is down or migrations are pending;
       Coolify stops routing. Evidence: `internal/api/http/http_test.go`
       `TestHealthz` (DB ping and migration state). The staging DB pause is
-      not done (no staging control plane exists).
+      not done (no staging control plane exists). — waits on: owner (a staging
+      control plane, or permission to pause production Postgres and watch Coolify
+      stop routing).
 - [ ] Rolling deploy on Coolify serves requests throughout a deploy.
       Evidence: a `while curl` loop with no failures during a deploy.
-      Owner: the m3-web session (`ops/deploy-probe.sh`).
-- [ ] `api-grpc` restarts are absorbed by hostd reconnect with no lost
+      Owner: the m3-web session (`ops/deploy-probe.sh`). — waits on: owner
+      (the Traefik drain on the Coolify proxy): the probe measured 14 failures
+      in 29,841 responses over seven switchovers (STATUS 2026-09-20 m3-web
+      second progress line, ops/coolify.md fact 13), so "no failures" does not
+      hold yet; rerun `ops/deploy-probe.sh` after.
+- [x] `api-grpc` restarts are absorbed by hostd reconnect with no lost
       commands. Evidence: deploy during a build, the build completes.
-      `ops/checks/resilience.sh grpc` on host-01.
+      `ops/checks/resilience.sh grpc` on host-01. — closed: RESEARCH §13
+      (api-grpc SIGKILLed 8 s into a build: back in 6 s, hostd
+      `stream_connect` 33 s after, the build op done with no lost command) and
+      STATUS 2026-09-21 m3-integration "Step 5 on the real api" line.
 - [x] Logs contain none of the forbidden fields. Evidence:
       `internal/obs/logger_test.go` `TestRedaction` (a planted value under
       every never-log name the api and hostd use is absent from the
@@ -625,6 +654,11 @@ waits on host-01 (`ops/checks/README.md` names the script that closes it).
       (I-165, I-167). Evidence: `repose projects` right after `repose
       destroy`, the destroy op's phases, and `repose restore NAME`
       reaching `running`; locally `TestRestoreByName` and
-      `TestDestroyStopsFirstAndReportsItsFailure` pass.
+      `TestDestroyStopsFirstAndReportsItsFailure` pass. — open: STATUS
+      2026-09-23 conductor 03:40Z records the live run (destroy accepted in
+      0.28 s, done on the host in about 4 s, restore 12 s, marker sha256
+      identical) but not the `repose projects` line reading `destroying`, the
+      snapshot's `stop` reason and 30-day expiry, or the `repose restore NAME`
+      transcript; paste them from the next destroy/restore.
 - [x] `docs/DECISIONS.md` carries I-2 (separate gRPC app) and I-3 (guest
       host keys in CreateGuest). Evidence: the entries.

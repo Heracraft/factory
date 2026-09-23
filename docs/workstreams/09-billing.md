@@ -315,7 +315,8 @@ named on each row. Test evidence below is from
       `TestSetupCheckoutCollectsTheAddress` (the dashboard's hosted form,
       I-182), `TestSubscriptionAnchorsThePeriodAndEventsLandInIt`,
       `TestSubscriptionIsAdoptedNotDoubled`, `TestSubscriptionFallsBackWhenStripeRefusesTax`;
-      the browser half `apps/web/tests/billing.spec.ts` 5/5.
+      the browser half `apps/web/tests/billing.spec.ts` 5/5. — waits on: owner
+      (Stripe test key; M4-GATE.md §3.1-3.2).
 - [x] Start and create blocked without a card, with `payment_required`.
       Evidence: `--- PASS: TestBillingGateBlocksCompute` (start and create,
       every reason: `card_required`, `past_due`, `suspended`, `trial_depleted`;
@@ -344,13 +345,15 @@ named on each row. Test evidence below is from
       pushes through the real rollup and reconciles against Stripe's meter
       summaries). Offline: `TestChecklistUsageFixtureInvoicesTo800Cents`
       (a second push sends nothing; a replay with the same identifiers
-      changes no total), `TestPushRetriesAfterAStripeFailure`.
+      changes no total), `TestPushRetriesAfterAStripeFailure`. — waits on:
+      owner (Stripe test key; M4-GATE.md §2).
 - [ ] Stripe fixture in §7 yields an invoice of 800 cents after credit.
       Evidence: CI job output with the invoice id. **Waits for the test key:
       M4-GATE.md §2**, whose `M4 paid:` lines carry the invoice id and its
       lines against `usage_hours` (DECISIONS I-185). Offline:
       `TestChecklistUsageFixtureInvoicesTo800Cents` (1400 + 400 + 0 = 1800,
-      less 1000 = 800 pushed).
+      less 1000 = 800 pushed). — waits on: owner (Stripe test key; M4-GATE.md
+      §2, the `M4 paid:` lines).
 - [x] All six webhooks handled idempotently; replay test passes; signature
       failures rejected. Evidence: `TestAllSixWebhooks`,
       `TestWebhookReplayIsANoOp`, `TestWebhookSignatureFailuresAreRejected`,
@@ -364,7 +367,8 @@ named on each row. Test evidence below is from
       **Waits for the test key: M4-GATE.md §2, `M4 failed:` lines.**
       Offline: `TestPastDueThreeDayStop` (day 2 nothing, day 4 stop with
       `snapshot: true` and reason `billing`, `billing_stopped` event,
-      suspended, audit row; `invoice.paid` leaves the guest stopped).
+      suspended, audit row; `invoice.paid` leaves the guest stopped). — waits
+      on: owner (Stripe test key; M4-GATE.md §2, the `M4 failed:` lines).
 - [x] Reconciliation job and `explain` exist; a deliberate mismatch raises
       the alert and fixes nothing. Evidence: `TestReconcileReportsAndFixesNothing`,
       `TestReconcileWithoutAReaderSaysSo`, `TestExplainShowsTheArithmetic`.
@@ -384,11 +388,12 @@ named on each row. Test evidence below is from
       Tax, then M4-GATE.md §4.** The address is collected by the hosted
       card form (`billing_address_collection=required`,
       `TestSetupCheckoutCollectsTheAddress`) and copied to the customer
-      (`TestSubscriptionAnchorsThePeriodAndEventsLandInIt`).
+      (`TestSubscriptionAnchorsThePeriodAndEventsLandInIt`). — waits on: owner
+      (activate Stripe Tax, then M4-GATE.md §4).
 - [ ] Live-mode charge of the owner's card matches `explain`. Evidence:
       invoice id and the arithmetic pasted. **Waits for the owner's live
       key and card: M4-GATE.md §5** (`billing cycle-now` makes the invoice
-      the same day).
+      the same day). — waits on: owner (live key and card; M4-GATE.md §5).
 - [x] Metrics for the rollup duration, the sample gap, the Stripe push
       backlog and the reconciliation difference exist. They carry the
       `repose_api_*` prefix every api family uses (DECISIONS I-49, I-60,

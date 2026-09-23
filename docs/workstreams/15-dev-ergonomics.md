@@ -237,33 +237,55 @@ final report. `just done-check` and `just lint` pass.
 
 - [ ] **Timing:** `repose run` (warm, no changes) and `repose attach` p50
       over 10 runs each, from a macOS laptop, with and without carry and
-      forward. Added time under 100 ms at p50, pasted as a table.
+      forward. Added time under 100 ms at p50, pasted as a table. — waits on:
+      owner (a macOS laptop): STATUS 2026-09-23 conductor 10:00Z records
+      +19 ms run and +12 ms attach at p50 (client not named, not macOS),
+      but no table is pasted.
 - [ ] **TZ:** `date` in a guest after `TZ=Asia/Tokyo repose attach` shows
-      JST in a new tmux window; transcript pasted.
+      JST in a new tmux window; transcript pasted. — open: STATUS 2026-09-23
+      conductor 10:00Z says the live check ran; the transcript is not pasted
+      (commit 75e740b has the guest-parity VM test reporting JST only).
 - [ ] **git:** a laptop config with `includeIf`, `credential.helper
       osxkeychain`, `url.*.insteadOf`, `gpg.format ssh`, `core.pager
       delta` and an alias; the guest's `git config --list --show-origin`
       pasted, showing the alias and the includeIf email and none of the
-      denied keys.
+      denied keys. — open: the live guest's `git config --list --show-origin`
+      is not pasted (STATUS 2026-09-23 conductor 10:00Z says the carry was
+      checked live with fake secrets absent).
 - [ ] **Claude merge:** golden test names and output; plus a live guest
       where a permission granted in the guest survives the next `run`, and
-      a laptop skill appears in `/skills` in the guest.
+      a laptop skill appears in `/skills` in the guest. — open: goldens exist;
+      the live guest proof (a guest-granted permission surviving the next
+      `run`, a laptop skill in `/skills`) is not pasted.
 - [x] **Never carried:** the extended secrets test name and output.
 - [ ] **`.env`:** a nested `apps/web/.env` travels with mode 0600; a guest
-      copy newer than the laptop one is kept; `ls -l` pasted.
+      copy newer than the laptop one is kept; `ls -l` pasted. — open: the `ls
+      -l` from a live guest is not pasted (STATUS 2026-09-23 conductor 10:00Z
+      lists .env as checked live).
 - [ ] **Forward:** `vite` started in the guest is reachable at
       `localhost:5173` on the laptop within 2 s without any command; a
       screenshot of the tmux status bar; port-taken and portless-collision
-      messages pasted.
+      messages pasted. — open: the tmux status bar screenshot and the
+      port-taken and portless-collision messages from a live guest are not
+      pasted.
 - [ ] **OOM:** a guest under a memory hog started from a shell that an
-      agent spawned; the journal shows the hog killed and the agent alive.
-- [ ] **cp:** `repose cp :logs/x.log .` and the reverse, transcript pasted.
+      agent spawned; the journal shows the hog killed and the agent alive. —
+      open: the live run found I-213 (protection never reached
+      `.claude-wrapped`); the journal showing the hog killed and the agent
+      alive on a guest with the I-213 base is not pasted.
+- [ ] **cp:** `repose cp :logs/x.log .` and the reverse, transcript pasted. —
+      open: the live `repose cp` transcript both ways is not pasted.
 - [ ] **Hybrid:** first-run times for this repo and for a repo over
       500 MB, bundle vs clone, pasted, and the threshold set from them in
-      the decision.
+      the decision. — open: bundle-vs-clone first-run times for this repo and
+      a repo over 500 MB are not pasted, and I-203 still says the 20 MB
+      `size-pack` threshold is "to be set from measurement".
 - [ ] **Caches:** a cold `pnpm install` on a large repo in two guests on one
       host, the second measurably faster, with the times pasted; `docker
-      pull` twice likewise; the fallback when the cache is stopped, shown.
+      pull` twice likewise; the fallback when the cache is stopped, shown. —
+      open: two-guest cold `pnpm install` and `docker pull` times and the
+      cache-stopped fallback are not pasted (I-214 records only the live
+      495-miss, 0-hit finding before the fix).
 - [x] **Trial:** a new account's billing view shows 336 cents, and every
       string grep for `\$10` and "10 of credit" in docs, cmd and apps comes
       back empty.
