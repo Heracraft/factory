@@ -32,7 +32,8 @@
 			deco = deco.map(tr.changes);
 			for (const e of tr.effects) {
 				if (e.is(setErrorLine)) {
-					if (e.value == null || e.value < 1 || e.value > tr.state.doc.lines) return Decoration.none;
+					if (e.value == null || e.value < 1 || e.value > tr.state.doc.lines)
+						return Decoration.none;
 					const line = tr.state.doc.line(e.value);
 					return Decoration.set([Decoration.line({ class: 'cm-line-error' }).range(line.from)]);
 				}

@@ -19,9 +19,9 @@
 	let plotHeight = $derived(HEIGHT - PAD_BOTTOM);
 	let barWidth = $derived(rows.length ? (WIDTH - PAD_LEFT) / rows.length : 0);
 
-	let hover = $state<{ day: string; cls: SizeClass; hours: number; x: number; y: number } | undefined>(
-		undefined
-	);
+	let hover = $state<
+		{ day: string; cls: SizeClass; hours: number; x: number; y: number } | undefined
+	>(undefined);
 
 	function segments(row: (typeof rows)[number], i: number) {
 		let y = plotHeight;
@@ -29,7 +29,14 @@
 			const hours = row[cls];
 			const h = (hours / maxTotal) * (plotHeight - 8);
 			y -= h;
-			const seg = { cls, hours, x: PAD_LEFT + i * barWidth + 1, y, w: Math.max(0, barWidth - 2), h };
+			const seg = {
+				cls,
+				hours,
+				x: PAD_LEFT + i * barWidth + 1,
+				y,
+				w: Math.max(0, barWidth - 2),
+				h
+			};
 			y -= h > 0 ? 2 : 0; // a 2px surface gap between stacked segments
 			return seg;
 		});
@@ -62,7 +69,8 @@
 						onmouseenter={() =>
 							(hover = { day: row.day, cls: seg.cls, hours: seg.hours, x: seg.x, y: seg.y })}
 						onmouseleave={() => (hover = undefined)}
-						onfocus={() => (hover = { day: row.day, cls: seg.cls, hours: seg.hours, x: seg.x, y: seg.y })}
+						onfocus={() =>
+							(hover = { day: row.day, cls: seg.cls, hours: seg.hours, x: seg.x, y: seg.y })}
 						onblur={() => (hover = undefined)}
 					/>
 				{/if}
@@ -73,7 +81,8 @@
 	{#if hover}
 		<div
 			class="pointer-events-none absolute rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs shadow-sm dark:border-zinc-700 dark:bg-zinc-900"
-			style="left: {(hover.x / WIDTH) * 100}%; top: {(hover.y / HEIGHT) * 100}%; transform: translate(-50%, -110%);"
+			style="left: {(hover.x / WIDTH) * 100}%; top: {(hover.y / HEIGHT) *
+				100}%; transform: translate(-50%, -110%);"
 		>
 			{hover.day} · {hover.cls}: {hover.hours.toFixed(1)}h
 		</div>

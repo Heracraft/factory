@@ -218,7 +218,7 @@
 				/>
 				{#each [...groups.entries()] as [group, items] (group)}
 					<div class="form-section">
-						<h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">{group}</h2>
+						<h2 class="font-display text-xl font-semibold">{group}</h2>
 						{#each items as item (item.id)}
 							<label class="check-list-row">
 								<input
@@ -261,7 +261,11 @@
 						<button type="button" class="link" onclick={editAsNix}>Edit as Nix</button>
 					</p>
 				{/if}
-				<NixEditor bind:value={fragmentText} readonly={nixReadonly} errorLine={fragmentErrorLine(buildError)} />
+				<NixEditor
+					bind:value={fragmentText}
+					readonly={nixReadonly}
+					errorLine={fragmentErrorLine(buildError)}
+				/>
 				<div class="form-section">
 					<button type="button" class="btn" disabled={applying || nixReadonly} onclick={applyNix}>
 						{applying ? 'Applying…' : 'Apply'}
@@ -272,7 +276,7 @@
 
 		{#if currentOpId}
 			<div class="form-section">
-				<h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Build log</h2>
+				<h2 class="font-display text-xl font-semibold">Build log</h2>
 				<pre class="codeblock mt-2 h-56 overflow-y-auto" bind:this={logEl}>{buildLines.join(
 						'\n'
 					)}</pre>
@@ -287,19 +291,15 @@
 		{/if}
 
 		<div class="form-section">
-			<h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Base updates</h2>
+			<h2 class="font-display text-xl font-semibold">Base updates</h2>
 			<label class="check-row mt-2">
-				<input
-					type="checkbox"
-					checked={project.hold_base_updates}
-					onchange={toggleHold}
-				/>
+				<input type="checkbox" checked={project.hold_base_updates} onchange={toggleHold} />
 				Hold base updates (currently on {project.base_version})
 			</label>
 		</div>
 
 		<div class="form-section">
-			<h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Revisions</h2>
+			<h2 class="font-display text-xl font-semibold">Revisions</h2>
 			{#if revisions.length === 0}
 				<p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">No revisions yet.</p>
 			{:else}

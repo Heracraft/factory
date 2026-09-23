@@ -124,7 +124,11 @@ describe('pollUntilDone', () => {
 	afterEach(() => vi.useRealTimers());
 
 	test('polls every 2 s until the callback reports done', async () => {
-		const fn = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValue(true);
+		const fn = vi
+			.fn()
+			.mockResolvedValueOnce(false)
+			.mockResolvedValueOnce(false)
+			.mockResolvedValue(true);
 		pollUntilDone(fn);
 		expect(fn).toHaveBeenCalledTimes(1);
 

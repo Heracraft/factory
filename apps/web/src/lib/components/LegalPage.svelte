@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { marked } from 'marked';
+	import { resolve } from '$app/paths';
+	import Logo from './Logo.svelte';
 
 	let { raw }: { raw: string } = $props();
 
@@ -23,11 +25,21 @@
 	let html = $derived(marked.parse(body) as string);
 </script>
 
-<main class="mx-auto max-w-3xl px-5 pt-10 pb-20">
+<header class="mx-auto flex max-w-3xl items-center justify-between px-5 py-6">
+	<a href={resolve('/')} aria-label="repose, home"><Logo /></a>
+	<nav class="flex gap-4 text-sm text-zinc-500 dark:text-zinc-400">
+		<a href={resolve('/terms')} class="hover:text-zinc-900 dark:hover:text-zinc-100">Terms</a>
+		<a href={resolve('/privacy')} class="hover:text-zinc-900 dark:hover:text-zinc-100">Privacy</a>
+	</nav>
+</header>
+
+<main class="mx-auto max-w-3xl px-5 pt-6 pb-24">
 	{#if meta.status}
 		<p class="banner banner--warn">Draft: {meta.status}</p>
 	{/if}
-	<article class="prose prose-zinc dark:prose-invert max-w-none">
+	<article
+		class="prose prose-zinc dark:prose-invert prose-headings:font-display prose-a:text-blue-700 dark:prose-a:text-blue-300 max-w-none"
+	>
 		<!-- eslint-disable-next-line svelte/no-at-html-tags -- `raw` only ever comes from this repo's own src/content/legal/*.md via a ?raw import, never from a user or the api -->
 		{@html html}
 	</article>

@@ -140,7 +140,7 @@
 		</p>
 	{:else}
 		<div class="form-section">
-			<h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Card on file</h2>
+			<h2 class="font-display text-xl font-semibold">Card on file</h2>
 			{#if me && !me.billing.has_card}
 				<p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
 					A card is needed before a guest can start. Stripe keeps it; repose never sees the number.
@@ -159,7 +159,7 @@
 		</div>
 
 		<div class="form-section">
-			<h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Invoices</h2>
+			<h2 class="font-display text-xl font-semibold">Invoices</h2>
 			{#if invoices.length === 0}
 				<p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">No invoices yet.</p>
 			{:else}
@@ -193,7 +193,7 @@
 	{/if}
 
 	<div class="form-section">
-		<h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Usage this month</h2>
+		<h2 class="font-display text-xl font-semibold">Usage this month</h2>
 		{#if usageRows.length === 0}
 			<p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">No usage yet this month.</p>
 		{:else}

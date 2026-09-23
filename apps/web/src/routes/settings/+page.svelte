@@ -67,7 +67,7 @@
 		<p class="text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
 	{:else}
 		<div class="form-section">
-			<h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Timezone</h2>
+			<h2 class="font-display text-xl font-semibold">Timezone</h2>
 			{#if timezones.length}
 				<select class="field mt-2 w-full sm:w-72" bind:value={tz}>
 					{#each timezones as z (z)}
@@ -80,7 +80,7 @@
 		</div>
 
 		<div class="form-section">
-			<h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Notifications</h2>
+			<h2 class="font-display text-xl font-semibold">Notifications</h2>
 			<label class="check-row mt-2">
 				<input type="checkbox" bind:checked={emailOn} />
 				Email notifications
@@ -114,7 +114,7 @@
 		</div>
 
 		<div class="form-section">
-			<h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Install</h2>
+			<h2 class="font-display text-xl font-semibold">Install</h2>
 			<code class="codeblock mt-2 block px-3 py-2 text-sm"
 				>curl -fsSL https://repose.herakraft.co/install.sh | sh</code
 			>

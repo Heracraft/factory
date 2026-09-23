@@ -28,7 +28,9 @@
 		}
 	});
 
-	let showHeader = $derived(authState.authenticated === true && !PUBLIC_PATHS.has(page.url.pathname));
+	let showHeader = $derived(
+		authState.authenticated === true && !PUBLIC_PATHS.has(page.url.pathname)
+	);
 	let showChildren = $derived(
 		authState.authenticated === true || PUBLIC_PATHS.has(page.url.pathname)
 	);

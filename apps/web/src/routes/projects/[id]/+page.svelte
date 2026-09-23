@@ -236,7 +236,7 @@
 	}
 
 	async function onRestore(snapshotId: string, asNew?: string) {
-		if (!asNew && !confirm('Restoring replaces this project\'s current disk. Continue?')) return;
+		if (!asNew && !confirm("Restoring replaces this project's current disk. Continue?")) return;
 		opBusy = 'restore';
 		try {
 			const { op_id } = await restoreSnapshot(id, snapshotId, asNew);
@@ -293,14 +293,13 @@
 			</div>
 		{/snippet}
 
-		<p class="text-sm text-zinc-600 dark:text-zinc-400">
-			<StateDot state={project.state} />
-			<span class="mx-1.5">·</span>
-			{project.class}
+		<p class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-zinc-600 dark:text-zinc-400">
+			<span class="text-zinc-900 dark:text-zinc-100"><StateDot state={project.state} /></span>
+			<span class="font-mono">{project.class}</span>
 			{#if project.state === 'running'}
-				<span class="mx-1.5">·</span>
-				up {uptime(project.started_at)}
+				<span>up {uptime(project.started_at)}</span>
 			{/if}
+			<code class="kbd">ssh {project.slug}.repose</code>
 		</p>
 
 		{#if startBanner === 'payment_required'}
@@ -315,7 +314,7 @@
 
 		<div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
 			<div class="card">
-				<h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400">Connect</h2>
+				<h2 class="font-semibold">Connect</h2>
 				<code class="codeblock mt-3 block px-3 py-2 text-sm">repose run</code>
 				<code class="codeblock mt-2 block px-3 py-2 text-sm">ssh {project.slug}.repose</code>
 				<p class="mt-2 text-xs text-zinc-400 dark:text-zinc-500">
@@ -324,7 +323,7 @@
 			</div>
 
 			<div class="card">
-				<h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400">Signals</h2>
+				<h2 class="font-semibold">Signals</h2>
 				{#if project.signals}
 					<dl class="mt-3 space-y-1 text-sm">
 						<div class="flex justify-between">
@@ -360,7 +359,7 @@
 			</div>
 
 			<div class="card">
-				<h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400">Cost</h2>
+				<h2 class="font-semibold">Cost</h2>
 				<dl class="mt-3 space-y-1 text-sm">
 					<div class="flex justify-between">
 						<dt class="text-zinc-500 dark:text-zinc-400">Today</dt>
@@ -378,7 +377,7 @@
 			</div>
 
 			<div class="card">
-				<h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400">Disk</h2>
+				<h2 class="font-semibold">Disk</h2>
 				<p class="mt-3 text-sm">
 					{project.disk_used_bytes !== undefined ? gb(project.disk_used_bytes) : '—'} / {gb(
 						project.volume_bytes
@@ -407,7 +406,7 @@
 			</div>
 
 			<div class="card">
-				<h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400">Last build</h2>
+				<h2 class="font-semibold">Last build</h2>
 				{#if currentRevisionStatus()}
 					{@const rev = currentRevisionStatus()}
 					<p class="mt-3 text-sm">
@@ -420,11 +419,13 @@
 				{:else}
 					<p class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">base {project.base_version}</p>
 				{/if}
-				<a href={resolve('/projects/[id]/config', { id })} class="link mt-2 inline-block text-sm">View config</a>
+				<a href={resolve('/projects/[id]/config', { id })} class="link mt-2 inline-block text-sm"
+					>View config</a
+				>
 			</div>
 
 			<div class="card sm:col-span-2">
-				<h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400">Events</h2>
+				<h2 class="font-semibold">Events</h2>
 				{#if events.length === 0}
 					<p class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">No events yet.</p>
 				{:else}
@@ -446,7 +447,7 @@
 
 			<div class="card sm:col-span-2">
 				<div class="flex items-center justify-between">
-					<h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400">Snapshots</h2>
+					<h2 class="font-semibold">Snapshots</h2>
 					<button type="button" class="btn-ghost" disabled={!!opBusy} onclick={onCreateSnapshot}>
 						{opBusy === 'snapshot' ? 'Snapshotting…' : 'Create'}
 					</button>
@@ -483,10 +484,8 @@
 											disabled={!!opBusy}
 											onclick={() => onRestore(s.id)}>Restore</button
 										>
-										<button
-											type="button"
-											class="btn-ghost"
-											onclick={() => (restoreAsNewFor = s.id)}>Restore as new…</button
+										<button type="button" class="btn-ghost" onclick={() => (restoreAsNewFor = s.id)}
+											>Restore as new…</button
 										>
 									{/if}
 								</span>
@@ -498,7 +497,7 @@
 		</div>
 
 		<div class="form-section">
-			<h2 class="text-sm font-semibold text-red-700 dark:text-red-400">Destroy</h2>
+			<h2 class="text-lg font-semibold text-red-700 dark:text-red-400">Destroy</h2>
 			<p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
 				Deletes the volume. The last snapshot is kept 30 days.
 			</p>

@@ -73,22 +73,19 @@
 </script>
 
 {#if destroyed.length > 0}
-	<section class="form-section" aria-labelledby="recently-destroyed">
-		<h2 id="recently-destroyed" class="font-display text-lg font-semibold">Recently destroyed</h2>
+	<section class="mt-16" aria-labelledby="recently-destroyed">
+		<h2 id="recently-destroyed" class="text-xl font-semibold">Recently destroyed</h2>
 		<p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-			Each keeps its last snapshot for 30 days. Restore brings it back as a new project, or run
-			<code class="font-mono">repose restore NAME</code>.
+			Each keeps its last snapshot for 30 days. Restore it here or with
+			<code>repose restore NAME</code>.
 		</p>
-		<ul class="mt-3">
+		<ul class="mt-4 border-t border-[var(--rule-strong)]">
 			{#each destroyed as d (d.id)}
-				<li
-					class="border-t border-zinc-100 py-3 first:border-t-0 dark:border-zinc-900"
-					data-testid="destroyed-row"
-				>
+				<li class="row" data-testid="destroyed-row">
 					<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
 						<div class="min-w-0">
 							<span class="font-medium">{d.name}</span>
-							<span class="ml-2 text-sm text-zinc-500 dark:text-zinc-400">{d.class}</span>
+							<span class="badge ml-2">{d.class}</span>
 							{#if !d.name_free}
 								<span class="badge ml-2">name in use</span>
 							{/if}

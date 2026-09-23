@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { listDestroyed, listProjects } from '$lib/api/client';
 	import { toastApiError } from '$lib/api/toast';
 	import { pollWhileVisible } from '$lib/poll';
-	import { money, uptime } from '$lib/format';
+	import { money, normalizeRemoteDisplay, uptime } from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import StateDot from '$lib/components/StateDot.svelte';
 	import RecentlyDestroyed from '$lib/components/RecentlyDestroyed.svelte';
@@ -44,66 +43,84 @@
 	function agentSummary(p: Project): string {
 		const agents = p.signals?.agents ?? [];
 		if (agents.length === 0) return '—';
-		return agents.map((a) => `${a.agent}: ${a.state}`).join(', ');
+		return agents.map((a) => `${a.agent} · ${a.state}`).join(', ');
 	}
+
+	let summary = $derived.by(() => {
+		if (!projects || projects.length === 0) return undefined;
+		const awake = projects.filter((p) => p.state === 'running').length;
+		const month = projects.reduce((n, p) => n + (p.cost_month_cents ?? 0), 0);
+		const parts = [
+			`${projects.length} ${projects.length === 1 ? 'project' : 'projects'}`,
+			`${awake} running`,
+			`${money(month)} this month`
+		];
+		return parts.join(' · ');
+	});
 </script>
 
 <svelte:head>
 	<title>Projects — repose</title>
 </svelte:head>
 
-<PageShell title="Projects">
+<PageShell title="Projects" lede={summary}>
 	{#if projects === undefined}
 		<p class="text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
 	{:else if projects.length === 0}
-		<div class="card">
-			<p class="text-sm text-zinc-700 dark:text-zinc-300">
-				No projects yet. Projects are created from the CLI, not from here — a project needs a git
-				remote and a laptop-side sync.
+		<div class="max-w-xl">
+			<h2 class="text-xl font-semibold">No projects yet</h2>
+			<p class="mt-2 text-zinc-600 dark:text-zinc-400">
+				Projects are created from the CLI, in a git checkout. Install it, then run
+				<code>repose run</code> in the project’s directory.
 			</p>
-			<code class="codeblock mt-4 block px-3 py-2 text-sm"
-				>curl -fsSL https://repose.herakraft.co/install.sh | sh</code
-			>
-			<p class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
-				Then, in a project directory: <code class="font-mono">repose login && repose run</code>.
-			</p>
+			<pre class="codeblock mt-5">curl -fsSL https://repose.herakraft.co/install.sh | sh
+repose login
+cd ~/code/your-project && repose run</pre>
 		</div>
 	{:else}
 		<div class="overflow-x-auto">
-			<table class="w-full border-collapse text-sm">
+			<table class="table">
 				<thead>
-					<tr class="border-b border-zinc-200 text-left text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-						<th class="px-2 py-2 font-medium">Name</th>
-						<th class="px-2 py-2 font-medium">Class</th>
-						<th class="px-2 py-2 font-medium">State</th>
-						<th class="px-2 py-2 font-medium">Uptime</th>
-						<th class="px-2 py-2 font-medium">Agent</th>
-						<th class="px-2 py-2 font-medium">Cost today</th>
-						<th class="px-2 py-2 font-medium">Cost month</th>
+					<tr>
+						<th>Project</th>
+						<th>State</th>
+						<th>Size</th>
+						<th>Agents</th>
+						<th class="text-right">Today</th>
+						<th class="text-right">This month</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each projects as p (p.id)}
-						<tr
-							class="cursor-pointer border-t border-zinc-100 hover:bg-zinc-100/60 dark:border-zinc-900 dark:hover:bg-zinc-900/60"
-							onclick={() => goto(resolve('/projects/[id]', { id: p.id }))}
-						>
-							<td class="px-2 py-2.5 font-medium">
-								<a href={resolve('/projects/[id]', { id: p.id })} class="hover:underline"
-									>{p.name}</a
+						<tr class="group">
+							<td>
+								<a
+									href={resolve('/projects/[id]', { id: p.id })}
+									class="font-medium underline-offset-4 group-hover:underline">{p.name}</a
 								>
-							</td>
-							<td class="px-2 py-2.5">{p.class}</td>
-							<td class="px-2 py-2.5">
-								<StateDot state={p.state} />
-								{#if reason(p)}
-									<p class="mt-0.5 max-w-xs text-xs text-red-600 dark:text-red-400">{reason(p)}</p>
+								{#if p.remote_url}
+									<div class="mt-0.5 font-mono text-xs text-zinc-500 dark:text-zinc-400">
+										{normalizeRemoteDisplay(p.remote_url)}
+									</div>
 								{/if}
 							</td>
-							<td class="px-2 py-2.5">{p.state === 'running' ? uptime(p.started_at) : '—'}</td>
-							<td class="px-2 py-2.5">{agentSummary(p)}</td>
-							<td class="px-2 py-2.5">{money(p.cost_today_cents)}</td>
-							<td class="px-2 py-2.5">{money(p.cost_month_cents)}</td>
+							<td>
+								<StateDot state={p.state} />
+								{#if p.state === 'running'}
+									<div class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+										up {uptime(p.started_at)}
+									</div>
+								{/if}
+								{#if reason(p)}
+									<div class="mt-0.5 max-w-xs text-xs text-red-700 dark:text-red-400">
+										{reason(p)}
+									</div>
+								{/if}
+							</td>
+							<td class="font-mono text-[13px]">{p.class}</td>
+							<td class="text-zinc-600 dark:text-zinc-400">{agentSummary(p)}</td>
+							<td class="text-right font-mono text-[13px]">{money(p.cost_today_cents)}</td>
+							<td class="text-right font-mono text-[13px]">{money(p.cost_month_cents)}</td>
 						</tr>
 					{/each}
 				</tbody>

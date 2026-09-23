@@ -1,201 +1,303 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 
+/*
+ * One restrained system for every page: neutral paper and ink, hairline
+ * rules, corners of 2 to 4px, no shadows or gradients, one accent colour
+ * (links, focus, selection). Every heading is Noto Serif; body text is the
+ * system sans; commands and ids are the system mono.
+ *
+ * The pages use Tailwind's zinc, blue, emerald, amber and red scales. They
+ * are re-toned here so every page follows the same palette without each
+ * page being rewritten: zinc is a neutral grey, blue the accent, emerald
+ * "running", amber "attention", red "failed".
+ */
 @theme {
-	/* Headings only. Georgia leads the fallbacks so a page painted before the
-	   Google Fonts request resolves still shows a serif, not the sans body
-	   stack pretending to be one. */
 	--font-display: 'Noto Serif', Georgia, 'Times New Roman', serif;
+	--font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+	/* Sharp by default: the whole radius scale tops out at 4px. */
+	--radius-xs: 1px;
+	--radius-sm: 2px;
+	--radius-md: 3px;
+	--radius-lg: 4px;
+	--radius-xl: 4px;
+	--radius-2xl: 4px;
+	--radius-3xl: 4px;
+
+	--color-zinc-50: #fafaf9;
+	--color-zinc-100: #f3f3f1;
+	--color-zinc-200: #e4e4e1;
+	--color-zinc-300: #cfcfcb;
+	--color-zinc-400: #a2a29d;
+	--color-zinc-500: #767671;
+	--color-zinc-600: #595955;
+	--color-zinc-700: #3e3e3b;
+	--color-zinc-800: #282826;
+	--color-zinc-900: #181817;
+	--color-zinc-950: #0f0f0e;
+
+	--color-blue-50: #f2f5fb;
+	--color-blue-100: #e2e9f6;
+	--color-blue-200: #c3d1ec;
+	--color-blue-300: #9db3de;
+	--color-blue-400: #8aa4d8;
+	--color-blue-500: #4d6fb3;
+	--color-blue-600: #3b5a9c;
+	--color-blue-700: #2f4b86;
+	--color-blue-800: #283f6e;
+	--color-blue-900: #213354;
+	--color-blue-950: #141f33;
+
+	--color-emerald-50: #f1f7f3;
+	--color-emerald-100: #dfeee4;
+	--color-emerald-200: #bddcc8;
+	--color-emerald-300: #8fc2a2;
+	--color-emerald-400: #5fa67b;
+	--color-emerald-500: #3f8a5e;
+	--color-emerald-600: #31704c;
+	--color-emerald-700: #285b3e;
+	--color-emerald-800: #214a33;
+	--color-emerald-900: #1a3a28;
+	--color-emerald-950: #0e2016;
+
+	--color-amber-50: #fbf6ec;
+	--color-amber-100: #f5e9cf;
+	--color-amber-200: #ead29c;
+	--color-amber-300: #dcb567;
+	--color-amber-400: #cc9a3f;
+	--color-amber-500: #b07f27;
+	--color-amber-600: #8f661f;
+	--color-amber-700: #72511b;
+	--color-amber-800: #5c4119;
+	--color-amber-900: #4a3516;
+	--color-amber-950: #2a1d0b;
+
+	--color-red-50: #fbf1f0;
+	--color-red-100: #f6dfdc;
+	--color-red-200: #ecbdb7;
+	--color-red-300: #df928a;
+	--color-red-400: #d06c62;
+	--color-red-500: #b94d43;
+	--color-red-600: #9e3c33;
+	--color-red-700: #83312b;
+	--color-red-800: #6b2926;
+	--color-red-900: #572322;
+	--color-red-950: #311110;
 }
 
 @layer base {
-	/* Native controls follow the OS theme; there is no in-app toggle. Without
-	   this a browser still draws checkboxes, radios and selects for a light
-	   page even while the rest of the UI has gone dark. */
 	:root {
 		color-scheme: light dark;
+		--page: #fbfbfa;
+		--surface: #ffffff;
+		--sunken: #f4f4f2;
+		--rule: #e6e6e3;
+		--rule-strong: #cfcfcb;
+	}
+	@media (prefers-color-scheme: dark) {
+		:root {
+			--page: #111110;
+			--surface: #161615;
+			--sunken: #1b1b1a;
+			--rule: #2a2a28;
+			--rule-strong: #3b3b38;
+		}
 	}
 	body {
-		@apply bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+		@apply min-h-dvh text-zinc-900 antialiased dark:text-zinc-100;
+		background-color: var(--page);
 	}
-	h1 {
-		font-family: var(--font-display);
+	::selection {
+		@apply bg-blue-200 dark:bg-blue-800;
 	}
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6,
 	.font-display {
 		font-family: var(--font-display);
 	}
-	/* The one accent, on the native ticks too, so a checked box reads the
-	   same as a link. */
+	h1 {
+		@apply text-balance;
+	}
+	code,
+	kbd,
+	pre,
+	samp {
+		font-family: var(--font-mono);
+	}
+	:focus-visible {
+		@apply outline-2 outline-offset-2 outline-blue-600 dark:outline-blue-400;
+	}
 	input[type='checkbox'],
 	input[type='radio'] {
-		@apply accent-blue-700 dark:accent-blue-400;
+		@apply accent-zinc-900 dark:accent-zinc-100;
 	}
 }
 
 @layer components {
-	/* Text inputs, search, email, textareas and selects — one look everywhere. */
+	/* Inputs */
 	.field {
-		@apply rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-blue-700/50 focus:outline-none focus:ring-2 focus:ring-blue-700/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-blue-400/50 dark:focus:ring-blue-400/20;
+		@apply rounded-sm border px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-300;
+		background-color: var(--surface);
+		border-color: var(--rule-strong);
 	}
 	textarea.field {
 		@apply min-h-24;
 	}
-
-	/* Selects lose the OS arrow chrome for one zinc-500 chevron that reads on
-	   both the white and the zinc-900 field background. */
 	select.field {
 		@apply cursor-pointer appearance-none bg-no-repeat pr-9;
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2371717a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23767671' stroke-width='1.5' stroke-linecap='square'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
 		background-position: right 0.625rem center;
 		background-size: 1rem;
 	}
-
 	input[type='search'].field {
 		@apply bg-no-repeat pl-9;
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2371717a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='7' cy='7' r='4.5'/%3E%3Cpath d='M10.5 10.5L14 14'/%3E%3C/svg%3E");
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23767671' stroke-width='1.5'%3E%3Ccircle cx='7' cy='7' r='4.5'/%3E%3Cpath d='M10.5 10.5L14 14'/%3E%3C/svg%3E");
 		background-position: left 0.6875rem center;
 		background-size: 1rem;
 	}
-
-	/* A field carrying a value the user should notice: a hand-edited config,
-	   a secret about to be overwritten. */
+	/* A field holding a value the user should notice. */
 	.field--set {
-		@apply border-blue-700/45 bg-blue-700/[0.04] dark:border-blue-400/40 dark:bg-blue-400/[0.06];
+		@apply border-zinc-900 dark:border-zinc-300;
 	}
-
 	.field-error {
 		@apply mt-2 text-sm text-red-600 dark:text-red-400;
 	}
 
-	/* Top-level form group: the only heavy rule on a settings page. */
+	/* A top-level group on a settings page. */
 	.form-section {
-		@apply mt-8 border-t border-zinc-200 pt-5 dark:border-zinc-800;
+		@apply mt-10 border-t pt-6;
+		border-color: var(--rule);
 	}
 
-	/* Primary action. */
-	.btn {
-		@apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300;
-	}
-
-	/* Destructive and irreversible: bordered red, not the lowest-weight
-	   ghost, so visual weight tracks consequence. */
+	/* Buttons: rectangular, flat. */
+	.btn,
+	.btn-quiet,
 	.btn-danger {
-		@apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-red-300 bg-transparent px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:border-red-400 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-500/40 dark:text-red-400 dark:hover:border-red-500/60 dark:hover:bg-red-500/10;
+		@apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-sm border px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50;
 	}
-
-	/* Subtle secondary action. */
+	.btn {
+		@apply border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-700 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300;
+	}
+	.btn-quiet {
+		@apply text-zinc-800 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800;
+		border-color: var(--rule-strong);
+		background-color: var(--surface);
+	}
+	.btn-danger {
+		@apply border-red-600 text-red-700 hover:bg-red-50 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-950;
+	}
 	.btn-ghost {
-		@apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border-0 bg-transparent px-2 py-1 text-sm text-zinc-500 transition-colors hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-100;
+		@apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-sm text-zinc-600 underline-offset-4 hover:text-zinc-950 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-50;
 	}
-
-	/* Reversible-but-destructive text actions (delete a secret, revoke). */
 	.btn-ghost-danger {
-		@apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border-0 bg-transparent px-2 py-1 text-sm text-red-600 transition-colors hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:text-red-300;
+		@apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-sm text-red-700 underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400;
 	}
 
-	/* Small count / status tag. */
+	/* Small tag. */
 	.badge {
-		@apply inline-flex items-center rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400;
+		@apply inline-flex items-center rounded-xs border px-1.5 py-px font-mono text-[0.7rem] text-zinc-600 dark:text-zinc-400;
+		border-color: var(--rule-strong);
 	}
 	.badge--new {
-		@apply bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400;
+		@apply border-emerald-600/40 text-emerald-700 dark:border-emerald-400/40 dark:text-emerald-300;
 	}
 	.badge--warn {
-		@apply bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400;
+		@apply border-amber-600/40 text-amber-700 dark:border-amber-400/40 dark:text-amber-300;
 	}
 	.badge--error {
-		@apply bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400;
+		@apply border-red-600/40 text-red-700 dark:border-red-400/40 dark:text-red-300;
 	}
-	/* A fact worth showing that is not a problem. Amber on every row of a
-	   list stops meaning anything, so a neutral fact gets an outline. */
 	.badge--info {
-		@apply border border-zinc-200 bg-transparent text-zinc-500 dark:border-zinc-700 dark:text-zinc-400;
+		@apply text-zinc-500 dark:text-zinc-400;
 	}
 
-	/* A state dot beside a project's state word. */
+	/* State marker: a small square. */
 	.dot {
-		@apply inline-block h-2 w-2 shrink-0 rounded-full bg-zinc-400 dark:bg-zinc-600;
+		@apply inline-block h-2 w-2 shrink-0 rounded-xs bg-zinc-400 dark:bg-zinc-600;
 	}
 	.dot--good {
-		@apply bg-emerald-500;
+		@apply bg-emerald-500 dark:bg-emerald-400;
 	}
 	.dot--warn {
 		@apply bg-amber-500;
 	}
 	.dot--error {
-		@apply bg-red-500;
+		@apply bg-red-600 dark:bg-red-400;
 	}
 	.dot--busy {
 		@apply animate-pulse bg-blue-600 dark:bg-blue-400;
 	}
 
-	/* A row in a list: hairline rules on the page background, not stacked
-	   boxes. The separator sits on the top edge so a list needs no wrapper
-	   and no :last-child exception. */
+	/* A row in a list: a hairline on its top edge. */
 	.row {
-		@apply border-t border-zinc-100 py-3 first:border-t-0 dark:border-zinc-900;
+		@apply border-t py-3 first:border-t-0;
+		border-color: var(--rule);
 	}
 	.row--group {
-		@apply border-t border-zinc-200 py-2.5 dark:border-zinc-800;
+		@apply border-t py-2.5;
+		border-color: var(--rule-strong);
 	}
 
-	/* Preformatted output: build logs, error blocks, the metrics snapshot. */
-	.codeblock {
-		@apply overflow-x-auto rounded-lg border border-zinc-200 bg-zinc-50 p-3 font-mono text-xs whitespace-pre-wrap dark:border-zinc-800 dark:bg-zinc-950;
-	}
-
-	/* Surface — the project detail cards. */
 	.card {
-		@apply rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900;
+		@apply rounded-sm border p-5;
+		background-color: var(--surface);
+		border-color: var(--rule);
+	}
+	.codeblock {
+		@apply overflow-x-auto rounded-sm border p-3 font-mono text-[0.8rem] leading-relaxed whitespace-pre-wrap text-zinc-800 dark:text-zinc-200;
+		background-color: var(--sunken);
+		border-color: var(--rule);
 	}
 
-	/* Full-width form/page feedback. */
 	.banner {
-		@apply mb-4 rounded-lg border border-zinc-200 px-4 py-3 text-sm font-medium dark:border-zinc-800;
+		@apply mb-5 rounded-sm border px-4 py-3 text-sm;
+		border-color: var(--rule-strong);
+		background-color: var(--surface);
 	}
 	.banner--ok {
-		@apply border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-400;
+		@apply border-emerald-600/40 bg-emerald-50 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-950 dark:text-emerald-200;
 	}
 	.banner--warn {
-		@apply border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/15 dark:text-amber-400;
+		@apply border-amber-600/40 bg-amber-50 text-amber-800 dark:border-amber-400/30 dark:bg-amber-950 dark:text-amber-200;
 	}
 	.banner--error {
-		@apply border-red-200 bg-red-100 text-red-700 dark:border-red-500/20 dark:bg-red-500/15 dark:text-red-400;
+		@apply border-red-600/40 bg-red-50 text-red-800 dark:border-red-400/30 dark:bg-red-950 dark:text-red-200;
 	}
 
-	/* Single accent color for links. */
 	.link {
-		@apply cursor-pointer text-blue-700 hover:underline dark:text-blue-400;
+		@apply cursor-pointer text-blue-700 underline decoration-1 underline-offset-2 hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-200;
+	}
+	kbd,
+	.kbd {
+		@apply inline-flex items-center rounded-xs border px-1 font-mono text-[0.75rem] text-zinc-700 dark:text-zinc-300;
+		border-color: var(--rule-strong);
+		background-color: var(--sunken);
 	}
 
-	/* Boolean setting: a native checkbox with a text label on one line,
-	   replacing the recruiting app's chip-wrapped checkbox (rejected, see
-	   DESIGN-LANGUAGE.md "Replace"). One per line, aligned left. */
 	.check-row {
 		@apply flex items-center gap-2.5 py-1.5 text-sm text-zinc-800 dark:text-zinc-200;
 	}
-
-	/* A small on/off switch, drawn with zinc borders and the blue accent when
-	   on, for settings that read better as a toggle (email notifications). */
 	.switch {
-		@apply relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full border border-zinc-300 bg-zinc-100 transition-colors dark:border-zinc-700 dark:bg-zinc-800;
+		@apply relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-sm border bg-zinc-200 transition-colors dark:bg-zinc-800;
+		border-color: var(--rule-strong);
 	}
 	.switch:has(input:focus-visible) {
-		@apply ring-2 ring-blue-700/30 dark:ring-blue-400/30;
+		@apply outline-2 outline-offset-2 outline-blue-600;
 	}
 	.switch[data-on='true'] {
-		@apply border-blue-700 bg-blue-700 dark:border-blue-400 dark:bg-blue-400;
+		@apply border-zinc-900 bg-zinc-900 dark:border-zinc-100 dark:bg-zinc-100;
 	}
 	.switch-knob {
-		@apply pointer-events-none ml-0.5 h-4.5 w-4.5 translate-x-0 rounded-full bg-white shadow transition-transform dark:bg-zinc-950;
+		@apply pointer-events-none ml-0.5 h-3.5 w-3.5 translate-x-0 rounded-xs bg-white transition-transform dark:bg-zinc-400;
 	}
 	.switch[data-on='true'] .switch-knob {
-		@apply translate-x-4;
+		@apply translate-x-4 dark:bg-zinc-900;
 	}
-
-	/* Pick-one that needs a sentence per option: a vertical list of native
-	   radios, no card border around the option (the recruiting app's
-	   `.option` card radio is rejected). */
 	.radio-row {
 		@apply flex items-start gap-2.5 py-2;
 	}
@@ -208,37 +310,58 @@
 	.radio-row-help {
 		@apply text-sm text-zinc-500 dark:text-zinc-400;
 	}
-
-	/* Pick-several: the config menu's package list. A searchable list with a
-	   native checkbox per row, not a wall of pills (the recruiting app's
-	   `.chip` is rejected for this). */
 	.check-list-row {
-		@apply flex items-start gap-2.5 border-t border-zinc-100 py-2 first:border-t-0 dark:border-zinc-900;
+		@apply flex items-start gap-2.5 border-t py-2 first:border-t-0;
+		border-color: var(--rule);
 	}
 	.check-list-row input[type='checkbox'] {
 		@apply mt-1;
 	}
 
-	/* CodeMirror 6's own classes, themed to the same palette rather than one
-	   of its bundled dark themes, so the Nix editor looks like the rest of
-	   the page in both color schemes. */
-	.nix-editor .cm-editor {
-		@apply h-full rounded-lg border border-zinc-300 bg-white text-sm dark:border-zinc-700 dark:bg-zinc-900;
+	/* Data tables: hairlines, no fills. */
+	.table {
+		@apply w-full border-collapse text-sm;
 	}
-	.nix-editor .cm-editor.cm-focused {
-		@apply border-blue-700/50 ring-2 ring-blue-700/20 outline-none dark:border-blue-400/50 dark:ring-blue-400/20;
+	.table th {
+		@apply border-b px-3 py-2 text-left text-xs font-medium text-zinc-500 dark:text-zinc-400;
+		border-color: var(--rule-strong);
 	}
-	.nix-editor .cm-gutters {
-		@apply rounded-l-lg border-r border-zinc-200 bg-zinc-50 text-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-600;
+	.table td {
+		@apply border-b px-3 py-3 align-top;
+		border-color: var(--rule);
 	}
-	.nix-editor .cm-content {
-		@apply text-zinc-900 dark:text-zinc-100;
+	.table th:first-child,
+	.table td:first-child {
+		@apply pl-0;
 	}
-	.nix-editor .cm-activeLine,
-	.nix-editor .cm-activeLineGutter {
-		@apply bg-zinc-100 dark:bg-zinc-800/60;
+	.table th:last-child,
+	.table td:last-child {
+		@apply pr-0;
 	}
-	.nix-editor .cm-line-error {
-		@apply bg-red-100 dark:bg-red-500/15;
-	}
+}
+
+/* Nix editor (CodeMirror 6). Unlayered on purpose: CodeMirror injects its
+   theme as unlayered styles, and those beat anything inside a layer. */
+.nix-editor .cm-editor {
+	@apply h-full rounded-sm border text-sm;
+	background-color: var(--surface);
+	border-color: var(--rule-strong);
+}
+.nix-editor .cm-editor.cm-focused {
+	@apply border-zinc-900 outline-none dark:border-zinc-300;
+}
+.nix-editor .cm-editor .cm-gutters {
+	@apply border-r text-zinc-400 dark:text-zinc-600;
+	background-color: var(--sunken);
+	border-color: var(--rule);
+}
+.nix-editor .cm-editor .cm-content {
+	@apply font-mono text-zinc-900 dark:text-zinc-100;
+}
+.nix-editor .cm-editor .cm-activeLine,
+.nix-editor .cm-editor .cm-activeLineGutter {
+	background-color: var(--sunken);
+}
+.nix-editor .cm-line-error {
+	@apply bg-red-100 dark:bg-red-950;
 }

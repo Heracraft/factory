@@ -56,13 +56,17 @@
 		</dl>
 
 		<div class="form-section">
-			<h2 class="text-sm font-semibold text-red-700 dark:text-red-400">Delete account</h2>
+			<h2 class="text-xl font-semibold text-red-700 dark:text-red-400">Delete account</h2>
 			<p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-				Stops every environment at once. Everything, including snapshots, is deleted 30 days
-				later.
+				Stops every environment at once. Everything, including snapshots, is deleted 30 days later.
 			</p>
 			<div class="mt-3">
-				<ConfirmType word={me.handle} label="Delete account" disabled={deleting} onconfirm={onDelete} />
+				<ConfirmType
+					word={me.handle}
+					label="Delete account"
+					disabled={deleting}
+					onconfirm={onDelete}
+				/>
 			</div>
 		</div>
 	{/if}

@@ -100,17 +100,17 @@ own terms and privacy policy, not by this one.
 
 ## How long we keep it
 
-| What | Kept for |
-|---|---|
-| Metering samples | 90 days |
-| Process samples | 30 days |
-| Console logs | 30 days |
-| Service logs | 90 days |
-| Usage records, invoices, events, audit log | indefinitely |
-| Build logs | the last 20 builds per project |
-| Snapshots | 7 daily; the last one 30 days after a project is destroyed |
-| Environment disks | until you destroy the project |
-| Everything, after you cancel | environments stop at once; snapshots and data are deleted 30 days later |
+| What                                       | Kept for                                                                |
+| ------------------------------------------ | ----------------------------------------------------------------------- |
+| Metering samples                           | 90 days                                                                 |
+| Process samples                            | 30 days                                                                 |
+| Console logs                               | 30 days                                                                 |
+| Service logs                               | 90 days                                                                 |
+| Usage records, invoices, events, audit log | indefinitely                                                            |
+| Build logs                                 | the last 20 builds per project                                          |
+| Snapshots                                  | 7 daily; the last one 30 days after a project is destroyed              |
+| Environment disks                          | until you destroy the project                                           |
+| Everything, after you cancel               | environments stop at once; snapshots and data are deleted 30 days later |
 
 ## Who can see your data
 

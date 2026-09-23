@@ -13,7 +13,11 @@
 	const id = page.params.id as string;
 
 	const NAME_RE = /^[A-Z][A-Z0-9_]{0,63}$/;
-	const RESERVED = new Set(['ssh_host_ed25519_key', 'ssh_host_ed25519_key-cert.pub', 'user_ca.pub']);
+	const RESERVED = new Set([
+		'ssh_host_ed25519_key',
+		'ssh_host_ed25519_key-cert.pub',
+		'user_ca.pub'
+	]);
 	const MAX_BYTES = 64 * 1024;
 
 	let project = $state<Project | undefined>(undefined);
@@ -38,8 +42,9 @@
 	onMount(load);
 
 	function validateName(n: string): string | undefined {
-		if (RESERVED.has(n)) return 'This name is reserved for the guest\'s SSH host material.';
-		if (!NAME_RE.test(n)) return 'Must match [A-Z][A-Z0-9_]{0,63} — uppercase letters, digits and underscore.';
+		if (RESERVED.has(n)) return "This name is reserved for the guest's SSH host material.";
+		if (!NAME_RE.test(n))
+			return 'Must match [A-Z][A-Z0-9_]{0,63} — uppercase letters, digits and underscore.';
 		return undefined;
 	}
 
@@ -76,7 +81,9 @@
 	}
 
 	async function onDelete(n: string) {
-		if (!confirm(`Remove ${n}? Running processes that already read it keep their copy until restart.`))
+		if (
+			!confirm(`Remove ${n}? Running processes that already read it keep their copy until restart.`)
+		)
 			return;
 		deleting = n;
 		try {
@@ -129,7 +136,7 @@
 		{/if}
 
 		<div class="form-section">
-			<h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Add a secret</h2>
+			<h2 class="font-display text-xl font-semibold">Add a secret</h2>
 			<div class="mt-3 flex flex-col gap-3">
 				<div>
 					<input

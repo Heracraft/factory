@@ -20,7 +20,7 @@ test.beforeEach(async ({ page }) => {
 
 test('/projects renders the projects list', async ({ page }) => {
 	await page.goto('/projects');
-	await expect(page.getByText(projectName)).toBeVisible();
+	await expect(page.getByRole('link', { name: projectName, exact: true })).toBeVisible();
 });
 
 test('/projects/[id] renders the project detail cards', async ({ page }) => {
