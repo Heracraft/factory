@@ -23,7 +23,7 @@ func TestRequestLogCarriesRouteUserAndClient(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		res.Body.Close()
+		_ = res.Body.Close()
 	}
 	want := map[string]bool{"cli": false, "dashboard": false, "other": false}
 	sc := bufio.NewScanner(bytes.NewReader(e.logs.Bytes()))
