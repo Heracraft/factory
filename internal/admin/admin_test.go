@@ -212,6 +212,18 @@ func TestAdminSurface(t *testing.T) {
 	if destroyedAt == nil || destroyedState != "destroyed" {
 		t.Fatalf("after destroy: state %q destroyed_at %v", destroyedState, destroyedAt)
 	}
+	// A destroyed row is history: restoring or starting it in place ran a
+	// guest nothing listed and whose snapshots expired (found live on
+	// 2026-09-23). The id still resolves, so the refusal must be explicit.
+	var isoID string
+	if err := h.Pool.QueryRow(ctx, "select id::text from projects where slug = 'iso-a'").Scan(&isoID); err != nil {
+		t.Fatal(err)
+	}
+	for _, cmd := range [][]string{{"projects", "restore", isoID, "--latest"}, {"projects", "start", isoID}} {
+		if _, err := run(t, e, cmd...); err == nil || !strings.Contains(err.Error(), "repose restore iso-a") {
+			t.Fatalf("%v on a destroyed project: err %v, want a refusal naming `repose restore iso-a`", cmd, err)
+		}
+	}
 	// smoke: create, snapshot, stop, start, destroy on host-01
 	if out, err := run(t, e, "hosts", "smoke", "host-01"); err != nil || !strings.Contains(out, "destroy   ok") {
 		t.Fatalf("smoke: %s %v", out, err)

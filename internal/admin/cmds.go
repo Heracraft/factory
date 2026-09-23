@@ -613,7 +613,7 @@ func (e *Env) projects(ctx context.Context, args []string) error {
 		_ = e.pool.QueryRow(ctx, "select coalesce(sum(cost_cents),0) from usage_hours where project_id = $1 and hour >= date_trunc('day', now())", p.ID).Scan(&costToday)
 		rows := [][]string{
 			{"id", p.ID.String()}, {"slug", p.Slug}, {"user", u.Handle + " (" + u.ID.String() + ")"}, {"class", p.Class}, {"state", p.State},
-			{"host", host}, {"guest_id", fmt.Sprint(p.GuestID)}, {"guest_ip", fmt.Sprint(p.GuestIP)}, {"base", fmt.Sprint(p.BaseVersion)},
+			{"host", host}, {"guest_id", fmt.Sprint(p.GuestID)}, {"guest_ip", fmt.Sprint(p.GuestIP)}, {"base", derefOr(p.BaseVersion, "-")},
 			{"hold_base_updates", strconv.FormatBool(p.HoldBaseUpdates)}, {"volume", gb(p.VolumeBytes)}, {"last snapshot", fmtTime(lastSnap)},
 			{"last error", fmt.Sprint(p.LastError)}, {"cost today", fmt.Sprintf("$%.2f", float64(costToday)/100)}, {"created", fmtTime(&p.CreatedAt)},
 		}
@@ -626,7 +626,7 @@ func (e *Env) projects(ctx context.Context, args []string) error {
 		if len(args) < 2 {
 			return ErrUsage
 		}
-		p, err := e.findProject(ctx, args[1])
+		p, err := e.findLiveProject(ctx, args[1])
 		if err != nil {
 			return err
 		}
@@ -682,7 +682,7 @@ func (e *Env) projects(ctx context.Context, args []string) error {
 		if err != nil || fs.NArg() < 1 {
 			return ErrUsage
 		}
-		p, err := e.findProject(ctx, fs.Arg(0))
+		p, err := e.findLiveProject(ctx, fs.Arg(0))
 		if err != nil {
 			return err
 		}
@@ -701,7 +701,7 @@ func (e *Env) projects(ctx context.Context, args []string) error {
 		if err != nil || fs.NArg() < 1 || fs.Lookup("to").Value.String() == "" {
 			return ErrUsage
 		}
-		p, err := e.findProject(ctx, fs.Arg(0))
+		p, err := e.findLiveProject(ctx, fs.Arg(0))
 		if err != nil {
 			return err
 		}
@@ -728,7 +728,7 @@ func (e *Env) projects(ctx context.Context, args []string) error {
 		if err != nil || fs.NArg() < 1 {
 			return ErrUsage
 		}
-		p, err := e.findProject(ctx, fs.Arg(0))
+		p, err := e.findLiveProject(ctx, fs.Arg(0))
 		if err != nil {
 			return err
 		}
@@ -1930,4 +1930,28 @@ func (e *Env) opsCmd(ctx context.Context, args []string) error {
 		return rows.Err()
 	}
 	return fmt.Errorf("%w: ops %s", ErrUsage, args[0])
+}
+
+// findLiveProject is findProject for commands that act on a guest: a
+// destroyed project's row is history, and acting on it in place (a
+// restore, a start) ran a guest the rest of the platform treats as gone —
+// invisible to lists, its snapshots expiring in 30 days. A destroyed
+// project comes back as a new one, the way the user's `repose restore`
+// does it.
+func (e *Env) findLiveProject(ctx context.Context, ref string) (*store.Project, error) {
+	p, err := e.findProject(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	if p.DestroyedAt != nil {
+		return nil, fmt.Errorf("%s was destroyed on %s; the owner brings it back as a new project with `repose restore %s`", p.Slug, p.DestroyedAt.UTC().Format("2006-01-02 15:04"), p.Slug)
+	}
+	return p, nil
+}
+
+func derefOr(s *string, def string) string {
+	if s == nil || *s == "" {
+		return def
+	}
+	return *s
 }
