@@ -376,7 +376,7 @@ func TestSignInAndProjectsLifecycle(t *testing.T) {
 	}
 	b := r.body["billing"].(map[string]any)
 	l := r.body["limits"].(map[string]any)
-	if b["status"] != "trial" || b["trial_credit_cents"].(float64) != 1000 || l["projects"].(float64) != 3 || l["xl"].(float64) != 1 {
+	if b["status"] != "trial" || b["trial_credit_cents"].(float64) != 336 || l["projects"].(float64) != 3 || l["xl"].(float64) != 1 {
 		t.Fatalf("defaults: %s", r.raw)
 	}
 	var row map[string]any

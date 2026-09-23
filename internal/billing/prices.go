@@ -19,10 +19,14 @@ const (
 	HourLarge int64 = 14 // ceil(9900/720)
 	HourXL    int64 = 28 // ceil(19900/720)
 
-	StoragePerGBMonth  int64 = 10
-	EgressIncludedGB   int64 = 500
-	EgressPerGB        int64 = 5
-	TrialCreditCents   int64 = 1000
+	StoragePerGBMonth int64 = 10
+	EgressIncludedGB  int64 = 500
+	EgressPerGB       int64 = 5
+	// TrialCreditCents is one day of compute on large, 24 x HourLarge
+	// (DECISIONS I-205, amending R4-8's $10): 48 hours on small. Every
+	// user-facing string calls it "your first day of compute", never an
+	// amount.
+	TrialCreditCents   int64 = 24 * HourLarge
 	DefaultPeriodHours       = 720
 	ProjectLimitTrial        = 3
 	XLLimitTrial             = 1

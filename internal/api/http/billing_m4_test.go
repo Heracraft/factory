@@ -77,7 +77,7 @@ func TestTrialCreditDepletesThroughTheRollup(t *testing.T) {
 
 	// Five cents left, then one running hour of a small guest (7 cents)
 	// through the real rollup.
-	if _, err := billing.Credit(ctx, e.h.Pool, uuid.MustParse(uid), -995, billing.ReasonAdjustment, "test"); err != nil {
+	if _, err := billing.Credit(ctx, e.h.Pool, uuid.MustParse(uid), 5-billing.TrialCreditCents, billing.ReasonAdjustment, "test"); err != nil {
 		t.Fatal(err)
 	}
 	hour := time.Now().UTC().Truncate(time.Hour).Add(-2 * time.Hour)

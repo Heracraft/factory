@@ -96,7 +96,7 @@ func TestFirstSignInCreatesUserAndCollisionsSuffix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Handle != "octo-cat" || *a.Email != "a@example.com" || a.TrialCreditCents != 1000 || a.ProjectLimit != 3 || a.XLLimit != 1 || a.BillingStatus != "trial" {
+	if a.Handle != "octo-cat" || *a.Email != "a@example.com" || a.TrialCreditCents != 336 || a.ProjectLimit != 3 || a.XLLimit != 1 || a.BillingStatus != "trial" {
 		t.Fatalf("%+v", a)
 	}
 	again, err := p.EnsureUser(ctx, "sub-a")

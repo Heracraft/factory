@@ -211,7 +211,7 @@ func newGate(ctx context.Context, t *testing.T, c *stripe.Client, cfg billing.Co
 	}
 
 	ensurePartitions(t, g.pool, t0.AddDate(0, -1, 0), t0.AddDate(0, 2, 0))
-	g.a = seedAccount(t, g.pool, "large", t0, billing.TrialCreditCents)
+	g.a = seedAccount(t, g.pool, "large", t0, fixtureCreditCents)
 	cus, err := c.V1Customers.Create(ctx, &stripe.CustomerCreateParams{
 		TestClock: stripe.String(clock.ID), Email: stripe.String(g.a.Handle + "@example.test"),
 		Metadata: map[string]string{"user_id": g.a.UserID.String(), "handle": g.a.Handle, "m4_gate": t.Name()},
@@ -404,7 +404,7 @@ func (g *gate) checkInvoiceMatchesUsage(inv *stripe.Invoice) {
 	}
 	c, s, e := g.expected()
 	guest, storage, egress, cost, credit := sums(g.t, g.pool, g.a.ProjectID)
-	if guest != 1400 || storage != 400 || egress != 0 || cost != 1800 || credit != billing.TrialCreditCents {
+	if guest != 1400 || storage != 400 || egress != 0 || cost != 1800 || credit != fixtureCreditCents {
 		g.t.Fatalf("usage_hours: compute %d storage %d egress %d total %d credit %d; want 1400/400/0/1800/1000", guest, storage, egress, cost, credit)
 	}
 	if lines[cfg.PriceCompute] != c || lines[cfg.PriceStorage] != s || lines[cfg.PriceEgress] != e || inv.Subtotal != c+s+e || inv.Subtotal != 800 {

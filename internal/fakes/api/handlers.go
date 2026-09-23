@@ -91,7 +91,7 @@ type notifyView struct {
 
 func (f *Fake) meOf(u *userRec) meView {
 	v := meView{User: u.User, TZ: u.TZ, CreatedAt: u.CreatedAt,
-		Billing: billingView{Status: "trial", TrialCreditCents: 2000},
+		Billing: billingView{Status: "trial", TrialCreditCents: 336},
 		Limits:  limitsView{Projects: 3, XL: 1},
 		Notify:  notifyView{Email: u.NotifyEmail}}
 	if u.NtfyURL != "" {
@@ -103,7 +103,7 @@ func (f *Fake) meOf(u *userRec) meView {
 		v.Billing = billingView{Status: "active", HasCard: true}
 		v.Limits = limitsView{Projects: 10, XL: 3}
 	case BillingNoCard:
-		v.Billing = billingView{Status: "trial", TrialCreditCents: 1000}
+		v.Billing = billingView{Status: "trial", TrialCreditCents: 336}
 	}
 	return v
 }

@@ -12,8 +12,8 @@ import (
 	"github.com/heracraft/repose/internal/api/store"
 )
 
-// The trial credit ledger (09-billing.md §5.3). Sign-up inserts +1000
-// "trial"; each hour's cost first debits the ledger until the balance is
+// The trial credit ledger (09-billing.md §5.3). Sign-up inserts
+// +TrialCreditCents "trial"; each hour's cost first debits the ledger until the balance is
 // zero and only the remainder becomes a Stripe usage record. The balance is
 // sum(cents) over the user's rows, never a cached column: users.
 // trial_credit_cents is a projection maintained by a trigger inside the

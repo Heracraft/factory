@@ -99,8 +99,14 @@ func TestCustomerSetupIntentAndSubscription(t *testing.T) {
 // docs/CHECKLIST.md: "Stripe: test-mode invoice for the fixed usage pattern
 // matches to the cent", and 09-billing.md §7's fixture: one large guest,
 // 100 running hours across a period, 40 GB, 10 GB egress. Assert the lines:
-// compute 1400, storage 400, egress 0, total 1800, minus the 1000 trial
-// credit = 800 pushed to Stripe.
+// compute 1400, storage 400, egress 0, total 1800, minus the fixture's
+// 1000 of credit = 800 pushed to Stripe. The fixture keeps its own credit
+// (fixtureCreditCents) rather than the trial's, which I-205 made one day of
+// compute: the 800-cent invoice is what docs/ops/M4-GATE.md checks against.
+// fixtureCreditCents is the credit the 09-billing.md §7 usage fixture's
+// account starts with (the pre-I-205 trial), so its invoice stays 800.
+const fixtureCreditCents int64 = 1000
+
 func TestChecklistUsageFixtureInvoicesTo800Cents(t *testing.T) {
 	if testing.Short() {
 		t.Skip("a whole billing period of rollups")
@@ -114,7 +120,7 @@ func TestChecklistUsageFixtureInvoicesTo800Cents(t *testing.T) {
 	}
 	start := base()
 	ensurePartitions(t, pool, start, start.AddDate(0, 2, 0))
-	a := seedAccount(t, pool, "large", start, billing.TrialCreditCents)
+	a := seedAccount(t, pool, "large", start, fixtureCreditCents)
 	customer := "cus_" + a.Handle
 	period := billing.PeriodFor(a.Anchor, start)
 	hours := period.Hours()
@@ -145,8 +151,8 @@ func TestChecklistUsageFixtureInvoicesTo800Cents(t *testing.T) {
 	if cost != 1800 {
 		t.Errorf("total %d cents, want 1800", cost)
 	}
-	if credit != billing.TrialCreditCents {
-		t.Errorf("trial credit applied %d cents, want %d", credit, billing.TrialCreditCents)
+	if credit != fixtureCreditCents {
+		t.Errorf("trial credit applied %d cents, want %d", credit, fixtureCreditCents)
 	}
 	if billed := cost - credit; billed != 800 {
 		t.Errorf("billable %d cents, want 800", billed)
