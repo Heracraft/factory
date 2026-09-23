@@ -1,0 +1,20 @@
+{
+	"name": "@play/web",
+	"scripts": {
+		"dev": "portless run next dev",
+		"prebuild": "cp ../../packages/wasm/main.wasm ./public/main.wasm || echo 'Warning: main.wasm not found'",
+		"build": "next build",
+		"lint": "eslint .",
+		"e2e": "playwright test",
+		"db:push": "pnpm --filter @play/db db:push",
+		"stripe": "stripe listen --forward-to localhost:3000/api/webhooks"
+	},
+	"dependencies": {
+		"next": "15.0.0",
+		"@play/db": "workspace:*"
+	},
+	"devDependencies": {
+		"eslint": "^9.0.0",
+		"@playwright/test": "^1.48.0"
+	}
+}

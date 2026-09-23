@@ -1729,6 +1729,28 @@ reports the project `running`.
    window is deliberately short so an agent's user is not left staring at
    a hang; the guest is very likely still coming up.
 
+## CLI: a laptop tool is missing in the guest
+
+The user has a tool on the laptop (or the project's scripts run one) and
+the guest says `command not found`, or the run said `Could not install
+<tool>: ...` (DECISIONS I-221, I-222).
+
+1. `repose scan` in the checkout, on the laptop: is the tool in the list?
+   If not, it was not found where its manager installs (a tool installed
+   from a laptop checkout, a `(devel)` Go build or a cargo path install
+   is left out on purpose) or the project's dependencies provide it.
+2. In the guest (`repose attach`): `cat ~/.repose/tools-install.log`
+   holds each install's command and output; `~/.repose/tools/failed`
+   lists what will not be tried again until the laptop's entry changes.
+   Deleting that line and `~/.repose/carry/tools` makes the next `repose
+   run` try again.
+3. `systemctl --user status repose-tools-carry` shows whether a pass is
+   still running (installs are in the background; `nix profile add` of a
+   large package can take minutes). `$XDG_RUNTIME_DIR/repose-installing`
+   lists what it is still installing.
+4. A Go or cargo fallback install lands in `~/.local/bin`, which is on
+   the login PATH; a shell started before the install needs `hash -r`.
+
 ## StripePushBacklog
 
 `repose_api_billing_stripe_push_backlog_seconds` past six hours: the

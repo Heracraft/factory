@@ -36,6 +36,12 @@ target (the multiplexed `<slug>.repose` alias), so it refreshes the
 certificate like `run`, needs a running guest (exit 5 otherwise), and
 exits with scp's code.
 
+`repose scan [DIR] [--json]` (DECISIONS I-222): prints what the next
+`run` would ask the guest to install, the laptop's global tools and the
+checkout's commands, with where each was found and why the rest were
+left out. It reads files only: no api, no guest, no package manager.
+`DIR` defaults to the current checkout's root.
+
 Exit codes: 0 ok; 1 generic; 2 usage; 3 not logged in; 4 project not found;
 5 guest not running; 6 dirty remote tree (sync refused); 7 payment required;
 8 capacity; 10 build failed (Nix error printed); 130 interrupted (Ctrl-C).

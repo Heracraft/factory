@@ -139,7 +139,52 @@ state and is named once.
 | `~/.claude/settings.json` | `/home/dev/.claude/settings.json`, merged by `internal/cli/claude_merge.jq` with the base's `jq`: guest file as the base, laptop's on top (without `env`, `apiKeyHelper`, `aws*`/`gcp*`, `otelHeadersHelper`, `forceLoginMethod`, removed on the laptop, I-211) with its home rewritten to `/home/dev`, `permissions.allow/deny/ask` unioned, `repose-hook` entries stripped from both and `/etc/repose/claude-settings.json`'s appended, hooks and `statusLine` whose command does not resolve dropped. Written as `settings.json.tmp`, checked with `jq empty`, the old file kept as `settings.json.repose-prev`, renamed into place. An invalid guest file is left alone | marker `claude-settings` |
 | `enabledPlugins` from a marketplace | installed by `~/.repose/claude-plugins.sh` (started with `setsid -f`, reads `~/.repose/claude-plugins.json`) with `claude plugin marketplace add` / `claude plugin install`, reporting through `tmux display-message` | marker `claude-plugins`, written only when every install worked |
 | gitignored `.env` / `.env.*` files in the checkout, outside dependency directories, up to 1 MB (DECISIONS I-197; `run` only) | the same relative path under `/home/dev/<slug>/`, dev 0600, mtime kept; a guest file with a newer mtime is kept (`#kept <path>`) | written at the end of the sync's apply script, after the checkout; marker `env` |
-| markers | `/home/dev/.repose/carry/<item>` | the hash of the laptop input last applied; the probe prints them as `#marker <item> <hash>` |
+| the laptop's global tools and the project's commands (DECISIONS I-221, I-222; `run` only) | `/home/dev/.repose/tools-wanted.json`, then `repose-tools-install plan` (base, `nix/guest/base/tools-carry.nix`) | see "Tools carry"; marker `tools`, written by the installer when a pass over the list ends |
+| markers | `/home/dev/.repose/carry/<item>` | the hash of the laptop input last applied; the probe prints them as `#marker <item> <hash>`, and `#marker tools-notices waiting` while `~/.repose/tools-notices` is non-empty |
+
+### Tools carry (DECISIONS I-221, I-222)
+
+`~/.repose/tools-wanted.json`, written by the CLI:
+`{"v":1, "hash":"<32 hex>", "items":[{"name", "bins":[...], "manager",
+"pkg", "version", "from":"laptop"|"project"}], "node":"<major>"}`.
+`manager` is `npm`, `pnpm`, `bun`, `go`, `cargo`, `uv`, `pipx` or absent
+(nixpkgs only); `pkg` is the manager's name (the Go package path for
+`go`); names, versions and commands are restricted to
+`[A-Za-z0-9@/._+-]` by the CLI. `node` is absent when the project pins no
+single major.
+
+`repose-tools-install plan` (dev, in the carry's ssh, milliseconds):
+prints `#installing <name> ...` for the items none of whose `bins` is on
+the login PATH and that did not fail before, plus `nodejs_<major>` when
+the guest's node is another major and dev's nix profile comes first on
+PATH; prints `#warn ...` naming `repose config add nodejs_<major>` when it
+does not; writes the missing commands, one per line, to
+`$XDG_RUNTIME_DIR/repose-installing`; starts the user unit
+`repose-tools-carry` (`--no-block`). A base without the command leaves
+the file in place and writes no marker, so the list is sent again after
+the base is upgraded.
+
+`repose-tools-carry.service` (user unit of dev, `Nice=10`, idle I/O, also
+wanted by `default.target` so a cut-short pass finishes at the next
+boot): runs `repose-tools-install run` in a login shell. For each missing
+item: the nixpkgs attribute with `bin/<first bin>` (`nix-locate
+--minimal --no-group --type x --type s --whole-name --at-root
+/bin/<command>`, each line `<attr>.<output>`; the attribute named like the
+command first, then one outside a package set, then the shortest; without
+nix-locate, the attribute named like the command)
+via `nix profile add nixpkgs#<attr>`; else the manager, into the login
+PATH (`npm install -g` into `~/.npm-global`, `go install` with
+`GOBIN=~/.local/bin`, `cargo install --root ~/.local`, `uv tool install`
+for uv and pipx). Each command leaves `repose-installing` when its tool
+is done; the file is removed when the pass ends. Output goes to
+`~/.repose/tools-install.log` (trimmed at 1 MB); a failure appends
+`Could not install <name>: <last output line>` to `~/.repose/tools-notices`,
+which the next carry prints as `#warn` lines and deletes, and records the
+item in `~/.repose/tools/failed`, so it is not tried again until its
+entry changes. The node step records the attribute it added in
+`~/.repose/tools/node` and replaces it when the project asks for another
+major; it removes what it added when `bash -lc 'node --version'` does not
+then report the major.
 
 ## Caches (DECISIONS I-202, I-208)
 

@@ -1,0 +1,19 @@
+set dotenv-load
+
+default: test
+
+# run the tests
+test *ARGS:
+    cargo nextest run {{ARGS}}
+
+wasm:
+    wasm-pack build --target web
+    @wasm-opt -Oz pkg/crate_bg.wasm -o pkg/crate_bg.wasm
+
+bench:
+    #!/usr/bin/env python3
+    import subprocess
+    subprocess.run(["hyperfine", "x"])
+
+fmt:
+    cargo fmt --all && {{just_executable()}} lint

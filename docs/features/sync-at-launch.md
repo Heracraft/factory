@@ -175,6 +175,58 @@ to look first.
   markers), the credentials and carry, and the apply (with the .env
   files).
 
+Tools (DECISIONS I-221, I-222):
+
+- `repose run` makes the guest have the tools the laptop has and the
+  project runs. It lists the laptop's global tools by reading the
+  managers' install directories, never by running them: npm's global
+  prefix (`$NPM_CONFIG_PREFIX`, `prefix=` in `~/.npmrc`, else the
+  directory above `node`'s), pnpm's (`$PNPM_HOME/global`), bun's
+  (`~/.bun/install/global`), Go binaries in `$GOBIN`, `$GOPATH/bin` or
+  `~/go/bin` (package path and version from their build info), cargo's
+  `~/.cargo/.crates2.json` (registry crates only), `uv tool` and `pipx`
+  venvs. It adds the commands the checkout's own scripts run: package.json
+  scripts at the root and in every workspace package, Makefile and
+  justfile recipes, Procfile, `.air.toml` (air) and compose files
+  (docker). A command is left out when the guest base has it, when a
+  dependency of that workspace or the root provides it (by name, a known
+  package-to-command table, or `node_modules/.bin`), when a workspace
+  package's `bin` or a pyproject script defines it, or when it is the
+  name of another script. `npx`, `pnpm dlx` and `uv run` fetch what they
+  run and name nothing.
+- What travels is names, managers, versions and Go package paths, nothing
+  else: no laptop path, no config value. It rides the carry (marker
+  `tools`), so an unchanged list costs nothing, and the laptop's reading
+  runs while the probe's ssh is in flight (about 0.5 ms measured on the dev box
+  against nuru-playground; the budget is 20 ms).
+- The guest answers in milliseconds with what it lacks, and the CLI says
+  it once: `Installing 3 of your tools in the background: air, portless,
+  typescript`. The installs run after that in a low-priority user unit
+  (`repose-tools-carry`); nothing in `run` waits for them. Each tool is
+  installed from nixpkgs when a package there has `bin/<command>` (a
+  prebuilt binary, pinned into the store overlay with the rest of dev's
+  profile), else with the laptop's manager into a directory on the login
+  PATH (`npm i -g`, `go install` with `GOBIN=~/.local/bin`, `cargo
+  install --root ~/.local`, `uv tool install`). A command only a project
+  script names is installed from nixpkgs or, for the few npm-only ones
+  (`portless`), from npm. While a tool installs, its commands are listed
+  in `$XDG_RUNTIME_DIR/repose-installing`, so a shell that runs one early
+  says it is on its way instead of "command not found".
+- A project that pins a node major (`.nvmrc`, `.node-version`,
+  `.tool-versions`, `volta.node`, or an `engines.node` of one major such
+  as `22`, `22.x`, `^22.1`) the guest does not have gets `nodejs_<major>`
+  in dev's nix profile, but only when that makes it the `node` of new
+  shells, which it checks. When a `node` earlier on PATH would still win,
+  nothing is installed and the CLI says to run `repose config add
+  nodejs_<major>`. Go, Rust and Python version files are left to
+  `GOTOOLCHAIN`, rustup and uv, which fetch the version themselves.
+- A tool that could not be installed is named once, at the next `run`:
+  `Could not install air: <the installer's last line>`. The full output
+  is in the guest's `~/.repose/tools-install.log`. A failed tool is not
+  retried until the laptop's entry for it changes.
+- `repose scan [DIR]` prints the same list and why, without installing
+  anything or contacting the guest, to check a project before a run.
+
 Back to the laptop:
 
 - `repose cp` copies a file either way when a log or a trace is needed

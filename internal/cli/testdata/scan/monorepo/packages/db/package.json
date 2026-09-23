@@ -1,0 +1,12 @@
+{
+	"name": "@play/db",
+	"scripts": {
+		"db:generate": "drizzle-kit generate",
+		"db:push": "dotenv -e ../../.env -- drizzle-kit push",
+		"db:local": "docker compose up -d postgres"
+	},
+	"devDependencies": {
+		"drizzle-kit": "^0.30.0",
+		"dotenv-cli": "^7.0.0"
+	}
+}
