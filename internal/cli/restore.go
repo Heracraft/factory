@@ -132,8 +132,10 @@ func RestoreCmd(ctx context.Context, e *Env, name, as, snapshotID string, askNam
 		switch {
 		case apiErr.Code == "conflict" && apiErr.Detail["reason"] == "destroying",
 			// An api older than I-190 answers "no snapshot left" while the
-			// destroy that takes it is still running.
-			apiErr.Code == "not_found" && apiErr.Detail["reason"] == "no_snapshot" && stillDestroying(ctx, e, req.Slug):
+			// destroy that takes it is still running, and "name taken" (by
+			// the project being destroyed) once the snapshot is there.
+			apiErr.Code == "not_found" && apiErr.Detail["reason"] == "no_snapshot" && stillDestroying(ctx, e, req.Slug),
+			apiErr.Code == "conflict" && apiErr.Detail["reason"] == "name_taken" && req.Name == "" && stillDestroying(ctx, e, req.Slug):
 			if waitStart.IsZero() {
 				waitStart = time.Now()
 				wpr.Phase(fmt.Sprintf("Waiting for %s's destroy to take its final snapshot", name), "")

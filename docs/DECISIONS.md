@@ -4061,8 +4061,12 @@ answers `409 conflict`, `detail.reason = "destroying"`, "…is still being
 destroyed; its final snapshot is not taken yet. Try again in a few
 seconds", and the CLI shows `Waiting for X's destroy to take its final
 snapshot` and retries every 2 s for up to 3 minutes; against an older api
-it recognises the same case from `no_snapshot` plus a `destroying`
-project of that name. `TestRestoreOfADestroyingProjectSaysSo` (api,
+it recognises the same case from `no_snapshot`, or from `name_taken` once
+the snapshot exists but the destroy has not finished, plus a `destroying`
+project of that name. Live against the current api: `repose destroy -y
+e2e-polish; repose restore e2e-polish` printed `Waiting for e2e-polish's
+destroy to take its final snapshot...`, then restored, and a plain `ssh
+e2e-polish.repose` answered at once (I-188). `TestRestoreOfADestroyingProjectSaysSo` (api,
 Postgres), `TestRestoreWaitsForADestroyInProgress` (CLI, fake). api.md in
 this commit.
 
