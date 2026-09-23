@@ -30,13 +30,34 @@ const (
 	MsgBusy           = "gateway busy"
 	MsgRateLimited    = "too many authentication attempts from your address; try again later"
 	MsgNotReady       = "environment is not accepting connections yet"
-	// MsgStoppedFmt takes the slug.
-	MsgStoppedFmt = "%s is stopped; run `repose start`"
+	// MsgStoppedFmt takes the slug twice.
+	MsgStoppedFmt = "%s is stopped; run `repose start %s`"
 	// MsgNotFoundFmt takes the login name.
 	MsgNotFoundFmt = "no such project: %s"
-	// MsgStateFmt takes the slug and a state other than running or stopped.
-	MsgStateFmt = "%s is %s; " + MsgNotReady
+	// MsgStateFmt takes the slug and a transitional state (creating,
+	// building, starting, restoring).
+	MsgStateFmt = "%s is %s and not accepting connections yet; try again in a few seconds"
+	// MsgDestroyingFmt takes the slug twice.
+	MsgDestroyingFmt = "%s is being destroyed; `repose restore %s` brings it back once that is done"
+	// MsgErrorFmt takes the slug twice.
+	MsgErrorFmt = "%s is in error; `repose status %s` says why"
+	// MsgUnreachableHostFmt takes the slug.
+	MsgUnreachableHostFmt = "%s is on a host the control plane cannot reach right now; try again shortly"
 )
+
+// stateMessage is the banner for a project that is not running (I-189).
+func stateMessage(slug, state string) string {
+	switch state {
+	case "stopped", "stopping":
+		return fmt.Sprintf(MsgStoppedFmt, slug, slug)
+	case "destroying", "destroyed":
+		return fmt.Sprintf(MsgDestroyingFmt, slug, slug)
+	case "error":
+		return fmt.Sprintf(MsgErrorFmt, slug, slug)
+	default:
+		return fmt.Sprintf(MsgStateFmt, slug, state)
+	}
+}
 
 // Config configures a Gateway.
 type Config struct {
@@ -254,6 +275,14 @@ type connState struct {
 	keyID  string
 	// the last failure, for the log line
 	result string
+	// told is the last banner sent on this connection. ssh offers the
+	// certificate and then the plain key on one connection; each refusal's
+	// banner used to be printed back to back with no newline between
+	// them ("…not accepting connections yetpermission denied (certificate
+	// required)…"). A banner now ends in a newline, the plain key's
+	// "certificate required" after a banner already sent is not shown, and
+	// neither is the same banner twice (I-189).
+	told string
 }
 
 // HandleConn runs one connection: limits, SSH handshake with certificate
@@ -338,6 +367,12 @@ func (g *Gateway) serverConfig(ctx context.Context, st *connState) *ssh.ServerCo
 func (g *Gateway) fail(st *connState, result, message string) (*ssh.Permissions, error) {
 	st.result = result
 	g.cfg.Metrics.AuthFailTotal.WithLabelValues(result).Inc()
+	if message == st.told || (st.told != "" && result == ResultNoCert) {
+		message = ""
+	} else {
+		st.told = message
+		message += "\n"
+	}
 	return nil, &ssh.BannerError{Err: errors.New(result), Message: message}
 }
 
@@ -395,12 +430,10 @@ func (g *Gateway) authenticate(ctx context.Context, st *connState, conn ssh.Conn
 	switch route.State {
 	case "running":
 		if route.GuestIP == "" || route.HostUnreachable {
-			return g.fail(st, ResultRouteError, fmt.Sprintf(MsgStateFmt, slug, "on an unreachable host"))
+			return g.fail(st, ResultRouteError, fmt.Sprintf(MsgUnreachableHostFmt, slug))
 		}
-	case "stopped", "stopping":
-		return g.fail(st, ResultStopped, fmt.Sprintf(MsgStoppedFmt, slug))
 	default:
-		return g.fail(st, ResultStopped, fmt.Sprintf(MsgStateFmt, slug, route.State))
+		return g.fail(st, ResultStopped, stateMessage(slug, route.State))
 	}
 	// The authoritative check: signature, critical options, validity and
 	// revocation again, with the project id as the principal.

@@ -35,8 +35,13 @@ Two CAs, both ed25519, private keys in the api's secret store:
    `/internal/revoked` every 30 s, plus a push on revoke).
 3. Resolve `login` via `GET /internal/route`. If the project's `state` is
    not `running`, reject with a banner: `todo-app is stopped; run \`repose
-   start\``. If the certificate's principals do not contain the project id,
-   reject with `certificate not valid for this project`.
+   start todo-app\``, `todo-app is being destroyed; \`repose restore
+   todo-app\` brings it back once that is done`, `todo-app is starting and
+   not accepting connections yet; try again in a few seconds`. If the
+   certificate's principals do not contain the project id, reject with
+   `certificate not valid for this project`. Every banner ends in a newline,
+   and a connection shows one: the plain key ssh offers after a refused
+   certificate gets no second "certificate required" banner (I-189).
 4. Terminate the client's SSH session at the gateway, then open a second
    SSH session to `guest_ip:22` over WireGuard and relay channels between
    the two (session, `direct-tcpip` for `-L`, `auth-agent@openssh.com` for

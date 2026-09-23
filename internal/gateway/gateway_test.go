@@ -402,7 +402,7 @@ func TestStoppedAndOtherStates(t *testing.T) {
 	if err == nil {
 		t.Fatal("connected to a stopped project")
 	}
-	if want := fmt.Sprintf(MsgStoppedFmt, h.project.Slug); banner != want {
+	if want := fmt.Sprintf(MsgStoppedFmt, h.project.Slug, h.project.Slug); banner != want {
 		t.Fatalf("banner %q, want %q", banner, want)
 	}
 	t.Logf("stopped banner: %q", banner)
@@ -412,8 +412,13 @@ func TestStoppedAndOtherStates(t *testing.T) {
 	if err == nil {
 		t.Fatal("connected to a starting project")
 	}
-	if !strings.Contains(banner, "todo-app is starting") || !strings.Contains(banner, MsgNotReady) {
+	if banner != "todo-app is starting and not accepting connections yet; try again in a few seconds" {
 		t.Fatalf("banner %q", banner)
+	}
+	h.api.SetState(h.project.ID, "destroying")
+	h.offset.Add(6)
+	if _, banner, _ = h.dial(h.login, cert); banner != "todo-app is being destroyed; `repose restore todo-app` brings it back once that is done" {
+		t.Fatalf("destroying banner %q", banner)
 	}
 	h.api.SetState(h.project.ID, "running")
 	h.offset.Add(6)
@@ -747,4 +752,37 @@ func (l *lineReader) line(t *testing.T) string {
 		}
 		l.buf = append(l.buf, b[:n]...)
 	}
+}
+
+// TestOneBannerPerRefusal is the conductor's 2026-09-23 transcript: ssh
+// offered the certificate, then the plain key, on one connection, and the
+// two banners arrived glued together ("...not accepting connections
+// yetpermission denied (certificate required)"). Now the first refusal's
+// banner ends in a newline and the plain key's "certificate required"
+// after it is not shown (I-189).
+func TestOneBannerPerRefusal(t *testing.T) {
+	h := newHarness(t, harnessOpts{})
+	_, key := genKey(t)
+	cert := h.userCert(t, key, []string{h.project.ID}, time.Hour)
+	h.api.SetState(h.project.ID, "destroying")
+	var banners []string
+	cfg := &ssh.ClientConfig{
+		User:            h.login,
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(cert, key)},
+		HostKeyCallback: h.hostKeyCallback(),
+		BannerCallback: func(m string) error {
+			banners = append(banners, m)
+			return nil
+		},
+		Timeout: 5 * time.Second,
+	}
+	if c, err := ssh.Dial("tcp", h.addr, cfg); err == nil {
+		_ = c.Close()
+		t.Fatal("connected to a destroying project")
+	}
+	want := "todo-app is being destroyed; `repose restore todo-app` brings it back once that is done\n"
+	if len(banners) != 1 || banners[0] != want {
+		t.Fatalf("banners %q, want exactly [%q]", banners, want)
+	}
+	t.Logf("banners: %q", banners)
 }
