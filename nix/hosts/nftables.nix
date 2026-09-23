@@ -108,6 +108,11 @@ in
           # direction and falls through to the drop below, and a repeated
           # ICMP echo from a guest is original too, so the rate limit holds.
           ct direction reply ct state established,related accept
+          ${lib.optionalString config.repose.host.caches.enable ''
+          # The npm and Docker Hub caches, on the host services address
+          # only (caches.nix, DECISIONS I-202).
+          ip daddr ${config.repose.host.caches.address} tcp dport { ${toString config.repose.host.caches.npm.port}, ${toString config.repose.host.caches.docker.port} } accept
+          ''}
           # A deliberate, rate-limited exception for debugging from a guest.
           icmp type echo-request limit rate 5/second accept
           counter drop

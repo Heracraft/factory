@@ -1218,6 +1218,28 @@ for extending the pool; existing guests keep running throughout.
 `host_warning{store_high}` and Build refuses with `insufficient_capacity:
 host store full`. See "StoreFull" above.
 
+## Caches: npm installs or docker pulls slow or failing in guests
+
+The host's caches (`host-conventions.md` "Caches", I-202). What guests see
+never depends on them working: the npm front falls back to the registry,
+dockerd falls back to Docker Hub.
+
+1. On the host: `systemctl status nginx repose-npm-cache docker-registry
+   repose-cache-volume`. `journalctl --no-pager | grep repose_npm_fallback
+   | tail` shows whether the front is serving around the cache.
+2. The cache down: `systemctl restart repose-npm-cache`. Its volume
+   missing (`mountpoint /var/cache/repose` fails): `systemctl restart
+   repose-cache-volume` and read its log; the caches do not start without
+   it.
+3. The volume full (`df -h /var/cache/repose`): the npm cache evicts at
+   40 GB; the Docker mirror expires blobs after 168 h, so a full volume is
+   the mirror's. `systemctl stop docker-registry && rm -rf
+   /var/cache/repose/docker/* && systemctl start docker-registry` empties
+   it; guests pull from Docker Hub meanwhile.
+4. `docker-registry` restarting every 10 s: it cannot reach Docker Hub at
+   start (`journalctl -u docker-registry` shows the panic). Guests pull
+   directly until it can.
+
 ## hostd: guest never sends Ready
 
 Create or Start fails with `guest_unresponsive: create: step 10 (ready)

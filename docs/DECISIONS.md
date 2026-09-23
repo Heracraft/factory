@@ -4512,3 +4512,50 @@ building I-200.
   chose (`choom`), since nothing else in the guest raises it.
 Interfaces: `grpc-hostd.md`, `vsock-guestd.md`, `api.md`, `db-schema.md`,
 `guest-conventions.md` in this commit; the proto change is additive.
+
+**I-208. The caches live at one fixed address on every host; npm is
+pointed at them through `~/.npmrc`, not `npm_config_registry`; npm's
+fallback is an nginx front.** (15-dev-ergonomics, 2026-09-23) Settled
+while building I-202; each point is a place where the workstream doc
+left the mechanism open or named one that does not work.
+
+- *Where guests reach the caches.* The guest base is host-independent
+  (I-34), so it cannot name a host's own bridge address, and I-202's
+  "over WireGuard" has no route from a guest. Every host puts
+  `10.63.255.254/32` (the host services address, outside
+  `10.64.0.0/12`) on `br-guests`; a guest reaches it through its default
+  gateway, and `guest_in` admits exactly ports 4873 and 5000 there. The
+  address is a base constant as well as a host option.
+- *npm has no fallback of its own* (checked: npm 11.19 and pnpm 11.25
+  have no second registry). So the host provides it at the HTTP layer:
+  nginx on the address is a stateless front that proxies to the cache
+  (a second nginx, `repose-npm-cache`, with `proxy_cache` capped at
+  40 GB, LRU) and, when the cache refuses or fails, proxies to the
+  registry itself and logs `repose_npm_fallback:`. `host-caches` shows it
+  with the cache stopped. Rejected: verdaccio (storage without a size cap
+  or LRU, and a second copy of every package document).
+- *Tarballs through the cache.* Package documents name
+  `registry.npmjs.org` tarball URLs; npm rewrites those to its
+  configured registry, pnpm and yarn do not. The cache rewrites them in
+  the documents it serves (`sub_filter`), after caching, so the store
+  holds the registry's bytes.
+- *`~/.npmrc`, not `npm_config_registry`.* npm lets the environment
+  variable beat a project's own `.npmrc` (a company registry would stop
+  working), and pnpm 11 reads registries from `.npmrc` files only (it
+  ignores `NPM_CONFIG_GLOBALCONFIG` too). A `dev` user unit appends one
+  `registry=` line to `~/.npmrc` at boot, once, only when the front
+  answers, and never when the file already names a registry or holds a
+  `registry.npmjs.org` token: that is I-202's "authenticated requests go
+  direct". Project `.npmrc` files still win for npm and pnpm.
+- *Docker.* The distribution registry in proxy mode, which has a TTL, not
+  an LRU: blobs expire after 168 h, and the bound is the thin volume both
+  caches share (`vg-guests/repose-cache`, 64 GB), so a cache can never
+  fill the OS disk that holds `/nix/store`. It exits when Docker Hub is
+  unreachable at start, so it restarts every 10 s without a start limit.
+- *Rollout order.* A guest on a host without the caches would send its
+  first Docker pull to an address that routes nowhere (a connect timeout
+  before dockerd falls back) and would not add the npm line. So: host
+  switch first, base publish after; and for removal, a base without the
+  settings first, then the host switch.
+Interfaces: `host-conventions.md` "Caches", `guest-conventions.md`
+"Caches", RUNBOOK entry, in this commit.

@@ -24,6 +24,7 @@ in
     ./ssh.nix
     ./hardening.nix
     ./azure.nix
+    ./caches.nix
   ];
 
   options.repose.host = {

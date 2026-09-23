@@ -159,6 +159,31 @@ so that a host which has stopped shipping is visible),
 has `CPUWeight=50`. Nix: `max-jobs 2`, `cores 8`, `min-free 50G`,
 `max-free 100G`, sandboxed, `trusted-users root` only.
 
+## Caches (DECISIONS I-202, I-208; `nix/hosts/caches.nix`)
+
+Every host serves guests an npm registry cache and a Docker Hub mirror at
+the **host services address** `10.63.255.254`, a `/32` on `br-guests`
+that is the same on every host (outside `10.64.0.0/12`), so the guest base
+names it without knowing its host. Guests route it through their default
+gateway; `inet repose guest_in` accepts `ip daddr 10.63.255.254 tcp dport
+{ 4873, 5000 }` and nothing else. Neither port is reachable on `wg0` or
+the provider NIC.
+
+| Port | Unit | What |
+|---|---|---|
+| `10.63.255.254:4873` | `nginx.service` (the front) | proxies to the cache; when the cache refuses or fails (502, 504) it serves from `registry.npmjs.org` itself and logs a `repose_npm_fallback:` line; upstream connect and DNS bounded at 5 s |
+| `127.0.0.1:4874` | `repose-npm-cache.service` (a second nginx, `-c` its own config) | `proxy_cache` in `/var/cache/repose/npm`, `max_size` 40 GB, least recently used evicted, `inactive` 30 days; tarballs cached 30 days, package documents 5 minutes (stale served while one refreshes, and while the registry is down); tarball URLs in documents rewritten to the front; requests with `Authorization` never cached |
+| `10.63.255.254:5000` | `docker-registry.service` | distribution in proxy mode for `https://registry-1.docker.io`, blobs kept 168 h; restarts every 10 s without a start limit (it exits when Docker Hub cannot be reached at start) |
+
+Storage: the thin volume `vg-guests/repose-cache` (64 GB, ext4, label
+`repose-cache`), created, formatted and mounted on `/var/cache/repose` by
+`repose-cache-volume.service` (idempotent). The cache and the mirror do
+not start without that mount (`ConditionPathIsMountPoint`); guests then
+use upstream. Log lines carry status, cache status, bytes and time,
+never a URL (a package name can be a private one). `repose.host.caches.enable
+= false` and a switch removes both caches; the front is removed with them,
+so publish a guest base without the settings first (see I-208).
+
 ## Cloud Hypervisor invocation (per guest)
 
 hostd renders the `cloud-hypervisor` argv from the guest's system closure

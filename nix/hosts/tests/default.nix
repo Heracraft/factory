@@ -280,10 +280,29 @@ in
           print(locals_)
           for addr in locals_:
               ip = addr.rsplit(":", 1)[0]
+              # the caches (I-202) listen on the host services address, which
+              # only br-guests can reach (next subtest)
+              if addr in ("10.63.255.254:4873", "10.63.255.254:5000"):
+                  continue
               assert ip == "10.255.0.7" or ip.startswith("127.") or ip.startswith("[::1]"), f"listener on {addr}"
           inet.fail(f"curl -sf -m3 http://{host_ip}:9100/")
           inet.fail(f"nc -z -w3 {host_ip} 22")
           inet.succeed(f"ping -c1 -W2 {host_ip}")
+
+      with subtest("a guest reaches the caches on the host services address; nothing else does"):
+          # I-202: two ports on 10.63.255.254 from br-guests, and nothing
+          # else on it. (host-caches tests what answers there; this VM has no
+          # data disk, so no cache, and no registry to fall back to.)
+          host.succeed("ip -4 addr show br-guests | grep -q '10.63.255.254/32'")
+          host.wait_until_succeeds("ss -Hltn | grep -q '10.63.255.254:4873'")
+          host.succeed(f"{ga} nc -z -w3 10.63.255.254 4873")
+          # the front answers even with nothing behind it, within its 5 s
+          code = host.succeed(f"{ga} curl -s -m20 -o /dev/null -w '%{{http_code}}' http://10.63.255.254:4873/-/ping || true").strip()
+          assert code not in ("", "000"), f"the npm front did not answer: {code}"
+          host.fail(f"{ga} nc -z -w3 10.63.255.254 22")
+          host.fail(f"{ga} nc -z -w3 10.63.255.254 9100")
+          inet.fail(f"nc -z -w3 {host_ip} 4873")
+          inet.fail(f"nc -z -w3 {host_ip} 5000")
 
       with subtest("Fluent Bit ships journald and console logs to Loki with the documented labels"):
           host.wait_for_unit("fluent-bit.service")
@@ -363,6 +382,90 @@ in
           assert "repose_lvm_pool_present 1" in prom
           assert "repose_lvm_volumes 1" in prom
           host.succeed("systemctl list-timers --all repose-pool-monitor.timer | grep -q repose-pool-monitor")
+    '';
+  };
+
+  # The npm cache and the Docker Hub mirror (nix/hosts/caches.nix, I-202):
+  # the thin volume they live on, the npm cache in front of a fake
+  # registry (tarball URLs rewritten to the front, the second fetch a cache
+  # hit, a stale answer when the registry is down), the front's fallback
+  # to the registry when the cache itself is stopped, and the mirror up.
+  host-caches = pkgs.testers.runNixOSTest {
+    name = "repose-host-caches";
+    nodes.host = { ... }: {
+      imports = [ stubNode ];
+      virtualisation.emptyDiskImages = [ 65536 ];
+      repose.host.caches.npm.upstream = "http://127.0.0.1:9999";
+      repose.host.caches.npm.upstreamHost = "127.0.0.1:9999";
+      repose.host.caches.volumeSize = "4G";
+      # The mirror asks its remote for the auth challenge at start.
+      repose.host.caches.docker.remote = "http://127.0.0.1:9999";
+      systemd.services.fake-registry = {
+        wantedBy = [ "multi-user.target" ];
+        script = "exec ${pkgs.python3}/bin/python3 ${./fixtures/fake_npm_registry.py}";
+      };
+    };
+    testScript = ''
+      host.wait_for_unit("multi-user.target")
+      host.succeed("${formatScript}")
+      host.succeed("systemctl restart repose-cache-volume.service")
+      # A test VM boots before its data disk has the VG: the caches' units
+      # skipped their start (ConditionPathIsMountPoint), as on a host whose
+      # disk is not set up yet, and start now.
+      host.succeed("systemctl reset-failed; systemctl restart repose-npm-cache.service docker-registry.service nginx.service")
+
+      with subtest("the caches live on their own thin volume"):
+          host.succeed("mountpoint -q /var/cache/repose")
+          print(host.succeed("lvs vg-guests; df -h /var/cache/repose"))
+          host.succeed("lvs vg-guests/repose-cache")
+          # idempotent: a second start changes nothing
+          host.succeed("systemctl restart repose-cache-volume.service && mountpoint -q /var/cache/repose")
+
+      host.wait_for_unit("fake-registry.service")
+      host.wait_for_unit("repose-npm-cache.service")
+      host.wait_for_unit("nginx.service")
+      host.wait_for_open_port(9999)
+      host.wait_until_succeeds("curl -sf -m5 http://10.63.255.254:4873/-/ping")
+
+      with subtest("package documents point tarballs back at the front, and tarballs are cached"):
+          doc = host.succeed("curl -sf -m5 http://10.63.255.254:4873/left-pad")
+          print(doc)
+          assert "http://10.63.255.254:4873/left-pad/-/left-pad-1.0.0.tgz" in doc, doc
+          assert "127.0.0.1:9999" not in doc, doc
+          host.succeed("curl -sf -m5 -o /tmp/a.tgz http://10.63.255.254:4873/left-pad/-/left-pad-1.0.0.tgz")
+          host.succeed("curl -sf -m5 -o /tmp/b.tgz http://10.63.255.254:4873/left-pad/-/left-pad-1.0.0.tgz")
+          host.succeed("cmp /tmp/a.tgz /tmp/b.tgz")
+          hits = host.succeed("grep -c 'GET /left-pad/-/left-pad-1.0.0.tgz' /tmp/fake-registry.log").strip()
+          assert hits == "1", f"the registry saw the tarball {hits} times; the second should be a cache hit"
+          # nginx's syslog lines reach the journal as `<host> <tag>: ...`
+          host.succeed("journalctl --no-pager -u repose-npm-cache | grep -q 'repose_npm_cache: .*cache=HIT'")
+          # no URL, so no package name, in the caches' log lines
+          host.fail("journalctl --no-pager | grep 'repose_npm' | grep -q left-pad")
+
+      with subtest("an authenticated request is never cached"):
+          host.succeed("curl -sf -m5 -H 'Authorization: Bearer x' -o /dev/null http://10.63.255.254:4873/left-pad/-/left-pad-1.0.0.tgz")
+          host.succeed("curl -sf -m5 -H 'Authorization: Bearer x' -o /dev/null http://10.63.255.254:4873/left-pad/-/left-pad-1.0.0.tgz")
+          hits = host.succeed("grep -c 'GET /left-pad/-/left-pad-1.0.0.tgz' /tmp/fake-registry.log").strip()
+          assert hits == "3", f"authenticated fetches: registry saw {hits}, want 3"
+
+      with subtest("with the registry down, the cache serves what it has"):
+          host.succeed("systemctl stop fake-registry.service")
+          host.succeed("curl -sf -m10 -o /dev/null http://10.63.255.254:4873/left-pad/-/left-pad-1.0.0.tgz")
+          host.succeed("systemctl start fake-registry.service")
+          host.wait_for_open_port(9999)
+
+      with subtest("with the cache stopped, the front falls back to the registry and says so"):
+          host.succeed("systemctl stop repose-npm-cache.service")
+          host.succeed("curl -sf -m10 -o /dev/null http://10.63.255.254:4873/left-pad")
+          host.wait_until_succeeds("journalctl --no-pager | grep -q 'repose_npm_fallback: .*status=200'")
+          print(host.succeed("journalctl --no-pager | grep 'repose_npm_fallback:' | tail -2"))
+          host.succeed("systemctl start repose-npm-cache.service")
+
+      with subtest("the Docker Hub mirror listens on the services address"):
+          host.wait_for_unit("docker-registry.service")
+          host.wait_for_open_port(5000, "10.63.255.254")
+          host.succeed("test -d /var/cache/repose/docker")
+          host.succeed("curl -sf -m5 http://10.63.255.254:5000/v2/ >/dev/null")
     '';
   };
 

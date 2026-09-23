@@ -13,6 +13,7 @@
     ./users.nix
     ./ssh.nix
     ./docker.nix
+    ./caches.nix
     ./tmux.nix
     ./tools.nix
     ./agents.nix

@@ -140,6 +140,24 @@ state and is named once.
 | gitignored `.env` / `.env.*` files in the checkout, outside dependency directories, up to 1 MB (DECISIONS I-197; `run` only) | the same relative path under `/home/dev/<slug>/`, dev 0600, mtime kept; a guest file with a newer mtime is kept (`#kept <path>`) | written at the end of the sync's apply script, after the checkout; marker `env` |
 | markers | `/home/dev/.repose/carry/<item>` | the hash of the laptop input last applied; the probe prints them as `#marker <item> <hash>` |
 
+## Caches (DECISIONS I-202, I-208)
+
+- Docker: `/etc/docker/daemon.json` `registry-mirrors: ["http://10.63.255.254:5000"]`
+  and that address in `insecure-registries`. dockerd falls back to
+  Docker Hub when the mirror fails; a login or another registry goes
+  direct.
+- npm, pnpm, yarn (classic): `repose-npm-registry.service`, a user unit of
+  `dev` at boot, appends once to `/home/dev/.npmrc`
+  `registry=http://10.63.255.254:4873/` (with a comment line naming
+  I-202) when the front answers, and records it in
+  `/home/dev/.repose/npm-registry` (`added`). A `~/.npmrc` that already
+  sets `registry=` or holds a `registry.npmjs.org` token is never
+  changed (`own`). With no answer it changes nothing and tries at the next
+  boot. A deleted line stays deleted. A project's own `.npmrc` still
+  wins, as `~/.npmrc` is below it for npm and pnpm alike.
+  `npm_config_registry` is **not** set: npm lets it beat a project's
+  `.npmrc`.
+
 ## Memory pressure (DECISIONS I-200)
 
 guestd owns `oom_score_adj` for `dev`'s processes and re-applies it every
