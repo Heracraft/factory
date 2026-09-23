@@ -10,18 +10,30 @@ import (
 )
 
 // credRow is one row of docs/interfaces/guest-conventions.md "Credentials
-// the CLI syncs into the guest". The laptop and guest paths are identical
-// relative to $HOME on both sides.
+// the CLI syncs into the guest". Rel is the path relative to $HOME in the
+// guest, and on the laptop unless Darwin names the macOS one.
 type credRow struct {
-	Label string
-	Rel   string
-	Mode  os.FileMode
+	Label  string
+	Rel    string
+	Darwin string // the laptop path on macOS, when it differs
+	Mode   os.FileMode
 }
 
 var credRows = []credRow{
 	{Label: "gh", Rel: filepath.Join(".config", "gh", "hosts.yml"), Mode: 0o600},
 	{Label: "codex", Rel: filepath.Join(".codex", "auth.json"), Mode: 0o600},
 	{Label: "opencode", Rel: filepath.Join(".local", "share", "opencode", "auth.json"), Mode: 0o600},
+	// The Vercel CLI keeps its login in the platform's data directory
+	// (DECISIONS I-205's list, proposal item 3).
+	{Label: "vercel", Rel: filepath.Join(".local", "share", "com.vercel.cli", "auth.json"), Darwin: filepath.Join("Library", "Application Support", "com.vercel.cli", "auth.json"), Mode: 0o600},
+}
+
+// laptopRel is where the row's file is on this laptop.
+func (r credRow) laptopRel() string {
+	if r.Darwin != "" && goos() == "darwin" {
+		return r.Darwin
+	}
+	return r.Rel
 }
 
 // credSyncOptions says what the git side of the credential sync should
@@ -65,7 +77,7 @@ func syncCredentialsAndCarry(ctx context.Context, t sshTarget, homeDir, repoDir 
 
 	ghCopied := false
 	for i, row := range credRows {
-		local := filepath.Join(homeDir, row.Rel)
+		local := filepath.Join(homeDir, row.laptopRel())
 		b, err := os.ReadFile(local)
 		if err != nil {
 			if os.IsNotExist(err) {

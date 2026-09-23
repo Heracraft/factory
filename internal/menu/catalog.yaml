@@ -243,3 +243,62 @@
   hm: |
     home.packages = [ pkgs.lazygit pkgs.delta pkgs.tlrc pkgs.hyperfine ];
     programs.git.delta.enable = true;
+
+# Deploy CLIs (DECISIONS I-195..I-205, proposal item 3). Their logins are
+# the user's own: vercel's travels from the laptop like gh's
+# (guest-conventions.md "Credentials the CLI syncs"); the others log in in
+# the guest. vercel and portless are npm packages nixpkgs does not carry,
+# so their entries install them once into the guest's own npm prefix
+# (~/.npm-global, on the volume, through the host's npm cache) from a user
+# unit that runs after the network is up and never blocks a boot.
+- id: wrangler
+  label: Wrangler (Cloudflare)
+  group: deploy
+  kind: package
+  description: Cloudflare's Workers and Pages CLI.
+  hm: |
+    home.packages = [ pkgs.wrangler ];
+
+- id: supabase
+  label: Supabase CLI
+  group: deploy
+  kind: package
+  description: The Supabase CLI, for local stacks, migrations and deploys.
+  hm: |
+    home.packages = [ pkgs.supabase-cli ];
+
+- id: flyctl
+  label: flyctl (Fly.io)
+  group: deploy
+  kind: package
+  description: Fly.io's CLI, installed as both flyctl and fly.
+  hm: |
+    home.packages = [ pkgs.flyctl ];
+
+- id: vercel
+  label: Vercel CLI
+  group: deploy
+  kind: package
+  description: Vercel's CLI, from npm into ~/.npm-global at the first boot after it is chosen.
+  hm: |
+    systemd.user.services.repose-npm-vercel = {
+      Unit.Description = "Install the Vercel CLI once (npm i -g vercel)";
+      Unit.After = [ "network-online.target" ];
+      Service.Type = "oneshot";
+      Service.ExecStart = "${pkgs.bash}/bin/bash -lc 'command -v vercel >/dev/null || npm i -g vercel'";
+      Install.WantedBy = [ "default.target" ];
+    };
+
+- id: portless
+  label: portless
+  group: deploy
+  kind: package
+  description: Named localhost URLs for dev servers (one proxy on port 1355, which repose forwards to your laptop).
+  hm: |
+    systemd.user.services.repose-npm-portless = {
+      Unit.Description = "Install portless once (npm i -g portless)";
+      Unit.After = [ "network-online.target" ];
+      Service.Type = "oneshot";
+      Service.ExecStart = "${pkgs.bash}/bin/bash -lc 'command -v portless >/dev/null || npm i -g portless'";
+      Install.WantedBy = [ "default.target" ];
+    };

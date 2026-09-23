@@ -30,7 +30,8 @@ Credentials: gh, codex, opencode, git
 Copied at every `repose run` over the SSH session into the guest, owned by
 `dev`, mode 0600. The list is exact and lives in
 `interfaces/guest-conventions.md`: gh's `hosts.yml`, Codex's `auth.json`,
-opencode's `auth.json`, and the git identity (inside the carried git
+opencode's `auth.json`, the Vercel CLI's `auth.json` (from macOS's
+Application Support or Linux's `~/.local/share`), and the git identity (inside the carried git
 config below, since I-195); when gh's login
 travels and the remote is on github.com, the guest's git also gets gh as
 its credential helper for github over HTTPS, so an agent can push (a gh

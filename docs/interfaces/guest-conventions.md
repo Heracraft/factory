@@ -110,6 +110,7 @@ caller's `$TMUX_PANE` when set.
 | `~/.config/gh/hosts.yml` | `/home/dev/.config/gh/hosts.yml` | dev 0600 |
 | `~/.codex/auth.json` | `/home/dev/.codex/auth.json` | dev 0600 |
 | `~/.local/share/opencode/auth.json` | `/home/dev/.local/share/opencode/auth.json` | dev 0600 |
+| `~/Library/Application Support/com.vercel.cli/auth.json` (macOS), `~/.local/share/com.vercel.cli/auth.json` (Linux) | `/home/dev/.local/share/com.vercel.cli/auth.json` (the Vercel CLI's login, proposal item 3; new in this release) | dev 0600 |
 | `git config user.name/email` | inside the carried git config below (DECISIONS I-195). The old shape, the two keys written straight into `/home/dev/.gitconfig` with `git config --global`, is what a CLI before I-195 still does, and stays accepted: the first carry removes them from `~/.gitconfig` when they equal the carried values, so they cannot shadow later changes | dev 0644 |
 | (when gh travelled and the project's remote is on github.com) | `/home/dev/.gitconfig`: `url.https://github.com/.insteadOf git@github.com:` and `credential.https://github.com.helper = !gh auth git-credential`, so the SSH `origin` guestd sets is pushed over HTTPS with gh's login (DECISIONS I-150) | dev 0644 |
 

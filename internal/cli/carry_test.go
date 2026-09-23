@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -122,5 +124,42 @@ func TestSessionHelperCarriesTheZone(t *testing.T) {
 	got, err := runSSH(ctx, f.target, "tmux show-environment -g TZ", nil)
 	if err != nil || strings.TrimSpace(string(got)) != "TZ=Asia/Tokyo" {
 		t.Fatalf("guest tmux TZ = %q %v", got, err)
+	}
+}
+
+// vercel's login travels like gh's: from macOS's Application Support or
+// Linux's XDG data directory to the guest's XDG data directory, 0600.
+func TestSyncCredentialsCarriesVercelsLogin(t *testing.T) {
+	for _, tc := range []struct{ goos, laptop string }{
+		{"darwin", "Library/Application Support/com.vercel.cli/auth.json"},
+		{"linux", ".local/share/com.vercel.cli/auth.json"},
+	} {
+		t.Run(tc.goos, func(t *testing.T) {
+			t.Setenv("REPOSE_TEST_GOOS", tc.goos)
+			f := newSyncFixture(t)
+			home := t.TempDir()
+			p := filepath.Join(home, tc.laptop)
+			if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte(`{"token":"vercel-token"}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			copied, err := syncCredentials(context.Background(), f.target, home, f.local, credSyncOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Join(copied, ",") != "vercel,git" {
+				t.Fatalf("copied = %v", copied)
+			}
+			g := filepath.Join(f.guestHome, ".local", "share", "com.vercel.cli", "auth.json")
+			b, err := os.ReadFile(g)
+			if err != nil || string(b) != `{"token":"vercel-token"}` {
+				t.Fatalf("guest file = %q %v", b, err)
+			}
+			if info, _ := os.Stat(g); info.Mode().Perm() != 0o600 {
+				t.Errorf("mode %v", info.Mode().Perm())
+			}
+		})
 	}
 }

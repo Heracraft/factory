@@ -57,7 +57,12 @@ todo-app will stay on base 2026.09.15 until `repose config unhold`.
 ## Menu versus fragment
 
 The menu is a catalog (`GET /catalog`) of packages and services with labels
-and groups: languages, databases, browsers, tools. A selection is stored as
+and groups: languages, databases, browsers, tools, and deploy CLIs
+(wrangler, the Supabase CLI and flyctl from nixpkgs; the Vercel CLI and
+portless, which nixpkgs does not carry, installed once with `npm i -g`
+into `~/.npm-global` by a user unit after the network is up). None of
+these needs the menu: `npm i -g <cli>` in the guest works and persists
+too (DECISIONS I-36). A selection is stored as
 JSON and rendered by the API into a home-manager module. Editing the
 fragment directly turns the menu off for that project (the menu cannot
 round-trip arbitrary Nix); the CLI and dashboard say so and offer to keep a
