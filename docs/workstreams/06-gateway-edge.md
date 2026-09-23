@@ -286,57 +286,108 @@ except keys and certificates, which are not changed by deploys.
 
 ## 9. Checklist
 
-- [ ] The edge NixOS configuration builds (`nix build .#nixosConfigurations.
+- [x] The edge NixOS configuration builds (`nix build .#nixosConfigurations.
       edge.config.system.build.toplevel`) and deploys to the staging edge.
-      Evidence: build output and `nixos-rebuild` log.
+      Evidence: build output and `nixos-rebuild` log. — closed: STATUS
+      2026-09-20 06 done-local line (the toplevel builds); "Real-edge
+      evidence" below (`nixos-rebuild switch --flake main#edge` 2026-09-20
+      23:36Z on the production edge, no staging edge exists)
 - [ ] `wg0` comes up with the address plan; `wgsync` adds a registered host
       as a peer within 30 s and removes a retired one. Evidence: `wg show`
-      before and after, pasted.
-- [ ] nftables on the edge allows exactly the ports in 5.1 and nothing else.
+      before and after, pasted. — waits on: second host (the add is proven
+      on the real edge, "Real-edge evidence" below; removing a retired peer
+      needs a host to retire; `TestWGSyncAddsAndRemovesPeers` covers it
+      locally)
+- [x] nftables on the edge allows exactly the ports in 5.1 and nothing else.
       Evidence: `nft list ruleset` pasted and an external `nmap` of the
-      public IP showing 22, 443, 51820/udp only.
-- [ ] Plain public keys are refused with `certificate required`; a valid
+      public IP showing 22, 443, 51820/udp only. — closed: "Real-edge
+      evidence" below (ruleset and external scan of 20.102.98.254); STATUS
+      2026-09-20 m2-integration progress line (steps 1-2)
+- [x] Plain public keys are refused with `certificate required`; a valid
       certificate for the right project succeeds; wrong principal,
       expired, and revoked each produce their documented message. Evidence:
-      integration test output listing all five.
-- [ ] Route state `stopped` produces the banner naming the project.
-      Evidence: test.
-- [ ] The guest is dialed with a gateway-issued 5-minute certificate and the
+      integration test output listing all five. — closed: `TestAuthRefusals`
+      and `TestOneBannerPerRefusal` in internal/gateway (all five, the log
+      line names them); plain key refused on the real edge, "Real-edge
+      evidence" below
+- [x] Route state `stopped` produces the banner naming the project.
+      Evidence: test. — closed: `TestStoppedAndOtherStates` in
+      internal/gateway
+- [x] The guest is dialed with a gateway-issued 5-minute certificate and the
       guest's sshd (workstream 02 config) accepts it and rejects a
       certificate for another project id. Evidence: staging test with two
-      guests.
+      guests. — closed: 14 §9 `isolation-go-20260921T003759Z.txt` on host-01
+      (`TestCertificateForACannotOpenBDirect`, two accounts' guests);
+      gateway-cert dials in "Real-edge evidence" below
 - [ ] Session, pty, window-change, exec, exit status, `-L`, `-R`, agent
       forwarding all relay correctly with the OpenSSH client. Evidence:
-      CI job output using the real `ssh` binary.
+      CI job output using the real `ssh` binary. — open: no CI job drives
+      the OpenSSH binary through pty, `-L`, `-R` and agent forwarding (only
+      `TestRelayExitStatusOverOpenSSHControlMaster` uses it; the rest use
+      the x/crypto client); on the real edge exec, pty, exit status and
+      `-A` were run with OpenSSH, `-L` only as ws15's auto-forward (STATUS
+      2026-09-23 conductor 10:00Z), `-R` never
 - [ ] `git push` over SSH inside a guest works via forwarded agent while
-      attached. Evidence: staging test.
+      attached. Evidence: staging test. — open: only `git fetch` through
+      the forwarded agent was run ("Real-edge evidence" below); a push to a
+      scratch repository from an attached guest is owed
 - [ ] VS Code Remote-SSH connects using the CLI-written config. Evidence:
-      screenshot.
+      screenshot. — waits on: owner (a VS Code Remote-SSH connection from a
+      laptop with the CLI-written config, screenshot)
 - [ ] Sessions are reported to the api on open and close and appear in
-      `GET /projects/:id`. Evidence: api log and response pasted.
-- [ ] Revocation takes effect within 30 s. Evidence: revoke, then a
-      connection attempt at 35 s fails.
-- [ ] api outage for 30 min: existing sessions continue, new ones work for
+      `GET /projects/:id`. Evidence: api log and response pasted. — open:
+      `POST /internal/sessions` per relay is seen on the real edge and
+      `TestSessionReportsAndCertCache` covers the reports (I-123, I-176),
+      but no production `GET /projects/:id` response showing the session
+      while attached, with its api log line, is pasted
+- [x] Revocation takes effect within 30 s. Evidence: revoke, then a
+      connection attempt at 35 s fails. — closed: `ops/checks/
+      isolation-host01.sh` records `TestRevokedCertificateRejected` run on
+      2026-09-21 00:15Z against the real gateway, rejected 7 s after
+      revocation; `TestRevocationTakesEffectWithinRefresh` locally
+- [x] api outage for 30 min: existing sessions continue, new ones work for
       the cache window then fail with the documented message. Evidence:
-      test with the fake api stopped.
-- [ ] Gateway restart drops relays and a guest's tmux session survives.
+      test with the fake api stopped. — closed:
+      `TestAPIUnreachableAndStaleCaches` in internal/gateway
+- [x] Gateway restart drops relays and a guest's tmux session survives.
       Evidence: `tmux ls` in the guest after a `systemctl restart gateway`.
+      — closed: "Real-edge evidence" below (the 2026-09-20 23:36Z switch
+      restarted the gateway under two running guests; relays resumed into
+      the same guests, sessions intact)
 - [ ] 100-connection soak shows no goroutine or memory growth. Evidence:
-      pprof counts at start and end.
-- [ ] Every metric in 5.5 is exposed. Evidence: `curl` output checked
-      against the list.
-- [ ] Logs contain no channel contents, no full source IPs, no tokens.
+      pprof counts at start and end. — open: `TestSoakHundredConnections`
+      logs goroutine counts at start and end (baseline+5 bound) and all
+      bytes relayed; heap at start and end is not measured
+- [x] Every metric in 5.5 is exposed. Evidence: `curl` output checked
+      against the list. — closed: "Real-edge evidence" below (`curl
+      10.255.0.1:9102/metrics`, all 15 `repose_gateway_*` families);
+      `TestGatewayMetricsExposed`
+- [x] Logs contain no channel contents, no full source IPs, no tokens.
       Evidence: a relay of a planted string and a grep of the journal.
+      — closed: `TestLogsCarryNoChannelContents` (planted string relayed
+      and absent from the log, source a /24, no key bodies); the real
+      edge's journal reviewed during the M2 gate, "Real-edge evidence"
+      below
 - [ ] Hook ingest on 8443 accepts only guest sources and forwards to the
       api with the guest ip. Evidence: `curl` from a guest and from the
-      host, outputs pasted.
+      host, outputs pasted. — open: no `curl` to 10.255.0.1:8443 from a
+      real guest and from host-01 has been run and pasted
+      (`TestHookIngestForwardsFromGuestSource` and
+      `TestHookIngestRejectsNonGuestSource` cover it locally)
 - [ ] The preview stub serves the wildcard certificate on 443 with a valid
-      chain. Evidence: `openssl s_client` output.
-- [ ] `interfaces/api.md` and `DECISIONS.md` carry I-4 (`/internal/hosts`,
+      chain. Evidence: `openssl s_client` output. — waits on: owner (no
+      wildcard certificate exists; issuing one needs the Cloudflare API
+      token, 11 §10)
+- [x] `interfaces/api.md` and `DECISIONS.md` carry I-4 (`/internal/hosts`,
       `/internal/events`, `/internal/gateway-certs`). Evidence: the diff.
-- [ ] `ops/RUNBOOK.md` has an entry per row in section 6.
-- [ ] No `TODO`, `FIXME`, `panic(` outside main, `_ = err` under
+      — closed: DECISIONS I-4; `interfaces/api.md` internal routes table
+      (the three rows)
+- [x] `ops/RUNBOOK.md` has an entry per row in section 6. — closed:
+      RUNBOOK "Gateway relay failures" (one table row per §6 failure,
+      restart paragraph) and "GatewayAuthSpike"
+- [x] No `TODO`, `FIXME`, `panic(` outside main, `_ = err` under
       `cmd/gateway`, `internal/gateway`, `nix/edge`. Evidence: grep.
+      — closed: the grep returns nothing at d3b72d3 (upkeep, 2026-09-23)
 
 ### Real-edge evidence (M2, 2026-09-20/21)
 

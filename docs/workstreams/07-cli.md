@@ -557,8 +557,12 @@ removes all of them including the `Include` line.
 ## 9. Checklist
 
 - [ ] Every command and flag in 5.1 exists with that name. Evidence: `repose
-      --help` tree pasted, diffed against 5.1.
-- [ ] Login works against the real Logto: device code is the default
+      --help` tree pasted, diffed against 5.1. — open: STATUS 2026-09-20
+      07-cli done-local line says the tree was diffed, but the `repose
+      --help` tree is pasted nowhere; paste it (all subcommands) with the
+      diff against §5.1, which has grown since (restore, cp, projects
+      --destroyed)
+- [x] Login works against the real Logto: device code is the default
       (DECISIONS I-101; the `repose-cli` Native application has no redirect
       URI, so the PKCE loopback of `--browser` cannot match it), with the
       application's App ID as client id (I-99). Evidence: the owner's
@@ -568,80 +572,163 @@ removes all of them including the `Include` line.
       against a device-flow application) and the api's `unauthenticated:
       invalid token` (the device-code and refresh grants carried no
       `resource`, so Logto minted an opaque token without the api audience,
-      I-102), each fixed on main before the next.
+      I-102), each fixed on main before the next. — closed: STATUS
+      2026-09-20 "m2 e2e from the dev box" done line (device login on a
+      build of main after I-99, I-101, I-102) and STATUS 2026-09-21
+      m2-integration gate-done line (owner's laptop, released v0.1.4,
+      device-code login; DECISIONS I-129)
 - [ ] Tokens stored per `interfaces/cli-config.md`; on macOS the refresh
       token is in the keychain and absent from disk. Evidence: `cat
-      credentials.json` on macOS shows no refresh token.
-- [ ] Remote normalisation passes the table test with at least: ssh, https,
+      credentials.json` on macOS shows no refresh token. — waits on: owner
+      (a macOS laptop: `cat credentials.json` after `repose login` showing
+      no refresh token; STATUS 2026-09-21 m2 gate-done line lists macOS
+      keychain as not done)
+- [x] Remote normalisation passes the table test with at least: ssh, https,
       https with `.git`, uppercase host, trailing slash, `ssh://git@host/`.
-      Evidence: test file.
-- [ ] `ensureCert` reuses a valid certificate, refreshes an expiring one,
+      Evidence: test file. — closed: `TestNormalizeRemote` in
+      internal/cli/remote_test.go (ssh, https, .git, uppercase host,
+      trailing slash, ssh://git@host/)
+- [x] `ensureCert` reuses a valid certificate, refreshes an expiring one,
       re-issues when a new project is added. Evidence: unit test with a
-      clock.
-- [ ] `~/.ssh/config` gets exactly one `Include` line, first line, and no
+      clock. — closed: internal/cli/cert_test.go
+      `TestEnsureCertReusesValidCertificate` (no api call),
+      `TestCertUsableFor` (clock at now+50m, inside the 30 m margin,
+      refuses), `TestEnsureCertReissuesWhenProjectAdded`
+- [x] `~/.ssh/config` gets exactly one `Include` line, first line, and no
       other line changes on repeated runs. Evidence: golden test with a
-      pre-existing config.
-- [ ] `ssh <slug>.repose` works from a plain terminal with no CLI involved
-      after one `repose run`. Evidence: transcript.
+      pre-existing config. — closed: `TestEnsureIncludeLineOnceAndFirst` in
+      internal/cli/cert_test.go (pre-existing `Host example.com` config,
+      repeated runs, one first-line Include, content kept)
+- [x] `ssh <slug>.repose` works from a plain terminal with no CLI involved
+      after one `repose run`. Evidence: transcript. — closed: STATUS
+      2026-09-20 "m2 e2e from the dev box" progress and done lines (`ssh
+      <slug>.repose` from a plain terminal after one run, I-108); predates
+      I-149's own key, whose laptop re-run is the I-149 row below
 - [ ] Sync: dirty remote refused with exit 6; `--stash-remote` stashes and
       the stash is listed; `--discard-remote` discards; a commit not on
       origin arrives in the guest without a push or a prompt (I-150); an
       empty guest checkout gets the whole history; a diverged guest branch
       is left alone; untracked files respecting gitignore arrive; binary
-      diff applies. Evidence: integration test output.
+      diff applies. Evidence: integration test output. — open: internal/cli
+      has `TestSyncDirtyRemoteRefused` (exit 6), `TestSyncStashRemote`,
+      `TestSyncDiscardRemote`, `TestSyncSendsAnUnpushedCommit`,
+      `TestSyncIntoAnEmptyGuestRepo`,
+      `TestSyncLeavesADivergedGuestBranchAlone`,
+      `TestSyncAppliesDiffAndUntracked` (commit 7a8af85 output names the
+      bundle ones); missing: a test that a gitignored file stays on the
+      laptop and one that a binary diff applies (the untracked test is text
+      only)
 - [ ] One `repose run` makes one SSH connection and prompts for nothing;
       the user's `~/.ssh/id_*` are untouched (I-149). Evidence:
       `TestSyncOverAMultiplexedConnection` (the fake guest counts one
       connection), `TestEnsureCertMovesOffTheUsersKey`, and a transcript
-      on a laptop whose `~/.ssh/id_ed25519` has a passphrase.
-- [ ] The owner's 2026-09-23 findings each have a test: destroy reports a
+      on a laptop whose `~/.ssh/id_ed25519` has a passphrase. — waits on:
+      owner (laptop transcript with a passphrase-protected
+      `~/.ssh/id_ed25519`, zero prompts; HANDOFF 2026-09-23 "Still owed");
+      the two tests pass in commit 7a8af85's output
+- [x] The owner's 2026-09-23 findings each have a test: destroy reports a
       failed op, `[y/N]` prompt, positional PROJECT, dir-cache poisoning,
       true state on attach, projects header and reasons, sentences for ssh
       errors (I-151..I-155). Evidence: `go test ./internal/cli/` output
-      naming them.
+      naming them. — closed: commit 7a8af85 message, `go test
+      ./internal/cli/...` output naming TestDestroyReportsAFailedOp,
+      TestDestroyConfirmationIsYesNo, TestPositionalProject,
+      TestResolveProjectOrder, TestAttachToAnErroredGuestSaysError,
+      TestNotRunningMessagesSayTheTruth, TestProjectsTable,
+      TestSSHErrorsAreSentences
 - [ ] `repose destroy` returns within 2 s of the `[y/N]` with the restore
       command, `repose projects` shows `destroying`, and `repose restore
       NAME` brings the project back under its name (I-166, I-167).
       Evidence: `TestDestroyThenRestoreByName`,
       `TestProjectsShowAFailedDestroy`, and a laptop transcript with
-      timings against the real api.
-- [ ] Credential sync copies exactly the four rows and never the Claude,
+      timings against the real api. — open: the tests exist
+      (internal/cli/restore_test.go); STATUS 2026-09-23 03:40Z conductor
+      line records live timings (destroy accepted 0.28 s, restore 12 s) but
+      no CLI transcript showing the `[y/N]`, the printed restore command,
+      `projects` showing `destroying` and `repose restore NAME`
+- [x] Credential sync copies exactly the four rows and never the Claude,
       Gemini or SSH key files, even if present. Evidence: integration test
-      that plants all of them and asserts.
-- [ ] Prompt send: window named after the agent, second one `-2`, prompt
+      that plants all of them and asserts. — closed:
+      `TestSyncCredentialsCopiesExactlyTheFourRows` in
+      internal/cli/run_integration_test.go (plants Claude, Gemini and SSH
+      key files, asserts absent on the guest); STATUS 2026-09-20 14-security
+      review-07 line
+- [x] Prompt send: window named after the agent, second one `-2`, prompt
       arrives after the TUI is idle (not typed into a shell). Evidence:
       `tmux capture-pane` in the integration test shows the prompt inside
-      the agent UI.
-- [ ] Claude not-logged-in path attaches instead of sending. Evidence:
-      integration test.
+      the agent UI. — closed: `TestPromptSendAndSecondWindowNaming`
+      (capture-pane shows each prompt in `cat` and `cat-2`) and
+      `TestRunWithPromptSendsIntoTmuxWindow` in internal/cli; live prompt
+      sends in the "Real-API evidence" below
+- [x] Claude not-logged-in path attaches instead of sending. Evidence:
+      integration test. — closed: `TestRunClaudeNotLoggedInAttachesInstead`
+      in internal/cli/run_e2e_test.go (commit d61bf56)
 - [ ] `attach` execs ssh (the CLI process is replaced). Evidence: `ps`
-      shows no `repose` parent during a session.
-- [ ] Build log SSE renders, error block matches 5.8 with the marked line.
-      Evidence: golden test with a fake eval error.
+      shows no `repose` parent during a session. — open: no `ps` capture
+      during a session is recorded (the code is `syscall.Exec` in
+      internal/cli/sysexec_unix.go, kept by DECISIONS I-206); run `repose
+      attach` and `ps -o pid,ppid,comm` from a second terminal
+- [x] Build log SSE renders, error block matches 5.8 with the marked line.
+      Evidence: golden test with a fake eval error. — closed:
+      `TestRenderBuildErrorGolden` (fake `nodejs_25` eval error, marked line
+      with caret) and `TestStreamBuildLogRendersLinesAndDoneState` in
+      internal/cli/buildlog_test.go
 - [ ] `open PORT` and `open --desktop` work, browser opens, Ctrl-C leaves
-      the desktop running. Evidence: transcript on a real guest.
+      the desktop running. Evidence: transcript on a real guest. — waits on:
+      owner (a real laptop with a browser; STATUS 2026-09-21 m2 gate-done
+      line and HANDOFF 2026-09-23 list both as untested)
 - [ ] `status`, `projects`, `secrets`, `config`, `snapshots`, `logs`,
       `destroy` each round-trip against the real API. Evidence: transcript.
+      — open: status/projects/destroy are in the STATUS 2026-09-20 m2 e2e
+      lines, secrets in 05 §9 (`ops/checks/secrets.sh`, 2026-09-20 23:50Z),
+      config apply in 12 §9 (`ops/checks/menu.sh`), snapshots in
+      `ops/checks/resilience.sh`; no `repose logs` run against the real api
+      is recorded, and no one transcript covers the list
 - [ ] Every row of the failure table in §6 is triggered and prints the
-      exact message and exit code. Evidence: table of outputs in the PR.
+      exact message and exit code. Evidence: table of outputs in the PR. —
+      open: no table of outputs exists; trigger each §6 row (tests like
+      TestSSHErrorsAreSentences, TestExitCodeForLoginFailures cover some)
+      and paste message plus exit code per row
 - [ ] `--json` output on every read command is valid JSON with nothing else
-      on stdout. Evidence: `repose status --json | jq .` in CI.
-- [ ] GoReleaser builds four targets; `install.sh` installs on ubuntu and
+      on stdout. Evidence: `repose status --json | jq .` in CI. — open: no
+      CI job runs `repose status --json | jq .` (.github/workflows/ci.yml
+      has no jq step); `TestStatusAndProjectsRoundTrip` checks status --json
+      against the fake only
+- [x] GoReleaser builds four targets; `install.sh` installs on ubuntu and
       macos CI runners and `repose version` prints the tag. Evidence: CI
-      run link.
-- [ ] `nix run .#repose` works. Evidence: CI job.
-- [ ] Completion scripts generate and load without errors in bash, zsh,
-      fish. Evidence: CI job sourcing each.
-- [ ] `internal/fakes/api` covers every route the CLI calls. Evidence: the
-      fake's route table diffed against `interfaces/api.md`.
+      run link. — closed: CI run 35875626476 on 264e6c2
+      (https://github.com/Heracraft/factory/actions/runs/35875626476) jobs
+      "cli GoReleaser matrix build" (asserts the four dist binaries),
+      "install.sh (ubuntu-latest)", "install.sh (macos-latest)" (`repose
+      version` greps the tag)
+- [x] `nix run .#repose` works. Evidence: CI job. — closed: CI run
+      35875626476 on 264e6c2
+      (https://github.com/Heracraft/factory/actions/runs/35875626476) job
+      "nix run .#repose"
+- [x] Completion scripts generate and load without errors in bash, zsh,
+      fish. Evidence: CI job sourcing each. — closed: CI run 35875626476 on
+      264e6c2
+      (https://github.com/Heracraft/factory/actions/runs/35875626476) job
+      "shell completions load in bash, zsh, fish"
+- [x] `internal/fakes/api` covers every route the CLI calls. Evidence: the
+      fake's route table diffed against `interfaces/api.md`. — closed:
+      `TestRoutesMatchDoc` in internal/fakes/api/api_test.go (fake route
+      table against the table parsed from api.md, both directions)
 - [ ] No secret, token, certificate or prompt text is ever logged at `-v`.
       Evidence: reviewer grepped log calls; test asserts on captured
-      output.
-- [ ] `features/run-and-attach.md`, `features/sync-at-launch.md`,
+      output. — open: no reviewer grep of log calls and no test capturing
+      `-v` output is recorded; `-v` now prints op error detail
+      (internal/cli/run.go `opFailed`)
+- [x] `features/run-and-attach.md`, `features/sync-at-launch.md`,
       `features/ports-and-previews.md` match the built behaviour. Evidence:
-      re-read and diffed by the implementer.
-- [ ] `ops/RUNBOOK.md` has entries for: user cannot log in, certificate
-      rejected, SSH timeout after running. Evidence: entries exist.
+      re-read and diffed by the implementer. — closed: commit d61bf56
+      (implementer re-read the three and removed what was never built);
+      later changes updated them in their own commits (e.g. 7a8af85 for
+      I-149/I-150)
+- [x] `ops/RUNBOOK.md` has entries for: user cannot log in, certificate
+      rejected, SSH timeout after running. Evidence: entries exist. —
+      closed: ops/RUNBOOK.md "CLI: user cannot log in", "CLI: certificate
+      rejected", "CLI: SSH timeout after running" (commit d61bf56)
 
 ### Real-API evidence (M2, 2026-09-20/21)
 

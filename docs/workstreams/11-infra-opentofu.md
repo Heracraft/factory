@@ -325,14 +325,18 @@ row says otherwise. Commands were run from the dev box, which is in
       commands refuses shell pipelines that fetch instance metadata, so the
       `curl` from the host was not run. Nothing about the NSG changed since
       the host installed successfully, and the guest-side half is workstream
-      01's nftables rule. One command on the host closes it.
+      01's nftables rule. One command on the host closes it. — open: the
+      host half, a `curl -H Metadata:true http://169.254.169.254/...` on
+      host-01 answering, is not pasted; the guest half is closed by
+      `TestGuestCannotReachIMDS` (14 §9, `isolation-go-20260921T003759Z.txt`)
 - [ ] Data disk has `prevent_destroy`; a plan that would replace it fails.
       **Not closed:** the deliberate attempt needs a plan against real state
       with a changed disk size, which was not run. The
       `prevent_destroy` and `ignore_changes` blocks are in
       `azure/modules/host/main.tf` and the equivalent attempt was made
       against the plan on 2026-09-19. One `host_data_disk_gb` change, planned
-      and read, closes it.
+      and read, closes it. — open: a plan against prod state with a changed
+      `host_data_disk_gb`, failing on `prevent_destroy`, is not pasted
 - [x] Blob lifecycle rule exists. Evidence: `az storage account
       management-policy show --account-name reposesnapshots3912` returns one
       enabled rule `snapshots-tier-and-expire`, `blobTypes: [blockBlob]`,
@@ -342,7 +346,7 @@ row says otherwise. Commands were run from the dev box, which is in
       **Open:** a test blob aged past 45 days and observed deleted. Azure
       keys the rule on real creation time, so this waits 45 days or a
       backdated fixture in staging.
-- [ ] Key Vault key exists, the api identity can wrap and unwrap and cannot
+- [x] Key Vault key exists, the api identity can wrap and unwrap and cannot
       `get`. **Half closed.** The vault and key exist:
       `repose-kv-3912`, purge protection on, 90-day soft delete, key
       `repose-dek-wrap` at
@@ -351,7 +355,12 @@ row says otherwise. Commands were run from the dev box, which is in
       environment output reports `api_policy_configured: false`, and the app
       registration is a human step (DECISIONS I-21). Supply the object id and
       the wrap/unwrap-only policy appears; the denied `get` is then one
-      `az keyvault key show` as that identity.
+      `az keyvault key show` as that identity. — closed: the policy was
+      applied 2026-09-20 and the production CA init then wrapped through
+      the key (DECISIONS I-91); secrets' DEKs are wrapped by it in
+      production (STATUS 2026-09-20 14-security review 05 line). The
+      "cannot `get`" half is superseded by I-91 (Get is granted: it returns
+      only the public half, the private key is non-exportable)
 - [x] Postgres backups. **Withdrawn, not closed.** This row used to ask
       for an R2 bucket, its token and lifecycle rule, a successful Coolify
       backup job and a rehearsed restore. Backups are Coolify's, against a
@@ -367,14 +376,19 @@ row says otherwise. Commands were run from the dev box, which is in
       carries neither SSH nor WireGuard (DECISIONS I-72). The plan now warns,
       `infra/README.md` has the four records to create by hand, and
       `ops/RUNBOOK.md` has the symptom entry. Closes with a Cloudflare token
-      and `manage_dns = true`, or with the records made by hand.
+      and `manage_dns = true`, or with the records made by hand. — open:
+      no `dig +short` for the edge and control-plane names answering their
+      static IPs is pasted since this note (the M2 gate reached the gateway
+      as `ssh.repose.herakraft.co`, "Real-edge evidence" in 06 §9, so the
+      edge record appears to exist)
 - [ ] `infra/README.md` covers bootstrap, add host, rotate token, drain and
       destroy host, force-unlock, and someone followed it end to end.
       **Partly:** the control-plane and DNS sections were written by
       following them on 2026-09-20 and the gaps found are now in them (the
       dashboard is not in the NSG; the wildcard; the `.env` that is half the
       backup). The end-to-end pass by somebody who did not write it is still
-      owed.
+      owed. — waits on: owner (someone who did not write `infra/README.md`
+      follows it end to end)
 - [x] Cost table re-checked against the Azure price API on the date of
       the first apply. Evidence: queried 2026-09-20,
       `armRegionName eq 'eastus' and priceType eq 'Consumption'`:
