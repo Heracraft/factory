@@ -3792,3 +3792,10 @@ the host survives Coolify restarts. The interface is `wg-repose` (the
 file name), not `repose`, so it reads as a tunnel on a machine that runs
 other things. `repose.edge.lokiUrl` is set to the same Loki, so the edge
 ships its journal too. *Rejected:* Tailscale (above); a WireGuard container.
+
+**I-193. The key in b1a5915 stays in history; it was rotated.** (conductor,
+2026-09-23) The owner rotated the key committed in b1a5915, so the value in
+public history authorises nothing; rewriting history and force-pushing
+would break every clone and worktree for no security gain. *Rejected:*
+a history rewrite, and making the repository private for this reason
+alone. Any future leaked credential is rotated first, the same way.
