@@ -514,11 +514,20 @@ func (m *Manager) awaitSession(ctx context.Context, id string, max time.Duration
 }
 
 func (mon *monitor) stop() {
+	if stopCon := mon.stopKeepConsole(); stopCon != nil {
+		stopCon()
+	}
+}
+
+// stopKeepConsole ends the guestd watch but leaves console capture running,
+// returning the function that ends it (nil when there is none): a stop
+// ends capture only once the hypervisor has exited (I-186).
+func (mon *monitor) stopKeepConsole() func() {
 	mon.cancel()
 	<-mon.done
-	if mon.stopCon != nil {
-		mon.stopCon()
-	}
+	stopCon := mon.stopCon
+	mon.stopCon = nil
+	return stopCon
 }
 
 func (mon *monitor) current() vsockclient.Session {

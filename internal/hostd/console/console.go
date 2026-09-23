@@ -21,6 +21,14 @@ const (
 	Keep        = 3
 )
 
+// DrainQuiet and DrainMax bound the read-out before capture closes the
+// socket (see Run): close once nothing arrived for DrainQuiet, and never
+// later than DrainMax after capture was asked to end.
+var (
+	DrainQuiet = 100 * time.Millisecond
+	DrainMax   = 2 * time.Second
+)
+
 // Tailer copies one guest's console socket into its log.
 type Tailer struct {
 	Socket string
@@ -126,11 +134,13 @@ func (t *Tailer) Run(ctx context.Context) error {
 		go func() {
 			select {
 			case <-ctx.Done():
-				_ = c.Close() // unblocks the read loop; ctx.Err is returned below
+				// Unblock the read loop without closing: it drains first.
+				_ = c.SetReadDeadline(time.Now())
 			case <-done:
 			}
 		}()
 		buf := make([]byte, 32<<10)
+		var drainUntil, lastData time.Time
 		for {
 			n, rerr := c.Read(buf)
 			if n > 0 {
@@ -139,10 +149,36 @@ func (t *Tailer) Run(ctx context.Context) error {
 					_ = c.Close() // giving up on this connection; the write error is returned
 					return werr
 				}
+				lastData = time.Now()
 			}
-			if rerr != nil {
+			if ctx.Err() == nil {
+				if rerr != nil {
+					break
+				}
+				continue
+			}
+			// Capture is ending while the hypervisor may still be writing.
+			// Closing a unix socket with bytes unread in its receive queue
+			// hands the peer ECONNRESET, and Cloud Hypervisor 53's serial
+			// thread exits on that read error without detaching the dead
+			// socket: every later byte the guest writes fails, the UART's
+			// transmit-empty interrupt never comes, and the guest's tty
+			// output stalls for good. PID 1 then blocks on its next console
+			// line and the guest never powers off (DECISIONS I-186). So read
+			// until the socket has been quiet for DrainQuiet, for at most
+			// DrainMax, and close right after an empty read.
+			var ne net.Error
+			if rerr != nil && (!errors.As(rerr, &ne) || !ne.Timeout()) {
+				break // EOF or a real error: nothing is left unread
+			}
+			now := time.Now()
+			if drainUntil.IsZero() {
+				drainUntil, lastData = now.Add(DrainMax), now
+			}
+			if now.After(drainUntil) || (n == 0 && now.Sub(lastData) >= DrainQuiet) {
 				break
 			}
+			_ = c.SetReadDeadline(now.Add(DrainQuiet))
 		}
 		close(done)
 		_ = c.Close() // the read loop ended; the socket is reconnected or ctx is done

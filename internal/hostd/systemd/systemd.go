@@ -128,6 +128,13 @@ func (s *Real) WaitInactive(ctx context.Context, unit string) error {
 	defer t.Stop()
 	for {
 		active, err := s.IsActive(ctx, unit)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			// systemctl killed by the deadline exits non-zero with nothing
+			// on stdout, which IsActive reads as inactive: the stop's
+			// timeout used to pass as a clean power-off and skip the
+			// fallback (I-186).
+			return ctxErr
+		}
 		if err != nil {
 			return err
 		}

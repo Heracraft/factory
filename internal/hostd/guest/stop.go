@@ -47,15 +47,25 @@ func (m *Manager) stopGuest(ctx context.Context, g *state.Guest, timeoutS uint32
 	}
 	m.log(g).Info("stopping guest", "event", "guest_stop", "timeout_s", timeoutS)
 	unit := GuestUnit(g.GuestID)
-	// The monitor must not mistake this for an unexpected exit.
+	// The monitor must not mistake this for an unexpected exit. Console
+	// capture stays until the hypervisor is gone: ending it while the guest
+	// prints its shutdown killed Cloud Hypervisor's serial thread, stalled
+	// the guest's console and with it PID 1, and every such stop waited out
+	// the whole timeout (DECISIONS I-186).
+	var stopConsole func()
 	if mon := m.removeMonitor(g.GuestID); mon != nil {
 		if sess := mon.current(); sess != nil {
 			if err := sess.Shutdown(ctx, timeoutS); err != nil {
 				m.log(g).Warn("guestd shutdown request failed", "event", "guest_stop", "err", err.Error())
 			}
 		}
-		mon.stop()
+		stopConsole = mon.stopKeepConsole()
 	}
+	defer func() {
+		if stopConsole != nil {
+			stopConsole()
+		}
+	}()
 	if active, _ := m.d.Systemd.IsActive(ctx, unit); active {
 		wctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutS)*time.Second)
 		err := m.d.Systemd.WaitInactive(wctx, unit)
@@ -73,6 +83,10 @@ func (m *Manager) stopGuest(ctx context.Context, g *state.Guest, timeoutS uint32
 				}
 			}
 		}
+	}
+	if stopConsole != nil {
+		stopConsole()
+		stopConsole = nil
 	}
 	m.teardown(ctx, g)
 	if err := m.setState(g, StateStopped, ""); err != nil {

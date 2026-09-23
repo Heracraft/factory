@@ -184,8 +184,15 @@ func (h *HTTP) ResizeDisk(ctx context.Context, sock, id string, newSize uint64) 
 	return h.putJSON(ctx, sock, "vm.resize-disk", map[string]any{"id": id, "desired_size": newSize})
 }
 
+// Shutdown ends the guest and then the hypervisor process. vm.shutdown
+// alone tears the VM down but leaves the VMM waiting for a new one, so
+// the unit stayed active and every fallback stop waited 15 s more before
+// the kill (host-01, 2026-09-23 04:04:35-04:04:50; DECISIONS I-186).
 func (h *HTTP) Shutdown(ctx context.Context, sock string) error {
 	_, err := h.put(ctx, sock, "vm.shutdown")
+	if _, verr := h.put(ctx, sock, "vmm.shutdown"); err == nil {
+		err = verr
+	}
 	return err
 }
 
