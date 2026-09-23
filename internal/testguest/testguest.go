@@ -15,6 +15,7 @@ package testguest
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -108,8 +109,12 @@ func (g *Guest) handleConn(nc net.Conn) {
 	defer func() { _ = sc.Close() }()
 	go ssh.DiscardRequests(reqs)
 	for ch := range chans {
+		if ch.ChannelType() == "direct-tcpip" {
+			go g.handleDirectTCPIP(ch)
+			continue
+		}
 		if ch.ChannelType() != "session" {
-			_ = ch.Reject(ssh.UnknownChannelType, "only session channels are supported")
+			_ = ch.Reject(ssh.UnknownChannelType, "only session and direct-tcpip channels are supported")
 			continue
 		}
 		channel, requests, err := ch.Accept()
@@ -118,6 +123,40 @@ func (g *Guest) handleConn(nc net.Conn) {
 		}
 		go g.handleSession(channel, requests)
 	}
+}
+
+// handleDirectTCPIP is what `ssh -L` (and `ssh -O forward -L`) asks for:
+// connect to host:port as the guest would and splice the two, so the
+// CLI's port forwards can be tested end to end (DECISIONS I-199). The
+// "guest" is this machine, so a listener the test starts is the guest's.
+func (g *Guest) handleDirectTCPIP(nc ssh.NewChannel) {
+	var req struct {
+		Host       string
+		Port       uint32
+		OriginHost string
+		OriginPort uint32
+	}
+	if err := ssh.Unmarshal(nc.ExtraData(), &req); err != nil {
+		_ = nc.Reject(ssh.ConnectionFailed, "bad direct-tcpip request")
+		return
+	}
+	conn, err := net.Dial("tcp", net.JoinHostPort(req.Host, fmt.Sprint(req.Port)))
+	if err != nil {
+		_ = nc.Reject(ssh.ConnectionFailed, err.Error())
+		return
+	}
+	ch, reqs, err := nc.Accept()
+	if err != nil {
+		_ = conn.Close()
+		return
+	}
+	go ssh.DiscardRequests(reqs)
+	done := make(chan struct{}, 2)
+	go func() { _, _ = io.Copy(ch, conn); _ = ch.CloseWrite(); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(conn, ch); done <- struct{}{} }()
+	<-done
+	_ = ch.Close()
+	_ = conn.Close()
 }
 
 func (g *Guest) handleSession(channel ssh.Channel, requests <-chan *ssh.Request) {

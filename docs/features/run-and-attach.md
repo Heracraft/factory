@@ -134,7 +134,9 @@ The session helper: `run` and `attach` start a small background process
 on its command line) just before the CLI becomes `ssh`. It does what must
 not delay the attach and reports only through `tmux display-message`,
 never over the pane, and it ends when the SSH session it was started
-beside ends. Windows has no helper.
+beside ends. Windows has no helper. While it runs it also keeps the
+guest's listening ports forwarded to the laptop (ports-and-previews.md,
+I-199), shown in the session's status bar.
 
 Agent picker:
 

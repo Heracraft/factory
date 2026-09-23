@@ -164,9 +164,14 @@ server socket `/tmp/.X11-unix/X99` exists (checked at every shell start).
 
 ## Ports
 
-Anything the user binds on `0.0.0.0` or `127.0.0.1` inside the guest is
-reachable through `repose open <port>` (SSH `-L`). Nothing is exposed
-otherwise. The desktop listens only on `127.0.0.1`: noVNC on 6080 (the
+Anything the user binds on `0.0.0.0` or `127.0.0.1` (or `::`, `::1`)
+inside the guest is reachable through `repose open <port>` (SSH `-L`), and
+is forwarded automatically while a CLI is attached (DECISIONS I-199), read
+with `ss -Hltn` (iproute2, in the base). Platform-owned ports, never
+auto-forwarded: 6080, 6081, 5900. Each attached CLI records its forwarded
+ports in `/home/dev/.repose/forwards/<id>`; the project session's
+`status-right` is set from their union and unset when none is left.
+Nothing is exposed otherwise. The desktop listens only on `127.0.0.1`: noVNC on 6080 (the
 socket-activated entry point), websockify on 6081, VNC on 5900.
 
 ## Desktop (DECISIONS I-33)

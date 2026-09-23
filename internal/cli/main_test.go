@@ -12,7 +12,12 @@ import (
 // certificate (I-188) overwrote the dev box's real certificate, config and
 // known_hosts with the fake CA's before this existed. Tests that need
 // their own home still call withHome.
+// realHome is the developer's HOME, for the one test that runs `go build`
+// (whose module and build caches live under it).
+var realHome string
+
 func TestMain(m *testing.M) {
+	realHome = os.Getenv("HOME")
 	home, err := os.MkdirTemp("", "repose-cli-test-home-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

@@ -42,6 +42,9 @@ type sessionOptions struct {
 	TZ      string `json:"tz,omitempty"`
 	RepoDir string `json:"repo_dir,omitempty"`
 	HomeDir string `json:"home_dir,omitempty"`
+	// Forward keeps the guest's listeners forwarded to the laptop for as
+	// long as the attach lasts (I-199); off with REPOSE_NO_FORWARD=1.
+	Forward bool `json:"forward"`
 }
 
 // startSessionHelper starts the helper for the attach that follows, and
@@ -49,7 +52,7 @@ type sessionOptions struct {
 // Windows has no multiplexing and no exec, and tests (TargetFor set) drive
 // runSession themselves.
 func startSessionHelper(e *Env, opts sessionOptions) {
-	if e.TargetFor != nil || goos() == "windows" || !opts.Carry {
+	if e.TargetFor != nil || goos() == "windows" || (!opts.Carry && !opts.Forward) {
 		return
 	}
 	b, err := json.Marshal(opts)
@@ -88,18 +91,43 @@ func newSessionHelperCmd() *cobra.Command {
 // says the attach is still there) whatever keeps running beside it.
 func runSession(ctx context.Context, opts sessionOptions, alive func() bool) error {
 	t := sshTarget{Args: opts.Target}
-	if opts.Carry {
-		o, err := carryOverSession(ctx, t, opts)
-		msgs := []string{}
-		if err != nil {
-			msgs = append(msgs, "repose could not carry your config: "+oneLine(err.Error()))
-		} else {
-			msgs = o.Lines()
-		}
-		for _, m := range msgs {
-			tmuxMessage(ctx, t, opts.Slug, m, alive)
+	// Messages go out one at a time from here, so the carry's lines and
+	// the forwards' never replace each other on the status line.
+	msgs := make(chan string, 64)
+	say := func(m string) {
+		select {
+		case msgs <- m:
+		default: // a burst past the buffer is not worth blocking a forward for
 		}
 	}
+	shown := make(chan struct{})
+	go func() {
+		defer close(shown)
+		for m := range msgs {
+			tmuxMessage(ctx, t, opts.Slug, m, alive)
+		}
+	}()
+	carried := make(chan struct{})
+	go func() {
+		defer close(carried)
+		if !opts.Carry {
+			return
+		}
+		o, err := carryOverSession(ctx, t, opts)
+		if err != nil {
+			say("repose could not carry your config: " + oneLine(err.Error()))
+			return
+		}
+		for _, m := range o.Lines() {
+			say(m)
+		}
+	}()
+	if opts.Forward {
+		runForwards(ctx, newForwarder(t, opts.Slug, say), alive)
+	}
+	<-carried
+	close(msgs)
+	<-shown
 	return nil
 }
 

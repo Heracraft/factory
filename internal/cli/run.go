@@ -103,7 +103,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	pr.End()
 	_, _ = fmt.Fprintf(e.Out, "Connected to %s (%s)\n", project.Slug, project.Class)
 
-	helper := sessionOptions{Slug: project.Slug, Target: target.Args, TZ: tz, HomeDir: e.HomeDir}
+	helper := sessionOptions{Slug: project.Slug, Target: target.Args, TZ: tz, HomeDir: e.HomeDir, Forward: os.Getenv(forwardEnvOff) != "1"}
 	if root := gitRepoRoot(e.Cwd); root != "" && res.Remote != "" && res.Remote == project.RemoteURL {
 		// The git carry needs the project's own checkout: its includeIf
 		// rules and identity are what the guest should get, and a run

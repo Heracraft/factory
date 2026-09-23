@@ -4,7 +4,23 @@ A dev server running in the guest reaches the user's browser through an SSH
 port forward the CLI manages. Public preview URLs per project are designed
 here and built later, so the gateway is written with that path in mind.
 
-## What the user sees, first release
+## What the user sees
+
+While `repose run` or `repose attach` is attached, every port the guest
+starts listening on is on the laptop's localhost too, with no command
+(DECISIONS I-199). Start `pnpm dev` in the guest and, inside tmux:
+
+```
+⇄ localhost:5173 → :5173                          (a message for 4 s)
+... ⇄ 3000 5173 │ "dev@izma" 14:02 23-Sep-26         (the status bar's right side)
+```
+
+`http://localhost:5173` on the laptop is the guest's vite, a secure
+context, an OAuth-friendly `localhost` redirect URI and the same cookies
+as local development, which a preview hostname could not give.
+
+The explicit, foreground form stays for one port, for a laptop without
+the session helper (Windows), or with auto-forward off:
 
 ```
 $ repose open 3000
@@ -19,6 +35,37 @@ http://localhost:6080/vnc.html?autoconnect=1 (Ctrl-C stops the forward; the desk
 (browser.md covers the desktop.)
 
 ## Behaviour that must hold
+
+Auto-forward (I-199), run by the session helper (run-and-attach.md):
+
+- The helper reads the guest's listeners with `ss -Hltn` over the
+  command's multiplexed connection every second. It forwards listeners
+  on `127.0.0.1`, `0.0.0.0`, `::1`, `::` and `*`, ports 1024 and up,
+  except the guest's own (6080, 6081, 5900: the desktop, which `repose
+  open --desktop` forwards). A listener only on another address (a
+  Docker bridge, the guest's own IP) is not forwarded, and nor is a port
+  bound only inside a Docker network.
+- A forward is `ssh -O forward -L <laptop>:127.0.0.1:<port>` on the
+  existing ControlMaster: no new connection, no process per port. It is
+  cancelled (`ssh -O cancel`) within two seconds of the listener closing,
+  and every forward is cancelled when the attach ends.
+- The laptop port is the guest's port when it is free; otherwise the next
+  free one, and the message says so: `⇄ localhost:3001 → :3000 (3000 is
+  taken on your laptop)`. Portless's proxy port 1355 is never remapped
+  silently, since the URLs portless prints name it: `1355 is taken on
+  your laptop (portless?); izma's portless is on localhost:1356`. A port
+  no laptop port could be found for is tried again after 30 seconds.
+- Output is only ever inside tmux: `display-message` per new forward, and
+  the session's `status-right` set to `⇄ <ports> │ <the global
+  status-right>` while any attached CLI forwards. Each CLI keeps its
+  ports in `~/.repose/forwards/<id>` in the guest (re-stamped every 20 s,
+  ignored after 60 s), so two laptops attached to one project each forward
+  on their own laptop and the bar shows the union; the session's own
+  `status-right` is unset again when the last one leaves.
+- `REPOSE_NO_FORWARD=1` turns it off, for a laptop whose ports must stay
+  free. It is the only knob.
+
+`repose open`:
 
 - `repose open PORT [--local-port N] [--no-browser]` runs `ssh -N -L
   <local>:127.0.0.1:<port> <slug>.repose` using the CLI's SSH config, so

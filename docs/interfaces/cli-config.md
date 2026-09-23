@@ -25,7 +25,7 @@ I-73: not just the host, so the worked example below actually holds).
 `github.com/a/b`.
 
 Environment overrides: `REPOSE_API_URL`, `REPOSE_PROJECT` (project id or
-slug, same as `--project`), `REPOSE_NO_BROWSER=1` (forces device code; device code is the default since v0.1.2, `--browser` asks for the loopback PKCE flow, DECISIONS I-101).
+slug, same as `--project`), `REPOSE_NO_BROWSER=1` (forces device code; device code is the default since v0.1.2, `--browser` asks for the loopback PKCE flow, DECISIONS I-101), `REPOSE_NO_FORWARD=1` (no automatic port forwards while attached, DECISIONS I-199; `repose open` still works). `REPOSE_SESSION` is internal: the session helper's options (DECISIONS I-206), never set by hand.
 
 Exit codes: 0 ok; 1 generic; 2 usage; 3 not logged in; 4 project not found;
 5 guest not running; 6 dirty remote tree (sync refused); 7 payment required;
