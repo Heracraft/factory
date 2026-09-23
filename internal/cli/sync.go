@@ -39,6 +39,17 @@ type SyncOptions struct {
 	// checkout in the apply's own ssh, unless the guest's marker says it
 	// has exactly these.
 	Env []envFile
+	// EnvLater, when set, is called after the probe for the .env files in
+	// place of Env: `run` lists them (a walk of every ignored file) while
+	// the probe's ssh is in flight rather than before it.
+	EnvLater func() []envFile
+}
+
+func (o SyncOptions) envFiles() []envFile {
+	if o.EnvLater != nil {
+		return o.EnvLater()
+	}
+	return o.Env
 }
 
 // SyncSummary is what step 5e prints.
@@ -327,7 +338,7 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		}
 		summary.Untracked = len(untracked)
 	}
-	envScript, err := addEnvToApply(tw, opts.Env, probe.markers)
+	envScript, err := addEnvToApply(tw, opts.envFiles(), probe.markers)
 	if err != nil {
 		return nil, err
 	}

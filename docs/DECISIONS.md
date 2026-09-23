@@ -4625,3 +4625,14 @@ copied anywhere" and the three homes of `features/secrets.md`.
   and merge options, per-tool settings) are open-ended, while secrets
   are named by those words. *Revisit when:* a secret-bearing key turns up
   that none of the words matches.
+- *The rest of the review, where it touched a documented behaviour.*
+  The settings rewrite replaces the laptop home followed by `/` anywhere
+  in a string, and maps a `CLAUDE_CONFIG_DIR` directory to the guest's
+  `~/.claude`. A `.env` the last carry wrote and the guest no longer has
+  is sent again (the apply lists the paths in `~/.repose/env-paths`; the
+  probe checks them). The forward's port check binds `127.0.0.1`, `::1`,
+  `0.0.0.0` and `::`. A hybrid first sync bundles against the laptop's
+  `origin/*` and tags that the fresh clone has. The Claude files' hashes
+  are cached on the laptop by size and mtime (`carry-hashes.json`,
+  `cli-config.md`), and `run` reads its side of the carry while the probe
+  is in flight.

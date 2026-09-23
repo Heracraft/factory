@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 var updateGolden = flag.Bool("update", false, "rewrite testdata/claude-merge/*/want.json")
@@ -451,6 +453,55 @@ func TestClaudeSettingsFailureAndDroppedHookOncePerChange(t *testing.T) {
 	}
 	if o = carry(); len(o.Dropped) != 1 {
 		t.Errorf("after a laptop change, dropped = %v", o.Dropped)
+	}
+}
+
+// An unchanged Claude config costs a stat per file: the second build
+// reads no file (the hashes come from carry-hashes.json by size and
+// mtime), and an edited file is read again and changes its item's hash.
+func TestClaudeCarryHashesAreCached(t *testing.T) {
+	withHome(t)
+	home := claudeLaptopHome(t, false)
+	first, err := buildClaudeCarry(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := claudeReads.Load()
+	second, err := buildClaudeCarry(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := claudeReads.Load() - before; n != 0 {
+		t.Errorf("an unchanged config read %d files", n)
+	}
+	hashes := func(cc *claudeCarry) map[string]string {
+		m := map[string]string{}
+		for _, it := range cc.Items {
+			m[it.Marker] = it.Hash
+		}
+		return m
+	}
+	h1, h2 := hashes(first), hashes(second)
+	if len(h1) == 0 || fmt.Sprint(h1) != fmt.Sprint(h2) {
+		t.Fatalf("hashes differ between builds:\n%v\n%v", h1, h2)
+	}
+	skill := filepath.Join(home, ".claude", "skills", "deploy", "SKILL.md")
+	if err := os.WriteFile(skill, []byte("---\nname: deploy\n---\nchanged\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Minute)
+	_ = os.Chtimes(skill, later, later)
+	before = claudeReads.Load()
+	third, err := buildClaudeCarry(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := claudeReads.Load() - before; n != 1 {
+		t.Errorf("one edited file: %d reads, want 1", n)
+	}
+	h3 := hashes(third)
+	if h3["claude-skills"] == h1["claude-skills"] || h3["claude-agents"] != h1["claude-agents"] {
+		t.Errorf("hashes after editing a skill: %v, before %v", h3, h1)
 	}
 }
 

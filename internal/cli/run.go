@@ -130,20 +130,47 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		// remote (I-150), and the carry costs no round trip (I-195..I-198).
 		var copied []string
 		var carried *carryOutcome
-		envs, err := buildEnvCarry(repoRoot)
-		if err != nil {
-			e.warn("Could not list your .env files (%s); none were sent.", oneLine(err.Error()))
+		// The laptop's side of the carry (the .env walk, git config, the
+		// Claude files) is read while the probe's ssh is in flight, not
+		// before it (review of workstream 15, item 7).
+		type builtEnv struct {
+			envs []envFile
+			err  error
+		}
+		envDone := make(chan builtEnv, 1)
+		go func() {
+			envs, err := buildEnvCarry(repoRoot)
+			envDone <- builtEnv{envs, err}
+		}()
+		type builtCarry struct {
+			gc    *gitCarry
+			gcErr error
+			cc    *claudeCarry
+		}
+		carryDone := make(chan builtCarry, 1)
+		go func() {
+			var b builtCarry
+			b.gc, b.gcErr = buildGitCarry(repoRoot, e.HomeDir)
+			b.cc, _ = buildClaudeCarry(e.HomeDir)
+			carryDone <- b
+		}()
+		waitEnv := func() []envFile {
+			b := <-envDone
+			if b.err != nil {
+				e.warn("Could not list your .env files (%s); none were sent.", oneLine(b.err.Error()))
+			}
+			return b.envs
 		}
 		summary, err := syncGuest(ctx, target, repoRoot, project.Slug, SyncOptions{
 			StashRemote: opts.StashRemote, DiscardRemote: opts.DiscardRemote,
 			Exclude: e.Cfg.SyncExclude, NoRemote: project.RemoteURL == "", RemoteURL: project.RemoteURL,
-			Env: envs,
+			EnvLater: waitEnv,
 			BeforeApply: func(markers map[string]string) error {
-				gc, err := buildGitCarry(repoRoot, e.HomeDir)
-				if err != nil {
-					e.warn("Could not read your git config (%s); the guest keeps its own.", oneLine(err.Error()))
+				b := <-carryDone
+				gc, cc := b.gc, b.cc
+				if b.gcErr != nil {
+					e.warn("Could not read your git config (%s); the guest keeps its own.", oneLine(b.gcErr.Error()))
 				}
-				cc, _ := buildClaudeCarry(e.HomeDir)
 				if cc != nil {
 					for _, n := range cc.Notes {
 						e.warn("%s", n)

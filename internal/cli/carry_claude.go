@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -9,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -55,12 +58,36 @@ const claudeFileCap = 4 << 20
 // the path relative to ~/.claude.
 type claudeItem struct {
 	Marker string
-	Files  map[string]claudeFile // rel path -> content
+	Files  map[string]claudeFile // rel path -> the file on the laptop
+	// Hash is the item's marker value, from each file's content hash
+	// (claudeHashes), so an unchanged item costs a stat per file.
+	Hash string
 }
 
+// claudeFile is one laptop file. Its bytes are read only when its item is
+// sent (or its hash is not cached): skills/ alone can be megabytes, and
+// most runs change nothing.
 type claudeFile struct {
-	Body []byte
-	Mode os.FileMode
+	Path  string // absolute, on the laptop
+	Mode  os.FileMode
+	Size  int64
+	MTime int64 // ns
+}
+
+func (f claudeFile) read() ([]byte, error) {
+	b, err := os.ReadFile(f.Path)
+	if err == nil {
+		claudeReads.Add(1)
+	}
+	return b, err
+}
+
+// claudeReads counts laptop file reads, for the test that an unchanged
+// carry reads nothing.
+var claudeReads atomic.Int64
+
+func claudeFileOf(p string, info os.FileInfo) claudeFile {
+	return claudeFile{Path: p, Mode: info.Mode().Perm(), Size: info.Size(), MTime: info.ModTime().UnixNano()}
 }
 
 // claudeCarry is what the Claude part sends.
@@ -103,11 +130,11 @@ func buildClaudeCarry(homeDir string) (*claudeCarry, error) {
 		cc.CfgDir = filepath.Clean(dir)
 	}
 	for _, name := range claudeFiles {
-		b, mode, err := readSmallFile(filepath.Join(dir, name))
+		f, err := statSmallFile(filepath.Join(dir, name))
 		if err != nil {
 			continue
 		}
-		cc.Items = append(cc.Items, claudeItem{Marker: "claude-" + markerName(name), Files: map[string]claudeFile{name: {b, mode}}})
+		cc.Items = append(cc.Items, claudeItem{Marker: "claude-" + markerName(name), Files: map[string]claudeFile{name: f}})
 	}
 	for _, d := range claudeDirs {
 		files, over, err := readClaudeDir(dir, d)
@@ -146,6 +173,15 @@ func buildClaudeCarry(homeDir string) (*claudeCarry, error) {
 		}
 		cc.Plugins, cc.Marketplaces, cc.Notes = claudePlugins(s, cc.Notes)
 	}
+	hc := loadClaudeHashes()
+	items := cc.Items[:0]
+	for _, it := range cc.Items {
+		if it.Hash = claudeItemHash(it, hc); it.Hash != "" {
+			items = append(items, it)
+		}
+	}
+	cc.Items = items
+	hc.save()
 	if len(cc.Items) == 0 && cc.Settings == nil {
 		return nil, nil
 	}
@@ -191,16 +227,15 @@ func markerName(rel string) string {
 	return strings.NewReplacer("/", "-", ".", "-").Replace(strings.ToLower(rel))
 }
 
-func readSmallFile(p string) ([]byte, os.FileMode, error) {
+func statSmallFile(p string) (claudeFile, error) {
 	info, err := os.Lstat(p)
 	if err != nil {
-		return nil, 0, err
+		return claudeFile{}, err
 	}
 	if !info.Mode().IsRegular() || info.Size() > claudeFileCap {
-		return nil, 0, fmt.Errorf("%s: not a regular file under the cap", p)
+		return claudeFile{}, fmt.Errorf("%s: not a regular file under the cap", p)
 	}
-	b, err := os.ReadFile(p)
-	return b, info.Mode().Perm(), err
+	return claudeFileOf(p, info), nil
 }
 
 // readClaudeDir reads the regular files under dir/d (symlinks and
@@ -236,12 +271,8 @@ func readClaudeDir(dir, d string) (files map[string]claudeFile, over bool, err e
 			over = true
 			return filepath.SkipAll
 		}
-		b, err := os.ReadFile(p)
-		if err != nil {
-			return nil
-		}
 		rel, _ := filepath.Rel(dir, p)
-		files[filepath.ToSlash(rel)] = claudeFile{b, info.Mode().Perm()}
+		files[filepath.ToSlash(rel)] = claudeFileOf(p, info)
 		return nil
 	})
 	return files, over, err
@@ -271,11 +302,11 @@ func claudeScripts(s map[string]any, homeDir, dir string) map[string]claudeFile 
 			if claudeNeverDirs[parts[0]] || filepath.Base(rel) == ".credentials.json" || rel == "settings.json" {
 				continue
 			}
-			b, mode, err := readSmallFile(filepath.Join(dir, rel))
+			f, err := statSmallFile(filepath.Join(dir, rel))
 			if err != nil {
 				continue
 			}
-			out[filepath.ToSlash(rel)] = claudeFile{b, mode}
+			out[filepath.ToSlash(rel)] = f
 		}
 	}
 	return out
@@ -364,14 +395,18 @@ func addClaudeParts(p *guestPayload, cc *claudeCarry, opts carryOptions) ([]stri
 	}
 	var sent []string
 	for i, it := range cc.Items {
-		hash := claudeItemHash(it)
+		hash := it.Hash
 		if opts.unchanged(it.Marker, hash) {
 			continue
 		}
 		base := fmt.Sprintf("claude/i%d", i)
 		for _, rel := range sortedFileKeys(it.Files) {
 			f := it.Files[rel]
-			if err := p.fileMeta(base+"/"+rel, f.Body, int64(f.Mode), unixEpoch); err != nil {
+			b, err := f.read()
+			if err != nil {
+				continue // gone since the listing; the next carry sees it
+			}
+			if err := p.fileMeta(base+"/"+rel, b, int64(f.Mode), unixEpoch); err != nil {
 				return nil, err
 			}
 		}
@@ -419,13 +454,99 @@ setsid -f sh ~/.repose/claude-plugins.sh </dev/null >/dev/null 2>&1
 	return sent, nil
 }
 
-func claudeItemHash(it claudeItem) string {
+// claudeItemHash is the item's marker value: each file's path, mode and
+// content hash. A file that cannot be read is left out of the item; ""
+// means none could be.
+func claudeItemHash(it claudeItem, hc *claudeHashes) string {
 	var parts [][]byte
 	for _, rel := range sortedFileKeys(it.Files) {
 		f := it.Files[rel]
-		parts = append(parts, []byte(rel), []byte(fmt.Sprint(f.Mode)), f.Body)
+		sum, err := hc.sum(f)
+		if err != nil {
+			delete(it.Files, rel)
+			continue
+		}
+		parts = append(parts, []byte(rel), []byte(fmt.Sprint(f.Mode)), []byte(sum))
+	}
+	if len(parts) == 0 {
+		return ""
 	}
 	return carryHash(parts...)
+}
+
+// claudeHashes caches each carried file's content hash by path, size and
+// mtime in the CLI's carry-hashes.json (cli-config.md), so a run whose
+// Claude config did not change stats its files and reads none. A missing
+// or unreadable cache is an empty one.
+type claudeHashes struct {
+	path    string
+	entries map[string]claudeHashEntry
+	used    map[string]bool
+	changed bool
+}
+
+type claudeHashEntry struct {
+	Size  int64  `json:"size"`
+	MTime int64  `json:"mtime_ns"`
+	Sum   string `json:"sha256"`
+}
+
+func loadClaudeHashes() *claudeHashes {
+	hc := &claudeHashes{entries: map[string]claudeHashEntry{}, used: map[string]bool{}}
+	dir, err := configDir()
+	if err != nil {
+		return hc
+	}
+	hc.path = filepath.Join(dir, "carry-hashes.json")
+	if b, err := os.ReadFile(hc.path); err == nil {
+		_ = json.Unmarshal(b, &hc.entries)
+		if hc.entries == nil {
+			hc.entries = map[string]claudeHashEntry{}
+		}
+	}
+	return hc
+}
+
+func (hc *claudeHashes) sum(f claudeFile) (string, error) {
+	hc.used[f.Path] = true
+	if e, ok := hc.entries[f.Path]; ok && e.Size == f.Size && e.MTime == f.MTime {
+		return e.Sum, nil
+	}
+	b, err := f.read()
+	if err != nil {
+		return "", err
+	}
+	h := sha256.Sum256(b)
+	e := claudeHashEntry{Size: f.Size, MTime: f.MTime, Sum: hex.EncodeToString(h[:])}
+	hc.entries[f.Path] = e
+	hc.changed = true
+	return e.Sum, nil
+}
+
+// save writes the entries this carry used, dropping the rest, when
+// anything changed. Best effort: a failed write costs a re-read next time.
+func (hc *claudeHashes) save() {
+	for p := range hc.entries {
+		if !hc.used[p] {
+			delete(hc.entries, p)
+			hc.changed = true
+		}
+	}
+	if !hc.changed || hc.path == "" {
+		return
+	}
+	b, err := json.Marshal(hc.entries)
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(hc.path), 0o700); err != nil {
+		return
+	}
+	tmp := hc.path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, hc.path)
 }
 
 func sortedFileKeys(m map[string]claudeFile) []string {

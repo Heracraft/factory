@@ -10,6 +10,46 @@ import (
 	"time"
 )
 
+// run lists the .env files while the probe is in flight: the sync asks
+// for them once, only after the probe, and writes what it gets.
+func TestSyncTakesEnvFilesAfterTheProbe(t *testing.T) {
+	f := newSyncFixture(t)
+	if err := os.WriteFile(filepath.Join(f.local, ".gitignore"), []byte(".env\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, f.local, "git", "add", ".gitignore")
+	mustRun(t, f.local, "git", "commit", "-q", "-m", "ignore env")
+	if err := os.WriteFile(filepath.Join(f.local, ".env"), []byte("A=1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	s, err := syncGuest(context.Background(), f.target, f.local, testSlug, SyncOptions{
+		BeforeApply: func(map[string]string) error {
+			if calls != 0 {
+				t.Error("EnvLater was called before the probe finished")
+			}
+			return nil
+		},
+		EnvLater: func() []envFile {
+			calls++
+			envs, err := buildEnvCarry(f.local)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return envs
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || s.EnvFiles != 1 {
+		t.Fatalf("EnvLater calls = %d, env files = %d; want 1 and 1", calls, s.EnvFiles)
+	}
+	if b, _ := os.ReadFile(filepath.Join(f.guestRepo(), ".env")); string(b) != "A=1\n" {
+		t.Errorf("guest .env = %q", b)
+	}
+}
+
 // I-197 against the local sshd harness: gitignored .env files at any
 // depth travel with mode 0600, dependency directories and oversize files
 // do not, a guest copy newer than the laptop's is kept and named, and an
