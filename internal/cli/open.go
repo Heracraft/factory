@@ -39,7 +39,7 @@ func OpenPortCmd(ctx context.Context, e *Env, projectArg string, port int, local
 		_ = openBrowser(url)
 	}
 	forward := fmt.Sprintf("127.0.0.1:%d:127.0.0.1:%d", localPort, port)
-	return execReplaceSSH(target, []string{"-N", "-L", forward}, "")
+	return execReplaceSSH(target, append(ownConnection(), "-N", "-L", forward), "")
 }
 
 // OpenDesktopCmd implements `repose open --desktop`.
@@ -62,7 +62,18 @@ func OpenDesktopCmd(ctx context.Context, e *Env, projectArg string, noBrowser bo
 	if !noBrowser {
 		_ = openBrowser(url)
 	}
-	return execReplaceSSH(target, []string{"-N", "-L", "127.0.0.1:6080:127.0.0.1:6080"}, "")
+	return execReplaceSSH(target, append(ownConnection(), "-N", "-L", "127.0.0.1:6080:127.0.0.1:6080"), "")
+}
+
+// ownConnection keeps a forward off the shared ControlMaster (I-149):
+// through a master, `ssh -N -L` hands the forward to the master and exits
+// at once, so the forward would outlive Ctrl-C and die with the master's
+// ControlPersist instead of with the command.
+func ownConnection() []string {
+	if goos() == "windows" {
+		return nil
+	}
+	return []string{"-o", "ControlPath=none"}
 }
 
 func portFree(port int) bool {

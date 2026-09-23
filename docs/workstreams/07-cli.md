@@ -402,8 +402,10 @@ Nix output; every other API error prints `{code}: {message}`.
 
 ### 5.9 open
 
-`repose open 3000`: `ensureCert`, then `ssh -N -L
-127.0.0.1:<local>:127.0.0.1:3000 <slug>.repose` in the foreground, print
+`repose open 3000`: `ensureCert`, then `ssh -o ControlPath=none -N -L
+127.0.0.1:<local>:127.0.0.1:3000 <slug>.repose` in the foreground (its own
+connection, not the shared ControlMaster, so the forward ends with
+Ctrl-C rather than living on in the master, I-149), print
 `http://localhost:3000 → todo-app:3000 (Ctrl-C to stop)`, and open the
 browser unless `--no-browser`. `--local-port` defaults to the same port,
 falling back to a free port with a message if taken.
