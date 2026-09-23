@@ -109,6 +109,8 @@ let
     cp foreign $out/bin/
   '';
 
+  userBinDirsForTest = import ../base/user-bin-dirs.nix;
+
   mkTest = name: attrs: pkgs.testers.runNixOSTest ({ inherit name; } // attrs);
 
   # The exact scripts the CLI sends for I-198 and I-195, kept in step with
@@ -203,12 +205,12 @@ in
           guest.succeed("install -m 0644 /root/ca.pub /run/repose/user_ca.pub")
           guest.succeed("echo 0192e4b0-0000-7000-8000-000000000001 > /etc/ssh/principals/dev && systemctl reload sshd")
           guest.succeed("ssh-keygen -q -s /root/ca -I 'user:heracraft' -n 0192e4b0-0000-7000-8000-000000000001 -V -1m:+12h /root/user.pub")
-          out = guest.succeed("ssh -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o CertificateFile=/root/user-cert.pub -i /root/user dev@127.0.0.1 id")
+          out = guest.succeed("ssh -n -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o CertificateFile=/root/user-cert.pub -i /root/user dev@127.0.0.1 id")
           assert "uid=1000(dev)" in out, out
           guest.succeed("ssh-keygen -q -s /root/ca -I 'user:other' -n 0192e4b0-ffff-7000-8000-00000000beef -V -1m:+12h /root/user.pub")
-          err = guest.fail("ssh -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o CertificateFile=/root/user-cert.pub -i /root/user dev@127.0.0.1 id 2>&1")
+          err = guest.fail("ssh -n -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o CertificateFile=/root/user-cert.pub -i /root/user dev@127.0.0.1 id 2>&1")
           assert "Permission denied" in err, err
-          guest.fail("ssh -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -i /root/user root@127.0.0.1 id")
+          guest.fail("ssh -n -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -i /root/user root@127.0.0.1 id")
 
       with subtest("store overlay and profile pinning"):
           mounts = guest.succeed("mount | grep -E 'ro-store|rw-store|/nix/store'")
@@ -426,6 +428,117 @@ in
           assert "cowsay is still being installed; try again in a moment" in out, out
           assert "nixpkgs#" not in out, out
           guest.succeed("rm /run/user/1000/repose-installing")
+
+      # I-227: every package manager's user bin dir resolves from a login
+      # shell, a non-login child of one, `sh -c` in a tmux window (how
+      # `repose run` starts an agent), an interactive tmux pane, and a user
+      # unit; and a base applied without reboot refreshes the running tmux
+      # server and user manager.
+      bin_dirs = ${builtins.toJSON userBinDirsForTest}
+      probes = {}
+      for i, d in enumerate(bin_dirs):
+          name = f"repose-probe-{i}"
+          probes[name] = d
+          guest.succeed(f"install -d -o dev -g dev /home/dev/{d} && printf '#!/bin/sh\\necho ok\\n' > /home/dev/{d}/{name} && chmod 755 /home/dev/{d}/{name} && chown dev:dev /home/dev/{d}/{name}")
+      names = " ".join(probes)
+      guest.succeed(f"""cat > /tmp/check-path <<'EOF'
+      #!/bin/sh
+      for n in {names}; do
+        command -v "$n" >/dev/null 2>&1 || echo "missing $n"
+      done
+      echo done
+      EOF
+      chmod 755 /tmp/check-path""")
+
+      def check(where, out):
+          out = out.strip()
+          missing = [probes[l.split()[1]] for l in out.splitlines() if l.startswith("missing ")]
+          assert out.endswith("done") and not missing, f"{where}: not on PATH: {missing}\n{out}"
+
+      guest.succeed("install -d -o dev -g dev -m 0700 /home/dev/.repose")
+      guest.succeed("""echo '{"project_id":"0192e4b0-0000-7000-8000-000000000001","slug":"todo-app","name":"todo-app","tz":"UTC","class":"large"}' > /home/dev/.repose/project.json && chown dev:dev /home/dev/.repose/project.json""")
+      guest.wait_until_succeeds("sudo -H -u dev tmux ls | grep -q '^todo-app:'", timeout=60)
+
+      # `repose run` reaches the guest over SSH and starts an agent with
+      # `tmux new-window <cmd>` from that SSH command; tmux gives a window
+      # started by a client outside tmux the client's PATH. So the agent
+      # path is tested through a real sshd, as the CLI does it.
+      guest.succeed("ssh-keygen -q -t ed25519 -N ''' -f /root/ca && ssh-keygen -q -t ed25519 -N ''' -f /root/user")
+      guest.succeed("install -m 0644 /root/ca.pub /run/repose/user_ca.pub")
+      guest.succeed("echo 0192e4b0-0000-7000-8000-000000000001 > /etc/ssh/principals/dev && systemctl reload sshd")
+      guest.succeed("ssh-keygen -q -s /root/ca -I 'user:t' -n 0192e4b0-0000-7000-8000-000000000001 -V -1m:+12h /root/user.pub")
+
+      def ssh(cmd):
+          return guest.succeed("ssh -n -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o CertificateFile=/root/user-cert.pub -i /root/user dev@127.0.0.1 " + shlex.quote(cmd))
+
+      def wait_out(tag):
+          return guest.wait_until_succeeds(f"grep -q done /tmp/out-{tag} && cat /tmp/out-{tag}", timeout=30)
+
+      def via_tmux_command(tag):
+          guest.succeed(f"rm -f /tmp/out-{tag}")
+          ssh(f"tmux new-window -d -t todo-app 'sh -c /tmp/check-path > /tmp/out-{tag} 2>&1'")
+          return wait_out(tag)
+
+      # What runs with the tmux server's own environment: run-shell, #()
+      # status jobs, and windows opened from inside tmux with a command.
+      def via_tmux_server(tag):
+          guest.succeed(f"rm -f /tmp/out-{tag}")
+          guest.succeed(f"sudo -H -u dev timeout 30 tmux run-shell -t todo-app '/tmp/check-path > /tmp/out-{tag} 2>&1' < /dev/null")
+          return wait_out(tag)
+
+      def via_user_unit():
+          return guest.succeed("sudo -H -u dev XDG_RUNTIME_DIR=/run/user/1000 systemd-run --user --quiet --wait --pipe /tmp/check-path")
+
+      with subtest("I-227: user bin dirs on PATH everywhere"):
+          check("bash -lc", dev("/tmp/check-path"))
+          check("bash -c child of a login shell", dev("bash -c /tmp/check-path"))
+          check("sh -c child of a login shell", dev("sh -c /tmp/check-path"))
+          check("ssh command (non-login bash -c)", ssh("/tmp/check-path"))
+          check("ssh command, sh -c child", ssh("sh -c /tmp/check-path"))
+          check("tmux new-window sh -c over ssh (repose run)", via_tmux_command("cmd"))
+          check("tmux server environment (run-shell)", via_tmux_server("server"))
+          guest.succeed("rm -f /tmp/out-pane")
+          # The session's own first window: the interactive login shell a
+          # user attaches to.
+          guest.succeed("sudo -H -u dev tmux send-keys -t todo-app:shell '/tmp/check-path > /tmp/out-pane 2>&1' Enter")
+          check("tmux interactive pane", wait_out("pane"))
+          check("systemd-run --user", via_user_unit())
+
+      with subtest("I-227: installs land on PATH (go install, npm i -g)"):
+          guest.succeed("""install -d -o dev -g dev /tmp/gi /tmp/npmpkg/bin && cat > /tmp/gi/go.mod <<'EOF'
+      module example.com/gi
+
+      go 1.22
+      EOF
+      cat > /tmp/gi/main.go <<'EOF'
+      package main
+
+      import "fmt"
+
+      func main() { fmt.Println("gi ok") }
+      EOF
+      cat > /tmp/npmpkg/package.json <<'EOF'
+      {"name": "repose-npm-probe", "version": "1.0.0", "bin": {"repose-npm-probe": "bin/probe.js"}}
+      EOF
+      printf '#!/usr/bin/env node\\nconsole.log("npm ok")\\n' > /tmp/npmpkg/bin/probe.js
+      chmod 755 /tmp/npmpkg/bin/probe.js
+      chown -R dev:dev /tmp/gi /tmp/npmpkg""")
+          dev("cd /tmp/gi && GOTOOLCHAIN=local GOFLAGS=-mod=mod GOCACHE=/tmp/gi/cache go install .")
+          assert dev("gi").strip() == "gi ok"
+          dev("npm i -g --offline /tmp/npmpkg")
+          assert dev("repose-npm-probe").strip() == "npm ok"
+          assert guest.succeed("sudo -H -u dev XDG_RUNTIME_DIR=/run/user/1000 systemd-run --user --quiet --wait --pipe sh -c gi").strip() == "gi ok"
+
+      with subtest("I-227: activation refreshes a running tmux server and user manager"):
+          guest.succeed("sudo -H -u dev tmux set-environment -g PATH /run/current-system/sw/bin")
+          guest.succeed("sudo -H -u dev XDG_RUNTIME_DIR=/run/user/1000 systemctl --user set-environment PATH=/run/current-system/sw/bin")
+          out = via_tmux_server("stale")
+          assert "missing" in out, out
+          out = via_user_unit()
+          assert "missing" in out, out
+          guest.succeed("/run/current-system/activate")
+          check("tmux server environment after activation", via_tmux_server("fresh"))
+          check("systemd-run --user after activation", via_user_unit())
     '';
   };
 

@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-270 entries.
+271 entries.
 
 ## Scope
 
@@ -302,3 +302,4 @@ pointer, not a summary.
 - **I-216** The dashboard is developed against the live api and Logto, not the fake — L4777
 - **I-218** The guest base has a C toolchain, the everyday CLIs, nix-ld, and `nixpkgs` pinned to its own nixpkgs — 2026-09-23; L4796
 - **I-219** An unknown command in the guest names the nixpkgs package that has it — 2026-09-23; L4845
+- **I-227** Every package manager's user bin dir is on PATH for every process of dev's — 2026-09-23; L4879

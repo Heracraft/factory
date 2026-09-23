@@ -4875,3 +4875,61 @@ attribute is `nix-locate --minimal --no-group --type x --type s
 --whole-name --at-root /bin/<cmd>` (nix-index 0.1.11 has no
 `--top-level`; only top-level attributes are listed unless `--all`), one
 `attr.output` per line, e.g. `cowsay.out`. Cost: about 30 MB of closure.
+
+**I-227. Every package manager's user bin dir is on PATH for every
+process of dev's.** (guest tooling, 2026-09-23) The owner ran
+`go install github.com/air-verse/air@latest`; it worked and `air` was
+still "command not found": `~/go/bin` was not on PATH. Only
+`~/.local/bin`, pnpm's and npm's dirs were, and only in shells that
+sourced `/etc/profile.d/repose.sh`.
+- *One list*: `nix/guest/base/user-bin-dirs.nix` names each manager's
+  dir: `.local/bin` (uv tool, pipx, pip --user, stack, cabal), pnpm's
+  `PNPM_HOME`, `.npm-global/bin` (npm -g, yarn v1 global), `go/bin`,
+  `.cargo/bin`, `.bun/bin`, `.deno/bin`, `.yarn/bin`,
+  `.local/share/gem/bin`, `.config/composer/vendor/bin`,
+  `.dotnet/tools`, `.ghcup/bin`, `.cabal/bin`, `.opam/default/bin`,
+  `.luarocks/bin`, `.mix/escripts`, `.nimble/bin`, `.juliaup/bin`,
+  `.julia/bin`, `.krew/bin`, `.volta/bin`. env.nix sets it as
+  `environment.sessionVariables.PATH`, which NixOS puts ahead of the
+  profiles in both `/etc/set-environment` (every bash) and
+  `/etc/pam/environment` (the SSH session, so an SSH command's `bash -c`,
+  and dev's systemd user manager, so user units and the tmux server it
+  starts). User dirs come first so a user's install wins over the base's
+  copy. The PATH line in `repose.sh` is gone.
+- *Variables*, also session variables now (they reach user units too):
+  the existing `NPM_CONFIG_PREFIX` and `PNPM_HOME`, plus the tools' own
+  defaults made explicit (`GOPATH`, `CARGO_HOME`, `RUSTUP_HOME`,
+  `BUN_INSTALL`, `DENO_INSTALL_ROOT`, `COMPOSER_HOME`) and `GEM_HOME`,
+  which is not a default: without it `gem install` writes to ruby's
+  store path. `GOBIN` is not set: with it set, `go install` refuses
+  cross-compiled binaries.
+- *tmux*: a window a client outside tmux creates with a command (how
+  `repose run` starts an agent over SSH) gets the client's PATH, not the
+  server's (tmux 3.x), so an agent gets the fresh SSH PATH even from a
+  server started under an older base. What runs with the server's own
+  environment (run-shell, `#()` status jobs, a window opened from inside
+  tmux with a command) had the PATH of the `repose-tmux-session` unit,
+  because NixOS gives every unit it defines its own PATH (the VM test
+  caught every user dir missing there); the unit now sets the server's
+  global PATH from a clean login shell right after creating the
+  session. A new interactive pane is a login shell and re-reads
+  `/etc/set-environment`. The same holds for units a fragment or NixOS
+  defines: they keep their own `path`; units a user starts
+  (`systemd-run --user`, their own unit files) get the manager's PATH,
+  which is the PAM one above.
+- *After a base applied without reboot*: an activation script sets the
+  new login PATH on dev's running tmux server (`set-environment -g`) and
+  user manager (`systemctl --user set-environment`); shells already open
+  keep their PATH until the user opens a new one.
+- *Not covered by a static dir*, because the tool sets PATH from its own
+  shell init (which it writes into `~/.bashrc` itself) or its bin dir
+  moves per version: nvm, fnm, sdkman, rbenv/pyenv shims, and
+  `gem --user-install` (`~/.local/share/gem/ruby/<version>/bin`; plain
+  `gem install` goes to `GEM_HOME` instead). `corepack enable` writes
+  shims next to node, in the read-only store; use `corepack enable
+  --install-directory ~/.local/bin`.
+- Found on the way: `repose-tmux-session` exited 2 (and systemd killed the
+  new tmux server with its cgroup) when `/etc/repose/env` was missing,
+  because `sed` on a missing file fails under pipefail. guestd writes
+  the file before project.json, so no guest hit it, but the lookup now
+  tolerates its absence.

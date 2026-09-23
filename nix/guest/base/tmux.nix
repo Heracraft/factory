@@ -9,7 +9,7 @@
 let
   tmuxSession = pkgs.writeShellApplication {
     name = "repose-tmux-session";
-    runtimeInputs = [ pkgs.tmux pkgs.jq pkgs.coreutils pkgs.gnused ];
+    runtimeInputs = [ pkgs.tmux pkgs.jq pkgs.coreutils pkgs.gnused pkgs.bash ];
     text = ''
       project="$HOME/.repose/project.json"
       if [ ! -s "$project" ]; then
@@ -28,9 +28,18 @@ let
       fi
       # -d: detached. The server keeps running in this unit's cgroup.
       tmux new-session -d -s "$slug" -n shell -c "$dir"
+      # The server copied this unit's PATH (NixOS gives every unit its
+      # own). What runs with the server's environment (run-shell, #()
+      # jobs, a window opened from inside tmux with a command) gets the
+      # login PATH instead, with every user bin dir (DECISIONS I-227).
+      # shellcheck disable=SC2016 # expanded by the login shell
+      login_path=$(env -i HOME="$HOME" USER="$(id -un)" LOGNAME="$(id -un)" bash -lc 'printf %s "$PATH"' 2>/dev/null || true)
+      if [ -n "$login_path" ]; then
+        tmux set-environment -g PATH "$login_path"
+      fi
       # Every window and agent starts with the project's zone; the CLI
       # moves it (and /etc/repose/env) when the laptop's changes (I-198).
-      tz=$(sed -n 's/^TZ=//p' /etc/repose/env 2>/dev/null | tail -n 1)
+      tz=$(sed -n 's/^TZ=//p' /etc/repose/env 2>/dev/null | tail -n 1 || true)
       if [ -n "$tz" ]; then
         tmux set-environment -g TZ "$tz"
       fi
