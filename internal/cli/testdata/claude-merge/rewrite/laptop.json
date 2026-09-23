@@ -1,0 +1,15 @@
+{
+  "statusLine": {"type": "command", "command": "/Users/lap/.claude/statusline.sh"},
+  "hooks": {
+    "PostToolUse": [
+      {"matcher": "Edit", "hooks": [
+        {"type": "command", "command": "~/.claude/hooks/fmt.sh $CLAUDE_FILE"},
+        {"type": "command", "command": "/Users/lap/bin/laptop-only-tool --x"},
+        {"type": "command", "command": "jq -r .tool_name /dev/null"}
+      ]},
+      {"matcher": "Write", "hooks": [{"type": "command", "command": "/opt/homebrew/bin/terminal-notifier -message hi"}]}
+    ]
+  },
+  "outputStyle": "/Users/lap/.claude/output-styles/terse.md",
+  "notAPath": "/Users/laptop-other/x"
+}

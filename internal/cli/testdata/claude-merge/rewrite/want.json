@@ -1,0 +1,47 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "/home/dev/.claude/statusline.sh"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/fmt.sh $CLAUDE_FILE"
+          },
+          {
+            "type": "command",
+            "command": "jq -r .tool_name /dev/null"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "repose-hook"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "repose-hook"
+          }
+        ]
+      }
+    ]
+  },
+  "outputStyle": "/home/dev/.claude/output-styles/terse.md",
+  "notAPath": "/Users/laptop-other/x"
+}

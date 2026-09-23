@@ -1,0 +1,46 @@
+{
+  "model": "opus",
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(ls:*)",
+      "Bash(npm test:*)"
+    ],
+    "deny": [
+      "Read(./.env)"
+    ],
+    "ask": [
+      "Bash(git push:*)"
+    ]
+  },
+  "env": {
+    "GUEST_ONLY": "1",
+    "SHARED": "laptop",
+    "LAPTOP_ONLY": "1"
+  },
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "repose-hook"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "repose-hook"
+          }
+        ]
+      }
+    ]
+  },
+  "theme": "dark"
+}

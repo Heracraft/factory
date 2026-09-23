@@ -119,6 +119,10 @@ func carryOverSession(ctx context.Context, t sshTarget, opts sessionOptions) (*c
 		}
 		co.Git = gc
 	}
+	if cc, _ := buildClaudeCarry(opts.HomeDir); cc != nil {
+		co.Claude = cc
+		warnings = append(warnings, cc.Notes...)
+	}
 	p := newGuestPayload()
 	sent, err := addCarry(p, co)
 	if err != nil {

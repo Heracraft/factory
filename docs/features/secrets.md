@@ -77,6 +77,17 @@ config the CLI carries" has the exact paths):
   and on `attach` when it is run from the project's checkout (the only
   place its `includeIf` rules resolve the way they do for this project).
 
+- **Claude Code config** (I-196): `CLAUDE.md`, the merged
+  `settings.json`, `skills/`, `agents/`, `commands/`, `output-styles/`,
+  `keybindings.json` and the scripts `settings.json` runs; never
+  `.credentials.json`, transcripts, history or any other state
+  (`agents.md` has the list and the merge). `TestCarryClaudeNeverCarriesSecrets`
+  plants `.credentials.json` (also inside `skills/`), `projects/`,
+  `history.jsonl`, `todos/`, `shell-snapshots/`, `file-history/`,
+  `plugins/`, `statsig/`, `~/.claude.json`, an SSH key and Gemini's
+  OAuth file in the laptop home and asserts none of them is in the carry
+  stream.
+
 A part that has not changed on the laptop since the guest last applied it
 is not sent: the guest keeps one marker per carried item under
 `~/.repose/carry/` (DECISIONS I-206), returned in the sync's first SSH.

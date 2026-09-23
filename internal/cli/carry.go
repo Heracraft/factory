@@ -42,6 +42,8 @@ type carryOptions struct {
 	// the command is not run from the project's checkout, whose includeIf
 	// rules and identity it needs.
 	Git *gitCarry
+	// Claude is the laptop's Claude Code config (I-196).
+	Claude *claudeCarry
 	// Markers is the guest's marker set (item -> hash), from the sync's
 	// probe or the helper's own. Nil sends every part; a part whose hash
 	// matches its marker is left out.
@@ -156,9 +158,16 @@ func (p *guestPayload) part(label, script string) error {
 // empty reports whether nothing was added.
 func (p *guestPayload) empty() bool { return p.parts == 0 && p.script.Len() == 0 }
 
+// observePayload, when set (tests only), sees every payload before it is
+// sent: the never-carried test reads the whole stream through it.
+var observePayload func(script string, tarball []byte)
+
 func (p *guestPayload) run(ctx context.Context, t sshTarget) ([]byte, error) {
 	if err := p.tw.Close(); err != nil {
 		return nil, err
+	}
+	if observePayload != nil {
+		observePayload(p.script.String(), p.buf.Bytes())
 	}
 	return runSSH(ctx, t, p.script.String(), &p.buf)
 }
@@ -178,6 +187,11 @@ func addCarry(p *guestPayload, opts carryOptions) ([]string, error) {
 	} else if ok {
 		sent = append(sent, "git")
 	}
+	cs, err := addClaudeParts(p, opts.Claude, opts)
+	if err != nil {
+		return nil, err
+	}
+	sent = append(sent, cs...)
 	return sent, nil
 }
 

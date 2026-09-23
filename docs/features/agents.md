@@ -102,6 +102,43 @@ party reuse of subscription OAuth is forbidden. So:
   CLI says so when the secret is set.
 - The wrapper does not modify the binary. Hooks are configuration.
 
+## Your Claude Code config comes with you (DECISIONS I-196)
+
+`run` and `attach` carry the laptop's own Claude configuration into the
+guest, and never its login or its history:
+
+- Carried: `~/.claude/CLAUDE.md`, `settings.json` (merged, below),
+  `skills/`, `agents/`, `commands/`, `output-styles/`, `keybindings.json`,
+  and the scripts under `~/.claude/` that `settings.json` runs (hooks,
+  `statusLine`). Files are copied onto what the guest has, so a skill made
+  in the guest stays; a directory over 32 MB is skipped with one line.
+- Never carried: `.credentials.json` (anywhere under `~/.claude`),
+  `projects/` (transcripts), `history.jsonl`, `todos/`,
+  `shell-snapshots/`, `file-history/`, `paste-cache/`, `sessions/`,
+  `plugins/`, `statsig/`, and `~/.claude.json`. The list above is an
+  allowlist, so nothing else is read.
+- `settings.json` is merged in the guest with `jq`, never overwritten:
+  the guest's file is the base and the laptop's goes on top (the laptop
+  wins on any key it sets, `model` included); `permissions.allow`, `deny`
+  and `ask` are unioned, so "Yes, and don't ask again" in the guest
+  survives the next run; the platform's `repose-hook` entries are removed
+  from both sides and added back once, last; the laptop's home directory
+  is rewritten to `/home/dev`; and a hook or `statusLine` whose command
+  the guest cannot run (`afplay`, a Homebrew path) is dropped and named
+  once. The result is checked with `jq empty` before it replaces the old
+  file, which is kept as `settings.json.repose-prev`. A laptop file that
+  is not JSON is not sent (one warning); a guest file that is not JSON is
+  left alone (one warning).
+- Plugins: `settings.json` names them but Claude Code does not reinstall
+  them on a new machine, so the guest installs the marketplace plugins
+  in `enabledPlugins` that it lacks, in the background, with `claude
+  plugin marketplace add` and `claude plugin install`, and says in tmux
+  what it installed or could not. A failed install is tried again on the
+  next run. A plugin whose marketplace is a directory on the laptop is
+  named once and skipped.
+- Only what changed on the laptop is sent (one marker per item in the
+  guest, DECISIONS I-206).
+
 ## Behaviour that must hold
 
 - Every agent starts in its own tmux window named after it, in

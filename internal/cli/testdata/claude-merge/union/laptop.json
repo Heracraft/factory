@@ -1,0 +1,6 @@
+{
+  "model": "opus",
+  "permissions": {"allow": ["Bash(npm test:*)", "Bash(git status)"], "ask": ["Bash(git push:*)"]},
+  "env": {"SHARED": "laptop", "LAPTOP_ONLY": "1"},
+  "theme": "dark"
+}

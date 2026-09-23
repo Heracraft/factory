@@ -1,0 +1,9 @@
+{
+  "model": "sonnet",
+  "permissions": {"allow": ["Bash(ls:*)", "Bash(npm test:*)"], "deny": ["Read(./.env)"]},
+  "env": {"GUEST_ONLY": "1", "SHARED": "guest"},
+  "hooks": {
+    "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "repose-hook"}]}],
+    "Notification": [{"matcher": "", "hooks": [{"type": "command", "command": "repose-hook"}]}]
+  }
+}

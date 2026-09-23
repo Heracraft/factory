@@ -138,12 +138,18 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 				if err != nil {
 					e.warn("Could not read your git config (%s); the guest keeps its own.", oneLine(err.Error()))
 				}
+				cc, _ := buildClaudeCarry(e.HomeDir)
+				if cc != nil {
+					for _, n := range cc.Notes {
+						e.warn("%s", n)
+					}
+				}
 				copied, carried, err = syncCredentialsAndCarry(ctx, target, e.HomeDir, repoRoot, credSyncOptions{
 					RemoteURL: project.RemoteURL,
 					Kept: func(label string) {
 						e.warn("Kept the guest's %s login: it is newer than the laptop's.", label)
 					},
-				}, carryOptions{TZ: tz, Git: gc, Markers: markers})
+				}, carryOptions{TZ: tz, Git: gc, Claude: cc, Markers: markers})
 				return err
 			},
 		})

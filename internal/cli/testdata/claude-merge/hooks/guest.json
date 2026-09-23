@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "Stop": [
+      {"matcher": "", "hooks": [{"type": "command", "command": "echo guest-made"}]},
+      {"matcher": "", "hooks": [{"type": "command", "command": "repose-hook"}]}
+    ],
+    "SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "echo guest-session"}]}]
+  },
+  "permissions": {"allow": ["WebFetch"]}
+}
