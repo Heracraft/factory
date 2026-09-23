@@ -65,7 +65,9 @@ in
   ];
 
   environment.variables = {
-    PLAYWRIGHT_BROWSERS_PATH = "${pkgs.reposePlaywrightBrowsers}";
+    # PLAYWRIGHT_BROWSERS_PATH is the writable ~/.cache/ms-playwright,
+    # seeded with the packaged browsers (compat.nix, DECISIONS I-228); the
+    # MCP server's wrapper names the store path itself.
     PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "1";
     # chrome-devtools-mcp and puppeteer users: never download a browser.
     PUPPETEER_SKIP_DOWNLOAD = "1";

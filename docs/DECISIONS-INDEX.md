@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-278 entries.
+279 entries.
 
 ## Scope
 
@@ -310,3 +310,4 @@ pointer, not a summary.
 - **I-223** `repose run` and `attach` spend round trips only where something changed; `REPOSE_TIMING=1` shows where the time goes — L5056
 - **I-224** The sync's writes are one ssh, and none when nothing changed — L5103
 - **I-225** Server side of a start: hostd dials a booting guest's guestd every 200 ms, guestd skips a registration it already loaded, and a sample from before a start is not the new guest's — L5137
+- **I-228** Tools that download their own binaries work in the guest with their stock commands — 2026-09-23; L5166

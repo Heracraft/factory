@@ -91,7 +91,10 @@ The first is immediate and survives restarts; the second puts it in the
 fragment, so it survives a rebuild from scratch and a move to another
 host. The base also has a C toolchain (`cc`, `gcc`, `g++`, `make`,
 `cmake`, `pkg-config`) for cgo, node-gyp and rustup, and runs prebuilt
-Linux binaries downloaded by npm, pip or an install script (nix-ld). A selection is stored as
+Linux binaries downloaded by npm, pip or an install script (nix-ld):
+Prisma engines, Playwright and Puppeteer browsers, rustup toolchains,
+uv-managed Pythons and manylinux wheels, bun, deno and the usual
+single-binary CLIs work with their stock commands (I-228). A selection is stored as
 JSON and rendered by the API into a home-manager module. Editing the
 fragment directly turns the menu off for that project (the menu cannot
 round-trip arbitrary Nix); the CLI and dashboard say so and offer to keep a

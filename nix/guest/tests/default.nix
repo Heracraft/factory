@@ -109,6 +109,21 @@ let
     cp foreign $out/bin/
   '';
 
+  # Downloads the compat test runs offline (I-228): Prisma's
+  # debian-openssl-3.0.x schema engine for 6.16's engines commit, which is
+  # what the redirect sends a linux-nixos request to, and a manylinux numpy
+  # wheel that needs libstdc++ from outside the nixpkgs python.
+  prismaCommit = "1c57fdcd7e44b29b9313256c76699e91c3ac3c43";
+  prismaSchemaEngineGz = pkgs.fetchurl {
+    url = "https://binaries.prisma.sh/all_commits/${prismaCommit}/debian-openssl-3.0.x/schema-engine.gz";
+    sha256 = "ee38b431ac7281e87cfbf3b940cdf40d76c6f0f9b06daa9948bb950de472cb56";
+  };
+  numpyWheel = pkgs.fetchurl {
+    url = "https://files.pythonhosted.org/packages/51/64/7de3c91e821a2debf77c92962ea3fe6ac2bc45d0778c1cbe15d4fce2fd94/numpy-2.3.3-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl";
+    sha256 = "d9192da52b9745f7f0766531dcfa978b7763916f158bb63bdb8a1eca0068ab20";
+  };
+  numpyWheelName = "numpy-2.3.3-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl";
+
   mkTest = name: attrs: pkgs.testers.runNixOSTest ({ inherit name; } // attrs);
 
   # The exact scripts the CLI sends for I-198 and I-195, kept in step with
@@ -588,6 +603,85 @@ in
     '';
   };
 
+  guest-compat = mkTest "guest-compat" {
+    nodes.guest = node;
+    testScript = ''
+      guest.start()
+      guest.wait_for_unit("multi-user.target")
+
+      import shlex
+
+      def dev(cmd):
+          return guest.succeed(f"sudo -H -u dev bash -lc {shlex.quote(cmd)}")
+
+      def fetch(path, method="GET"):
+          return guest.succeed(f"curl -s --path-as-is -X {method} -o /dev/null -w '%{{http_code}} %{{redirect_url}}' 'http://127.0.0.1:850{path}'").strip()
+
+      with subtest("I-228: Prisma's mirror redirects linux-nixos to the debian build"):
+          guest.wait_for_unit("repose-prisma-engines.socket")
+          mirror = dev("echo -n $PRISMA_ENGINES_MIRROR")
+          assert mirror == "http://127.0.0.1:850", mirror
+          up = "https://binaries.prisma.sh/all_commits/${prismaCommit}"
+          out = fetch("/all_commits/${prismaCommit}/linux-nixos/schema-engine.gz")
+          assert out == f"302 {up}/debian-openssl-3.0.x/schema-engine.gz", out
+          out = fetch("/all_commits/${prismaCommit}/linux-nixos/libquery_engine.so.node.gz.sha256")
+          assert out == f"302 {up}/debian-openssl-3.0.x/libquery_engine.so.node.gz.sha256", out
+          # Any other target (a deploy target in binaryTargets) is untouched.
+          out = fetch("/all_commits/${prismaCommit}/rhel-openssl-3.0.x/libquery_engine.so.node.gz")
+          assert out == f"302 {up}/rhel-openssl-3.0.x/libquery_engine.so.node.gz", out
+          assert fetch("/all_commits/x/linux-nixos/a", "HEAD").startswith("302 "), "HEAD"
+          assert fetch("/all_commits/x/linux-nixos/a", "POST").startswith("405"), "POST"
+          assert fetch("/a/../etc/passwd").startswith("400"), "dotdot"
+          assert fetch("/a%20b").startswith("400"), "escape"
+          # Never auto-forwarded: loopback, under 1024 (I-199).
+          guest.succeed("ss -Hltn | grep -q '127.0.0.1:850 '")
+
+      with subtest("I-228: the debian engine the redirect names runs through nix-ld"):
+          guest.succeed("install -d -o dev -g dev /tmp/prisma")
+          guest.succeed("gzip -dc ${prismaSchemaEngineGz} > /tmp/prisma/schema-engine-linux-nixos && chmod +x /tmp/prisma/schema-engine-linux-nixos && chown dev:dev /tmp/prisma/schema-engine-linux-nixos")
+          out = dev("/tmp/prisma/schema-engine-linux-nixos --version")
+          assert out.strip() == "schema-engine-cli ${prismaCommit}", out
+
+      with subtest("I-228: Playwright's directory is writable and seeded"):
+          d = "/home/dev/.cache/ms-playwright"
+          path = dev("echo -n $PLAYWRIGHT_BROWSERS_PATH")
+          assert path == d, path
+          guest.wait_until_succeeds("systemctl show -p Result repose-playwright-seed.service | grep -q success && test -L /home/dev/.cache/ms-playwright/chromium_headless_shell-*")
+          names = guest.succeed("ls ${pkgs.reposePlaywrightBrowsers}").split()
+          chromium = [n for n in names if n.startswith("chromium-")][0]
+          for n in names:
+              dev(f"test -L {d}/{n} && test -d {d}/{n}/")
+          dev(f"touch {d}/probe && rm {d}/probe")
+          # A user's own download is left alone, a stale store link goes,
+          # a missing link comes back.
+          dev(f"rm {d}/{chromium} && mkdir {d}/{chromium} && ln -s /nix/store/00000000000000000000000000000000-gone {d}/chromium-1 && rm {d}/ffmpeg-*")
+          guest.succeed("systemctl restart repose-playwright-seed.service")
+          dev(f"test -d {d}/{chromium} && ! test -L {d}/{chromium}")
+          dev(f"! test -e {d}/chromium-1 && ! test -L {d}/chromium-1")
+          dev(f"test -L {d}/ffmpeg-* || ! ls ${pkgs.reposePlaywrightBrowsers} | grep -q ffmpeg")
+          guest.succeed("systemctl restart repose-playwright-seed.service")
+          # The MCP server still reads the store path from its own wrapper.
+          guest.succeed("grep -q 'PLAYWRIGHT_BROWSERS_PATH=.*${pkgs.reposePlaywrightBrowsers}' ${pkgs.reposeMcp.playwright-mcp}/bin/playwright-mcp")
+
+      with subtest("I-228: a manylinux wheel imports under the system python and its venvs"):
+          guest.succeed("install -d -o dev -g dev /tmp/py && cp ${numpyWheel} /tmp/py/${numpyWheelName} && chown dev:dev /tmp/py/*")
+          dev("cd /tmp/py && python3 -m venv v && v/bin/pip install -q --no-index /tmp/py/${numpyWheelName}")
+          out = dev("env -u LD_LIBRARY_PATH /tmp/py/v/bin/python -c 'import numpy, sys; print(numpy.__version__, sys.prefix)'")
+          assert out.strip() == "2.3.3 /tmp/py/v", out
+          out = dev("cd /tmp/py && . v/bin/activate && python -c 'import numpy; print(numpy.ones(3).sum())'")
+          assert out.strip() == "3.0", out
+          dev("cd /tmp/py && UV_OFFLINE=1 uv venv -q -p python3 u && UV_OFFLINE=1 VIRTUAL_ENV=/tmp/py/u uv pip install -q --no-index /tmp/py/${numpyWheelName}")
+          out = dev("env -u LD_LIBRARY_PATH /tmp/py/u/bin/python -c 'import numpy; print(numpy.__version__)'")
+          assert out.strip() == "2.3.3", out
+          out = dev("python3 -c 'import ssl, sqlite3, sys; print(sys.executable)'")
+          assert out.strip() == "/run/current-system/sw/bin/python3", out
+
+      with subtest("I-228: pkg-config finds the common system libraries"):
+          out = dev("pkg-config --modversion openssl zlib sqlite3 libffi")
+          assert len(out.split()) == 4, out
+    '';
+  };
+
   guest-docker = mkTest "guest-docker" {
     nodes.guest = node;
     testScript = ''
@@ -655,7 +749,8 @@ in
           assert out.strip(), out
           out = guest.succeed("sudo -u dev bash -lc 'chrome-devtools-mcp --version'")
           assert out.strip(), out
-          # playwright's browsers are the packaged ones, not a download.
+          # playwright's browsers are the packaged ones, linked into the
+          # writable directory at boot (I-228), not a download.
           guest.succeed("sudo -u dev bash -lc 'test -d \"$PLAYWRIGHT_BROWSERS_PATH\" && ls \"$PLAYWRIGHT_BROWSERS_PATH\" | grep -q chromium'")
     '';
   };

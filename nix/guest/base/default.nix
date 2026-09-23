@@ -18,6 +18,7 @@
     ./tools.nix
     ./devtools.nix
     ./tools-carry.nix
+    ./compat.nix
     ./agents.nix
     ./browser.nix
     ./desktop.nix

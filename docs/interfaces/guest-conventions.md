@@ -235,11 +235,18 @@ has no password and no SSH (`PermitRootLogin no`, `AllowUsers dev`).
 guest), `COLORTERM=truecolor`, `NPM_CONFIG_PREFIX=/home/dev/.npm-global`
 (the nodejs store path is read-only, so `npm i -g` needs a writable
 prefix), `PNPM_HOME=/home/dev/.local/share/pnpm`,
-`PLAYWRIGHT_BROWSERS_PATH=<store path of playwright-driver.browsers>`,
+`PLAYWRIGHT_BROWSERS_PATH=/home/dev/.cache/ms-playwright` (writable;
+`repose-playwright-seed.service` links the base's packaged browser
+revisions into it at boot, never over a real directory; until I-228 it
+was the read-only store path), `PRISMA_ENGINES_MIRROR=http://127.0.0.1:850`
+(I-228), `PKG_CONFIG_PATH` naming openssl, zlib, sqlite and libffi (I-228),
 `PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1`, `PUPPETEER_SKIP_DOWNLOAD=1`,
 `PUPPETEER_EXECUTABLE_PATH` and `CHROME_BIN` (the guest's chromium).
 `PATH` includes `/home/dev/.local/bin`, `/home/dev/.local/share/pnpm` and
-`/home/dev/.npm-global/bin`. `DISPLAY=:99` only while the desktop's X
+`/home/dev/.npm-global/bin`. `python`, `python3` and `python3.12` in
+`/run/current-system/sw/bin` are a wrapper that adds nix-ld's library
+directory to `LD_LIBRARY_PATH` for manylinux wheels and keeps its own
+path as `sys.executable` (I-228). `DISPLAY=:99` only while the desktop's X
 server socket `/tmp/.X11-unix/X99` exists (checked at every shell start).
 
 ## Ports
@@ -253,6 +260,10 @@ ports in `/home/dev/.repose/forwards/<id>`; the project session's
 `status-right` is set from their union and unset when none is left.
 Nothing is exposed otherwise. The desktop listens only on `127.0.0.1`: noVNC on 6080 (the
 socket-activated entry point), websockify on 6081, VNC on 5900.
+`repose-prisma-engines.socket` listens on `127.0.0.1:850` (under 1024, so
+never forwarded) and answers every GET with a redirect to
+binaries.prisma.sh, a `linux-nixos` engine path rewritten to
+`debian-openssl-3.0.x` (I-228).
 
 ## Desktop (DECISIONS I-33)
 
