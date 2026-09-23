@@ -34,7 +34,9 @@ def api(base, token, method, path, body=None):
         base.rstrip("/") + path,
         method=method,
         data=None if body is None else json.dumps(body).encode(),
-        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "application/json"},
+        # Cloudflare (error 1010) refuses Python's default User-Agent.
+        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "application/json",
+                 "User-Agent": "repose-dashboards-push/1"},
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
