@@ -104,6 +104,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 		if body != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}
+		req.Header.Set("User-Agent", "repose-cli")
 		if c.Tokens != nil {
 			tok, err := c.Tokens.AccessToken(ctx, refreshed)
 			if err != nil {
@@ -211,6 +212,7 @@ func (c *Client) getNDJSON(ctx context.Context, path string, decodeLine func(dec
 		if err != nil {
 			return err
 		}
+		req.Header.Set("User-Agent", "repose-cli")
 		if c.Tokens != nil {
 			tok, err := c.Tokens.AccessToken(ctx, refreshed)
 			if err != nil {

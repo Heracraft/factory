@@ -4792,3 +4792,15 @@ The preview script, the shortcut and the Vite `/fakeapi` proxy are
 removed. The fakes stay for the Playwright suite only. The cost: a dev
 server's buttons act on the signed-in account, so anything destructive is
 tried on an `e2e-` project.
+
+**I-226. Request log lines name the route, the user and the client.**
+(conductor, 2026-09-23) The owner's nuru-playground was destroyed at
+19:15:44Z and the api logs could not say by whom: every `request` line
+had `route: "unmatched"` and no `user_id`, because the mux sets `Pattern`
+on the copy of the request it is handed and `authed` puts the user in a
+context the wrapper never sees (the per-route Prometheus series were all
+"unmatched" for the same reason). `wrap` now keeps the request it passes
+to the mux and a small `reqInfo` that `authed` fills. Each line also gets
+`client`: `cli` (the CLI sends `User-Agent: repose-cli`), `dashboard` (a
+browser) or `other`. The User-Agent itself is still never logged
+(OBSERVABILITY.md redacts `user_agent`).

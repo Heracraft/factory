@@ -317,34 +317,62 @@ func (s *Server) wrap(mux *http.ServeMux, component string) http.Handler {
 		}
 		w.Header().Set("X-Request-Id", rid)
 		log := s.d.Log.With("request_id", rid)
-		ctx := obs.WithLogger(r.Context(), log)
+		// info is filled in by authed further down; the request the mux
+		// sees is a copy, so neither its Pattern nor its context reaches
+		// back here without it (every route logged as "unmatched" and no
+		// request line carried a user_id before this).
+		info := &reqInfo{}
+		ctx := context.WithValue(obs.WithLogger(r.Context(), log), reqInfoKey, info)
+		req := r.WithContext(ctx)
 		sw := &statusWriter{ResponseWriter: w, status: 200}
 		defer func() {
 			if rec := recover(); rec != nil {
-				log.Error("handler panicked", "event", "request_panic", "route", r.Pattern)
+				log.Error("handler panicked", "event", "request_panic", "route", req.Pattern)
 				if sw.status == 200 {
 					writeJSON(sw, http.StatusInternalServerError, map[string]any{"error": errf("internal", "internal error")})
 				}
 			}
-			route := r.Pattern
+			route := req.Pattern
 			if route == "" {
 				route = "unmatched"
 			}
 			s.d.Metrics.RequestsTotal.WithLabelValues(route, r.Method, strconv.Itoa(sw.status)).Inc()
 			s.d.Metrics.RequestDuration.WithLabelValues(route).Observe(time.Since(start).Seconds())
-			attrs := []any{"event", "request", "method", r.Method, "route", route, "status", sw.status, "duration_ms", time.Since(start).Milliseconds()}
-			if u := userFrom(r.Context()); u != nil {
-				attrs = append(attrs, "user_id", u.ID.String())
+			attrs := []any{"event", "request", "method", r.Method, "route", route, "status", sw.status, "duration_ms", time.Since(start).Milliseconds(), "client", clientKind(r)}
+			if info.user != nil {
+				attrs = append(attrs, "user_id", info.user.ID.String())
 			}
 			log.Info("request", attrs...)
 		}()
-		mux.ServeHTTP(sw, r.WithContext(ctx))
+		mux.ServeHTTP(sw, req)
 	})
 }
 
 type ctxKey int
 
-const userKey ctxKey = 1
+const (
+	userKey ctxKey = iota + 1
+	reqInfoKey
+)
+
+// reqInfo carries what the handlers learn about a request back to the
+// request log line in wrap.
+type reqInfo struct{ user *store.User }
+
+// clientKind names which of our clients sent a request, for the request
+// log: the CLI identifies itself, a browser is the dashboard. The
+// User-Agent itself is never logged (docs/ops/OBSERVABILITY.md).
+func clientKind(r *http.Request) string {
+	ua := r.Header.Get("User-Agent")
+	switch {
+	case strings.HasPrefix(ua, "repose-cli"):
+		return "cli"
+	case strings.HasPrefix(ua, "Mozilla/"):
+		return "dashboard"
+	default:
+		return "other"
+	}
+}
 
 func userFrom(ctx context.Context) *store.User {
 	u, _ := ctx.Value(userKey).(*store.User)
@@ -394,6 +422,9 @@ func (s *Server) authed(h handler, queryToken bool) handler {
 		if ok, retry := bucket.Allow(u.ID.String()); !ok {
 			w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())))
 			return errf("rate_limited", "too many requests")
+		}
+		if info, ok := r.Context().Value(reqInfoKey).(*reqInfo); ok {
+			info.user = u
 		}
 		ctx := context.WithValue(r.Context(), userKey, u)
 		ctx = obs.WithLogger(ctx, obs.Logger(ctx, s.d.Log).With("user_id", u.ID.String()))
