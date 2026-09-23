@@ -4,7 +4,7 @@
 	import { toast } from 'svelte-sonner';
 	import { signIn } from '$lib/auth.svelte';
 	import Logo from '$lib/components/Logo.svelte';
-	import Detach from '$lib/components/illustrations/Detach.svelte';
+	import Session from '$lib/components/illustrations/Session.svelte';
 
 	const INSTALL_COMMAND = 'curl -fsSL https://repose.herakraft.co/install.sh | sh';
 
@@ -51,8 +51,8 @@
 			text: 'Each run syncs unpushed commits and uncommitted changes, and brings your secrets and your gh, Codex and opencode logins.'
 		},
 		{
-			title: 'Runs while you’re away',
-			text: 'Close the laptop and the machine keeps going. Attach again from any computer.'
+			title: 'Let agents run unattended',
+			text: 'Start Claude Code with --dangerously-skip-permissions and leave it for hours. It can only touch this machine, never your laptop, and a snapshot rolls the machine back.'
 		}
 	];
 
@@ -113,7 +113,7 @@
 		</div>
 
 		<div class="mt-8">
-			<Detach />
+			<Session />
 		</div>
 	</section>
 
