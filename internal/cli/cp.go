@@ -5,7 +5,9 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/spf13/cobra"
 )
@@ -117,13 +119,32 @@ func CpCmd(ctx context.Context, e *Env, srcArg, dstArg string, recursive bool, p
 	}
 	host, opts := scpTarget(target)
 	args := append([]string{}, scpExtraArgs...)
+	legacy := false
+	for _, a := range scpExtraArgs {
+		legacy = legacy || a == "-O"
+	}
+	if !legacy {
+		if scpHasSFTPFlag() {
+			// OpenSSH 8.8 and 8.9 have SFTP mode but default to the old
+			// protocol; ask for it, since it takes the path as it is.
+			args = append(args, "-s")
+		} else {
+			legacy = true
+		}
+	}
 	args = append(args, opts...)
 	if recursive {
 		args = append(args, "-r")
 	}
 	for _, s := range []cpSide{src, dst} {
 		if s.Remote {
-			args = append(args, host+":"+s.guestPath(project.Slug))
+			p := s.guestPath(project.Slug)
+			if legacy {
+				// The old protocol hands the path to the guest's shell,
+				// which splits it on spaces and expands $.
+				p = scpRemoteQuote(p)
+			}
+			args = append(args, host+":"+p)
 		} else {
 			args = append(args, s.Path)
 		}
@@ -138,6 +159,38 @@ func CpCmd(ctx context.Context, e *Env, srcArg, dstArg string, recursive bool, p
 		return exitf(ExitGeneric, "Could not run scp: %v. repose cp needs the OpenSSH client's scp on your PATH.", err)
 	}
 	return nil
+}
+
+// scpHasSFTPFlag reports whether the laptop's scp has -s (SFTP mode,
+// OpenSSH 8.8 on), read once from its usage line. A variable for tests.
+var scpHasSFTPFlag = sync.OnceValue(func() bool {
+	out, _ := exec.Command("scp").CombinedOutput() // no arguments: usage, exit 1
+	m := regexp.MustCompile(`\[-([0-9A-Za-z]+)\]`).FindSubmatch(out)
+	return m != nil && strings.ContainsRune(string(m[1]), 's')
+})
+
+// scpRemoteQuote escapes a guest path for the remote shell of scp's old
+// protocol with backslashes, not quotes: the laptop's scp also matches
+// the file names the guest sends back against the path as a glob
+// (OpenSSH's CVE-2019-6111 check), and a backslash means the same to the
+// glob as to the shell, where quotes would make the names mismatch. A
+// leading ~/ stays bare so it still expands, and * ? [ ] stay globs, as
+// they are in SFTP mode.
+func scpRemoteQuote(p string) string {
+	var b strings.Builder
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		b.WriteString("~")
+		p = p[1:]
+	}
+	for _, r := range p {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', strings.ContainsRune("/._-+,=@%:*?[]", r), r > 127:
+		default:
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // scpTarget splits an ssh target into scp's options and host: scp spells

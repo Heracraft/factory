@@ -33,6 +33,20 @@ func TestParseCpSide(t *testing.T) {
 
 // I-201 both ways against the local sshd harness: `repose cp :logs/x.log
 // .` from the checkout, and the reverse into the project by name.
+func TestScpRemoteQuote(t *testing.T) {
+	for in, want := range map[string]string{
+		"proj/logs/x.log": "proj/logs/x.log",
+		"proj/a b $HOME":  `proj/a\ b\ \$HOME`,
+		"~/it's":          `~/it\'s`,
+		"~":               "~",
+		"/tmp/*.log":      "/tmp/*.log",
+	} {
+		if got := scpRemoteQuote(in); got != want {
+			t.Errorf("scpRemoteQuote(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestCpBothWays(t *testing.T) {
 	fake := fakeapi.New(fakeapi.Options{})
 	defer fake.Close()
@@ -52,7 +66,7 @@ func TestCpBothWays(t *testing.T) {
 	}
 	out := t.TempDir()
 	if err := CpCmd(ctx, f.env, ":logs/x.log", out, false, ""); err != nil {
-		t.Fatalf("cp from the guest: %v", err)
+		t.Fatalf("cp from the guest: %v %s", err, f.env.ErrOut.(*discardWriter).buf.String())
 	}
 	if b, err := os.ReadFile(filepath.Join(out, "x.log")); err != nil || string(b) != "line from the guest\n" {
 		t.Fatalf("copied = %q %v", b, err)
@@ -69,6 +83,18 @@ func TestCpBothWays(t *testing.T) {
 	}
 	if b, err := os.ReadFile(filepath.Join(logs, "trace.json")); err != nil || string(b) != `{"from":"laptop"}` {
 		t.Fatalf("in the guest = %q %v", b, err)
+	}
+	// The classic protocol (what -O and OpenSSH before 8.8 speak) hands the
+	// remote path to the guest's shell: a space or a $ must survive it.
+	odd := "a b $HOME.log"
+	if err := os.WriteFile(filepath.Join(logs, odd), []byte("odd name\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := CpCmd(ctx, f.env, ":logs/"+odd, out, false, ""); err != nil {
+		t.Fatalf("cp of %q from the guest: %v", odd, err)
+	}
+	if b, err := os.ReadFile(filepath.Join(out, odd)); err != nil || string(b) != "odd name\n" {
+		t.Fatalf("copied %q = %q %v", odd, b, err)
 	}
 	if err := CpCmd(ctx, f.env, "a", "b", false, ""); err == nil || err.(*exitError).code != ExitUsage {
 		t.Errorf("two local sides: %v", err)
