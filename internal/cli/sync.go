@@ -425,7 +425,7 @@ func applyScript(slug, head, branch, track string, bundleRefs []string, hasBundl
 			// lands after this check is still recoverable; and not at all
 			// if something moved since the probe looked.
 			_, _ = fmt.Fprintf(&b, "if [ \"$(repose_fp)\" != \"$(cat \"$repose_synced\" 2>/dev/null)\" ]; then echo %s >&2; exit 3; fi\n", shQuote(syncedChanged))
-			b.WriteString("repose_git stash push -q -u -m 'repose run: last sync'\necho '#stashedsync'\n")
+			b.WriteString("repose_git stash push -q -u -m 'repose run: last sync'\necho '#stashedsync'\n" + pruneSyncStashes)
 		}
 	}
 	if hasBundle {
@@ -458,6 +458,33 @@ fi
 	b.WriteString("if [ -f \"$t/untracked.tar\" ]; then tar -x -f \"$t/untracked.tar\"; fi\n")
 	return b.String()
 }
+
+// syncStashKeep is how many "repose run: last sync" stashes the guest
+// keeps; one is made per run from a dirty laptop tree (I-210).
+const syncStashKeep = 10
+
+// pruneSyncStashes drops every "repose run: last sync" stash past the
+// newest syncStashKeep, oldest first so the indices of the ones still to
+// drop do not move. It matches the whole subject git records for
+// `stash push -m` ("On <branch>: <message>", a branch name has no colon),
+// so the user's stashes and --stash-remote's "repose run" are never
+// touched.
+var pruneSyncStashes = fmt.Sprintf(`n=0
+drop=""
+while IFS=' ' read -r ref subj; do
+  case $subj in
+    "On "*": repose run: last sync")
+      br=${subj#On }; br=${br%%": repose run: last sync"}
+      case $br in *:*) continue ;; esac
+      n=$((n+1))
+      [ "$n" -gt %d ] && drop="$ref $drop"
+      ;;
+  esac
+done <<EOF
+$(git stash list --format='%%gd %%gs')
+EOF
+for ref in $drop; do git stash drop -q "$ref"; done
+`, syncStashKeep)
 
 // syncedChanged is the apply's stderr when the tree it was told was the
 // last sync's own changed after the probe.

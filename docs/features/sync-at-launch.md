@@ -64,7 +64,8 @@ to look first.
   `.git/repose-synced`). When the next probe finds the tree dirty and the
   fingerprint unchanged, the run goes on: the apply stashes those
   changes (`git stash push -u -m "repose run: last sync"`, so nothing
-  misjudged is lost), lays down the laptop's current ones, and the summary
+  misjudged is lost; only the newest 10 such stashes are kept, and the
+  user's own stashes and `--stash-remote`'s are never dropped), lays down the laptop's current ones, and the summary
   line ends "the last sync's changes stashed in the guest". An edit to a
   synced file, a new file, a commit, or any change inside a submodule
   changes the fingerprint and refuses as above, including one made

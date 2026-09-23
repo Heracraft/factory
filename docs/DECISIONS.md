@@ -4593,7 +4593,9 @@ laptop's own, so the run goes on and the apply sets it aside with `git
 stash push -u -m "repose run: last sync"` before laying down the new
 diff, and the summary line says so (the laptop still has those changes,
 or newer ones; a stash rather than a reset, so a write that lands after
-the last check, or anything misjudged, is recoverable). Anything else, an edited
+the last check, or anything misjudged, is recoverable; the same apply drops all but the newest 10 stashes whose
+message is exactly `repose run: last sync`, never the user's or
+`--stash-remote`'s). Anything else, an edited
 synced file, a new file, a commit, is an agent's work and still refuses.
 The apply computes the fingerprint again before it stashes, and refuses
 with exit 6 if an agent wrote between the two ssh round trips. No ssh

@@ -120,6 +120,36 @@ func TestSyncedTreeIsStashed(t *testing.T) {
 	}
 }
 
+// The last-sync stashes are capped at the newest ten; the user's own
+// stashes (and --stash-remote's "repose run") are never dropped.
+func TestSyncedStashesAreCapped(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	if err := os.WriteFile(filepath.Join(f.guestRepo(), "README.md"), []byte("the user's own work\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, f.guestRepo(), "git", "stash", "push", "-q", "-m", "my work")
+	for i := 0; i < 13; i++ { // the first leaves the tree dirty; the next 12 stash
+		if err := os.WriteFile(filepath.Join(f.local, "README.md"), []byte(strings.Repeat("x", i+1)+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := syncGuest(ctx, f.target, f.local, testSlug, SyncOptions{}); err != nil {
+			t.Fatalf("sync %d: %v", i, err)
+		}
+	}
+	list := mustRun(t, f.guestRepo(), "git", "stash", "list", "--format=%gs")
+	if n := strings.Count(list, ": repose run: last sync"); n != syncStashKeep {
+		t.Errorf("%d last-sync stashes, want %d:\n%s", n, syncStashKeep, list)
+	}
+	if !strings.Contains(list, ": my work") {
+		t.Errorf("the user's stash is gone:\n%s", list)
+	}
+	// The newest are the ones kept: the top stash holds run 12's tree.
+	if b := mustRun(t, f.guestRepo(), "git", "show", "stash@{0}:README.md"); b != strings.Repeat("x", 12) {
+		t.Errorf("stash@{0} README.md = %q", b)
+	}
+}
+
 // A refused run leaves nothing behind in the guest's object store: the
 // probe's fingerprint hashes the agent's files without writing them.
 func TestSyncedProbeWritesNoObjects(t *testing.T) {

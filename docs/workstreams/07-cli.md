@@ -295,7 +295,8 @@ $ repose run
       index) equals `.git/repose-synced` is the previous sync's own diff
       and untracked files, not an agent's: no exit 6, and step d stashes it
       first (`git stash push -u -m "repose run: last sync"`, said in the
-      summary line), after checking the fingerprint again (a change in
+      summary line; stashes with exactly that message past the newest 10
+      are dropped, others never), after checking the fingerprint again (a change in
       between is exit 6). A submodule change always fails the fingerprint.
       Every status here runs with `-c status.showUntrackedFiles=normal -c
       submodule.recurse=false --ignore-submodules=none`. Step d ends by
