@@ -98,6 +98,11 @@ func TestSyncedTreeIsStashed(t *testing.T) {
 	if _, err := syncGuest(ctx, f.target, f.local, testSlug, SyncOptions{}); err != nil {
 		t.Fatal(err)
 	}
+	// A new laptop change: the same one again is not applied at all
+	// (I-224, TestUnchangedSyncSkipsTheApply).
+	if err := os.WriteFile(filepath.Join(f.local, "README.md"), []byte("laptop, later\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	s, err := syncGuest(ctx, f.target, f.local, testSlug, SyncOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +113,7 @@ func TestSyncedTreeIsStashed(t *testing.T) {
 	if !strings.Contains(s.String(), "last sync's changes stashed in the guest") {
 		t.Errorf("summary = %q", s.String())
 	}
-	if b, _ := os.ReadFile(filepath.Join(f.guestRepo(), "README.md")); string(b) != "laptop\n" {
+	if b, _ := os.ReadFile(filepath.Join(f.guestRepo(), "README.md")); string(b) != "laptop, later\n" {
 		t.Errorf("README.md = %q", b)
 	}
 	stashes := mustRun(t, f.guestRepo(), "git", "stash", "list")

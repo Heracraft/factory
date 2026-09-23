@@ -112,7 +112,11 @@ func runSSH(ctx context.Context, t sshTarget, remoteCmd string, stdin io.Reader)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	started := time.Now()
 	err := cmd.Run()
+	if timingEnabled() {
+		timingf("ssh %s out=%dB exit=%d %dms", sshLabel(remoteCmd), stdout.Len(), cmd.ProcessState.ExitCode(), time.Since(started).Milliseconds())
+	}
 	if err != nil && errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.Success() {
 		err = nil
 	}
@@ -164,5 +168,6 @@ func execReplaceSSH(t sshTarget, extraArgs []string, remoteCmd string) error {
 	if remoteCmd != "" {
 		args = append(args, remoteCmd)
 	}
+	timingf("exec ssh (attach)")
 	return sysExec("ssh", args)
 }

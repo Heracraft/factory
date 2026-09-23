@@ -129,13 +129,18 @@ type Config struct {
 	GuestUser string
 	// Lookup resolves a user name to uid and primary gid; nil means the
 	// system user database. Tests point it at their own ids.
-	Lookup          func(name string) (uid, gid int, err error)
-	MinVolumeBytes  uint64
-	MaxVolumeBytes  uint64
-	PoolRefusePct   float64
-	PoolWarnPct     float64
-	StoreHighPct    float64
-	GuestdRetry     time.Duration
+	Lookup         func(name string) (uid, gid int, err error)
+	MinVolumeBytes uint64
+	MaxVolumeBytes uint64
+	PoolRefusePct  float64
+	PoolWarnPct    float64
+	StoreHighPct   float64
+	GuestdRetry    time.Duration
+	// GuestdBootRetry is the dial interval until a monitor's first guestd
+	// session: a booting guest's guestd starts listening at an unknown
+	// moment on every start's critical path, and a 2 s retry cost a
+	// second of each start on average (DECISIONS I-225).
+	GuestdBootRetry time.Duration
 	GuestdLostAfter time.Duration
 	UnitPoll        time.Duration
 	// FailAtStep injects a failure into CreateGuest at that step (tests).
@@ -188,6 +193,12 @@ func (c Config) Defaults() Config {
 	}
 	if c.GuestdRetry == 0 {
 		c.GuestdRetry = 2 * time.Second
+	}
+	if c.GuestdBootRetry == 0 {
+		c.GuestdBootRetry = 200 * time.Millisecond
+	}
+	if c.GuestdBootRetry > c.GuestdRetry {
+		c.GuestdBootRetry = c.GuestdRetry
 	}
 	if c.GuestdLostAfter == 0 {
 		c.GuestdLostAfter = 60 * time.Second

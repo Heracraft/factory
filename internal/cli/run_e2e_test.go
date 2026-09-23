@@ -291,6 +291,11 @@ func TestSyncRefusesWhenTheGuestChangesAfterTheProbe(t *testing.T) {
 		t.Fatal(err)
 	}
 	agent := filepath.Join(f.guestRepo(), "README.md")
+	// A new laptop change, so the second sync applies (the same one again
+	// is not applied at all, I-224).
+	if err := os.WriteFile(filepath.Join(f.local, "README.md"), []byte("laptop, later\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	_, err := syncGuest(ctx, f.target, f.local, testSlug, SyncOptions{BeforeApply: func(map[string]string) error {
 		return os.WriteFile(agent, []byte("the agent, mid-sync\n"), 0o644)
 	}})

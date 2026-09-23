@@ -72,8 +72,51 @@ func syncCredentials(ctx context.Context, t sshTarget, homeDir, repoDir string, 
 // without a round trip of its own. A carry part that fails is reported in
 // the outcome and never fails the credentials.
 func syncCredentialsAndCarry(ctx context.Context, t sshTarget, homeDir, repoDir string, opts credSyncOptions, co carryOptions) ([]string, *carryOutcome, error) {
+	c, err := buildCredentialsAndCarry(homeDir, repoDir, opts, co)
+	if err != nil {
+		return nil, nil, err
+	}
+	if c.p.empty() {
+		// Nothing to write (the identity rides the git part, which is
+		// unchanged): no ssh at all.
+		return c.copied, &carryOutcome{}, nil
+	}
+	out, err := c.p.run(ctx, t)
+	if err != nil {
+		return nil, nil, stepFailed("copy your tool logins to the guest", err, "")
+	}
+	copied, outcome := c.finish(string(out))
+	return copied, outcome, nil
+}
+
+// credCarry is the tool logins and the carry, built and not yet sent:
+// syncCredentialsAndCarry sends it in an ssh of its own; `run` hands it
+// to the sync, whose apply ssh runs it first (DECISIONS I-224).
+type credCarry struct {
+	p      *guestPayload
+	copied []string
+	sent   []string
+	opts   credSyncOptions
+}
+
+// buildCredentialsAndCarry reads the laptop's side of
+// syncCredentialsAndCarry into a payload without sending it.
+func buildCredentialsAndCarry(homeDir, repoDir string, opts credSyncOptions, co carryOptions) (*credCarry, error) {
 	var copied []string
 	p := newGuestPayload()
+
+	// The logins' part is built aside first: when the guest's "creds"
+	// marker says it already took exactly these bytes, and every file it
+	// wrote is still there (the probe's #credsmissing), none of it goes
+	// (DECISIONS I-224), and an unchanged `run` sends nothing at all.
+	type credFile struct {
+		name string
+		body []byte
+	}
+	var files []credFile
+	var lines, paths []string
+	var labels []string
+	hashParts := [][]byte{[]byte("creds-1")}
 
 	ghCopied := false
 	for i, row := range credRows {
@@ -83,16 +126,14 @@ func syncCredentialsAndCarry(ctx context.Context, t sshTarget, homeDir, repoDir 
 			if os.IsNotExist(err) {
 				continue
 			}
-			return nil, nil, fmt.Errorf("reading %s: %w", local, err)
+			return nil, fmt.Errorf("reading %s: %w", local, err)
 		}
 		if row.Label == "gh" {
 			b = ghHostsWithToken(b, opts.ghToken)
 			ghCopied = true
 		}
 		name := fmt.Sprintf("c%d", i)
-		if err := p.file(name, b); err != nil {
-			return nil, nil, err
-		}
+		files = append(files, credFile{name, b})
 		// features/secrets.md: never overwrite a guest file newer than the
 		// laptop's (a login done inside the guest would be clobbered);
 		// mtime decides, and the copy takes the laptop's mtime so the
@@ -102,52 +143,92 @@ func syncCredentialsAndCarry(ctx context.Context, t sshTarget, homeDir, repoDir 
 			mtime = info.ModTime().Unix()
 		}
 		guestPath := "~/" + filepath.ToSlash(row.Rel)
-		p.line(fmt.Sprintf("d=%s\nif [ -e \"$d\" ] && [ \"$(stat -c %%Y \"$d\")\" -gt %d ]; then echo '#kept %s'; else mkdir -p %s && install -m %o \"$t/%s\" \"$d\" && touch -d @%d \"$d\"; fi",
+		lines = append(lines, fmt.Sprintf("d=%s\nif [ -e \"$d\" ] && [ \"$(stat -c %%Y \"$d\")\" -gt %d ]; then echo '#kept %s'; else mkdir -p %s && install -m %o \"$t/%s\" \"$d\" && touch -d @%d \"$d\"; fi",
 			guestPath, mtime, row.Label, filepath.ToSlash(filepath.Dir(guestPath)), row.Mode.Perm(), name, mtime))
-		copied = append(copied, row.Label)
+		paths = append(paths, "$HOME/"+filepath.ToSlash(row.Rel))
+		labels = append(labels, row.Label)
+		hashParts = append(hashParts, []byte(row.Label), b, []byte(fmt.Sprint(mtime)))
 	}
 
 	name, _ := gitCmd(repoDir, "config", "user.name")
 	email, _ := gitCmd(repoDir, "config", "user.email")
+	var gitID []string
 	if co.Git != nil {
 		// The identity travels inside the carried git config (I-195),
 		// where the checkout's includeIf and its own .git/config have
 		// already picked it.
 		if co.Git.HasID {
-			copied = append(copied, "git")
+			gitID = []string{"git"}
 		}
 	} else if name != "" || email != "" {
 		// Through files in the payload, not the command line: the values
 		// are the user's and do not belong in a process listing.
-		if err := p.file("git-name", []byte(name)); err != nil {
-			return nil, nil, err
-		}
-		if err := p.file("git-email", []byte(email)); err != nil {
-			return nil, nil, err
-		}
-		p.line("git config --global user.name \"$(cat \"$t/git-name\")\"")
-		p.line("git config --global user.email \"$(cat \"$t/git-email\")\"")
-		copied = append(copied, "git")
+		files = append(files, credFile{"git-name", []byte(name)}, credFile{"git-email", []byte(email)})
+		lines = append(lines, "git config --global user.name \"$(cat \"$t/git-name\")\"", "git config --global user.email \"$(cat \"$t/git-email\")\"")
+		labels = append(labels, "git")
+		hashParts = append(hashParts, []byte("identity"), []byte(name), []byte(email))
 	}
 	if ghCopied && remoteHost(opts.RemoteURL) == "github.com" {
-		p.line("git config --global url.https://github.com/.insteadOf git@github.com:")
-		p.line("git config --global --replace-all credential.https://github.com.helper '!gh auth git-credential'")
+		lines = append(lines, "git config --global url.https://github.com/.insteadOf git@github.com:",
+			"git config --global --replace-all credential.https://github.com.helper '!gh auth git-credential'")
+		hashParts = append(hashParts, []byte("gh-helper"))
 	}
+	if len(lines) > 0 {
+		hash := carryHash(hashParts...)
+		if co.unchanged(credsMarker, hash) {
+			timingf("carry: logins unchanged since the guest took them")
+		} else {
+			for _, f := range files {
+				if err := p.file(f.name, f.body); err != nil {
+					return nil, err
+				}
+			}
+			for _, l := range lines {
+				p.line(l)
+			}
+			// The paths the probe checks, then the marker, last: a login
+			// part that stopped half way leaves the old marker, or none.
+			p.line(fmt.Sprintf("mkdir -p ~/.repose && printf '%%s\\n' %s > %s", strings.Join(quoteAll(paths), " "), credsPathsFile))
+			p.line(strings.TrimSuffix(setMarker(credsMarker, hash), "\n"))
+			copied = append(copied, labels...)
+		}
+	}
+	// "git" is named when the carried git config holds the identity,
+	// whether or not its part travels (I-195), after the logins.
+	copied = append(copied, gitID...)
 	sent, err := addCarry(p, co)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	if p.empty() {
-		// Nothing to write (the identity rides the git part, which is
-		// unchanged): no ssh at all.
-		return copied, &carryOutcome{}, nil
+	return &credCarry{p: p, copied: copied, sent: sent, opts: opts}, nil
+}
+
+// credsMarker is the carry marker of the tool logins (carry.go's markers:
+// ~/.repose/carry/creds holds the hash of what the guest last took), and
+// credsPathsFile lists the files they wrote, which the sync's probe
+// checks are all still there (I-224).
+const (
+	credsMarker    = "creds"
+	credsPathsFile = "~/.repose/creds-paths"
+)
+
+// quoteAll double-quotes each "$HOME/..." path so the guest's shell
+// expands $HOME and nothing else (the rows' paths hold no quote, $, `
+// or backslash).
+func quoteAll(paths []string) []string {
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		out[i] = `"` + p + `"`
 	}
-	out, err := p.run(ctx, t)
-	if err != nil {
-		return nil, nil, stepFailed("copy your tool logins to the guest", err, "")
-	}
-	outcome := &carryOutcome{Sent: sent}
-	outcome.parse(string(out))
+	return out
+}
+
+// finish reads the guest's reply to the payload: the logins copied (less
+// the ones the guest kept as newer) and the carry's outcome.
+func (c *credCarry) finish(out string) ([]string, *carryOutcome) {
+	copied, opts := append([]string(nil), c.copied...), c.opts
+	outcome := &carryOutcome{Sent: c.sent}
+	outcome.parse(out)
 	var kept []string
 	for _, label := range outcome.Kept {
 		isCred := false
@@ -167,7 +248,7 @@ func syncCredentialsAndCarry(ctx context.Context, t sshTarget, homeDir, repoDir 
 		}
 	}
 	outcome.Kept = kept
-	return copied, outcome, nil
+	return copied, outcome
 }
 
 // remoteHost is the host part of a normalised remote ("github.com/a/b").

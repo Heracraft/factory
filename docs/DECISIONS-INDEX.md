@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-268 entries.
+271 entries.
 
 ## Scope
 
@@ -300,3 +300,6 @@ pointer, not a summary.
 - **I-214** The npm cache ignores the registry's cookie — 2026-09-23; L4732
 - **I-215** Live polish of workstream 15: system listeners are not forwarded, the status clock follows the carried zone, and a guest's newer `.env` is named once — 2026-09-23; L4748
 - **I-216** The dashboard is developed against the live api and Logto, not the fake — L4777
+- **I-223** `repose run` and `attach` spend round trips only where something changed; `REPOSE_TIMING=1` shows where the time goes — L4796
+- **I-224** The sync's writes are one ssh, and none when nothing changed — L4843
+- **I-225** Server side of a start: hostd dials a booting guest's guestd every 200 ms, guestd skips a registration it already loaded, and a sample from before a start is not the new guest's — L4877

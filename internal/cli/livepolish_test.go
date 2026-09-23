@@ -69,7 +69,7 @@ func TestPollDelayBacksOff(t *testing.T) {
 	for _, c := range []struct {
 		ago  time.Duration
 		want time.Duration
-	}{{0, 500 * time.Millisecond}, {9 * time.Second, 500 * time.Millisecond}, {20 * time.Second, time.Second}, {2 * time.Minute, 2 * time.Second}} {
+	}{{0, 500 * time.Millisecond}, {9 * time.Second, 500 * time.Millisecond}, {25 * time.Second, 500 * time.Millisecond}, {40 * time.Second, time.Second}, {2 * time.Minute, 2 * time.Second}} {
 		if got := pollDelay(now.Add(-c.ago)); got != c.want {
 			t.Fatalf("after %s: %s, want %s", c.ago, got, c.want)
 		}

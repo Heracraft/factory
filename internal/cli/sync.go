@@ -5,6 +5,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -35,6 +37,17 @@ type SyncOptions struct {
 	// (I-150) and the carry skips what the guest already has (I-195..
 	// I-197) without a round trip of its own.
 	BeforeApply func(markers map[string]string) error
+	// Carry, when set, is called after BeforeApply with the same markers
+	// and returns the tool logins and the carry, built and not sent: the
+	// apply's ssh runs them first, so `run` spends one round trip on the
+	// sync's writes, not two (DECISIONS I-224). A first sync that clones
+	// in the guest (I-203) sends them on their own before the clone,
+	// which needs gh's login in place. Their outcome is in the summary.
+	Carry func(markers map[string]string) (*credCarry, error)
+	// Probe, when set, returns the probe's reply in place of running it:
+	// `run` started it before the api answered (I-223). When it failed,
+	// the probe runs again here.
+	Probe func() ([]byte, error)
 	// Env is the laptop's gitignored .env files (I-197), written after the
 	// checkout in the apply's own ssh, unless the guest's marker says it
 	// has exactly these.
@@ -78,6 +91,13 @@ type SyncSummary struct {
 	// (I-203); CloneFailed is why it could not, when it tried.
 	ClonedFrom  string
 	CloneFailed string
+	// Unchanged: the guest already had exactly this sync's result, and
+	// only the carry (if anything) was sent (I-224).
+	Unchanged bool
+	// Copied and Carried are the outcome of SyncOptions.Carry: the logins
+	// copied, as syncCredentialsAndCarry returns them.
+	Copied  []string
+	Carried *carryOutcome
 }
 
 // dirtyTreeError is 07-cli.md §6's exit 6, carrying the file list for the
@@ -107,6 +127,10 @@ type guestProbe struct {
 	tips      []string // every commit a ref (or HEAD) in the guest points at
 	hasOrigin bool
 	markers   map[string]string // the carry's markers (carry.go)
+	// head is the guest's HEAD commit, headRef its .git/HEAD line
+	// ("ref: refs/heads/main", or a commit when detached), and syncKey
+	// the key the last sync that completed recorded (I-224).
+	head, headRef, syncKey string
 }
 
 // syncedFP holds the shell functions every dirtiness judgement of the
@@ -175,10 +199,14 @@ echo '#synced'
 if [ -n "$st" ] && [ -s "$repose_synced" ] && [ "$(repose_fp)" = "$(cat "$repose_synced")" ]; then echo yes; fi
 echo '#tips'
 git for-each-ref --format='%%(objectname)'
+echo '#head'
 git rev-parse -q --verify HEAD || true
+[ -f .git/HEAD ] && IFS= read -r repose_h < .git/HEAD && printf '#headref %%s\n' "$repose_h"
+[ -f "$repose_synced-key" ] && IFS= read -r repose_k < "$repose_synced-key" && printf '#synckey %%s\n' "$repose_k"
 echo '#origin'
 git remote get-url origin >/dev/null 2>&1 && echo yes || true
-%s`, slug, syncedFP, envPathsCheck, markerScript())
+if [ -f %s ]; then while IFS= read -r p; do [ -e "$p" ] || { echo '#credsmissing'; break; }; done < %s; fi
+%s`, slug, syncedFP, envPathsCheck, credsPathsFile, credsPathsFile, markerScript())
 }
 
 func parseProbe(out string) guestProbe {
@@ -193,12 +221,24 @@ func parseProbe(out string) guestProbe {
 			p.envNewer = append(p.envNewer, rest)
 			continue
 		}
+		if rest, ok := strings.CutPrefix(l, "#headref "); ok {
+			p.headRef = strings.TrimSpace(rest)
+			continue
+		}
+		if rest, ok := strings.CutPrefix(l, "#synckey "); ok {
+			p.syncKey = strings.TrimSpace(rest)
+			continue
+		}
+		if l == "#credsmissing" {
+			delete(p.markers, credsMarker) // a login file is gone: send them again
+			continue
+		}
 		if l == "#envmissing" {
 			delete(p.markers, "env") // a written file is gone: send the set again
 			continue
 		}
 		switch l {
-		case "#status", "#synced", "#tips", "#origin":
+		case "#status", "#synced", "#tips", "#head", "#origin":
 			section = l
 			continue
 		}
@@ -210,8 +250,12 @@ func parseProbe(out string) guestProbe {
 			p.dirty = append(p.dirty, l)
 		case "#synced":
 			p.syncedOnly = strings.TrimSpace(l) == "yes"
-		case "#tips":
-			if t := strings.TrimSpace(l); !seen[t] {
+		case "#tips", "#head":
+			t := strings.TrimSpace(l)
+			if section == "#head" {
+				p.head = t
+			}
+			if !seen[t] {
 				seen[t] = true
 				p.tips = append(p.tips, t)
 			}
@@ -242,8 +286,15 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	if err != nil {
 		return nil, stepFailed("read the current branch", err, "")
 	}
+	timingf("sync local checks done")
 
-	out, err := runSSH(ctx, t, probeScript(slug), nil)
+	var out []byte
+	if opts.Probe != nil {
+		out, err = opts.Probe()
+	}
+	if opts.Probe == nil || err != nil {
+		out, err = runSSH(ctx, t, probeScript(slug), nil)
+	}
 	if err != nil {
 		return nil, stepFailed("read the guest's checkout", err, "")
 	}
@@ -256,11 +307,37 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 			return nil, err
 		}
 	}
+	endPrep := timeSpan("sync payload build")
 	// The first sync of a large GitHub repository clones in the guest,
 	// after the credentials (gh's helper) are in place (I-203).
-	var cloned, cloneFailed string
+	cloneURL := ""
 	if len(probe.tips) == 0 && !opts.NoRemote {
 		if url := hybridCloneURL(opts.RemoteURL); url != "" && gitPackKiB(localRepoDir) >= hybridThresholdKiB {
+			cloneURL = url
+		}
+	}
+	var carry *credCarry
+	var carried *carryOutcome
+	var copied []string
+	if opts.Carry != nil {
+		if carry, err = opts.Carry(probe.markers); err != nil {
+			return nil, err
+		}
+		if carry.p.empty() {
+			copied, carried, carry = carry.copied, &carryOutcome{}, nil
+		} else if cloneURL != "" {
+			out, err := carry.p.run(ctx, t)
+			if err != nil {
+				return nil, stepFailed("copy your tool logins to the guest", err, "")
+			}
+			copied, carried = carry.finish(string(out))
+			carry = nil
+		}
+	}
+	var cloned, cloneFailed string
+	if cloneURL != "" {
+		{
+			url := cloneURL
 			tips, ok, why, err := hybridFetch(ctx, t, slug, url, laptopBases(localRepoDir))
 			if err != nil {
 				return nil, err
@@ -300,7 +377,7 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	if err != nil {
 		return nil, stepFailed("count the commits to send", err, "")
 	}
-	summary := &SyncSummary{Branch: branch, Head: head, ClonedFrom: cloned, CloneFailed: cloneFailed}
+	summary := &SyncSummary{Branch: branch, Head: head, ClonedFrom: cloned, CloneFailed: cloneFailed, Copied: copied, Carried: carried}
 	_, _ = fmt.Sscanf(strings.TrimSpace(countOut), "%d", &summary.Commits)
 
 	payload, err := os.CreateTemp("", "repose-sync-*.tar")
@@ -344,10 +421,13 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		return nil, stepFailed("read your working tree", err, "")
 	}
 	summary.Modified = len(localDirty)
+	key := sha256.New()
+	_, _ = fmt.Fprintf(key, "%s\x00%s\x00%s\x00%s\x00%s\x00%v\x00", syncKeyVersion, head, branch, track, opts.RemoteURL, opts.NoRemote)
 	diff, err := gitDiffBinary(localRepoDir)
 	if err != nil {
 		return nil, stepFailed("diff your working tree", err, "")
 	}
+	_, _ = fmt.Fprintf(key, "%d\x00%s", len(diff), diff)
 	if strings.TrimSpace(diff) != "" {
 		if err := tarAddBytes(tw, "diff", []byte(diff)); err != nil {
 			return nil, err
@@ -370,10 +450,18 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		if err != nil {
 			return nil, err
 		}
+		_, _ = fmt.Fprintf(key, "\x00%d\x00", len(buf))
+		_, _ = key.Write(buf)
 		if err := tarAddBytes(tw, "untracked.tar", buf); err != nil {
 			return nil, err
 		}
 		summary.Untracked = len(untracked)
+	}
+	carryScript := ""
+	if carry != nil {
+		if carryScript, err = addCarryToApply(tw, carry.p); err != nil {
+			return nil, err
+		}
 	}
 	envScript, err := addEnvToApply(tw, opts.envFiles(), probe.markers)
 	if err != nil {
@@ -391,9 +479,39 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		return nil, err
 	}
 
-	script := applyScript(slug, head, branch, track, bundleRefs, len(bundleRefs) > 0, opts, probe) + envScript + recordSyncedScript
+	endPrep()
+	if st, err := payload.Stat(); err == nil {
+		timingf("sync payload %dB commits=%d", st.Size(), summary.Commits)
+	}
+	syncKey := hex.EncodeToString(key.Sum(nil))
+	summary.Unchanged = !opts.StashRemote && !opts.DiscardRemote && cloned == "" && envScript == "" &&
+		guestAsLastSyncLeft(probe, syncKey, head, branch, summary.Commits, strings.TrimSpace(diff) == "" && len(untracked) == 0) &&
+		(probe.hasOrigin || opts.NoRemote || originURLFor(opts.RemoteURL) == "")
+	var script string
+	if summary.Unchanged {
+		// Nothing the apply would change: the guest's tree is what the
+		// last sync left, and the laptop sends exactly what it sent then
+		// (I-224). Only the carry, when it has something, still goes.
+		timingf("sync: unchanged since the last sync")
+		if carryScript == "" {
+			return summary, nil
+		}
+		script = "set -e\n" + applyUnpack + carryScript
+	} else {
+		// The key is cleared before the checkout is touched and written
+		// once the apply has finished, so a sync that stopped half way
+		// never matches.
+		script = applyScript(slug, head, branch, track, bundleRefs, len(bundleRefs) > 0, opts, probe) + envScript + recordSyncedScript +
+			fmt.Sprintf("printf '%%s\\n' %s > \"$repose_synced-key\"\n", syncKey)
+		// Right after the unpack, before anything touches the checkout:
+		// the stash below needs the identity the git part carries.
+		script = strings.Replace(script, applyUnpack, applyUnpack+carryScript+": > \"$repose_synced-key\"\n", 1)
+	}
 	res, err := runSSH(ctx, t, script, payload)
 	if err != nil {
+		if se, ok := err.(*sshError); ok && strings.Contains(se.Stderr, carryFailed) {
+			return nil, stepFailed("copy your tool logins to the guest", err, "")
+		}
 		if se, ok := err.(*sshError); ok && strings.Contains(se.Stderr, syncedChanged) {
 			// An agent wrote between the probe and the apply: its work
 			// now, not the last sync's, so it is refused like any other.
@@ -404,8 +522,13 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		}
 		return nil, stepFailed("sync your checkout to the guest", err, "")
 	}
+	var carryOut strings.Builder
 	for _, l := range strings.Split(string(res), "\n") {
 		l = strings.TrimSpace(l)
+		if rest, ok := strings.CutPrefix(l, carryLinePrefix); ok {
+			carryOut.WriteString(rest + "\n")
+			continue
+		}
 		switch l {
 		case "#detached":
 			summary.Detached = true
@@ -421,7 +544,71 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 			_, _ = fmt.Sscanf(rest, "%d", &summary.EnvFiles)
 		}
 	}
+	if carry != nil {
+		summary.Copied, summary.Carried = carry.finish(carryOut.String())
+	}
 	return summary, nil
+}
+
+// syncKeyVersion is folded into the sync key; a change to what an apply
+// does bumps it, so no guest skips the first apply of the new shape.
+const syncKeyVersion = "sync-1"
+
+// guestAsLastSyncLeft reports whether the probe found the guest exactly
+// as the last completed sync left it, and that sync sent what this one
+// would (the same key): no commits to send, HEAD on the same commit and
+// branch, and the tree either clean (a laptop tree with no changes) or
+// dirty with nothing but the last sync's changes (I-210's fingerprint).
+func guestAsLastSyncLeft(p guestProbe, key, head, branch string, commits int, laptopClean bool) bool {
+	if p.syncKey != key || commits != 0 || p.head != head {
+		return false
+	}
+	wantRef := head
+	if branch != "" {
+		wantRef = "ref: refs/heads/" + branch
+	}
+	if p.headRef != wantRef {
+		return false
+	}
+	if laptopClean {
+		return len(p.dirty) == 0
+	}
+	return len(p.dirty) > 0 && p.syncedOnly
+}
+
+// applyUnpack is the apply's unpack of its payload; the carry's script
+// goes right after it.
+const applyUnpack = "t=$(mktemp -d)\ntrap 'rm -rf \"$t\"' EXIT\ntar -x -C \"$t\"\n"
+
+// carryFailed is the apply's stderr when the logins or the carry's
+// top-level lines failed, the case in which the carry's own ssh used to
+// fail and the run stopped before the sync.
+const carryFailed = "repose: could not copy the tool logins"
+
+// carryLinePrefix marks the carry's reply lines inside the apply's.
+const carryLinePrefix = "#carry "
+
+// addCarryToApply puts the carry's payload (script and tar) into the
+// apply's tar and returns the lines that run it: the same script, fed
+// the same tar, as its own ssh would have run, its reply lines prefixed
+// so they do not mix with the apply's (I-224).
+func addCarryToApply(tw *tar.Writer, p *guestPayload) (string, error) {
+	if err := p.tw.Close(); err != nil {
+		return "", err
+	}
+	if observePayload != nil {
+		observePayload(p.script.String(), p.buf.Bytes())
+	}
+	if err := tarAddBytes(tw, "carry.sh", []byte(p.script.String())); err != nil {
+		return "", err
+	}
+	if err := tarAddBytes(tw, "carry.tar", p.buf.Bytes()); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(`bash "$t/carry.sh" < "$t/carry.tar" > "$t/carry.out" || { echo %s >&2; exit 1; }
+while IFS= read -r l || [ -n "$l" ]; do printf '%s%%s
+' "$l"; done < "$t/carry.out"
+`, shQuote(carryFailed), carryLinePrefix), nil
 }
 
 // applyScript is the second round trip: unpack the payload, set the
@@ -431,7 +618,7 @@ func applyScript(slug, head, branch, track string, bundleRefs []string, hasBundl
 	var b strings.Builder
 	_, _ = fmt.Fprintf(&b, "set -e\ncd ~/%s\n", slug)
 	b.WriteString(syncedFP)
-	b.WriteString("t=$(mktemp -d)\ntrap 'rm -rf \"$t\"' EXIT\ntar -x -C \"$t\"\n")
+	b.WriteString(applyUnpack)
 	if len(probe.dirty) == 0 {
 		// Clean when the probe looked; an agent may have written since,
 		// and the tar below would overwrite a file at a path the laptop
@@ -777,6 +964,9 @@ func (s *SyncSummary) String() string {
 	}
 	if s.StashedLastSync {
 		line += "; the last sync's changes stashed in the guest"
+	}
+	if s.Unchanged {
+		line += "; the guest already had them"
 	}
 	return line
 }

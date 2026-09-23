@@ -25,6 +25,7 @@ here exists in that module under exactly this name.
 | `/run/repose/hooks.sock` | hook ingest, HTTP over unix, 0660 root:dev, created by guestd |
 | `/run/repose/guestd.sock` | dev-only stand-in for vsock (absent in real guests) |
 | `/run/repose/paths-registered` | written by guestd after the first `RegisterPaths`; `repose-paths.service` waits for it (up to 180 s) and `home-manager-dev.service` runs after that (DECISIONS I-67) |
+| `/var/lib/repose/paths-loaded` | sha256 of the last registration `nix-store --load-db` took, on the volume; a `RegisterPaths` with the same bytes and `/nix/var/nix/db/db.sqlite` present only writes the stamp above (DECISIONS I-225) |
 | `/run/repose/desktop/vnc-password` | the noVNC/VNC password for the current desktop start, 0600 dev (DECISIONS I-33) |
 | `/run/repose/desktop/last-client` | mtime of the last observed desktop client; the idle stop reads it |
 | `/nix/.ro-store` | read-only virtio-fs mount of the host store (tag `ro-store`) |
@@ -140,6 +141,8 @@ state and is named once.
 | `enabledPlugins` from a marketplace | installed by `~/.repose/claude-plugins.sh` (started with `setsid -f`, reads `~/.repose/claude-plugins.json`) with `claude plugin marketplace add` / `claude plugin install`, reporting through `tmux display-message` | marker `claude-plugins`, written only when every install worked |
 | gitignored `.env` / `.env.*` files in the checkout, outside dependency directories, up to 1 MB (DECISIONS I-197; `run` only) | the same relative path under `/home/dev/<slug>/`, dev 0600, mtime kept; a guest file with a newer mtime is kept (`#kept <path>`) | written at the end of the sync's apply script, after the checkout; marker `env` |
 | markers | `/home/dev/.repose/carry/<item>` | the hash of the laptop input last applied; the probe prints them as `#marker <item> <hash>` |
+| the tool logins' files (DECISIONS I-224) | `/home/dev/.repose/creds-paths`, one expanded path per line | written with marker `creds` after the logins; the probe prints `#credsmissing` when one of them is gone, and the logins are sent again |
+| the last completed sync's key (DECISIONS I-224) | `.git/repose-synced-key` in the checkout | hex sha256 of what the laptop sent; emptied before the apply touches the checkout, written at its end; the probe prints `#synckey`, `#head` and `#headref` |
 
 ## Caches (DECISIONS I-202, I-208)
 

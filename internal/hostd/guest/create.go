@@ -573,6 +573,9 @@ func (mon *monitor) run() {
 	var sessDone <-chan struct{}
 	retry := time.NewTimer(0)
 	defer retry.Stop()
+	// Until the first session the guest is (most likely) booting: dial
+	// often, since its guestd's first answer is on the start's path.
+	everConnected := false
 	mon.lostAt = m.d.Now()
 	for {
 		select {
@@ -590,9 +593,14 @@ func (mon *monitor) run() {
 			cancel()
 			if err != nil {
 				mon.checkLost()
-				retry.Reset(m.cfg.GuestdRetry)
+				if everConnected {
+					retry.Reset(m.cfg.GuestdRetry)
+				} else {
+					retry.Reset(m.cfg.GuestdBootRetry)
+				}
 				continue
 			}
+			everConnected = true
 			sess, notes, sessDone = s, s.Notifications(), s.Done()
 			mon.mu.Lock()
 			mon.sess = s

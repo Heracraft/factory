@@ -57,6 +57,11 @@ to look first.
   push -u -m "repose run"` in the guest first; `--discard-remote` runs
   `git reset --hard && git clean -fd`. Neither asks for confirmation —
   the flag itself is the confirmation.
+- A run with nothing new applies nothing (DECISIONS I-224): when the
+  laptop would send exactly what the last completed sync sent (the same
+  commit, branch, diff and untracked files) and the guest's tree is still
+  what that sync left, the apply is skipped, nothing is stashed, and the
+  summary line ends "the guest already had them".
 - The laptop's own changes are not an agent's (DECISIONS I-210). A sync
   that carried a modified or untracked file leaves the guest's tree dirty
   by construction, so the apply records a fingerprint of the tree it left
