@@ -27,6 +27,7 @@ let
       unit = string.gsub(unit, "%.service$", "")
       record["component"] = unit
       record["unit"] = unit
+      record["service_name"] = unit
       return 2, ts, record
     end
 
@@ -34,6 +35,7 @@ let
       local path = record["path"] or ""
       local id = string.match(path, "/guests/([^/]+)/console%.log")
       record["component"] = "console"
+      record["service_name"] = "console"
       if id ~= nil then record["guest_id"] = id end
       record["path"] = nil
       return 2, ts, record
@@ -141,7 +143,7 @@ in
               host = "\${LOKI_HOST}";
               port = "\${LOKI_PORT}";
               labels = "host=\${HOST_ID}";
-              label_keys = "$component,$guest_id";
+              label_keys = "$component,$service_name,$guest_id";
               line_format = "json";
               drop_single_key = "off";
               "storage.total_limit_size" = cfg.observability.bufferLimit;

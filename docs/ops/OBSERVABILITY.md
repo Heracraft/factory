@@ -7,7 +7,7 @@ be in a log. The design rules and the full metric list are in
 ## Where things are
 
 ```
-hosts (NixOS)          journald ─▶ Fluent Bit ─▶ Loki  (labels host, component, guest_id for console)
+hosts (NixOS)          journald ─▶ Fluent Bit ─▶ Loki  (labels host, component, service_name, guest_id for console)
                        hostd :9101 /metrics, node_exporter :9100,
                        Fluent Bit :2021 /api/v1/metrics/prometheus  ◀─ Prometheus scrape over WireGuard
 edge (NixOS)           gateway :9102 /metrics; journald ─▶ Fluent Bit ─▶ Loki

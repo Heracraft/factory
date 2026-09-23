@@ -393,12 +393,30 @@ in
           service.flush = 5;
           pipeline = {
             inputs = [{ name = "systemd"; tag = "edge.*"; read_from_tail = "on"; }];
+            # The unit name as `component` and `service_name`, like a
+            # host's (nix/hosts/fluent-bit.nix): Grafana groups log streams
+            # by service_name and shows "unknown_service" without it.
+            filters = [{
+              name = "lua";
+              match = "*";
+              call = "unit";
+              script = "${pkgs.writeText "repose-edge-labels.lua" ''
+                function unit(tag, ts, record)
+                  local u = record["_SYSTEMD_UNIT"] or record["SYSLOG_IDENTIFIER"] or "kernel"
+                  u = string.gsub(u, "%.service$", "")
+                  record["component"] = u
+                  record["service_name"] = u
+                  return 2, ts, record
+                end
+              ''}";
+            }];
             outputs = [{
               name = "loki";
               match = "*";
               host = lokiHost;
               port = lokiPort;
               labels = "host=edge";
+              label_keys = "$component,$service_name";
               line_format = "json";
             }];
           };
