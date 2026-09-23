@@ -248,7 +248,7 @@ final report. `just done-check` and `just lint` pass.
 - [ ] **Claude merge:** golden test names and output; plus a live guest
       where a permission granted in the guest survives the next `run`, and
       a laptop skill appears in `/skills` in the guest.
-- [ ] **Never carried:** the extended secrets test name and output.
+- [x] **Never carried:** the extended secrets test name and output.
 - [ ] **`.env`:** a nested `apps/web/.env` travels with mode 0600; a guest
       copy newer than the laptop one is kept; `ls -l` pasted.
 - [ ] **Forward:** `vite` started in the guest is reachable at
@@ -264,8 +264,21 @@ final report. `just done-check` and `just lint` pass.
 - [ ] **Caches:** a cold `pnpm install` on a large repo in two guests on one
       host, the second measurably faster, with the times pasted; `docker
       pull` twice likewise; the fallback when the cache is stopped, shown.
-- [ ] **Trial:** a new account's billing view shows 336 cents, and every
+- [x] **Trial:** a new account's billing view shows 336 cents, and every
       string grep for `\$10` and "10 of credit" in docs, cmd and apps comes
       back empty.
-- [ ] **Docs:** every doc in §4 updated in the commit that changed the
+- [x] **Docs:** every doc in §4 updated in the commit that changed the
       code; `git log --stat` pasted.
+
+Status on 2026-09-23 (branch `ws/15-dev-ergonomics`, see STATUS.md for
+the evidence): every part of §2 is built. Closed with local evidence:
+never carried, trial, docs. Closed locally and owed on a real guest (the
+row's own evidence names a guest or a macOS laptop): TZ (guest NixOS test
+shows JST in a new window), git (guest NixOS test's `git config --list
+--show-origin`), Claude merge (goldens; live `/skills` and a permission
+across a real run owed), `.env` (sshd harness), forward (real
+ControlMaster to the harness; screenshot owed), OOM (guestd NixOS test:
+hog killed, agent alive), cp (harness), caches (host NixOS test; the
+timings on a host owed). Open: timing from a macOS laptop (local harness
+numbers in the commits), hybrid threshold from measurement.
+
