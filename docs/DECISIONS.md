@@ -4724,3 +4724,19 @@ swallowed the "Killed process" line after it. That first line is now
 skipped, and the name is unwrapped (`the kernel killed claude`).
 `TestOOMPriorityFindsNixWrappedAgents`,
 `TestOOMWarningNamesTheKilledProcess`.
+
+**I-214. The npm cache ignores the registry's cookie.** (ws/15 live
+fixes, 2026-09-23) Live, the cache held 4 KB after 495 misses and no
+hit: registry.npmjs.org answers through Cloudflare, which sets its
+`__cf_bm` bot-management cookie on every response, and nginx stores no
+response that sets a cookie. The cache server now has
+`proxy_ignore_headers Set-Cookie` and `proxy_hide_header Set-Cookie`:
+the cookie means nothing to npm, and a guest never receives it.
+Requests carrying credentials stay uncached exactly as before
+(`proxy_cache_bypass`/`proxy_no_cache` on Authorization). The Docker Hub
+mirror (distribution v3) also stops exporting OpenTelemetry traces to
+localhost:4318, where nothing listens (`OTEL_TRACES_EXPORTER=none`,
+`OTEL_SDK_DISABLED=true`). host-caches: the fake registry sets a cookie
+on every answer, and the test asserts the second tarball and document
+fetches are hits and that no cookie reaches the client (it failed before
+this change at the Set-Cookie assertion, with the second fetch a MISS).

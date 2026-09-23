@@ -68,6 +68,14 @@ let
         proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
         proxy_cache_bypass $repose_authed;
         proxy_no_cache $repose_authed;
+        # registry.npmjs.org answers through Cloudflare, which sets its
+        # __cf_bm cookie on every response, and nginx stores nothing that
+        # sets a cookie: the live cache held 4 KB after 495 misses. The
+        # cookie means nothing to npm, so it is neither a reason not to
+        # cache nor passed on to guests (DECISIONS I-214). Authenticated
+        # requests stay uncached by the two lines above.
+        proxy_ignore_headers Set-Cookie;
+        proxy_hide_header Set-Cookie;
 
         # Tarballs never change once published.
         location ~ /-/[^/]+\.tgz$ {
@@ -265,6 +273,13 @@ in
       unitConfig.StartLimitIntervalSec = 0;
       serviceConfig.Restart = lib.mkForce "always";
       serviceConfig.RestartSec = "10s";
+      # distribution v3 exports OpenTelemetry traces to localhost:4318 by
+      # default; nothing listens there, so it logged "traces export ...
+      # connection refused" about six times a minute.
+      environment = {
+        OTEL_TRACES_EXPORTER = "none";
+        OTEL_SDK_DISABLED = "true";
+      };
     };
   };
 }

@@ -433,7 +433,15 @@ in
           assert "http://10.63.255.254:4873/left-pad/-/left-pad-1.0.0.tgz" in doc, doc
           assert "127.0.0.1:9999" not in doc, doc
           host.succeed("curl -sf -m5 -o /tmp/a.tgz http://10.63.255.254:4873/left-pad/-/left-pad-1.0.0.tgz")
-          host.succeed("curl -sf -m5 -o /tmp/b.tgz http://10.63.255.254:4873/left-pad/-/left-pad-1.0.0.tgz")
+          # every registry answer sets a cookie (Cloudflare's __cf_bm);
+          # the second fetch must still be a hit, and no cookie reaches
+          # a guest (I-214)
+          headers = host.succeed("curl -sf -m5 -D - -o /tmp/b.tgz http://10.63.255.254:4873/left-pad/-/left-pad-1.0.0.tgz")
+          assert "set-cookie" not in headers.lower(), headers
+          doc2 = host.succeed("curl -sf -m5 http://10.63.255.254:4873/left-pad")
+          assert doc2 == doc, doc2
+          docs = host.succeed("grep -c 'GET /left-pad$' /tmp/fake-registry.log").strip()
+          assert docs == "1", f"the registry saw the package document {docs} times; the second should be a cache hit"
           host.succeed("cmp /tmp/a.tgz /tmp/b.tgz")
           hits = host.succeed("grep -c 'GET /left-pad/-/left-pad-1.0.0.tgz' /tmp/fake-registry.log").strip()
           assert hits == "1", f"the registry saw the tarball {hits} times; the second should be a cache hit"
@@ -466,6 +474,9 @@ in
           host.wait_for_open_port(5000, "10.63.255.254")
           host.succeed("test -d /var/cache/repose/docker")
           host.succeed("curl -sf -m5 http://10.63.255.254:5000/v2/ >/dev/null")
+          # no OpenTelemetry export to a collector that is not there (it
+          # logged "traces export ... connection refused" ~6/min)
+          host.succeed("systemctl show docker-registry -p Environment | grep -q 'OTEL_TRACES_EXPORTER=none'")
     '';
   };
 
