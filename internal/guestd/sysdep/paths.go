@@ -14,8 +14,16 @@ type Paths struct {
 	Root string
 }
 
+// join is Root/elem..., and /elem... on a real guest (empty Root): every
+// path is absolute. With an empty Root, filepath.Join gave
+// "run/repose/switch.log", which systemd-run refuses as StandardOutput
+// ("Path ... is not absolute"), so every Switch failed (DECISIONS I-209).
 func (p Paths) join(elem ...string) string {
-	return filepath.Join(append([]string{p.Root}, elem...)...)
+	root := p.Root
+	if root == "" {
+		root = "/"
+	}
+	return filepath.Join(append([]string{root}, elem...)...)
 }
 
 // RunDir is /run/repose: tmpfs, created by the guest base module (02).
