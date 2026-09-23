@@ -79,7 +79,7 @@ func TestGitDenylist(t *testing.T) {
 		"include.path": true, "includeif.gitdir:~/work/.path": true,
 		"diff.tool": true, "merge.tool": true, "difftool.vimdiff.cmd": true, "mergetool.x.cmd": true,
 		"core.excludesfile": true,
-		"user.name": false, "user.email": false, "alias.st": false, "core.pager": false, "core.editor": false,
+		"user.name":         false, "user.email": false, "alias.st": false, "core.pager": false, "core.editor": false,
 		"pull.rebase": false, "init.defaultbranch": false, "diff.colormoved": false, "http.postbuffer": false, "core.autocrlf": false,
 	} {
 		if got := gitDenied(key); got != denied {
