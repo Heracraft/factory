@@ -2,7 +2,7 @@
 # (DECISIONS I-196, docs/workstreams/15-dev-ergonomics.md §5.3).
 #
 # Run in the guest with the base's jq, as
-#   jq -n --arg mode MODE --arg home LAPTOP_HOME --arg dest "$HOME" \
+#   jq -n --arg mode MODE --arg home LAPTOP_HOME --arg cfg LAPTOP_CLAUDE_DIR_OR_EMPTY --arg dest "$HOME" \
 #      --slurpfile g GUEST.json --slurpfile l LAPTOP.json \
 #      --slurpfile p PLATFORM.json --rawfile missing MISSING -f claude_merge.jq
 #
@@ -19,15 +19,28 @@
 # platform entries are removed before and added after, and the unions are
 # sorted.
 
-def rewrite($home; $dest):
-  if $home == "" or $home == $dest then .
-  else walk(
-    if type == "string" then
-      if . == $home then $dest
-      elif startswith($home + "/") then $dest + "/" + .[($home | length) + 1:]
-      else . end
-    else . end)
-  end;
+# swap($from; $to): a string that is $from becomes $to, and $from + "/"
+# becomes $to + "/" wherever it sits ("python3 /Users/x/.claude/a.py",
+# "Read(/Users/x/src/**)"). split/join is literal, so no regex escaping.
+def swap($from; $to):
+  if $from == "" or $from == $to then .
+  elif . == $from then $to
+  else split($from + "/") | join($to + "/") end;
+
+# rewrite: the laptop's Claude config directory ($cfg, set when
+# CLAUDE_CONFIG_DIR moved it off ~/.claude) becomes the guest's
+# ~/.claude, in its absolute and its ~/ and $HOME/ forms; then the
+# laptop's home becomes the guest's.
+def rewrite($home; $cfg; $dest):
+  (if $cfg != "" and ($cfg | startswith($home + "/")) then $cfg[($home | length) + 1:] else "" end) as $crel
+  | walk(
+      if type == "string" then
+        swap($cfg; $dest + "/.claude")
+        | if $crel == "" then . else
+            swap("~/" + $crel; "~/.claude") | swap("$HOME/" + $crel; "$HOME/.claude") | swap("${HOME}/" + $crel; "${HOME}/.claude")
+          end
+        | swap($home; $dest)
+      else . end);
 
 # hooks_keep(f): keep only the hook entries for which f is true; a matcher
 # group left with no hooks goes, and so does an event left with no groups.
@@ -75,7 +88,7 @@ def merge($g; $l; $p; $missing):
       .hooks[$ev] = ((.hooks[$ev] // []) + $p.hooks[$ev]));
 
 if $mode == "rewrite" then
-  $l[0] | rewrite($home; $dest)
+  $l[0] | rewrite($home; $cfg; $dest)
 elif $mode == "commands" then
   (($g[0] | strip) * ($l[0] | strip)) | commands | .[] | @base64
 elif $mode == "merge" then

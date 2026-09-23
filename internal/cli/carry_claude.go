@@ -70,6 +70,9 @@ type claudeCarry struct {
 	// nil when absent or invalid.
 	Settings []byte
 	Home     string // the laptop's home, rewritten to /home/dev in the guest
+	// CfgDir is $CLAUDE_CONFIG_DIR when it moved the config off
+	// ~/.claude; paths under it are rewritten to the guest's ~/.claude.
+	CfgDir string
 	// Plugins are enabledPlugins ids from a marketplace the guest can
 	// reach; Marketplaces maps their names to an `add` source.
 	Plugins      []string
@@ -96,6 +99,9 @@ func buildClaudeCarry(homeDir string) (*claudeCarry, error) {
 		return nil, nil
 	}
 	cc := &claudeCarry{Home: homeDir, Marketplaces: map[string]string{}}
+	if filepath.Clean(dir) != filepath.Join(homeDir, ".claude") {
+		cc.CfgDir = filepath.Clean(dir)
+	}
 	for _, name := range claudeFiles {
 		b, mode, err := readSmallFile(filepath.Join(dir, name))
 		if err != nil {
@@ -377,9 +383,9 @@ func addClaudeParts(p *guestPayload, cc *claudeCarry, opts carryOptions) ([]stri
 		sent = append(sent, it.Marker)
 	}
 	if cc.Settings != nil {
-		hash := carryHash(cc.Settings, []byte(cc.Home), claudeMergeJQ)
+		hash := carryHash(cc.Settings, []byte(cc.Home), []byte(cc.CfgDir), claudeMergeJQ)
 		if !opts.unchanged("claude-settings", hash) {
-			for name, b := range map[string][]byte{"claude/settings.json": cc.Settings, "claude/home": []byte(cc.Home), "claude/merge.jq": claudeMergeJQ} {
+			for name, b := range map[string][]byte{"claude/settings.json": cc.Settings, "claude/home": []byte(cc.Home), "claude/cfg": []byte(cc.CfgDir), "claude/merge.jq": claudeMergeJQ} {
 				if err := p.file(name, b); err != nil {
 					return nil, err
 				}
@@ -456,7 +462,7 @@ pf=${REPOSE_CLAUDE_PLATFORM:-/etc/repose/claude-settings.json}
 q() {
   qm=$1 qh=$2 qg=$3 ql=$4
   shift 4
-  jq -n "$@" --arg mode "$qm" --arg home "$qh" --arg dest "$HOME" --slurpfile g "$qg" --slurpfile l "$ql" --slurpfile p "$pf" --rawfile missing "$t/missing" -f "$c/merge.jq"
+  jq -n "$@" --arg mode "$qm" --arg home "$qh" --arg cfg "$(cat "$c/cfg" 2>/dev/null || true)" --arg dest "$HOME" --slurpfile g "$qg" --slurpfile l "$ql" --slurpfile p "$pf" --rawfile missing "$t/missing" -f "$c/merge.jq"
 }
 q rewrite "$(cat "$c/home")" "$g" "$c/settings.json" > "$t/laptop.json"
 cmd_ok() {

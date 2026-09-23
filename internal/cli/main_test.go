@@ -25,6 +25,9 @@ func TestMain(m *testing.M) {
 	}
 	_ = os.Setenv("HOME", home)
 	_ = os.Setenv("XDG_CONFIG_HOME", home+"/.config")
+	// A developer who moved their Claude config would otherwise have the
+	// carry tests read it instead of the test home's ~/.claude.
+	_ = os.Unsetenv("CLAUDE_CONFIG_DIR")
 	code := m.Run()
 	_ = os.RemoveAll(home)
 	os.Exit(code)

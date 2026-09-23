@@ -17,14 +17,14 @@ var updateGolden = flag.Bool("update", false, "rewrite testdata/claude-merge/*/w
 // runClaudeMerge runs the guest half of the settings merge exactly as the
 // carry does (claudeSettingsScript with the embedded jq program), with
 // home as the guest's $HOME, and returns its output lines.
-func runClaudeMerge(t *testing.T, home string, laptop []byte, laptopHome string) string {
+func runClaudeMerge(t *testing.T, home string, laptop []byte, laptopHome string, cfg ...string) string {
 	t.Helper()
 	dir := t.TempDir()
 	c := filepath.Join(dir, "claude")
 	if err := os.MkdirAll(c, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for name, b := range map[string][]byte{"settings.json": laptop, "home": []byte(laptopHome), "merge.jq": claudeMergeJQ} {
+	for name, b := range map[string][]byte{"settings.json": laptop, "home": []byte(laptopHome), "cfg": []byte(strings.Join(cfg, "")), "merge.jq": claudeMergeJQ} {
 		if err := os.WriteFile(filepath.Join(c, name), b, 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -130,6 +130,66 @@ func TestClaudeSettingsMergeGolden(t *testing.T) {
 }
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
+
+// The laptop's home is rewritten wherever it sits in a string, not only
+// at the start ("sh /Users/lap/.claude/hooks/a.sh", "Read(/Users/lap/...)"),
+// so a hook whose script was carried is kept; and a config directory
+// moved by CLAUDE_CONFIG_DIR maps to the guest's ~/.claude in its
+// absolute and ~/ forms.
+func TestClaudeSettingsRewriteHomeAnywhere(t *testing.T) {
+	home := t.TempDir()
+	for _, s := range []string{".claude/hooks/a.sh", ".claude/hooks/b.sh"} {
+		p := filepath.Join(home, s)
+		_ = os.MkdirAll(filepath.Dir(p), 0o700)
+		if err := os.WriteFile(p, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	laptop := []byte(`{
+  "permissions": {"allow": ["Read(/Users/lap/src/**)", "Read(/Users/lapx/other)"]},
+  "hooks": {"Stop": [{"matcher": "", "hooks": [
+    {"type": "command", "command": "sh /Users/lap/.config/claude/hooks/a.sh --quiet"},
+    {"type": "command", "command": "sh ~/.config/claude/hooks/b.sh"}
+  ]}]}
+}`)
+	// The laptop half: CLAUDE_CONFIG_DIR is read, and sent only when it
+	// is not ~/.claude.
+	lh := t.TempDir()
+	moved := filepath.Join(lh, ".config", "claude")
+	_ = os.MkdirAll(moved, 0o700)
+	if err := os.WriteFile(filepath.Join(moved, "CLAUDE.md"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDE_CONFIG_DIR", moved)
+	if cc, err := buildClaudeCarry(lh); err != nil || cc == nil || cc.CfgDir != moved {
+		t.Fatalf("CfgDir with CLAUDE_CONFIG_DIR set: %+v %v", cc, err)
+	}
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(lh, ".claude"))
+	_ = os.MkdirAll(filepath.Join(lh, ".claude"), 0o700)
+	_ = os.WriteFile(filepath.Join(lh, ".claude", "CLAUDE.md"), []byte("x\n"), 0o600)
+	if cc, err := buildClaudeCarry(lh); err != nil || cc == nil || cc.CfgDir != "" {
+		t.Fatalf("CfgDir for ~/.claude: %+v %v", cc, err)
+	}
+
+	out := runClaudeMerge(t, home, laptop, "/Users/lap", "/Users/lap/.config/claude")
+	if strings.Contains(out, "#dropped") {
+		t.Errorf("a hook whose script was carried was dropped: %q", out)
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"sh " + home + "/.claude/hooks/a.sh --quiet",
+		"sh ~/.claude/hooks/b.sh",
+		"Read(" + home + "/src/**)",
+		"Read(/Users/lapx/other)", // another user's home is not this one
+	} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("merged settings lack %q:\n%s", want, b)
+		}
+	}
+}
 
 // A guest settings.json that is not JSON is left exactly as it is, with
 // one warning; nothing half-written appears beside it.
@@ -320,6 +380,77 @@ func TestCarryClaudeNeverCarriesSecrets(t *testing.T) {
 	}
 	if !fileExists(filepath.Join(f.guestHome, ".claude/settings.json.repose-prev")) {
 		t.Error("no settings.json.repose-prev")
+	}
+}
+
+// 15-dev-ergonomics §6: a jq merge that fails in the guest leaves the
+// previous settings.json exactly as it was, says so, and writes no marker
+// (so the next carry tries again); a hook whose script the guest lacks is
+// named on the carry that changed it and not on the next, unchanged one.
+func TestClaudeSettingsFailureAndDroppedHookOncePerChange(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	home := t.TempDir()
+	sp := filepath.Join(home, ".claude", "settings.json")
+	_ = os.MkdirAll(filepath.Dir(sp), 0o700)
+	laptop := `{"model":"opus","hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"` + home + `/.claude/hooks/gone.sh"}]}]}}`
+	if err := os.WriteFile(sp, []byte(laptop), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	carry := func() *carryOutcome {
+		t.Helper()
+		cc, err := buildClaudeCarry(home)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := runSSH(ctx, f.target, markerScript(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, o, err := syncCredentialsAndCarry(ctx, f.target, home, f.local, credSyncOptions{}, carryOptions{TZ: "UTC", Claude: cc, Markers: parseMarkers(string(out))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return o
+	}
+
+	// Valid JSON the merge cannot use (an array): the merge fails.
+	guest := filepath.Join(f.guestHome, ".claude", "settings.json")
+	_ = os.MkdirAll(filepath.Dir(guest), 0o700)
+	if err := os.WriteFile(guest, []byte("[1]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	o := carry()
+	if len(o.Failed) != 1 || o.Failed[0] != "Claude settings" {
+		t.Fatalf("failed = %v, want [Claude settings]", o.Failed)
+	}
+	if !strings.Contains(strings.Join(o.Lines(), "\n"), "the guest keeps its previous one") {
+		t.Errorf("lines = %v", o.Lines())
+	}
+	if b, _ := os.ReadFile(guest); string(b) != "[1]\n" {
+		t.Errorf("guest settings.json changed by a failed merge: %q", b)
+	}
+	if fileExists(guest+".tmp") || fileExists(filepath.Join(f.guestHome, ".repose", "carry", "claude-settings")) {
+		t.Error("a failed merge left settings.json.tmp or wrote its marker")
+	}
+
+	// A mergeable guest file: the hook is dropped and named once.
+	if err := os.WriteFile(guest, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	o = carry()
+	if len(o.Failed) != 0 || len(o.Dropped) != 1 || !strings.Contains(o.Dropped[0], "gone.sh") {
+		t.Fatalf("outcome = %+v, want the hook dropped and named", o)
+	}
+	if o = carry(); len(o.Dropped) != 0 || len(o.Lines()) != 0 {
+		t.Errorf("unchanged carry spoke again: %v", o.Lines())
+	}
+	// A change on the laptop names it again.
+	if err := os.WriteFile(sp, []byte(strings.Replace(laptop, "opus", "sonnet", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if o = carry(); len(o.Dropped) != 1 {
+		t.Errorf("after a laptop change, dropped = %v", o.Dropped)
 	}
 }
 
