@@ -21,10 +21,13 @@
       description = "repose guestd (vsock control agent)";
       wantedBy = [ "multi-user.target" ];
       # Before sshd so Ready is sent by something that saw sshd start; after
-      # the tmpfiles rules so /run/repose exists.
+      # the tmpfiles rules so /run/repose exists. Not after docker.service:
+      # dockerd took 2.4 s of a 13.8 s boot on host-01 with guestd, sshd and
+      # everything behind them waiting for it, and nothing guestd does at
+      # boot needs Docker (DECISIONS I-161). Docker starts in parallel;
+      # guestd's docker_down warning allows it a grace to come up.
       before = [ "sshd.service" ];
-      after = [ "systemd-tmpfiles-setup.service" "network.target" "docker.service" ];
-      wants = [ "docker.service" ];
+      after = [ "systemd-tmpfiles-setup.service" "network.target" ];
       environment.GOMAXPROCS = "1";
       # A switch is run by guestd itself. Left to its defaults, the new
       # system's activation stops guestd when its binary changed, and the
@@ -62,9 +65,12 @@
         Type = "oneshot";
         RemainAfterExit = true;
         ExecStart = "${pkgs.writeShellScript "repose-paths-wait" ''
-          for _ in $(seq 1 360); do
+          # 0.1 s steps: this unit is on the path to the first login
+          # (home-manager, then systemd-user-sessions), and a 0.5 s step
+          # cost up to half a second of every boot (DECISIONS I-161).
+          for _ in $(seq 1 1800); do
             [ -e /run/repose/paths-registered ] && exit 0
-            sleep 0.5
+            sleep 0.1
           done
           echo "no path registration from hostd after 180 s; continuing"
         ''}";

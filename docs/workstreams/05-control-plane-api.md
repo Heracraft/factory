@@ -97,7 +97,10 @@ main
 
 Coolify runs 1 replica at first; all background loops take a Postgres
 advisory lock (`pg_try_advisory_lock(<loop id>)`) so a second replica does
-not double-run them. HTTP and gRPC are replica-safe. hostd streams
+not double-run them. The ops loop polls every 500 ms and also `LISTEN`s on
+`repose_ops`; an enqueue or a command result in a process that does not
+hold the ops lock raises `NOTIFY repose_ops`, so the driver starts the next
+phase at once instead of at its next poll (DECISIONS I-163). HTTP and gRPC are replica-safe. hostd streams
 reconnect to whichever replica they land on; commands for a host are routed
 by looking up which replica holds its stream in a `host_sessions` table
 (`host_id, replica_id, since`) and, if another replica holds it, forwarded
@@ -150,6 +153,11 @@ The `create` op:
    `projects.host_id` and summing reservations per host in a view
    `host_reservations`. `capacity` error to the user if no host fits, with
    an operator alert.
+   No `Build` is sent when the chosen host already runs the closure: the
+   applied revision of another live project there has the same fragment
+   text on the same published base version. The revision is marked `built`
+   with that closure (`kernel_changed` false) and the op goes straight to
+   step 2 (DECISIONS I-160, event `build_reused`).
 2. On `Build` success, `CreateGuest` with the closure, the project's
    secrets (decrypted for transport, see 5.6), `env {TZ, LANG}`, the user
    CA public key, principals `[project_id]`, hooks config.

@@ -84,7 +84,9 @@ runner using the host's shared store. Everything in
   `Restart=always`, `Before=sshd.service`, `WantedBy=multi-user.target`),
   binary from the flake's `packages.guestd` (04); creates `/run/repose`
   (tmpfs, 0755), `/run/repose/secrets` (tmpfs, 0700 dev), the hooks
-  socket directory.
+  socket directory. Not ordered after `docker.service`: Docker starts in
+  parallel and nothing on the path to the first login waits for it
+  (DECISIONS I-161).
 - `nix/guest/base/version.nix`: writes `/etc/repose/base-version` from a
   module option `repose.baseVersion` set by the flake from `git describe`
   of `nix/`, and `system.nixos.label` the same, so `nixos-version` inside
@@ -100,6 +102,10 @@ runner using the host's shared store. Everything in
   "vsock" "vmw_vsock_virtio_transport" "virtiofs" ]`, `boot.initrd.
   availableKernelModules` = `virtio_pci virtio_blk virtio_net virtiofs`,
   no bootloader (CH direct kernel boot), `boot.loader.grub.enable = false`.
+  The kernel line names the serial console's terminal and size
+  (`systemd.tty.{term,rows,columns}.console`) and the initrd's services
+  import no credentials, which removes about 1.7 s of timeouts and a
+  mount rate limit from every boot (DECISIONS I-161).
 - `nix/guest/microvm.nix`: a function `mkGuestRunner { fragmentModule,
   class, baseVersion, extraModules, ... }` that evaluates `nixosSystem`
   with `microvm.nix`'s module, home-manager, `guestBase`, and the fragment

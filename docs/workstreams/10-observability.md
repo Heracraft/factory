@@ -88,7 +88,8 @@ component must emit:
   `interfaces/vsock-guestd.md`).
 - api: `request` (method, route, status, duration_ms), `cert_issue`,
   `cert_revoke`, `schedule` (host chosen, free memory), `schedule_fail`,
-  `command_send`, `command_result`, `rollup_done`, `stripe_webhook`,
+  `command_send`, `command_result`, `build_reused` (a create whose closure
+  was already on the host, DECISIONS I-160), `rollup_done`, `stripe_webhook`,
   `notify_send`, `notify_fail`, `admin_action`.
 - gateway: `session_open`, `session_close`, `auth_fail` (reason enum:
   `bad_cert|expired|revoked|wrong_principal|stopped|not_found`),

@@ -48,6 +48,11 @@ const (
 	StateDebounce = 5 * time.Second
 	// CacheStale is how old the cache may be before Sample reports partial.
 	CacheStale = 3 * Interval
+	// DockerGrace is how long after guestd starts a Docker socket that does
+	// not answer is still Docker starting rather than Docker down. guestd no
+	// longer waits for docker.service at boot (DECISIONS I-161), and dockerd
+	// takes 2 to 3 s to answer on a small guest.
+	DockerGrace = 60 * time.Second
 )
 
 // Emitter receives the watcher's notifications. The server's notify queue
@@ -105,6 +110,10 @@ type Watcher struct {
 	dockerUp   bool
 	tmuxUp     bool
 	refreshed  time.Time
+	// started is when the watcher was built; docker_down waits DockerGrace
+	// from it unless the socket has answered once already.
+	started    time.Time
+	dockerSeen bool
 	// warned remembers which one-shot warnings have been sent, so tmux_down
 	// and docker_down are announced once rather than every five seconds.
 	warned map[string]bool
@@ -127,6 +136,7 @@ func NewWatcher(p sysdep.Paths, run sysdep.Runner, docker sysdep.Docker, slugs S
 		windows: map[string]*windowState{},
 		hooks:   map[string]hookRecord{},
 		warned:  map[string]bool{},
+		started: now(),
 	}
 }
 
@@ -162,10 +172,15 @@ func (w *Watcher) refreshDocker(ctx context.Context) {
 		w.containers = 0
 	} else {
 		w.dockerUp = true
+		w.dockerSeen = true
 		w.containers = uint32(n)
 	}
 	up := w.dockerUp
+	starting := !w.dockerSeen && w.now().Sub(w.started) < DockerGrace
 	w.mu.Unlock()
+	if !up && starting {
+		return
+	}
 	w.oneShot(WarnDockerDown, !up, "the docker socket did not answer")
 }
 

@@ -563,3 +563,122 @@ func TestStartAppliesOnlyANewerBuiltRevision(t *testing.T) {
 		t.Fatalf("start with a newer built row: state=%s revision=%v err=%+v", sop.State, sop.RevisionID, sop.Error)
 	}
 }
+
+// An op enqueued by an engine that does not drive (the api, while api-grpc
+// holds the ops lock) starts at once through NOTIFY, not at the driver's
+// next tick (I-163). The driver's tick is an hour here, so only the
+// notification can have woken it.
+func TestEnqueueInAnotherProcessWakesTheDriver(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	h.StartEngine(ops.Config{BaseRef: "dev", TickInterval: time.Hour})
+	time.Sleep(200 * time.Millisecond) // the driver takes the lock and listens
+	other := ops.New(h.Pool, h.HostMgr, h.CA, h.Secrets, h.Logs, h.Events, h.Metrics, h.Log, ops.Config{BaseRef: "dev"})
+	u := h.NewUser("ned")
+	p := h.NewProject(u, "woken", "small")
+	pid := p.ID
+	id, err := other.Enqueue(h.Ctx, h.Pool, ops.NewOp{Kind: ops.KindCreate, ProjectID: &pid, Phases: ops.PlanCreate()}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	other.Kick()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		op, err := store.GetOp(h.Ctx, h.Pool, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if op.State == "done" {
+			t.Logf("create done %s after the other process's kick", time.Since(start).Round(time.Millisecond))
+			return
+		}
+		if op.State == "error" {
+			t.Fatalf("create: %+v", op.Error)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("op still %s 10 s after a kick from another process; the driver was not woken", op.State)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// A create whose fragment and base version match a closure already applied
+// on the same host sends no Build (I-160): the closure depends on nothing
+// else, and the other guest's GC root keeps it on the host.
+func TestCreateReusesAClosureOnTheSameHost(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	if _, err := h.Pool.Exec(h.Ctx, "insert into base_versions (version, nix_rev) values ('2026.09.23', 'abc123')"); err != nil {
+		t.Fatal(err)
+	}
+	u := h.NewUser("rey")
+	a := h.CreateRunning(u, "first")
+	aRev, err := store.GetRevision(h.Ctx, h.Pool, *h.Project(a.ID).ConfigRevisionID)
+	if err != nil || aRev.SystemClosure == nil {
+		t.Fatalf("first revision: %+v %v", aRev, err)
+	}
+	builds := func(pid uuid.UUID) int {
+		n := 0
+		for _, c := range h.Fake.Commands() {
+			if b := c.GetBuild(); b != nil && b.ProjectId == pid.String() {
+				n++
+			}
+		}
+		return n
+	}
+
+	// Same fragment, same base: no Build, the first project's closure.
+	b := h.NewProject(u, "second", "small")
+	bid := b.ID
+	op := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindCreate, ProjectID: &bid, Phases: ops.PlanCreate()}))
+	if op.State != "done" {
+		t.Fatalf("reused create: %+v", op.Error)
+	}
+	if n := builds(bid); n != 0 {
+		t.Fatalf("reused create sent %d Build commands", n)
+	}
+	bp := h.Project(bid)
+	bRev, _ := store.GetRevision(h.Ctx, h.Pool, *bp.ConfigRevisionID)
+	if bp.State != "running" || bRev.Status != "applied" || bRev.SystemClosure == nil || *bRev.SystemClosure != *aRev.SystemClosure ||
+		bRev.BaseVersion == nil || aRev.BaseVersion == nil || *bRev.BaseVersion != *aRev.BaseVersion || bRev.BuiltAt == nil || bRev.KernelChanged {
+		t.Fatalf("reused revision: state %s %+v", bp.State, bRev)
+	}
+	var created *hostdv1.CreateGuest
+	for _, c := range h.Fake.Commands() {
+		if cg := c.GetCreateGuest(); cg != nil && cg.ProjectId == bid.String() {
+			created = cg
+		}
+	}
+	if created == nil || created.SystemClosure != *aRev.SystemClosure {
+		t.Fatalf("CreateGuest for the reused closure: %+v", created)
+	}
+
+	// A different fragment builds.
+	c := h.NewProject(u, "third", "small")
+	cid := c.ID
+	if _, err := h.Pool.Exec(h.Ctx, "update config_revisions set fragment = $2 where project_id = $1", cid, "{ pkgs, ... }: { home.packages = [ pkgs.jq ]; }"); err != nil {
+		t.Fatal(err)
+	}
+	if op := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindCreate, ProjectID: &cid, Phases: ops.PlanCreate()})); op.State != "done" {
+		t.Fatalf("third create: %+v", op.Error)
+	}
+	if n := builds(cid); n != 1 {
+		t.Fatalf("a different fragment sent %d Build commands, want 1", n)
+	}
+
+	// With every guest of that closure destroyed, nothing holds it on the
+	// host any more and the next create builds.
+	for _, pid := range []uuid.UUID{a.ID, bid} {
+		pid := pid
+		if op := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindDestroy, ProjectID: &pid, Phases: ops.PlanDestroy(h.Project(pid))})); op.State != "done" {
+			t.Fatalf("destroy: %+v", op.Error)
+		}
+	}
+	d := h.NewProject(u, "fourth", "small")
+	did := d.ID
+	if op := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindCreate, ProjectID: &did, Phases: ops.PlanCreate()})); op.State != "done" {
+		t.Fatalf("fourth create: %+v", op.Error)
+	}
+	if n := builds(did); n != 1 {
+		t.Fatalf("a create after the destroys sent %d Build commands, want 1", n)
+	}
+}

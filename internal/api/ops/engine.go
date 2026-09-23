@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -64,7 +65,16 @@ type Config struct {
 	// KeyVaultRetry is how long a guest start retries a failed Key Vault.
 	KeyVaultRetry time.Duration
 	Lang          string
+	// TickInterval is the loop's poll when nothing wakes it (default
+	// 500 ms). Enqueues and results in another process wake it through
+	// Postgres NOTIFY instead (DECISIONS I-163).
+	TickInterval time.Duration
 }
+
+// notifyChannel is the Postgres channel a Kick in a process that is not
+// driving the ops raises, so the process holding the ops lock wakes at
+// once instead of at its next tick (I-163).
+const notifyChannel = "repose_ops"
 
 // Engine is the op driver.
 type Engine struct {
@@ -79,6 +89,7 @@ type Engine struct {
 	cfg    Config
 
 	kick    chan struct{}
+	driving atomic.Bool
 	now     func() time.Time
 	mu      sync.Mutex
 	waiters map[uuid.UUID][]chan struct{}
@@ -103,6 +114,9 @@ func New(pool *db.Pool, send Sender, c *ca.CA, sec *secrets.Store, logs *buildlo
 	}
 	if cfg.Lang == "" {
 		cfg.Lang = "C.UTF-8"
+	}
+	if cfg.TickInterval == 0 {
+		cfg.TickInterval = 500 * time.Millisecond
 	}
 	return &Engine{pool: pool, send: send, ca: c, sec: sec, logs: logs, events: events, m: m, log: log.With("component", "api"), cfg: cfg,
 		kick: make(chan struct{}, 1), now: time.Now, waiters: map[uuid.UUID][]chan struct{}{}}
@@ -154,11 +168,55 @@ func (e *Engine) Enqueue(ctx context.Context, q store.Querier, n NewOp, allowQue
 	return id, nil
 }
 
-// Kick wakes the loop.
+// Kick wakes the loop. The api and api-grpc each have an engine and only
+// the one holding the ops lock drives; a Kick in the other (an enqueue in
+// the api while api-grpc drives, a result in api-grpc while the api
+// drives) reaches the driver through NOTIFY.
 func (e *Engine) Kick() {
+	if !e.driving.Load() {
+		go e.notifyDriver()
+	}
 	select {
 	case e.kick <- struct{}{}:
 	default:
+	}
+}
+
+func (e *Engine) notifyDriver() {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := e.pool.Exec(ctx, "select pg_notify($1, '')", notifyChannel); err != nil {
+		e.log.Warn("ops notify failed; the driver's tick covers it", "event", "ops_notify_fail", "err", err.Error())
+	}
+}
+
+// listen turns NOTIFYs on notifyChannel into kicks until ctx ends. A lost
+// connection only costs latency: the ticker still drives every op.
+func (e *Engine) listen(ctx context.Context) {
+	for ctx.Err() == nil {
+		conn, err := e.pool.Acquire(ctx)
+		if err != nil {
+			return
+		}
+		if _, err := conn.Exec(ctx, "listen "+notifyChannel); err == nil {
+			for {
+				if _, err := conn.Conn().WaitForNotification(ctx); err != nil {
+					break
+				}
+				select {
+				case e.kick <- struct{}{}:
+				default:
+				}
+			}
+		}
+		// A connection that failed mid-wait is not returned to the pool
+		// still listening.
+		_ = conn.Conn().Close(context.Background())
+		conn.Release()
+		select {
+		case <-ctx.Done():
+		case <-time.After(time.Second):
+		}
 	}
 }
 
@@ -184,7 +242,12 @@ func (e *Engine) Run(ctx context.Context) {
 }
 
 func (e *Engine) loop(ctx context.Context) {
-	t := time.NewTicker(500 * time.Millisecond)
+	e.driving.Store(true)
+	defer e.driving.Store(false)
+	lctx, stopListen := context.WithCancel(ctx)
+	defer stopListen()
+	go e.listen(lctx)
+	t := time.NewTicker(e.cfg.TickInterval)
 	defer t.Stop()
 	for {
 		e.Tick(ctx)

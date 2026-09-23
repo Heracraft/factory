@@ -35,7 +35,7 @@ func TestRealRendersDocumentedCommands(t *testing.T) {
 	}
 	want := []string{
 		"lvcreate -V 42949672960b -T vg-guests/thin -n g-1",
-		"mkfs.ext4 -q -L guest -E lazy_itable_init=0 /dev/vg-guests/g-1",
+		"mkfs.ext4 -q -L guest -E lazy_itable_init=1 /dev/vg-guests/g-1",
 		"lvcreate -s -n snap-1 vg-guests/g-1",
 		"lvextend -L 85899345920b vg-guests/g-1",
 	}

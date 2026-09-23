@@ -46,8 +46,10 @@ const NotifyQueue = 256
 // DefaultDeadline bounds a request handler that does not set its own.
 const DefaultDeadline = 30 * time.Second
 
-// ReadyPollInterval is how often the readiness check looks for sshd.
-const ReadyPollInterval = 500 * time.Millisecond
+// ReadyPollInterval is how often the readiness check looks for sshd. It
+// reads /proc/net/tcp and stops at the first hit, so a short step costs
+// nothing and takes up to 0.4 s off every boot's Ready (DECISIONS I-161).
+const ReadyPollInterval = 100 * time.Millisecond
 
 // Config builds a Server. The zero value is a real guest; tests fill in Root,
 // the dev socket and the fakes.

@@ -3298,3 +3298,111 @@ a boot that never answered, a resize and a snapshot; `host_unreachable`;
 `error.detail` for operators. Other codes keep their message. Logs are
 unchanged: the op-failure line carries the code, never either message.
 `TestUnresponsiveErrorsAreSentences`.
+**I-160. A create reuses a closure the host already runs.** (provision-speed,
+2026-09-23) The owner's `izma` create spent 6.1 s in `Build` (eval 5.7 s,
+build 0.33 s, 6.2 s CPU, 872 MB peak) to produce the closure four guests on
+host-01 were already running: the fragment was the default one and the
+base the latest. The system closure depends only on the fragment's text,
+the base ref and the base version label (I-34, I-43; checked in
+`nix/flake.nix`: `guestSystem` reads nothing else), so the create's
+`build` phase now looks for the applied revision of another live project
+on the chosen host (not destroyed, not `destroying` or `error`, guest id
+set) with the same fragment on the same published base version; when one
+exists the revision becomes `built` with that closure and
+`kernel_changed = false`, no `Build` is sent, and `CreateGuest` follows in
+the same engine pass. That guest's GC root (`guests/<id>`, removed only by
+`DestroyGuest`) keeps the path on the host. Only published bases qualify:
+`dev` names the api's `--base-ref`, which can move. A create whose
+fragment matches no running closure, every restore and every
+`config apply` still build. The build phase also records `base_version` on a create's revision
+now (the `status <> 'building'` guard skipped that update for every create,
+so those rows had none; the reuse query reads the project's base for
+them). Saves the whole `Build` phase (5–6 s on a warm host, more on a cold
+one) for most creates. `TestCreateReusesAClosureOnTheSameHost`.
+*Rejected:* a per-host cache keyed by a fragment hash (a table to keep in
+step with GC for what one indexed join answers), and sharing across hosts
+(the path would have to be copied, which is a build's cost again).
+
+**I-161. The guest boot's critical chain: no wait for Docker, the console or
+a mount rate limit.** (provision-speed,
+2026-09-23) m3-check's boot on host-01 (base 2026.09.21.x, small, a start):
+Cloud Hypervisor started 02:31:55.24, hostd `running` 02:32:09.38, 14.1 s.
+In the guest: kernel 0.84 s, initrd 4.21 s, then `docker.service`
+8.66 → 11.04 s, and guestd (`After=docker.service`), sshd (`After=guestd`)
+and everything behind them waited for it; after guestd started, Ready came
+at the second 0.5 s poll of `/proc/net/tcp` (11.69 s), `RegisterPaths`
+at 12.14 s, `repose-paths` saw its stamp at its next 0.5 s poll (12.65 s),
+home-manager ran 1.07 s, `systemd-user-sessions` lifted `/run/nologin` at
+13.79 s and SetupProject's `systemctl --user -M dev@` (a login session)
+returned at 13.85 s, which is when hostd says `running` and when an SSH
+login is first accepted. Nothing guestd does at boot needs Docker, so
+guestd is now ordered only after tmpfiles and `network.target`; Docker
+starts in parallel. guestd's `docker_down` warning waits 60 s from its
+start (`sample.DockerGrace`) unless the socket has answered once, so a
+Docker still starting is not reported as down. The Ready poll is 0.1 s
+(`guestd.ReadyPollInterval`) and so is `repose-paths`' wait: both sit on
+the path to the first login.
+
+Two silent waits in the same boot were found by booting the guest runner
+with Cloud Hypervisor on the dev box (unprivileged, virtiofsd
+`--sandbox none`, `systemd.log_level=debug`; its untouched baseline
+matched host-01 within 0.1 s): systemd queried the serial console's size
+and terminfo and waited out the timeout, 0.67 s in the initrd and 0.33 s in
+stage 2, and the initrd services' credential mounts tripped systemd's
+mount-monitor rate limit, which held `sysroot.mount` and the store mount
+back for about 0.7 s. The base now passes
+`systemd.tty.{term,rows,columns}.console` on the kernel line (all three are
+needed) and clears `ImportCredential` on the initrd's services (a drop-in
+for the upstream `systemd-fsck-root` and `systemd-tmpfiles-setup-sysroot`;
+without it the initrd refused the unit). On the dev box, CH start to
+guestd Ready went from 11.88 s to 6.22 s and 6.39 s with this commit's
+runner (`nix build ./nix#guest-runner`), about 5.5 s off every boot
+(create, start, restore, reboot); on host-01 that is expected to take
+CH-to-`running` from 14 s to about 8.5 s, confirmed only after the next
+base publish. Not adopted: virtiofsd `--cache always` (hostd) took another
+0.9 s off on the dev box, but an in-place `ApplyConfig` needs the guest to
+see store paths that appear after boot, which that mode's long-lived
+dentry cache is not known to do; it needs its own test first. An
+uncompressed initrd changed nothing. `TestDockerDownWarnsOnce` (no warning inside the
+grace), `TestDockerDownAfterItAnsweredWarnsInsideTheGrace`.
+*Rejected:* keeping guestd after Docker and moving only sshd
+(hostd's `running` waits for guestd's Ready either way).
+
+**I-162. mkfs leaves the inode tables to the guest's lazy init.**
+(provision-speed, 2026-09-23) izma's CreateGuest on host-01 spent 1.50 s
+between `creating` (00:06:54.05) and `starting` (00:06:55.56), against
+0.13 s for m3-check's StartGuest (02:31:55.10 → 55.23), which does the same
+steps without the volume. `lvs` answers in 24 ms and `blkid` in 2 ms there,
+so the difference is `mkfs.ext4 -E lazy_itable_init=0`: the thin volumes
+report `write_zeroes_max_bytes` 0, so mke2fs writes the inode tables as
+real zeros, about 670 MB for a 40 GB volume (izma's volume was 2.23 percent
+allocated right after the create, the 20 GB ones 0.8 percent), at the
+disk's 600 MB/s. hostd now runs `mkfs.ext4 -E lazy_itable_init=1`; the
+guest kernel's ext4lazyinit zeroes the tables in the background at its own
+low rate, and unprovisioned thin blocks read as zeros meanwhile. Expected:
+about 1 s off every create (not start) and no 670 MB write burst on a disk
+every guest on the host shares. Needs a host switch.
+`internal/hostd/lvm` test pins the argv. *Rejected:* `noinit_itable` in the
+guest's mount options (never zeroing is safe on thin but is one more
+guest-visible difference for no time the create would see).
+
+**I-163. An op enqueued in one api process wakes the driver in the other
+through NOTIFY.** (provision-speed, 2026-09-23) The api and api-grpc each
+run an ops engine and only the one holding the ops lock drives; `Kick` only
+woke its own process. On 2026-09-23 api-grpc drove: izma's Build result to
+the CreateGuest send took 45 ms (the result lands in api-grpc and kicks
+locally), but `POST /projects` is served by the api, so the op waited for
+api-grpc's 500 ms poll before its Build went out (the api logged the POST
+and api-grpc the command in the same second; hostd started the Build at
+00:06:47.86). A `Kick` in an engine that is not driving now also runs
+`select pg_notify('repose_ops', '')`, and the driver `LISTEN`s on a
+dedicated connection and turns each notification into a tick. The 500 ms
+poll stays as the fallback, so a lost listener or a failed notify costs
+latency, never an op. Expected: up to 0.5 s (0.25 s on average) off the
+start of every op a user or `repose-admin` enqueues, and the same off each
+phase when the api rather than api-grpc holds the lock.
+`TestEnqueueInAnotherProcessWakesTheDriver` (driver polling once an hour,
+the create done 1.8 s after the other engine's kick). *Rejected:* a
+shorter poll (four times the queries for half the gain) and routing the
+enqueue over the internal gRPC hop (a new RPC for what Postgres already
+carries).

@@ -459,11 +459,18 @@ func (e *Engine) buildBuild(ctx context.Context, op *store.Op, p *store.Project)
 		p.HostID = hostID
 	}
 	if op.Kind == KindCreate {
+		reused, err := e.reuseBuild(ctx, p, rev, version, *hostID)
+		if err != nil {
+			return nil, uuid.Nil, false, err
+		}
+		if reused {
+			return nil, uuid.Nil, true, nil
+		}
 		if err := e.setState(ctx, p, "building"); err != nil {
 			return nil, uuid.Nil, false, err
 		}
 	}
-	if _, err := e.pool.Exec(ctx, "update config_revisions set status = 'building', base_version = coalesce(base_version, $2) where id = $1 and status <> 'building'", rev.ID, version); err != nil {
+	if _, err := e.pool.Exec(ctx, "update config_revisions set status = 'building', base_version = coalesce(base_version, $2) where id = $1", rev.ID, version); err != nil {
 		return nil, uuid.Nil, false, err
 	}
 	if rev.BaseVersion == nil {
@@ -476,6 +483,55 @@ func (e *Engine) buildBuild(ctx context.Context, op *store.Op, p *store.Project)
 		ProjectId: p.ID.String(), RevisionId: rev.ID.String(), Fragment: []byte(rev.Fragment), BaseRef: ref, BaseVersion: version,
 		Limits: &hostdv1.Limits{EvalS: l.EvalS, BuildS: l.BuildS, Cores: l.Cores, ClosureBytes: l.ClosureBytes},
 	}}}, *hostID, false, nil
+}
+
+// reusableClosureSQL finds a closure already built on host $1 from the
+// same fragment ($2) on the same base version ($3): the applied revision of
+// another live project there whose guest exists. Those are the only inputs
+// of the system closure (the project id, name, class, address, tz and user
+// arrive at run time, I-34, I-43), and that guest's GC root holds the path
+// on the host, so nothing has to be built or copied (DECISIONS I-160). A
+// create's revision recorded no base_version before I-160, so the base is
+// the project's for those rows.
+const reusableClosureSQL = `select r.system_closure, coalesce(r.closure_bytes, 0)
+	from projects q join config_revisions r on r.id = q.config_revision_id
+	where q.host_id = $1 and q.id <> $4 and q.destroyed_at is null and q.guest_id is not null
+	  and q.state not in ('destroying', 'error')
+	  and r.status = 'applied' and r.system_closure is not null
+	  and r.fragment = $2 and coalesce(r.base_version, q.base_version) = $3
+	order by r.applied_at desc nulls last limit 1`
+
+// reuseBuild completes a create's build without a Build command when the
+// host already holds the closure it would produce. The revision becomes
+// `built` with that closure; kernel_changed is false because a new guest
+// has booted nothing yet.
+func (e *Engine) reuseBuild(ctx context.Context, p *store.Project, rev *store.Revision, version string, hostID uuid.UUID) (bool, error) {
+	// "dev" is the api's --base-ref checkout, a name that can move; only a
+	// published base pins one git revision.
+	if version == "dev" || version == "" {
+		return false, nil
+	}
+	var closure string
+	var bytes int64
+	err := e.pool.QueryRow(ctx, reusableClosureSQL, hostID, rev.Fragment, version, p.ID).Scan(&closure, &bytes)
+	if db.IsNoRows(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if _, err := e.pool.Exec(ctx, `update config_revisions set status = 'built', base_version = coalesce(base_version, $2),
+		system_closure = $3, closure_bytes = $4, kernel_changed = false, built_at = now(), error = null, fragment_line = null
+		where id = $1`, rev.ID, version, closure, bytes); err != nil {
+		return false, err
+	}
+	if rev.BaseVersion == nil {
+		if _, err := e.pool.Exec(ctx, "update projects set base_version = coalesce(base_version, $2) where id = $1", p.ID, version); err != nil {
+			return false, err
+		}
+	}
+	e.log.Info("build reused", "event", "build_reused", "project_id", p.ID.String(), "revision_id", rev.ID.String(), "host_id", hostID.String())
+	return true, nil
 }
 
 func (e *Engine) buildCreate(ctx context.Context, op *store.Op, p *store.Project, u *store.User) (*hostdv1.Command, uuid.UUID, bool, error) {
