@@ -93,8 +93,8 @@
 			Let your agents run with full permissions
 		</h1>
 		<p class="mt-5 max-w-2xl text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
-			Your code, tools and secrets on a disposable machine in 15 seconds. Your laptop stays out of
-			reach.
+			Your code, tools and secrets on a disposable machine in 15 seconds. Leave them running for as
+			long as the work takes.
 		</p>
 
 		<div class="mt-8 flex flex-wrap items-center gap-3">
