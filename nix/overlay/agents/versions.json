@@ -1,23 +1,23 @@
 {
   "claude-code": {
-    "version": "2.1.278",
+    "version": "2.1.280",
     "x86_64-linux": {
-      "url": "https://downloads.claude.ai/claude-code-releases/2.1.278/linux-x64/claude",
-      "hash": "sha256-XEc1k3hE6E+KkzBuhBpbDhIlKQmweHD3ibGQRo2hR6s="
+      "url": "https://downloads.claude.ai/claude-code-releases/2.1.280/linux-x64/claude",
+      "hash": "sha256-HghQPb3zwssNcG0y80CCdziNHHbvEIZz6P5CwbMikls="
     }
   },
   "opencode": {
-    "version": "1.18.31",
+    "version": "1.18.32",
     "x86_64-linux": {
-      "url": "https://github.com/anomalyco/opencode/releases/download/v1.18.31/opencode-linux-x64.tar.gz",
-      "hash": "sha256-6TEr517YA7dBX8Kuq9ofT+k4kSo5Zzdi3Aw4wOEeveQ="
+      "url": "https://github.com/anomalyco/opencode/releases/download/v1.18.32/opencode-linux-x64.tar.gz",
+      "hash": "sha256-MEbgQE/cYPuAMH56R4JLoHR3NkF4pNCbqoVISW3W1Ds="
     }
   },
   "codex": {
-    "version": "0.155.1",
+    "version": "0.156.1",
     "x86_64-linux": {
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.155.1/codex-x86_64-unknown-linux-musl.tar.gz",
-      "hash": "sha256-oO+LLevDv3R+B7GgOTVN4xMArA3MInZJi6KBRwtdkRU="
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.156.1/codex-x86_64-unknown-linux-musl.tar.gz",
+      "hash": "sha256-r/RlOag6/4bjxixZK84sUNlTkfnfKJr68DpQwB0UUz0="
     }
   },
   "gemini-cli": {
@@ -28,15 +28,15 @@
     }
   },
   "pi-coding-agent": {
-    "version": "0.86.0",
+    "version": "0.87.1",
     "x86_64-linux": {
-      "url": "https://github.com/earendil-works/pi/releases/download/v0.86.0/pi-linux-x64.tar.gz",
-      "hash": "sha256-r8aXkpO5UGLGP63uGLRrgwibJE1n4cshXNyjfvlSfKo="
+      "url": "https://github.com/earendil-works/pi/releases/download/v0.87.1/pi-linux-x64.tar.gz",
+      "hash": "sha256-gNeN1i1QBJoAa5gdmUxhJVvMEOcwsMJ41OoKdVkJdkw="
     }
   },
   "chrome-devtools-mcp": {
-    "version": "1.9.0",
-    "url": "https://registry.npmjs.org/chrome-devtools-mcp/-/chrome-devtools-mcp-1.9.0.tgz",
-    "hash": "sha256-X3U7HL9XdcjkNxE1Is0QwfDO/RZSHgVyVA1XhgVWwTM="
+    "version": "1.10.1",
+    "url": "https://registry.npmjs.org/chrome-devtools-mcp/-/chrome-devtools-mcp-1.10.1.tgz",
+    "hash": "sha256-ASy89ugy1PZwna0MIde+8XCJ6Ure6c8zF50V6gqa3ys="
   }
 }
