@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -132,14 +134,22 @@ type forwardEntry struct {
 	Host  string // the guest address the forward reaches
 }
 
-// laptopPortFree tries to bind the port on the laptop's loopback, the way
-// ssh's forward will.
+// laptopPortFree tries to bind the port on every address a laptop server
+// may hold it on: both loopbacks and both wildcards. A vite on macOS binds
+// ::1 only, and 127.0.0.1 is then free, yet the browser's "localhost"
+// reaches the laptop's server and not the forward. An address the laptop
+// does not have (no IPv6) says nothing; only "in use" means taken.
 func laptopPortFree(port int) bool {
-	l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
-	if err != nil {
-		return false
+	for _, host := range []string{"127.0.0.1", "::1", "0.0.0.0", "::"} {
+		l, err := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+		if err != nil {
+			if errors.Is(err, syscall.EADDRINUSE) || host == "127.0.0.1" {
+				return false
+			}
+			continue
+		}
+		_ = l.Close()
 	}
-	_ = l.Close()
 	return true
 }
 

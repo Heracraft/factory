@@ -17,6 +17,27 @@ import (
 	"time"
 )
 
+// A laptop server on any of the four addresses holds the port: macOS's
+// vite binds ::1 only, and forwarding onto 127.0.0.1 beside it would send
+// the browser's localhost to the laptop's server.
+func TestLaptopPortTakenOnAnyAddress(t *testing.T) {
+	for _, host := range []string{"127.0.0.1", "::1", "0.0.0.0", "::"} {
+		l, err := net.Listen("tcp", net.JoinHostPort(host, "0"))
+		if err != nil {
+			t.Logf("%s: %v (no such address here; skipped)", host, err)
+			continue
+		}
+		port := l.Addr().(*net.TCPAddr).Port
+		if laptopPortFree(port) {
+			t.Errorf("port %d held on %s reads as free", port, host)
+		}
+		_ = l.Close()
+		if !laptopPortFree(port) {
+			t.Errorf("port %d reads as taken after %s let it go", port, host)
+		}
+	}
+}
+
 func TestParseListeners(t *testing.T) {
 	out := `LISTEN 0 511 0.0.0.0:5173 0.0.0.0:*
 LISTEN 0 4096 127.0.0.1:3000 0.0.0.0:*
