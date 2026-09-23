@@ -28,14 +28,26 @@ age-calculator is running (large), ready in 21s. `repose attach age-calculator` 
 
 $ repose destroy todo-app
 Destroy todo-app? A final snapshot is kept for 30 days. [y/N] y
-Destroying todo-app...
-Destroyed todo-app in 41s. Its last snapshot 0192… is kept until 2026-10-23; `repose snapshots restore 0192… --project 0191… --as-new NAME` brings it back.
+Destroying todo-app. Bring it back within 30 days with: repose restore todo-app
+
+$ repose projects --destroyed
+PROJECT   CLASS  DESTROYED         SNAPSHOT          SIZE    RESTORABLE UNTIL
+todo-app  large  2026-09-23 02:23  2026-09-23 02:23  2.0 MB  2026-10-23
+`repose restore NAME` brings one back (`--as NEW-NAME` when the name is in use).
+
+$ repose restore todo-app
+Restored todo-app from its snapshot of 2026-09-23 02:23 in 31s; it is running (large). `repose attach todo-app` to get in.
 ```
 
-A destroy that fails says so, and never prints "Destroyed" (I-153):
+The destroy returns as soon as the api has accepted it (DECISIONS
+I-166); the project reads `destroying` until it is gone. A destroy that
+fails shows in `repose projects` and `repose status` as `error` with the
+reason and the retry, and as a `destroy_failed` notification (I-165).
+`--wait` waits and reports, for scripts, and never prints "Destroyed"
+for a destroy that failed (I-153):
 
 ```
-$ repose destroy age-calculator --yes
+$ repose destroy age-calculator --yes --wait
 Could not destroy age-calculator: the host could not remove the volume (internal). age-calculator is still there, in state error. `repose destroy age-calculator` tries again.
 ```
 
@@ -106,11 +118,18 @@ Destroy:
 - Asks `Destroy <slug>? A final snapshot is kept for 30 days. [y/N]`
   unless `--yes` (`-y`); an empty answer is no, and without a terminal the
   CLI asks for `--yes` rather than guessing (the owner's request,
-  2026-09-23: the snapshot makes a typed name redundant). The CLI waits
-  for the destroy op and reports `Destroyed` only when it is done and the
-  project is gone; a failed op is reported with the project's state and
-  the command that retries (DECISIONS I-153, api.md). Stops first if running,
-  with a final snapshot unless `--no-snapshot`.
+  2026-09-23: the snapshot makes a typed name redundant). The CLI returns
+  once the api has accepted the destroy and prints `repose restore
+  <slug>` (I-166); `--wait` waits for the op and reports `Destroyed` only
+  when it is done and the project is gone, and a failed op with the
+  project's state and the command that retries (DECISIONS I-153,
+  api.md).
+- The project is `destroying` from the moment the api accepts. The op
+  stops the guest if it is not stopped (no snapshot in the stop), then
+  takes the final snapshot of the stopped volume, which is clean without
+  a freeze, then deletes the guest (I-165). The snapshot reads only the
+  blocks the filesystem uses (I-164), so its time follows the data, not
+  the volume's size.
 - Deletes the thin volume, the guest's units, GC roots for its closures,
   its tap and nftables entries, and the tmpfs secrets. Keeps the project row
   (`destroyed_at` set), its events, its usage, and its newest snapshot with
@@ -124,11 +143,18 @@ Destroy:
   is the one kept 30 days. A guest the host no longer has is already
   destroyed. The op ends `error` only for a real host failure (deleting
   the volume, uploading the snapshot), and destroying again resumes.
-- `DELETE` answers with the destroy's `op_id`; the CLI waits for that op
-  and prints "Destroyed." only when it is `done`.
-- Within 30 days, `repose snapshots restore <id> --as-new <name>` brings
-  it back as a new project. After 30 days the snapshot is deleted by the
-  retention job and the dashboard stops listing it.
+- `DELETE` answers with the destroy's `op_id`; `repose destroy --wait`
+  waits for that op and prints "Destroyed." only when it is `done`. A
+  failed destroy leaves the project in `error` with a reason that names
+  `repose destroy <slug>` as the retry, and sends `destroy_failed`.
+- Within 30 days, `repose restore <slug>` brings it back as a new project
+  under the same name (or `--as NEW-NAME` when a live project has it),
+  from its newest snapshot or `--snapshot ID`, with its class, volume
+  size, configuration and remote (I-167). `repose projects --destroyed`
+  and the dashboard's "Recently destroyed" list what can be restored and
+  until when. `repose snapshots restore <id> --as-new <name>` still
+  works. After 30 days the snapshot is deleted by the retention job and
+  neither lists it.
 
 Account cancellation (`DELETE /me`, dashboard button):
 

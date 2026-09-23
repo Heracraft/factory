@@ -114,6 +114,7 @@ func newRootCmd(version string) *cobra.Command {
 		newConfigCmd(env, g),
 		newSnapshotsCmd(env, g),
 		newDestroyCmd(env, g),
+		newRestoreCmd(env),
 		newLogsCmd(envJSON, env, g),
 		newProjectsCmd(envJSON),
 		newEventsCmd(envJSON, env, g),
@@ -373,6 +374,7 @@ func newStatusCmd(envJSON func(*cobra.Command) (*Env, error), env func() (*Env, 
 }
 
 func newProjectsCmd(envJSON func(*cobra.Command) (*Env, error)) *cobra.Command {
+	var destroyed bool
 	cmd := &cobra.Command{
 		Use:   "projects",
 		Short: "List every project",
@@ -382,10 +384,14 @@ func newProjectsCmd(envJSON func(*cobra.Command) (*Env, error)) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if destroyed {
+				return DestroyedCmd(cmd.Context(), e)
+			}
 			return ProjectsCmd(cmd.Context(), e)
 		},
 	}
 	cmd.Flags().Bool("json", false, "print as JSON")
+	cmd.Flags().BoolVar(&destroyed, "destroyed", false, "list destroyed projects that can still be restored, and until when")
 	return cmd
 }
 
@@ -617,7 +623,7 @@ func newSnapshotsCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 }
 
 func newDestroyCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
-	var yes bool
+	var yes, wait bool
 	cmd := &cobra.Command{
 		Use:               "destroy [PROJECT]",
 		Short:             "Destroy a project (a final snapshot is kept for 30 days)",
@@ -636,10 +642,61 @@ func newDestroyCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 			if !yes {
 				confirm = func(prompt string) (bool, error) { return askYesNo(prompt, false, "destroying") }
 			}
-			return DestroyCmd(cmd.Context(), e, project, yes, confirm)
+			return DestroyCmd(cmd.Context(), e, project, yes, wait, confirm)
 		},
 	}
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation")
+	cmd.Flags().BoolVar(&wait, "wait", false, "wait until the destroy is done and report how it ended (for scripts)")
+	return cmd
+}
+
+func newRestoreCmd(env func() (*Env, error)) *cobra.Command {
+	var as, snapshot string
+	cmd := &cobra.Command{
+		Use:   "restore NAME",
+		Short: "Bring back a destroyed project from its newest snapshot (kept 30 days)",
+		Long: "Restores NAME, a project you destroyed in the last 30 days (or one that still exists), from its\n" +
+			"newest snapshot into a new project called NAME, or --as NEW-NAME when that name is in use.\n" +
+			"`repose projects --destroyed` lists what can be restored. `repose snapshots restore` still\n" +
+			"restores a given snapshot over a stopped project in place.",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 1 {
+				return cobraUsageError{fmt.Errorf("%s takes one NAME, got %d arguments: %s", cmd.CommandPath(), len(args), strings.Join(args, " "))}
+			}
+			return nil
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) > 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return destroyedSlugsForCompletion(env), cobra.ShellCompDirectiveNoFileComp
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			e, err := env()
+			if err != nil {
+				return err
+			}
+			name := ""
+			if len(args) == 1 {
+				name = args[0]
+			}
+			var ask func(string) (string, error)
+			if isTerminal(os.Stdin) {
+				ask = func(prompt string) (string, error) {
+					_, _ = fmt.Fprint(os.Stderr, prompt)
+					line, err := readLine()
+					if err != nil && line == "" {
+						_, _ = fmt.Fprintln(os.Stderr)
+						return "", nil
+					}
+					return line, nil
+				}
+			}
+			return RestoreCmd(cmd.Context(), e, name, as, snapshot, ask)
+		},
+	}
+	cmd.Flags().StringVar(&as, "as", "", "name for the restored project (default: its old name)")
+	cmd.Flags().StringVar(&snapshot, "snapshot", "", "restore this snapshot instead of the newest (`repose snapshots list --project ID` lists them)")
 	return cmd
 }
 

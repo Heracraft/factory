@@ -68,7 +68,7 @@ func (s *Server) listDestroyed(w http.ResponseWriter, r *http.Request) error {
 			"id": d.ID, "name": d.Name, "slug": d.Slug, "class": d.Class, "remote_url": d.RemoteURL,
 			"volume_bytes": d.VolumeBytes, "destroyed_at": d.DestroyedAt, "name_free": d.NameFree,
 			"restorable_until": d.SnapExpires,
-			"snapshot": map[string]any{"id": d.SnapID, "created_at": d.SnapTaken, "bytes": d.SnapBytes, "reason": d.SnapReason, "expires_at": d.SnapExpires},
+			"snapshot":         map[string]any{"id": d.SnapID, "created_at": d.SnapTaken, "bytes": d.SnapBytes, "reason": d.SnapReason, "expires_at": d.SnapExpires},
 		})
 	}
 	writeJSON(w, http.StatusOK, out)

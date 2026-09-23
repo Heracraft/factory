@@ -100,10 +100,11 @@ repose config apply [PATH]      # PATH defaults to ./repose.nix if present, else
 repose snapshots list
 repose snapshots create
 repose snapshots restore SNAPSHOT_ID [--as-new NAME]
-repose destroy [PROJECT] [--yes|-y]
+repose destroy [PROJECT] [--yes|-y] [--wait]
+repose restore NAME [--as NEW-NAME] [--snapshot ID]
 repose logs [PROJECT] [--kind console|build|ops] [--since 1h] [--follow|-f]
 repose events [PROJECT] [--since 24h] [--follow|-f]
-repose projects                  # list all, ignores cwd
+repose projects [--destroyed]    # list all, ignores cwd; --destroyed: what can be restored
 repose version
 repose completion bash|zsh|fish
 repose mcp forward ...           # reserved, prints not-available message
@@ -352,14 +353,31 @@ the api recorded for an `error` (`last_error`), and the command that fits
   healthy: says so, exit 0.
 - `destroy [PROJECT]`: asks `Destroy <slug>? A final snapshot is kept for
   30 days. [y/N]` unless `--yes`/`-y` (no terminal and no `--yes`: exit 2).
-  Then `DELETE /projects/:id` → `202 {op_id}` (api.md, I-156); the CLI
-  waits on that op, then on `GET` answering 404, and only then prints
-  `Destroyed <slug> in <time>. Its last snapshot <id> is kept until <date>;
-  \`repose snapshots restore <id> --project <project id> --as-new NAME\`
-  brings it back.` An op in `error` prints `Could not destroy <slug>:
-  <reason> (<code>). <slug> is still there, <state>. \`repose destroy
-  <slug>\` tries again.` and exits 1. An api that answers without an op id
-  is waited on by polling the project (DECISIONS I-153).
+  Then `DELETE /projects/:id` → `202 {op_id}` (api.md, I-156) and, by
+  default, returns at once (DECISIONS I-166): `Destroying <slug>. Bring it
+  back within 30 days with: repose restore <slug>`. The project reads
+  `destroying` in `repose projects` from then on; a destroy that fails
+  shows there as `error` with the reason and `repose destroy <slug>` as
+  the retry, in `repose status`, and as a `destroy_failed` notification
+  (I-165). `--wait` keeps the old behaviour for scripts: wait on the op,
+  then on `GET` answering 404, and only then print `Destroyed <slug> in
+  <time>. Its last snapshot is kept until <date>; \`repose restore
+  <slug>\` brings it back.`; an op in `error` prints `Could not destroy
+  <slug>: <reason> (<code>). <slug> is still there, <state>. \`repose
+  destroy <slug>\` tries again.` and exits 1. An api that answers without
+  an op id is waited on by polling the project (DECISIONS I-153).
+- `restore NAME [--as NEW-NAME] [--snapshot ID]` (I-167): `POST
+  /projects/restore {slug (or project_id when NAME is an id), name?,
+  snapshot_id?}`, then waits with the phases of a create (building,
+  restoring, booting) and prints `Restored <slug> from its snapshot of
+  <time> in <elapsed>; it is running (<class>). \`repose attach <slug>\`
+  to get in.` NAME is resolved by the api: the live project with that
+  slug, else the destroyed ones, newest snapshot first. A name in use
+  (`409` with `detail.reason = "name_taken"`) asks for another name on a
+  terminal (empty cancels) and otherwise exits 2 naming `--as`; nothing to
+  restore exits 3 with the api's sentence and `repose projects
+  --destroyed`. Completion offers the destroyed projects' slugs.
+  `snapshots restore` is unchanged, for restoring in place.
 - Resize is `repose config apply` with `volume_bytes` in the fragment
   header? No: it is its own route, so `repose resize 80G` exists as a
   hidden alias of `POST /resize`; document it in `features/config.md` only.
@@ -381,6 +399,10 @@ UP AGENTS TODAY MONTH`, `-` where a column does not apply, uptime only
 while running), then one line per project in `error` with its reason and
 the command that fixes it; with no projects it says how to create one.
 `--json` is the api's list, unchanged (DECISIONS I-153).
+`repose projects --destroyed` lists `GET /projects/destroyed`: `PROJECT
+CLASS DESTROYED SNAPSHOT SIZE RESTORABLE UNTIL`, `(name in use)` after a
+slug a live project holds, and a last line naming `repose restore NAME`;
+`--json` is the api's list (I-167).
 
 ### 5.8 Build log rendering
 
@@ -555,6 +577,12 @@ removes all of them including the `Include` line.
       true state on attach, projects header and reasons, sentences for ssh
       errors (I-151..I-155). Evidence: `go test ./internal/cli/` output
       naming them.
+- [ ] `repose destroy` returns within 2 s of the `[y/N]` with the restore
+      command, `repose projects` shows `destroying`, and `repose restore
+      NAME` brings the project back under its name (I-166, I-167).
+      Evidence: `TestDestroyThenRestoreByName`,
+      `TestProjectsShowAFailedDestroy`, and a laptop transcript with
+      timings against the real api.
 - [ ] Credential sync copies exactly the four rows and never the Claude,
       Gemini or SSH key files, even if present. Evidence: integration test
       that plants all of them and asserts.

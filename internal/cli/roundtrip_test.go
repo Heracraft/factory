@@ -160,7 +160,7 @@ func TestDestroyRoundTrip(t *testing.T) {
 	e, p := newRoundtripEnv(t, fake)
 	ctx := context.Background()
 
-	if err := DestroyCmd(ctx, e, "", true, nil); err != nil {
+	if err := DestroyCmd(ctx, e, "", true, true, nil); err != nil {
 		t.Fatalf("DestroyCmd: %v", err)
 	}
 	if _, err := e.Client.GetProject(ctx, p.ID); err == nil {

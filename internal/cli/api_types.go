@@ -162,10 +162,11 @@ type ConfigResponse struct {
 }
 
 type Snapshot struct {
-	ID        string    `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	Bytes     int64     `json:"bytes"`
-	Reason    string    `json:"reason"`
+	ID        string     `json:"id"`
+	CreatedAt time.Time  `json:"created_at"`
+	Bytes     int64      `json:"bytes"`
+	Reason    string     `json:"reason"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 type Event struct {

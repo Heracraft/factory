@@ -56,13 +56,13 @@ func TestDestroyRequiresConfirmation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = DestroyCmd(ctx, e, p.ID, false, nil)
+	err = DestroyCmd(ctx, e, p.ID, false, false, nil)
 	ee, ok := err.(*exitError)
 	if !ok || ee.code != ExitUsage {
 		t.Fatalf("err = %v, want a usage exitError", err)
 	}
 
-	if err := DestroyCmd(ctx, e, p.ID, true, nil); err != nil {
+	if err := DestroyCmd(ctx, e, p.ID, true, false, nil); err != nil {
 		t.Fatalf("DestroyCmd --yes: %v", err)
 	}
 	// A destroyed project drops out of GET /projects/:id entirely (the

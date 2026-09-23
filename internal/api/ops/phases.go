@@ -975,8 +975,12 @@ func (e *Engine) onFail(ctx context.Context, op *store.Op, code, msg string, lin
 		// The CLI no longer waits for a destroy (I-166), so the failure
 		// has to reach the user some other way: the project's state and
 		// reason in every list, and a notification.
-		_, _ = e.pool.Exec(ctx, "update projects set state = 'error', last_error = $2 where id = $1 and state <> 'destroyed'", p.ID, code+": "+short) // best effort; the op carries the error
-		e.notifyPlatform(ctx, p.ID, "destroy_failed", "destroying "+p.Slug+" failed: "+short+". `repose destroy "+p.Slug+"` tries again.")
+		// The reason names the retry, so `repose projects` and the
+		// dashboard say "destroy again", not the "start" every other error
+		// suggests.
+		reason := "destroying " + p.Slug + " failed: " + strings.TrimSuffix(short, ".") + ". `repose destroy " + p.Slug + "` tries again"
+		_, _ = e.pool.Exec(ctx, "update projects set state = 'error', last_error = $2 where id = $1 and state <> 'destroyed'", p.ID, code+": "+reason) // best effort; the op carries the error
+		e.notifyPlatform(ctx, p.ID, "destroy_failed", reason+".")
 	case op.Kind == KindCreate || op.Kind == KindStart || op.Kind == KindStop || op.Kind == KindRestore:
 		if code == "capacity" {
 			_, _ = e.pool.Exec(ctx, "update projects set host_id = null where id = $1", p.ID) // free the placement

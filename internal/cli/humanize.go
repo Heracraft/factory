@@ -141,7 +141,7 @@ func notRunningMessage(p *Project) string {
 	case "restoring":
 		return fmt.Sprintf("%s is being restored from a snapshot. `repose status %s` shows when it is done.", s, s)
 	case "destroying", "destroyed":
-		return fmt.Sprintf("%s is %s; its last snapshot is kept for 30 days (`repose snapshots restore <id> --as-new NAME`).", s, p.State)
+		return fmt.Sprintf("%s is %s; its last snapshot is kept for 30 days, and `%s` brings it back.", s, p.State, restoreHint(s))
 	case "error":
 		reason := projectReason(p)
 		if reason == "" {

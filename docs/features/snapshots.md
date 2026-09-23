@@ -55,8 +55,11 @@ Retention (DECISIONS R4-11):
 
 - Seven daily snapshots per project, oldest deleted after the newest
   succeeds, never before. Manual snapshots count toward the seven.
-- After `destroy`, the last snapshot is kept 30 days and listed under the
-  destroyed project in the dashboard; `restore --as-new` brings it back.
+- After `destroy`, the last snapshot is kept 30 days and listed under
+  "Recently destroyed" in the dashboard and in `repose projects
+  --destroyed`; `repose restore <name>` (or the dashboard's Restore)
+  brings it back as a new project (DECISIONS I-167), and `snapshots
+  restore <id> --as-new` still does.
 - After account cancellation, all guests stop, snapshots are kept 30 days,
   then deleted with the account's other data.
 - A project that has been stopped for months keeps its most recent

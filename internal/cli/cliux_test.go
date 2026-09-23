@@ -70,7 +70,7 @@ func TestDestroyReportsAFailedOp(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = DestroyCmd(ctx, e, p.ID, true, nil)
+			err = DestroyCmd(ctx, e, p.ID, true, true, nil)
 			ee, ok := err.(*exitError)
 			if !ok || ee.code != ExitGeneric {
 				t.Fatalf("err = %v, want exit 1", err)
@@ -107,7 +107,7 @@ func TestDestroyConfirmationIsYesNo(t *testing.T) {
 
 	var asked string
 	no := func(prompt string) (bool, error) { asked = prompt; return false, nil }
-	if err := DestroyCmd(ctx, e, p.ID, false, no); err != nil {
+	if err := DestroyCmd(ctx, e, p.ID, false, false, no); err != nil {
 		t.Fatalf("declined destroy: %v", err)
 	}
 	if asked != "Destroy age-calculator? A final snapshot is kept for 30 days. [y/N] " {
@@ -121,10 +121,12 @@ func TestDestroyConfirmationIsYesNo(t *testing.T) {
 	}
 
 	yes := func(string) (bool, error) { return true, nil }
-	if err := DestroyCmd(ctx, e, p.ID, false, yes); err != nil {
+	if err := DestroyCmd(ctx, e, p.ID, false, false, yes); err != nil {
 		t.Fatalf("confirmed destroy: %v", err)
 	}
-	if !strings.Contains(out.String(), "Destroyed age-calculator") || !strings.Contains(out.String(), "--project "+p.ID) {
+	// I-166: the destroy returns once accepted, with the one command that
+	// brings it back.
+	if !strings.Contains(out.String(), "Destroying age-calculator. Bring it back within 30 days with: repose restore age-calculator\n") {
 		t.Fatalf("out = %q", out.String())
 	}
 	if _, err := e.Client.GetProject(ctx, p.ID); !isNotFound(err) {

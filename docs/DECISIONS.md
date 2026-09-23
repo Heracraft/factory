@@ -3675,6 +3675,36 @@ volume in the background (a project listed as destroyed whose final
 snapshot may still fail is a promise the list cannot keep; I-164 makes the
 remaining work seconds).
 
+**I-166. `repose destroy` returns when the api has accepted the destroy.**
+(destroy-restore, 07, 2026-09-23; owner: "perhaps we need to make it
+background, but the issue is getting that restore command") v0.1.5 waited
+the whole op (38 s for izma) to print the restore command. After the
+`[y/N]` the CLI now sends `DELETE`, and on the `202` prints `Destroying
+<slug>. Bring it back within 30 days with: repose restore <slug>` and
+exits 0: one api round trip, well under the 1-2 s target. The restore
+command no longer needs anything the op produces, because `repose
+restore` resolves the name and the newest snapshot itself (I-167).
+Failures stay visible without the wait: the project reads `destroying`
+from the DELETE on (I-165), a failed destroy leaves it in `error` with a
+reason whose next step is `repose destroy <slug>` (the api writes it into
+`last_error`, and `repose projects`/`status` show it instead of the
+generic "`repose start` restarts it"), and `destroy_failed` notifies.
+`--wait` keeps the I-153 behaviour for scripts (wait on the op, then on
+the 404, `Destroyed <slug> in <time>` only when gone, `Could not destroy`
+and exit 1 otherwise) and its last line now names `repose restore <slug>`
+too. Found on the way: `stop` and `destroy --wait` took the *last*
+element of `GET /snapshots` as the newest, but the api lists newest first
+(the fake oldest first), so a stop printed its project's oldest snapshot
+id; both now pick the newest by `created_at` (`newestSnapshot`). The
+"destroying/destroyed" not-running message names `repose restore` as
+well. `TestDestroyConfirmationIsYesNo`, `TestDestroyThenRestoreByName`,
+`TestProjectsShowAFailedDestroy`, `TestNewestSnapshotIgnoresOrder`,
+`TestDestroyReportsAFailedOp` (now with `--wait`). *Rejected:* waiting
+only for the stop and returning before the snapshot (still 4 s, and the
+stop is not what the user cares about); a background process on the
+laptop that waits and notifies (a laptop that closes loses it; the api
+already notifies).
+
 **I-167. Restore by name: `GET /projects/destroyed`, `POST
 /projects/restore`, `repose restore NAME`.** (destroy-restore, 05/07/08,
 2026-09-23; owner: "the restore command is too complicated") The destroy
@@ -3705,3 +3735,18 @@ running project's disk; `repose snapshots restore ID` still does it, with
 its stop prompt); a `?destroyed=true` switch on `GET /projects` (one
 route, two shapes); resolving by slug inside the existing snapshot route
 (its path starts with a project id, which is what the user does not have).
+CLI: `repose restore NAME [--as NEW-NAME] [--snapshot ID]` posts that
+route (NAME may also be a project id, so the v0.1.5 destroy message's id
+still works), waits with the create phases and ends `Restored <slug> from
+its snapshot of <time> in <elapsed>; it is running (<class>). \`repose
+attach <slug>\` to get in.` A name in use asks for another on a terminal
+(empty cancels) and otherwise exits 2 naming `--as`; nothing to restore
+exits 3 with the api's sentence and `repose projects --destroyed`, which
+lists `PROJECT CLASS DESTROYED SNAPSHOT SIZE RESTORABLE UNTIL` (`--json`
+is the api's list). Completion for `restore` offers the destroyed slugs
+(the api, two seconds at most). `repose snapshots restore` is unchanged.
+`TestDestroyThenRestoreByName` (fake api: destroy, list, restore by name
+with the remote, live-name 404, name taken without and with a terminal,
+unknown name). Not done: `repose restore` with no NAME inside a checkout
+whose project was destroyed (the remote could find it; it asks for the
+name instead).

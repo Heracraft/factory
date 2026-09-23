@@ -104,9 +104,10 @@ func StopCmd(ctx context.Context, e *Env, projectArg string, snapshot bool) erro
 		return err
 	}
 	snapID, snapBytes := "", int64(0)
-	if snaps, err := e.Client.ListSnapshots(ctx, project.ID); err == nil && len(snaps) > 0 {
-		latest := snaps[len(snaps)-1]
-		snapID, snapBytes = latest.ID, latest.Bytes
+	if snaps, err := e.Client.ListSnapshots(ctx, project.ID); err == nil {
+		if latest := newestSnapshot(snaps); latest != nil {
+			snapID, snapBytes = latest.ID, latest.Bytes
+		}
 	}
 	if snapshot && snapID != "" {
 		_, _ = fmt.Fprintf(e.Out, "Stopped %s in %s. Snapshot %s (%s). Disk is still billed; `repose destroy %s` to stop that.\n", p.Slug, fmtElapsed(pr.Total()), snapID, humanBytes(snapBytes), p.Slug)
@@ -128,11 +129,15 @@ func destroyPrompt(slug string) string {
 	return fmt.Sprintf("Destroy %s? A final snapshot is kept for 30 days. [y/N] ", slug)
 }
 
-// DestroyCmd implements `repose destroy [PROJECT] [--yes]`. It prints
-// "Destroyed" only when the destroy op is done and the project is gone
-// (api.md: DELETE answers 202 {op_id}, I-156); a failed op is reported
-// with the project's actual state and the command to try again.
-func DestroyCmd(ctx context.Context, e *Env, projectArg string, yes bool, confirm func(prompt string) (bool, error)) error {
+// DestroyCmd implements `repose destroy [PROJECT] [--yes] [--wait]`.
+// By default it returns as soon as the api has accepted the destroy
+// (DECISIONS I-166): the project reads `destroying` in `repose projects`
+// from then on, and a failure shows there, in `repose status`, and as a
+// destroy_failed notification (I-165). With wait it prints "Destroyed"
+// only when the destroy op is done and the project is gone (api.md:
+// DELETE answers 202 {op_id}, I-156); a failed op is reported with the
+// project's actual state and the command to try again.
+func DestroyCmd(ctx context.Context, e *Env, projectArg string, yes, wait bool, confirm func(prompt string) (bool, error)) error {
 	project, err := requireProject(ctx, e, projectArg)
 	if err != nil {
 		return err
@@ -159,6 +164,11 @@ func DestroyCmd(ctx context.Context, e *Env, projectArg string, yes bool, confir
 		return err
 	}); err != nil {
 		return err
+	}
+	if !wait {
+		pr.Fail()
+		_, _ = fmt.Fprintf(e.Out, "Destroying %s. Bring it back within 30 days with: %s\n", project.Slug, restoreHint(project.Slug))
+		return nil
 	}
 	pr.Phase("Destroying "+project.Slug, "")
 	retry := fmt.Sprintf("`repose destroy %s` tries again.", project.Slug)
@@ -203,14 +213,31 @@ func DestroyCmd(ctx context.Context, e *Env, projectArg string, yes bool, confir
 		}
 	}
 	pr.Fail()
-	snapLine := "Its final snapshot is kept for 30 days."
-	if snaps, err := e.Client.ListSnapshots(ctx, project.ID); err == nil && len(snaps) > 0 {
-		latest := snaps[len(snaps)-1]
-		until := latest.CreatedAt.AddDate(0, 0, 30).Local().Format("2006-01-02")
-		snapLine = fmt.Sprintf("Its last snapshot %s is kept until %s; `repose snapshots restore %s --project %s --as-new NAME` brings it back.", latest.ID, until, latest.ID, project.ID)
+	snapLine := fmt.Sprintf("Its final snapshot is kept for 30 days; `%s` brings it back.", restoreHint(project.Slug))
+	if snaps, err := e.Client.ListSnapshots(ctx, project.ID); err == nil {
+		if latest := newestSnapshot(snaps); latest != nil {
+			until := latest.CreatedAt.AddDate(0, 0, 30)
+			if latest.ExpiresAt != nil {
+				until = *latest.ExpiresAt
+			}
+			snapLine = fmt.Sprintf("Its last snapshot is kept until %s; `%s` brings it back.", until.Local().Format("2006-01-02"), restoreHint(project.Slug))
+		}
 	}
 	_, _ = fmt.Fprintf(e.Out, "Destroyed %s in %s. %s\n", project.Slug, fmtElapsed(pr.Total()), snapLine)
 	return nil
+}
+
+// newestSnapshot is the most recent of snaps, or nil. The api lists them
+// newest first and the fake api oldest first; v0.1.5 took the last one,
+// which on the real api was the oldest (DECISIONS I-166).
+func newestSnapshot(snaps []Snapshot) *Snapshot {
+	var best *Snapshot
+	for i := range snaps {
+		if best == nil || snaps[i].CreatedAt.After(best.CreatedAt) {
+			best = &snaps[i]
+		}
+	}
+	return best
 }
 
 func reasonOrDefault(p *Project) string {

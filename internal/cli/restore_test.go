@@ -1,0 +1,143 @@
+package cli
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+
+	fakeapi "github.com/heracraft/repose/internal/fakes/api"
+)
+
+// TestDestroyThenRestoreByName is the owner's 2026-09-23 request end to
+// end against the fake api: `repose destroy izma` returns at once with
+// `repose restore izma` (I-166), `repose projects --destroyed` lists it
+// with its expiry, and `repose restore izma` brings it back under its
+// name (I-167).
+func TestDestroyThenRestoreByName(t *testing.T) {
+	fake := fakeapi.New(fakeapi.Options{})
+	defer fake.Close()
+	e := newLifecycleEnv(t, fake)
+	var out strings.Builder
+	e.Out = &out
+	ctx := context.Background()
+	p, err := e.Client.CreateProject(ctx, CreateProjectRequest{Name: "izma", Class: "large", RemoteURL: "github.com/owner/izma"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := DestroyCmd(ctx, e, p.ID, true, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != "Destroying izma. Bring it back within 30 days with: repose restore izma\n" {
+		t.Fatalf("destroy said %q", got)
+	}
+
+	out.Reset()
+	if err := DestroyedCmd(ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 3 || !strings.HasPrefix(lines[0], "PROJECT") || !strings.Contains(lines[0], "RESTORABLE UNTIL") ||
+		!strings.HasPrefix(lines[1], "izma ") || !strings.Contains(lines[2], "repose restore NAME") {
+		t.Fatalf("projects --destroyed:\n%s", out.String())
+	}
+	out.Reset()
+	e.JSON = true
+	if err := DestroyedCmd(ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	var decoded []map[string]any
+	if err := json.Unmarshal([]byte(out.String()), &decoded); err != nil || len(decoded) != 1 || decoded[0]["restorable_until"] == nil {
+		t.Fatalf("--destroyed --json: %v %s", err, out.String())
+	}
+	e.JSON = false
+
+	out.Reset()
+	if err := RestoreCmd(ctx, e, "izma", "", "", nil); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if !strings.HasPrefix(out.String(), "Restored izma from its snapshot of ") || !strings.Contains(out.String(), "`repose attach izma`") {
+		t.Fatalf("restore said %q", out.String())
+	}
+	back, err := findByIDOrSlug(ctx, e.Client, "izma")
+	if err != nil || back == nil || back.RemoteURL != "github.com/owner/izma" {
+		t.Fatalf("restored project: %+v %v", back, err)
+	}
+
+	// `izma` now means the live project, which has no snapshot yet.
+	err = RestoreCmd(ctx, e, "izma", "", "", nil)
+	if ee, ok := err.(*exitError); !ok || ee.code != ExitProjectNotFound || !strings.Contains(ee.msg, "izma has no snapshot left to restore") {
+		t.Fatalf("restore of a live project without snapshots: %v", err)
+	}
+	// The destroyed one, by the id the old destroy message printed: the
+	// name is taken, so without a terminal the CLI says to pass --as,
+	// with one it asks, and an empty answer restores nothing.
+	err = RestoreCmd(ctx, e, p.ID, "", "", nil)
+	if ee, ok := err.(*exitError); !ok || ee.code != ExitUsage || !strings.Contains(ee.msg, "--as NEW-NAME") {
+		t.Fatalf("restore onto a taken name: %v", err)
+	}
+	out.Reset()
+	if err := RestoreCmd(ctx, e, p.ID, "", "", func(string) (string, error) { return "", nil }); err != nil || !strings.Contains(out.String(), "Nothing restored") {
+		t.Fatalf("cancelled restore: %v %q", err, out.String())
+	}
+	var asked string
+	out.Reset()
+	if err := RestoreCmd(ctx, e, p.ID, "", "", func(q string) (string, error) { asked = q; return "izma-old", nil }); err != nil {
+		t.Fatalf("restore under an asked name: %v", err)
+	}
+	if !strings.Contains(asked, "A project called izma already exists") || !strings.HasPrefix(out.String(), "Restored izma-old") {
+		t.Fatalf("asked %q, said %q", asked, out.String())
+	}
+
+	// Nothing by that name.
+	err = RestoreCmd(ctx, e, "nope", "", "", nil)
+	if ee, ok := err.(*exitError); !ok || ee.code != ExitProjectNotFound || !strings.Contains(ee.msg, "projects --destroyed") {
+		t.Fatalf("restore of an unknown name: %v", err)
+	}
+	if err := RestoreCmd(ctx, e, "", "", "", nil); err == nil {
+		t.Fatal("restore with no name accepted")
+	}
+}
+
+// A failed destroy the CLI no longer waits for shows in `repose
+// projects` with the api's reason, whose own next step (destroy again)
+// wins over the generic "start restarts it" (I-165, I-166).
+func TestProjectsShowAFailedDestroy(t *testing.T) {
+	le := "internal: destroying izma failed: the host could not remove the volume. `repose destroy izma` tries again"
+	var out strings.Builder
+	writeProjectsTable(&out, []Project{{Slug: "izma", Class: "large", State: "error", LastError: &le}})
+	if !strings.Contains(out.String(), "izma: destroying izma failed") || !strings.Contains(out.String(), "`repose destroy izma` tries again") ||
+		strings.Contains(out.String(), "repose start izma") {
+		t.Fatalf("projects table:\n%s", out.String())
+	}
+	out.Reset()
+	writeProjectsTable(&out, []Project{{Slug: "izma", Class: "large", State: "destroying"}})
+	if !strings.Contains(out.String(), "destroying") {
+		t.Fatalf("projects table:\n%s", out.String())
+	}
+}
+
+// TestNewestSnapshotIgnoresOrder: the api lists snapshots newest first,
+// the fake oldest first; v0.1.5 took the last element.
+func TestNewestSnapshotIgnoresOrder(t *testing.T) {
+	now := mustTime(t, "2026-09-23T02:23:19Z")
+	old := mustTime(t, "2026-09-22T03:00:00Z")
+	for _, snaps := range [][]Snapshot{{{ID: "new", CreatedAt: now}, {ID: "old", CreatedAt: old}}, {{ID: "old", CreatedAt: old}, {ID: "new", CreatedAt: now}}} {
+		if got := newestSnapshot(snaps); got == nil || got.ID != "new" {
+			t.Fatalf("newest of %+v = %+v", snaps, got)
+		}
+	}
+	if newestSnapshot(nil) != nil {
+		t.Fatal("newest of none")
+	}
+}
+
+func mustTime(t *testing.T, s string) time.Time {
+	t.Helper()
+	v, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
