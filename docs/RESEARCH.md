@@ -723,3 +723,54 @@ The notification path is the outbox's 2 s poll plus delivery; the 7 s of
 Codex and opencode against Claude's 1 s is where in the poll the event
 landed.
 
+
+## 14. Provisioning time budget (host-01, 2026-09-23)
+
+Measured by the provision-speed worker, read-only: hostd's and the host's
+journal for the owner's `izma` create (large, default fragment, base
+2026.09.21.5), the api and api-grpc container logs on the control VM, and
+`systemd-analyze` plus `journalctl -b` inside `m3-check` (small, its last
+boot a start at 2026-09-21 02:31:55Z) through `repose-admin exec`. Host as
+in §11. The "after" column is an estimate until the api is deployed, the
+next base is published and host-01 is switched; each row names the
+decision that changes it.
+
+| Phase | Before (measured) | After (expected) | Change |
+|---|---|---|---|
+| `POST /projects` (api) to the Build command sent (api-grpc drives the ops) | same second in both logs; up to 0.5 s of api-grpc's poll | at once (NOTIFY) | I-163, api |
+| `Build` of the default fragment on a warm host | 6.08 s (eval 5.71 s, build 0.33 s, 6.2 s CPU, 872 MB peak) | 0 when another live guest on the host runs the same fragment on the same base, else unchanged | I-160, api |
+| Build result to CreateGuest sent | 45 ms | 45 ms | |
+| CreateGuest `creating` to `starting` (lvcreate, mkfs, GC root, tap, nft, tc, virtiofsd) | 1.50 s (StartGuest, no volume: 0.13 s) | about 0.5 s | I-162, hostd |
+| Cloud Hypervisor start to guest kernel | about 0.3 s | same | |
+| Guest kernel | 0.84 s | same | |
+| Guest initrd | 4.21 s (two silent waits of 0.68 s and 0.83 s: serial console queries timing out, mount-monitor rate limit) | about 2.3 s | I-161, base |
+| Switch root to stage-2 journald | 1.98 s (0.33 s of it the console query) | about 1.1 s | I-161, base |
+| Stage 2 to `docker.service` start | 1.7 s | same | |
+| `docker.service` (guestd and sshd ordered after it) | 2.37 s | 0 on the path | I-161, base |
+| guestd start to Ready (0.5 s poll of `/proc/net/tcp`) | 0.65 s | about 0.35 s | I-161, base |
+| Ready to paths registered (`nix-store --dump-db` 70 ms on the host, `--load-db` in the guest) | 0.45 s | same | |
+| `repose-paths` noticing the stamp (0.5 s poll) | 0.51 s | under 0.1 s | I-161, base |
+| home-manager activation | 1.07 s | same | |
+| `systemd-user-sessions` and SetupProject (first login allowed; hostd says `running`) | 0.12 s | same | |
+| CH start to hostd `running` | 14.1 s (m3-check start), 13.8 s (izma create) | about 8.5 s | I-161 |
+| api `running` to op done | same second | same | |
+| POST to op done, izma (default fragment, base in the store) | 22 s (00:06:47 to 00:07:09) | about 9.5 s with reuse, about 15.5 s without | I-160..I-163 |
+
+The guest rows were reproduced on the dev box (AMD, so absolute numbers
+are not a host's) by booting `nix build ./nix#guest-runner` with Cloud
+Hypervisor 53 and virtiofsd as an unprivileged user, fresh 20 GB volume,
+2 vCPU, 4 GB; seconds from the guest journal:
+
+| Runner | fsck done | `/sysroot` mounted | switch root | stage 2 queued | guestd started | sshd | Ready |
+|---|---|---|---|---|---|---|---|
+| main at 5aa48d3 | 2.46 | 3.13 | 5.41 | 7.43 | 11.27 | 11.48 | 11.88 |
+| this branch (I-161), two boots | 1.46 / 1.58 | 1.46 / 1.58 | 2.90 / 3.05 | 4.06 / 4.08 | 5.73 / 5.78 | 6.16 / 6.36 | 6.22 / 6.39 |
+| plus virtiofsd `--cache always` (not adopted) | | | | | | | 5.4 |
+
+Reading: the sshd socket listens 2.6 s before hostd reports `running`, but
+an SSH login is refused until `systemd-user-sessions` removes
+`/run/nologin`, which waits for home-manager, which waits for the path
+registration hostd sends after Ready; so `running` is within 60 ms of the
+first moment a login succeeds, and hostd's number is the right one to
+optimise. The rest of the owner's 1 m 43 s was the CLI (SSH prompts and a
+2 s op poll), which the cli-ux worker owns.

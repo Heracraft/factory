@@ -3241,7 +3241,8 @@ one) for most creates. `TestCreateReusesAClosureOnTheSameHost`.
 step with GC for what one indexed join answers), and sharing across hosts
 (the path would have to be copied, which is a build's cost again).
 
-**I-161. guestd and sshd no longer wait for Docker at boot.** (provision-speed,
+**I-161. The guest boot's critical chain: no wait for Docker, the console or
+a mount rate limit.** (provision-speed,
 2026-09-23) m3-check's boot on host-01 (base 2026.09.21.x, small, a start):
 Cloud Hypervisor started 02:31:55.24, hostd `running` 02:32:09.38, 14.1 s.
 In the guest: kernel 0.84 s, initrd 4.21 s, then `docker.service`
@@ -3258,10 +3259,29 @@ starts in parallel. guestd's `docker_down` warning waits 60 s from its
 start (`sample.DockerGrace`) unless the socket has answered once, so a
 Docker still starting is not reported as down. The Ready poll is 0.1 s
 (`guestd.ReadyPollInterval`) and so is `repose-paths`' wait: both sit on
-the path to the first login. Expected: about 2.4 s off every boot (create,
-start, restore, reboot) and up to 0.8 s more from the two polls, so
-CH-to-`running` from 14 s to about 11 s; confirmed on the host only after
-the next base publish. `TestDockerDownWarnsOnce` (no warning inside the
+the path to the first login.
+
+Two silent waits in the same boot were found by booting the guest runner
+with Cloud Hypervisor on the dev box (unprivileged, virtiofsd
+`--sandbox none`, `systemd.log_level=debug`; its untouched baseline
+matched host-01 within 0.1 s): systemd queried the serial console's size
+and terminfo and waited out the timeout, 0.67 s in the initrd and 0.33 s in
+stage 2, and the initrd services' credential mounts tripped systemd's
+mount-monitor rate limit, which held `sysroot.mount` and the store mount
+back for about 0.7 s. The base now passes
+`systemd.tty.{term,rows,columns}.console` on the kernel line (all three are
+needed) and clears `ImportCredential` on the initrd's services (a drop-in
+for the upstream `systemd-fsck-root` and `systemd-tmpfiles-setup-sysroot`;
+without it the initrd refused the unit). On the dev box, CH start to
+guestd Ready went from 11.88 s to 6.22 s and 6.39 s with this commit's
+runner (`nix build ./nix#guest-runner`), about 5.5 s off every boot
+(create, start, restore, reboot); on host-01 that is expected to take
+CH-to-`running` from 14 s to about 8.5 s, confirmed only after the next
+base publish. Not adopted: virtiofsd `--cache always` (hostd) took another
+0.9 s off on the dev box, but an in-place `ApplyConfig` needs the guest to
+see store paths that appear after boot, which that mode's long-lived
+dentry cache is not known to do; it needs its own test first. An
+uncompressed initrd changed nothing. `TestDockerDownWarnsOnce` (no warning inside the
 grace), `TestDockerDownAfterItAnsweredWarnsInsideTheGrace`.
 *Rejected:* keeping guestd after Docker and moving only sshd
 (hostd's `running` waits for guestd's Ready either way).
