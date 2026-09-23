@@ -3,16 +3,19 @@ package api
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	_ "time/tzdata" // PATCH /me validates tz without depending on the host's zoneinfo
 
 	"github.com/heracraft/repose/internal/ca/sshca"
+	"github.com/heracraft/repose/internal/menu"
 )
 
 var (
@@ -46,19 +49,10 @@ var classes = map[string]int64{
 	"xl":    80 << 30,
 }
 
-var catalog = []CatalogItem{
-	{ID: "bun", Label: "Bun", Group: "languages", Kind: "package", Description: "Bun JavaScript runtime and package manager"},
-	{ID: "nodejs", Label: "Node.js", Group: "languages", Kind: "package", Description: "Node.js LTS", Options: []CatalogOption{
-		{ID: "version", Type: "enum", Values: []string{"22", "24"}, Default: "24"},
-	}},
-	{ID: "python3", Label: "Python 3", Group: "languages", Kind: "package", Description: "CPython 3 with pip"},
-	{ID: "postgresql", Label: "PostgreSQL", Group: "databases", Kind: "service", Description: "PostgreSQL server as a user service"},
-	{ID: "redis", Label: "Redis", Group: "databases", Kind: "service", Description: "Redis server as a user service"},
-	{ID: "chromium", Label: "Chromium", Group: "browsers", Kind: "package", Description: "Headless Chromium for browser automation"},
-	{ID: "ripgrep", Label: "ripgrep", Group: "tools", Kind: "package", Description: "Fast recursive grep"},
-}
-
-var catalogServices = map[string]bool{"postgresql": true, "redis": true}
+// menuCatalog is the real catalog (internal/menu): the fake validates and
+// renders a selection exactly as the api does, {package} items included
+// (DECISIONS I-220), so the CLI and dashboard tests see the real shape.
+var menuCatalog = sync.OnceValues(menu.Load)
 
 var buildLines = []string{"evaluating configuration", "building", "built"}
 
@@ -634,39 +628,31 @@ func (f *Fake) getConfig(w http.ResponseWriter, r *http.Request) *apiError {
 	return nil
 }
 
-// renderMenu turns a MenuSelection into the home-manager fragment the
-// real api would generate. Ids must come from the catalog.
-func renderMenu(menu json.RawMessage) (string, *apiError) {
-	var sel struct {
-		Packages []string `json:"packages"`
-		Services []string `json:"services"`
-	}
-	if err := json.Unmarshal(menu, &sel); err != nil {
+// renderMenu turns a MenuSelection into the fragment the real api
+// generates, with internal/menu's own validation and renderer.
+func renderMenu(raw json.RawMessage) (string, *apiError) {
+	var sel menu.Selection
+	if err := json.Unmarshal(raw, &sel); err != nil {
 		return "", invalid("menu: %v", err)
 	}
-	known := map[string]bool{}
-	for _, c := range catalog {
-		known[c.ID] = true
+	cat, err := menuCatalog()
+	if err != nil {
+		return "", errf("internal", "catalog: %v", err)
 	}
-	for _, id := range append(append([]string{}, sel.Packages...), sel.Services...) {
-		if !known[id] {
-			return "", invalid("menu: %q is not in the catalog", id).withDetail(map[string]any{"id": id})
+	frag, err := cat.Render(sel)
+	if err != nil {
+		var me *menu.Error
+		if errors.As(err, &me) {
+			return "", invalid("%s", me.Message)
 		}
+		return "", errf("internal", "menu: %v", err)
 	}
-	var b strings.Builder
-	b.WriteString("{ pkgs, ... }:\n{\n")
-	if len(sel.Packages) > 0 {
-		b.WriteString("  home.packages = with pkgs; [ " + strings.Join(sel.Packages, " ") + " ];\n")
-	}
-	for _, s := range sel.Services {
-		if !catalogServices[s] {
-			return "", invalid("menu: %q is not a service", s).withDetail(map[string]any{"id": s})
-		}
-		b.WriteString("  services." + s + ".enable = true;\n")
-	}
-	b.WriteString("}\n")
-	return b.String(), nil
+	return frag, nil
 }
+
+// fakeDefaultFragment is what a new project starts with in the real api
+// (internal/api/http DefaultFragment); the fake's first revision has none.
+const fakeDefaultFragment = "{ pkgs, ... }:\n{\n  home.packages = [ ];\n}\n"
 
 func (f *Fake) putConfig(w http.ResponseWriter, r *http.Request) *apiError {
 	var body struct {
@@ -685,18 +671,23 @@ func (f *Fake) putConfig(w http.ResponseWriter, r *http.Request) *apiError {
 		return e
 	}
 	var fragment string
-	var menu json.RawMessage
+	var menuRaw json.RawMessage
 	if body.Fragment != nil {
 		if len(*body.Fragment) > maxFragmentBytes {
 			return invalid("fragment: larger than 256 KB").withDetail(map[string]any{"max_bytes": maxFragmentBytes})
 		}
 		fragment = *body.Fragment
 	} else {
+		// The api's takeover rule: a hand-written fragment turns the menu off.
+		if cur := p.revision(p.ConfigRevisionID); cur != nil && len(cur.Menu) == 0 && strings.TrimSpace(cur.Fragment) != "" &&
+			!menu.IsGenerated(cur.Fragment) && strings.TrimSpace(cur.Fragment) != strings.TrimSpace(fakeDefaultFragment) {
+			return errf("conflict", "project uses a custom fragment; use fragment mode or reset")
+		}
 		rendered, e := renderMenu(body.Menu)
 		if e != nil {
 			return e
 		}
-		fragment, menu = rendered, body.Menu
+		fragment, menuRaw = rendered, body.Menu
 	}
 	now := f.now()
 	o := f.newOp(p, "config")
@@ -707,14 +698,14 @@ func (f *Fake) putConfig(w http.ResponseWriter, r *http.Request) *apiError {
 	// stays applied.
 	if strings.Contains(fragment, forceEvalErrorMarker) {
 		msg := "config error: syntax error at fragment.nix:1:32, unexpected ';'"
-		rev := &Revision{ID: f.nextID(), CreatedAt: now, Status: "failed", Error: msg, Fragment: fragment, Menu: menu, BaseVersion: baseVersion}
+		rev := &Revision{ID: f.nextID(), CreatedAt: now, Status: "failed", Error: msg, Fragment: fragment, Menu: menuRaw, BaseVersion: baseVersion}
 		p.revisions = append(p.revisions, rev)
 		o.State, o.Error = "error", msg
 		f.event(p, "config.failed", "", "revision failed: "+msg)
 		writeJSON(w, http.StatusAccepted, map[string]string{"revision_id": rev.ID, "op_id": o.id})
 		return nil
 	}
-	rev := &Revision{ID: f.nextID(), CreatedAt: now, Status: "applied", Fragment: fragment, Menu: menu, BaseVersion: baseVersion, AppliedAt: &now}
+	rev := &Revision{ID: f.nextID(), CreatedAt: now, Status: "applied", Fragment: fragment, Menu: menuRaw, BaseVersion: baseVersion, AppliedAt: &now}
 	p.revisions = append(p.revisions, rev)
 	p.ConfigRevisionID = rev.ID
 	f.event(p, "config.applied", "", "revision applied")
@@ -756,7 +747,11 @@ func (f *Fake) applyRevision(w http.ResponseWriter, r *http.Request) *apiError {
 }
 
 func (f *Fake) getCatalog(w http.ResponseWriter, r *http.Request) *apiError {
-	writeJSON(w, http.StatusOK, catalog)
+	cat, err := menuCatalog()
+	if err != nil {
+		return errf("internal", "catalog: %v", err)
+	}
+	writeJSON(w, http.StatusOK, cat.Public())
 	return nil
 }
 

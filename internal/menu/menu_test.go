@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/heracraft/repose/internal/hostd/nixbuild"
 )
 
 func load(t *testing.T) *Catalog {
@@ -134,7 +136,12 @@ func TestValidateRejects(t *testing.T) {
 		{Selection{{ID: "bun"}, {ID: "bun"}}, `catalog id "bun" selected twice`},
 		{Selection{{ID: "bun", Options: map[string]string{"version": "1"}}}, `bun has no option "version"`},
 		{Selection{{ID: "postgresql", Options: map[string]string{"version": "9"}}}, `postgresql: option version: "9" is not one of [15 16 17]`},
-		{Selection{}, "menu selection is empty"},
+		{Selection{{}}, "a menu item needs an id or a package"},
+		{Selection{{ID: "bun", Package: "gcc"}}, "a menu item has either id (with options) or package, not both"},
+		{Selection{{Package: "gcc", Options: map[string]string{"version": "1"}}}, "a menu item has either id (with options) or package, not both"},
+		{Selection{{Package: "a;b"}}, `"a;b" is not a nixpkgs attribute path (letters, digits, _ - + and dots, at most 200 characters)`},
+		{Selection{{Package: "gcc"}, {Package: "gcc"}}, `package "gcc" selected twice`},
+		{Selection{{Package: "bun"}}, `"bun" is a catalog id; select it as {"id": "bun"}`},
 	}
 	for _, cse := range cases {
 		err := c.Validate(cse.sel)
@@ -239,6 +246,7 @@ func TestRenderedFragmentsParse(t *testing.T) {
 	for _, e := range c.Entries {
 		all = append(all, Item{ID: e.ID})
 	}
+	all = append(all, Item{Package: "gcc"}, Item{Package: "python312Packages.black"})
 	frag, err := c.Render(all)
 	if err != nil {
 		t.Fatal(err)
@@ -253,9 +261,60 @@ func TestRenderedFragmentsParse(t *testing.T) {
 }
 
 // The whole catalog composes on the platform base: an eval of guestSystem
-// with every entry selected, through the exact restricted command hostd
-// uses. Needs the repository (git) and nix; REPOSE_NIX_TESTS=1.
+// with every entry selected, plus raw packages, through the exact
+// restricted command hostd uses. Needs the repository (git) and nix;
+// REPOSE_NIX_TESTS=1.
 func TestRealNixAllEntriesEvaluate(t *testing.T) {
+	c := load(t)
+	all := Selection{}
+	for _, e := range c.Entries {
+		all = append(all, Item{ID: e.ID})
+	}
+	all = append(all, Item{Package: "gcc"}, Item{Package: "air"}, Item{Package: "python312Packages.black"}, Item{Package: "nodejs_22"})
+	frag, err := c.Render(all)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := realNixEval(t, frag)
+	if err != nil {
+		t.Fatalf("nix eval: %v\n%s", err, tail(out, 4000))
+	}
+	drv := strings.TrimSpace(out)
+	drv = drv[strings.LastIndex(drv, "\n")+1:]
+	t.Logf("all %d entries evaluate: %s", len(all), drv)
+}
+
+// A package nixpkgs does not have fails evaluation with PackageNotFound's
+// line as the summary hostd reports (nixbuild.MapEvalError), and a
+// non-package attribute with its own line. REPOSE_NIX_TESTS=1.
+func TestRealNixMissingPackage(t *testing.T) {
+	c := load(t)
+	for name, want := range map[string]string{
+		"no-such-package-repose": PackageNotFound("no-such-package-repose"),
+		"python312Packages":      `nixpkgs attribute "python312Packages" is not a package; search https://search.nixos.org/packages`,
+		// Unfree and not on nix/guest/unfree-allowlist.nix: nixpkgs' own refusal.
+		"unrar": "Refusing to evaluate package 'unrar-",
+	} {
+		frag, err := c.Render(Selection{{Package: "gcc"}, {Package: name}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := realNixEval(t, frag)
+		if err == nil {
+			t.Fatalf("%s: evaluation succeeded", name)
+		}
+		summary := strings.SplitN(nixbuild.MapEvalError(out).Message, "\n", 2)[0]
+		if !strings.HasPrefix(summary, want) {
+			t.Fatalf("%s: summary %q, want prefix %q\n%s", name, summary, want, tail(out, 3000))
+		}
+		t.Logf("%s: %s", name, summary)
+	}
+}
+
+// realNixEval evaluates guestSystem's drvPath with frag as the fragment,
+// the way hostd does (docs/interfaces/nix-build-contract.md).
+func realNixEval(t *testing.T, frag string) (string, error) {
+	t.Helper()
 	if os.Getenv("REPOSE_NIX_TESTS") == "" {
 		t.Skip("set REPOSE_NIX_TESTS=1")
 	}
@@ -267,15 +326,6 @@ func TestRealNixAllEntriesEvaluate(t *testing.T) {
 		t.Skip("not in a git checkout")
 	}
 	root := strings.TrimSpace(string(rootOut))
-	c := load(t)
-	all := Selection{}
-	for _, e := range c.Entries {
-		all = append(all, Item{ID: e.ID})
-	}
-	frag, err := c.Render(all)
-	if err != nil {
-		t.Fatal(err)
-	}
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "fragment.nix"), []byte(frag), 0o600); err != nil {
 		t.Fatal(err)
@@ -307,12 +357,7 @@ func TestRealNixAllEntriesEvaluate(t *testing.T) {
 		"--override-input", "fragment", "path:"+dir,
 		"git+file://"+root+"?dir=nix#guestSystem.config.system.build.toplevel.drvPath")
 	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("nix eval: %v\n%s", err, tail(string(out), 4000))
-	}
-	drv := strings.TrimSpace(string(out))
-	drv = drv[strings.LastIndex(drv, "\n")+1:]
-	t.Logf("all %d entries evaluate: %s", len(all), drv)
+	return string(out), err
 }
 
 func tail(s string, n int) string {
@@ -345,4 +390,101 @@ func TestExampleFragmentIsCurrent(t *testing.T) {
 	if string(got) != frag {
 		t.Fatalf("%s is stale; regenerate with REPOSE_WRITE_EXAMPLE=1\n--- want ---\n%s", p, frag)
 	}
+}
+
+// A package name is only ever a nixpkgs attribute path: nothing that can
+// end a Nix string, interpolate, or climb a path gets through.
+func TestValidPackage(t *testing.T) {
+	for _, ok := range []string{"gcc", "air", "nodejs_22", "python312Packages.black", "nodePackages.typescript", "_1password-cli", "gtk+3", "go-tools", strings.Repeat("a", 200)} {
+		if !ValidPackage(ok) {
+			t.Errorf("rejected %q", ok)
+		}
+	}
+	for _, bad := range []string{"", "a;b", "${x}", "../x", ".x", "x.", "a..b", `"gcc"`, "'gcc'", "g cc", " gcc", "gcc\n", "gcc\\", "pkgs.gcc; rm", "a/b", "1gcc", "-gcc", "a.1b", "a=b", "(gcc)", "[gcc]", "a{b}", strings.Repeat("a", 201)} {
+		if ValidPackage(bad) {
+			t.Errorf("accepted %q", bad)
+		}
+	}
+}
+
+func TestRenderPackages(t *testing.T) {
+	c := load(t)
+	sel := Selection{{Package: "python312Packages.black"}, {ID: "bun"}, {Package: "gcc"}, {Package: "air"}}
+	frag, err := c.Render(sel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		Header + "\n" + `# repose-menu: [{"id":"bun"},{"package":"air"},{"package":"gcc"},{"package":"python312Packages.black"}]` + "\n{ config, pkgs, lib, ... }:\nlet\n",
+		"    # bun (runtimes): Bun\n",
+		"    # extra packages from nixpkgs: air, gcc, python312Packages.black\n",
+		"        (nixpkg [ \"air\" ])\n        (nixpkg [ \"gcc\" ])\n        (nixpkg [ \"python312Packages\" \"black\" ])\n",
+		`throw "nixpkgs has no package \"${name}\"; search https://search.nixos.org/packages"`,
+	} {
+		if !strings.Contains(frag, want) {
+			t.Fatalf("missing %q in:\n%s", want, frag)
+		}
+	}
+	back, ok := ParseGenerated(frag)
+	if !ok {
+		t.Fatal("ParseGenerated failed")
+	}
+	want, _ := c.Normalize(sel)
+	if !reflect.DeepEqual(back, want) || len(back) != 4 || back[1].Package != "air" {
+		t.Fatalf("round trip: got %v want %v", back, want)
+	}
+	// Rendering the recovered selection gives the same fragment.
+	again, err := c.Render(back)
+	if err != nil || again != frag {
+		t.Fatalf("re-render differs (%v):\n%s", err, again)
+	}
+	// Packages alone, and nothing at all, are still generated fragments.
+	for _, s := range []Selection{{{Package: "gcc"}}, {}} {
+		f, err := c.Render(s)
+		if err != nil || !IsGenerated(f) {
+			t.Fatalf("%v: %v\n%s", s, err, f)
+		}
+	}
+	// A catalog-only selection has no helper, so existing fragments do not change.
+	if f, _ := c.Render(Selection{{ID: "bun"}}); strings.Contains(f, "nixpkg") {
+		t.Fatalf("helper without packages:\n%s", f)
+	}
+	// nixPath refuses what ValidPackage refuses, whoever calls it.
+	if _, err := nixPath(`a"b`); err == nil {
+		t.Fatal(`nixPath accepted a"b`)
+	}
+	if PackageNotFound("foo") != `nixpkgs has no package "foo"; search https://search.nixos.org/packages` {
+		t.Fatal(PackageNotFound("foo"))
+	}
+}
+
+// The selections nix/guest/checks.nix composes (menu-fixtures/) are what
+// the renderer produces, byte for byte. Regenerate with
+// REPOSE_WRITE_EXAMPLE=1 go test ./internal/menu -run TestMenuFixturesAreCurrent.
+func TestMenuFixturesAreCurrent(t *testing.T) {
+	c := load(t)
+	for name, sel := range menuFixtures {
+		frag, err := c.Render(sel)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := filepath.Join("..", "..", "nix", "guest", "menu-fixtures", name+".nix")
+		if os.Getenv("REPOSE_WRITE_EXAMPLE") != "" {
+			if err := os.WriteFile(p, []byte(frag), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != frag {
+			t.Fatalf("%s is stale; regenerate with REPOSE_WRITE_EXAMPLE=1\n--- want ---\n%s", p, frag)
+		}
+	}
+}
+
+var menuFixtures = map[string]Selection{
+	"packages":        {{ID: "bun"}, {Package: "gcc"}, {Package: "air"}, {Package: "python312Packages.black"}},
+	"missing-package": {{Package: "gcc"}, {Package: "no-such-package-repose"}},
 }

@@ -97,6 +97,8 @@ repose secrets rm NAME
 repose config show [--revisions]
 repose config edit
 repose config apply [PATH]      # PATH defaults to ./repose.nix if present, else opens editor
+repose config add NAME...       # catalog id, else any nixpkgs attribute path (I-220)
+repose config remove NAME...    # alias rm
 repose snapshots list
 repose snapshots create
 repose snapshots restore SNAPSHOT_ID [--as-new NAME]
@@ -474,6 +476,17 @@ but leave the desktop running; print how to stop it.
 - `config apply [PATH]`: same with a file; `./repose.nix` default. The file
   is the fragment and is *not* required to be committed; recommend adding
   it to the repo in the message.
+- `config add NAME...` / `config remove NAME...` (DECISIONS I-220): read
+  `GET /catalog` and the current `menu`, add or drop items (a catalog id is
+  `{id}`, any other name matching the attribute-path pattern is
+  `{package}`; `pkgs.` and `nixpkgs#` prefixes are dropped; a bad name is
+  exit 2 before any request), `PUT {menu}`, print `Added gcc and air to
+  izma. Building revision 1a2b3c4d ...`, stream the log, then `Applied
+  revision 1a2b3c4d.` A failed build prints the summary line without the
+  generated fragment's location, then `Nothing changed in izma; the
+  previous revision is still active.` (exit 10). Names already present
+  are said once and not rebuilt; a hand-written fragment is exit 2 pointing
+  at `config edit`.
 - `snapshots list/create/restore` mirror the API. `restore` without
   `--as-new` requires the project stopped and asks for confirmation.
 - `logs`: `GET /logs`, `--follow` polls every 2 s with `since`.

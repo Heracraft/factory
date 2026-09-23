@@ -555,7 +555,43 @@ func newConfigCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 			return ConfigApplyCmd(cmd.Context(), e, g.project, path)
 		},
 	}
-	root.AddCommand(show, edit, apply)
+	add := &cobra.Command{
+		Use:   "add <package>...",
+		Short: "Add catalog entries or any nixpkgs package to the guest",
+		Long: `Add packages to the project's menu and rebuild the guest.
+
+A name the catalog has (bun, postgresql, portless, ... as the dashboard's
+menu lists them) adds that catalog entry, services included. Any other name
+is a nixpkgs attribute: gcc, air, nodejs_22, python312Packages.black,
+nodePackages.typescript. Find names at https://search.nixos.org/packages.
+
+A project whose fragment was edited by hand has no menu; add packages there
+with ` + "`repose config edit`" + `.`,
+		Example: "  repose config add gcc air\n  repose config add postgresql python312Packages.black",
+		Args:    cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			e, err := env()
+			if err != nil {
+				return err
+			}
+			return ConfigAddCmd(cmd.Context(), e, g.project, args)
+		},
+	}
+	remove := &cobra.Command{
+		Use:     "remove <package>...",
+		Aliases: []string{"rm"},
+		Short:   "Remove packages added with config add",
+		Example: "  repose config remove air",
+		Args:    cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			e, err := env()
+			if err != nil {
+				return err
+			}
+			return ConfigRemoveCmd(cmd.Context(), e, g.project, args)
+		},
+	}
+	root.AddCommand(show, edit, apply, add, remove)
 	return root
 }
 

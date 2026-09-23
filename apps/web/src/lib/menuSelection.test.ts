@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { toggleSelection, groupCatalog, buildMenuSelection } from './menuSelection';
+import {
+	toggleSelection,
+	groupCatalog,
+	buildMenuSelection,
+	parseMenuSelection
+} from './menuSelection';
 import type { CatalogItem } from './api/types';
 
 const CATALOG: CatalogItem[] = [
@@ -52,10 +57,48 @@ describe('groupCatalog', () => {
 });
 
 describe('buildMenuSelection', () => {
-	it('assembles the documented {packages, services, options} shape', () => {
-		const sel = buildMenuSelection(new Set(['bun']), new Set(['postgresql']), {
-			nodejs: '24'
-		});
-		expect(sel).toEqual({ packages: ['bun'], services: ['postgresql'], options: { nodejs: '24' } });
+	it('assembles the documented [{id, options?} | {package}] array in catalog order', () => {
+		const withOpts: CatalogItem[] = [
+			...CATALOG,
+			{
+				id: 'nodejs',
+				label: 'Node.js',
+				group: 'runtimes',
+				kind: 'runtime',
+				description: 'node',
+				options: [{ id: 'version', type: 'enum', values: ['20', '22'], default: '22' }]
+			}
+		];
+		const sel = buildMenuSelection(
+			withOpts,
+			new Set(['nodejs', 'postgresql', 'bun']),
+			{ nodejs: '20' },
+			['gcc', 'python312Packages.black']
+		);
+		expect(sel).toEqual([
+			{ id: 'bun' },
+			{ id: 'postgresql' },
+			{ id: 'nodejs', options: { version: '20' } },
+			{ package: 'gcc' },
+			{ package: 'python312Packages.black' }
+		]);
+	});
+});
+
+describe('parseMenuSelection', () => {
+	it('splits catalog ids, their option values and extra packages', () => {
+		expect(
+			parseMenuSelection([
+				{ id: 'bun' },
+				{ id: 'nodejs', options: { version: '20' } },
+				{ package: 'gcc' }
+			])
+		).toEqual({ ids: ['bun', 'nodejs'], options: { nodejs: '20' }, packages: ['gcc'] });
+	});
+
+	it('reads anything that is not the documented array as empty', () => {
+		const empty = { ids: [], options: {}, packages: [] };
+		expect(parseMenuSelection(null)).toEqual(empty);
+		expect(parseMenuSelection({ packages: ['bun'] })).toEqual(empty);
 	});
 });

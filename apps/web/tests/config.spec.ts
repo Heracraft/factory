@@ -17,7 +17,7 @@ test('menu tab renders catalog groups and search filters them', async ({ page })
 	await page.goto(`/projects/${p.id}/config`);
 	await page.getByRole('button', { name: 'Menu' }).click();
 
-	await expect(page.getByText('languages')).toBeVisible();
+	await expect(page.getByText('runtimes')).toBeVisible();
 	await expect(page.getByText('Services')).toBeVisible();
 	await expect(page.getByText('PostgreSQL', { exact: true })).toBeVisible();
 
@@ -33,13 +33,46 @@ test('applying a menu selection shows the generated fragment on the Nix tab', as
 	});
 	await page.goto(`/projects/${p.id}/config`);
 	await page.getByRole('button', { name: 'Menu' }).click();
-	await page.getByText('ripgrep', { exact: true }).click();
+	await page.getByText('Zig', { exact: true }).click();
 	await page.getByRole('button', { name: 'Apply', exact: true }).click();
 
 	await expect(page.getByText('Applied.')).toBeVisible({ timeout: 10_000 });
 
 	await page.getByRole('button', { name: 'Nix' }).click();
-	await expect(page.locator('.cm-content')).toContainText('ripgrep');
+	await expect(page.locator('.cm-content')).toContainText('pkgs.zig');
+});
+
+// A selection with nixpkgs packages added by name (`repose config add gcc`,
+// DECISIONS I-220) lists them as "Extra packages", keeps them when the menu
+// is applied again, and can drop one.
+test('menu tab lists extra nixpkgs packages and keeps them on apply', async ({ page }) => {
+	const api = apiURLFromEnv();
+	const p = await createProject(api, {
+		name: 'menu-extra-app',
+		remote_url: 'github.com/heracraft/menu-extra-app'
+	});
+	const put = await fetch(`${api}/projects/${p.id}/config`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json', Authorization: 'Bearer playwright' },
+		body: JSON.stringify({ menu: [{ id: 'bun' }, { package: 'gcc' }, { package: 'air' }] })
+	});
+	expect(put.status).toBe(202);
+
+	await page.goto(`/projects/${p.id}/config`);
+	await page.getByRole('button', { name: 'Menu' }).click();
+	await expect(page.getByRole('heading', { name: 'Extra packages' })).toBeVisible();
+	await expect(page.getByText('gcc', { exact: true })).toBeVisible();
+	await expect(page.getByText('air', { exact: true })).toBeVisible();
+	await expect(page.getByRole('checkbox', { name: /^Bun/ })).toBeChecked();
+
+	await page.getByRole('button', { name: 'Remove air' }).click();
+	await page.getByRole('button', { name: 'Apply', exact: true }).click();
+	await expect(page.getByText('Applied.')).toBeVisible({ timeout: 10_000 });
+
+	await page.getByRole('button', { name: 'Nix' }).click();
+	await expect(page.locator('.cm-content')).toContainText('"gcc"');
+	await expect(page.locator('.cm-content')).not.toContainText('"air"');
+	await expect(page.locator('.cm-content')).toContainText('pkgs.bun');
 });
 
 test('a failing fragment shows the error block with the fragment line highlighted', async ({

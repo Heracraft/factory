@@ -58,11 +58,14 @@ type Option struct {
 	Default string   `yaml:"default" json:"default"`
 }
 
-// Item is one element of a MenuSelection (docs/interfaces/api.md):
-// `[{id, options: {name: value}}]`.
+// Item is one element of a MenuSelection (docs/interfaces/api.md): a
+// catalog entry `{id, options?: {name: value}}`, or any nixpkgs package by
+// attribute path `{package: "python312Packages.black"}` (DECISIONS I-220).
+// An item carries exactly one of ID and Package.
 type Item struct {
-	ID      string            `json:"id"`
+	ID      string            `json:"id,omitempty"`
 	Options map[string]string `json:"options,omitempty"`
+	Package string            `json:"package,omitempty"`
 }
 
 // Selection is what PUT /config carries as `menu`.
@@ -88,6 +91,29 @@ type Catalog struct {
 }
 
 var idRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
+
+// MaxPackageLen caps a package attribute path.
+const MaxPackageLen = 200
+
+// packageRe is a nixpkgs attribute path: dot-separated Nix identifiers
+// (letters, digits, `_`, `-`, `+`; not starting with a digit, `-` or `+`).
+// Nothing that can end a Nix string or start an interpolation (`"`, `\`,
+// `$`) matches, and neither does whitespace, so a name is rendered inside
+// a Nix string literal and can only ever be looked up, never evaluated.
+var packageRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_+-]*(\.[A-Za-z_][A-Za-z0-9_+-]*)*$`)
+
+// ValidPackage reports whether name is an acceptable nixpkgs attribute
+// path for a `{package}` item.
+func ValidPackage(name string) bool {
+	return len(name) <= MaxPackageLen && packageRe.MatchString(name)
+}
+
+// PackageNotFound is the message a missing package fails the build with,
+// through the fragment's own `throw` (hostd reports it as the eval_failed
+// summary, docs/interfaces/nix-build-contract.md "What the user reads").
+func PackageNotFound(name string) string {
+	return `nixpkgs has no package "` + name + `"; search https://search.nixos.org/packages`
+}
 
 var funcs = template.FuncMap{
 	"nodots": func(s string) string { return strings.ReplaceAll(s, ".", "") },
@@ -225,11 +251,28 @@ func renderTemplate(name, text string, opts map[string]string) (string, error) {
 // duplicates, known options with allowed values. Unknown ids come back as
 // `invalid` naming the id (docs/interfaces/api.md).
 func (c *Catalog) Validate(sel Selection) error {
-	if len(sel) == 0 {
-		return invalid("menu selection is empty")
-	}
 	seen := map[string]bool{}
+	seenPkg := map[string]bool{}
 	for _, it := range sel {
+		if it.Package != "" {
+			if it.ID != "" || len(it.Options) > 0 {
+				return invalid("a menu item has either id (with options) or package, not both")
+			}
+			if !ValidPackage(it.Package) {
+				return invalid("%q is not a nixpkgs attribute path (letters, digits, _ - + and dots, at most %d characters)", it.Package, MaxPackageLen)
+			}
+			if _, ok := c.byID[it.Package]; ok {
+				return invalid("%q is a catalog id; select it as {\"id\": %q}", it.Package, it.Package)
+			}
+			if seenPkg[it.Package] {
+				return invalid("package %q selected twice", it.Package)
+			}
+			seenPkg[it.Package] = true
+			continue
+		}
+		if it.ID == "" {
+			return invalid("a menu item needs an id or a package")
+		}
 		e, ok := c.byID[it.ID]
 		if !ok {
 			return invalid("unknown catalog id %q", it.ID)
@@ -257,7 +300,8 @@ func (c *Catalog) Validate(sel Selection) error {
 }
 
 // Normalize returns the selection with every option filled from its
-// default, sorted by catalog order, which is also how it is rendered.
+// default, sorted by catalog order with the packages after the catalog
+// entries in name order, which is also how it is rendered.
 func (c *Catalog) Normalize(sel Selection) (Selection, error) {
 	if err := c.Validate(sel); err != nil {
 		return nil, err
@@ -267,7 +311,12 @@ func (c *Catalog) Normalize(sel Selection) (Selection, error) {
 		pos[e.ID] = i
 	}
 	out := make(Selection, 0, len(sel))
+	var pkgs []string
 	for _, it := range sel {
+		if it.Package != "" {
+			pkgs = append(pkgs, it.Package)
+			continue
+		}
 		e := c.byID[it.ID]
 		opts := e.defaults()
 		for k, v := range it.Options {
@@ -279,6 +328,10 @@ func (c *Catalog) Normalize(sel Selection) (Selection, error) {
 		out = append(out, Item{ID: it.ID, Options: opts})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return pos[out[i].ID] < pos[out[j].ID] })
+	sort.Strings(pkgs)
+	for _, p := range pkgs {
+		out = append(out, Item{Package: p})
+	}
 	return out, nil
 }
 
@@ -292,11 +345,24 @@ func (c *Catalog) Render(sel Selection) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("menu: %w", err)
 	}
+	var pkgs []string
+	for _, it := range norm {
+		if it.Package != "" {
+			pkgs = append(pkgs, it.Package)
+		}
+	}
 	var b strings.Builder
 	b.WriteString(Header + "\n")
 	b.WriteString(selectionPrefix + string(selJSON) + "\n")
-	b.WriteString("{ config, pkgs, lib, ... }:\n{\n  imports = [\n")
+	b.WriteString("{ config, pkgs, lib, ... }:\n")
+	if len(pkgs) > 0 {
+		b.WriteString(nixpkgHelper)
+	}
+	b.WriteString("{\n  imports = [\n")
 	for _, it := range norm {
+		if it.Package != "" {
+			continue
+		}
 		e := c.byID[it.ID]
 		r, err := e.render(it.Options)
 		if err != nil {
@@ -314,8 +380,54 @@ func (c *Catalog) Render(sel Selection) (string, error) {
 		}
 		b.WriteString("    }\n")
 	}
+	if len(pkgs) > 0 {
+		fmt.Fprintf(&b, "    # extra packages from nixpkgs: %s\n", strings.Join(pkgs, ", "))
+		b.WriteString("    {\n      home.packages = [\n")
+		for _, p := range pkgs {
+			lit, err := nixPath(p)
+			if err != nil {
+				return "", err
+			}
+			fmt.Fprintf(&b, "        (nixpkg %s)\n", lit)
+		}
+		b.WriteString("      ];\n    }\n")
+	}
 	b.WriteString("  ];\n}\n")
 	return b.String(), nil
+}
+
+// nixpkgHelper looks a package up by attribute path, so a name the user
+// typed is only ever a string handed to lib.attrByPath, and a missing one
+// fails the build with PackageNotFound's message rather than Nix's
+// "attribute missing" pointing at a line the user never wrote. An unfree
+// package outside the allowlist still fails with nixpkgs' own refusal when
+// home-manager evaluates it.
+const nixpkgHelper = `let
+  # Any nixpkgs package by attribute path (repose config add, DECISIONS I-220).
+  nixpkg = path:
+    let
+      name = lib.concatStringsSep "." path;
+      p = lib.attrByPath path null pkgs;
+    in
+    if p == null then throw "nixpkgs has no package \"${name}\"; search https://search.nixos.org/packages"
+    else if lib.isDerivation p then p
+    else throw "nixpkgs attribute \"${name}\" is not a package; search https://search.nixos.org/packages";
+in
+`
+
+// nixPath renders an attribute path as a Nix list of string literals:
+// "python312Packages.black" -> [ "python312Packages" "black" ]. ValidPackage
+// already excludes every character that is special inside a Nix string;
+// the check is repeated here so no caller can render an unchecked name.
+func nixPath(name string) (string, error) {
+	if !ValidPackage(name) {
+		return "", invalid("%q is not a nixpkgs attribute path", name)
+	}
+	parts := strings.Split(name, ".")
+	for i, p := range parts {
+		parts[i] = `"` + p + `"`
+	}
+	return "[ " + strings.Join(parts, " ") + " ]", nil
 }
 
 func describe(e *Entry, opts map[string]string) string {

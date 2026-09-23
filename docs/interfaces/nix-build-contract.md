@@ -133,6 +133,8 @@ then the verbatim block; the dashboard shows the same.
 | `eval_failed` | `config error: ` | `import-from-derivation is not allowed at fragment.nix:1:37; a fragment cannot import a file that a build produces` |
 | `eval_failed` | `config error: ` | `option 'services.postgresql' does not exist in a fragment; system services come from the menu or `repose config menu`` |
 | `eval_failed` | `config error: ` | `repose.system: option 'networking.firewall' is not allowed in a fragment; system services come from the menu or `repose config menu` (allowed: ...)` |
+| `eval_failed` | `config error: ` | `nixpkgs has no package "no-such-package"; search https://search.nixos.org/packages at fragment.nix:11:23` (a menu `{package}` item nixpkgs lacks, thrown by the generated fragment; `repose config add` drops the ` at fragment.nix:…` part and the verbatim block, DECISIONS I-220) |
+| `eval_failed` | `config error: ` | `nixpkgs attribute "python312Packages" is not a package; search https://search.nixos.org/packages at fragment.nix:13:10` |
 | `eval_failed` | `config error: ` | `evaluation exceeded 60 s` |
 | `build_timeout` | none | `build timed out after 30 minutes while building sleep-forever-1.0` |
 | `build_failed` | none | `build of fails-1.0 failed` (`; build exceeded 16 GB RAM` when the builder was killed) |
