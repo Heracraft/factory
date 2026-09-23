@@ -88,7 +88,7 @@
 </header>
 
 <main>
-	<section class="mx-auto max-w-5xl px-5 pt-16 pb-20">
+	<section class="mx-auto max-w-5xl px-5 pt-14 pb-16">
 		<h1 class="max-w-3xl text-4xl leading-tight font-semibold sm:text-5xl sm:leading-[1.12]">
 			A development machine you can reach from anywhere
 		</h1>
@@ -112,7 +112,7 @@
 			</button>
 		</div>
 
-		<div class="mx-auto mt-14 max-w-3xl">
+		<div class="mt-8">
 			<Detach />
 		</div>
 	</section>
