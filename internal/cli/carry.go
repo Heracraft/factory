@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -155,9 +154,6 @@ func (p *guestPayload) part(label, script string) error {
 	return nil
 }
 
-// empty reports whether nothing was added.
-func (p *guestPayload) empty() bool { return p.parts == 0 && p.script.Len() == 0 }
-
 // observePayload, when set (tests only), sees every payload before it is
 // sent: the never-carried test reads the whole stream through it.
 var observePayload func(script string, tarball []byte)
@@ -278,14 +274,4 @@ var laptopTZ = func() string {
 		}
 	})
 	return laptopTZVal
-}
-
-// sortedKeys is a small helper for deterministic output.
-func sortedKeys(m map[string]string) []string {
-	ks := make([]string, 0, len(m))
-	for k := range m {
-		ks = append(ks, k)
-	}
-	sort.Strings(ks)
-	return ks
 }

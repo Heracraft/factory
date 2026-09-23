@@ -129,7 +129,7 @@ func parseProcNetTCP(b []byte) map[uint64]uint32 {
 			continue
 		}
 		ip := procNetIP(addr)
-		if ip == nil || !(ip.IsLoopback() || ip.IsUnspecified()) {
+		if ip == nil || (!ip.IsLoopback() && !ip.IsUnspecified()) {
 			continue
 		}
 		inode, err := strconv.ParseUint(f[9], 10, 64)
