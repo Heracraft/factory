@@ -21,8 +21,8 @@ func StatusCmd(ctx context.Context, e *Env, projectArg string) error {
 	snaps, _ := e.Client.ListSnapshots(ctx, project.ID)
 	events, _ := e.Client.ListEvents(ctx, project.ID, "")
 	writeStatusLines(e.Out, project, route, snaps, events)
-	if project.State == "running" && project.Signals != nil {
-		writeListening(e.Out, project.Signals.Listening)
+	if project.State == "running" {
+		writeListening(e.Out, guestListening(ctx, e.target(project.Slug)))
 	}
 	return nil
 }

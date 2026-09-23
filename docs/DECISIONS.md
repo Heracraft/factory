@@ -4482,25 +4482,28 @@ part of workstream 15, because every later carry part rests on them.
   waits at most 2 s for it before the attach. Interfaces: `api.md`,
   `guest-conventions.md` in this commit.
 
-**I-207. The listening-process list travels in the sample; the OOM
-priority is -800, set by guestd on the agent process only, and resets
-only negative values.** (15-dev-ergonomics, 2026-09-23) Settled while
-building I-200.
+**I-207. `repose status` reads the listening processes from the guest
+over SSH; the OOM priority is -800, set by guestd on the agent process
+only, and resets only negative values.** (15-dev-ergonomics, 2026-09-23)
+Settled while building I-200.
 
-- *Where `repose status`'s process list comes from.* The proposal's
-  sketch (`vite :5173 up 3d 410 MB`) could have been read over SSH at
-  `status` time, but `status-and-logs.md` promises that status never
-  makes an SSH connection and works when the guest is unreachable, and
-  it already said listening ports "come from guestd". So `GuestSignals`
-  gains `repeated ListeningProc listening` (port, comm, age, RSS),
-  guestd fills it from its 5 s refresh (`/proc/net/tcp{,6}` for sockets,
-  fd links matched on `socket:[inode]` only, `stat` for the rest: no
-  fork, no command line, and the strace test still passes), hostd passes
-  signals through unchanged, the api stores it in
-  `meter_samples.listening` (migration 0005) and serves the newest in
-  `Project.signals.listening`. A guestd older than this sends none,
-  which proto3 cannot tell from "listens on nothing"; rows from before
-  0005 are null and the field is then absent. At most 20, by port.
+- *Where `repose status`'s process list comes from.* A version of this
+  workstream carried the list in guestd's sample (`GuestSignals`, stored
+  in `meter_samples`). The repository's policy test stopped it: the
+  privacy policy says, verbatim, that the platform records process
+  names, CPU time, memory use and network bytes, and listening ports and
+  process ages recorded every minute are more than that. Changing the
+  policy is the owner's call, not a workstream's, and the list is only
+  needed at the moment someone asks. So `status PROJECT` of a running
+  guest runs `ss -Hltnp` and `ps` in the guest over the user's own SSH
+  and prints the forwardable listeners with name, age and memory; the
+  platform never sees them. It departs from `status-and-logs.md`'s "status
+  never makes an SSH connection" in one bounded way, recorded there: the
+  read rides an open ControlMaster when there is one, never leaves one
+  open (`ControlMaster=no`, so no gateway session lingers), has 4 seconds,
+  and is left out when it fails, so status still works when the guest
+  cannot be reached. *Revisit when:* the owner wants the list on the
+  dashboard, which needs it recorded, which needs the policy text first.
 - *The value.* -800, not -1000: an agent that itself runs away can still
   be killed rather than hang the guest.
 - *Which process is the agent.* Name matching alone protects too much:
@@ -4510,8 +4513,8 @@ building I-200.
   work and go back to 0.
 - *Only negative values are reset to 0.* A value above 0 is one the user
   chose (`choom`), since nothing else in the guest raises it.
-Interfaces: `grpc-hostd.md`, `vsock-guestd.md`, `api.md`, `db-schema.md`,
-`guest-conventions.md` in this commit; the proto change is additive.
+Interfaces: `vsock-guestd.md` (the refresh sets `oom_score_adj`),
+`guest-conventions.md` "Memory pressure"; no proto, api or schema change.
 
 **I-208. The caches live at one fixed address on every host; npm is
 pointed at them through `~/.npmrc`, not `npm_config_registry`; npm's

@@ -46,7 +46,7 @@ Project { id, name, slug, remote_url, class, state, host_id?, guest_ip?,
           agent_default, hold_base_updates, base_version, config_revision_id,
           volume_bytes, disk_used_bytes?, created_at, started_at?,
           signals?: {ssh_sessions, tmux_clients, agents: [{agent, window, state}],
-                     guestd_ok, listening?: [{port, comm?, age_seconds?, rss_bytes?}]},
+                     guestd_ok},
           cost_today_cents, cost_month_cents, last_snapshot_at?,
           last_error?, host_unreachable, tz }
 
@@ -61,11 +61,6 @@ has missed heartbeats for 90 seconds; `signals.guestd_ok` is false when
 the newest sample found the environment's agent not answering (I-157).
 The api has returned all three since I-157/I-159; they are documented
 here since I-167. `signals` is absent until the first sample.
-`signals.listening` (I-207, new in this release) is the guest's
-listening processes from the newest sample, sorted by port, at most 20;
-absent for a sample stored before it existed, empty when nothing
-listens. `comm`, `age_seconds` and `rss_bytes` are absent when the
-socket's process was not found.
 
 A `DestroyedProject`'s `snapshot` is its newest restorable snapshot and
 `restorable_until` that snapshot's `expires_at` (30 days after the

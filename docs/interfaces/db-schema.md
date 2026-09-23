@@ -80,7 +80,6 @@ meter_samples (ts timestamptz, project_id, host_id, state text, class text,
               cpu_ns bigint, mem_rss bigint, net_tx bigint, net_rx bigint,
               disk_alloc bigint, disk_used bigint, ssh_sessions int,
               tmux_clients int, agents jsonb, docker_containers int, guestd_ok bool,
-              listening jsonb,               -- [{port, comm, age_seconds, rss_bytes}] (0005, I-207); null in rows older than it
               primary key (project_id, ts))  -- partitioned by month, 90-day retention
 
 proc_samples (ts, project_id, comm text, cpu_ns bigint, rss bigint,

@@ -274,6 +274,7 @@ func TestCarryClaudeNeverCarriesSecrets(t *testing.T) {
 			t.Errorf("%s did not arrive", rel)
 		}
 	}
+	// Never in the guest, whatever the carry sent.
 	for _, rel := range []string{".claude/.credentials.json", ".claude/projects", ".claude/history.jsonl", ".claude.json"} {
 		if fileExists(filepath.Join(f.guestHome, rel)) {
 			t.Errorf("%s is in the guest", rel)

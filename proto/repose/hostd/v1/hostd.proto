@@ -233,18 +233,12 @@ message BuildLog { string command_id = 1; uint64 seq = 2; string line = 3; }
 
 message AgentProc { string agent = 1; string tmux_window = 2; string state = 3; }
 message ProcSample { string comm = 1; uint64 cpu_ns_delta = 2; uint64 rss_bytes = 3; }
-// ListeningProc is one TCP listener in the guest a laptop could reach
-// (loopback or wildcard, port 1024 and up, not the desktop's): the port,
-// the owning process's name, its age and its memory (DECISIONS I-200).
-// Never its command line.
-message ListeningProc { uint32 port = 1; string comm = 2; uint64 age_seconds = 3; uint64 rss_bytes = 4; }
 message GuestSignals {
   uint32 ssh_sessions = 1;
   uint32 tmux_clients = 2;
   repeated AgentProc agents = 3;
   uint32 docker_containers = 4;
   bool guestd_ok = 5;
-  repeated ListeningProc listening = 6;
 }
 message GuestSample {
   string guest_id = 1;

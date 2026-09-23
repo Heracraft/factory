@@ -282,19 +282,6 @@ pkgs.testers.runNixOSTest {
         guest.wait_until_succeeds(f"test $(cat /proc/{web}/oom_score_adj) = 0", timeout=30)
         print(guest.succeed(f"grep -H . /proc/{claude}/oom_score_adj /proc/{server}/oom_score_adj /proc/{web}/oom_score_adj"))
 
-    with subtest("I-200, I-207: the sample lists what listens, with its process"):
-        def listening():
-            return first_json(call("sample"))["sample"]["signals"].get("listening", [])
-        found = []
-        for _ in range(15):
-            found = [l for l in listening() if int(l["port"]) == 5173]
-            if found:
-                break
-            guest.sleep(2)
-        assert found, listening()
-        assert found[0]["comm"] == "python3", found
-        assert int(found[0]["rssBytes"]) > 0, found
-
     with subtest("I-200: under memory pressure the kernel kills the hog, not the agent"):
         guest.succeed("echo 'a=[]' > /tmp/hog.py && echo 'while True: a.append(bytearray(64 << 20))' >> /tmp/hog.py")
         guest.succeed("sudo -u dev tmux new-window -d -t todo-app -n hog '${pkgs.python3}/bin/python3 /tmp/hog.py'")

@@ -62,17 +62,6 @@ type Signals struct {
 	TmuxClients int           `json:"tmux_clients"`
 	Agents      []AgentSignal `json:"agents"`
 	GuestdOK    bool          `json:"guestd_ok"`
-	// Listening is the guest's listening processes (I-200); a test sets
-	// it through Fake.SetListening.
-	Listening []ListeningSignal `json:"listening,omitempty"`
-}
-
-// ListeningSignal is one entry of Signals.Listening.
-type ListeningSignal struct {
-	Port       int    `json:"port"`
-	Comm       string `json:"comm,omitempty"`
-	AgeSeconds int64  `json:"age_seconds,omitempty"`
-	RSSBytes   int64  `json:"rss_bytes,omitempty"`
 }
 
 // AgentSignal is one entry of Signals.Agents.

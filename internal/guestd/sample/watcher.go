@@ -114,9 +114,8 @@ type Watcher struct {
 	// from it unless the socket has answered once already.
 	started    time.Time
 	dockerSeen bool
-	// listening is the last refresh's forwardable listeners, agentPanes
-	// the agent windows' pane pids and their agents (I-200).
-	listening  []*hostdv1.ListeningProc
+	// agentPanes is the agent windows' pane pids and their agents, for the
+	// OOM priority (I-200).
 	agentPanes map[int]string
 	// warned remembers which one-shot warnings have been sent, so tmux_down
 	// and docker_down are announced once rather than every five seconds.
@@ -169,14 +168,11 @@ func (w *Watcher) Refresh(ctx context.Context) {
 	w.refreshProcs()
 }
 
-// refreshProcs is the part of a refresh that reads /proc for I-200: the
-// listening processes status shows, and the OOM priorities, re-applied
-// every refresh so a dev server an agent started is back to 0 within one
-// interval. It runs whether or not the project's tmux session exists.
+// refreshProcs re-applies the OOM priorities (I-200) every refresh, so a
+// dev server an agent started is back to 0 within one interval. It runs
+// whether or not the project's tmux session exists.
 func (w *Watcher) refreshProcs() {
-	listening := w.procs.listening()
 	w.mu.Lock()
-	w.listening = listening
 	panes := w.agentPanes
 	w.mu.Unlock()
 
@@ -402,7 +398,6 @@ func (w *Watcher) Signals() (*hostdv1.GuestSignals, bool) {
 		TmuxClients:      w.clients,
 		DockerContainers: w.containers,
 		GuestdOk:         true,
-		Listening:        w.listening,
 	}
 	for name, ws := range w.windows {
 		sig.Agents = append(sig.Agents, &hostdv1.AgentProc{

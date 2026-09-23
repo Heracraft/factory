@@ -56,17 +56,24 @@ Status:
 - Git state is read by guestd (`branch`, `HEAD`, dirty count) as part of
   `Sample`, so the user knows work is waiting to be committed without
   attaching.
-- Listening processes come from guestd's sample (`signals.listening`,
-  DECISIONS I-200, I-207): each loopback or wildcard TCP listener on port
+- Listening processes (DECISIONS I-200, I-207): `repose status PROJECT`
+  of a running guest lists each loopback or wildcard TCP listener on port
   1024 and up with its process's name, age and memory, so a dev server
-  left running for days is easy to see and stop. Nothing is stopped for
-  the user; under memory pressure the kernel kills a dev server before
-  an agent (guest-conventions.md "Memory pressure"), and the `oom`
-  notification names what it killed. While attached, the same ports are
-  forwarded to the laptop (ports-and-previews.md).
-- `status` never triggers a certificate refresh or an SSH connection; it is
-  API only and works when the guest is unreachable, showing the last known
-  data with its age.
+  left running for days is easy to see and stop. They are read at that
+  moment over the user's own SSH (`ss` and `ps` in the guest), never
+  sampled or stored by the platform, whose records stay what the
+  privacy policy lists. That read is the one SSH `status` makes: it uses
+  an open multiplexed connection when there is one, never leaves one
+  open, and is given 4 seconds; when the guest does not answer, the list
+  is simply missing and every other line is the api's. Nothing is
+  stopped for the user; under memory pressure the kernel kills a dev
+  server before an agent (guest-conventions.md "Memory pressure"), and
+  the `oom` notification names what it killed. While attached, the same
+  ports are forwarded to the laptop (ports-and-previews.md).
+- `status` never triggers a certificate refresh, and its lines come from
+  the API, so it works when the guest is unreachable, showing the last
+  known data with its age. The one exception is the listening list above:
+  a bounded, best-effort SSH read that is left out when it fails.
 - `--json` prints the `Project` object from `interfaces/api.md` verbatim.
 - Exit code is 0 even when a project is in `error`; the state is the
   information. `status --project X` on an unknown project exits 4.

@@ -161,38 +161,3 @@ func TestIngestAndSyntheticDayRollup(t *testing.T) {
 		t.Fatalf("second due rolled %d", n)
 	}
 }
-
-// I-200: the guest's listening processes travel in the sample's signals and
-// the newest sample's are what the project shows. (A guestd that predates
-// them sends none, which proto3 cannot tell from "listens on nothing"; only
-// a row written before migration 0005 reads as not known.)
-func TestLatestSampleCarriesListening(t *testing.T) {
-	pool := testdb.Open(t)
-	ctx := context.Background()
-	day := time.Date(2026, 9, 11, 0, 0, 0, 0, time.UTC)
-	pid, gid := seed(t, pool, "small", day.Add(-time.Hour))
-	ing := meter.New(pool, metrics.NewNop(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	ing.SetNow(func() time.Time { return day })
-	hostID := store.NewID()
-	ing.OnSamples(ctx, hostID, &hostdv1.Samples{Ts: day.Unix(), Guests: []*hostdv1.GuestSample{{GuestId: gid.String(), State: "running", Class: "small"}}})
-	l, ok, err := meter.LatestSample(ctx, pool, pid)
-	if err != nil || !ok || len(l.Listening) != 0 {
-		t.Fatalf("sample without listeners: %+v %v %v", l, ok, err)
-	}
-	if _, err := pool.Exec(ctx, "update meter_samples set listening = null where project_id = $1", pid); err != nil {
-		t.Fatal(err)
-	}
-	if l, _, _ = meter.LatestSample(ctx, pool, pid); l.Listening != nil {
-		t.Fatalf("a pre-0005 row = %+v, want nil (not known)", l.Listening)
-	}
-	ing.OnSamples(ctx, hostID, &hostdv1.Samples{Ts: day.Add(time.Minute).Unix(), Guests: []*hostdv1.GuestSample{{GuestId: gid.String(), State: "running", Class: "small",
-		Signals: &hostdv1.GuestSignals{GuestdOk: true, Listening: []*hostdv1.ListeningProc{{Port: 5173, Comm: "node", AgeSeconds: 259200, RssBytes: 410 << 20}, {Port: 5432}}}}}})
-	l, _, err = meter.LatestSample(ctx, pool, pid)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []meter.Listening{{Port: 5173, Comm: "node", AgeSeconds: 259200, RSSBytes: 410 << 20}, {Port: 5432}}
-	if len(l.Listening) != 2 || l.Listening[0] != want[0] || l.Listening[1] != want[1] {
-		t.Fatalf("listening = %+v", l.Listening)
-	}
-}
