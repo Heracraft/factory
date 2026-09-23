@@ -242,8 +242,16 @@ was the read-only store path), `PRISMA_ENGINES_MIRROR=http://127.0.0.1:850`
 (I-228), `PKG_CONFIG_PATH` naming openssl, zlib, sqlite and libffi (I-228),
 `PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1`, `PUPPETEER_SKIP_DOWNLOAD=1`,
 `PUPPETEER_EXECUTABLE_PATH` and `CHROME_BIN` (the guest's chromium).
-`PATH` includes `/home/dev/.local/bin`, `/home/dev/.local/share/pnpm` and
-`/home/dev/.npm-global/bin`. `python`, `python3` and `python3.12` in
+`GOPATH=/home/dev/go`, `CARGO_HOME=/home/dev/.cargo`,
+`RUSTUP_HOME=/home/dev/.rustup`, `BUN_INSTALL=/home/dev/.bun`,
+`DENO_INSTALL_ROOT=/home/dev/.deno`,
+`COMPOSER_HOME=/home/dev/.config/composer`,
+`GEM_HOME=/home/dev/.local/share/gem` (I-227). `PATH` starts with every
+package manager's user bin dir, listed in `nix/guest/base/user-bin-dirs.nix`
+(`/home/dev/.local/bin`, `/home/dev/.local/share/pnpm`,
+`/home/dev/.npm-global/bin`, `/home/dev/go/bin`, `/home/dev/.cargo/bin`,
+`/home/dev/.bun/bin`, `/home/dev/.deno/bin` and the rest), in login and
+non-login shells, tmux windows, and dev's systemd user units (I-227). `python`, `python3` and `python3.12` in
 `/run/current-system/sw/bin` are a wrapper that adds nix-ld's library
 directory to `LD_LIBRARY_PATH` for manylinux wheels and keeps its own
 path as `sys.executable` (I-228). `DISPLAY=:99` only while the desktop's X
