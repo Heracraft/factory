@@ -4773,3 +4773,22 @@ newer `.env` is named once.** (ws/15 live fixes, 2026-09-23)
   then records the new mtime: named once per change, never on every run.
 - *Wording.* The credential notes agree in number ("1 git config entry
   that holds").
+
+**I-216. The dashboard is developed against the live api and Logto, not
+the fake.** 08-dashboard.md §7 builds cmd/fakeapi and cmd/fake-logto for
+the Playwright suite. The design preview (`ops/dev/web-preview.sh`) reused
+the fake api for local work, behind a dev-only login shortcut
+(`PUBLIC_PREVIEW_TOKEN`) and seeded projects. That showed invented data,
+and every new endpoint had to be added to the fake before a page could use
+it. `just web` now runs Vite with the production `PUBLIC_*` values
+(`apps/web/.env.example`, now with the repose-web app id, which is public)
+behind `tailscale serve`, at https://azurewoker-01.tail05d19d.ts.net/. It
+has to be HTTPS: Logto's PKCE uses `crypto.subtle`, which browsers only
+expose in a secure context, and a plain `http://100.x` address is not one
+(tried first; the sign-in button did nothing). The api already answers any
+origin (CORS `*`). The repose-web Logto application lists that origin's
+`/callback` and `/` as redirect and post-sign-out URIs.
+The preview script, the shortcut and the Vite `/fakeapi` proxy are
+removed. The fakes stay for the Playwright suite only. The cost: a dev
+server's buttons act on the signed-in account, so anything destructive is
+tried on an `e2e-` project.

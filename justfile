@@ -51,3 +51,21 @@ obs-dev-down:
 done-check paths="cmd internal":
     @echo "-- unhandled errors / panics --"; rg -n '_ = err|panic\(' {{paths}} || true
     @echo "-- leftovers --"; rg -n 'TODO|FIXME|XXX|not implemented' {{paths}} || true
+
+# --- dashboard -------------------------------------------------------------
+
+# The dashboard's Vite dev server against the live api and Logto, behind
+# `tailscale serve` so it has HTTPS on this machine's ts.net name: Logto's
+# PKCE needs a secure context, which a plain http://100.x address is not
+# (DECISIONS I-216). Sign in with GitHub as on the site; every button acts
+# on that real account.
+web:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd apps/web
+    [ -e .env ] || cp .env.example .env
+    [ -d node_modules ] || pnpm install
+    tailscale serve --bg --https=443 http://127.0.0.1:5173 >/dev/null
+    host=$(tailscale status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')
+    echo "Dashboard: https://$host/"
+    pnpm exec vite dev --host 0.0.0.0 --port 5173 --strictPort
