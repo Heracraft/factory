@@ -74,7 +74,24 @@ and groups: languages, databases, browsers, tools, and deploy CLIs
 portless, which nixpkgs does not carry, installed once with `npm i -g`
 into `~/.npm-global` by a user unit after the network is up). None of
 these needs the menu: `npm i -g <cli>` in the guest works and persists
-too (DECISIONS I-36). A selection is stored as
+too (DECISIONS I-36), and so does `nix profile add nixpkgs#<attr>`,
+which resolves `nixpkgs` to the base's own pinned nixpkgs, needs no
+download of it, and fetches the package from cache.nixos.org (I-218).
+Typing a command the guest does not have names the nixpkgs package that
+has it and both ways to add it (I-219):
+
+```
+$ air
+air is not installed. It is in the nixpkgs package air:
+  now, in this guest:              nix profile add nixpkgs#air
+  from your laptop, kept for good: repose config add air
+```
+
+The first is immediate and survives restarts; the second puts it in the
+fragment, so it survives a rebuild from scratch and a move to another
+host. The base also has a C toolchain (`cc`, `gcc`, `g++`, `make`,
+`cmake`, `pkg-config`) for cgo, node-gyp and rustup, and runs prebuilt
+Linux binaries downloaded by npm, pip or an install script (nix-ld). A selection is stored as
 JSON and rendered by the API into a home-manager module. Editing the
 fragment directly turns the menu off for that project (the menu cannot
 round-trip arbitrary Nix); the CLI and dashboard say so and offer to keep a

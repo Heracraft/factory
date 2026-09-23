@@ -23,7 +23,14 @@ runner using the host's shared store. Everything in
   zoxide, eza, plus neovim, htop, tree, unzip, zstd, fd, bat, fzf, tmux,
   openssh, docker-compose). `packages/core/flake.nix` is deleted once this
   file exists and the dev box has been switched to `nix develop`; the
-  deletion is a checklist item.
+  deletion is a checklist item. Since I-218 the list (now
+  `tool-list.nix`) also carries a C toolchain (gcc, binutils, gnumake,
+  pkg-config, cmake) and file, lsof, zip, dnsutils, sqlite, psql and the
+  dump tools, openssl, gnupg and psmisc.
+- `nix/guest/base/devtools.nix` (I-218, I-219): nix-ld with a common
+  library set, `nixpkgs` in the registry and NIX_PATH pinned to the base's
+  own nixpkgs (no global registry), and the command-not-found handler
+  with `nix-locate` from nix-index-database's prebuilt index.
 - `nix/guest/base/users.nix`: `dev` uid 1000, gid 1000, groups `wheel docker
   kvm`, home `/home/dev`, shell bash, `security.sudo.wheelNeedsPassword =
   false`, root locked, `users.mutableUsers = false`.
