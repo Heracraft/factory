@@ -1,0 +1,301 @@
+# Decisions index
+
+Generated from [DECISIONS.md](DECISIONS.md) by `ops/dev/decisions-index.py`;
+do not edit by hand. Run the script after adding an entry, and
+`python3 ops/dev/decisions-index.py --check` to see whether this file is stale.
+
+Read this first, then open DECISIONS.md at the entries you need (`L` is the
+line the entry starts on). Status is only what DECISIONS.md itself says: an
+entry marked superseded, amended or reversed has a later entry that says so,
+and the later entry wins. The entry text is the decision; a title here is a
+pointer, not a summary.
+
+267 entries.
+
+## Scope
+
+- **R1-1** First release is multi-tenant — L18
+- **R1-2** Unit of environment is one microVM per project on shared hosts — L23
+- **R1-3** Git is the exchange channel, plus a one-shot sync of the uncommitted diff at launch — L29
+- **R1-4** `run` attaches, `run "prompt"` starts an agent, with a prelisted agent picker defaulting to Claude — L34
+- **R1-5** Guests are always-on until `stop` — L37
+- **R1-6** No Tailscale for user access — superseded by R2-5 and R4-3; L42
+- **R1-8** (amended R2) — amended; L46
+
+## Hosts and guests
+
+- **R2-1** NixOS guests on Cloud Hypervisor via microvm.nix with the host's Nix store shared read-only over virtio-fs — L50
+- **R2-2** NixOS host installed with nixos-anywhere — L58
+- **R2-3** Guest disks are host-local with snapshots to Blob; projects are pinned to a host — L61
+- **R2-17** Host SKU is Intel D64s_v5 with guest images on a Premium SSD v2 managed data disk — L66
+- **R2-18** Nested virtualization is accepted, gated by a one-day benchmark before anything else is built — L73
+- **R3-2** Three size classes: small 2/4, large 4/8, xl 8/16. CPU 2:1 oversubscribed, memory never — L78
+- **R3-3** Config changes apply in place via switch-to-configuration; reboot only when the kernel or share layout changed — L83
+- **R3-6** LVM thin pool, one thin volume per guest, snapshot with a guest-side fsfreeze over vsock, streamed compressed to Blob. Nightly plus on stop, keep 7 — L88
+- **R3-20** Azure hosts while credits last; the OpenTofu host module is written so Hetzner is a second module — L93
+- **R5-1** hostd builds each guest's microvm.nix runner on demand and starts it as a transient systemd unit — L99
+- **R5-2** One in-guest Go agent (`guestd`) on vsock only — L104
+- **R5-4** User builds: substitutes from cache.nixos.org and the platform overlay cache; source builds allowed, capped at 30 minutes and 8 cores; evaluation capped at 60 seconds; per-project closure cap 20 GB — L108
+- **R5-5** Default volumes 20/40/80 GB thin, resizable up, billed on allocated. Egress shaped at 200 Mbit/s, 500 GB/month included — L113
+- **R4-5** Base bumps apply automatically weekly (security sooner) with a per-project hold flag and a changelog line in status — L116
+- **R4-4** Builds run on the project's host; a central builder plus cache comes when there is more than one host — L120
+
+## Network and access
+
+- **R2-5** SSH certificate authority in the control plane, short-lived certificates, a gateway that routes by login name — L125
+- **R2-6** Dev-server access is `repose open <port>` (SSH forward) now; per- project HTTPS preview URLs later, documented from day one — L131
+- **R3-7** The gateway is custom Go, not OpenSSH ProxyJump — L134
+- **R3-8** hostd dials out to the API over a mutual-TLS gRPC stream; hosts have no inbound ports — L138
+- **R4-3** WireGuard between edge and hosts, hosts dial the edge — L141
+- **R4-6** Default deny guest-to-guest and guest-to-host; egress only, shaped; Azure IMDS blocked from guests — L145
+- **R4-13** Gateway and WireGuard hub run on a small NixOS edge VM, not on Coolify — L149
+
+## Identity, secrets, policy
+
+- **R2-7** Logto (already self-hosted) with the GitHub connector is the identity provider — L155
+- **R5-10** CLI login is authorization code with PKCE and a loopback redirect, device code as the headless fallback — L158
+- **R2-8** Tool logins sync from the laptop (gh, Codex, opencode, git identity); Claude never; named secrets are held centrally with envelope encryption — amended; L161
+- **R2-15** Claude logs in inside the guest by default; a setup token stored as a named secret is the headless fallback — L169
+- **R3-10** Named secrets: envelope encryption in Postgres, DEKs wrapped by a Key Vault key. Disks rely on Azure managed-disk encryption — L173
+- **R2-10** Egress is unrestricted but shaped; abuse control is card on file plus GitHub-linked identity plus recorded process samples — L179
+- **R5-3** Process samples contain process names, per-process CPU, memory and network bytes, sampled every minute. Never arguments, environment, paths or terminal contents — L183
+
+## Agents and environment
+
+- **R2-11 + R2-13 + R2-14 + R2-16** Agents: Claude Code, opencode, Codex CLI, Gemini CLI, pi. Browser: headless Chromium with Playwright MCP and chrome-devtools-mcp, plus on-demand Xvfb and noVNC. Laptop-bound MCPs unsupported at first, `repose mcp forward` planned. Notifications: platform hooks for every agent plus each agent's own features — L189
+- **R3-19** Agents come from a platform-owned overlay bumped on a schedule, not nixpkgs — L197
+- **R3-13** Fixed guest user `dev`, passwordless sudo, project at `/home/dev/<project>` — L201
+- **R3-14 + R4-10** A prompt starts the agent's TUI in a tmux window named after the agent; a second `run` with a prompt opens another window with a warning — L206
+- **R3-12** Sync refuses if the guest tree is dirty and offers stash or discard — L211
+- **R3-11** Projects are keyed on git remote plus user with `--name` override; nothing committed to the repo — L214
+
+## Control plane and operations
+
+- **R2-4 + R3-4** Go for api, hostd, gateway, guestd and CLI; Postgres. The control plane is decoupled from Azure: containers on Coolify, only compute and storage are Azure-specific — L219
+- **R4-2 + R5-11** Control plane on an Ubuntu LTS VM in Azure running Coolify, Logto, api and dashboard as single-container apps; Postgres Coolify-managed — partly superseded by I-84; L224
+- **R4-14** Postgres backups to Cloudflare R2 — L230
+- **R3-1** Provisioning is OpenTofu for Azure resources with nixos-anywhere as a provisioner; hostd self-registers — L234
+- **R3-5** Capacity is added manually at an 80 percent memory alert — L238
+- **R2-9** Observability reuses the existing Loki, Grafana and Fluent Bit; add Prometheus there; OpenTelemetry in the control plane with no traces backend yet. Record everything non-invasive — L240
+- **R2-12 + R3-16 + R4-7 + R4-8** Stripe from day one, card required before the first guest, $10 credit trial. Meters: guest-hours by class, volume GB-months, egress GB. Hourly rate with a monthly cap per project equal to the flat price (49/99/199) — partly amended by I-205; L244
+- **R4-11** Retention: destroy deletes the volume and keeps the last snapshot 30 days; cancellation stops guests, keeps snapshots 30 days — L252
+- **R4-12** + R4 domain note. The name is `repose` everywhere. Hosted under `herakraft.co` (`repose.herakraft.co`, `api.repose.herakraft.co`, `ssh.repose.herakraft.co`) until it graduates to its own domain — partly superseded by I-15; L255
+- **R5-6** No teams in the first release — L261
+- **R5-7** One repository, one Go module, `nix/` and `infra/` alongside the existing Turborepo — L263
+- **R5-8** Milestone order: benchmark, then hostd and guestd with your own projects over WireGuard, then edge and auth, then Coolify control plane and dashboard, then billing, with observability from milestone two onward — L266
+
+## Made during implementation
+
+- **I-1** Gateway terminates and re-dials with a gateway-issued 5-minute certificate — L279
+- **I-2** The gRPC listener for hosts runs as a separate Coolify app `api-grpc` from the same image with `--mode grpc` — L285
+- **I-3** The api generates each guest's sshd host key and Host-CA certificate and passes them in `CreateGuest` and `Restore` — L291
+- **I-4** Internal routes `GET /internal/hosts`, `POST /internal/gateway-certs`, `POST /internal/events` — L296
+- **I-5** `Heartbeat.draining` and `ApplyResult.reboot_required`, `ApplyConfig.force_reboot` — L301
+- **I-6** Preview hostnames carry the handle: `<port>-<slug>-<handle>.repose.herakraft.co` — L306
+- **I-7** `POST /me/notify-test`, and the SSE build-log route accepts `?access_token=` — L310
+- **I-8** CLI gains `events` and `notify set|test` — L314
+- **I-9** The runbook's `repose-admin` surface is the required admin CLI — L317
+- **I-10** Guest sshd material travels as explicit `CreateGuest` fields and lands in the guest's secrets tmpfs under reserved names — L324
+- **I-11** Warning kinds are enumerated — L332
+- **I-12** The M0 benchmark is deferred; the first M1 host measures itself — 2026-09-17; L337
+- **I-13** Dashboard design language is the recruiting app's, minus its non-text controls — L345
+- **I-14** Pre-launch host is `Standard_D16s_v5`; the host size is a variable, not a constant — 2026-09-17; L350
+- **I-36** Guests set `NPM_CONFIG_PREFIX=/home/dev/.npm-global` and put its `bin` on `PATH` — L360
+- **I-15** The product is named Repose — 2026-09-19; L367
+- **I-16** Stripe is not needed until milestone M4; accounts can be billing- exempt — 2026-09-19; L383
+- **I-17** hostd ships a one-host dev driver, `cmd/hostdev` — L394
+- **I-18** Host runtime configuration has one input, `host.json`; the host owns the network files, the bridge isolation lives in an nftables `bridge` table, and guests are cut off from every private range — L402
+- **I-19** The state store and its resource group are created outside the environment's apply — L447
+- **I-20** The join token reaches a host over SSH after the install, not through cloud-init — L464
+- **I-21** Credentials stay human steps: the api's Entra app registration and the R2 API token — L480
+- **I-22** `.terraform.lock.hcl` is committed — L493
+- **I-23** The edge VM is `Standard_D2s_v5` and its NSG opens 22, 443, 51820/udp and 2222 — L501
+- **I-24** The control-plane VM is not created until wave 3 — 2026-09-19; L513
+- **I-25** The installer reaches a host through the edge, never through a temporary public IP — L526
+- **I-26** Commands carry what hostd cannot keep: StartGuest repeats the delivery fields, CreateGuest and Restore name the user, slug and remote, Restore names the closure, Exec carries an audit id, StopResult carries the snapshot's blob path — L542
+- **I-27** hostd launches Cloud Hypervisor directly from the guest's system closure; no per-guest microvm.nix runner is built — L564
+- **I-28** The platform flake takes the user fragment as a non-flake input named `fragment` and exposes `guestSystem`; hostd fetches base checkouts with git — L581
+- **I-29** Two more guestd warning kinds: `oom` and `tmux_down` — L595
+- **I-30** `WriteSecrets` carries the whole set, and validates before it writes — L608
+- **I-31** `Sample` serves the tmux and Docker signals from a 5 s cache, and carries a `partial` flag — L618
+- **I-32** `guestd call` is the client side of the vsock contract, in the same binary — L633
+- **I-33** The on-demand desktop is display `:99`, socket-activated, with a per-start password file — L642
+- **I-34** `mkGuestRunner` takes every per-guest value at run time; the system closure is guest-independent — L657
+- **I-35** sshd material: reserved secrets at `/run/repose/`, symlinked into `/etc/ssh/`, a throwaway key until delivery, reload re-reads — L675
+- **I-37** Two vsock RPC implementations exist for one release — 2026-09-19; L690
+- **I-38** Generated protobuf code is tracked and also regenerated in the Nix sandbox — 2026-09-19; L699
+- **I-39** Sizes are Intel v7 (Granite Rapids): host `Standard_D16s_v7`, edge `Standard_D2s_v7`, control plane `Standard_D4s_v7`, launch host `Standard_D64s_v7` — 2026-09-20; L706
+- **I-40** A production host is a named configuration; the api CA and the snapshot target are host module options; a host registered by `hostdev` comes up without WireGuard or a Host CA — 2026-09-20; L725
+- **I-41** The data disk is found at install time, not named in advance — 2026-09-20; L761
+- **I-42** The api's implementation shape: phased ops driven by one replica, /internal on the gRPC app, CA material in the secrets table, guest host certificates re-signed once the address is known — 2026-09-20; L779
+- **I-43** The fragment contract is enforced by a NixOS module, `nix/guest/contract.nix`: `repose.overlays` from a pre-pass, `repose.system` through a static allowlist, and one class-independent closure — L860
+- **I-44** The menu package is `internal/menu`; `GET /catalog` carries `kind` and `options` — L893
+- **I-45** Fragment evaluation and builds run as `nixbuild` inside a transient scope, against a `git+file://` flake, with `allowed-uris` derived from the base checkout's lock file, and `--show-trace` — L907
+- **I-46** The agent overlay is built from upstream release binaries pinned in `versions.json` and cached on Cachix — L937
+- **I-47** Base bumps are a planner and a runner in `internal/basebump` over two interfaces the api implements — L959
+- **I-48** virtiofsd's sandbox is `namespace`, and hostd attaches taps with exactly the host-conventions sequence — 2026-09-20; L973
+- **I-49** The tmux-idle heuristic never reads pane content, and its metrics carry the `repose_api_*` prefix, not `repose_notify_*` — amended by I-59; L1015
+- **I-50** Gemini CLI and pi both gained hook mechanisms since 5.3's "at time of writing" rows were written; Gemini CLI itself stopped serving individual-tier requests on 2026-06-18 — 2026-09-20; L1072
+- **I-51** `guest@<id>` runs Cloud Hypervisor as the `hostd` user inside a systemd sandbox; hostd itself stays root — 2026-09-20; L1119
+- **I-52** The `obs` package fixes what §5 left to call sites, and its component and label lists are wider than §5's by two and three — L1161
+- **I-53** An operator's `Exec` argv is not logged, only its `audit_id` and length — L1197
+- **I-54** `meter_samples` carries `guestd_ok` — L1208
+- **I-55** Dashboards are generated from `ops/dashboards/gen.py` and the JSON is committed; `ops/` is laid out as §2 says, not as PROMPTS.md says — L1221
+- **I-56** Two alerts beyond §5's eleven, and the Fluent Bit metrics port is open on wg0 — L1235
+- **I-57** `repose_host_build_phase_duration_seconds{phase}` splits eval from build — L1250
+- **I-58** `repose-hook` reads `REPOSE_HOOK_AGENT`, the name the wrappers export — L1261
+- **I-59** `internal/obs` is three packages, because a guest pays for what it imports — L1281
+- **I-60** One observability package, one tracing setup, one api metric family — 2026-09-20; L1305
+- **I-61** The store export bind is made private before `.links` is masked — 2026-09-20; L1354
+- **I-62** virtiofsd's socket lives in a subdirectory it owns, and hostd fails step 8 when virtiofsd exits — 2026-09-20; L1366
+- **I-63** The guest disk is passed to Cloud Hypervisor with `image_type=raw` — 2026-09-20; L1386
+- **I-64** guestd binds its vsock listener to any CID — 2026-09-20; L1395
+- **I-65** virtiofsd does not announce submounts — 2026-09-20; L1403
+- **I-66** `ResizeVolume` on a running guest calls Cloud Hypervisor's `vm.resize-disk` between `lvextend` and `GrowFs` — 2026-09-20; L1418
+- **I-67** hostd registers the guest's closure in the guest's nix database: `RegisterPaths` after `Ready`, and `registration` inside `Switch` — 2026-09-20; L1426
+- **I-68** Reconcile removes `snap-*` volumes left by an interrupted snapshot — 2026-09-20; L1448
+- **I-69** The `virtiofsd` user is in group `hostd` — 2026-09-20; L1461
+- **I-70** A secret or principal push to a running guest is an op, so a lifecycle request issued in the same second can answer 409 — 2026-09-20; L1476
+- **I-71** The control plane is created now, with its Coolify pinned and its dashboard off the network — 2026-09-20; L1485
+- **I-72** `manage_dns` defaults to false, and the absence of a record is not the absence of an answer — 2026-09-20; L1523
+- **I-73** Points 07-cli.md and cli-config.md left implicit, settled while building `cmd/repose` — 2026-09-20; L1547
+- **I-74** The host reaches its guests through a declared `ct direction reply` rule, not a rule an operator inserts by hand — 2026-09-20; L1592
+- **I-75** `repose.host.apiCAFile` names an api CA that only exists at run time — 2026-09-20; L1612
+- **I-76** hostd takes an identity `repose-register.service` wrote while it was running — 2026-09-20; L1625
+- **I-77** Usage records are Stripe billing meter events, not subscription-item usage records — L1639
+- **I-78** The rollup lives in `internal/billing`, the billing period is anchored at signup and stored on every row, and `users.trial_credit_cents` is a trigger-maintained projection of the ledger — L1683
+- **I-79** The api's user-facing routes answer CORS on every response, with a wildcard origin — L1734
+- **I-80** `internal/fakes/api`'s catalog gains `kind` and `options`, and a fragment containing `repose-force-eval-error` answers the first canonical `eval_failed` message instead of applying — L1761
+- **I-81** The gateway's metrics live in `internal/obs/metrics` as an extended `GatewayMetrics` family, and `auth_fail_total`'s reason enum is the union the gateway actually distinguishes — 2026-09-20; L1777
+- **I-82** The gateway relay closes the client channel only after the guest's in-flight request replies are delivered, and the connection tears down guest first — 2026-09-20; L1810
+- **I-83** The control VM is a server managed by the owner's existing Coolify instance; Coolify itself is not installed on it — 2026-09-20; L1828
+- **I-84** Logto is the owner's existing instance at `accounts.herakraft.co`; no Logto container, and no `auth.repose.herakraft.co` — 2026-09-20; L1861
+- **I-85** The api verifies `iss` as `<LOGTO_ISSUER>/oidc` — 2026-09-20; L1875
+- **I-86** The owner's Coolify reaches the control VM over Tailscale; the public-IP rule is the fallback — 2026-09-20; L1887
+- **I-87** Postgres and its backup are one Docker Compose resource from `ops/coolify/postgres/docker-compose.yml`; api, api-grpc and web stay separate Coolify Dockerfile applications with rolling deploys; the grpc api issues its own server certificate; the Logto M2M application is `repose-api` — 2026-09-20; L1902
+- **I-88** The api reaches Postgres as `repose-postgres-<service uuid>`, the container name, not the service name — 2026-09-20; superseded by I-89; L1940
+- **I-89** The Postgres compose file joins the `coolify` network itself; the api reaches it as `repose-postgres`. Supersedes I-88 — 2026-09-20; L1955
+- **I-90** The api bootstraps itself: it applies pending migrations at start and generates the platform CA when none exists, both idempotent and serialised across replicas on advisory locks — 2026-09-20; L1972
+- **I-91** The api's Key Vault policy is Get, WrapKey and UnwrapKey — 2026-09-20; L1999
+- **I-92** Hosts dial the api at the control plane's VNet address and get WireGuard from registration; the edge reaches `/internal` over a static tunnel peer that `wgsync` keeps; the production edge's facts live in `nix/edge/edge-01.nix` — 2026-09-20; L2012
+- **I-93** hostd hands the base checkout to the build user — 2026-09-20; L2074
+- **I-97** `/run/repose` is 0755; the join-token delivery no longer makes it 0700 — 2026-09-20; L2093
+- **I-94** A scrape is a forwarded packet, so the edge needs a forward rule; the control plane is `10.255.255.1` on the hub, and its two applications are two scrape targets — 2026-09-20; L2111
+- **I-95** `RegisterResponse` carries `loki_url`, from a setting an operator records with `repose-admin edge loki`; Fluent Bit refuses to start without one — 2026-09-20; L2160
+- **I-96** Where `features/` promised a dashboard that was never specified, the feature doc is corrected, not the dashboard — 2026-09-20; L2208
+- **I-100** A first sign-in without a GitHub identity gets a `user-<sub>` handle; `repose-admin users rename` and `projects destroy` exist for the operator to put that right — 2026-09-20; L2246
+- **I-98** CLI releases are GitHub releases of the `Heracraft/factory` repository, cut from `v*` tags; the dashboard serves `install.sh` — 2026-09-20; L2270
+- **I-99** The CLI's OAuth client id is Logto's App ID for `repose-cli`, a config value with that default, recorded in the credentials file — 2026-09-20; L2286
+- **I-101** `repose login` uses the device-code flow by default; the loopback PKCE flow is `--browser` — 2026-09-20; L2301
+- **I-102** Every Logto token request from the CLI carries `resource=https://api.repose.herakraft.co` — 2026-09-20; L2318
+- **I-103** Coolify owns the backups, the destination is the owner's own S3 storage, and no credential for it comes through this repository or an agent session — 2026-09-20; superseded by I-112; L2332
+- **I-106** `repose run` waits on the op a create leaves in flight instead of starting the project — 2026-09-20; L2384
+- **I-107** guestd's `SetupProject` points `origin` at the project's remote — 2026-09-20; L2399
+- **I-108** The generated `~/.ssh/repose/config` sets `IdentitiesOnly yes` — 2026-09-20; L2413
+- **I-104** The CLI sends an IANA zone name or no `tz` at all — 2026-09-20; L2421
+- **I-105** The provisioner reads the GitHub login from Logto's `rawData.userInfo.login`; the fake Logto emits that shape — 2026-09-20; L2431
+- **I-110** The relay half-closes towards the client when the guest's side of a channel ends; the fake guest reads its agent channel with one reader — 2026-09-20; L2453
+- **I-109** The guest base disables NixOS's systemd ssh proxy include — 2026-09-20; L2482
+- **I-111** The guest pins GitHub's SSH host key and trusts other forges on first use — 2026-09-20; L2496
+- **I-112** Backups are entirely Coolify's, and Coolify redeploys on every push to `main` — 2026-09-20; L2507
+- **I-117** Build-log flushes are serialised and `Read` always flushes first, so a reader never misses the batch a flush is inserting — 2026-09-20; L2554
+- **I-113** `repose-admin projects create` makes a project for a synthetic, billing-exempt user; `hosts smoke` uses the same path — 2026-09-20; L2567
+- **I-114** The CLI waits through `building`, and reads an op's error as `{code, message}` — 2026-09-20; L2582
+- **I-115** A destroyed project's `rev-*` GC roots go with its guest, and a restore of a destroyed project rebuilds its closure — 2026-09-20; L2601
+- **I-116** `repose_host_guests` publishes every state and class at zero — 2026-09-20; L2618
+- **I-118** `Build` carries `base_version`, hostd writes it beside the fragment, and the flake stamps the guest with it — 2026-09-20; L2629
+- **I-119** The api renders the menu with `internal/menu`; `internal/nixmenu` is gone — 2026-09-20; L2651
+- **I-120** The tap name and MAC come from a hash of the guest id, not its first eight hex; a create refuses a tap or MAC another guest holds — 2026-09-21; L2668
+- **I-121** `AgentEvent` on the host stream carries `tmux_window`, and a Claude `Stop` without a readable transcript is summarised as "claude finished" — 2026-09-21; L2695
+- **I-122** guestd's watcher accepts every process name an agent runs as; Gemini CLI is `node` — 2026-09-21; amended by I-125; L2712
+- **I-123** Gateway session reports are ordered and sent at most once — 2026-09-21; L2727
+- **I-124** A destroy whose plan is empty still ends with the project destroyed — 2026-09-21; L2752
+- **I-125** guestd's watcher also matches an agent by the executable's name — 2026-09-21; L2764
+- **I-126** The api's parse-time syntax error is worded like hostd's — 2026-09-21; L2775
+- **I-127** The CLI reads the op again when the build log stream ends — 2026-09-21; L2789
+- **I-128** The CLI prints the verbatim block of a build error — 2026-09-21; L2802
+- **I-129** M2's two-person gate was closed with one person and a second account — 2026-09-21; L2814
+- **I-130** One refused blob delete does not end the expiry run — 2026-09-21; L2835
+- **I-131** The api's service principal gets Storage Blob Data Contributor on the snapshots container — 2026-09-21; L2857
+- **I-132** A base bump that needs a reboot says so in its event — 2026-09-21; L2876
+- **I-134** The build phase takes its base from the revision, not the project — 2026-09-21; L2890
+- **I-133** The api's `/metrics` is a Traefik router on the app, behind an IP allow-list; no collector and no host port — 2026-09-21; L2909
+- **I-136** The api's user listener does not serve `/metrics`; the metrics listener is the only place the registry is served — 2026-09-21; L2963
+- **I-137** hostd writes `host.json` and nothing else at registration; the second `wg0.conf` under its state directory is gone — 2026-09-21; L2994
+- **I-138** A project without a remote syncs its whole tracked tree and commits it in the guest — 2026-09-21; superseded by I-150; L3014
+- **I-139** `RegisterResponse` carries the SSH Host CA's public key; hostd writes it to `host.json` and re-renders the host's network files after a rotate that changes it — 2026-09-21; L3040
+- **I-140** Operator SSH logins reach `audit_log` as an `operator_login` host event carrying the certificate's key id and serial, never its body — 2026-09-21; L3075
+- **I-141** A security sweep is due while the release is newer than this process's last sweep — 2026-09-21; L3105
+- **I-142** `host_moved` is raised only when a restore leaves the project's host — 2026-09-21; L3124
+- **I-143** The system activation leaves guestd running; guestd restarts itself after a switch — 2026-09-21; L3140
+- **I-144** One clone per base ref — 2026-09-21; L3166
+- **I-145** A bump that built but could not switch says so — 2026-09-21; L3176
+- **I-146** A bump that failed against an older base is tried again on the next — 2026-09-21; L3184
+- **I-147** A start applies only a built revision newer than the one the guest runs — 2026-09-21; L3196
+- **I-148** The activation's output goes to a file, and hostd asks again once when guestd went away mid-switch — 2026-09-21; L3209
+- **I-156** A destroy the user asked for always finishes; DELETE answers with the op to wait on — 2026-09-23; L3225
+- **I-157** `repose start` on a project in `error`, or on a running one whose guestd stopped answering, restarts it onto its newest built revision — 2026-09-23; L3257
+- **I-158** Stop, resize and snapshot on a dead guestd — 2026-09-23; L3278
+- **I-159** An op's error message is a sentence; the host's wording is `detail` — 2026-09-23; L3295
+- **I-160** A create reuses a closure the host already runs — 2026-09-23; L3307
+- **I-161** The guest boot's critical chain: no wait for Docker, the console or a mount rate limit — 2026-09-23; L3332
+- **I-162** mkfs leaves the inode tables to the guest's lazy init — 2026-09-23; L3377
+- **I-163** An op enqueued in one api process wakes the driver in the other through NOTIFY — 2026-09-23; L3395
+- **I-149** The CLI has its own passphrase-less key, and one SSH connection per command — 2026-09-23; L3416
+- **I-150** The laptop sends its commits to the guest; the guest never fetches origin during a sync — 2026-09-23; L3448
+- **I-151** The CLI proves the `<slug>.repose` alias works and says exactly how to fix it when not — 2026-09-23; L3494
+- **I-152** A directory's cached project must share its remote, and naming a project never writes the directory cache — 2026-09-23; L3512
+- **I-153** The CLI says what actually happened: the true state, why, and the next command — 2026-09-23; L3527
+- **I-154** Long commands show live phases — 2026-09-23; L3562
+- **I-155** A project is the argument of the commands whose object it is — 2026-09-23; L3579
+- **I-164** A snapshot reads the blocks the filesystem uses, not the whole volume — 2026-09-23; L3598
+- **I-165** A destroy stops the guest first, reads `destroying` from the moment it is accepted, and says so when it fails — 2026-09-23; L3649
+- **I-166** `repose destroy` returns when the api has accepted the destroy — 2026-09-23; L3682
+- **I-167** Restore by name: `GET /projects/destroyed`, `POST /projects/restore`, `repose restore NAME` — 2026-09-23; L3712
+- **I-168** The dashboard lists recently destroyed projects with a Restore — 2026-09-23; L3758
+- **I-170** The owner's monitoring server is peer 10.255.0.3 on the edge, over plain WireGuard, interface `wg-repose` — 2026-09-23; L3785
+- **I-179** The billing period is the Stripe subscription's, stored at the hour; each usage hour is reported to Stripe at its last second — 2026-09-23; L3800
+- **I-180** `repose-admin billing stripe-bootstrap` makes the Stripe objects and prints the api's environment — 2026-09-23; L3827
+- **I-181** A card is never refused over tax configuration — 2026-09-23; L3855
+- **I-182** The dashboard adds a card on Stripe's hosted Checkout page; the publishable key is retired — 2026-09-23; L3877
+- **I-183** `GET /billing/invoices` returns documented names — 2026-09-23; L3895
+- **I-184** A $0 invoice settles nothing, and a card arriving at zero credit ends the trial — 2026-09-23; L3906
+- **I-185** The M4 gate is proven on Stripe test clocks with the real rollup, not with 100 real hours; "blocks a start at zero" means the gate's three refusals, not a stop — 2026-09-23; L3922
+- **I-186** Console capture ends only after the hypervisor has exited; closing it drains first — 2026-09-23; L3954
+- **I-187** Reads have their own rate-limit bucket; the CLI waits out a 429 and polls less as a wait grows — 2026-09-23; L4000
+- **I-188** A command that creates a project ends with SSH to it working, and closes the multiplexed connection it no longer means — 2026-09-23; L4021
+- **I-189** One refusal banner per connection, on its own line, and words that fit the state — 2026-09-23; L4042
+- **I-190** Restoring a project whose destroy is still running waits for its final snapshot — 2026-09-23; L4058
+- **I-191** A phase is printed once, and it names the slug — 2026-09-23; L4077
+- **I-192** `repose projects --destroyed` is one row per name; `status` names the host and the newest event — 2026-09-23; L4087
+- **I-193** The key in b1a5915 stays in history; it was rotated — 2026-09-23; L4103
+- **I-194** Dependency directories never travel; symlinks travel as links — 2026-09-23; L4110
+- **I-171** A running guest's snapshot takes the extent path; the premise that it could not was wrong — 2026-09-23; L4124
+- **I-172** `repose restore` with no NAME finds the project by the checkout's remote — 2026-09-23; L4163
+- **I-173** `base publish` takes only a full sha that is on main — 2026-09-23; L4180
+- **I-174** api-grpc's metrics port is published on the WireGuard address only; Traefik's 8080 mapping goes — 2026-09-23; L4207
+- **I-175** A certificate refusal gets one re-issue; a second ends the wait at once; other refusals never spend it — 2026-09-23; L4231
+- **I-176** A gateway session is a relay, not a certificate: `/internal/sessions` carries `session_id` — 2026-09-23; L4253
+- **I-177** The bootstrap key can be retired per host once the Host CA is there, and a key file in root's home is never read — 2026-09-23; L4283
+- **I-195..I-205** laptop parity, settled with the owner on 2026-09-23 before any code — 2026-09-23; L4322
+- **I-195** `run` and `attach` carry the laptop's git config, minus a denylist — L4330
+- **I-196** `run` and `attach` carry the laptop's Claude Code config, and merge `settings.json` — L4346
+- **I-197** Gitignored `.env` files travel over SSH at `run` — L4367
+- **I-198** The guest's timezone follows the laptop on every `run` and `attach`, — L4381
+- **I-199** Ports are auto-forwarded while a CLI session is attached — L4386
+- **I-200** Agents outlive dev servers under memory pressure; nothing is killed on a timer — L4399
+- **I-201** `repose cp` — L4407
+- **I-202** Each host runs a pull-through cache for the npm registry and for Docker Hub — L4412
+- **I-203** The first sync of a large GitHub repository clones in the guest — L4420
+- **I-204** Nothing on GitHub may name the platform — L4430
+- **I-205** The trial is one day of compute — L4438
+- **I-206** The carry's hashes live in the guest; `attach` carries through a session helper; tmux stops taking `TZ` from the attaching client — 2026-09-23; L4444
+- **I-207** `repose status` reads the listening processes from the guest over SSH; the OOM priority is -800, set by guestd on the agent process only, and resets only negative values — 2026-09-23; L4489
+- **I-208** The caches live at one fixed address on every host; npm is pointed at them through `~/.npmrc`, not `npm_config_registry`; npm's fallback is an nginx front — 2026-09-23; L4523
+- **I-209** guestd's paths are absolute on a real guest — 2026-09-23; L4570
+- **I-210** A guest tree that is exactly what the last sync left is not dirty — 2026-09-23; L4583
+- **I-211** The carry leaves every secret on the laptop, by key as well as by file — 2026-09-23; L4633
+- **I-212** On a session, the gateway relays the exit status before the EOF, and answers the guest's channel keepalive itself — 2026-09-23; L4687
+- **I-213** An agent's process is found by its nix wrapper name too, and the OOM warning names what the kernel killed — 2026-09-23; L4716
+- **I-214** The npm cache ignores the registry's cookie — 2026-09-23; L4732
+- **I-215** Live polish of workstream 15: system listeners are not forwarded, the status clock follows the carried zone, and a guest's newer `.env` is named once — 2026-09-23; L4748

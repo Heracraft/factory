@@ -6,6 +6,10 @@ Add new entries at the bottom under "Made during implementation". To reverse
 a decision, add a new entry that references the old one; never edit the old
 one.
 
+After adding an entry, run `python3 ops/dev/decisions-index.py` to regenerate
+[DECISIONS-INDEX.md](DECISIONS-INDEX.md), the one-line-per-entry index
+sessions read before opening this file.
+
 Format: **id. Title.** Decision. *Rejected:* the alternatives. *Why:* the
 reason. *Revisit when:* the trigger, if any.
 

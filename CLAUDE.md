@@ -8,7 +8,9 @@ work and its gates are `docs/MILESTONES.md`; the parallel split is
 `docs/workstreams/`; contracts between components are `docs/interfaces/`;
 user-visible behaviour is `docs/features/`; the global definition of done is
 `docs/CHECKLIST.md`. Read `docs/README.md` first, then the doc for what you are
-touching. The code follows the docs, not the other way round.
+touching. For decisions, read `docs/DECISIONS-INDEX.md` first; open
+`docs/DECISIONS.md` at the entries you need. The code follows the docs, not
+the other way round.
 
 ## The nix work is for remote environments
 

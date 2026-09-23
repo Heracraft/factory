@@ -14,6 +14,7 @@ docs disagree, the doc is wrong only if a `DECISIONS.md` entry says so.
 |---|---|
 | [DESIGN.md](DESIGN.md) | You need the whole system in one place. Everything below is a slice of it. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | You need the component map, data flows, network diagram, and repo layout. |
+| [DECISIONS-INDEX.md](DECISIONS-INDEX.md) | Before DECISIONS.md: read DECISIONS-INDEX.md first; open DECISIONS.md at the entries you need. One generated line per entry (id, title, date, superseded/amended status, line number); `ops/dev/decisions-index.py` regenerates it and `--check` says whether it is stale. |
 | [DECISIONS.md](DECISIONS.md) | You want to know *why* something is the way it is, or want to change it. Every settled decision, with the alternatives that lost. |
 | [MILESTONES.md](MILESTONES.md) | You want to know what to build next and what "done" means for each stage. |
 | [CHECKLIST.md](CHECKLIST.md) | You are about to call something finished. The global definition of done. |
@@ -22,6 +23,7 @@ docs disagree, the doc is wrong only if a `DECISIONS.md` entry says so.
 | [SECURITY.md](SECURITY.md) | You touch anything that crosses a tenant, host, or network boundary. Threat model and the non-negotiables. |
 | [security/](security/review-2026-09-20.md) | Dated security reviews: findings with severity and file:line, what was verified, what waits on a stub. |
 | [proposals/](proposals/2026-09-23-dev-ergonomics.md) | You want the reasoning behind a batch of decisions made in conversation with the owner, including the options that lost and what was deferred. Not spec: the decisions are in DECISIONS.md. |
+| [workstreams/STATUS.md](workstreams/STATUS.md) | You start or stop a session: the newest line per workstream and the last fifteen; older lines are in [workstreams/status-archive/](workstreams/status-archive/2026-09.md). [workstreams/CHECKLIST-AUDIT.md](workstreams/CHECKLIST-AUDIT.md) lists which §9 checklist rows are still open and what closes them. |
 | [workstreams/](workstreams/README.md) | You are an agent picking up a chunk of work. Each workstream is self-contained: scope, non-goals, interfaces it owns and consumes, and a checklist. |
 | [interfaces/](interfaces/README.md) | Two workstreams meet here. gRPC between API and hostd, vsock between hostd and guestd, the HTTP API, the database schema, the SSH gateway login contract, the CLI config file. |
 | [features/](features/README.md) | User-facing behaviour, one feature per file, written as the behaviour a user sees and the edge cases that must hold. |
