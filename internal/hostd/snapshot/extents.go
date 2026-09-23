@@ -224,7 +224,7 @@ func writeExtents(dev *os.File, size uint64, l *usedLayout, w io.Writer) (uint64
 		for off := r[0]; off < end; {
 			n := min(uint64(len(buf)), end-off)
 			got, err := dev.ReadAt(buf[:n], int64(off))
-			if err != nil && !(errors.Is(err, io.EOF) && got > 0) {
+			if err != nil && (!errors.Is(err, io.EOF) || got == 0) {
 				return read, fmt.Errorf("read at %d: %w", off, err)
 			}
 			chunk := buf[:got]

@@ -182,6 +182,28 @@ A running project's newest snapshot is older than 36 hours.
 3. `repose-admin projects snapshot <id>` after fixing; confirm the age
    gauge drops.
 
+## Snapshot, stop or destroy slow
+
+A stop, destroy or nightly snapshot takes tens of seconds for a volume
+that holds little. On the host, `journalctl -t hostd | grep '"snapshot
+done"'`: the line carries `format`, `raw_reason`, `used_bytes`,
+`volume_bytes` and `duration_ms` (DECISIONS I-164).
+
+- `format: extents`: time should follow `used_bytes` (reading) and
+  `bytes` (the upload). Slow with little data means the disk or Blob is
+  slow; `iostat -x 1` during the next one.
+- `format: raw` reads the whole volume (about 16 s per 20 GB on host-01).
+  `raw_reason` says why: `journal needs recovery` (the guest was killed,
+  not shut down; the next clean stop goes back to extents), `dumpe2fs
+  failed (not ext4?)` (someone reformatted the volume), `N of M groups
+  listed` (dumpe2fs output cut short: check the host's e2fsprogs). A
+  hostd older than I-164 has no `format` field and always reads raw.
+
+A destroy the user no longer waits for (I-166) that fails leaves the
+project in `error` with a `destroy_failed` event; `repose-admin projects
+show <id>` has the op error, and `repose destroy` (or the admin's
+destroy) resumes it.
+
 ## BuildQueueStuck
 
 Two builds running on a host with no completion for 45 minutes.
