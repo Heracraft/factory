@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -140,4 +141,74 @@ func mustTime(t *testing.T, s string) time.Time {
 		t.Fatal(err)
 	}
 	return v
+}
+
+// TestRestoreWithoutANameInACheckout: `repose restore` with no NAME finds
+// the destroyed project by the checkout's remote (I-172): one name
+// restores without asking, two names ask on a terminal (an unknown answer
+// asks again) and are listed otherwise, a checkout whose remote matches
+// nothing, and a directory with no remote, say what to type.
+func TestRestoreWithoutANameInACheckout(t *testing.T) {
+	fake := fakeapi.New(fakeapi.Options{})
+	defer fake.Close()
+	e := newLifecycleEnv(t, fake)
+	var out strings.Builder
+	e.Out = &out
+	ctx := context.Background()
+	if err := RestoreCmd(ctx, e, "", "", "", nil); err == nil || !strings.Contains(err.Error(), "no git remote") {
+		t.Fatalf("no remote: %v", err)
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"remote", "add", "origin", "git@github.com:Owner/izma.git"}} {
+		if out, err := exec.Command("git", append([]string{"-C", e.Cwd}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	err := RestoreCmd(ctx, e, "", "", "", nil)
+	if ee, ok := err.(*exitError); !ok || ee.code != ExitProjectNotFound || !strings.Contains(ee.msg, "github.com/owner/izma") {
+		t.Fatalf("nothing destroyed: %v", err)
+	}
+	destroy := func(name, remote string) {
+		t.Helper()
+		p, err := e.Client.CreateProject(ctx, CreateProjectRequest{Name: name, Class: "small", RemoteURL: remote})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := DestroyCmd(ctx, e, p.ID, true, false, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	destroy("other", "github.com/owner/other")
+	destroy("izma", "github.com/owner/izma")
+	out.Reset()
+	if err := RestoreCmd(ctx, e, "", "", "", func(string) (string, error) { t.Fatal("asked with one match"); return "", nil }); err != nil {
+		t.Fatalf("restore by remote: %v", err)
+	}
+	if !strings.HasPrefix(out.String(), "Restored izma from its snapshot of ") {
+		t.Fatalf("restore said %q", out.String())
+	}
+
+	// Two destroyed names with this remote: the restored izma and a fork.
+	back, _ := findByIDOrSlug(ctx, e.Client, "izma")
+	if err := DestroyCmd(ctx, e, back.ID, true, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	destroy("izma-fork", "github.com/owner/izma")
+	err = RestoreCmd(ctx, e, "", "", "", nil)
+	if ee, ok := err.(*exitError); !ok || ee.code != ExitUsage || !strings.Contains(ee.msg, "izma-fork") || !strings.Contains(ee.msg, "izma,") && !strings.Contains(ee.msg, ": izma") {
+		t.Fatalf("ambiguous without a terminal: %v", err)
+	}
+	var asked []string
+	answers := []string{"nope", "izma"}
+	out.Reset()
+	if err := RestoreCmd(ctx, e, "", "", "", func(q string) (string, error) {
+		asked = append(asked, q)
+		a := answers[0]
+		answers = answers[1:]
+		return a, nil
+	}); err != nil {
+		t.Fatalf("ambiguous with a terminal: %v", err)
+	}
+	if len(asked) != 2 || !strings.Contains(asked[0], "Which one") || !strings.HasPrefix(out.String(), "Restored izma ") {
+		t.Fatalf("asked %q, said %q", asked, out.String())
+	}
 }

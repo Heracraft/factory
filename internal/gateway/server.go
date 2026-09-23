@@ -306,6 +306,7 @@ func (g *Gateway) HandleConn(ctx context.Context, c net.Conn) {
 		slug:      st.slug,
 		handle:    st.handle,
 		serial:    st.serial,
+		id:        newSessionID(),
 		prefix:    prefix,
 		startedAt: g.cfg.Clock(),
 	}

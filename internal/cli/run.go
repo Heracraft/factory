@@ -215,22 +215,75 @@ func connect(ctx context.Context, e *Env, project *Project) (sshTarget, error) {
 			}
 		}
 	}
-	reissued := false
-	err = waitForSSH(ctx, target, func(se *sshError) bool {
-		// The gateway refused the certificate (revoked, or issued before
-		// a CA rotation): issue a fresh one once and keep waiting.
-		if reissued || se.ExitCode != 255 || !strings.Contains(se.Stderr, "Permission denied") && !strings.Contains(strings.ToLower(se.Stderr), "certificate") {
-			return false
-		}
-		reissued = true
+	err = waitForSSH(ctx, target, certRefusalHandler(func() error {
 		params.Force = true
 		_, err := ensureCert(ctx, e.Client, params, nil)
-		return err == nil
-	})
+		return err
+	}))
 	if err != nil {
 		return sshTarget{}, err
 	}
 	return target, nil
+}
+
+// The gateway's refusals that are about the certificate itself
+// (docs/interfaces/ssh-gateway.md, internal/gateway/server.go): a fresh
+// certificate can fix these. The others (busy, rate limited, the control
+// plane, a guest not accepting yet, a stopped or unknown project) cannot,
+// and must not spend the one re-issue.
+var (
+	certRefusals = []string{
+		"certificate revoked", "certificate expired", "certificate not yet valid",
+		"certificate not signed by the repose ca", "certificate required", "certificate not valid for this project",
+	}
+	otherRefusals = []string{
+		"gateway busy", "too many authentication attempts", "cannot reach control plane",
+		"not accepting connections yet", "is stopped", "no such project", "login name must be",
+	}
+)
+
+// isCertRefusal reports whether ssh's failure is the gateway refusing the
+// certificate: one of its certificate banners, or a bare `Permission
+// denied` with none of its other banners (a gateway too old to say).
+func isCertRefusal(se *sshError) bool {
+	if se.ExitCode != 255 {
+		return false
+	}
+	s := strings.ToLower(se.Stderr)
+	for _, m := range certRefusals {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	for _, m := range otherRefusals {
+		if strings.Contains(s, m) {
+			return false
+		}
+	}
+	return strings.Contains(s, "permission denied")
+}
+
+// certRefusalHandler is connect's answer to a refused connection
+// (DECISIONS I-175): the first certificate refusal (revoked, expired, a
+// CA rotation, a project the certificate predates) gets one forced
+// re-issue and an immediate retry; a certificate refusal after that ends
+// the wait at once with what the gateway said, instead of 60 s of retries
+// ending in "SSH did not answer". Any other refusal keeps waiting.
+func certRefusalHandler(reissue func() error) func(*sshError) (bool, error) {
+	reissued := false
+	return func(se *sshError) (bool, error) {
+		if !isCertRefusal(se) {
+			return false, nil
+		}
+		if !reissued {
+			reissued = true
+			if err := reissue(); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+		return false, exitf(ExitGeneric, "The gateway refused a certificate issued just now (%s). `repose login` (as the account that owns the project) and try again; if it still refuses, an operator may have revoked your certificates.", sshStderrDetail(se.Stderr))
+	}
 }
 
 // warn prints one warning to stderr.
@@ -269,7 +322,7 @@ func attachTmux(t sshTarget, slug, window string) error {
 // sshWaitTimeout. onRefused is offered each ssh failure and returns true
 // when it changed something worth an immediate retry (a re-issued
 // certificate).
-func waitForSSH(ctx context.Context, t sshTarget, onRefused func(*sshError) bool) error {
+func waitForSSH(ctx context.Context, t sshTarget, onRefused func(*sshError) (bool, error)) error {
 	deadline := time.Now().Add(sshWaitTimeout)
 	for {
 		err := runSSHOK(ctx, t, "true")
@@ -280,8 +333,14 @@ func waitForSSH(ctx context.Context, t sshTarget, onRefused func(*sshError) bool
 		if errors.As(err, &se) && se.ExitCode == -1 {
 			return exitf(ExitGeneric, "Could not run ssh: %v. repose needs the OpenSSH client (`ssh`) on your PATH.", se.Err)
 		}
-		if se != nil && onRefused != nil && onRefused(se) {
-			continue
+		if se != nil && onRefused != nil {
+			retry, err := onRefused(se)
+			if err != nil {
+				return err
+			}
+			if retry {
+				continue
+			}
 		}
 		if time.Now().After(deadline) {
 			detail := ""

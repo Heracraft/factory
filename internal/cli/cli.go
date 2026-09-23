@@ -653,10 +653,11 @@ func newDestroyCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 func newRestoreCmd(env func() (*Env, error)) *cobra.Command {
 	var as, snapshot string
 	cmd := &cobra.Command{
-		Use:   "restore NAME",
+		Use:   "restore [NAME]",
 		Short: "Bring back a destroyed project from its newest snapshot (kept 30 days)",
 		Long: "Restores NAME, a project you destroyed in the last 30 days (or one that still exists), from its\n" +
 			"newest snapshot into a new project called NAME, or --as NEW-NAME when that name is in use.\n" +
+			"Without NAME, inside a checkout, it restores the destroyed project with this checkout's remote.\n" +
 			"`repose projects --destroyed` lists what can be restored. `repose snapshots restore` still\n" +
 			"restores a given snapshot over a stopped project in place.",
 		Args: func(cmd *cobra.Command, args []string) error {

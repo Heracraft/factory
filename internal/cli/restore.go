@@ -68,18 +68,24 @@ func (c *Client) RestoreByName(ctx context.Context, req RestoreRequest) (*Restor
 // restoreHint is the line a destroy ends with.
 func restoreHint(slug string) string { return "repose restore " + slug }
 
-// RestoreCmd implements `repose restore NAME [--as NEW] [--snapshot ID]`.
+// RestoreCmd implements `repose restore [NAME] [--as NEW] [--snapshot ID]`;
+// with no NAME and no --snapshot, the checkout's remote finds it.
 // NAME is the project's name (or id); it is restored from its newest
 // snapshot (or --snapshot) as a new project called NAME, or NEW. When a
 // live project holds the name, a terminal is asked for another one
 // (askName) and anything else is told to pass --as.
 func RestoreCmd(ctx context.Context, e *Env, name, as, snapshotID string, askName func(prompt string) (string, error)) error {
 	name = strings.TrimSpace(name)
-	if name == "" && snapshotID == "" {
-		return exitf(ExitUsage, "Name the project to restore: `repose restore NAME`. `repose projects --destroyed` lists what can be restored.")
-	}
 	req := RestoreRequest{SnapshotID: snapshotID, Name: as}
 	switch {
+	case name == "" && snapshotID == "":
+		// Inside a checkout, the remote names the project (I-172), the
+		// way it does for run, attach and the rest.
+		d, err := destroyedForCheckout(ctx, e, askName)
+		if err != nil || d == nil {
+			return err
+		}
+		req.ProjectID, name = d.ID, d.Slug
 	case looksLikeUUID(name):
 		req.ProjectID = name
 	case name != "":
@@ -136,6 +142,59 @@ func RestoreCmd(ctx context.Context, e *Env, name, as, snapshotID string, askNam
 	_, _ = fmt.Fprintf(e.Out, "Restored %s from its snapshot of %s in %s; it is %s (%s). `repose attach %s` to get in.\n",
 		p.Slug, res.SnapshotCreatedAt.Local().Format("2006-01-02 15:04"), fmtElapsed(pr.Total()), stateWords(p.State), p.Class, p.Slug)
 	return nil
+}
+
+// destroyedForCheckout finds the destroyed project `repose restore` with
+// no NAME means: the one whose remote is this checkout's (DECISIONS
+// I-172). Several projects destroyed under one name are one choice (the
+// newest destroy is restored, from its newest snapshot, as by name);
+// several names are asked about on a terminal and listed otherwise. A nil
+// project with a nil error means the user cancelled.
+func destroyedForCheckout(ctx context.Context, e *Env, ask func(prompt string) (string, error)) (*DestroyedProject, error) {
+	remote := gitRemoteOrigin(e.Cwd)
+	if remote == "" {
+		return nil, exitf(ExitUsage, "Name the project to restore: `repose restore NAME` (this directory has no git remote to find it by). `repose projects --destroyed` lists what can be restored.")
+	}
+	list, err := e.Client.ListDestroyed(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var slugs []string
+	newest := map[string]*DestroyedProject{} // the list is newest destroy first
+	for i := range list {
+		d := &list[i]
+		if d.RemoteURL == "" || normalizeRemote(d.RemoteURL) != remote {
+			continue
+		}
+		if newest[d.Slug] == nil {
+			newest[d.Slug] = d
+			slugs = append(slugs, d.Slug)
+		}
+	}
+	switch {
+	case len(slugs) == 0:
+		return nil, exitf(ExitProjectNotFound, "No destroyed project was a checkout of %s. `repose projects --destroyed` lists what can be restored; `repose restore NAME` restores one.", remote)
+	case len(slugs) == 1:
+		return newest[slugs[0]], nil
+	}
+	names := strings.Join(slugs, ", ")
+	if ask == nil {
+		return nil, exitf(ExitUsage, "Several destroyed projects were checkouts of %s: %s. Name one: `repose restore NAME`.", remote, names)
+	}
+	for {
+		answer, err := ask(fmt.Sprintf("Several destroyed projects were checkouts of %s: %s. Which one (empty to cancel)? ", remote, names))
+		if err != nil {
+			return nil, err
+		}
+		answer = strings.TrimSpace(answer)
+		if answer == "" {
+			_, _ = fmt.Fprintln(e.Out, "Nothing restored.")
+			return nil, nil
+		}
+		if d := newest[answer]; d != nil {
+			return d, nil
+		}
+	}
 }
 
 // DestroyedCmd implements `repose projects --destroyed`: what can be

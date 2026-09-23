@@ -65,7 +65,8 @@ ssh "${ssh_opts[@]}" -p "$EDGE_SSH_PORT" \
 	"root@$EDGE" &
 echo $! >"$PIDFILE"
 
-# api-grpc publishes 9103 on the VM as 9104 (ops/coolify/README.md). The
+# api-grpc publishes 9103 on the VM as 9104, on the WireGuard address only
+# (ops/coolify/README.md, I-174), so the tunnel dials 10.255.255.1. The
 # `api` application is supposed to publish 9103:9103; while it does not,
 # fall back to the container's own address on the docker network, which is
 # what an operator would reach for anyway.
@@ -89,7 +90,7 @@ echo "api metrics at $api_target on the control VM"
 
 ssh "${ssh_opts[@]}" \
 	-L "$BIND_ADDR:19103:$api_target" \
-	-L "$BIND_ADDR:19104:127.0.0.1:9104" \
+	-L "$BIND_ADDR:19104:10.255.255.1:9104" \
 	"root@$CONTROL" &
 echo $! >>"$PIDFILE"
 

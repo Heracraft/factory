@@ -47,7 +47,10 @@ Two CAs, both ed25519, private keys in the api's secret store:
    pair. The guest's sshd therefore remains a second, independent check.
    Raw TCP relay after auth was rejected because the login name is only
    known after the client's key exchange with the gateway completes.
-5. Report `POST /internal/sessions` on open and close.
+5. Report `POST /internal/sessions` on open and close, with the relay's
+   own `session_id` (16 random bytes, hex; DECISIONS I-176): a session is
+   a relay, not a certificate, so two terminals under one certificate
+   count as two and closing one leaves the other.
 6. Port forwards (`-L`) and agent forwarding are passed through.
 
 ## Guest sshd

@@ -297,6 +297,23 @@ func TestSessionReportsAndCertCache(t *testing.T) {
 			}
 		}
 		if opened == 3 && closed == 3 {
+			// Three connections under one certificate are three sessions
+			// (I-176): each has its own id, and its close names it.
+			ids := map[string]int{}
+			for _, r := range reports {
+				if len(r.SessionID) != 32 {
+					t.Fatalf("session id %q", r.SessionID)
+				}
+				ids[r.SessionID]++
+			}
+			if len(ids) != 3 {
+				t.Fatalf("three connections of one certificate reported %d session ids: %+v", len(ids), reports)
+			}
+			for id, n := range ids {
+				if n != 2 {
+					t.Fatalf("session %s reported %d times, want an open and a close", id, n)
+				}
+			}
 			break
 		}
 		if opened > 3 || closed > 3 {

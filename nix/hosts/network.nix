@@ -7,6 +7,9 @@
 #   /run/repose/host.env                 ids and addresses for other units
 #   /run/repose/wg0.conf                 wg-quick config (0600)
 #   /run/repose/host_ca.pub              sshd TrustedUserCAKeys
+#   /run/repose/bootstrap_authorized_keys  the bootstrap keys while host_ca.pub
+#                                        is empty, else nothing (only with
+#                                        bootstrap.keyUntilHostCA, I-177)
 #   /run/repose/sshd.conf                sshd ListenAddress
 #   /run/systemd/network/20-br-guests.network.d/10-address.conf
 # then restarts the units that read them. Without host.json it logs
@@ -17,6 +20,8 @@ let
   cfg = config.repose.host;
   hostJson = "/var/lib/repose/hostd/host.json";
   runDir = "/run/repose";
+  keyUntilHostCA = cfg.bootstrap.enable && cfg.bootstrap.keyUntilHostCA;
+  bootstrapKeys = pkgs.writeText "repose-bootstrap-keys" (lib.concatLines cfg.bootstrap.authorizedKeys);
 
   hostNet = pkgs.writeShellApplication {
     name = "repose-host-net";
@@ -49,9 +54,28 @@ let
         mv "$run/sshd.conf.tmp" "$run/sshd.conf"
       }
 
+      write_bootstrap_keys() {
+        # bootstrap.keyUntilHostCA (I-177): the plain operator key works
+        # only while the host has no Host CA to check certificates with.
+        # sshd reads AuthorizedKeysFile at each login, so no restart.
+        ${lib.optionalString keyUntilHostCA ''
+        if [ -s "$run/host_ca.pub" ]; then
+          : > "$run/bootstrap_authorized_keys.tmp"
+          echo "Host CA present; bootstrap key not accepted"
+        else
+          cat ${bootstrapKeys} > "$run/bootstrap_authorized_keys.tmp"
+          echo "no Host CA; bootstrap key accepted"
+        fi
+        chmod 0644 "$run/bootstrap_authorized_keys.tmp"
+        mv "$run/bootstrap_authorized_keys.tmp" "$run/bootstrap_authorized_keys"
+        ''}
+        :
+      }
+
       if [ ! -s "$hostJson" ]; then
         echo "no host.json; bridge not configured"
         : > "$run/host_ca.pub"
+        write_bootstrap_keys
         write_sshd ""
         rm -f "$run/host.env" "$run/wg0.conf"
         rm -rf /run/systemd/network/20-br-guests.network.d
@@ -123,6 +147,7 @@ let
       # An empty CA file trusts nobody; the bootstrap key still works.
       jq -r '.host_ca_pub // empty' "$hostJson" > "$run/host_ca.pub.tmp"
       mv "$run/host_ca.pub.tmp" "$run/host_ca.pub"
+      write_bootstrap_keys
 
       write_sshd "$wg_ip"
 

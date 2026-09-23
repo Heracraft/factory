@@ -201,6 +201,22 @@ in
         default = [ ];
         description = "Operator public keys accepted for root while bootstrap is enabled.";
       };
+      keyUntilHostCA = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Accept the bootstrap keys only while the host has no Host CA
+          (/run/repose/host_ca.pub empty): repose-host-net renders them into
+          /run/repose/bootstrap_authorized_keys when the CA file is empty and
+          empties that file when it is not, so a host that knows the Host CA
+          takes operator certificates only (14 §9, review M5-6) and a host that
+          lost it (no host.json, a CA that never arrived) takes the key again.
+          Off by default: turning it on ends plain-key logins the moment the
+          CA arrives, so it is turned on per host once an operator has logged
+          in with a certificate there (RUNBOOK "Retiring a host's bootstrap
+          key", DECISIONS I-177).
+        '';
+      };
     };
 
     timeZone = lib.mkOption {

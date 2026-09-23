@@ -52,14 +52,20 @@ repose-postgres").
   image's `HEALTHCHECK` (`api -healthcheck`) drives the rolling deploy (the
   image is distroless, so Coolify's curl-based check cannot run in it).
 - `api-grpc`: no domain; port mappings `8443:8443`, `8444:8444`,
-  `9104:9103` (Configuration -> Network, "Ports Mappings"; a Dockerfile
-  application publishes nothing until they are set); Coolify's health check
-  **off** (same reason). The control NSG never opens
-  these ports on the public IP. Docker publishes them on every address, so
-  they are reached on two private ones (DECISIONS I-92): hosts dial the VNet
-  address (`control_private_ip`, `10.200.3.4`) because a host registers
-  before it has a tunnel, and the edge dials the WireGuard address
-  `10.255.255.1`. `GRPC_SERVER_NAMES` therefore lists all three names,
+  `10.255.255.1:9104:9103` (Configuration -> Network, "Ports Mappings"; a
+  Dockerfile application publishes nothing until they are set); Coolify's
+  health check **off** (same reason). The control NSG never opens
+  these ports on the public IP. Docker publishes 8443 and 8444 on every
+  address, so they are reached on two private ones (DECISIONS I-92): hosts
+  dial the VNet address (`control_private_ip`, `10.200.3.4`) because a host
+  registers before it has a tunnel, and the edge dials the WireGuard address
+  `10.255.255.1`. Both are mTLS. The metrics port is plain HTTP, so it is
+  published on the WireGuard address alone, where only the monitoring peer
+  scrapes it (DECISIONS I-174; the 2026-09-21 review's M5-4 found
+  `0.0.0.0:9104` open to the edge and hosts). Docker cannot publish on an
+  address that does not exist yet, so the VM starts Docker after
+  `wg-quick@wg0` (`/etc/systemd/system/docker.service.d/10-repose-wg.conf`,
+  written by cloud-init; on a VM older than that, write it by hand, below). `GRPC_SERVER_NAMES` therefore lists all three names,
   `api.repose.herakraft.co,10.255.255.1,10.200.3.4` (the IPs become IP
   SANs), so the gateway and hostd verify the certificate the app issues
   from the api's CA at start without a server-name override; hosts also
@@ -120,6 +126,36 @@ Three things about it that are easy to get wrong:
    otherwise keeps in files. It lives here so the file is still the
    source of truth even though the paste is manual; a label that drifts
    from this block is a bug in the deployment, not a local improvement.
+
+## Two owner steps on the control VM (I-174)
+
+Both are Coolify- or VM-side and cannot be applied from this repository.
+
+1. **api-grpc's metrics port on the tunnel only.** On a VM that predates
+   the cloud-init drop-in, first make Docker wait for the tunnel, or a
+   reboot that starts Docker before `wg0` leaves api-grpc (and with it
+   8443) unable to start:
+
+   ```
+   mkdir -p /etc/systemd/system/docker.service.d
+   printf '[Unit]\nAfter=wg-quick@wg0.service\nWants=wg-quick@wg0.service\n' \
+     > /etc/systemd/system/docker.service.d/10-repose-wg.conf
+   systemctl daemon-reload
+   ```
+
+   Then change api-grpc's mapping `9104:9103` to `10.255.255.1:9104:9103`
+   and redeploy it. Check: `ss -tlnp | grep 9104` shows
+   `10.255.255.1:9104` only; `curl -m3 http://10.200.3.4:9104/metrics`
+   from the edge fails; the monitoring server's `repose-api-grpc` target
+   stays `up`.
+
+2. **Traefik's `8080` mapping.** `coolify-proxy` publishes `0.0.0.0:8080`
+   with nothing listening behind it (`--api.insecure=false`; review M5-5).
+   In Coolify: Servers -> the server -> Proxy -> Configuration, delete the
+   line `- '8080:8080'` under `ports`, save, and restart the proxy. The
+   dashboard, if it is ever wanted, goes behind a router on 443 with an
+   allow-list, never a published port. Check: `ss -tlnp | grep ':8080 '`
+   prints nothing.
 
 ## Backups
 
