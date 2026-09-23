@@ -47,6 +47,17 @@ const laptopGitConfig = `[user]
 	colorMoved = default
 [pull]
 	rebase
+[http "https://github.com/"]
+	extraHeader = "AUTHORIZATION: basic NEVER-PAT-HEADER"
+[http]
+	extraheader = Authorization: Bearer NEVER-GLOBAL-HEADER
+	cookieFile = ~/.gitcookies
+[sendemail]
+	smtpPass = NEVER-SMTP-PASS
+[github]
+	token = NEVER-GITHUB-TOKEN
+[hub]
+	oauthtoken = NEVER-HUB-TOKEN
 `
 
 // laptopHome writes laptopGitConfig into a scratch $HOME with a work
@@ -79,7 +90,12 @@ func TestGitDenylist(t *testing.T) {
 		"include.path": true, "includeif.gitdir:~/work/.path": true,
 		"diff.tool": true, "merge.tool": true, "difftool.vimdiff.cmd": true, "mergetool.x.cmd": true,
 		"core.excludesfile": true,
-		"user.name":         false, "user.email": false, "alias.st": false, "core.pager": false, "core.editor": false,
+		// Secrets (I-211): a PAT in a header, globally and per URL, a
+		// cookie jar, SMTP passwords, tool tokens, proxy commands.
+		"http.extraheader": true, "http.https://github.com/.extraheader": true, "http.cookiefile": true,
+		"sendemail.smtppass": true, "sendemail.work.smtppass": true, "github.token": true, "hub.oauthtoken": true,
+		"core.gitproxy": true, "remote.origin.proxy": true, "gitlab.token": true, "foo.bar.apipassword": true, "x.clientsecret": true,
+		"user.name": false, "user.email": false, "alias.st": false, "core.pager": false, "core.editor": false,
 		"pull.rebase": false, "init.defaultbranch": false, "diff.colormoved": false, "http.postbuffer": false, "core.autocrlf": false,
 	} {
 		if got := gitDenied(key); got != denied {
@@ -134,6 +150,11 @@ func TestCarryGitConfig(t *testing.T) {
 	gc, err := buildGitCarry(repo, home)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, never := range []string{"NEVER-PAT-HEADER", "NEVER-GLOBAL-HEADER", "gitcookies", "NEVER-SMTP-PASS", "NEVER-GITHUB-TOKEN", "NEVER-HUB-TOKEN"} {
+		if bytes.Contains(gc.Config, []byte(never)) {
+			t.Errorf("%s is in the carried git config:\n%s", never, gc.Config)
+		}
 	}
 	carry := func() *carryOutcome {
 		t.Helper()

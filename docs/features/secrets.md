@@ -68,7 +68,11 @@ config the CLI carries" has the exact paths):
   `core.sshCommand`, `ssh.*`, `url.*`, signing (`user.signingkey`,
   `gpg.*`, `commit.gpgsign`, `tag.gpgsign`), proxies and TLS client
   settings, `core.hooksPath`, `init.templateDir`, `safe.directory`,
-  includes, and diff and merge tools. A value that is a laptop path
+  includes, and diff and merge tools; and every key that holds a secret
+  (DECISIONS I-211): `http.extraHeader` (also per URL, where PATs sit),
+  `http.cookieFile`, `sendemail.smtpPass`, `github.token`,
+  `hub.oauthtoken`, `core.gitProxy`, and any key whose name ends in
+  `token`, `pass`, `password` or `secret`. A value that is a laptop path
   missing in the guest, and a `core.pager` or `core.editor` whose command
   is not on the guest's PATH, are dropped and named once. It lands whole
   in `~/.config/git/repose-carried`, included first from `~/.gitconfig`,
@@ -82,12 +86,15 @@ config the CLI carries" has the exact paths):
   `settings.json`, `skills/`, `agents/`, `commands/`, `output-styles/`,
   `keybindings.json` and the scripts `settings.json` runs; never
   `.credentials.json`, transcripts, history or any other state
-  (`agents.md` has the list and the merge). `TestCarryClaudeNeverCarriesSecrets`
+  (`agents.md` has the list and the merge). `settings.json` leaves the
+  laptop without `env` (API keys, MCP tokens), `apiKeyHelper`, the `aws*`
+  and `gcp*` auth helpers, `otelHeadersHelper` and `forceLoginMethod`
+  (DECISIONS I-211). `TestCarryClaudeNeverCarriesSecrets`
   plants `.credentials.json` (also inside `skills/`), `projects/`,
   `history.jsonl`, `todos/`, `shell-snapshots/`, `file-history/`,
   `plugins/`, `statsig/`, `~/.claude.json`, an SSH key and Gemini's
-  OAuth file in the laptop home and asserts none of them is in the carry
-  stream.
+  OAuth file in the laptop home, and those settings keys in its
+  `settings.json`, and asserts none of them is in the carry stream.
 
 - **`.env` files** (I-197): gitignored `.env` and `.env.*` files in the
   checkout, laptop to guest over the sync's SSH, mode 0600, newer side

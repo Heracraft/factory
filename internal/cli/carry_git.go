@@ -62,16 +62,31 @@ func parseGitConfigZ(b []byte) []gitEntry {
 // laptop has (keychains, ssh binaries, signing agents, proxies, GUI
 // tools, laptop paths), or that would break the guest's own git (an
 // https-to-ssh rewrite defeats the guest's gh-over-HTTPS push, I-150).
+// It also denies every key that holds a secret (I-211): a header
+// carrying a PAT (http.extraHeader, per URL too), a cookie file, an SMTP
+// password, a tool's token (github.token, hub.oauthtoken), a proxy
+// command, and any key whose name ends in token, pass, password or
+// secret, whatever section a tool invents for it. Tool logins travel as
+// files, never inside git config (features/secrets.md).
 func gitDenied(key string) bool {
 	k := strings.ToLower(key)
 	section, _, _ := strings.Cut(k, ".")
 	name := k[strings.LastIndex(k, ".")+1:]
+	for _, suffix := range []string{"token", "pass", "password", "passwd", "secret"} {
+		if strings.HasSuffix(name, suffix) {
+			return true
+		}
+	}
+	switch name {
+	case "extraheader", "cookiefile", "proxy", "gitproxy", "proxyauthmethod":
+		return true
+	}
 	switch section {
 	case "credential", "ssh", "url", "gpg", "include", "includeif", "difftool", "mergetool", "safe":
 		return true
 	case "http", "https":
 		switch {
-		case name == "proxy", name == "proxyauthmethod", strings.HasPrefix(name, "proxyssl"),
+		case strings.HasPrefix(name, "proxyssl"),
 			strings.HasPrefix(name, "sslca"), strings.HasPrefix(name, "sslcert"), name == "sslkey":
 			return true
 		}

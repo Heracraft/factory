@@ -197,7 +197,10 @@ func claudeLaptopHome(t *testing.T, plugins bool) string {
 		".claude/agents/reviewer.md":     "---\nname: reviewer\n---\nReview.\n",
 		".claude/commands/fix.md":        "Fix the build.\n",
 		".claude/hooks/notify.sh":        "#!/bin/sh\necho done\n",
-		".claude/settings.json":          `{"model":"opus","permissions":{"allow":["Bash(go test:*)"]},"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"` + home + `/.claude/hooks/notify.sh"}]}]},"enabledPlugins":{` + enabled + `},"extraKnownMarketplaces":{"laptop-dir":{"source":{"source":"directory","path":"/Users/lap/mkt"}}}}`,
+		".claude/settings.json": `{"model":"opus","permissions":{"allow":["Bash(go test:*)"]},"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"` + home + `/.claude/hooks/notify.sh"}]}]},"enabledPlugins":{` + enabled + `},"extraKnownMarketplaces":{"laptop-dir":{"source":{"source":"directory","path":"/Users/lap/mkt"}}},` +
+			// Settings keys that hold or run a credential (I-211).
+			`"env":{"ANTHROPIC_API_KEY":"NEVER-ENV-API-KEY","GITHUB_MCP_TOKEN":"NEVER-ENV-MCP"},"apiKeyHelper":"~/.claude/NEVER-API-KEY-HELPER.sh",` +
+			`"awsAuthRefresh":"NEVER-AWS-REFRESH","awsCredentialExport":"NEVER-AWS-EXPORT","otelHeadersHelper":"NEVER-OTEL-HELPER","forceLoginMethod":"NEVER-FORCE-LOGIN"}`,
 		// Never carried, whatever else happens:
 		".claude/.credentials.json":               `{"claudeAiOauth":{"accessToken":"NEVER-CLAUDE-CREDS"}}`,
 		".claude/skills/deploy/.credentials.json": `NEVER-NESTED-CREDS`,
@@ -263,12 +266,13 @@ func TestCarryClaudeNeverCarriesSecrets(t *testing.T) {
 	if len(o.Failed) != 0 {
 		t.Fatalf("outcome = %+v", o)
 	}
-	for _, never := range []string{"NEVER-CLAUDE-CREDS", "NEVER-NESTED-CREDS", "NEVER-TRANSCRIPT", "NEVER-HISTORY", "NEVER-TASK-LIST", "NEVER-SNAPSHOT", "NEVER-FILE-HISTORY", "NEVER-PLUGIN-CACHE", "NEVER-STATSIG", "NEVER-CLAUDE-JSON", "NEVER-SSH-KEY", "NEVER-GEMINI"} {
+	for _, never := range []string{"NEVER-CLAUDE-CREDS", "NEVER-NESTED-CREDS", "NEVER-TRANSCRIPT", "NEVER-HISTORY", "NEVER-TASK-LIST", "NEVER-SNAPSHOT", "NEVER-FILE-HISTORY", "NEVER-PLUGIN-CACHE", "NEVER-STATSIG", "NEVER-CLAUDE-JSON", "NEVER-SSH-KEY", "NEVER-GEMINI",
+		"NEVER-ENV-API-KEY", "NEVER-ENV-MCP", "NEVER-API-KEY-HELPER", "NEVER-AWS-REFRESH", "NEVER-AWS-EXPORT", "NEVER-OTEL-HELPER", "NEVER-FORCE-LOGIN"} {
 		if bytes.Contains(stream.Bytes(), []byte(never)) {
 			t.Errorf("%s is in the carry stream", never)
 		}
 	}
-	t.Logf("carry stream: %d bytes, none of the 12 never-carried markers in it; sent %v", stream.Len(), o.Sent)
+	t.Logf("carry stream: %d bytes, none of the never-carried markers in it; sent %v", stream.Len(), o.Sent)
 	for _, rel := range []string{".claude/CLAUDE.md", ".claude/keybindings.json", ".claude/skills/deploy/SKILL.md", ".claude/agents/reviewer.md", ".claude/commands/fix.md", ".claude/hooks/notify.sh"} {
 		if !fileExists(filepath.Join(f.guestHome, rel)) {
 			t.Errorf("%s did not arrive", rel)

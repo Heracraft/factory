@@ -4575,3 +4575,28 @@ not absolute"). An empty `Root` now means `/`. It reaches guests with the
 next base publish; until then a config apply or a base bump on a running
 guest fails at the switch. `TestPathsAreAbsoluteOnARealGuest`, and the
 guestd VM test's "Switch applies a new generation" subtest.
+
+**I-211. The carry leaves every secret on the laptop, by key as well as
+by file.** (ws15-fixes, 2026-09-23; the conductor's review of workstream
+15) I-195 and I-196 named files and sections, and two kinds of secret
+went through the gaps, against "Claude Code credentials are never
+copied anywhere" and the three homes of `features/secrets.md`.
+
+- *Claude `settings.json`.* It was carried whole, so `env` (where
+  `ANTHROPIC_API_KEY` and MCP tokens usually sit), `apiKeyHelper`,
+  `awsAuthRefresh`, `awsCredentialExport` and `otelHeadersHelper` landed
+  on the guest disk and in its snapshots, and an `apiKeyHelper` rewritten
+  to a `/home/dev` path turned the guest to API-key auth. The laptop now
+  removes `env`, `apiKeyHelper`, `otelHeadersHelper`, `forceLoginMethod`,
+  `forceLoginOrgUUID` and every key starting `aws` or `gcp` before the
+  file is hashed or sent. Removed on the laptop, not in the guest's
+  merge: what never leaves cannot be in a snapshot.
+- *git config.* The denylist gains every key that holds a secret:
+  `http.extraHeader` (also `http.<url>.extraHeader`, where PATs are
+  usually put), `http.cookieFile`, `sendemail.smtpPass`, `github.token`,
+  `hub.oauthtoken`, `core.gitProxy`, `*.proxy` in any section, and any key
+  whose last part ends in `token`, `pass`, `password`, `passwd` or
+  `secret`. A denylist, not an allowlist: the useful keys (aliases, diff
+  and merge options, per-tool settings) are open-ended, while secrets
+  are named by those words. *Revisit when:* a secret-bearing key turns up
+  that none of the words matches.

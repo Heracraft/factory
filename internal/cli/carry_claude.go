@@ -123,9 +123,17 @@ func buildClaudeCarry(homeDir string) (*claudeCarry, error) {
 	case !json.Valid(raw):
 		cc.Notes = append(cc.Notes, "Your ~/.claude/settings.json is not valid JSON, so it was not carried; the guest keeps its own.")
 	default:
-		cc.Settings = raw
 		var s map[string]any
 		_ = json.Unmarshal(raw, &s)
+		if s == nil {
+			// Valid JSON, not an object: nothing to merge.
+			cc.Notes = append(cc.Notes, "Your ~/.claude/settings.json is not a JSON object, so it was not carried; the guest keeps its own.")
+			break
+		}
+		cc.Settings, err = claudeSettingsWithoutSecrets(raw)
+		if err != nil {
+			return nil, err
+		}
 		scripts := claudeScripts(s, homeDir, dir)
 		if len(scripts) > 0 {
 			cc.Items = append(cc.Items, claudeItem{Marker: "claude-scripts", Files: scripts})
@@ -136,6 +144,40 @@ func buildClaudeCarry(homeDir string) (*claudeCarry, error) {
 		return nil, nil
 	}
 	return cc, nil
+}
+
+// claudeSecretKeys are settings.json keys that hold a credential or run
+// one, and so never leave the laptop (I-211; "Claude Code credentials
+// are never copied anywhere"): env (ANTHROPIC_API_KEY, MCP tokens),
+// apiKeyHelper and the cloud-auth helpers (a helper carried to the guest
+// would also flip it to API-key auth), the OpenTelemetry headers helper,
+// and the forced login method, which is the laptop's account choice.
+// Any other key starting with "aws" or "gcp" goes too: those are all
+// cloud credential plumbing.
+var claudeSecretKeys = map[string]bool{
+	"env": true, "apiKeyHelper": true, "otelHeadersHelper": true,
+	"forceLoginMethod": true, "forceLoginOrgUUID": true,
+}
+
+func claudeSecretKey(k string) bool {
+	return claudeSecretKeys[k] || strings.HasPrefix(k, "aws") || strings.HasPrefix(k, "gcp")
+}
+
+// claudeSettingsWithoutSecrets is the laptop's settings.json, a JSON
+// object, with claudeSecretKeys removed. What remains is re-encoded, so
+// key order is Go's (sorted); the merge in the guest does not depend on
+// it.
+func claudeSettingsWithoutSecrets(raw []byte) ([]byte, error) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	for k := range m {
+		if claudeSecretKey(k) {
+			delete(m, k)
+		}
+	}
+	return json.Marshal(m)
 }
 
 // markerName turns a relative path into a marker file name.
