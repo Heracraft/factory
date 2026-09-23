@@ -620,8 +620,18 @@ func TestConnectionCapAndPerSourceAuthLimit(t *testing.T) {
 	_ = c.Close()
 }
 
+// soakDialTimeout is the gateway's guest dial timeout in the soak. 100
+// simultaneous connections are 300 SSH handshakes (client->gateway,
+// gateway->guest, both ends in this process), which under -race on a
+// 2-core CI runner took past the harness's former 3 s: the dial failed and
+// the gateway answered that session with its refusal, exit 255 and "not
+// ready" (the CI failure), or the guest connection's handshake deadline
+// fired just after it completed ("guest: read tcp ...: i/o timeout", the
+// earlier flake). The soak measures relaying, not dial latency.
+var soakDialTimeout = 60 * time.Second
+
 func TestSoakHundredConnections(t *testing.T) {
-	h := newHarness(t, harnessOpts{maxConns: 300, maxAuthPerIP: 300})
+	h := newHarness(t, harnessOpts{maxConns: 300, maxAuthPerIP: 300, dialTimeout: soakDialTimeout})
 	_, key := genKey(t)
 	cert := h.userCert(t, key, []string{h.project.ID}, time.Hour)
 	runtime.GC()
@@ -648,9 +658,11 @@ func TestSoakHundredConnections(t *testing.T) {
 			}
 			defer func() { _ = sess.Close() }()
 			var cw countWriter
+			var stderr syncBuffer
 			sess.Stdout = &cw
+			sess.Stderr = &stderr
 			if err := sess.Run(fmt.Sprintf("big %d", bytesEach)); err != nil {
-				errs <- err
+				errs <- fmt.Errorf("%w (stderr %q)", err, stderr.String())
 				return
 			}
 			if cw.n != bytesEach {

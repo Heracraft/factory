@@ -113,6 +113,55 @@ func TestRelayExitStatusOverOpenSSHControlMaster(t *testing.T) {
 	}
 }
 
+// A guest that accepts the TCP connection and never speaks SSH is given up
+// on after the dial timeout, with the "not ready" refusal, and a guest
+// whose handshake completes within it keeps working afterwards (the
+// handshake limit is a timer, not a socket deadline left to clear).
+func TestGuestHandshakeTimeout(t *testing.T) {
+	h := newHarness(t, harnessOpts{dialTimeout: 500 * time.Millisecond})
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			defer func() { _ = c.Close() }() // silent until the test ends
+		}
+	}()
+	_, key := genKey(t)
+	cert := h.userCert(t, key, []string{h.project.ID}, time.Hour)
+	h.route(h.project.GuestIP, ln.Addr().String())
+	c, _, err := h.dial(h.login, cert)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	_, errb, status := run(t, c, "true")
+	_ = c.Close()
+	if status != 255 || errb != MsgNotReady+"\r\n" || time.Since(start) > 5*time.Second {
+		t.Fatalf("silent guest: status %d, stderr %q after %s", status, errb, time.Since(start))
+	}
+	// A real guest: the session outlives the dial timeout by far.
+	h.route(h.project.GuestIP, h.guest.addr())
+	c, _, err = h.dial(h.login, cert)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	if out, _, status := run(t, c, "echo first"); out != "first\n" || status != 0 {
+		t.Fatalf("first: %q %d", out, status)
+	}
+	time.Sleep(1200 * time.Millisecond)
+	if out, _, status := run(t, c, "echo later"); out != "later\n" || status != 0 {
+		t.Fatalf("after the dial timeout passed: %q %d", out, status)
+	}
+}
+
 // DECISIONS I-212. The guest's sshd ends a command with EOF and then the
 // exit status; an OpenSSH client whose stdin is already closed answers
 // the EOF with CHANNEL_CLOSE at once. The gateway relayed EOF the moment

@@ -161,7 +161,23 @@ func (s *session) dialGuest(ctx context.Context) (ssh.Conn, <-chan ssh.NewChanne
 	if err != nil {
 		return nil, nil, nil, &dialError{reason: "tcp", err: err}
 	}
-	_ = nc.SetDeadline(g.cfg.Clock().Add(g.cfg.DialTimeout)) // best effort; the handshake has its own errors
+	// The handshake gets what is left of DialTimeout. Not a socket
+	// deadline: that had to be cleared after the handshake, and a
+	// handshake finishing just inside it could lose the race to its own
+	// deadline, leaving the guest connection to fail its next read ("guest:
+	// read tcp ...: i/o timeout"); it was also set from cfg.Clock, which
+	// tests move. A timer that closes the socket only while the handshake
+	// is still running has no such window.
+	var hsMu sync.Mutex
+	hsDone, hsTimedOut := false, false
+	hsTimer := time.AfterFunc(time.Until(dialDeadline(dctx)), func() {
+		hsMu.Lock()
+		defer hsMu.Unlock()
+		if !hsDone {
+			hsTimedOut = true
+			_ = nc.Close() // ends the handshake's reads and writes
+		}
+	})
 	ccfg := &ssh.ClientConfig{
 		User:            "dev",
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
@@ -171,12 +187,34 @@ func (s *session) dialGuest(ctx context.Context) (ssh.Conn, <-chan ssh.NewChanne
 	// The address passed here is what CheckHostKey takes the expected
 	// principal from: the login name, not the guest's address.
 	c, chans, reqs, err := ssh.NewClientConn(nc, s.slug+"."+s.handle+":"+strconv.Itoa(g.cfg.GuestPort), ccfg)
+	hsTimer.Stop()
+	hsMu.Lock()
+	hsDone = true
+	timedOut := hsTimedOut
+	hsMu.Unlock()
+	if err == nil && timedOut {
+		_ = c.Close() // finished as the timer closed its socket: unusable
+		err = errHandshakeTimeout
+	}
 	if err != nil {
 		_ = nc.Close() // the handshake failed; the socket is useless
+		if timedOut {
+			err = errHandshakeTimeout
+		}
 		return nil, nil, nil, &dialError{reason: "handshake", err: err}
 	}
-	_ = nc.SetDeadline(time.Time{}) // best effort, as above
 	return c, chans, reqs, nil
+}
+
+var errHandshakeTimeout = errors.New("guest ssh handshake timed out")
+
+// dialDeadline is the dial context's deadline (it always has one).
+func dialDeadline(ctx context.Context) time.Time {
+	d, ok := ctx.Deadline()
+	if !ok {
+		return time.Now().Add(10 * time.Second)
+	}
+	return d
 }
 
 type dialError struct {

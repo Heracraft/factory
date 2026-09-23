@@ -66,6 +66,7 @@ type harnessOpts struct {
 	authTimeout  time.Duration
 	keepalive    time.Duration
 	revRefresh   time.Duration
+	dialTimeout  time.Duration
 }
 
 func genKey(t *testing.T) (ed25519.PrivateKey, ssh.Signer) {
@@ -130,7 +131,7 @@ func newHarness(t *testing.T, o harnessOpts) *harness {
 		AuthTimeout:       o.authTimeout,
 		Keepalive:         o.keepalive,
 		RevocationRefresh: o.revRefresh,
-		DialTimeout:       3 * time.Second,
+		DialTimeout:       o.dialTimeout,
 		Log:               slog.New(slog.NewJSONHandler(h.logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		Metrics:           h.metrics,
 		Clock:             func() time.Time { return time.Now().Add(time.Duration(h.offset.Load()) * time.Second) },
