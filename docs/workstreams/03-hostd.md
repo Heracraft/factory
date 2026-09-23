@@ -184,7 +184,9 @@ Inputs: `project_id`, `guest_id`, `class`, `volume_bytes`, `system_closure`,
    MAC `52:54:` plus the first four bytes of the guest id. Write to bbolt as
    `creating`.
 3. Volume: `lvcreate -V <volume_bytes>b -T vg-guests/thin -n g-<guest_id>`,
-   then `mkfs.ext4 -L guest -E lazy_itable_init=0 /dev/vg-guests/g-<id>`.
+   then `mkfs.ext4 -L guest -E lazy_itable_init=1 /dev/vg-guests/g-<id>`
+   (the guest kernel zeroes the inode tables in the background; DECISIONS
+   I-162).
    Skip both if the volume already exists with the label (idempotent
    re-run).
 4. GC root: `ln -sfn <system_closure>

@@ -92,13 +92,16 @@ func (l *Real) HasFilesystem(ctx context.Context, name string) (bool, error) {
 	return strings.TrimSpace(string(res.Stdout)) != "", nil
 }
 
-// Mkfs implements LVM.
+// Mkfs implements LVM. The inode tables are left to the guest kernel's
+// lazy init: a thin volume has no write-zeroes, so lazy_itable_init=0 wrote
+// about 670 MB of zeros for a 40 GB volume inside the create, about a
+// second of every create on host-01 (DECISIONS I-162).
 func (l *Real) Mkfs(ctx context.Context, name string) error {
 	has, err := l.HasFilesystem(ctx, name)
 	if err != nil || has {
 		return err
 	}
-	_, err = l.R.Run(ctx, "mkfs.ext4", "-q", "-L", "guest", "-E", "lazy_itable_init=0", l.DevPath(name))
+	_, err = l.R.Run(ctx, "mkfs.ext4", "-q", "-L", "guest", "-E", "lazy_itable_init=1", l.DevPath(name))
 	return err
 }
 
@@ -276,7 +279,10 @@ func (f *Fake) HasFilesystem(_ context.Context, name string) (bool, error) {
 	return ok && v.HasFS, nil
 }
 
-// Mkfs implements LVM.
+// Mkfs implements LVM. The inode tables are left to the guest kernel's
+// lazy init: a thin volume has no write-zeroes, so lazy_itable_init=0 wrote
+// about 670 MB of zeros for a 40 GB volume inside the create, about a
+// second of every create on host-01 (DECISIONS I-162).
 func (f *Fake) Mkfs(_ context.Context, name string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

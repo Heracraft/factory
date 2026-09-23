@@ -3265,3 +3265,21 @@ the next base publish. `TestDockerDownWarnsOnce` (no warning inside the
 grace), `TestDockerDownAfterItAnsweredWarnsInsideTheGrace`.
 *Rejected:* keeping guestd after Docker and moving only sshd
 (hostd's `running` waits for guestd's Ready either way).
+
+**I-162. mkfs leaves the inode tables to the guest's lazy init.**
+(provision-speed, 2026-09-23) izma's CreateGuest on host-01 spent 1.50 s
+between `creating` (00:06:54.05) and `starting` (00:06:55.56), against
+0.13 s for m3-check's StartGuest (02:31:55.10 → 55.23), which does the same
+steps without the volume. `lvs` answers in 24 ms and `blkid` in 2 ms there,
+so the difference is `mkfs.ext4 -E lazy_itable_init=0`: the thin volumes
+report `write_zeroes_max_bytes` 0, so mke2fs writes the inode tables as
+real zeros, about 670 MB for a 40 GB volume (izma's volume was 2.23 percent
+allocated right after the create, the 20 GB ones 0.8 percent), at the
+disk's 600 MB/s. hostd now runs `mkfs.ext4 -E lazy_itable_init=1`; the
+guest kernel's ext4lazyinit zeroes the tables in the background at its own
+low rate, and unprovisioned thin blocks read as zeros meanwhile. Expected:
+about 1 s off every create (not start) and no 670 MB write burst on a disk
+every guest on the host shares. Needs a host switch.
+`internal/hostd/lvm` test pins the argv. *Rejected:* `noinit_itable` in the
+guest's mount options (never zeroing is safe on thin but is one more
+guest-visible difference for no time the create would see).
