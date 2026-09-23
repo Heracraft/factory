@@ -1,3 +1,40 @@
+# Update 2026-09-23 (conductor, Opus 5.5)
+
+Read this section first; the 2026-09-21 text below is history where it
+disagrees.
+
+- **Owner's laptop session (2026-09-23 00:01Z) fixed.** CLI v0.1.5 is
+  released (tag on 69b3229): own passphrase-less key and one multiplexed
+  connection per command (I-149), the laptop sends its commits as a git
+  bundle so the guest needs no GitHub access (I-150), Include verified with
+  `ssh -G` (I-151), dir cache only trusted when remotes match (I-152),
+  honest states and a `[y/N]` destroy that waits for the op (I-153), live
+  phases with elapsed time (I-154), `repose attach izma` positional (I-155),
+  "Your login has expired" instead of "Not logged in".
+- **Server (api, live):** destroy always finishes on a dead guestd, proven
+  live by destroying age-calculator at the owner's request (01:48Z);
+  `repose start` on a project in error restarts it; human op errors
+  (I-156..I-159). Build reuse for identical closures and NOTIFY-driven ops
+  (I-160, I-163) are live: a second create on the same base took 11 s end
+  to end from repose-admin (was 22 s host side alone).
+- **Base 2026.09.23** (abdc969) published with the boot trims (I-161): a
+  small guest boots in 10 s (was 16 s for izma's large). Unheld projects
+  rebuild at the 04:00Z sweep.
+- **Edge and host-01 switched to main** at ~02:05Z (edge carries I-123,
+  I-133; host-01 carries I-148's retry and I-162's lazy mkfs). All guests
+  survived the hostd restart.
+- **Live projects:** `izma` (owner, email row) running; `m3-iso-c`
+  (second tenant for the isolation runner). m3-check, m3-held and
+  age-calculator are destroyed; nuru-playground was destroyed by the owner.
+- **Still owed:** a real-laptop run of v0.1.5 (the dev box's Logto refresh
+  token is revoked, so the conductor could not drive the live gateway):
+  `repose login`, `repose run` in a private-repo checkout with a
+  passphrase-protected `~/.ssh/id_ed25519` should prompt zero times;
+  `repose open` over its own connection and Windows are untested. The
+  owner's list below is unchanged apart from items that the switches closed.
+  `api.md`'s Project shape lacks `last_error`, `host_unreachable` and
+  `signals.guestd_ok`, which the api already returns (05 owns it).
+
 # Conductor handoff, 2026-09-21 (after M2 and most of M3, M5 step 1)
 
 Read this before `STATUS.md` when picking the project up. It says where
