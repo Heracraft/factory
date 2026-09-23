@@ -137,7 +137,19 @@ func exitCodeFor(err error, stderr io.Writer) int {
 	}
 	var notLoggedIn *notLoggedInError
 	if errors.As(err, &notLoggedIn) {
-		_, _ = fmt.Fprintln(stderr, "Not logged in. Run `repose login`.")
+		// A refresh Logto refused (invalid_grant: the refresh token expired
+		// or was revoked) is an expired login, not a missing one; a refresh
+		// that never got an answer is a network problem, and "Not logged
+		// in" would send the user to log in again for nothing.
+		msg := notLoggedIn.Error()
+		switch {
+		case strings.Contains(msg, "invalid_grant"):
+			_, _ = fmt.Fprintln(stderr, "Your login has expired. Run `repose login`.")
+		case strings.HasPrefix(msg, "refreshing session"):
+			_, _ = fmt.Fprintf(stderr, "Could not refresh your login: %v. Check your connection, or run `repose login`.\n", errors.Unwrap(notLoggedIn.cause))
+		default:
+			_, _ = fmt.Fprintln(stderr, "Not logged in. Run `repose login`.")
+		}
 		return ExitNotLoggedIn
 	}
 	var unreachable *unreachableError
