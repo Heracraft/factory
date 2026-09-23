@@ -118,6 +118,7 @@ type guestPayload struct {
 	tw     *tar.Writer
 	script strings.Builder
 	parts  int
+	lines  int // top-level lines added after the preamble
 }
 
 func newGuestPayload() *guestPayload {
@@ -140,7 +141,10 @@ func (p *guestPayload) fileMeta(name string, b []byte, mode int64, mtime time.Ti
 }
 
 // line appends a line to the top-level script (runs under its set -e).
-func (p *guestPayload) line(s string) { p.script.WriteString(s + "\n") }
+func (p *guestPayload) line(s string) { p.script.WriteString(s + "\n"); p.lines++ }
+
+// empty reports whether the payload has nothing to do in the guest.
+func (p *guestPayload) empty() bool { return p.parts == 0 && p.lines == 0 }
 
 // part adds a script that runs on its own with the unpack directory as
 // $1. label names it in `#failed <label>`.
@@ -172,8 +176,12 @@ func (p *guestPayload) run(ctx context.Context, t sshTarget) ([]byte, error) {
 // the parts it added.
 func addCarry(p *guestPayload, opts carryOptions) ([]string, error) {
 	var sent []string
-	if opts.TZ != "" {
-		if err := p.part("time zone", tzPart(opts.TZ)); err != nil {
+	// The zone is sent when it differs from the one the guest last took;
+	// a reboot keeps it (repose-tmux-session reads /etc/repose/env, and
+	// the next start's SetupProject writes the project's tz, which the CLI
+	// moved to the same zone).
+	if tzHash := carryHash([]byte(opts.TZ)); opts.TZ != "" && !opts.unchanged("tz", tzHash) {
+		if err := p.part("time zone", tzPart(opts.TZ)+setMarker("tz", tzHash)); err != nil {
 			return nil, err
 		}
 		sent = append(sent, "tz")

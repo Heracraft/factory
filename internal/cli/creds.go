@@ -137,8 +137,10 @@ func syncCredentialsAndCarry(ctx context.Context, t sshTarget, homeDir, repoDir 
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(copied) == 0 && len(sent) == 0 {
-		return nil, &carryOutcome{}, nil
+	if p.empty() {
+		// Nothing to write (the identity rides the git part, which is
+		// unchanged): no ssh at all.
+		return copied, &carryOutcome{}, nil
 	}
 	out, err := p.run(ctx, t)
 	if err != nil {

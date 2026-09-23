@@ -298,7 +298,7 @@ func TestCarryClaudeNeverCarriesSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Nothing changed on the laptop: nothing is sent.
-	if o := carry(); len(o.Sent) != 1 || o.Sent[0] != "tz" {
+	if o := carry(); len(o.Sent) != 0 {
 		t.Fatalf("unchanged carry sent %v", o.Sent)
 	}
 	// The laptop changes its settings: the merge runs, the guest's
