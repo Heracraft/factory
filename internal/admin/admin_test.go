@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/heracraft/repose/internal/api/apitest"
 	"github.com/heracraft/repose/internal/api/hostmgr"
 	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/db/testdb"
 	"golang.org/x/crypto/ssh"
 )
@@ -52,7 +54,13 @@ func TestAdminSurface(t *testing.T) {
 	if _, err := run(t, e, "db", "down", "1"); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := run(t, e, "db", "status"); err != nil || !strings.Contains(out, "pending: [4]") {
+	// The newest migration is the one pending, whichever number another
+	// workstream has reached.
+	ms, err := db.Migrations()
+	if err != nil || len(ms) == 0 {
+		t.Fatalf("migrations: %v %v", ms, err)
+	}
+	if out, err := run(t, e, "db", "status"); err != nil || !strings.Contains(out, fmt.Sprintf("pending: [%d]", ms[len(ms)-1].Version)) {
 		t.Fatalf("after down: %s %v", out, err)
 	}
 	if _, err := run(t, e, "db", "migrate"); err != nil {
