@@ -37,11 +37,14 @@ type Env struct {
 	KV secrets.KeyVault
 	// Actor is recorded in audit_log.
 	Actor string
-	pool  *db.Pool
-	sec   *secrets.Store
-	ca    *ca.CA
-	eng   *ops.Engine
-	log   *slog.Logger
+	// RevCheck overrides how `base publish` checks its rev against the
+	// repository (tests); nil asks GitHub (I-173).
+	RevCheck RevChecker
+	pool     *db.Pool
+	sec      *secrets.Store
+	ca       *ca.CA
+	eng      *ops.Engine
+	log      *slog.Logger
 }
 
 // Usage is the command list.
@@ -60,7 +63,7 @@ const Usage = `repose-admin <command> [args]
             reconcile [--month 2026-10] | suspend HANDLE | unsuspend HANDLE | resync [--user HANDLE]
             show HANDLE | cycle-now HANDLE [--yes] [--wait 10m]
             stripe-bootstrap [--webhook-url URL] [--no-webhook] [--rotate-webhook] [--live]  (STRIPE_SECRET_KEY in the environment)
-  base      publish --rev SHA --changelog TEXT [--version V] [--security] | release ... | list | status V | rollback V
+  base      publish --rev SHA40 --changelog TEXT [--version V] [--security] [--repo URL] [--branch main] [--unverified-rev] | release ... | list | status V | rollback V
   ca        init | show | rotate [--user] [--host] | sign-host --principal P... --pubkey FILE | sign-client --name NAME [--operator] [--csr FILE] [--out DIR]
             sign-server --name NAME[,NAME...] [--ttl 43800h] [--csr FILE] [--out DIR]
   operator-cert --pubkey FILE [--ttl 8h] [--name NAME]

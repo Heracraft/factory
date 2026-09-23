@@ -9,8 +9,15 @@
 
   users.mutableUsers = false;
   users.users.root.hashedPassword = "!";
+  # With bootstrap.keyUntilHostCA the keys are not static: repose-host-net
+  # renders them into /run/repose/bootstrap_authorized_keys only while the
+  # host has no Host CA (network.nix, DECISIONS I-177).
   users.users.root.openssh.authorizedKeys.keys =
-    lib.mkIf config.repose.host.bootstrap.enable config.repose.host.bootstrap.authorizedKeys;
+    lib.mkIf (config.repose.host.bootstrap.enable && !config.repose.host.bootstrap.keyUntilHostCA)
+      config.repose.host.bootstrap.authorizedKeys;
+  services.openssh.authorizedKeysFiles =
+    lib.mkIf (config.repose.host.bootstrap.enable && config.repose.host.bootstrap.keyUntilHostCA)
+      [ "/run/repose/bootstrap_authorized_keys" ];
 
   # hostd loads tun devices and Cloud Hypervisor opens /dev/kvm after boot;
   # the module list in kernel.nix is the control instead.

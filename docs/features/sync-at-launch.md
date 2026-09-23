@@ -89,8 +89,19 @@ to look first.
   (`git init && git add -A && git commit -m init`, `git fetch
   --unshallow`) or `--no-sync`.
 - Size: a file over 100 MB is skipped with a warning rather than sent,
-  because an accidental `node_modules` or a video is the usual cause and
-  the user wants to know.
+  because an accidental video is the usual cause and the user wants to
+  know; past 500 MB of untracked files in one sync the rest is skipped
+  with one warning (DECISIONS I-194).
+- Dependency and cache directories never travel, gitignored or not:
+  `node_modules`, `.pnpm-store`, `.venv`, `venv`, `__pycache__`, `.next`,
+  `.turbo`, `.svelte-kit` and the like, wherever they sit in the tree. The
+  sync names each one it left behind once (`Not sent: cms/node_modules`);
+  the agent installs dependencies in the guest, where they are built for
+  the guest's platform. A `sync.exclude` pattern excludes a directory at
+  any depth (`dist` covers `web/dist/...`).
+- Symlinks travel as symlinks, never followed; directories and special
+  files in the untracked list are skipped, and one unreadable file does
+  not stop the rest.
 - Files ignored by gitignore never travel in either direction. `.env`
   files that are gitignored therefore do not sync; that is deliberate and
   documented, and named secrets (secrets.md) are the supported path.

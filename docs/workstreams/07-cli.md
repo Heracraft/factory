@@ -101,7 +101,7 @@ repose snapshots list
 repose snapshots create
 repose snapshots restore SNAPSHOT_ID [--as-new NAME]
 repose destroy [PROJECT] [--yes|-y] [--wait]
-repose restore NAME [--as NEW-NAME] [--snapshot ID]
+repose restore [NAME] [--as NEW-NAME] [--snapshot ID]   # no NAME: the checkout's remote finds it
 repose logs [PROJECT] [--kind console|build|ops] [--since 1h] [--follow|-f]
 repose events [PROJECT] [--since 24h] [--follow|-f]
 repose projects [--destroyed]    # list all, ignores cwd; --destroyed: what can be restored
@@ -305,7 +305,9 @@ $ repose run
       branch has commits the laptop lacks, leave the branch alone and check
       `H` out detached with a warning; set the branch's upstream; `git
       apply --index` the diff; extract the untracked tar. Skip files over
-      100 MB with a warning. Respect `sync.exclude`.
+      100 MB with a warning, dependency/cache directories at any depth
+      (named once), and anything past 500 MB in total; symlinks travel as
+      symlinks. Respect `sync.exclude`, matched at any depth (I-194).
    e. Print `Synced: 4 modified, 2 untracked`, plus `(3 new commits)` when
       commits travelled.
    f. A project created with `--name` in a directory that has no git
@@ -402,7 +404,12 @@ the command that fixes it; with no projects it says how to create one.
 `repose projects --destroyed` lists `GET /projects/destroyed`: `PROJECT
 CLASS DESTROYED SNAPSHOT SIZE RESTORABLE UNTIL`, `(name in use)` after a
 slug a live project holds, and a last line naming `repose restore NAME`;
-`--json` is the api's list (I-167).
+`--json` is the api's list (I-167). `repose restore` with no NAME inside a
+checkout restores the destroyed project whose `remote_url` is the
+checkout's normalised remote (the newest destroy when one name was
+destroyed several times); two or more names are asked about on a
+terminal and listed with exit 2 otherwise; no match exits 4 naming the
+remote (I-172).
 
 ### 5.8 Build log rendering
 

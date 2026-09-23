@@ -147,8 +147,9 @@ Destroy:
   waits for that op and prints "Destroyed." only when it is `done`. A
   failed destroy leaves the project in `error` with a reason that names
   `repose destroy <slug>` as the retry, and sends `destroy_failed`.
-- Within 30 days, `repose restore <slug>` brings it back as a new project
-  under the same name (or `--as NEW-NAME` when a live project has it),
+- Within 30 days, `repose restore <slug>` (or plain `repose restore` in
+  the project's checkout, which finds it by the git remote, I-172) brings
+  it back as a new project under the same name (or `--as NEW-NAME` when a live project has it),
   from its newest snapshot or `--snapshot ID`, with its class, volume
   size, configuration and remote (I-167). `repose projects --destroyed`
   and the dashboard's "Recently destroyed" list what can be restored and

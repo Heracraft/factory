@@ -322,7 +322,8 @@ Snapshot:
    2 s is a warning.
 4. `lvchange -ay -K vg-guests/snap-...`, then `dumpe2fs` the snapshot.
    A clean ext4 (state `clean`, no `needs_recovery`: a freeze and a clean
-   shutdown both leave it so) is streamed in the extent format
+   shutdown both leave it so; a journalled ext4 keeps `clean` while
+   mounted, so a frozen running guest qualifies, I-171) is streamed in the extent format
    (DECISIONS I-164): the blocks the bitmaps mark used, minus 64 KiB
    pieces that are all zero, framed as offset/length records, through
    `zstd -T4 -3`. Anything else (a killed guest's journal, a volume that

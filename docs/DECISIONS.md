@@ -3946,3 +3946,221 @@ blocking starts at zero for accounts with a card (contradicts the pricing
 page and turns the trial's end into an outage); waiting 100 real hours on
 host-01 (proves the sampler, which M1 already did, at the cost of four days
 per retry).
+**I-193. The key in b1a5915 stays in history; it was rotated.** (conductor,
+2026-09-23) The owner rotated the key committed in b1a5915, so the value in
+public history authorises nothing; rewriting history and force-pushing
+would break every clone and worktree for no security gain. *Rejected:*
+a history rewrite, and making the repository private for this reason
+alone. Any future leaked credential is rotated first, the same way.
+
+**I-194. Dependency directories never travel; symlinks travel as links.**
+(conductor, 2026-09-23) The owner's `repose run` in teksafari.org failed
+with `read …/cms/node_modules/.pnpm/…/@actions/exec: is a directory`, and
+the guest was left with an empty checkout: `cms/node_modules` was not
+gitignored, pnpm builds it from symlinks to directories, and the sync
+followed them. Untracked files are now `Lstat`ed: a symlink is written as a
+tar symlink, a directory or special file is skipped, an unreadable file is
+skipped. `node_modules` and similar dependency and cache directories are
+skipped at any depth whatever .gitignore says, named once in a warning:
+they are rebuilt in the guest for its platform, and shipping them is slow
+and wrong. `sync.exclude` patterns now match any leading directory, and one
+sync sends at most 500 MB of untracked files. *Rejected:* following
+symlinks (duplicates whole trees, loops) and failing the sync on the
+first odd file (the whole environment stays empty for one bad path).
+**I-171. A running guest's snapshot takes the extent path; the premise
+that it could not was wrong.** (hardening, 03, 2026-09-23; HANDOFF finding
+"running-guest snapshots still read the whole volume") The finding held
+that a mounted ext4's superblock says `not clean`, so I-164's check
+(`clean`, no `needs_recovery`) would send every frozen running guest to
+the raw read. It does not: ext4 clears `EXT4_VALID_FS` on mount only for a
+filesystem without a journal, so a journalled ext4 reads `clean` while
+mounted (seen on this box's 6.17 kernel with a loop mount), and what
+changes while mounted is `needs_recovery`, which `ext4_freeze` clears
+after `jbd2_journal_flush` has checkpointed the journal into place and
+before it commits the superblock, and `ext4_unfreeze` sets again. The
+LVM snapshot is taken inside the freeze, so the snapshot's own superblock
+is the witness: no `needs_recovery` means the freeze held when the
+snapshot was cut (the delayed allocations were forced out by the
+freeze's `sync_filesystem`, and the on-disk bitmaps are current or
+over-mark, never under-mark: preallocations and open-unlinked files are
+marked used). If guestd's 10 s watchdog thawed before `lvcreate`
+returned, the flag is set in the snapshot and the raw read follows, which
+is the right answer. host-01 already shows it since the 03:05Z switch:
+manual snapshots of two running guests at 03:08:16Z,
+`format: extents`, 763 ms (40 GB volume, 1.07 GB used) and 1314 ms (20
+GB, 570 MB used), against 15-35 s for every running-guest snapshot
+before. So no code change: the check stays `clean` and no
+`needs_recovery`, and does not start accepting `not clean` on the word
+of hostd's freeze record (a `not clean` journalled ext4 means errors or a
+journal-less filesystem, where no freeze witness exists).
+`TestFrozenRunningVolumeRoundTrip` proves it on a real mount (root, `go
+test -c` and the binary under sudo): writes left in the page cache, a
+deleted file and an open unlinked one, `fsfreeze -f`, a sparse copy of
+the device as the LVM snapshot; the copy has no `needs_recovery`, goes
+out as extents, every byte the bitmaps mark used (76 MB of 1 GiB) comes
+back identical and every other byte zero, `e2fsck -fn` reads the
+snapshot and its restore identically, and the restore's own `e2fsck
+-fp` leaves `-fn` clean; the same mount copied without the freeze says
+`needs_recovery` and goes raw. RUNBOOK's slow-snapshot entry names the
+watchdog case. *Rejected:* accepting `not clean` when hostd recorded a
+successful freeze (unneeded, and it would trust hostd's bookkeeping over
+the filesystem's own statement).
+
+**I-172. `repose restore` with no NAME finds the project by the
+checkout's remote.** (hardening, 07, 2026-09-23; I-167's "not done")
+Inside a checkout, the CLI lists `GET /projects/destroyed` and keeps the
+rows whose normalised `remote_url` is the checkout's `origin`. One name
+(destroyed once or several times) restores the newest destroy of it, by
+`project_id`, from its newest snapshot, with no question; two or more
+names ask `Several destroyed projects were checkouts of <remote>: a, b.
+Which one (empty to cancel)?` on a terminal and otherwise exit 2 listing
+them; no match exits 4 naming the remote; a directory without a remote
+exits 2 asking for the name. By id rather than by slug, because the api
+resolves a slug to the live project first, which is not what "this
+checkout's destroyed project" means. A name that is taken asks for
+another, as with NAME. `TestRestoreWithoutANameInACheckout` (a real git
+checkout against the fake api: no remote, nothing destroyed, one match
+with no question, two names without and with a terminal, an unknown
+answer asked again). Needs a CLI release.
+
+**I-173. `base publish` takes only a full sha that is on main.**
+(hardening, 05/12, 2026-09-23; STATUS 2026-09-21 finding) 2026.09.21 was
+published as `3f83664f`, which does not exist, and every create on that
+base failed at the host's checkout until the next publish. `repose-admin
+base publish` now refuses, before writing the row, a rev that is not 40
+hex characters (with the `git rev-parse` to run), one GitHub does not
+have (`push it`), and one not on the branch (`merge it to main first`);
+the check is GitHub's compare API, `compare/main...<sha>`, which answers
+`behind` or `identical` exactly when the sha is main or an ancestor of it
+(verified against the live repository: af916e5 is `behind`, the 2026.09.21
+sha is 404). The repository is `--repo`, else `$REPOSE_BASE_REPO`, else
+`https://github.com/Heracraft/factory.git` (host-01's `baseRepo.url`);
+the branch `--branch`, default main; `GITHUB_TOKEN` is sent when set.
+Unanswerable (GitHub down, a non-GitHub repository) is an error that
+names `--unverified-rev`, which skips only the repository check (the
+rev must still be a full sha) and is recorded in the audit row. The rev
+is stored lowercased. `TestBaseRevGate` (a fake GitHub: on main, short,
+a branch name, unknown, off main, a 502; the three GitHub URL shapes),
+`TestAdminSurface` (short refused, full published through the command,
+the checker asked for the right repository and branch). Rolls with the
+api image on merge; the control VM needs egress to api.github.com, which
+Coolify's own pulls already use. *Rejected:* resolving a short sha (the
+owner types what `git log --oneline` shows, and a short sha that is
+unique today may not be tomorrow; hosts check out exactly the stored
+string); `git ls-remote` (lists refs, not commits, and the api image has
+no git).
+
+**I-174. api-grpc's metrics port is published on the WireGuard address
+only; Traefik's 8080 mapping goes.** (hardening, 10/11, 2026-09-23;
+review 2026-09-21 M5-4, M5-5) `0.0.0.0:9104` put api-grpc's plain-HTTP
+metrics in reach of every VNet member (the edge, hosts). Its only
+consumer is the monitoring peer over the tunnel (10.255.255.1:9104,
+`ops/prometheus/prometheus.yml`), so the Coolify mapping becomes
+`10.255.255.1:9104:9103`; 8443 and 8444 stay on every address (hosts
+register over the VNet before they have a tunnel, and both are mTLS).
+Docker cannot publish on an address that does not exist yet, so Docker
+now starts after `wg-quick@wg0` (a `docker.service.d` drop-in in the
+control VM's cloud-init; `Wants`, not `Requires`, so a VM whose tunnel is
+not configured still starts Docker). The VM ignores cloud-init changes
+(`ignore_changes = [custom_data]`), so the drop-in and the mapping are
+owner steps, in order, in `ops/coolify/README.md` "Two owner steps on
+the control VM", with their checks; `ops/dev/tunnel-prod.sh` now dials
+the WireGuard address. 8080: `coolify-proxy` publishes it with Traefik's
+insecure API off, so nothing answers; the fix is one line deleted from
+Coolify's proxy configuration (same section). Nothing in the repository
+can do either: both live in Coolify's database. *Rejected:* a
+`DOCKER-USER` iptables rule dropping 9104 unless it arrives on wg0 (a
+second firewall on the VM that nothing in the repository owns);
+`net.ipv4.ip_nonlocal_bind` so the bind succeeds before wg0 (the review
+already flagged it on hosts, L-10).
+
+**I-175. A certificate refusal gets one re-issue; a second ends the wait
+at once; other refusals never spend it.** (hardening, 07, 2026-09-23;
+STATUS 2026-09-21 finding "no certificate re-issue on certificate
+revoked") I-149 added the forced re-issue, which covers `permission
+denied (certificate revoked)`: every command that connects (run, attach,
+open, desktop) goes through `connect`. Two gaps remained. Any `Permission
+denied` triggered it, and the gateway sends that for refusals a
+certificate cannot fix (`environment is not accepting connections yet`,
+`gateway cannot reach control plane`, busy, rate limited, stopped, no
+such project), so a boot-time refusal could spend the one re-issue before
+a real revocation; and after the re-issue, a second certificate refusal
+kept retrying for the rest of the 60 s and ended with "SSH did not answer
+in 60s". Now `isCertRefusal` reads the gateway's banner: the six
+certificate banners (revoked, expired, not yet valid, wrong CA, no
+certificate, not valid for this project) or a bare `Permission denied`
+with none of the other banners (an older gateway) count; the first gets
+the re-issue and an immediate retry, a second returns `The gateway
+refused a certificate issued just now (<its words>). \`repose login\` (as
+the account that owns the project) and try again; ...`.
+`TestRevokedCertificateIsReissuedOnce` (the banners are the gateway's own
+constants, so a reworded banner fails it). Needs a CLI release.
+
+**I-176. A gateway session is a relay, not a certificate:
+`/internal/sessions` carries `session_id`.** (hardening, 05/06,
+2026-09-23; I-123's "recorded, not fixed") `gateway_sessions` was keyed
+`(project_id, cert_serial)`: two terminals under one certificate (or
+`repose open` beside an attach; I-149's single certificate per laptop
+makes that the normal case) were one row, and the first to close deleted
+it while the other was open, so `signals.gateway_sessions` read 0 under a
+live session. The gateway now gives each relay 16 random bytes (hex) and
+sends them as `session_id` with the open and the close; the api keys the
+row `(project_id, cert_serial, session_id)` (migration 0004, which adds
+the column with default `''` and moves the primary key; its down deletes
+the per-relay rows, which cannot fit the old key, the table being a
+display count). A report without `session_id`, from a gateway older than
+this, is accepted for one release and keeps the old one-row-per-cert
+behaviour under `''`; an id that is not up to 64 of `[A-Za-z0-9-]` is
+`400 invalid`. Interfaces `api.md`, `ssh-gateway.md` and `db-schema.md`
+in this commit; the fake api records the id. The count feeds the
+dashboard and `repose status` only; the idle policy reads guestd's own
+`ssh_sessions`. Tests: `TestSessionReportsAndCertCache` (three
+connections under one certificate report three distinct ids, each opened
+and closed once), the api's internal-routes test against Postgres (two
+relays of one certificate count two, closing one leaves one, the old
+shape still accepted, a bad id refused), `TestMigrateUpDownUp` (0004
+down and up). The api rolls on merge (it must be deployed before the
+edge, which it is: the old shape stays accepted either way); the gateway
+needs an edge switch. *Rejected:* a counter column incremented on open
+and decremented on close (keeps the body unchanged, but one duplicated or
+lost report skews it for a day, the failure I-123's set semantics were
+chosen to absorb).
+
+**I-177. The bootstrap key can be retired per host once the Host CA is
+there, and a key file in root's home is never read.** (hardening, 01/14,
+2026-09-23; review 2026-09-21 M5-6, M-1's other half) While
+`repose.host.bootstrap.enable` is on, the operator's plain key is in
+`/etc/ssh/authorized_keys.d/root`, so 14 §9's "operator access only with a
+certificate" never holds, and turning bootstrap off before operators
+hold certificates would lock the conductor out (it reaches hosts with the
+dev-box key through the edge jump). New option
+`bootstrap.keyUntilHostCA` (default off): the key moves to
+`/run/repose/bootstrap_authorized_keys`, which `repose-host-net` fills
+only while `/run/repose/host_ca.pub` is empty and empties when it is not.
+A host that knows the Host CA takes certificates only; a host that lost
+it (no `host.json`, a CA that never arrived) takes the key again, which
+is the break-glass. Off by default and off on host-01, because turning
+it on ends plain-key logins the moment the CA is present, and host-01's
+`host_ca.pub` is still 0 bytes (I-139's runbook step not yet done), so
+the order is the owner's: CA on the host, `ops/dev/operator-cert.sh`
+(new: an 8 h certificate signed inside the api container through
+`docker exec -i ... repose-admin operator-cert --pubkey -`, which now
+reads stdin, written next to `~/.ssh/id_ed25519` so the same `ssh -J`
+line offers it), a certificate login seen in the journal, then the
+option on and a switch (RUNBOOK "Retiring a host's bootstrap key").
+Found on the way: host-01 accepts the key from
+`/root/.ssh/authorized_keys` (written by the install on 2026-09-20, the
+same key; sshd's log line says `found at /root/.ssh/authorized_keys:1`),
+a static key no option controlled, so hosts now set
+`authorizedKeysInHomedir = false`. That part is safe to switch now: the
+same key stays in `authorized_keys.d` while bootstrap is on and
+`keyUntilHostCA` is off. The provider-NIC port-22 rule stays with
+`bootstrap.enable` (sshd binds the tunnel address once registered, so
+it admits nothing then; turning bootstrap off removes it). VM test
+`host-services`: before registration the key file is filled and the key
+logs in; after registration brings the CA the file is empty and the key
+is refused even with a copy in `/root/.ssh/authorized_keys`; the
+certificate login still works. *Rejected:* removing the bootstrap key
+from host-01 now (locks the conductor out until the CA and certificates
+are in place); a `from="10.255.0.1"` restriction on the key (whoever
+holds the key can use the edge, which takes the same key).

@@ -111,7 +111,8 @@ base_versions (version text pk, nix_rev text, changelog text, released_at,
               security bool)
 
 host_sessions (host_id pk, replica_id text, since)          -- which api replica holds the host's stream
-gateway_sessions (project_id fk, cert_serial bigint, opened_at, primary key (project_id, cert_serial))
+gateway_sessions (project_id fk, cert_serial bigint, session_id text default '', opened_at,
+              primary key (project_id, cert_serial, session_id))   -- one row per gateway relay (0004, I-176)
 settings     (key text pk, value text)                       -- edge_wg_pubkey, edge_wg_endpoint (repose-admin edge init)
 schema_migrations (version int pk, name text, applied_at)
 ```

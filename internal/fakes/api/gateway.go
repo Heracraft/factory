@@ -10,6 +10,7 @@ type SessionReport struct {
 	ProjectID  string
 	Event      string
 	CertSerial uint64
+	SessionID  string
 }
 
 // SetHosts replaces what GET /internal/hosts returns (nil restores the

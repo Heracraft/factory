@@ -69,6 +69,18 @@ write_files:
     content: |
       PermitRootLogin prohibit-password
       PasswordAuthentication no
+  # Docker starts after the tunnel: api-grpc publishes its plain-HTTP
+  # metrics port on the WireGuard address only (10.255.255.1:9104:9103,
+  # DECISIONS I-174), and Docker cannot publish on an address that does not
+  # exist yet. Wants, not Requires: a VM whose wg0 is not configured yet
+  # still starts Docker.
+  - path: /etc/systemd/system/docker.service.d/10-repose-wg.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      After=wg-quick@wg0.service
+      Wants=wg-quick@wg0.service
   - path: /usr/local/sbin/repose-wg-setup
     owner: root:root
     permissions: "0755"

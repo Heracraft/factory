@@ -531,9 +531,30 @@ func TestSignInAndProjectsLifecycle(t *testing.T) {
 	if ir := e.internalDo(t, "GET", "/internal/ca", nil); ir.status != 200 || !strings.HasPrefix(ir.body["user_ca_pub"].(string), "ssh-ed25519 ") {
 		t.Fatalf("ca: %d %s", ir.status, ir.raw)
 	}
-	if ir := e.internalDo(t, "POST", "/internal/sessions", map[string]any{"project_id": pid, "event": "opened", "cert_serial": serial}); ir.status != 200 {
-		t.Fatalf("sessions: %d %s", ir.status, ir.raw)
+	// Sessions (I-176): two relays under one certificate are two sessions,
+	// and closing one leaves the other; a report without a session_id (a
+	// gateway older than I-176) is still accepted, one row per certificate.
+	session := func(event, id string, want float64) {
+		t.Helper()
+		body := map[string]any{"project_id": pid, "event": event, "cert_serial": serial}
+		if id != "-" {
+			body["session_id"] = id
+		}
+		ir := e.internalDo(t, "POST", "/internal/sessions", body)
+		if ir.status != 200 || ir.body["open"] != want {
+			t.Fatalf("sessions %s %s: %d %s, want open %v", event, id, ir.status, ir.raw, want)
+		}
 	}
+	session("opened", "0a1b", 1)
+	session("opened", "2c3d", 2)
+	session("closed", "0a1b", 1)
+	session("opened", "-", 2)
+	session("closed", "-", 1)
+	session("closed", "2c3d", 0)
+	if ir := e.internalDo(t, "POST", "/internal/sessions", map[string]any{"project_id": pid, "event": "opened", "cert_serial": serial, "session_id": "x y"}); ir.status != 400 {
+		t.Fatalf("a session id with a space: %d %s", ir.status, ir.raw)
+	}
+	session("opened", "0a1b", 1)
 	if ir := e.internalDo(t, "POST", "/internal/gateway-certs", map[string]any{"public_key": pubLine, "project_id": pid}); ir.status != 200 || !strings.Contains(ir.body["certificate"].(string), "ssh-ed25519-cert") {
 		t.Fatalf("gateway cert: %d %s", ir.status, ir.raw)
 	}

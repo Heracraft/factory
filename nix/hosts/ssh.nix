@@ -17,6 +17,13 @@ in
   services.openssh = {
     enable = true;
     openFirewall = false;
+    # No key file outside this configuration: host-01 carried a
+    # /root/.ssh/authorized_keys from its install (2026-09-20) that would
+    # have kept root open by plain key after bootstrap ended (DECISIONS
+    # I-177). Keys come from users.users.root.openssh (bootstrap) or
+    # /run/repose/bootstrap_authorized_keys (keyUntilHostCA), and
+    # certificates from the Host CA.
+    authorizedKeysInHomedir = false;
     settings = {
       PermitRootLogin = "prohibit-password";
       PasswordAuthentication = false;

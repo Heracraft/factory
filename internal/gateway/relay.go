@@ -2,6 +2,8 @@ package gateway
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +28,9 @@ type session struct {
 	slug   string
 	handle string
 	serial uint64
+	// id names this relay in the session reports (I-176): random, so two
+	// connections under one certificate are two sessions.
+	id     string
 	prefix string
 
 	startedAt time.Time
@@ -574,7 +579,7 @@ func (s *session) report(ctx context.Context, opened bool) {
 	var err error
 	for attempt := 0; attempt < 2; attempt++ {
 		rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		err = s.gw.cfg.API.ReportSession(rctx, s.route.ProjectID, opened, s.serial)
+		err = s.gw.cfg.API.ReportSession(rctx, s.route.ProjectID, opened, s.serial, s.id)
 		cancel()
 		var ne *net.OpError
 		if err == nil || !errors.As(err, &ne) {
@@ -584,4 +589,12 @@ func (s *session) report(ctx context.Context, opened bool) {
 	if err != nil {
 		s.log.Warn("session report failed", "event", "route_fail", "reason", "sessions", "opened", opened, "err", err.Error())
 	}
+}
+
+// newSessionID is a relay's id in the session reports (I-176): 16 random
+// bytes in hex, never derived from anything the user sent.
+func newSessionID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:]) // crypto/rand.Read never fails on Linux (it panics instead)
+	return hex.EncodeToString(b[:])
 }

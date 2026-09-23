@@ -131,7 +131,7 @@ state is `repose-admin projects list`, `hosts list` and `base list`.
 4. Loki push URL (`repose-admin edge loki <url>`): Fluent Bit on every
    host, 10's shipping row, the log-shipper alert's quiet state.
 5. Paste the api's `/metrics` router labels in Coolify (I-133).
-6. Decide b1a5915 (the rotated key in public history): rewrite and force
+6. ~~Decide b1a5915~~ settled: the key was rotated, history stays (I-193). Was: rewrite and force
    push, or make the repo private before sharing. Recorded as a DECISIONS
    entry once chosen.
 7. Coolify watch paths on the three apps, so docs-only pushes stop rolling

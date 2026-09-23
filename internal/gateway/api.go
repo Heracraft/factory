@@ -175,13 +175,14 @@ func (c *Client) CA(ctx context.Context) (*CAKeys, error) {
 	return &out, nil
 }
 
-// ReportSession posts a session open or close.
-func (c *Client) ReportSession(ctx context.Context, projectID string, opened bool, serial uint64) error {
+// ReportSession posts a session open or close. sessionID names the relay,
+// so two connections under one certificate are two sessions (I-176).
+func (c *Client) ReportSession(ctx context.Context, projectID string, opened bool, serial uint64, sessionID string) error {
 	ev := "closed"
 	if opened {
 		ev = "opened"
 	}
-	body := map[string]any{"project_id": projectID, "event": ev, "cert_serial": serial}
+	body := map[string]any{"project_id": projectID, "event": ev, "cert_serial": serial, "session_id": sessionID}
 	return c.do(ctx, http.MethodPost, "/sessions", body, nil)
 }
 

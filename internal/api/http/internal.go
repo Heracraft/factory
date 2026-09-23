@@ -54,6 +54,9 @@ func (s *Server) internalSessions(w http.ResponseWriter, r *http.Request) error 
 		ProjectID  string `json:"project_id"`
 		Event      string `json:"event"`
 		CertSerial int64  `json:"cert_serial"`
+		// SessionID is the gateway's id for the relay (I-176); absent
+		// from a gateway older than that, accepted for one release.
+		SessionID string `json:"session_id"`
 	}
 	if err := decode(r, &body); err != nil {
 		return err
@@ -62,12 +65,15 @@ func (s *Server) internalSessions(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return errf("invalid", "project_id is not valid")
 	}
+	if !validSessionID(body.SessionID) {
+		return errf("invalid", "session_id must be up to 64 letters, digits or dashes")
+	}
 	if body.Event != "opened" && body.Event != "closed" {
 		return errf("invalid", "event must be opened or closed")
 	}
 	opened := body.Event == "opened"
 	closed := !opened
-	if err := s.sessions.update(r.Context(), pid, body.CertSerial, opened); err != nil {
+	if err := s.sessions.update(r.Context(), pid, body.CertSerial, body.SessionID, opened); err != nil {
 		return err
 	}
 	ev := "session_open"
@@ -153,4 +159,18 @@ func (s *Server) internalEvents(w http.ResponseWriter, r *http.Request) error {
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"event_id": id, "ts": time.Now().UTC()})
 	return nil
+}
+
+// validSessionID accepts the gateway's relay ids (hex today) and the empty
+// id of an older gateway; anything else is not an id.
+func validSessionID(id string) bool {
+	if len(id) > 64 {
+		return false
+	}
+	for _, c := range id {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
+			return false
+		}
+	}
+	return true
 }
