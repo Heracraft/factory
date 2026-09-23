@@ -92,6 +92,10 @@ let
   };
 
   mkTest = name: attrs: pkgs.testers.runNixOSTest ({ inherit name; } // attrs);
+
+  # The exact scripts the CLI sends for I-198 and I-195, kept in step with
+  # the code by internal/cli's TestGuestPartsGolden.
+  guestParts = ../../../internal/cli/testdata/guest-parts;
 in
 {
   guest-base = mkTest "guest-base" {
@@ -210,6 +214,88 @@ in
           assert prof["slug"] == "todo-app" and prof["dir"] == "/home/dev/todo-app", prof
           assert prof["base_version"] == "${baseVersion}", prof
           assert prof["desktop"]["running"] is False, prof
+    '';
+  };
+
+  # Workstream 15 on a real guest base: the timezone part through sudo
+  # (I-198), the carried git config and its include precedence (I-195),
+  # and the caches' guest side (I-202, I-208): Docker's mirror and the
+  # one-time ~/.npmrc line, added only when the cache answers.
+  guest-parity = mkTest "guest-parity" {
+    nodes.guest = { ... }: {
+      imports = [ node ];
+      environment.systemPackages = [ pkgs.python3 ];
+    };
+    testScript = ''
+      guest.start()
+      guest.wait_for_unit("multi-user.target")
+      guest.succeed("printf 'TZ=Europe/Berlin\nREPOSE_PROJECT=todo-app\n' > /etc/repose/env")
+      guest.succeed("install -d -o dev -g dev -m 0700 /home/dev/.repose")
+      guest.succeed("""echo '{"project_id":"0192e4b0-0000-7000-8000-000000000001","slug":"todo-app","name":"todo-app","tz":"Europe/Berlin","class":"large"}' > /home/dev/.repose/project.json && chown dev:dev /home/dev/.repose/project.json""")
+      guest.wait_until_succeeds("sudo -H -u dev tmux ls | grep -q '^todo-app:'", timeout=60)
+      guest.succeed("mkdir -p /tmp/p && cp -r ${guestParts}/. /tmp/p && chmod -R u+w /tmp/p && chown -R dev:dev /tmp/p")
+
+      with subtest("the session starts in the project's zone; tmux does not take TZ from the client"):
+          assert guest.succeed("sudo -H -u dev tmux show-environment -g TZ").strip() == "TZ=Europe/Berlin"
+          assert "TZ" not in guest.succeed("sudo -H -u dev tmux show-options -gv update-environment")
+
+      with subtest("I-198: the carry moves /etc/repose/env and tmux to the laptop's zone"):
+          out = guest.succeed("sudo -H -u dev sh -e /tmp/p/tz.sh /tmp/p")
+          assert "#tz Asia/Tokyo" in out, out
+          env = guest.succeed("cat /etc/repose/env")
+          assert "TZ=Asia/Tokyo" in env and "REPOSE_PROJECT=todo-app" in env and "Europe" not in env, env
+          assert guest.succeed("stat -c '%U %a' /etc/repose/env").strip() == "root 644"
+          assert guest.succeed("sudo -H -u dev tmux show-environment -g TZ").strip() == "TZ=Asia/Tokyo"
+          guest.succeed("sudo -H -u dev tmux new-window -d -t todo-app -n clock 'date +%Z > /tmp/zone; sleep 30'")
+          guest.wait_until_succeeds("grep -qx JST /tmp/zone")
+          assert guest.succeed("sudo -H -u dev bash -lc 'date +%Z'").strip() == "JST"
+          # the same zone again changes nothing
+          assert "#tz" not in guest.succeed("sudo -H -u dev sh -e /tmp/p/tz.sh /tmp/p")
+
+      with subtest("I-195: the carried config applies and a key set in the guest wins"):
+          guest.succeed("sudo -H -u dev git config --global alias.st 'status --short'")
+          out = guest.succeed("sudo -H -u dev sh -e /tmp/p/git.sh /tmp/p")
+          assert "#dropped git core.pager" in out, out
+          listing = guest.succeed("sudo -H -u dev git config --list --show-origin")
+          print(listing)
+          assert guest.succeed("sudo -H -u dev git config alias.st").strip() == "status --short"
+          assert guest.succeed("sudo -H -u dev git config alias.lg").strip() == "log --oneline"
+          assert guest.succeed("sudo -H -u dev git config user.email").strip() == "work@corp.example"
+          assert "core.pager" not in listing, listing
+          head = guest.succeed("head -2 /home/dev/.gitconfig")
+          assert head == "[include]\n\tpath = ~/.config/git/repose-carried\n", head
+          guest.succeed("sudo -H -u dev sh -e /tmp/p/git.sh /tmp/p")
+          assert guest.succeed("grep -c repose-carried /home/dev/.gitconfig").strip() == "1"
+
+      with subtest("I-202: Docker uses the host's mirror"):
+          guest.wait_for_unit("docker.service")
+          info = guest.succeed("docker info")
+          assert "http://10.63.255.254:5000/" in info, info
+
+      with subtest("I-208: ~/.npmrc is left alone while no cache answers"):
+          guest.wait_until_succeeds("sudo -H -u dev XDG_RUNTIME_DIR=/run/user/1000 systemctl --user show -p ActiveState --value repose-npm-registry.service | grep -qx inactive", timeout=120)
+          guest.fail("test -e /home/dev/.npmrc")
+          guest.fail("test -e /home/dev/.repose/npm-registry")
+
+      with subtest("I-208: once the cache answers, one registry line, once"):
+          guest.succeed("ip addr add 10.63.255.254/32 dev lo")
+          guest.succeed("systemd-run --unit fake-front python3 -m http.server 4873 --bind 10.63.255.254")
+          guest.wait_for_open_port(4873, "10.63.255.254")
+          guest.succeed("sudo -H -u dev XDG_RUNTIME_DIR=/run/user/1000 systemctl --user start repose-npm-registry.service")
+          assert guest.succeed("grep -c '^registry=http://10.63.255.254:4873/$' /home/dev/.npmrc").strip() == "1"
+          assert guest.succeed("sudo -H -u dev bash -lc 'npm config get registry'").strip() == "http://10.63.255.254:4873/"
+          guest.succeed("sudo -H -u dev XDG_RUNTIME_DIR=/run/user/1000 systemctl --user start repose-npm-registry.service")
+          assert guest.succeed("grep -c '^registry=' /home/dev/.npmrc").strip() == "1"
+          # a project's own registry still wins
+          guest.succeed("sudo -H -u dev sh -c 'mkdir -p /home/dev/proj && echo registry=https://corp.example/npm/ > /home/dev/proj/.npmrc'")
+          assert guest.succeed("sudo -H -u dev bash -lc 'cd /home/dev/proj && npm config get registry'").strip() == "https://corp.example/npm/"
+
+      with subtest("I-208: a ~/.npmrc with its own registry is never touched"):
+          guest.succeed("rm -f /home/dev/.repose/npm-registry")
+          guest.succeed("sudo -H -u dev sh -c 'echo registry=https://user.example/ > /home/dev/.npmrc'")
+          guest.succeed("sudo -H -u dev XDG_RUNTIME_DIR=/run/user/1000 systemctl --user start repose-npm-registry.service")
+          assert guest.succeed("cat /home/dev/.npmrc").strip() == "registry=https://user.example/"
+          assert guest.succeed("cat /home/dev/.repose/npm-registry").strip() == "own"
     '';
   };
 

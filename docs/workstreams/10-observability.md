@@ -81,7 +81,8 @@ component must emit:
   `stream_disconnect`, `guestd_lost`, `guestd_regained`, `pool_warning`,
   `store_warning`.
 - guestd: `ready`, `freeze`, `thaw`, `freeze_timeout`, `switch`,
-  `agent_event`, `agent_state`, `hook_bad_payload`, plus the one-per-request
+  `agent_event`, `agent_state`, `oom_priority` (I-200, counts only),
+  `hook_bad_payload`, plus the one-per-request
   events 04 emits: `grow_fs`, `write_secrets`, `set_principals`,
   `setup_project`, `sample` (debug, carries `duration_ms`), `exec` and
   `shutdown`, and `warning` (carries `kind`, the enumeration in

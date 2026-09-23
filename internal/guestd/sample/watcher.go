@@ -183,7 +183,7 @@ func (w *Watcher) refreshProcs() {
 	children, _ := w.procs.childIndex()
 	devUID, _ := sysdep.DevIdentity()
 	if changes := w.procs.applyOOM(devUID, w.procs.agentPIDs(children, panes)); len(changes) > 0 {
-		w.log.Debug("oom priority applied", "event", "sample", "changed", len(changes))
+		w.log.Debug("oom priority applied", "event", "oom_priority", "changed", len(changes))
 	}
 }
 

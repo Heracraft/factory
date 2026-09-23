@@ -43,6 +43,10 @@ pkgs.testers.runNixOSTest {
       extraGroups = [ "wheel" ];
     };
     security.sudo.wheelNeedsPassword = false;
+    # The NixOS test framework panics the VM on any OOM so that a test
+    # cannot pass by accident; the I-200 subtest needs the OOM killer to
+    # run as it does in a real guest, which does not set this.
+    boot.kernel.sysctl."vm.panic_on_oom" = lib.mkForce 0;
     users.users.dev.linger = true;
 
     programs.tmux.enable = true;
@@ -63,7 +67,7 @@ pkgs.testers.runNixOSTest {
     environment.systemPackages = with pkgs; [
       guestdPackage hookPackage fakeClaude
       git tmux openssh e2fsprogs util-linux procps
-      jq curl coreutils
+      jq curl coreutils python3
     ];
 
     # /run/repose and its secrets tmpfs, as nix/guest/base/guestd.nix (02)
@@ -261,6 +265,43 @@ pkgs.testers.runNixOSTest {
         assert signals["guestdOk"] is True, signals
         assert int(signals.get("tmuxClients", 0)) >= 0, signals
         assert len(sample["sample"]["procs"]) > 0, sample
+
+    with subtest("I-200: the agent and the tmux server are protected, what they start is not"):
+        claude = guest.succeed("pgrep -x claude").strip()
+        server = guest.succeed("pgrep -x 'tmux: server'").strip().split()[0]
+        guest.wait_until_succeeds(f"test $(cat /proc/{claude}/oom_score_adj) = -800", timeout=30)
+        guest.wait_until_succeeds(f"test $(cat /proc/{server}/oom_score_adj) = -800", timeout=30)
+        # A dev server started in a window forks from the tmux server and
+        # inherits its -800; guestd puts it back to 0 within a refresh.
+        guest.succeed(
+            "sudo -u dev tmux new-window -d -t todo-app -n web "
+            "'${pkgs.python3}/bin/python3 -m http.server 5173 --bind 127.0.0.1'"
+        )
+        guest.wait_for_open_port(5173)
+        web = guest.succeed("ss -Hltnp 'sport = :5173' | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2").strip()
+        guest.wait_until_succeeds(f"test $(cat /proc/{web}/oom_score_adj) = 0", timeout=30)
+        print(guest.succeed(f"grep -H . /proc/{claude}/oom_score_adj /proc/{server}/oom_score_adj /proc/{web}/oom_score_adj"))
+
+    with subtest("I-200, I-207: the sample lists what listens, with its process"):
+        def listening():
+            return first_json(call("sample"))["sample"]["signals"].get("listening", [])
+        found = []
+        for _ in range(15):
+            found = [l for l in listening() if int(l["port"]) == 5173]
+            if found:
+                break
+            guest.sleep(2)
+        assert found, listening()
+        assert found[0]["comm"] == "python3", found
+        assert int(found[0]["rssBytes"]) > 0, found
+
+    with subtest("I-200: under memory pressure the kernel kills the hog, not the agent"):
+        guest.succeed("echo 'a=[]' > /tmp/hog.py && echo 'while True: a.append(bytearray(64 << 20))' >> /tmp/hog.py")
+        guest.succeed("sudo -u dev tmux new-window -d -t todo-app -n hog '${pkgs.python3}/bin/python3 /tmp/hog.py'")
+        guest.wait_until_succeeds("journalctl -k --no-pager | grep -q 'Killed process [0-9]* (python3)'", timeout=120)
+        print(guest.succeed("journalctl -k --no-pager | grep -E 'Out of memory|Killed process'"))
+        guest.succeed(f"kill -0 {claude}")
+        guest.succeed(f"test $(cat /proc/{claude}/oom_score_adj) = -800")
 
     with subtest("a sample costs under 20 ms"):
         line = guest.succeed(

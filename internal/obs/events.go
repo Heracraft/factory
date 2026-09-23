@@ -29,13 +29,16 @@ const (
 	EventStoreWarning     = "store_warning"
 
 	// guestd
-	EventReady          = "ready"
-	EventFreeze         = "freeze"
-	EventThaw           = "thaw"
-	EventFreezeTimeout  = "freeze_timeout"
-	EventSwitch         = "switch"
-	EventAgentEvent     = "agent_event"
-	EventAgentState     = "agent_state"
+	EventReady         = "ready"
+	EventFreeze        = "freeze"
+	EventThaw          = "thaw"
+	EventFreezeTimeout = "freeze_timeout"
+	EventSwitch        = "switch"
+	EventAgentEvent    = "agent_event"
+	EventAgentState    = "agent_state"
+	// EventOOMPriority is guestd re-applying oom_score_adj (I-200); it
+	// carries counts only.
+	EventOOMPriority    = "oom_priority"
 	EventHookBadPayload = "hook_bad_payload"
 	EventGrowFs         = "grow_fs"
 	EventWriteSecrets   = "write_secrets"

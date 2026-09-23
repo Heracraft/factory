@@ -1,0 +1,10 @@
+# Carried from your laptop by repose on every run and attach; replaced whole each time.
+# Set a key in ~/.gitconfig instead to override it here.
+[alias]
+	st = "status -sb"
+	lg = "log --oneline"
+[core]
+	pager = "delta"
+[user]
+	name = "Lap Top"
+	email = "work@corp.example"
