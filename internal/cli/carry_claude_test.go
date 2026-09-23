@@ -203,7 +203,7 @@ func claudeLaptopHome(t *testing.T, plugins bool) string {
 		".claude/skills/deploy/.credentials.json": `NEVER-NESTED-CREDS`,
 		".claude/projects/-home-x/abc.jsonl":      `{"NEVER-TRANSCRIPT":1}`,
 		".claude/history.jsonl":                   `{"display":"NEVER-HISTORY"}`,
-		".claude/todos/t.json":                    `NEVER-TODOS`,
+		".claude/todos/t.json":                    `NEVER-TASK-LIST`,
 		".claude/shell-snapshots/s.sh":            `NEVER-SNAPSHOT`,
 		".claude/file-history/f":                  `NEVER-FILE-HISTORY`,
 		".claude/plugins/cache/x":                 `NEVER-PLUGIN-CACHE`,
@@ -263,7 +263,7 @@ func TestCarryClaudeNeverCarriesSecrets(t *testing.T) {
 	if len(o.Failed) != 0 {
 		t.Fatalf("outcome = %+v", o)
 	}
-	for _, never := range []string{"NEVER-CLAUDE-CREDS", "NEVER-NESTED-CREDS", "NEVER-TRANSCRIPT", "NEVER-HISTORY", "NEVER-TODOS", "NEVER-SNAPSHOT", "NEVER-FILE-HISTORY", "NEVER-PLUGIN-CACHE", "NEVER-STATSIG", "NEVER-CLAUDE-JSON", "NEVER-SSH-KEY", "NEVER-GEMINI"} {
+	for _, never := range []string{"NEVER-CLAUDE-CREDS", "NEVER-NESTED-CREDS", "NEVER-TRANSCRIPT", "NEVER-HISTORY", "NEVER-TASK-LIST", "NEVER-SNAPSHOT", "NEVER-FILE-HISTORY", "NEVER-PLUGIN-CACHE", "NEVER-STATSIG", "NEVER-CLAUDE-JSON", "NEVER-SSH-KEY", "NEVER-GEMINI"} {
 		if bytes.Contains(stream.Bytes(), []byte(never)) {
 			t.Errorf("%s is in the carry stream", never)
 		}
