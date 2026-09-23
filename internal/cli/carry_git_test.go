@@ -86,6 +86,25 @@ func laptopHome(t *testing.T) (home, repo string) {
 	return home, repo
 }
 
+func TestSecretIn(t *testing.T) {
+	for s, want := range map[string]bool{
+		`curl -H "Authorization: Bearer $NTFY_TOKEN" ntfy.sh/x`:  false,
+		`curl -H "Authorization: Bearer ${API_TOKEN}" x`:         false,
+		`Bash(grep -rn Bearer src:*)`:                            false,
+		`Bearer short`:                                           false,
+		`Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345`: true,
+		`https://u:pass@host.example/r.git`:                      true,
+		`https://host.example/r.git`:                             false,
+		`sk-ant-api03-xyz`:                                       true,
+		`ghp_abc123`:                                             true,
+		`python3 ~/.claude/hooks/id_generator.py`:                false,
+	} {
+		if got := secretIn(s); got != want {
+			t.Errorf("secretIn(%q) = %v, want %v", s, got, want)
+		}
+	}
+}
+
 func TestGitDenylist(t *testing.T) {
 	for key, denied := range map[string]bool{
 		"credential.helper": true, "credential.https://github.com.helper": true,
@@ -165,7 +184,7 @@ func TestCarryGitConfig(t *testing.T) {
 		}
 	}
 	// Credentials in values and keys: left out, and said once, by count.
-	if len(gc.Notes) != 1 || !strings.Contains(gc.Notes[0], "Left out 4 git config entries") || strings.Contains(gc.Notes[0], "NEVER") {
+	if len(gc.Notes) != 1 || !strings.Contains(gc.Notes[0], "Left out 4 git config entries") || !strings.Contains(gc.Notes[0], "in [alias], [http], [remote].") || strings.Contains(gc.Notes[0], "NEVER") || strings.Contains(gc.Notes[0], "example") {
 		t.Errorf("notes = %v", gc.Notes)
 	}
 	carry := func() *carryOutcome {

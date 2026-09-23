@@ -92,7 +92,8 @@ config the CLI carries" has the exact paths):
   laptop without `env` (API keys, MCP tokens), `apiKeyHelper`, the `aws*`
   and `gcp*` auth helpers, `otelHeadersHelper` and `forceLoginMethod`
   (DECISIONS I-211), and without any entry whose strings hold a URL
-  password or a known token prefix; files named `.env*`, `id_*`,
+  password or a known token prefix; files named `.env*`, SSH identities
+  (`id_ed25519`, `id_rsa.pub`, …),
   `*credentials*`, `*.pem`, `*.key`, `*.p12` never travel from the
   carried directories. `TestCarryClaudeNeverCarriesSecrets`
   plants `.credentials.json` (also inside `skills/`), `projects/`,

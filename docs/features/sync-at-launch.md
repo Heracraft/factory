@@ -69,7 +69,11 @@ to look first.
   line ends "the last sync's changes stashed in the guest". An edit to a
   synced file, a new file, a commit, or any change inside a submodule
   changes the fingerprint and refuses as above, including one made
-  between the probe and the apply. The checks force
+  between the probe and the apply; a tree that was clean at the probe is
+  checked again before the files are laid down, so an agent's new file is
+  never overwritten by one the laptop sends. `git stash push -u` cleans
+  the untracked files after recording them, so a file written in that
+  instant is lost (git's own behaviour). The checks force
   `status.showUntrackedFiles=normal` and `submodule.recurse=false`, so a
   carried laptop setting cannot hide a file or reach into a submodule.
   Both ride the two existing ssh round trips. A run from a second laptop

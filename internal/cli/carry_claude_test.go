@@ -260,7 +260,7 @@ func claudeLaptopHome(t *testing.T, plugins bool) string {
 		".claude/agents/reviewer.md":     "---\nname: reviewer\n---\nReview.\n",
 		".claude/commands/fix.md":        "Fix the build.\n",
 		".claude/hooks/notify.sh":        "#!/bin/sh\necho done\n",
-		".claude/settings.json": `{"model":"opus","permissions":{"allow":["Bash(go test:*)","Bash(curl -H 'Authorization: Bearer NEVER-PERM-BEARER':*)"]},"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"` + home + `/.claude/hooks/notify.sh"}]}],"PostToolUse":[{"matcher":"","hooks":[{"type":"command","command":"curl https://u:NEVER-HOOK-PASS@hooks.example/x"}]}]},"enabledPlugins":{` + enabled + `},"extraKnownMarketplaces":{"laptop-dir":{"source":{"source":"directory","path":"/Users/lap/mkt"}},"privmkt":{"source":{"source":"git","url":"https://tok:NEVER-MKT-TOKEN@git.example/m.git"}}},` +
+		".claude/settings.json": `{"model":"opus","permissions":{"allow":["Bash(go test:*)","Bash(curl -H 'Authorization: Bearer NEVER-PERM-BEARER-0123456789':*)","Bash(grep -rn Bearer src:*)"]},"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"` + home + `/.claude/hooks/notify.sh"}]}],"PostToolUse":[{"matcher":"","hooks":[{"type":"command","command":"curl https://u:NEVER-HOOK-PASS@hooks.example/x"}]}],"Notification":[{"matcher":"","hooks":[{"type":"command","command":"curl -H \"Authorization: Bearer $NTFY_TOKEN\" -d done ntfy.example/t"}]}]},"enabledPlugins":{` + enabled + `},"extraKnownMarketplaces":{"laptop-dir":{"source":{"source":"directory","path":"/Users/lap/mkt"}},"privmkt":{"source":{"source":"git","url":"https://tok:NEVER-MKT-TOKEN@git.example/m.git"}}},` +
 			// Credentials inside values (second review, item 4).
 			`"statusLine":{"type":"command","command":"echo sk-ant-NEVER-STATUSLINE"},` +
 			// Settings keys that hold or run a credential (I-211).
@@ -280,6 +280,7 @@ func claudeLaptopHome(t *testing.T, plugins bool) string {
 		".claude/skills/deploy/.env":            `NEVER-SKILL-ENV`,
 		".claude/skills/deploy/.env.local":      `NEVER-SKILL-ENV-LOCAL`,
 		".claude/agents/id_ed25519":             `NEVER-AGENT-KEY`,
+		".claude/agents/id_generator.py":        "print(\"GENERATOR-OK\")\n",
 		".claude/commands/server.pem":           `NEVER-PEM`,
 		".claude/commands/tls.key":              `NEVER-DOT-KEY`,
 		".claude/skills/deploy/aws-credentials": `NEVER-SKILL-CREDENTIALS`,
@@ -338,6 +339,26 @@ func TestCarryClaudeNeverCarriesSecrets(t *testing.T) {
 	o := carry()
 	if len(o.Failed) != 0 {
 		t.Fatalf("outcome = %+v", o)
+	}
+	// The files left behind for their names are named (never their
+	// contents); an SSH key's name is, a script called id_generator.py
+	// is carried.
+	warned := strings.Join(o.Warnings, "\n")
+	for _, name := range []string{"~/.claude/agents/id_ed25519", "~/.claude/skills/deploy/.env", "~/.claude/commands/server.pem"} {
+		if !strings.Contains(warned, name) {
+			t.Errorf("warnings do not name %s:\n%s", name, warned)
+		}
+	}
+	if strings.Contains(warned, "NEVER-") || strings.Contains(warned, "id_generator") {
+		t.Errorf("warnings = %s", warned)
+	}
+	if b, _ := os.ReadFile(filepath.Join(f.guestHome, ".claude/agents/id_generator.py")); !strings.Contains(string(b), "GENERATOR-OK") {
+		t.Errorf("id_generator.py did not arrive: %q", b)
+	}
+	// A hook that names its token through the environment is not a
+	// credential, and neither is a grep for the word.
+	if b, _ := os.ReadFile(filepath.Join(f.guestHome, ".claude/settings.json")); !strings.Contains(string(b), "Bearer $NTFY_TOKEN") || !strings.Contains(string(b), "grep -rn Bearer src") {
+		t.Errorf("safe Bearer entries dropped:\n%s", b)
 	}
 	for _, never := range []string{"NEVER-CLAUDE-CREDS", "NEVER-NESTED-CREDS", "NEVER-TRANSCRIPT", "NEVER-HISTORY", "NEVER-TASK-LIST", "NEVER-SNAPSHOT", "NEVER-FILE-HISTORY", "NEVER-PLUGIN-CACHE", "NEVER-STATSIG", "NEVER-CLAUDE-JSON", "NEVER-SSH-KEY", "NEVER-GEMINI",
 		"NEVER-ENV-API-KEY", "NEVER-ENV-MCP", "NEVER-API-KEY-HELPER", "NEVER-AWS-REFRESH", "NEVER-AWS-EXPORT", "NEVER-OTEL-HELPER", "NEVER-FORCE-LOGIN",

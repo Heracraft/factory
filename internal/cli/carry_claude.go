@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -60,6 +61,11 @@ const claudeFileCap = 4 << 20
 type claudeItem struct {
 	Marker string
 	Files  map[string]claudeFile // rel path -> the file on the laptop
+	// Skipped are files under the item's directory left behind because
+	// their names look like credentials (claudeSecretFileName). Their
+	// names, never their contents, are said when the item is sent, so
+	// once per change.
+	Skipped []string
 	// Hash is the item's marker value, from each file's content hash
 	// (claudeHashes), so an unchanged item costs a stat per file.
 	Hash string
@@ -138,7 +144,7 @@ func buildClaudeCarry(homeDir string) (*claudeCarry, error) {
 		cc.Items = append(cc.Items, claudeItem{Marker: "claude-" + markerName(name), Files: map[string]claudeFile{name: f}})
 	}
 	for _, d := range claudeDirs {
-		files, over, err := readClaudeDir(dir, d)
+		files, skipped, over, err := readClaudeDir(dir, d)
 		if err != nil {
 			continue
 		}
@@ -146,8 +152,8 @@ func buildClaudeCarry(homeDir string) (*claudeCarry, error) {
 			cc.Notes = append(cc.Notes, fmt.Sprintf("~/.claude/%s is over %d MB, so it was not carried.", d, claudeDirCap>>20))
 			continue
 		}
-		if len(files) > 0 {
-			cc.Items = append(cc.Items, claudeItem{Marker: "claude-" + d, Files: files})
+		if len(files) > 0 || len(skipped) > 0 {
+			cc.Items = append(cc.Items, claudeItem{Marker: "claude-" + d, Files: files, Skipped: skipped})
 		}
 	}
 
@@ -333,11 +339,11 @@ func statSmallFile(p string) (claudeFile, error) {
 // readClaudeDir reads the regular files under dir/d (symlinks and
 // anything else are left behind: a link to a laptop path means nothing in
 // the guest). over reports the directory past claudeDirCap.
-func readClaudeDir(dir, d string) (files map[string]claudeFile, over bool, err error) {
+func readClaudeDir(dir, d string) (files map[string]claudeFile, skipped []string, over bool, err error) {
 	root := filepath.Join(dir, d)
 	info, err := os.Lstat(root)
 	if err != nil || !info.IsDir() {
-		return nil, false, fmt.Errorf("no %s", d)
+		return nil, nil, false, fmt.Errorf("no %s", d)
 	}
 	files = map[string]claudeFile{}
 	var total int64
@@ -351,7 +357,12 @@ func readClaudeDir(dir, d string) (files map[string]claudeFile, over bool, err e
 			}
 			return nil
 		}
-		if !de.Type().IsRegular() || claudeSecretFileName(de.Name()) {
+		if !de.Type().IsRegular() {
+			return nil
+		}
+		if claudeSecretFileName(de.Name()) {
+			rel, _ := filepath.Rel(dir, p)
+			skipped = append(skipped, filepath.ToSlash(rel))
 			return nil
 		}
 		info, err := de.Info()
@@ -367,8 +378,13 @@ func readClaudeDir(dir, d string) (files map[string]claudeFile, over bool, err e
 		files[filepath.ToSlash(rel)] = claudeFileOf(p, info)
 		return nil
 	})
-	return files, over, err
+	sort.Strings(skipped)
+	return files, skipped, over, err
 }
+
+// sshIdentityName is an SSH key pair's default file name (id_ed25519,
+// id_rsa.pub, id_ecdsa_sk), not every id_ file (id_generator.py).
+var sshIdentityName = regexp.MustCompile(`^id_(rsa|dsa|ecdsa|ed25519)(_sk)?(\.pub)?$`)
 
 // claudeSecretFileName is a file name that holds a secret by its look:
 // .env files, keys and certificates, anything named credentials, SSH
@@ -377,7 +393,7 @@ func readClaudeDir(dir, d string) (files map[string]claudeFile, over bool, err e
 func claudeSecretFileName(name string) bool {
 	n := strings.ToLower(name)
 	switch {
-	case n == ".env", strings.HasPrefix(n, ".env."), strings.HasPrefix(n, "id_"),
+	case n == ".env", strings.HasPrefix(n, ".env."), sshIdentityName.MatchString(n),
 		strings.Contains(n, "credentials"),
 		strings.HasSuffix(n, ".pem"), strings.HasSuffix(n, ".key"), strings.HasSuffix(n, ".p12"), strings.HasSuffix(n, ".pfx"):
 		return true
@@ -518,7 +534,15 @@ func addClaudeParts(p *guestPayload, cc *claudeCarry, opts carryOptions) ([]stri
 			}
 		}
 		// Onto what the guest has: a skill made in the guest stays.
-		script := fmt.Sprintf("mkdir -p ~/.claude\ncp -R \"$1/%s/.\" ~/.claude/\n%s", base, setMarker(it.Marker, hash))
+		script := fmt.Sprintf("mkdir -p ~/.claude\nif [ -d \"$1/%[1]s\" ]; then cp -R \"$1/%[1]s/.\" ~/.claude/; fi\n", base)
+		if len(it.Skipped) > 0 {
+			msg := "Not carried (the names look like credentials): ~/.claude/" + strings.Join(it.Skipped, ", ~/.claude/") + "."
+			if err := p.file(base+".skipped", []byte(msg)); err != nil {
+				return nil, err
+			}
+			script += fmt.Sprintf("printf '#warn %%s\\n' \"$(cat \"$1/%s.skipped\")\"\n", base)
+		}
+		script += setMarker(it.Marker, hash)
 		if err := p.part("Claude "+strings.TrimPrefix(it.Marker, "claude-"), script); err != nil {
 			return nil, err
 		}
@@ -574,6 +598,9 @@ func claudeItemHash(it claudeItem, hc *claudeHashes) string {
 			continue
 		}
 		parts = append(parts, []byte(rel), []byte(fmt.Sprint(f.Mode)), []byte(sum))
+	}
+	for _, rel := range it.Skipped {
+		parts = append(parts, []byte("skipped"), []byte(rel))
 	}
 	if len(parts) == 0 {
 		return ""

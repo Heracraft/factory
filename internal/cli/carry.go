@@ -230,7 +230,7 @@ func setMarker(item, hash string) string {
 // the tokens a laptop config most often holds (Anthropic, GitHub classic,
 // fine-grained and OAuth, GitLab, Slack, AWS access keys) or a bearer
 // header.
-var secretPattern = regexp.MustCompile(`://[^/\s:@]+:[^/\s@]+@|sk-ant-|gh[pousr]_[A-Za-z0-9]|github_pat_|glpat-|xox[abposr]-|AKIA[0-9A-Z]{16}|(?i:bearer)\s+\S`)
+var secretPattern = regexp.MustCompile(`://[^/\s:@]+:[^/\s@]+@|sk-ant-|gh[pousr]_[A-Za-z0-9]|github_pat_|glpat-|xox[abposr]-|AKIA[0-9A-Z]{16}|(?i:bearer)\s+[A-Za-z0-9._~+/=-]{20,}`)
 
 // secretIn reports whether s holds a credential by secretPattern. The
 // carry drops the entry; the value is never printed.

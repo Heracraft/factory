@@ -112,13 +112,17 @@ type guestProbe struct {
 // repose_git is git with the settings a carried laptop config could turn
 // against the sync forced back: status.showUntrackedFiles=no would hide
 // the untracked files the sync wrote, and submodule.recurse=true would
-// make a stash or reset reach into a submodule. repose_dirty is the dirty
-// list, submodules included.
+// make a stash or reset reach into a submodule, and a repository using
+// Git LFS in a guest without git-lfs would fail every add and stash
+// (filter.lfs.required=false stores the file as it is instead: the
+// fingerprint only has to be stable). repose_dirty is the dirty list,
+// submodules included.
 //
 // repose_fp fingerprints the checkout as it stands: HEAD and the tree
 // `git add -A` would record (index, working tree and every untracked file
 // that is not ignored), built in a copy of the index so the real one is
-// untouched and only changed files are hashed, and with a throwaway
+// untouched and only changed files are hashed (cp -p keeps the index's
+// mtime, which git's racy-clean check compares against), and with a throwaway
 // object directory (the real one as its alternate) so a probe leaves no
 // objects behind. A submodule is only its commit in that tree, so an edit
 // inside one would not change it: any submodule change makes the
@@ -126,7 +130,8 @@ type guestProbe struct {
 // laying down the laptop's diff and untracked files; the next probe
 // compares, so the tree the sync itself made dirty is not taken for an
 // agent's work.
-const syncedFP = `repose_git() { git -c status.showUntrackedFiles=normal -c submodule.recurse=false "$@"; }
+const syncedFP = `repose_c="-c status.showUntrackedFiles=normal -c submodule.recurse=false -c filter.lfs.required=false"
+repose_git() { git $repose_c "$@"; }
 repose_dirty() { repose_git status --porcelain --ignore-submodules=none; }
 repose_fp() {
   if repose_git status --porcelain=v2 --ignore-submodules=none | grep -q '^[12u] .. S'; then echo failed; return; fi
@@ -134,9 +139,11 @@ repose_fp() {
   o=$(mktemp -d)
   x=$(git rev-parse --git-path index)
   a=$(cd "$(git rev-parse --git-path objects)" && pwd)
-  if [ -f "$x" ]; then cp "$x" "$i"; else rm -f "$i"; fi
-  if GIT_INDEX_FILE=$i GIT_OBJECT_DIRECTORY=$o GIT_ALTERNATE_OBJECT_DIRECTORIES=$a repose_git add -A >/dev/null 2>&1 &&
-     tr=$(GIT_INDEX_FILE=$i GIT_OBJECT_DIRECTORY=$o GIT_ALTERNATE_OBJECT_DIRECTORIES=$a git write-tree 2>/dev/null); then
+  if [ -f "$x" ]; then cp -p "$x" "$i"; else rm -f "$i"; fi
+  # Plain git with the options, not repose_git: a shell need not export
+  # assignments that precede a function call.
+  if GIT_INDEX_FILE=$i GIT_OBJECT_DIRECTORY=$o GIT_ALTERNATE_OBJECT_DIRECTORIES=$a git $repose_c add -A >/dev/null 2>&1 &&
+     tr=$(GIT_INDEX_FILE=$i GIT_OBJECT_DIRECTORY=$o GIT_ALTERNATE_OBJECT_DIRECTORIES=$a git $repose_c write-tree 2>/dev/null); then
     printf '%s %s\n' "$(git rev-parse -q --verify HEAD || echo none)" "$tr"
   else
     echo failed
@@ -413,6 +420,12 @@ func applyScript(slug, head, branch, track string, bundleRefs []string, hasBundl
 	_, _ = fmt.Fprintf(&b, "set -e\ncd ~/%s\n", slug)
 	b.WriteString(syncedFP)
 	b.WriteString("t=$(mktemp -d)\ntrap 'rm -rf \"$t\"' EXIT\ntar -x -C \"$t\"\n")
+	if len(probe.dirty) == 0 {
+		// Clean when the probe looked; an agent may have written since,
+		// and the tar below would overwrite a file at a path the laptop
+		// also sends. Same exit as a change since the probe.
+		_, _ = fmt.Fprintf(&b, "[ -z \"$(repose_dirty)\" ] || { echo %s >&2; exit 3; }\n", shQuote(syncedChanged))
+	}
 	if len(probe.dirty) > 0 {
 		switch {
 		case opts.DiscardRemote:
@@ -468,22 +481,28 @@ const syncStashKeep = 10
 // drop do not move. It matches the whole subject git records for
 // `stash push -m` ("On <branch>: <message>", a branch name has no colon),
 // so the user's stashes and --stash-remote's "repose run" are never
-// touched.
+// touched. Each is dropped only while its index still names the commit
+// listed: a stash an agent pushes meanwhile shifts every index, and then
+// nothing more is dropped this time.
 var pruneSyncStashes = fmt.Sprintf(`n=0
 drop=""
-while IFS=' ' read -r ref subj; do
+while IFS=' ' read -r ref sha subj; do
   case $subj in
     "On "*": repose run: last sync")
       br=${subj#On }; br=${br%%": repose run: last sync"}
       case $br in *:*) continue ;; esac
       n=$((n+1))
-      [ "$n" -gt %d ] && drop="$ref $drop"
+      [ "$n" -gt %d ] && drop="$ref=$sha $drop"
       ;;
   esac
 done <<EOF
-$(git stash list --format='%%gd %%gs')
+$(git stash list --format='%%gd %%H %%gs')
 EOF
-for ref in $drop; do git stash drop -q "$ref"; done
+for d in $drop; do
+  ref=${d%%%%=*}; sha=${d#*=}
+  [ "$(git rev-parse -q --verify "$ref" 2>/dev/null)" = "$sha" ] || break
+  git stash drop -q "$ref"
+done
 `, syncStashKeep)
 
 // syncedChanged is the apply's stderr when the tree it was told was the

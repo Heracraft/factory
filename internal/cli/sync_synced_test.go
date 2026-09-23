@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -147,6 +148,127 @@ func TestSyncedStashesAreCapped(t *testing.T) {
 	// The newest are the ones kept: the top stash holds run 12's tree.
 	if b := mustRun(t, f.guestRepo(), "git", "show", "stash@{0}:README.md"); b != strings.Repeat("x", 12) {
 		t.Errorf("stash@{0} README.md = %q", b)
+	}
+}
+
+// A tree that was clean at the probe and written by an agent before the
+// apply refuses too: the untracked tar would otherwise overwrite a file at
+// a path the laptop also sends.
+func TestSyncRefusesAWriteIntoACleanTreeAfterTheProbe(t *testing.T) {
+	f := newSyncFixture(t)
+	if err := os.WriteFile(filepath.Join(f.local, "notes.md"), []byte("laptop\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	agent := filepath.Join(f.guestRepo(), "notes.md")
+	_, err := syncGuest(context.Background(), f.target, f.local, testSlug, SyncOptions{BeforeApply: func(map[string]string) error {
+		return os.WriteFile(agent, []byte("the agent, mid-sync\n"), 0o644)
+	}})
+	wantDirtyRefusal(t, err)
+	if b, _ := os.ReadFile(agent); string(b) != "the agent, mid-sync\n" {
+		t.Fatalf("the agent's file was overwritten: %q", b)
+	}
+}
+
+// A repository with Git LFS attributes in a guest whose LFS filter cannot
+// run (no git-lfs) still fingerprints: the second run from the same
+// laptop tree goes through instead of exiting 6 every time.
+func TestSyncedFingerprintWithoutGitLFS(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	mustRun(t, f.guestRepo(), "git", "config", "filter.lfs.clean", "git-lfs-not-installed clean -- %f")
+	mustRun(t, f.guestRepo(), "git", "config", "filter.lfs.smudge", "git-lfs-not-installed smudge -- %f")
+	mustRun(t, f.guestRepo(), "git", "config", "filter.lfs.required", "true")
+	for name, body := range map[string]string{".gitattributes": "*.bin filter=lfs diff=lfs merge=lfs -text\n", "a.bin": "binary-ish\n"} {
+		if err := os.WriteFile(filepath.Join(f.local, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := syncGuest(ctx, f.target, f.local, testSlug, SyncOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := syncGuest(ctx, f.target, f.local, testSlug, SyncOptions{}); err != nil {
+		t.Fatalf("second sync with an LFS attribute and no git-lfs: %v", err)
+	}
+}
+
+// repose_fp never touches the real index or object store under a plain
+// POSIX sh (dash does not export assignments that precede a function
+// call, so GIT_INDEX_FILE=... repose_git add -A staged into the real
+// index there).
+func TestSyncedFingerprintLeavesTheIndexUnderPOSIXSh(t *testing.T) {
+	repo := t.TempDir()
+	mustRun(t, repo, "git", "init", "-q", "-b", "main")
+	if err := os.WriteFile(filepath.Join(repo, "new.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command("sh", "-c", "cd "+shQuote(repo)+"\n"+syncedFP+"repose_fp").CombinedOutput()
+	if err != nil || strings.HasPrefix(string(out), "failed") {
+		t.Fatalf("repose_fp: %v %s", err, out)
+	}
+	if st := mustRun(t, repo, "git", "status", "--porcelain"); st != "?? new.txt" {
+		t.Errorf("status after repose_fp = %q, want the file still untracked", st)
+	}
+}
+
+// The stash prune drops a stash only while its index still names the
+// commit it listed. Here an agent pushes a stash just as the prune starts
+// dropping (a git wrapper does it on the prune's first rev-parse or drop):
+// every index shifts, and none of the ten newest last-sync stashes may go.
+func TestSyncStashPruneSurvivesAShift(t *testing.T) {
+	repo := t.TempDir()
+	mustRun(t, repo, "git", "init", "-q", "-b", "main")
+	mustRun(t, repo, "git", "config", "user.email", "t@x")
+	mustRun(t, repo, "git", "config", "user.name", "t")
+	if err := os.WriteFile(filepath.Join(repo, "f"), []byte("0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, repo, "git", "add", "f")
+	mustRun(t, repo, "git", "commit", "-q", "-m", "c")
+	for i := 1; i <= 12; i++ { // stash@{0} is run 12, stash@{11} run 1
+		if err := os.WriteFile(filepath.Join(repo, "f"), []byte(strings.Repeat("r", i)+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		mustRun(t, repo, "git", "stash", "push", "-q", "-m", "repose run: last sync")
+	}
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	once := filepath.Join(t.TempDir(), "done")
+	wrapper := `#!/bin/sh
+case "$1 $2" in
+  "rev-parse -q"|"stash drop")
+    if [ ! -e ` + once + ` ]; then
+      : > ` + once + `
+      echo agent > f
+      ` + realGit + ` stash push -q -m "the agent's"
+    fi ;;
+esac
+exec ` + realGit + ` "$@"
+`
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(wrapper), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", "-e", "-c", pruneSyncStashes)
+	cmd.Dir = repo
+	cmd.Env = append(filterTestEnv(os.Environ(), "PATH"), "PATH="+bin+":"+os.Getenv("PATH"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("prune: %v\n%s", err, out)
+	}
+	// Runs 3..12 are the ten newest; every one must still be there.
+	var kept []string
+	for _, l := range strings.Split(mustRun(t, repo, "git", "stash", "list", "--format=%H"), "\n") {
+		kept = append(kept, mustRun(t, repo, "git", "show", l+":f"))
+	}
+	all := strings.Join(kept, ",")
+	for i := 3; i <= 12; i++ {
+		if !strings.Contains(","+all+",", ","+strings.Repeat("r", i)+",") {
+			t.Errorf("run %d's stash was dropped; left: %s", i, all)
+		}
+	}
+	if !strings.Contains(all, "agent") {
+		t.Errorf("the agent's stash was dropped; left: %s", all)
 	}
 }
 

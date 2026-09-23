@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -133,9 +134,17 @@ func buildGitCarry(repoDir, homeDir string) (*gitCarry, error) {
 	gc := &gitCarry{}
 	var kept []gitEntry
 	secrets := 0
+	secretSections := map[string]bool{}
 	defer func() {
 		if secrets > 0 {
-			gc.Notes = append(gc.Notes, fmt.Sprintf("Left out %d git config %s that hold a credential (a token, or a password in a URL).", secrets, plural(secrets, "entry", "entries")))
+			// Section names only: a subsection or key can itself hold the
+			// credential (http."https://u:tok@host/".sslVerify).
+			var ss []string
+			for s := range secretSections {
+				ss = append(ss, s)
+			}
+			sort.Strings(ss)
+			gc.Notes = append(gc.Notes, fmt.Sprintf("Left out %d git config %s that hold a credential (a token, or a password in a URL), in [%s].", secrets, plural(secrets, "entry", "entries"), strings.Join(ss, "], [")))
 		}
 	}()
 	for _, e := range entries {
@@ -151,6 +160,8 @@ func buildGitCarry(repoDir, homeDir string) (*gitCarry, error) {
 		}
 		if secretIn(e.Key) || secretIn(e.Value) {
 			secrets++
+			section, _, _ := strings.Cut(lk, ".")
+			secretSections[section] = true
 			continue
 		}
 		kept = append(kept, e)

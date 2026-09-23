@@ -4593,7 +4593,10 @@ laptop's own, so the run goes on and the apply sets it aside with `git
 stash push -u -m "repose run: last sync"` before laying down the new
 diff, and the summary line says so (the laptop still has those changes,
 or newer ones; a stash rather than a reset, so a write that lands after
-the last check, or anything misjudged, is recoverable; the same apply drops all but the newest 10 stashes whose
+the last check, or anything misjudged, is recoverable, with one gap
+that is git's own: `git stash push -u` records the untracked files and
+then cleans them, so a file written between those two steps is lost;
+the same apply drops all but the newest 10 stashes whose
 message is exactly `repose run: last sync`, never the user's or
 `--stash-remote`'s). Anything else, an edited
 synced file, a new file, a commit, is an agent's work and still refuses.
@@ -4608,7 +4611,16 @@ writes no objects. Every status, stash and reset in the sync runs with
 (`--ignore-submodules=none` for status): the carry keeps both keys,
 since they are the user's preferences for the agent's own git, and the
 sync overrides them for itself instead. A run from a second laptop
-stashes the first laptop's synced changes the same way. *Rejected:* a
+stashes the first laptop's synced changes the same way. A tree that was
+clean at the probe is checked again before the fetch and the tar (exit 6
+if an agent wrote since), so an untracked file at a path the laptop also
+sends is never overwritten. The index copy is `cp -p`, keeping git's
+racy-clean check; `filter.lfs.required=false` rides every sync git call,
+so a repository with LFS attributes in a guest without git-lfs still
+fingerprints instead of exiting 6 on every run. The stash prune records
+each stash's commit when it lists them and drops one only while its
+index still names that commit; a stash pushed meanwhile stops the prune
+for that run. *Rejected:* a
 list of the paths the sync wrote (an agent's edit to one of them would
 look like the sync's); `git stash create` (it leaves untracked files
 out); keeping the fingerprint on the laptop (wrong after a run from a
@@ -4642,11 +4654,16 @@ copied anywhere" and the three homes of `features/secrets.md`.
   git config entry whose key or value, or a `settings.json` entry whose
   strings, hold a credential by its shape (a URL with `user:password@`,
   or a token prefix: `sk-ant-`, `ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`,
-  `github_pat_`, `glpat-`, `xox?-`, `AKIA…`, `Bearer …`) is left out on
-  the laptop and counted in one line that never shows the value: a hook
+  `github_pat_`, `glpat-`, `xox?-`, `AKIA…`, `Bearer` followed by 20 or
+  more token characters, so `Bearer $TOKEN` and a grep for the word are
+  kept) is left out on
+  the laptop and counted in one line that never shows the value (git names only the
+  sections, since a subsection can hold the credential; skipped Claude
+  files are named, once per change, since names are not values): a hook
   or the `statusLine` whose command carries one, a permission rule, a
   marketplace whose URL does (and the plugins enabled from it). Files
-  named `.env*`, `id_*`, `*credentials*`, `*.pem`, `*.key`, `*.p12`,
+  named `.env*`, SSH identities (`id_rsa`, `id_ed25519`, … and their
+  `.pub`, not every `id_` file), `*credentials*`, `*.pem`, `*.key`, `*.p12`,
   `*.pfx` are never carried from `skills/`, `agents/`, `commands/`,
   `output-styles/` or as a hook script. Pattern matching can miss a
   secret of a shape it does not know; the key denylist above stays the
