@@ -13,6 +13,11 @@
   networking.nameservers = [ "1.1.1.1" "8.8.8.8" ];
   networking.firewall.enable = false;
   networking.nftables.enable = false;
+  # No link-local name resolution: a guest has one routed interface and
+  # no neighbours to ask, and resolved's LLMNR responder listened on
+  # 0.0.0.0:5355, which auto-forward then showed in every status bar
+  # (DECISIONS I-215). The CLI also skips 5355 and 5353 for older bases.
+  services.resolved.llmnr = "false";
 
   # systemd-network-generator reads ip= from /proc/cmdline into
   # /run/systemd/network/71-eth0.network. NixOS ships that unit only for the

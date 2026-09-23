@@ -235,6 +235,11 @@ in
       guest.wait_until_succeeds("sudo -H -u dev tmux ls | grep -q '^todo-app:'", timeout=60)
       guest.succeed("mkdir -p /tmp/p && cp -r ${guestParts}/. /tmp/p && chmod -R u+w /tmp/p && chown -R dev:dev /tmp/p")
 
+      with subtest("I-215: nothing of the system listens where auto-forward would pick it up"):
+          listeners = guest.succeed("ss -Hltn")
+          print(listeners)
+          assert ":5355 " not in listeners, "resolved's LLMNR responder is listening"
+
       with subtest("the session starts in the project's zone; tmux does not take TZ from the client"):
           assert guest.succeed("sudo -H -u dev tmux show-environment -g TZ").strip() == "TZ=Europe/Berlin"
           assert "TZ" not in guest.succeed("sudo -H -u dev tmux show-options -gv update-environment")
@@ -248,6 +253,17 @@ in
           assert guest.succeed("sudo -H -u dev tmux show-environment -g TZ").strip() == "TZ=Asia/Tokyo"
           guest.succeed("sudo -H -u dev tmux new-window -d -t todo-app -n clock 'date +%Z > /tmp/zone; sleep 30'")
           guest.wait_until_succeeds("grep -qx JST /tmp/zone")
+          # the status clock follows too: its #() job runs with the global
+          # environment (I-215); the server's own strftime stays in its
+          # start zone
+          assert "#(date" in guest.succeed("sudo -H -u dev tmux show-options -gv status-right")
+          # a #() job runs only for an attached client: attach one on a pty,
+          # and have a job on this session's status line record its zone
+          guest.succeed("sudo -H -u dev tmux set-option -t todo-app status-left '#(date +%%Z > /tmp/jobzone)'")
+          guest.succeed("sudo -H -u dev env TERM=xterm script -qfc 'tmux attach -t todo-app' /dev/null >/dev/null 2>&1 &")
+          guest.wait_until_succeeds("grep -qx JST /tmp/jobzone", timeout=30)
+          guest.succeed("sudo -H -u dev tmux set-option -u -t todo-app status-left")
+          guest.succeed("sudo -H -u dev tmux detach-client -s todo-app || true")
           assert guest.succeed("sudo -H -u dev bash -lc 'date +%Z'").strip() == "JST"
           # the same zone again changes nothing
           assert "#tz" not in guest.succeed("sudo -H -u dev sh -e /tmp/p/tz.sh /tmp/p")

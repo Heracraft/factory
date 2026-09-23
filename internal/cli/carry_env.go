@@ -74,13 +74,28 @@ func envHash(files []envFile) string {
 	return carryHash(parts...)
 }
 
-// envPathsCheck is the probe's half of the env marker: the paths the
-// last carry wrote are listed in ~/.repose/env-paths, and when one of
-// them is gone from the checkout (deleted in the guest, or a restore of
-// an older snapshot) the probe says #envmissing and the marker is not
-// trusted, so the set is sent again. Run in the checkout.
+// envPathsCheck is the probe's half of the env marker. The last carry
+// listed its files in ~/.repose/env-paths as "<mtime> <path>", the mtime
+// each had when the carry ended. When one is gone from the checkout
+// (deleted in the guest, or a restore of an older snapshot) the probe
+// says #envmissing and the marker is not trusted, so the set is sent
+// again. When one is newer than recorded (edited in the guest while the
+// laptop's copy did not change) it says "#envnewer <path>" and records
+// the new mtime, so the laptop names the kept file once per change, not
+// on every run (15-dev-ergonomics §6, DECISIONS I-215). A line without
+// an mtime is the older paths-only shape; it is read as a path and
+// rewritten with one. Run in the checkout.
 const envPathsCheck = `if [ -f ~/.repose/env-paths ]; then
-  while IFS= read -r p; do [ -e "$p" ] || { echo '#envmissing'; break; }; done < ~/.repose/env-paths
+  : > ~/.repose/env-paths.new
+  while IFS= read -r line; do
+    m=${line%% *}; p=${line#* }
+    case $m in ''|*[!0-9]*) m=; p=$line ;; esac
+    if [ ! -e "$p" ]; then echo '#envmissing'; continue; fi
+    now=$(stat -c %Y "$p")
+    if [ -n "$m" ] && [ "$now" -gt "$m" ]; then printf '#envnewer %s\n' "$p"; fi
+    printf '%s %s\n' "$now" "$p" >> ~/.repose/env-paths.new
+  done < ~/.repose/env-paths
+  mv -f ~/.repose/env-paths.new ~/.repose/env-paths
 fi
 `
 
@@ -116,6 +131,8 @@ while IFS= read -r line; do
 done < "$t/env/list"
 echo "#envfiles $n"
 mkdir -p ~/.repose
-cut -d' ' -f3- "$t/env/list" > ~/.repose/env-paths
+cut -d' ' -f3- "$t/env/list" | while IFS= read -r p; do
+  if [ -e "$p" ]; then printf '%s %s\n' "$(stat -c %Y "$p")" "$p"; fi
+done > ~/.repose/env-paths
 ` + setMarker("env", hash), nil
 }

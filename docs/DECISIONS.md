@@ -4740,3 +4740,32 @@ localhost:4318, where nothing listens (`OTEL_TRACES_EXPORTER=none`,
 on every answer, and the test asserts the second tarball and document
 fetches are hits and that no cookie reaches the client (it failed before
 this change at the Set-Cookie assertion, with the second fetch a MISS).
+
+**I-215. Live polish of workstream 15: system listeners are not
+forwarded, the status clock follows the carried zone, and a guest's
+newer `.env` is named once.** (ws/15 live fixes, 2026-09-23)
+
+- *Listeners.* systemd-resolved's LLMNR responder listened on
+  0.0.0.0:5355 in every guest, so every status bar showed `⇄ 5355`. The
+  guest base turns LLMNR off (`services.resolved.llmnr = "false"`: a
+  guest has one routed interface and nobody on its link to ask), and
+  auto-forward and `repose status` skip 5355 and 5353 (mDNS) as they
+  skip the desktop's ports, for bases published before this. The rule
+  is by port, not by owner: ports under 1024 were never forwarded, and
+  a container the user publishes is served by root's docker-proxy, so
+  "root-owned means system" would have stopped forwarding those.
+- *The tmux status clock.* The server's strftime uses the zone the
+  server started in, and the carry cannot move a running server's zone
+  (`set-environment -g TZ` changes new windows only). The base's
+  status-right is tmux's default with the time from `#(date ...)`, a
+  job that runs with the global environment, so it follows the carried
+  `TZ`; it costs one fork per status-interval.
+- *A `.env` edited in the guest.* 15-dev-ergonomics §6 says a guest
+  copy newer than the laptop's is kept with one line. When the laptop's
+  set had not changed the part was not sent at all and nothing was
+  said. The apply now records each carried file with its mtime in
+  `~/.repose/env-paths` ("<mtime> <path>"; the previous paths-only shape
+  is still read), and the probe reports a file newer than recorded,
+  then records the new mtime: named once per change, never on every run.
+- *Wording.* The credential notes agree in number ("1 git config entry
+  that holds").

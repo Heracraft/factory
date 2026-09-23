@@ -50,6 +50,36 @@ func TestSyncTakesEnvFilesAfterTheProbe(t *testing.T) {
 	}
 }
 
+// A guest carried by the previous release has a paths-only env-paths
+// file: the probe reads each line as a path, says nothing, and rewrites
+// it with mtimes.
+func TestEnvPathsCheckReadsTheOldShape(t *testing.T) {
+	home, repo := t.TempDir(), t.TempDir()
+	for _, rel := range []string{".env", "apps/my app/.env"} {
+		p := filepath.Join(repo, rel)
+		_ = os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte("A=1\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = os.MkdirAll(filepath.Join(home, ".repose"), 0o700)
+	if err := os.WriteFile(filepath.Join(home, ".repose", "env-paths"), []byte(".env\napps/my app/.env\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", "-e", "-c", envPathsCheck)
+	cmd.Dir = repo
+	cmd.Env = append(filterTestEnv(os.Environ(), "HOME"), "HOME="+home)
+	out, err := cmd.CombinedOutput()
+	if err != nil || len(out) != 0 {
+		t.Fatalf("check: %v %q", err, out)
+	}
+	b, _ := os.ReadFile(filepath.Join(home, ".repose", "env-paths"))
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	if len(lines) != 2 || !strings.HasSuffix(lines[1], " apps/my app/.env") || strings.HasPrefix(lines[0], ".") {
+		t.Errorf("rewritten env-paths = %q", b)
+	}
+}
+
 // I-197 against the local sshd harness: gitignored .env files at any
 // depth travel with mode 0600, dependency directories and oversize files
 // do not, a guest copy newer than the laptop's is kept and named, and an
@@ -153,5 +183,24 @@ func TestSyncCarriesEnvFiles(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(f.guestRepo(), ".env.local")); string(b) != "SECRET=1\n" {
 		t.Errorf("deleted .env.local not restored: %q", b)
+	}
+
+	// Edited in the guest while the laptop's copy did not change: kept,
+	// and named once (the §6 row "one line"), not on every run after.
+	guestLocal := filepath.Join(f.guestRepo(), ".env.local")
+	if err := os.WriteFile(guestLocal, []byte("SECRET=guest\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(2 * time.Hour)
+	_ = os.Chtimes(guestLocal, later, later)
+	s = sync()
+	if len(s.EnvKept) != 1 || s.EnvKept[0] != ".env.local" || s.EnvFiles != 0 {
+		t.Fatalf("a guest edit with the laptop unchanged: kept %v, written %d; want .env.local named, nothing written", s.EnvKept, s.EnvFiles)
+	}
+	if b, _ := os.ReadFile(guestLocal); string(b) != "SECRET=guest\n" {
+		t.Errorf("the guest's edit was overwritten: %q", b)
+	}
+	if s := sync(); len(s.EnvKept) != 0 {
+		t.Errorf("named again on the next unchanged run: %v", s.EnvKept)
 	}
 }

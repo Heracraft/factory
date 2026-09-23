@@ -176,7 +176,7 @@ func buildClaudeCarry(homeDir string) (*claudeCarry, error) {
 			return nil, err
 		}
 		if dropped > 0 {
-			cc.Notes = append(cc.Notes, fmt.Sprintf("Left out %d %s of your ~/.claude/settings.json that hold a credential (a token, or a password in a URL); set %s in the guest instead.", dropped, plural(dropped, "entry", "entries"), plural(dropped, "it", "them")))
+			cc.Notes = append(cc.Notes, fmt.Sprintf("Left out %d %s of your ~/.claude/settings.json that %s a credential (a token, or a password in a URL); set %s in the guest instead.", dropped, plural(dropped, "entry", "entries"), plural(dropped, "holds", "hold"), plural(dropped, "it", "them")))
 		}
 		// Scripts and plugins come from what travels, not the raw file.
 		s = nil

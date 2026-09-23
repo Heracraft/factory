@@ -86,6 +86,23 @@ func laptopHome(t *testing.T) (home, repo string) {
 	return home, repo
 }
 
+// One left-out entry reads as one: "1 git config entry that holds".
+func TestGitSecretNoteSingular(t *testing.T) {
+	home := withHome(t)
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte("[user]\n\tname = A\n[remote \"m\"]\n\turl = https://me:pw@git.example/r.git\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repo := filepath.Join(home, "r")
+	mustRun(t, home, "git", "init", "-q", repo)
+	gc, err := buildGitCarry(repo, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gc.Notes) != 1 || !strings.HasPrefix(gc.Notes[0], "Left out 1 git config entry that holds a credential") {
+		t.Errorf("notes = %q", gc.Notes)
+	}
+}
+
 func TestSecretIn(t *testing.T) {
 	for s, want := range map[string]bool{
 		`curl -H "Authorization: Bearer $NTFY_TOKEN" ntfy.sh/x`:  false,

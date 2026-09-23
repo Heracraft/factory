@@ -61,6 +61,12 @@ in
       # run in UTC. The global TZ (set at session creation and by the
       # CLI on every run and attach, I-198) is what windows get.
       set -g update-environment "DISPLAY SSH_AUTH_SOCK SSH_CONNECTION LANG COLORTERM"
+      # The status clock is tmux's default status-right with the time from
+      # `date` instead of the server's strftime: the server keeps the zone
+      # it started with, while a #() job runs with the global environment,
+      # whose TZ the carry moves (I-198, DECISIONS I-215). One fork per
+      # status-interval.
+      set -g status-right '#{?window_bigger,[#{window_offset_x}#,#{window_offset_y}] ,}"#{=21:pane_title}" #(date "+%%H:%%M %%d-%%b-%%y")'
     '';
   };
 

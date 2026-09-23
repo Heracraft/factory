@@ -144,7 +144,7 @@ func buildGitCarry(repoDir, homeDir string) (*gitCarry, error) {
 				ss = append(ss, s)
 			}
 			sort.Strings(ss)
-			gc.Notes = append(gc.Notes, fmt.Sprintf("Left out %d git config %s that hold a credential (a token, or a password in a URL), in [%s].", secrets, plural(secrets, "entry", "entries"), strings.Join(ss, "], [")))
+			gc.Notes = append(gc.Notes, fmt.Sprintf("Left out %d git config %s that %s a credential (a token, or a password in a URL), in [%s].", secrets, plural(secrets, "entry", "entries"), plural(secrets, "holds", "hold"), strings.Join(ss, "], [")))
 		}
 	}()
 	for _, e := range entries {

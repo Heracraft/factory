@@ -101,9 +101,12 @@ type guestProbe struct {
 	// syncedOnly is a dirty tree that is exactly what the last sync left
 	// (I-210): the laptop's own diff and untracked files, no agent work.
 	syncedOnly bool
-	tips       []string // every commit a ref (or HEAD) in the guest points at
-	hasOrigin  bool
-	markers    map[string]string // the carry's markers (carry.go)
+	// envNewer are carried .env files the guest edited since the last
+	// carry while the laptop's did not change (I-215).
+	envNewer  []string
+	tips      []string // every commit a ref (or HEAD) in the guest points at
+	hasOrigin bool
+	markers   map[string]string // the carry's markers (carry.go)
 }
 
 // syncedFP holds the shell functions every dirtiness judgement of the
@@ -184,6 +187,10 @@ func parseProbe(out string) guestProbe {
 	seen := map[string]bool{}
 	for _, l := range strings.Split(out, "\n") {
 		if strings.HasPrefix(l, "#marker ") {
+			continue
+		}
+		if rest, ok := strings.CutPrefix(l, "#envnewer "); ok {
+			p.envNewer = append(p.envNewer, rest)
 			continue
 		}
 		if l == "#envmissing" {
@@ -371,6 +378,11 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	envScript, err := addEnvToApply(tw, opts.envFiles(), probe.markers)
 	if err != nil {
 		return nil, err
+	}
+	if envScript == "" {
+		// Not sent, so the apply will not say which guest copies it kept:
+		// the probe's report of the ones edited since is that line.
+		summary.EnvKept = append(summary.EnvKept, probe.envNewer...)
 	}
 	if err := tw.Close(); err != nil {
 		return nil, err
