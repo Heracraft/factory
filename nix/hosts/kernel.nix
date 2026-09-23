@@ -13,7 +13,13 @@
     "dm_snapshot"
     "overlay"
     "bridge"
+    # hostd's per-guest egress policer on the tap's ingress (DECISIONS
+    # I-217); sch_htb stays one release for taps shaped before it.
     "sch_htb"
+    "sch_ingress"
+    "cls_flower"
+    "act_police"
+    "act_gact"
   ];
 
   boot.kernelParams = [ "transparent_hugepage=madvise" ];

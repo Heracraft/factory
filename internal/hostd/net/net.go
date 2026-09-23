@@ -4,7 +4,8 @@
 // in the `bridge repose` table's `guests` set (mac . ip . tap, which is what
 // admits the guest's ARP and IPv4 frames to the host at all), a per-guest
 // egress counter and rule in the hostd-owned `inet repose` chain
-// `guest_dyn`, and an HTB class shaping egress. DECISIONS I-18 explains why
+// `guest_dyn`, and a policer on the tap's ingress limiting what the guest
+// sends (DECISIONS I-217). DECISIONS I-18 explains why
 // the admission lives in the bridge family: frames between two taps never
 // traverse the inet forward hook, and `learning off` plus the static FDB
 // entry is what stops a guest claiming another guest's MAC.
@@ -178,24 +179,79 @@ func (n *Real) DelGuestRules(ctx context.Context, guestID, ip, mac, tap string) 
 	return nil
 }
 
-// Shape implements Net with an HTB root and one class.
+// ShapeExempt are the destinations a guest's traffic is never policed
+// toward: the host's guest ranges (the gateway, so DNS and whatever else
+// the host answers on it; guest-to-guest is dropped by nftables anyway)
+// and the host services address the caches listen on (nix/hosts/caches.nix,
+// DECISIONS I-202). Both are fixed on every host (host-conventions.md
+// "Network"), and traffic to them never leaves the host.
+var ShapeExempt = []string{"10.64.0.0/12", "10.63.255.254/32"}
+
+var (
+	ingressRe    = regexp.MustCompile(`(?m)^qdisc ingress ffff: `)
+	legacyRootRe = regexp.MustCompile(`(?m)^qdisc htb 1: root `)
+)
+
+// Shape implements Net with a policer on the tap's ingress, which is what
+// the guest sends (DECISIONS I-217): on the ingress qdisc, one `pass`
+// filter per ShapeExempt prefix, then a flower with no match policing every other IPv4
+// packet to mbit with a 500 ms burst. What the host sends to the guest
+// (downloads, the caches) is not limited.
+//
+// Idempotent and reconciling: the ingress qdisc is added only when absent
+// and every filter is a `replace` with a fixed prio and handle, so a re-run
+// or a new rate swaps them in place, with no window and no duplicate. A tap
+// still carrying the root HTB of the shape before I-217 (which limited
+// host-to-guest traffic) has it removed after the policer is in place;
+// connections through it survive.
 func (n *Real) Shape(ctx context.Context, tap string, mbit int) error {
-	if _, err := n.R.Run(ctx, "tc", "qdisc", "replace", "dev", tap, "root", "handle", "1:", "htb", "default", "10"); err != nil {
+	res, err := n.R.Run(ctx, "tc", "qdisc", "show", "dev", tap)
+	if err != nil {
 		return err
 	}
+	qd := string(res.Stdout)
+	if !ingressRe.MatchString(qd) {
+		if _, err := n.R.Run(ctx, "tc", "qdisc", "add", "dev", tap, "handle", "ffff:", "ingress"); err != nil {
+			return err
+		}
+	}
+	prio := 1
+	for _, dst := range ShapeExempt {
+		if _, err := n.R.Run(ctx, "tc", "filter", "replace", "dev", tap, "parent", "ffff:", "protocol", "ip",
+			"prio", strconv.Itoa(prio), "handle", "1", "flower", "dst_ip", dst, "action", "pass"); err != nil {
+			return err
+		}
+		prio++
+	}
 	rate := strconv.Itoa(mbit) + "mbit"
-	_, err := n.R.Run(ctx, "tc", "class", "replace", "dev", tap, "parent", "1:", "classid", "1:10", "htb", "rate", rate, "ceil", rate)
-	return err
+	burst := strconv.Itoa(mbit * 1000 * 1000 / 8 / 2) // 500 ms at the rate, in bytes
+	// mtu 64kb: a vnet_hdr tap hands the host GSO packets of up to 64 KB,
+	// which the policer's small default would count as exceeding.
+	if _, err := n.R.Run(ctx, "tc", "filter", "replace", "dev", tap, "parent", "ffff:", "protocol", "ip",
+		"prio", strconv.Itoa(prio), "handle", "1", "flower",
+		"action", "police", "rate", rate, "burst", burst, "mtu", "64kb", "conform-exceed", "drop/ok"); err != nil {
+		return err
+	}
+	if legacyRootRe.MatchString(qd) {
+		if _, err := n.R.Run(ctx, "tc", "qdisc", "del", "dev", tap, "root"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// Unshape implements Net.
+// Unshape implements Net: the ingress qdisc with its filters and, on a tap
+// shaped before I-217, the root HTB. An exit status means no such qdisc or
+// no device, both nothing to remove.
 func (n *Real) Unshape(ctx context.Context, tap string) error {
-	_, err := n.R.Run(ctx, "tc", "qdisc", "del", "dev", tap, "root")
-	var ee *shell.ExitError
-	if errors.As(err, &ee) {
-		return nil // no qdisc, or no device: both mean nothing to remove
+	for _, dir := range []string{"ingress", "root"} {
+		_, err := n.R.Run(ctx, "tc", "qdisc", "del", "dev", tap, dir)
+		var ee *shell.ExitError
+		if err != nil && !errors.As(err, &ee) {
+			return err
+		}
 	}
-	return err
+	return nil
 }
 
 var bytesRe = regexp.MustCompile(`packets\s+\d+\s+bytes\s+(\d+)`)

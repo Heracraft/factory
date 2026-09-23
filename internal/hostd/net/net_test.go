@@ -55,3 +55,81 @@ func TestTapStatsAreGuestView(t *testing.T) {
 		t.Fatalf("rx=%d tx=%d err=%v; guest rx must be the tap's tx", rx, tx, err)
 	}
 }
+
+// qdiscModel answers `tc qdisc` the way the kernel would for one tap, so
+// Shape's migration and idempotence are tested against state, not a script.
+type qdiscModel struct{ htb, ingress bool }
+
+func (q *qdiscModel) handle(argv []string) (shell.Result, error) {
+	fail := func() (shell.Result, error) {
+		r := shell.Result{ExitCode: 2}
+		return r, &shell.ExitError{Argv: argv, Result: r}
+	}
+	verb, last := argv[2], argv[len(argv)-1]
+	switch verb + " " + last {
+	case "show " + last:
+		out := ""
+		if q.htb {
+			out += "qdisc htb 1: root refcnt 2 r2q 10 default 0x10 direct_packets_stat 0 direct_qlen 1000\n"
+		} else {
+			out += "qdisc fq_codel 0: root refcnt 2 limit 10240p flows 1024 quantum 1514\n"
+		}
+		if q.ingress {
+			out += "qdisc ingress ffff: parent ffff:fff1 ----------------\n"
+		}
+		return shell.Result{Stdout: []byte(out)}, nil
+	case "add ingress":
+		if q.ingress {
+			return fail()
+		}
+		q.ingress = true
+	case "del ingress":
+		if !q.ingress {
+			return fail()
+		}
+		q.ingress = false
+	case "del root":
+		if !q.htb {
+			return fail() // "Cannot delete qdisc with handle of zero."
+		}
+		q.htb = false
+	}
+	return shell.Result{}, nil
+}
+
+func TestShapeMigratesLegacyRootAndIsIdempotent(t *testing.T) {
+	q := &qdiscModel{htb: true} // a tap shaped before I-217
+	r := &shell.Fake{Scripts: []shell.Script{{Prefix: []string{"tc", "qdisc"}, Handle: q.handle}}}
+	n := NewReal(r)
+	ctx := context.Background()
+	if err := n.Shape(ctx, "tap-0192abcd", 200); err != nil {
+		t.Fatal(err)
+	}
+	if q.htb || !q.ingress {
+		t.Fatalf("after the first Shape htb=%v ingress=%v; want the legacy root gone and the ingress policer in place", q.htb, q.ingress)
+	}
+	// a hostd restart re-applies, here with a new rate: nothing added twice
+	if err := n.Shape(ctx, "tap-0192abcd", 100); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.Unshape(ctx, "tap-0192abcd"); err != nil {
+		t.Fatal(err)
+	}
+	if q.htb || q.ingress {
+		t.Fatalf("after Unshape htb=%v ingress=%v", q.htb, q.ingress)
+	}
+	if err := n.Unshape(ctx, "tap-0192abcd"); err != nil {
+		t.Fatalf("a second Unshape must be a no-op: %v", err)
+	}
+	var got []string
+	for _, c := range r.Calls[:len(r.Calls)-2] {
+		got = append(got, strings.Join(c, " "))
+	}
+	golden, err := os.ReadFile("testdata/reshape.golden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, "\n")+"\n" != string(golden) {
+		t.Fatalf("commands differ from testdata/reshape.golden:\n%s", strings.Join(got, "\n"))
+	}
+}

@@ -4792,3 +4792,60 @@ The preview script, the shortcut and the Vite `/fakeapi` proxy are
 removed. The fakes stay for the Playwright suite only. The cost: a dev
 server's buttons act on the signed-in account, so anything destructive is
 tried on an `e2e-` project.
+
+**I-217. A guest's 200 Mbit/s shape limits what it sends, on its tap's
+ingress, and never traffic to the host; the npm front gzips package
+documents.** Found in the owner's nuru-playground session: `pnpm install`
+of 763 packages warned "Request took 13-15 s" against the host's npm cache,
+which answers in milliseconds. Two causes.
+- *The shape was on the wrong side.* hostd put an HTB root with one 200
+  Mbit/s class on each tap. A tap's egress is what the host sends to the
+  guest, so the class capped every download into the guest, the host-local
+  caches included (25 MB/s), and left what the guest sends to the
+  internet, which DESIGN §4 ("per-guest egress shaping") and §7 ("guest
+  ──NAT──▶ internet (shaped)") mean to limit, unlimited. The guest's
+  egress is the tap's ingress, where the only tc tool is a policer: an
+  ingress qdisc and, in order, `flower dst_ip 10.64.0.0/12 action pass`,
+  `flower dst_ip 10.63.255.254/32 action pass`, `flower action police
+  rate 200mbit burst <500 ms> mtu 64kb conform-exceed drop/ok`
+  (host-conventions.md "Network"; a flower with no match rather than
+  `matchall`, which refuses `tc filter replace` on an existing filter
+  with EEXIST, seen in host-network). The first two keep everything a guest
+  sends to the host itself (gateway, DNS, the caches) out of the limit;
+  other guests are dropped by nftables anyway, and the edge's WireGuard
+  address is 10.255/16, so it stays limited with the internet. `mtu 64kb`
+  because a vnet_hdr tap delivers GSO packets up to 64 KB. Nothing limits
+  host-to-guest traffic: DESIGN asks for none, and a guest's download
+  volume is bounded by what it asks for.
+- *Considered.* An IFB device per guest with the ingress redirected to an
+  HTB on it queues instead of dropping, which TCP likes a little better,
+  but doubles the devices hostd creates, deletes and reconciles per guest.
+  An HTB on the provider NIC with a class per guest by nftables mark
+  exempts host-local traffic by construction, but it is one shared qdisc
+  hostd would edit for every guest, and it shapes the host's own traffic
+  too. The policer lives and dies with the tap. Its burst is 500 ms of
+  the rate (12.5 MB at 200 Mbit/s): in host-network, a single TCP flow
+  through a 20 Mbit/s policer ran at 10 Mbit/s with a 100 ms burst
+  (sawtooth on drops) and at 21 Mbit/s with 500 ms.
+- *Idempotent, and it reaches running guests.* The ingress qdisc is added
+  only when `tc qdisc show` lacks it and each filter is `tc filter
+  replace` with a fixed prio and handle, so a re-run or a new rate swaps
+  it in place. hostd's reconcile now re-applies the shape to every running
+  guest at start, so a hostd upgrade moves live guests. A tap still
+  carrying the old root HTB (accepted this one release) has it deleted
+  after the policer is in place; the few packets queued in it are dropped
+  and TCP resends them, no connection is lost. Unshape removes both.
+- *Compression.* The cache fetches package documents uncompressed to
+  rewrite their tarball URLs (`sub_filter`), and nothing compressed them
+  again: `next`'s document reached the guest as 25.5 MB where npmjs sends
+  2.2 MB gzipped. The front (`repose-npm` vhost) now gzips
+  `application/json` and `application/vnd.npm.install-v1+json` for a
+  client that asks, at level 1: the link is the host's bridge, a large
+  document is compressed on every request (proxy_cache stores the
+  upstream's plain body; the rewrite and the gzip run per response), and
+  JSON gets most of its ratio at the lowest level. Tarballs are
+  `application/octet-stream`, already gzip, and not listed; the fallback's
+  answers come from the registry already encoded and nginx does not
+  compress an encoded body. The Docker Hub mirror on :5000 has no
+  counterpart problem: nothing rewrites its bodies, layers are compressed
+  blobs and manifests are small; it was slow only through the tap shape.

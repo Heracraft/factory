@@ -771,6 +771,8 @@ func TestReconcileAfterRestart(t *testing.T) {
 	// Simulate hostd dying: mark gid1 mid-transition and leave a tap for gid2.
 	_, _ = h.st.SetGuestState(gid1, StateStarting, "")
 	h.net.Taps[h.guest(gid2).Tap] = true
+	// and gid1's tap shaped the way an older hostd left it (I-217)
+	delete(h.net.Shaped, h.guest(gid1).Tap)
 	h.m.Close()
 	m2, err := New(h.cfg, h.m.d)
 	if err != nil {
@@ -783,6 +785,9 @@ func TestReconcileAfterRestart(t *testing.T) {
 	}
 	if h.guest(gid1).State != StateRunning {
 		t.Fatalf("running guest with a live unit should be running, got %s", h.guest(gid1).State)
+	}
+	if got := h.net.Shaped[h.guest(gid1).Tap]; got != m2.cfg.EgressMbit || got == 0 {
+		t.Fatalf("running guest's shape not re-applied by reconcile: %d mbit", got)
 	}
 	if h.net.Taps[h.guest(gid2).Tap] {
 		t.Fatal("leftover tap of a stopped guest not removed")

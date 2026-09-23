@@ -189,6 +189,21 @@ in
           error_log stderr crit;
           client_max_body_size 64m;
           resolver ${cfg.resolver} valid=300s ipv6=off;
+          # The cache fetches package documents uncompressed to rewrite
+          # their tarball URLs, so the front compresses them for a guest
+          # that asks (DECISIONS I-217): `next`'s document is 25.5 MB
+          # plain and about 2 MB gzipped. Level 1 because the link is the
+          # host's own bridge and a large document is compressed on every
+          # request; JSON gets most of its ratio there. Tarballs
+          # (application/octet-stream) are gzip already and not listed;
+          # an answer that is already encoded (the fallback's, straight
+          # from the registry) is never compressed again.
+          gzip on;
+          gzip_proxied any;
+          gzip_vary on;
+          gzip_comp_level 1;
+          gzip_min_length 1024;
+          gzip_types application/json application/vnd.npm.install-v1+json;
         '';
         locations."/" = {
           extraConfig = ''

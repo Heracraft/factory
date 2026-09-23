@@ -83,6 +83,7 @@ func (m *Manager) reconcileGuest(ctx context.Context, g *state.Guest, unitActive
 			if g.State != StateRunning {
 				_ = m.setState(g, StateRunning, "reconciled: hypervisor running") // logged inside; nothing else to do on failure
 			}
+			m.reshape(ctx, g)
 			m.startMonitor(g)
 			return
 		}
@@ -100,6 +101,7 @@ func (m *Manager) reconcileGuest(ctx context.Context, g *state.Guest, unitActive
 		if unitActive {
 			// The hypervisor outlived a state write; it is running, say so.
 			_ = m.setState(g, StateRunning, "reconciled: hypervisor running") // see above
+			m.reshape(ctx, g)
 			m.startMonitor(g)
 			return
 		}
@@ -109,6 +111,17 @@ func (m *Manager) reconcileGuest(ctx context.Context, g *state.Guest, unitActive
 		if v, _ := m.d.Systemd.IsActive(ctx, virtiofs.Unit(g.GuestID)); v {
 			_ = virtiofs.Stop(ctx, m.d.Systemd, g.GuestID) // a stray virtiofsd; nothing depends on it
 		}
+	}
+}
+
+// reshape re-applies a running guest's egress shape, so a hostd upgrade
+// that changes it (DECISIONS I-217 moved it from the tap's root to its
+// ingress) reaches guests that were already running. Shape replaces in
+// place; connections survive. A failure leaves the old shape and is
+// retried at the next start of hostd.
+func (m *Manager) reshape(ctx context.Context, g *state.Guest) {
+	if err := m.d.Net.Shape(ctx, g.Tap, m.cfg.EgressMbit); err != nil {
+		m.d.Log.Warn("egress shape not re-applied", "event", "reconcile_shape", "guest_id", g.GuestID, "err", err.Error())
 	}
 }
 

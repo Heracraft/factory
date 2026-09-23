@@ -7,8 +7,11 @@ nft add element bridge repose guests { 52:54:01:92:ab:cd . 10.64.4.2 . tap-0192a
 nft list counter inet repose egress-g1
 nft add counter inet repose egress-g1
 nft add rule inet repose guest_dyn ip saddr 10.64.4.2 counter name "egress-g1"
-tc qdisc replace dev tap-0192abcd root handle 1: htb default 10
-tc class replace dev tap-0192abcd parent 1: classid 1:10 htb rate 200mbit ceil 200mbit
+tc qdisc show dev tap-0192abcd
+tc qdisc add dev tap-0192abcd handle ffff: ingress
+tc filter replace dev tap-0192abcd parent ffff: protocol ip prio 1 handle 1 flower dst_ip 10.64.0.0/12 action pass
+tc filter replace dev tap-0192abcd parent ffff: protocol ip prio 2 handle 1 flower dst_ip 10.63.255.254/32 action pass
+tc filter replace dev tap-0192abcd parent ffff: protocol ip prio 3 handle 1 flower action police rate 200mbit burst 12500000 mtu 64kb conform-exceed drop/ok
 nft delete element bridge repose guests { 52:54:01:92:ab:cd . 10.64.4.2 . tap-0192abcd }
 bridge fdb del 52:54:01:92:ab:cd dev tap-0192abcd master
 nft -a list chain inet repose guest_dyn
