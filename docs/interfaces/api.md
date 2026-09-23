@@ -31,10 +31,10 @@ unique; it is the second half of the SSH login name.
 | POST | `/projects` | `{name, remote_url?, class, tz?}` → `Project` (409 if `(user, remote_url)` or `(user, name)` exists) |
 | GET | `/projects/:id` | `Project` |
 | PATCH | `/projects/:id` | `{class?, hold_base_updates?, agent_default?}` (class change requires stopped) |
-| DELETE | `/projects/:id` | destroy (volume deleted, last snapshot kept 30 days) |
-| POST | `/projects/:id/start` | → `{op_id}` |
+| DELETE | `/projects/:id` | destroy (volume deleted, last snapshot kept 30 days) → `202 {op_id, state}`; the destroy is finished only when that op is `done` (`GET /projects/:id` then answers `404`). A DELETE while a destroy op is open answers with that op. A dead guestd does not fail it (I-156). `state` is new in this release; `op_id` was always there |
+| POST | `/projects/:id/start` | → `{op_id, restart}`; `restart: true` when the project was in `error` or running with its guestd not answering, and the op stops and reboots it on its newest built revision (I-157). `restart` is new in this release |
 | POST | `/projects/:id/stop` | `{snapshot: bool=true}` → `{op_id}` |
-| GET | `/projects/:id/ops/:op_id` | `{state: pending\|running\|done\|error, error?, log_url?}` |
+| GET | `/projects/:id/ops/:op_id` | `{state: pending\|running\|done\|error, error?: {code, message, detail?, fragment_line?}, log_url?}`; `message` is the sentence to show the user, `detail` the host's own wording for operators (I-159). Answers for a destroyed project's ops too |
 | GET | `/projects/:id/ops/:op_id/log` | SSE stream of `BuildLog` lines (`id:` = seq, `data:` = `{seq, line}`), then a `done` event whose data is `{state}`; `?since=<seq>` or `Last-Event-ID` resumes after a line. Browsers cannot set headers on EventSource, so this route also accepts `?access_token=<jwt>`; the token is never logged and the route is the only one that accepts it. |
 | POST | `/projects/:id/resize` | `{volume_bytes}` (grow only) |
 | GET | `/projects/:id/route` | `{host_id, guest_ip, state}` (used by CLI for `status` detail) |

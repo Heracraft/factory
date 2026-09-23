@@ -3215,3 +3215,86 @@ the retry is idempotent, and an activation that restarted guestd ends as
 `done` instead of `guest_unresponsive`. `TestSwitchAppliesWithoutReboot`
 (the log file, no pipe) and hostd's `TestBuildAndApply` (the fake guestd
 dropping the first Switch, answered on the second connection).
+
+**I-156. A destroy the user asked for always finishes; DELETE answers
+with the op to wait on.** (server-robust, 2026-09-23) age-calculator's
+guestd died in the 2026-09-21 base switch while its unit kept running;
+each `repose destroy` (2026-09-22 02:05Z, 2026-09-23 00:03Z) failed at
+step 0 with `guest_unresponsive` because the final Snapshot needs guestd's
+Freeze, the project stayed in `error` billing its disk, and the CLI had
+already printed "Destroyed." from the 202. The ops engine now has one
+recovery per op (`ops.recoverFrom`, recorded in the op's params as
+`recovered`): a destroy whose snapshot or stop fails `guest_unresponsive`
+is replanned from that step as stop (no snapshot; hostd's stop falls back
+to the hypervisor's shutdown and then to killing the unit, none of which
+needs guestd), snapshot of the stopped volume (crash-consistent at worst,
+reason `stop`, expiring in 30 days like any destroy snapshot), destroy.
+If that snapshot still cannot be taken it is skipped with a
+`snapshot_failed` event saying the newest earlier snapshot is kept, and
+the destroy goes on. A `not_found` from the host in any destroy phase
+means the guest is already gone and the op is done. `error` remains for a
+real host failure (lvremove, the blob upload), with the host's code, and a
+later destroy resumes: the stopped guest is snapshotted and removed.
+`DELETE /projects/:id` answers `202 {op_id, state}` (the `state` field is
+new; `op_id` was already there), and a DELETE while a destroy op is open
+answers with that op instead of `409`, so a client that lost the first
+response can still wait. hostd is unchanged: every step above uses
+commands and states the running hostd already has. Healthy guests take
+the old path (freeze, snapshot, stop). `TestDestroyWithDeadGuestdReachesDone`
+(from `error` and from `running`), `TestDestroySkipsAnImpossibleFinalSnapshot`,
+`TestDestroyOfAGuestTheHostLostIsDone`, `TestDestroyAndRestartContract`.
+*Rejected:* always stopping before the destroy snapshot (it changes the
+healthy path for a case the fallback covers); a hostd change to freeze-or-
+fall-back inside Snapshot (needs a host switch, and a snapshot that
+silently stops being clean is worse than an op that says so).
+
+**I-157. `repose start` on a project in `error`, or on a running one
+whose guestd stopped answering, restarts it onto its newest built
+revision.** (server-robust, 2026-09-23) age-calculator's start sent
+StartGuest (ok: the unit was running) then ApplyConfig (guestd dead),
+four times in two minutes; only `repose-admin projects restart` could
+bring it back. The start route now enqueues `ops.PlanRestart` for
+`error`, and for `running` when the newest meter sample (under five
+minutes old) says `guestd_ok = false`: stop without a snapshot, apply the
+pending revision (I-147's `PendingRevision`) to the stopped guest, which
+hostd does by moving its GC root without guestd, then StartGuest, which
+boots that closure. The response is `{op_id, restart}`. A start op whose
+ApplyConfig fails `guest_unresponsive` (the I-143 strand on the old plan)
+turns into the same restart once. Booting on the new closure instead of
+switching into it is what makes this safe for I-143's case: the
+activation that stopped guestd is not run. `TestStartFromErrorRestarts`,
+`TestStartWhoseApplyLosesGuestdRestarts`, `TestDestroyAndRestartContract`.
+*Rejected:* a separate `restart` op kind or route (the op kinds are
+fixed, and the user's recovery command should be the one they already
+type); detecting a dead guestd from `guestd_lost` warnings (the sample's
+`guestd_ok` is already stored per project).
+
+**I-158. Stop, resize and snapshot on a dead guestd.** (server-robust,
+2026-09-23) The same "fails instantly for ever" check across the other
+ops. Stop with a snapshot sent StopGuest{snapshot_first}, whose freeze
+needs guestd: it now recovers as stop without a snapshot, then a snapshot
+of the stopped volume (reason `stop`); if that snapshot fails, the
+project stays `stopped` with `last_error` and a `snapshot_failed` event
+instead of going to `error`. Resize extends the volume and tells the
+hypervisor before GrowFs needs guestd, and a retry repeats the same
+failure; manual snapshots need a freeze. Neither can succeed without
+guestd and neither should reboot the user's guest unasked, so both end
+`error` with a message naming `repose start`, and resize's retry after
+the restart completes (hostd skips the lvextend already done).
+`TestStopWithDeadGuestdStopsThenSnapshots`,
+`TestUnresponsiveErrorsAreSentences`. Not fixed: nothing grows the guest
+filesystem after a resize of a stopped guest (no boot-time growfs in
+`nix/guest`); that predates this and is recorded here for workstream 02.
+
+**I-159. An op's error message is a sentence; the host's wording is
+`detail`.** (server-robust, 2026-09-23) `op.error.message` and
+`projects.last_error` carried hostd's text verbatim, e.g. `guestd
+unreachable for guest 01a0c161-…`, a guest id the user never sees
+anywhere else. `failWithLine` now maps the codes users meet to a sentence
+that says what to do (`guest_unresponsive`: "the environment's agent
+(guestd) stopped answering; `repose start` restarts it", with variants for
+a boot that never answered, a resize and a snapshot; `host_unreachable`;
+`insufficient_capacity`), keeps `code`, and moves the host's message to
+`error.detail` for operators. Other codes keep their message. Logs are
+unchanged: the op-failure line carries the code, never either message.
+`TestUnresponsiveErrorsAreSentences`.

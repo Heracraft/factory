@@ -340,11 +340,23 @@ func (s *Server) destroyProject(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	pid := p.ID
+	// A repeated DELETE while the destroy runs answers with that op, so a
+	// client that lost the first response can still wait on it (I-156).
+	open, err := store.OpenOpsForProject(r.Context(), s.d.Pool, pid)
+	if err != nil {
+		return err
+	}
+	for _, o := range open {
+		if o.Kind == ops.KindDestroy {
+			writeJSON(w, http.StatusAccepted, map[string]any{"op_id": o.ID, "state": o.State})
+			return nil
+		}
+	}
 	id, err := s.enqueue(r.Context(), ops.NewOp{Kind: ops.KindDestroy, ProjectID: &pid, Phases: ops.PlanDestroy(p)}, false)
 	if err != nil {
 		return err
 	}
-	writeJSON(w, http.StatusAccepted, map[string]any{"op_id": id})
+	writeJSON(w, http.StatusAccepted, map[string]any{"op_id": id, "state": "pending"})
 	return nil
 }
 
@@ -357,10 +369,25 @@ func (s *Server) startProject(w http.ResponseWriter, r *http.Request) error {
 	if err := s.billingGate(u); err != nil {
 		return err
 	}
+	// A project in error, or one running whose guestd stopped answering,
+	// is restarted rather than started: stop the unit, boot it again on its
+	// newest built revision (I-157). `repose start` is the user's recovery.
+	restart := false
 	switch p.State {
-	case "running", "starting":
+	case "running":
+		dead, err := s.guestdDead(r.Context(), p)
+		if err != nil {
+			return err
+		}
+		if !dead {
+			return errf("conflict", "%s is already %s", p.Slug, p.State)
+		}
+		restart = true
+	case "starting":
 		return errf("conflict", "%s is already %s", p.Slug, p.State)
-	case "stopped", "error":
+	case "error":
+		restart = true
+	case "stopped":
 	default:
 		return errf("conflict", "%s is %s; wait for it to settle", p.Slug, p.State)
 	}
@@ -375,12 +402,30 @@ func (s *Server) startProject(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	pid := p.ID
-	id, err := s.enqueue(r.Context(), ops.NewOp{Kind: ops.KindStart, ProjectID: &pid, Phases: ops.PlanStart(pending)}, false)
+	n := ops.NewOp{Kind: ops.KindStart, ProjectID: &pid, Phases: ops.PlanStart(pending)}
+	if restart {
+		n.Phases, n.Params = ops.PlanRestart(pending), ops.RestartParams()
+	}
+	id, err := s.enqueue(r.Context(), n, false)
 	if err != nil {
 		return err
 	}
-	writeJSON(w, http.StatusAccepted, map[string]any{"op_id": id})
+	writeJSON(w, http.StatusAccepted, map[string]any{"op_id": id, "restart": restart})
 	return nil
+}
+
+// guestdStaleAfter bounds how old a guestd_ok=false sample may be and still
+// count: hosts sample every minute, so five minutes is several samples.
+const guestdStaleAfter = 5 * time.Minute
+
+// guestdDead reports whether the newest sample of a running project says
+// its guestd is not answering.
+func (s *Server) guestdDead(ctx context.Context, p *store.Project) (bool, error) {
+	l, ok, err := meter.LatestSample(ctx, s.d.Pool, p.ID)
+	if err != nil || !ok {
+		return false, err
+	}
+	return l.State == "running" && !l.GuestdOK && time.Since(l.TS) < guestdStaleAfter, nil
 }
 
 func (s *Server) stopProject(w http.ResponseWriter, r *http.Request) error {

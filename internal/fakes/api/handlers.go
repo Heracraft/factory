@@ -440,7 +440,9 @@ func (f *Fake) destroyProject(w http.ResponseWriter, r *http.Request) *apiError 
 	p.destroyed = true
 	p.retained = f.now().Add(retentionDays * 24 * time.Hour)
 	f.event(p, "project.destroyed", "", "volume deleted, last snapshot kept 30 days")
-	return opResult(w, o)
+	// api.md: 202 {op_id, state} (I-156); the fake's ops finish at once.
+	writeJSON(w, http.StatusAccepted, map[string]string{"op_id": o.id, "state": o.State})
+	return nil
 }
 
 func (f *Fake) startProject(w http.ResponseWriter, r *http.Request) *apiError {
@@ -453,10 +455,12 @@ func (f *Fake) startProject(w http.ResponseWriter, r *http.Request) *apiError {
 		return errf("conflict", "%s is already starting", p.Slug)
 	}
 	o := f.newOp(p, "start")
+	restart := p.State == "error" // api.md: a start from error is a restart (I-157)
 	if p.State != "running" {
 		f.run(p)
 	}
-	return opResult(w, o)
+	writeJSON(w, http.StatusAccepted, map[string]any{"op_id": o.id, "restart": restart})
+	return nil
 }
 
 func (f *Fake) stopProject(w http.ResponseWriter, r *http.Request) *apiError {

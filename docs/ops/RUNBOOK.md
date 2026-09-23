@@ -880,6 +880,15 @@ Recovery, in this order:
    over the applied .4, that older base's activation stopped guestd
    again). A guest whose newest revision is already applied starts with
    no apply at all.
+5. From I-157 on, the owner's own `repose start` does the same: on a
+   project in `error`, or running with `guestd_ok = false` in its newest
+   sample, the start op is stop (no snapshot), apply the pending revision
+   to the stopped guest, boot. The op's params carry `restart: true`;
+   a start whose ApplyConfig lost guestd carries `recovered:
+   apply_config:guest_unresponsive` and did the same. A destroy of such a
+   guest finishes (I-156): look for `op_recover` in the api log with the
+   op id, then the stop, the snapshot of the stopped volume and
+   DestroyGuest.
 
 ## Coolify deploy failed
 

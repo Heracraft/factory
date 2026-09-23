@@ -29,6 +29,11 @@ type Guest struct {
 	CID       uint32
 	Closure   string
 	Secrets   map[string][]byte
+	// GuestdDead models a guest whose unit runs but whose guestd does not
+	// answer (I-143's strand): every command that needs guestd on a
+	// running guest fails with guest_unresponsive, as the real hostd does,
+	// until the guest is booted again.
+	GuestdDead bool
 }
 
 // Options tune the fake.
@@ -122,6 +127,33 @@ func (f *Fake) SetFail(kind, code string) {
 	}
 }
 
+// SetGuestdDead marks a guest's guestd dead or alive.
+func (f *Fake) SetGuestdDead(guestID string, dead bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if g, ok := f.guests[guestID]; ok {
+		g.GuestdDead = dead
+	}
+}
+
+// guestdGone reports whether a command needing guestd on g must fail the
+// way hostd's session() does.
+func (f *Fake) guestdGone(g *Guest) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return g.GuestdDead && g.State == "running"
+}
+
+func (f *Fake) stateOf(g *Guest) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return g.State
+}
+
+func unresponsive(id string, g *Guest) *hostdv1.Result {
+	return errResult(id, "guest_unresponsive", "guestd unreachable for guest "+g.GuestID)
+}
+
 // Hello is the reconciliation message.
 func (f *Fake) Hello() *hostdv1.Hello {
 	f.mu.Lock()
@@ -204,7 +236,7 @@ func (f *Fake) Samples() *hostdv1.Samples {
 		gs := &hostdv1.GuestSample{GuestId: g.GuestID, State: g.State, Class: g.Class, DiskAllocBytes: 40 << 30, DiskUsedBytes: 5 << 30, Signals: &hostdv1.GuestSignals{}}
 		if g.State == "running" {
 			gs.CpuNsDelta, gs.MemRssBytes, gs.NetTxBytesDelta, gs.NetRxBytesDelta = 30e9, 2<<30, 1<<20, 4<<20
-			gs.Signals = &hostdv1.GuestSignals{SshSessions: 1, TmuxClients: 1, GuestdOk: true, Agents: []*hostdv1.AgentProc{{Agent: "claude", TmuxWindow: "claude", State: "working"}}}
+			gs.Signals = &hostdv1.GuestSignals{SshSessions: 1, TmuxClients: 1, GuestdOk: !g.GuestdDead, Agents: []*hostdv1.AgentProc{{Agent: "claude", TmuxWindow: "claude", State: "working"}}}
 			gs.Procs = []*hostdv1.ProcSample{{Comm: "claude", CpuNsDelta: 25e9, RssBytes: 1 << 30}, {Comm: "node", CpuNsDelta: 5e9, RssBytes: 300 << 20}}
 		}
 		s.Guests = append(s.Guests, gs)
@@ -341,6 +373,9 @@ func (f *Fake) execute(cmd *hostdv1.Command) *hostdv1.Result {
 			return e
 		}
 		if g.State != "running" {
+			f.mu.Lock()
+			g.GuestdDead = false // a boot brings a fresh guestd
+			f.mu.Unlock()
 			f.setState(g, "starting", "")
 			f.setState(g, "running", "")
 		}
@@ -353,7 +388,10 @@ func (f *Fake) execute(cmd *hostdv1.Command) *hostdv1.Result {
 			return e
 		}
 		var blob string
-		if c.StopGuest.SnapshotFirst {
+		if c.StopGuest.SnapshotFirst && f.guestdGone(g) {
+			return unresponsive(id, g)
+		}
+		if c.StopGuest.SnapshotFirst && f.stateOf(g) == "running" {
 			blob = fmt.Sprintf("%s/%s/%d.img.zst", "user", g.ProjectID, time.Now().UnixNano())
 			f.event(&hostdv1.Event{Ev: &hostdv1.Event_SnapshotDone{SnapshotDone: &hostdv1.SnapshotDone{GuestId: g.GuestID, BlobPath: blob, Bytes: 1 << 30}}})
 		}
@@ -376,10 +414,13 @@ func (f *Fake) execute(cmd *hostdv1.Command) *hostdv1.Result {
 		return ok(nil)
 	case *hostdv1.Command_ResizeVolume:
 		f.mu.Lock()
-		_, e := get(c.ResizeVolume.GuestId)
+		g, e := get(c.ResizeVolume.GuestId)
 		f.mu.Unlock()
 		if e != nil {
 			return e
+		}
+		if f.guestdGone(g) {
+			return unresponsive(id, g) // hostd extended the volume; GrowFs needs guestd
 		}
 		return ok(nil)
 	case *hostdv1.Command_Build:
@@ -406,6 +447,10 @@ func (f *Fake) execute(cmd *hostdv1.Command) *hostdv1.Result {
 		// (DECISIONS I-5); the fake reports kernel changes per KernelChanged.
 		f.mu.Lock()
 		g, e := get(c.ApplyConfig.GuestId)
+		if e == nil && g.GuestdDead && g.State == "running" {
+			f.mu.Unlock()
+			return unresponsive(id, g)
+		}
 		needsReboot := e == nil && f.opts.KernelChanged && g.Closure != c.ApplyConfig.SystemClosure && !c.ApplyConfig.ForceReboot
 		if e == nil && !needsReboot {
 			g.Closure = c.ApplyConfig.SystemClosure
@@ -423,6 +468,9 @@ func (f *Fake) execute(cmd *hostdv1.Command) *hostdv1.Result {
 		f.mu.Unlock()
 		if e != nil {
 			return e
+		}
+		if f.guestdGone(g) {
+			return unresponsive(id, g) // no Freeze without guestd
 		}
 		blob := fmt.Sprintf("%s/%s/%d.img.zst", "user", g.ProjectID, time.Now().UnixNano())
 		f.event(&hostdv1.Event{Ev: &hostdv1.Event_SnapshotDone{SnapshotDone: &hostdv1.SnapshotDone{GuestId: g.GuestID, BlobPath: blob, Bytes: 1 << 30}}})

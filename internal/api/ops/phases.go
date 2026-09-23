@@ -651,7 +651,11 @@ func PendingRevision(ctx context.Context, pool *db.Pool, p *store.Project) (bool
 }
 
 func (e *Engine) buildApply(ctx context.Context, op *store.Op, p *store.Project) (*hostdv1.Command, uuid.UUID, bool, error) {
-	if p.GuestID == nil || p.HostID == nil || p.State != "running" {
+	// A restart applies to the stopped guest between its stop and its boot:
+	// hostd moves a stopped guest's root without guestd, and the boot comes
+	// up on the new closure (I-157).
+	restarting := op.Kind == KindStart && isRestart(op) && p.State == "stopped"
+	if p.GuestID == nil || p.HostID == nil || (p.State != "running" && !restarting) {
 		return nil, uuid.Nil, true, nil // applies at the next start
 	}
 	// A start applies the newest built-but-unapplied revision that is newer
@@ -882,13 +886,19 @@ func (e *Engine) onFail(ctx context.Context, op *store.Op, code, msg string, lin
 	if len(short) > 200 {
 		short = short[:200]
 	}
-	switch op.Kind {
-	case KindCreate, KindStart, KindStop, KindDestroy, KindRestore:
+	switch {
+	case op.Kind == KindStop && phase == PhaseSnapshot:
+		// The guest is already down (a stop whose guestd was dead snapshots
+		// after the stop, I-158): it stays stopped, and the missing
+		// snapshot is reported like any other.
+		_, _ = e.pool.Exec(ctx, "update projects set last_error = $2 where id = $1", p.ID, code+": "+short) // best effort; the op carries the error
+		e.notifyPlatform(ctx, p.ID, "snapshot_failed", "the snapshot after stopping failed: "+short)
+	case op.Kind == KindCreate || op.Kind == KindStart || op.Kind == KindStop || op.Kind == KindDestroy || op.Kind == KindRestore:
 		if code == "capacity" {
 			_, _ = e.pool.Exec(ctx, "update projects set host_id = null where id = $1", p.ID) // free the placement
 		}
 		_, _ = e.pool.Exec(ctx, "update projects set state = 'error', last_error = $2 where id = $1 and state <> 'destroyed'", p.ID, code+": "+short)
-	case KindSnapshot:
+	case op.Kind == KindSnapshot:
 		_, _ = e.pool.Exec(ctx, "update projects set last_error = $2 where id = $1", p.ID, code+": "+short)
 		e.notifyPlatform(ctx, p.ID, "snapshot_failed", "snapshot failed: "+short)
 	default:

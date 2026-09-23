@@ -76,6 +76,13 @@ Start:
   more than 3 days or `suspended`, with the dashboard billing link.
 - `run` on a stopped project starts it implicitly; `attach` does not, and
   says to `start` or `run`.
+- `start` is also the recovery path (I-157). On a project in `error`, or a
+  running one whose guestd (the agent inside the environment) has stopped
+  answering, it restarts: the unit is stopped without a snapshot (nothing
+  can freeze the filesystem without guestd), the newest built revision is
+  put in place while the guest is down, and the guest boots on it. The
+  response says `restart: true`; the CLI says it is restarting. A running
+  project with a healthy guestd still answers "already running".
 
 Destroy:
 
@@ -86,6 +93,16 @@ Destroy:
   (`destroyed_at` set), its events, its usage, and its newest snapshot with
   `expires_at` 30 days out.
 - Frees the project slot immediately for the account's limit.
+- Always finishes once asked (I-156). If guestd is dead the guest cannot
+  be frozen, so the unit is stopped (the hypervisor's shutdown, then a
+  kill) and the final snapshot is taken of the stopped volume, which is
+  crash-consistent at worst. If even that is impossible the snapshot is
+  skipped with a `snapshot_failed` event and the newest earlier snapshot
+  is the one kept 30 days. A guest the host no longer has is already
+  destroyed. The op ends `error` only for a real host failure (deleting
+  the volume, uploading the snapshot), and destroying again resumes.
+- `DELETE` answers with the destroy's `op_id`; the CLI waits for that op
+  and prints "Destroyed." only when it is `done`.
 - Within 30 days, `repose snapshots restore <id> --as-new <name>` brings
   it back as a new project. After 30 days the snapshot is deleted by the
   retention job and the dashboard stops listing it.
@@ -103,6 +120,16 @@ Failure handling:
   50 lines attached to the op; `repose logs --kind console` shows them.
   The volume is untouched; `start` retries; `snapshots restore` is the
   escape.
+- A dead guestd never makes an op fail instantly for ever. `stop` stops
+  the unit anyway and snapshots the stopped volume; `destroy` finishes as
+  above; `start` restarts. A manual snapshot and a resize need guestd (to
+  freeze, to grow the filesystem) and do not reboot the guest unasked:
+  they fail with a message that says to run `repose start`, and succeed
+  when run again after it (I-158).
+- An op's error is a sentence with the way out, and its code: code
+  `guest_unresponsive`, message "the environment's agent (guestd) stopped
+  answering; `repose start` restarts it". The host's own wording, with
+  internal ids, is the error's `detail` (I-159).
 - hostd restart mid-operation: the op is replayed by the API with the same
   command id and completes or is idempotently skipped
   (`interfaces/grpc-hostd.md`). No state is lost.

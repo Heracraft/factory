@@ -304,6 +304,9 @@ func (e *Engine) advance(ctx context.Context, op *store.Op) {
 			if res.Error != nil {
 				code, msg, line = res.Error.Code, res.Error.Message, int(res.Error.FragmentLine)
 			}
+			if e.recoverFrom(ctx, op, code) {
+				return
+			}
 			e.failWithLine(ctx, op, code, msg, line)
 			return
 		}
@@ -515,6 +518,12 @@ func (e *Engine) failWithLine(ctx context.Context, op *store.Op, code, msg strin
 	}
 	e.logs.ClearRedactions(op.ID)
 	errObj := map[string]any{"code": code, "message": msg}
+	// The user reads message; the host's own wording names internal ids
+	// and stays in detail for operators (I-159).
+	if human, ok := humanError(op.Kind, currentPhase(op), code, msg); ok {
+		errObj["message"], errObj["detail"] = human, msg
+		msg = human
+	}
 	if line > 0 {
 		errObj["fragment_line"] = line
 	}
