@@ -62,6 +62,49 @@ func TestHybridFirstSync(t *testing.T) {
 	}
 }
 
+// A laptop behind GitHub (someone pushed since its last fetch), with no
+// tags in common: after the clone the guest's tips are all newer than
+// anything the laptop knows, so only the laptop's own view of origin,
+// checked in the same ssh, keeps the bundle to the one unpushed commit.
+func TestHybridFirstSyncFromABehindLaptop(t *testing.T) {
+	f := newSyncFixture(t)
+	if err := os.RemoveAll(f.guestRepo()); err != nil {
+		t.Fatal(err)
+	}
+	prevURL, prevMin := hybridCloneURL, hybridThresholdKiB
+	hybridCloneURL = func(string) string { return f.bare }
+	hybridThresholdKiB = 0
+	t.Cleanup(func() { hybridCloneURL, hybridThresholdKiB = prevURL, prevMin })
+
+	other := t.TempDir()
+	mustRun(t, other, "git", "clone", "-q", f.bare, ".")
+	mustRun(t, other, "git", "config", "user.email", "o@example.com")
+	mustRun(t, other, "git", "config", "user.name", "Other")
+	for i := 0; i < 3; i++ {
+		if err := os.WriteFile(filepath.Join(other, "other.txt"), []byte(strings.Repeat("x", i+1)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		mustRun(t, other, "git", "add", "other.txt")
+		mustRun(t, other, "git", "commit", "-q", "-m", "pushed by someone else")
+	}
+	mustRun(t, other, "git", "push", "-q", "origin", "main")
+
+	if err := os.WriteFile(filepath.Join(f.local, "README.md"), []byte("unpushed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, f.local, "git", "commit", "-q", "-am", "unpushed")
+	s, err := syncGuest(context.Background(), f.target, f.local, testSlug, SyncOptions{RemoteURL: "github.com/a/b"})
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if s.ClonedFrom == "" || s.Commits != 1 {
+		t.Fatalf("summary = %+v, want a clone and 1 commit sent", s)
+	}
+	if got, want := mustRun(t, f.guestRepo(), "git", "rev-parse", "HEAD"), mustRun(t, f.local, "git", "rev-parse", "HEAD"); got != want {
+		t.Fatalf("guest HEAD %s, laptop %s", got, want)
+	}
+}
+
 func TestHybridCloneURL(t *testing.T) {
 	for remote, want := range map[string]string{
 		"github.com/a/b":     "https://github.com/a/b.git",

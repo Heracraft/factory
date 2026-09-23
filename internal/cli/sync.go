@@ -208,7 +208,7 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	var cloned, cloneFailed string
 	if len(probe.tips) == 0 && !opts.NoRemote {
 		if url := hybridCloneURL(opts.RemoteURL); url != "" && gitPackKiB(localRepoDir) >= hybridThresholdKiB {
-			tips, ok, why, err := hybridFetch(ctx, t, slug, url)
+			tips, ok, why, err := hybridFetch(ctx, t, slug, url, laptopBases(localRepoDir))
 			if err != nil {
 				return nil, err
 			}

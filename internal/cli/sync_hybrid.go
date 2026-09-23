@@ -57,13 +57,17 @@ func gitPackKiB(dir string) int64 {
 
 // hybridFetch has the guest fetch every branch and tag from url into its
 // empty checkout (a clone into the directory guestd already made), and
-// returns the commits its refs now point at. ok=false with why is the
-// fall back; err is only for an ssh that failed outright.
-func hybridFetch(ctx context.Context, t sshTarget, slug, url string) (tips []string, ok bool, why string, err error) {
+// returns the commits its refs now point at, plus those of bases (the
+// laptop's own view of origin and its tags, on stdin) that the clone
+// brought: a laptop behind GitHub knows none of GitHub's newer tips, and
+// without a base it knows the next bundle would carry the whole history
+// again. ok=false with why is the fall back; err is only for an ssh that
+// failed outright.
+func hybridFetch(ctx context.Context, t sshTarget, slug, url string, bases []string) (tips []string, ok bool, why string, err error) {
 	script := fmt.Sprintf(`cd ~/%s
 export GIT_TERMINAL_PROMPT=0
 e=$(mktemp)
-if git fetch -q --no-tags %s '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*' 2>"$e"; then
+if git fetch -q --no-tags %s '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*' </dev/null 2>"$e"; then
   echo '#cloned'
 else
   why=$(grep '^fatal:' "$e" | head -n 1)
@@ -73,8 +77,11 @@ fi
 rm -f "$e"
 echo '#tips'
 git for-each-ref --format='%%(objectname)'
+git cat-file --batch-check='%%(objectname) %%(objecttype)' | while read -r o ty; do
+  case $ty in commit|tag) echo "$o" ;; esac
+done
 `, slug, shQuote(url))
-	out, err := runSSH(ctx, t, script, nil)
+	out, err := runSSH(ctx, t, script, strings.NewReader(strings.Join(bases, "\n")+"\n"))
 	if err != nil {
 		return nil, false, "", stepFailed("clone your repository in the guest", err, "")
 	}
@@ -98,4 +105,15 @@ git for-each-ref --format='%%(objectname)'
 		}
 	}
 	return tips, ok, why, nil
+}
+
+// laptopBases are the commits the laptop last saw on origin and its tags:
+// what a fresh clone in the guest most likely has too, and so the bases
+// the laptop can bundle against after it (hybridFetch).
+func laptopBases(dir string) []string {
+	out, err := gitCmd(dir, "for-each-ref", "--format=%(objectname)", "refs/remotes/origin", "refs/tags")
+	if err != nil {
+		return nil
+	}
+	return nonEmptyLines(out)
 }
