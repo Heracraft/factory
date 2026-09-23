@@ -25,6 +25,19 @@
         publicKey = "5Q4fVnx50TZmA+8rSH2l7MFzCZ+dunFwnuClFH6OgXA=";
         allowedIPs = [ "10.255.255.1/32" ];
       }
+      # The owner's monitoring server (Loki, Prometheus), interface
+      # `wg-repose` there (ops/prometheus/wireguard-peer.conf). It dials out;
+      # the edge only lets it scrape and lets peers push logs to it.
+      {
+        publicKey = "DHJ1o9kWyk2UpEig5CSzPxohorEVuM1YUFyvy1B5HTM=";
+        allowedIPs = [ "10.255.0.3/32" ];
+      }
     ];
+
+    monitoring.peerCIDRs = [ "10.255.0.3/32" ];
+
+    # The edge's own journal goes to the same Loki as every host's
+    # (`repose-admin edge loki` records the hosts' copy).
+    lokiUrl = "http://10.255.0.3:3100";
   };
 }

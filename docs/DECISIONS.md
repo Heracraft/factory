@@ -3777,3 +3777,18 @@ its expiry, Restore under the same name, lands on the new project),
 page (one more route for a list that is short and belongs next to the
 live one); restoring on one click without a name field (it creates a
 billed project, and the name may be taken).
+
+**I-170. The owner's monitoring server is peer 10.255.0.3 on the edge, over
+plain WireGuard, interface `wg-repose`.** (owner, conductor, 2026-09-23) The
+owner asked why not Tailscale: it would work (a tagged auth key per host and
+a tailnet ACL allowing only `tag:repose-host` to reach Loki), but it puts
+hosts that run tenant code on the owner's personal tailnet, where
+containment rests on an ACL the repository cannot check, and adds a secret
+per host. The WireGuard peer needs one public key, and the edge's forward
+chain (I-94) already confines it to the scrape ports outward and 3100
+inward. The monitoring server runs `wg-quick` on the host rather than a
+container: host networking plus `NET_ADMIN` is no narrower, and a unit on
+the host survives Coolify restarts. The interface is `wg-repose` (the
+file name), not `repose`, so it reads as a tunnel on a machine that runs
+other things. `repose.edge.lokiUrl` is set to the same Loki, so the edge
+ships its journal too. *Rejected:* Tailscale (above); a WireGuard container.
