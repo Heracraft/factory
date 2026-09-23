@@ -102,12 +102,24 @@ to look first.
 - Symlinks travel as symlinks, never followed; directories and special
   files in the untracked list are skipped, and one unreadable file does
   not stop the rest.
-- Files ignored by gitignore never travel in either direction. `.env`
-  files that are gitignored therefore do not sync; that is deliberate and
-  documented, and named secrets (secrets.md) are the supported path.
+- Files ignored by gitignore do not travel, with one exception (DECISIONS
+  I-197, which reverses this document's earlier "never"): gitignored
+  `.env` and `.env.*` files at any depth outside the dependency
+  directories above, up to 1 MB each, go laptop to guest in the sync's
+  own apply ssh, after the checkout (so the guest's `.gitignore` already
+  covers them), mode 0600, never through the api. A guest copy newer than
+  the laptop's is kept, and the CLI says so once: `Kept the guest's
+  apps/web/.env: it is newer than the laptop's.` An unchanged set is not
+  sent again (marker `env`, I-206). They sit on the guest disk and so are
+  in snapshots, like the gh token and the code. Named secrets
+  (secrets.md) remain the path for values that must change without a
+  laptop. Ignored directories are listed collapsed (`git ls-files
+  --others --ignored --exclude-standard --directory`), so a `.env`
+  inside a wholly ignored directory does not travel. Contents never reach
+  a log line.
 - The summary line always prints, `Synced: <n> modified, <m> untracked`,
-  even when both are zero, followed by `(<k> new commits)` when commits
-  travelled.
+  even when both are zero, followed by `, <e> env files` when .env files
+  were written and `(<k> new commits)` when commits travelled.
 - The guest's checkout is at `/home/dev/<slug>`, which guestd's
   `SetupProject` creates with an `origin` (02/04's contract). If it is
   missing anyway, the sync creates it (`git init`) and adds `origin`
@@ -122,7 +134,9 @@ to look first.
   helper (`guest-conventions.md`), so an agent's `git push` works without
   the laptop's SSH keys.
 - All of this rides the command's one multiplexed SSH connection (I-149):
-  two round trips for the sync, one for credentials.
+  three round trips in all: the probe (which also returns the carry's
+  markers), the credentials and carry, and the apply (with the .env
+  files).
 
 Back to the laptop:
 
@@ -139,5 +153,5 @@ guarantees the guest checkout exists before the CLI's first sync).
 ## Deferred
 
 `repose sync --watch` continuous sync (DECISIONS R1-3). Reverse sync of the
-guest's uncommitted changes to the laptop. Syncing gitignored files by
-explicit allowlist.
+guest's uncommitted changes to the laptop. Syncing other gitignored files
+by explicit allowlist.

@@ -35,6 +35,10 @@ type SyncOptions struct {
 	// (I-150) and the carry skips what the guest already has (I-195..
 	// I-197) without a round trip of its own.
 	BeforeApply func(markers map[string]string) error
+	// Env is the laptop's gitignored .env files (I-197), written after the
+	// checkout in the apply's own ssh, unless the guest's marker says it
+	// has exactly these.
+	Env []envFile
 }
 
 // SyncSummary is what step 5e prints.
@@ -51,6 +55,10 @@ type SyncSummary struct {
 	// (defaultSkipDirs); SkippedCap counts files past maxUntrackedBytes.
 	SkippedDirs []string
 	SkippedCap  int
+	// EnvFiles counts the .env files written; EnvKept names the ones the
+	// guest kept because its copy was newer (I-197).
+	EnvFiles int
+	EnvKept  []string
 }
 
 // dirtyTreeError is 07-cli.md §6's exit 6, carrying the file list for the
@@ -262,6 +270,10 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		}
 		summary.Untracked = len(untracked)
 	}
+	envScript, err := addEnvToApply(tw, opts.Env, probe.markers)
+	if err != nil {
+		return nil, err
+	}
 	if err := tw.Close(); err != nil {
 		return nil, err
 	}
@@ -269,7 +281,7 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		return nil, err
 	}
 
-	script := applyScript(slug, head, branch, track, bundleRefs, len(bundleRefs) > 0, opts, probe)
+	script := applyScript(slug, head, branch, track, bundleRefs, len(bundleRefs) > 0, opts, probe) + envScript
 	res, err := runSSH(ctx, t, script, payload)
 	if err != nil {
 		if se, ok := err.(*sshError); ok && (strings.Contains(se.Stderr, "patch does not apply") || strings.Contains(se.Stderr, "patch failed")) {
@@ -278,11 +290,18 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		return nil, stepFailed("sync your checkout to the guest", err, "")
 	}
 	for _, l := range strings.Split(string(res), "\n") {
-		switch strings.TrimSpace(l) {
+		l = strings.TrimSpace(l)
+		switch l {
 		case "#detached":
 			summary.Detached = true
 		case "#diverged":
 			summary.Detached, summary.Diverged = true, true
+		}
+		if rest, ok := strings.CutPrefix(l, "#kept "); ok {
+			summary.EnvKept = append(summary.EnvKept, rest)
+		}
+		if rest, ok := strings.CutPrefix(l, "#envfiles "); ok {
+			_, _ = fmt.Sscanf(rest, "%d", &summary.EnvFiles)
 		}
 	}
 	return summary, nil
@@ -562,6 +581,12 @@ func tarAddFile(tw *tar.Writer, name, path string) error {
 func (s *SyncSummary) String() string {
 	line := fmt.Sprintf("Synced: %d modified, %d untracked", s.Modified, s.Untracked)
 	switch {
+	case s.EnvFiles == 1:
+		line += ", 1 env file"
+	case s.EnvFiles > 1:
+		line += fmt.Sprintf(", %d env files", s.EnvFiles)
+	}
+	switch {
 	case s.Commits == 1:
 		line += " (1 new commit)"
 	case s.Commits > 1:
@@ -576,6 +601,9 @@ func (s *SyncSummary) Warnings() []string {
 	short := s.Head
 	if len(short) > 7 {
 		short = short[:7]
+	}
+	for _, k := range s.EnvKept {
+		w = append(w, fmt.Sprintf("Kept the guest's %s: it is newer than the laptop's.", k))
 	}
 	if s.Diverged {
 		w = append(w, fmt.Sprintf("The guest's %s has commits your laptop does not have; it was left as it is and the guest is on %s, detached. Push them from the guest (or `repose attach` to look) and pull on the laptop.", s.Branch, short))

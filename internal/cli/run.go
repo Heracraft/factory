@@ -130,9 +130,14 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		// remote (I-150), and the carry costs no round trip (I-195..I-198).
 		var copied []string
 		var carried *carryOutcome
+		envs, err := buildEnvCarry(repoRoot)
+		if err != nil {
+			e.warn("Could not list your .env files (%s); none were sent.", oneLine(err.Error()))
+		}
 		summary, err := syncGuest(ctx, target, repoRoot, project.Slug, SyncOptions{
 			StashRemote: opts.StashRemote, DiscardRemote: opts.DiscardRemote,
 			Exclude: e.Cfg.SyncExclude, NoRemote: project.RemoteURL == "", RemoteURL: project.RemoteURL,
+			Env: envs,
 			BeforeApply: func(markers map[string]string) error {
 				gc, err := buildGitCarry(repoRoot, e.HomeDir)
 				if err != nil {

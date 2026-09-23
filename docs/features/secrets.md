@@ -88,6 +88,11 @@ config the CLI carries" has the exact paths):
   OAuth file in the laptop home and asserts none of them is in the carry
   stream.
 
+- **`.env` files** (I-197): gitignored `.env` and `.env.*` files in the
+  checkout, laptop to guest over the sync's SSH, mode 0600, newer side
+  wins by mtime (`sync-at-launch.md`). This generalises the "copied over
+  SSH" home to files the laptop holds; it is still three homes, not four.
+
 A part that has not changed on the laptop since the guest last applied it
 is not sent: the guest keeps one marker per carried item under
 `~/.repose/carry/` (DECISIONS I-206), returned in the sync's first SSH.
