@@ -239,39 +239,88 @@ they require a new host.
 ## 9. Checklist
 
 - [ ] `nix build .#nixosConfigurations.host-bench.config.system.build.toplevel`
-      succeeds. Evidence: CI.
-- [ ] `nixos-anywhere` onto a fresh D64s_v5 completes and the host reboots
+      succeeds. Evidence: CI. — open: CI only evaluates (`nix flake check
+      --no-build`, .github/workflows/ci.yml) and builds no host toplevel; the
+      build is recorded only locally (STATUS 2026-09-19 01-host-nixos
+      done-local line). Needs a CI build step or a pasted build log
+- [x] `nixos-anywhere` onto a fresh D64s_v5 completes and the host reboots
       into NixOS. Evidence: `nixos-version` output and the wall time,
-      pasted.
-- [ ] `lsblk` shows `vg-guests-thin` and `lvs` shows the pool at the
+      pasted. — closed: RESEARCH §11 (host-01 `Standard_D16s_v7` per DECISIONS
+      I-39 in place of D64s_v5, NixOS 26.11 `b1b8759`, nixos-anywhere through
+      the edge about ten minutes)
+- [x] `lsblk` shows `vg-guests-thin` and `lvs` shows the pool at the
       expected size with autoextend set (`lvs -o+thin_autoextend` via
-      `lvm.conf` check). Evidence: pasted.
-- [ ] After writing a fixture `host.json`, `ip addr show br-guests` shows the
-      `.1` address and `wg show` shows the interface. Evidence: pasted.
-- [ ] `nft list table inet repose` shows `guest_fwd`, `guest_in`, `nat`,
+      `lvm.conf` check). Evidence: pasted. — closed: host-storage VM test
+      subtests "disko creates the PV, vg-guests and the thin pool" and
+      "autoextend is configured and monitored" (nix/hosts/tests/default.nix,
+      EXIT=0 per STATUS 2026-09-20 01/03-host-followup done line); on host-01
+      thin pool/lsblk per STATUS 2026-09-20 m1-integration done line
+- [x] After writing a fixture `host.json`, `ip addr show br-guests` shows the
+      `.1` address and `wg show` shows the interface. Evidence: pasted. —
+      closed: host-network VM test subtest "repose-host-net configures
+      br-guests and wg0 from host.json" prints both (EXIT=0, STATUS 2026-09-20
+      01/03-host-followup done line)
+- [x] `nft list table inet repose` shows `guest_fwd`, `guest_in`, `nat`,
       `guest_dyn` with the IMDS drop and the `10.64.0.0/12` drop. Evidence:
-      pasted.
-- [ ] From a network namespace attached to the bridge (or a real guest once
+      pasted. — closed: host-network VM test asserts the five chains and both
+      drops (nix/hosts/tests/default.nix); on host-01
+      security/review-2026-09-21.md "Verified as deployed" (guest_fwd drop
+      counters, guest_in, masquerade)
+- [x] From a network namespace attached to the bridge (or a real guest once
       02 exists): `curl -m2 http://169.254.169.254` fails, `ping 10.64.x.1`
       is rate limited, `ping 10.64.other` fails, `curl https://github.com`
-      succeeds. Evidence: the four commands and outputs pasted.
-- [ ] `ls /run/repose/store-export/.links` is empty. Evidence: pasted.
-- [ ] `systemctl status hostd` is active with the stub; `systemctl restart
+      succeeds. Evidence: the four commands and outputs pasted. — closed:
+      host-network VM test subtest "a guest reaches the internet through NAT
+      and nothing else" (namespace on the bridge); on a real guest STATUS
+      2026-09-20 m1-integration done line (IMDS blocked, github reachable,
+      guest-to-guest blocked) and security/review-2026-09-21.md "Verified as
+      deployed" (echo limit 5/s, IMDS drop counter)
+- [x] `ls /run/repose/store-export/.links` is empty. Evidence: pasted. —
+      closed: security/review-2026-09-21.md "Guest cannot write the store"
+      (`.links` a 4k ro tmpfs, host-01); STATUS 2026-09-20 m1-integration done
+      line (.links masked); DECISIONS I-61
+- [x] `systemctl status hostd` is active with the stub; `systemctl restart
       hostd` leaves a transient `guest@test` unit (created with `systemd-run
-      --unit guest@test sleep infinity`) running. Evidence: pasted.
-- [ ] `ss -tlnp` shows nothing listening on the Azure NIC address except
-      sshd during bootstrap. Evidence: pasted.
-- [ ] node_exporter answers on the `wg0` address and not on the Azure NIC.
-      Evidence: two curl outputs.
+      --unit guest@test sleep infinity`) running. Evidence: pasted. — closed:
+      host-services VM test (`systemd-run --unit guest@test ... sleep
+      infinity`, `systemctl restart hostd`, nix/hosts/tests/default.nix),
+      EXIT=0 per STATUS 2026-09-20 m1-integration follow-up (a) line
+- [x] `ss -tlnp` shows nothing listening on the Azure NIC address except
+      sshd during bootstrap. Evidence: pasted. — closed: host-network VM test
+      subtest "sshd and node_exporter listen on wg0 only; nothing on the
+      provider NIC"; on host-01 security/review-2026-09-21.md (listeners on
+      10.255.0.2 only, sshd `ListenAddress 10.255.0.2:22`, M5-6)
+- [x] node_exporter answers on the `wg0` address and not on the Azure NIC.
+      Evidence: two curl outputs. — closed: host-network VM test (curl to
+      10.255.0.7:9100 succeeds, to the provider address fails,
+      nix/hosts/tests/default.nix); host-01 binding per
+      security/review-2026-09-21.md "Guest cannot reach host"
 - [ ] Fluent Bit ships a test line from journald to Loki and it is visible
       in Grafana with the `host` label. Evidence: screenshot or LogQL result.
-- [ ] `repose-register.service` with a real join token (a `hostdev` in a
+      — waits on: owner (the Loki URL and the monitoring peer,
+      10-observability §9); the VM test ships to a local Loki via logcli, the
+      Grafana view on a real host is not done
+- [x] `repose-register.service` with a real join token (a `hostdev` in a
       second test node, DECISIONS I-17) writes `host.json`, `cert.pem` and
       `key.pem` and deletes the token; running it again does nothing.
-      Evidence: pasted journal and `hostdev status`.
-- [ ] `nix/hosts/tests/` VM tests pass in CI. Evidence: CI.
+      Evidence: pasted journal and `hostdev status`. — closed: host-services
+      subtest "registration consumes the join token once and is idempotent"
+      against a real hostdev node, STATUS 2026-09-20 m1-integration follow-up
+      (a) done line (18:11Z, token consumed once, second refused, `hostd
+      status`); DECISIONS I-71, I-75
+- [ ] `nix/hosts/tests/` VM tests pass in CI. Evidence: CI. — open: no CI job
+      runs the host VM tests (ci.yml evaluates only); they pass on the dev
+      box's KVM (STATUS 2026-09-20 01/03-host-followup and m1-integration
+      follow-up (a) lines). Needs a KVM-capable CI runner or a recorded
+      decision that they run locally
 - [ ] `interfaces/host-conventions.md` matches every path and unit name in
-      the configuration. Evidence: a grep list in the PR.
-- [ ] `ops/RUNBOOK.md` has entries for: host unregistered, pool 80 percent,
-      store 80 percent, wg down, host reboot. Evidence: the entries.
-- [ ] No `TODO` in `nix/hosts/`. Evidence: `rg TODO nix/hosts` empty.
+      the configuration. Evidence: a grep list in the PR. — open: no grep list
+      of paths and unit names against nix/hosts was recorded in any commit or
+      STATUS line; needs the grep run and pasted
+- [x] `ops/RUNBOOK.md` has entries for: host unregistered, pool 80 percent,
+      store 80 percent, wg down, host reboot. Evidence: the entries. — closed:
+      ops/RUNBOOK.md "HostUnregistered", "PoolHigh (thin pool at 80 percent)",
+      "StoreHigh (store at 80 percent)", "HostWgDown", "Host rebooted"
+- [x] No `TODO` in `nix/hosts/`. Evidence: `rg TODO nix/hosts` empty. —
+      closed: `rg TODO nix/hosts` empty (exit 1) at d3b72d3, run by the upkeep
+      audit 2026-09-23

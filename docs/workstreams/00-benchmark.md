@@ -181,20 +181,35 @@ None needed. Everything is in a throwaway resource group.
 ## 9. Checklist
 
 - [ ] `nix/hosts/bench.nix` and `nix/guest/bench.nix` exist and `nix flake
-      check` passes. Evidence: CI output.
+      check` passes. Evidence: CI output. — superseded: DECISIONS I-12
+      (benchmark deferred; no bench.nix was written,
+      `nixosConfigurations.host-bench` exists in nix/flake.nix)
 - [ ] The bench host was created with `--security-type Standard` and
       `/dev/kvm` exists. Evidence: the `az vm show` output showing
       `securityProfile: null` and the `ls -l /dev/kvm` line, pasted in
-      RESEARCH.md.
+      RESEARCH.md. — superseded: DECISIONS I-12 (no bench host; host-01 has
+      /dev/kvm and nested virt per STATUS 2026-09-20 m1-integration done line,
+      RESEARCH §11)
 - [ ] The guest booted with the virtio-fs shared store, confirmed by `mount |
-      grep ro-store` inside the guest. Evidence: pasted output.
+      grep ro-store` inside the guest. Evidence: pasted output. — superseded:
+      DECISIONS I-12 (no bench guest; the shared store was verified on host-01
+      guests, STATUS 2026-09-20 m1-integration done line)
 - [ ] Docker inside the guest reports `overlay2`. Evidence: `docker info`
-      excerpt pasted.
+      excerpt pasted. — superseded: DECISIONS I-12 (no bench guest; overlay2
+      verified on host-01, STATUS 2026-09-20 m1-integration done line,
+      RESEARCH §11 docker pull row)
 - [ ] Every workload in the table ran three times on both machines.
-      Evidence: the two results JSON files with three entries per workload.
-- [ ] RESEARCH.md has the table, versions, verdict. Evidence: the section.
+      Evidence: the two results JSON files with three entries per workload. —
+      superseded: DECISIONS I-12 (no comparison run; RESEARCH §11 has host-01
+      absolute numbers instead)
+- [ ] RESEARCH.md has the table, versions, verdict. Evidence: the section. —
+      superseded: DECISIONS I-12 (RESEARCH §10 table stays empty; §11 records
+      host-01 timings and versions)
 - [ ] `DECISIONS.md` has entry I-0 with the verdict, even if the gate
       passed on D64s_v5 (the entry then says "no change"). Evidence: the
-      entry.
+      entry. — superseded: DECISIONS I-12 (I-12 records the deferral in place
+      of I-0)
 - [ ] The resource group was deleted or handed to 01 with a note in
-      `workstreams/STATUS.md`. Evidence: the STATUS line.
+      `workstreams/STATUS.md`. Evidence: the STATUS line. — superseded:
+      DECISIONS I-12 (no resource group was created; STATUS 2026-09-17
+      00-benchmark deferred line)
