@@ -276,6 +276,12 @@ func TestDockerDownWarnsOnce(t *testing.T) {
 	docker := &sysdep.FakeDocker{Up: false}
 	w := NewWatcher(p, run, docker, fixedSlug(""), rec, quietLog(), clk.now)
 
+	// Docker still starting at boot is not Docker down (I-161).
+	w.Refresh(context.Background())
+	if _, _, warns := rec.snapshot(); len(warns) != 0 {
+		t.Fatalf("warns inside the boot grace = %v, want none", warns)
+	}
+	clk.advance(DockerGrace)
 	for i := 0; i < 3; i++ {
 		w.Refresh(context.Background())
 	}
@@ -289,6 +295,23 @@ func TestDockerDownWarnsOnce(t *testing.T) {
 	sig, _ := w.Signals()
 	if sig.GetDockerContainers() != 4 {
 		t.Fatalf("docker_containers = %d, want 4", sig.GetDockerContainers())
+	}
+}
+
+// Once the socket has answered, a failure inside the grace is reported:
+// the grace covers Docker starting, not Docker dying.
+func TestDockerDownAfterItAnsweredWarnsInsideTheGrace(t *testing.T) {
+	p := sysdep.Paths{Root: t.TempDir()}
+	rec := &recorder{}
+	clk := &clock{t: time.Now()}
+	docker := &sysdep.FakeDocker{Up: true}
+	w := NewWatcher(p, sysdep.NewFakeRunner(), docker, fixedSlug(""), rec, quietLog(), clk.now)
+	w.Refresh(context.Background())
+	docker.Set(false, 0)
+	clk.advance(Interval)
+	w.Refresh(context.Background())
+	if _, _, warns := rec.snapshot(); len(warns) != 1 || warns[0] != WarnDockerDown {
+		t.Fatalf("warns = %v, want one %s", warns, WarnDockerDown)
 	}
 }
 

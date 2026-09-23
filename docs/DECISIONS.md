@@ -3240,3 +3240,28 @@ one) for most creates. `TestCreateReusesAClosureOnTheSameHost`.
 *Rejected:* a per-host cache keyed by a fragment hash (a table to keep in
 step with GC for what one indexed join answers), and sharing across hosts
 (the path would have to be copied, which is a build's cost again).
+
+**I-161. guestd and sshd no longer wait for Docker at boot.** (provision-speed,
+2026-09-23) m3-check's boot on host-01 (base 2026.09.21.x, small, a start):
+Cloud Hypervisor started 02:31:55.24, hostd `running` 02:32:09.38, 14.1 s.
+In the guest: kernel 0.84 s, initrd 4.21 s, then `docker.service`
+8.66 → 11.04 s, and guestd (`After=docker.service`), sshd (`After=guestd`)
+and everything behind them waited for it; after guestd started, Ready came
+at the second 0.5 s poll of `/proc/net/tcp` (11.69 s), `RegisterPaths`
+at 12.14 s, `repose-paths` saw its stamp at its next 0.5 s poll (12.65 s),
+home-manager ran 1.07 s, `systemd-user-sessions` lifted `/run/nologin` at
+13.79 s and SetupProject's `systemctl --user -M dev@` (a login session)
+returned at 13.85 s, which is when hostd says `running` and when an SSH
+login is first accepted. Nothing guestd does at boot needs Docker, so
+guestd is now ordered only after tmpfiles and `network.target`; Docker
+starts in parallel. guestd's `docker_down` warning waits 60 s from its
+start (`sample.DockerGrace`) unless the socket has answered once, so a
+Docker still starting is not reported as down. The Ready poll is 0.1 s
+(`guestd.ReadyPollInterval`) and so is `repose-paths`' wait: both sit on
+the path to the first login. Expected: about 2.4 s off every boot (create,
+start, restore, reboot) and up to 0.8 s more from the two polls, so
+CH-to-`running` from 14 s to about 11 s; confirmed on the host only after
+the next base publish. `TestDockerDownWarnsOnce` (no warning inside the
+grace), `TestDockerDownAfterItAnsweredWarnsInsideTheGrace`.
+*Rejected:* keeping guestd after Docker and moving only sshd
+(hostd's `running` waits for guestd's Ready either way).
