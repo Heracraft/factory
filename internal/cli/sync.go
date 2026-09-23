@@ -82,14 +82,39 @@ func (e *dirtyTreeError) Error() string {
 // guestProbe is what the first round trip learns about the guest's
 // checkout.
 type guestProbe struct {
-	dirty     []string
-	tips      []string // every commit a ref (or HEAD) in the guest points at
-	hasOrigin bool
-	markers   map[string]string // the carry's markers (carry.go)
+	dirty []string
+	// syncedOnly is a dirty tree that is exactly what the last sync left
+	// (I-210): the laptop's own diff and untracked files, no agent work.
+	syncedOnly bool
+	tips       []string // every commit a ref (or HEAD) in the guest points at
+	hasOrigin  bool
+	markers    map[string]string // the carry's markers (carry.go)
 }
 
+// syncedFP is the shell function that fingerprints the checkout as it
+// stands (I-210): HEAD and the tree `git add -A` would record, index and
+// working tree and every untracked file that is not ignored, built in a
+// copy of the index so the real one is untouched and only changed files
+// are hashed. The apply stores it after laying down the laptop's diff and
+// untracked files; the next probe compares, so the tree the sync itself
+// made dirty is not taken for an agent's work.
+const syncedFP = `repose_fp() {
+  i=$(mktemp)
+  x=$(git rev-parse --git-path index)
+  if [ -f "$x" ]; then cp "$x" "$i"; else rm -f "$i"; fi
+  if GIT_INDEX_FILE=$i git add -A >/dev/null 2>&1 && tr=$(GIT_INDEX_FILE=$i git write-tree 2>/dev/null); then
+    printf '%s %s\n' "$(git rev-parse -q --verify HEAD || echo none)" "$tr"
+  else
+    echo failed
+  fi
+  rm -f "$i"
+}
+repose_synced=$(git rev-parse --git-path repose-synced)
+`
+
 // probeScript creates the checkout if it is missing (an empty guest, or
-// one whose SetupProject has not run), then reports the dirty list, the
+// one whose SetupProject has not run), then reports the dirty list,
+// whether that dirt is only what the last sync wrote (I-210), the
 // commits the guest has refs to, and whether it has an origin. One ssh.
 func probeScript(slug string) string {
 	return fmt.Sprintf(`set -e
@@ -97,14 +122,18 @@ d=~/%s
 mkdir -p "$d"
 cd "$d"
 [ -d .git ] || git init -q
+%s
+st=$(git status --porcelain)
 echo '#status'
-git status --porcelain
+[ -z "$st" ] || printf '%%s\n' "$st"
+echo '#synced'
+if [ -n "$st" ] && [ -s "$repose_synced" ] && [ "$(repose_fp)" = "$(cat "$repose_synced")" ]; then echo yes; fi
 echo '#tips'
 git for-each-ref --format='%%(objectname)'
 git rev-parse -q --verify HEAD || true
 echo '#origin'
 git remote get-url origin >/dev/null 2>&1 && echo yes || true
-%s`, slug, markerScript())
+%s`, slug, syncedFP, markerScript())
 }
 
 func parseProbe(out string) guestProbe {
@@ -116,7 +145,7 @@ func parseProbe(out string) guestProbe {
 			continue
 		}
 		switch l {
-		case "#status", "#tips", "#origin":
+		case "#status", "#synced", "#tips", "#origin":
 			section = l
 			continue
 		}
@@ -126,6 +155,8 @@ func parseProbe(out string) guestProbe {
 		switch section {
 		case "#status":
 			p.dirty = append(p.dirty, l)
+		case "#synced":
+			p.syncedOnly = strings.TrimSpace(l) == "yes"
 		case "#tips":
 			if t := strings.TrimSpace(l); !seen[t] {
 				seen[t] = true
@@ -164,7 +195,7 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		return nil, stepFailed("read the guest's checkout", err, "")
 	}
 	probe := parseProbe(string(out))
-	if len(probe.dirty) > 0 && !opts.StashRemote && !opts.DiscardRemote {
+	if len(probe.dirty) > 0 && !probe.syncedOnly && !opts.StashRemote && !opts.DiscardRemote {
 		return nil, &exitError{code: ExitDirtyRemoteTree, msg: (&dirtyTreeError{files: probe.dirty}).Error()}
 	}
 	if opts.BeforeApply != nil {
@@ -302,9 +333,14 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		return nil, err
 	}
 
-	script := applyScript(slug, head, branch, track, bundleRefs, len(bundleRefs) > 0, opts, probe) + envScript
+	script := applyScript(slug, head, branch, track, bundleRefs, len(bundleRefs) > 0, opts, probe) + envScript + recordSyncedScript
 	res, err := runSSH(ctx, t, script, payload)
 	if err != nil {
+		if se, ok := err.(*sshError); ok && strings.Contains(se.Stderr, syncedChanged) {
+			// An agent wrote between the probe and the apply: its work
+			// now, not the last sync's, so it is refused like any other.
+			return nil, &exitError{code: ExitDirtyRemoteTree, msg: (&dirtyTreeError{files: probe.dirty}).Error()}
+		}
 		if se, ok := err.(*sshError); ok && (strings.Contains(se.Stderr, "patch does not apply") || strings.Contains(se.Stderr, "patch failed")) {
 			return nil, stepFailed("apply your uncommitted changes in the guest", err, "Commit or stash them on the laptop and run again.")
 		}
@@ -334,9 +370,16 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 func applyScript(slug, head, branch, track string, bundleRefs []string, hasBundle bool, opts SyncOptions, probe guestProbe) string {
 	var b strings.Builder
 	_, _ = fmt.Fprintf(&b, "set -e\ncd ~/%s\n", slug)
+	b.WriteString(syncedFP)
 	b.WriteString("t=$(mktemp -d)\ntrap 'rm -rf \"$t\"' EXIT\ntar -x -C \"$t\"\n")
 	if len(probe.dirty) > 0 {
 		switch {
+		case probe.syncedOnly:
+			// The last sync's own changes, which the laptop still has (or
+			// has replaced): set them aside the way --discard-remote
+			// does, but only if nothing moved since the probe looked.
+			_, _ = fmt.Fprintf(&b, "if [ \"$(repose_fp)\" != \"$(cat \"$repose_synced\" 2>/dev/null)\" ]; then echo %s >&2; exit 3; fi\n", shQuote(syncedChanged))
+			b.WriteString("git reset -q --hard\ngit clean -fdq\n")
 		case opts.StashRemote:
 			b.WriteString("git stash push -q -u -m 'repose run'\n")
 		case opts.DiscardRemote:
@@ -373,6 +416,22 @@ fi
 	b.WriteString("if [ -f \"$t/untracked.tar\" ]; then tar -x -f \"$t/untracked.tar\"; fi\n")
 	return b.String()
 }
+
+// syncedChanged is the apply's stderr when the tree it was told was the
+// last sync's own changed after the probe.
+const syncedChanged = "repose: the guest's tree changed since the sync looked at it"
+
+// recordSyncedScript ends the apply: when the sync left the tree dirty
+// (the laptop's diff, its untracked files), the fingerprint of that
+// state is stored in the checkout's .git, for the next probe (I-210);
+// a clean tree needs none.
+const recordSyncedScript = `if [ -n "$(git status --porcelain | head -n 1)" ]; then
+  fp=$(repose_fp)
+  if [ "$fp" = failed ]; then rm -f "$repose_synced"; else printf '%s\n' "$fp" > "$repose_synced"; fi
+else
+  rm -f "$repose_synced"
+fi
+`
 
 // originURLFor is guestd's rule for the origin it sets (internal/guestd/
 // project originURL, I-107): the api's normalised "host/owner/repo"

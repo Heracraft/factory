@@ -57,6 +57,17 @@ to look first.
   push -u -m "repose run"` in the guest first; `--discard-remote` runs
   `git reset --hard && git clean -fd`. Neither asks for confirmation —
   the flag itself is the confirmation.
+- The laptop's own changes are not an agent's (DECISIONS I-210). A sync
+  that carried a modified or untracked file leaves the guest's tree dirty
+  by construction, so the apply records a fingerprint of the tree it left
+  (`HEAD` plus the tree `git add -A` would write, in the checkout's
+  `.git/repose-synced`). When the next probe finds the tree dirty and the
+  fingerprint unchanged, the run goes on: the apply sets those changes
+  aside (`git reset --hard && git clean -fd`) and lays down the laptop's
+  current ones. An edit to a synced file, a new file or a commit in the
+  guest changes the fingerprint and refuses as above, including one made
+  between the probe and the apply. Both checks ride the two existing ssh
+  round trips.
 - The guest never fetches from origin during a sync: it has no
   credentials for a private repository, nor for a public one behind the
   SSH `origin` guestd sets (DECISIONS I-150). The laptop sends the commits

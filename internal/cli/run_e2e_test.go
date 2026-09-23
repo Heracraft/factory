@@ -218,3 +218,87 @@ func TestRunDirtyRemoteTreeRefusesWithExitSix(t *testing.T) {
 		t.Fatalf("err = %v, want an exitError with code %d", err, ExitDirtyRemoteTree)
 	}
 }
+
+// I-210: a run that synced a modified file and an untracked one leaves
+// the guest tree dirty by construction; the next run from the same
+// laptop must go through, and a change an agent then makes in the guest
+// must still refuse with exit 6.
+func TestRunTwiceWithADirtyLaptopTree(t *testing.T) {
+	fake := fakeapi.New(fakeapi.Options{})
+	defer fake.Close()
+	f := newRunFixture(t, fake)
+	ctx := context.Background()
+	write := func(dir, rel, body string) {
+		t.Helper()
+		p := filepath.Join(dir, rel)
+		_ = os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(f.local, "README.md", "edited on the laptop\n")
+	write(f.local, "notes/todo.md", "untracked on the laptop\n")
+	newEnv := func() *Env {
+		return &Env{
+			Dir: f.env.Dir, Cfg: f.env.Cfg, Cache: f.env.Cache, Cwd: f.local, HomeDir: f.env.HomeDir,
+			Client: f.env.Client, Out: &discardWriter{}, ErrOut: &discardWriter{}, TargetFor: f.env.TargetFor,
+		}
+	}
+
+	if err := runRun(ctx, f.env, RunOptions{Name: testSlug, NoAttach: true}, false); err != nil {
+		t.Fatalf("first runRun: %v", err)
+	}
+	if st := mustRun(t, f.guestRepo(), "git", "status", "--porcelain"); !strings.Contains(st, "README.md") || !strings.Contains(st, "notes/") {
+		t.Fatalf("the first sync did not leave the laptop's changes in the guest: %q", st)
+	}
+	// The same laptop tree, and then one edited further: both go through.
+	if err := runRun(ctx, newEnv(), RunOptions{NoAttach: true}, false); err != nil {
+		t.Fatalf("second runRun with the same laptop tree: %v", err)
+	}
+	write(f.local, "README.md", "edited again on the laptop\n")
+	if err := runRun(ctx, newEnv(), RunOptions{NoAttach: true}, false); err != nil {
+		t.Fatalf("third runRun after a laptop edit: %v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(f.guestRepo(), "README.md")); string(b) != "edited again on the laptop\n" {
+		t.Fatalf("guest README.md = %q", b)
+	}
+
+	// An agent's changes: a synced file edited, then a new file. Each
+	// refuses, and nothing in the guest is touched.
+	for _, change := range []struct{ rel, body string }{{"notes/todo.md", "the agent's edit\n"}, {"agent-scratch.txt", "new\n"}} {
+		write(f.guestRepo(), change.rel, change.body)
+		err := runRun(ctx, newEnv(), RunOptions{NoAttach: true}, false)
+		ee, ok := err.(*exitError)
+		if !ok || ee.code != ExitDirtyRemoteTree {
+			t.Fatalf("after the agent wrote %s: err = %v, want exit %d", change.rel, err, ExitDirtyRemoteTree)
+		}
+		if b, _ := os.ReadFile(filepath.Join(f.guestRepo(), change.rel)); string(b) != change.body {
+			t.Fatalf("%s changed by a refused run: %q", change.rel, b)
+		}
+	}
+}
+
+// I-210's race: the tree matched the last sync when the probe looked, and
+// an agent wrote before the apply; the apply notices and refuses rather
+// than resetting the agent's work away.
+func TestSyncRefusesWhenTheGuestChangesAfterTheProbe(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	if err := os.WriteFile(filepath.Join(f.local, "README.md"), []byte("laptop\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := syncGuest(ctx, f.target, f.local, testSlug, SyncOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	agent := filepath.Join(f.guestRepo(), "README.md")
+	_, err := syncGuest(ctx, f.target, f.local, testSlug, SyncOptions{BeforeApply: func(map[string]string) error {
+		return os.WriteFile(agent, []byte("the agent, mid-sync\n"), 0o644)
+	}})
+	ee, ok := err.(*exitError)
+	if !ok || ee.code != ExitDirtyRemoteTree {
+		t.Fatalf("err = %v, want exit %d", err, ExitDirtyRemoteTree)
+	}
+	if b, _ := os.ReadFile(agent); string(b) != "the agent, mid-sync\n" {
+		t.Fatalf("the agent's write was lost: %q", b)
+	}
+}

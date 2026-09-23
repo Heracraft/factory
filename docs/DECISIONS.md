@@ -4576,6 +4576,31 @@ next base publish; until then a config apply or a base bump on a running
 guest fails at the switch. `TestPathsAreAbsoluteOnARealGuest`, and the
 guestd VM test's "Switch applies a new generation" subtest.
 
+**I-210. A guest tree that is exactly what the last sync left is not
+dirty.** (ws15-fixes, 2026-09-23; reported by the 15-dev-ergonomics
+session) The sync applies the laptop's diff with `git apply --index` and
+extracts its untracked files into the checkout (I-150), so after any run
+that carried a modified or untracked file the guest's tree is dirty by
+construction, and the next `repose run` refused with exit 6 as if an
+agent were working. Now the end of the apply ssh stores, when the tree
+it leaves is dirty, a fingerprint of it in the checkout's
+`.git/repose-synced`: `HEAD` and the tree `git add -A` would record
+(index, working tree and every non-ignored untracked file), written
+through a copy of the index so the real one is untouched and only
+changed files are hashed. The next probe computes the same fingerprint
+when `git status --porcelain` is non-empty; equal means the dirt is the
+laptop's own, so the run goes on and the apply sets it aside with `git
+reset --hard && git clean -fd` before laying down the new diff (the
+laptop still has those changes, or newer ones). Anything else, an edited
+synced file, a new file, a commit, is an agent's work and still refuses.
+The apply computes the fingerprint again before it resets, and refuses
+with exit 6 if an agent wrote between the two ssh round trips. No ssh
+is added: both checks ride the existing probe and apply. *Rejected:* a
+list of the paths the sync wrote (an agent's edit to one of them would
+look like the sync's); `git stash create` (it leaves untracked files
+out); keeping the fingerprint on the laptop (wrong after a run from a
+second laptop, as I-206 found for the carry markers).
+
 **I-211. The carry leaves every secret on the laptop, by key as well as
 by file.** (ws15-fixes, 2026-09-23; the conductor's review of workstream
 15) I-195 and I-196 named files and sections, and two kinds of secret
