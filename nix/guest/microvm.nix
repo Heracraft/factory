@@ -70,6 +70,8 @@ let
         repose.baseVersion = baseVersion;
         repose.fragment = fragmentModule;
         repose.prePassPkgs = prePassPkgs;
+        # command-not-found's and nix-locate's prebuilt index (I-219).
+        repose.nixIndexPackage = self.inputs.nix-index-database.packages.${system}.nix-index-with-small-db;
       }
       (lib.mkIf (guestd != null) { repose.guestd.package = guestd; })
       (lib.mkIf (hook != null) { repose.hookPackage = hook; })

@@ -15,6 +15,13 @@
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # The prebuilt nix-index database the guest's command-not-found and
+    # nix-locate read (DECISIONS I-219): the index is a fixed-output fetch,
+    # so a lookup in the guest never touches the network.
+    nix-index-database = {
+      url = "github:nix-community/nix-index-database";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     # The user fragment for `guestSystem`. The placeholder keeps the lock
     # file valid; hostd overrides it per Build with
     # `--override-input fragment path:/var/lib/repose/builds/<rev>`
@@ -25,7 +32,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, home-manager, microvm, disko, fragment }:
+  outputs = { self, nixpkgs, home-manager, microvm, disko, nix-index-database, fragment }:
     let
       system = "x86_64-linux";
       lib = nixpkgs.lib;
@@ -64,6 +71,7 @@
         inherit pkgs lib baseVersion;
         guestBase = self.nixosModules.guestBase;
         inherit guestd reposeHook;
+        nixpkgsSource = nixpkgs.outPath;
       };
 
       hostModules = [
@@ -111,6 +119,11 @@
       # and docs/workstreams/12-nix-config-pipeline.md
       nixosModules.guestBase = {
         imports = [ ./guest/base ];
+        # What lib.nixosSystem sets for the runner, for users of the module
+        # outside it (the VM tests): `nixpkgs` in the guest's registry is
+        # this flake's nixpkgs (DECISIONS I-218).
+        nixpkgs.flake.source = lib.mkDefault nixpkgs.outPath;
+        repose.nixIndexPackage = lib.mkDefault nix-index-database.packages.${system}.nix-index-with-small-db;
         repose.baseVersion = lib.mkDefault baseVersion;
         repose.guestd.package = lib.mkDefault guestd;
         repose.hookPackage = lib.mkDefault reposeHook;

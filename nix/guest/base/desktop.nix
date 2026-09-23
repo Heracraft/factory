@@ -13,8 +13,20 @@ let
   display = ":99";
   dir = "/run/repose/desktop";
   # python312 is in the closure already (tools.nix); no second interpreter.
-  websockify = pkgs.python312Packages.websockify;
-  novncWeb = "${pkgs.novnc}/share/webapps/novnc";
+  # numpy is optional in websockify (it only speeds up unmasking what the
+  # browser sends: keys and pointer moves) and costs about 480 MB of
+  # closure with openblas, so it is dropped (DECISIONS I-218).
+  websockify = pkgs.python312Packages.websockify.overridePythonAttrs (o: {
+    dependencies = lib.filter (d: (d.pname or "") != "numpy") o.dependencies;
+    dontCheckRuntimeDeps = true;
+    doCheck = false;
+  });
+  # Only the web client's static files: `${pkgs.novnc}` itself carries a
+  # novnc_proxy wrapper that pulls in a second Python (3.14) and websockify.
+  novncWeb = "${pkgs.runCommand "novnc-web" { } ''
+    mkdir -p $out
+    cp -r ${pkgs.novnc}/share/webapps/novnc/. $out/
+  ''}";
   idleSeconds = 1800;
 
   genPassword = pkgs.writeShellApplication {
@@ -68,7 +80,7 @@ let
   };
 in
 {
-  environment.systemPackages = with pkgs; [ xvfb openbox x11vnc websockify novnc ];
+  environment.systemPackages = [ pkgs.xvfb pkgs.openbox pkgs.x11vnc websockify ];
 
   systemd.services.repose-xvfb = lib.recursiveUpdate common {
     description = "repose desktop: Xvfb ${display}";

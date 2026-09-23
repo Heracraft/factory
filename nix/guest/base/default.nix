@@ -16,6 +16,7 @@
     ./caches.nix
     ./tmux.nix
     ./tools.nix
+    ./devtools.nix
     ./agents.nix
     ./browser.nix
     ./desktop.nix
@@ -38,5 +39,7 @@
   # nothing that only serves `nixos-rebuild` inside the guest is installed.
   documentation.enable = false;
   documentation.nixos.enable = false;
+  # NixOS's own handler reads a channel's programs.sqlite, which a flake
+  # system does not have; devtools.nix installs the nix-index one (I-219).
   programs.command-not-found.enable = false;
 }

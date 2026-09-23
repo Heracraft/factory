@@ -4792,3 +4792,86 @@ The preview script, the shortcut and the Vite `/fakeapi` proxy are
 removed. The fakes stay for the Playwright suite only. The cost: a dev
 server's buttons act on the signed-in account, so anything destructive is
 tried on an `e2e-` project.
+
+**I-218. The guest base has a C toolchain, the everyday CLIs, nix-ld,
+and `nixpkgs` pinned to its own nixpkgs.** (guest tooling, 2026-09-23)
+The owner's first real project (a pnpm/turbo Next.js and Go-wasm
+monorepo) hit `cgo: C compiler "gcc" not found` on `go install air`,
+and the same gap breaks rustup's linking, node-gyp and Python C
+extensions; prebuilt binaries that npm or an install script downloads
+(prisma engines, biome, Playwright's own browsers) failed because the
+guest has no `/lib64/ld-linux-x86-64.so.2`.
+- *Toolchain* (`nix/guest/base/tool-list.nix`): `gcc` (the wrapper: cc,
+  gcc, g++, c++ against the guest's glibc), binutils, gnumake,
+  pkg-config, cmake. gcc is most of the cost (+319 MB); cmake +74 MB is
+  kept because CMake builds are the common native-addon path (and
+  `nix shell` would re-fetch it on every use).
+- *CLIs*, each cheap and each something a developer reaches for on any
+  Linux box that the base lacked on PATH: file, lsof, zip, dnsutils (dig,
+  nslookup), sqlite (sqlite3), psql with pg_dump/pg_dumpall/pg_restore/
+  pg_isready only (a symlink set from postgresql, so no server binary is
+  on PATH; a database is a menu service), openssl, gnupg (git commit
+  signing), psmisc (killall). Already present and not added: unzip, nc,
+  patch, less, man, strace, rsync, which, host, python3 with venv.
+  Considered and left to `nix shell`: gdb, valgrind, autotools.
+- *nix-ld* (`nix/guest/base/devtools.nix`): enabled with the module's
+  default set plus icu, expat, libffi, ncurses, readline, krb5, and the
+  libraries Chromium's headless shell loads (glib, nss, nspr, dbus, atk,
+  at-spi2, cups, libdrm, libgbm, libglvnd, libxkbcommon, pango, cairo,
+  alsa-lib, freetype, fontconfig, gtk3, the X11 client libs). Nearly all
+  are in the closure already through chromium.
+- *Registry*: `nixpkgs.flake.source` is the flake's nixpkgs (set by
+  lib.nixosSystem for the runner and by `nixosModules.guestBase` for the
+  VM tests; the base asserts it), so `nixpkgs` in the system registry and
+  NIX_PATH is the base's nixpkgs source, already in the closure
+  (205 MB). `nix profile add nixpkgs#X` evaluates offline and substitutes
+  X at the base's revision. `nix.settings.flake-registry = ""`: nix
+  otherwise downloads channels.nixos.org's global registry before
+  resolving `nixpkgs#` even with the system entry, and without network
+  that was a hang of over a minute ending in an error (seen in the VM test). The cost:
+  other indirect names (`templates#`, `home-manager#`) need a `github:`
+  URL in the guest.
+- *Closure budget*: the 6 GiB check (02 §7) had 400 MB of room, less
+  than the additions. The desktop's noVNC was the cheapest cut:
+  `pkgs.novnc` in systemPackages brought a second Python (3.14) through
+  its novnc_proxy wrapper, and websockify's optional numpy brought
+  numpy twice plus openblas, blas and lapack. The base now serves only
+  noVNC's static files (copied out of the package) and runs websockify
+  without numpy, which only speeds up unmasking what the browser sends
+  (keys, pointer). `guest-desktop` still passes. Python 3.14 stays in the
+  closure through git. Net: 6,017,269,544 to 6,165,108,296 bytes
+  (+148 MB, 5.6 to 5.7 GiB).
+
+**I-219. An unknown command in the guest names the nixpkgs package that
+has it.** (guest tooling, 2026-09-23) The owner typed `air` and `tsc`
+and got bash's bare "command not found"; NixOS's own command-not-found
+reads a channel's programs.sqlite, which a flake-built system does not
+have, so the base had it disabled. The base now takes nix-index-database
+(github:nix-community/nix-index-database, pinned in `nix/flake.lock`,
+nixpkgs following ours) and installs `nix-index-with-small-db`: the
+/bin-only index as a fixed-output file in the closure, so a lookup never
+touches the network (0.07 s in the VM). The index is built weekly from
+nixpkgs-unstable, not from the base's revision; an attribute that exists
+in one and not the other is rare and fails visibly at install.
+`repose-command-not-found` is bash's `command_not_found_handle` (also
+zsh's and fish's if a fragment enables them) and prints, on stderr, with
+exit 127:
+
+```
+air is not installed. It is in the nixpkgs package air:
+  now, in this guest:              nix profile add nixpkgs#air
+  from your laptop, kept for good: repose config add air
+```
+
+plus `Also in: a, b` when other packages have the same binary (the
+package named like the command wins, else the first). `nix profile add`
+rather than `install`, which this nix prints as a deprecated alias. A
+command nixpkgs lacks gets the plain `<cmd>: command not found`. While a
+background installer works, it lists command names, one per line, in
+`/run/user/<uid>/repose-installing`; a listed name gets `<cmd> is still
+being installed; try again in a moment` instead. `nix-locate` is on PATH
+for other guest tooling; the invocation that maps a binary to an
+attribute is `nix-locate --minimal --no-group --type x --type s
+--whole-name --at-root /bin/<cmd>` (nix-index 0.1.11 has no
+`--top-level`; only top-level attributes are listed unless `--all`), one
+`attr.output` per line, e.g. `cowsay.out`. Cost: about 30 MB of closure.

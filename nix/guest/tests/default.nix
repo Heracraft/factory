@@ -4,7 +4,7 @@
 # overlay upper), so the overlay logic is tested without Cloud Hypervisor.
 # guestd is replaced by a fake that owns /run/repose/hooks.sock and records
 # every POST, because workstream 04's binary is not part of this base.
-{ pkgs, lib, baseVersion, guestBase, guestd, reposeHook }:
+{ pkgs, lib, baseVersion, guestBase, guestd, reposeHook, nixpkgsSource }:
 let
   fakeGuestd = pkgs.writers.writePython3Bin "fake-guestd" { } ''
     import json
@@ -90,6 +90,24 @@ let
     hooks.Stop = [ { matcher = ""; hooks = [ { type = "command"; command = "echo user-hook"; } ]; } ];
     permissions.allow = [ "Bash(ls:*)" ];
   };
+
+  # A dynamically linked program as a download would be: interpreter
+  # /lib64/ld-linux-x86-64.so.2 and no rpath, so it finds neither the
+  # loader nor libz without nix-ld (I-218).
+  foreignElf = pkgs.runCommandCC "foreign-elf" {
+    nativeBuildInputs = [ pkgs.patchelf ];
+    buildInputs = [ pkgs.zlib ];
+  } ''
+    cat > m.c <<'EOF'
+    #include <stdio.h>
+    #include <zlib.h>
+    int main(void) { printf("foreign ok zlib %s\n", zlibVersion()); return 0; }
+    EOF
+    $CC m.c -lz -o foreign
+    patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 --remove-rpath foreign
+    mkdir -p $out/bin
+    cp foreign $out/bin/
+  '';
 
   mkTest = name: attrs: pkgs.testers.runNixOSTest ({ inherit name; } // attrs);
 
@@ -312,6 +330,102 @@ in
           guest.succeed("sudo -H -u dev XDG_RUNTIME_DIR=/run/user/1000 systemctl --user start repose-npm-registry.service")
           assert guest.succeed("cat /home/dev/.npmrc").strip() == "registry=https://user.example/"
           assert guest.succeed("cat /home/dev/.repose/npm-registry").strip() == "own"
+    '';
+  };
+
+  # I-218 and I-219: the C toolchain (cc, cgo), the everyday CLIs, nix-ld
+  # running a foreign ELF, the pinned nixpkgs registry, and
+  # command-not-found with its install hints.
+  guest-devtools = mkTest "guest-devtools" {
+    nodes.guest = node;
+    testScript = ''
+      guest.start()
+      guest.wait_for_unit("multi-user.target")
+
+      import shlex
+
+      def dev(cmd):
+          return guest.succeed(f"sudo -H -u dev bash -lc {shlex.quote(cmd)}")
+
+      with subtest("I-218: C toolchain, cc links, cgo builds"):
+          for tool in ["cc", "gcc", "g++", "c++", "ld", "ar", "make", "cmake", "pkg-config"]:
+              dev(f"command -v {tool}")
+          guest.succeed("install -d -o dev -g dev /tmp/c /tmp/cgo")
+          guest.succeed("""cat > /tmp/c/hello.c <<'EOF'
+      #include <stdio.h>
+      int main(void) { printf("hello from cc\\n"); return 0; }
+      EOF
+      cat > /tmp/c/hello.cc <<'EOF'
+      #include <iostream>
+      int main() { std::cout << "hello from c++" << std::endl; }
+      EOF
+      cat > /tmp/cgo/main.go <<'EOF'
+      package main
+
+      // int add(int a, int b) { return a + b; }
+      import "C"
+      import "fmt"
+
+      func main() { fmt.Println("cgo says", C.add(40, 2)) }
+      EOF
+      chown -R dev:dev /tmp/c /tmp/cgo""")
+          assert dev("cd /tmp/c && cc -o hello hello.c && ./hello").strip() == "hello from cc"
+          assert dev("cd /tmp/c && g++ -o hellocc hello.cc && ./hellocc").strip() == "hello from c++"
+          out = dev("cd /tmp/cgo && CGO_ENABLED=1 GOTOOLCHAIN=local GOFLAGS=-mod=mod GOCACHE=/tmp/cgo/cache go build -o cgo main.go && ./cgo")
+          assert out.strip() == "cgo says 42", out
+          # rustup cannot fetch a toolchain in the sandbox; what it needs
+          # from the base is a linker driver named cc.
+          dev("command -v cc && command -v rustup")
+
+      with subtest("I-218: everyday CLIs"):
+          for tool in ["file", "lsof", "zip", "unzip", "dig", "nslookup", "nc", "sqlite3", "psql", "pg_dump", "openssl", "gpg", "patch", "less", "strace", "rsync", "killall", "readelf"]:
+              dev(f"command -v {tool}")
+          # psql only: no server binaries on PATH.
+          guest.fail("sudo -H -u dev bash -lc 'command -v postgres'")
+          guest.fail("sudo -H -u dev bash -lc 'command -v initdb'")
+
+      with subtest("I-218: nix-ld runs a prebuilt foreign ELF"):
+          interp = guest.succeed("readelf -l ${foreignElf}/bin/foreign | grep 'program interpreter'")
+          assert "/lib64/ld-linux-x86-64.so.2" in interp, interp
+          guest.succeed("test -e /lib64/ld-linux-x86-64.so.2")
+          out = dev("${foreignElf}/bin/foreign")
+          assert out.startswith("foreign ok zlib "), out
+
+      with subtest("I-218: nixpkgs is the base's own, offline"):
+          reg = dev("nix registry list")
+          print(reg)
+          line = [l for l in reg.splitlines() if l.startswith("system flake:nixpkgs ")]
+          assert line == ["system flake:nixpkgs path:${nixpkgsSource}"], reg
+          assert "nixpkgs=flake:nixpkgs" in dev("echo $NIX_PATH")
+          ver = dev("timeout 120 nix eval --raw nixpkgs#hello.version")
+          assert ver.strip() == "${pkgs.hello.version}", ver
+
+      with subtest("I-219: nix-locate maps a binary to its attribute"):
+          attrs = dev("nix-locate --minimal --no-group --type x --type s --whole-name --at-root /bin/cowsay")
+          assert "cowsay.out" in attrs.split(), attrs
+          assert dev("nix-locate --minimal --no-group --type x --type s --whole-name --at-root /bin/reposenosuchcommand").strip() == ""
+
+      with subtest("I-219: an unknown command that nixpkgs has prints the hint"):
+          out = guest.succeed("sudo -H -u dev bash -ic 'cowsay hi; echo status=$?' 2>&1 || true")
+          print(out)
+          assert "cowsay is not installed. It is in the nixpkgs package cowsay:" in out, out
+          assert "nix profile add nixpkgs#cowsay" in out, out
+          assert "repose config add cowsay" in out, out
+          assert "status=127" in out, out
+
+      with subtest("I-219: a truly unknown command prints the plain not-found"):
+          out = guest.succeed("sudo -H -u dev bash -ic 'reposenosuchcommand; echo status=$?' 2>&1 || true")
+          print(out)
+          assert "reposenosuchcommand: command not found" in out, out
+          assert "nixpkgs#" not in out, out
+          assert "status=127" in out, out
+
+      with subtest("I-219: a command being installed says so"):
+          guest.succeed("echo cowsay > /run/user/1000/repose-installing && chown dev:dev /run/user/1000/repose-installing")
+          out = guest.succeed("sudo -H -u dev bash -ic 'cowsay hi' 2>&1 || true")
+          assert "cowsay is still being installed; try again in a moment" in out, out
+          assert "nixpkgs#" not in out, out
+          guest.succeed("rm /run/user/1000/repose-installing")
     '';
   };
 
