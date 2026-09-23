@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"archive/tar"
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -53,11 +51,17 @@ type credSyncOptions struct {
 // before the git steps of the sync so the guest's git already knows who
 // the user is and how to reach github when the checkout lands.
 func syncCredentials(ctx context.Context, t sshTarget, homeDir, repoDir string, opts credSyncOptions) ([]string, error) {
+	copied, _, err := syncCredentialsAndCarry(ctx, t, homeDir, repoDir, opts, carryOptions{})
+	return copied, err
+}
+
+// syncCredentialsAndCarry is syncCredentials with the carry's parts
+// (carry.go) in the same payload, so `run` carries the laptop's config
+// without a round trip of its own. A carry part that fails is reported in
+// the outcome and never fails the credentials.
+func syncCredentialsAndCarry(ctx context.Context, t sshTarget, homeDir, repoDir string, opts credSyncOptions, co carryOptions) ([]string, *carryOutcome, error) {
 	var copied []string
-	var buf bytes.Buffer
-	tw := tar.NewWriter(&buf)
-	var script strings.Builder
-	script.WriteString("set -e\nt=$(mktemp -d)\ntrap 'rm -rf \"$t\"' EXIT\ntar -x -C \"$t\"\n")
+	p := newGuestPayload()
 
 	ghCopied := false
 	for i, row := range credRows {
@@ -67,15 +71,15 @@ func syncCredentials(ctx context.Context, t sshTarget, homeDir, repoDir string, 
 			if os.IsNotExist(err) {
 				continue
 			}
-			return nil, fmt.Errorf("reading %s: %w", local, err)
+			return nil, nil, fmt.Errorf("reading %s: %w", local, err)
 		}
 		if row.Label == "gh" {
 			b = ghHostsWithToken(b, opts.ghToken)
 			ghCopied = true
 		}
 		name := fmt.Sprintf("c%d", i)
-		if err := tarAddBytes(tw, name, b); err != nil {
-			return nil, err
+		if err := p.file(name, b); err != nil {
+			return nil, nil, err
 		}
 		// features/secrets.md: never overwrite a guest file newer than the
 		// laptop's (a login done inside the guest would be clobbered);
@@ -86,8 +90,8 @@ func syncCredentials(ctx context.Context, t sshTarget, homeDir, repoDir string, 
 			mtime = info.ModTime().Unix()
 		}
 		guestPath := "~/" + filepath.ToSlash(row.Rel)
-		_, _ = fmt.Fprintf(&script, "d=%s\nif [ -e \"$d\" ] && [ \"$(stat -c %%Y \"$d\")\" -gt %d ]; then echo '#kept %s'; else mkdir -p %s && install -m %o \"$t/%s\" \"$d\" && touch -d @%d \"$d\"; fi\n",
-			guestPath, mtime, row.Label, filepath.ToSlash(filepath.Dir(guestPath)), row.Mode.Perm(), name, mtime)
+		p.line(fmt.Sprintf("d=%s\nif [ -e \"$d\" ] && [ \"$(stat -c %%Y \"$d\")\" -gt %d ]; then echo '#kept %s'; else mkdir -p %s && install -m %o \"$t/%s\" \"$d\" && touch -d @%d \"$d\"; fi",
+			guestPath, mtime, row.Label, filepath.ToSlash(filepath.Dir(guestPath)), row.Mode.Perm(), name, mtime))
 		copied = append(copied, row.Label)
 	}
 
@@ -96,44 +100,53 @@ func syncCredentials(ctx context.Context, t sshTarget, homeDir, repoDir string, 
 	if name != "" || email != "" {
 		// Through files in the payload, not the command line: the values
 		// are the user's and do not belong in a process listing.
-		if err := tarAddBytes(tw, "git-name", []byte(name)); err != nil {
-			return nil, err
+		if err := p.file("git-name", []byte(name)); err != nil {
+			return nil, nil, err
 		}
-		if err := tarAddBytes(tw, "git-email", []byte(email)); err != nil {
-			return nil, err
+		if err := p.file("git-email", []byte(email)); err != nil {
+			return nil, nil, err
 		}
-		script.WriteString("git config --global user.name \"$(cat \"$t/git-name\")\"\n")
-		script.WriteString("git config --global user.email \"$(cat \"$t/git-email\")\"\n")
+		p.line("git config --global user.name \"$(cat \"$t/git-name\")\"")
+		p.line("git config --global user.email \"$(cat \"$t/git-email\")\"")
 		copied = append(copied, "git")
 	}
 	if ghCopied && remoteHost(opts.RemoteURL) == "github.com" {
-		script.WriteString("git config --global url.https://github.com/.insteadOf git@github.com:\n")
-		script.WriteString("git config --global --replace-all credential.https://github.com.helper '!gh auth git-credential'\n")
+		p.line("git config --global url.https://github.com/.insteadOf git@github.com:")
+		p.line("git config --global --replace-all credential.https://github.com.helper '!gh auth git-credential'")
 	}
-	if err := tw.Close(); err != nil {
-		return nil, err
-	}
-	if len(copied) == 0 {
-		return nil, nil
-	}
-	out, err := runSSH(ctx, t, script.String(), &buf)
+	sent, err := addCarry(p, co)
 	if err != nil {
-		return nil, stepFailed("copy your tool logins to the guest", err, "")
+		return nil, nil, err
 	}
-	for _, l := range strings.Split(string(out), "\n") {
-		if label, ok := strings.CutPrefix(strings.TrimSpace(l), "#kept "); ok {
-			for i, c := range copied {
-				if c == label {
-					copied = append(copied[:i], copied[i+1:]...)
-					break
-				}
-			}
-			if opts.Kept != nil {
-				opts.Kept(label)
+	if len(copied) == 0 && len(sent) == 0 {
+		return nil, &carryOutcome{}, nil
+	}
+	out, err := p.run(ctx, t)
+	if err != nil {
+		return nil, nil, stepFailed("copy your tool logins to the guest", err, "")
+	}
+	outcome := &carryOutcome{Sent: sent}
+	outcome.parse(string(out))
+	var kept []string
+	for _, label := range outcome.Kept {
+		isCred := false
+		for i, c := range copied {
+			if c == label {
+				copied = append(copied[:i], copied[i+1:]...)
+				isCred = true
+				break
 			}
 		}
+		if !isCred {
+			kept = append(kept, label)
+			continue
+		}
+		if opts.Kept != nil {
+			opts.Kept(label)
+		}
 	}
-	return copied, nil
+	outcome.Kept = kept
+	return copied, outcome, nil
 }
 
 // remoteHost is the host part of a normalised remote ("github.com/a/b").

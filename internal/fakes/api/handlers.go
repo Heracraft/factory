@@ -358,6 +358,10 @@ func (f *Fake) createProject(w http.ResponseWriter, r *http.Request) *apiError {
 	if e != nil {
 		return e
 	}
+	if body.TZ != "" {
+		z := body.TZ
+		p.TZ = &z
+	}
 	if f.opts.CreateDelay > 0 {
 		// Under f.mu already (ServeHTTP); only the goroutine takes it.
 		o := f.newOp(p, "create")
@@ -398,6 +402,7 @@ func (f *Fake) patchProject(w http.ResponseWriter, r *http.Request) *apiError {
 		Class           *string `json:"class"`
 		HoldBaseUpdates *bool   `json:"hold_base_updates"`
 		AgentDefault    *string `json:"agent_default"`
+		TZ              *string `json:"tz"`
 	}
 	if e := decodeBody(r, &body, false); e != nil {
 		return e
@@ -405,6 +410,13 @@ func (f *Fake) patchProject(w http.ResponseWriter, r *http.Request) *apiError {
 	p, e := f.project(userFrom(r), r.PathValue("id"))
 	if e != nil {
 		return e
+	}
+	if body.TZ != nil {
+		if _, err := time.LoadLocation(*body.TZ); err != nil || *body.TZ == "" {
+			return invalid("tz: unknown time zone")
+		}
+		z := *body.TZ
+		p.TZ = &z
 	}
 	if body.Class != nil && *body.Class != p.Class {
 		if _, ok := classes[*body.Class]; !ok {

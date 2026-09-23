@@ -92,6 +92,9 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		return err
 	}
 
+	tz := laptopTZ()
+	tzSaved := saveProjectTZ(ctx, e, project, tz)
+
 	pr.Phase("Connecting to "+project.Slug, "")
 	target, err := connect(ctx, e, project)
 	if err != nil {
@@ -100,8 +103,13 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	pr.End()
 	_, _ = fmt.Fprintf(e.Out, "Connected to %s (%s)\n", project.Slug, project.Class)
 
+	helper := sessionOptions{Slug: project.Slug, Target: target.Args, TZ: tz, HomeDir: e.HomeDir}
 	if attachOnly {
-		return attachTmux(target, project.Slug, "")
+		// The carry runs beside the attach, never before it (I-195).
+		helper.Carry = true
+		startSessionHelper(e, helper)
+		tzSaved()
+		return attachTmux(target, project.Slug, "", tz)
 	}
 
 	if !opts.NoSync {
@@ -110,21 +118,25 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			repoRoot = e.Cwd
 		}
 		pr.Phase("Syncing", "")
-		// Tool logins and the git identity first, so the checkout lands in
+		// Tool logins, the git identity and the carry go between the
+		// sync's probe and its apply, in one ssh, so the checkout lands in
 		// a guest whose git already knows the user and how to reach the
-		// remote (I-150).
-		copied, err := syncCredentials(ctx, target, e.HomeDir, repoRoot, credSyncOptions{
-			RemoteURL: project.RemoteURL,
-			Kept: func(label string) {
-				e.warn("Kept the guest's %s login: it is newer than the laptop's.", label)
-			},
-		})
-		if err != nil {
-			return err
-		}
+		// remote (I-150), and the carry costs no round trip (I-195..I-198).
+		var copied []string
+		var carried *carryOutcome
 		summary, err := syncGuest(ctx, target, repoRoot, project.Slug, SyncOptions{
 			StashRemote: opts.StashRemote, DiscardRemote: opts.DiscardRemote,
 			Exclude: e.Cfg.SyncExclude, NoRemote: project.RemoteURL == "", RemoteURL: project.RemoteURL,
+			BeforeApply: func(markers map[string]string) error {
+				var err error
+				copied, carried, err = syncCredentialsAndCarry(ctx, target, e.HomeDir, repoRoot, credSyncOptions{
+					RemoteURL: project.RemoteURL,
+					Kept: func(label string) {
+						e.warn("Kept the guest's %s login: it is newer than the laptop's.", label)
+					},
+				}, carryOptions{TZ: tz, Markers: markers})
+				return err
+			},
 		})
 		if err != nil {
 			return err
@@ -137,6 +149,13 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		if len(copied) > 0 {
 			_, _ = fmt.Fprintf(e.Out, "Credentials: %s\n", strings.Join(copied, ", "))
 		}
+		if carried != nil {
+			for _, l := range carried.Lines() {
+				_, _ = fmt.Fprintln(e.ErrOut, l)
+			}
+		}
+	} else {
+		helper.Carry = true
 	}
 
 	window := ""
@@ -181,10 +200,36 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	}
 
 	_, _ = fmt.Fprintf(e.ErrOut, "Ready in %s.\n", fmtElapsed(pr.Total()))
+	tzSaved()
 	if opts.NoAttach {
 		return nil
 	}
-	return attachTmux(target, project.Slug, window)
+	startSessionHelper(e, helper)
+	return attachTmux(target, project.Slug, window, tz)
+}
+
+// saveProjectTZ moves the project's stored zone to the laptop's when they
+// differ (I-198), so the next start's SetupProject writes the zone this
+// command puts in the running guest. It runs beside the connect; the
+// returned wait is called before the attach and gives it at most two
+// seconds, since a missed update only means the next start writes the
+// old zone until the next run fixes it again.
+func saveProjectTZ(ctx context.Context, e *Env, project *Project, tz string) (wait func()) {
+	if tz == "" || (project.TZ != nil && *project.TZ == tz) {
+		return func() {}
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		z := tz
+		_, _ = e.Client.PatchProject(ctx, project.ID, PatchProjectRequest{TZ: &z})
+	}()
+	return func() {
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+		}
+	}
 }
 
 // refusePromptThatIsASlug catches `repose run izma`: every other command
@@ -326,12 +371,22 @@ func hasOAuthSecret(ctx context.Context, c *Client, projectID string) (bool, err
 
 // attachTmux is step 8: exec ssh -t <slug>.repose tmux attach [-t
 // <slug>:<window>], replacing the CLI process.
-func attachTmux(t sshTarget, slug, window string) error {
+//
+// tz, when known, travels as the session's TZ (sshd's AcceptEnv and the
+// gateway pass it), so a base whose tmux takes TZ from the attaching
+// client (update-environment) gets the laptop's zone rather than none.
+func attachTmux(t sshTarget, slug, window, tz string) error {
 	target := slug
 	if window != "" {
 		target = slug + ":" + window
 	}
-	return execReplaceSSH(t, []string{"-t"}, fmt.Sprintf("tmux attach -t %s", shQuote(target)))
+	extra := []string{"-t"}
+	if tz != "" {
+		if err := os.Setenv("TZ", tz); err == nil {
+			extra = append(extra, "-o", "SendEnv=TZ")
+		}
+	}
+	return execReplaceSSH(t, extra, fmt.Sprintf("tmux attach -t %s", shQuote(target)))
 }
 
 // waitForSSH is step 4: `ssh <target> true` until it answers, for up to

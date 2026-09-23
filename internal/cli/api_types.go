@@ -60,6 +60,9 @@ type Project struct {
 	// absent from older api builds, which the CLI treats as "no reason".
 	LastError       *string `json:"last_error,omitempty"`
 	HostUnreachable bool    `json:"host_unreachable,omitempty"`
+	// TZ is the zone the guest gets at its next start; the CLI moves it
+	// to the laptop's when they differ (I-198). Absent from older apis.
+	TZ *string `json:"tz,omitempty"`
 }
 
 type Signals struct {

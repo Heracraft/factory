@@ -4436,3 +4436,48 @@ credit is one day on large, $3.36, which is 48 hours on small. It stays a
 dollar credit so there is one meter, and every user-facing string calls
 it "your first day of compute", never an amount. The card is still
 required first; the new-account limits are unchanged.
+
+**I-206. The carry's hashes live in the guest; `attach` carries through a
+session helper; tmux stops taking `TZ` from the attaching client.**
+(15-dev-ergonomics, 2026-09-23) Settled while building I-198, the first
+part of workstream 15, because every later carry part rests on them.
+
+- *Markers, not `projects.json`.* `15-dev-ergonomics.md` §4 put the
+  per-project carry hashes in the laptop's `projects.json`. They live in
+  the guest instead, one file per carried item under
+  `~/.repose/carry/`, holding the hash of the laptop input last applied,
+  and come back as `#marker` lines in the sync's first ssh (no round trip
+  added to `run`). A hash on one laptop is wrong after a restore, after a
+  run from a second laptop, and after the item is edited inside the
+  guest; the guest's own record is right in all three. `cli-config.md`
+  therefore gains nothing for it.
+- *The session helper.* `attach` is `exec ssh`, so nothing of the CLI
+  survives into the session, yet the carry must run beside the attach
+  and the auto-forward (I-199) must run for as long as it lasts. `run` and
+  `attach` start `repose __session` just before the exec: detached, in its
+  own process group, stdio on `/dev/null`, its options base64 JSON in
+  `REPOSE_SESSION` so no path shows in `ps`. It speaks to the guest only
+  (never the api), over the same multiplexed target, reports only through
+  `tmux display-message` (it waits up to 8 s for a client to exist), and
+  ends when its parent pid changes, which is when the ssh the CLI became
+  exits. Not on Windows (no multiplexing, no exec). *Rejected:* keeping
+  the CLI as ssh's parent instead of exec'ing (the checklist item "ps
+  shows no repose parent during a session", and signal and terminal
+  handling that plain ssh already gets right).
+- *Each carry part runs as its own `sh -e`* inside the one payload, so a
+  part stops at its own first error, reports `#failed <label>`, and never
+  stops the credentials or another part.
+- *`TZ` leaves tmux's `update-environment`.* With it there, an attach
+  from a terminal that has no `TZ` (the usual laptop) marks the session's
+  `TZ` removed, which shadows the global one, and an agent started in a
+  new window (`tmux new-window '<agent>'`, not a login shell) runs in UTC:
+  the owner's "claude reads my time in us east or utc". The base drops it
+  and `repose-tmux-session` sets the global `TZ` from `/etc/repose/env`;
+  the CLI sets the global and every session's `TZ` on each carry, and its
+  attach sends `TZ` (`SendEnv`) for bases that still list it.
+- *The stored zone moves too.* `PATCH /projects/:id` accepts `tz`
+  (validated as an IANA name), sent beside the connect only when the
+  laptop's zone differs from the project's, so the next start's
+  SetupProject writes the zone the running guest already has. The CLI
+  waits at most 2 s for it before the attach. Interfaces: `api.md`,
+  `guest-conventions.md` in this commit.

@@ -9,7 +9,7 @@
 let
   tmuxSession = pkgs.writeShellApplication {
     name = "repose-tmux-session";
-    runtimeInputs = [ pkgs.tmux pkgs.jq pkgs.coreutils ];
+    runtimeInputs = [ pkgs.tmux pkgs.jq pkgs.coreutils pkgs.gnused ];
     text = ''
       project="$HOME/.repose/project.json"
       if [ ! -s "$project" ]; then
@@ -28,6 +28,12 @@ let
       fi
       # -d: detached. The server keeps running in this unit's cgroup.
       tmux new-session -d -s "$slug" -n shell -c "$dir"
+      # Every window and agent starts with the project's zone; the CLI
+      # moves it (and /etc/repose/env) when the laptop's changes (I-198).
+      tz=$(sed -n 's/^TZ=//p' /etc/repose/env 2>/dev/null | tail -n 1)
+      if [ -n "$tz" ]; then
+        tmux set-environment -g TZ "$tz"
+      fi
     '';
   };
 in
@@ -49,8 +55,12 @@ in
       set -ga terminal-overrides ",*:Tc"
       set -g focus-events on
       set -g default-shell ${pkgs.bash}/bin/bash
-      # Env the CLI sets on the SSH session should reach new windows.
-      set -g update-environment "DISPLAY SSH_AUTH_SOCK SSH_CONNECTION TZ LANG COLORTERM"
+      # Env the CLI sets on the SSH session should reach new windows. TZ
+      # is not among them: an attach from a terminal without TZ would
+      # clear the session's zone, and agents started in new windows would
+      # run in UTC. The global TZ (set at session creation and by the
+      # CLI on every run and attach, I-198) is what windows get.
+      set -g update-environment "DISPLAY SSH_AUTH_SOCK SSH_CONNECTION LANG COLORTERM"
     '';
   };
 

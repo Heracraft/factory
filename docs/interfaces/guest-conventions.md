@@ -10,7 +10,7 @@ here exists in that module under exactly this name.
 |---|---|
 | `/home/dev/<slug>` | the project checkout; the tmux session's default directory |
 | `/home/dev/.repose/project.json` | `{project_id, slug, name, remote_url, user_handle, class, tz}` written by guestd at SetupProject |
-| `/etc/repose/env` | `TZ=` and `REPOSE_PROJECT=` lines written by guestd at SetupProject, sourced by every shell |
+| `/etc/repose/env` | `TZ=` and `REPOSE_PROJECT=` lines written by guestd at SetupProject, sourced by every shell; the CLI replaces the `TZ=` line (through `sudo`, root 0644, by rename) on `run` and `attach` when the laptop's zone differs (I-198) |
 | `/etc/repose/base-version` | the platform base version string (same as `nixos-version`'s label) |
 | `/etc/repose/claude-settings.json` | the platform hooks (`Notification`, `Stop` → `repose-hook`) the Claude wrapper merges into `~/.claude/settings.json` |
 | `/etc/repose/mcp.json` | the platform MCP servers (`playwright`, `chrome-devtools`, both `--headless`) the Claude wrapper merges into `~/.claude.json` `mcpServers` |
@@ -49,7 +49,17 @@ here exists in that module under exactly this name.
 - `/etc/tmux.conf`: `set -g set-clipboard on`, `set -g mouse on`, `set -g
   history-limit 50000`, `set -g default-terminal tmux-256color`, `set -ga
   terminal-overrides ",*:Tc"`, `set -s escape-time 10`, `set -g
-  focus-events on`.
+  focus-events on`, `set -g update-environment "DISPLAY SSH_AUTH_SOCK
+  SSH_CONNECTION LANG COLORTERM"` (no `TZ`: an attach from a terminal
+  without one would clear the session's zone).
+- `TZ` in tmux: the global environment's `TZ` is the project's zone, set
+  by `repose-tmux-session` from `/etc/repose/env` when it creates the
+  session, and set again (global and every session) by the CLI on each
+  `run` and `attach` from a laptop in another zone (I-198), so every new
+  window and agent starts in the laptop's zone. Shells already running
+  keep theirs. The CLI's attach also sends `TZ` on the SSH session
+  (`SendEnv`), for bases older than this rule whose `update-environment`
+  still lists it.
 
 ## Agent wrappers
 

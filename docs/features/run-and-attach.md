@@ -113,6 +113,29 @@ Session and windows (see `interfaces/guest-conventions.md`):
   attach; tmux handles the multi-client case and the smaller terminal
   constrains the size, as tmux always does. That is documented, not hidden.
 
+The laptop's clock (I-198):
+
+- Every `run` and `attach` moves the guest to the laptop's IANA zone when
+  it differs: `/etc/repose/env` (read by every login shell) and tmux's
+  global and per-session `TZ`, so a window or agent opened afterwards
+  runs in the laptop's time, and the project's stored `tz` (`PATCH
+  /projects/:id`), so the next boot starts in it too. Shells already
+  running keep the zone they started with. When the zone changed, `run`
+  prints `Time zone set to Asia/Tokyo.` on stderr; `attach` shows the same
+  line inside tmux.
+- Nothing here waits: on `run` it rides the SSH that copies the tool
+  logins, on `attach` it runs beside tmux (the session helper, see
+  below), and the api update runs beside the connect.
+- A laptop whose zone cannot be named (no `TZ`, no zoneinfo link) leaves
+  the guest's zone alone.
+
+The session helper: `run` and `attach` start a small background process
+(`repose __session`, detached, its options in the environment rather than
+on its command line) just before the CLI becomes `ssh`. It does what must
+not delay the attach and reports only through `tmux display-message`,
+never over the pane, and it ends when the SSH session it was started
+beside ends. Windows has no helper.
+
 Agent picker:
 
 - `--agent` accepts exactly `claude`, `opencode`, `codex`, `gemini`, `pi`.

@@ -22,3 +22,7 @@ func sysExec(name string, args []string) error {
 	os.Exit(0)
 	return nil
 }
+
+// spawnDetached is never called on Windows (no multiplexing, so no
+// session helper).
+func spawnDetached(name string, args []string, extraEnv ...string) error { return nil }

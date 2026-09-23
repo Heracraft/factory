@@ -773,6 +773,13 @@ func TestConfigRoutes(t *testing.T) {
 	if r := e.do(t, tok, "PATCH", "/projects/"+pid, map[string]any{"hold_base_updates": true}); r.status != 200 || r.body["hold_base_updates"] != true {
 		t.Fatalf("hold: %d %s", r.status, r.raw)
 	}
+	// The laptop's zone, sent on a run or attach from another zone (I-198).
+	if r := e.do(t, tok, "PATCH", "/projects/"+pid, map[string]any{"tz": "Asia/Tokyo"}); r.status != 200 || r.body["tz"] != "Asia/Tokyo" {
+		t.Fatalf("tz: %d %s", r.status, r.raw)
+	}
+	if r := e.do(t, tok, "PATCH", "/projects/"+pid, map[string]any{"tz": "JST"}); r.status != 400 || errCode(r) != "invalid" {
+		t.Fatalf("tz abbreviation: %d %s", r.status, r.raw)
+	}
 }
 
 func TestRateLimits(t *testing.T) {

@@ -82,6 +82,7 @@ type PatchProjectRequest struct {
 	Class           *string `json:"class,omitempty"`
 	HoldBaseUpdates *bool   `json:"hold_base_updates,omitempty"`
 	AgentDefault    *string `json:"agent_default,omitempty"`
+	TZ              *string `json:"tz,omitempty"`
 }
 
 func (c *Client) PatchProject(ctx context.Context, id string, req PatchProjectRequest) (*Project, error) {

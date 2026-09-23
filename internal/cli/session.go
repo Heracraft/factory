@@ -1,0 +1,161 @@
+package cli
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+)
+
+// The session helper is what keeps working beside an attached tmux once
+// the CLI has become ssh (07-cli.md: the CLI process is replaced, so
+// nothing of it survives the attach). `run` and `attach` start it just
+// before the exec, detached, with the same ssh target. It carries the
+// laptop's config on `attach` (I-195, I-196, I-198), where doing it first
+// would delay the first keystroke, and reports through tmux, never over
+// the pane. It ends when the ssh it was started beside ends: the CLI's pid
+// is ssh's after the exec, so the helper's parent changing is the signal.
+//
+// Nothing it does is allowed to delay or break the attach: it starts in a
+// few milliseconds, never reads the terminal, and every failure is at
+// most a tmux message.
+
+// sessionEnv carries the helper's options, base64 JSON, so none of them
+// (paths, the target) shows in a process listing.
+const sessionEnv = "REPOSE_SESSION"
+
+// sessionHelperCmd is the hidden command the helper runs as.
+const sessionHelperCmd = "__session"
+
+// sessionOptions is everything the helper needs; it talks to the guest
+// only, never to the api.
+type sessionOptions struct {
+	Slug   string   `json:"slug"`
+	Target []string `json:"target"`
+	// Carry sends the carry (carry.go) with the options below.
+	Carry   bool   `json:"carry"`
+	TZ      string `json:"tz,omitempty"`
+	RepoDir string `json:"repo_dir,omitempty"`
+	HomeDir string `json:"home_dir,omitempty"`
+}
+
+// startSessionHelper starts the helper for the attach that follows, and
+// never fails the attach: a helper that cannot start is simply absent.
+// Windows has no multiplexing and no exec, and tests (TargetFor set) drive
+// runSession themselves.
+func startSessionHelper(e *Env, opts sessionOptions) {
+	if e.TargetFor != nil || goos() == "windows" || !opts.Carry {
+		return
+	}
+	b, err := json.Marshal(opts)
+	if err != nil {
+		return
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	_ = spawnDetached(exe, []string{sessionHelperCmd}, sessionEnv+"="+base64.StdEncoding.EncodeToString(b))
+}
+
+func newSessionHelperCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    sessionHelperCmd,
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			raw, err := base64.StdEncoding.DecodeString(os.Getenv(sessionEnv))
+			if err != nil {
+				return err
+			}
+			var opts sessionOptions
+			if err := json.Unmarshal(raw, &opts); err != nil {
+				return err
+			}
+			ppid := os.Getppid()
+			alive := func() bool { return os.Getppid() == ppid }
+			return runSession(cmd.Context(), opts, alive)
+		},
+	}
+}
+
+// runSession is the helper's whole life: the carry, then (while alive
+// says the attach is still there) whatever keeps running beside it.
+func runSession(ctx context.Context, opts sessionOptions, alive func() bool) error {
+	t := sshTarget{Args: opts.Target}
+	if opts.Carry {
+		o, err := carryOverSession(ctx, t, opts)
+		msgs := []string{}
+		if err != nil {
+			msgs = append(msgs, "repose could not carry your config: "+oneLine(err.Error()))
+		} else {
+			msgs = o.Lines()
+		}
+		for _, m := range msgs {
+			tmuxMessage(ctx, t, opts.Slug, m, alive)
+		}
+	}
+	return nil
+}
+
+// carryOverSession is the carry on its own: one ssh for the markers, one
+// for what changed. Two round trips, both beside the attach.
+func carryOverSession(ctx context.Context, t sshTarget, opts sessionOptions) (*carryOutcome, error) {
+	out, err := runSSH(ctx, t, markerScript(), nil)
+	if err != nil {
+		return nil, err
+	}
+	p := newGuestPayload()
+	sent, err := addCarry(p, carryOptions{TZ: opts.TZ, Markers: parseMarkers(string(out))})
+	if err != nil {
+		return nil, err
+	}
+	o := &carryOutcome{Sent: sent}
+	if len(sent) == 0 {
+		return o, nil
+	}
+	res, err := p.run(ctx, t)
+	if err != nil {
+		return nil, err
+	}
+	o.parse(string(res))
+	return o, nil
+}
+
+// tmuxMessageWait is how long a message waits for a client to show it on:
+// the helper usually finishes before tmux has attached.
+const tmuxMessageWait = 8 * time.Second
+
+// tmuxMessage shows msg for four seconds on the session's client, the
+// way every helper output reaches the user (never over the pane). It
+// waits, briefly, for a client to be attached.
+func tmuxMessage(ctx context.Context, t sshTarget, slug, msg string, alive func() bool) {
+	cmd := fmt.Sprintf("tmux display-message -d 4000 -t %s %s", shQuote("="+slug+":"), shQuote(strings.ReplaceAll(msg, "#", "##")))
+	deadline := time.Now().Add(tmuxMessageWait)
+	for {
+		clients, err := runSSH(ctx, t, fmt.Sprintf("tmux list-clients -t %s -F x", shQuote("="+slug)), nil)
+		if err == nil && strings.TrimSpace(string(clients)) != "" {
+			_ = runSSHOK(ctx, t, cmd)
+			// Two messages in a row would replace each other at once.
+			_ = sleepOrDone(ctx, 1500*time.Millisecond)
+			return
+		}
+		if time.Now().After(deadline) || !alive() {
+			return
+		}
+		if sleepOrDone(ctx, 250*time.Millisecond) != nil {
+			return
+		}
+	}
+}
+
+// oneLine keeps the first line of s.
+func oneLine(s string) string {
+	l, _, _ := strings.Cut(s, "\n")
+	return l
+}

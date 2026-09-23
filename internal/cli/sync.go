@@ -29,6 +29,12 @@ type SyncOptions struct {
 	// guest gets an `origin` pointing at it when it has none, the way
 	// guestd's SetupProject names it (I-107), so an agent can push.
 	RemoteURL string
+	// BeforeApply runs between the probe and the apply with the guest's
+	// carry markers: `run` sends the tool logins and the carry there, so
+	// the checkout lands in a guest whose git already knows the user
+	// (I-150) and the carry skips what the guest already has (I-195..
+	// I-197) without a round trip of its own.
+	BeforeApply func(markers map[string]string) error
 }
 
 // SyncSummary is what step 5e prints.
@@ -67,6 +73,7 @@ type guestProbe struct {
 	dirty     []string
 	tips      []string // every commit a ref (or HEAD) in the guest points at
 	hasOrigin bool
+	markers   map[string]string // the carry's markers (carry.go)
 }
 
 // probeScript creates the checkout if it is missing (an empty guest, or
@@ -85,14 +92,17 @@ git for-each-ref --format='%%(objectname)'
 git rev-parse -q --verify HEAD || true
 echo '#origin'
 git remote get-url origin >/dev/null 2>&1 && echo yes || true
-`, slug)
+%s`, slug, markerScript())
 }
 
 func parseProbe(out string) guestProbe {
-	var p guestProbe
+	p := guestProbe{markers: parseMarkers(out)}
 	section := ""
 	seen := map[string]bool{}
 	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, "#marker ") {
+			continue
+		}
 		switch l {
 		case "#status", "#tips", "#origin":
 			section = l
@@ -144,6 +154,11 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	probe := parseProbe(string(out))
 	if len(probe.dirty) > 0 && !opts.StashRemote && !opts.DiscardRemote {
 		return nil, &exitError{code: ExitDirtyRemoteTree, msg: (&dirtyTreeError{files: probe.dirty}).Error()}
+	}
+	if opts.BeforeApply != nil {
+		if err := opts.BeforeApply(probe.markers); err != nil {
+			return nil, err
+		}
 	}
 
 	// What the guest should end up with: HEAD's commit, and, for a

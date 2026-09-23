@@ -39,6 +39,7 @@ type Project struct {
 	LastSnapshotAt   *time.Time `json:"last_snapshot_at,omitempty"`
 	LastError        *string    `json:"last_error"`
 	HostUnreachable  bool       `json:"host_unreachable"`
+	TZ               *string    `json:"tz"`
 }
 
 // DestroyedProject is one row of GET /projects/destroyed (I-167).

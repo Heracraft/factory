@@ -124,6 +124,7 @@ func newRootCmd(version string) *cobra.Command {
 		newCompletionCmd(),
 		newMCPCmd(),
 		newBrowserCmd(),
+		newSessionHelperCmd(),
 	)
 	return root
 }

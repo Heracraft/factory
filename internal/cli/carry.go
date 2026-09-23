@@ -1,0 +1,268 @@
+package cli
+
+import (
+	"archive/tar"
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+)
+
+// The carry is what follows the user from the laptop into the guest on
+// `run` and `attach` besides the tool logins: the clock (I-198), the git
+// config (I-195), the Claude Code config (I-196) and, on `run`, the
+// gitignored .env files (I-197). docs/workstreams/15-dev-ergonomics.md.
+//
+// It never adds a round trip to `run`: its parts ride the credentials ssh
+// (I-149's single multiplexed connection), and the markers that let the
+// laptop skip what has not changed come back in the sync's first ssh.
+// On `attach` it runs in the session helper, beside tmux, never before it.
+
+// carryMarkerDir is where the guest remembers, per carried item, the hash
+// of the laptop input it last applied. The guest is the truth: a restore,
+// a second laptop or an edit made in the guest all change what it holds,
+// which a hash kept on one laptop could not know.
+const carryMarkerDir = "~/.repose/carry"
+
+// carryVersion is folded into every hash, so a change to what a part
+// writes re-sends it to every guest once.
+const carryVersion = "1"
+
+// carryOptions says which parts one carry sends.
+type carryOptions struct {
+	// TZ is the laptop's IANA zone; "" leaves the guest's alone.
+	TZ string
+	// Markers is the guest's marker set (item -> hash), from the sync's
+	// probe or the helper's own. Nil sends every part; a part whose hash
+	// matches its marker is left out.
+	Markers map[string]string
+}
+
+// carryOutcome is what the guest said back.
+type carryOutcome struct {
+	// TZ is the zone the guest's environment file was moved to, when it
+	// changed.
+	TZ string
+	// Kept names what the guest kept because its copy was newer.
+	Kept []string
+	// Dropped names what was left out because it would not work in the
+	// guest (a missing command, a laptop path). Shown once per change,
+	// since an unchanged part is not sent again.
+	Dropped []string
+	// Warnings are one-line problems that did not stop anything else.
+	Warnings []string
+	// Failed names the parts whose script failed; the previous state of
+	// that part is still in place.
+	Failed []string
+	// Sent is the parts that travelled, for tests and -v.
+	Sent []string
+}
+
+// Lines is the outcome as the user sees it: one line per fact, none when
+// nothing worth saying happened.
+func (o *carryOutcome) Lines() []string {
+	var out []string
+	if o.TZ != "" {
+		out = append(out, "Time zone set to "+o.TZ+".")
+	}
+	for _, k := range o.Kept {
+		out = append(out, "Kept the guest's "+k+": it is newer than the laptop's.")
+	}
+	if len(o.Dropped) > 0 {
+		out = append(out, "Not carried (would not work in the guest): "+strings.Join(o.Dropped, ", ")+".")
+	}
+	out = append(out, o.Warnings...)
+	for _, f := range o.Failed {
+		out = append(out, "Could not carry your "+f+" config; the guest keeps its previous one.")
+	}
+	return out
+}
+
+// parse reads the guest's reply lines into the outcome.
+func (o *carryOutcome) parse(out string) {
+	for _, l := range strings.Split(out, "\n") {
+		l = strings.TrimSpace(l)
+		tag, rest, _ := strings.Cut(l, " ")
+		switch tag {
+		case "#tz":
+			o.TZ = rest
+		case "#kept":
+			o.Kept = append(o.Kept, rest)
+		case "#dropped":
+			o.Dropped = append(o.Dropped, rest)
+		case "#warn":
+			o.Warnings = append(o.Warnings, rest)
+		case "#failed":
+			o.Failed = append(o.Failed, rest)
+		}
+	}
+}
+
+// guestPayload is one tar and one script for one ssh: the script unpacks
+// the tar into a temporary directory and runs each part from it. A part
+// runs as its own `sh -e`, so it stops at its own first failure, reports
+// `#failed <label>`, and never stops the parts after it.
+type guestPayload struct {
+	buf    bytes.Buffer
+	tw     *tar.Writer
+	script strings.Builder
+	parts  int
+}
+
+func newGuestPayload() *guestPayload {
+	p := &guestPayload{}
+	p.tw = tar.NewWriter(&p.buf)
+	p.script.WriteString("set -e\nt=$(mktemp -d)\ntrap 'rm -rf \"$t\"' EXIT\ntar -x -C \"$t\"\n")
+	return p
+}
+
+// file adds one file to the tar, 0600.
+func (p *guestPayload) file(name string, b []byte) error { return tarAddBytes(p.tw, name, b) }
+
+// fileMeta adds one file with its mode and mtime kept.
+func (p *guestPayload) fileMeta(name string, b []byte, mode int64, mtime time.Time) error {
+	if err := p.tw.WriteHeader(&tar.Header{Name: name, Mode: mode, Size: int64(len(b)), ModTime: mtime}); err != nil {
+		return err
+	}
+	_, err := p.tw.Write(b)
+	return err
+}
+
+// line appends a line to the top-level script (runs under its set -e).
+func (p *guestPayload) line(s string) { p.script.WriteString(s + "\n") }
+
+// part adds a script that runs on its own with the unpack directory as
+// $1. label names it in `#failed <label>`.
+func (p *guestPayload) part(label, script string) error {
+	p.parts++
+	name := fmt.Sprintf("part-%d.sh", p.parts)
+	if err := p.file(name, []byte(script)); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(&p.script, "sh -e \"$t/%s\" \"$t\" || echo '#failed %s'\n", name, label)
+	return nil
+}
+
+// empty reports whether nothing was added.
+func (p *guestPayload) empty() bool { return p.parts == 0 && p.script.Len() == 0 }
+
+func (p *guestPayload) run(ctx context.Context, t sshTarget) ([]byte, error) {
+	if err := p.tw.Close(); err != nil {
+		return nil, err
+	}
+	return runSSH(ctx, t, p.script.String(), &p.buf)
+}
+
+// addCarry adds every part opts asks for to p and returns the labels of
+// the parts it added.
+func addCarry(p *guestPayload, opts carryOptions) ([]string, error) {
+	var sent []string
+	if opts.TZ != "" {
+		if err := p.part("time zone", tzPart(opts.TZ)); err != nil {
+			return nil, err
+		}
+		sent = append(sent, "tz")
+	}
+	return sent, nil
+}
+
+// markerScript is the shell that prints the guest's markers as
+// `#marker <item> <hash>` lines.
+func markerScript() string {
+	return `for f in ` + carryMarkerDir + `/*; do [ -f "$f" ] && printf '#marker %s %s\n' "${f##*/}" "$(cat "$f")"; done; true
+`
+}
+
+// parseMarkers picks the `#marker` lines out of a reply.
+func parseMarkers(out string) map[string]string {
+	m := map[string]string{}
+	for _, l := range strings.Split(out, "\n") {
+		f := strings.Fields(l)
+		if len(f) == 3 && f[0] == "#marker" {
+			m[f[1]] = f[2]
+		}
+	}
+	return m
+}
+
+// setMarker is the shell line a part ends with once it has applied item.
+func setMarker(item, hash string) string {
+	return fmt.Sprintf("mkdir -p %s && printf '%%s\\n' %s > %s/%s\n", carryMarkerDir, hash, carryMarkerDir, item)
+}
+
+// carryHash is the marker value for a part's input: its version and every
+// byte that decides what the part writes, in a fixed order.
+func carryHash(parts ...[]byte) string {
+	h := sha256.New()
+	h.Write([]byte(carryVersion))
+	for _, b := range parts {
+		_, _ = fmt.Fprintf(h, "\x00%d\x00", len(b))
+		h.Write(b)
+	}
+	return hex.EncodeToString(h.Sum(nil))[:32]
+}
+
+// unchanged reports whether the guest already holds hash for item.
+func (o carryOptions) unchanged(item, hash string) bool {
+	return o.Markers != nil && o.Markers[item] == hash
+}
+
+// ianaZone matches what a zone name may contain, which is also what makes
+// it safe inside a shell word: letters, digits and _+- in slash-separated
+// parts ("America/Argentina/Buenos_Aires", "Etc/GMT+3").
+var ianaZone = regexp.MustCompile(`^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$`)
+
+// tzPart moves the guest to zone (I-198): /etc/repose/env, which every
+// login shell sources and guestd rewrites at the next start from the
+// project's tz (the CLI sends that to the api too), and tmux's global
+// and per-session environment, which every new window and agent is
+// started with. Shells already running keep the zone they started with.
+// sudo is the guest's passwordless one (dev is in wheel); the file stays
+// root's, 0644, replaced by a rename.
+func tzPart(zone string) string {
+	return fmt.Sprintf(`z=%s
+f=/etc/repose/env
+if [ -f "$f" ] && ! grep -qxF "TZ=$z" "$f"; then
+  { grep -v '^TZ=' "$f" || true; printf 'TZ=%%s\n' "$z"; } > "$1/env.new"
+  sudo -n sh -c 'cat > /etc/repose/env.repose-new && chmod 0644 /etc/repose/env.repose-new && mv -f /etc/repose/env.repose-new /etc/repose/env' < "$1/env.new"
+  echo "#tz $z"
+fi
+if tmux list-sessions >/dev/null 2>&1; then
+  tmux set-environment -g TZ "$z"
+  tmux list-sessions -F '#{session_name}' | while IFS= read -r s; do tmux set-environment -t "=$s" TZ "$z"; done
+fi
+`, shQuote(zone))
+}
+
+var (
+	laptopTZOnce sync.Once
+	laptopTZVal  string
+)
+
+// laptopTZ is localTZ, read once per process, and only ever a name that
+// passes ianaZone (anything else is treated as unknown). A variable so
+// tests can be in a zone of their choosing.
+var laptopTZ = func() string {
+	laptopTZOnce.Do(func() {
+		if z := localTZ(); ianaZone.MatchString(z) {
+			laptopTZVal = z
+		}
+	})
+	return laptopTZVal
+}
+
+// sortedKeys is a small helper for deterministic output.
+func sortedKeys(m map[string]string) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
+}

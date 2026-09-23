@@ -272,11 +272,20 @@ func (s *Server) patchProject(w http.ResponseWriter, r *http.Request) error {
 		Class *string `json:"class"`
 		Hold  *bool   `json:"hold_base_updates"`
 		Agent *string `json:"agent_default"`
+		// TZ is the laptop's zone, sent by the CLI when it differs from
+		// the project's, so the next start's SetupProject writes the zone
+		// the CLI already put in the running guest (I-198).
+		TZ *string `json:"tz"`
 	}
 	if err := decode(r, &body); err != nil {
 		return err
 	}
 	ctx := r.Context()
+	if body.TZ != nil {
+		if _, err := time.LoadLocation(*body.TZ); err != nil || *body.TZ == "" || strings.ContainsAny(*body.TZ, "\n\r") {
+			return errf("invalid", "tz is not an IANA zone name")
+		}
+	}
 	if body.Class != nil {
 		if !scheduler.ValidClass(*body.Class) {
 			return errf("invalid", "class must be small, large or xl")
@@ -305,6 +314,11 @@ func (s *Server) patchProject(w http.ResponseWriter, r *http.Request) error {
 	}
 	if body.Agent != nil {
 		if _, err := s.d.Pool.Exec(ctx, "update projects set agent_default = $2 where id = $1", p.ID, *body.Agent); err != nil {
+			return err
+		}
+	}
+	if body.TZ != nil {
+		if _, err := s.d.Pool.Exec(ctx, "update projects set tz = $2 where id = $1", p.ID, *body.TZ); err != nil {
 			return err
 		}
 	}

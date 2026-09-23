@@ -32,7 +32,7 @@ unique; it is the second half of the SSH login name.
 | GET | `/projects/destroyed` | `[DestroyedProject]`: the user's destroyed projects that still have a restorable snapshot, newest destroy first (I-167). New in this release |
 | POST | `/projects/restore` | `{slug \| project_id \| snapshot_id, name?, start?: bool=true}` → `202 {op_id, project_id, name, slug, snapshot_id, snapshot_created_at, from_project_id}`. Restores as a new project called `name` (default: the source's name). `slug` means the live project with that slug if there is one, else the user's destroyed projects with it; the newest restorable snapshot among them is used unless `snapshot_id` names one. `404 not_found` when nothing can be restored (`detail.reason: "no_snapshot"` when the project exists); `409 conflict` with `detail: {reason: "name_taken", name}` when a live project holds the name, and with `detail.reason: "destroying"` when `slug` names a live project whose destroy has not taken its final snapshot yet (retry in a few seconds; I-190). The new project gets the source's class, volume size, configuration and, when no live project has it, its `remote_url` (I-167). New in this release |
 | GET | `/projects/:id` | `Project` |
-| PATCH | `/projects/:id` | `{class?, hold_base_updates?, agent_default?}` (class change requires stopped) |
+| PATCH | `/projects/:id` | `{class?, hold_base_updates?, agent_default?, tz?}` (class change requires stopped; `tz` is an IANA zone name, `400 invalid` otherwise, and is what the guest's next start writes to `/etc/repose/env`: the CLI sends it when the laptop's zone differs from the project's, I-198. `tz` is new in this release) |
 | DELETE | `/projects/:id` | destroy (volume deleted, last snapshot kept 30 days) → `202 {op_id, state}`; the destroy is finished only when that op is `done` (`GET /projects/:id` then answers `404`). The project's state is `destroying` from the moment the DELETE answers; the op stops the guest, snapshots the stopped volume (reason `stop`) and deletes it (I-165). A failed destroy leaves the project in `error` with `last_error` and records a `destroy_failed` event, which notifies. A DELETE while a destroy op is open answers with that op. A dead guestd does not fail it (I-156). `state` is new in the previous release; `op_id` was always there |
 | POST | `/projects/:id/start` | → `{op_id, restart}`; `restart: true` when the project was in `error` or running with its guestd not answering, and the op stops and reboots it on its newest built revision (I-157). `restart` is new in this release |
 | POST | `/projects/:id/stop` | `{snapshot: bool=true}` → `{op_id}` |
@@ -48,7 +48,7 @@ Project { id, name, slug, remote_url, class, state, host_id?, guest_ip?,
           signals?: {ssh_sessions, tmux_clients, agents: [{agent, window, state}],
                      guestd_ok},
           cost_today_cents, cost_month_cents, last_snapshot_at?,
-          last_error?, host_unreachable }
+          last_error?, host_unreachable, tz }
 
 DestroyedProject { id, name, slug, class, remote_url?, volume_bytes,
           destroyed_at, name_free, restorable_until?,
