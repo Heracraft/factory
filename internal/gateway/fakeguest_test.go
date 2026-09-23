@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -350,6 +351,19 @@ func (g *fakeGuest) exec(sconn *ssh.ServerConn, ch ssh.Channel, command string, 
 	case "stderr":
 		_, _ = fmt.Fprintf(ch.Stderr(), "%s\n", rest)
 		return 0
+	case "sshd-exit":
+		// OpenSSH's order when a program ends: its output, EOF once the
+		// pipe drains, and only then the exit status when the child is
+		// reaped, a moment later (the caller sends it on return). A
+		// channel keepalive@openssh.com (sshd's ClientAliveInterval) may
+		// sit in between; it wants a reply.
+		d, _ := time.ParseDuration(rest)
+		time.Sleep(d)
+		_, _ = fmt.Fprintf(ch, "alive\n")
+		_, _ = ch.SendRequest("keepalive@openssh.com", true, nil)
+		_ = ch.CloseWrite()
+		time.Sleep(50 * time.Millisecond)
+		return 7
 	case "pty":
 		g.mu.Lock()
 		defer g.mu.Unlock()

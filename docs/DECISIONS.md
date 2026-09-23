@@ -4679,3 +4679,32 @@ copied anywhere" and the three homes of `features/secrets.md`.
   are cached on the laptop by size and mtime (`carry-hashes.json`,
   `cli-config.md`), and `run` reads its side of the carry while the probe
   is in flight.
+
+**I-212. On a session, the gateway relays the exit status before the
+EOF, and answers the guest's channel keepalive itself.** (ws/15 live
+fixes, 2026-09-23; a first sync of golang/go failed, and `ssh
+<p>.repose 'sleep 12; echo ok'` over the ControlMaster returned 255
+about twice in eight runs.) sshd ends a command with its output, EOF
+when the pipe drains, then `exit-status` when it reaps the child. The
+gateway relayed the EOF from the data goroutine the moment the guest's
+output ended and the exit status from the request goroutine, so the two
+raced. An OpenSSH client whose stdin is already closed (every
+ControlMaster session run with stdin from a pipe or /dev/null, which is
+how the CLI runs its commands) answers EOF with CHANNEL_CLOSE at once;
+an exit status arriving after that is dropped and ssh exits 255 (the
+master's -vvv log: EOF, then its own close, no exit-status). Now a
+session's EOF towards the client waits until an `exit-status` or
+`exit-signal` has been relayed, or the guest's request stream has
+ended; exit status before EOF is valid SSH and is what sshd itself sends
+when it reaps the child first. Separately, sshd's ClientAliveInterval
+check (30 s on guests) arrives as a channel `keepalive@openssh.com`
+wanting a reply; the gateway relayed it to the laptop, which held every
+later request of the channel, the exit status among them, on a laptop
+round trip, and the check is about the gateway, sshd's client, anyway.
+The gateway now answers it. `TestRelayExitStatusOverOpenSSHControlMaster`
+reproduces the 255 with the real OpenSSH client over a ControlMaster
+(exit 255 before, 7 in eight runs after);
+`TestRelayDeliversExitStatusBeforeEOF` pins the order with a client that
+closes on EOF. *Not explained:* why the live failures clustered around
+the gateway's own 30 s keepalive; the race does not need it, and the fix
+does not depend on it.

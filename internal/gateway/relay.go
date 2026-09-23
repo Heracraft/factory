@@ -372,6 +372,11 @@ func (s *session) pipe(cch ssh.Channel, creqs <-chan *ssh.Request, gch ssh.Chann
 	g2cData.Add(2)
 	creqsDone.Add(1)
 	greqsDone.Add(1)
+	// exited closes once a session's exit-status or exit-signal has been
+	// relayed to the client, or the guest's request stream has ended.
+	exited := make(chan struct{})
+	var exitOnce sync.Once
+	markExited := func() { exitOnce.Do(func() { close(exited) }) }
 
 	copyStream := func(group *sync.WaitGroup, dst io.Writer, src io.Reader, counter *atomic.Int64) {
 		defer wg.Done()
@@ -399,8 +404,20 @@ func (s *session) pipe(cch ssh.Channel, creqs <-chan *ssh.Request, gch ssh.Chann
 	// sees EOF, sends its own EOF only then, and sshd sends CHANNEL_CLOSE
 	// only after both directions are closed. Without this the agent channel
 	// stayed half-open and an exec with -A never returned (DECISIONS I-110).
+	//
+	// For a session, the EOF waits for the exit status (DECISIONS I-212).
+	// sshd sends EOF when the program's output drains and the exit status
+	// when it reaps the child, a moment later; an OpenSSH client whose stdin
+	// is already closed answers EOF with CHANNEL_CLOSE at once, and after
+	// that nothing more reaches it. Relayed from two goroutines, the EOF
+	// often won and the client reported 255. Exit status before EOF is
+	// valid SSH (sshd itself sends it that way when the child is reaped
+	// first).
 	go func() {
 		g2cData.Wait()
+		if isSession {
+			<-exited
+		}
 		_ = cch.CloseWrite() // an error means the client already closed
 	}()
 
@@ -441,8 +458,20 @@ func (s *session) pipe(cch ssh.Channel, creqs <-chan *ssh.Request, gch ssh.Chann
 	go func() {
 		defer wg.Done()
 		defer greqsDone.Done()
+		defer markExited()
 		for req := range greqs {
+			if req.Type == "keepalive@openssh.com" {
+				// sshd's ClientAliveInterval asks whether the gateway, its
+				// client, is alive; the gateway answers. Relayed, it held
+				// every later request of the channel (the exit status
+				// among them) on a round trip to the laptop.
+				s.reply(req, true)
+				continue
+			}
 			s.forwardChannelRequest(req, cch, isSession, false)
+			if req.Type == "exit-status" || req.Type == "exit-signal" {
+				markExited()
+			}
 		}
 	}()
 

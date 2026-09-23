@@ -169,7 +169,9 @@ After both sides exist, the gateway relays:
   back to the client, so `git push` over SSH inside the guest can use the
   laptop's agent while attached.
 - Close handling: when either side closes, the other is closed after
-  pending data flushes; exit status is delivered before close.
+  pending data flushes; on a session, exit status is delivered before
+  EOF and close (DECISIONS I-212), and the guest's channel
+  `keepalive@openssh.com` is answered by the gateway, not relayed.
 
 The relay is per-connection goroutines with a context that cancels on
 either side's close, and a hard cap of 24 hours per connection (tmux keeps
