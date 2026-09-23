@@ -224,6 +224,15 @@ func TestAdminSurface(t *testing.T) {
 	if out, err := run(t, e, "base", "status", "2026.09.20"); err != nil || !strings.Contains(out, "zp") || strings.Contains(out, "0x") {
 		t.Fatalf("base status (the BASE column printed a pointer on host-01): %s %v", out, err)
 	}
+	// Without --version a publish is named for the UTC date; a second one
+	// the same day takes date.1, then date.2 (the bare date collided on the
+	// primary key, 2026-09-23).
+	day := time.Now().UTC().Format("2006.01.02")
+	for _, want := range []string{day, day + ".1", day + ".2"} {
+		if out, err := run(t, e, "base", "publish", "--rev", fullRev, "--changelog", "same day"); err != nil || !strings.Contains(out, "base "+want+" ") {
+			t.Fatalf("same-day publish, want %s: %s %v", want, out, err)
+		}
+	}
 	// projects create (I-113): a synthetic exempt user gets a project and
 	// a create op the engine drives; the slug follows the api's rule.
 	if _, err := run(t, e, "projects", "create", "--user", "repose-m3", "--name", "Iso_A", "--host", "host-01"); err == nil {

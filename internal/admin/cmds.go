@@ -1367,7 +1367,9 @@ func (e *Env) base(ctx context.Context, args []string) error {
 			return err
 		}
 		if version == "" {
-			version = time.Now().UTC().Format("2006.01.02")
+			if version, err = e.nextBaseVersion(ctx, time.Now().UTC()); err != nil {
+				return err
+			}
 		}
 		changelog := fs.Lookup("changelog").Value.String()
 		if strings.HasPrefix(changelog, "@") {
@@ -1993,4 +1995,37 @@ func derefOr(s *string, def string) string {
 		return def
 	}
 	return *s
+}
+
+// nextBaseVersion names a base published without --version: the UTC date,
+// then date.1, date.2 ... for further publishes the same day. The bare date
+// alone made the second publish of a day fail on the primary key.
+func (e *Env) nextBaseVersion(ctx context.Context, now time.Time) (string, error) {
+	day := now.Format("2006.01.02")
+	rows, err := e.pool.Query(ctx, "select version from base_versions where version = $1 or version like $1 || '.%'", day)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	taken, next := false, 1
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			return "", err
+		}
+		if v == day {
+			taken = true
+			continue
+		}
+		if n, err := strconv.Atoi(strings.TrimPrefix(v, day+".")); err == nil && n >= next {
+			next = n + 1
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	if !taken && next == 1 {
+		return day, nil
+	}
+	return fmt.Sprintf("%s.%d", day, next), nil
 }
