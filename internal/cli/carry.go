@@ -43,6 +43,9 @@ type carryOptions struct {
 	Git *gitCarry
 	// Claude is the laptop's Claude Code config (I-196).
 	Claude *claudeCarry
+	// Tools is the laptop's global tools and the project's commands
+	// (I-221, I-222); `run` only.
+	Tools *toolsCarry
 	// Markers is the guest's marker set (item -> hash), from the sync's
 	// probe or the helper's own. Nil sends every part; a part whose hash
 	// matches its marker is left out.
@@ -62,6 +65,9 @@ type carryOutcome struct {
 	Dropped []string
 	// Warnings are one-line problems that did not stop anything else.
 	Warnings []string
+	// Installing names the tools the guest lacked and is installing in
+	// the background (I-221).
+	Installing []string
 	// Failed names the parts whose script failed; the previous state of
 	// that part is still in place.
 	Failed []string
@@ -81,6 +87,13 @@ func (o *carryOutcome) Lines() []string {
 	}
 	if len(o.Dropped) > 0 {
 		out = append(out, "Not carried (would not work in the guest): "+strings.Join(o.Dropped, ", ")+".")
+	}
+	if n := len(o.Installing); n > 0 {
+		what := "tool"
+		if n > 1 {
+			what = "tools"
+		}
+		out = append(out, fmt.Sprintf("Installing %d of your %s in the background: %s", n, what, strings.Join(o.Installing, ", ")))
 	}
 	out = append(out, o.Warnings...)
 	for _, f := range o.Failed {
@@ -105,6 +118,8 @@ func (o *carryOutcome) parse(out string) {
 			o.Warnings = append(o.Warnings, rest)
 		case "#failed":
 			o.Failed = append(o.Failed, rest)
+		case "#installing":
+			o.Installing = append(o.Installing, strings.Fields(rest)...)
 		}
 	}
 }
@@ -196,13 +211,22 @@ func addCarry(p *guestPayload, opts carryOptions) ([]string, error) {
 		return nil, err
 	}
 	sent = append(sent, cs...)
+	ts, err := addToolsPart(p, opts.Tools, opts)
+	if err != nil {
+		return nil, err
+	}
+	sent = append(sent, ts...)
 	return sent, nil
 }
 
 // markerScript is the shell that prints the guest's markers as
 // `#marker <item> <hash>` lines.
+// A waiting ~/.repose/tools-notices (what the tools installer could not
+// install, I-221) shows as the tools-notices marker, so the carry prints
+// it once.
 func markerScript() string {
-	return `for f in ` + carryMarkerDir + `/*; do [ -f "$f" ] && printf '#marker %s %s\n' "${f##*/}" "$(cat "$f")"; done; true
+	return `for f in ` + carryMarkerDir + `/*; do [ -f "$f" ] && printf '#marker %s %s\n' "${f##*/}" "$(cat "$f")"; done
+[ -s ~/.repose/tools-notices ] && echo '#marker tools-notices waiting'; true
 `
 }
 

@@ -1,0 +1,2 @@
+web: gunicorn svc.app:app
+worker: celery -A svc.tasks worker

@@ -146,12 +146,14 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			gc    *gitCarry
 			gcErr error
 			cc    *claudeCarry
+			tc    *toolsCarry
 		}
 		carryDone := make(chan builtCarry, 1)
 		go func() {
 			var b builtCarry
 			b.gc, b.gcErr = buildGitCarry(repoRoot, e.HomeDir)
 			b.cc, _ = buildClaudeCarry(e.HomeDir)
+			b.tc = buildToolsCarry(e.HomeDir, repoRoot) // I-221, I-222
 			carryDone <- b
 		}()
 		waitEnv := func() []envFile {
@@ -186,7 +188,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 					Kept: func(label string) {
 						e.warn("Kept the guest's %s login: it is newer than the laptop's.", label)
 					},
-				}, carryOptions{TZ: tz, Git: gc, Claude: cc, Markers: markers})
+				}, carryOptions{TZ: tz, Git: gc, Claude: cc, Tools: b.tc, Markers: markers})
 				return err
 			},
 		})

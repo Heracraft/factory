@@ -1,0 +1,14 @@
+{
+	"name": "@play/cli",
+	"bin": {
+		"play": "./dist/index.js"
+	},
+	"scripts": {
+		"build": "tsup src/index.ts",
+		"smoke": "play --version"
+	},
+	"devDependencies": {
+		"tsup": "^8.0.0",
+		"typescript": "^5.6.0"
+	}
+}

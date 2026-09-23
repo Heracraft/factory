@@ -1,0 +1,22 @@
+{
+	"name": "playground-monorepo",
+	"private": true,
+	"scripts": {
+		"preinstall": "npx only-allow pnpm",
+		"build": "turbo run build",
+		"predev": "portless proxy start --no-tls --port 3941",
+		"dev": "turbo run dev",
+		"clean": "portless proxy stop && rimraf dist",
+		"format": "prettier --write . > /dev/null",
+		"release": "changeset publish"
+	},
+	"packageManager": "pnpm@9.0.0",
+	"engines": {
+		"node": "22"
+	},
+	"devDependencies": {
+		"turbo": "^2.7.1",
+		"prettier": "^3.3.0",
+		"@changesets/cli": "^2.27.0"
+	}
+}

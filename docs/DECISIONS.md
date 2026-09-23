@@ -4792,3 +4792,72 @@ The preview script, the shortcut and the Vite `/fakeapi` proxy are
 removed. The fakes stay for the Playwright suite only. The cost: a dev
 server's buttons act on the signed-in account, so anything destructive is
 tried on an `e2e-` project.
+
+**I-221. `run` carries the laptop's global tools; the guest installs what
+it lacks in the background, from nixpkgs first.** (implementation,
+tools-carry worker, 2026-09-23) The owner's nuru-playground session lacked
+`portless`, `tsc` and `air`, all installed on the laptop. The CLI now lists
+the laptop's global tools by reading the managers' install directories:
+npm's global prefix (`$NPM_CONFIG_PREFIX`, the `prefix=` line of
+`~/.npmrc` and nothing else from it, else the directory above `node`), pnpm's
+`$PNPM_HOME/global/*/package.json`, bun's `~/.bun/install/global`, Go
+binaries in `$GOBIN`/`$GOPATH/bin`/`~/go/bin` through `debug/buildinfo`
+(package path and main-module version; a `(devel)` build is a laptop
+checkout and stays), cargo's `.crates2.json` (registry crates only), and
+`uv tool` and `pipx` venvs. Running `npm ls -g` and friends was rejected:
+each is 100-500 ms of process start on every run, against a 20 ms budget;
+the reads are about 0.5 ms on the dev box. The list (name, commands, manager,
+package, version; no path, no config value) is one carry part with marker
+`tools`, sent only when its hash changes. In the guest,
+`repose-tools-install plan` answers in the same ssh with what is missing
+(the one line "Installing 3 of your tools in the background: ...") and
+starts the user unit `repose-tools-carry`, which installs at low priority
+after `run` has moved on: `nix profile add nixpkgs#<attr>` when a package
+has `bin/<command>` (nix-locate, from the base's index), else the laptop's
+manager into a directory already on the login PATH (`GOBIN=~/.local/bin`,
+`cargo install --root ~/.local`, because `~/go/bin` and `~/.cargo/bin` are
+not on it). nixpkgs first because a prebuilt binary needs no compiler
+(air's `go install` failed on cgo in the owner's guest) and lands in dev's
+profile, which the store overlay pins. `nix profile add`, not `install`,
+which the guest's nix deprecates; the script falls back to `install` on a
+nix without `add`. A failure is logged in `~/.repose/tools-install.log` and
+said once at the next `run` (`~/.repose/tools-notices`, surfaced through
+the probe's markers), and not retried until the laptop's entry for the
+tool changes, so one broken tool does not cost every run. While a tool
+installs its commands are in `$XDG_RUNTIME_DIR/repose-installing` for the
+command-not-found handler. *Rejected:* installing before Ready (the owner:
+startup must not get slower); a guest-side list of "known tools" (the
+laptop is the source); uninstalling what the laptop removed (the guest may
+use it).
+
+**I-222. `run` scans the checkout for the commands its scripts run and the
+node major it pins; `repose scan` shows the result.** (implementation,
+tools-carry worker, 2026-09-23) Read, not walked: the root and every
+workspace package (pnpm-workspace.yaml, package.json `workspaces`) are
+checked for package.json scripts, Makefile/justfile recipes, Procfile,
+`.air.toml` and compose files, and the root for `.nvmrc`,
+`.node-version`, `.tool-versions`, `volta.node`, `engines.node`,
+`packageManager`, `go.mod`, `rust-toolchain(.toml)` and
+`.python-version`. The first word of every simple command, after
+assignments and wrappers (`env`, `cross-env`, `dotenv --`, `time`,
+`sudo`, `pnpm exec`, the commands `concurrently` is given), is a
+candidate unless the base has it, a dependency of the workspace or the
+root provides it (same name, a table of packages whose command differs,
+`typescript` -> `tsc`, or `node_modules/.bin`), a workspace `bin` or a
+pyproject script or dependency defines it, or it names another script
+(a script named like the command it runs, `"stripe": "stripe listen"`,
+does not count). `npx`, `pnpm dlx`, `bunx` and `uv run` name nothing.
+Candidates join I-221's list with no manager; the guest resolves each
+through nix-locate, and a small table gives the npm package for
+commands nixpkgs lacks (`portless`). A single pinned node major the guest
+does not have is added as `nodejs_<major>` to dev's profile only when
+that makes it the `node` of new login shells (the installer checks where
+`node` resolves from and verifies with `bash -lc 'node --version'`,
+removing it otherwise); when a `node` earlier on PATH would win, it
+installs nothing and says to run `repose config add nodejs_<major>`. An
+open range (`>=18`) pins nothing. Go, Rust and Python versions are
+reported by `repose scan` and left to GOTOOLCHAIN, rustup and uv, which
+fetch them. `repose scan [DIR]` is the dry run the owner validates
+projects with. *Rejected:* walking the whole tree (a monorepo's
+node_modules), resolving candidates on the laptop (no nix-locate there),
+and making engines ranges that allow several majors pick one.

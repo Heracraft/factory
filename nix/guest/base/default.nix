@@ -16,6 +16,7 @@
     ./caches.nix
     ./tmux.nix
     ./tools.nix
+    ./tools-carry.nix
     ./agents.nix
     ./browser.nix
     ./desktop.nix

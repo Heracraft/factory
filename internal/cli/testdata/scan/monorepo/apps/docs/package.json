@@ -1,0 +1,13 @@
+{
+	"name": "@play/docs",
+	"scripts": {
+		"dev": "concurrently \"astro dev\" \"pagefind --site dist --serve\"",
+		"build": "astro build && pagefind --site dist"
+	},
+	"dependencies": {
+		"astro": "^4.0.0"
+	},
+	"devDependencies": {
+		"concurrently": "^9.0.0"
+	}
+}

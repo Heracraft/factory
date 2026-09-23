@@ -1,0 +1,2 @@
+web: ./tmp/svc serve
+worker: overmind start -l worker

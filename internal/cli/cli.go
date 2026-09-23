@@ -125,6 +125,7 @@ func newRootCmd(version string) *cobra.Command {
 		newMCPCmd(),
 		newBrowserCmd(),
 		newCpCmd(env, g),
+		newScanCmd(),
 		newSessionHelperCmd(),
 	)
 	return root

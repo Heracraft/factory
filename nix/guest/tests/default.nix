@@ -96,6 +96,71 @@ let
   # The exact scripts the CLI sends for I-198 and I-195, kept in step with
   # the code by internal/cli's TestGuestPartsGolden.
   guestParts = ../../../internal/cli/testdata/guest-parts;
+
+  # guest-tools-carry's stand-ins. fakeNixpkgs is a flake with three
+  # packages, each one script copied into $out/bin; nothing to download.
+  fakeBin = name: text: pkgs.writeScript name "#!${pkgs.bash}/bin/bash\n${text}\n";
+  fakeNode = fakeBin "node" ''if [ "''${1:-}" = --version ]; then echo v22.1.0; else exec /run/current-system/sw/bin/node "$@"; fi'';
+  fakeNixpkgs = pkgs.writeTextDir "flake.nix" ''
+    {
+      outputs = { self }:
+        let
+          mk = name: bin: script: derivation {
+            inherit name;
+            system = "x86_64-linux";
+            builder = "${pkgs.bash}/bin/bash";
+            args = [ "-c" "${pkgs.coreutils}/bin/mkdir -p $out/bin && ${pkgs.coreutils}/bin/cp ''${script} $out/bin/''${bin}" ];
+          };
+        in {
+          legacyPackages.x86_64-linux = {
+            hello = mk "hello-2.12" "hello" "${fakeBin "hello" "echo Hello from the stand-in nixpkgs"}";
+            greeter = mk "greeter-1.0" "greet" "${fakeBin "greet" "echo greetings"}";
+            nodejs_22 = mk "nodejs-22.1.0" "node" "${fakeNode}";
+          };
+        };
+    }
+  '';
+  # nix-locate over fakeNixpkgs (the real index is another worker's part
+  # of the base): greeter provides greet, so the name differs.
+  fakeNixLocate = pkgs.writeShellScriptBin "nix-locate" ''
+    # the flags the installer passes (nix-index 0.1.11 has no --top-level)
+    [ "$*" = "--minimal --no-group --type x --type s --whole-name --at-root ''${!#}" ] || exit 2
+    case "$*" in
+      */bin/hello) echo hello.out ;;
+      */bin/greet) echo gr.eet.out; echo zz-greet-extra.out; echo greeter.out ;;
+      */bin/node) echo nodejs_22.out; echo nodejs_20.out ;;
+    esac
+  '';
+  # The registry document for one packed tarball.
+  npmMeta = pkgs.writers.writePython3 "npm-meta" { } ''
+    import base64
+    import hashlib
+    import json
+    import os
+    import sys
+
+    tgz = sys.argv[1]
+    b = open(tgz, "rb").read()
+    name = "fake-tool"
+    url = "http://127.0.0.1:4874/" + os.path.basename(tgz)
+    sri = "sha512-" + base64.b64encode(hashlib.sha512(b).digest()).decode()
+    v = {
+        "name": name,
+        "version": "1.0.0",
+        "bin": {"fake-tool": "cli.sh"},
+        "dist": {
+            "tarball": url,
+            "shasum": hashlib.sha1(b).hexdigest(),
+            "integrity": sri,
+        },
+    }
+    doc = {
+        "name": name,
+        "dist-tags": {"latest": "1.0.0"},
+        "versions": {"1.0.0": v},
+    }
+    print(json.dumps(doc))
+  '';
 in
 {
   guest-base = mkTest "guest-base" {
@@ -312,6 +377,97 @@ in
           guest.succeed("sudo -H -u dev XDG_RUNTIME_DIR=/run/user/1000 systemctl --user start repose-npm-registry.service")
           assert guest.succeed("cat /home/dev/.npmrc").strip() == "registry=https://user.example/"
           assert guest.succeed("cat /home/dev/.repose/npm-registry").strip() == "own"
+    '';
+  };
+
+  # I-221, I-222 on a real base: the CLI's tools part (the golden list from
+  # internal/cli's TestToolsGuestPartsGolden) plans, the user unit installs
+  # in the background, and every tool resolves in a new login shell.
+  # Offline: "nixpkgs" is a stand-in flake (fakeNixpkgs) whose packages
+  # build from what the guest's store already has, nix-locate is a stand-in
+  # index over it, and npm installs from a registry on 127.0.0.1. go,
+  # cargo and uv installs need the network and are not exercised here.
+  guest-tools-carry = mkTest "guest-tools-carry" {
+    nodes.guest = { lib, ... }: {
+      imports = [ node ];
+      environment.systemPackages = [ pkgs.python3 fakeNixLocate ];
+      virtualisation.additionalPaths = [ fakeNixpkgs pkgs.bash pkgs.coreutils ];
+      nix.registry.nixpkgs.to = lib.mkForce { type = "path"; path = "${fakeNixpkgs}"; };
+      nix.settings.flake-registry = lib.mkForce "";
+      # The stand-in packages name their builder's paths as plain strings.
+      nix.settings.sandbox = lib.mkForce false;
+      nix.settings.substituters = lib.mkForce [ ];
+      # The store overlay's upper on the disk, as on a real guest's thin
+      # volume, so what dev installed survives the reboot subtest.
+      virtualisation.writableStoreUseTmpfs = false;
+    };
+    testScript = ''
+      import json
+      guest.start()
+      guest.wait_for_unit("multi-user.target")
+      guest.wait_for_unit("user@1000.service")
+      guest.succeed("install -d -o dev -g dev -m 0700 /home/dev/.repose")
+      guest.succeed("mkdir -p /tmp/p && cp -r ${guestParts}/. /tmp/p && chmod -R u+w /tmp/p && chown -R dev:dev /tmp/p")
+      wanted = json.loads(guest.succeed("cat /tmp/p/tools/wanted.json"))
+
+      # The npm registry: fake-tool@1.0.0, packed here, served by python.
+      guest.succeed("mkdir -p /tmp/fake-tool /srv/npm")
+      guest.succeed("""printf '%s\n' '{"name":"fake-tool","version":"1.0.0","bin":{"fake-tool":"cli.sh"}}' > /tmp/fake-tool/package.json""")
+      guest.succeed("printf '#!/bin/sh\\necho fake-tool ok\\n' > /tmp/fake-tool/cli.sh && chmod +x /tmp/fake-tool/cli.sh")
+      guest.succeed("cd /srv/npm && HOME=/tmp npm pack /tmp/fake-tool")
+      guest.succeed("${npmMeta} /srv/npm/fake-tool-1.0.0.tgz > /srv/npm/fake-tool")
+      guest.succeed("systemd-run --unit fake-npm python3 -m http.server 4874 --bind 127.0.0.1 --directory /srv/npm")
+      guest.wait_for_open_port(4874, "127.0.0.1")
+      guest.succeed("sudo -H -u dev sh -c 'echo registry=http://127.0.0.1:4874/ > /home/dev/.npmrc'")
+      assert guest.succeed("sudo -H -u dev bash -lc 'node --version'").strip().startswith("v24."), "the base's node is not 24"
+
+      with subtest("plan: the one line, the installing file, no install yet"):
+          out = guest.succeed("sudo -H -u dev XDG_RUNTIME_DIR=/run/user/1000 sh -e /tmp/p/tools.sh /tmp/p")
+          print(out)
+          assert "#installing fake-tool greet hello nonexistent-cmd nodejs_22" in out, out
+          listed = guest.succeed("cat /run/user/1000/repose-installing").split()
+          assert sorted(listed) == ["fake-tool", "greet", "hello", "nonexistent-cmd"], listed
+          assert guest.succeed("cat /home/dev/.repose/tools-wanted.json").strip() == json.dumps(wanted, separators=(",", ":"))
+
+      with subtest("run: every tool resolves in a new login shell, the installing file is gone"):
+          guest.wait_until_succeeds(f"grep -qx {wanted['hash']} /home/dev/.repose/carry/tools", timeout=900)
+          print(guest.succeed("cat /home/dev/.repose/tools-install.log"))
+          assert "stand-in" in guest.succeed("sudo -H -u dev bash -lc 'hello'")
+          assert guest.succeed("sudo -H -u dev bash -lc 'greet'").strip() == "greetings"
+          assert guest.succeed("sudo -H -u dev bash -lc 'fake-tool'").strip() == "fake-tool ok"
+          assert guest.succeed("sudo -H -u dev bash -lc 'node --version'").strip() == "v22.1.0"
+          guest.fail("test -e /run/user/1000/repose-installing")
+          ilog = guest.succeed("cat /home/dev/.repose/tools-install.log")
+          assert "hello: installed nixpkgs#hello" in ilog, ilog
+          assert "greet: installed nixpkgs#greeter" in ilog, ilog
+          assert "fake-tool: installed with npm" in ilog, ilog
+          assert "node: nodejs_22 is the node of new shells" in ilog, ilog
+          # dev's profile holds them, so the store overlay pins them
+          profile = guest.succeed("sudo -H -u dev nix profile list")
+          assert "hello" in profile and "greeter" in profile and "nodejs_22" in profile, profile
+
+      with subtest("what could not be installed is said once"):
+          notices = guest.succeed("cat /home/dev/.repose/tools-notices")
+          assert "Could not install nonexistent-cmd: no nixpkgs package has bin/nonexistent-cmd" in notices, notices
+          out = guest.succeed("sudo -H -u dev sh -e /tmp/p/tools-notices.sh /tmp/p")
+          assert "#warn Could not install nonexistent-cmd" in out, out
+          assert guest.succeed("sudo -H -u dev sh -e /tmp/p/tools-notices.sh /tmp/p").strip() == ""
+
+      with subtest("the same list again installs nothing and says nothing"):
+          out = guest.succeed("sudo -H -u dev XDG_RUNTIME_DIR=/run/user/1000 sh -e /tmp/p/tools.sh /tmp/p")
+          assert "#installing" not in out and "#warn" not in out, out
+          guest.fail("test -e /run/user/1000/repose-installing")
+
+      with subtest("a pass cut short is finished by the unit at the next boot"):
+          guest.succeed("rm /home/dev/.repose/carry/tools")
+          guest.succeed("sudo -H -u dev nix profile remove greeter")
+          guest.fail("sudo -H -u dev bash -lc 'command -v greet'")
+          guest.shutdown()
+          guest.start()
+          guest.wait_for_unit("user@1000.service")
+          guest.wait_until_succeeds(f"grep -qx {wanted['hash']} /home/dev/.repose/carry/tools", timeout=900)
+          print(guest.succeed("tail -n 12 /home/dev/.repose/tools-install.log"))
+          assert guest.succeed("sudo -H -u dev bash -lc 'greet'").strip() == "greetings"
     '';
   };
 
