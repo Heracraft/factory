@@ -305,7 +305,9 @@ $ repose run
       branch has commits the laptop lacks, leave the branch alone and check
       `H` out detached with a warning; set the branch's upstream; `git
       apply --index` the diff; extract the untracked tar. Skip files over
-      100 MB with a warning. Respect `sync.exclude`.
+      100 MB with a warning, dependency/cache directories at any depth
+      (named once), and anything past 500 MB in total; symlinks travel as
+      symlinks. Respect `sync.exclude`, matched at any depth (I-194).
    e. Print `Synced: 4 modified, 2 untracked`, plus `(3 new commits)` when
       commits travelled.
    f. A project created with `--name` in a directory that has no git

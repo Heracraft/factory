@@ -3799,3 +3799,18 @@ public history authorises nothing; rewriting history and force-pushing
 would break every clone and worktree for no security gain. *Rejected:*
 a history rewrite, and making the repository private for this reason
 alone. Any future leaked credential is rotated first, the same way.
+
+**I-194. Dependency directories never travel; symlinks travel as links.**
+(conductor, 2026-09-23) The owner's `repose run` in teksafari.org failed
+with `read …/cms/node_modules/.pnpm/…/@actions/exec: is a directory`, and
+the guest was left with an empty checkout: `cms/node_modules` was not
+gitignored, pnpm builds it from symlinks to directories, and the sync
+followed them. Untracked files are now `Lstat`ed: a symlink is written as a
+tar symlink, a directory or special file is skipped, an unreadable file is
+skipped. `node_modules` and similar dependency and cache directories are
+skipped at any depth whatever .gitignore says, named once in a warning:
+they are rebuilt in the guest for its platform, and shipping them is slow
+and wrong. `sync.exclude` patterns now match any leading directory, and one
+sync sends at most 500 MB of untracked files. *Rejected:* following
+symlinks (duplicates whole trees, loops) and failing the sync on the
+first odd file (the whole environment stays empty for one bad path).

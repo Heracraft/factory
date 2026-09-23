@@ -41,6 +41,10 @@ type SyncSummary struct {
 	Branch     string
 	Head       string
 	SkippedBig []string
+	// SkippedDirs are dependency and cache directories left behind
+	// (defaultSkipDirs); SkippedCap counts files past maxUntrackedBytes.
+	SkippedDirs []string
+	SkippedCap  int
 }
 
 // dirtyTreeError is 07-cli.md §6's exit 6, carrying the file list for the
@@ -226,11 +230,13 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	if err != nil {
 		return nil, stepFailed("list your untracked files", err, "")
 	}
-	untracked, skipped, err := filterUntracked(localRepoDir, untracked, opts.Exclude)
+	untracked, skipped, skippedDirs, skippedCap, err := filterUntracked(localRepoDir, untracked, opts.Exclude)
 	if err != nil {
 		return nil, err
 	}
 	summary.SkippedBig = skipped
+	summary.SkippedDirs = skippedDirs
+	summary.SkippedCap = skippedCap
 	if len(untracked) > 0 {
 		buf, err := tarFiles(localRepoDir, untracked)
 		if err != nil {
@@ -371,52 +377,135 @@ func gitCmdStdin(dir, stdin string, args ...string) (string, error) {
 	return out.String(), nil
 }
 
-// filterUntracked drops files over the size cap (with their names
-// returned separately for a warning) and anything sync.exclude matches.
-func filterUntracked(root string, files, exclude []string) (kept, skippedBig []string, err error) {
+// maxUntrackedBytes caps what one sync sends of untracked files in total:
+// past it the rest is skipped with a warning naming the biggest
+// directories, rather than packing gigabytes into memory (owner's run on
+// 2026-09-23, a pnpm tree under an un-ignored cms/node_modules).
+const maxUntrackedBytes = 500 << 20
+
+// defaultSkipDirs are directories that never travel, wherever they sit in
+// the tree and whether or not .gitignore mentions them: dependency trees
+// and build caches the guest recreates itself (an install there is
+// faster than shipping them, and they are full of symlinks and
+// platform-specific binaries that would be wrong in the guest anyway).
+var defaultSkipDirs = map[string]bool{
+	"node_modules": true, ".pnpm-store": true, "bower_components": true,
+	".venv": true, "venv": true, "__pycache__": true, ".mypy_cache": true, ".pytest_cache": true, ".ruff_cache": true, ".tox": true,
+	".turbo": true, ".next": true, ".nuxt": true, ".svelte-kit": true, ".parcel-cache": true, ".angular": true,
+	".gradle": true, ".terraform": true, ".direnv": true,
+}
+
+// skippedDir is the shortest leading directory of f that is a default
+// skip ("cms/node_modules" for "cms/node_modules/.pnpm/x/y"), or "".
+func skippedDir(f string) string {
+	parts := strings.Split(filepath.ToSlash(f), "/")
+	for i, part := range parts[:len(parts)-1] {
+		if defaultSkipDirs[part] {
+			return strings.Join(parts[:i+1], "/")
+		}
+	}
+	return ""
+}
+
+// filterUntracked drops default-skipped directories (named once each in
+// skippedDirs), anything sync.exclude matches, files over the size cap
+// (named in skippedBig), and everything past the total cap (skippedCap
+// counts them). Directories and anything that is not a regular file or
+// a symlink are dropped silently; symlinks are kept and travel as links.
+func filterUntracked(root string, files, exclude []string) (kept, skippedBig, skippedDirs []string, skippedCap int, err error) {
+	seenDir := map[string]bool{}
+	var total int64
 	for _, f := range files {
+		if d := skippedDir(f); d != "" {
+			if !seenDir[d] {
+				seenDir[d] = true
+				skippedDirs = append(skippedDirs, d)
+			}
+			continue
+		}
 		if matchesAny(exclude, f) {
 			continue
 		}
-		info, statErr := os.Stat(filepath.Join(root, f))
+		info, statErr := os.Lstat(filepath.Join(root, f))
 		if statErr != nil {
 			continue // gone between listing and syncing; nothing to send
 		}
-		if info.Size() > maxSyncFileBytes {
+		mode := info.Mode()
+		if mode&os.ModeSymlink == 0 && !mode.IsRegular() {
+			continue
+		}
+		if mode.IsRegular() && info.Size() > maxSyncFileBytes {
 			skippedBig = append(skippedBig, f)
 			continue
 		}
+		if total+info.Size() > maxUntrackedBytes {
+			skippedCap++
+			continue
+		}
+		total += info.Size()
 		kept = append(kept, f)
 	}
-	return kept, skippedBig, nil
+	return kept, skippedBig, skippedDirs, skippedCap, nil
 }
 
+// matchesAny reports whether a sync.exclude pattern matches the path, its
+// base name, or any leading directory of it (so "dist" and "web/dist"
+// both exclude everything under web/dist).
 func matchesAny(patterns []string, path string) bool {
+	path = filepath.ToSlash(path)
+	parts := strings.Split(path, "/")
 	for _, p := range patterns {
+		p = strings.TrimSuffix(filepath.ToSlash(p), "/")
 		if ok, _ := filepath.Match(p, path); ok {
 			return true
 		}
-		if ok, _ := filepath.Match(p, filepath.Base(path)); ok {
+		if ok, _ := filepath.Match(p, parts[len(parts)-1]); ok {
 			return true
+		}
+		for i := range parts[:len(parts)-1] {
+			if ok, _ := filepath.Match(p, parts[i]); ok {
+				return true
+			}
+			if ok, _ := filepath.Match(p, strings.Join(parts[:i+1], "/")); ok {
+				return true
+			}
 		}
 	}
 	return false
 }
 
+// tarFiles packs the files filterUntracked kept. A symlink travels as a
+// symlink (pnpm's node_modules is made of them, and reading one that
+// points at a directory as a file is what failed the owner's sync); a
+// file that turned into something else since the listing is skipped.
 func tarFiles(root string, files []string) ([]byte, error) {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 	for _, f := range files {
 		path := filepath.Join(root, f)
-		info, err := os.Stat(path)
+		info, err := os.Lstat(path)
 		if err != nil {
+			continue
+		}
+		name := filepath.ToSlash(f)
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(path)
+			if err != nil {
+				continue
+			}
+			if err := tw.WriteHeader(&tar.Header{Typeflag: tar.TypeSymlink, Name: name, Linkname: filepath.ToSlash(target), Mode: 0o777, ModTime: info.ModTime()}); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if !info.Mode().IsRegular() {
 			continue
 		}
 		b, err := os.ReadFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", f, err)
+			continue // unreadable (permissions, a race): one file must not sink the whole sync
 		}
-		hdr := &tar.Header{Name: filepath.ToSlash(f), Mode: int64(info.Mode().Perm()), Size: int64(len(b))}
+		hdr := &tar.Header{Name: name, Mode: int64(info.Mode().Perm()), Size: int64(len(b)), ModTime: info.ModTime()}
 		if err := tw.WriteHeader(hdr); err != nil {
 			return nil, err
 		}
@@ -478,6 +567,12 @@ func (s *SyncSummary) Warnings() []string {
 	}
 	for _, f := range s.SkippedBig {
 		w = append(w, fmt.Sprintf("Skipped %s: over 100 MB.", f))
+	}
+	if len(s.SkippedDirs) > 0 {
+		w = append(w, fmt.Sprintf("Not sent: %s (dependencies and caches; install them in the guest). Add them to .gitignore to keep them out of git too.", strings.Join(s.SkippedDirs, ", ")))
+	}
+	if s.SkippedCap > 0 {
+		w = append(w, fmt.Sprintf("Skipped %d untracked files past the 500 MB limit for one sync. Commit what matters, or add large directories to .gitignore or `sync.exclude`.", s.SkippedCap))
 	}
 	return w
 }
