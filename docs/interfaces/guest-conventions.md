@@ -110,7 +110,7 @@ caller's `$TMUX_PANE` when set.
 | `~/.config/gh/hosts.yml` | `/home/dev/.config/gh/hosts.yml` | dev 0600 |
 | `~/.codex/auth.json` | `/home/dev/.codex/auth.json` | dev 0600 |
 | `~/.local/share/opencode/auth.json` | `/home/dev/.local/share/opencode/auth.json` | dev 0600 |
-| `git config user.name/email` | `/home/dev/.gitconfig` (set with `git config --global`, other keys left alone) | dev 0644 |
+| `git config user.name/email` | inside the carried git config below (DECISIONS I-195). The old shape, the two keys written straight into `/home/dev/.gitconfig` with `git config --global`, is what a CLI before I-195 still does, and stays accepted: the first carry removes them from `~/.gitconfig` when they equal the carried values, so they cannot shadow later changes | dev 0644 |
 | (when gh travelled and the project's remote is on github.com) | `/home/dev/.gitconfig`: `url.https://github.com/.insteadOf git@github.com:` and `credential.https://github.com.helper = !gh auth git-credential`, so the SSH `origin` guestd sets is pushed over HTTPS with gh's login (DECISIONS I-150) | dev 0644 |
 
 When the laptop's gh keeps its token in the system keyring (gh 2.40+),
@@ -121,6 +121,20 @@ ssh, before the git steps of the sync.
 Never `~/.claude/.credentials.json`, never `~/.gemini/oauth_creds.json`
 (OAuth over SSH is unreliable; Gemini uses `GEMINI_API_KEY` as a named
 secret), never SSH private keys.
+
+## Laptop config the CLI carries (DECISIONS I-195..I-198, I-206)
+
+In the same ssh as the credentials on `run`, and from the session helper
+beside the attach on `attach`. Each item is applied by its own `sh -e`
+and ends by writing its marker; a failed item leaves the guest's previous
+state and is named once.
+
+| What | Guest path | Notes |
+|---|---|---|
+| the laptop's `git config --global --list --includes`, run in the checkout, minus the I-195 denylist, plus the checkout's own `user.name`/`user.email` | `/home/dev/.config/git/repose-carried` (dev 0644, replaced whole by rename) | `/home/dev/.gitconfig` starts with `[include] path = ~/.config/git/repose-carried`, added once, so the guest's own keys after it win. Path values missing in the guest and a `core.pager`/`core.editor` not on PATH are removed from the file and named once. When `~/.gitconfig` is a symlink (home-manager) nothing is added and the CLI says what to add |
+| `core.excludesFile`'s contents | `/home/dev/.config/git/ignore` | git's default excludes file |
+| the laptop's zone | `TZ=` in `/etc/repose/env`, tmux global and per-session `TZ` | see "tmux" |
+| markers | `/home/dev/.repose/carry/<item>` | the hash of the laptop input last applied; the probe prints them as `#marker <item> <hash>` |
 
 ## Users and privileges
 

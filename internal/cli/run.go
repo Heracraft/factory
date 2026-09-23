@@ -104,6 +104,12 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	_, _ = fmt.Fprintf(e.Out, "Connected to %s (%s)\n", project.Slug, project.Class)
 
 	helper := sessionOptions{Slug: project.Slug, Target: target.Args, TZ: tz, HomeDir: e.HomeDir}
+	if root := gitRepoRoot(e.Cwd); root != "" && res.Remote != "" && res.Remote == project.RemoteURL {
+		// The git carry needs the project's own checkout: its includeIf
+		// rules and identity are what the guest should get, and a run
+		// from anywhere else would carry some other repository's.
+		helper.RepoDir = root
+	}
 	if attachOnly {
 		// The carry runs beside the attach, never before it (I-195).
 		helper.Carry = true
@@ -128,13 +134,16 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			StashRemote: opts.StashRemote, DiscardRemote: opts.DiscardRemote,
 			Exclude: e.Cfg.SyncExclude, NoRemote: project.RemoteURL == "", RemoteURL: project.RemoteURL,
 			BeforeApply: func(markers map[string]string) error {
-				var err error
+				gc, err := buildGitCarry(repoRoot, e.HomeDir)
+				if err != nil {
+					e.warn("Could not read your git config (%s); the guest keeps its own.", oneLine(err.Error()))
+				}
 				copied, carried, err = syncCredentialsAndCarry(ctx, target, e.HomeDir, repoRoot, credSyncOptions{
 					RemoteURL: project.RemoteURL,
 					Kept: func(label string) {
 						e.warn("Kept the guest's %s login: it is newer than the laptop's.", label)
 					},
-				}, carryOptions{TZ: tz, Markers: markers})
+				}, carryOptions{TZ: tz, Git: gc, Markers: markers})
 				return err
 			},
 		})

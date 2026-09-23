@@ -22,7 +22,7 @@ Removed. Running processes that already read it keep their copy until restart.
 Synced logins happen silently inside `repose run`:
 
 ```
-Syncing logins: gh, codex, opencode, git identity
+Credentials: gh, codex, opencode, git
 ```
 
 ## Kind 1: tool logins the laptop already has
@@ -30,7 +30,8 @@ Syncing logins: gh, codex, opencode, git identity
 Copied at every `repose run` over the SSH session into the guest, owned by
 `dev`, mode 0600. The list is exact and lives in
 `interfaces/guest-conventions.md`: gh's `hosts.yml`, Codex's `auth.json`,
-opencode's `auth.json`, and the two git identity keys; when gh's login
+opencode's `auth.json`, and the git identity (inside the carried git
+config below, since I-195); when gh's login
 travels and the remote is on github.com, the guest's git also gets gh as
 its credential helper for github over HTTPS, so an agent can push (a gh
 token the laptop keeps in its keyring is written into the copy of
@@ -53,6 +54,32 @@ Rules that must hold:
 - `~/.claude/.credentials.json`, `~/.gemini/oauth_creds.json`, and any SSH
   private key are never copied. A test feeds a laptop home containing all
   of them and asserts the tar stream contains none.
+
+### Laptop config that travels the same way
+
+Not secrets, but carried over the same SSH, laptop to guest, never through
+the api (DECISIONS I-195..I-198; `interfaces/guest-conventions.md` "Laptop
+config the CLI carries" has the exact paths):
+
+- **git config** (I-195): the laptop's effective global config for the
+  checkout (`git config --global --list --includes`, so an `includeIf`
+  that picks a work email is flattened in), minus `credential.*`,
+  `core.sshCommand`, `ssh.*`, `url.*`, signing (`user.signingkey`,
+  `gpg.*`, `commit.gpgsign`, `tag.gpgsign`), proxies and TLS client
+  settings, `core.hooksPath`, `init.templateDir`, `safe.directory`,
+  includes, and diff and merge tools. A value that is a laptop path
+  missing in the guest, and a `core.pager` or `core.editor` whose command
+  is not on the guest's PATH, are dropped and named once. It lands whole
+  in `~/.config/git/repose-carried`, included first from `~/.gitconfig`,
+  so a key the user sets in the guest's `~/.gitconfig` wins; a key
+  removed on the laptop disappears from the guest. `core.excludesFile`
+  travels as its contents, to `~/.config/git/ignore`. Carried on `run`,
+  and on `attach` when it is run from the project's checkout (the only
+  place its `includeIf` rules resolve the way they do for this project).
+
+A part that has not changed on the laptop since the guest last applied it
+is not sent: the guest keeps one marker per carried item under
+`~/.repose/carry/` (DECISIONS I-206), returned in the sync's first SSH.
 
 ## Kind 2: Claude Code
 

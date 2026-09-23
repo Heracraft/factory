@@ -97,7 +97,14 @@ func syncCredentialsAndCarry(ctx context.Context, t sshTarget, homeDir, repoDir 
 
 	name, _ := gitCmd(repoDir, "config", "user.name")
 	email, _ := gitCmd(repoDir, "config", "user.email")
-	if name != "" || email != "" {
+	if co.Git != nil {
+		// The identity travels inside the carried git config (I-195),
+		// where the checkout's includeIf and its own .git/config have
+		// already picked it.
+		if co.Git.HasID {
+			copied = append(copied, "git")
+		}
+	} else if name != "" || email != "" {
 		// Through files in the payload, not the command line: the values
 		// are the user's and do not belong in a process listing.
 		if err := p.file("git-name", []byte(name)); err != nil {

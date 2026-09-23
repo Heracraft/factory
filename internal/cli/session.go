@@ -110,12 +110,21 @@ func carryOverSession(ctx context.Context, t sshTarget, opts sessionOptions) (*c
 	if err != nil {
 		return nil, err
 	}
+	co := carryOptions{TZ: opts.TZ, Markers: parseMarkers(string(out))}
+	var warnings []string
+	if opts.RepoDir != "" {
+		gc, err := buildGitCarry(opts.RepoDir, opts.HomeDir)
+		if err != nil {
+			warnings = append(warnings, "Could not read your git config ("+oneLine(err.Error())+"); the guest keeps its own.")
+		}
+		co.Git = gc
+	}
 	p := newGuestPayload()
-	sent, err := addCarry(p, carryOptions{TZ: opts.TZ, Markers: parseMarkers(string(out))})
+	sent, err := addCarry(p, co)
 	if err != nil {
 		return nil, err
 	}
-	o := &carryOutcome{Sent: sent}
+	o := &carryOutcome{Sent: sent, Warnings: warnings}
 	if len(sent) == 0 {
 		return o, nil
 	}

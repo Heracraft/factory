@@ -145,7 +145,9 @@ func (g *Guest) run(command string, channel ssh.Channel) int {
 	// TMUX (set when the test runner itself runs inside a tmux session)
 	// must not leak in: a client that inherits it talks to the outer
 	// server instead of the one this fake guest's TMUX_TMPDIR points at.
-	cmd.Env = append(filterEnv(os.Environ(), "TMUX"),
+	// XDG_CONFIG_HOME is the test process's (the "laptop's"); a real
+	// guest has none, and git would read the laptop's config through it.
+	cmd.Env = append(filterEnv(os.Environ(), "TMUX", "XDG_CONFIG_HOME"),
 		"HOME="+g.Home,
 		"TMUX_TMPDIR="+g.sockDir,
 	)

@@ -38,6 +38,10 @@ const carryVersion = "1"
 type carryOptions struct {
 	// TZ is the laptop's IANA zone; "" leaves the guest's alone.
 	TZ string
+	// Git is the laptop's git config for the checkout (I-195); nil when
+	// the command is not run from the project's checkout, whose includeIf
+	// rules and identity it needs.
+	Git *gitCarry
 	// Markers is the guest's marker set (item -> hash), from the sync's
 	// probe or the helper's own. Nil sends every part; a part whose hash
 	// matches its marker is left out.
@@ -168,6 +172,11 @@ func addCarry(p *guestPayload, opts carryOptions) ([]string, error) {
 			return nil, err
 		}
 		sent = append(sent, "tz")
+	}
+	if ok, err := addGitPart(p, opts.Git, opts); err != nil {
+		return nil, err
+	} else if ok {
+		sent = append(sent, "git")
 	}
 	return sent, nil
 }
