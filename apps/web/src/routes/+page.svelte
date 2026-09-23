@@ -41,18 +41,18 @@
 		}
 	}
 
-	const points = [
+	const facts = [
 		{
-			title: 'Ready on first boot',
-			text: 'Node, Python, Go, Rust and Docker are installed. Your repo’s `flake.nix` works as it does locally, and your secrets and git logins come with you.'
+			title: 'Your exact working state',
+			text: 'repose run in any checkout brings your uncommitted edits, unpushed commits, flake.nix, secrets and git logins. The toolchain is already installed.'
 		},
 		{
-			title: 'Yours from any computer',
-			text: '`repose attach izma` from any laptop with the CLI, or plain `ssh izma.repose` from your editor.'
+			title: 'Leave, and check in from anywhere',
+			text: 'Close the laptop. You get a notification when the agent needs you, and repose attach picks up the same session from any computer.'
 		},
 		{
-			title: 'Full permissions, no risk',
-			text: 'Run Claude Code with `--dangerously-skip-permissions` for hours. It can only touch this machine, never your laptop, and a snapshot rolls it back.'
+			title: 'A throwaway machine per project',
+			text: 'Each project is isolated. Destroy one in a second; repose restore brings it back for 30 days.'
 		}
 	];
 
@@ -64,10 +64,10 @@
 </script>
 
 <svelte:head>
-	<title>repose: a dev machine for every project, set up and always on</title>
+	<title>repose: let your agents run with full permissions</title>
 	<meta
 		name="description"
-		content="A dev machine for every project: set up on first boot, reachable from any computer, and safe to give coding agents full permissions."
+		content="A disposable dev machine per project with your code, tools and secrets on it in 15 seconds, so coding agents can run with full permissions and your laptop stays out of reach."
 	/>
 </svelte:head>
 
@@ -90,21 +90,12 @@
 <main>
 	<section class="mx-auto max-w-5xl px-5 pt-14 pb-16">
 		<h1 class="max-w-3xl text-4xl leading-tight font-semibold sm:text-5xl sm:leading-[1.12]">
-			A dev machine for every project, set up and always on
+			Let your agents run with full permissions
 		</h1>
-		<dl class="mt-8 grid max-w-4xl gap-x-10 gap-y-5 sm:grid-cols-3">
-			{#each points as pt (pt.title)}
-				<div class="border-t border-[var(--rule-strong)] pt-3">
-					<dt class="font-display font-semibold">{pt.title}</dt>
-					<dd class="mt-1.5 text-[0.95rem] leading-relaxed text-zinc-600 dark:text-zinc-400">
-						{#each pt.text.split('`') as part, i (i)}{#if i % 2}<code
-									class="text-[0.9em] break-all text-zinc-900 sm:break-normal sm:whitespace-nowrap dark:text-zinc-100"
-									>{part}</code
-								>{:else}{part}{/if}{/each}
-					</dd>
-				</div>
-			{/each}
-		</dl>
+		<p class="mt-5 max-w-2xl text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
+			Your code, tools and secrets on a disposable machine in 15 seconds. Your laptop stays out of
+			reach.
+		</p>
 
 		<div class="mt-8 flex flex-wrap items-center gap-3">
 			<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
@@ -123,6 +114,17 @@
 
 		<div class="mt-8">
 			<Session />
+		</div>
+	</section>
+
+	<section class="border-t border-[var(--rule)]">
+		<div class="mx-auto grid max-w-5xl gap-10 px-5 py-16 sm:grid-cols-3">
+			{#each facts as f (f.title)}
+				<div>
+					<h2 class="text-lg font-semibold">{f.title}</h2>
+					<p class="mt-2 text-zinc-600 dark:text-zinc-400">{f.text}</p>
+				</div>
+			{/each}
 		</div>
 	</section>
 
