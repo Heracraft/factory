@@ -140,6 +140,12 @@ to look first.
 
 Back to the laptop:
 
+- `repose cp` copies a file either way when a log or a trace is needed
+  for triage (DECISIONS I-201): `repose cp :logs/x.log .` from the
+  checkout, `repose cp izma:/tmp/trace.json .` from anywhere, `repose cp
+  -r ./fixtures :test/fixtures` the other way. It is scp over the
+  project's connection with the project resolved as every other command
+  resolves it, and guest paths relative to the checkout.
 - There is no reverse sync. The user pulls. `repose status` shows the
   guest's branch, HEAD, and whether the tree is dirty so the user knows
   something is waiting to be committed.

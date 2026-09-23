@@ -190,7 +190,15 @@ func (g *Guest) run(command string, channel ssh.Channel) int {
 		"HOME="+g.Home,
 		"TMUX_TMPDIR="+g.sockDir,
 	)
-	cmd.Stdin = channel
+	// Stdin through a pipe the command's exit does not wait on: a client
+	// such as scp sends EOF only after the remote command has exited, so
+	// exec's own stdin copy (which Wait waits for) would never finish.
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		_, _ = fmt.Fprintln(channel.Stderr(), err)
+		return 1
+	}
+	go func() { _, _ = io.Copy(stdin, channel); _ = stdin.Close() }()
 	cmd.Stdout = channel
 	cmd.Stderr = channel.Stderr()
 	if err := cmd.Run(); err != nil {

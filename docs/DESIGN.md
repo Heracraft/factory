@@ -304,7 +304,7 @@ Ubuntu VM.
 Commands: `login`, `logout`, `run [prompt] [--agent] [--size] [--name]`,
 `attach`, `stop`, `start`, `status`, `open <port> | --desktop`, `secrets
 set|list|rm`, `config apply|edit|show`, `snapshots list|restore`, `destroy`,
-`logs`, `events`, `notify set|test`, `version`. Global `--project` overrides the cwd-derived project.
+`logs`, `events`, `notify set|test`, `cp` (DECISIONS I-201), `version`. Global `--project` overrides the cwd-derived project.
 
 Project resolution: read `git remote get-url origin`, normalise
 (`git@github.com:a/b.git` and `https://github.com/a/b` are the same), look up

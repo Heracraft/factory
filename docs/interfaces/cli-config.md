@@ -27,6 +27,14 @@ I-73: not just the host, so the worked example below actually holds).
 Environment overrides: `REPOSE_API_URL`, `REPOSE_PROJECT` (project id or
 slug, same as `--project`), `REPOSE_NO_BROWSER=1` (forces device code; device code is the default since v0.1.2, `--browser` asks for the loopback PKCE flow, DECISIONS I-101), `REPOSE_NO_FORWARD=1` (no automatic port forwards while attached, DECISIONS I-199; `repose open` still works). `REPOSE_SESSION` is internal: the session helper's options (DECISIONS I-206), never set by hand.
 
+`repose cp [-r] SRC DST` (DECISIONS I-201): one side is `PROJECT:PATH`
+or `:PATH` (this checkout's project), the other a laptop path; a path
+starting with `/` or `.` is always local, as with scp. A relative guest
+path is taken from `~/<slug>`. It runs `scp` with the project's ssh
+target (the multiplexed `<slug>.repose` alias), so it refreshes the
+certificate like `run`, needs a running guest (exit 5 otherwise), and
+exits with scp's code.
+
 Exit codes: 0 ok; 1 generic; 2 usage; 3 not logged in; 4 project not found;
 5 guest not running; 6 dirty remote tree (sync refused); 7 payment required;
 8 capacity; 10 build failed (Nix error printed); 130 interrupted (Ctrl-C).
