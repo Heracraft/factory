@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the repose Grafana dashboards.
 
-The seven dashboards of docs/workstreams/10-observability.md §5, one JSON file
+The dashboards of docs/workstreams/10-observability.md §5, one JSON file
 each, provisioned by ops/grafana/provisioning/dashboards/repose.yaml.
 
 Why a generator and not seven hand-written files: a dashboard is 400 lines of
@@ -783,7 +783,104 @@ def abuse() -> dict:
     )
 
 
+# --- 0. overview -----------------------------------------------------------
+
+
+def overview() -> dict:
+    """One screen that answers "is anything wrong?", every panel from
+    Prometheus or Loki so it works on a Grafana that cannot reach the api's
+    database. Each stat turns red on the same condition as its alert."""
+    d = dashboard(
+        "repose-overview",
+        "repose / Overview",
+        desc="A quick look: are the parts up, what is running, is anything failing. Links to the detailed dashboards at the top.",
+        time_from="now-6h",
+        refresh="30s",
+        panels=[
+            row("Is everything up"),
+            panel("stat", "Scrape targets down",
+                  [q('count(up{job=~"hosts|hostd|fluent-bit|gateway|api-grpc|api"} == 0) or vector(0)', "down", instant=True)],
+                  w=4, h=5, thresholds=[("green", None), ("red", 1)],
+                  desc="Prometheus targets not answering (host exporters, hostd, Fluent Bit, gateway, api). Any is a page."),
+            panel("stat", "Hosts ready",
+                  [q('sum(repose_api_hosts{state="ready"})', "ready", instant=True),
+                   q('sum(repose_api_hosts{state=~"unreachable|lost"})', "unreachable or lost", instant=True)],
+                  w=4, h=5, thresholds=[("green", None)],
+                  overrides=[{"matcher": {"id": "byName", "options": "unreachable or lost"},
+                              "properties": [{"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": None}, {"color": "red", "value": 1}]}}]}],
+                  desc="Hosts by the api's view of them."),
+            panel("stat", "hostd streams connected",
+                  [q("sum(repose_host_stream_connected)", "connected", instant=True)],
+                  w=4, h=5, thresholds=[("red", None), ("green", 1)],
+                  desc="Hosts whose hostd holds its command stream to the api. Zero means nothing can be created, started or stopped."),
+            panel("stat", "Guests with guestd lost",
+                  [q("sum(repose_host_guestd_lost)", "lost", instant=True)],
+                  w=4, h=5, thresholds=[("green", None), ("red", 1)],
+                  desc="Guests whose agent stopped answering. `repose start` on the project restarts it."),
+            panel("stat", "Log shipping failures (1h)",
+                  [q("sum(increase(fluentbit_output_retries_failed_total[1h])) or vector(0)", "failed", instant=True)],
+                  w=4, h=5, thresholds=[("green", None), ("yellow", 1), ("red", 50)],
+                  desc="Chunks Fluent Bit gave up on in the last hour. Non-zero means log lines were lost."),
+            panel("stat", "Newest snapshot age",
+                  [q("max(repose_api_snapshot_age_seconds)", "age", instant=True)],
+                  w=4, h=5, unit="s", thresholds=[("green", None), ("yellow", 26 * 3600), ("red", 48 * 3600)],
+                  desc="Seconds since the newest successful snapshot anywhere; nightly snapshots keep it under a day."),
+
+            row("What is running"),
+            panel("stat", "Guests running",
+                  [q('sum(repose_host_guests{state="running"})', "running", instant=True)],
+                  w=4, h=5, desc="Across every host."),
+            panel("stat", "Guests in error",
+                  [q('sum(repose_host_guests{state="error"})', "error", instant=True)],
+                  w=4, h=5, thresholds=[("green", None), ("red", 1)],
+                  desc="Guests a host reports in error. `repose start` restarts one; `repose-admin ops list --state error` says why."),
+            panel("stat", "SSH sessions open",
+                  [q("sum(repose_gateway_sessions)", "sessions", instant=True)],
+                  w=4, h=5, desc="Relayed connections through the gateway right now."),
+            panel("stat", "Builds running / queued",
+                  [q("sum(repose_host_builds_running)", "running", instant=True),
+                   q("sum(repose_host_build_queue_depth)", "queued", instant=True)],
+                  w=4, h=5, desc="Nix builds of guest configurations in progress and waiting, across hosts."),
+            panel("gauge", "Host memory reserved",
+                  [q("sum(repose_host_mem_reserved_bytes) / sum(node_memory_MemTotal_bytes)", "reserved", instant=True)],
+                  w=4, h=5, unit="percentunit", min_=0, max_=1,
+                  thresholds=[("green", None), ("yellow", 0.7), ("red", 0.8)],
+                  desc="Guest memory promised as a share of host RAM; HostMemory80 fires at 0.8."),
+            panel("gauge", "Thin pool used",
+                  [q("max(repose_lvm_pool_data_percent) / 100", "data", instant=True)],
+                  w=4, h=5, unit="percentunit", min_=0, max_=1,
+                  thresholds=[("green", None), ("yellow", 0.7), ("red", 0.85)],
+                  desc="The fullest host's guest volume pool."),
+
+            row("Trends"),
+            panel("timeseries", "Guests by state",
+                  [q('sum by (state) (repose_host_guests) > 0', "{{state}}")],
+                  stack=True, w=12, h=8, desc="Every guest on every host, by the state hostd reports."),
+            panel("timeseries", "Gateway sessions and auth failures",
+                  [q("sum(repose_gateway_sessions)", "open sessions"),
+                   q("sum(rate(repose_gateway_auth_fail_total[5m])) * 60", "auth failures / min")],
+                  w=12, h=8, desc="Open relayed SSH connections, and refused logins a minute (the Gateway dashboard splits them by reason)."),
+            panel("timeseries", "Host load and free memory",
+                  [q("node_load5", "load5 {{host_id}}"),
+                   q("node_memory_MemAvailable_bytes / 1024^3", "GiB free {{host_id}}")],
+                  w=12, h=8, desc="Five-minute load average and available RAM per host, from node_exporter."),
+            panel("timeseries", "API requests by status",
+                  [q("sum by (status) (rate(repose_api_requests_total[5m]))", "{{status}}")],
+                  w=12, h=8, stack=True, desc="Per second, both api processes."),
+
+            row("Recent errors"),
+            panel("logs", "Warnings and errors from hosts and the edge",
+                  [logq('{service_name=~"hostd|gateway|wgsync|fluent-bit|repose-host-net"} |~ `(?i)level\\W+(warn|error)|\\[ ?(warn|error)\\]`')],
+                  w=24, h=10, options={"showTime": True, "wrapLogMessage": True, "sortOrder": "Descending", "enableLogDetails": True},
+                  desc="The newest WARN and ERROR lines from the platform's own services. Tenant output is never here."),
+        ],
+    )
+    d["links"] = [{"title": "repose dashboards", "type": "dashboards", "tags": TAGS, "asDropdown": True, "includeVars": False, "keepTime": True}]
+    return d
+
+
 DASHBOARDS = {
+    "overview.json": overview,
     "host-capacity.json": host_capacity,
     "per-guest-resources.json": per_guest,
     "builds.json": builds,

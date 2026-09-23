@@ -154,6 +154,7 @@ beyond their project id.
 
 | Dashboard | Panels |
 |---|---|
+| Overview | the quick look, Prometheus and Loki only: targets down, hosts ready, hostd streams, guestd lost, log shipping failures, newest snapshot age; guests running and in error, SSH sessions, builds, memory reserved, pool used; trends; recent WARN/ERROR from the platform's services; links to the rest |
 | Host capacity | reserved vs free memory per host, pool free, store size, guests by state, builds running, stream connected |
 | Per-guest resources | from Postgres: CPU, RSS, net, disk for one project over time; signals timeline |
 | Builds | duration histogram, failures by error code, queue depth, eval vs build time |
