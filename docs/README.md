@@ -21,6 +21,7 @@ docs disagree, the doc is wrong only if a `DECISIONS.md` entry says so.
 | [RESEARCH.md](RESEARCH.md) | You want the facts and citations the decisions rest on (Azure nested virt, pricing, nixpkgs coverage, Coolify limits, Logto flows, what agents lose remotely). |
 | [SECURITY.md](SECURITY.md) | You touch anything that crosses a tenant, host, or network boundary. Threat model and the non-negotiables. |
 | [security/](security/review-2026-09-20.md) | Dated security reviews: findings with severity and file:line, what was verified, what waits on a stub. |
+| [proposals/](proposals/2026-09-23-dev-ergonomics.md) | You want the reasoning behind a batch of decisions made in conversation with the owner, including the options that lost and what was deferred. Not spec: the decisions are in DECISIONS.md. |
 | [workstreams/](workstreams/README.md) | You are an agent picking up a chunk of work. Each workstream is self-contained: scope, non-goals, interfaces it owns and consumes, and a checklist. |
 | [interfaces/](interfaces/README.md) | Two workstreams meet here. gRPC between API and hostd, vsock between hostd and guestd, the HTTP API, the database schema, the SSH gateway login contract, the CLI config file. |
 | [features/](features/README.md) | User-facing behaviour, one feature per file, written as the behaviour a user sees and the edge cases that must hold. |

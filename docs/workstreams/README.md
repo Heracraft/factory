@@ -25,6 +25,7 @@ it must handle, and a checklist that is its definition of done. Read
 | 12 | [nix-config-pipeline](12-nix-config-pipeline.md) | M1 | fragment contract, build limits | `grpc-hostd` (Apply), `vsock-guestd` (Switch) |
 | 13 | [notifications](13-notifications.md) | M3 | event shapes | `api`, `vsock-guestd` (Event) |
 | 14 | [security](14-security.md) | all | `../SECURITY.md` | everything |
+| 15 | [dev-ergonomics](15-dev-ergonomics.md) | post-M5 | (changes `guest-conventions`, `cli-config`, `host-conventions` per I-195..I-205) | `api`, `ssh-gateway`, `guest-conventions` |
 
 ## Dependency graph
 

@@ -537,3 +537,22 @@ write the privacy policy and terms text with the process-sample boundary
 and the Anthropic hosted-use statement verbatim. Report findings as a list
 with severity and the exact file and line; fix only what is a clear bug.
 ```
+
+### 15 dev-ergonomics
+
+```
+Workstream: docs/workstreams/15-dev-ergonomics.md, decided as DECISIONS
+I-195..I-205, with the reasoning in docs/proposals/2026-09-23-dev-ergonomics.md
+(read it first). Build §2 in its order, one mergeable commit series per
+part: timezone on every run/attach, git config carry minus the denylist,
+Claude Code config carry with the jq settings.json merge, .env carry over
+SSH, auto-forward on the ControlMaster printed inside tmux, repose cp,
+guestd-owned oom_score_adj, hybrid first sync, npm and Docker Hub caches
+on each host, the one-day trial. §3 lists what you must not start (Claude
+login, image paste, config.toml, any GitHub App). Nothing may add visible
+latency to run or attach: measure, and paste the table. Test against the
+local sshd harness, the fake api and guest NixOS tests; the timing,
+forward and cache rows need a real guest, and the conductor or owner
+provides one.
+```
+

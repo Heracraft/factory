@@ -4314,3 +4314,125 @@ certificate login still works. *Rejected:* removing the bootstrap key
 from host-01 now (locks the conductor out until the CA and certificates
 are in place); a `from="10.255.0.1"` restriction on the key (whoever
 holds the key can use the edge, which takes the same key).
+
+**I-195..I-205: laptop parity, settled with the owner on 2026-09-23 before
+any code.** (design, owner and conductor, 2026-09-23) The owner's list
+after using repose on real projects. The reasoning, the options that lost
+and the owner's own words are in `docs/proposals/2026-09-23-dev-ergonomics.md`.
+The build is workstream 15 (`docs/workstreams/15-dev-ergonomics.md`). Each
+entry below is the decision; the feature and interface docs it names change
+in the same commit as the code, as usual, and not before.
+
+**I-195. `run` and `attach` carry the laptop's git config, minus a
+denylist.** The effective config for the repository (`git config --global
+--list --includes`, run in the repo, so `includeIf` is flattened) is
+written to the guest's `~/.config/git/repose-carried`, included from its
+`~/.gitconfig` and replaced whole on each carry. Denied: `credential.*`,
+`core.sshCommand`, `ssh.*`, `url.*`, signing (`user.signingkey`, `gpg.*`,
+`commit.gpgsign`, `tag.gpgsign`), proxies and TLS client settings,
+`core.hooksPath`, `init.templateDir`, `safe.directory`, `include*`, diff
+and merge tools; also any value that is an absolute or `~/` path missing
+in the guest, and a `core.pager`/`core.editor` whose command is not on the
+guest's PATH. `core.excludesFile` travels as its contents. Replaces the
+"name and email only" row of `guest-conventions.md`. *Rejected:* the
+whole file (laptop keychains, 1Password signers and https-to-ssh rewrites
+break the guest); signing through the forwarded agent (gone when the
+laptop closes, which is when agents commit).
+
+**I-196. `run` and `attach` carry the laptop's Claude Code config, and
+merge `settings.json`.** Carried: `~/.claude/CLAUDE.md`, `settings.json`,
+`skills/`, `agents/`, `commands/`, `output-styles/`, `keybindings.json`,
+and scripts under `~/.claude/` that settings reference. Never carried:
+`.credentials.json`, `projects/`, `history.jsonl`, and every other state
+directory; `~/.claude.json` stays excluded. `settings.json` is merged in
+the guest with `jq`: the guest file is the base, the laptop file goes on
+top, `permissions.allow|deny|ask` are unioned, entries whose command
+contains `repose-hook` are stripped from both sides and the platform's
+re-added, laptop home paths are rewritten to `/home/dev/`, and hooks or a
+`statusLine` whose command is missing are dropped and named once. It's
+written through a temp file checked with `jq empty`, and the previous file
+is kept as `settings.json.repose-prev`. An invalid laptop file is skipped
+with one warning. Marketplace plugins named in `enabledPlugins` and missing
+in the guest are installed in the background. Credentials are untouched:
+I-196 carries config, and the Claude login question is open (proposal item
+9). *Rejected:* moving platform hooks to managed settings (the docs
+contradict themselves on the path and on whether managed hooks combine
+with user hooks); a laptop-wins overwrite (guest "don't ask again" and
+`/model` write to the same file).
+
+**I-197. Gitignored `.env` files travel over SSH at `run`.** This reverses
+the rule in `features/sync-at-launch.md` that ignored files never travel.
+`.env` and `.env.*` files at any depth outside dependency directories, up
+to 1 MB each, go laptop to guest over the command's SSH connection, mode
+0600, with no API involved. As with tool logins, the newer side wins by
+mtime, and the CLI says which side won when it skips. It's the "copied
+over SSH" home generalised, so there are still three homes. They sit on
+the guest disk and so are in snapshots, like the gh token and the code.
+Named secrets remain for values that must change without a laptop.
+*Rejected:* tmpfs with a symlink (lost at the 03:00 base-bump reboot, so
+the agent breaks overnight); importing into named secrets and rewriting
+the file (two sources of truth, and a guest-side edit lost at the next
+start).
+
+**I-198. The guest's timezone follows the laptop on every `run` and
+`attach`,** not only at create (I-104). The CLI sends `tz` each time.
+When it differs, `/etc/repose/env` is updated and `tmux set-environment -g
+TZ` is run so new windows and agents get it.
+
+**I-199. Ports are auto-forwarded while a CLI session is attached.**
+Every port the guest starts listening on is forwarded to the same port on
+the laptop's localhost with `ssh -O forward` on the command's
+ControlMaster, and cancelled when it closes. It's detected within a second.
+A port taken on the laptop gets the next free one, and the message says so.
+Output goes inside tmux: a `display-message` on each new forward and the
+live list in the status bar. Portless's proxy port (1355) is never silently
+remapped; on a collision the message names the port used instead.
+`repose open` stays. *Rejected:* preview URLs as the dev path (not
+localhost: OAuth redirect URIs, cookie domains, secure context), Traefik
+(the Go gateway is already the future preview proxy). Preview URLs stay
+designed for later.
+
+**I-200. Agents outlive dev servers under memory pressure; nothing is
+killed on a timer.** Agent windows and the tmux server run with a strongly
+negative `OOMScoreAdjust`, so the kernel's OOM killer picks a stale dev
+server before an agent. `repose status` lists listening processes with
+their age and memory, and guestd's `oom` warning names what was killed.
+*Rejected:* idle reaping (it eventually kills the one server someone
+needed).
+
+**I-201. `repose cp`.** `repose cp <project>:<path> <local>` and the
+reverse, a thin wrapper over scp with the project resolved as other
+commands resolve it (`:<path>` is the current project), and guest-relative
+paths taken from `~/<slug>`.
+
+**I-202. Each host runs a pull-through cache for the npm registry and for
+Docker Hub.** Guests reach them over WireGuard and use them by default
+(`npm_config_registry`, the Docker daemon's `registry-mirrors`). Private
+registries and authenticated requests bypass them. *Rejected:* a pnpm store
+shared between guests (writable means cross-tenant package poisoning;
+read-only means guests cannot add packages, pnpm cannot hard-link across
+virtiofs, and a symlinked store puts module resolution on virtiofs).
+
+**I-203. The first sync of a large GitHub repository clones in the guest.**
+When the guest has no commits, the remote is on github.com, the repo is
+public or gh's login travelled, and `git count-objects -v` reports a
+`size-pack` over 20 MB (to be set from measurement), the guest runs a full
+`git clone` from GitHub. The laptop then bundles only what GitHub lacks,
+and the diff and untracked files follow as today. Later syncs are
+unchanged. *Rejected:* `--filter=blob:none` (lazy blob fetches fail later
+once the token expires or the repo goes private); always cloning (a
+GitHub round trip that small repos don't need).
+
+**I-204. Nothing on GitHub may name the platform.** It's the user's
+machine, so every GitHub action taken from it is the user's. The GitHub
+App connector is dropped: installation tokens act as `repose[bot]`, and
+user tokens list "Repose" among the user's authorised apps. GitHub access
+stays gh's own login (copied from the laptop, or `gh auth login` in the
+guest). *Revisit when:* a way to get per-repo scope without platform
+branding is found.
+
+**I-205. The trial is one day of compute.** This amends R4-8's $10. The
+credit is one day on large, $3.36, which is 48 hours on small. It stays a
+dollar credit so there is one meter, and every user-facing string calls
+it "your first day of compute", never an amount. The card is still
+required first; the new-account limits are unchanged.
