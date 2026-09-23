@@ -146,6 +146,9 @@ func carryOverSession(ctx context.Context, t sshTarget, opts sessionOptions) (*c
 			warnings = append(warnings, "Could not read your git config ("+oneLine(err.Error())+"); the guest keeps its own.")
 		}
 		co.Git = gc
+		if gc != nil {
+			warnings = append(warnings, gc.Notes...)
+		}
 	}
 	if cc, _ := buildClaudeCarry(opts.HomeDir); cc != nil {
 		co.Claude = cc

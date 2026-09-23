@@ -4636,6 +4636,19 @@ copied anywhere" and the three homes of `features/secrets.md`.
   and merge options, per-tool settings) are open-ended, while secrets
   are named by those words. *Revisit when:* a secret-bearing key turns up
   that none of the words matches.
+- *Credentials in values, and secret-looking files.* (Second review.) A
+  git config entry whose key or value, or a `settings.json` entry whose
+  strings, hold a credential by its shape (a URL with `user:password@`,
+  or a token prefix: `sk-ant-`, `ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`,
+  `github_pat_`, `glpat-`, `xox?-`, `AKIA…`, `Bearer …`) is left out on
+  the laptop and counted in one line that never shows the value: a hook
+  or the `statusLine` whose command carries one, a permission rule, a
+  marketplace whose URL does (and the plugins enabled from it). Files
+  named `.env*`, `id_*`, `*credentials*`, `*.pem`, `*.key`, `*.p12`,
+  `*.pfx` are never carried from `skills/`, `agents/`, `commands/`,
+  `output-styles/` or as a hook script. Pattern matching can miss a
+  secret of a shape it does not know; the key denylist above stays the
+  first line.
 - *The rest of the review, where it touched a documented behaviour.*
   The settings rewrite replaces the laptop home followed by `/` anywhere
   in a string, and maps a `CLAUDE_CONFIG_DIR` directory to the guest's

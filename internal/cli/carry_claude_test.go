@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -248,7 +249,7 @@ func TestClaudeCarrySkipsAnInvalidLaptopFile(t *testing.T) {
 func claudeLaptopHome(t *testing.T, plugins bool) string {
 	t.Helper()
 	home := t.TempDir()
-	enabled := `"mine@laptop-dir":true`
+	enabled := `"mine@laptop-dir":true,"p@privmkt":true`
 	if plugins {
 		enabled = `"gopls-lsp@claude-plugins-official":true,` + enabled
 	}
@@ -259,7 +260,9 @@ func claudeLaptopHome(t *testing.T, plugins bool) string {
 		".claude/agents/reviewer.md":     "---\nname: reviewer\n---\nReview.\n",
 		".claude/commands/fix.md":        "Fix the build.\n",
 		".claude/hooks/notify.sh":        "#!/bin/sh\necho done\n",
-		".claude/settings.json": `{"model":"opus","permissions":{"allow":["Bash(go test:*)"]},"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"` + home + `/.claude/hooks/notify.sh"}]}]},"enabledPlugins":{` + enabled + `},"extraKnownMarketplaces":{"laptop-dir":{"source":{"source":"directory","path":"/Users/lap/mkt"}}},` +
+		".claude/settings.json": `{"model":"opus","permissions":{"allow":["Bash(go test:*)","Bash(curl -H 'Authorization: Bearer NEVER-PERM-BEARER':*)"]},"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"` + home + `/.claude/hooks/notify.sh"}]}],"PostToolUse":[{"matcher":"","hooks":[{"type":"command","command":"curl https://u:NEVER-HOOK-PASS@hooks.example/x"}]}]},"enabledPlugins":{` + enabled + `},"extraKnownMarketplaces":{"laptop-dir":{"source":{"source":"directory","path":"/Users/lap/mkt"}},"privmkt":{"source":{"source":"git","url":"https://tok:NEVER-MKT-TOKEN@git.example/m.git"}}},` +
+			// Credentials inside values (second review, item 4).
+			`"statusLine":{"type":"command","command":"echo sk-ant-NEVER-STATUSLINE"},` +
 			// Settings keys that hold or run a credential (I-211).
 			`"env":{"ANTHROPIC_API_KEY":"NEVER-ENV-API-KEY","GITHUB_MCP_TOKEN":"NEVER-ENV-MCP"},"apiKeyHelper":"~/.claude/NEVER-API-KEY-HELPER.sh",` +
 			`"awsAuthRefresh":"NEVER-AWS-REFRESH","awsCredentialExport":"NEVER-AWS-EXPORT","otelHeadersHelper":"NEVER-OTEL-HELPER","forceLoginMethod":"NEVER-FORCE-LOGIN"}`,
@@ -273,9 +276,17 @@ func claudeLaptopHome(t *testing.T, plugins bool) string {
 		".claude/file-history/f":                  `NEVER-FILE-HISTORY`,
 		".claude/plugins/cache/x":                 `NEVER-PLUGIN-CACHE`,
 		".claude/statsig/s":                       `NEVER-STATSIG`,
-		".claude.json":                            `{"oauthAccount":"NEVER-CLAUDE-JSON"}`,
-		".ssh/id_ed25519":                         "NEVER-SSH-KEY",
-		".gemini/oauth_creds.json":                `NEVER-GEMINI`,
+		// Secret-looking files inside carried directories (item 5).
+		".claude/skills/deploy/.env":            `NEVER-SKILL-ENV`,
+		".claude/skills/deploy/.env.local":      `NEVER-SKILL-ENV-LOCAL`,
+		".claude/agents/id_ed25519":             `NEVER-AGENT-KEY`,
+		".claude/commands/server.pem":           `NEVER-PEM`,
+		".claude/commands/tls.key":              `NEVER-DOT-KEY`,
+		".claude/skills/deploy/aws-credentials": `NEVER-SKILL-CREDENTIALS`,
+		".claude/output-styles/cert.p12":        `NEVER-P12`,
+		".claude.json":                          `{"oauthAccount":"NEVER-CLAUDE-JSON"}`,
+		".ssh/id_ed25519":                       "NEVER-SSH-KEY",
+		".gemini/oauth_creds.json":              `NEVER-GEMINI`,
 	}
 	for rel, body := range files {
 		p := filepath.Join(home, rel)
@@ -329,7 +340,9 @@ func TestCarryClaudeNeverCarriesSecrets(t *testing.T) {
 		t.Fatalf("outcome = %+v", o)
 	}
 	for _, never := range []string{"NEVER-CLAUDE-CREDS", "NEVER-NESTED-CREDS", "NEVER-TRANSCRIPT", "NEVER-HISTORY", "NEVER-TASK-LIST", "NEVER-SNAPSHOT", "NEVER-FILE-HISTORY", "NEVER-PLUGIN-CACHE", "NEVER-STATSIG", "NEVER-CLAUDE-JSON", "NEVER-SSH-KEY", "NEVER-GEMINI",
-		"NEVER-ENV-API-KEY", "NEVER-ENV-MCP", "NEVER-API-KEY-HELPER", "NEVER-AWS-REFRESH", "NEVER-AWS-EXPORT", "NEVER-OTEL-HELPER", "NEVER-FORCE-LOGIN"} {
+		"NEVER-ENV-API-KEY", "NEVER-ENV-MCP", "NEVER-API-KEY-HELPER", "NEVER-AWS-REFRESH", "NEVER-AWS-EXPORT", "NEVER-OTEL-HELPER", "NEVER-FORCE-LOGIN",
+		"NEVER-MKT-TOKEN", "NEVER-STATUSLINE", "NEVER-PERM-BEARER", "NEVER-HOOK-PASS",
+		"NEVER-SKILL-ENV", "NEVER-AGENT-KEY", "NEVER-PEM", "NEVER-DOT-KEY", "NEVER-SKILL-CREDENTIALS", "NEVER-P12"} {
 		if bytes.Contains(stream.Bytes(), []byte(never)) {
 			t.Errorf("%s is in the carry stream", never)
 		}
@@ -441,7 +454,7 @@ func TestClaudeSettingsFailureAndDroppedHookOncePerChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	o = carry()
-	if len(o.Failed) != 0 || len(o.Dropped) != 1 || !strings.Contains(o.Dropped[0], "gone.sh") {
+	if len(o.Failed) != 0 || len(o.Dropped) != 1 || !strings.HasPrefix(o.Dropped[0], "Claude hook \"") {
 		t.Fatalf("outcome = %+v, want the hook dropped and named", o)
 	}
 	if o = carry(); len(o.Dropped) != 0 || len(o.Lines()) != 0 {
@@ -505,6 +518,41 @@ func TestClaudeCarryHashesAreCached(t *testing.T) {
 	}
 }
 
+// carry-hashes.json is saved through a temp file of its own: concurrent
+// carries (run and a session helper) never share one, and a leftover
+// fixed-name temp (here squatted by a directory) cannot stop the save.
+func TestClaudeHashCacheSavesConcurrently(t *testing.T) {
+	dir, err := configDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := filepath.Join(dir, "carry-hashes.json")
+	_ = os.Remove(cache)
+	if err := os.MkdirAll(cache+".tmp", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(cache + ".tmp") })
+	home := claudeLaptopHome(t, false)
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := buildClaudeCarry(home); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	b, err := os.ReadFile(cache)
+	if err != nil || !json.Valid(b) {
+		t.Fatalf("cache after concurrent saves: %v %q", err, b)
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, "carry-hashes-*.tmp")); len(left) != 0 {
+		t.Errorf("temp files left: %v", left)
+	}
+}
+
 func TestClaudePluginsFromALaptopDirectoryAreNamed(t *testing.T) {
 	cc, err := buildClaudeCarry(claudeLaptopHome(t, true))
 	if err != nil {
@@ -513,7 +561,7 @@ func TestClaudePluginsFromALaptopDirectoryAreNamed(t *testing.T) {
 	if len(cc.Plugins) != 1 || cc.Plugins[0] != "gopls-lsp@claude-plugins-official" {
 		t.Errorf("plugins = %v", cc.Plugins)
 	}
-	if len(cc.Notes) != 1 || !strings.Contains(cc.Notes[0], "mine@laptop-dir") {
+	if len(cc.Notes) != 2 || !strings.Contains(cc.Notes[0], "Left out 4 entries") || !strings.Contains(cc.Notes[1], "mine@laptop-dir") {
 		t.Errorf("notes = %v", cc.Notes)
 	}
 }

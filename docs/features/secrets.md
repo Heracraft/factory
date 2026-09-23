@@ -72,7 +72,9 @@ config the CLI carries" has the exact paths):
   (DECISIONS I-211): `http.extraHeader` (also per URL, where PATs sit),
   `http.cookieFile`, `sendemail.smtpPass`, `github.token`,
   `hub.oauthtoken`, `core.gitProxy`, and any key whose name ends in
-  `token`, `pass`, `password` or `secret`. A value that is a laptop path
+  `token`, `pass`, `password` or `secret`, or whose key or value holds a
+  URL password or a known token prefix (counted in one line, never
+  shown; I-211). A value that is a laptop path
   missing in the guest, and a `core.pager` or `core.editor` whose command
   is not on the guest's PATH, are dropped and named once. It lands whole
   in `~/.config/git/repose-carried`, included first from `~/.gitconfig`,
@@ -89,7 +91,10 @@ config the CLI carries" has the exact paths):
   (`agents.md` has the list and the merge). `settings.json` leaves the
   laptop without `env` (API keys, MCP tokens), `apiKeyHelper`, the `aws*`
   and `gcp*` auth helpers, `otelHeadersHelper` and `forceLoginMethod`
-  (DECISIONS I-211). `TestCarryClaudeNeverCarriesSecrets`
+  (DECISIONS I-211), and without any entry whose strings hold a URL
+  password or a known token prefix; files named `.env*`, `id_*`,
+  `*credentials*`, `*.pem`, `*.key`, `*.p12` never travel from the
+  carried directories. `TestCarryClaudeNeverCarriesSecrets`
   plants `.credentials.json` (also inside `skills/`), `projects/`,
   `history.jsonl`, `todos/`, `shell-snapshots/`, `file-history/`,
   `plugins/`, `statsig/`, `~/.claude.json`, an SSH key and Gemini's

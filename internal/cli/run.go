@@ -171,6 +171,11 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 				if b.gcErr != nil {
 					e.warn("Could not read your git config (%s); the guest keeps its own.", oneLine(b.gcErr.Error()))
 				}
+				if gc != nil {
+					for _, n := range gc.Notes {
+						e.warn("%s", n)
+					}
+				}
 				if cc != nil {
 					for _, n := range cc.Notes {
 						e.warn("%s", n)

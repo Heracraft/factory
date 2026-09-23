@@ -116,6 +116,9 @@ type gitCarry struct {
 	Checks []gitCheck
 	Ignore []byte // core.excludesFile's contents, or nil
 	HasID  bool   // user.name or user.email is in it
+	// Notes are said once on the laptop: entries left out because their
+	// key or value holds a credential (never the value itself).
+	Notes []string
 }
 
 // buildGitCarry reads the laptop's config for repoDir and applies the
@@ -129,6 +132,12 @@ func buildGitCarry(repoDir, homeDir string) (*gitCarry, error) {
 	}
 	gc := &gitCarry{}
 	var kept []gitEntry
+	secrets := 0
+	defer func() {
+		if secrets > 0 {
+			gc.Notes = append(gc.Notes, fmt.Sprintf("Left out %d git config %s that hold a credential (a token, or a password in a URL).", secrets, plural(secrets, "entry", "entries")))
+		}
+	}()
 	for _, e := range entries {
 		lk := strings.ToLower(e.Key)
 		if lk == "core.excludesfile" && e.HasValue {
@@ -138,6 +147,10 @@ func buildGitCarry(repoDir, homeDir string) (*gitCarry, error) {
 			continue
 		}
 		if gitDenied(e.Key) {
+			continue
+		}
+		if secretIn(e.Key) || secretIn(e.Value) {
+			secrets++
 			continue
 		}
 		kept = append(kept, e)

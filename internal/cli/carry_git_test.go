@@ -58,6 +58,13 @@ const laptopGitConfig = `[user]
 	token = NEVER-GITHUB-TOKEN
 [hub]
 	oauthtoken = NEVER-HUB-TOKEN
+[alias]
+	pushit = "!git push https://x:NEVER-ALIAS-PASS@git.example/r.git"
+	tok = "!echo ghp_NEVERGHPVALUE"
+[http "https://u:NEVER-KEY-TOKEN@host.example/"]
+	sslVerify = false
+[remote "mirror"]
+	url = https://me:NEVER-URL-PASS@git.example/a/b.git
 `
 
 // laptopHome writes laptopGitConfig into a scratch $HOME with a work
@@ -151,10 +158,15 @@ func TestCarryGitConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, never := range []string{"NEVER-PAT-HEADER", "NEVER-GLOBAL-HEADER", "gitcookies", "NEVER-SMTP-PASS", "NEVER-GITHUB-TOKEN", "NEVER-HUB-TOKEN"} {
+	for _, never := range []string{"NEVER-PAT-HEADER", "NEVER-GLOBAL-HEADER", "gitcookies", "NEVER-SMTP-PASS", "NEVER-GITHUB-TOKEN", "NEVER-HUB-TOKEN",
+		"NEVER-ALIAS-PASS", "NEVERGHPVALUE", "NEVER-KEY-TOKEN", "NEVER-URL-PASS"} {
 		if bytes.Contains(gc.Config, []byte(never)) {
 			t.Errorf("%s is in the carried git config:\n%s", never, gc.Config)
 		}
+	}
+	// Credentials in values and keys: left out, and said once, by count.
+	if len(gc.Notes) != 1 || !strings.Contains(gc.Notes[0], "Left out 4 git config entries") || strings.Contains(gc.Notes[0], "NEVER") {
+		t.Errorf("notes = %v", gc.Notes)
 	}
 	carry := func() *carryOutcome {
 		t.Helper()

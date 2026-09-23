@@ -225,6 +225,17 @@ func setMarker(item, hash string) string {
 
 // carryHash is the marker value for a part's input: its version and every
 // byte that decides what the part writes, in a fixed order.
+// secretPattern matches a credential inside a carried value or key (I-211):
+// a URL with a password or token in its user info, and the prefixes of
+// the tokens a laptop config most often holds (Anthropic, GitHub classic,
+// fine-grained and OAuth, GitLab, Slack, AWS access keys) or a bearer
+// header.
+var secretPattern = regexp.MustCompile(`://[^/\s:@]+:[^/\s@]+@|sk-ant-|gh[pousr]_[A-Za-z0-9]|github_pat_|glpat-|xox[abposr]-|AKIA[0-9A-Z]{16}|(?i:bearer)\s+\S`)
+
+// secretIn reports whether s holds a credential by secretPattern. The
+// carry drops the entry; the value is never printed.
+func secretIn(s string) bool { return secretPattern.MatchString(s) }
+
 func carryHash(parts ...[]byte) string {
 	h := sha256.New()
 	h.Write([]byte(carryVersion))

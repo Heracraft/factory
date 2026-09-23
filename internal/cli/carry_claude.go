@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
@@ -163,10 +164,17 @@ func buildClaudeCarry(homeDir string) (*claudeCarry, error) {
 			cc.Notes = append(cc.Notes, "Your ~/.claude/settings.json is not a JSON object, so it was not carried; the guest keeps its own.")
 			break
 		}
-		cc.Settings, err = claudeSettingsWithoutSecrets(raw)
+		var dropped int
+		cc.Settings, dropped, err = claudeSettingsWithoutSecrets(raw)
 		if err != nil {
 			return nil, err
 		}
+		if dropped > 0 {
+			cc.Notes = append(cc.Notes, fmt.Sprintf("Left out %d %s of your ~/.claude/settings.json that hold a credential (a token, or a password in a URL); set %s in the guest instead.", dropped, plural(dropped, "entry", "entries"), plural(dropped, "it", "them")))
+		}
+		// Scripts and plugins come from what travels, not the raw file.
+		s = nil
+		_ = json.Unmarshal(cc.Settings, &s)
 		scripts := claudeScripts(s, homeDir, dir)
 		if len(scripts) > 0 {
 			cc.Items = append(cc.Items, claudeItem{Marker: "claude-scripts", Files: scripts})
@@ -206,20 +214,104 @@ func claudeSecretKey(k string) bool {
 }
 
 // claudeSettingsWithoutSecrets is the laptop's settings.json, a JSON
-// object, with claudeSecretKeys removed. What remains is re-encoded, so
-// key order is Go's (sorted); the merge in the guest does not depend on
-// it.
-func claudeSettingsWithoutSecrets(raw []byte) ([]byte, error) {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return nil, err
+// object, with claudeSecretKeys removed and every entry whose strings
+// hold a credential (secretIn) left out: a hook or the statusLine whose
+// command carries a token, a permission rule naming one, a marketplace
+// whose URL has a password (and the plugins enabled from it). dropped
+// counts those entries; their values are never said. What remains is
+// re-encoded, so key order is Go's (sorted); the merge in the guest does
+// not depend on it.
+func claudeSettingsWithoutSecrets(raw []byte) (out []byte, dropped int, err error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var m map[string]any
+	if err := dec.Decode(&m); err != nil {
+		return nil, 0, err
 	}
 	for k := range m {
 		if claudeSecretKey(k) {
 			delete(m, k)
 		}
 	}
-	return json.Marshal(m)
+	for k, v := range m {
+		if s, ok := v.(string); ok && secretIn(s) {
+			delete(m, k)
+			dropped++
+			continue
+		}
+		nv, drop := scrubSecrets(v, &dropped)
+		if drop {
+			delete(m, k)
+		} else {
+			m[k] = nv
+		}
+	}
+	// A marketplace left without its source cannot be added; neither can
+	// the plugins enabled from it.
+	if km, ok := m["extraKnownMarketplaces"].(map[string]any); ok {
+		ep, _ := m["enabledPlugins"].(map[string]any)
+		for name, v := range km {
+			if vm, ok := v.(map[string]any); ok && vm["source"] != nil {
+				continue
+			}
+			delete(km, name)
+			for id := range ep {
+				if strings.HasSuffix(id, "@"+name) {
+					delete(ep, id)
+				}
+			}
+		}
+	}
+	out, err = json.Marshal(m)
+	return out, dropped, err
+}
+
+// scrubSecrets walks a settings value. An object with a string field that
+// holds a secret is dropped whole (a hook's {type, command}, a
+// marketplace's source); an array loses the elements that drop; an
+// object loses the fields that drop. Only a string or an object can drop.
+func scrubSecrets(v any, dropped *int) (any, bool) {
+	switch t := v.(type) {
+	case string:
+		return t, secretIn(t)
+	case []any:
+		out := t[:0]
+		for _, e := range t {
+			ne, drop := scrubSecrets(e, dropped)
+			if drop {
+				if _, isStr := e.(string); isStr {
+					*dropped++
+				}
+				continue
+			}
+			out = append(out, ne)
+		}
+		return out, false
+	case map[string]any:
+		for k, e := range t {
+			if s, ok := e.(string); ok && (secretIn(s) || secretIn(k)) {
+				*dropped++
+				return nil, true
+			}
+		}
+		for k, e := range t {
+			ne, drop := scrubSecrets(e, dropped)
+			if drop {
+				delete(t, k)
+				continue
+			}
+			t[k] = ne
+		}
+		return t, false
+	}
+	return v, false
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // markerName turns a relative path into a marker file name.
@@ -259,7 +351,7 @@ func readClaudeDir(dir, d string) (files map[string]claudeFile, over bool, err e
 			}
 			return nil
 		}
-		if !de.Type().IsRegular() || de.Name() == ".credentials.json" {
+		if !de.Type().IsRegular() || claudeSecretFileName(de.Name()) {
 			return nil
 		}
 		info, err := de.Info()
@@ -276,6 +368,21 @@ func readClaudeDir(dir, d string) (files map[string]claudeFile, over bool, err e
 		return nil
 	})
 	return files, over, err
+}
+
+// claudeSecretFileName is a file name that holds a secret by its look:
+// .env files, keys and certificates, anything named credentials, SSH
+// identities. Never carried from skills/, agents/, commands/,
+// output-styles/ or as a hook script, whatever else is beside them.
+func claudeSecretFileName(name string) bool {
+	n := strings.ToLower(name)
+	switch {
+	case n == ".env", strings.HasPrefix(n, ".env."), strings.HasPrefix(n, "id_"),
+		strings.Contains(n, "credentials"),
+		strings.HasSuffix(n, ".pem"), strings.HasSuffix(n, ".key"), strings.HasSuffix(n, ".p12"), strings.HasSuffix(n, ".pfx"):
+		return true
+	}
+	return false
 }
 
 // claudeScripts finds the files under the laptop's ~/.claude that a hook
@@ -299,7 +406,7 @@ func claudeScripts(s map[string]any, homeDir, dir string) map[string]claudeFile 
 				continue
 			}
 			parts := strings.Split(filepath.ToSlash(rel), "/")
-			if claudeNeverDirs[parts[0]] || filepath.Base(rel) == ".credentials.json" || rel == "settings.json" {
+			if claudeNeverDirs[parts[0]] || claudeSecretFileName(filepath.Base(rel)) || rel == "settings.json" {
 				continue
 			}
 			f, err := statSmallFile(filepath.Join(dir, rel))
@@ -542,11 +649,20 @@ func (hc *claudeHashes) save() {
 	if err := os.MkdirAll(filepath.Dir(hc.path), 0o700); err != nil {
 		return
 	}
-	tmp := hc.path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	// A temp file of its own: `run` and a session helper may save at once.
+	f, err := os.CreateTemp(filepath.Dir(hc.path), "carry-hashes-*.tmp")
+	if err != nil {
 		return
 	}
-	_ = os.Rename(tmp, hc.path)
+	_, werr := f.Write(b)
+	cerr := f.Close()
+	if werr != nil || cerr != nil {
+		_ = os.Remove(f.Name())
+		return
+	}
+	if err := os.Rename(f.Name(), hc.path); err != nil {
+		_ = os.Remove(f.Name())
+	}
 }
 
 func sortedFileKeys(m map[string]claudeFile) []string {
