@@ -91,6 +91,15 @@ func TestDedupeOutboxAndRateCap(t *testing.T) {
 	if n != 2 {
 		t.Fatalf("state change events %d", n)
 	}
+	// A guest that dies after a failed config build shows why it died,
+	// not the build's old error.
+	_, _ = pool.Exec(ctx, "update projects set last_error = 'build_failed: nixpkgs has no package \"x\"' where id = $1", pid)
+	st3 := &hostdv1.Event{EventId: "ev-3b", Ts: now.Unix(), Ev: &hostdv1.Event_GuestStateChanged{GuestStateChanged: &hostdv1.GuestStateChanged{GuestId: gid.String(), State: "error", Reason: "hypervisor exited 0"}}}
+	ing.OnEvent(ctx, uuid.Nil, st3)
+	p, _ = store.GetProject(ctx, pool, pid)
+	if p.State != "error" || p.LastError == nil || *p.LastError != "internal: the environment stopped unexpectedly (hypervisor exited 0)" {
+		t.Fatalf("after a guest error: state %s, last_error %v", p.State, derefStr(p.LastError))
+	}
 	// snapshot_done inserts a row once.
 	sd := &hostdv1.Event{EventId: "ev-4", Ts: now.Unix(), Ev: &hostdv1.Event_SnapshotDone{SnapshotDone: &hostdv1.SnapshotDone{GuestId: gid.String(), BlobPath: "u/p/1.img.zst", Bytes: 5}}}
 	ing.OnEvent(ctx, uuid.Nil, sd)
@@ -178,4 +187,11 @@ func TestOperatorLoginWritesOneAuditRow(t *testing.T) {
 	if err := pool.QueryRow(ctx, "select actor from audit_log where detail->>'host_event_id' = $1", ev2.EventId).Scan(&actor); err != nil || actor != "operator:key:SHA256:boot" {
 		t.Fatalf("plain-key actor %q %v", actor, err)
 	}
+}
+
+func derefStr(s *string) string {
+	if s == nil {
+		return "<nil>"
+	}
+	return *s
 }

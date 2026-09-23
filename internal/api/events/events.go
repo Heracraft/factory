@@ -209,6 +209,16 @@ func (i *Ingest) OnEvent(ctx context.Context, hostID uuid.UUID, ev *hostdv1.Even
 				return false
 			}
 			i.log.Info("guest state from host", "event", "guest_state", "project_id", p.ID.String(), "state", st, "reason", e.GuestStateChanged.Reason)
+			// The reason shown with an error state is this one, never an
+			// older error left by an op the guest survived (a failed
+			// config build showed as the cause of a later crash).
+			if st == "error" {
+				reason := "internal: the environment stopped unexpectedly"
+				if r := e.GuestStateChanged.Reason; r != "" {
+					reason += " (" + r + ")"
+				}
+				_, _ = i.pool.Exec(ctx, "update projects set last_error = $2 where id = $1", p.ID, reason) // best effort; the event below carries the state
+			}
 		}
 		_, _, err = i.Insert(ctx, Incoming{ProjectID: p.ID, TS: ts, Kind: "guest_state_changed", Summary: st, Source: "host", HostEventID: ev.EventId})
 		if err != nil {
