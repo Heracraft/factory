@@ -3215,3 +3215,28 @@ the retry is idempotent, and an activation that restarted guestd ends as
 `done` instead of `guest_unresponsive`. `TestSwitchAppliesWithoutReboot`
 (the log file, no pipe) and hostd's `TestBuildAndApply` (the fake guestd
 dropping the first Switch, answered on the second connection).
+
+**I-160. A create reuses a closure the host already runs.** (provision-speed,
+2026-09-23) The owner's `izma` create spent 6.1 s in `Build` (eval 5.7 s,
+build 0.33 s, 6.2 s CPU, 872 MB peak) to produce the closure four guests on
+host-01 were already running: the fragment was the default one and the
+base the latest. The system closure depends only on the fragment's text,
+the base ref and the base version label (I-34, I-43; checked in
+`nix/flake.nix`: `guestSystem` reads nothing else), so the create's
+`build` phase now looks for the applied revision of another live project
+on the chosen host (not destroyed, not `destroying` or `error`, guest id
+set) with the same fragment on the same published base version; when one
+exists the revision becomes `built` with that closure and
+`kernel_changed = false`, no `Build` is sent, and `CreateGuest` follows in
+the same engine pass. That guest's GC root (`guests/<id>`, removed only by
+`DestroyGuest`) keeps the path on the host. Only published bases qualify:
+`dev` names the api's `--base-ref`, which can move. A create whose
+fragment matches no running closure, every restore and every
+`config apply` still build. The build phase also records `base_version` on a create's revision
+now (the `status <> 'building'` guard skipped that update for every create,
+so those rows had none; the reuse query reads the project's base for
+them). Saves the whole `Build` phase (5–6 s on a warm host, more on a cold
+one) for most creates. `TestCreateReusesAClosureOnTheSameHost`.
+*Rejected:* a per-host cache keyed by a fragment hash (a table to keep in
+step with GC for what one indexed join answers), and sharing across hosts
+(the path would have to be copied, which is a build's cost again).

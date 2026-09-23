@@ -27,7 +27,12 @@ outputs = { self, nixpkgs, home-manager, microvm, fragment, ... }: {
 The placeholder input exists so the lock file is valid; hostd always
 overrides it. The system closure is independent of the guest's class and
 address (DECISIONS I-34, I-43), so one `Build` per revision serves the
-project's guest wherever it runs.
+project's guest wherever it runs. The only inputs are the fragment's text,
+the `base_ref` and the `base_version` label, which is why the api sends no
+`Build` for a create whose fragment and published base match a closure
+already applied on the chosen host (DECISIONS I-160). A change that lets
+anything else into the closure (the project id, the class, a timestamp)
+breaks that reuse and needs a new decision.
 
 ## What hostd runs
 

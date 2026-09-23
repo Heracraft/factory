@@ -150,6 +150,11 @@ The `create` op:
    `projects.host_id` and summing reservations per host in a view
    `host_reservations`. `capacity` error to the user if no host fits, with
    an operator alert.
+   No `Build` is sent when the chosen host already runs the closure: the
+   applied revision of another live project there has the same fragment
+   text on the same published base version. The revision is marked `built`
+   with that closure (`kernel_changed` false) and the op goes straight to
+   step 2 (DECISIONS I-160, event `build_reused`).
 2. On `Build` success, `CreateGuest` with the closure, the project's
    secrets (decrypted for transport, see 5.6), `env {TZ, LANG}`, the user
    CA public key, principals `[project_id]`, hooks config.
