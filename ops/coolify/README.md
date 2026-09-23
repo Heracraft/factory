@@ -62,7 +62,9 @@ repose-postgres").
   `10.255.255.1`. Both are mTLS. The metrics port is plain HTTP, so it is
   published on the WireGuard address alone, where only the monitoring peer
   scrapes it (DECISIONS I-174; the 2026-09-21 review's M5-4 found
-  `0.0.0.0:9104` open to the edge and hosts). Docker cannot publish on an
+  `0.0.0.0:9104` open to the edge and hosts). **The WireGuard address is
+  the only interface 9103 is ever published on**: a mapping without the
+  `10.255.255.1:` prefix is a regression, whatever else changes. Docker cannot publish on an
   address that does not exist yet, so the VM starts Docker after
   `wg-quick@wg0` (`/etc/systemd/system/docker.service.d/10-repose-wg.conf`,
   written by cloud-init; on a VM older than that, write it by hand, below). `GRPC_SERVER_NAMES` therefore lists all three names,

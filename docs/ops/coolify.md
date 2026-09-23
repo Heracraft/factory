@@ -236,8 +236,14 @@ the live instance, not taken from the docs. Each one changed a file here.
    version of `ops/coolify/README.md` told an operator to add
    `9103:9103` to it for metrics, and following that would have quietly
    cost the api its rolling deploys, which is the one property the split
-   exists to protect. `api-grpc` carries `8443`, `8444` and `9104:9103`
-   because it is the app that accepts the restart. Where the api's own
+   exists to protect. `api-grpc` carries `8443`, `8444` and
+   `10.255.255.1:9104:9103` because it is the app that accepts the restart.
+   **The WireGuard address `10.255.255.1` is the only interface api-grpc's
+   metrics port 9103 is published on** (as host port 9104): it is plain
+   HTTP, so it must never be reachable from the VNet (`10.200.3.4`), the
+   public IP or `0.0.0.0`; the only client is the monitoring peer over the
+   tunnel (DECISIONS I-174, review M5-4). 8443 and 8444 are mTLS and stay
+   on every address. Where the api's own
    metrics go instead is an open choice, written up with both options
    and a ready-to-paste label block in `ops/coolify/README.md`, "The
    api's metrics".
