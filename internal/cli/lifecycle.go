@@ -62,7 +62,13 @@ func StartCmd(ctx context.Context, e *Env, projectArg string) error {
 // guestdDead reports what the newest sample says about the project's
 // guestd; false when the api did not say.
 func guestdDead(p *Project) bool {
-	return p.Signals != nil && p.Signals.GuestdOK != nil && !*p.Signals.GuestdOK
+	if p.Signals == nil || p.Signals.GuestdOK == nil || *p.Signals.GuestdOK {
+		return false
+	}
+	// A sample from before the guest's current run (taken while it was
+	// being stopped) says nothing about the guestd running now; an api
+	// before I-225 still sends it for up to a minute after every start.
+	return p.StartedAt == nil || p.Signals.SampledAt == nil || !p.Signals.SampledAt.Before(*p.StartedAt)
 }
 
 // StopCmd implements `repose stop [PROJECT] [--no-snapshot]`.

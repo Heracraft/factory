@@ -39,6 +39,9 @@ type Env struct {
 	TargetFor func(slug string) sshTarget
 
 	httpClient *http.Client
+
+	// early is `run`'s probe started before the api answered (I-223).
+	early *earlyProbe
 }
 
 func (e *Env) target(slug string) sshTarget {
@@ -78,7 +81,7 @@ func newEnv(apiURLFlag string, jsonOut, verbose bool) (*Env, error) {
 		return nil, err
 	}
 
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	httpClient := withTiming(&http.Client{Timeout: 30 * time.Second})
 	var tokens TokenSource
 	if creds, ok, err := loadCredentials(dir); err == nil && ok && (creds.RefreshToken != "" || creds.AccessToken != "") {
 		tokens = newOIDCTokenSource(dir, httpClient, creds)

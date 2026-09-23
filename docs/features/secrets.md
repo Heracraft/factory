@@ -110,6 +110,11 @@ config the CLI carries" has the exact paths):
 A part that has not changed on the laptop since the guest last applied it
 is not sent: the guest keeps one marker per carried item under
 `~/.repose/carry/` (DECISIONS I-206), returned in the sync's first SSH.
+The tool logins are one such item (`creds`, I-224): they go again when a
+laptop file's content or mtime changes, or when a file they wrote in the
+guest is gone (`~/.repose/creds-paths`, checked by the same SSH). A login
+done inside the guest is still never overwritten; with nothing sent, it
+is simply kept.
 
 ## Kind 2: Claude Code
 

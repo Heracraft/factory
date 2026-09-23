@@ -5053,3 +5053,112 @@ fetch them. `repose scan [DIR]` is the dry run the owner validates
 projects with. *Rejected:* walking the whole tree (a monorepo's
 node_modules), resolving candidates on the laptop (no nix-locate there),
 and making engines ranges that allow several majors pick one.
+**I-223. `repose run` and `attach` spend round trips only where something
+changed; `REPOSE_TIMING=1` shows where the time goes.** Measured on the
+live service from the dev box (gin-gonic/gin checkout, e2e guest on
+host-01), with `ops/dev/startup-bench.sh` driving the CLI in a pty up to
+tmux's alternate screen, and `ops/dev/latency-proxy.py` adding a laptop's
+200 ms round trip to the api and the gateway without touching the
+network. The dev box is next to the service, so its own numbers hide the
+cost the owner sees: at 200 ms, v0.1.9 took 4.5 s for a run with nothing
+changed, 2.2 s for `attach`, 6.0 s with no master left; it was round
+trips, not work. v0.1.9's warm run was: GET project (3 RTT with TLS),
+GET project again, GET /me then GET /projects, `ssh true`, probe,
+credentials+carry ssh, apply ssh, attach: about 15 RTT. Changes, all in
+the CLI:
+- `REPOSE_TIMING=1` prints `repose-timing +<ms> <what> <ms>` per phase,
+  per api call (route with ids replaced) and per ssh (step name and
+  sizes, never a command or path).
+- Step 2 reuses the project step 1 read. `GET /me` and `GET /projects`
+  run in parallel when needed at all.
+- connect's fast path: when `~/.ssh/repose` covers the project (the
+  certificate for the CLI key carries its id with 30 minutes left,
+  `known_hosts`, its Host block, the alias resolves), no api call; when a
+  ControlPersist master is up (`ssh -O check`, local), no `ssh true` either.
+  A live master is proof enough: the gateway closes a client connection
+  when its guest connection ends. A certificate refusal still gets its
+  one re-issue (I-175), reading the account then.
+- `run` starts the probe beside step 1's GET when the projects cache names
+  the project and the files cover it; with no master, the probe's
+  connection becomes the master, so the ssh handshake (about 10 RTT)
+  overlaps the api too. It is used only when the project resolves to the
+  guessed id and was running before the command; otherwise it is dropped
+  and its master closed (a refused connection to a stopped guest would
+  otherwise be the master the next ssh rides for up to 10 s).
+- `attach` with the cache naming the project and a master up makes no api
+  call. Lost: the class in `Connected to`, and the not-running message,
+  which a live master rules out.
+- The op poll stays at 500 ms for 30 s, not 10 s: a start takes 10-11 s
+  on host-01, and the 1 s step from 10 s cost half a second of every
+  start; two reads per poll for 30 s is 120 of the 600 a minute (I-187).
+- `guestdDead` ignores a `guestd_ok=false` sample taken before the
+  project's `started_at` (I-225's api fix, so the CLI benefits before the
+  api is deployed).
+*Rejected:* longer `ControlPersist` (it would turn most cold runs warm, but
+it is `interfaces/ssh-gateway.md`'s and holds a gateway connection and a
+multiplexing socket open for longer; left to the conductor with the
+numbers); skipping `GET /projects/:id` on `run` as well (it is what
+restarts a guest whose guestd died, I-157, so it is overlapped instead).
+
+**I-224. The sync's writes are one ssh, and none when nothing changed.**
+The tool logins and the carry had their own ssh between the probe and the
+apply (2 RTT plus about 120 ms in the guest on every run), and the apply
+re-stashed and re-applied the same diff when nothing had changed (about
+600 ms of guest time: the guest pays 8-15 ms per process, nested
+virtualisation on host-01, and the apply runs about 40). Now:
+- The logins and the carry are built as before and run first in the
+  apply's ssh: their script and tar travel inside the apply's tar, run with
+  the same stdin, their reply lines come back prefixed `#carry `. A
+  failure of their top-level lines stops the apply before the checkout is
+  touched, with the same "Could not copy your tool logins" as before. A
+  first sync that clones in the guest (I-203) sends them on their own
+  first, since the clone needs gh's login.
+- The apply records a key (sha256 of HEAD, branch, tracked ref, remote,
+  diff, untracked tar) in `.git/repose-synced-key`, emptied before it
+  touches the checkout and written at its end. The probe returns it, HEAD
+  and `.git/HEAD` (two builtins, one git call moved). When the key
+  matches, HEAD and branch match, no commits are to send, no `.env`
+  changed, and the tree is either clean with a clean laptop or dirty
+  with only the last sync's changes (I-210's fingerprint), the apply is
+  skipped: nothing is stashed again, and the summary says "the guest
+  already had them". Any change on either side makes it run.
+- The logins get the carry's marker treatment: `creds` holds the hash of
+  every row's bytes and mtime plus the identity and gh helper lines;
+  `~/.repose/creds-paths` lists what they wrote and the probe prints
+  `#credsmissing` when one is gone. Unchanged and present: not sent.
+  A guest login newer than the laptop's is kept as before; the only
+  difference is that "Kept the guest's gh login" is said when it happens,
+  not on every run.
+Together with I-223, a run with nothing new is the probe (beside the api)
+and the attach. *Rejected:* rewriting the apply's shell to spawn fewer
+processes (the I-210 script went through three reviews; skipping it when
+it has nothing to do gets the same time without touching it).
+
+**I-225. Server side of a start: hostd dials a booting guest's guestd
+every 200 ms, guestd skips a registration it already loaded, and a sample
+from before a start is not the new guest's.** Measured on host-01 (e2e
+guest, base 2026.09.23.2, a start is 10.2 s starting→running): guestd
+listened 6.3 s into the boot, hostd's first session came about 1 s later
+(it dialled every `GuestdRetry`, 2 s), `RegisterPaths` took about 0.7 s
+(dump-db 70 ms on the host, `nix-store --load-db` of 482 KB in the guest,
+about 200 ms warm, more at boot), then home-manager 1.35 s before
+`systemd-user-sessions` and SetupProject.
+- hostd: a monitor dials every `GuestdBootRetry` (200 ms) until its first
+  session, then `GuestdRetry` as before. Unit test: guestd listening
+  300 ms into the boot, create done in 430 ms, 2.06 s with the old retry.
+- guestd: `RegisterPaths` stores the sha256 of what it loaded in
+  `/var/lib/repose/paths-loaded` (on the volume) and, sent the same bytes
+  again with the database present, only writes the boot stamp.
+- api: a newest sample older than the project's `started_at` (taken
+  while the previous run was being stopped: guestd already gone, state
+  still running) no longer makes `start` a restart or the project's
+  `guestd_ok` false; the project shows `guestd_ok` null until a sample of
+  this run arrives. Seen live: for a minute after every start `repose
+  status` said guestd was not answering and `repose run` sent a start
+  that came back 409.
+Not changed, measured for whoever takes it: the guest boot itself (kernel
+1.1 s, initrd 2.75 s of which switch-root 1.1 s, userspace to guestd
+2.3 s through zram setup and tmpfiles), home-manager's 1.35 s activation
+on the path to the first login, the 5.4 s no-op nix build a create pays
+when no running guest has the closure (I-160 reuses only a closure the
+host runs), and the guest's per-process cost.

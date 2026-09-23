@@ -30,12 +30,14 @@ const opPollInterval = 500 * time.Millisecond
 const opPollTimeout = 20 * time.Minute
 
 // pollDelay is the pause before the next poll of a wait that began at
-// started: opPollInterval for the first 10 s, where a create or start
-// usually ends, then 1 s, then 2 s after a minute, so a long build does not
-// spend the account's api budget that a dashboard tab shares (I-187).
+// started: opPollInterval for the first 30 s, where a create or start
+// ends (10-15 s on host-01, so the 1 s step that began at 10 s cost half
+// a second of every start, I-223), then 1 s, then 2 s after a minute, so
+// a long build does not spend the account's api budget that a dashboard
+// tab shares (I-187): two reads per poll is 240 of the 600 a minute.
 func pollDelay(started time.Time) time.Duration {
 	switch el := time.Since(started); {
-	case el < 10*time.Second:
+	case el < 30*time.Second:
 		return opPollInterval
 	case el < time.Minute:
 		return time.Second
@@ -51,9 +53,23 @@ const sshRetryInterval = time.Second
 // attachOnly runs only steps 1 (resolve, no create), 3, 4, 8 — what
 // `repose attach` is (§5.5's last paragraph).
 func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error {
+	// A project this checkout ran before, with its ssh master still up:
+	// attach needs no api call, and run's probe goes out beside the api's
+	// answer instead of after it (DECISIONS I-223).
+	var early *earlyProbe
+	if attachOnly {
+		if done, err := attachFast(ctx, e, e.resolveArg(opts.ProjectArg)); done {
+			return err
+		}
+	} else {
+		early = startEarlyProbe(ctx, e, opts)
+		e.early = early
+	}
+
 	pr := e.newProgress()
 	defer pr.Fail() // clears a spinner line left by an early return
 
+	endResolve := timeSpan("phase resolve")
 	res, err := resolveProject(ctx, e.Client, e.Dir, e.Cwd, e.resolveArg(opts.ProjectArg), &e.Cache, defaultResolveDeps())
 	if err != nil {
 		return err
@@ -65,6 +81,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		}
 	}
 
+	endResolve()
 	project := res.Project
 	if project == nil {
 		if attachOnly {
@@ -79,27 +96,39 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		}
 	}
 
+	endEnsure := timeSpan("phase ensure-running")
+	// resolveProject read the project from the api a moment ago; a
+	// second read before acting on its state is a round trip for nothing
+	// (DECISIONS I-223). A project just created is read again.
+	fresh := res.Project != nil
+	wasRunning := fresh && project.State == "running" && !guestdDead(project)
 	if attachOnly {
-		p, err := e.Client.GetProject(ctx, project.ID)
-		if err != nil {
-			return err
+		if !fresh {
+			p, err := e.Client.GetProject(ctx, project.ID)
+			if err != nil {
+				return err
+			}
+			*project = *p
 		}
-		*project = *p
 		if project.State != "running" {
 			return notRunningError(project)
 		}
-	} else if err := ensureRunning(ctx, e, project, pr); err != nil {
+	} else if err := ensureRunningFrom(ctx, e, project, pr, fresh); err != nil {
 		return err
 	}
+	early.settle(ctx, e, project, wasRunning)
 
+	endEnsure()
 	tz := laptopTZ()
 	tzSaved := saveProjectTZ(ctx, e, project, tz)
 
 	pr.Phase("Connecting to "+project.Slug, "")
+	endConnect := timeSpan("phase connect")
 	target, err := connect(ctx, e, project)
 	if err != nil {
 		return err
 	}
+	endConnect()
 	pr.End()
 	_, _ = fmt.Fprintf(e.Out, "Connected to %s (%s)\n", project.Slug, project.Class)
 
@@ -124,12 +153,11 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			repoRoot = e.Cwd
 		}
 		pr.Phase("Syncing", "")
-		// Tool logins, the git identity and the carry go between the
-		// sync's probe and its apply, in one ssh, so the checkout lands in
-		// a guest whose git already knows the user and how to reach the
-		// remote (I-150), and the carry costs no round trip (I-195..I-198).
-		var copied []string
-		var carried *carryOutcome
+		endSync := timeSpan("phase sync")
+		// Tool logins, the git identity and the carry run first in the
+		// sync's apply ssh, so the checkout lands in a guest whose git
+		// already knows the user and how to reach the remote (I-150), and
+		// the carry costs no round trip (I-195..I-198, I-224).
 		// The laptop's side of the carry (the .env walk, git config, the
 		// Claude files) is read while the probe's ssh is in flight, not
 		// before it (review of workstream 15, item 7).
@@ -167,7 +195,8 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			StashRemote: opts.StashRemote, DiscardRemote: opts.DiscardRemote,
 			Exclude: e.Cfg.SyncExclude, NoRemote: project.RemoteURL == "", RemoteURL: project.RemoteURL,
 			EnvLater: waitEnv,
-			BeforeApply: func(markers map[string]string) error {
+			Probe:    early.forProject(),
+			Carry: func(markers map[string]string) (*credCarry, error) {
 				b := <-carryDone
 				gc, cc := b.gc, b.cc
 				if b.gcErr != nil {
@@ -183,28 +212,28 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 						e.warn("%s", n)
 					}
 				}
-				copied, carried, err = syncCredentialsAndCarry(ctx, target, e.HomeDir, repoRoot, credSyncOptions{
+				return buildCredentialsAndCarry(e.HomeDir, repoRoot, credSyncOptions{
 					RemoteURL: project.RemoteURL,
 					Kept: func(label string) {
 						e.warn("Kept the guest's %s login: it is newer than the laptop's.", label)
 					},
 				}, carryOptions{TZ: tz, Git: gc, Claude: cc, Tools: b.tc, Markers: markers})
-				return err
 			},
 		})
 		if err != nil {
 			return err
 		}
+		endSync()
 		pr.End()
 		_, _ = fmt.Fprintln(e.Out, summary.String())
 		for _, w := range summary.Warnings() {
 			_, _ = fmt.Fprintln(e.ErrOut, w)
 		}
-		if len(copied) > 0 {
-			_, _ = fmt.Fprintf(e.Out, "Credentials: %s\n", strings.Join(copied, ", "))
+		if len(summary.Copied) > 0 {
+			_, _ = fmt.Fprintf(e.Out, "Credentials: %s\n", strings.Join(summary.Copied, ", "))
 		}
-		if carried != nil {
-			for _, l := range carried.Lines() {
+		if summary.Carried != nil {
+			for _, l := range summary.Carried.Lines() {
 				_, _ = fmt.Fprintln(e.ErrOut, l)
 			}
 		}
@@ -308,19 +337,34 @@ func refusePromptThatIsASlug(ctx context.Context, e *Env, prompt string) error {
 // this command rides). It warns when the alias does not work from a
 // plain terminal and uses the generated config directly in that case.
 func connect(ctx context.Context, e *Env, project *Project) (sshTarget, error) {
-	me, err := e.Client.GetMe(ctx)
-	if err != nil {
-		return sshTarget{}, err
+	if t, ok, err := connectFast(ctx, e, project); ok {
+		return t, err
 	}
+	endAPI := timeSpan("connect api (me, projects)")
+	// The two reads are independent: one round trip, not two (I-223).
+	var me *Me
+	var meErr error
+	meDone := make(chan struct{})
+	go func() {
+		defer close(meDone)
+		me, meErr = e.Client.GetMe(ctx)
+	}()
 	allProjects, err := e.Client.ListProjects(ctx)
+	<-meDone
+	if meErr != nil {
+		return sshTarget{}, meErr
+	}
 	if err != nil {
 		return sshTarget{}, err
 	}
+	endAPI()
 	params := certParams{Handle: me.Handle, Projects: allProjects, CheckAlias: e.TargetFor == nil}
+	endCert := timeSpan("connect cert+ssh files")
 	cr, err := ensureCert(ctx, e.Client, params, nil)
 	if err != nil {
 		return sshTarget{}, err
 	}
+	endCert()
 	target := e.target(project.Slug)
 	if cr.AliasProblem != "" {
 		e.warn("warning: %s\n(repose itself uses ~/.ssh/repose/config directly until then.)", cr.AliasProblem)
@@ -330,6 +374,7 @@ func connect(ctx context.Context, e *Env, project *Project) (sshTarget, error) {
 			}
 		}
 	}
+	defer timeSpan("connect first ssh")()
 	err = waitForSSH(ctx, target, certRefusalHandler(func() error {
 		params.Force = true
 		_, err := ensureCert(ctx, e.Client, params, nil)
@@ -490,11 +535,21 @@ func waitForSSH(ctx context.Context, t sshTarget, onRefused func(*sshError) (boo
 // stopped (or errored) guest, and wait for the op, streaming the build
 // log when the op carries one. Every phase shows on pr.
 func ensureRunning(ctx context.Context, e *Env, project *Project, pr *progress) error {
-	p, err := e.Client.GetProject(ctx, project.ID)
-	if err != nil {
-		return err
+	return ensureRunningFrom(ctx, e, project, pr, false)
+}
+
+// ensureRunningFrom is ensureRunning; fresh says *project was read from
+// the api by this command a moment ago, and is acted on without reading
+// it again.
+func ensureRunningFrom(ctx context.Context, e *Env, project *Project, pr *progress, fresh bool) error {
+	var err error
+	var p *Project
+	if !fresh {
+		if p, err = e.Client.GetProject(ctx, project.ID); err != nil {
+			return err
+		}
+		*project = *p
 	}
-	*project = *p
 	if project.State == "running" && !guestdDead(project) {
 		return nil
 	}

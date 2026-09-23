@@ -261,7 +261,9 @@ $ repose run
    API says `running`, polling every second, then print `Connected to
    <slug> (<class>)`. This first ssh becomes the ControlMaster every later
    one in the command shares.
-5. Credential sync (unless `--no-sync`), in one ssh, before the git steps:
+5. Credential sync (unless `--no-sync`), first in step 6d's ssh, before
+   its git steps (a first sync that clones in the guest, I-203, sends it
+   on its own before the clone; DECISIONS I-224):
    for each row of the table in `interfaces/guest-conventions.md`, if the
    laptop file exists, copy it to the guest path with its mode; set the
    git identity with `git config --global`; when gh travelled and the
@@ -353,6 +355,39 @@ the api recorded for an `error` (`last_error`), and the command that fits
 (DECISIONS I-153).
 
 `run` ends with `Ready in <time>.` on stderr before attaching.
+
+Startup fast paths (DECISIONS I-223..I-225). The steps above are what
+happens; these decide how many round trips they cost, and `REPOSE_TIMING=1`
+prints one stderr line per phase, api call and ssh (`ops/dev/startup-bench.sh`
+measures them):
+
+- Step 2 does not read the project again when step 1 just did. The op
+  wait polls every 500 ms for its first 30 s, then 1 s, then 2 s.
+- Steps 3 and 4 need no api call when `~/.ssh/repose` already covers the
+  project (a certificate for the CLI's key with the project's id and 30
+  minutes left, `known_hosts`, its `Host` block, the alias resolving), and
+  no ssh when a ControlPersist master for it is up (`ssh -O check`): the
+  gateway ends a client connection when its guest connection ends, so a
+  live master is a guest that answered. Otherwise `GET /me` and `GET
+  /projects` go in parallel, as before, with `ensureCert`.
+- `run` starts step 6b's probe before step 1's api call when the projects
+  cache names the project and the files cover it; with no master up, the
+  probe's connection becomes the master. Its answer is used only when the
+  project resolves to that id and was running before the command (a start
+  makes a new guest); otherwise it is discarded, its master closed, and
+  the steps run as written.
+- `attach` with the cache naming the project and a master up makes no api
+  call: it prints `Connected to <slug>` and execs step 8.
+- Step 6d is skipped when the guest is exactly as the last completed sync
+  left it and the laptop would send the same thing: the apply records a
+  key (the hash of `H`, the branch, the tracked ref, the diff and the
+  untracked tar) in `.git/repose-synced-key`, cleared before it touches
+  the checkout; the probe returns it with `HEAD` and `.git/HEAD`, and the
+  summary line ends `the guest already had them`. Step 5 is skipped when
+  the guest's `creds` marker holds the hash of the same login files
+  (content and mtime) and every file it wrote is still there
+  (`~/.repose/creds-paths`); an unchanged `run` then makes no ssh after
+  the probe.
 
 ### 5.6 stop, start, destroy, resize
 

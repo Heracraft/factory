@@ -78,6 +78,8 @@ type Signals struct {
 	// did not say. A running project with false is one `repose start`
 	// restarts (I-157).
 	GuestdOK *bool `json:"guestd_ok,omitempty"`
+	// SampledAt is when the host took the sample the signals are from.
+	SampledAt *time.Time `json:"sampled_at,omitempty"`
 }
 
 type AgentSignal struct {

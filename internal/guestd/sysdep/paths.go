@@ -34,6 +34,16 @@ func (p Paths) RunDir() string { return p.join("run", "repose") }
 // before home-manager activates (DECISIONS I-67).
 func (p Paths) PathsRegistered() string { return p.join("run", "repose", "paths-registered") }
 
+// PathsLoaded is /var/lib/repose/paths-loaded, on the guest's volume:
+// the sha256 of the last registration `nix-store --load-db` took. A start
+// that is sent the same registration (the same closure) skips the load,
+// which is on every start's path to the first login (DECISIONS I-225).
+func (p Paths) PathsLoaded() string { return p.join("var", "lib", "repose", "paths-loaded") }
+
+// NixDB is the guest's nix database, whose absence means nothing was
+// ever loaded into it.
+func (p Paths) NixDB() string { return p.join("nix", "var", "nix", "db", "db.sqlite") }
+
 // SecretsDir is /run/repose/secrets: named secret values, 0400 dev.
 func (p Paths) SecretsDir() string { return p.join("run", "repose", "secrets") }
 

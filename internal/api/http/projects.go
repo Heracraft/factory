@@ -97,8 +97,12 @@ func (s *Server) projectJSON(ctx context.Context, p *store.Project, u *store.Use
 		for _, a := range x.latest.Agents {
 			agents = append(agents, map[string]string{"agent": a["agent"], "window": a["window"], "state": a["state"]})
 		}
+		var guestdOK any = x.latest.GuestdOK
+		if sampleBeforeStart(p, x.latest) {
+			guestdOK = nil // says nothing about the guestd running now (I-225)
+		}
 		out["signals"] = map[string]any{"ssh_sessions": x.latest.SSHSessions, "tmux_clients": x.latest.TmuxClients, "agents": agents,
-			"docker_containers": x.latest.DockerContainers, "guestd_ok": x.latest.GuestdOK, "sampled_at": x.latest.TS, "gateway_sessions": s.sessions.Count(ctx, p.ID)}
+			"docker_containers": x.latest.DockerContainers, "guestd_ok": guestdOK, "sampled_at": x.latest.TS, "gateway_sessions": s.sessions.Count(ctx, p.ID)}
 	}
 	return out, nil
 }
@@ -452,7 +456,17 @@ func (s *Server) guestdDead(ctx context.Context, p *store.Project) (bool, error)
 	if err != nil || !ok {
 		return false, err
 	}
-	return l.State == "running" && !l.GuestdOK && time.Since(l.TS) < guestdStaleAfter, nil
+	return l.State == "running" && !l.GuestdOK && time.Since(l.TS) < guestdStaleAfter && !sampleBeforeStart(p, l), nil
+}
+
+// sampleBeforeStart reports whether l was taken before the project's
+// guest last became running: a sample from a guest being stopped (its
+// guestd already shut down, the state not yet stopping) is the newest
+// until the host's next minute tick, and read as the new guest's word it
+// said guestd was dead right after every start, so `repose run` asked
+// for a restart and `repose status` warned (I-225).
+func sampleBeforeStart(p *store.Project, l *meter.Latest) bool {
+	return p.StartedAt != nil && l.TS.Before(*p.StartedAt)
 }
 
 func (s *Server) stopProject(w http.ResponseWriter, r *http.Request) error {

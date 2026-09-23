@@ -6,6 +6,8 @@ package system
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -208,6 +210,20 @@ func resolve(path string) (string, error) {
 // Loading is idempotent: a listing that is already registered changes
 // nothing.
 func (h *Handler) RegisterPaths(ctx context.Context, registration []byte) error {
+	sum := sha256.Sum256(registration)
+	hash := hex.EncodeToString(sum[:])
+	if b, err := os.ReadFile(h.paths.PathsLoaded()); err == nil && strings.TrimSpace(string(b)) == hash {
+		if _, err := os.Stat(h.paths.NixDB()); err == nil {
+			// The same registration was loaded on an earlier boot of this
+			// volume and the database is there: the load would change
+			// nothing, and it costs most of a second of the start (I-225).
+			if err := os.WriteFile(h.paths.PathsRegistered(), []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644); err != nil {
+				return sysdep.Errf(sysdep.CodeInternal, "register paths: stamp: %w", err)
+			}
+			h.log.Info("store paths already registered", "event", "register_paths", "bytes", len(registration), "skipped", true)
+			return nil
+		}
+	}
 	res, err := h.run.Run(ctx, sysdep.RunSpec{
 		Argv:      []string{"nix-store", "--load-db"},
 		Stdin:     registration,
@@ -222,6 +238,11 @@ func (h *Handler) RegisterPaths(ctx context.Context, registration []byte) error 
 	}
 	if err := os.WriteFile(h.paths.PathsRegistered(), []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644); err != nil {
 		return sysdep.Errf(sysdep.CodeInternal, "register paths: stamp: %w", err)
+	}
+	// Recorded after the load and the stamp: a load that failed is
+	// never skipped next time.
+	if err := os.MkdirAll(filepath.Dir(h.paths.PathsLoaded()), 0o755); err == nil {
+		_ = os.WriteFile(h.paths.PathsLoaded(), []byte(hash+"\n"), 0o644)
 	}
 	h.log.Info("store paths registered", "event", "register_paths", "bytes", len(registration))
 	return nil
