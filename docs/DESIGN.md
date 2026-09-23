@@ -393,8 +393,9 @@ to them.
 
 ## 14. Billing and metering
 
-Stripe from day one. Card required before the first guest starts. Trial is a
-$10 credit consumed at hourly rates.
+Stripe from day one. Card required before the first guest starts. The trial
+is the first day of compute, a credit of one day on large consumed at hourly
+rates (DECISIONS I-205).
 
 Meters, sampled by hostd every 60 seconds and aggregated hourly by the API:
 

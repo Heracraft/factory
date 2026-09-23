@@ -469,7 +469,7 @@ radios. Test against internal/fakes/api.
 ```
 Workstream: docs/workstreams/09-billing.md. Build the billing package and
 its api routes: Stripe customer at signup, SetupIntent card on file, the
-$10 trial credit ledger, hourly usage records from usage_hours, the
+trial credit ledger (one day of compute, I-205), hourly usage records from usage_hours, the
 per-project monthly cap per size, storage and egress lines, monthly
 invoices, past_due handling with the 3-day stop and 30-day retention,
 webhooks, the reconciliation job, and the test-mode fixture for the

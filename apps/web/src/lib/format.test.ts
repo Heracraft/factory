@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { money, gb, projectedMonthCents, normalizeRemoteDisplay } from './format';
+import { money, gb, projectedMonthCents, normalizeRemoteDisplay, trialTimeLeft } from './format';
 
 describe('money', () => {
 	it('formats cents as dollars', () => {
@@ -52,5 +52,20 @@ describe('normalizeRemoteDisplay', () => {
 		const a = normalizeRemoteDisplay('git@github.com:a/b.git');
 		const b = normalizeRemoteDisplay('https://github.com/a/b');
 		expect(a).toBe(b);
+	});
+});
+
+describe('trialTimeLeft', () => {
+	it('says time, never money (I-205)', () => {
+		expect(trialTimeLeft(336)).toBe(
+			'Your first day of compute: 24 hours left on large (48 on small).'
+		);
+		expect(trialTimeLeft(20)).toBe('Your first day of compute: 1 hour left on large (2 on small).');
+		expect(trialTimeLeft(10)).toBe(
+			'Your first day of compute: under an hour left on large (1 hour on small).'
+		);
+		expect(trialTimeLeft(0)).toBe('Your first day of compute is used up.');
+		expect(trialTimeLeft(-5)).toBe('Your first day of compute is used up.');
+		for (const c of [336, 100, 20, 0]) expect(trialTimeLeft(c)).not.toMatch(/\$/);
 	});
 });

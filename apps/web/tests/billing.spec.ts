@@ -18,7 +18,10 @@ test('a trial account adds its card through Stripe Checkout and comes back to it
 }) => {
 	await setBilling('nocard');
 	await page.goto('/billing');
-	await expect(page.getByText('$10.00 trial credit remaining.')).toBeVisible();
+	// I-205: the trial is told in time, never in money.
+	await expect(
+		page.getByText('Your first day of compute: 24 hours left on large (48 on small).')
+	).toBeVisible();
 	await page.getByRole('button', { name: 'Add a card' }).click();
 	// The fake's Checkout URL is the success_url Stripe would send the user
 	// back to, and the fake has applied the card the way the webhook would.

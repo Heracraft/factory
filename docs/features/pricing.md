@@ -1,7 +1,7 @@
 # Billing and the trial
 
 What a user sees about money: the card they add before the first guest
-starts, the $10 that runs out, the number in `repose status`, the invoice at
+starts, the first day of compute that runs out, the number in `repose status`, the invoice at
 the end of the month, and what happens when a payment fails. The prices
 themselves are in [`../PRICING.md`](../PRICING.md); the implementation is
 [`../workstreams/09-billing.md`](../workstreams/09-billing.md).
@@ -36,12 +36,17 @@ An account an operator has marked billing-exempt (`repose-admin users exempt`)
 passes all of these; it still meters, so the numbers below are still real for
 it (DECISIONS I-16).
 
-## The $10
+## Your first day of compute
 
-A new account gets $10 of credit. It is consumed at exactly the rates a paid
-account pays — a large guest takes 14 cents an hour out of it, a 40 GB volume
-takes about half a cent an hour — so the trial is also the first test of the
-meters. `repose status` and the dashboard show what is left. When the last
+A new account's first day of compute is on us (DECISIONS I-205): a credit
+of one day on a large guest, which is two days on small. It is consumed at
+exactly the rates a paid account pays (a large guest takes one hour of it
+per hour, a small one half an hour, a 40 GB volume a sliver), so the trial
+is also the first test of the meters. The words a user reads never name
+an amount: the dashboard says `Your first day of compute: 17 hours left on
+large (34 on small).`, and the landing page `Your first day of compute is
+on us.` The api's `GET /me` still carries `trial_credit_cents` (336 for a
+new account). When the last
 of it is spent, the account moves from `trial` to `active` in the same
 transaction that spends it: nothing stops, and the next hour goes on the
 card.

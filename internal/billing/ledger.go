@@ -147,7 +147,7 @@ func DebitUsage(ctx context.Context, tx store.Querier, userID, projectID uuid.UU
 //
 // The failure it prevents: the card gate refuses a start with
 // `trial_depleted` for any user whose status is `trial` and whose balance
-// is zero, so an account that simply used its ten dollars would have been
+// is zero, so an account that simply used its trial credit would have been
 // locked out of its own guests instead of being charged for them.
 func endOfTrial(ctx context.Context, tx store.Querier, userID uuid.UUID) error {
 	_, err := tx.Exec(ctx, `update users set billing_status = 'active'

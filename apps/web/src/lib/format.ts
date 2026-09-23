@@ -86,3 +86,22 @@ export function normalizeRemoteDisplay(remoteUrl: string): string {
 	if (firstSlash === -1) return s.toLowerCase();
 	return s.slice(0, firstSlash).toLowerCase() + s.slice(firstSlash);
 }
+
+/** Hourly rates in cents (internal/billing/prices.go HourLarge, HourSmall). */
+const HOUR_LARGE_CENTS = 14;
+const HOUR_SMALL_CENTS = 7;
+
+/**
+ * What is left of the trial, in time, never in money (DECISIONS I-205:
+ * every user-facing string calls it "your first day of compute").
+ * 336 cents is "24 hours left on large (48 on small)".
+ */
+export function trialTimeLeft(cents: number): string {
+	const large = Math.floor(Math.max(cents, 0) / HOUR_LARGE_CENTS);
+	const small = Math.floor(Math.max(cents, 0) / HOUR_SMALL_CENTS);
+	if (small === 0) return 'Your first day of compute is used up.';
+	if (large === 0)
+		return 'Your first day of compute: under an hour left on large (1 hour on small).';
+	const h = (n: number) => (n === 1 ? '1 hour' : `${n} hours`);
+	return `Your first day of compute: ${h(large)} left on large (${small} on small).`;
+}

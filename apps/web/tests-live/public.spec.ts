@@ -58,7 +58,7 @@ test('landing pricing table matches PRICING.md', async ({ page }) => {
 	}
 	await expect(page.getByText('$0.10/GB-month')).toBeVisible();
 	await expect(page.getByText('$0.05/GB of egress beyond 500 GB')).toBeVisible();
-	await expect(page.getByText('$10 of trial credit')).toBeVisible();
+	await expect(page.getByText('Your first day of compute is on us.')).toBeVisible();
 });
 
 test('landing links to terms and privacy, and both render', async ({ page }) => {

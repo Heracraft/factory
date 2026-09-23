@@ -35,13 +35,15 @@ for 10 hours is about $58 + $4 = $62.
 
 ## Trial
 
-A new account gets $10 of credit, consumed at the rates above, card
-required to start the first guest anyway. Ten dollars is about 70 large
-guest-hours, enough to leave an agent running overnight twice and see the
-result. When the credit reaches zero, the next hour is charged to the card;
-nothing stops. The trial is a credit rather than free days because a credit
-meters exactly like paid usage, so the trial is also the first test of the
-meters (DECISIONS R4-8).
+A new account's first day of compute is on us (DECISIONS I-205, amending
+R4-8): a credit of one day on large, 24 guest-hours at the large rate,
+which is also 48 hours on small, consumed at the rates above. A card is
+still required to start the first guest. When the credit reaches zero, the
+next hour is charged to the card; nothing stops. It stays a credit rather
+than free hours of one class, so there is one meter, and the trial is also
+the first test of the meters. Everything a user reads calls it "your first
+day of compute" and never names an amount: the dashboard shows the time
+left ("24 hours left on large (48 on small)").
 
 ## Limits
 

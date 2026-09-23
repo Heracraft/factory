@@ -10,7 +10,7 @@
 	} from '$lib/api/client';
 	import { ApiError } from '$lib/api/errors';
 	import { toastApiError } from '$lib/api/toast';
-	import { money, dateTime } from '$lib/format';
+	import { money, dateTime, trialTimeLeft } from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import UsageChart from '$lib/components/UsageChart.svelte';
 	import type { Invoice, Me } from '$lib/api/types';
@@ -127,7 +127,7 @@
 			<div class="banner banner--error">Account suspended.</div>
 		{:else if me.billing.status === 'trial'}
 			<div class="banner banner--ok">
-				{money(me.billing.trial_credit_cents)} trial credit remaining.
+				{trialTimeLeft(me.billing.trial_credit_cents)}
 			</div>
 		{:else if me.billing.status === 'exempt'}
 			<div class="banner banner--ok">This account is billing-exempt.</div>

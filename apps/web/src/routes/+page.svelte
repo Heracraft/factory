@@ -154,7 +154,7 @@ Ready in 15s.</pre>
 		<div class="mx-auto max-w-5xl px-5 py-16">
 			<h2 class="text-2xl font-semibold">Pricing</h2>
 			<p class="mt-2 text-zinc-600 dark:text-zinc-400">
-				Per hour while a machine runs, capped each month. New accounts get $10 of credit.
+				Per hour while a machine runs, capped each month. Your first day of compute is on us.
 			</p>
 			<div class="mt-6 overflow-x-auto">
 				<table class="table">

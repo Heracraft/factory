@@ -23,7 +23,7 @@ const (
 	EgressIncludedGB  int64 = 500
 	EgressPerGB       int64 = 5
 	// TrialCreditCents is one day of compute on large, 24 x HourLarge
-	// (DECISIONS I-205, amending R4-8's $10): 48 hours on small. Every
+	// (DECISIONS I-205, amending R4-8's credit): 48 hours on small. Every
 	// user-facing string calls it "your first day of compute", never an
 	// amount.
 	TrialCreditCents   int64 = 24 * HourLarge

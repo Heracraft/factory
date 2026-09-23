@@ -20,7 +20,7 @@ feature doc wins; on internals, the workstream doc wins.
 | [ports-and-previews.md](ports-and-previews.md) | `repose open <port>` now, preview URLs later | first release / later |
 | [stop-start-destroy.md](stop-start-destroy.md) | Lifecycle states, what each one costs, retention | first release |
 | [status-and-logs.md](status-and-logs.md) | `repose status`, `repose logs`, the dashboard view | first release |
-| [pricing.md](pricing.md) | Card before compute, the $10 trial, what is charged, the invoice, a failed payment | first release |
+| [pricing.md](pricing.md) | Card before compute, the first day of compute, what is charged, the invoice, a failed payment | first release |
 
 Deferred features with a written design live in the doc for the nearest
 first-release feature (preview URLs in ports-and-previews.md, `mcp forward` in

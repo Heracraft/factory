@@ -112,7 +112,7 @@ and a card is `trial`; when the balance hits zero they become `active`
 and the next hour is billed — the transition happens in the same
 transaction as the debit that exhausted the balance, because the card gate
 refuses a `trial` account with no credit (`trial_depleted`) and an account
-that merely used its ten dollars must not be locked out of its own guests.
+that merely used its trial credit must not be locked out of its own guests.
 The transition needs a card; an account whose card was removed before its
 credit ran out stays `trial` at zero, is refused `trial_depleted`, and
 moves to `active` when a card arrives (DECISIONS I-184). `repose-admin billing credit` adds rows for
