@@ -9,7 +9,10 @@ let
   exampleFiles = lib.filter (n: lib.hasSuffix ".nix" n) (builtins.attrNames (builtins.readDir examplesDir));
   examples = lib.listToAttrs (map
     (n: lib.nameValuePair (lib.removeSuffix ".nix" n) (compose { fragmentPath = examplesDir + "/${n}"; }).toplevel)
-    exampleFiles);
+    exampleFiles)
+  # Menu output with nixpkgs packages by attribute path (DECISIONS I-220),
+  # rendered by internal/menu (TestMenuFixturesAreCurrent keeps it current).
+  // { menu-packages = (compose { fragmentPath = ./menu-fixtures/packages.nix; }).toplevel; };
 
   # A fragment that must fail evaluation, and the text its error must carry.
   # The module system reports its errors with `throw`, which tryEval sees;
@@ -36,6 +39,11 @@ let
     (refusal "nixos-option-in-fragment"
       { services.postgresql.enable = true; }
       "does not exist")
+    # The message itself is asserted by internal/menu's
+    # TestRealNixMissingPackage (tryEval cannot see it).
+    (refusal "menu-missing-package"
+      (import ./menu-fixtures/missing-package.nix)
+      "nixpkgs has no package \"no-such-package-repose\"; search https://search.nixos.org/packages")
   ];
 in
 {

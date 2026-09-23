@@ -4792,3 +4792,47 @@ The preview script, the shortcut and the Vite `/fakeapi` proxy are
 removed. The fakes stay for the Playwright suite only. The cost: a dev
 server's buttons act on the signed-in account, so anything destructive is
 tried on an `e2e-` project.
+
+**I-220. The menu takes any nixpkgs package by attribute path, and `repose
+config add/remove` edit it.** (16-guest-tooling, the owner's nuru-playground
+session) The owner needed `gcc` (for `go install` of air with cgo) and
+the menu offered only its 26 catalog entries; `features/config.md` already
+showed `repose config add bun postgresql`, which the CLI never had.
+- *Shape.* A `MenuSelection` item is `{id, options?}` as before or
+  `{package: "<attribute path>"}`, a new field rather than a reserved id
+  with an `attr` option, so several packages do not collide on one id and
+  the dashboard can tell the two kinds apart without the catalog. The
+  change is additive: every selection the api accepted before is still
+  valid and renders byte for byte as before (a selection without packages
+  gets no helper; `TestExampleFragmentIsCurrent` is unchanged).
+- *A catalog id wins.* The CLI turns a name the catalog has into `{id}`;
+  the api refuses a `{package}` equal to a catalog id, so `redis` always
+  means the service, never `pkgs.redis`.
+- *No Nix injection.* A package matches
+  `^[A-Za-z_][A-Za-z0-9_+-]*(\.[A-Za-z_][A-Za-z0-9_+-]*)*$`, at most 200
+  characters, checked by the api, again by the renderer, and by the CLI
+  before any request. It is rendered as a list of string literals,
+  `(nixpkg [ "python312Packages" "black" ])`, which the pattern cannot
+  escape (no `"`, `\`, `$`, whitespace), and the fragment's `nixpkg`
+  helper resolves it with `lib.attrByPath`. So the name is data, never
+  Nix syntax.
+- *A missing package names itself.* `pkgs.foo` on a missing attribute
+  would fail with Nix's `attribute 'foo' missing` at a generated line the
+  user never wrote; the helper throws `nixpkgs has no package "foo";
+  search https://search.nixos.org/packages` (and `... is not a package`
+  for an attribute set like `python312Packages`), which hostd's existing
+  mapping already makes the `eval_failed` summary, so hostd is unchanged.
+  An unfree package outside the allowlist fails with nixpkgs' own
+  "Refusing to evaluate package ... unfree license", as a hand-written
+  fragment does. Proven by `TestRealNixMissingPackage` through the exact
+  restricted eval hostd runs.
+- *Empty is allowed.* `config remove` of the last item PUTs `[]`, which
+  renders an empty generated fragment and keeps the project in menu mode;
+  the api used to refuse an empty selection, for no reason the docs gave.
+- *The fake api and the dashboard used another shape.* cmd/fakeapi
+  accepted `{packages, services, options}` and the dashboard's menu tab
+  sent it, so the tab could not apply against the real api (400) and read
+  every real selection as empty. The fake now validates and renders with
+  `internal/menu` itself (real catalog, real fragment, the custom-fragment
+  409), and the tab reads and writes the documented array, listing
+  packages as "Extra packages" with a remove button.

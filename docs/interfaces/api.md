@@ -79,6 +79,22 @@ half of the SSH login name and the tmux session name.
 | POST | `/projects/:id/config/revisions/:rev/apply` | re-apply an older successful revision |
 | GET | `/catalog` | menu catalog: `[{id, label, group, kind, description, options?: [{id, type, values, default}]}]` (packages and services the dashboard menu offers; `kind` is `service|package|agent|runtime`, `options` are enums the menu shows as selects; from `internal/menu`, DECISIONS I-44) |
 
+A `MenuSelection` is an array whose items are either a catalog entry
+`{id, options?: {name: value}}` or any nixpkgs package by attribute path
+`{package: "python312Packages.black"}` (DECISIONS I-220); an item carries
+one of `id` and `package`, never both, and a `package` item has no
+`options`. A `package` matches
+`^[A-Za-z_][A-Za-z0-9_+-]*(\.[A-Za-z_][A-Za-z0-9_+-]*)*$`, at most 200
+characters, is not a catalog id (the catalog id means the catalog entry),
+and appears once; anything else is `invalid` naming it. The array may be
+empty (every item removed; the project stays menu-managed). GET returns the
+selection as it was PUT. The api renders catalog entries in catalog order,
+then the packages by name, into the generated fragment; a package nixpkgs
+does not have fails the build with `eval_failed`
+`nixpkgs has no package "<name>"; search https://search.nixos.org/packages`
+(nix-build-contract.md "What the user reads"). The older shape, `[{id,
+options?}]` only, is the same array without `package` items and stays valid.
+
 ## Certificates
 
 | Method | Path | Body / result |

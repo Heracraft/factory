@@ -15,7 +15,12 @@
 	} from '$lib/api/client';
 	import { toastApiError } from '$lib/api/toast';
 	import { dateTime } from '$lib/format';
-	import { toggleSelection, groupCatalog, buildMenuSelection } from '$lib/menuSelection';
+	import {
+		toggleSelection,
+		groupCatalog,
+		buildMenuSelection,
+		parseMenuSelection
+	} from '$lib/menuSelection';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import NixEditor from '$lib/components/NixEditor.svelte';
 	import type { CatalogItem, Config, Project, Revision } from '$lib/api/types';
@@ -33,6 +38,8 @@
 	let selectedPackages = $state<Set<string>>(new Set());
 	let selectedServices = $state<Set<string>>(new Set());
 	let menuOptions = $state<Record<string, string>>({});
+	// nixpkgs packages added by name (`repose config add gcc`, I-220).
+	let extraPackages = $state<string[]>([]);
 
 	// Nix tab state.
 	let fragmentText = $state('');
@@ -64,9 +71,12 @@
 			]);
 			activeTab = config?.menu ? 'menu' : 'nix';
 			fragmentText = config?.fragment ?? '';
-			selectedPackages = new Set(config?.menu?.packages ?? []);
-			selectedServices = new Set(config?.menu?.services ?? []);
-			menuOptions = { ...(config?.menu?.options ?? {}) };
+			const menu = parseMenuSelection(config?.menu);
+			const services = new Set(catalog.filter((c) => c.kind === 'service').map((c) => c.id));
+			selectedPackages = new Set(menu.ids.filter((i) => !services.has(i)));
+			selectedServices = new Set(menu.ids.filter((i) => services.has(i)));
+			menuOptions = menu.options;
+			extraPackages = menu.packages;
 		} catch (err) {
 			toastApiError(err, 'Could not load the config.');
 		}
@@ -126,7 +136,12 @@
 
 	async function applyMenu() {
 		applying = true;
-		const menu = buildMenuSelection(selectedPackages, selectedServices, menuOptions);
+		const menu = buildMenuSelection(
+			catalog,
+			new Set([...selectedPackages, ...selectedServices]),
+			menuOptions,
+			extraPackages
+		);
 		try {
 			const { op_id } = await putConfig(id, { menu });
 			startBuild(op_id);
@@ -247,6 +262,28 @@
 						{/each}
 					</div>
 				{/each}
+				{#if extraPackages.length}
+					<div class="form-section">
+						<h2 class="font-display text-xl font-semibold">Extra packages</h2>
+						<p class="text-sm text-zinc-500 dark:text-zinc-400">
+							Added from nixpkgs with <code>repose config add</code>.
+						</p>
+						<ul class="mt-2">
+							{#each extraPackages as pkg (pkg)}
+								<li class="check-list-row">
+									<span class="flex-1 font-mono text-sm">{pkg}</span>
+									<button
+										type="button"
+										class="link"
+										aria-label={`Remove ${pkg}`}
+										onclick={() => (extraPackages = extraPackages.filter((p) => p !== pkg))}
+										>Remove</button
+									>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
 				<div class="form-section">
 					<button type="button" class="btn" disabled={applying} onclick={applyMenu}>
 						{applying ? 'Applying…' : 'Apply'}

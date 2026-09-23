@@ -483,10 +483,13 @@ func TestConfig(t *testing.T) {
 	wantErr(t, call(t, f, "PUT", "/v1/projects/"+p.ID+"/config", tok, map[string]any{}), 400, "invalid")
 	wantErr(t, call(t, f, "PUT", "/v1/projects/"+p.ID+"/config", tok, map[string]any{"fragment": "x", "menu": map[string]any{}}), 400, "invalid")
 	wantErr(t, call(t, f, "PUT", "/v1/projects/"+p.ID+"/config", tok, map[string]any{"fragment": strings.Repeat("x", 256<<10+1)}), 400, "invalid")
-	wantErr(t, call(t, f, "PUT", "/v1/projects/"+p.ID+"/config", tok, map[string]any{"menu": map[string]any{"packages": []string{"nosuchpkg"}}}), 400, "invalid")
+	wantErr(t, call(t, f, "PUT", "/v1/projects/"+p.ID+"/config", tok, map[string]any{"menu": []map[string]any{{"id": "nosuchpkg"}}}), 400, "invalid")
+	wantErr(t, call(t, f, "PUT", "/v1/projects/"+p.ID+"/config", tok, map[string]any{"menu": []map[string]any{{"package": "a;b"}}}), 400, "invalid")
 	wantErr(t, call(t, f, "PUT", "/v1/projects/"+p.ID+"/config", tok, `{"fragment": "x", "extra": 1}`), 400, "invalid")
 
-	r = call(t, f, "PUT", "/v1/projects/"+p.ID+"/config", tok, map[string]any{"fragment": "{ pkgs, ... }: { home.packages = [ pkgs.bun ]; }"})
+	// The menu, with the real catalog and renderer (internal/menu), a
+	// catalog entry and a nixpkgs package (DECISIONS I-220).
+	r = call(t, f, "PUT", "/v1/projects/"+p.ID+"/config", tok, map[string]any{"menu": []map[string]any{{"id": "bun"}, {"id": "postgresql"}, {"package": "gcc"}}})
 	want(t, r, 202)
 	var put struct {
 		RevisionID string `json:"revision_id"`
@@ -497,15 +500,17 @@ func TestConfig(t *testing.T) {
 		t.Fatalf("put: %s", r.body)
 	}
 	first := put.RevisionID
-
-	r = call(t, f, "PUT", "/v1/projects/"+p.ID+"/config", tok, map[string]any{"menu": map[string]any{"packages": []string{"bun"}, "services": []string{"postgresql"}}})
-	want(t, r, 202)
 	r = call(t, f, "GET", "/v1/projects/"+p.ID+"/config", tok, nil)
 	want(t, r, 200)
 	body := string(r.body)
-	if !strings.Contains(body, `"menu":{`) || !strings.Contains(body, "services.postgresql.enable = true") || !strings.Contains(body, "with pkgs; [ bun ]") {
+	if !strings.Contains(body, `"menu":[{"id":"bun"},{"id":"postgresql"},{"package":"gcc"}]`) || !strings.Contains(body, "services.postgresql") || !strings.Contains(body, `(nixpkg [ \"gcc\" ])`) {
 		t.Fatalf("menu config: %s", body)
 	}
+
+	// A hand-written fragment takes over; the menu then answers conflict.
+	r = call(t, f, "PUT", "/v1/projects/"+p.ID+"/config", tok, map[string]any{"fragment": "{ pkgs, ... }: { home.packages = [ pkgs.bun ]; }"})
+	want(t, r, 202)
+	wantErr(t, call(t, f, "PUT", "/v1/projects/"+p.ID+"/config", tok, map[string]any{"menu": []map[string]any{{"id": "bun"}}}), 409, "conflict")
 
 	r = call(t, f, "GET", "/v1/projects/"+p.ID+"/config/revisions", tok, nil)
 	want(t, r, 200)
@@ -517,7 +522,7 @@ func TestConfig(t *testing.T) {
 	opID(t, call(t, f, "POST", "/v1/projects/"+p.ID+"/config/revisions/"+first+"/apply", tok, nil))
 	r = call(t, f, "GET", "/v1/projects/"+p.ID+"/config", tok, nil)
 	r.json(t, &cfg)
-	if cfg.RevisionID != first || strings.Contains(string(r.body), `"menu"`) {
+	if cfg.RevisionID != first || !strings.Contains(string(r.body), `"menu"`) {
 		t.Fatalf("after apply: %s", r.body)
 	}
 	wantErr(t, call(t, f, "POST", "/v1/projects/"+p.ID+"/config/revisions/nope/apply", tok, nil), 404, "not_found")

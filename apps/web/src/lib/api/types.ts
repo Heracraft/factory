@@ -130,11 +130,12 @@ export interface OpStatus {
 	log_url?: string;
 }
 
-export interface MenuSelection {
-	packages: string[];
-	services: string[];
-	options: Record<string, string>;
-}
+/** One menu item (docs/interfaces/api.md "MenuSelection"): a catalog entry
+ * with its enum options, or any nixpkgs package by attribute path
+ * (DECISIONS I-220). */
+export type MenuItem = { id: string; options?: Record<string, string> } | { package: string };
+
+export type MenuSelection = MenuItem[];
 
 export interface Config {
 	revision_id: string;
