@@ -123,6 +123,7 @@ mkdir -p "$d"
 cd "$d"
 [ -d .git ] || git init -q
 %s
+%s
 st=$(git status --porcelain)
 echo '#status'
 [ -z "$st" ] || printf '%%s\n' "$st"
@@ -133,7 +134,7 @@ git for-each-ref --format='%%(objectname)'
 git rev-parse -q --verify HEAD || true
 echo '#origin'
 git remote get-url origin >/dev/null 2>&1 && echo yes || true
-%s`, slug, syncedFP, markerScript())
+%s`, slug, syncedFP, envPathsCheck, markerScript())
 }
 
 func parseProbe(out string) guestProbe {
@@ -142,6 +143,10 @@ func parseProbe(out string) guestProbe {
 	seen := map[string]bool{}
 	for _, l := range strings.Split(out, "\n") {
 		if strings.HasPrefix(l, "#marker ") {
+			continue
+		}
+		if l == "#envmissing" {
+			delete(p.markers, "env") // a written file is gone: send the set again
 			continue
 		}
 		switch l {

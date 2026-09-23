@@ -102,4 +102,16 @@ func TestSyncCarriesEnvFiles(t *testing.T) {
 	if s := sync(); len(s.EnvKept) != 0 {
 		t.Errorf("kept named again on an unchanged run: %v", s.EnvKept)
 	}
+
+	// Deleted in the guest while the laptop is unchanged: the marker
+	// alone must not stop it coming back.
+	if err := os.Remove(filepath.Join(f.guestRepo(), ".env.local")); err != nil {
+		t.Fatal(err)
+	}
+	if s := sync(); s.EnvFiles == 0 {
+		t.Errorf("after a guest deletion, no env file was written")
+	}
+	if b, _ := os.ReadFile(filepath.Join(f.guestRepo(), ".env.local")); string(b) != "SECRET=1\n" {
+		t.Errorf("deleted .env.local not restored: %q", b)
+	}
 }

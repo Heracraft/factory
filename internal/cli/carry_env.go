@@ -74,6 +74,16 @@ func envHash(files []envFile) string {
 	return carryHash(parts...)
 }
 
+// envPathsCheck is the probe's half of the env marker: the paths the
+// last carry wrote are listed in ~/.repose/env-paths, and when one of
+// them is gone from the checkout (deleted in the guest, or a restore of
+// an older snapshot) the probe says #envmissing and the marker is not
+// trusted, so the set is sent again. Run in the checkout.
+const envPathsCheck = `if [ -f ~/.repose/env-paths ]; then
+  while IFS= read -r p; do [ -e "$p" ] || { echo '#envmissing'; break; }; done < ~/.repose/env-paths
+fi
+`
+
 // addEnvToApply puts the files in the apply's tar and returns the shell
 // that writes them, or "" when the guest already has this exact set.
 // The paths travel in a file, never on a command line.
@@ -105,5 +115,7 @@ while IFS= read -r line; do
   n=$((n+1))
 done < "$t/env/list"
 echo "#envfiles $n"
+mkdir -p ~/.repose
+cut -d' ' -f3- "$t/env/list" > ~/.repose/env-paths
 ` + setMarker("env", hash), nil
 }
