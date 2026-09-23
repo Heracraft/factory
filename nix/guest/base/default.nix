@@ -17,6 +17,7 @@
     ./tmux.nix
     ./tools.nix
     ./devtools.nix
+    ./compat.nix
     ./agents.nix
     ./browser.nix
     ./desktop.nix

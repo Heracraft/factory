@@ -24,9 +24,11 @@ open --desktop --stop`.
 
 ## What is in the guest
 
-- `chromium` from nixpkgs and `playwright-driver.browsers` so Playwright
-  finds its browsers without `npx playwright install`, which would fail on
-  NixOS and pull a second copy anyway.
+- `chromium` from nixpkgs and `playwright-driver.browsers`, linked into
+  the usual `~/.cache/ms-playwright` at boot, so a project on the base's
+  Playwright version finds its browsers without `npx playwright install`;
+  any other version downloads its own there, and the downloaded browsers
+  run through nix-ld (DECISIONS I-228).
 - Playwright MCP registered in Claude Code's user-scope MCP config as
   `playwright`, headless by default. chrome-devtools-mcp registered as
   `chrome-devtools`, also headless. Both can attach to an already running

@@ -814,6 +814,29 @@ directory` for store paths, or guestd sends `Warning{store_path_missing}`.
    it had no `DISPLAY` because it started before Xvfb. New shells export
    `DISPLAY=:99` while the X socket exists; open a new tmux window.
 
+## Prisma, Playwright or a Python wheel fails in a guest
+
+The base's compat layer (DECISIONS I-228, `nix/guest/base/compat.nix`).
+
+1. Prisma: `Failed to fetch ... linux-nixos ... 404`, or `connect
+   ECONNREFUSED 127.0.0.1:850`. In the guest: `echo
+   $PRISMA_ENGINES_MIRROR` must be `http://127.0.0.1:850` (a project
+   `.env` or shell that sets `PRISMA_ENGINES_MIRROR` or
+   `PRISMA_BINARIES_MIRROR` wins over it); `systemctl status
+   repose-prisma-engines.socket` must be `listening`; `curl -sI
+   http://127.0.0.1:850/all_commits/x/linux-nixos/schema-engine.gz` must
+   answer 302 to `.../debian-openssl-3.0.x/...`. The line "Precompiled
+   engine files are not available for nixos" is printed on every command
+   and is expected.
+2. Playwright: `Executable doesn't exist` means the project's version
+   wants a browser revision nobody installed: `npx playwright install
+   chromium` (downloads into `~/.cache/ms-playwright`). If that directory
+   lost the base's links, `sudo systemctl restart repose-playwright-seed`.
+3. Python: `libstdc++.so.6: cannot open shared object file` from a venv
+   whose `bin/python` links straight into `/nix/store` (made with a
+   python from `nix shell` or an older base): recreate the venv with the
+   system `python3` or `uv venv`.
+
 ## Reservation drift
 
 `hosts list` free memory does not match the sum of running guests.

@@ -4985,3 +4985,73 @@ attribute is `nix-locate --minimal --no-group --type x --type s
 --whole-name --at-root /bin/<cmd>` (nix-index 0.1.11 has no
 `--top-level`; only top-level attributes are listed unless `--all`), one
 `attr.output` per line, e.g. `cowsay.out`. Cost: about 30 MB of closure.
+
+**I-228. Tools that download their own binaries work in the guest with
+their stock commands.** (guest tooling, 2026-09-23) nix-ld (I-218) runs
+a downloaded ELF, but an audit on a live guest (base 2026.09.23.3) found
+four places where the tool decides what to download, or where to put it,
+wrongly on NixOS. `nix/guest/base/compat.nix` fixes each for every
+project, with no per-project setup:
+- *Prisma* asked binaries.prisma.sh for `linux-nixos` engines, which do
+  not exist ("Precompiled engine files are not available for nixos", then
+  a 404). `@prisma/get-platform` takes the target from `ID=` in
+  /etc/os-release alone and has no override (`PRISMA_CLI_BINARY_TARGETS`
+  only adds downloads; the `PRISMA_*_ENGINE_*` path variables must match
+  the project's exact engines commit, so no base-wide value exists).
+  Every engine URL is built as `$PRISMA_ENGINES_MIRROR/<channel>/<commit>/
+  <target>/<file>`, so the guest sets `PRISMA_ENGINES_MIRROR=
+  http://127.0.0.1:850`: a socket-activated redirect (one bash instance
+  per connection, nothing proxied, cached or logged) that answers a
+  `linux-nixos` path with a 302 to the `debian-openssl-3.0.x` build of
+  the same commit and any other path with a 302 to the same path
+  upstream. The engines are saved under their linux-nixos names and run
+  through nix-ld (libssl.so.3 from its set; the Node-API library loads
+  in node, which already has OpenSSL 3 loaded). Works for any Prisma
+  version with a debian-openssl-3.0.x build (4.x on). Prisma still prints
+  its nixos warning on each command; it is harmless, and nothing short of
+  the per-commit path variables silences it. Rejected: changing `ID=` in
+  os-release (every other tool that special-cases NixOS would be lied
+  to); a `NODE_OPTIONS` preload that fakes the file (every node process
+  pays it); a route on the host caches (a host switch, and the guest has
+  internet anyway). Port 850: loopback and under 1024, so the CLI never
+  auto-forwards it (I-199).
+- *Playwright*'s `PLAYWRIGHT_BROWSERS_PATH` was the read-only store path
+  of the packaged browsers: `npx playwright install` of any version hung
+  ten minutes on a lock file it could not create, and a project on
+  another Playwright version could not get its revision at all. The
+  variable is now `/home/dev/.cache/ms-playwright` (Playwright's own
+  default); `repose-playwright-seed.service` links the packaged revisions
+  into it at boot (never over a real directory; links into an older
+  base's store are repointed or removed), so the base's version still
+  needs no download. Playwright's cache GC may remove the links when the
+  user installs another version; the next boot restores them. The MCP
+  server's wrapper sets the store path itself and is unaffected.
+- *The system python3* (nixpkgs) cannot load a manylinux wheel's
+  libstdc++ (numpy, pandas, grpcio fail on import in a `python3 -m venv`
+  or a `uv venv` made before any `uv python install`). `python`,
+  `python3` and `python3.12` on the system PATH are now a wrapper that
+  appends nix-ld's library directory to `LD_LIBRARY_PATH` and execs the
+  interpreter under its own name (`exec -a "$0"`), so `sys.executable` is
+  the wrapper and a venv made from it links back to it. uv's managed
+  Pythons already ran through nix-ld and were fine.
+- *pkg-config* found no system library, so `openssl-sys` (every
+  reqwest/native-tls crate) failed to build. `PKG_CONFIG_PATH` names the
+  dev outputs of openssl, zlib, sqlite and libffi; cc's ld-wrapper adds
+  the rpath.
+Audited and needing nothing beyond I-218: rustup's toolchain and `cargo
+build`, uv-managed Python 3.12 (ssl, sqlite3, tkinter) and its wheels
+(numpy, psycopg[binary], cryptography, pandas, pillow, lxml, grpcio,
+pydantic-core, orjson), miniforge, sharp, better-sqlite3 (prebuilt and
+node-gyp), bcrypt, esbuild, @swc/core, lightningcss, @tailwindcss/oxide,
+sass-embedded, @parcel/watcher, wrangler's workerd, Puppeteer (system
+chromium and its own downloaded Chrome), bun from npm, deno's install
+script, `go install` with cgo, GOTOOLCHAIN downloads, golangci-lint's
+install script, and the official Linux binaries of terraform, tofu,
+kubectl, helm, awscli v2, gcloud, stripe, supabase, flyctl, pulumi,
+protoc and node 22. Not checked: pyenv (builds CPython from source and
+needs headers beyond pkg-config's; `uv python install` is the path the
+base supports). Cost: 8,872 bytes of closure (6,165,108,296 to
+6,165,117,168; the four dev outputs were already in it). Tested by the
+VM test `guest-compat` (redirect, the 6.16 debian schema engine running
+through nix-ld, the seed, a manylinux numpy wheel under `python3 -m venv`
+and `uv venv`, pkg-config) and by hand on a live guest.

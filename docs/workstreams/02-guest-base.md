@@ -31,6 +31,12 @@ runner using the host's shared store. Everything in
   library set, `nixpkgs` in the registry and NIX_PATH pinned to the base's
   own nixpkgs (no global registry), and the command-not-found handler
   with `nix-locate` from nix-index-database's prebuilt index.
+- `nix/guest/base/compat.nix` (I-228): what ecosystem tools that download
+  their own binaries need beyond nix-ld: the Prisma engines redirect on
+  127.0.0.1:850 and `PRISMA_ENGINES_MIRROR`, Playwright's writable
+  `~/.cache/ms-playwright` seeded with the packaged browsers, the system
+  python3 on nix-ld's libraries, and `PKG_CONFIG_PATH` for openssl, zlib,
+  sqlite and libffi.
 - `nix/guest/base/users.nix`: `dev` uid 1000, gid 1000, groups `wheel docker
   kvm`, home `/home/dev`, shell bash, `security.sudo.wheelNeedsPassword =
   false`, root locked, `users.mutableUsers = false`.
