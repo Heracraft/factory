@@ -75,7 +75,7 @@ The dashboard has no `+server.ts` routes except `/healthz`. Nothing in
 |---|---|
 | `/` | landing (signed out) or redirect to `/projects` (signed in) |
 | `/callback` | Logto callback |
-| `/projects` | table: name, class, state (dot + word), uptime, agent state, cost today, cost month. Row click → detail. `New project` explains that projects are created from the CLI and shows the install command; there is no create form because a project needs a git remote and a laptop-side sync. |
+| `/projects` | table: name, class, state (dot + word), uptime, agent state, cost today, cost month. Row click → detail. `New project` explains that projects are created from the CLI and shows the install command; there is no create form because a project needs a git remote and a laptop-side sync. A project in `error` shows its `last_error` sentence under the state. Below the table, **Recently destroyed** (`GET /projects/destroyed`, DECISIONS I-168): each destroyed project that still has a snapshot, when it was destroyed, the snapshot's time and size, "restorable until <date> (N days left)", a `name in use` badge when a live project has the slug, and `Restore…`, which opens a name field (the old name, or `<slug>-restored` when taken), posts `POST /projects/restore {project_id, name}` and goes to the new project; a taken name shows under the field. Hidden when the list is empty or the route answers an error. |
 | `/projects/[id]` | header with state and actions (Start, Stop, Destroy with confirm typing the slug); cards: connect (`repose run` and `ssh <slug>.repose`), signals (ssh sessions, tmux clients, agents and their state, docker containers, updated N s ago), cost (today, month, projected month at current run rate, using `GET /usage`), disk (used / allocated, Resize with a size picker), events (list from `GET /events`, newest first, agent icon, summary), snapshots (list, Create, Restore with confirm, restore-as-new with a name field), last build (status, link to config) |
 | `/projects/[id]/config` | two tabs: **Menu** and **Nix**. Menu: groups from `GET /catalog` rendered as checkbox lists with descriptions and a search box, plus a "Services" group for things like Postgres and Redis if the catalog has them; Apply sends `{menu}`. Nix: CodeMirror 6 editor with Nix syntax, Apply sends `{fragment}`. Both then open the build log panel (SSE from `/ops/:op/log`), auto-scrolled, and on failure show the error block with the fragment line highlighted in the editor. Revisions list with Re-apply. A `Hold base updates` toggle (PATCH `hold_base_updates`) with the current base version and its changelog. |
 | `/projects/[id]/secrets` | list of names with dates; Add (name, value textarea or file upload, client validates the name regex); Delete with confirm. Values are never displayed after save. |
@@ -202,6 +202,12 @@ suites back most of it: `apps/web/tests/` against `internal/fakes/api`
       slow poll not overlapping itself.
 - [x] Start, Stop, Destroy, Resize call the right routes and show op
       progress. Evidence: `tests/project-lifecycle.spec.ts`.
+- [x] A destroyed project is listed under "Recently destroyed" with its
+      expiry, and Restore brings it back as a new project (I-168).
+      Evidence: `tests/project-lifecycle.spec.ts` "a destroyed project can
+      be restored from the projects list", `src/lib/destroyed.test.ts`
+      (5 tests); 31 of 31 Playwright tests pass on 2026-09-23. Lighthouse
+      on the new section not run (no `lighthouse` binary on the dev box).
 - [x] Menu tab renders every catalog group and search filters it; Apply
       sends `{menu}` and shows the generated fragment. Evidence:
       `tests/config.spec.ts`, two tests.

@@ -194,7 +194,11 @@
 		opBusy = 'destroy';
 		try {
 			await destroyProject(id);
-			toast.success(`${project?.name} destroyed. Its last snapshot is kept 30 days.`);
+			// The destroy runs on after this returns (I-166); the list shows it
+			// as destroying, then under "Recently destroyed" with a Restore.
+			toast.success(
+				`Destroying ${project?.name}. It can be restored from "Recently destroyed" for 30 days.`
+			);
 			await goto(resolve('/projects'));
 		} catch (err) {
 			opBusy = undefined;

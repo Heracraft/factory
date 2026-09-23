@@ -2,22 +2,41 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { listProjects } from '$lib/api/client';
+	import { listDestroyed, listProjects } from '$lib/api/client';
 	import { toastApiError } from '$lib/api/toast';
 	import { pollWhileVisible } from '$lib/poll';
 	import { money, uptime } from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import StateDot from '$lib/components/StateDot.svelte';
-	import type { Project } from '$lib/api/types';
+	import RecentlyDestroyed from '$lib/components/RecentlyDestroyed.svelte';
+	import type { DestroyedProject, Project } from '$lib/api/types';
 
 	let projects = $state<Project[] | undefined>(undefined);
+	let destroyed = $state<DestroyedProject[]>([]);
 
 	async function refresh() {
 		try {
 			projects = await listProjects();
 		} catch (err) {
 			toastApiError(err, 'Could not load projects.');
+			// Not asked while the list fails: its answer would reset the
+			// "cannot reach the api" bar the failed list just raised.
+			return;
 		}
+		// Its own try: an api without the route (older than I-167) answers
+		// 404, and that must not hide the live list or raise a toast.
+		try {
+			destroyed = await listDestroyed();
+		} catch {
+			destroyed = [];
+		}
+	}
+
+	/** The sentence after "code: " in last_error, for a project in error. */
+	function reason(p: Project): string {
+		if (p.state !== 'error' || !p.last_error) return '';
+		const i = p.last_error.indexOf(': ');
+		return i > 0 ? p.last_error.slice(i + 2) : p.last_error;
 	}
 
 	onMount(() => pollWhileVisible(refresh));
@@ -75,7 +94,12 @@
 								>
 							</td>
 							<td class="px-2 py-2.5">{p.class}</td>
-							<td class="px-2 py-2.5"><StateDot state={p.state} /></td>
+							<td class="px-2 py-2.5">
+								<StateDot state={p.state} />
+								{#if reason(p)}
+									<p class="mt-0.5 max-w-xs text-xs text-red-600 dark:text-red-400">{reason(p)}</p>
+								{/if}
+							</td>
 							<td class="px-2 py-2.5">{p.state === 'running' ? uptime(p.started_at) : '—'}</td>
 							<td class="px-2 py-2.5">{agentSummary(p)}</td>
 							<td class="px-2 py-2.5">{money(p.cost_today_cents)}</td>
@@ -85,5 +109,12 @@
 				</tbody>
 			</table>
 		</div>
+	{/if}
+	{#if projects !== undefined}
+		<RecentlyDestroyed
+			{destroyed}
+			liveSlugs={(projects ?? []).map((p) => p.slug)}
+			onrestored={() => void refresh()}
+		/>
 	{/if}
 </PageShell>

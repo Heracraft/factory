@@ -9,11 +9,13 @@ import type {
 	ApiErrorBody,
 	CatalogItem,
 	Config,
+	DestroyedProject,
 	Me,
 	MenuSelection,
 	OpStatus,
 	Project,
 	ProjectEvent,
+	RestoreResult,
 	Revision,
 	Route,
 	SecretMeta,
@@ -103,7 +105,16 @@ export const patchProject = (
 	id: string,
 	body: { class?: string; hold_base_updates?: boolean; agent_default?: string }
 ) => request<Project>(`/projects/${id}`, { method: 'PATCH', body });
-export const destroyProject = (id: string) => request<void>(`/projects/${id}`, { method: 'DELETE' });
+export const destroyProject = (id: string) =>
+	request<{ op_id: string; state: string }>(`/projects/${id}`, { method: 'DELETE' });
+export const listDestroyed = () => request<DestroyedProject[]>('/projects/destroyed');
+/** Restores a destroyed (or live) project's newest snapshot as a new project (I-167). */
+export const restoreProject = (body: {
+	slug?: string;
+	project_id?: string;
+	snapshot_id?: string;
+	name?: string;
+}) => request<RestoreResult>('/projects/restore', { method: 'POST', body });
 export const startProject = (id: string) =>
 	request<{ op_id: string }>(`/projects/${id}/start`, { method: 'POST' });
 export const stopProject = (id: string, snapshot = true) =>

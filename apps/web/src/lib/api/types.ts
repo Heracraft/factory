@@ -68,6 +68,8 @@ export interface Signals {
 	ssh_sessions: number;
 	tmux_clients: number;
 	agents: AgentSignal[];
+	/** False when the newest sample found the environment's agent not answering (I-157). */
+	guestd_ok?: boolean;
 }
 
 export interface Project {
@@ -91,6 +93,35 @@ export interface Project {
 	cost_today_cents: number;
 	cost_month_cents: number;
 	last_snapshot_at?: string;
+	/** The last failed op's "code: sentence" (I-159); null once an op succeeds. */
+	last_error?: string | null;
+	host_unreachable?: boolean;
+}
+
+/** GET /projects/destroyed (I-167): a destroyed project that can still be restored. */
+export interface DestroyedProject {
+	id: string;
+	name: string;
+	slug: string;
+	class: SizeClass;
+	remote_url?: string | null;
+	volume_bytes: number;
+	destroyed_at: string;
+	/** Whether a restore can take the old name (no live project holds it). */
+	name_free: boolean;
+	restorable_until?: string | null;
+	snapshot: Snapshot;
+}
+
+/** POST /projects/restore's answer (I-167). */
+export interface RestoreResult {
+	op_id: string;
+	project_id: string;
+	name: string;
+	slug: string;
+	snapshot_id: string;
+	snapshot_created_at: string;
+	from_project_id: string;
 }
 
 export interface OpStatus {
@@ -147,6 +178,7 @@ export interface Snapshot {
 	created_at: string;
 	bytes: number;
 	reason: string;
+	expires_at?: string | null;
 }
 
 export interface ProjectEvent {

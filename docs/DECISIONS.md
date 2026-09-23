@@ -3750,3 +3750,30 @@ with the remote, live-name 404, name taken without and with a terminal,
 unknown name). Not done: `repose restore` with no NAME inside a checkout
 whose project was destroyed (the remote could find it; it asks for the
 name instead).
+
+**I-168. The dashboard lists recently destroyed projects with a Restore.**
+(destroy-restore, 08, 2026-09-23; owner: "perhaps they can use the
+dashboard?") `/projects` gains a "Recently destroyed" section under the
+table, from `GET /projects/destroyed` (I-167): name, class, a `name in
+use` badge, "Destroyed <relative time> · snapshot <time>, <size> ·
+restorable until <date> (N days left)", and `Restore…`, which opens a
+name field with the old name (or `<slug>-restored`, `-2`… when a live
+project has it), posts `POST /projects/restore {project_id, name}`, and
+goes to the new project's page, where its state shows the restore
+running. A `name_taken` 409 shows under the field instead of a toast. The
+section is a `form-section` with a `font-display` heading and `btn-ghost`
+row actions, per DESIGN-LANGUAGE.md; nothing new in `layout.css`. The
+section is asked for only after the live list loaded, because its
+answer would otherwise clear the "cannot reach the api" bar that a
+failed list had just raised (the failure-mode test caught this), and an
+error from it (an api older than I-167) hides the section silently. A
+project in `error` now shows its `last_error` sentence under its state
+in the table, so a destroy that failed after the dashboard moved on is
+visible there too, with the retry the api wrote (I-166). The destroy
+toast says the destroy continues and where to restore from. Tests:
+`tests/project-lifecycle.spec.ts` (destroy through the UI, the row with
+its expiry, Restore under the same name, lands on the new project),
+`src/lib/destroyed.test.ts`. *Rejected:* a separate `/projects/destroyed`
+page (one more route for a list that is short and belongs next to the
+live one); restoring on one click without a name field (it creates a
+billed project, and the name may be taken).

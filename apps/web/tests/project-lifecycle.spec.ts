@@ -56,3 +56,31 @@ test('destroy requires the exact slug and redirects to the projects list', async
 
 	await expect(page).toHaveURL('/projects', { timeout: 10_000 });
 });
+
+// DECISIONS I-167: a destroyed project is listed under "Recently destroyed"
+// with its snapshot and expiry, and Restore brings it back as a new
+// project under the same name.
+test('a destroyed project can be restored from the projects list', async ({ page }) => {
+	const p = await createProject(apiURLFromEnv(), {
+		name: 'restore-app',
+		remote_url: 'github.com/heracraft/restore-app'
+	});
+	await page.goto(`/projects/${p.id}`);
+	await page.getByPlaceholder(/to confirm/).fill(p.slug);
+	await page.getByRole('button', { name: 'Destroy', exact: true }).click();
+	await expect(page).toHaveURL('/projects', { timeout: 10_000 });
+
+	const section = page.getByRole('region', { name: 'Recently destroyed' });
+	await expect(section).toBeVisible({ timeout: 15_000 });
+	const row = section.getByTestId('destroyed-row').filter({ hasText: p.name });
+	await expect(row).toContainText('restorable until');
+	await expect(row).toContainText('days left');
+
+	await row.getByRole('button', { name: 'Restore…' }).click();
+	await expect(row.getByLabel('Name for the restored project')).toHaveValue(p.name);
+	await row.getByRole('button', { name: 'Restore', exact: true }).click();
+
+	await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/, { timeout: 10_000 });
+	await expect(page).not.toHaveURL(`/projects/${p.id}`);
+	await expect(page.getByRole('heading', { name: p.name })).toBeVisible();
+});
