@@ -39,8 +39,26 @@ disagrees.
   (`wg-repose`) on the edge; Loki `http://10.255.0.3:3100` recorded; the
   edge and host-01 ship logs (host-01 via its `host.json`, backup at
   `host.json.bak-loki`). Owner items 3 and 4 are done. Still owed: the
-  owner's Prometheus scrape jobs (`ops/prometheus/prometheus.yml`) and the
-  api `/metrics` router labels (item 5).
+  api `/metrics` router labels (item 5). Since then: the owner's
+  Prometheus scrapes hosts, hostd, fluent-bit, gateway and api-grpc (all
+  `up`), log streams carry `service_name`, and the eight dashboards
+  (including the new `repose / Overview`) are in the owner's Grafana,
+  folder "Repose", via `ops/dashboards/push.py` (Postgres panels read no
+  data there: no datasource).
+- **Todo: front-end analytics with self-hosted Umami** (owner's choice,
+  2026-09-23; Google Analytics rejected: a third party the privacy policy
+  would have to name, cookies and a consent banner, blocked by most
+  developers' ad blockers). Owner: deploy Umami from Coolify's template
+  on the homeserver (e.g. `stats.herakraft.co`) and hand over its URL
+  and website id. Then, in apps/web: (1) load the script first-party,
+  proxied through the dashboard's own domain so blockers do not drop it;
+  (2) on public pages only (landing, install, pricing, docs), never the
+  signed-in dashboard, whose paths carry project names; (3) two events,
+  `install_copied` and `signup`; (4) one sentence in
+  `apps/web/src/content/legal/privacy.md` "Where your data lives": page
+  visits are counted with Umami, self-hosted, no cookies, no IP stored;
+  (5) a DECISIONS entry recording the above and why the dashboard is
+  excluded.
 - **Destroy/restore (I-164..I-168), CLI v0.1.6:** background destroy,
   `repose restore NAME`, `repose projects --destroyed`, dashboard "Recently
   destroyed"; snapshot of a clean volume reads only used blocks (40 GB:
