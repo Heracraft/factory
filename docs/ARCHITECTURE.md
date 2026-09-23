@@ -34,10 +34,10 @@ CLI ─POST /projects─▶ api ─scheduler picks host─▶ hostd.Create (gRPC
                                                    ├─ lvcreate thin volume, mkfs
                                                    ├─ start virtiofsd, tap, systemd-run cloud-hypervisor
                                                    └─ guestd ready over vsock ─▶ hostd ─▶ api ─▶ CLI
-CLI ─POST /certs─▶ api (SSH CA) ─▶ cert ─▶ ssh-agent
+CLI ─POST /certs─▶ api (SSH CA) ─▶ cert for ~/.ssh/repose/id_ed25519
 CLI ─ssh todo-app.user@ssh.repose.herakraft.co─▶ gateway ─verify cert, GET /internal/route─▶ api
         gateway ─tcp over wireguard─▶ guest:22 ─▶ sshd (trusts CA, principal = project id)
-CLI ─over that ssh─▶ git fetch/checkout, tar of diff, credential files, tmux attach or send-keys
+CLI ─over that ssh (one multiplexed connection)─▶ credential files, git bundle of the commits + diff + untracked tar, tmux attach or send-keys
 ```
 
 **Config apply.**

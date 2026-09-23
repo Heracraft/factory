@@ -1,0 +1,193 @@
+package cli
+
+import (
+	"fmt"
+	"strings"
+)
+
+// This file turns what the api and hostd say (state words, `code:
+// message` op errors, `last_error`) into the sentence a user reads, with
+// the command that moves them forward (DECISIONS I-153). Raw codes stay
+// visible in parentheses so a support thread can still grep for them, but
+// never alone and never with a guest id: "guestd unreachable for guest
+// 01a0…" means nothing to the person who typed `repose run`.
+
+// reasonFor renders an op error code (and, for codes we do not know, the
+// api's own message) as a clause that completes "because …" or stands
+// after a colon. It never includes ids.
+func reasonFor(code, message string) string {
+	// Since I-159 the api's message is already the sentence to show
+	// ("the environment's agent (guestd) stopped answering; `repose start`
+	// restarts it"); older builds sent the host's wording, which carries a
+	// guest id and is replaced by the mapping below.
+	if m := strings.TrimSuffix(strings.TrimSpace(firstLine(message)), "."); m != "" && !containsUUID(m) {
+		return m
+	}
+	switch code {
+	case "guest_unresponsive":
+		return "the environment's agent (guestd) stopped responding"
+	case "insufficient_capacity", "capacity":
+		return "the host had no room for it right now"
+	case "build_failed":
+		return "its Nix configuration failed to build"
+	case "eval_failed":
+		return "its Nix configuration has an error"
+	case "build_timeout":
+		return "building its configuration took too long"
+	case "closure_too_large":
+		return "its configuration is larger than the environment allows"
+	case "not_found":
+		return "the host no longer has its guest"
+	case "host_unreachable", "unreachable":
+		return "its host is not reachable"
+	case "payment_required":
+		return "the account needs a card on file"
+	case "":
+		return humaneMessage(message)
+	default:
+		if m := humaneMessage(message); m != "" {
+			return m
+		}
+		return "the operation failed"
+	}
+}
+
+// humaneMessage strips what is noise to a user from a raw message: guest
+// and op UUIDs, trailing detail after the first line.
+func humaneMessage(msg string) string {
+	msg = firstLine(strings.TrimSpace(msg))
+	fields := strings.Fields(msg)
+	out := fields[:0]
+	for _, f := range fields {
+		if looksLikeUUID(strings.Trim(f, ".,;:()")) {
+			continue
+		}
+		out = append(out, f)
+	}
+	s := strings.Join(out, " ")
+	s = strings.TrimSuffix(strings.TrimSpace(strings.TrimSuffix(s, "for guest")), ":")
+	return s
+}
+
+func containsUUID(s string) bool {
+	for _, f := range strings.Fields(s) {
+		if looksLikeUUID(strings.Trim(f, ".,;:()")) {
+			return true
+		}
+	}
+	return false
+}
+
+func looksLikeUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, r := range s {
+		switch i {
+		case 8, 13, 18, 23:
+			if r != '-' {
+				return false
+			}
+		default:
+			if !strings.ContainsRune("0123456789abcdefABCDEF", r) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// splitLastError parses the api's `last_error` ("code: message", written
+// by the ops engine) into its halves. A value without a recognisable code
+// prefix is all message.
+func splitLastError(s string) (code, message string) {
+	s = strings.TrimSpace(s)
+	c, m, ok := strings.Cut(s, ": ")
+	if ok && c != "" && !strings.ContainsAny(c, " \t") && strings.ToLower(c) == c {
+		return c, m
+	}
+	return "", s
+}
+
+// projectReason is the humane reason a project is in its state, from
+// `last_error` and `host_unreachable`; "" when the api gave none.
+func projectReason(p *Project) string {
+	if p.HostUnreachable {
+		return reasonFor("host_unreachable", "")
+	}
+	if p.LastError == nil || strings.TrimSpace(*p.LastError) == "" {
+		return ""
+	}
+	code, msg := splitLastError(*p.LastError)
+	return reasonFor(code, msg)
+}
+
+// notRunningError is what every command that needs a running guest says
+// when the project is not running: the true state, why (when known), and
+// the command that fixes it. The exit code stays 5 (cli-config.md).
+func notRunningError(p *Project) error {
+	return exitf(ExitGuestNotRunning, "%s", notRunningMessage(p))
+}
+
+func notRunningMessage(p *Project) string {
+	s := p.Slug
+	switch p.State {
+	case "stopped":
+		return fmt.Sprintf("%s is stopped. Start it with `repose start %s`, or `repose run` in its checkout to start, sync and attach.", s, s)
+	case "creating", "building", "starting":
+		return fmt.Sprintf("%s is still %s. `repose run` in its checkout waits for it and attaches; `repose status %s` shows progress.", s, p.State, s)
+	case "stopping":
+		return fmt.Sprintf("%s is stopping. Once it has stopped, `repose start %s` brings it back.", s, s)
+	case "restoring":
+		return fmt.Sprintf("%s is being restored from a snapshot. `repose status %s` shows when it is done.", s, s)
+	case "destroying", "destroyed":
+		return fmt.Sprintf("%s is %s; its last snapshot is kept for 30 days (`repose snapshots restore <id> --as-new NAME`).", s, p.State)
+	case "error":
+		reason := projectReason(p)
+		if reason == "" {
+			reason = "its last operation failed"
+		}
+		return fmt.Sprintf("%s is in an error state: %s", s, withNext(reason, fmt.Sprintf("`repose start %s` restarts it; if that fails too, `repose logs %s --kind console` shows the guest's console.", s, s)))
+	default:
+		return fmt.Sprintf("%s is %s, not running. Try `repose start %s`.", s, p.State, s)
+	}
+}
+
+// withNext ends reason with a full stop and adds next, unless the reason
+// (a sentence from the api since I-159) already names a command.
+func withNext(reason, next string) string {
+	s := strings.TrimSuffix(reason, ".") + "."
+	if next != "" && !strings.Contains(reason, "`repose ") {
+		s += " " + next
+	}
+	return s
+}
+
+// opFailed renders a failed op for verb ("start", "stop", "destroy", …)
+// on slug, with the next step that fits the verb. The code is kept in
+// parentheses for support; ids are dropped.
+func opFailed(verb, slug string, e OpError, next string) error {
+	reason := reasonFor(e.Code, e.Message)
+	code := ""
+	if e.Code != "" {
+		code = " (" + e.Code + ")"
+	}
+	msg := fmt.Sprintf("Could not %s %s: %s%s.", verb, slug, reason, code)
+	if next != "" && !strings.Contains(reason, "`repose ") {
+		msg += " " + next
+	}
+	return exitf(ExitGeneric, "%s", msg)
+}
+
+// nextAfterFailedStart is the advice after a start (or the start inside
+// `repose run`) failed.
+func nextAfterFailedStart(slug, code string) string {
+	switch code {
+	case "insufficient_capacity", "capacity":
+		return "Try again in a few minutes; we have been alerted."
+	case "guest_unresponsive":
+		return fmt.Sprintf("Try `repose stop %s` and then `repose start %s`; `repose logs %s --kind console` shows what the guest printed.", slug, slug, slug)
+	default:
+		return fmt.Sprintf("`repose logs %s --kind console` shows what the guest printed; `repose start %s` tries again.", slug, slug)
+	}
+}

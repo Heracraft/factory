@@ -36,26 +36,47 @@ func retryOnOpConflict(ctx context.Context, fn func() error) error {
 	}
 }
 
-// StartCmd implements `repose start` (07-cli.md §5.6): start, wait, print
-// the connected line. Does not sync.
+// StartCmd implements `repose start [PROJECT]` (07-cli.md §5.6): start,
+// wait, say how to get in. Does not sync. A project in `error`, or
+// running with a guestd that stopped answering, is restarted by the api
+// (I-157) and the progress line says so.
 func StartCmd(ctx context.Context, e *Env, projectArg string) error {
 	project, err := requireProject(ctx, e, projectArg)
 	if err != nil {
 		return err
 	}
-	if err := ensureRunning(ctx, e, project); err != nil {
+	if project.State == "running" && !guestdDead(project) {
+		_, _ = fmt.Fprintf(e.Out, "%s is already running. `repose attach %s` to get in.\n", project.Slug, project.Slug)
+		return nil
+	}
+	pr := e.newProgress()
+	defer pr.Fail()
+	if err := ensureRunning(ctx, e, project, pr); err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(e.Out, "Connected to %s (%s)\n", project.Slug, project.Class)
+	pr.Fail()
+	_, _ = fmt.Fprintf(e.Out, "%s is running (%s), ready in %s. `repose attach %s` to get in.\n", project.Slug, project.Class, fmtElapsed(pr.Total()), project.Slug)
 	return nil
 }
 
-// StopCmd implements `repose stop [--no-snapshot]`.
+// guestdDead reports what the newest sample says about the project's
+// guestd; false when the api did not say.
+func guestdDead(p *Project) bool {
+	return p.Signals != nil && p.Signals.GuestdOK != nil && !*p.Signals.GuestdOK
+}
+
+// StopCmd implements `repose stop [PROJECT] [--no-snapshot]`.
 func StopCmd(ctx context.Context, e *Env, projectArg string, snapshot bool) error {
 	project, err := requireProject(ctx, e, projectArg)
 	if err != nil {
 		return err
 	}
+	if project.State == "stopped" {
+		_, _ = fmt.Fprintf(e.Out, "%s is already stopped. Disk is still billed; `repose destroy %s` to stop that.\n", project.Slug, project.Slug)
+		return nil
+	}
+	pr := e.newProgress()
+	defer pr.Fail()
 	var opID string
 	err = retryOnOpConflict(ctx, func() error {
 		var err error
@@ -65,12 +86,18 @@ func StopCmd(ctx context.Context, e *Env, projectArg string, snapshot bool) erro
 	if err != nil {
 		return err
 	}
-	op, err := waitOp(ctx, e.Client, project.ID, opID, e.Out)
+	if snapshot {
+		pr.Phase("Snapshotting and stopping "+project.Slug, "")
+	} else {
+		pr.Phase("Stopping "+project.Slug, "")
+	}
+	op, err := waitOpPhased(ctx, e, project, opID, pr, false)
 	if err != nil {
 		return err
 	}
+	pr.Fail()
 	if op.State == "error" {
-		return exitf(ExitGeneric, "%s", op.Error)
+		return e.opFailed("stop", project.Slug, op.Error, fmt.Sprintf("`repose status %s` shows its state; `repose stop %s` tries again.", project.Slug, project.Slug))
 	}
 	p, err := e.Client.GetProject(ctx, project.ID)
 	if err != nil {
@@ -82,40 +109,126 @@ func StopCmd(ctx context.Context, e *Env, projectArg string, snapshot bool) erro
 		snapID, snapBytes = latest.ID, latest.Bytes
 	}
 	if snapshot && snapID != "" {
-		_, _ = fmt.Fprintf(e.Out, "Stopped %s. Snapshot %s (%s). Disk is still billed; `repose destroy` to stop that.\n", p.Slug, snapID, humanBytes(snapBytes))
+		_, _ = fmt.Fprintf(e.Out, "Stopped %s in %s. Snapshot %s (%s). Disk is still billed; `repose destroy %s` to stop that.\n", p.Slug, fmtElapsed(pr.Total()), snapID, humanBytes(snapBytes), p.Slug)
 	} else {
-		_, _ = fmt.Fprintf(e.Out, "Stopped %s. Disk is still billed; `repose destroy` to stop that.\n", p.Slug)
+		_, _ = fmt.Fprintf(e.Out, "Stopped %s in %s. Disk is still billed; `repose destroy %s` to stop that.\n", p.Slug, fmtElapsed(pr.Total()), p.Slug)
+	}
+	if reason := projectReason(p); reason != "" && p.LastError != nil {
+		// I-158: a stop whose snapshot failed leaves the project stopped
+		// with last_error set; say so rather than implying a snapshot.
+		_, _ = fmt.Fprintf(e.ErrOut, "Note: %s.\n", reason)
 	}
 	return nil
 }
 
-// DestroyCmd implements `repose destroy [--yes]`.
-func DestroyCmd(ctx context.Context, e *Env, projectArg string, yes bool, confirmSlug func(slug string) (string, error)) error {
+// destroyPrompt is the confirmation the owner asked for (2026-09-23):
+// a y/N question, since the final snapshot makes a destroy recoverable
+// for 30 days and typing the name added nothing.
+func destroyPrompt(slug string) string {
+	return fmt.Sprintf("Destroy %s? A final snapshot is kept for 30 days. [y/N] ", slug)
+}
+
+// DestroyCmd implements `repose destroy [PROJECT] [--yes]`. It prints
+// "Destroyed" only when the destroy op is done and the project is gone
+// (api.md: DELETE answers 202 {op_id}, I-156); a failed op is reported
+// with the project's actual state and the command to try again.
+func DestroyCmd(ctx context.Context, e *Env, projectArg string, yes bool, confirm func(prompt string) (bool, error)) error {
 	project, err := requireProject(ctx, e, projectArg)
 	if err != nil {
 		return err
 	}
 	if !yes {
-		if confirmSlug == nil {
-			return exitf(ExitUsage, "destroying %s needs --yes or a typed confirmation", project.Slug)
+		if confirm == nil {
+			return exitf(ExitUsage, "Destroying %s needs a confirmation; pass --yes to skip it.", project.Slug)
 		}
-		typed, err := confirmSlug(project.Slug)
+		ok, err := confirm(destroyPrompt(project.Slug))
 		if err != nil {
 			return err
 		}
-		if typed != project.Slug {
-			return exitf(ExitUsage, "typed name did not match %q; nothing destroyed", project.Slug)
+		if !ok {
+			_, _ = fmt.Fprintf(e.Out, "Nothing destroyed.\n")
+			return nil
 		}
 	}
-	if err := retryOnOpConflict(ctx, func() error { return e.Client.DestroyProject(ctx, project.ID) }); err != nil {
+	pr := e.newProgress()
+	defer pr.Fail()
+	var opID string
+	if err := retryOnOpConflict(ctx, func() error {
+		var err error
+		opID, err = e.Client.DestroyProject(ctx, project.ID)
+		return err
+	}); err != nil {
 		return err
 	}
-	until := "30 days from now"
-	if project.LastSnapshotAt != nil {
-		until = project.LastSnapshotAt.AddDate(0, 0, 30).Format("2006-01-02")
+	pr.Phase("Destroying "+project.Slug, "")
+	retry := fmt.Sprintf("`repose destroy %s` tries again.", project.Slug)
+	if opID != "" {
+		op, err := waitOpPhased(ctx, e, project, opID, pr, false)
+		if err != nil {
+			return err
+		}
+		if op.State == "error" {
+			pr.Fail()
+			next := retry
+			if p, err := e.Client.GetProject(ctx, project.ID); err == nil {
+				next = fmt.Sprintf("%s is still there, %s. %s", p.Slug, stateWords(p.State), retry)
+			}
+			return e.opFailed("destroy", project.Slug, op.Error, next)
+		}
 	}
-	_, _ = fmt.Fprintf(e.Out, "Destroyed. Last snapshot kept until %s; `repose snapshots restore <id> --as-new NAME` brings it back.\n", until)
+	// Gone means GET answers 404. An older api that sent no op_id is
+	// waited on this way alone.
+	deadline := time.Now().Add(opPollTimeout)
+	if opID != "" {
+		deadline = time.Now().Add(5 * time.Second) // the op is done; the row follows at once
+	}
+	for {
+		p, err := e.Client.GetProject(ctx, project.ID)
+		if isNotFound(err) || err == nil && p.State == "destroyed" {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if opID == "" && p.State == "error" {
+			pr.Fail()
+			return e.opFailed("destroy", project.Slug, OpError{Message: reasonOrDefault(p)}, fmt.Sprintf("%s is still there, in state error. %s", p.Slug, retry))
+		}
+		if time.Now().After(deadline) {
+			pr.Fail()
+			return exitf(ExitGeneric, "The destroy of %s finished, but the project is still listed (%s). `repose status %s` shows it; %s", p.Slug, stateWords(p.State), p.Slug, retry)
+		}
+		if err := sleepOrDone(ctx, opPollInterval); err != nil {
+			return err
+		}
+	}
+	pr.Fail()
+	snapLine := "Its final snapshot is kept for 30 days."
+	if snaps, err := e.Client.ListSnapshots(ctx, project.ID); err == nil && len(snaps) > 0 {
+		latest := snaps[len(snaps)-1]
+		until := latest.CreatedAt.AddDate(0, 0, 30).Local().Format("2006-01-02")
+		snapLine = fmt.Sprintf("Its last snapshot %s is kept until %s; `repose snapshots restore %s --project %s --as-new NAME` brings it back.", latest.ID, until, latest.ID, project.ID)
+	}
+	_, _ = fmt.Fprintf(e.Out, "Destroyed %s in %s. %s\n", project.Slug, fmtElapsed(pr.Total()), snapLine)
 	return nil
+}
+
+func reasonOrDefault(p *Project) string {
+	if r := projectReason(p); r != "" {
+		return r
+	}
+	return "the destroy failed"
+}
+
+// stateWords is "in state error", "stopped", "running": how a sentence
+// names a state.
+func stateWords(state string) string {
+	switch state {
+	case "running", "stopped", "stopping", "starting", "building", "creating", "restoring", "destroying":
+		return state
+	default:
+		return "in state " + state
+	}
 }
 
 // ResizeCmd implements the hidden `repose resize` alias for POST /resize
@@ -125,6 +238,8 @@ func ResizeCmd(ctx context.Context, e *Env, projectArg string, bytes int64) erro
 	if err != nil {
 		return err
 	}
+	pr := e.newProgress()
+	defer pr.Fail()
 	var opID string
 	err = retryOnOpConflict(ctx, func() error {
 		var err error
@@ -134,12 +249,14 @@ func ResizeCmd(ctx context.Context, e *Env, projectArg string, bytes int64) erro
 	if err != nil {
 		return err
 	}
-	op, err := waitOp(ctx, e.Client, project.ID, opID, e.Out)
+	pr.Phase("Resizing "+project.Slug, "")
+	op, err := waitOpPhased(ctx, e, project, opID, pr, false)
 	if err != nil {
 		return err
 	}
+	pr.Fail()
 	if op.State == "error" {
-		return exitf(ExitGeneric, "%s", op.Error)
+		return e.opFailed("resize", project.Slug, op.Error, "")
 	}
 	_, _ = fmt.Fprintf(e.Out, "Resized %s to %s.\n", project.Slug, humanBytes(bytes))
 	return nil
@@ -153,20 +270,21 @@ func requireProject(ctx context.Context, e *Env, projectArg string) (*Project, e
 		return nil, err
 	}
 	if res.Project == nil {
-		return nil, errNoProjectFound(res.Remote)
+		return nil, errNoProjectFoundFor(res.Remote, e.Command)
 	}
 	return res.Project, nil
 }
 
 // requireRunningProject is requireProject plus the "guest not running"
-// check that attach-like commands need (07-cli.md §6: exit 5).
+// check that attach-like commands need (07-cli.md §6: exit 5), with the
+// true state and the command that fixes it (I-153).
 func requireRunningProject(ctx context.Context, e *Env, projectArg string) (*Project, error) {
 	p, err := requireProject(ctx, e, projectArg)
 	if err != nil {
 		return nil, err
 	}
 	if p.State != "running" {
-		return nil, exitf(ExitGuestNotRunning, "%s is stopped. Run `repose start`.", p.Slug)
+		return nil, notRunningError(p)
 	}
 	return p, nil
 }

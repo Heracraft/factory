@@ -3,11 +3,31 @@ package cli
 import (
 	"context"
 	"fmt"
+	"text/tabwriter"
 )
+
+// projectForSnapshots resolves the project for the snapshot commands. A
+// destroyed project no longer resolves by name, but its snapshots are
+// kept 30 days and the api serves them by id (userProjectAny), which is
+// exactly what `repose destroy` prints: `--project <id>` (I-153).
+func projectForSnapshots(ctx context.Context, e *Env, projectArg string) (*Project, error) {
+	arg := e.resolveArg(projectArg)
+	if looksLikeUUID(arg) {
+		p, err := e.Client.GetProject(ctx, arg)
+		if err == nil {
+			return p, nil
+		}
+		if isNotFound(err) {
+			return &Project{ID: arg, Slug: arg, State: "destroyed"}, nil
+		}
+		return nil, err
+	}
+	return requireProject(ctx, e, projectArg)
+}
 
 // SnapshotsListCmd implements `repose snapshots list`.
 func SnapshotsListCmd(ctx context.Context, e *Env, projectArg string) error {
-	project, err := requireProject(ctx, e, projectArg)
+	project, err := projectForSnapshots(ctx, e, projectArg)
 	if err != nil {
 		return err
 	}
@@ -16,12 +36,21 @@ func SnapshotsListCmd(ctx context.Context, e *Env, projectArg string) error {
 		return err
 	}
 	if e.JSON {
+		if snaps == nil {
+			snaps = []Snapshot{}
+		}
 		return writeJSONOut(e.Out, snaps)
 	}
-	for _, s := range snaps {
-		_, _ = fmt.Fprintf(e.Out, "%s\t%s\t%s\t%s\n", s.ID, s.CreatedAt.Format("2006-01-02 15:04"), humanBytes(s.Bytes), s.Reason)
+	if len(snaps) == 0 {
+		_, _ = fmt.Fprintf(e.Out, "%s has no snapshots yet. `repose snapshots create --project %s` takes one.\n", project.Slug, project.Slug)
+		return nil
 	}
-	return nil
+	tw := tabwriter.NewWriter(e.Out, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(tw, "ID\tTAKEN\tSIZE\tREASON")
+	for _, s := range snaps {
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", s.ID, s.CreatedAt.Local().Format("2006-01-02 15:04"), humanBytes(s.Bytes), s.Reason)
+	}
+	return tw.Flush()
 }
 
 // SnapshotsCreateCmd implements `repose snapshots create`.
@@ -30,18 +59,22 @@ func SnapshotsCreateCmd(ctx context.Context, e *Env, projectArg string) error {
 	if err != nil {
 		return err
 	}
+	pr := e.newProgress()
+	defer pr.Fail()
 	opID, err := e.Client.CreateSnapshot(ctx, project.ID)
 	if err != nil {
 		return err
 	}
-	op, err := waitOp(ctx, e.Client, project.ID, opID, e.Out)
+	pr.Phase("Snapshotting "+project.Slug, "")
+	op, err := waitOpPhased(ctx, e, project, opID, pr, false)
 	if err != nil {
 		return err
 	}
+	pr.Fail()
 	if op.State == "error" {
-		return exitf(ExitGeneric, "%s", op.Error)
+		return e.opFailed("snapshot", project.Slug, op.Error, "")
 	}
-	_, _ = fmt.Fprintln(e.Out, "Snapshot created.")
+	_, _ = fmt.Fprintf(e.Out, "Snapshot of %s taken in %s.\n", project.Slug, fmtElapsed(pr.Total()))
 	return nil
 }
 
@@ -49,13 +82,19 @@ func SnapshotsCreateCmd(ctx context.Context, e *Env, projectArg string) error {
 // [--as-new NAME]`. Without --as-new it requires the project stopped and
 // asks for confirmation (07-cli.md §5.10).
 func SnapshotsRestoreCmd(ctx context.Context, e *Env, projectArg, snapshotID, asNew string, confirm func() (bool, error)) error {
-	project, err := requireProject(ctx, e, projectArg)
+	var project *Project
+	var err error
+	if asNew != "" {
+		project, err = projectForSnapshots(ctx, e, projectArg)
+	} else {
+		project, err = requireProject(ctx, e, projectArg)
+	}
 	if err != nil {
 		return err
 	}
 	if asNew == "" {
 		if project.State != "stopped" {
-			return exitf(ExitGuestNotRunning, "%s must be stopped before restoring in place; `repose stop` first, or use --as-new NAME.", project.Slug)
+			return exitf(ExitGuestNotRunning, "%s must be stopped before restoring over it: `repose stop %s` first, or restore into a new project with --as-new NAME.", project.Slug, project.Slug)
 		}
 		if confirm != nil {
 			ok, err := confirm()
@@ -68,17 +107,25 @@ func SnapshotsRestoreCmd(ctx context.Context, e *Env, projectArg, snapshotID, as
 			}
 		}
 	}
+	pr := e.newProgress()
+	defer pr.Fail()
 	opID, err := e.Client.RestoreSnapshot(ctx, project.ID, snapshotID, asNew)
 	if err != nil {
 		return err
 	}
-	op, err := waitOp(ctx, e.Client, project.ID, opID, e.Out)
+	pr.Phase("Restoring "+snapshotID, "")
+	op, err := waitOpPhased(ctx, e, project, opID, pr, false)
 	if err != nil {
 		return err
 	}
+	pr.Fail()
 	if op.State == "error" {
-		return exitf(ExitGeneric, "%s", op.Error)
+		return e.opFailed("restore", snapshotID, op.Error, "")
 	}
-	_, _ = fmt.Fprintln(e.Out, "Restored.")
+	if asNew != "" {
+		_, _ = fmt.Fprintf(e.Out, "Restored into a new project, %s. `repose projects` lists it.\n", asNew)
+		return nil
+	}
+	_, _ = fmt.Fprintf(e.Out, "Restored %s. `repose start %s` boots it.\n", project.Slug, project.Slug)
 	return nil
 }

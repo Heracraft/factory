@@ -6,22 +6,37 @@ Destroying deletes the disk and keeps the last snapshot for 30 days.
 
 ## What the user sees
 
+Every command takes the project as its argument, or finds the checkout's
+(DECISIONS I-155). While it waits, stderr shows the phase with a spinner
+and elapsed time on a terminal, or one line per phase elsewhere (I-154).
+
 ```
-$ repose stop
-Snapshotting todo-app ... 2.1 GB in 38s
-Stopping ... stopped. Disk (40 GB) is kept and billed at $0.10/GB-month.
+$ repose stop todo-app
+Snapshotting and stopping todo-app...
+Stopped todo-app in 38s. Snapshot 0192… (2.1 GB). Disk is still billed; `repose destroy todo-app` to stop that.
 
 $ repose stop --no-snapshot
-Stopping ... stopped.
+Stopped todo-app in 6.2s. Disk is still billed; `repose destroy todo-app` to stop that.
 
-$ repose start
-Starting todo-app ... 4s. Attach with `repose attach`.
+$ repose start todo-app
+Starting todo-app...
+todo-app is running (large), ready in 4.1s. `repose attach todo-app` to get in.
 
-$ repose destroy
-This deletes todo-app's disk. The last snapshot (2026-09-17 03:00, 2.1 GB)
-is kept for 30 days and can be restored with `repose snapshots restore
---as-new`. Type the project name to confirm: todo-app
-Destroyed.
+$ repose start age-calculator          # in `error`: the api restarts it (I-157)
+Restarting age-calculator (its agent stopped answering)...
+age-calculator is running (large), ready in 21s. `repose attach age-calculator` to get in.
+
+$ repose destroy todo-app
+Destroy todo-app? A final snapshot is kept for 30 days. [y/N] y
+Destroying todo-app...
+Destroyed todo-app in 41s. Its last snapshot 0192… is kept until 2026-10-23; `repose snapshots restore 0192… --project 0191… --as-new NAME` brings it back.
+```
+
+A destroy that fails says so, and never prints "Destroyed" (I-153):
+
+```
+$ repose destroy age-calculator --yes
+Could not destroy age-calculator: the host could not remove the volume (internal). age-calculator is still there, in state error. `repose destroy age-calculator` tries again.
 ```
 
 ## States
@@ -75,7 +90,9 @@ Start:
 - Start is refused with `payment_required` when billing is `past_due` for
   more than 3 days or `suspended`, with the dashboard billing link.
 - `run` on a stopped project starts it implicitly; `attach` does not, and
-  says to `start` or `run`.
+  says to `start` or `run`. Every command that needs a running guest names
+  the real state (stopped, still building, stopping, in `error` with the
+  reason the api recorded) and the command that fits it (I-153).
 - `start` is also the recovery path (I-157). On a project in `error`, or a
   running one whose guestd (the agent inside the environment) has stopped
   answering, it restarts: the unit is stopped without a snapshot (nothing
@@ -86,7 +103,13 @@ Start:
 
 Destroy:
 
-- Requires typing the project name unless `--yes`. Stops first if running,
+- Asks `Destroy <slug>? A final snapshot is kept for 30 days. [y/N]`
+  unless `--yes` (`-y`); an empty answer is no, and without a terminal the
+  CLI asks for `--yes` rather than guessing (the owner's request,
+  2026-09-23: the snapshot makes a typed name redundant). The CLI waits
+  for the destroy op and reports `Destroyed` only when it is done and the
+  project is gone; a failed op is reported with the project's state and
+  the command that retries (DECISIONS I-153, api.md). Stops first if running,
   with a final snapshot unless `--no-snapshot`.
 - Deletes the thin volume, the guest's units, GC roots for its closures,
   its tap and nftables entries, and the tmpfs secrets. Keeps the project row

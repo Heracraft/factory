@@ -1627,7 +1627,18 @@ or `POST /certs` itself fails.
    has validity and only warns. If none is on disk yet, wait a minute.
 4. A banner that is not one of the two above (gateway-side rejection, not
    yet built as of 07-cli.md's landing — see 06-gateway-edge) surfaces
-   verbatim with exit 1; file it against the gateway, not the CLI.
+   verbatim with exit 1; file it against the gateway, not the CLI. Since
+   DECISIONS I-149 the CLI re-issues the certificate once on its own when
+   the gateway answers `Permission denied` before giving up.
+5. `Enter passphrase for key '~/.ssh/id_ed25519'` on every command is a
+   CLI from v0.1.4 or earlier, which certified the user's own key; a
+   current CLI uses `~/.ssh/repose/id_ed25519` (no passphrase) and moves
+   over by itself on its next command. Upgrade with `install.sh`.
+6. `ssh <slug>.repose` from a plain terminal does not resolve: the CLI
+   prints why after every `run` (the `Include` line is after a `Host`
+   line, or `~/.ssh/config` is a read-only link, I-151) with the exact
+   line to add; `ssh -G <slug>.repose | grep -i hostname` must say
+   `ssh.repose.herakraft.co`.
 
 ## CLI: SSH timeout after running
 

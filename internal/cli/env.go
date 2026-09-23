@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -23,6 +24,14 @@ type Env struct {
 	ErrOut  io.Writer
 	JSON    bool
 	Verbose bool
+	// TTY is whether stderr is a terminal: a spinner there, plain phase
+	// lines otherwise (I-154).
+	TTY bool
+	// Command is what the user ran ("repose attach"), for hints that
+	// show the command again with a PROJECT argument.
+	Command string
+
+	active *progress // the command's progress display, so warnings do not tear its line
 
 	// TargetFor builds the sshTarget for a project's slug; nil means
 	// hostTarget (the real "<slug>.repose" alias). Tests point it at an
@@ -81,7 +90,19 @@ func newEnv(apiURLFlag string, jsonOut, verbose bool) (*Env, error) {
 		Dir: dir, Cfg: cfg, Cache: cache, Cwd: cwd, HomeDir: home,
 		Client: newClient(cfg.APIURL, tokens), Out: os.Stdout, ErrOut: os.Stderr,
 		JSON: jsonOut, Verbose: verbose, httpClient: httpClient,
+		TTY: isTerminal(os.Stderr),
 	}, nil
+}
+
+// newProgress is the command's progress display on stderr (I-154). A
+// --json command gets none: its stdout is a document, and a pipe reading
+// it does not want phase lines on the terminal either.
+func (e *Env) newProgress() *progress {
+	if e.JSON {
+		return nil
+	}
+	e.active = newProgress(e.ErrOut, e.TTY)
+	return e.active
 }
 
 type notLoggedInSource struct{}
@@ -141,6 +162,10 @@ func exitCodeFor(err error, stderr io.Writer) int {
 			return ExitGeneric
 		}
 	}
-	_, _ = fmt.Fprintln(stderr, err)
+	msg := err.Error()
+	if msg != "" {
+		msg = strings.ToUpper(msg[:1]) + msg[1:]
+	}
+	_, _ = fmt.Fprintln(stderr, msg)
 	return ExitGeneric
 }

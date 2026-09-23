@@ -53,6 +53,13 @@ type Project struct {
 	CostTodayCents   int64      `json:"cost_today_cents"`
 	CostMonthCents   int64      `json:"cost_month_cents"`
 	LastSnapshotAt   *time.Time `json:"last_snapshot_at,omitempty"`
+	// LastError is the api's "code: message" for the op that last failed
+	// (the ops engine writes it; cleared by a successful start), and
+	// HostUnreachable its flag for a host that stopped answering. Both are
+	// what the CLI reads to say why a project is in `error` (I-153);
+	// absent from older api builds, which the CLI treats as "no reason".
+	LastError       *string `json:"last_error,omitempty"`
+	HostUnreachable bool    `json:"host_unreachable,omitempty"`
 }
 
 type Signals struct {
@@ -60,6 +67,14 @@ type Signals struct {
 	TmuxClients int           `json:"tmux_clients"`
 	Docker      int           `json:"docker"`
 	Agents      []AgentSignal `json:"agents"`
+	// DockerContainers is the name the api actually sends (Docker's
+	// "docker" never arrived, so status printed "docker 0" for everyone);
+	// both are kept so --json output does not lose a key.
+	DockerContainers int `json:"docker_containers,omitempty"`
+	// GuestdOK is the newest sample's word on guestd; nil when the api
+	// did not say. A running project with false is one `repose start`
+	// restarts (I-157).
+	GuestdOK *bool `json:"guestd_ok,omitempty"`
 }
 
 type AgentSignal struct {
@@ -81,6 +96,9 @@ type Op struct {
 type OpError struct {
 	Code    string `json:"code,omitempty"`
 	Message string `json:"message,omitempty"`
+	// Detail is the host's own wording, for operators (I-159); the CLI
+	// shows it only under -v.
+	Detail any `json:"detail,omitempty"`
 }
 
 func (e *OpError) UnmarshalJSON(b []byte) error {

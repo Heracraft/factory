@@ -149,36 +149,6 @@ func TestSyncDiscardRemote(t *testing.T) {
 	}
 }
 
-func TestSyncPushesUnpushedCommit(t *testing.T) {
-	f := newSyncFixture(t)
-	if err := os.WriteFile(filepath.Join(f.local, "README.md"), []byte("local change, not yet pushed\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	mustRun(t, f.local, "git", "add", "README.md")
-	mustRun(t, f.local, "git", "commit", "-q", "-m", "local only")
-	head := mustRun(t, f.local, "git", "rev-parse", "HEAD")
-
-	var askedCommit, askedBranch string
-	opts := SyncOptions{AskPush: func(commit, branch string) (bool, error) {
-		askedCommit, askedBranch = commit, branch
-		mustRun(t, f.local, "git", "push", "origin", branch)
-		return true, nil
-	}}
-	if _, err := syncGuest(context.Background(), f.target, f.local, testSlug, opts); err != nil {
-		t.Fatalf("syncGuest: %v", err)
-	}
-	if askedCommit != head {
-		t.Fatalf("AskPush commit = %q, want %q", askedCommit, head)
-	}
-	if askedBranch != "main" {
-		t.Fatalf("AskPush branch = %q, want main", askedBranch)
-	}
-	guestHead := mustRun(t, f.guestRepo(), "git", "rev-parse", "HEAD")
-	if guestHead != head {
-		t.Fatalf("guest HEAD = %s, want %s", guestHead, head)
-	}
-}
-
 func TestSyncAppliesDiffAndUntracked(t *testing.T) {
 	f := newSyncFixture(t)
 	if err := os.WriteFile(filepath.Join(f.local, "README.md"), []byte("edited locally, uncommitted\n"), 0o644); err != nil {
@@ -211,76 +181,6 @@ func TestSyncAppliesDiffAndUntracked(t *testing.T) {
 	}
 }
 
-// A --name project has no remote, so the guest's repository has no origin
-// (guestd sets one only from the project's remote_url, I-107). Before the
-// M5 review the sync ran `git fetch origin` regardless and `repose run`
-// failed after the guest had booted (security/review-2026-09-21.md M5-9).
-func TestSyncNoRemoteSendsTheWholeTree(t *testing.T) {
-	f := newSyncFixture(t)
-	local := t.TempDir()
-	mustRun(t, local, "git", "init", "-q", "-b", "main", ".")
-	mustRun(t, local, "git", "config", "user.email", "dev@example.com")
-	mustRun(t, local, "git", "config", "user.name", "Dev Laptop")
-	if err := os.WriteFile(filepath.Join(local, "main.go"), []byte("package main\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	mustRun(t, local, "git", "add", "main.go")
-	mustRun(t, local, "git", "commit", "-q", "-m", "local only")
-	if err := os.WriteFile(filepath.Join(local, "main.go"), []byte("package main // edited\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(local, "notes.md"), []byte("scratch\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	// The guest's side is what guestd's SetupProject leaves for a project
-	// without a remote: `git init`, no origin, no commit.
-	guestRepo := f.guestRepo()
-	if err := os.RemoveAll(guestRepo); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(guestRepo, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	mustRun(t, guestRepo, "git", "init", "-q", "-b", "main", ".")
-
-	summary, err := syncGuest(context.Background(), f.target, local, testSlug, SyncOptions{NoRemote: true})
-	if err != nil {
-		t.Fatalf("syncGuest: %v", err)
-	}
-	if !summary.WholeTree || summary.Tracked != 1 || summary.Untracked != 1 || summary.Modified != 1 {
-		t.Fatalf("summary = %+v", summary)
-	}
-	if got := summary.String(); !strings.Contains(got, "no git remote") {
-		t.Fatalf("summary line %q does not say why", got)
-	}
-	body, err := os.ReadFile(filepath.Join(guestRepo, "main.go"))
-	if err != nil || string(body) != "package main // edited\n" {
-		t.Fatalf("tracked file with its uncommitted edit not in the guest: %q %v", body, err)
-	}
-	if committed := mustRun(t, guestRepo, "git", "ls-tree", "--name-only", "HEAD"); committed != "main.go" {
-		t.Fatalf("committed in the guest: %q, want main.go", committed)
-	}
-	if notes, err := os.ReadFile(filepath.Join(guestRepo, "notes.md")); err != nil || string(notes) != "scratch\n" {
-		t.Fatalf("untracked file: %q %v", notes, err)
-	}
-	// The tracked tree is committed, so the guest is clean for the next
-	// run's dirty check and an unchanged tree makes no second commit; the
-	// untracked file counts as dirty exactly as it does for a project with
-	// a remote, so it is removed before the second run.
-	if err := os.Remove(filepath.Join(guestRepo, "notes.md")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(filepath.Join(local, "notes.md")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := syncGuest(context.Background(), f.target, local, testSlug, SyncOptions{NoRemote: true}); err != nil {
-		t.Fatalf("second sync: %v", err)
-	}
-	if n := mustRun(t, guestRepo, "git", "rev-list", "--count", "HEAD"); n != "1" {
-		t.Fatalf("an unchanged tree made a second commit: %s", n)
-	}
-}
-
 func TestSyncCredentialsCopiesExactlyTheFourRows(t *testing.T) {
 	f := newSyncFixture(t)
 	home := t.TempDir()
@@ -305,7 +205,7 @@ func TestSyncCredentialsCopiesExactlyTheFourRows(t *testing.T) {
 	mustRun(t, f.local, "git", "config", "user.name", "Dev Laptop")
 	mustRun(t, f.local, "git", "config", "user.email", "dev@example.com")
 
-	copied, err := syncCredentials(context.Background(), f.target, home, f.local)
+	copied, err := syncCredentials(context.Background(), f.target, home, f.local, credSyncOptions{RemoteURL: "github.com/a/b", ghToken: func() string { t.Fatal("hosts.yml has a token; the keyring must not be asked"); return "" }})
 	if err != nil {
 		t.Fatalf("syncCredentials: %v", err)
 	}
@@ -344,6 +244,102 @@ func TestSyncCredentialsCopiesExactlyTheFourRows(t *testing.T) {
 	}
 	if !strings.Contains(string(gitconfig), "Dev Laptop") || !strings.Contains(string(gitconfig), "dev@example.com") {
 		t.Fatalf(".gitconfig missing identity: %s", gitconfig)
+	}
+	// gh travelled and the remote is on github: the guest's git reaches
+	// github over HTTPS with gh as the helper, so an agent can push
+	// without the laptop's SSH keys (I-150).
+	if got := mustRun(t, f.guestHome, "git", "config", "--file", filepath.Join(f.guestHome, ".gitconfig"), "url.https://github.com/.insteadOf"); got != "git@github.com:" {
+		t.Fatalf("insteadOf = %q", got)
+	}
+	if got := mustRun(t, f.guestHome, "git", "config", "--file", filepath.Join(f.guestHome, ".gitconfig"), "credential.https://github.com.helper"); got != "!gh auth git-credential" {
+		t.Fatalf("credential helper = %q", got)
+	}
+}
+
+// gh 2.40+ keeps the token in the laptop's keyring and hosts.yml has none;
+// the guest has no keyring, so the token is written into the hosts.yml
+// that travels.
+func TestSyncCredentialsCarriesAKeyringGhToken(t *testing.T) {
+	f := newSyncFixture(t)
+	home := t.TempDir()
+	p := filepath.Join(home, ".config", "gh", "hosts.yml")
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("github.com:\n    git_protocol: ssh\n    users:\n        dev:\n    user: dev\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	copied, err := syncCredentials(context.Background(), f.target, home, f.local, credSyncOptions{RemoteURL: "gitlab.com/a/b", ghToken: func() string { return "gho_fromkeyring" }})
+	if err != nil {
+		t.Fatalf("syncCredentials: %v", err)
+	}
+	if len(copied) == 0 || copied[0] != "gh" {
+		t.Fatalf("copied = %v", copied)
+	}
+	b, err := os.ReadFile(filepath.Join(f.guestHome, ".config", "gh", "hosts.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "github.com:\n    oauth_token: gho_fromkeyring\n    git_protocol: ssh") {
+		t.Fatalf("token not written under github.com:\n%s", b)
+	}
+	if local, _ := os.ReadFile(p); strings.Contains(string(local), "oauth_token") {
+		t.Fatal("the laptop's hosts.yml was changed")
+	}
+	if cfg, err := os.ReadFile(filepath.Join(f.guestHome, ".gitconfig")); err == nil && strings.Contains(string(cfg), "insteadOf") {
+		t.Fatalf("insteadOf set for a non-github remote:\n%s", cfg)
+	}
+}
+
+// features/secrets.md: a login done inside the guest (newer than the
+// laptop's file) is not clobbered, and the CLI says which side won.
+func TestSyncCredentialsKeepsANewerGuestLogin(t *testing.T) {
+	f := newSyncFixture(t)
+	home := t.TempDir()
+	local := filepath.Join(home, ".codex", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(local), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(local, []byte(`{"from":"laptop"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(local, old, old); err != nil {
+		t.Fatal(err)
+	}
+	guestFile := filepath.Join(f.guestHome, ".codex", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(guestFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(guestFile, []byte(`{"from":"guest"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var kept []string
+	copied, err := syncCredentials(context.Background(), f.target, home, f.local, credSyncOptions{Kept: func(l string) { kept = append(kept, l) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(guestFile); string(b) != `{"from":"guest"}` {
+		t.Fatalf("the guest's newer login was overwritten: %s", b)
+	}
+	if len(kept) != 1 || kept[0] != "codex" {
+		t.Fatalf("kept = %v", kept)
+	}
+	for _, c := range copied {
+		if c == "codex" {
+			t.Fatalf("codex reported as copied: %v", copied)
+		}
+	}
+
+	// Once the laptop's is newer, it wins.
+	if err := os.Chtimes(local, time.Now().Add(time.Hour), time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := syncCredentials(context.Background(), f.target, home, f.local, credSyncOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(guestFile); string(b) != `{"from":"laptop"}` {
+		t.Fatalf("the laptop's newer login did not arrive: %s", b)
 	}
 }
 

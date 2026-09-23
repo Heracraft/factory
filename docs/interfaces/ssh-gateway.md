@@ -70,16 +70,34 @@ once, `Include ~/.ssh/repose/config`):
 Host todo-app.repose
   HostName ssh.repose.herakraft.co
   User todo-app.heracraft
+  IdentityFile ~/.ssh/repose/id_ed25519
   CertificateFile ~/.ssh/repose/id_ed25519-cert.pub
-  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
   UserKnownHostsFile ~/.ssh/repose/known_hosts
   ForwardAgent yes
   ServerAliveInterval 30
+  ControlMaster auto
+  ControlPath ~/.ssh/repose/cm-%C
+  ControlPersist 10m
 ```
+
+The key is the CLI's own, `~/.ssh/repose/id_ed25519`, generated without a
+passphrase and used for nothing else; the user's `~/.ssh/id_*` keys are
+never certified, read or offered (DECISIONS I-149; through v0.1.4 the
+block named `~/.ssh/id_ed25519`, and a certificate for that key is
+re-issued for the new one on the next command). The three `Control`
+lines multiplex every ssh of a command over one connection; they are
+left out on Windows, whose OpenSSH has no multiplexing. The gateway sees
+one client connection per command (and the master may stay open for up
+to ten minutes after it), carrying as many session channels as the
+command needs.
 
 So `ssh todo-app.repose` works from any tool (VS Code Remote-SSH, Zed,
 Cursor) without the CLI, as long as the certificate is fresh. `repose run`
-refreshes it.
+refreshes it, and checks with `ssh -G todo-app.repose` that the alias
+resolves to the gateway; when the `Include` line is not effective it
+says what to change and uses `ssh -F ~/.ssh/repose/config` for its own
+connections (I-151).
 
 ## Test CA
 

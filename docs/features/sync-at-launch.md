@@ -13,13 +13,23 @@ Connected to todo-app (large)
 Synced: 3 modified, 1 untracked
 ```
 
-Local commit not on the remote yet:
+Local commits not on the remote yet travel anyway, and nothing is pushed:
 
 ```
 $ repose run
-Commit a1b2c3d is not on origin. Push main now? [Y/n] y
 Connected to todo-app (large)
-Synced: 0 modified, 0 untracked
+Synced: 0 modified, 0 untracked (2 new commits)
+```
+
+An agent committed on the guest's branch and the laptop has not pulled:
+
+```
+$ repose run
+Connected to todo-app (large)
+Synced: 1 modified, 0 untracked (1 new commit)
+The guest's main has commits your laptop does not have; it was left as it
+is and the guest is on 4f2a9c1, detached. Push them from the guest (or
+`repose attach` to look) and pull on the laptop.
 ```
 
 Guest tree is dirty:
@@ -47,22 +57,37 @@ to look first.
   push -u -m "repose run"` in the guest first; `--discard-remote` runs
   `git reset --hard && git clean -fd`. Neither asks for confirmation —
   the flag itself is the confirmation.
-- Then the guest runs `git fetch origin` and checks whether the laptop's
-  `HEAD` commit is reachable (`git cat-file -e`). If not, the CLI offers
-  to push the current branch (`Commit <hash> is not on origin. Push
-  <branch> now? [Y/n]`); declining fails the run with nothing changed on
-  either side. It never force-pushes.
-- The guest then checks out that commit detached, and rides the local
-  branch name instead only if that branch already sits at the same commit
-  (a `git fetch` moves remote-tracking refs, never local branches, so a
-  stale local branch is left alone rather than silently overwriting the
-  detached checkout).
+- The guest never fetches from origin during a sync: it has no
+  credentials for a private repository, nor for a public one behind the
+  SSH `origin` guestd sets (DECISIONS I-150). The laptop sends the commits
+  itself. The first ssh (the same one that reads the dirty list) reports
+  every commit a ref in the guest points at; the laptop `git bundle
+  create`s `HEAD` and its own `origin/<branch>` minus what the guest has
+  (the whole history the first time, nothing when the guest is current),
+  and the second ssh fetches from that bundle. Nothing is pushed, and the
+  old "Push now?" prompt is gone: an unpushed commit simply travels.
+- The guest's `origin/<branch>` is moved to where the laptop last saw
+  origin (forward only), and `origin` is added if missing, so the agent's
+  `git status` and `git push` behave as they would on the laptop.
+- Checkout: the laptop's branch is created in the guest, or
+  fast-forwarded when the guest's copy is behind. When the guest's branch
+  has commits the laptop does not (an agent committed and nobody pulled),
+  the branch is left exactly where it is, the laptop's commit is checked
+  out detached, and a warning says so; an agent's work is never moved off
+  its branch. A detached `HEAD` on the laptop is checked out detached.
 - The diff, not a tar, carries tracked changes: `git diff HEAD --binary`
-  on the laptop, piped as stdin to `git apply --index` in the guest. Only
+  on the laptop, applied with `git apply --index` in the guest. Only
   the untracked files (`git ls-files --others --exclude-standard`,
   filtered by `sync.exclude` in `config.toml`) travel as a tar, extracted
-  with `tar -x -C ~/<slug>`. Nothing writes a custom sync helper into the
-  guest; both commands are stock git and tar.
+  in `~/<slug>`. Bundle, diff and untracked tar go as one payload in one
+  ssh; nothing writes a custom sync helper into the guest, and every
+  command there is stock git and tar.
+- An empty guest checkout (a bare `git init`, or no directory at all) is
+  filled the same way: the first bundle is the full history.
+- A laptop directory that is not a git repository, has no commit yet, or
+  is a shallow clone gets one sentence saying what to run
+  (`git init && git add -A && git commit -m init`, `git fetch
+  --unshallow`) or `--no-sync`.
 - Size: a file over 100 MB is skipped with a warning rather than sent,
   because an accidental `node_modules` or a video is the usual cause and
   the user wants to know.
@@ -70,18 +95,23 @@ to look first.
   files that are gitignored therefore do not sync; that is deliberate and
   documented, and named secrets (secrets.md) are the supported path.
 - The summary line always prints, `Synced: <n> modified, <m> untracked`,
-  even when both are zero.
-- The guest's checkout is at `/home/dev/<slug>` and is assumed to already
-  exist and be a clone with an `origin` remote (guestd's `SetupProject`,
-  02/04's contract); the CLI does not initialise a repository there.
-- A project made with `--name` in a directory with no git remote has no
-  `origin` in the guest either, so nothing is fetched: every tracked file
-  travels with its current contents and is committed in the guest (a
-  placeholder author; the commit exists only there), untracked files
-  follow as above, and the line reads `Synced the whole tree (no git
-  remote): 12 tracked files, 2 untracked`. Deletions do not propagate for
-  such a project: with no remote there is nothing to derive them from
-  (DECISIONS I-138).
+  even when both are zero, followed by `(<k> new commits)` when commits
+  travelled.
+- The guest's checkout is at `/home/dev/<slug>`, which guestd's
+  `SetupProject` creates with an `origin` (02/04's contract). If it is
+  missing anyway, the sync creates it (`git init`) and adds `origin`
+  rather than failing.
+- A project made with `--name` in a directory with no git remote syncs the
+  same way, without an `origin` or remote-tracking refs: its real commits
+  travel, so a file deleted and committed on the laptop is deleted in the
+  guest too (DECISIONS I-150, replacing I-138's whole-tree commit).
+- Credentials (secrets.md) are copied before the git steps, in one ssh.
+  When gh's login travelled and the remote is on github.com, the guest's
+  git is told to push to github over HTTPS with gh as the credential
+  helper (`guest-conventions.md`), so an agent's `git push` works without
+  the laptop's SSH keys.
+- All of this rides the command's one multiplexed SSH connection (I-149):
+  two round trips for the sync, one for credentials.
 
 Back to the laptop:
 

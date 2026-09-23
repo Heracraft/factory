@@ -30,8 +30,13 @@ Syncing logins: gh, codex, opencode, git identity
 Copied at every `repose run` over the SSH session into the guest, owned by
 `dev`, mode 0600. The list is exact and lives in
 `interfaces/guest-conventions.md`: gh's `hosts.yml`, Codex's `auth.json`,
-opencode's `auth.json`, and the two git identity keys. The platform never
-sees these; they travel laptop to guest inside SSH.
+opencode's `auth.json`, and the two git identity keys; when gh's login
+travels and the remote is on github.com, the guest's git also gets gh as
+its credential helper for github over HTTPS, so an agent can push (a gh
+token the laptop keeps in its keyring is written into the copy of
+`hosts.yml` that travels; DECISIONS I-150). All of it is one ssh, before
+the checkout is synced. The platform never sees these; they travel laptop
+to guest inside SSH.
 
 Why copy rather than store: the user already has them, they rotate on the
 laptop, and holding a copy of a GitHub token for every user in a database is

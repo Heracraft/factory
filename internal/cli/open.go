@@ -16,8 +16,10 @@ func OpenPortCmd(ctx context.Context, e *Env, projectArg string, port int, local
 	if err != nil {
 		return err
 	}
-	target := e.target(project.Slug)
-	if err := waitForSSH(ctx, target); err != nil {
+	// The certificate and config first: a forward from a laptop whose
+	// certificate expired overnight must refresh it like run does.
+	target, err := connect(ctx, e, project)
+	if err != nil {
 		return err
 	}
 	if localPort == 0 {
@@ -46,12 +48,14 @@ func OpenDesktopCmd(ctx context.Context, e *Env, projectArg string, noBrowser bo
 	if err != nil {
 		return err
 	}
-	target := e.target(project.Slug)
-	if err := waitForSSH(ctx, target); err != nil {
+	// The certificate and config first: a forward from a laptop whose
+	// certificate expired overnight must refresh it like run does.
+	target, err := connect(ctx, e, project)
+	if err != nil {
 		return err
 	}
 	if _, err := runSSH(ctx, target, "systemctl --user start repose-desktop", nil); err != nil {
-		return err
+		return stepFailed("start the desktop in the guest", err, "")
 	}
 	url := "http://localhost:6080/vnc.html?autoconnect=1"
 	_, _ = fmt.Fprintf(e.Out, "%s (Ctrl-C stops the forward; the desktop keeps running)\n", url)

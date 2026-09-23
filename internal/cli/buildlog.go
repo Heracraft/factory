@@ -73,7 +73,15 @@ func StreamBuildLog(ctx context.Context, c *Client, projectID, opID string, w io
 		}
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
-	resp, err := c.HTTP.Do(req)
+	// The api client's 30 s timeout covers the whole body, which cut every
+	// build longer than that off mid-log; a stream has no such bound (the
+	// caller's ctx and the op poll's deadline end it).
+	hc := http.Client{}
+	if c.HTTP != nil {
+		hc = *c.HTTP
+	}
+	hc.Timeout = 0
+	resp, err := hc.Do(req)
 	if err != nil {
 		return "", sinceSeq, &unreachableError{cause: err}
 	}
