@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -124,6 +125,27 @@ func runSSH(ctx context.Context, t sshTarget, remoteCmd string, stdin io.Reader)
 		return stdout.Bytes(), &sshError{ExitCode: code, Stderr: stderr.String(), Err: err}
 	}
 	return stdout.Bytes(), nil
+}
+
+// closeMaster ends the persisted multiplexed connection to slug (I-149's
+// ControlPersist 10m), best effort. After a stop, destroy or restore that
+// connection leads to a guest that is gone: the next command's sessions
+// ride it and fail ("the SSH connection to the guest failed", 2026-09-23),
+// and a restored project with the same slug has the same ControlPath
+// (I-188). Tests (TargetFor set) and Windows have no master.
+func closeMaster(ctx context.Context, e *Env, slug string) {
+	if e.TargetFor != nil || goos() == "windows" {
+		return
+	}
+	sd, err := sshDir()
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ssh", "-F", filepath.Join(sd, "config"), "-O", "exit", slug+".repose")
+	cmd.WaitDelay = time.Second
+	_ = cmd.Run() // no master is the common case, and ssh says so on stderr, which is discarded
 }
 
 // runSSHOK is runSSH for commands whose output is not needed, only

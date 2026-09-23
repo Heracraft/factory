@@ -28,6 +28,22 @@ type RunOptions struct {
 // label) is read while waiting: two cheap GETs (I-154).
 const opPollInterval = 500 * time.Millisecond
 const opPollTimeout = 20 * time.Minute
+
+// pollDelay is the pause before the next poll of a wait that began at
+// started: opPollInterval for the first 10 s, where a create or start
+// usually ends, then 1 s, then 2 s after a minute, so a long build does not
+// spend the account's api budget that a dashboard tab shares (I-187).
+func pollDelay(started time.Time) time.Duration {
+	switch el := time.Since(started); {
+	case el < 10*time.Second:
+		return opPollInterval
+	case el < time.Minute:
+		return time.Second
+	default:
+		return 2 * time.Second
+	}
+}
+
 const sshWaitTimeout = 60 * time.Second
 const sshRetryInterval = time.Second
 
@@ -482,7 +498,8 @@ func (e *Env) opFailed(verb, slug string, oe OpError, next string) error {
 // waitState polls the project until it leaves a transitional state,
 // showing each state as a phase.
 func waitState(ctx context.Context, e *Env, project *Project, pr *progress) error {
-	deadline := time.Now().Add(opPollTimeout)
+	started := time.Now()
+	deadline := started.Add(opPollTimeout)
 	last := ""
 	for {
 		p, err := e.Client.GetProject(ctx, project.ID)
@@ -504,7 +521,7 @@ func waitState(ctx context.Context, e *Env, project *Project, pr *progress) erro
 		if time.Now().After(deadline) {
 			return exitf(ExitGeneric, "%s has been %s for %s; `repose status %s` shows where it is.", p.Slug, p.State, opPollTimeout, p.Slug)
 		}
-		if err := sleepOrDone(ctx, opPollInterval); err != nil {
+		if err := sleepOrDone(ctx, pollDelay(started)); err != nil {
 			return err
 		}
 	}
@@ -545,7 +562,8 @@ func waitOpWith(ctx context.Context, c *Client, projectID, opID string, out io.W
 	seq := 0
 	streamDone := false
 	streamTries := 0
-	deadline := time.Now().Add(opPollTimeout)
+	started := time.Now()
+	deadline := started.Add(opPollTimeout)
 	for {
 		if tick != nil {
 			tick()
@@ -582,7 +600,7 @@ func waitOpWith(ctx context.Context, c *Client, projectID, opID string, out io.W
 		if time.Now().After(deadline) {
 			return nil, exitf(ExitGeneric, "The operation is still running after %s; `repose status` shows where it is.", opPollTimeout)
 		}
-		if err := sleepOrDone(ctx, opPollInterval); err != nil {
+		if err := sleepOrDone(ctx, pollDelay(started)); err != nil {
 			return nil, err
 		}
 	}
@@ -600,9 +618,13 @@ func createProjectForRun(ctx context.Context, e *Env, remote string, opts RunOpt
 	req := CreateProjectRequest{Name: name, RemoteURL: remote, Class: class, TZ: localTZ()}
 
 	for attempt := 1; attempt <= 10; attempt++ {
-		pr.Phase("Creating "+req.Name, fmt.Sprintf("Created %s (%s)", req.Name, class))
 		p, err := e.Client.CreateProject(ctx, req)
 		if err == nil {
+			// The phase starts once the api has answered, so it names the
+			// slug every later line and command uses, not the name as
+			// typed ("teksafari.org" is created as teksafari-org); the
+			// POST itself takes well under a second (I-191).
+			pr.Phase("Creating "+p.Slug, fmt.Sprintf("Created %s (%s)", p.Slug, class))
 			dir := ""
 			if remote == "" {
 				// A --name project with no remote has nothing else to be

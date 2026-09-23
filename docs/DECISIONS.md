@@ -3946,6 +3946,152 @@ blocking starts at zero for accounts with a card (contradicts the pricing
 page and turns the trial's end into an outage); waiting 100 real hours on
 host-01 (proves the sampler, which M1 already did, at the cost of four days
 per retry).
+
+**I-186. Console capture ends only after the hypervisor has exited; closing
+it drains first.** (live-polish, 03, 2026-09-23; conductor's destroy of
+e2e-a-private at 04:03:35Z) Three stops of e2e-a-private guests on base
+2026.09.23 each waited out hostd's 60 s, then `vm.shutdown` 15 s, then
+SIGKILL, while branding and e2e-polish guests stopped in 3.5-4 s. The
+guest's persistent journal (e2e-a-private's destroy snapshot restored as
+e2e-polish) shows the hung shutdown's PID 1 stop mid-list, 18 ms after
+`Stopping Serial Getty on ttyS0...`, where a clean one goes on to sshd
+3 ms later; the vCPUs sat in `kvm_vcpu_block`. Reproduced on demand with
+the conductor's path (`repose run` with the full sync from the e2e-a
+checkout into e2e-polish, stop 25 s later: `Stopped e2e-polish in 1m00s`),
+and host-01's `/proc/<ch>/task/*/comm` shows Cloud Hypervisor's
+`serial-manager` thread present at 04:31:08 and gone at 04:31:11, the
+second the stop began. Cause, from CH 53's source: hostd's stop removed
+the guestd monitor and with it console capture right after sending
+Shutdown, while the guest was printing its shutdown. A unix socket closed
+with bytes unread hands its peer ECONNRESET 
+(`TestCloseWithUnreadBytesResetsThePeer`); CH's serial manager returns on that read error without
+detaching the socket, so every later byte the guest's UART sends fails,
+`Serial::handle_write` returns before `thr_empty()` and the error is
+dropped (`.ok()`), the transmit-empty interrupt never comes, and every
+userspace write to ttyS0 blocks for good: PID 1's console status lines,
+agetty, and guestd, whose stdout is `journal+console` (it logged "shutting
+down" cut mid-line in the conductor's console.log). Fix, hostd only: the
+stop keeps console capture until the guest unit is inactive
+(`monitor.stopKeepConsole`); `console.Tailer` reads until the socket has
+been quiet 100 ms (at most 2 s) before closing, so a hostd restart or a
+restart of capture does not leave bytes unread either; `WaitInactive`
+returns the deadline instead of reading a systemctl killed by it as
+"inactive" (the 04:11:19 stop logged no fallback and tore down a running
+guest); the fallback sends `vmm.shutdown` after `vm.shutdown`, which alone
+left the VMM process waiting for a new VM for the whole 15 s.
+`TestStopKeepsConsoleUntilTheHypervisorExits` (fails on the old stop.go),
+`TestRunDrainsBeforeClosing` (the old Tailer broke the writer's pipe),
+`TestWaitInactiveTimeoutIsNotInactive`. Needs a host switch; no base
+publish. Not fixed: the CH bug itself (a patch that treats a read error as
+a detach and raises THRE after a failed write belongs in an overlay, with
+a CH rebuild and a real boot to prove it), and the same stall after a
+hostd restart that races a console write, which the drain makes unlikely
+but not impossible. That race is a candidate for age-calculator's guestd
+that "died" in the 2026-09-21 switch while its unit ran (I-143, I-156):
+guestd's next log line would block on the stalled console. *Rejected:*
+dropping `console` from guestd's output and the ttyS0 getty in the base
+(needs a publish and treats the symptom; the getty is also M-6's finding
+and stays for workstream 02 to decide).
+
+**I-187. Reads have their own rate-limit bucket; the CLI waits out a 429
+and polls less as a wait grows.** (live-polish, 05/07, 2026-09-23;
+conductor's `repose restore e2e-a-private` ended `rate_limited: too many
+requests`) I-154's 500 ms poll is two GETs, 240 a minute, against a 60/min
+bucket per user that every request shared, including the owner's
+dashboard tab. The api now counts GETs in a 600/min bucket and every other
+method in the 60/min one (`RateLimits.Reads`, default ten times
+`General`); the fake does the same when `RateLimit` is on. The CLI's
+client treats `rate_limited` as "nothing ran" (the api refuses before any
+handler) and sends the request again after `Retry-After` (2 s without it,
+at most 15 s per wait) for up to 60 s, and a wait polls every 500 ms for
+10 s, then 1 s, then 2 s after a minute (`pollDelay`). A refusal that
+outlasts that is a sentence ("The api is refusing this account's requests
+for now: too many in the last minute…"), never `rate_limited: …`.
+`TestRateLimits` (240 polls pass, reads end at 600, writes at 60),
+`TestRateLimitedRequestIsRetried`, `TestRateLimitedNeverShowsTheRawCode`,
+`TestPollDelayBacksOff`. api.md "Rate limits" in this commit. *Rejected:*
+exempting op and project GETs entirely (an uncapped read load on the
+database); polling every 2 s from the start (I-154's
+phases would lag the boot by seconds).
+
+**I-188. A command that creates a project ends with SSH to it working, and
+closes the multiplexed connection it no longer means.** (live-polish, 07,
+2026-09-23) After `repose restore e2e-a-private`, `ssh
+e2e-a-private.repose` said `certificate not valid for this project`: the
+certificate's principals are project ids and the restore made a new one,
+and only a command that connects (run, attach) re-issued it. `repose
+restore` and `repose snapshots restore --as-new` now end with
+`refreshSSHAccess`: the account's projects, `ensureCert` (re-issued only
+when a project is missing from the certificate) and the per-project Host
+blocks. A failure there is a warning naming `repose attach`. Stop, destroy
+and restore also run `ssh -O exit` for the slug: I-149's ControlPersist
+master outlives the guest it reached, and a restored project with the same
+slug has the same ControlPath, so the next command's sessions rode a dead
+connection (`Could not read the guest's checkout: the SSH connection to
+the guest failed`, 04:08:50). Found on the way: the package's tests wrote
+the developer's real `~/.ssh/repose` (certificate, config, known_hosts with
+the fake CA) once restore renewed certificates; a package `TestMain` now
+points HOME and XDG_CONFIG_HOME at a temporary directory.
+`TestRestoreRenewsTheCertificate`. Live: `repose restore <id> --as
+e2e-polish`, then a plain `ssh e2e-polish.repose` listed the guest's boots.
+
+**I-189. One refusal banner per connection, on its own line, and words
+that fit the state.** (live-polish, 06, 2026-09-23) ssh offers the
+certificate and then the plain key on one connection, and each refusal's
+banner arrived without a newline: `e2e-a-private is destroying;
+environment is not accepting connections yetpermission denied
+(certificate required)…`. A banner now ends in `\n`, the plain key's
+"certificate required" after another banner is not sent, nor the same
+banner twice. States read: stopped `X is stopped; run \`repose start X\``,
+destroying `X is being destroyed; \`repose restore X\` brings it back once
+that is done`, error `X is in error; \`repose status X\` says why`,
+transitional `X is creating and not accepting connections yet; try again
+in a few seconds`, unreachable host `X is on a host the control plane
+cannot reach right now; try again shortly`. `TestOneBannerPerRefusal`,
+`TestStoppedAndOtherStates`. ssh-gateway.md in this commit. Needs an edge
+switch.
+
+**I-190. Restoring a project whose destroy is still running waits for its
+final snapshot.** (live-polish, 05/07, 2026-09-23) `repose restore` right
+after `repose destroy` said "has no snapshot left to restore": the live
+project with the name was `destroying` and its final snapshot is the
+destroy's second step (I-165); an earlier snapshot of it would have been
+restored instead, which is worse. `POST /projects/restore` by slug now
+answers `409 conflict`, `detail.reason = "destroying"`, "…is still being
+destroyed; its final snapshot is not taken yet. Try again in a few
+seconds", and the CLI shows `Waiting for X's destroy to take its final
+snapshot` and retries every 2 s for up to 3 minutes; against an older api
+it recognises the same case from `no_snapshot` plus a `destroying`
+project of that name. `TestRestoreOfADestroyingProjectSaysSo` (api,
+Postgres), `TestRestoreWaitsForADestroyInProgress` (CLI, fake). api.md in
+this commit.
+
+**I-191. A phase is printed once, and it names the slug.** (live-polish,
+07, 2026-09-23) Without a terminal `repose run` printed `Creating
+e2e-a-private...` twice (run's own phase, then the project's `creating`
+state), and the owner's run showed `✓ Created teksafari.org (large)`
+followed by `Booted teksafari-org`: the create phase used the name as
+typed. `progress.Phase` with the label already running is a no-op (the
+first done text stays), the create phase starts when the api has answered,
+with its slug, and restore's phase uses the state's label (`Restoring X`,
+the snapshot's time is on the last line). `TestProgressPrintsAPhaseOnce`.
+
+**I-192. `repose projects --destroyed` is one row per name; `status` names
+the host and the newest event.** (live-polish, 07, 2026-09-23) izma was
+listed three times with nothing saying which one `repose restore izma`
+takes. The table now has one row per name, the one restore picks (the
+newest snapshot of the destroyed projects with that name, I-167), an
+`EARLIER` count, a line with `repose restore <id> --as NEW-NAME` for a
+name a live project holds (where `restore NAME` means the live one), and
+`--all` lists every row with its id. `repose status` printed the host's
+uuid and, for a running project, `last event … guest_state_changed
+"creating"`: the api's route has carried `host_name` since M2, and events
+and snapshots were taken from the end of a list the api sends newest
+first; both are now picked by time (`newestEvent`, `newestSnapshot`).
+`TestDestroyedListIsOneRowPerName`, `TestStatusShowsHostNameAndNewestEvent`.
+Live: `e2e-polish small running … host host-01 … last event 12m ago:
+guest_state_changed "running"`.
+
 **I-193. The key in b1a5915 stays in history; it was rotated.** (conductor,
 2026-09-23) The owner rotated the key committed in b1a5915, so the value in
 public history authorises nothing; rewriting history and force-pushing

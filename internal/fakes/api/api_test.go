@@ -742,11 +742,16 @@ func TestUsageAndBilling(t *testing.T) {
 func TestRateLimit(t *testing.T) {
 	f := New(Options{RateLimit: true})
 	defer f.Close()
-	for i := 0; i < 60; i++ {
+	// GETs have a bucket ten times the writes' (I-187).
+	for i := 0; i < 600; i++ {
 		want(t, call(t, f, "GET", "/v1/me", tok, nil), 200)
 	}
 	r := call(t, f, "GET", "/v1/me", tok, nil)
 	wantErr(t, r, 429, "rate_limited")
+	for i := 0; i < 60; i++ {
+		want(t, call(t, f, "POST", "/v1/me/notify-test", tok, nil), 200)
+	}
+	wantErr(t, call(t, f, "POST", "/v1/me/notify-test", tok, nil), 429, "rate_limited")
 	if r.header.Get("Retry-After") == "" {
 		t.Fatal("no Retry-After")
 	}

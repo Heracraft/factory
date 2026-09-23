@@ -25,7 +25,8 @@ type Options struct {
 	// Billing makes the billing routes answer canned values instead of
 	// 503 billing_disabled, and reports the user as active with a card.
 	Billing bool
-	// RateLimit enforces 60 requests per minute per token with 429.
+	// RateLimit enforces the api's per-user limits with 429: 60 writes and
+	// 600 GETs per minute per token (I-187).
 	RateLimit bool
 	// Now replaces the clock; nil means time.Now in UTC.
 	Now func() time.Time
@@ -56,9 +57,11 @@ const (
 	userCAPub   = "ssh-ed25519 AAAA...fakeuserca"
 	baseVersion = "2026.09.15"
 	hostID      = "host-01"
-	logPattern  = "GET /v1/projects/{id}/ops/{op_id}/log"
-	rateWindow  = time.Minute
-	rateBurst   = 60
+	// FakeHostName is the name GET /projects/:id/route reports for hostID.
+	FakeHostName = "fake-host-01"
+	logPattern   = "GET /v1/projects/{id}/ops/{op_id}/log"
+	rateWindow   = time.Minute
+	rateBurst    = 60
 )
 
 // Fake is the running fake api.
@@ -369,10 +372,10 @@ func (f *Fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeError(w, errf("unauthenticated", "missing or unknown bearer token"))
 			return
 		}
-		if retry := f.rateLimited(tok); retry > 0 {
+		if retry := f.rateLimited(tok, r.Method == http.MethodGet); retry > 0 {
 			f.mu.Unlock()
 			w.Header().Set("Retry-After", fmt.Sprint(retry))
-			writeError(w, errf("rate_limited", "60 requests per minute exceeded"))
+			writeError(w, errf("rate_limited", "too many requests"))
 			return
 		}
 		r = r.WithContext(context.WithValue(r.Context(), ctxUser, u))
@@ -414,23 +417,27 @@ func (f *Fake) authenticate(r *http.Request, pattern string) (*userRec, string, 
 
 // rateLimited records a hit and returns the Retry-After seconds when the
 // token is over budget, else 0.
-func (f *Fake) rateLimited(tok string) int {
+func (f *Fake) rateLimited(tok string, read bool) int {
 	if !f.opts.RateLimit {
 		return 0
 	}
+	key, burst := tok, rateBurst
+	if read {
+		key, burst = tok+" reads", 10*rateBurst
+	}
 	now := f.now()
-	kept := f.hits[tok][:0]
-	for _, t := range f.hits[tok] {
+	kept := f.hits[key][:0]
+	for _, t := range f.hits[key] {
 		if now.Sub(t) < rateWindow {
 			kept = append(kept, t)
 		}
 	}
-	if len(kept) >= rateBurst {
-		f.hits[tok] = kept
+	if len(kept) >= burst {
+		f.hits[key] = kept
 		wait := rateWindow - now.Sub(kept[0])
 		return int(math.Max(1, math.Ceil(wait.Seconds())))
 	}
-	f.hits[tok] = append(kept, now)
+	f.hits[key] = append(kept, now)
 	return 0
 }
 

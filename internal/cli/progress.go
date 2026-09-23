@@ -61,6 +61,14 @@ func (p *progress) Phase(label, done string) {
 	if p == nil {
 		return
 	}
+	p.mu.Lock()
+	same := p.label != "" && p.label == label
+	p.mu.Unlock()
+	if same {
+		// The same phase announced again (run's "Creating x" and then the
+		// project's "creating" state) is one phase: one line, one ✓ (I-191).
+		return
+	}
 	p.End()
 	p.mu.Lock()
 	p.label, p.done, p.phaseStart = label, done, p.now()

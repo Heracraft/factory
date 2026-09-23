@@ -104,7 +104,7 @@ repose destroy [PROJECT] [--yes|-y] [--wait]
 repose restore [NAME] [--as NEW-NAME] [--snapshot ID]   # no NAME: the checkout's remote finds it
 repose logs [PROJECT] [--kind console|build|ops] [--since 1h] [--follow|-f]
 repose events [PROJECT] [--since 24h] [--follow|-f]
-repose projects [--destroyed]    # list all, ignores cwd; --destroyed: what can be restored
+repose projects [--destroyed [--all]]  # list all, ignores cwd; --destroyed: what can be restored
 repose version
 repose completion bash|zsh|fish
 repose mcp forward ...           # reserved, prints not-available message
@@ -401,10 +401,14 @@ UP AGENTS TODAY MONTH`, `-` where a column does not apply, uptime only
 while running), then one line per project in `error` with its reason and
 the command that fixes it; with no projects it says how to create one.
 `--json` is the api's list, unchanged (DECISIONS I-153).
-`repose projects --destroyed` lists `GET /projects/destroyed`: `PROJECT
-CLASS DESTROYED SNAPSHOT SIZE RESTORABLE UNTIL`, `(name in use)` after a
-slug a live project holds, and a last line naming `repose restore NAME`;
-`--json` is the api's list (I-167). `repose restore` with no NAME inside a
+`repose projects --destroyed` lists `GET /projects/destroyed` one row per
+name, the one `repose restore NAME` restores (that name's newest
+snapshot): `PROJECT CLASS DESTROYED SNAPSHOT SIZE RESTORABLE UNTIL
+EARLIER`, EARLIER counting older destroyed projects of the name,
+`(name in use)` after a slug a live project holds with a line giving
+`repose restore <id> --as NEW-NAME` for it, and a last line naming
+`repose restore NAME`; `--all` lists every row with its `ID`, earlier
+ones marked `(earlier)`; `--json` is the api's list (I-167, I-192). `repose restore` with no NAME inside a
 checkout restores the destroyed project whose `remote_url` is the
 checkout's normalised remote (the newest destroy when one name was
 destroyed several times); two or more names are asked about on a

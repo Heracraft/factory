@@ -123,6 +123,7 @@ func SnapshotsRestoreCmd(ctx context.Context, e *Env, projectArg, snapshotID, as
 		return e.opFailed("restore", snapshotID, op.Error, "")
 	}
 	if asNew != "" {
+		refreshSSHAccess(ctx, e, asNew)
 		_, _ = fmt.Fprintf(e.Out, "Restored into a new project, %s. `repose projects` lists it.\n", asNew)
 		return nil
 	}

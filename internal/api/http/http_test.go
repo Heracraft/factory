@@ -797,10 +797,32 @@ func TestRateLimits(t *testing.T) {
 	if !limited {
 		t.Fatal("12 cert requests were never rate limited (limit is 10/min)")
 	}
+	// Reads: a minute of a waiting CLI's polling (two GETs every 500 ms,
+	// I-154) passes; the 600/min read bucket still ends somewhere (I-187).
+	for i := 0; i < 240; i++ {
+		if r := e.do(t, tok, "GET", "/projects/"+pid, nil); r.status != 200 {
+			t.Fatalf("GET %d refused: %d %s", i, r.status, r.raw)
+		}
+	}
 	limited = false
-	for i := 0; i < 60; i++ {
+	for i := 0; i < 400; i++ {
 		r := e.do(t, tok, "GET", "/me", nil)
 		if r.status == 429 {
+			limited = true
+			break
+		}
+	}
+	if !limited {
+		t.Fatal("read limit of 600/min never hit")
+	}
+	// Writes keep the general 60/min, untouched by the reads above.
+	limited = false
+	for i := 0; i < 70; i++ {
+		r := e.do(t, tok, "PATCH", "/projects/"+pid, map[string]any{"hold_base_updates": i%2 == 0})
+		if r.status == 429 {
+			if i < 40 {
+				t.Fatalf("write %d refused after only reads had been spent: %s", i, r.raw)
+			}
 			limited = true
 			break
 		}

@@ -35,7 +35,7 @@ func TestDestroyThenRestoreByName(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := DestroyedCmd(ctx, e); err != nil {
+	if err := DestroyedCmd(ctx, e, false); err != nil {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
@@ -45,7 +45,7 @@ func TestDestroyThenRestoreByName(t *testing.T) {
 	}
 	out.Reset()
 	e.JSON = true
-	if err := DestroyedCmd(ctx, e); err != nil {
+	if err := DestroyedCmd(ctx, e, false); err != nil {
 		t.Fatal(err)
 	}
 	var decoded []map[string]any

@@ -169,6 +169,10 @@ func exitCodeFor(err error, stderr io.Writer) int {
 		case "capacity":
 			_, _ = fmt.Fprintln(stderr, "No capacity right now; try again in a few minutes. (We have been alerted.)")
 			return ExitCapacity
+		case "rate_limited":
+			// Only after the client waited out rateLimitBudget (I-187).
+			_, _ = fmt.Fprintln(stderr, "The api is refusing this account's requests for now: too many in the last minute (a dashboard tab or another repose command may be polling). Try again in a minute; `repose status` shows where things stand.")
+			return ExitGeneric
 		default:
 			_, _ = fmt.Fprintf(stderr, "%s: %s\n", apiErr.Code, apiErr.Message)
 			return ExitGeneric

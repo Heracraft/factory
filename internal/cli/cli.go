@@ -374,7 +374,7 @@ func newStatusCmd(envJSON func(*cobra.Command) (*Env, error), env func() (*Env, 
 }
 
 func newProjectsCmd(envJSON func(*cobra.Command) (*Env, error)) *cobra.Command {
-	var destroyed bool
+	var destroyed, all bool
 	cmd := &cobra.Command{
 		Use:   "projects",
 		Short: "List every project",
@@ -384,14 +384,18 @@ func newProjectsCmd(envJSON func(*cobra.Command) (*Env, error)) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if all && !destroyed {
+				return cobraUsageError{fmt.Errorf("--all goes with --destroyed")}
+			}
 			if destroyed {
-				return DestroyedCmd(cmd.Context(), e)
+				return DestroyedCmd(cmd.Context(), e, all)
 			}
 			return ProjectsCmd(cmd.Context(), e)
 		},
 	}
 	cmd.Flags().Bool("json", false, "print as JSON")
 	cmd.Flags().BoolVar(&destroyed, "destroyed", false, "list destroyed projects that can still be restored, and until when")
+	cmd.Flags().BoolVar(&all, "all", false, "with --destroyed: every destroyed project, not only the one `repose restore NAME` picks per name")
 	return cmd
 }
 

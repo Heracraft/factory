@@ -65,6 +65,29 @@ func (c *Client) RestoreByName(ctx context.Context, req RestoreRequest) (*Restor
 	return &r, nil
 }
 
+// restoreDestroyWait bounds how long `repose restore` waits for a destroy
+// in progress to take its final snapshot (a stop and a snapshot: seconds
+// since I-164/I-165, a minute on a guest that ignores the shutdown).
+var restoreDestroyWait = 3 * time.Minute
+
+// stillDestroying reports whether the user's live project called slug is
+// being destroyed right now.
+func stillDestroying(ctx context.Context, e *Env, slug string) bool {
+	if slug == "" {
+		return false
+	}
+	projects, err := e.Client.ListProjects(ctx)
+	if err != nil {
+		return false
+	}
+	for _, p := range projects {
+		if p.Slug == slug && p.State == "destroying" {
+			return true
+		}
+	}
+	return false
+}
+
 // restoreHint is the line a destroy ends with.
 func restoreHint(slug string) string { return "repose restore " + slug }
 
@@ -92,10 +115,14 @@ func RestoreCmd(ctx context.Context, e *Env, name, as, snapshotID string, askNam
 		req.Slug = name
 	}
 	var res *RestoreResult
+	wpr := e.newProgress()
+	defer wpr.Fail()
+	var waitStart time.Time
 	for {
 		var err error
 		res, err = e.Client.RestoreByName(ctx, req)
 		if err == nil {
+			wpr.Fail()
 			break
 		}
 		var apiErr *APIError
@@ -103,6 +130,22 @@ func RestoreCmd(ctx context.Context, e *Env, name, as, snapshotID string, askNam
 			return err
 		}
 		switch {
+		case apiErr.Code == "conflict" && apiErr.Detail["reason"] == "destroying",
+			// An api older than I-190 answers "no snapshot left" while the
+			// destroy that takes it is still running.
+			apiErr.Code == "not_found" && apiErr.Detail["reason"] == "no_snapshot" && stillDestroying(ctx, e, req.Slug):
+			if waitStart.IsZero() {
+				waitStart = time.Now()
+				wpr.Phase(fmt.Sprintf("Waiting for %s's destroy to take its final snapshot", name), "")
+			}
+			if time.Since(waitStart) > restoreDestroyWait {
+				wpr.Fail()
+				return exitf(ExitGeneric, "%s is still being destroyed after %s. `repose status %s` shows it; `repose restore %s` again once it is gone.", name, fmtElapsed(restoreDestroyWait), name, name)
+			}
+			if err := sleepOrDone(ctx, 2*time.Second); err != nil {
+				return err
+			}
+			continue
 		case apiErr.Code == "conflict" && apiErr.Detail["reason"] == "name_taken":
 			taken, _ := apiErr.Detail["name"].(string)
 			if askName == nil {
@@ -125,7 +168,9 @@ func RestoreCmd(ctx context.Context, e *Env, name, as, snapshotID string, askNam
 	}
 	pr := e.newProgress()
 	defer pr.Fail()
-	pr.Phase(fmt.Sprintf("Restoring %s from its snapshot of %s", res.Slug, res.SnapshotCreatedAt.Local().Format("2006-01-02 15:04")), "")
+	// The same label as the project's restoring state, so it prints once (I-191);
+	// the snapshot's time is on the final line.
+	pr.Phase("Restoring "+res.Slug, "Restored "+res.Slug)
 	project := &Project{ID: res.ProjectID, Slug: res.Slug, Name: res.Name}
 	op, err := waitOpPhased(ctx, e, project, res.OpID, pr, true)
 	if err != nil {
@@ -139,6 +184,7 @@ func RestoreCmd(ctx context.Context, e *Env, name, as, snapshotID string, askNam
 	if err != nil {
 		return err
 	}
+	refreshSSHAccess(ctx, e, p.Slug)
 	_, _ = fmt.Fprintf(e.Out, "Restored %s from its snapshot of %s in %s; it is %s (%s). `repose attach %s` to get in.\n",
 		p.Slug, res.SnapshotCreatedAt.Local().Format("2006-01-02 15:04"), fmtElapsed(pr.Total()), stateWords(p.State), p.Class, p.Slug)
 	return nil
@@ -198,8 +244,10 @@ func destroyedForCheckout(ctx context.Context, e *Env, ask func(prompt string) (
 }
 
 // DestroyedCmd implements `repose projects --destroyed`: what can be
-// restored, and until when.
-func DestroyedCmd(ctx context.Context, e *Env) error {
+// restored, and until when. A name destroyed several times (izma ×3) is
+// one row, the one `repose restore NAME` picks, with a count of the
+// earlier ones; all lists every row with the id that restores it (I-192).
+func DestroyedCmd(ctx context.Context, e *Env, all bool) error {
 	list, err := e.Client.ListDestroyed(ctx)
 	if err != nil {
 		return err
@@ -214,27 +262,96 @@ func DestroyedCmd(ctx context.Context, e *Env) error {
 		_, _ = fmt.Fprintln(e.Out, "Nothing to restore: no project destroyed in the last 30 days still has a snapshot.")
 		return nil
 	}
-	writeDestroyedTable(e.Out, list)
+	if all {
+		writeDestroyedTableAll(e.Out, list)
+	} else {
+		writeDestroyedTable(e.Out, list)
+	}
 	return nil
 }
 
-func writeDestroyedTable(w io.Writer, list []DestroyedProject) {
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(tw, "PROJECT\tCLASS\tDESTROYED\tSNAPSHOT\tSIZE\tRESTORABLE UNTIL")
+// destroyedByName groups the list per name, each group newest snapshot
+// first: the api's `repose restore NAME` takes the newest restorable
+// snapshot among the destroyed projects that had the name (I-167), so a
+// group's first row is the one it restores. Groups keep the order of
+// their first row's destroy, newest first.
+func destroyedByName(list []DestroyedProject) [][]DestroyedProject {
+	idx := map[string]int{}
+	var groups [][]DestroyedProject
 	for _, d := range list {
-		until := "-"
-		if d.RestorableUntil != nil {
-			until = d.RestorableUntil.Local().Format("2006-01-02")
+		i, ok := idx[d.Slug]
+		if !ok {
+			i = len(groups)
+			idx[d.Slug] = i
+			groups = append(groups, nil)
 		}
+		groups[i] = append(groups[i], d)
+	}
+	for _, g := range groups {
+		sort.SliceStable(g, func(a, b int) bool { return g[a].Snapshot.CreatedAt.After(g[b].Snapshot.CreatedAt) })
+	}
+	sort.SliceStable(groups, func(a, b int) bool { return groups[a][0].DestroyedAt.After(groups[b][0].DestroyedAt) })
+	return groups
+}
+
+func destroyedCells(d DestroyedProject) (until, destroyed, snap, size string) {
+	until = "-"
+	if d.RestorableUntil != nil {
+		until = d.RestorableUntil.Local().Format("2006-01-02")
+	}
+	return until, d.DestroyedAt.Local().Format("2006-01-02 15:04"), d.Snapshot.CreatedAt.Local().Format("2006-01-02 15:04"), humanBytes(d.Snapshot.Bytes)
+}
+
+func writeDestroyedTable(w io.Writer, list []DestroyedProject) {
+	groups := destroyedByName(list)
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(tw, "PROJECT\tCLASS\tDESTROYED\tSNAPSHOT\tSIZE\tRESTORABLE UNTIL\tEARLIER")
+	var inUse []DestroyedProject
+	earlier := false
+	for _, g := range groups {
+		d := g[0]
+		until, destroyed, snap, size := destroyedCells(d)
 		name := d.Slug
 		if !d.NameFree {
 			name += " (name in use)"
+			inUse = append(inUse, d)
 		}
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", name, d.Class, d.DestroyedAt.Local().Format("2006-01-02 15:04"),
-			d.Snapshot.CreatedAt.Local().Format("2006-01-02 15:04"), humanBytes(d.Snapshot.Bytes), until)
+		more := "-"
+		if len(g) > 1 {
+			more = fmt.Sprint(len(g) - 1)
+			earlier = true
+		}
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", name, d.Class, destroyed, snap, size, until, more)
 	}
 	_ = tw.Flush()
-	_, _ = fmt.Fprintln(w, "`repose restore NAME` brings one back (`--as NEW-NAME` when the name is in use).")
+	_, _ = fmt.Fprintln(w, "`repose restore NAME` restores the row shown: the newest snapshot of the projects that had that name.")
+	if earlier {
+		_, _ = fmt.Fprintln(w, "EARLIER counts older destroyed projects of the same name; `repose projects --destroyed --all` lists them with the id that restores one.")
+	}
+	for _, d := range inUse {
+		// With a live project of the name, `repose restore NAME` means the
+		// live one (I-167), so the destroyed one is named by its id.
+		_, _ = fmt.Fprintf(w, "A live project is called %s; this one comes back with `repose restore %s --as NEW-NAME`.\n", d.Slug, d.ID)
+	}
+}
+
+func writeDestroyedTableAll(w io.Writer, list []DestroyedProject) {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(tw, "PROJECT\tID\tCLASS\tDESTROYED\tSNAPSHOT\tSIZE\tRESTORABLE UNTIL")
+	for _, g := range destroyedByName(list) {
+		for i, d := range g {
+			until, destroyed, snap, size := destroyedCells(d)
+			name := d.Slug
+			if i > 0 {
+				name = "  (earlier)"
+			} else if !d.NameFree {
+				name += " (name in use)"
+			}
+			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", name, d.ID, d.Class, destroyed, snap, size, until)
+		}
+	}
+	_ = tw.Flush()
+	_, _ = fmt.Fprintln(w, "`repose restore NAME` restores the first row of each name; `repose restore ID` restores that row (`--as NEW-NAME` when the name is in use).")
 }
 
 // destroyedSlugsForCompletion is what `repose restore <TAB>` offers.

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -20,6 +21,8 @@ type APIError struct {
 	Message string         `json:"message"`
 	Detail  map[string]any `json:"detail,omitempty"`
 	Status  int            `json:"-"`
+	// RetryAfter is a 429's Retry-After header, zero when absent.
+	RetryAfter time.Duration `json:"-"`
 }
 
 func (e *APIError) Error() string { return fmt.Sprintf("%s: %s", e.Code, e.Message) }
@@ -59,11 +62,32 @@ func newClient(baseURL string, tokens TokenSource) *Client {
 	return &Client{BaseURL: strings.TrimSuffix(baseURL, "/"), Tokens: tokens, HTTP: &http.Client{Timeout: 30 * time.Second}}
 }
 
+// rateLimitBudget is how long one request waits out the api's per-user
+// rate limit before the refusal reaches the caller (DECISIONS I-187). The
+// api refuses before any handler runs, so a refused request of any method
+// did nothing and is safe to send again.
+var rateLimitBudget = 60 * time.Second
+
+// rateLimitWait is the pause after a 429: its Retry-After, else 2 s, and
+// never more than 15 s at a time.
+func rateLimitWait(e *APIError) time.Duration {
+	d := e.RetryAfter
+	if d <= 0 {
+		d = 2 * time.Second
+	}
+	if d > 15*time.Second {
+		d = 15 * time.Second
+	}
+	return d
+}
+
 // do sends one request, retrying once on a 401 unauthenticated after a
 // forced token refresh (07-cli.md §5.2: "on 401 with unauthenticated,
-// refresh once, retry once").
+// refresh once, retry once"), and waiting out a rate_limited refusal for
+// up to rateLimitBudget.
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
 	var refreshed bool
+	var limitedSince time.Time
 	for {
 		var reader io.Reader
 		if body != nil {
@@ -96,6 +120,17 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 			refreshed = true
 			continue
 		}
+		if apiErr != nil && apiErr.Code == "rate_limited" {
+			if limitedSince.IsZero() {
+				limitedSince = time.Now()
+			}
+			if time.Since(limitedSince) < rateLimitBudget {
+				if err := sleepOrDone(ctx, rateLimitWait(apiErr)); err != nil {
+					return err
+				}
+				continue
+			}
+		}
 		if decodeErr != nil {
 			return decodeErr
 		}
@@ -120,6 +155,9 @@ func readResponse(resp *http.Response, out any) (*APIError, error) {
 			return &APIError{Code: "internal", Message: string(b), Status: resp.StatusCode}, nil
 		}
 		env.Error.Status = resp.StatusCode
+		if s, err := strconv.Atoi(strings.TrimSpace(resp.Header.Get("Retry-After"))); err == nil && s > 0 {
+			env.Error.RetryAfter = time.Duration(s) * time.Second
+		}
 		return &env.Error, nil
 	}
 	if out == nil || len(b) == 0 {

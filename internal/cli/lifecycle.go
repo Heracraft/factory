@@ -86,6 +86,7 @@ func StopCmd(ctx context.Context, e *Env, projectArg string, snapshot bool) erro
 	if err != nil {
 		return err
 	}
+	closeMaster(ctx, e, project.Slug)
 	if snapshot {
 		pr.Phase("Snapshotting and stopping "+project.Slug, "")
 	} else {
@@ -165,6 +166,7 @@ func DestroyCmd(ctx context.Context, e *Env, projectArg string, yes, wait bool, 
 	}); err != nil {
 		return err
 	}
+	closeMaster(ctx, e, project.Slug)
 	if !wait {
 		pr.Fail()
 		_, _ = fmt.Fprintf(e.Out, "Destroying %s. Bring it back within 30 days with: %s\n", project.Slug, restoreHint(project.Slug))
@@ -188,7 +190,8 @@ func DestroyCmd(ctx context.Context, e *Env, projectArg string, yes, wait bool, 
 	}
 	// Gone means GET answers 404. An older api that sent no op_id is
 	// waited on this way alone.
-	deadline := time.Now().Add(opPollTimeout)
+	started := time.Now()
+	deadline := started.Add(opPollTimeout)
 	if opID != "" {
 		deadline = time.Now().Add(5 * time.Second) // the op is done; the row follows at once
 	}
@@ -208,7 +211,7 @@ func DestroyCmd(ctx context.Context, e *Env, projectArg string, yes, wait bool, 
 			pr.Fail()
 			return exitf(ExitGeneric, "The destroy of %s finished, but the project is still listed (%s). `repose status %s` shows it; %s", p.Slug, stateWords(p.State), p.Slug, retry)
 		}
-		if err := sleepOrDone(ctx, opPollInterval); err != nil {
+		if err := sleepOrDone(ctx, pollDelay(started)); err != nil {
 			return err
 		}
 	}

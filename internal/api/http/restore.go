@@ -158,6 +158,14 @@ func (s *Server) resolveRestore(ctx context.Context, userID uuid.UUID, slug stri
 		// A live project with the name is the one the user means; only
 		// without one do the destroyed ones count.
 		if all[0].DestroyedAt == nil {
+			// A destroy still running takes the final snapshot as its
+			// second step; restoring now would say "no snapshot left" or,
+			// worse, restore an older one. Say so and let the caller retry
+			// (I-190).
+			if all[0].State == "destroying" {
+				return nil, nil, withDetail(errf("conflict", "%s is still being destroyed; its final snapshot is not taken yet. Try again in a few seconds", slug),
+					map[string]any{"reason": "destroying"})
+			}
 			candidates = all[:1]
 		} else {
 			candidates = all

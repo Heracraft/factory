@@ -124,3 +124,30 @@ func TestRestoreByName(t *testing.T) {
 		t.Fatalf("restore of an expired destroy: %d %s", r.status, r.raw)
 	}
 }
+
+// TestRestoreOfADestroyingProjectSaysSo: restoring a project whose destroy
+// has not taken its final snapshot yet answered "has no snapshot left to
+// restore" (conductor, 2026-09-23). It is now 409 with reason destroying,
+// which the CLI waits out (I-190).
+func TestRestoreOfADestroyingProjectSaysSo(t *testing.T) {
+	e := newEnv(t)
+	tok := e.signIn(t, "sub-dora", "dora")
+	r := e.do(t, tok, "POST", "/projects", map[string]any{"name": "busy", "class": "small"})
+	if r.status != 201 {
+		t.Fatalf("create: %d %s", r.status, r.raw)
+	}
+	pid := r.body["id"].(string)
+	if op := e.waitOp(t, r); op.State != "done" {
+		t.Fatalf("create op: %+v", op.Error)
+	}
+	if _, err := e.h.Pool.Exec(e.h.Ctx, "update projects set state = 'destroying' where id = $1", pid); err != nil {
+		t.Fatal(err)
+	}
+	r = e.do(t, tok, "POST", "/projects/restore", map[string]any{"slug": "busy"})
+	envl, _ := r.body["error"].(map[string]any)
+	detail, _ := envl["detail"].(map[string]any)
+	if r.status != 409 || errCode(r) != "conflict" || detail["reason"] != "destroying" {
+		t.Fatalf("restore of a destroying project: %d %s", r.status, r.raw)
+	}
+	t.Logf("%s", r.raw)
+}

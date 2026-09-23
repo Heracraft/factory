@@ -89,7 +89,11 @@ func writeStatusLines(w io.Writer, p *Project, route *Route, snaps []Snapshot, e
 		if p.VolumeBytes > 0 {
 			disk = fmt.Sprintf("%s/%s", humanBytes(p.DiskUsedBytes), humanBytes(p.VolumeBytes))
 		}
-		_, _ = fmt.Fprintf(w, "  host %s   ip %s   disk %s   snapshot %s\n", orDash(route.HostID), orDash(route.GuestIP), disk, snapshotAge(snaps))
+		host := route.HostName
+		if host == "" {
+			host = route.HostID // an api without host_name
+		}
+		_, _ = fmt.Fprintf(w, "  host %s   ip %s   disk %s   snapshot %s\n", orDash(host), orDash(route.GuestIP), disk, snapshotAge(snaps))
 	}
 	if p.Signals != nil && p.State == "running" {
 		docker := p.Signals.Docker
@@ -101,8 +105,7 @@ func writeStatusLines(w io.Writer, p *Project, route *Route, snaps []Snapshot, e
 			_, _ = fmt.Fprintf(w, "  the environment's agent (guestd) is not answering; `repose start %s` restarts it\n", p.Slug)
 		}
 	}
-	if len(events) > 0 {
-		last := events[len(events)-1]
+	if last := newestEvent(events); last != nil {
 		agent := last.Agent
 		if agent != "" {
 			agent += " "
@@ -155,9 +158,24 @@ func humanAge(t time.Time) string {
 	return humanDuration(d) + " ago"
 }
 
+// snapshotAge and newestEvent pick by time, not position: the api lists
+// newest first and the fake oldest first, and status took the last
+// element, which showed a running project's first event
+// (guest_state_changed "creating") as its last (I-192).
 func snapshotAge(snaps []Snapshot) string {
-	if len(snaps) == 0 {
+	s := newestSnapshot(snaps)
+	if s == nil {
 		return "none"
 	}
-	return humanAge(snaps[len(snaps)-1].CreatedAt)
+	return humanAge(s.CreatedAt)
+}
+
+func newestEvent(events []Event) *Event {
+	var best *Event
+	for i := range events {
+		if best == nil || events[i].TS.After(best.TS) {
+			best = &events[i]
+		}
+	}
+	return best
 }

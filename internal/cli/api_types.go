@@ -194,9 +194,12 @@ type CatalogOption struct {
 }
 
 type Route struct {
-	HostID  string `json:"host_id"`
-	GuestIP string `json:"guest_ip"`
-	State   string `json:"state"`
+	HostID string `json:"host_id"`
+	// HostName is the host's name ("host-01"); the api has returned it
+	// since M2 and status shows it instead of the id (I-192).
+	HostName string `json:"host_name,omitempty"`
+	GuestIP  string `json:"guest_ip"`
+	State    string `json:"state"`
 }
 
 type NotifyTestResult struct {

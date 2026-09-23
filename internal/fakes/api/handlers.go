@@ -583,7 +583,11 @@ func (f *Fake) projectRoute(w http.ResponseWriter, r *http.Request) *apiError {
 	if e != nil {
 		return e
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"host_id": p.HostID, "guest_ip": p.GuestIP, "state": p.State})
+	out := map[string]string{"host_id": p.HostID, "guest_ip": p.GuestIP, "state": p.State}
+	if p.HostID != "" {
+		out["host_name"] = FakeHostName // the real api adds the host's name and state (api.md)
+	}
+	writeJSON(w, http.StatusOK, out)
 	return nil
 }
 
@@ -1073,6 +1077,9 @@ func (f *Fake) restoreByName(w http.ResponseWriter, r *http.Request) *apiError {
 				continue
 			}
 			if !p.destroyed && body.ProjectID == "" {
+				if p.State == "destroying" {
+					return errf("conflict", "%s is still being destroyed; its final snapshot is not taken yet. Try again in a few seconds", p.Slug).withDetail(map[string]any{"reason": "destroying"})
+				}
 				cands = []*project{p} // a live project with the name is the one meant
 				break
 			}

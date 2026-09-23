@@ -327,3 +327,30 @@ func renderSSHConfig(projects []Project, handle string, multiplex bool) string {
 	}
 	return b.String()
 }
+
+// refreshSSHAccess ends every command that creates a project (restore by
+// name, a snapshot restored as a new project): the certificate's
+// principals are project ids and the config has one Host block per
+// project, so a new project needs both rewritten before a plain
+// `ssh <slug>.repose` is let in (I-188). ensureCert reuses the certificate
+// on disk when it already covers every project. A failure is a warning,
+// not the command's failure: the project exists, and the next command
+// that connects issues the certificate again.
+func refreshSSHAccess(ctx context.Context, e *Env, slug string) {
+	closeMaster(ctx, e, slug) // a master left from before a destroy leads to the old guest
+	me, err := e.Client.GetMe(ctx)
+	if err == nil {
+		var projects []Project
+		projects, err = e.Client.ListProjects(ctx)
+		if err == nil {
+			var cr *certResult
+			cr, err = ensureCert(ctx, e.Client, certParams{Handle: me.Handle, Projects: projects, CheckAlias: e.TargetFor == nil}, nil)
+			if err == nil && cr.AliasProblem != "" {
+				e.warn("warning: %s", cr.AliasProblem)
+			}
+		}
+	}
+	if err != nil {
+		e.warn("Could not renew your SSH certificate for %s (%v); `repose attach %s` renews it.", slug, err, slug)
+	}
+}

@@ -84,13 +84,18 @@ type Deps struct {
 
 // RateLimits are the per-user limits from docs/interfaces/api.md.
 type RateLimits struct {
+	// General is every request that is not a GET.
 	General int
-	Certs   int
-	Config  int
+	// Reads is GET requests, which a waiting CLI and an open dashboard tab
+	// send every second or so; zero means ten times General (I-187).
+	Reads  int
+	Certs  int
+	Config int
 }
 
-// DefaultRateLimits are 60/min general, 10/min POST /certs, 5/min PUT /config.
-var DefaultRateLimits = RateLimits{General: 60, Certs: 10, Config: 5}
+// DefaultRateLimits are 60/min for writes, 600/min for reads, 10/min POST
+// /certs, 5/min PUT /config (api.md "Rate limits", DECISIONS I-187).
+var DefaultRateLimits = RateLimits{General: 60, Reads: 600, Certs: 10, Config: 5}
 
 // Server holds the routers.
 type Server struct {
@@ -99,6 +104,7 @@ type Server struct {
 	internal *http.ServeMux
 	routes   []string
 	general  *ratelimit.Limiter
+	reads    *ratelimit.Limiter
 	certs    *ratelimit.Limiter
 	cfg      *ratelimit.Limiter
 	sessions *sessionTracker
@@ -118,8 +124,11 @@ func New(d Deps) *Server {
 	if d.Limits != nil {
 		lim = *d.Limits
 	}
+	if lim.Reads == 0 {
+		lim.Reads = 10 * lim.General
+	}
 	s := &Server{d: d, user: http.NewServeMux(), internal: http.NewServeMux(),
-		general: ratelimit.New(lim.General), certs: ratelimit.New(lim.Certs), cfg: ratelimit.New(lim.Config), sessions: newSessionTracker(d.Pool)}
+		general: ratelimit.New(lim.General), reads: ratelimit.New(lim.Reads), certs: ratelimit.New(lim.Certs), cfg: ratelimit.New(lim.Config), sessions: newSessionTracker(d.Pool)}
 	s.registerUserRoutes()
 	s.registerInternalRoutes()
 	s.route(s.user, "GET /v1/notify/unsubscribe", s.unsubscribe)
@@ -374,7 +383,15 @@ func (s *Server) authed(h handler, queryToken bool) handler {
 		if u.SuspendedAt != nil && r.Pattern != "GET /v1/me" && r.Pattern != "POST /v1/billing/portal" {
 			return errf("forbidden", "account suspended")
 		}
-		if ok, retry := s.general.Allow(u.ID.String()); !ok {
+		// Reads have their own, larger bucket: two CLI polls a second
+		// through a long build (I-154) used the whole 60/min general budget
+		// that writes and the user's dashboard share, and the command
+		// ended "rate_limited: too many requests" (I-187).
+		bucket := s.general
+		if r.Method == http.MethodGet {
+			bucket = s.reads
+		}
+		if ok, retry := bucket.Allow(u.ID.String()); !ok {
 			w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())))
 			return errf("rate_limited", "too many requests")
 		}
@@ -398,6 +415,7 @@ func (s *Server) limited(l *ratelimit.Limiter, h handler) handler {
 // SweepLimiters drops idle rate-limit buckets.
 func (s *Server) SweepLimiters() {
 	s.general.Sweep(10 * time.Minute)
+	s.reads.Sweep(10 * time.Minute)
 	s.certs.Sweep(10 * time.Minute)
 	s.cfg.Sweep(10 * time.Minute)
 }
