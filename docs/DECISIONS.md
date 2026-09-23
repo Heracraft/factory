@@ -4590,12 +4590,23 @@ through a copy of the index so the real one is untouched and only
 changed files are hashed. The next probe computes the same fingerprint
 when `git status --porcelain` is non-empty; equal means the dirt is the
 laptop's own, so the run goes on and the apply sets it aside with `git
-reset --hard && git clean -fd` before laying down the new diff (the
-laptop still has those changes, or newer ones). Anything else, an edited
+stash push -u -m "repose run: last sync"` before laying down the new
+diff, and the summary line says so (the laptop still has those changes,
+or newer ones; a stash rather than a reset, so a write that lands after
+the last check, or anything misjudged, is recoverable). Anything else, an edited
 synced file, a new file, a commit, is an agent's work and still refuses.
-The apply computes the fingerprint again before it resets, and refuses
+The apply computes the fingerprint again before it stashes, and refuses
 with exit 6 if an agent wrote between the two ssh round trips. No ssh
-is added: both checks ride the existing probe and apply. *Rejected:* a
+is added: both checks ride the existing probe and apply. The fingerprint is "failed" (never matches) when `git status
+--porcelain=v2` shows any submodule change, because the superproject's
+tree records a submodule only as its commit and an edit inside one would
+not change it; it is built with a throwaway object directory, so a probe
+writes no objects. Every status, stash and reset in the sync runs with
+`-c status.showUntrackedFiles=normal -c submodule.recurse=false`
+(`--ignore-submodules=none` for status): the carry keeps both keys,
+since they are the user's preferences for the agent's own git, and the
+sync overrides them for itself instead. A run from a second laptop
+stashes the first laptop's synced changes the same way. *Rejected:* a
 list of the paths the sync wrote (an agent's edit to one of them would
 look like the sync's); `git stash create` (it leaves untracked files
 out); keeping the fingerprint on the laptop (wrong after a run from a

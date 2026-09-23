@@ -62,12 +62,18 @@ to look first.
   by construction, so the apply records a fingerprint of the tree it left
   (`HEAD` plus the tree `git add -A` would write, in the checkout's
   `.git/repose-synced`). When the next probe finds the tree dirty and the
-  fingerprint unchanged, the run goes on: the apply sets those changes
-  aside (`git reset --hard && git clean -fd`) and lays down the laptop's
-  current ones. An edit to a synced file, a new file or a commit in the
-  guest changes the fingerprint and refuses as above, including one made
-  between the probe and the apply. Both checks ride the two existing ssh
-  round trips.
+  fingerprint unchanged, the run goes on: the apply stashes those
+  changes (`git stash push -u -m "repose run: last sync"`, so nothing
+  misjudged is lost), lays down the laptop's current ones, and the summary
+  line ends "the last sync's changes stashed in the guest". An edit to a
+  synced file, a new file, a commit, or any change inside a submodule
+  changes the fingerprint and refuses as above, including one made
+  between the probe and the apply. The checks force
+  `status.showUntrackedFiles=normal` and `submodule.recurse=false`, so a
+  carried laptop setting cannot hide a file or reach into a submodule.
+  Both ride the two existing ssh round trips. A run from a second laptop
+  sees the first laptop's synced changes as the last sync's own too, and
+  stashes them in the guest the same way before laying down its own.
 - The guest never fetches from origin during a sync: it has no
   credentials for a private repository, nor for a public one behind the
   SSH `origin` guestd sets (DECISIONS I-150). The laptop sends the commits

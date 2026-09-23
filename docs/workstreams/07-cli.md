@@ -293,11 +293,14 @@ $ repose run
       at the start of step d's script. A non-empty status whose
       fingerprint (`HEAD` and the `git add -A` tree, built in a copy of the
       index) equals `.git/repose-synced` is the previous sync's own diff
-      and untracked files, not an agent's: no exit 6, and step d resets and
-      cleans it first, after checking the fingerprint again (a change in
-      between is exit 6). Step d ends by writing the fingerprint when it
-      leaves the tree dirty, and removing the file when it does not
-      (DECISIONS I-210).
+      and untracked files, not an agent's: no exit 6, and step d stashes it
+      first (`git stash push -u -m "repose run: last sync"`, said in the
+      summary line), after checking the fingerprint again (a change in
+      between is exit 6). A submodule change always fails the fingerprint.
+      Every status here runs with `-c status.showUntrackedFiles=normal -c
+      submodule.recurse=false --ignore-submodules=none`. Step d ends by
+      writing the fingerprint when it leaves the tree dirty, and removing
+      the file when it does not (DECISIONS I-210).
    c. Local: of the guest's commits, keep the ones this checkout has; `git
       bundle create` `HEAD` and `refs/remotes/origin/<branch>` excluding
       them (`--stdin`, so the list never hits the command line). Nothing is

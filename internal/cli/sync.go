@@ -54,14 +54,18 @@ func (o SyncOptions) envFiles() []envFile {
 
 // SyncSummary is what step 5e prints.
 type SyncSummary struct {
-	Modified   int
-	Untracked  int
-	Commits    int // commits the laptop sent that the guest did not have
-	Detached   bool
-	Diverged   bool // the guest's branch has commits the laptop does not; left alone
-	Branch     string
-	Head       string
-	SkippedBig []string
+	Modified  int
+	Untracked int
+	Commits   int // commits the laptop sent that the guest did not have
+	Detached  bool
+	Diverged  bool // the guest's branch has commits the laptop does not; left alone
+	// StashedLastSync: the guest still held the previous sync's changes
+	// and nothing else, and they were stashed ("repose run: last sync")
+	// before this sync's were laid down (I-210).
+	StashedLastSync bool
+	Branch          string
+	Head            string
+	SkippedBig      []string
 	// SkippedDirs are dependency and cache directories left behind
 	// (defaultSkipDirs); SkippedCap counts files past maxUntrackedBytes.
 	SkippedDirs []string
@@ -102,23 +106,42 @@ type guestProbe struct {
 	markers    map[string]string // the carry's markers (carry.go)
 }
 
-// syncedFP is the shell function that fingerprints the checkout as it
-// stands (I-210): HEAD and the tree `git add -A` would record, index and
-// working tree and every untracked file that is not ignored, built in a
-// copy of the index so the real one is untouched and only changed files
-// are hashed. The apply stores it after laying down the laptop's diff and
-// untracked files; the next probe compares, so the tree the sync itself
-// made dirty is not taken for an agent's work.
-const syncedFP = `repose_fp() {
+// syncedFP holds the shell functions every dirtiness judgement of the
+// sync goes through (I-210).
+//
+// repose_git is git with the settings a carried laptop config could turn
+// against the sync forced back: status.showUntrackedFiles=no would hide
+// the untracked files the sync wrote, and submodule.recurse=true would
+// make a stash or reset reach into a submodule. repose_dirty is the dirty
+// list, submodules included.
+//
+// repose_fp fingerprints the checkout as it stands: HEAD and the tree
+// `git add -A` would record (index, working tree and every untracked file
+// that is not ignored), built in a copy of the index so the real one is
+// untouched and only changed files are hashed, and with a throwaway
+// object directory (the real one as its alternate) so a probe leaves no
+// objects behind. A submodule is only its commit in that tree, so an edit
+// inside one would not change it: any submodule change makes the
+// fingerprint "failed", which never matches. The apply stores it after
+// laying down the laptop's diff and untracked files; the next probe
+// compares, so the tree the sync itself made dirty is not taken for an
+// agent's work.
+const syncedFP = `repose_git() { git -c status.showUntrackedFiles=normal -c submodule.recurse=false "$@"; }
+repose_dirty() { repose_git status --porcelain --ignore-submodules=none; }
+repose_fp() {
+  if repose_git status --porcelain=v2 --ignore-submodules=none | grep -q '^[12u] .. S'; then echo failed; return; fi
   i=$(mktemp)
+  o=$(mktemp -d)
   x=$(git rev-parse --git-path index)
+  a=$(cd "$(git rev-parse --git-path objects)" && pwd)
   if [ -f "$x" ]; then cp "$x" "$i"; else rm -f "$i"; fi
-  if GIT_INDEX_FILE=$i git add -A >/dev/null 2>&1 && tr=$(GIT_INDEX_FILE=$i git write-tree 2>/dev/null); then
+  if GIT_INDEX_FILE=$i GIT_OBJECT_DIRECTORY=$o GIT_ALTERNATE_OBJECT_DIRECTORIES=$a repose_git add -A >/dev/null 2>&1 &&
+     tr=$(GIT_INDEX_FILE=$i GIT_OBJECT_DIRECTORY=$o GIT_ALTERNATE_OBJECT_DIRECTORIES=$a git write-tree 2>/dev/null); then
     printf '%s %s\n' "$(git rev-parse -q --verify HEAD || echo none)" "$tr"
   else
     echo failed
   fi
-  rm -f "$i"
+  rm -rf "$i" "$o"
 }
 repose_synced=$(git rev-parse --git-path repose-synced)
 `
@@ -135,7 +158,7 @@ cd "$d"
 [ -d .git ] || git init -q
 %s
 %s
-st=$(git status --porcelain)
+st=$(repose_dirty)
 echo '#status'
 [ -z "$st" ] || printf '%%s\n' "$st"
 echo '#synced'
@@ -369,6 +392,8 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 			summary.Detached = true
 		case "#diverged":
 			summary.Detached, summary.Diverged = true, true
+		case "#stashedsync":
+			summary.StashedLastSync = true
 		}
 		if rest, ok := strings.CutPrefix(l, "#kept "); ok {
 			summary.EnvKept = append(summary.EnvKept, rest)
@@ -390,16 +415,17 @@ func applyScript(slug, head, branch, track string, bundleRefs []string, hasBundl
 	b.WriteString("t=$(mktemp -d)\ntrap 'rm -rf \"$t\"' EXIT\ntar -x -C \"$t\"\n")
 	if len(probe.dirty) > 0 {
 		switch {
+		case opts.DiscardRemote:
+			b.WriteString("if git rev-parse -q --verify HEAD >/dev/null; then repose_git reset -q --hard; fi\nrepose_git clean -fdq\n")
+		case opts.StashRemote:
+			b.WriteString("repose_git stash push -q -u -m 'repose run'\n")
 		case probe.syncedOnly:
 			// The last sync's own changes, which the laptop still has (or
-			// has replaced): set them aside the way --discard-remote
-			// does, but only if nothing moved since the probe looked.
+			// has replaced): stashed, not thrown away, so a write that
+			// lands after this check is still recoverable; and not at all
+			// if something moved since the probe looked.
 			_, _ = fmt.Fprintf(&b, "if [ \"$(repose_fp)\" != \"$(cat \"$repose_synced\" 2>/dev/null)\" ]; then echo %s >&2; exit 3; fi\n", shQuote(syncedChanged))
-			b.WriteString("git reset -q --hard\ngit clean -fdq\n")
-		case opts.StashRemote:
-			b.WriteString("git stash push -q -u -m 'repose run'\n")
-		case opts.DiscardRemote:
-			b.WriteString("if git rev-parse -q --verify HEAD >/dev/null; then git reset -q --hard; fi\ngit clean -fdq\n")
+			b.WriteString("repose_git stash push -q -u -m 'repose run: last sync'\necho '#stashedsync'\n")
 		}
 	}
 	if hasBundle {
@@ -441,7 +467,7 @@ const syncedChanged = "repose: the guest's tree changed since the sync looked at
 // (the laptop's diff, its untracked files), the fingerprint of that
 // state is stored in the checkout's .git, for the next probe (I-210);
 // a clean tree needs none.
-const recordSyncedScript = `if [ -n "$(git status --porcelain | head -n 1)" ]; then
+const recordSyncedScript = `if [ -n "$(repose_dirty | head -n 1)" ]; then
   fp=$(repose_fp)
   if [ "$fp" = failed ]; then rm -f "$repose_synced"; else printf '%s\n' "$fp" > "$repose_synced"; fi
 else
@@ -690,6 +716,9 @@ func (s *SyncSummary) String() string {
 	}
 	if s.ClonedFrom != "" {
 		line += ", history cloned from " + s.ClonedFrom
+	}
+	if s.StashedLastSync {
+		line += "; the last sync's changes stashed in the guest"
 	}
 	return line
 }
