@@ -5,6 +5,25 @@
 		<meta charset="utf-8" />
 		<link rel="icon" href="%sveltekit.assets%/favicon.png" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<!-- The app renders in the browser (ssr = false), so until the bundle's
+		     CSS arrives the page would paint the browser's default white, and a
+		     dark-mode visitor sees a white flash. These match --page in
+		     routes/layout.css so the first paint is already the right colour. -->
+		<meta name="color-scheme" content="light dark" />
+		<meta name="theme-color" content="#fbfbfa" media="(prefers-color-scheme: light)" />
+		<meta name="theme-color" content="#111110" media="(prefers-color-scheme: dark)" />
+		<style>
+			html {
+				background: #fbfbfa;
+				color: #181817;
+			}
+			@media (prefers-color-scheme: dark) {
+				html {
+					background: #111110;
+					color: #f3f3f1;
+				}
+			}
+		</style>
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
 		<link
