@@ -4559,3 +4559,16 @@ left the mechanism open or named one that does not work.
   settings first, then the host switch.
 Interfaces: `host-conventions.md` "Caches", `guest-conventions.md`
 "Caches", RUNBOOK entry, in this commit.
+
+**I-209. guestd's paths are absolute on a real guest.** (15-dev-ergonomics,
+2026-09-23; found by the guestd VM test) `sysdep.Paths` joined its paths
+under `Root`, which is empty on a real guest, and `filepath.Join("",
+"run", ...)` is the relative `run/repose/switch.log`. Every other use
+worked by accident (guestd's working directory is `/`), but I-148 passes
+the switch log to `systemd-run -p StandardOutput=append:<path>`, which
+refuses a relative path, so every `Switch` answered `internal:
+switch-to-configuration switch exited 1` ("Path run/repose/switch.log is
+not absolute"). An empty `Root` now means `/`. It reaches guests with the
+next base publish; until then a config apply or a base bump on a running
+guest fails at the switch. `TestPathsAreAbsoluteOnARealGuest`, and the
+guestd VM test's "Switch applies a new generation" subtest.
