@@ -41,11 +41,37 @@ type fakeStripe struct {
 	items         []map[string]any
 	autoTax       bool
 	invoices      []map[string]any
+	// refuseTax makes a subscription with automatic tax fail the way
+	// Stripe does for a customer it cannot locate; anchor is the
+	// billing_cycle_anchor a new subscription reports.
+	refuseTax bool
+	anchor    int64
+	// eventTimestamps holds every meter event's timestamp by identifier.
+	eventTimestamps map[string]int64
+	// pmCountry is the billing country the payment method reports, and
+	// customerCountry the one the customer was last updated with.
+	pmCountry       string
+	customerCountry string
+	// subList is every subscription created, as GET /v1/subscriptions
+	// lists them, and lastSubKey the idempotency key of the last create.
+	subList    []map[string]any
+	lastSubKey string
+	// lastCheckout is the form of the last Checkout session created.
+	lastCheckout map[string]string
+
+	// The bootstrap's objects (bootstrap_test.go).
+	products      map[string]bool
+	meters        []map[string]any
+	prices        []map[string]any
+	portalConfigs []map[string]any
+	endpoints     []map[string]any
+	taxStatus     string
 	srv           *httptest.Server
 }
 
 func newFakeStripe(t *testing.T) *fakeStripe {
-	f := &fakeStripe{events: map[string]map[string]int64{}, seen: map[string]bool{}, calls: map[string]int{}}
+	f := &fakeStripe{events: map[string]map[string]int64{}, seen: map[string]bool{}, calls: map[string]int{},
+		eventTimestamps: map[string]int64{}, products: map[string]bool{}, taxStatus: "pending"}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/customers", f.customersHandler)
 	mux.HandleFunc("/v1/customers/", f.customerUpdate)
@@ -55,6 +81,9 @@ func newFakeStripe(t *testing.T) *fakeStripe {
 	mux.HandleFunc("/v1/billing_portal/sessions", f.portal)
 	mux.HandleFunc("/v1/invoices", f.invoiceList)
 	mux.HandleFunc("/v1/billing/meters/", f.meterSummaries)
+	mux.HandleFunc("/v1/payment_methods/", f.paymentMethod)
+	mux.HandleFunc("/v1/checkout/sessions", f.checkoutSessions)
+	f.bootstrapRoutes(mux)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("fake stripe: unexpected %s %s", r.Method, r.URL.Path)
 		// The t.Errorf above is the real report; this body only keeps the
@@ -108,6 +137,12 @@ func (f *fakeStripe) customersHandler(w http.ResponseWriter, r *http.Request) {
 func (f *fakeStripe) customerUpdate(w http.ResponseWriter, r *http.Request) {
 	f.count("customer_update")
 	id := strings.TrimPrefix(r.URL.Path, "/v1/customers/")
+	_ = r.ParseForm()
+	if c := r.PostForm.Get("address[country]"); c != "" {
+		f.mu.Lock()
+		f.customerCountry = c
+		f.mu.Unlock()
+	}
 	writeStripe(w, map[string]any{"id": id, "object": "customer"})
 }
 
@@ -119,6 +154,14 @@ func (f *fakeStripe) setupIntents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (f *fakeStripe) subscriptionsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		f.count("subscription_list")
+		f.mu.Lock()
+		data := append([]map[string]any{}, f.subList...)
+		f.mu.Unlock()
+		writeStripe(w, map[string]any{"object": "list", "has_more": false, "data": data})
+		return
+	}
 	f.count("subscriptions")
 	_ = r.ParseForm()
 	f.mu.Lock()
@@ -134,10 +177,25 @@ func (f *fakeStripe) subscriptionsHandler(w http.ResponseWriter, r *http.Request
 	}
 	f.items = items
 	f.autoTax = r.PostForm.Get("automatic_tax[enabled]") == "true"
+	refuse := f.refuseTax && f.autoTax
 	f.mu.Unlock()
-	writeStripe(w, map[string]any{"id": id, "object": "subscription", "customer": r.PostForm.Get("customer"),
-		"automatic_tax": map[string]any{"enabled": r.PostForm.Get("automatic_tax[enabled]") == "true"},
-		"items":         map[string]any{"object": "list", "has_more": false, "data": items}})
+	if refuse {
+		// What Stripe answers when it cannot locate the customer for tax.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"type": "invalid_request_error",
+			"code": "customer_tax_location_invalid", "message": "The customer's location isn't recognized."}})
+		return
+	}
+	sub := map[string]any{"id": id, "object": "subscription", "customer": r.PostForm.Get("customer"), "status": "active",
+		"billing_cycle_anchor": f.anchor,
+		"automatic_tax":        map[string]any{"enabled": r.PostForm.Get("automatic_tax[enabled]") == "true"},
+		"items":                map[string]any{"object": "list", "has_more": false, "data": items}}
+	f.mu.Lock()
+	f.subList = append(f.subList, sub)
+	f.lastSubKey = r.Header.Get("Idempotency-Key")
+	f.mu.Unlock()
+	writeStripe(w, sub)
 }
 
 func (f *fakeStripe) meterEvents(w http.ResponseWriter, r *http.Request) {
@@ -150,6 +208,7 @@ func (f *fakeStripe) meterEvents(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	if !f.seen[id] {
 		f.seen[id] = true
+		f.eventTimestamps[id], _ = strconv.ParseInt(r.PostForm.Get("timestamp"), 10, 64)
 		if f.events[customer] == nil {
 			f.events[customer] = map[string]int64{}
 		}

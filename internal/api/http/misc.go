@@ -179,6 +179,29 @@ func (s *Server) billingPortal(w http.ResponseWriter, r *http.Request) error {
 
 func (s *Server) billingSetup(w http.ResponseWriter, r *http.Request) error {
 	u := userFrom(r.Context())
+	// An optional body `{"flow": "checkout"}` asks for a hosted Stripe
+	// Checkout page instead of a SetupIntent client secret (DECISIONS
+	// I-182); no body keeps the original answer.
+	var body struct {
+		Flow string `json:"flow"`
+	}
+	if r.ContentLength != 0 {
+		if err := decode(r, &body); err != nil {
+			return err
+		}
+	}
+	switch body.Flow {
+	case "", "setup_intent":
+	case "checkout":
+		url, err := s.d.Billing.SetupCheckout(r.Context(), u.ID.String())
+		if err != nil {
+			return err
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"url": url})
+		return nil
+	default:
+		return errf("invalid", "flow must be checkout or setup_intent")
+	}
 	secret, err := s.d.Billing.SetupIntent(r.Context(), u.ID.String())
 	if err != nil {
 		return err

@@ -75,8 +75,9 @@ From `DESIGN.md` §14 and `PRICING.md`, in cents, USD:
 | egress per GB beyond | 5 |
 | trial credit | 1000 |
 
-"Month" is the user's Stripe billing period (anchored at signup), not the
-calendar month. The cap applies per project per billing period to guest-hours
+"Month" is the user's Stripe billing period (anchored when the card is
+added and the subscription created, stored truncated to the hour,
+DECISIONS I-179), not the calendar month. The cap applies per project per billing period to guest-hours
 only; storage and egress are always additive. A project that changes class
 mid-period is capped at the sum of `hours_in_class × hourly` bounded by the
 larger class's cap; simpler rules were considered and rejected because they
@@ -88,10 +89,16 @@ XL trial. Recorded here as the rule; `explain` prints the arithmetic.
 On first `GET /me` after Logto sign-up, the api creates a Stripe customer
 (`metadata.user_id`, email) and stores `stripe_customer_id`. `POST
 /billing/setup` creates a SetupIntent (`usage: off_session`,
-`payment_method_types: [card]`) and returns its client secret. The
+`payment_method_types: [card]`) and returns its client secret; with
+`{"flow": "checkout"}` it creates a Stripe Checkout session in setup mode
+instead (billing address required and saved on the customer) and returns
+its URL, which is what the dashboard uses (DECISIONS I-182). The
 `setup_intent.succeeded` webhook attaches the payment method as the
-customer's default and sets `users.billing_status` from `trial` (no card)
-to `trial` (with card, `has_card = true`). A guest cannot be created or
+customer's default, copies its billing address onto the customer, creates
+the subscription (adopting a live one Stripe already has, I-181) and sets
+`users.billing_status` from `trial` (no card) to `trial` (with card,
+`has_card = true`); a `trial` account whose credit is already spent goes
+to `active` in the same statement (I-184). A guest cannot be created or
 started while `has_card` is false, whatever the trial balance: that is R2-10,
 card before compute.
 
@@ -105,7 +112,10 @@ and a card is `trial`; when the balance hits zero they become `active`
 and the next hour is billed — the transition happens in the same
 transaction as the debit that exhausted the balance, because the card gate
 refuses a `trial` account with no credit (`trial_depleted`) and an account
-that merely used its ten dollars must not be locked out of its own guests. `repose-admin billing credit` adds rows for
+that merely used its ten dollars must not be locked out of its own guests.
+The transition needs a card; an account whose card was removed before its
+credit ran out stays `trial` at zero, is refused `trial_depleted`, and
+moves to `active` when a card arrives (DECISIONS I-184). `repose-admin billing credit` adds rows for
 goodwill or refunds. Balance is `sum(cents)`, computed with an index, never
 cached on `users` (the cached column was rejected because two hourly jobs
 racing would drift it). `users.trial_credit_cents` remains as a *projection*
@@ -168,7 +178,8 @@ negative line is not allowed: the credit is consumed before the push and
 the invoice shows a "trial credit applied" memo line.
 
 Each `usage_hours` row is pushed as up to three meter events with
-`timestamp = hour`, `payload.stripe_customer_id`, `payload.value` in cents,
+`timestamp = hour + 59:59` (the hour's last second, so the hour lands in
+the same period on Stripe's side as on the rollup's, DECISIONS I-179), `payload.stripe_customer_id`, `payload.value` in cents,
 and `identifier = usage:<project_id>:<hour>:<compute|storage|egress>`, which
 is the idempotency key: Stripe enforces it as unique over a rolling window
 of at least 24 hours, and it is sent as the HTTP idempotency key as well.
@@ -184,19 +195,22 @@ amounts we computed.
 
 The Stripe configuration is `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
 `STRIPE_PRICE_{COMPUTE,STORAGE,EGRESS}`, `STRIPE_METER_{COMPUTE,STORAGE,
-EGRESS}` (the event names, defaulted to the three above) and
+EGRESS}` (the event names, defaulted to the three above),
 `STRIPE_METER_ID_{COMPUTE,STORAGE,EGRESS}` (the `mtr_...` ids reconciliation
-reads summaries from). A secret key without the webhook secret and the three
+reads summaries from), `STRIPE_PORTAL_CONFIGURATION` and
+`STRIPE_AUTOMATIC_TAX`. `repose-admin billing stripe-bootstrap`
+(`ops/stripe/bootstrap.sh`) creates every object from the secret key and
+prints the whole block (DECISIONS I-180). A secret key without the webhook secret and the three
 prices is refused at start rather than silently billing nothing; with no
 secret key at all the api starts normally and the billing routes answer
-`503 billing_disabled`. `ops/AZURE-SETUP.md` step 17 creates them.
+`503 billing_disabled`. `ops/AZURE-SETUP.md` step 17 runs the bootstrap.
 
 ### 5.6 Invoices and dunning
 
 Stripe Billing issues the invoice at period end and charges the default
 card. Webhooks handled (all idempotent on `event.id` stored in a
 `stripe_events` table): `invoice.paid` (insert or update `invoices`, set
-`active`), `invoice.payment_failed` (set `past_due`, `past_due_since`),
+`active`; a $0 invoice is recorded and changes nothing else, I-184), `invoice.payment_failed` (set `past_due`, `past_due_since`),
 `customer.subscription.deleted`, `setup_intent.succeeded`,
 `payment_method.detached` (set `has_card = false`), `charge.refunded`
 (credit ledger row). Stripe's own retry schedule (Smart Retries) is on.
@@ -266,7 +280,11 @@ invoice never disagree.
   a test clock advanced to period end; assert invoice lines: compute 1400,
   storage 400, egress 0, total 1800 minus trial credit 1000 = 800. Failed
   payment with test card `4000000000000341` triggers the 3-day stop with the
-  clock advanced.
+  clock advanced. As built: `TestStripeTestModeM4Gate`, run with
+  `REPOSE_STRIPE_TEST_KEY` (DECISIONS I-185, `docs/ops/M4-GATE.md` §2). The
+  1400/400/0/1800 are asserted on `usage_hours`; the invoice's three lines
+  are the parts left after the credit (a negative line is not allowed,
+  §5.5), which sum to 800 and equal `usage_hours`' own split per line.
 - Webhook replay test with recorded fixtures.
 - Real: the owner's own card charged once in live mode for a small amount,
   invoice checked against `explain` output.
@@ -282,50 +300,113 @@ logged as an audit event when flipped.
 
 ## 9. Checklist
 
-- [ ] `prices.go` constants equal the `PRICING.md` table; the parity test
-      exists and passes. Evidence: test name and output.
+Audited row by row by the M4 bring-up (2026-09-23, m4-billing). Rows whose
+evidence is the real Stripe account wait for the test key only; the exact
+commands that close them are `docs/ops/M4-GATE.md`, and the section is
+named on each row. Test evidence below is from
+`TMPDIR=/tmp/rt go test -count=1 -v ./internal/billing/ ./internal/admin/ ./internal/api/http/`.
+
+- [x] `prices.go` constants equal the `PRICING.md` table; the parity test
+      exists and passes. Evidence: `--- PASS: TestPricesMatchPricingDoc`
+      (parses the table in `PRICING.md`) and `TestPriceHour`.
 - [ ] Customer created at first `GET /me`; SetupIntent flow attaches a card;
       `has_card` flips on webhook. Evidence: Stripe test-mode transcript.
-- [ ] Start and create blocked without a card, with `payment_required`.
-      Evidence: API test.
-- [ ] Trial credit inserted at signup, debited before Stripe, balance
-      computed from the ledger. Evidence: integration test with concurrency.
-- [ ] Hourly rollup produces the golden `usage_hours` rows for every case in
+      **Waits for the test key: M4-GATE.md §3.1-3.2.** Offline: `TestCustomerSetupIntentAndSubscription`,
+      `TestSetupCheckoutCollectsTheAddress` (the dashboard's hosted form,
+      I-182), `TestSubscriptionAnchorsThePeriodAndEventsLandInIt`,
+      `TestSubscriptionIsAdoptedNotDoubled`, `TestSubscriptionFallsBackWhenStripeRefusesTax`;
+      the browser half `apps/web/tests/billing.spec.ts` 5/5.
+- [x] Start and create blocked without a card, with `payment_required`.
+      Evidence: `--- PASS: TestBillingGateBlocksCompute` (start and create,
+      every reason: `card_required`, `past_due`, `suspended`, `trial_depleted`;
+      exempt passes).
+- [x] Trial credit inserted at signup, debited before Stripe, balance
+      computed from the ledger. Evidence: `TestTrialCreditIsDebitedBeforeStripe`,
+      `TestCreditLedgerUnderConcurrency` (two runners), and
+      `TestTrialCreditDepletesThroughTheRollup` (sign-in inserts 1000; the
+      real rollup spends the last 5 cents: `depleting hour …: cost 7 cents,
+      credit 5, 2 billed to Stripe; account active, balance 0`).
+- [x] Hourly rollup produces the golden `usage_hours` rows for every case in
       §7, including exact storage sums and the egress threshold hour.
-      Evidence: golden test files.
-- [ ] Rollup is idempotent: run twice, zero diff. Evidence: test.
-- [ ] Cap: a guest running 720 hours in a period is charged exactly the cap;
-      360 hours exactly half. Evidence: test.
-- [ ] Class change mid-period follows 5.1 and `explain` shows it. Evidence:
-      test plus `explain` output.
+      Evidence: `TestRollupGoldenHours`, `TestStorageSumsExactlyOverAnyPeriod`,
+      `TestEgressThresholdHour`, `TestPartialHourRoundsHalfUp` (the golden
+      values are the tables in those tests).
+- [x] Rollup is idempotent: run twice, zero diff. Evidence:
+      `TestRollupIsIdempotent`.
+- [x] Cap: a guest running 720 hours in a period is charged exactly the cap;
+      360 hours exactly half. Evidence: `TestRollupCapOverAPeriod`,
+      `TestCapOverAWholePeriod`.
+- [x] Class change mid-period follows 5.1 and `explain` shows it. Evidence:
+      `TestClassChangeMidPeriodCap`, `TestExplainShowsTheArithmetic`.
 - [ ] Usage records pushed with idempotency keys, ids stored, never
       re-pushed. Evidence: Stripe test-mode log with one record per row.
+      **Waits for the test key: M4-GATE.md §2** (`TestStripeTestModeM4Gate`
+      pushes through the real rollup and reconciles against Stripe's meter
+      summaries). Offline: `TestChecklistUsageFixtureInvoicesTo800Cents`
+      (a second push sends nothing; a replay with the same identifiers
+      changes no total), `TestPushRetriesAfterAStripeFailure`.
 - [ ] Stripe fixture in §7 yields an invoice of 800 cents after credit.
-      Evidence: CI job output with the invoice id.
-- [ ] All six webhooks handled idempotently; replay test passes; signature
-      failures rejected. Evidence: test.
+      Evidence: CI job output with the invoice id. **Waits for the test key:
+      M4-GATE.md §2**, whose `M4 paid:` lines carry the invoice id and its
+      lines against `usage_hours` (DECISIONS I-185). Offline:
+      `TestChecklistUsageFixtureInvoicesTo800Cents` (1400 + 400 + 0 = 1800,
+      less 1000 = 800 pushed).
+- [x] All six webhooks handled idempotently; replay test passes; signature
+      failures rejected. Evidence: `TestAllSixWebhooks`,
+      `TestWebhookReplayIsANoOp`, `TestWebhookSignatureFailuresAreRejected`,
+      `TestBillingWebhookRoute` (the route: no bearer, 400 on a bad
+      signature with only the type logged, 200 on a duplicate),
+      `TestZeroInvoicePaidRaisesNothing` (I-184). Real Stripe payloads for
+      `invoice.paid` and `invoice.payment_failed` go through the same
+      handler in M4-GATE.md §2.
 - [ ] Past-due 3-day stop with snapshot and notification; `invoice.paid`
       reactivates without starting guests. Evidence: test with test clock.
-- [ ] Reconciliation job and `explain` exist; a deliberate mismatch raises
-      the alert and fixes nothing. Evidence: test.
-- [ ] Limits 3/1 before first paid invoice, 10/10 after. Evidence: test.
-- [ ] `repose-admin billing credit|suspend|unsuspend|reconcile|explain`
-      exist and write `audit_log`. Evidence: transcript.
-- [ ] `BILLING_ENFORCE=false` behaves as §8 and logs an audit event.
-      Evidence: test.
+      **Waits for the test key: M4-GATE.md §2, `M4 failed:` lines.**
+      Offline: `TestPastDueThreeDayStop` (day 2 nothing, day 4 stop with
+      `snapshot: true` and reason `billing`, `billing_stopped` event,
+      suspended, audit row; `invoice.paid` leaves the guest stopped).
+- [x] Reconciliation job and `explain` exist; a deliberate mismatch raises
+      the alert and fixes nothing. Evidence: `TestReconcileReportsAndFixesNothing`,
+      `TestReconcileWithoutAReaderSaysSo`, `TestExplainShowsTheArithmetic`.
+- [x] Limits 3/1 before first paid invoice, 10/10 after. Evidence:
+      `TestAllSixWebhooks` (3/1 before `invoice.paid`, 10/10 after) and
+      `TestZeroInvoicePaidRaisesNothing` (a $0 invoice raises nothing).
+- [x] `repose-admin billing credit|suspend|unsuspend|reconcile|explain`
+      exist and write `audit_log`. Evidence: `TestBillingSubcommands`
+      (each command run and its `audit_log` row read back), plus `show`,
+      `cycle-now` (`TestAccountTotalsAndCycleNow`) and `stripe-bootstrap`
+      (`TestStripeBootstrapCommandGuards`, I-180).
+- [x] `BILLING_ENFORCE=false` behaves as §8 and logs an audit event.
+      Evidence: `TestBillingEnforceFalseStopsNothing`,
+      `TestBillingEnforceFalseLetsStartsThrough`, `TestEnforcementFlipIsAudited`.
 - [ ] Stripe Tax enabled and address collected. Evidence: screenshot of a
-      test invoice with tax line.
+      test invoice with tax line. **Waits for the owner to activate Stripe
+      Tax, then M4-GATE.md §4.** The address is collected by the hosted
+      card form (`billing_address_collection=required`,
+      `TestSetupCheckoutCollectsTheAddress`) and copied to the customer
+      (`TestSubscriptionAnchorsThePeriodAndEventsLandInIt`).
 - [ ] Live-mode charge of the owner's card matches `explain`. Evidence:
-      invoice id and the arithmetic pasted.
-- [ ] Metrics for the rollup duration, the sample gap, the Stripe push
+      invoice id and the arithmetic pasted. **Waits for the owner's live
+      key and card: M4-GATE.md §5** (`billing cycle-now` makes the invoice
+      the same day).
+- [x] Metrics for the rollup duration, the sample gap, the Stripe push
       backlog and the reconciliation difference exist. They carry the
       `repose_api_*` prefix every api family uses (DECISIONS I-49, I-60,
       I-78), not the `repose_billing_*` names this list was written with:
       `repose_api_rollup_duration_seconds`,
       `repose_api_billing_gap_minutes_total`,
       `repose_api_billing_stripe_push_backlog_seconds`,
-      `repose_api_billing_mismatch_cents`. Evidence: `/metrics` scrape.
-- [ ] `PRICING.md` and `features/pricing.md` match the implementation.
-      Evidence: implementer re-read.
-- [ ] `ops/RUNBOOK.md` has: push backlog, mismatch alert, user says they
-      were overcharged (use `explain`). Evidence: entries exist.
+      `repose_api_billing_mismatch_cents`. Evidence:
+      `TestBillingMetricsAreExported` (scrapes the registry for the four
+      names); m3-web recorded 4 of the 6 billing panels with real data from
+      the production scrape (STATUS 2026-09-20).
+- [x] `PRICING.md` and `features/pricing.md` match the implementation.
+      Evidence: re-read 2026-09-23 by m4-billing; `features/pricing.md`
+      updated for the hosted card form and the `trial_depleted` row
+      (I-182, I-184); `PRICING.md` needed no change.
+- [x] `ops/RUNBOOK.md` has: push backlog, mismatch alert, user says they
+      were overcharged (use `explain`). Evidence: headings
+      `## StripePushBacklog`, `## BillingMismatch`,
+      `## A user says they were overcharged` (now starting from
+      `billing show`), and `## StripeWebhookRejected` (now pointing at
+      `bootstrap.sh --rotate-webhook`).

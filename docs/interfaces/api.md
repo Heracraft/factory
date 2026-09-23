@@ -120,8 +120,8 @@ sshd material (delivered by hostd into the same tmpfs from the explicit
 |---|---|---|
 | GET | `/usage?from=&to=` | per project per day: `{guest_hours: {small,large,xl}, gb_months, egress_gb, cost_cents, credit_cents}` |
 | POST | `/billing/portal` | → `{url}` (Stripe customer portal) |
-| POST | `/billing/setup` | → `{client_secret}` for a SetupIntent (card on file) |
-| GET | `/billing/invoices` | from Stripe, cached 5 min |
+| POST | `/billing/setup` | no body → `{client_secret}` for a SetupIntent (card on file); `{"flow": "checkout"}` → `{url}` of a Stripe Checkout page in setup mode that collects the card and the billing address and returns to `<dashboard>/billing?card=saved\|cancelled` (DECISIONS I-182); any other `flow` → `400 invalid` |
+| GET | `/billing/invoices` | from Stripe, newest first, up to 24: `[{id, number, status, currency, amount_cents, subtotal_cents, tax_cents, created_at, period_start, period_end, hosted_url, pdf_url}]` (DECISIONS I-183; `total_cents`, `created`, `hosted_invoice_url`, `pdf` are also sent until the next release) |
 | POST | `/billing/webhook` | Stripe's endpoint. No bearer token: the `Stripe-Signature` header is the authentication, verified against `STRIPE_WEBHOOK_SECRET`. Handles the six events of `09-billing.md` §5.6, idempotent on `event.id` (the `stripe_events` primary key); a duplicate answers `200 {received, duplicate}`, a bad signature `400 invalid` with the event type logged and nothing else. With no `STRIPE_SECRET_KEY` the route, like the three above, answers `503 billing_disabled` (DECISIONS I-16) |
 
 ## Internal (gateway)

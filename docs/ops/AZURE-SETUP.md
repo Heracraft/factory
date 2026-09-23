@@ -107,41 +107,38 @@ a day.
     binaries themselves, which is slower, not wrong.
 
 17. **Stripe objects and the webhook** (after the api has a hostname; do it
-    in test mode first and repeat in live mode before launch). In the Stripe
-    dashboard, or with the CLI:
+    in test mode first and repeat in live mode before launch). Nothing is
+    clicked together by hand any more (DECISIONS I-180). With the secret key
+    from the Stripe dashboard (Developers > API keys), from a checkout of
+    this repository:
 
-    - One **product**, `repose`.
-    - Three **billing meters**, event names `repose_compute_cents`,
-      `repose_storage_cents`, `repose_egress_cents`, each aggregating
-      `sum` over the payload key `value`, keyed on `stripe_customer_id`.
-      Note each meter's `mtr_...` id as well as its event name.
-    - Three **prices** on the product, one per meter, USD, recurring
-      monthly, usage-based, **$0.01 per unit** — the unit is one cent,
-      because the platform computes the amounts and Stripe adds nothing of
-      its own (DECISIONS I-77).
-    - A **webhook endpoint** at
-      `https://api.repose.herakraft.co/v1/billing/webhook` subscribed to
-      `invoice.paid`, `invoice.payment_failed`,
-      `customer.subscription.deleted`, `setup_intent.succeeded`,
-      `payment_method.detached` and `charge.refunded`. **Create it with the
-      API version the deployed `stripe-go` pins** (`2025-10-29.clover`
-      today; `go doc github.com/stripe/stripe-go/v83.APIVersion` prints the
-      current one). An endpoint on another version has every delivery
-      rejected as a version mismatch, which looks like a silent billing
-      outage. Copy the signing secret.
-    - **Stripe Tax** on, and the customer address marked required on the
-      card form, so invoices carry a tax line (09-billing.md §5.9).
-    - The **customer portal** configured to allow updating the payment
-      method and the billing address.
+    ```
+    ops/stripe/bootstrap.sh > /tmp/stripe.env     # prompts for sk_test_...
+    ```
 
-    Then set, in Coolify, the variables `ops/coolify/api.env.example`
-    lists under "Billing": `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-    `STRIPE_PRICE_{COMPUTE,STORAGE,EGRESS}` and
-    `STRIPE_METER_ID_{COMPUTE,STORAGE,EGRESS}`. Until `STRIPE_SECRET_KEY`
-    is set the api runs normally and the billing routes answer
-    `503 billing_disabled` (DECISIONS I-16); with it set but the webhook
-    secret or the prices missing, the api refuses to start rather than
-    billing nothing quietly.
+    It creates, or finds on a rerun: the product `repose`; three billing
+    meters `repose_compute_cents`, `repose_storage_cents`,
+    `repose_egress_cents` (sum of `value` per `stripe_customer_id`); three
+    monthly metered prices at $0.01 per unit, one per meter (the unit is one
+    cent, DECISIONS I-77); a customer portal configuration (card, address,
+    invoices; no cancelling); and the webhook endpoint at
+    `https://api.repose.herakraft.co/v1/billing/webhook`, subscribed to the
+    six events of 09-billing.md §5.6 and pinned to the API version the
+    deployed `stripe-go` speaks. It refuses a live key unless given
+    `--live`. `/tmp/stripe.env` is the block to paste into the api's Coolify
+    environment (both `api` and `api-grpc`); Coolify restarts the app itself.
+    Delete the file afterwards: it holds the secret key.
+
+    The one thing left in the Stripe dashboard is **Stripe Tax** (Settings >
+    Tax: the business address and registrations), which is the owner's to
+    fill in. Until it is active the block says `STRIPE_AUTOMATIC_TAX=false`;
+    rerun the bootstrap after activating it and paste the new value.
+
+    Until `STRIPE_SECRET_KEY` is set the api runs normally and the billing
+    routes answer `503 billing_disabled` (DECISIONS I-16); with it set but
+    the webhook secret or the prices missing, the api refuses to start
+    rather than billing nothing quietly. The web application needs no
+    Stripe key (I-182).
 
 ## What you do not need to do
 

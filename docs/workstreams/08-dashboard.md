@@ -39,8 +39,9 @@ API does not do for it.
 - Web terminal to the guest (DECISIONS R4-18, not built).
 - Preview URLs (DESIGN §7, later).
 - Teams, org switching (R5-6).
-- Stripe Elements beyond the SetupIntent card form (09-billing owns the
-  Stripe side; the dashboard embeds the card form and links to the portal).
+- Any embedded Stripe form (09-billing owns the Stripe side; the dashboard
+  sends the user to Stripe's hosted Checkout page to add a card and links
+  to the portal, DECISIONS I-182).
 - Admin or operator views (`repose-admin`, 05).
 
 ## 4. Interfaces
@@ -66,8 +67,9 @@ the API's audience check is the control.
 
 The dashboard has no `+server.ts` routes except `/healthz`. Nothing in
 `apps/web` reads an environment secret; the only build-time env values are
-`PUBLIC_API_URL`, `PUBLIC_LOGTO_ENDPOINT`, `PUBLIC_LOGTO_APP_ID`,
-`PUBLIC_STRIPE_PUBLISHABLE_KEY`.
+`PUBLIC_API_URL`, `PUBLIC_LOGTO_ENDPOINT`, `PUBLIC_LOGTO_APP_ID`
+(`PUBLIC_STRIPE_PUBLISHABLE_KEY` was retired with the embedded card form,
+DECISIONS I-182).
 
 ### 5.2 Routes
 
@@ -79,7 +81,7 @@ The dashboard has no `+server.ts` routes except `/healthz`. Nothing in
 | `/projects/[id]` | header with state and actions (Start, Stop, Destroy with confirm typing the slug); cards: connect (`repose run` and `ssh <slug>.repose`), signals (ssh sessions, tmux clients, agents and their state, docker containers, updated N s ago), cost (today, month, projected month at current run rate, using `GET /usage`), disk (used / allocated, Resize with a size picker), events (list from `GET /events`, newest first, agent icon, summary), snapshots (list, Create, Restore with confirm, restore-as-new with a name field), last build (status, link to config) |
 | `/projects/[id]/config` | two tabs: **Menu** and **Nix**. Menu: groups from `GET /catalog` rendered as checkbox lists with descriptions and a search box, plus a "Services" group for things like Postgres and Redis if the catalog has them; Apply sends `{menu}`. Nix: CodeMirror 6 editor with Nix syntax, Apply sends `{fragment}`. Both then open the build log panel (SSE from `/ops/:op/log`), auto-scrolled, and on failure show the error block with the fragment line highlighted in the editor. Revisions list with Re-apply. A `Hold base updates` toggle (PATCH `hold_base_updates`) with the current base version and its changelog. |
 | `/projects/[id]/secrets` | list of names with dates; Add (name, value textarea or file upload, client validates the name regex); Delete with confirm. Values are never displayed after save. |
-| `/billing` | status banner (trial credit left, past due, suspended); card on file (Stripe Elements `PaymentElement` in setup mode using `POST /billing/setup`); "Manage in Stripe" (`POST /billing/portal` → redirect); invoices table; usage chart for the month by project (bar per day, stacked by class) from `GET /usage`. |
+| `/billing` | status banner (trial credit left, past due, suspended); card on file ("Add a card" sends the user to Stripe's hosted Checkout page in setup mode from `POST /billing/setup {"flow":"checkout"}`, which comes back to `/billing?card=saved|cancelled`; DECISIONS I-182); "Manage in Stripe" (`POST /billing/portal` → redirect); invoices table; usage chart for the month by project (bar per day, stacked by class) from `GET /usage`. |
 | `/settings` | timezone (auto-detected default, select), email notifications toggle, ntfy URL field with a "Send test" button (calls `POST /me/notify-test`, added to `interfaces/api.md` by this workstream if missing: see §6), install command, SSH config hint. |
 | `/account` | handle, email, GitHub login, Delete account (types handle, calls `DELETE /me`, explains 30-day retention). |
 | `/healthz` | `200 ok` |
@@ -224,10 +226,13 @@ suites back most of it: `apps/web/tests/` against `internal/fakes/api`
       back from the api, and refuses a file over 64 KB.
 - [ ] Billing: SetupIntent card form saves a Stripe test card; portal link
       redirects; invoices and usage render from fixtures. Evidence: test
-      plus a screenshot against Stripe test mode. **Open: needs Stripe
-      test keys** (I-16 leaves billing off, so this is M4's gate rather
-      than M3's). The `billing_disabled` degradation is covered, in
-      `tests/routes.spec.ts` and `tests-live/account.spec.ts`.
+      plus a screenshot against Stripe test mode. The card form is now
+      Stripe's hosted Checkout (DECISIONS I-182). Fixture half done:
+      `tests/billing.spec.ts` 5/5 (add a card through Checkout and come
+      back to it on file, a cancelled Checkout, invoices with amount,
+      number and Stripe links, the portal redirect, billing off).
+      **Open: the screenshot against Stripe test mode, `docs/ops/M4-GATE.md`
+      §3.2, waiting for the test key.**
 - [x] Settings: timezone, email toggle, ntfy URL, test button. Evidence:
       `tests/settings-account.spec.ts`.
 - [x] Account deletion flow requires typing the handle and explains

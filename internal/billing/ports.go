@@ -51,6 +51,9 @@ func (Disabled) PushUsage(context.Context, UsageRow) (string, error) { return ""
 type Portal interface {
 	PortalURL(ctx context.Context, userID string) (string, error)
 	SetupIntent(ctx context.Context, userID string) (clientSecret string, err error)
+	// SetupCheckout is the hosted alternative to SetupIntent: the URL of a
+	// Stripe Checkout session in setup mode (DECISIONS I-182).
+	SetupCheckout(ctx context.Context, userID string) (url string, err error)
 	Invoices(ctx context.Context, userID string) ([]map[string]any, error)
 }
 
@@ -62,6 +65,9 @@ func (DisabledPortal) PortalURL(context.Context, string) (string, error) { retur
 
 // SetupIntent returns ErrDisabled.
 func (DisabledPortal) SetupIntent(context.Context, string) (string, error) { return "", ErrDisabled }
+
+// SetupCheckout returns ErrDisabled.
+func (DisabledPortal) SetupCheckout(context.Context, string) (string, error) { return "", ErrDisabled }
 
 // Invoices returns ErrDisabled.
 func (DisabledPortal) Invoices(context.Context, string) ([]map[string]any, error) {

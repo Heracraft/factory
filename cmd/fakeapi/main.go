@@ -57,6 +57,7 @@ func (a *adminServer) Close() error { return a.Server.Close() }
 //	POST /fail       {"method","path","code"} -> f.Fail
 //	POST /fail-next  {"method","path","code"} -> f.FailNext
 //	POST /unfail     {"method","path"}        -> f.Unfail
+//	POST /billing    {"mode": off|card|nocard} -> f.SetBilling
 func newAdminServer(f *api.Fake) (*adminServer, error) {
 	type req struct{ Method, Path, Code string }
 	decode := func(w http.ResponseWriter, r *http.Request) (req, bool) {
@@ -71,6 +72,23 @@ func newAdminServer(f *api.Fake) (*adminServer, error) {
 	mux.HandleFunc("POST /fail", func(w http.ResponseWriter, r *http.Request) {
 		if body, ok := decode(w, r); ok {
 			f.Fail(body.Method+" "+body.Path, body.Code)
+		}
+	})
+	mux.HandleFunc("POST /billing", func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Mode string }
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		switch body.Mode {
+		case "off":
+			f.SetBilling(api.BillingOff)
+		case "card":
+			f.SetBilling(api.BillingCard)
+		case "nocard":
+			f.SetBilling(api.BillingNoCard)
+		default:
+			http.Error(w, "mode is off, card or nocard", http.StatusBadRequest)
 		}
 	})
 	mux.HandleFunc("POST /fail-next", func(w http.ResponseWriter, r *http.Request) {

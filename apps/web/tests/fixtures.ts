@@ -91,8 +91,7 @@ export async function startAll(): Promise<void> {
 			HOST: '127.0.0.1',
 			PUBLIC_API_URL: fakeApiURL,
 			PUBLIC_LOGTO_ENDPOINT: fakeLogtoURL,
-			PUBLIC_LOGTO_APP_ID: 'dashboard-test',
-			PUBLIC_STRIPE_PUBLISHABLE_KEY: ''
+			PUBLIC_LOGTO_APP_ID: 'dashboard-test'
 		}
 	});
 	web.stderr.on('data', (d) => process.stderr.write(`[web] ${d}`));

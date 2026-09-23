@@ -1,35 +1,38 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
-	import { env } from '$env/dynamic/public';
+	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { getMe, billingSetup, billingPortal, billingInvoices, getUsage } from '$lib/api/client';
+	import {
+		getMe,
+		billingSetupCheckout,
+		billingPortal,
+		billingInvoices,
+		getUsage
+	} from '$lib/api/client';
 	import { ApiError } from '$lib/api/errors';
 	import { toastApiError } from '$lib/api/toast';
 	import { money, dateTime } from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import UsageChart from '$lib/components/UsageChart.svelte';
-	import type { Me } from '$lib/api/types';
-	import type { Stripe, StripeElements } from '@stripe/stripe-js';
+	import type { Invoice, Me } from '$lib/api/types';
 
 	let me = $state<Me | undefined>(undefined);
 	let billingDisabled = $state(false);
-	let invoices = $state<
-		Array<{ id: string; created_at: string; amount_cents: number; status: string; pdf_url?: string }>
-	>([]);
+	let invoices = $state<Invoice[]>([]);
 	let usageRows = $state<Array<{ day: string; small: number; large: number; xl: number }>>([]);
 
-	let stripe: Stripe | undefined;
-	let elements = $state<StripeElements | undefined>(undefined);
-	let cardContainer = $state<HTMLDivElement | undefined>(undefined);
-	let savingCard = $state(false);
+	let cardBusy = $state(false);
 	let portalBusy = $state(false);
 
-	async function load() {
+	async function loadMe() {
 		try {
 			me = await getMe();
 		} catch (err) {
 			toastApiError(err, 'Could not load billing status.');
 		}
+	}
+
+	async function load() {
+		await loadMe();
 
 		try {
 			invoices = await billingInvoices();
@@ -60,42 +63,43 @@
 		}
 	}
 
-	onMount(load);
-	onDestroy(() => elements?.getElement('payment')?.destroy());
-
-	async function setupCard() {
-		if (!env.PUBLIC_STRIPE_PUBLISHABLE_KEY) {
-			toast.error('Stripe is not configured in this environment.');
+	// Stripe's hosted page sends the user back with ?card=saved or
+	// ?card=cancelled (DECISIONS I-182). The card reaches the account through
+	// the setup_intent.succeeded webhook, which can land a few seconds after
+	// the redirect, so a saved card is waited for briefly.
+	async function returnedFromCheckout() {
+		const url = new URL(location.href);
+		const card = url.searchParams.get('card');
+		if (!card) return;
+		url.searchParams.delete('card');
+		history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+		if (card === 'cancelled') {
+			toast('No card was added.');
 			return;
 		}
-		try {
-			const { client_secret } = await billingSetup();
-			const { loadStripe } = await import('@stripe/stripe-js');
-			stripe = (await loadStripe(env.PUBLIC_STRIPE_PUBLISHABLE_KEY)) ?? undefined;
-			if (!stripe || !cardContainer) return;
-			elements = stripe.elements({ clientSecret: client_secret });
-			elements.create('payment').mount(cardContainer);
-		} catch (err) {
-			if (err instanceof ApiError && err.code === 'billing_disabled') billingDisabled = true;
-			else toastApiError(err, 'Could not start card setup.');
+		if (card !== 'saved') return;
+		toast.success('Card saved.');
+		for (let i = 0; i < 10 && me && !me.billing.has_card; i++) {
+			await new Promise((r) => setTimeout(r, 1500));
+			await loadMe();
 		}
 	}
 
-	async function confirmCard() {
-		if (!stripe || !elements) return;
-		savingCard = true;
-		const { error } = await stripe.confirmSetup({
-			elements,
-			confirmParams: { return_url: `${location.origin}/billing` },
-			redirect: 'if_required'
-		});
-		savingCard = false;
-		if (error) {
-			toast.error(error.message ?? 'Could not save the card.');
-			return;
-		}
-		toast.success('Card saved.');
+	onMount(async () => {
 		await load();
+		await returnedFromCheckout();
+	});
+
+	async function addCard() {
+		cardBusy = true;
+		try {
+			const { url } = await billingSetupCheckout();
+			location.href = url;
+		} catch (err) {
+			cardBusy = false;
+			if (err instanceof ApiError && err.code === 'billing_disabled') billingDisabled = true;
+			else toastApiError(err, 'Could not start card setup.');
+		}
 	}
 
 	async function openPortal() {
@@ -137,18 +141,19 @@
 	{:else}
 		<div class="form-section">
 			<h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Card on file</h2>
-			{#if me && !me.billing.has_card && !elements}
-				<button type="button" class="btn mt-3" onclick={setupCard}>Add a card</button>
-			{/if}
-			<div bind:this={cardContainer} class="mt-3"></div>
-			{#if elements}
-				<button type="button" class="btn mt-3" disabled={savingCard} onclick={confirmCard}>
-					{savingCard ? 'Saving…' : 'Save card'}
+			{#if me && !me.billing.has_card}
+				<p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+					A card is needed before a guest can start. Stripe keeps it; repose never sees the number.
+				</p>
+				<button type="button" class="btn mt-3" disabled={cardBusy} onclick={addCard}>
+					{cardBusy ? 'Opening Stripe…' : 'Add a card'}
 				</button>
+			{:else if me}
+				<p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">A card is on file.</p>
 			{/if}
 			<div class="mt-3">
 				<button type="button" class="btn-ghost px-0" disabled={portalBusy} onclick={openPortal}>
-					Manage in Stripe →
+					Manage card, address and invoices in Stripe →
 				</button>
 			</div>
 		</div>
@@ -158,12 +163,23 @@
 			{#if invoices.length === 0}
 				<p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">No invoices yet.</p>
 			{:else}
-				<ul class="mt-2">
+				<ul class="mt-2" aria-label="Invoices">
 					{#each invoices as inv (inv.id)}
 						<li class="row flex items-center justify-between text-sm">
-							<span>{dateTime(inv.created_at)} · <span class="badge">{inv.status}</span></span>
+							<span>
+								{dateTime(inv.created_at)}
+								{#if inv.number}· {inv.number}{/if}
+								· <span class="badge">{inv.status}</span>
+							</span>
 							<span>
 								{money(inv.amount_cents)}
+								{#if inv.tax_cents > 0}
+									<span class="text-zinc-500 dark:text-zinc-400">(tax {money(inv.tax_cents)})</span>
+								{/if}
+								{#if inv.hosted_url}
+									<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- external Stripe-hosted URL, not an app route -->
+									<a href={inv.hosted_url} class="link ml-2">View</a>
+								{/if}
 								{#if inv.pdf_url}
 									<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- external Stripe-hosted URL, not an app route -->
 									<a href={inv.pdf_url} class="link ml-2">PDF</a>

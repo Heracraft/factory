@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/heracraft/repose/internal/ca/testca"
@@ -85,7 +86,24 @@ type Fake struct {
 	hosts        []Host // nil means the one canned host
 	gatewayCerts int    // POST /internal/gateway-certs calls, for cache tests
 	sessions     []SessionReport
+	// billing is BillingOff, BillingCard or BillingNoCard; Options.Billing
+	// starts it at BillingCard and SetBilling changes it at run time.
+	// It is atomic rather than under mu, because handlers run under mu.
+	billing atomic.Int32
 }
+
+// Billing modes for SetBilling.
+const (
+	BillingOff    = 0 // the billing routes answer 503 billing_disabled
+	BillingCard   = 1 // active, a card on file
+	BillingNoCard = 2 // trial with credit and no card; a checkout adds one
+)
+
+// SetBilling switches the billing routes at run time, so one fake serves a
+// browser test of every state of the billing page.
+func (f *Fake) SetBilling(mode int) { f.billing.Store(int32(mode)) }
+
+func (f *Fake) billingMode() int { return int(f.billing.Load()) }
 
 type failRule struct {
 	key  string
@@ -109,6 +127,9 @@ func New(opts Options) *Fake {
 	for tok, u := range opts.Users {
 		f.addUser(u)
 		f.tokens[tok] = u.ID
+	}
+	if opts.Billing {
+		f.SetBilling(BillingCard)
 	}
 	f.register()
 	f.Server = httptest.NewServer(f)

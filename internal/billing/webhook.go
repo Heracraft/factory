@@ -176,6 +176,14 @@ func (w *Webhooks) invoicePaid(ctx context.Context, ev *stripe.Event) error {
 		if err := upsertInvoice(ctx, tx, u.ID, inv, "paid"); err != nil {
 			return err
 		}
+		if inv.Total <= 0 {
+			// A zero invoice is "paid" without money moving: the one Stripe
+			// issues when the subscription is created at card attach, and
+			// every month the trial credit covers. It settles nothing and
+			// proves no card, so it neither raises the limits nor clears a
+			// failed payment (DECISIONS I-184).
+			return nil
+		}
 		// The first paid invoice raises the limits (§5.8).
 		_, err := tx.Exec(ctx, `update users set billing_status = 'active', past_due_since = null,
 			suspended_at = case when suspended_reason = 'billing' then null else suspended_at end,
@@ -268,7 +276,15 @@ func (w *Webhooks) setupIntentSucceeded(ctx context.Context, ev *stripe.Event) e
 	if err != nil || u == nil {
 		return err
 	}
-	if _, err := w.pool.Exec(ctx, "update users set has_card = true, billing_anchor = coalesce(billing_anchor, now()) where id = $1", u.ID); err != nil {
+	// A trial account whose credit ran out while it had no card (removed
+	// while its guests kept running, §6) stayed `trial` at zero, because
+	// the end of the trial needs a card. The card arriving ends it here, or
+	// the gate would refuse its next start as trial_depleted with a card on
+	// file (DECISIONS I-184).
+	if _, err := w.pool.Exec(ctx, `update users set has_card = true, billing_anchor = coalesce(billing_anchor, now()),
+		billing_status = case when billing_status = 'trial'
+			and coalesce((select sum(cents) from credit_ledger where user_id = $1), 0) <= 0 then 'active' else billing_status end
+		where id = $1`, u.ID); err != nil {
 		return err
 	}
 	if w.OnCardAttached != nil {

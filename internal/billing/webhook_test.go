@@ -259,6 +259,39 @@ func TestWebhookWithoutASecretIsDisabled(t *testing.T) {
 	}
 }
 
+// DECISIONS I-184: the $0 invoice Stripe issues when the subscription is
+// created (and every month the credit covers) is recorded but raises no
+// limit and settles no failed payment.
+func TestZeroInvoicePaidRaisesNothing(t *testing.T) {
+	pool := testdb.Open(t)
+	a := seedAccount(t, pool, "large", base(), billing.TrialCreditCents)
+	w := newHooks(t, pool)
+	customer := "cus_" + a.Handle
+	if err := deliver(t, w, "evt_zero", billing.TypeInvoicePaid, map[string]any{"id": "in_zero", "customer": customer, "total": 0, "status": "paid"}); err != nil {
+		t.Fatal(err)
+	}
+	if invoiceCount(t, pool, "in_zero") != 1 {
+		t.Fatal("the zero invoice was not recorded")
+	}
+	var pl, xl int
+	if err := pool.QueryRow(context.Background(), "select project_limit, xl_limit from users where id = $1", a.UserID).Scan(&pl, &xl); err != nil {
+		t.Fatal(err)
+	}
+	if pl == billing.ProjectLimitPaid || userString(t, pool, a, "billing_status") != "trial" {
+		t.Fatalf("a $0 invoice raised the limits to %d/%d or moved the account to %s", pl, xl, userString(t, pool, a, "billing_status"))
+	}
+	// A past-due account stays past due on a $0 invoice.
+	if _, err := pool.Exec(context.Background(), "update users set billing_status = 'past_due', past_due_since = now() where id = $1", a.UserID); err != nil {
+		t.Fatal(err)
+	}
+	if err := deliver(t, w, "evt_zero2", billing.TypeInvoicePaid, map[string]any{"id": "in_zero2", "customer": customer, "total": 0, "status": "paid"}); err != nil {
+		t.Fatal(err)
+	}
+	if s := userString(t, pool, a, "billing_status"); s != "past_due" {
+		t.Fatalf("a $0 invoice cleared a failed payment: %s", s)
+	}
+}
+
 // --- small readers ----------------------------------------------------
 
 func userBool(t *testing.T, pool *db.Pool, a account, col string) bool {

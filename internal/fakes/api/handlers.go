@@ -98,9 +98,12 @@ func (f *Fake) meOf(u *userRec) meView {
 		url := u.NtfyURL
 		v.Notify.NtfyURL = &url
 	}
-	if f.opts.Billing {
+	switch f.billingMode() {
+	case BillingCard:
 		v.Billing = billingView{Status: "active", HasCard: true}
 		v.Limits = limitsView{Projects: 10, XL: 3}
+	case BillingNoCard:
+		v.Billing = billingView{Status: "trial", TrialCreditCents: 1000}
 	}
 	return v
 }
@@ -1191,7 +1194,7 @@ func (f *Fake) getUsage(w http.ResponseWriter, r *http.Request) *apiError {
 }
 
 func (f *Fake) billingDisabled() *apiError {
-	if f.opts.Billing {
+	if f.billingMode() != BillingOff {
 		return nil
 	}
 	return errf("billing_disabled", "billing is not configured")
@@ -1209,6 +1212,28 @@ func (f *Fake) billingSetup(w http.ResponseWriter, r *http.Request) *apiError {
 	if e := f.billingDisabled(); e != nil {
 		return e
 	}
+	// `{"flow": "checkout"}` answers the hosted page's URL (DECISIONS
+	// I-182). It points back at the dashboard's own success URL so a
+	// browser test lands where Stripe would send it.
+	var body struct {
+		Flow string `json:"flow"`
+	}
+	if r.ContentLength != 0 {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+	}
+	if body.Flow == "checkout" {
+		// Stripe would send setup_intent.succeeded while the user is on
+		// its page; the card is on file by the time they come back.
+		if f.billingMode() == BillingNoCard {
+			f.SetBilling(BillingCard)
+		}
+		back := r.Header.Get("Origin")
+		if back == "" {
+			back = "https://checkout.stripe.com"
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"url": back + "/billing?card=saved"})
+		return nil
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"client_secret": "seti_fake_secret_fake"})
 	return nil
 }
@@ -1218,8 +1243,10 @@ func (f *Fake) billingInvoices(w http.ResponseWriter, r *http.Request) *apiError
 		return e
 	}
 	writeJSON(w, http.StatusOK, []map[string]any{{
-		"id": "in_fake_000001", "amount_cents": 4900, "status": "paid",
-		"created_at": f.now().AddDate(0, -1, 0), "hosted_url": "https://invoice.stripe.com/i/fake",
+		"id": "in_fake_000001", "number": "REPOSE-0001", "status": "paid", "currency": "usd",
+		"amount_cents": 800, "subtotal_cents": 800, "tax_cents": 0,
+		"created_at": f.now().AddDate(0, -1, 0), "period_start": f.now().AddDate(0, -2, 0), "period_end": f.now().AddDate(0, -1, 0),
+		"hosted_url": "https://invoice.stripe.com/i/fake", "pdf_url": "https://pay.stripe.com/invoice/fake/pdf",
 	}})
 	return nil
 }

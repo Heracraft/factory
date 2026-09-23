@@ -1734,7 +1734,10 @@ Either way, nothing here is automatic and nothing is silent.
 
 ## A user says they were overcharged
 
-`repose-admin billing explain <project> <hour>` prints every input and each
+`repose-admin billing show <handle>` first: status, credit balance, the
+current period and what its invoice must come to, split into the three
+lines, and the last invoices the webhooks recorded (DECISIONS I-185). Then
+`repose-admin billing explain <project> <hour>`, which prints every input and each
 step of the pricing rule for one hour: the samples the hour was built from,
 the period running totals before it, which cap applied and why, the storage
 remainder, the credit taken and what reached Stripe. Walk the hours they
@@ -1768,8 +1771,10 @@ logged). Two causes, in order of likelihood:
    object it deserialises wrongly is a wrong amount. `go doc
    github.com/stripe/stripe-go/v83.APIVersion` prints what the binary
    expects; the endpoint's version is on its page in the Stripe dashboard.
-   Recreate the endpoint on the right version (`ops/AZURE-SETUP.md`
-   step 17). This is the one that appears right after an SDK upgrade.
+   Recreate it on the right version with `ops/stripe/bootstrap.sh
+   --rotate-webhook` and paste the new `STRIPE_WEBHOOK_SECRET` it prints
+   (DECISIONS I-180). This is the one that appears right after an SDK
+   upgrade.
 2. **`STRIPE_WEBHOOK_SECRET` is not this endpoint's signing secret.** A
    second endpoint, or a test-mode secret on a live-mode deployment.
 

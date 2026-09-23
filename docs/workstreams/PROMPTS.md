@@ -247,13 +247,14 @@ after 3 days. Workstream 09 is merged and passes its fixture locally
 (`internal/billing`, DECISIONS I-16, I-77); nothing has talked to a real
 Stripe account yet. In order:
 
-1. **Stripe objects in test mode** (`docs/ops/AZURE-SETUP.md` step 17): the
-   owner creates the account and hands the test secret key, webhook secret
-   and the three prices plus meter ids through the conductor; they go in
-   the api's Coolify environment (`ops/coolify/api.env.example`, the
-   `STRIPE_*` block), never in a file here. Setting them there is the
-   whole step; Coolify restarts the app itself (`ops/coolify.md` fact
-   16).
+1. **Stripe objects in test mode** (`docs/ops/M4-GATE.md` §1, DECISIONS
+   I-180): the owner hands over the test secret key and nothing else;
+   `ops/stripe/bootstrap.sh` creates the product, meters, prices, portal
+   configuration and webhook endpoint and prints the `STRIPE_*` block,
+   which goes in the api's Coolify environment, never in a file here.
+   Pasting it is the whole step; Coolify restarts the app itself
+   (`ops/coolify.md` fact 16). The rest of this block is
+   `docs/ops/M4-GATE.md` §2-§5, command by command.
 2. **The fixed usage pattern, end to end**: drive it through the api
    against host-01 where a real guest can produce it (a large guest left
    running for the hours with the volume and egress the pattern names;

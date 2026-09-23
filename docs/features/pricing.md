@@ -14,8 +14,10 @@ error: add a card before starting a guest
        https://repose.herakraft.co/billing
 ```
 
-The dashboard's billing card collects it through Stripe; the platform never
-sees the number. Until the card is on file, `repose run`, `repose start` and
+"Add a card" on the dashboard's billing page opens Stripe's own card page,
+which also asks for the billing address tax is worked out from, and comes
+back to the billing page when the card is saved (DECISIONS I-182); the
+platform never sees the number. Until the card is on file, `repose run`, `repose start` and
 creating a project all answer `payment_required` with
 `detail.reason = card_required`. The trial credit does not change this: a
 card comes before compute (DECISIONS R2-10), because a stranger with free
@@ -26,7 +28,7 @@ The other reasons the same error carries:
 | `detail.reason` | What the user did | What fixes it |
 |---|---|---|
 | `card_required` | no card on file | add one |
-| `trial_depleted` | an account still marked `trial` with no credit left | should not be reachable: the hour that exhausts the credit moves an account with a card to `active`, and an account without one is refused as `card_required` first. If it appears, the account has a card and did not move; `repose-admin users show` and the runbook |
+| `trial_depleted` | an account still marked `trial` with no credit left | the hour that exhausts the credit moves an account with a card to `active`, so this only follows a card removed before the credit ran out: adding a card ends the trial and the next start goes through (DECISIONS I-184). Anything else: `repose-admin billing show` and the runbook |
 | `past_due` | an invoice failed | update the card in the billing portal |
 | `suspended` | three days past due, or an operator suspension | pay, or email |
 

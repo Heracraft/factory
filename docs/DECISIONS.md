@@ -3792,3 +3792,157 @@ the host survives Coolify restarts. The interface is `wg-repose` (the
 file name), not `repose`, so it reads as a tunnel on a machine that runs
 other things. `repose.edge.lokiUrl` is set to the same Loki, so the edge
 ships its journal too. *Rejected:* Tailscale (above); a WireGuard container.
+
+**I-179. The billing period is the Stripe subscription's, stored at the
+hour; each usage hour is reported to Stripe at its last second.** (m4-billing,
+09, 2026-09-23) The rollup anchored periods at `users.created_at` (the
+customer is created at first `GET /me` and `EnsureCustomer` wrote
+`billing_anchor = coalesce(billing_anchor, created_at)`), while Stripe's
+subscription, created at card attach, anchors its invoices at that moment.
+A user who signed up on the 1st and added a card on the 10th had the cap,
+the storage spread and the egress allowance reset on the 1st while the
+invoice ran 10th to 10th, so one invoice could carry parts of two capped
+periods, more than the flat cap, and `reconcile` compared different
+windows. `EnsureSubscription` now stores the subscription's
+`billing_cycle_anchor`, truncated to the hour, as `billing_anchor`, which is
+what `features/pricing.md` already promised ("a month from the day the
+account added its card"). No usage exists before that, because compute
+needs a card (R2-10). Stripe's period starts at the exact second (say
+14:32:10) and the rollup's at 14:00, so a meter event stamped at the start
+of its hour would put the anchor hour before the subscription existed and,
+every later month, the anchor-day 14:00 hour into the previous invoice.
+Events are stamped at hh:59:59 instead; for any anchor inside an hour, an
+hour lands in the same period on both sides
+(`TestMeterTimestampLandsInTheRollupsPeriod`, four anchors including the
+31st and an exact hour, four months of hours each). The identifier, and so
+the idempotency, is unchanged. *Rejected:* `backdate_start_date` to the hour
+(behaviour of the cycle anchor under backdating is not something to rely
+on for money); a future `billing_cycle_anchor` at the next hour (a prorated
+stub invoice for every new card).
+
+**I-180. `repose-admin billing stripe-bootstrap` makes the Stripe objects
+and prints the api's environment.** (m4-billing, 09, 2026-09-23)
+`docs/ops/AZURE-SETUP.md` step 17 asked a human to click together a
+product, three meters, three prices and a webhook endpoint pinned to the
+SDK's API version, then copy eleven ids into Coolify; one wrong id bills
+nothing or rejects every event, silently. The command takes
+`STRIPE_SECRET_KEY` from the environment only (never argv), refuses a live
+key without `--live` before sending anything, and finds every object before
+creating it by a key Stripe holds: product id `repose`, meter event names,
+price lookup keys `repose_<part>_cents_<PriceVersion>`, a portal
+configuration marked in metadata, the endpoint's URL. A second run creates
+nothing and prints the same block, except the webhook signing secret,
+which Stripe shows only at creation; the block then says to keep the
+existing value, and `--rotate-webhook` replaces the endpoint. An existing
+meter or price with a different shape, or an endpoint on another API
+version, stops the run with what to do rather than being edited (a price is
+never edited, 09 §8). Stripe Tax is read, not activated (activation needs
+the owner's business address), and decides `STRIPE_AUTOMATIC_TAX`. The
+customer portal configuration it creates allows card, address, email, name
+and tax id updates and invoice history, and not cancelling the
+subscription, which is the platform's rather than a plan the user picked;
+the api passes it as `STRIPE_PORTAL_CONFIGURATION`, because a fresh account
+has no default configuration and every portal session would fail. Progress
+goes to stderr, the block alone to stdout. `ops/stripe/bootstrap.sh` wraps
+it with a silent prompt for the key. *Rejected:* a curl and jq script (no
+API-version pinning, and nothing to test it against); Stripe CLI fixtures
+(not idempotent, and a second tool to install).
+
+**I-181. A card is never refused over tax configuration.** (m4-billing, 09,
+2026-09-23) With `automatic_tax` on, Stripe refuses to create a
+subscription for a customer it cannot locate (`customer_tax_location_invalid`)
+or when Stripe Tax is not set up, and `OnCardAttached` runs inside the
+`setup_intent.succeeded` webhook: the card would be on file, `has_card`
+true, and no subscription, so no usage could ever be invoiced. The
+payment method's billing address is now copied onto the customer before
+the subscription is created (Stripe Tax reads `customer.address`), and a
+tax refusal retries once without automatic tax under its own idempotency
+key, with a warning log line (`action=subscription_create_no_tax`). The
+charge is still correct; the invoice carries no tax line. In the same
+path, the subscription's idempotency key was `subscription:<user id>` for
+ever: a card added again within 24 hours of `customer.subscription.deleted`
+got the deleted subscription back from Stripe's key cache, and a webhook
+retried more than 24 hours after Stripe created a subscription whose id
+never reached the database created a second one; two subscriptions on the
+same meters each invoice the same usage.
+`EnsureSubscription` now lists the customer's subscriptions first, adopts
+a live one on the compute price, and otherwise creates under
+`subscription:<user id>:<how many the customer has ever had>`
+(`TestSubscriptionIsAdoptedNotDoubled`).
+
+**I-182. The dashboard adds a card on Stripe's hosted Checkout page; the
+publishable key is retired.** (m4-billing, 08/09, 2026-09-23) The billing
+page embedded a `PaymentElement` that needed `PUBLIC_STRIPE_PUBLISHABLE_KEY`
+baked into the web image as a build argument, a second key for the owner to
+find and a rebuild of `web` to turn billing on, and it collected no full
+address, which Stripe Tax needs (09 §5.9). `POST /billing/setup` now also
+takes `{"flow": "checkout"}` and answers `{url}` of a Checkout session in
+setup mode with `billing_address_collection=required` and
+`customer_update.address=auto`; with no body it still answers
+`{client_secret}` (the old shape stays, api.md). Checkout confirms a
+SetupIntent, so the same `setup_intent.succeeded` webhook attaches the
+card and creates the subscription. It returns to `/billing?card=saved` (the
+page waits up to 15 s for the webhook to land) or `?card=cancelled`.
+`@stripe/stripe-js` and the `PUBLIC_STRIPE_PUBLISHABLE_KEY` argument are
+gone from `apps/web`. *Rejected:* keeping both forms (two code paths for one
+button); serving the publishable key from the api (still a second key to
+find).
+
+**I-183. `GET /billing/invoices` returns documented names.** (m4-billing,
+09, 2026-09-23) api.md said only "from Stripe"; the api answered
+`total_cents`, `created`, `hosted_invoice_url` and `pdf`, and the dashboard
+read `amount_cents`, `created_at` and `pdf_url`, so every real invoice
+would have rendered as `$NaN` with no date. Each element is now `{id,
+number, status, currency, amount_cents, subtotal_cents, tax_cents,
+created_at, period_start, period_end, hosted_url, pdf_url}`, written into
+api.md; the four old names are still sent for one release. The row's
+"cached 5 min" was never built and is dropped from it: the page asks once
+per visit, well inside Stripe's rate limits.
+
+**I-184. A $0 invoice settles nothing, and a card arriving at zero credit
+ends the trial.** (m4-billing, 09, 2026-09-23) Two holes in the trial's
+edges. First, Stripe marks $0 invoices `paid` (the one issued when a
+subscription is created, and every month the trial credit covers), and
+`invoice.paid` raised the limits to 10/10 and cleared `past_due`: the
+"3/1 until the first paid invoice" rule (§5.8) was void from the moment a
+card was added, and a $0 invoice could wipe a failed one. `invoice.paid`
+with `total <= 0` now records the invoice and changes nothing else.
+Second, the end of the trial requires a card, so an account whose card was
+removed while its guests ran (§6 lets them run) spent its credit and stayed
+`trial` at zero; adding a card back left it refused as `trial_depleted` with
+a card on file, the lockout 09 §5.3 set out to prevent. `setup_intent.succeeded`
+now moves a `trial` account with no credit to `active` in the same
+statement that sets `has_card`. Tests: `TestZeroInvoicePaidRaisesNothing`,
+`TestTrialCreditDepletesThroughTheRollup`.
+
+**I-185. The M4 gate is proven on Stripe test clocks with the real rollup,
+not with 100 real hours; "blocks a start at zero" means the gate's three
+refusals, not a stop.** (m4-billing, 2026-09-23) The milestone's pattern (one
+large guest, 100 hours, 40 GB, 10 GB egress) needs a whole billing period
+to invoice. `TestStripeTestModeM4Gate`, which runs only with
+`REPOSE_STRIPE_TEST_KEY=sk_test_...`, puts a customer on a test clock
+frozen 33 days back (inside Stripe's 35-day meter-event window, so every
+event is in real time's past; the clock stands a minute before the period end while they are pushed), subscribes it
+through `OnCardAttached`, writes the pattern into `meter_samples`, rolls up
+every hour of the period with the production rollup (which pushes real
+meter events), advances the clock across the period end and asserts the
+invoice lines equal the `usage_hours` rows per part and 800 cents in total.
+The failed-payment half uses `pm_card_chargeCustomerFail` (the
+4000000000000341 card), feeds the real `invoice.payment_failed` and
+`invoice.paid` event objects through the webhook handler, and runs the
+dunning job at day 2 and day 3 plus an hour; the job's clock is its `Now`,
+because `past_due_since` is the api's time, not Stripe's. What is simulated
+is only the guest's minutes (samples), which is the one input the rollup
+reads (09 §3); a real guest's samples are proven separately by the live
+short-pattern run in `docs/ops/M4-GATE.md`. On the trial, `PRICING.md` and
+`features/pricing.md` settled that the hour spending the last cent moves an
+account with a card to `active` and "nothing stops" (09 §5.3); the milestone's
+"depletes and blocks a start at zero" is therefore proven as: the credit
+depletes to exactly zero through the rollup and the account moves to
+`active` in the same transaction; at zero without a card every start and
+create is refused `card_required`; a `trial` account at zero is refused
+`trial_depleted`; and a card arriving ends the trial (I-184). *Rejected:*
+blocking starts at zero for accounts with a card (contradicts the pricing
+page and turns the trial's end into an outage); waiting 100 real hours on
+host-01 (proves the sampler, which M1 already did, at the cost of four days
+per retry).

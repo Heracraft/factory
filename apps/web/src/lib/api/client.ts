@@ -10,6 +10,7 @@ import type {
 	CatalogItem,
 	Config,
 	DestroyedProject,
+	Invoice,
 	Me,
 	MenuSelection,
 	OpStatus,
@@ -135,7 +136,8 @@ export const putConfig = (id: string, body: { fragment: string } | { menu: MenuS
 		method: 'PUT',
 		body
 	});
-export const listRevisions = (id: string) => request<Revision[]>(`/projects/${id}/config/revisions`);
+export const listRevisions = (id: string) =>
+	request<Revision[]>(`/projects/${id}/config/revisions`);
 export const applyRevision = (id: string, rev: string) =>
 	request<{ op_id: string }>(`/projects/${id}/config/revisions/${rev}/apply`, { method: 'POST' });
 export const getCatalog = () => request<CatalogItem[]>('/catalog');
@@ -162,7 +164,9 @@ export const restoreSnapshot = (id: string, snapshotId: string, asNewProject?: s
 
 // Events and logs.
 export const listEvents = (id: string, since?: string) =>
-	request<ProjectEvent[]>(`/projects/${id}/events${since ? `?since=${encodeURIComponent(since)}` : ''}`);
+	request<ProjectEvent[]>(
+		`/projects/${id}/events${since ? `?since=${encodeURIComponent(since)}` : ''}`
+	);
 
 // Usage and billing.
 export const getUsage = (from: string, to: string) =>
@@ -170,15 +174,17 @@ export const getUsage = (from: string, to: string) =>
 		`/usage?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
 	);
 export const billingPortal = () => request<{ url: string }>('/billing/portal', { method: 'POST' });
-export const billingSetup = () =>
-	request<{ client_secret: string }>('/billing/setup', { method: 'POST' });
-export const billingInvoices = () =>
-	request<
-		Array<{ id: string; created_at: string; amount_cents: number; status: string; pdf_url?: string }>
-	>('/billing/invoices');
+/** The hosted Stripe Checkout page that adds a card (DECISIONS I-182). */
+export const billingSetupCheckout = () =>
+	request<{ url: string }>('/billing/setup', { method: 'POST', body: { flow: 'checkout' } });
+export const billingInvoices = () => request<Invoice[]>('/billing/invoices');
 
 /** The build/apply log SSE URL, browser-usable with EventSource (5.3). */
-export async function opLogUrl(projectId: string, opId: string, sinceSeq?: number): Promise<string> {
+export async function opLogUrl(
+	projectId: string,
+	opId: string,
+	sinceSeq?: number
+): Promise<string> {
 	const token = await getAccessToken();
 	const params = new URLSearchParams({ access_token: token });
 	if (sinceSeq !== undefined) params.set('since', String(sinceSeq));

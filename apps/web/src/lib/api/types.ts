@@ -196,6 +196,22 @@ export interface UsageRow {
 	cost_cents: number;
 }
 
+/** One element of GET /billing/invoices (docs/interfaces/api.md, I-183). */
+export interface Invoice {
+	id: string;
+	number?: string;
+	status: string;
+	currency: string;
+	amount_cents: number;
+	subtotal_cents: number;
+	tax_cents: number;
+	created_at: string;
+	period_start: string;
+	period_end: string;
+	hosted_url?: string;
+	pdf_url?: string;
+}
+
 export interface Route {
 	host_id: string;
 	guest_ip: string;

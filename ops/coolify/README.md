@@ -72,7 +72,9 @@ Required before anything serves: `LOGTO_M2M_CLIENT_ID/SECRET` (the
 `PUBLIC_LOGTO_APP_ID` (the `repose-web` SPA), `AZURE_TENANT_ID`,
 `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (the api's Entra app registration,
 `docs/ops/AZURE-SETUP.md`). Empty until turned on: `RESEND_API_KEY`,
-`STRIPE_*`, `PUBLIC_STRIPE_PUBLISHABLE_KEY`, `OTEL_EXPORTER_OTLP_ENDPOINT`.
+`STRIPE_*` (the block `ops/stripe/bootstrap.sh` prints, DECISIONS I-180),
+`OTEL_EXPORTER_OTLP_ENDPOINT`. The web application needs no Stripe key
+(I-182).
 
 ## The api's metrics
 

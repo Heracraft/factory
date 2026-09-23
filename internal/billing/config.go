@@ -14,6 +14,10 @@ type Config struct {
 	WebhookSecret string
 	// PortalReturnURL is where Stripe's customer portal sends the user back.
 	PortalReturnURL string
+	// PortalConfiguration is the bpc_... customer portal configuration
+	// `repose-admin billing stripe-bootstrap` creates; empty uses the
+	// account's default configuration.
+	PortalConfiguration string
 
 	// The four Stripe objects of §5.5: one product, three metered prices,
 	// each attached to a billing meter whose event name is pushed per
@@ -58,20 +62,21 @@ func env(name, def string) string {
 // Stripe is configured at all.
 func ConfigFromEnv() (cfg Config, enabled bool) {
 	cfg = Config{
-		SecretKey:       strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")),
-		WebhookSecret:   strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")),
-		PortalReturnURL: env("STRIPE_PORTAL_RETURN_URL", env("DASHBOARD_URL", "https://repose.herakraft.co")+"/billing"),
-		PriceCompute:    strings.TrimSpace(os.Getenv("STRIPE_PRICE_COMPUTE")),
-		PriceStorage:    strings.TrimSpace(os.Getenv("STRIPE_PRICE_STORAGE")),
-		PriceEgress:     strings.TrimSpace(os.Getenv("STRIPE_PRICE_EGRESS")),
-		MeterCompute:    env("STRIPE_METER_COMPUTE", DefaultMeterCompute),
-		MeterStorage:    env("STRIPE_METER_STORAGE", DefaultMeterStorage),
-		MeterEgress:     env("STRIPE_METER_EGRESS", DefaultMeterEgress),
-		MeterIDCompute:  strings.TrimSpace(os.Getenv("STRIPE_METER_ID_COMPUTE")),
-		MeterIDStorage:  strings.TrimSpace(os.Getenv("STRIPE_METER_ID_STORAGE")),
-		MeterIDEgress:   strings.TrimSpace(os.Getenv("STRIPE_METER_ID_EGRESS")),
-		Enforce:         os.Getenv("BILLING_ENFORCE") != "false",
-		AutomaticTax:    os.Getenv("STRIPE_AUTOMATIC_TAX") != "false",
+		SecretKey:           strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")),
+		WebhookSecret:       strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")),
+		PortalReturnURL:     env("STRIPE_PORTAL_RETURN_URL", env("DASHBOARD_URL", "https://repose.herakraft.co")+"/billing"),
+		PortalConfiguration: strings.TrimSpace(os.Getenv("STRIPE_PORTAL_CONFIGURATION")),
+		PriceCompute:        strings.TrimSpace(os.Getenv("STRIPE_PRICE_COMPUTE")),
+		PriceStorage:        strings.TrimSpace(os.Getenv("STRIPE_PRICE_STORAGE")),
+		PriceEgress:         strings.TrimSpace(os.Getenv("STRIPE_PRICE_EGRESS")),
+		MeterCompute:        env("STRIPE_METER_COMPUTE", DefaultMeterCompute),
+		MeterStorage:        env("STRIPE_METER_STORAGE", DefaultMeterStorage),
+		MeterEgress:         env("STRIPE_METER_EGRESS", DefaultMeterEgress),
+		MeterIDCompute:      strings.TrimSpace(os.Getenv("STRIPE_METER_ID_COMPUTE")),
+		MeterIDStorage:      strings.TrimSpace(os.Getenv("STRIPE_METER_ID_STORAGE")),
+		MeterIDEgress:       strings.TrimSpace(os.Getenv("STRIPE_METER_ID_EGRESS")),
+		Enforce:             os.Getenv("BILLING_ENFORCE") != "false",
+		AutomaticTax:        os.Getenv("STRIPE_AUTOMATIC_TAX") != "false",
 	}
 	return cfg, cfg.SecretKey != ""
 }

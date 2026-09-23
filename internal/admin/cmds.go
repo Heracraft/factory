@@ -1086,6 +1086,10 @@ func (e *Env) billing(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return ErrUsage
 	}
+	if args[0] == "stripe-bootstrap" {
+		// Talks to Stripe only; no database (DECISIONS I-180).
+		return e.billingStripeBootstrap(ctx, args[1:])
+	}
 	if err := e.connect(ctx); err != nil {
 		return err
 	}
@@ -1113,6 +1117,10 @@ func (e *Env) billing(ctx context.Context, args []string) error {
 		return e.users(ctx, []string{"unsuspend", args[1]})
 	case "resync":
 		return e.billingResync(ctx, args[1:])
+	case "show":
+		return e.billingShow(ctx, args[1:])
+	case "cycle-now":
+		return e.billingCycleNow(ctx, args[1:])
 	}
 	return fmt.Errorf("%w: billing %s", ErrUsage, args[0])
 }

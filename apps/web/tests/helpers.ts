@@ -59,4 +59,16 @@ export const fail = (method: string, path: string, code: string) =>
 	adminCall('/fail', { method, path, code });
 export const unfail = (method: string, path: string) => adminCall('/unfail', { method, path });
 
+/** Switches the fake's billing routes: off (503), card, or nocard (trial, no card). */
+export async function setBilling(mode: 'off' | 'card' | 'nocard'): Promise<void> {
+	const adminURL = process.env.FAKEAPI_ADMIN_URL;
+	if (!adminURL) throw new Error('FAKEAPI_ADMIN_URL not set — run tests through global-setup.ts');
+	const res = await fetch(`${adminURL}/billing`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ mode })
+	});
+	if (!res.ok) throw new Error(`/billing: ${res.status}`);
+}
+
 export { BASE_URL };
