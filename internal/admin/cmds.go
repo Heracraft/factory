@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -1319,6 +1320,9 @@ func (e *Env) base(ctx context.Context, args []string) error {
 			fs.String("version", "", "version label (default YYYY.MM.DD)")
 			fs.String("changelog", "", "changelog line")
 			fs.Bool("security", false, "security release: applied within hours, not a day")
+			fs.String("repo", "", "repository hosts clone bases from (default $REPOSE_BASE_REPO, else "+DefaultBaseRepo+")")
+			fs.String("branch", "main", "the branch the rev must be on")
+			fs.Bool("unverified-rev", false, "skip the repository check (the repository host is down); the rev must still be a full sha")
 		})
 		if err != nil {
 			return err
@@ -1337,6 +1341,23 @@ func (e *Env) base(ctx context.Context, args []string) error {
 		if version == "" && fs.NArg() > 0 && rev != fs.Arg(0) {
 			version = fs.Arg(0)
 		}
+		repo := fs.Lookup("repo").Value.String()
+		if repo == "" {
+			repo = os.Getenv("REPOSE_BASE_REPO")
+		}
+		if repo == "" {
+			repo = DefaultBaseRepo
+		}
+		branch := fs.Lookup("branch").Value.String()
+		unverified := fs.Lookup("unverified-rev").Value.String() == "true"
+		if unverified {
+			if !fullSHA.MatchString(strings.ToLower(rev)) {
+				return fmt.Errorf("%w: --rev %q is not a full commit sha (40 hex characters), --unverified-rev or not", ErrUsage, rev)
+			}
+			rev = strings.ToLower(rev)
+		} else if rev, err = e.checkBaseRev(ctx, rev, repo, branch); err != nil {
+			return err
+		}
 		if version == "" {
 			version = time.Now().UTC().Format("2006.01.02")
 		}
@@ -1352,7 +1373,7 @@ func (e *Env) base(ctx context.Context, args []string) error {
 		if _, err := e.pool.Exec(ctx, "insert into base_versions (version, nix_rev, changelog, security) values ($1, $2, $3, $4)", version, rev, changelog, security); err != nil {
 			return err
 		}
-		if _, err := e.audited(ctx, "base_publish", version, map[string]any{"rev": rev, "security": security}); err != nil {
+		if _, err := e.audited(ctx, "base_publish", version, map[string]any{"rev": rev, "security": security, "unverified_rev": unverified}); err != nil {
 			return err
 		}
 		when := "the 04:00 UTC sweep"
@@ -1664,7 +1685,7 @@ func (e *Env) signSSH(ctx context.Context, fs *flag.FlagSet, operator bool) erro
 
 func (e *Env) operatorCert(ctx context.Context, args []string) error {
 	fs, err := flagsFor("operator-cert", args, func(fs *flag.FlagSet) {
-		fs.String("pubkey", "", "public key file (default ~/.ssh/id_ed25519.pub)")
+		fs.String("pubkey", "", "public key file, or - for stdin (default ~/.ssh/id_ed25519.pub)")
 		fs.String("ttl", "8h", "validity")
 		fs.String("name", "", "operator name (default $USER)")
 	})
@@ -1680,7 +1701,15 @@ func (e *Env) operatorCert(ctx context.Context, args []string) error {
 		home, _ := os.UserHomeDir()
 		pkFile = filepath.Join(home, ".ssh", "id_ed25519.pub")
 	}
-	b, err := os.ReadFile(pkFile)
+	var b []byte
+	if pkFile == "-" {
+		// `docker exec -i <api> repose-admin operator-cert --pubkey - <
+		// ~/.ssh/id_ed25519.pub`: the key is on the operator's machine,
+		// not in the container (ops/dev/operator-cert.sh, I-177).
+		b, err = io.ReadAll(io.LimitReader(os.Stdin, 16<<10))
+	} else {
+		b, err = os.ReadFile(pkFile)
+	}
 	if err != nil {
 		return err
 	}
@@ -1701,7 +1730,9 @@ func (e *Env) operatorCert(ctx context.Context, args []string) error {
 		return err
 	}
 	_, _ = fmt.Fprintln(e.Stdout, line)
-	_, _ = fmt.Fprintf(e.Stderr, "save as %s-cert.pub next to the key, or `ssh-add` the key after writing it; valid %s\n", strings.TrimSuffix(pkFile, ".pub"), ttl)
+	if pkFile != "-" {
+		_, _ = fmt.Fprintf(e.Stderr, "save as %s-cert.pub next to the key, or `ssh-add` the key after writing it; valid %s\n", strings.TrimSuffix(pkFile, ".pub"), ttl)
+	}
 	return nil
 }
 

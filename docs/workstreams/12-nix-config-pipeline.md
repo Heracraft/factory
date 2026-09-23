@@ -257,7 +257,10 @@ fragment mode and the menu selection is kept as history only. `PUT
 ### Base bumps
 
 `repose-admin base publish <rev> --changelog "..." [--security]` inserts a
-`base_versions` row. `internal/basebump` then, for each project with
+`base_versions` row. `<rev>` must be a full 40-hex sha that GitHub's
+compare API places on `main` of the platform repository (`--repo`,
+`$REPOSE_BASE_REPO`, default the repository hosts clone); anything else
+is refused before the row is written (DECISIONS I-173). `internal/basebump` then, for each project with
 `hold_base_updates = false` and `state in (running, stopped)`, enqueues
 `Build` with the new `baseRef` and the project's current fragment, then
 `ApplyConfig` on success (for stopped projects, the closure is just rooted

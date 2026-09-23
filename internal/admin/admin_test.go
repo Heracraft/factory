@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
@@ -19,6 +20,7 @@ import (
 	"github.com/heracraft/repose/internal/api/hostmgr"
 	"github.com/heracraft/repose/internal/api/store"
 	"github.com/heracraft/repose/internal/db/testdb"
+	"golang.org/x/crypto/ssh"
 )
 
 func TestMain(m *testing.M) { os.Exit(testdb.Run(m)) }
@@ -50,7 +52,7 @@ func TestAdminSurface(t *testing.T) {
 	if _, err := run(t, e, "db", "down", "1"); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := run(t, e, "db", "status"); err != nil || !strings.Contains(out, "pending: [3]") {
+	if out, err := run(t, e, "db", "status"); err != nil || !strings.Contains(out, "pending: [4]") {
 		t.Fatalf("after down: %s %v", out, err)
 	}
 	if _, err := run(t, e, "db", "migrate"); err != nil {
@@ -62,6 +64,29 @@ func TestAdminSurface(t *testing.T) {
 	}
 	if _, err := run(t, e, "ca", "init"); err == nil {
 		t.Fatal("second ca init should refuse")
+	}
+	// operator-cert --pubkey - reads the key from stdin, the shape
+	// `docker exec -i` gives ops/dev/operator-cert.sh (I-177).
+	opPub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sshPub, err := ssh.NewPublicKey(opPub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = pw.Write(ssh.MarshalAuthorizedKey(sshPub))
+	_ = pw.Close()
+	oldStdin := os.Stdin
+	os.Stdin = pr
+	out, err = run(t, e, "operator-cert", "--pubkey", "-", "--name", "conductor", "--ttl", "1h")
+	os.Stdin = oldStdin
+	if err != nil || !strings.HasPrefix(out, "ssh-ed25519-cert-v01@openssh.com ") {
+		t.Fatalf("operator-cert from stdin: %q %v", out, err)
 	}
 	// hosts add mints a single-use token and refuses a second without --reissue once registered.
 	out, err = run(t, e, "hosts", "add", "--name", "host-02", "--sku", "Standard_D16s_v7")
@@ -168,8 +193,22 @@ func TestAdminSurface(t *testing.T) {
 		t.Fatal(err)
 	}
 	// base
-	if _, err := run(t, e, "base", "publish", "--rev", "abc123", "--changelog", "first", "--version", "2026.09.20"); err != nil {
+	// A short sha is refused before anything is written (I-173); a full
+	// one the repository has on main is published.
+	if out, err := run(t, e, "base", "publish", "--rev", "abc123", "--changelog", "first", "--version", "2026.09.20"); err == nil || !strings.Contains(err.Error(), "not a full commit sha") {
+		t.Fatalf("short rev: %s %v", out, err)
+	}
+	fullRev := strings.Repeat("ab", 20)
+	var checked string
+	e.RevCheck = func(_ context.Context, repo, branch, sha string) error {
+		checked = repo + " " + branch + " " + sha
+		return nil
+	}
+	if _, err := run(t, e, "base", "publish", "--rev", fullRev, "--changelog", "first", "--version", "2026.09.20"); err != nil {
 		t.Fatal(err)
+	}
+	if checked != admin.DefaultBaseRepo+" main "+fullRev {
+		t.Fatalf("checked %q", checked)
 	}
 	if out, err := run(t, e, "base", "list"); err != nil || !strings.Contains(out, "2026.09.20") {
 		t.Fatalf("base list: %s %v", out, err)

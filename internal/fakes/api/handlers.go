@@ -1292,6 +1292,7 @@ func (f *Fake) internalSessions(w http.ResponseWriter, r *http.Request) *apiErro
 		ProjectID  string `json:"project_id"`
 		Event      string `json:"event"`
 		CertSerial uint64 `json:"cert_serial"`
+		SessionID  string `json:"session_id"`
 	}
 	if e := decodeBody(r, &body, false); e != nil {
 		return e
@@ -1303,7 +1304,7 @@ func (f *Fake) internalSessions(w http.ResponseWriter, r *http.Request) *apiErro
 	if !ok || p.destroyed {
 		return notFound("project")
 	}
-	f.sessions = append(f.sessions, SessionReport{ProjectID: body.ProjectID, Event: body.Event, CertSerial: body.CertSerial})
+	f.sessions = append(f.sessions, SessionReport{ProjectID: body.ProjectID, Event: body.Event, CertSerial: body.CertSerial, SessionID: body.SessionID})
 	if p.Signals == nil {
 		p.Signals = &Signals{Agents: []AgentSignal{}, GuestdOK: true}
 	}

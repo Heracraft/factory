@@ -101,7 +101,7 @@ repose snapshots list
 repose snapshots create
 repose snapshots restore SNAPSHOT_ID [--as-new NAME]
 repose destroy [PROJECT] [--yes|-y] [--wait]
-repose restore NAME [--as NEW-NAME] [--snapshot ID]
+repose restore [NAME] [--as NEW-NAME] [--snapshot ID]   # no NAME: the checkout's remote finds it
 repose logs [PROJECT] [--kind console|build|ops] [--since 1h] [--follow|-f]
 repose events [PROJECT] [--since 24h] [--follow|-f]
 repose projects [--destroyed]    # list all, ignores cwd; --destroyed: what can be restored
@@ -404,7 +404,12 @@ the command that fixes it; with no projects it says how to create one.
 `repose projects --destroyed` lists `GET /projects/destroyed`: `PROJECT
 CLASS DESTROYED SNAPSHOT SIZE RESTORABLE UNTIL`, `(name in use)` after a
 slug a live project holds, and a last line naming `repose restore NAME`;
-`--json` is the api's list (I-167).
+`--json` is the api's list (I-167). `repose restore` with no NAME inside a
+checkout restores the destroyed project whose `remote_url` is the
+checkout's normalised remote (the newest destroy when one name was
+destroyed several times); two or more names are asked about on a
+terminal and listed with exit 2 otherwise; no match exits 4 naming the
+remote (I-172).
 
 ### 5.8 Build log rendering
 

@@ -444,12 +444,18 @@ type sessionTracker struct {
 
 func newSessionTracker(pool *db.Pool) *sessionTracker { return &sessionTracker{pool: pool} }
 
-func (t *sessionTracker) update(ctx context.Context, project uuid.UUID, serial int64, opened bool) error {
+// update records one relay's open or close. A row is one relay
+// (project, certificate serial, the gateway's session id), so two
+// connections under one certificate are two sessions and closing one
+// leaves the other (DECISIONS I-176). A gateway older than I-176 sends no
+// session id; its reports share the id "" and count one per certificate,
+// as before.
+func (t *sessionTracker) update(ctx context.Context, project uuid.UUID, serial int64, sessionID string, opened bool) error {
 	if opened {
-		_, err := t.pool.Exec(ctx, "insert into gateway_sessions (project_id, cert_serial) values ($1, $2) on conflict (project_id, cert_serial) do update set opened_at = now()", project, serial)
+		_, err := t.pool.Exec(ctx, "insert into gateway_sessions (project_id, cert_serial, session_id) values ($1, $2, $3) on conflict (project_id, cert_serial, session_id) do update set opened_at = now()", project, serial, sessionID)
 		return err
 	}
-	_, err := t.pool.Exec(ctx, "delete from gateway_sessions where project_id = $1 and cert_serial = $2", project, serial)
+	_, err := t.pool.Exec(ctx, "delete from gateway_sessions where project_id = $1 and cert_serial = $2 and session_id = $3", project, serial, sessionID)
 	return err
 }
 

@@ -136,7 +136,7 @@ copy-paste version):
 | Rotate a host's mTLS cert | `repose-admin hosts rotate-cert host-NN` |
 | Rotate the Key Vault wrapping key | `az keyvault key rotate` then `repose-admin secrets rewrap` |
 | Query audit log | `repose-admin audit --user <handle> --since 24h` |
-| Publish a base version | `repose-admin base publish --rev <git sha> --changelog "..." [--security]` |
+| Publish a base version | `repose-admin base publish --rev <full 40-hex sha on main> --changelog "..." [--security]`; a short, unknown or off-main sha is refused (I-173); `--unverified-rev` skips only the GitHub check, for when GitHub is down |
 | Smoke-test a host | `repose-admin hosts smoke host-NN` (create, snapshot, stop, start, destroy a throwaway guest) |
 | Initialise the CAs (once) | `repose-admin ca init`; then `repose-admin ca sign-client --name gateway --out <dir>` for the edge |
 | Record the edge WireGuard hub | `repose-admin edge init --endpoint <ip>:51820 --pubkey <wg pub> [--out <dir>]` |
@@ -194,7 +194,9 @@ done"'`: the line carries `format`, `raw_reason`, `used_bytes`,
   slow; `iostat -x 1` during the next one.
 - `format: raw` reads the whole volume (about 16 s per 20 GB on host-01).
   `raw_reason` says why: `journal needs recovery` (the guest was killed,
-  not shut down; the next clean stop goes back to extents), `dumpe2fs
+  not shut down, or, for a running guest, its freeze did not hold until
+  the LVM snapshot: guestd's 10 s watchdog thawed first; the next
+  snapshot goes back to extents; I-171), `dumpe2fs
   failed (not ext4?)` (someone reformatted the volume), `N of M groups
   listed` (dumpe2fs output cut short: check the host's e2fsprogs). A
   hostd older than I-164 has no `format` field and always reads raw.
@@ -1119,6 +1121,33 @@ cannot fetch `/internal/hosts`, or Prometheus cannot scrape.
 
 The control plane's WireGuard private key is generated on the machine and
 never leaves it, which is why this is two moves rather than one apply.
+
+## Retiring a host's bootstrap key
+
+`repose.host.bootstrap.enable` puts the operator's plain key on the host
+so the installer and the join-token delivery can reach it (I-92). With
+`repose.host.bootstrap.keyUntilHostCA = true` (DECISIONS I-177) the key
+is accepted only while `/run/repose/host_ca.pub` is empty, so a host
+that knows the Host CA takes certificates only (14 §9) and a host that
+lost its `host.json` takes the key again. Turning it on ends plain-key
+logins the moment the CA is present, so, in order, per host:
+
+1. The host has the Host CA: `wc -c /run/repose/host_ca.pub` is non-zero
+   (else "Operator certificate refused by a host" below).
+2. From the operator machine: `ops/dev/operator-cert.sh` (an 8 h
+   certificate next to `~/.ssh/id_ed25519`, signed inside the api
+   container; the api must be at I-177 or newer for `--pubkey -`), then
+   `ssh -o HostKeyAlias=10.200.1.4 -J root@20.102.98.254:2222
+   root@10.255.0.2 true` and, on the host, `journalctl -t sshd-session -g
+   'ID operator:'` (or `-t sshd`) shows the certificate login.
+3. Set `bootstrap.keyUntilHostCA = true` in `nix/hosts/host-NN.nix` and
+   switch the host. `cat /run/repose/bootstrap_authorized_keys` is empty
+   and the log line `Host CA present; bootstrap key not accepted` is in
+   `journalctl -u repose-host-net`.
+4. Every later session runs `ops/dev/operator-cert.sh` first (the
+   certificate lasts 8 h). Break-glass if the CA is lost: the host takes
+   the bootstrap key again as soon as `host_ca.pub` is empty, and a
+   `host.json` without `host_ca_pub` empties it.
 
 ## Operator certificate refused by a host
 

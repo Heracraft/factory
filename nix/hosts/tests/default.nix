@@ -376,6 +376,13 @@ in
       # join token, and the daemon holds the stream afterwards.
       repose.host.apiAddr = "${lanIP}:8443";
       repose.host.apiCAFile = "${hostdevCA}/ca.pem";
+      # The bootstrap key is accepted only until the host has a Host CA
+      # (I-177); the pair is a throwaway test fixture.
+      repose.host.bootstrap = {
+        enable = true;
+        keyUntilHostCA = true;
+        authorizedKeys = [ (lib.fileContents ./fixtures/bootstrap_ed25519.pub) ];
+      };
     };
     testScript = ''
       api.start()
@@ -472,6 +479,19 @@ in
 
       hostdev = "hostdev --state-dir ${hostdevDir}"
 
+      with subtest("the bootstrap key works while the host has no Host CA (I-177)"):
+          # Before registration: no host.json, so no Host CA, and sshd on
+          # every address behind the input chain.
+          host.succeed("install -m 0600 ${./fixtures/bootstrap_ed25519} /root/bootstrap")
+          host.succeed("test -s /run/repose/bootstrap_authorized_keys")
+          host.fail("test -s /run/repose/host_ca.pub")
+          host.fail("test -s /etc/ssh/authorized_keys.d/root")
+          host.wait_until_succeeds("ss -tlnH | grep -q ':22 '")
+          host.succeed(
+              "ssh -n -F /dev/null -i /root/bootstrap -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "
+              "-o UserKnownHostsFile=/dev/null -o BatchMode=yes root@127.0.0.1 true </dev/null >/dev/null 2>&1"
+          )
+
       with subtest("registration consumes the join token once and is idempotent"):
           # The provider NIC reaches the api through the default-drop input
           # chain: the reply to a flow the host opened, nothing inbound.
@@ -516,6 +536,18 @@ in
           assert host.succeed("stat -c %Y /var/lib/repose/hostd/host.json").strip() == mtime
           host.succeed("rm /run/repose/join-token")
 
+      with subtest("registration brought the Host CA, so the bootstrap key is gone (I-177)"):
+          # hostdev sends its SSH CA with the registration (I-139).
+          host.succeed("test -s /run/repose/host_ca.pub")
+          host.fail("test -s /run/repose/bootstrap_authorized_keys")
+          # A key file left in root's home (host-01's install left one) is
+          # not read either.
+          host.succeed("install -d -m 0700 /root/.ssh && install -m 0600 ${./fixtures/bootstrap_ed25519.pub} /root/.ssh/authorized_keys")
+          host.fail(
+              "ssh -n -F /dev/null -i /root/bootstrap -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "
+              "-o UserKnownHostsFile=/dev/null -o BatchMode=yes root@127.0.0.1 true </dev/null >/dev/null 2>&1"
+          )
+
       with subtest("the bridge comes from the registration, and hostd holds the stream"):
           # repose-register restarts the renderer, which takes the guest /22
           # out of the host.json the api wrote: .1 of hostdev's 10.64.4.0/22.
@@ -555,6 +587,8 @@ in
           host.wait_for_unit("wg-quick-wg0.service")
           host.succeed("grep -q 'ListenAddress 10.255.0.7' /run/repose/sshd.conf")
           host.succeed("cmp /run/repose/host_ca.pub /root/ca.pub")
+          # The Host CA arrived, so the bootstrap key is gone (I-177).
+          host.fail("test -s /run/repose/bootstrap_authorized_keys")
 
       with subtest("root logs in over wg0 with a Host CA certificate and the login is audited"):
           host.succeed("ssh-keygen -q -t ed25519 -N \"\" -f /root/op")
@@ -583,6 +617,11 @@ in
           host.fail(
               "ssh -n -F /dev/null -i /root/op -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
               "-o BatchMode=yes -o CertificateFile=/dev/null root@10.255.0.7 true </dev/null >/dev/null 2>&1"
+          )
+          # With a Host CA the bootstrap key is refused too (I-177).
+          host.fail(
+              "ssh -n -F /dev/null -i /root/bootstrap -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "
+              "-o UserKnownHostsFile=/dev/null -o BatchMode=yes root@10.255.0.7 true </dev/null >/dev/null 2>&1"
           )
     '';
   };
