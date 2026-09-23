@@ -404,6 +404,13 @@ in
     '';
   };
 
+  # A real Cloud Hypervisor guest in a memory cgroup shaped by hostd's
+  # goldens, writing gigabytes with its RAM mostly used: buffered host I/O
+  # fills the unit's overhead, direct=on does not (DECISIONS I-230). The
+  # check builds the script; run ./result/bin/repose-guest-memory-repro DIR
+  # on a KVM machine (a VM test would nest the guest three levels deep).
+  host-guest-memory = import ./guest-memory.nix { inherit pkgs; };
+
   host-storage = pkgs.testers.runNixOSTest {
     name = "repose-host-storage";
     nodes.host = { ... }: {

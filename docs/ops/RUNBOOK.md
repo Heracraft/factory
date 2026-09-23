@@ -1272,11 +1272,18 @@ its 1 GB MemoryMax, or a chroot problem after a store bind-mount change).
 ## hostd: hypervisor exited unexpectedly
 
 Reason `hypervisor exited <code>` on the guest; tap and tc are torn down.
-`journalctl -u guest@<id>` and the tail of `console.log`. Code 137 is the
-`MemoryMax` cgroup limit (class RAM plus 512 MB) killing CH: the guest
-used more than its class through virtiofsd cache pressure; a larger class
-or a base bug. The api restarts once automatically, then leaves it in
-error with an event.
+`journalctl -u guest@<id>` and the tail of `console.log`. A unit that
+ends `Failed with result 'oom-kill'` (hostd may still report the exit as
+0 or 137) is the unit's `MemoryMax` (class RAM plus 512 MB) killing CH.
+The guest's RAM is shmem and fills most of that; read `journalctl -k`
+for the `Memory cgroup stats for /guests.slice/guest@<id>` block: `shmem`
+near the class size and `file_writeback` or `file` far above `shmem` is
+host page cache from the disk, which I-230 (`direct=on`) removed; check
+`cat /var/lib/repose/guests/<id>/ch.args` has `direct=on` (a guest last
+started by an older hostd does not until it is stopped and started). With
+`direct=on` and still killed, `kernel`/`anon` in that block is the
+hypervisor itself: a CH bug or leak, not the tenant. The api restarts once
+automatically, then leaves it in error with an event.
 
 ## hostd: freeze without thaw
 

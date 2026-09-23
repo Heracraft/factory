@@ -5053,3 +5053,86 @@ fetch them. `repose scan [DIR]` is the dry run the owner validates
 projects with. *Rejected:* walking the whole tree (a monorepo's
 node_modules), resolving candidates on the laptop (no nix-locate there),
 and making engines ranges that allow several majors pick one.
+
+**I-230. Guest disks are opened O_DIRECT, and guest@ units get a
+MemoryHigh 128 MiB under MemoryMax.** (implementation, guest-memory
+worker, 2026-09-23) host-01 20:16:42Z: the `large` guest of e2e-tools was
+killed by its own unit's memory cgroup while an agent ran installs
+(miniforge, playwright, gcloud, rustup, `uv pip install torch`). Kernel:
+`iou-wrk-683063 invoked oom-killer: gfp_mask=...GFP_NOFS|__GFP_WRITE,
+order=3`, `usage 8912884kB, limit 8912896kB`, stats `shmem 8586883072,
+file 9049001984, file_writeback 460988416`, stack
+`io_write -> blkdev_write_iter -> iomap_file_buffered_write`; the victim
+was cloud-hypervisor, the unit's only process. The guest's RAM is a
+`shared=on` memfd (virtio-fs needs it), charged to the unit as shmem and
+never reclaimable without swap, so of the unit's `MemoryMax` (class +
+512 MiB) only the 512 MiB is elastic. Cloud Hypervisor opened the thin
+volume without O_DIRECT, so every guest disk write became host page cache
+charged to the same unit; pages under writeback cannot be reclaimed on
+demand, 460 MB of them filled the overhead, and a GFP_NOFS order-3
+allocation had nowhere to go. Any write-heavy tenant could lose the whole
+VM (tmux, agents, unsaved state). The other large guest on host-01 was at
+8551/8704 MiB with 1.1 GiB of clean host cache when this was found.
+- *`--disk ...,image_type=raw,direct=on`* (ch.go, and the runner in
+  microvm.nix). The guest has its own page cache; the host's second copy
+  bought nothing and is what killed it. Cloud Hypervisor 53 probes the
+  volume's topology (BLKSSZGET) whether or not the disk is direct, so a
+  guest on host-01's 4096-byte-sector thin volumes already sees 4096-byte
+  logical blocks and nothing about the guest-visible disk changes; for an
+  unaligned request CH 53 bounces through an aligned buffer
+  (`block/src/aligned_file.rs`). Reads are no longer served from host
+  cache either, which is right for the same reason.
+- *`MemoryHigh = MemoryMax - 128 MiB`* (unit.go, HighMarginMiB). With the
+  disk direct, what the unit holds besides shmem is page tables and KVM's
+  second-level ones (about 4 MiB per GiB of RAM), slab, io_uring and the
+  cache of the kernel and initrd CH read: 75 MiB `kernel` on host-01's
+  8 GiB guest, 21-27 MiB of file cache in the repro. MemoryHigh only acts
+  if something unforeseen grows there again: the kernel then reclaims and
+  throttles the allocating thread instead of going straight to the OOM
+  killer, which inside the unit can only pick the hypervisor.
+- *OverheadMiB stays 512*, so host capacity math does not change:
+  hostd's FreeMemBytes and create check reserve class + 512 MiB, the api's
+  scheduler takes the least of that and its own class-RAM count, and
+  guests.slice is RAM minus the host reserve (hostd.nix). virtiofsd is its
+  own unit (`virtiofsd@<id>`, `MemoryMax=1G`, outside the reservation): it
+  serves the read-only store export, never writes, and its host cache is
+  clean and reclaimable, so `--cache auto` stays; its writes cannot reach
+  the guest unit because there are none and it is a different cgroup.
+- *No OOMScoreAdjust/OOMPolicy change*: the guest unit has one process,
+  so there is nothing to prefer inside it, and killing virtiofsd instead
+  would leave a guest without its store (CH does not reconnect a
+  vhost-user-fs backend).
+- *Rollout*: the argv and properties are rendered at each boot (create
+  and start), and reconcile never restarts a running guest, so a host
+  switch changes nothing for running guests; each gets `direct=on` and
+  MemoryHigh at its next stop/start (`ch.args` shows which a guest has).
+  The conductor may stop/start guests at a convenient time to close the
+  window; no migration is needed, and the old unit shape stays valid.
+- *Evidence*: `nix/hosts/tests/guest-memory.nix` (check
+  `host-guest-memory`, a script: a VM test would nest the guest three
+  levels deep, and it never booted that way on the dev box) runs a 512 MiB
+  guest with 200 MiB pinned and the class+overhead unit shape from the
+  goldens, before and after, on the dev box (Azure AMD, not a host; NVMe
+  temp disk). Throughput run, before: host cache in the unit 612 MiB,
+  dirty+writeback 398 MiB, memory.current 1024 of 1024 MiB, memory.events
+  `max 7353`; after: 25 MiB (kernel and initrd), 0, 543 MiB, `max 0`.
+  Sustained small+large files (the e2e-tools pattern), before: 494 MiB,
+  492 MiB dirty+writeback, 1023 of 1024, `max 1278`, 344 MiB/s; after:
+  0, 0, 518 MiB, `max 0`, 499 MiB/s. On the slower root disk the
+  sustained run was 404 MiB cache, 12.1 MiB/s before and 21 MiB,
+  22.5 MiB/s after. Guest throughput before -> after: seq write 1M direct
+  545 -> 539 MiB/s, buffered+fsync 398 -> 500, 4k QD1 direct write
+  17430 -> 14895 IOPS (-15 percent, the cost of a real write per 4k),
+  small files 405 -> 500 MiB/s, seq read 1M direct 1056 -> 1067 MiB/s.
+  None of the runs reached the kill: the dev box drains writeback faster
+  than host-01 did (460 MB under writeback there); every before run sat
+  at MemoryMax over a thousand times, one slow flush from host-01's kill.
+  The dev box's disk file has 512-byte DIO alignment, so the guest saw
+  512-byte blocks there; the 4096-byte path (host-01's thin volumes) is
+  covered by CH's topology probe and bounce code, not by this run, and is
+  checked live after the first restart (`cat
+  /sys/block/vda/queue/logical_block_size` in the guest: 4096, as before).
+  *Rejected:* a bigger overhead (any fixed margin fills at disk speed);
+  tuning the host's dirty limits (global, and pages under writeback are
+  the unreclaimable part anyway); moving the RAM to hugetlbfs (a separate
+  accounting change, not needed for this).

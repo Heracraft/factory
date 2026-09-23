@@ -168,8 +168,11 @@ at once; the two mechanisms exist so that never happens silently.
 ### Memory reservation
 
 `systemd.slices.guests` with `MemoryMax = total - 16 GB` and each guest's
-transient unit inside it with `MemoryMax = class RAM + 512 MB`. The 512 MB
-covers CH's own overhead and virtiofsd's cache. The slice cap is the hard
+transient unit inside it with `MemoryMax = class RAM + 512 MB` and
+`MemoryHigh` 128 MB below it. The 512 MB covers CH's own overhead (page
+tables, io_uring, slab, the kernel and initrd it read); virtiofsd is its own
+unit with `MemoryMax=1G`, and the disk is opened O_DIRECT so guest disk
+writes never become host page cache in the unit (DECISIONS I-230). The slice cap is the hard
 line that keeps hostd, virtiofsd and builds alive if the reservation
 accounting in the api is ever wrong.
 

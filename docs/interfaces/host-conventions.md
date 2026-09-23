@@ -206,8 +206,10 @@ so publish a guest base without the settings first (see I-208).
 hostd renders the `cloud-hypervisor` argv from the guest's system closure
 (`kernel`, `initrd`, `init`, `kernel-params`) and its record (DECISIONS
 I-27) and runs it with `systemd-run --unit guest@<id> --property
-MemoryMax=<class RAM + 512M> --property CPUQuota=<vcpus*100>% --property
-Slice=guests.slice --property User=hostd` and the sandbox of DECISIONS
+MemoryMax=<class RAM + 512M> --property MemoryHigh=<class RAM + 384M>
+--property CPUQuota=<vcpus*100>% --property Slice=guests.slice --property
+User=hostd` (MemoryHigh since I-230; a unit started earlier has only
+MemoryMax until its next start) and the sandbox of DECISIONS
 I-51, pinned verbatim by `internal/hostd/guest/testdata/unit.golden`:
 `NoNewPrivileges=yes`, `CapabilityBoundingSet=` (empty), `UMask=0077`,
 `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`,
@@ -222,7 +224,11 @@ rw`, `DeviceAllow=/dev/vg-guests/g-<id> rw`, `RestrictAddressFamilies=AF_UNIX
 AF_VSOCK`. Cloud Hypervisor therefore runs as `hostd` (in group `kvm`,
 owner of the tap, group of its own volume through the udev rule in
 `virt.nix`), sees only its own guest directory, and can open exactly three
-device nodes. The devices: `--disk path=/dev/vg-guests/g-<id>,image_type=raw` (I-63),
+device nodes. The devices: `--disk path=/dev/vg-guests/g-<id>,image_type=raw,direct=on`
+(I-63; `direct=on` since I-230: the volume is opened O_DIRECT so the guest's
+disk I/O never lands in host page cache charged to the unit, whose RAM part
+is unreclaimable shmem; the guest sees the volume's own 4096-byte logical
+blocks either way),
 `--net tap=tap-<8hex>,mac=52:54:<4 bytes of the id's sha256>`, `--fs tag=ro-store,socket=
 virtiofsd/virtiofsd.sock`, `--vsock cid=<1000+index>,socket=vsock.sock`,
 `--serial socket=console.sock`, `--console off`, `--memory
