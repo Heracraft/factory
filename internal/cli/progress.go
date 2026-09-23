@@ -1,0 +1,208 @@
+package cli
+
+import (
+	"fmt"
+	"io"
+	"os"
+
+	"sync"
+	"time"
+)
+
+// progress shows what a long command is doing (DECISIONS I-154): on a
+// terminal, one live line with a spinner, the phase and its elapsed time,
+// replaced by a "✓ <done>  <time>" line when the phase ends; elsewhere, one
+// plain "<phase>..." line per phase and nothing that redraws. It writes to
+// stderr only, so stdout stays the command's result (07-cli.md §5.12).
+// Every method is safe on a nil *progress, which is what tests and the
+// commands that have no phases pass.
+type progress struct {
+	w     io.Writer
+	tty   bool
+	now   func() time.Time
+	start time.Time
+
+	mu         sync.Mutex
+	label      string // the running phase, "" between phases
+	done       string // what its ✓ line says when it ends ("" prints none)
+	phaseStart time.Time
+	drawn      bool // a spinner line is on screen and must be cleared before any other output
+	frame      int
+	stop       chan struct{}
+	stopped    chan struct{}
+}
+
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+func newProgress(w io.Writer, tty bool) *progress {
+	p := &progress{w: w, tty: tty, now: time.Now}
+	p.start = p.now()
+	return p
+}
+
+// isTerminal reports whether f is a character device, which is what a
+// terminal is; good enough to decide whether to draw a spinner, and it
+// needs no terminal library.
+func isTerminal(f *os.File) bool {
+	if f == nil {
+		return false
+	}
+	if os.Getenv("TERM") == "dumb" || os.Getenv("REPOSE_NO_SPINNER") == "1" {
+		return false
+	}
+	info, err := f.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+// Phase ends the current phase (printing its done line) and starts label.
+// done is what the ✓ line says when this phase ends ("" for a phase whose
+// result the caller prints itself).
+func (p *progress) Phase(label, done string) {
+	if p == nil {
+		return
+	}
+	p.End()
+	p.mu.Lock()
+	p.label, p.done, p.phaseStart = label, done, p.now()
+	if !p.tty {
+		_, _ = fmt.Fprintf(p.w, "%s...\n", label)
+		p.mu.Unlock()
+		return
+	}
+	p.stop, p.stopped = make(chan struct{}), make(chan struct{})
+	p.drawLocked()
+	stop, stopped := p.stop, p.stopped
+	p.mu.Unlock()
+	go func() {
+		defer close(stopped)
+		t := time.NewTicker(100 * time.Millisecond)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				p.mu.Lock()
+				p.frame++
+				p.drawLocked()
+				p.mu.Unlock()
+			}
+		}
+	}()
+}
+
+// End finishes the current phase: on a terminal the spinner line becomes
+// the ✓ line (or disappears when the phase has no done text).
+func (p *progress) End() {
+	if p == nil {
+		return
+	}
+	p.halt()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.label == "" {
+		return
+	}
+	p.clearLocked()
+	if p.tty && p.done != "" {
+		_, _ = fmt.Fprintf(p.w, "✓ %s  %s\n", p.done, fmtElapsed(p.now().Sub(p.phaseStart)))
+	}
+	p.label, p.done = "", ""
+}
+
+// Fail ends the current phase without a ✓, before an error is printed.
+func (p *progress) Fail() {
+	if p == nil {
+		return
+	}
+	p.halt()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.clearLocked()
+	p.label, p.done = "", ""
+}
+
+// Total is the time since the command started.
+func (p *progress) Total() time.Duration {
+	if p == nil {
+		return 0
+	}
+	return p.now().Sub(p.start)
+}
+
+// Write lets streamed output (the build log) pass through without
+// tearing the spinner line: clear it, write, draw it again.
+func (p *progress) Write(b []byte) (int, error) {
+	if p == nil {
+		return len(b), nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.clearLocked()
+	n, err := p.w.Write(b)
+	if p.label != "" && p.tty {
+		p.drawLocked()
+	}
+	return n, err
+}
+
+func (p *progress) halt() {
+	p.mu.Lock()
+	stop, stopped := p.stop, p.stopped
+	p.stop, p.stopped = nil, nil
+	p.mu.Unlock()
+	if stop != nil {
+		close(stop)
+		<-stopped
+	}
+}
+
+func (p *progress) drawLocked() {
+	if !p.tty || p.label == "" {
+		return
+	}
+	frame := spinnerFrames[p.frame%len(spinnerFrames)]
+	_, _ = fmt.Fprintf(p.w, "\r\033[K%s %s  %s", frame, p.label, fmtElapsed(p.now().Sub(p.phaseStart)))
+	p.drawn = true
+}
+
+func (p *progress) clearLocked() {
+	if p.drawn {
+		_, _ = fmt.Fprint(p.w, "\r\033[K")
+		p.drawn = false
+	}
+}
+
+// fmtElapsed is "0.4s", "12s", "1m04s".
+func fmtElapsed(d time.Duration) string {
+	switch {
+	case d < 10*time.Second:
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Round(time.Second).Seconds()))
+	default:
+		d = d.Round(time.Second)
+		return fmt.Sprintf("%dm%02ds", int(d/time.Minute), int((d%time.Minute)/time.Second))
+	}
+}
+
+// phaseForState is the progress label for a project state seen while
+// waiting on an op, and its done text.
+func phaseForState(slug, state string) (label, done string) {
+	switch state {
+	case "creating":
+		return "Creating " + slug, "Created " + slug
+	case "building":
+		return "Building the environment", "Built the environment"
+	case "starting":
+		return "Booting " + slug, "Booted " + slug
+	case "stopping":
+		return "Stopping " + slug, "Stopped " + slug
+	case "restoring":
+		return "Restoring " + slug, "Restored " + slug
+	case "destroying":
+		return "Destroying " + slug, "Destroyed " + slug
+	default:
+		return "", ""
+	}
+}

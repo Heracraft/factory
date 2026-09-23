@@ -63,8 +63,15 @@ func TestRunCreatesStartsAndAttachesNewProject(t *testing.T) {
 	if len(projects) != 1 || projects[0].Slug != testSlug || projects[0].State != "running" {
 		t.Fatalf("projects = %+v", projects)
 	}
-	if f.env.Cache.ByDir[f.local] != projects[0].ID {
-		t.Fatalf("by_dir cache not populated: %+v", f.env.Cache.ByDir)
+	// The checkout has a remote, so the project is cached under it and
+	// not under the directory (I-152: by_dir is for --name projects with
+	// no remote only).
+	remote := gitRemoteOrigin(f.local)
+	if f.env.Cache.ByRemote[remote].ProjectID != projects[0].ID {
+		t.Fatalf("by_remote cache not populated for %q: %+v", remote, f.env.Cache.ByRemote)
+	}
+	if len(f.env.Cache.ByDir) != 0 {
+		t.Fatalf("by_dir written for a project with a remote: %+v", f.env.Cache.ByDir)
 	}
 }
 
@@ -123,6 +130,17 @@ func TestRunWithPromptSendsIntoTmuxWindow(t *testing.T) {
 // only checks) and no CLAUDE_CODE_OAUTH_TOKEN secret means attach instead
 // of sending, so the user can finish the login themselves.
 func TestRunClaudeNotLoggedInAttachesInstead(t *testing.T) {
+	// A machine with the real Claude Code on PATH (a developer's, this
+	// repo's dev box) would start it in the fake guest, where it writes
+	// into the test's temporary home while cleanup removes it. A stand-in
+	// that just waits keeps the window alive without touching anything;
+	// set before the fixture starts tmux, whose server keeps this PATH.
+	stub := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stub, "claude"), []byte("#!/bin/sh\nexec sleep 60\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", stub+string(os.PathListSeparator)+os.Getenv("PATH"))
+
 	fake := fakeapi.New(fakeapi.Options{})
 	defer fake.Close()
 	f := newRunFixture(t, fake)

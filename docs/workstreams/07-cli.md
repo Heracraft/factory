@@ -83,12 +83,12 @@ paths, `REPOSE=1`).
 ```
 repose login [--no-browser]
 repose logout
-repose run [PROMPT] [--agent claude|opencode|codex|gemini|pi] [--size small|large|xl]
+repose run [PROMPT...] [--agent claude|opencode|codex|gemini|pi] [--size small|large|xl]
             [--name NAME] [--stash-remote | --discard-remote] [--no-sync] [--no-attach]
-repose attach
-repose start
-repose stop [--no-snapshot]
-repose status [--json] [--watch]
+repose attach [PROJECT]
+repose start [PROJECT]
+repose stop [PROJECT] [--no-snapshot]
+repose status [PROJECT] [--json] [--watch]
 repose open PORT [--local-port N] [--no-browser]
 repose open --desktop [--no-browser]
 repose secrets set NAME [--from-file PATH] [--from-env]
@@ -100,8 +100,9 @@ repose config apply [PATH]      # PATH defaults to ./repose.nix if present, else
 repose snapshots list
 repose snapshots create
 repose snapshots restore SNAPSHOT_ID [--as-new NAME]
-repose destroy [--yes]
-repose logs [--kind console|build|ops] [--since 1h] [--follow]
+repose destroy [PROJECT] [--yes|-y]
+repose logs [PROJECT] [--kind console|build|ops] [--since 1h] [--follow|-f]
+repose events [PROJECT] [--since 24h] [--follow|-f]
 repose projects                  # list all, ignores cwd
 repose version
 repose completion bash|zsh|fish
@@ -112,6 +113,17 @@ repose browser bridge            # reserved, prints not-available message
 Global flags: `--project ID|SLUG` (or `REPOSE_PROJECT`), `--api-url` (or
 `REPOSE_API_URL`), `--json` on read commands, `-v` for debug logging to
 stderr.
+
+PROJECT (DECISIONS I-155): the commands whose object is a project take it
+as their one argument, docker-style; `--project` and `REPOSE_PROJECT` keep
+working, the same project named both ways is fine, two different ones is
+exit 2. `run`'s argument stays the prompt (all remaining words, joined),
+and a one-word prompt equal to one of the user's slugs is refused with
+exit 2 pointing at `--project`/`attach` (`--agent` sends it anyway).
+`open`, `secrets`, `config`, `snapshots` keep `--project` because their
+argument is something else. A command given an argument it does not take
+exits 2; so do unknown commands and flags. Completion offers the
+account's slugs for PROJECT and `--project`.
 
 ### 5.2 Login
 
@@ -163,19 +175,21 @@ config in place.
 
 Order:
 
-1. `--project` / `REPOSE_PROJECT`: id or slug, resolved via `GET
-   /projects` (cache updated).
-2. `projects.json` `by_dir[<abs cwd>]` (set when a project was created with
-   `--name` in that directory).
+1. PROJECT / `--project` / `REPOSE_PROJECT`: id or slug, resolved via `GET
+   /projects`. Writes nothing to the cache (DECISIONS I-152).
+2. `projects.json` `by_dir[<repo root, else cwd>]` (set only when `run`
+   created a project with no remote there), used only when that project's
+   `remote_url` equals the directory's normalised remote (both empty for
+   such a project); a mismatched or 404 entry is deleted.
 3. `git remote get-url origin` in the cwd's repo root, normalised
-   (`interfaces/cli-config.md`), then `projects.json[<remote>]`, then `GET
-   /projects` filtered by `remote_url`.
+   (`interfaces/cli-config.md`), then `projects.json[<remote>]` (checked the
+   same way), then `GET /projects` filtered by `remote_url`.
 4. Nothing found and the command is `run`: create (see 5.5). Nothing found
    and the command is anything else: exit 4 with
 
    ```
    No repose project for github.com/a/b. Run `repose run` here to create one,
-   or pass --project.
+   or name one: `repose attach PROJECT`.
    ```
 
 No git remote and no `--name` on `run`: exit 2 with
@@ -188,25 +202,38 @@ This directory has no git remote. Pass --name NAME to create a project anyway.
 
 `ensureCert(projectIDs)`:
 
-- Read `~/.ssh/repose/id_ed25519-cert.pub`; if present, valid for more
-  than 30 minutes, and its principals cover the requested project ids,
-  reuse it.
-- Else ensure `~/.ssh/id_ed25519` exists (`ssh-keygen -t ed25519 -N ""` with
-  a comment `repose` if missing; never touch an existing key), `POST /certs`
-  with the public key and the project ids the user has (all of them, so one
-  certificate covers every project), write the certificate 0600, and
-  `ssh-add` it to the running agent if `SSH_AUTH_SOCK` is set (best effort,
-  since the `CertificateFile` line makes ssh work without the agent).
+- Ensure the CLI's own key `~/.ssh/repose/id_ed25519` exists: generated in
+  process (ed25519, no passphrase, 0600) the first time. The user's
+  `~/.ssh/id_*` keys are never created, read, certified or offered
+  (DECISIONS I-149).
+- Read `~/.ssh/repose/id_ed25519-cert.pub`; if it certifies that key, is
+  valid for more than 30 minutes, its principals cover the requested
+  project ids, and `known_hosts` exists, reuse it. A certificate for any
+  other key (v0.1.4 certified `~/.ssh/id_ed25519`) is re-issued.
+- Else `POST /certs` with the public key and the project ids the user has
+  (all of them, so one certificate covers every project) and write the
+  certificate 0600. Nothing is `ssh-add`ed: the config names the key and
+  certificate, and the key has no passphrase to cache.
 - Write `~/.ssh/repose/known_hosts` with `@cert-authority
   ssh.repose.herakraft.co,10.64.* <host_ca_pub>` from the response.
 - Rewrite `~/.ssh/repose/config` with one `Host <slug>.repose` block per
-  project (the block in `interfaces/ssh-gateway.md`). Ensure `~/.ssh/config`
-  contains `Include ~/.ssh/repose/config` as its first line, inserted once,
-  with a comment `# added by repose`. Never rewrite any other line.
+  project (the block in `interfaces/ssh-gateway.md`, with `ControlMaster
+  auto`, `ControlPath ~/.ssh/repose/cm-%C`, `ControlPersist 10m` except on
+  Windows, so every ssh of a command shares one connection). Ensure
+  `~/.ssh/config` has `Include ~/.ssh/repose/config` before its first
+  `Host` or `Match` line (inserted once as its first line with a comment
+  `# added by repose`; one that exists only after a `Host` line does not
+  count). Never rewrite any other line; a symlinked config is written at
+  its target, never replaced, and a read-only one is left alone.
+- Verify with `ssh -G <slug>.repose` that the alias resolves to the
+  gateway host and the `<slug>.<handle>` user. If not, warn with the
+  reason and the exact line to add (for a read-only link, where), and use
+  `ssh -F ~/.ssh/repose/config` for the CLI's own connections (I-151).
 
 The refresh is silent: every command that opens SSH calls `ensureCert`
 first. If `POST /certs` returns `rate_limited`, use the existing cert if it
-has any validity left and warn.
+has any validity left and warn. If the gateway refuses the connection
+(`Permission denied`), re-issue once and keep waiting.
 
 ### 5.5 The run sequence
 
@@ -218,20 +245,37 @@ $ repose run
    --name>, remote_url, class: --size or config default_class or large, tz:
    local zone}`. On `payment_required` exit 7 with the billing URL. On
    `conflict` for the name, append `-2`.., ask.
-2. `GET /projects/:id`. If `state` is `stopped`, `POST /start` and wait on
-   the op. If `building` or the op is a build, open the SSE log and render it
-   (5.8). If `error`, print the last op's error and exit 1.
+2. `GET /projects/:id`. A create or start in flight is waited on (its op,
+   else the state); `stopped` or `error` gets `POST /start` (the api
+   restarts an `error` project, `{restart: true}`, I-157) and the op is
+   waited on, polling every 500 ms. If the op is a build, open the SSE log
+   and render it (5.8). An op that fails prints `Could not start <slug>:
+   <reason> (<code>). <next step>` and exits 1; a build's own failure
+   prints the Nix block and exits 10. Every wait shows its phase on stderr
+   (5.12).
 3. `ensureCert`.
 4. Wait until `ssh <slug>.repose true` succeeds, up to 60 seconds after the
-   API says `running`, polling every 2 seconds, then print `Connected to
-   <slug> (<class>, <host region>)`.
-5. Sync (unless `--no-sync`):
+   API says `running`, polling every second, then print `Connected to
+   <slug> (<class>)`. This first ssh becomes the ControlMaster every later
+   one in the command shares.
+5. Credential sync (unless `--no-sync`), in one ssh, before the git steps:
+   for each row of the table in `interfaces/guest-conventions.md`, if the
+   laptop file exists, copy it to the guest path with its mode; set the
+   git identity with `git config --global`; when gh travelled and the
+   remote is on github.com, set the HTTPS `insteadOf` and gh credential
+   helper (I-150). A gh token kept in the laptop keyring is written into
+   the copy of `hosts.yml` that travels. Never the Claude file, never
+   Gemini's, never SSH keys.
+6. Sync (unless `--no-sync`), two ssh round trips (DECISIONS I-150):
 
    a. Local: `git rev-parse HEAD` → `H`; `git status --porcelain` → dirty
-      list; `git ls-files --others --exclude-standard` → untracked list.
-   b. Remote, in one SSH exec: `cd ~/<slug> && git status --porcelain`. If
-      non-empty and neither `--stash-remote` nor `--discard-remote`: exit 6
-      with
+      list; `git ls-files --others --exclude-standard` → untracked list. A
+      directory that is not a repository, has no commit, or is a shallow
+      clone exits 2 with the command that fixes it (or `--no-sync`).
+   b. Remote, one ssh: create `~/<slug>` (and `git init` it) if missing,
+      then report `git status --porcelain`, every commit a ref or `HEAD`
+      points at, and whether `origin` exists. If the status is non-empty
+      and neither `--stash-remote` nor `--discard-remote`: exit 6 with
 
       ```
       The guest's working tree has uncommitted changes (3 files):
@@ -243,31 +287,31 @@ $ repose run
       to look first.
       ```
 
-      `--stash-remote` runs `git stash push -u -m "repose run <ts>"`,
-      `--discard-remote` runs `git reset --hard && git clean -fd`.
-   c. Remote: `git fetch origin` then `git cat-file -e H`. If missing, ask
-      `Commit H is not on origin. Push <branch> now? [Y/n]`, push, fetch
-      again. `git checkout --detach H` then `git checkout <branch>` if the
-      local branch exists on the remote at that commit, else stay detached
-      and say so.
-   d. Local diff: `git diff HEAD --binary` piped as `git apply --index`
-      over SSH, then a tar of the untracked list piped to `tar -x -C ~/<slug>`.
-      Skip files over 100 MB with a warning. Respect `sync.exclude`.
-   e. Print `Synced: 4 modified, 2 untracked`.
+      `--stash-remote` runs `git stash push -u -m "repose run"`,
+      `--discard-remote` runs `git reset --hard && git clean -fd`; both run
+      at the start of step d's script.
+   c. Local: of the guest's commits, keep the ones this checkout has; `git
+      bundle create` `HEAD` and `refs/remotes/origin/<branch>` excluding
+      them (`--stdin`, so the list never hits the command line). Nothing is
+      bundled when the guest already has everything; the first sync of an
+      empty guest carries the whole history. Nothing is pushed and nothing
+      is asked: an unpushed commit travels like any other.
+   d. Remote, one ssh whose stdin is one tar (the bundle, `git diff HEAD
+      --binary`, a tar of the untracked list): `git fetch` from the bundle;
+      move `origin/<branch>` forward to the laptop's value; add `origin`
+      (guestd's `git@host:owner/repo.git`) if missing; check out `H` on
+      `<branch>`, creating it or fast-forwarding it, or, when the guest's
+      branch has commits the laptop lacks, leave the branch alone and check
+      `H` out detached with a warning; set the branch's upstream; `git
+      apply --index` the diff; extract the untracked tar. Skip files over
+      100 MB with a warning. Respect `sync.exclude`.
+   e. Print `Synced: 4 modified, 2 untracked`, plus `(3 new commits)` when
+      commits travelled.
    f. A project created with `--name` in a directory that has no git
-      remote skips c and d: there is no origin in the guest to fetch
-      (guestd sets one only from `remote_url`, I-107). The tracked files
-      travel as a tar of their working-tree contents, are `git add`ed and
-      committed in the guest under a placeholder identity so the tree is
-      clean for the next run's step b, untracked files follow as in d, and
-      the line reads `Synced the whole tree (no git remote): 12 tracked
-      files, 2 untracked`. A file deleted on the laptop stays in the guest
-      (DECISIONS I-138).
-6. Credential sync (unless `--no-sync`): for each row of the table in
-   `interfaces/guest-conventions.md`, if the laptop file exists, `tar` it
-   over SSH to the guest path, `chmod 0600`. Print one line
-   `Credentials: gh, opencode` naming what was copied. Never the Claude
-   file, never Gemini's, never SSH keys.
+      remote takes the same path without `origin` or remote-tracking refs
+      (this replaced I-138's whole-tree commit): its commits travel, and a
+      deletion committed on the laptop is a deletion in the guest.
+   Print one line `Credentials: gh, opencode` naming what step 5 copied.
 7. If PROMPT given: agent = `--agent` or project `agent_default`. Over SSH:
    `tmux new-window -t <slug> -n <agent> -c ~/<slug> -d '<agent>'` (name
    becomes `<agent>-2` if the window exists), wait until the pane has been
@@ -287,18 +331,35 @@ $ repose run
    process replaces itself with ssh so signals and the terminal behave
    exactly like plain ssh.
 
-`repose attach` is steps 1 (resolve, no create), 3, 4, 8.
+`repose attach [PROJECT]` is steps 1 (resolve, no create), 3, 4, 8. A
+project that is not running exits 5 with its true state, the reason
+the api recorded for an `error` (`last_error`), and the command that fits
+(DECISIONS I-153).
+
+`run` ends with `Ready in <time>.` on stderr before attaching.
 
 ### 5.6 stop, start, destroy, resize
 
-- `stop`: `POST /stop {snapshot: !--no-snapshot}`, spinner on the op, then
-  `Stopped <slug>. Snapshot <id> (1.2 GB). Disk is still billed; \`repose
-  destroy\` to stop that.`
-- `start`: `POST /start`, wait, print connected line. Does not sync.
-- `destroy`: prints the project, its last snapshot date, and requires typing
-  the slug unless `--yes`. Then `DELETE /projects/:id`. Prints `Destroyed.
-  Last snapshot kept until <date>; \`repose snapshots restore <id> --as-new
-  NAME\` brings it back.`
+- `stop [PROJECT]`: `POST /stop {snapshot: !--no-snapshot}`, phase on the
+  op, then `Stopped <slug> in <time>. Snapshot <id> (1.2 GB). Disk is
+  still billed; \`repose destroy <slug>\` to stop that.` Already stopped:
+  says so, exit 0.
+- `start [PROJECT]`: `POST /start`, wait, print `<slug> is running
+  (<class>), ready in <time>. \`repose attach <slug>\` to get in.` Does not
+  sync. When the api answers `restart: true` (a project in `error`, or a
+  running one whose guestd stopped answering, I-157) the phase reads
+  `Restarting <slug> (its agent stopped answering)`. Already running and
+  healthy: says so, exit 0.
+- `destroy [PROJECT]`: asks `Destroy <slug>? A final snapshot is kept for
+  30 days. [y/N]` unless `--yes`/`-y` (no terminal and no `--yes`: exit 2).
+  Then `DELETE /projects/:id` → `202 {op_id}` (api.md, I-156); the CLI
+  waits on that op, then on `GET` answering 404, and only then prints
+  `Destroyed <slug> in <time>. Its last snapshot <id> is kept until <date>;
+  \`repose snapshots restore <id> --project <project id> --as-new NAME\`
+  brings it back.` An op in `error` prints `Could not destroy <slug>:
+  <reason> (<code>). <slug> is still there, <state>. \`repose destroy
+  <slug>\` tries again.` and exits 1. An api that answers without an op id
+  is waited on by polling the project (DECISIONS I-153).
 - Resize is `repose config apply` with `volume_bytes` in the fragment
   header? No: it is its own route, so `repose resize 80G` exists as a
   hidden alias of `POST /resize`; document it in `features/config.md` only.
@@ -314,8 +375,12 @@ todo-app   large   running   2h14m   claude: working   today $0.31   month $12.4
 ```
 
 `--watch` refreshes every 5 seconds. `--json` prints the `Project` object.
-`repose projects` prints one line per project in the same first-line
-format.
+A project in `error` gets an `error: <reason>` line under the first.
+`repose projects` prints a table with a header row (`PROJECT CLASS STATE
+UP AGENTS TODAY MONTH`, `-` where a column does not apply, uptime only
+while running), then one line per project in `error` with its reason and
+the command that fixes it; with no projects it says how to create one.
+`--json` is the api's list, unchanged (DECISIONS I-153).
 
 ### 5.8 Build log rendering
 
@@ -337,8 +402,10 @@ Nix output; every other API error prints `{code}: {message}`.
 
 ### 5.9 open
 
-`repose open 3000`: `ensureCert`, then `ssh -N -L
-127.0.0.1:<local>:127.0.0.1:3000 <slug>.repose` in the foreground, print
+`repose open 3000`: `ensureCert`, then `ssh -o ControlPath=none -N -L
+127.0.0.1:<local>:127.0.0.1:3000 <slug>.repose` in the foreground (its own
+connection, not the shared ControlMaster, so the forward ends with
+Ctrl-C rather than living on in the master, I-149), print
 `http://localhost:3000 → todo-app:3000 (Ctrl-C to stop)`, and open the
 browser unless `--no-browser`. `--local-port` defaults to the same port,
 falling back to a free port with a message if taken.
@@ -383,6 +450,21 @@ Human output to stdout, progress and warnings to stderr, so `--json` and
 pipes are clean. Colours only when stdout is a TTY. No spinner when not a
 TTY. All timestamps local.
 
+Progress (DECISIONS I-154): every command that waits (run, start, stop,
+destroy, resize, snapshot create and restore) shows its phase on stderr.
+On a terminal: one spinner line with the phase and its elapsed time,
+redrawn every 100 ms, replaced by `✓ <done>  <time>` for phases that
+have no result line of their own (Created, Built the environment,
+Booted); streamed build-log lines pass through without tearing it.
+Otherwise (`TERM=dumb`, `REPOSE_NO_SPINNER=1`, or stderr not a
+terminal): one `<phase>...` line per phase. `--json` commands show none.
+Ctrl-C clears the line and exits 130.
+
+Errors are one sentence and the next step (I-153): `Could not <step>:
+<why> (<code or ssh's last line>). <next>`. They never include a remote
+command line, a guest id, or the host's own wording (that is the op's
+`detail`, printed only under `-v`).
+
 ## 6. Failure modes
 
 | Situation | Outcome |
@@ -390,12 +472,13 @@ TTY. All timestamps local.
 | Not logged in or refresh failed | exit 3, `Not logged in. Run \`repose login\`.` |
 | No card on file on create/start | exit 7, `Add a card at https://repose.herakraft.co/billing first.` |
 | `capacity` from create/start | exit 8, `No capacity right now; try again in a few minutes. (We have been alerted.)` |
-| Guest stopped on `attach`/`open` | exit 5, `todo-app is stopped. Run \`repose start\`.` |
+| Guest not running on `attach`/`open` | exit 5, the true state and its fix, e.g. `todo-app is stopped. Start it with \`repose start todo-app\`, or \`repose run\` in its checkout to start, sync and attach.` or `todo-app is in an error state: <reason>. …` (I-153) |
+| Op fails (start, stop, destroy, resize, snapshot) | exit 1, `Could not <verb> <slug>: <reason> (<code>). <next step>`; destroy never prints `Destroyed` unless the op is done and the project is gone |
 | Dirty remote tree | exit 6, message in 5.5 |
 | Build or eval error | exit 10, Nix error block, fragment line marked |
 | SSH cannot connect within 60 s after `running` | exit 1, `Guest is running but SSH did not answer in 60s. \`repose logs --kind console\` may show why.` |
 | Gateway rejects certificate | re-issue once; if still rejected exit 1 with the gateway banner verbatim |
-| `~/.ssh/config` unwritable | exit 1 naming the file; nothing partial written (write temp + rename) |
+| `~/.ssh/config` unwritable, a read-only link, or its Include not effective | warning naming the file and the exact line to add (for a link, where); the command goes on with `ssh -F ~/.ssh/repose/config`; nothing partial written (write temp + rename), a link never replaced (I-151) |
 | Browser cannot open | print the URL and continue |
 | API unreachable | exit 1, `Cannot reach api.repose.herakraft.co: <err>`; never retried more than 3 times with backoff |
 | Rate limited on `/certs` | reuse existing cert if valid, warn on stderr |
@@ -410,7 +493,9 @@ TTY. All timestamps local.
 - Integration against `internal/fakes/api`: full `run` sequence with a
   local sshd in a container standing in for the guest (Docker test fixture
   `test/guest-sshd/` with tmux and git, trusting the test CA). Covers dirty
-  tree refusal, stash and discard, push prompt, credential copy, prompt
+  tree refusal, stash and discard, an unpushed commit arriving without a
+  push, an empty guest checkout, a diverged guest branch left alone, the
+  whole sync over one multiplexed connection, credential copy, prompt
   send, second window naming.
 - Real: on the M2 host, a second person's laptop, every command, recorded
   in `docs/workstreams/STATUS.md`.
@@ -455,9 +540,21 @@ removes all of them including the `Include` line.
 - [ ] `ssh <slug>.repose` works from a plain terminal with no CLI involved
       after one `repose run`. Evidence: transcript.
 - [ ] Sync: dirty remote refused with exit 6; `--stash-remote` stashes and
-      the stash is listed; `--discard-remote` discards; commit not on origin
-      prompts and pushes; untracked files respecting gitignore arrive;
-      binary diff applies. Evidence: integration test output.
+      the stash is listed; `--discard-remote` discards; a commit not on
+      origin arrives in the guest without a push or a prompt (I-150); an
+      empty guest checkout gets the whole history; a diverged guest branch
+      is left alone; untracked files respecting gitignore arrive; binary
+      diff applies. Evidence: integration test output.
+- [ ] One `repose run` makes one SSH connection and prompts for nothing;
+      the user's `~/.ssh/id_*` are untouched (I-149). Evidence:
+      `TestSyncOverAMultiplexedConnection` (the fake guest counts one
+      connection), `TestEnsureCertMovesOffTheUsersKey`, and a transcript
+      on a laptop whose `~/.ssh/id_ed25519` has a passphrase.
+- [ ] The owner's 2026-09-23 findings each have a test: destroy reports a
+      failed op, `[y/N]` prompt, positional PROJECT, dir-cache poisoning,
+      true state on attach, projects header and reasons, sentences for ssh
+      errors (I-151..I-155). Evidence: `go test ./internal/cli/` output
+      naming them.
 - [ ] Credential sync copies exactly the four rows and never the Claude,
       Gemini or SSH key files, even if present. Evidence: integration test
       that plants all of them and asserts.

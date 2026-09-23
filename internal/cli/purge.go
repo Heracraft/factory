@@ -63,17 +63,58 @@ func splitLines(s string) []string {
 	return lines
 }
 
+// includeUnwritableError is a ~/.ssh/config the CLI will not or cannot
+// edit: a link into a read-only store (home-manager, a dotfiles manager)
+// or a file without write permission. The caller turns it into
+// instructions rather than failing the command (I-151).
+type includeUnwritableError struct {
+	path, target string
+	err          error
+}
+
+func (e *includeUnwritableError) Error() string { return e.err.Error() }
+func (e *includeUnwritableError) Unwrap() error { return e.err }
+
+// includeEffective reports whether content has the Include line where ssh
+// honours it for every host: before the first Host or Match line. An
+// Include inside a Host block applies only to that block, and a
+// commented-out one to nothing.
+func includeEffective(content string) bool {
+	for _, l := range splitLines(content) {
+		l = strings.TrimSpace(l)
+		if l == "" || strings.HasPrefix(l, "#") {
+			continue
+		}
+		fields := strings.Fields(strings.ReplaceAll(l, "=", " "))
+		switch strings.ToLower(fields[0]) {
+		case "include":
+			for _, f := range fields[1:] {
+				if f == "~/.ssh/repose/config" || strings.HasSuffix(f, "/.ssh/repose/config") {
+					return true
+				}
+			}
+		case "host", "match":
+			return false
+		}
+	}
+	return false
+}
+
 // ensureIncludeLine inserts the comment and Include line as the first two
 // lines of ~/.ssh/config, once, never touching any other line (07-cli.md
 // §5.4 and its checklist "exactly one Include line, first line, and no
-// other line changes on repeated runs").
+// other line changes on repeated runs"). A line that exists but sits
+// after a Host or Match line does not count (I-151): the new one goes on
+// top and the old one is left where the user put it. A symlinked config
+// is edited at its target when that is writable and reported otherwise,
+// never replaced by a regular file.
 func ensureIncludeLine(path string) error {
 	b, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	existing := string(b)
-	if strings.Contains(existing, includeLine) {
+	if includeEffective(existing) {
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -83,9 +124,24 @@ func ensureIncludeLine(path string) error {
 	if existing != "" {
 		newContent += existing
 	}
+	writePath := path
+	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		target, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return &includeUnwritableError{path: path, err: err}
+		}
+		writePath = target
+	}
 	perm := os.FileMode(0o644)
-	if info, statErr := os.Stat(path); statErr == nil {
+	if info, statErr := os.Stat(writePath); statErr == nil {
 		perm = info.Mode().Perm()
 	}
-	return writeFileAtomic(path, []byte(newContent), perm)
+	if err := writeFileAtomic(writePath, []byte(newContent), perm); err != nil {
+		t := ""
+		if writePath != path {
+			t = writePath
+		}
+		return &includeUnwritableError{path: path, target: t, err: err}
+	}
+	return nil
 }

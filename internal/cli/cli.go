@@ -2,10 +2,14 @@ package cli
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,12 +24,27 @@ func Execute(version string) int {
 	root := newRootCmd(version)
 	root.SilenceErrors = true
 	root.SilenceUsage = true
-	err := root.Execute()
+	// Ctrl-C cancels the command's context, so a spinner line is cleared
+	// and child ssh processes are ended, instead of the process dying
+	// mid-line.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	err := root.ExecuteContext(ctx)
 	if err == nil {
 		return ExitOK
 	}
+	if errors.Is(err, context.Canceled) && ctx.Err() != nil {
+		_, _ = fmt.Fprintln(os.Stderr, "Interrupted.")
+		return 130
+	}
 	if usageErr, ok := err.(cobraUsageError); ok {
 		_, _ = fmt.Fprintln(os.Stderr, usageErr.Error())
+		return ExitUsage
+	}
+	// cobra's own refusals (an unknown command, a wrong argument count)
+	// are usage mistakes too, not command failures.
+	if msg := err.Error(); strings.HasPrefix(msg, "unknown command") || strings.HasPrefix(msg, "accepts ") || strings.HasPrefix(msg, "invalid argument") {
+		_, _ = fmt.Fprintf(os.Stderr, "%s\nRun `repose --help` for the commands.\n", msg)
 		return ExitUsage
 	}
 	return exitCodeFor(err, os.Stderr)
@@ -36,6 +55,7 @@ func Execute(version string) int {
 type cobraUsageError struct{ error }
 
 type globalFlags struct {
+	command string // the running command's path, set before RunE
 	project string
 	apiURL  string
 	json    bool
@@ -55,7 +75,10 @@ func newRootCmd(version string) *cobra.Command {
 		Version: version,
 	}
 	root.SetVersionTemplate("repose {{.Version}} (herakraft)\n")
-	root.PersistentFlags().StringVar(&g.project, "project", "", "project id or slug (or $REPOSE_PROJECT)")
+	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		return cobraUsageError{fmt.Errorf("%v (`%s --help` lists its flags)", err, cmd.CommandPath())}
+	})
+	root.PersistentFlags().StringVar(&g.project, "project", "", "project name or id (or $REPOSE_PROJECT); most commands also take it as their argument")
 	root.PersistentFlags().StringVar(&g.apiURL, "api-url", "", "api base url (or $REPOSE_API_URL)")
 	root.PersistentFlags().BoolVarP(&g.verbose, "verbose", "v", false, "debug logging to stderr")
 
@@ -65,13 +88,18 @@ func newRootCmd(version string) *cobra.Command {
 			return nil, err
 		}
 		e.Client.HTTP = e.httpClient
+		e.Command = g.command
 		return e, nil
 	}
+	root.PersistentPreRun = func(cmd *cobra.Command, args []string) { g.command = cmd.CommandPath() }
 	envJSON := func(cmd *cobra.Command) (*Env, error) {
 		json, _ := cmd.Flags().GetBool("json")
 		g.json = json
 		return env()
 	}
+	_ = root.RegisterFlagCompletionFunc("project", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return projectSlugsForCompletion(env), cobra.ShellCompDirectiveNoFileComp
+	})
 
 	root.AddCommand(
 		newLoginCmd(),
@@ -80,15 +108,15 @@ func newRootCmd(version string) *cobra.Command {
 		newAttachCmd(env, g),
 		newStartCmd(env, g),
 		newStopCmd(env, g),
-		newStatusCmd(envJSON, g),
+		newStatusCmd(envJSON, env, g),
 		newOpenCmd(env, g),
 		newSecretsCmd(env, g),
 		newConfigCmd(env, g),
 		newSnapshotsCmd(env, g),
 		newDestroyCmd(env, g),
-		newLogsCmd(envJSON, g),
+		newLogsCmd(envJSON, env, g),
 		newProjectsCmd(envJSON),
-		newEventsCmd(envJSON, g),
+		newEventsCmd(envJSON, env, g),
 		newNotifyCmd(env),
 		newResizeCmd(env, g),
 		newVersionCmd(version),
@@ -99,11 +127,85 @@ func newRootCmd(version string) *cobra.Command {
 	return root
 }
 
+// Positional PROJECT (DECISIONS I-155): every command whose object is a
+// project takes it as its one argument, docker-style (`repose attach
+// izma`), with --project and $REPOSE_PROJECT still working.
+
+// projectArgs is the Args validator for those commands.
+func projectArgs(cmd *cobra.Command, args []string) error {
+	if len(args) > 1 {
+		return cobraUsageError{fmt.Errorf("%s takes at most one PROJECT, got %d arguments: %s", cmd.CommandPath(), len(args), strings.Join(args, " "))}
+	}
+	return nil
+}
+
+// noArgs is cobra.NoArgs as a usage error: v0.1.4 silently ignored a
+// stray word (`repose attach projects` attached to the cwd's project).
+func noArgs(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return cobraUsageError{fmt.Errorf("%s takes no arguments, got: %s", cmd.CommandPath(), strings.Join(args, " "))}
+	}
+	return nil
+}
+
+// projectFrom picks the project named by the positional argument or
+// --project; naming two different ones is a usage error.
+func projectFrom(args []string, g *globalFlags) (string, error) {
+	if len(args) == 0 {
+		return g.project, nil
+	}
+	if g.project != "" && g.project != args[0] {
+		return "", cobraUsageError{fmt.Errorf("%q and --project %q name two projects; pass one", args[0], g.project)}
+	}
+	return args[0], nil
+}
+
+// completeProject completes the one PROJECT argument with the account's
+// slugs.
+func completeProject(env func() (*Env, error)) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) > 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return projectSlugsForCompletion(env), cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
+// projectSlugsForCompletion asks the api (two seconds at most, a shell is
+// waiting) and falls back to the slugs in projects.json.
+func projectSlugsForCompletion(env func() (*Env, error)) []string {
+	e, err := env()
+	if err != nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	seen := map[string]bool{}
+	if projects, err := e.Client.ListProjects(ctx); err == nil {
+		for _, p := range projects {
+			seen[p.Slug] = true
+		}
+	} else {
+		for _, c := range e.Cache.ByRemote {
+			if c.Slug != "" {
+				seen[c.Slug] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for s := range seen {
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func newLoginCmd() *cobra.Command {
 	var noBrowser, browser bool
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: "Log in with Logto",
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := newEnv("", false, false)
 			if err != nil {
@@ -129,6 +231,7 @@ func newLogoutCmd(env func() (*Env, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logout",
 		Short: "Log out",
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := env()
 			if err != nil {
@@ -145,18 +248,18 @@ func newRunCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var opts RunOptions
 	cmd := &cobra.Command{
 		Use:   "run [PROMPT]",
-		Short: "Create/start the project's guest and attach, optionally starting an agent",
-		Args:  cobra.MaximumNArgs(1),
+		Short: "Create/start this checkout's environment, sync it and attach; with PROMPT, start an agent on it",
+		Long: "Create/start this checkout's environment, sync it and attach; with PROMPT, start an agent on it.\n\n" +
+			"PROMPT is everything after the flags, so quoting is optional. The project is the one for\n" +
+			"this checkout; name another with --project (`repose attach PROJECT` attaches without syncing).",
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 1 {
-				opts.Prompt = args[0]
-			}
+			opts.Prompt = strings.TrimSpace(strings.Join(args, " "))
 			opts.ProjectArg = g.project
 			e, err := env()
 			if err != nil {
 				return err
 			}
-			opts.AskPush = interactiveAskPush(e.Cwd)
 			return runRun(cmd.Context(), e, opts, false)
 		},
 	}
@@ -167,33 +270,47 @@ func newRunCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	cmd.Flags().BoolVar(&opts.DiscardRemote, "discard-remote", false, "discard the guest's uncommitted changes before syncing")
 	cmd.Flags().BoolVar(&opts.NoSync, "no-sync", false, "skip the git and credential sync")
 	cmd.Flags().BoolVar(&opts.NoAttach, "no-attach", false, "do not attach after starting/sending the prompt")
+	_ = cmd.RegisterFlagCompletionFunc("agent", cobra.FixedCompletions([]string{"claude", "opencode", "codex", "gemini", "pi"}, cobra.ShellCompDirectiveNoFileComp))
+	_ = cmd.RegisterFlagCompletionFunc("size", cobra.FixedCompletions([]string{"small", "large", "xl"}, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
 }
 
 func newAttachCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	return &cobra.Command{
-		Use:   "attach",
-		Short: "Attach to the project's tmux session",
+		Use:               "attach [PROJECT]",
+		Short:             "Attach to a project's tmux session (this checkout's, or PROJECT)",
+		Args:              projectArgs,
+		ValidArgsFunction: completeProject(env),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := projectFrom(args, g)
+			if err != nil {
+				return err
+			}
 			e, err := env()
 			if err != nil {
 				return err
 			}
-			return runRun(cmd.Context(), e, RunOptions{ProjectArg: g.project}, true)
+			return runRun(cmd.Context(), e, RunOptions{ProjectArg: project}, true)
 		},
 	}
 }
 
 func newStartCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	return &cobra.Command{
-		Use:   "start",
-		Short: "Start the guest without syncing",
+		Use:               "start [PROJECT]",
+		Short:             "Start a project's environment without syncing (restarts one in error)",
+		Args:              projectArgs,
+		ValidArgsFunction: completeProject(env),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := projectFrom(args, g)
+			if err != nil {
+				return err
+			}
 			e, err := env()
 			if err != nil {
 				return err
 			}
-			return StartCmd(cmd.Context(), e, g.project)
+			return StartCmd(cmd.Context(), e, project)
 		},
 	}
 }
@@ -201,35 +318,47 @@ func newStartCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 func newStopCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var noSnapshot bool
 	cmd := &cobra.Command{
-		Use:   "stop",
-		Short: "Snapshot and stop the guest",
+		Use:               "stop [PROJECT]",
+		Short:             "Snapshot and stop a project's environment",
+		Args:              projectArgs,
+		ValidArgsFunction: completeProject(env),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := projectFrom(args, g)
+			if err != nil {
+				return err
+			}
 			e, err := env()
 			if err != nil {
 				return err
 			}
-			return StopCmd(cmd.Context(), e, g.project, !noSnapshot)
+			return StopCmd(cmd.Context(), e, project, !noSnapshot)
 		},
 	}
 	cmd.Flags().BoolVar(&noSnapshot, "no-snapshot", false, "stop without taking a snapshot")
 	return cmd
 }
 
-func newStatusCmd(envJSON func(*cobra.Command) (*Env, error), g *globalFlags) *cobra.Command {
+func newStatusCmd(envJSON func(*cobra.Command) (*Env, error), env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var watch bool
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "Show the project's status",
+		Use:               "status [PROJECT]",
+		Short:             "Show a project's status",
+		Args:              projectArgs,
+		ValidArgsFunction: completeProject(env),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := projectFrom(args, g)
+			if err != nil {
+				return err
+			}
 			e, err := envJSON(cmd)
 			if err != nil {
 				return err
 			}
 			if !watch {
-				return StatusCmd(cmd.Context(), e, g.project)
+				return StatusCmd(cmd.Context(), e, project)
 			}
 			for {
-				if err := StatusCmd(cmd.Context(), e, g.project); err != nil {
+				if err := StatusCmd(cmd.Context(), e, project); err != nil {
 					return err
 				}
 				if err := sleepOrDone(cmd.Context(), 5*time.Second); err != nil {
@@ -247,6 +376,7 @@ func newProjectsCmd(envJSON func(*cobra.Command) (*Env, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "projects",
 		Short: "List every project",
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := envJSON(cmd)
 			if err != nil {
@@ -278,8 +408,8 @@ func newOpenCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 				return cobraUsageError{fmt.Errorf("repose open PORT (or --desktop)")}
 			}
 			port, err := strconv.Atoi(args[0])
-			if err != nil {
-				return cobraUsageError{fmt.Errorf("PORT must be a number: %v", err)}
+			if err != nil || port < 1 || port > 65535 {
+				return cobraUsageError{fmt.Errorf("PORT must be a port number (1-65535), got %q; the project is --project NAME", args[0])}
 			}
 			return OpenPortCmd(cmd.Context(), e, g.project, port, localPort, noBrowser)
 		},
@@ -316,6 +446,7 @@ func newSecretsCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List secret names",
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := env()
 			if err != nil {
@@ -343,7 +474,11 @@ func newSecretsCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 func readSecretValue(name, fromFile string, fromEnv bool) ([]byte, error) {
 	switch {
 	case fromFile != "":
-		return os.ReadFile(fromFile)
+		b, err := os.ReadFile(fromFile)
+		if err != nil {
+			return nil, exitf(ExitUsage, "Could not read %s: %v", fromFile, err)
+		}
+		return b, nil
 	case fromEnv:
 		v, ok := os.LookupEnv(name)
 		if !ok {
@@ -351,7 +486,10 @@ func readSecretValue(name, fromFile string, fromEnv bool) ([]byte, error) {
 		}
 		return []byte(v), nil
 	default:
-		_, _ = fmt.Fprintf(os.Stderr, "Value for %s: ", name)
+		if !isTerminal(os.Stdin) {
+			return nil, exitf(ExitUsage, "No terminal to type %s's value into; use --from-file PATH or --from-env.", name)
+		}
+		_, _ = fmt.Fprintf(os.Stderr, "Value for %s (not shown): ", name)
 		v, err := readHiddenLine()
 		if err != nil {
 			return nil, err
@@ -366,6 +504,7 @@ func newConfigCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	show := &cobra.Command{
 		Use:   "show",
 		Short: "Print the current fragment",
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := env()
 			if err != nil {
@@ -379,6 +518,7 @@ func newConfigCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	edit := &cobra.Command{
 		Use:   "edit",
 		Short: "Edit the fragment in $EDITOR",
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := env()
 			if err != nil {
@@ -408,11 +548,17 @@ func newConfigCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 }
 
 func openInEditor(path string) error {
-	editor := os.Getenv("EDITOR")
+	editor := os.Getenv("VISUAL")
+	if editor == "" {
+		editor = os.Getenv("EDITOR")
+	}
 	if editor == "" {
 		editor = "vi"
 	}
-	cmd := exec.Command(editor, path)
+	// $EDITOR is often "code --wait" or "emacsclient -t": a command line,
+	// not a path.
+	fields := strings.Fields(editor)
+	cmd := exec.Command(fields[0], append(fields[1:], path)...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return cmd.Run()
 }
@@ -420,9 +566,11 @@ func openInEditor(path string) error {
 func newSnapshotsCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	root := &cobra.Command{Use: "snapshots", Short: "Manage snapshots"}
 	var asNew string
+	var yes bool
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List snapshots",
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := env()
 			if err != nil {
@@ -431,9 +579,11 @@ func newSnapshotsCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 			return SnapshotsListCmd(cmd.Context(), e, g.project)
 		},
 	}
+	list.Flags().BoolVar(&g.json, "json", false, "print as JSON")
 	create := &cobra.Command{
 		Use:   "create",
 		Short: "Take a manual snapshot",
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := env()
 			if err != nil {
@@ -451,10 +601,17 @@ func newSnapshotsCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return SnapshotsRestoreCmd(cmd.Context(), e, g.project, args[0], asNew, interactiveConfirm("Restore over the current volume? [y/N] "))
+			var confirm func() (bool, error)
+			if !yes {
+				confirm = func() (bool, error) {
+					return askYesNo("Restore over the current volume? Anything since the snapshot is lost. [y/N] ", false, "restoring in place")
+				}
+			}
+			return SnapshotsRestoreCmd(cmd.Context(), e, g.project, args[0], asNew, confirm)
 		},
 	}
 	restore.Flags().StringVar(&asNew, "as-new", "", "restore into a new project instead of replacing this one")
+	restore.Flags().BoolVar(&yes, "yes", false, "skip the confirmation")
 	root.AddCommand(list, create, restore)
 	return root
 }
@@ -462,17 +619,27 @@ func newSnapshotsCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 func newDestroyCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var yes bool
 	cmd := &cobra.Command{
-		Use:   "destroy",
-		Short: "Destroy the project",
+		Use:               "destroy [PROJECT]",
+		Short:             "Destroy a project (a final snapshot is kept for 30 days)",
+		Args:              projectArgs,
+		ValidArgsFunction: completeProject(env),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := projectFrom(args, g)
+			if err != nil {
+				return err
+			}
 			e, err := env()
 			if err != nil {
 				return err
 			}
-			return DestroyCmd(cmd.Context(), e, g.project, yes, interactiveTypedConfirm)
+			var confirm func(string) (bool, error)
+			if !yes {
+				confirm = func(prompt string) (bool, error) { return askYesNo(prompt, false, "destroying") }
+			}
+			return DestroyCmd(cmd.Context(), e, project, yes, confirm)
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the typed confirmation")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation")
 	return cmd
 }
 
@@ -497,34 +664,47 @@ func newResizeCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	return cmd
 }
 
-func newLogsCmd(envJSON func(*cobra.Command) (*Env, error), g *globalFlags) *cobra.Command {
+func newLogsCmd(envJSON func(*cobra.Command) (*Env, error), env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var kind, since string
 	var follow bool
 	cmd := &cobra.Command{
-		Use:   "logs",
-		Short: "Show project logs",
+		Use:               "logs [PROJECT]",
+		Short:             "Show a project's logs",
+		Args:              projectArgs,
+		ValidArgsFunction: completeProject(env),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := projectFrom(args, g)
+			if err != nil {
+				return err
+			}
 			e, err := envJSON(cmd)
 			if err != nil {
 				return err
 			}
-			return LogsCmd(cmd.Context(), e, g.project, kind, since, follow, nil)
+			return LogsCmd(cmd.Context(), e, project, kind, since, follow, nil)
 		},
 	}
 	cmd.Flags().Bool("json", false, "print each line as JSON")
 	cmd.Flags().StringVar(&kind, "kind", "", "console|build|ops")
 	cmd.Flags().StringVar(&since, "since", "", "e.g. 1h")
-	cmd.Flags().BoolVar(&follow, "follow", false, "poll for new lines every 2s")
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "poll for new lines every 2s")
+	_ = cmd.RegisterFlagCompletionFunc("kind", cobra.FixedCompletions([]string{"console", "build", "ops"}, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
 }
 
-func newEventsCmd(envJSON func(*cobra.Command) (*Env, error), g *globalFlags) *cobra.Command {
+func newEventsCmd(envJSON func(*cobra.Command) (*Env, error), env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var since string
 	var follow bool
 	cmd := &cobra.Command{
-		Use:   "events",
-		Short: "Show project events",
+		Use:               "events [PROJECT]",
+		Short:             "Show a project's events",
+		Args:              projectArgs,
+		ValidArgsFunction: completeProject(env),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := projectFrom(args, g)
+			if err != nil {
+				return err
+			}
 			e, err := envJSON(cmd)
 			if err != nil {
 				return err
@@ -532,12 +712,12 @@ func newEventsCmd(envJSON func(*cobra.Command) (*Env, error), g *globalFlags) *c
 			if since == "" {
 				since = "24h"
 			}
-			return EventsCmd(cmd.Context(), e, g.project, since, follow, nil)
+			return EventsCmd(cmd.Context(), e, project, since, follow, nil)
 		},
 	}
 	cmd.Flags().Bool("json", false, "print each event as JSON")
 	cmd.Flags().StringVar(&since, "since", "24h", "e.g. 24h")
-	cmd.Flags().BoolVar(&follow, "follow", false, "poll for new events every 10s")
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "poll for new events every 10s")
 	return cmd
 }
 
@@ -547,7 +727,11 @@ func newNotifyCmd(env func() (*Env, error)) *cobra.Command {
 	set := &cobra.Command{
 		Use:   "set",
 		Short: "Change notification settings",
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if emailFlag != "" && emailFlag != "on" && emailFlag != "off" {
+				return cobraUsageError{fmt.Errorf("--email is on or off, got %q", emailFlag)}
+			}
 			e, err := env()
 			if err != nil {
 				return err
@@ -569,6 +753,7 @@ func newNotifyCmd(env func() (*Env, error)) *cobra.Command {
 	test := &cobra.Command{
 		Use:   "test",
 		Short: "Send a test notification on every configured channel",
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := env()
 			if err != nil {
@@ -588,6 +773,7 @@ func newVersionCmd(version string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print the version",
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Printf("repose %s (herakraft)\n", version)
 			return nil
@@ -631,38 +817,29 @@ func goos() string {
 	return runtime.GOOS
 }
 
-// interactiveAskPush is 07-cli.md §5.5c's "Commit H is not on origin. Push
-// <branch> now? [Y/n]": on yes, it actually runs the push (from repoDir,
-// which git resolves to the repo root on its own) and reports whether it
-// did.
-func interactiveAskPush(repoDir string) func(commit, branch string) (bool, error) {
-	return func(commit, branch string) (bool, error) {
-		_, _ = fmt.Fprintf(os.Stderr, "Commit %s is not on origin. Push %s now? [Y/n] ", commit, branch)
-		yes, err := interactiveConfirm("")()
-		if err != nil || !yes {
-			return false, err
-		}
-		if _, err := gitCmd(repoDir, "push", "origin", branch); err != nil {
-			return false, fmt.Errorf("git push origin %s: %w", branch, err)
-		}
+// askYesNo asks prompt on stderr and reads the answer from stdin; an
+// empty answer is defaultYes, as the [Y/n] or [y/N] in the prompt says.
+// v0.1.4's helper treated an empty answer as yes even for [y/N]. Without
+// a terminal on stdin there is nobody to ask, which is a usage error
+// naming --yes rather than a silent default.
+func askYesNo(prompt string, defaultYes bool, what string) (bool, error) {
+	if !isTerminal(os.Stdin) {
+		return false, exitf(ExitUsage, "No terminal to confirm %s on; pass --yes.", what)
+	}
+	_, _ = fmt.Fprint(os.Stderr, prompt)
+	line, err := readLine()
+	if err != nil && line == "" {
+		_, _ = fmt.Fprintln(os.Stderr)
+		return false, nil
+	}
+	switch strings.TrimSpace(strings.ToLower(line)) {
+	case "":
+		return defaultYes, nil
+	case "y", "yes":
 		return true, nil
+	default:
+		return false, nil
 	}
-}
-
-func interactiveConfirm(prompt string) func() (bool, error) {
-	return func() (bool, error) {
-		if prompt != "" {
-			_, _ = fmt.Fprint(os.Stderr, prompt)
-		}
-		line, _ := readLine()
-		line = strings.TrimSpace(strings.ToLower(line))
-		return line == "" || line == "y" || line == "yes", nil
-	}
-}
-
-func interactiveTypedConfirm(slug string) (string, error) {
-	_, _ = fmt.Fprintf(os.Stderr, "Type %q to destroy it: ", slug)
-	return readLine()
 }
 
 func readLine() (string, error) {
@@ -671,19 +848,53 @@ func readLine() (string, error) {
 	return strings.TrimRight(line, "\r\n"), err
 }
 
+// readHiddenLine reads a line with the terminal's echo off (stty, which
+// every macOS and Linux laptop has), so a secret typed at `repose
+// secrets set` never shows on screen or in a screen recording. Echo comes
+// back on however the read ends, Ctrl-C included.
 func readHiddenLine() ([]byte, error) {
-	// A real TTY would use golang.org/x/term.ReadPassword; kept to a
-	// plain read here so this file has no additional build-tagged
-	// terminal dependency, and secrets set is still tested via
-	// --from-file/--from-env, which do not go through this path.
+	if runtime.GOOS != "windows" && stty("-echo") == nil {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, os.Interrupt)
+		done := make(chan struct{})
+		go func() {
+			select {
+			case <-sig:
+				_ = stty("echo")
+				_, _ = fmt.Fprintln(os.Stderr)
+				os.Exit(130)
+			case <-done:
+			}
+		}()
+		defer func() {
+			close(done)
+			signal.Stop(sig)
+			_ = stty("echo")
+			_, _ = fmt.Fprintln(os.Stderr)
+		}()
+	}
 	line, err := readLine()
-	return []byte(line), err
+	if err != nil && line == "" {
+		return nil, exitf(ExitUsage, "No value given.")
+	}
+	return []byte(line), nil
+}
+
+func stty(arg string) error {
+	cmd := exec.Command("stty", arg)
+	cmd.Stdin = os.Stdin
+	return cmd.Run()
 }
 
 func parseSize(s string) (int64, error) {
 	s = strings.TrimSpace(strings.ToUpper(s))
+	s = strings.TrimSuffix(s, "B")
+	s = strings.TrimSuffix(s, "I")
 	mult := int64(1)
 	switch {
+	case strings.HasSuffix(s, "T"):
+		mult = 1 << 40
+		s = strings.TrimSuffix(s, "T")
 	case strings.HasSuffix(s, "G"):
 		mult = 1 << 30
 		s = strings.TrimSuffix(s, "G")
@@ -692,7 +903,7 @@ func parseSize(s string) (int64, error) {
 		s = strings.TrimSuffix(s, "M")
 	}
 	n, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
+	if err != nil || n <= 0 {
 		return 0, fmt.Errorf("%q is not a size like 80G", s)
 	}
 	return n * mult, nil

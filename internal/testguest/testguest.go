@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -34,6 +35,7 @@ type Guest struct {
 	config   *ssh.ServerConfig
 	sockDir  string
 	wg       sync.WaitGroup
+	conns    atomic.Int64
 }
 
 // New starts a fake guest that accepts authorizedKey and runs every exec
@@ -82,6 +84,10 @@ func (g *Guest) Close() {
 	killTmux(g.sockDir)
 }
 
+// Connections is how many SSH connections have authenticated so far, for
+// tests that prove a client multiplexes its sessions over one.
+func (g *Guest) Connections() int { return int(g.conns.Load()) }
+
 func (g *Guest) serve() {
 	defer g.wg.Done()
 	for {
@@ -98,6 +104,7 @@ func (g *Guest) handleConn(nc net.Conn) {
 	if err != nil {
 		return // auth failure or reset; nothing to report from a background goroutine
 	}
+	g.conns.Add(1)
 	defer func() { _ = sc.Close() }()
 	go ssh.DiscardRequests(reqs)
 	for ch := range chans {

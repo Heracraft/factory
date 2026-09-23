@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	fakeapi "github.com/heracraft/repose/internal/fakes/api"
@@ -46,16 +47,84 @@ func TestResolveProjectOrder(t *testing.T) {
 		}
 	})
 
-	t.Run("by_dir cache wins over remote", func(t *testing.T) {
+	// I-152: the owner's nuru-wasm checkout resolved to age-calculator
+	// because an earlier --project had written by_dir. A by_dir entry for
+	// a project whose remote is not the directory's is ignored and
+	// dropped from the cache.
+	t.Run("by_dir for another repository's project is ignored and forgotten", func(t *testing.T) {
 		cache := newProjectsCache()
 		cache.ByDir["/cwd"] = other.ID
+		dir := t.TempDir()
 		deps := resolveDeps{RemoteFor: func(string) string { return "github.com/a/b" }}
+		res, err := resolveProject(ctx, client, dir, "/cwd", "", &cache, deps)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Project == nil || res.Project.ID != p.ID {
+			t.Fatalf("the directory's remote should have won: got %+v", res.Project)
+		}
+		if _, ok := cache.ByDir["/cwd"]; ok {
+			t.Fatal("the poisoned by_dir entry is still cached")
+		}
+		reloaded, _ := loadProjectsCache(dir)
+		if _, ok := reloaded.ByDir["/cwd"]; ok {
+			t.Fatal("the poisoned by_dir entry is still on disk")
+		}
+	})
+
+	t.Run("by_dir for a project with no remote in a directory with none", func(t *testing.T) {
+		cache := newProjectsCache()
+		cache.ByDir["/cwd"] = other.ID
+		deps := resolveDeps{RemoteFor: func(string) string { return "" }}
 		res, err := resolveProject(ctx, client, t.TempDir(), "/cwd", "", &cache, deps)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if res.Project == nil || res.Project.ID != other.ID {
-			t.Fatalf("by_dir should have won: got %+v", res.Project)
+			t.Fatalf("by_dir should have been used: got %+v", res.Project)
+		}
+	})
+
+	t.Run("by_dir is keyed by the repository root", func(t *testing.T) {
+		cache := newProjectsCache()
+		cache.ByDir["/repo"] = other.ID
+		deps := resolveDeps{RemoteFor: func(string) string { return "" }, RootFor: func(string) string { return "/repo" }}
+		res, err := resolveProject(ctx, client, t.TempDir(), "/repo/src/deep", "", &cache, deps)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Project == nil || res.Project.ID != other.ID {
+			t.Fatalf("a subdirectory should find the root's project: got %+v", res.Project)
+		}
+	})
+
+	t.Run("an explicit project does not write by_dir", func(t *testing.T) {
+		cache := newProjectsCache()
+		dir := t.TempDir()
+		deps := resolveDeps{RemoteFor: func(string) string { return "github.com/a/b" }}
+		if _, err := resolveProject(ctx, client, dir, "/cwd", "explicit-target", &cache, deps); err != nil {
+			t.Fatal(err)
+		}
+		if len(cache.ByDir) != 0 {
+			t.Fatalf("by_dir = %v after an explicit --project", cache.ByDir)
+		}
+		// And the next bare run in that directory resolves by its remote.
+		res, err := resolveProject(ctx, client, dir, "/cwd", "", &cache, deps)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Project == nil || res.Project.ID != p.ID {
+			t.Fatalf("bare run after --project: got %+v, want %s", res.Project, p.ID)
+		}
+	})
+
+	t.Run("an unknown explicit project says how to list them", func(t *testing.T) {
+		cache := newProjectsCache()
+		deps := resolveDeps{RemoteFor: func(string) string { return "" }}
+		_, err := resolveProject(ctx, client, t.TempDir(), "/cwd", "nope", &cache, deps)
+		ee, ok := err.(*exitError)
+		if !ok || ee.code != ExitProjectNotFound || !strings.Contains(ee.msg, "repose projects") {
+			t.Fatalf("err = %v", err)
 		}
 	})
 

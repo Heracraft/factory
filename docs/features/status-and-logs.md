@@ -32,6 +32,14 @@ $ repose logs --kind build       # the last build's output
 $ repose logs --kind ops         # create/start/stop/apply/snapshot history
 ```
 
+`repose projects` is that table (header row, `-` where a column does
+not apply, uptime only while running), followed by one line per project
+in `error` with the reason the api recorded and the command that fixes
+it, e.g. `age-calculator: the environment's agent (guestd) stopped
+answering; \`repose start\` restarts it.` (DECISIONS I-153). `--json` is
+the api's list, unchanged. `repose status`, `logs` and `events` take the
+project as their argument (`repose logs izma -f`, I-155).
+
 ## Behaviour that must hold
 
 Status:

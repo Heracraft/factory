@@ -20,9 +20,12 @@ const (
 // exit code main should return. Commands return this instead of calling
 // os.Exit directly so tests can assert on it.
 type exitError struct {
-	code int
-	msg  string // empty when the command already printed its own message
+	code  int
+	msg   string // empty when the command already printed its own message
+	cause error  // the underlying error, for errors.As in tests; never printed on its own
 }
+
+func (e *exitError) Unwrap() error { return e.cause }
 
 func (e *exitError) Error() string {
 	if e.msg == "" {

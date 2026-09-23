@@ -92,20 +92,36 @@ func (c *Client) PatchProject(ctx context.Context, id string, req PatchProjectRe
 	return &p, nil
 }
 
-func (c *Client) DestroyProject(ctx context.Context, id string) error {
-	return c.delete(ctx, "/projects/"+url.PathEscape(id), nil)
+// DestroyProject is DELETE /projects/:id: 202 {op_id, state} (api.md,
+// I-156). The destroy is finished only when that op is done; an older
+// api that answered without an op_id is waited on by polling the
+// project instead (DestroyCmd).
+func (c *Client) DestroyProject(ctx context.Context, id string) (string, error) {
+	var r opIDResponse
+	if err := c.delete(ctx, "/projects/"+url.PathEscape(id), &r); err != nil {
+		return "", err
+	}
+	return r.OpID, nil
 }
 
 type opIDResponse struct {
 	OpID string `json:"op_id"`
 }
 
-func (c *Client) StartProject(ctx context.Context, id string) (string, error) {
-	var r opIDResponse
+// StartResult is POST /start's answer: the op, and whether the api turned
+// the start into a restart of a guest in `error` or with a dead guestd
+// (api.md, I-157; absent, so false, from older builds).
+type StartResult struct {
+	OpID    string `json:"op_id"`
+	Restart bool   `json:"restart"`
+}
+
+func (c *Client) StartProject(ctx context.Context, id string) (*StartResult, error) {
+	var r StartResult
 	if err := c.post(ctx, "/projects/"+url.PathEscape(id)+"/start", nil, &r); err != nil {
-		return "", err
+		return nil, err
 	}
-	return r.OpID, nil
+	return &r, nil
 }
 
 func (c *Client) StopProject(ctx context.Context, id string, snapshot bool) (string, error) {

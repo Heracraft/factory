@@ -100,7 +100,13 @@ caller's `$TMUX_PANE` when set.
 | `~/.config/gh/hosts.yml` | `/home/dev/.config/gh/hosts.yml` | dev 0600 |
 | `~/.codex/auth.json` | `/home/dev/.codex/auth.json` | dev 0600 |
 | `~/.local/share/opencode/auth.json` | `/home/dev/.local/share/opencode/auth.json` | dev 0600 |
-| `git config user.name/email` | `/home/dev/.gitconfig` (those two keys only) | dev 0644 |
+| `git config user.name/email` | `/home/dev/.gitconfig` (set with `git config --global`, other keys left alone) | dev 0644 |
+| (when gh travelled and the project's remote is on github.com) | `/home/dev/.gitconfig`: `url.https://github.com/.insteadOf git@github.com:` and `credential.https://github.com.helper = !gh auth git-credential`, so the SSH `origin` guestd sets is pushed over HTTPS with gh's login (DECISIONS I-150) | dev 0644 |
+
+When the laptop's gh keeps its token in the system keyring (gh 2.40+),
+the `hosts.yml` that travels carries that token as `oauth_token` under
+`github.com:`; the laptop's own file is not changed. All of this is one
+ssh, before the git steps of the sync.
 
 Never `~/.claude/.credentials.json`, never `~/.gemini/oauth_creds.json`
 (OAuth over SSH is unreliable; Gemini uses `GEMINI_API_KEY` as a named

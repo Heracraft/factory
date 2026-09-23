@@ -43,14 +43,6 @@ func userSSHConfig() (string, error) {
 	return filepath.Join(home, ".ssh", "config"), nil
 }
 
-func userIdentityFile() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".ssh", "id_ed25519"), nil
-}
-
 // writeFileAtomic writes to a temp file in the same directory and renames
 // it into place, so a crash never leaves a partial file (07-cli.md §6:
 // "~/.ssh/config unwritable ... nothing partial written").

@@ -3030,6 +3030,8 @@ which is the `git clean` above); leaving the staged files uncommitted (the
 next run's dirty check refuses its own previous sync); refusing `--name`
 without a remote (the flag exists for that directory). Interfaces: none;
 `07-cli.md` §5.5f and `features/sync-at-launch.md` describe it.
+*Superseded by I-150 (2026-09-23): the laptop's commits now travel as a
+bundle for every project, remote or not.*
 
 **I-139. `RegisterResponse` carries the SSH Host CA's public key; hostd
 writes it to `host.json` and re-renders the host's network files after a
@@ -3406,3 +3408,185 @@ the create done 1.8 s after the other engine's kick). *Rejected:* a
 shorter poll (four times the queries for half the gain) and routing the
 enqueue over the internal gRPC hop (a new RPC for what Postgres already
 carries).
+
+**I-149. The CLI has its own passphrase-less key, and one SSH connection
+per command.** (cli-ux, 07, 2026-09-23; owner's v0.1.4 session) The
+certificate was issued for `~/.ssh/id_ed25519`. The owner's is
+passphrase-protected and not in an agent, and every `runSSH` opened a new
+connection, so one `repose run` asked for the passphrase four or five
+times and the gateway closed the connection while a prompt waited
+(`Connection closed by … port 22`, exit 255). The CLI now generates
+`~/.ssh/repose/id_ed25519` in process (ed25519, no passphrase, 0600; no
+`ssh-keygen` needed) and the certificate is issued for it; a certificate
+on disk for any other key is re-issued, so a v0.1.4 laptop moves over on
+its next command. The user's own keys are never read, written or
+offered, and nothing is `ssh-add`ed. The generated config points
+`IdentityFile` at the new key, keeps `IdentitiesOnly yes` (I-108), and
+adds `ControlMaster auto`, `ControlPath ~/.ssh/repose/cm-%C`,
+`ControlPersist 10m` (not on Windows, whose OpenSSH has no
+multiplexing): the first ssh of a command opens the connection and every
+later one (probe, sync, tmux, attach) is a session on it, one handshake
+per `repose run`. The persisted master counts as an open gateway session
+for up to ten minutes after the command ends; nothing acts on that count
+today. `runSSH` bounds the wait for ssh's pipes (`WaitDelay`) so an old
+client whose master held them could not hang the CLI. A connection the
+gateway refuses (`Permission denied`, a revoked certificate) gets one
+forced re-issue before the 60-second wait continues (the HANDOFF finding
+"no certificate re-issue on certificate revoked").
+`TestEnsureCertMovesOffTheUsersKey`, `TestRenderSSHConfigGolden`,
+`TestSyncOverAMultiplexedConnection` (one TCP connection seen by the fake
+guest for the whole sync). *Rejected:* asking for the passphrase once
+and loading the key into an agent (needs an agent, and the key would
+still be offered elsewhere); `ssh-add` of the certificate (the old
+behaviour, which prompted too). Interfaces: `ssh-gateway.md` "CLI side"
+and `cli-config.md` in this commit.
+
+**I-150. The laptop sends its commits to the guest; the guest never
+fetches origin during a sync.** (cli-ux, 07, 2026-09-23; owner's session)
+Step 5c ran `git fetch origin` in the guest, which has no credentials for
+a private repository (and none for a public one with an SSH remote,
+which is what guestd sets, I-107): `git@github.com: Permission denied
+(publickey)`, and izma's checkout stayed an empty `git init`. The sync is
+now two ssh round trips on the multiplexed connection. The first creates
+the checkout if missing, and reports the dirty list, the commits every
+guest ref points at, and whether `origin` exists. The laptop filters
+those commits to the ones it has, and `git bundle create`s `HEAD` and its
+own `refs/remotes/origin/<branch>` excluding them (the whole history the
+first time; nothing when the guest is current). The second carries one
+tar (bundle, `git diff HEAD --binary`, the untracked tar) and one script:
+stash or discard if asked, `git fetch` from the bundle, move
+`origin/<branch>` to the laptop's view of it (only forward), add
+`origin` if missing (guestd's URL rule), then check out: the branch is
+created, or fast-forwarded when it is behind, and left alone with the
+laptop's commit checked out detached when the guest's branch has commits
+the laptop lacks (an agent's work is never moved off its branch), with a
+warning saying so; then the diff and the untracked files as before. The
+push prompt of 5.5c is gone: the commit travels whether or not it was
+pushed, and nothing is pushed. A `--name` project with no remote uses the
+same path without the remote-tracking ref, which replaces I-138's
+placeholder-author commit and makes a laptop deletion a guest deletion (a
+guest synced the I-138 way has a placeholder commit on its branch, so its
+first sync this way checks out detached and says so). A laptop checkout
+that is not a repository, has no commit, or is shallow gets a sentence
+saying what to run. Credentials sync first, in one ssh: the allowlisted
+files, the git identity through `git config --global` (from files in the
+payload, not the command line), and, when gh's login travelled and the
+remote is on github.com, `url.https://github.com/.insteadOf
+git@github.com:` plus gh as the credential helper for github, so an
+agent's `git push` works. gh 2.40+ keeps its token in the laptop keyring
+and `hosts.yml` has none; the CLI then writes `gh auth token`'s value
+under `github.com:` in the copy that travels (the same login, copied over
+SSH: the second of the three homes for secrets).
+`TestSyncSendsAnUnpushedCommit`, `TestSyncIntoAnEmptyGuestRepo`,
+`TestSyncLeavesADivergedGuestBranchAlone`, `TestSyncNoRemoteSendsHistory`,
+`TestSyncCredentialsCopiesExactlyTheFourRows`,
+`TestSyncCredentialsCarriesAKeyringGhToken`. *Rejected:* forwarding the
+laptop's agent for the fetch (ForwardAgent stays, but the owner had no
+agent, and HTTPS remotes need a token anyway); pushing for the user (the
+v0.1.4 prompt: it publishes work the user did not ask to publish, and
+fails the same way when the push is refused). Interfaces:
+`guest-conventions.md` (the `.gitconfig` row) in this commit.
+
+**I-151. The CLI proves the `<slug>.repose` alias works and says exactly
+how to fix it when not.** (cli-ux, 07, 2026-09-23; HANDOFF finding) On
+the owner's laptop `ssh age-calculator.repose` did not resolve after the
+Include line was written. `ensureIncludeLine` only checked that the text
+appeared somewhere; an `Include` after a `Host` or `Match` line applies
+to that block only, and a symlinked `~/.ssh/config` (home-manager) was
+replaced by a regular file. Now an Include counts only before the first
+Host/Match line (a fresh one is prepended otherwise, the misplaced one
+left where the user put it), a symlinked config is edited at its target
+when writable and never replaced, and after writing, `ssh -G
+<slug>.repose` must resolve to the gateway host and the `<slug>.<handle>`
+user. When it does not, the command warns with the reason and the line
+to add (for a read-only link, where to add it, with the home-manager
+option), and the CLI's own connections use `ssh -F ~/.ssh/repose/config`
+so the run still works. An unwritable `~/.ssh/config` is therefore a
+warning, not the exit 1 of 07-cli.md §6. `TestIncludeEffective`,
+`TestEnsureIncludeLineLeavesAReadOnlyLinkAlone`.
+
+**I-152. A directory's cached project must share its remote, and naming
+a project never writes the directory cache.** (cli-ux, 07, 2026-09-23;
+owner's session) In the nuru-wasm checkout `repose run` and `attach`
+went to age-calculator: `resolveProject` trusted `by_dir[cwd]`, and every
+explicit `--project` wrote `by_dir[cwd]`. Now an explicit project
+(positional, `--project`, `$REPOSE_PROJECT`) writes nothing; `by_dir` is
+written only when `run` creates a project with no remote (the case it
+exists for, `cli-config.md`), keyed by the repository root so a
+subdirectory finds it; and a `by_dir` or `by_remote` entry is believed
+only when that project's `remote_url` equals the directory's normalised
+remote (or both are empty). A mismatched or 404 entry is deleted from
+`projects.json`, which cleans the entries v0.1.4 wrote.
+`TestResolveProjectOrder` (poisoned entry ignored and forgotten, explicit
+project writes nothing, root key).
+
+**I-153. The CLI says what actually happened: the true state, why, and
+the next command.** (cli-ux, 07, 2026-09-23; owner's session) `repose
+destroy` printed "Destroyed." from the 202 while the op failed and the
+project stayed; `attach` said "is stopped. Run `repose start`" for a
+project in `error`; errors reached the user as `guestd unreachable for
+guest 01a0…` or `ssh cd ~/izma && git status --porcelain: exit status
+255: …`. Destroy now asks `Destroy <slug>? A final snapshot is kept for
+30 days. [y/N]` (the owner's wording; typing the name added nothing
+given the snapshot; `--yes`/`-y` skips it, and without a terminal the
+CLI asks for `--yes` instead of assuming), waits on the op DELETE
+returns (api.md, I-156), prints `Destroyed <slug>` only when it is done
+and `GET` answers 404, and otherwise `Could not destroy <slug>: <reason>
+(<code>). <slug> is still there, in state error. \`repose destroy
+<slug>\` tries again.` An api without the op id is waited on by polling
+the project. Every command that needs a running guest names the real
+state with its own next step (exit 5 kept); an `error` project's reason
+comes from the api's `last_error`, which since I-159 is a sentence and is
+shown as is, while an older api's host wording is mapped by code and
+never shows a guest id. Failed ops read `Could not <verb> <slug>:
+<reason> (<code>). <next>`, with the host's `detail` only under `-v`; a
+failed ssh reads `Could not <step>: <why> (<ssh's last line>).` and never
+includes the remote command. `repose projects` has a header row, a dash
+for what does not apply (uptime only while running; v0.1.4 printed 47h
+for a project two days in `error`), and one line per errored project
+with its reason; `--json` is unchanged. The `[y/N]` prompts now default
+to no on an empty answer (v0.1.4's helper said yes to an empty answer
+on `snapshots restore`'s `[y/N]`), and `secrets set` reads the value with
+echo off. The destroy message names the project id for the restore,
+since a destroyed project no longer resolves by name and the snapshot
+commands accept that id. The api's `last_error`, `host_unreachable` and
+`signals.guestd_ok` are read when present (they are in the api's Project
+JSON, not yet in api.md's shape). `TestDestroyReportsAFailedOp`,
+`TestDestroyConfirmationIsYesNo`, `TestNotRunningMessagesSayTheTruth`,
+`TestProjectsTable`, `TestSSHErrorsAreSentences`.
+
+**I-154. Long commands show live phases.** (cli-ux, 07, 2026-09-23;
+owner's session) `repose run` on a new project sat silent for over a
+minute. Commands that wait (run, start, stop, destroy, resize, snapshot
+create and restore) now show the phase on stderr: on a terminal one
+spinner line with the elapsed time, turned into `✓ <done>  <time>` when
+a phase has its own result (Created, Built the environment, Booted), and
+elsewhere one plain `<phase>...` line per phase; `run` ends with `Ready
+in <time>.` The phase follows the project's state while an op runs
+(creating, building, starting), a start the api turned into a restart
+says `Restarting <slug> (its agent stopped answering)` (I-157), and the
+build log streams through the same line without tearing it. Ops and the
+project are polled every 500 ms (two cheap GETs), not 2 s; the build log
+stream no longer inherits the api client's 30-second timeout, which cut
+every longer build's log off, and a stream cut short resumes from its
+last line. `--json` commands show nothing; Ctrl-C clears the line and
+exits 130. `TestProgressOutput`, `TestStartFromErrorSaysRestarting`.
+
+**I-155. A project is the argument of the commands whose object it is.**
+(cli-ux, 07, 2026-09-23; owner's request, "like docker logs
+<container-name>") `attach`, `start`, `stop`, `destroy`, `status`, `logs`
+and `events` take `[PROJECT]`; `--project` and `$REPOSE_PROJECT` still
+work, and naming two different projects is a usage error. `run` keeps
+PROMPT as its argument (now everything after the flags, so quoting is
+optional), and a one-word prompt that is exactly one of the user's
+project slugs is refused with exit 2 and the right command (`repose run
+izma` was almost certainly not a prompt; `--agent` sends it anyway).
+`open`, `secrets`, `config` and `snapshots` keep `--project`, since their
+argument is a port, a name, a path or a snapshot id. A stray argument on
+a command that takes none is now a usage error (v0.1.4 ignored `repose
+attach projects` and attached to the checkout's project), and cobra's own
+refusals (unknown command, flag or arity) exit 2 instead of 1.
+Completion offers the account's slugs for the argument and for
+`--project` (the api with a two-second limit, else the cached slugs),
+and fixed values for `--agent`, `--size`, `--kind`.
+`TestPositionalProject`, `TestRunRefusesAPromptThatIsAProjectName`.

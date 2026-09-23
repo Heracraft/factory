@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"text/tabwriter"
 	"time"
 )
 
-// StatusCmd implements `repose status [--json]` (07-cli.md §5.7).
+// StatusCmd implements `repose status [PROJECT] [--json]` (07-cli.md §5.7).
 func StatusCmd(ctx context.Context, e *Env, projectArg string) error {
 	project, err := requireProject(ctx, e, projectArg)
 	if err != nil {
@@ -23,33 +24,82 @@ func StatusCmd(ctx context.Context, e *Env, projectArg string) error {
 	return nil
 }
 
-// ProjectsCmd implements `repose projects`: one status first-line per
-// project, ignoring cwd.
+// ProjectsCmd implements `repose projects`: a table of every project,
+// ignoring cwd, with a header row and, under a project in `error`, why
+// (DECISIONS I-153). --json is the api's list, unchanged.
 func ProjectsCmd(ctx context.Context, e *Env) error {
 	projects, err := e.Client.ListProjects(ctx)
 	if err != nil {
 		return err
 	}
 	if e.JSON {
+		if projects == nil {
+			projects = []Project{}
+		}
 		return writeJSONOut(e.Out, projects)
 	}
-	for _, p := range projects {
-		_, _ = fmt.Fprintln(e.Out, statusFirstLine(&p))
+	if len(projects) == 0 {
+		_, _ = fmt.Fprintln(e.Out, "No projects yet. `repose run` in a git checkout creates one.")
+		return nil
 	}
+	writeProjectsTable(e.Out, projects)
 	return nil
+}
+
+func writeProjectsTable(w io.Writer, projects []Project) {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(tw, "PROJECT\tCLASS\tSTATE\tUP\tAGENTS\tTODAY\tMONTH")
+	for i := range projects {
+		p := &projects[i]
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t$%.2f\t$%.2f\n",
+			p.Slug, p.Class, p.State, orDash(uptime(p)), orDash(agentState(p)),
+			centsToDollars(p.CostTodayCents), centsToDollars(p.CostMonthCents))
+	}
+	_ = tw.Flush()
+	for i := range projects {
+		p := &projects[i]
+		if p.State == "error" {
+			reason := projectReason(p)
+			if reason == "" {
+				reason = "its last operation failed"
+			}
+			_, _ = fmt.Fprintf(w, "%s: %s\n", p.Slug, withNext(reason, fmt.Sprintf("`repose start %s` restarts it.", p.Slug)))
+		}
+	}
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 func writeStatusLines(w io.Writer, p *Project, route *Route, snaps []Snapshot, events []Event) {
 	_, _ = fmt.Fprintln(w, statusFirstLine(p))
+	if p.State == "error" {
+		reason := projectReason(p)
+		if reason == "" {
+			reason = "its last operation failed"
+		}
+		_, _ = fmt.Fprintf(w, "  error: %s\n", withNext(reason, fmt.Sprintf("`repose start %s` restarts it.", p.Slug)))
+	}
 	if route != nil {
-		disk := ""
+		disk := "-"
 		if p.VolumeBytes > 0 {
 			disk = fmt.Sprintf("%s/%s", humanBytes(p.DiskUsedBytes), humanBytes(p.VolumeBytes))
 		}
-		_, _ = fmt.Fprintf(w, "  host %s   ip %s   disk %s   snapshot %s\n", route.HostID, route.GuestIP, disk, snapshotAge(snaps))
+		_, _ = fmt.Fprintf(w, "  host %s   ip %s   disk %s   snapshot %s\n", orDash(route.HostID), orDash(route.GuestIP), disk, snapshotAge(snaps))
 	}
-	if p.Signals != nil {
-		_, _ = fmt.Fprintf(w, "  sessions %d   tmux clients %d   docker %d\n", p.Signals.SSHSessions, p.Signals.TmuxClients, p.Signals.Docker)
+	if p.Signals != nil && p.State == "running" {
+		docker := p.Signals.Docker
+		if p.Signals.DockerContainers > docker {
+			docker = p.Signals.DockerContainers
+		}
+		_, _ = fmt.Fprintf(w, "  sessions %d   tmux clients %d   docker %d\n", p.Signals.SSHSessions, p.Signals.TmuxClients, docker)
+		if guestdDead(p) {
+			_, _ = fmt.Fprintf(w, "  the environment's agent (guestd) is not answering; `repose start %s` restarts it\n", p.Slug)
+		}
 	}
 	if len(events) > 0 {
 		last := events[len(events)-1]
@@ -62,19 +112,27 @@ func writeStatusLines(w io.Writer, p *Project, route *Route, snaps []Snapshot, e
 }
 
 func statusFirstLine(p *Project) string {
-	uptime := ""
-	if p.StartedAt != nil {
-		uptime = humanDuration(time.Since(*p.StartedAt))
-	}
-	agentState := ""
-	if p.Signals != nil {
-		for _, a := range p.Signals.Agents {
-			agentState = fmt.Sprintf("%s: %s", a.Agent, a.State)
-			break
-		}
-	}
 	return fmt.Sprintf("%-10s %-6s %-9s %-7s %-20s today $%.2f   month $%.2f",
-		p.Slug, p.Class, p.State, uptime, agentState, centsToDollars(p.CostTodayCents), centsToDollars(p.CostMonthCents))
+		p.Slug, p.Class, p.State, uptime(p), agentState(p), centsToDollars(p.CostTodayCents), centsToDollars(p.CostMonthCents))
+}
+
+// uptime is only meaningful while running: v0.1.4 printed "47h30m" for a
+// project that had been in `error` for two days.
+func uptime(p *Project) string {
+	if p.State != "running" || p.StartedAt == nil {
+		return ""
+	}
+	return humanDuration(time.Since(*p.StartedAt))
+}
+
+func agentState(p *Project) string {
+	if p.Signals == nil || p.State != "running" {
+		return ""
+	}
+	for _, a := range p.Signals.Agents {
+		return fmt.Sprintf("%s: %s", a.Agent, a.State)
+	}
+	return ""
 }
 
 func centsToDollars(c int64) float64 { return float64(c) / 100 }

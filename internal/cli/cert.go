@@ -1,7 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -16,32 +20,69 @@ import (
 
 const certReuseMargin = 30 * time.Minute
 
-// ensureIdentityKey makes sure ~/.ssh/id_ed25519(.pub) exists, generating
-// one with ssh-keygen if not (07-cli.md §5.4: "never touch an existing
-// key"). It returns the public key line.
-func ensureIdentityKey() (string, error) {
-	priv, err := userIdentityFile()
+// The CLI's own key pair, ~/.ssh/repose/id_ed25519 (DECISIONS I-149). It
+// is generated here, has no passphrase, and is used for nothing but the
+// repose certificate, so an ssh to a guest never prompts and the user's
+// own keys (~/.ssh/id_*) are never read, written or offered. v0.1.4 and
+// earlier certified ~/.ssh/id_ed25519 instead; a certificate for that key
+// is detected in ensureCert and re-issued for this one.
+const reposeKeyName = "id_ed25519"
+
+func reposeKeyPath() (string, error) {
+	sd, err := sshDir()
 	if err != nil {
 		return "", err
 	}
-	pub := priv + ".pub"
-	if _, err := os.Stat(priv); err != nil {
-		if !os.IsNotExist(err) {
-			return "", err
-		}
-		if err := os.MkdirAll(filepath.Dir(priv), 0o700); err != nil {
-			return "", err
-		}
-		cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-N", "", "-C", "repose", "-f", priv)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return "", fmt.Errorf("ssh-keygen: %w: %s", err, out)
-		}
-	}
-	b, err := os.ReadFile(pub)
+	return filepath.Join(sd, reposeKeyName), nil
+}
+
+// ensureReposeKey makes sure the CLI's key pair exists, generating it in
+// process (no ssh-keygen needed) with mode 0600 for the private half. It
+// returns the public key.
+func ensureReposeKey() (ssh.PublicKey, error) {
+	priv, err := reposeKeyPath()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return strings.TrimSpace(string(b)), nil
+	pubPath := priv + ".pub"
+	if b, err := os.ReadFile(priv); err == nil {
+		signer, err := ssh.ParsePrivateKey(b)
+		if err != nil {
+			return nil, fmt.Errorf("%s is not a usable key (%v); delete it and run the command again to make a new one", priv, err)
+		}
+		// Tighten a mode someone loosened: ssh refuses a private key
+		// others can read, which would surface as a confusing prompt.
+		if info, err := os.Stat(priv); err == nil && info.Mode().Perm()&0o077 != 0 {
+			_ = os.Chmod(priv, 0o600)
+		}
+		if _, err := os.Stat(pubPath); err != nil {
+			_ = writeFileAtomic(pubPath, ssh.MarshalAuthorizedKey(signer.PublicKey()), 0o644)
+		}
+		return signer.PublicKey(), nil
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	pk, sk, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	block, err := ssh.MarshalPrivateKey(sk, "repose")
+	if err != nil {
+		return nil, err
+	}
+	pub, err := ssh.NewPublicKey(pk)
+	if err != nil {
+		return nil, err
+	}
+	if err := writeFileAtomic(priv, pem.EncodeToMemory(block), 0o600); err != nil {
+		return nil, err
+	}
+	line := bytes.TrimSpace(ssh.MarshalAuthorizedKey(pub))
+	if err := writeFileAtomic(pubPath, append(line, []byte(" repose\n")...), 0o644); err != nil {
+		return nil, err
+	}
+	return pub, nil
 }
 
 // parseCertFile reads an OpenSSH certificate written by a previous
@@ -84,26 +125,49 @@ func certUsableFor(cert *ssh.Certificate, want []string, now time.Time, margin t
 	return true
 }
 
+// certIsFor reports whether cert certifies key: a certificate for the
+// user's own ~/.ssh/id_ed25519 (what v0.1.4 wrote) is not.
+func certIsFor(cert *ssh.Certificate, key ssh.PublicKey) bool {
+	return cert != nil && key != nil && bytes.Equal(cert.Key.Marshal(), key.Marshal())
+}
+
 // certParams is what ensureCert needs about the account to write the SSH
 // config and known_hosts.
 type certParams struct {
 	Handle   string
 	Projects []Project // every project the user has; the cert covers all of them
+	// Force re-issues even when the certificate on disk looks usable: the
+	// gateway refused it (revoked, or the CA rotated).
+	Force bool
+	// CheckAlias runs `ssh -G <slug>.repose` after writing the files to
+	// prove the Include line works (I-151). Tests that point ssh at a
+	// fake guest leave it off.
+	CheckAlias bool
 }
 
-// ensureCert implements 07-cli.md §5.4: reuse a valid certificate, else
-// issue a new one covering every project the user has, write it and the
-// known_hosts and ssh config files, and register the Include line. It
-// returns the certificate path.
-func ensureCert(ctx context.Context, client *Client, params certParams, now func() time.Time) (string, error) {
+// certResult is what ensureCert hands back to the command.
+type certResult struct {
+	Path string
+	// AliasProblem is non-empty when `<slug>.repose` does not resolve to
+	// the gateway through ~/.ssh/config: what is wrong and exactly how
+	// to fix it. The CLI's own connections still work (they fall back to
+	// -F), so it is a warning, not an error.
+	AliasProblem string
+}
+
+// ensureCert implements 07-cli.md §5.4: reuse a valid certificate for the
+// CLI's own key, else issue a new one covering every project the user
+// has, write it and the known_hosts and ssh config files, and register
+// the Include line.
+func ensureCert(ctx context.Context, client *Client, params certParams, now func() time.Time) (*certResult, error) {
 	if now == nil {
 		now = time.Now
 	}
 	sd, err := sshDir()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	certPath := filepath.Join(sd, "id_ed25519-cert.pub")
+	certPath := filepath.Join(sd, reposeKeyName+"-cert.pub")
 
 	ids := make([]string, 0, len(params.Projects))
 	for _, p := range params.Projects {
@@ -111,69 +175,128 @@ func ensureCert(ctx context.Context, client *Client, params certParams, now func
 	}
 	sort.Strings(ids)
 
-	pubLine, err := ensureIdentityKey()
+	pub, err := ensureReposeKey()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+	pubLine := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pub)))
 
 	existing := parseCertFile(certPath)
-	if certUsableFor(existing, ids, now(), certReuseMargin) {
-		return certPath, writeSSHFiles(sd, params, hostCAFromCert(existing))
+	if !certIsFor(existing, pub) {
+		existing = nil // a certificate for another key (v0.1.4's ~/.ssh/id_ed25519) is re-issued
+	}
+	_, knownErr := os.Stat(filepath.Join(sd, "known_hosts"))
+	if !params.Force && knownErr == nil && certUsableFor(existing, ids, now(), certReuseMargin) {
+		problem, err := writeSSHFiles(sd, params, "")
+		if err != nil {
+			return nil, err
+		}
+		return &certResult{Path: certPath, AliasProblem: problem}, nil
 	}
 
 	resp, err := client.IssueCert(ctx, pubLine, ids)
 	if err != nil {
 		var apiErr *APIError
-		if errors.As(err, &apiErr) && apiErr.Code == "rate_limited" {
+		if errors.As(err, &apiErr) && apiErr.Code == "rate_limited" && knownErr == nil {
 			if existing != nil && time.Unix(int64(existing.ValidBefore), 0).After(now()) {
-				_, _ = fmt.Fprintf(os.Stderr, "warning: certificate rate limited; reusing the one on disk (%s left)\n", time.Unix(int64(existing.ValidBefore), 0).Sub(now()))
-				return certPath, writeSSHFiles(sd, params, hostCAFromCert(existing))
+				_, _ = fmt.Fprintf(os.Stderr, "warning: certificate rate limited; reusing the one on disk (%s left)\n", time.Unix(int64(existing.ValidBefore), 0).Sub(now()).Round(time.Minute))
+				problem, err := writeSSHFiles(sd, params, "")
+				if err != nil {
+					return nil, err
+				}
+				return &certResult{Path: certPath, AliasProblem: problem}, nil
 			}
 		}
-		return "", fmt.Errorf("issuing certificate: %w", err)
+		return nil, stepFailed("get an SSH certificate", err, "")
 	}
 
-	if err := writeFileAtomic(certPath, []byte(resp.Certificate+"\n"), 0o600); err != nil {
-		return "", err
+	if err := writeFileAtomic(certPath, []byte(strings.TrimSpace(resp.Certificate)+"\n"), 0o600); err != nil {
+		return nil, err
 	}
-	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
-		_ = exec.Command("ssh-add", certPath).Run() // best effort per 5.4
+	problem, err := writeSSHFiles(sd, params, resp.Gateway.HostCAPub)
+	if err != nil {
+		return nil, err
 	}
-	if err := writeSSHFiles(sd, params, resp.Gateway.HostCAPub); err != nil {
-		return "", err
-	}
-	return certPath, nil
+	return &certResult{Path: certPath, AliasProblem: problem}, nil
 }
 
-// hostCAFromCert has no way to recover the host CA public key from a
-// reused user certificate (it only signs user certs), so a reuse leaves
-// known_hosts untouched by passing "" through writeSSHFiles.
-func hostCAFromCert(*ssh.Certificate) string { return "" }
-
-func writeSSHFiles(sshDirPath string, params certParams, hostCAPub string) error {
+// writeSSHFiles writes known_hosts (when the host CA is known), the
+// generated config, and the Include line; then, when asked, proves the
+// alias resolves. Only a failure to write ~/.ssh/repose/ is an error; a
+// ~/.ssh/config the CLI cannot or should not edit becomes the returned
+// problem text.
+func writeSSHFiles(sshDirPath string, params certParams, hostCAPub string) (string, error) {
 	if hostCAPub != "" {
-		known := fmt.Sprintf("@cert-authority %s,10.64.* %s\n", gatewayHost, hostCAPub)
+		known := fmt.Sprintf("@cert-authority %s,10.64.* %s\n", gatewayHost, strings.TrimSpace(hostCAPub))
 		if err := writeFileAtomic(filepath.Join(sshDirPath, "known_hosts"), []byte(known), 0o600); err != nil {
-			return err
+			return "", err
 		}
 	}
-	cfg := renderSSHConfig(params.Projects, params.Handle)
+	cfg := renderSSHConfig(params.Projects, params.Handle, goos() != "windows")
 	if err := writeFileAtomic(filepath.Join(sshDirPath, "config"), []byte(cfg), 0o600); err != nil {
-		return err
+		return "", err
 	}
 	usc, err := userSSHConfig()
 	if err != nil {
-		return err
+		return "", err
 	}
-	return ensureIncludeLine(usc)
+	includeErr := ensureIncludeLine(usc)
+	if !params.CheckAlias || len(params.Projects) == 0 {
+		if includeErr != nil {
+			return includeProblemText(usc, includeErr), nil
+		}
+		return "", nil
+	}
+	p := params.Projects[0]
+	if ok, got := aliasResolves(p.Slug, params.Handle); !ok {
+		if includeErr != nil {
+			return includeProblemText(usc, includeErr), nil
+		}
+		return fmt.Sprintf("`ssh %s.repose` does not reach repose from a plain terminal: ssh resolves it to %s. ~/.ssh/config must include ~/.ssh/repose/config before its first Host or Match line; put this line at the very top of ~/.ssh/config:\n    %s", p.Slug, got, includeLine), nil
+	}
+	return "", nil
+}
+
+func includeProblemText(path string, err error) string {
+	var ro *includeUnwritableError
+	if errors.As(err, &ro) && ro.target != "" {
+		return fmt.Sprintf("~/.ssh/config is a link to %s, which repose does not edit, so `ssh <project>.repose` will not work from a plain terminal. Add this line at the top of the file it is generated from (home-manager: `programs.ssh.includes = [ \"~/.ssh/repose/config\" ];`):\n    %s", ro.target, includeLine)
+	}
+	return fmt.Sprintf("Could not add the Include line to %s (%v), so `ssh <project>.repose` will not work from a plain terminal. Add this line at its very top:\n    %s", path, err, includeLine)
+}
+
+// aliasResolves runs `ssh -G <slug>.repose` and checks the effective
+// HostName and User (I-151). ok is true when ssh is missing entirely:
+// there is nothing to check against, and every connection will fail
+// with its own clear error. got describes what ssh resolved otherwise.
+func aliasResolves(slug, handle string) (ok bool, got string) {
+	out, err := exec.Command("ssh", "-G", slug+".repose").Output()
+	if err != nil {
+		return true, ""
+	}
+	var host, user string
+	for _, l := range strings.Split(string(out), "\n") {
+		k, v, _ := strings.Cut(strings.TrimSpace(l), " ")
+		switch strings.ToLower(k) {
+		case "hostname":
+			host = v
+		case "user":
+			user = v
+		}
+	}
+	if host == gatewayHost && user == slug+"."+handle {
+		return true, ""
+	}
+	return false, fmt.Sprintf("host %q, user %q", host, user)
 }
 
 const gatewayHost = "ssh.repose.herakraft.co"
 
 // renderSSHConfig builds ~/.ssh/repose/config: one Host block per project,
 // in slug order for a stable diff (docs/interfaces/ssh-gateway.md "CLI
-// side").
-func renderSSHConfig(projects []Project, handle string) string {
+// side"). multiplex adds the ControlMaster lines (not on Windows, whose
+// OpenSSH has no multiplexing).
+func renderSSHConfig(projects []Project, handle string, multiplex bool) string {
 	sorted := append([]Project(nil), projects...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Slug < sorted[j].Slug })
 
@@ -183,15 +306,24 @@ func renderSSHConfig(projects []Project, handle string) string {
 		_, _ = fmt.Fprintf(&b, "Host %s.repose\n", p.Slug)
 		_, _ = fmt.Fprintf(&b, "  HostName %s\n", gatewayHost)
 		_, _ = fmt.Fprintf(&b, "  User %s.%s\n", p.Slug, handle)
+		// The CLI's own passphrase-less key and its certificate, and only
+		// those: with an agent loaded, ssh otherwise offers the agent's
+		// plain keys first and the gateway answers "certificate required"
+		// (M2 gate, I-108), and a passphrase-protected ~/.ssh/id_ed25519
+		// prompted on every connection (owner's session, I-149).
+		b.WriteString("  IdentityFile ~/.ssh/repose/id_ed25519\n")
 		b.WriteString("  CertificateFile ~/.ssh/repose/id_ed25519-cert.pub\n")
-		b.WriteString("  IdentityFile ~/.ssh/id_ed25519\n")
+		b.WriteString("  IdentitiesOnly yes\n")
 		b.WriteString("  UserKnownHostsFile ~/.ssh/repose/known_hosts\n")
 		b.WriteString("  ForwardAgent yes\n")
-		// Only the certificate identity above: with an agent loaded, ssh
-		// otherwise offers the agent's plain keys first and the gateway
-		// answers "certificate required" (M2 gate, DECISIONS I-108).
-		b.WriteString("  IdentitiesOnly yes\n")
 		b.WriteString("  ServerAliveInterval 30\n")
+		if multiplex {
+			// One handshake per `repose run`: every later ssh rides this
+			// connection (I-149).
+			b.WriteString("  ControlMaster auto\n")
+			b.WriteString("  ControlPath ~/.ssh/repose/cm-%C\n")
+			b.WriteString("  ControlPersist 10m\n")
+		}
 	}
 	return b.String()
 }

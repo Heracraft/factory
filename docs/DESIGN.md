@@ -240,13 +240,15 @@ guest ──vsock──▶ hostd
 - **API auth.** JWT access tokens for the `https://api.repose.herakraft.co`
   resource, verified by the API against Logto's JWKS.
 - **SSH.** The API holds an SSH CA (ed25519, key in the secrets store). On
-  `run` and `attach` the CLI sends its existing public key
-  (`~/.ssh/id_ed25519.pub`, created if missing) and gets back a certificate
-  with principal `<project-id>`, valid 12 hours, extensions
-  `permit-agent-forwarding,permit-port-forwarding,permit-pty`. The CLI adds it
-  to the running ssh-agent and writes `~/.ssh/repose/config` with one `Host`
-  block per project, included from the user's main config by a line the CLI
-  adds once. The CLI refreshes the certificate silently while the Logto
+  `run` and `attach` the CLI sends the public half of its own key
+  (`~/.ssh/repose/id_ed25519`, generated without a passphrase and used for
+  nothing else; the user's keys are never touched, DECISIONS I-149) and
+  gets back a certificate with principal `<project-id>`, valid 12 hours,
+  extensions `permit-agent-forwarding,permit-port-forwarding,permit-pty`.
+  The CLI writes `~/.ssh/repose/config` with one `Host` block per project
+  (multiplexed, so a command makes one connection), included from the
+  user's main config by a line the CLI adds once and verifies with `ssh
+  -G` (I-151). The CLI refreshes the certificate silently while the Logto
   refresh token is valid.
 - **Gateway.** Go, `golang.org/x/crypto/ssh`. Login name is
   `<project-slug>.<user-handle>` (e.g. `todo-app.heracraft`). The gateway

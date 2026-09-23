@@ -33,12 +33,13 @@ Identity:
   `https://github.com/a/b` resolve to the same project.
 - A directory with a remote and no `--name` maps to the project keyed on
   `(user, remote)`. The first `run` creates it; every later `run` finds it.
-- `--name` always wins over the remote. A `--name` project remembers the
-  directory it was created from (`projects.json` `by_dir`), so a later `run`
-  in that directory without `--name` finds it, and a `run` in the same
-  directory with a different `--name` creates another project. Two projects
-  can therefore share a remote when the user asked for it and never by
-  accident.
+- A `--name` project in a directory with no remote remembers the
+  repository (or directory) it was created from (`projects.json` `by_dir`),
+  so a later `run` there without `--name` finds it. That memory is only
+  trusted while the project's remote matches the directory's (both empty
+  for such a project), and naming a project explicitly (`repose attach
+  izma`, `--project`) never writes it, so one checkout can never be sent
+  to another checkout's guest (DECISIONS I-152).
 - A directory with no remote and no `--name` exits 2 with the one-line fix
   above. It never creates a project named after the directory, because the
   directory name is not unique and the project would be unfindable from a

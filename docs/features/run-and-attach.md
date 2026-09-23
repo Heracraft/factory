@@ -7,15 +7,27 @@ stay attached.
 
 ## What the user sees
 
-First run on a new project:
+First run on a new project (stderr shows a spinner with the elapsed time
+on a terminal; this is what stays on screen, DECISIONS I-154):
 
 ```
 $ repose run
+✓ Created todo-app (large)  0.3s
+nix › building '/nix/store/…-repose-guest.drv'...
+✓ Built the environment  41s
+✓ Booted todo-app  6.2s
 Connected to todo-app (large)
-Synced: 3 modified, 1 untracked
-Credentials: gh
+Synced: 3 modified, 1 untracked (12 new commits)
+Credentials: gh, git
+Ready in 49s.
 dev@todo-app:~/todo-app$
 ```
+
+Without a terminal on stderr (CI, a pipe) the phases are plain lines,
+`Creating todo-app...`, `Building the environment...`, `Booting
+todo-app...`, `Connecting to todo-app...`, `Syncing...`. One `repose run`
+makes one SSH connection and asks for nothing: the CLI's own key has no
+passphrase (I-149).
 
 Run with a prompt:
 
@@ -31,11 +43,28 @@ Run with another agent and an explicit size for a new project:
 $ repose run --agent codex --size xl "port the build to bun"
 ```
 
-Attach to an existing session later, from any machine where you are logged in:
+Attach to an existing session later, from the checkout or from anywhere
+by name (the project is the argument, DECISIONS I-155; `--project` works
+too):
 
 ```
 $ repose attach
+$ repose attach izma
 ```
+
+Attach to a project that is not running says which state it is in and
+what to do, exit 5:
+
+```
+$ repose attach age-calculator
+age-calculator is in an error state: the environment's agent (guestd) stopped answering; `repose start` restarts it.
+```
+
+`repose run izma` is refused with exit 2 when `izma` is one of your
+projects: `run`'s argument is the prompt, so the CLI points at `repose run
+--project izma` or `repose attach izma` instead of typing the word into
+an agent (`--agent` sends it anyway). The prompt is everything after the
+flags, so quoting is optional.
 
 Run a prompt while an agent is already running:
 
@@ -46,10 +75,13 @@ Starting a second claude in window todo-app:claude-2. Two agents on one tree
 can conflict; use `git worktree` inside the guest if that matters.
 ```
 
-Running against a stopped project starts it first, silently, before the
-usual `Connected to todo-app (large)` line — there is no separate
-"stopped" message for `run` (only `attach` and `open` refuse a stopped
-guest, exit 5, since starting one is not their job).
+Running against a stopped project starts it first (the `Starting
+todo-app` phase on stderr) before the usual `Connected to todo-app
+(large)` line — there is no separate "stopped" message for `run` (only
+`attach` and `open` refuse a guest that is not running, exit 5, since
+starting one is not their job). A project in `error` is restarted by the
+api on the same start (`Restarting todo-app (its agent stopped
+answering)`, I-157).
 
 ## Behaviour that must hold
 
@@ -99,10 +131,11 @@ Sequence and idempotency (from DESIGN §10):
    guest. An op that ends in `error` prints it and exits 1 (a build's own
    `eval_failed`/`build_failed` exits 10 instead, per the failure table
    below).
-3. Get or refresh the SSH certificate; write the SSH config block.
-4. Sync (sync-at-launch.md). Skipped with `--no-sync`.
-5. Sync credential files (secrets.md).
-6. Start the agent window if a prompt was given, then attach.
+3. Get or refresh the SSH certificate; write the SSH config block and
+   check the alias resolves (I-151).
+4. Sync credential files (secrets.md), then the checkout
+   (sync-at-launch.md). Both skipped with `--no-sync`.
+5. Start the agent window if a prompt was given, then attach.
 
 Running `repose run` twice in a row attaches twice and changes nothing else.
 A test asserts that the second run makes no `POST` to the API except the
@@ -126,10 +159,12 @@ Failure output:
   and `edit with \`repose config edit\``.
 - SSH does not answer within 60s of the API reporting `running`: exit 1,
   `Guest is running but SSH did not answer in 60s. \`repose logs --kind
-  console\` may show why.` A gateway certificate rejection during that
-  window surfaces the same way today; re-issuing the certificate once and
-  retrying (07-cli.md §6) needs a real gateway to verify the exact banner
-  text against and is not yet built (06-gateway-edge).
+  console\` may show why.`, followed by ssh's last error line. A gateway
+  refusal (`Permission denied`, a revoked certificate) during that window
+  re-issues the certificate once and keeps waiting (07-cli.md §6,
+  DECISIONS I-149).
+- Any failed step in the guest: exit 1, `Could not <step>: <why> (<ssh's
+  last line>).`, never the raw remote command (I-153).
 
 ## Depends on
 
