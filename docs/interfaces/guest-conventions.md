@@ -321,6 +321,7 @@ must be listening before start), `vsock.sock`. The vsock socket is a unix
 socket speaking Cloud Hypervisor's handshake: connect, write `CONNECT
 5000\n`, read `OK <port>\n`, then the stream is guestd's. The tap must
 exist with `vnet_hdr` (`ip tuntap add NAME mode tap user hostd vnet_hdr`);
-the runner uses one queue pair. Memory is `shared=on` (virtio-fs needs it).
+the runner uses one queue pair. Memory is `shared=on` (virtio-fs needs it);
+the volume is opened `direct=on` (O_DIRECT, DECISIONS I-230).
 The kernel line gets `ip=<ip>::<gateway>:<netmask>:<hostname>:eth0:off`,
 which the guest turns into its static network configuration.

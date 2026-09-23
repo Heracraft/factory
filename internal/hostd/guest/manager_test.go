@@ -77,7 +77,7 @@ func TestCreateReachesRunningWithEverythingWired(t *testing.T) {
 		t.Fatalf("gc root %q", tgt)
 	}
 	u := h.sd.Units["guest@"+gid1]
-	if u == nil || !u.Active || u.Props[0] != "MemoryMax=8704M" || u.Props[1] != "CPUQuota=400%" {
+	if u == nil || !u.Active || u.Props[0] != "MemoryMax=8704M" || u.Props[1] != "MemoryHigh=8576M" || u.Props[2] != "CPUQuota=400%" {
 		t.Fatalf("unit %+v", u)
 	}
 	// H-2: the hypervisor is not root, and the unit is the sandbox

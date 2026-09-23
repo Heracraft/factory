@@ -19,11 +19,14 @@ import (
 
 // GuestUnitProps renders the systemd properties of guest@<id>. dir is the
 // guest's directory, guestsDir its parent, volumeDev the guest's thin
-// volume. The first two properties are the memory and CPU caps that
+// volume. The first three properties are the memory and CPU caps that
 // docs/interfaces/host-conventions.md names; the rest is the sandbox.
+// They take effect when the unit starts: a running guest keeps the shape
+// it was started with until its next start (reconcile never restarts one).
 func GuestUnitProps(class Class, user, guestsDir, dir, volumeDev string) []string {
 	return []string{
 		fmt.Sprintf("MemoryMax=%dM", class.MemMiB+OverheadMiB),
+		fmt.Sprintf("MemoryHigh=%dM", class.MemMiB+OverheadMiB-HighMarginMiB),
 		fmt.Sprintf("CPUQuota=%d%%", class.VCPUs*100),
 		"Restart=no",
 		"Slice=guests.slice",

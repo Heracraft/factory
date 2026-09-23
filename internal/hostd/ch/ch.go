@@ -69,8 +69,14 @@ func (s Spec) Args() []string {
 		"--memory", fmt.Sprintf("size=%dM,shared=on", s.MemMiB),
 		// image_type=raw: Cloud Hypervisor 53 refuses sector-0 writes on a
 		// disk whose type it auto-detected, and ext4 keeps its superblock
-		// there (DECISIONS I-63).
-		"--disk", "path=" + s.VolumeDev + ",image_type=raw",
+		// there (DECISIONS I-63). direct=on: the volume is opened O_DIRECT,
+		// so the guest's disk writes never sit in the host page cache. That
+		// cache is charged to guest@<id>, whose MemoryMax is the guest's RAM
+		// (all shmem, never reclaimable) plus a small overhead; buffered
+		// writes filled the overhead with pages under writeback and the
+		// kernel OOM-killed the hypervisor (DECISIONS I-230). The guest has
+		// its own page cache; a second one on the host only doubled it.
+		"--disk", "path=" + s.VolumeDev + ",image_type=raw,direct=on",
 		"--net", fmt.Sprintf("tap=%s,mac=%s", s.Tap, s.MAC),
 		"--fs", fmt.Sprintf("tag=%s,socket=%s", s.StoreTag, VirtiofsSocket(s.GuestDir)),
 		"--vsock", fmt.Sprintf("cid=%d,socket=%s", s.CID, VsockSocket(s.GuestDir)),

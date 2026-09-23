@@ -84,8 +84,22 @@ var Classes = map[string]Class{
 	"xl":    {VCPUs: 8, MemMiB: 16384},
 }
 
-// OverheadMiB is added to a guest's MemoryMax for CH and virtiofsd.
+// OverheadMiB is what guest@<id> may hold beyond the guest's RAM. The RAM
+// is a shared memfd (virtio-fs needs shared=on), charged to the unit as
+// shmem and never reclaimable, so everything else Cloud Hypervisor holds
+// has to fit here: its own heap, page tables and KVM's second-level ones
+// (about 4 MiB per GiB of RAM), io_uring and slab, and the page cache of
+// the kernel and initrd it read. With the disk opened O_DIRECT that is
+// under 150 MiB for xl (DECISIONS I-230); the rest is margin. virtiofsd is
+// its own unit (virtiofsd@<id>, MemoryMax=1G) and is not in this number.
+// Placement (FreeMemBytes) and the api count class RAM plus this.
 const OverheadMiB = 512
+
+// HighMarginMiB puts MemoryHigh this far below MemoryMax: past it the
+// kernel reclaims the unit's page cache on every allocation and throttles
+// the allocating thread instead of invoking the OOM killer, which at
+// MemoryMax has only the hypervisor to kill (DECISIONS I-230).
+const HighMarginMiB = 128
 
 // Error is a command failure with its documented code.
 type Error struct {

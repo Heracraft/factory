@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-280 entries.
+281 entries.
 
 ## Scope
 
@@ -312,3 +312,4 @@ pointer, not a summary.
 - **I-225** Server side of a start: hostd dials a booting guest's guestd every 200 ms, guestd skips a registration it already loaded, and a sample from before a start is not the new guest's — L5137
 - **I-228** Tools that download their own binaries work in the guest with their stock commands — 2026-09-23; L5166
 - **I-227** Every package manager's user bin dir is on PATH for every process of dev's — 2026-09-23; L5236
+- **I-230** Guest disks are opened O_DIRECT, and guest@ units get a MemoryHigh 128 MiB under MemoryMax — 2026-09-23; L5294

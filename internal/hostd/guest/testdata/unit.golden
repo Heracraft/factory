@@ -1,4 +1,5 @@
 MemoryMax=8704M
+MemoryHigh=8576M
 CPUQuota=400%
 Restart=no
 Slice=guests.slice
