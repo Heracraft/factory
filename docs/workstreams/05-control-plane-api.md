@@ -97,7 +97,10 @@ main
 
 Coolify runs 1 replica at first; all background loops take a Postgres
 advisory lock (`pg_try_advisory_lock(<loop id>)`) so a second replica does
-not double-run them. HTTP and gRPC are replica-safe. hostd streams
+not double-run them. The ops loop polls every 500 ms and also `LISTEN`s on
+`repose_ops`; an enqueue or a command result in a process that does not
+hold the ops lock raises `NOTIFY repose_ops`, so the driver starts the next
+phase at once instead of at its next poll (DECISIONS I-163). HTTP and gRPC are replica-safe. hostd streams
 reconnect to whichever replica they land on; commands for a host are routed
 by looking up which replica holds its stream in a `host_sessions` table
 (`host_id, replica_id, since`) and, if another replica holds it, forwarded

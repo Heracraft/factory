@@ -3283,3 +3283,24 @@ every guest on the host shares. Needs a host switch.
 `internal/hostd/lvm` test pins the argv. *Rejected:* `noinit_itable` in the
 guest's mount options (never zeroing is safe on thin but is one more
 guest-visible difference for no time the create would see).
+
+**I-163. An op enqueued in one api process wakes the driver in the other
+through NOTIFY.** (provision-speed, 2026-09-23) The api and api-grpc each
+run an ops engine and only the one holding the ops lock drives; `Kick` only
+woke its own process. On 2026-09-23 api-grpc drove: izma's Build result to
+the CreateGuest send took 45 ms (the result lands in api-grpc and kicks
+locally), but `POST /projects` is served by the api, so the op waited for
+api-grpc's 500 ms poll before its Build went out (the api logged the POST
+and api-grpc the command in the same second; hostd started the Build at
+00:06:47.86). A `Kick` in an engine that is not driving now also runs
+`select pg_notify('repose_ops', '')`, and the driver `LISTEN`s on a
+dedicated connection and turns each notification into a tick. The 500 ms
+poll stays as the fallback, so a lost listener or a failed notify costs
+latency, never an op. Expected: up to 0.5 s (0.25 s on average) off the
+start of every op a user or `repose-admin` enqueues, and the same off each
+phase when the api rather than api-grpc holds the lock.
+`TestEnqueueInAnotherProcessWakesTheDriver` (driver polling once an hour,
+the create done 1.8 s after the other engine's kick). *Rejected:* a
+shorter poll (four times the queries for half the gain) and routing the
+enqueue over the internal gRPC hop (a new RPC for what Postgres already
+carries).

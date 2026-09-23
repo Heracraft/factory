@@ -564,6 +564,44 @@ func TestStartAppliesOnlyANewerBuiltRevision(t *testing.T) {
 	}
 }
 
+// An op enqueued by an engine that does not drive (the api, while api-grpc
+// holds the ops lock) starts at once through NOTIFY, not at the driver's
+// next tick (I-163). The driver's tick is an hour here, so only the
+// notification can have woken it.
+func TestEnqueueInAnotherProcessWakesTheDriver(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	h.StartEngine(ops.Config{BaseRef: "dev", TickInterval: time.Hour})
+	time.Sleep(200 * time.Millisecond) // the driver takes the lock and listens
+	other := ops.New(h.Pool, h.HostMgr, h.CA, h.Secrets, h.Logs, h.Events, h.Metrics, h.Log, ops.Config{BaseRef: "dev"})
+	u := h.NewUser("ned")
+	p := h.NewProject(u, "woken", "small")
+	pid := p.ID
+	id, err := other.Enqueue(h.Ctx, h.Pool, ops.NewOp{Kind: ops.KindCreate, ProjectID: &pid, Phases: ops.PlanCreate()}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	other.Kick()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		op, err := store.GetOp(h.Ctx, h.Pool, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if op.State == "done" {
+			t.Logf("create done %s after the other process's kick", time.Since(start).Round(time.Millisecond))
+			return
+		}
+		if op.State == "error" {
+			t.Fatalf("create: %+v", op.Error)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("op still %s 10 s after a kick from another process; the driver was not woken", op.State)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // A create whose fragment and base version match a closure already applied
 // on the same host sends no Build (I-160): the closure depends on nothing
 // else, and the other guest's GC root keeps it on the host.
