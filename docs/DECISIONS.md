@@ -3590,3 +3590,54 @@ Completion offers the account's slugs for the argument and for
 `--project` (the api with a two-second limit, else the cached slugs),
 and fixed values for `--agent`, `--size`, `--kind`.
 `TestPositionalProject`, `TestRunRefusesAPromptThatIsAProjectName`.
+
+**I-164. A snapshot reads the blocks the filesystem uses, not the whole
+volume.** (destroy-restore, 03, 2026-09-23; owner's `repose destroy izma`,
+38 s) izma's destroy on host-01: StopGuest 02:22:46.48, `snapshot start`
+the same millisecond, `snapshot done` 02:23:19.33 (`duration_ms` 32853,
+`bytes` 2059646), stop 3.5 s, DestroyGuest 0.1 s. Nothing logged in the
+33 s because nothing but one pipeline ran: `dd if=<snapshot> bs=4M |
+zstd -T4 -3` reads every byte of the thin volume, and the unprovisioned
+ones read as zeros that compress to nothing. The journal since
+2026-09-21 shows the time follows the volume, not the data: every 20 GB
+volume took 15.0-16.5 s (1.5-4.0 MB uploaded), every 40 GB one 30.9-34.8 s,
+whether it carried 2 MB or 227 MB (02:26 and 02:31 the same night). The
+freeze, `lvcreate -s`, the upload and the lvremove are each well under a
+second. Every stop, nightly and destroy snapshot paid it, and every
+restore paid it again writing 40 GB back through `dd conv=sparse`.
+hostd now runs `dumpe2fs` on the activated snapshot and, when the
+filesystem is ext4, `clean` and without `needs_recovery` (ext4's freeze
+flushes the journal and clears that flag, and so does a clean shutdown),
+reads only the ranges the block bitmaps mark used, drops 64 KiB pieces
+that are all zero (the inode tables `lazy_itable_init=1` leaves unzeroed,
+I-162), and frames the rest as `offset, length, bytes` records behind a
+`RPSXT001` header and before a trailer with the byte count, through the
+same `zstd -T4 -3` to the same blob path. Restore peeks the magic after
+`zstd -d`: extent streams are `pwrite`n into the fresh volume (which reads
+zeros everywhere else, the assumption `conv=sparse` already made) and
+checked against the trailer, raw streams take the old `dd`. Anything the
+bitmaps cannot be trusted for (a killed guest's journal, a volume that is
+not ext4, dumpe2fs output that does not list every group) falls back to
+the raw read, and the log line says which and why (`format`,
+`raw_reason`, `used_bytes`, `volume_bytes` on `snapshot done`). On the dev
+box a 40 GB sparse ext4 holding a 1 GB file: raw 23.6 s, extents 0.23 s,
+same compressed size (`TestExtentSnapshotTiming`, a sparse file standing
+in for a thin volume on an AMD box, so direction and scale, not host-01's
+number). Expected on host-01: izma's snapshot from 33 s to well under a
+second of reading plus the upload of what it holds; a stop from 38 s to
+about 5 s. Needs a host switch; the api is unaffected. Old blobs restore
+as before; an extent blob cannot be restored by a hostd older than this
+(e2fsck fails that restore and only the new volume is touched), which
+matters only once a second host exists. `TestExtentSnapshotRoundTrip`
+(mkfs.ext4 -d, round trip onto an empty device, e2fsck -fn clean, files
+equal via debugfs), `TestRawFallbacks` (not ext4; `needs_recovery` set
+with debugfs), `TestParseDumpe2fsRefusals`,
+`TestExtentStreamRefusesATruncatedOrOversizedStream`. *Rejected:* the
+thin pool's own mapping (`thin_dump` needs `reserve_metadata_snap` on the
+live pool every guest shares, and knows provisioned blocks, not used
+ones); `e2image -ra` to a pipe (writes the zeros itself, so the time
+stays proportional to the volume); keeping the LVM snapshot on the host
+and exporting it later in the background (a host-side queue to reconcile
+across restarts for seconds of upload nobody waits on once the CLI
+returns at once, I-166, and a destroyed project whose only copy is on
+one host is not restorable elsewhere until it lands).

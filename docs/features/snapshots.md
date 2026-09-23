@@ -39,8 +39,12 @@ Taking (DECISIONS R3-6):
   like a hung agent.
 - The LVM snapshot is streamed zstd-compressed to Blob at
   `<user>/<project>/<timestamp>.img.zst`, then removed. Only used blocks
-  travel (thin snapshots know which blocks are allocated), so a 40 GB volume
-  with 2 GB used uploads about 2 GB.
+  are read and travel: hostd reads the filesystem's bitmaps and sends the
+  used, non-zero blocks (DECISIONS I-164), so a 40 GB volume with 2 GB
+  used reads and uploads about 2 GB, and the time follows the data, not
+  the volume's size. A volume whose journal still needs replaying (a
+  guest that was killed rather than stopped) is read whole, which is
+  slower and just as restorable.
 - A snapshot writes a `snapshots` row with size and reason only after the
   upload has been verified by size and checksum against Blob.
 - A running agent is not paused for a snapshot. Docker containers are not

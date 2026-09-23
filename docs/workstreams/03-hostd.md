@@ -320,8 +320,15 @@ Snapshot:
 2. `lvcreate -s -n snap-<guest_id>-<ts> vg-guests/g-<guest_id>`.
 3. `guestd Thaw`. Freeze window measured and exported as a histogram; over
    2 s is a warning.
-4. `lvchange -ay -K vg-guests/snap-...`, then stream `dd if=/dev/vg-guests/
-   snap-... bs=4M status=none | zstd -T4 -3` into the Azure Blob Go SDK's
+4. `lvchange -ay -K vg-guests/snap-...`, then `dumpe2fs` the snapshot.
+   A clean ext4 (state `clean`, no `needs_recovery`: a freeze and a clean
+   shutdown both leave it so) is streamed in the extent format
+   (DECISIONS I-164): the blocks the bitmaps mark used, minus 64 KiB
+   pieces that are all zero, framed as offset/length records, through
+   `zstd -T4 -3`. Anything else (a killed guest's journal, a volume that
+   is not ext4) falls back to `dd if=/dev/vg-guests/snap-... bs=4M
+   status=none | zstd -T4 -3`, which reads the whole volume. Either goes
+   into the Azure Blob Go SDK's
    block-blob `UploadStream` (block size 8 MiB, concurrency 4). azcopy is
    not used because it cannot read from a pipe. Blob path
    `<user_id>/<project_id>/<ts>.img.zst`, metadata `guest_id`, `class`,
@@ -332,17 +339,24 @@ Snapshot:
 6. `Event{snapshot_done}` and the Result with `snapshot_id` (the api
    assigns it; hostd returns `blob_path` and `bytes`).
 
-`dd` reads the whole logical volume, so upload size is kept proportional
-to real data by two things: the pool runs with `--discards passdown`, and
-guestd runs `fstrim /` weekly, so unallocated blocks read as zeros and zstd
-compresses them to almost nothing. Uploaded bytes are reported in the
-Result so the cost stays visible.
+The raw fallback reads the whole logical volume: upload size stays
+proportional to real data (the pool runs with `--discards passdown` and
+guestd runs `fstrim /` weekly, so unallocated blocks read as zeros and
+zstd compresses them to almost nothing), but time does not. Before I-164
+every snapshot took that path: 15-16 s for every 20 GB volume and 32-34 s
+for every 40 GB one on host-01, whether it carried 1.5 MB or 227 MB. The
+`snapshot done` line carries `format`, `raw_reason`, `used_bytes` and
+`volume_bytes`, so a slow snapshot says which path it took. Uploaded
+bytes are reported in the Result so the cost stays visible.
 
 Restore:
 
 1. `lvcreate -V <volume_bytes>b -T vg-guests/thin -n g-<new guest_id>`.
-2. Download the blob as a stream through `zstd -d` into `dd of=/dev/vg-guests/
-   g-<id> bs=4M conv=sparse`.
+2. Download the blob as a stream through `zstd -d`. An extent stream
+   (magic `RPSXT001`) is written record by record with `pwrite` into the
+   new volume, which reads as zeros everywhere else, then `fsync`; a raw
+   stream (every snapshot from before I-164) goes into `dd
+   of=/dev/vg-guests/g-<id> bs=4M conv=sparse`.
 3. `e2fsck -fp` on the volume; a non-zero exit above 1 fails the restore
    with `internal: filesystem check failed after restore`.
 4. Continue as CreateGuest from step 4 with the closure the api passed
@@ -475,6 +489,10 @@ because they are separate transient units.
       link`, `nft list`, `systemctl` pasted.
 - [ ] StopGuest with snapshot uploads a blob whose restore produces an
       identical filesystem. Evidence: `diff -r` after restore, host test.
+- [ ] A stop or destroy snapshot of a 40 GB volume holding under 2 GB
+      takes under 5 s, not 33 s (I-164). Evidence: the `snapshot done`
+      journal line on host-01 with `format: extents` and its
+      `duration_ms`, and a restore of that blob reaching `running`.
 - [ ] Freeze window under 2 s at p99 on a guest running a `dd` write loop.
       Evidence: histogram screenshot.
 - [ ] Build maps syntax error, missing attribute, timeout, and closure cap

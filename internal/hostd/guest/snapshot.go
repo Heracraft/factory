@@ -8,6 +8,7 @@ import (
 	"time"
 
 	hostdv1 "github.com/heracraft/repose/internal/gen/hostd/v1"
+	"github.com/heracraft/repose/internal/hostd/snapshot"
 	"github.com/heracraft/repose/internal/hostd/state"
 )
 
@@ -123,7 +124,16 @@ func (m *Manager) snapshotGuest(ctx context.Context, g *state.Guest, reason stri
 		m.d.Metrics.SnapshotBytesTotal.Add(float64(n))
 		m.d.Metrics.SnapshotBytes.Set(float64(n))
 	}
-	log.Info("snapshot done", "event", "snapshot_done", "bytes", n, "duration_ms", m.d.Now().Sub(start).Milliseconds())
+	// The format and the used bytes say what the duration was spent on:
+	// an extent snapshot reads what the filesystem uses, a raw one reads
+	// the whole volume (I-164).
+	format, why, used := "raw", "", uint64(0)
+	if md, ok := r.(snapshot.Moder); ok {
+		mo := md.Mode()
+		format, why, used = mo.Format, mo.Why, mo.UsedBytes
+	}
+	log.Info("snapshot done", "event", "snapshot_done", "bytes", n, "duration_ms", m.d.Now().Sub(start).Milliseconds(),
+		"format", format, "raw_reason", why, "used_bytes", used, "volume_bytes", g.VolumeBytes)
 	m.emitEvent(&hostdv1.Event_SnapshotDone{SnapshotDone: &hostdv1.SnapshotDone{GuestId: g.GuestID, BlobPath: blobPath, Bytes: n}})
 	return &hostdv1.SnapshotResult{BlobPath: blobPath, Bytes: n}, nil
 }

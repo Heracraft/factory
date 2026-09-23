@@ -189,8 +189,8 @@ its fragment; the CLI streams the build.
 - Thin volume per guest on `vg-guests/thin`, ext4, mounted by the guest as its
   root overlay's upper dir and `/home`.
 - Snapshot = `guestd` runs `fsfreeze -f /` , hostd takes an LVM thin snapshot,
-  `guestd` runs `fsfreeze -u`, freeze window under one second. The snapshot is
-  streamed `zstd`-compressed to Azure Blob (`repose-snapshots` container,
+  `guestd` runs `fsfreeze -u`, freeze window under one second. The snapshot's
+  used blocks (DECISIONS I-164) are streamed `zstd`-compressed to Azure Blob (`repose-snapshots` container,
   path `<user>/<project>/<timestamp>.img.zst`), then the LVM snapshot is
   removed.
 - Schedule: nightly at 03:00 in the host's timezone, and on every `stop`.

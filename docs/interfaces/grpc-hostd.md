@@ -84,7 +84,15 @@ command_id returns the stored result) and one of:
 
 **Result**: `command_id`, `ok`, `error {code, message}`, payload. Snapshot
 blob paths are `<user_id>/<project_id>/<ts>.img.zst` (`<project_id>/<ts>`
-when the guest was created without `user_id`). Error codes:
+when the guest was created without `user_id`). The blob is a zstd stream
+of either a raw volume image or, since DECISIONS I-164, the extent format
+(after decompression: `RPSXT001`, the device size, then `offset, length,
+bytes` records of the used non-zero blocks, then a trailer; little-endian
+u64s). `Restore` accepts both and tells them apart by the magic, so every
+existing snapshot stays restorable; a hostd older than I-164 cannot
+restore an extent blob (its e2fsck fails the restore, nothing is
+overwritten but the new volume), so every host is switched before a
+snapshot moves between hosts. Error codes:
 `invalid_argument`, `not_found`, `already_exists`, `insufficient_capacity`,
 `build_failed`, `build_timeout`, `eval_failed`, `closure_too_large`,
 `guest_unresponsive`, `internal`. `build_failed` and `eval_failed` carry the
