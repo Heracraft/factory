@@ -147,6 +147,13 @@ func deleteCredentials(dir string) error {
 type ProjectsCache struct {
 	ByRemote map[string]CachedProject `json:"-"` // top-level keys, merged into MarshalJSON
 	ByDir    map[string]string        `json:"by_dir"`
+
+	// base is the file as this process loaded it. A save applies only what
+	// this process changed since (added, updated, removed) to the file as it
+	// is on disk then, under a lock, so concurrent `repose run`s in
+	// different directories merge instead of the last writer erasing the
+	// others' entries.
+	base *ProjectsCache
 }
 
 // CachedProject is one entry of ProjectsCache.ByRemote.
@@ -204,11 +211,67 @@ func loadProjectsCache(dir string) (ProjectsCache, error) {
 	if err := json.Unmarshal(b, &c); err != nil {
 		return newProjectsCache(), err
 	}
+	snap := c.clone()
+	c.base = &snap
 	return c, nil
 }
 
+func (c ProjectsCache) clone() ProjectsCache {
+	out := newProjectsCache()
+	for k, v := range c.ByRemote {
+		out.ByRemote[k] = v
+	}
+	for k, v := range c.ByDir {
+		out.ByDir[k] = v
+	}
+	return out
+}
+
+// mergeInto applies c's changes relative to its base onto disk.
+func (c ProjectsCache) mergeInto(disk ProjectsCache) ProjectsCache {
+	base := newProjectsCache()
+	if c.base != nil {
+		base = *c.base
+	}
+	for k, v := range c.ByRemote {
+		if old, ok := base.ByRemote[k]; !ok || old != v {
+			disk.ByRemote[k] = v
+		}
+	}
+	for k := range base.ByRemote {
+		if _, ok := c.ByRemote[k]; !ok {
+			delete(disk.ByRemote, k)
+		}
+	}
+	for k, v := range c.ByDir {
+		if old, ok := base.ByDir[k]; !ok || old != v {
+			disk.ByDir[k] = v
+		}
+	}
+	for k := range base.ByDir {
+		if _, ok := c.ByDir[k]; !ok {
+			delete(disk.ByDir, k)
+		}
+	}
+	return disk
+}
+
 func saveProjectsCache(dir string, c ProjectsCache) error {
-	b, err := json.MarshalIndent(c, "", "  ")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	unlock, err := lockFile(projectsPath(dir) + ".lock")
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	disk, err := loadProjectsCache(dir)
+	if err != nil {
+		// An unreadable file is replaced by this process's view, as before.
+		disk = newProjectsCache()
+	}
+	merged := c.mergeInto(disk)
+	b, err := json.MarshalIndent(merged, "", "  ")
 	if err != nil {
 		return err
 	}
