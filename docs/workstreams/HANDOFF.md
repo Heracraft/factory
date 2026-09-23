@@ -35,6 +35,17 @@ disagrees.
   `api.md`'s Project shape lacks `last_error`, `host_unreachable` and
   `signals.guestd_ok`, which the api already returns (05 owns it).
 
+- **Owner's monitoring server joined (I-170):** peer 10.255.0.3
+  (`wg-repose`) on the edge; Loki `http://10.255.0.3:3100` recorded; the
+  edge and host-01 ship logs (host-01 via its `host.json`, backup at
+  `host.json.bak-loki`). Owner items 3 and 4 are done. Still owed: the
+  owner's Prometheus scrape jobs (`ops/prometheus/prometheus.yml`) and the
+  api `/metrics` router labels (item 5).
+- **Destroy/restore (I-164..I-168), CLI v0.1.6:** background destroy,
+  `repose restore NAME`, `repose projects --destroyed`, dashboard "Recently
+  destroyed"; snapshot of a clean volume reads only used blocks (40 GB:
+  33 s → 1.3 s).
+
 # Conductor handoff, 2026-09-21 (after M2 and most of M3, M5 step 1)
 
 Read this before `STATUS.md` when picking the project up. It says where
