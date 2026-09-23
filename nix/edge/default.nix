@@ -404,6 +404,8 @@ in
                 function unit(tag, ts, record)
                   local u = record["_SYSTEMD_UNIT"] or record["SYSLOG_IDENTIFIER"] or "kernel"
                   u = string.gsub(u, "%.service$", "")
+                  u = string.gsub(u, "@.*$", "")
+                  u = string.gsub(u, "^session%-%d+%.scope$", "session")
                   record["component"] = u
                   record["service_name"] = u
                   return 2, ts, record

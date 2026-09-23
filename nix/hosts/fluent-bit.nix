@@ -25,6 +25,17 @@ let
     function host_unit(tag, ts, record)
       local unit = record["_SYSTEMD_UNIT"] or record["SYSLOG_IDENTIFIER"] or "kernel"
       unit = string.gsub(unit, "%.service$", "")
+      -- A templated unit's instance is an id (guest@<guest id>,
+      -- virtiofsd@<guest id>) and a login scope is numbered
+      -- (session-42.scope): one label value per guest or login would be
+      -- a stream per id, so the instance moves to guest_id and the
+      -- number is dropped.
+      local base, inst = string.match(unit, "^([^@]+)@(.+)$")
+      if base ~= nil then
+        unit = base
+        if string.match(inst, "^%x+%-%x+%-%x+%-%x+%-%x+$") then record["guest_id"] = inst end
+      end
+      unit = string.gsub(unit, "^session%-%d+%.scope$", "session")
       record["component"] = unit
       record["unit"] = unit
       record["service_name"] = unit
