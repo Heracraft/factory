@@ -128,8 +128,25 @@ rotates keys does the same restart itself.
     removed on destroy. A `systemctl reload nftables` flushes only the
     chains listed above; `guest_dyn`, the counters and the `guests` set
     survive.
-- `tc` HTB class per tap for the 200 Mbit/s shape (hostd; `sch_htb` is
-  loaded).
+- Per-guest egress shape, 200 Mbit/s, on what the guest sends (hostd,
+  DECISIONS I-217). A guest's egress is its tap's ingress, so each tap
+  gets `tc qdisc add dev <tap> handle ffff: ingress` (only when absent)
+  and three filters, each a `tc filter replace ... parent ffff: protocol
+  ip prio <n> handle 1`: prio 1 `flower dst_ip 10.64.0.0/12 action
+  pass`, prio 2 `flower dst_ip 10.63.255.254/32 action pass`, prio 3
+  `flower action police rate 200mbit burst <500 ms> mtu 64kb
+  conform-exceed drop/ok` (a flower with no match: `matchall` cannot be
+  replaced in place). Traffic to the host itself (the gateway, the
+  host services address) is never limited, and nothing limits what the
+  host sends to a guest. hostd re-applies the shape to every running
+  guest when it starts; `replace` makes that a no-op or an in-place swap.
+  The exact commands are `internal/hostd/net/testdata/*.golden`.
+  Before I-217 the shape was `tc qdisc replace dev <tap> root handle 1:
+  htb default 10` with class `1:10`, which limited host-to-guest traffic
+  instead. For one release a tap may still carry it: hostd's shape
+  removes it (`tc qdisc del dev <tap> root`) after the policer is in
+  place, and `sch_htb` stays loaded. `sch_ingress`, `cls_flower`,
+  `act_police` and `act_gact` are loaded (`kernel.nix`).
 - WireGuard `wg0` (`wg-quick-wg0.service`, config rendered from
   `host.json`) to the edge; host address from the edge's `10.255.0.0/16`
   pool, `AllowedIPs 10.255.0.0/16`, keepalive 25 s. `AllowedIPs` on the
@@ -171,7 +188,7 @@ the provider NIC.
 
 | Port | Unit | What |
 |---|---|---|
-| `10.63.255.254:4873` | `nginx.service` (the front) | proxies to the cache; when the cache refuses or fails (502, 504) it serves from `registry.npmjs.org` itself and logs a `repose_npm_fallback:` line; upstream connect and DNS bounded at 5 s |
+| `10.63.255.254:4873` | `nginx.service` (the front) | proxies to the cache; when the cache refuses or fails (502, 504) it serves from `registry.npmjs.org` itself and logs a `repose_npm_fallback:` line; upstream connect and DNS bounded at 5 s; gzips `application/json` and `application/vnd.npm.install-v1+json` answers for a client that sends `Accept-Encoding: gzip` (level 1, I-217), never tarballs or an answer already encoded |
 | `127.0.0.1:4874` | `repose-npm-cache.service` (a second nginx, `-c` its own config) | `proxy_cache` in `/var/cache/repose/npm`, `max_size` 40 GB, least recently used evicted, `inactive` 30 days; tarballs cached 30 days, package documents 5 minutes (stale served while one refreshes, and while the registry is down); tarball URLs in documents rewritten to the front; requests with `Authorization` never cached |
 | `10.63.255.254:5000` | `docker-registry.service` | distribution in proxy mode for `https://registry-1.docker.io`, blobs kept 168 h; restarts every 10 s without a start limit (it exits when Docker Hub cannot be reached at start) |
 

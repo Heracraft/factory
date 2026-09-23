@@ -24,7 +24,11 @@ class H(BaseHTTPRequestHandler):
                 "name": "left-pad",
                 "versions": {"1.0.0": {"dist": {"tarball": BASE + "/left-pad/-/left-pad-1.0.0.tgz"}}},
             }).encode()
-            ctype = "application/json"
+            # npm and pnpm ask for the abbreviated document by type
+            if "application/vnd.npm.install-v1+json" in self.headers.get("Accept", ""):
+                ctype = "application/vnd.npm.install-v1+json"
+            else:
+                ctype = "application/json"
         elif self.path == "/left-pad/-/left-pad-1.0.0.tgz":
             body, ctype = TARBALL, "application/octet-stream"
         else:

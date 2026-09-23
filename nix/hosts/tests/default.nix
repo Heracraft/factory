@@ -6,7 +6,8 @@
 #
 #   host-network   the nftables tables and bridge isolation, DHCP on the
 #                  provider NIC, repose-host-net from a fixture host.json,
-#                  wg0, listeners on wg0 only, Fluent Bit to a real Loki
+#                  wg0, listeners on wg0 only, the per-guest egress shape
+#                  (hostd's tc commands, measured), Fluent Bit to a real Loki
 #   host-storage   the disko data-disk layout on a virtual disk: PV, VG,
 #                  thin pool with autoextend, a thin volume, the pool monitor
 #   host-services  the real hostd, guests.slice, transient guest survives a
@@ -20,6 +21,9 @@ let
   system = pkgs.stdenv.hostPlatform.system;
   fixture = ./fixtures/host.json;
   hostId = (builtins.fromJSON (builtins.readFile fixture)).host_id;
+  # hostd's tc commands for a guest's egress shape (DECISIONS I-217),
+  # pinned by internal/hostd/net's Go test; host-network runs them.
+  shapeGolden = ../../../internal/hostd/net/testdata/reshape.golden;
 
   hostNode = { lib, pkgs, ... }: {
     imports = hostModules;
@@ -304,6 +308,82 @@ in
           inet.fail(f"nc -z -w3 {host_ip} 4873")
           inet.fail(f"nc -z -w3 {host_ip} 5000")
 
+      with subtest("hostd's shape limits what a guest sends out, not what it receives, and never host-local traffic"):
+          # I-217. The tc commands are hostd's own, from the Go golden
+          # (a tap shaped before I-217 migrated, then re-applied), at
+          # 20 Mbit/s here so the VM's links are well above the cap.
+          import re, time
+          cap = 20
+          blocks, cur = [], []
+          for line in open("${shapeGolden}").read().splitlines():
+              if line.startswith("tc qdisc show"):
+                  cur = []
+                  blocks.append(cur)
+                  continue
+              if blocks and line.startswith("tc "):
+                  # the burst stays hostd's 500 ms of the rate
+                  cur.append(re.sub(r"rate \d+mbit burst \d+", f"rate {cap}mbit burst {cap * 125000 // 2}",
+                                    line.replace("tap-0192abcd", "tap-ga")))
+          migrate, reapply = blocks[0], [c for c in blocks[1] if " qdisc del " not in c]
+          print("\n".join(migrate + reapply))
+
+          def mbit(cmd, mb):
+              t = time.monotonic()
+              host.succeed(cmd)
+              r = mb * 8 * 1.048576 / (time.monotonic() - t)
+              print(f"{r:.0f} Mbit/s: {cmd}")
+              return r
+
+          # one-shot listeners: nc -l exits after its one connection
+          sinks = iter(range(100))
+
+          def ga_sink(port):
+              host.succeed(
+                  f"systemd-run --unit ga-sink-{next(sinks)} --collect ip netns exec ga"
+                  f" ${pkgs.bash}/bin/sh -c '${pkgs.netcat-openbsd}/bin/nc -l {port} > /dev/null'"
+              )
+              host.wait_until_succeeds(f"ip netns exec ga ss -tlnH | grep -c ':{port} ' >/dev/null")
+
+          def inet_sink():
+              inet.succeed(f"systemd-run --unit inet-sink-{next(sinks)} --collect ${pkgs.bash}/bin/sh -c '${pkgs.netcat-openbsd}/bin/nc -l 9000 > /dev/null'")
+              inet.wait_until_succeeds("ss -tlnH | grep -c ':9000 ' >/dev/null")
+
+          # the shape before I-217 capped what the host sends to a guest
+          host.succeed(f"tc qdisc replace dev tap-ga root handle 1: htb default 10 && tc class replace dev tap-ga parent 1: classid 1:10 htb rate {cap}mbit ceil {cap}mbit")
+          ga_sink(22)
+          old = mbit("head -c 10M /dev/zero | nc -N -w10 10.64.4.2 22", 10)
+          assert old < cap * 1.5, f"legacy shape: host -> guest at {old:.0f} Mbit/s"
+
+          for c in migrate:
+              host.succeed(c)
+          print(host.succeed("tc qdisc show dev tap-ga; tc filter show dev tap-ga ingress"))
+          host.fail("tc qdisc show dev tap-ga | grep -q htb")
+          # re-applying (hostd restarted) replaces, never duplicates
+          for c in reapply:
+              host.succeed(c)
+          filters = host.succeed("tc filter show dev tap-ga ingress | grep -c '^filter .* handle 0x1'").strip()
+          assert filters == "3", f"{filters} filters after a re-apply, want 3"
+
+          # host -> guest (a guest's downloads, the caches): not capped
+          ga_sink(22)
+          down = mbit("head -c 100M /dev/zero | nc -N -w10 10.64.4.2 22", 100)
+          assert down > cap * 3, f"host -> guest at {down:.0f} Mbit/s"
+          # guest -> the host services address: not capped
+          host.succeed("systemctl stop nginx.service")
+          host.succeed("systemd-run --unit svc-sink --collect ${pkgs.bash}/bin/sh -c '${pkgs.netcat-openbsd}/bin/nc -l 10.63.255.254 4873 > /dev/null'")
+          host.wait_until_succeeds("ss -tlnH | grep -c '10.63.255.254:4873 ' >/dev/null")
+          local = mbit(f"{ga} sh -c 'head -c 100M /dev/zero | nc -N -w10 10.63.255.254 4873'", 100)
+          assert local > cap * 3, f"guest -> services address at {local:.0f} Mbit/s"
+          host.succeed("systemctl start nginx.service")
+          # guest -> internet: capped; an unshaped guest on the same path is not
+          inet_sink()
+          free = mbit("ip netns exec gb sh -c 'head -c 30M /dev/zero | nc -N -w10 203.0.113.9 9000'", 30)
+          assert free > cap * 2, f"unshaped guest -> internet at {free:.0f} Mbit/s; the link is too slow to test the cap"
+          inet_sink()
+          out = mbit(f"{ga} sh -c 'head -c 20M /dev/zero | nc -N -w30 203.0.113.9 9000'", 20)
+          assert cap * 0.6 < out < cap * 1.3, f"shaped guest -> internet at {out:.0f} Mbit/s, cap {cap}"
+          print(host.succeed("tc -s filter show dev tap-ga ingress"))
+
       with subtest("Fluent Bit ships journald and console logs to Loki with the documented labels"):
           host.wait_for_unit("fluent-bit.service")
           # Its own metrics, on wg0 only, are what the FluentBitStuck alert
@@ -449,6 +529,29 @@ in
           host.succeed("journalctl --no-pager -u repose-npm-cache | grep -q 'repose_npm_cache: .*cache=HIT'")
           # no URL, so no package name, in the caches' log lines
           host.fail("journalctl --no-pager | grep 'repose_npm' | grep -q left-pad")
+
+      with subtest("package documents reach a guest that asks gzipped, rewritten; tarballs are not compressed twice"):
+          # I-217: the cache rewrites tarball URLs in the plain document;
+          # the front compresses the result for a client that asks.
+          front = "http://10.63.255.254:4873"
+          for accept in ("application/json", "application/vnd.npm.install-v1+json"):
+              headers = host.succeed(
+                  f"curl -sf -m5 -H 'Accept-Encoding: gzip' -H 'Accept: {accept}' -D - -o /tmp/doc.gz {front}/left-pad"
+              ).lower()
+              print(headers)
+              assert "content-encoding: gzip" in headers, headers
+              assert f"content-type: {accept}" in headers, headers
+              plain = host.succeed("gzip -dc /tmp/doc.gz")
+              assert f"{front}/left-pad/-/left-pad-1.0.0.tgz" in plain, plain
+              assert "127.0.0.1:9999" not in plain, plain
+          # without Accept-Encoding: plain, still rewritten
+          headers = host.succeed(f"curl -sf -m5 -D - -o /tmp/doc.json {front}/left-pad").lower()
+          assert "content-encoding" not in headers, headers
+          host.succeed(f"grep -q '{front}/left-pad/-/left-pad-1.0.0.tgz' /tmp/doc.json")
+          # a tarball is passed as it is, even to a client that accepts gzip
+          headers = host.succeed(f"curl -sf -m5 -H 'Accept-Encoding: gzip' -D - -o /tmp/c.tgz {front}/left-pad/-/left-pad-1.0.0.tgz").lower()
+          assert "content-encoding" not in headers, headers
+          host.succeed("cmp /tmp/a.tgz /tmp/c.tgz")
 
       with subtest("an authenticated request is never cached"):
           host.succeed("curl -sf -m5 -H 'Authorization: Bearer x' -o /dev/null http://10.63.255.254:4873/left-pad/-/left-pad-1.0.0.tgz")

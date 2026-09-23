@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-270 entries.
+271 entries.
 
 ## Scope
 
@@ -302,3 +302,4 @@ pointer, not a summary.
 - **I-216** The dashboard is developed against the live api and Logto, not the fake — L4777
 - **I-226** Request log lines name the route, the user and the client — 2026-09-23; L4796
 - **I-220** The menu takes any nixpkgs package by attribute path, and `repose config add/remove` edit it — L4807
+- **I-217** A guest's 200 Mbit/s shape limits what it sends, on its tap's ingress, and never traffic to the host; the npm front gzips package documents — L4850

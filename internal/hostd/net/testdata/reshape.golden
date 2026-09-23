@@ -1,0 +1,12 @@
+tc qdisc show dev tap-0192abcd
+tc qdisc add dev tap-0192abcd handle ffff: ingress
+tc filter replace dev tap-0192abcd parent ffff: protocol ip prio 1 handle 1 flower dst_ip 10.64.0.0/12 action pass
+tc filter replace dev tap-0192abcd parent ffff: protocol ip prio 2 handle 1 flower dst_ip 10.63.255.254/32 action pass
+tc filter replace dev tap-0192abcd parent ffff: protocol ip prio 3 handle 1 flower action police rate 200mbit burst 12500000 mtu 64kb conform-exceed drop/ok
+tc qdisc del dev tap-0192abcd root
+tc qdisc show dev tap-0192abcd
+tc filter replace dev tap-0192abcd parent ffff: protocol ip prio 1 handle 1 flower dst_ip 10.64.0.0/12 action pass
+tc filter replace dev tap-0192abcd parent ffff: protocol ip prio 2 handle 1 flower dst_ip 10.63.255.254/32 action pass
+tc filter replace dev tap-0192abcd parent ffff: protocol ip prio 3 handle 1 flower action police rate 100mbit burst 6250000 mtu 64kb conform-exceed drop/ok
+tc qdisc del dev tap-0192abcd ingress
+tc qdisc del dev tap-0192abcd root
