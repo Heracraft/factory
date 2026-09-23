@@ -8,6 +8,36 @@ import (
 	"testing"
 )
 
+// DECISIONS I-213: the nix packages run the agents through makeWrapper,
+// so claude's process is `.claude-wrapped` (comm and exe), and a longer
+// name is cut to 15 bytes in comm. Each is still its window's agent, and
+// protected; an unrelated dotted process is not.
+func TestOOMPriorityFindsNixWrappedAgents(t *testing.T) {
+	procs := []fakeProc{
+		{pid: 100, ppid: 1, comm: "tmux: server", uid: 1000},
+		{pid: 200, ppid: 100, comm: "bash", uid: 1000},
+		{pid: 201, ppid: 200, comm: ".claude-wrapped", uid: 1000, exe: ".claude-wrapped"},
+		{pid: 300, ppid: 100, comm: "bash", uid: 1000},
+		{pid: 301, ppid: 300, comm: ".opencode-wrapp", uid: 1000},
+		{pid: 400, ppid: 100, comm: "bash", uid: 1000},
+		{pid: 401, ppid: 400, comm: ".codex-wrapped", uid: 1000},
+		{pid: 500, ppid: 100, comm: "bash", uid: 1000},
+		{pid: 501, ppid: 500, comm: ".claudeish", uid: 1000},
+	}
+	r, _ := newProcFixture(t, procs)
+	children, ok := r.childIndex()
+	if !ok {
+		t.Fatal("no child index")
+	}
+	agents := r.agentPIDs(children, map[int]string{200: "claude", 300: "opencode", 400: "codex", 500: "claude"})
+	if len(agents) != 3 || !agents[201] || !agents[301] || !agents[401] {
+		t.Fatalf("agents = %v, want 201, 301 and 401", agents)
+	}
+	if !isAgentCommand("claude", ".claude-wrapped") || isAgentCommand("claude", ".claude") || isAgentCommand("pi", ".claude-wrapped") {
+		t.Error("isAgentCommand does not follow nix's wrapped names")
+	}
+}
+
 // I-200 on a fixture /proc: the tmux server and each window's agent get
 // OOMProtected; everything of dev's that inherited a negative value (the
 // pane's shell, an MCP server under claude, the vite Gemini started, which

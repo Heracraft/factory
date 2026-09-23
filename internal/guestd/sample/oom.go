@@ -48,7 +48,7 @@ func (r *procReader) agentPIDs(children map[int][]int, panes map[int]string) map
 			}
 			seen[pid] = true
 			comm, _, _, ok := r.readStat(strconv.Itoa(pid))
-			if ok && (contains(wants, comm) || contains(wants, r.readExeBase(pid))) {
+			if ok && (matchesBinary(wants, comm) || matchesBinary(wants, r.readExeBase(pid))) {
 				out[pid] = true
 				continue // its descendants are its work, not the agent
 			}
@@ -56,15 +56,6 @@ func (r *procReader) agentPIDs(children map[int][]int, panes map[int]string) map
 		}
 	}
 	return out
-}
-
-func contains(xs []string, s string) bool {
-	for _, x := range xs {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 // oomChange is one write applyOOM made, for tests and the debug log.

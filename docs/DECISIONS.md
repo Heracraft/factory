@@ -4708,3 +4708,19 @@ reproduces the 255 with the real OpenSSH client over a ControlMaster
 closes on EOF. *Not explained:* why the live failures clustered around
 the gateway's own 30 s keepalive; the race does not need it, and the fix
 does not depend on it.
+
+**I-213. An agent's process is found by its nix wrapper name too, and
+the OOM warning names what the kernel killed.** (ws/15 live fixes,
+2026-09-23) nixpkgs' makeWrapper moves a program to `.X-wrapped`, so
+the guest's claude runs as `.claude-wrapped`, in comm and in the exe
+link alike, and I-207's protection matched `claude` only: it never
+reached claude. Every binary in the agent table now also matches
+`.X-wrapped`, and comm's 15-byte cut of it (`.opencode-wrapp`); the
+same rule serves the idle heuristic's pane check. The `oom` warning
+fired on the kernel's first line, "<comm> invoked oom-killer", which
+names the process that asked for memory and not the victim, so the
+warning read "reported an out-of-memory condition" and the rate limit
+swallowed the "Killed process" line after it. That first line is now
+skipped, and the name is unwrapped (`the kernel killed claude`).
+`TestOOMPriorityFindsNixWrappedAgents`,
+`TestOOMWarningNamesTheKilledProcess`.

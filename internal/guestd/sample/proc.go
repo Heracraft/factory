@@ -265,7 +265,7 @@ func (r *procReader) treeHasComm(children map[int][]int, rootPID int, want strin
 			continue
 		}
 		seen[pid] = true
-		if comm, _, _, ok := r.readStat(strconv.Itoa(pid)); ok && comm == want {
+		if comm, _, _, ok := r.readStat(strconv.Itoa(pid)); ok && matchesBinary([]string{want}, comm) {
 			return true
 		}
 		// comm is the thread name, which a runtime may rename: node's main
@@ -273,7 +273,7 @@ func (r *procReader) treeHasComm(children map[int][]int, rootPID int, want strin
 		// `node` and its window was never an agent's (I-125). The
 		// executable's name is read from the exe link, never from cmdline
 		// or environ (docs/SECURITY.md).
-		if r.readExeBase(pid) == want {
+		if matchesBinary([]string{want}, r.readExeBase(pid)) {
 			return true
 		}
 		stack = append(stack, children[pid]...)

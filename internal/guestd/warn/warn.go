@@ -311,16 +311,29 @@ func (c *Checker) watchKmsg(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		line := sc.Text()
-		lower := strings.ToLower(line)
-		if !strings.Contains(lower, "out of memory") && !strings.Contains(lower, "oom-kill") {
-			continue
-		}
-		// The kernel names the killed process; that is a process name, which
-		// is on the allowed side of the sampling boundary. Nothing else from
-		// the line is forwarded.
-		c.send(KindOOM, oomProcess(line))
+		c.kmsgLine(sc.Text())
 	}
+}
+
+// kmsgLine warns on one kernel log line when it reports an OOM kill. The
+// kernel names the killed process; that is a process name, which is on the
+// allowed side of the sampling boundary. Nothing else from the line is
+// forwarded.
+//
+// "<comm> invoked oom-killer" comes first and names the process that asked
+// for memory, not the one killed; warning on it used the warning's rate
+// limit on a line without the victim, and the "Killed process" line that
+// follows was then suppressed (I-200 says the warning names what was
+// killed; DECISIONS I-213). It is skipped.
+func (c *Checker) kmsgLine(line string) {
+	lower := strings.ToLower(line)
+	if !strings.Contains(lower, "out of memory") && !strings.Contains(lower, "oom-kill") {
+		return
+	}
+	if strings.Contains(lower, "invoked oom-killer") {
+		return
+	}
+	c.send(KindOOM, oomProcess(line))
 }
 
 // oomProcess extracts the killed process name from a kernel OOM line. Only
@@ -332,7 +345,7 @@ func oomProcess(line string) string {
 		// "<pid> (<comm>) ..."
 		if j := strings.Index(rest, "("); j >= 0 {
 			if k := strings.Index(rest[j:], ")"); k > 1 {
-				return "the kernel killed " + rest[j+1:j+k]
+				return "the kernel killed " + unwrapName(rest[j+1:j+k])
 			}
 		}
 	}
@@ -342,10 +355,23 @@ func oomProcess(line string) string {
 			rest = rest[:j]
 		}
 		if rest != "" {
-			return "the kernel killed " + rest
+			return "the kernel killed " + unwrapName(rest)
 		}
 	}
 	return "the kernel reported an out-of-memory condition"
+}
+
+// unwrapName turns nixpkgs' wrapped program name back into the program's:
+// `.claude-wrapped` is claude, and so is comm's 15-byte `.claude-wrapped`
+// cut (`.opencode-wrapp` is opencode).
+func unwrapName(n string) string {
+	if !strings.HasPrefix(n, ".") {
+		return n
+	}
+	if i := strings.Index(n, "-wrap"); i > 1 && strings.HasPrefix("-wrapped", n[i:]) {
+		return n[1:i]
+	}
+	return n
 }
 
 // send rate limits and emits.

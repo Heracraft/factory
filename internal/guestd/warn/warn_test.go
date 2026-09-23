@@ -240,6 +240,25 @@ func TestOOMProcessExtraction(t *testing.T) {
 	}
 }
 
+// The kernel's own order for one kill: the process that asked for memory
+// "invoked oom-killer", then the kill lines. The one warning the rate
+// limit allows names the killed process, unwrapped from nix's name
+// (DECISIONS I-213).
+func TestOOMWarningNamesTheKilledProcess(t *testing.T) {
+	rec := &recorder{}
+	c := New(sysdep.Paths{Root: t.TempDir()}, rec.warn, quietLog(), time.Now)
+	for _, line := range []string{
+		"4,900,1,-;node invoked oom-killer: gfp_mask=0x140cca(GFP_HIGHUSER_MOVABLE|__GFP_COMP), order=0, oom_score_adj=0",
+		"6,901,1,-;oom-kill:constraint=CONSTRAINT_NONE,nodemask=(null),cpuset=/,mems_allowed=0,global_oom,task_memcg=/user.slice,task=.claude-wrapped,pid=4242,uid=1000",
+		"3,902,1,-;Out of memory: Killed process 4242 (.claude-wrapped) total-vm:9999kB, anon-rss:1kB",
+	} {
+		c.kmsgLine(line)
+	}
+	if got := rec.details(); len(got) != 1 || got[0] != "the kernel killed claude" {
+		t.Fatalf("warnings = %q, want one naming claude", got)
+	}
+}
+
 func TestKmsgIsDisabledUnderATestRoot(t *testing.T) {
 	c := New(sysdep.Paths{Root: t.TempDir()}, func(string, string) {}, quietLog(), time.Now)
 	if c.KmsgPath != "" {

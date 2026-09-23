@@ -30,8 +30,22 @@ var binaries = map[string][]string{
 // isAgentCommand reports whether comm is one of the process names the
 // agent runs as.
 func isAgentCommand(agent, comm string) bool {
-	for _, b := range binaries[agent] {
-		if b == comm {
+	return matchesBinary(binaries[agent], comm)
+}
+
+// matchesBinary reports whether a process name (comm, or the exe link's
+// basename) is one of wants, directly or as nixpkgs' wrapper renames it:
+// makeWrapper moves the real program to `.X-wrapped`, so the nix claude
+// runs as `.claude-wrapped` (comm and exe alike), and comm is cut to 15
+// bytes (`.opencode-wrapp`). Without this the guest's claude was never
+// found and never OOM-protected (DECISIONS I-213).
+func matchesBinary(wants []string, name string) bool {
+	for _, w := range wants {
+		if name == w {
+			return true
+		}
+		wrapped := "." + w + "-wrapped"
+		if name == wrapped || (len(name) == 15 && len(name) > len(w)+1 && strings.HasPrefix(wrapped, name)) {
 			return true
 		}
 	}
