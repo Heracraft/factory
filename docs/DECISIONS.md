@@ -4481,3 +4481,34 @@ part of workstream 15, because every later carry part rests on them.
   SetupProject writes the zone the running guest already has. The CLI
   waits at most 2 s for it before the attach. Interfaces: `api.md`,
   `guest-conventions.md` in this commit.
+
+**I-207. The listening-process list travels in the sample; the OOM
+priority is -800, set by guestd on the agent process only, and resets
+only negative values.** (15-dev-ergonomics, 2026-09-23) Settled while
+building I-200.
+
+- *Where `repose status`'s process list comes from.* The proposal's
+  sketch (`vite :5173 up 3d 410 MB`) could have been read over SSH at
+  `status` time, but `status-and-logs.md` promises that status never
+  makes an SSH connection and works when the guest is unreachable, and
+  it already said listening ports "come from guestd". So `GuestSignals`
+  gains `repeated ListeningProc listening` (port, comm, age, RSS),
+  guestd fills it from its 5 s refresh (`/proc/net/tcp{,6}` for sockets,
+  fd links matched on `socket:[inode]` only, `stat` for the rest: no
+  fork, no command line, and the strace test still passes), hostd passes
+  signals through unchanged, the api stores it in
+  `meter_samples.listening` (migration 0005) and serves the newest in
+  `Project.signals.listening`. A guestd older than this sends none,
+  which proto3 cannot tell from "listens on nothing"; rows from before
+  0005 are null and the field is then absent. At most 20, by port.
+- *The value.* -800, not -1000: an agent that itself runs away can still
+  be killed rather than hang the guest.
+- *Which process is the agent.* Name matching alone protects too much:
+  Gemini CLI runs as `node` (I-122), and so does every vite. The
+  protected process is the shallowest one in each agent window's tree
+  whose name or executable is the agent's binary; its descendants are its
+  work and go back to 0.
+- *Only negative values are reset to 0.* A value above 0 is one the user
+  chose (`choom`), since nothing else in the guest raises it.
+Interfaces: `grpc-hostd.md`, `vsock-guestd.md`, `api.md`, `db-schema.md`,
+`guest-conventions.md` in this commit; the proto change is additive.

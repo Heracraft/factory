@@ -140,6 +140,19 @@ state and is named once.
 | gitignored `.env` / `.env.*` files in the checkout, outside dependency directories, up to 1 MB (DECISIONS I-197; `run` only) | the same relative path under `/home/dev/<slug>/`, dev 0600, mtime kept; a guest file with a newer mtime is kept (`#kept <path>`) | written at the end of the sync's apply script, after the checkout; marker `env` |
 | markers | `/home/dev/.repose/carry/<item>` | the hash of the laptop input last applied; the probe prints them as `#marker <item> <hash>` |
 
+## Memory pressure (DECISIONS I-200)
+
+guestd owns `oom_score_adj` for `dev`'s processes and re-applies it every
+5 s: -800 for the tmux server (`tmux: server`) and for each agent
+window's agent process (the shallowest process in the window's tree whose
+name or executable is the agent's binary), and 0 for any other `dev`
+process holding a negative value (it inherited the agent's or the tmux
+server's on fork: a dev server an agent started, a pane's shell). A
+positive value the user set is left alone, and nothing is ever killed or
+stopped by guestd. `dev` cannot lower its own value, which is why root
+owns this. When the kernel does kill something, guestd's `oom` warning
+names it.
+
 ## Users and privileges
 
 `dev` uid 1000, gid 1000 (group `dev`), groups `wheel docker kvm`, `sudo`

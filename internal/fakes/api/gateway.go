@@ -122,3 +122,13 @@ func itoa(n int) string {
 	}
 	return string(b[i:])
 }
+
+// SetListening sets a running project's listening processes, as the api
+// would from the newest sample (I-200).
+func (f *Fake) SetListening(projectID string, ls []ListeningSignal) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if p, ok := f.projects[projectID]; ok && p.Signals != nil {
+		p.Signals.Listening = ls
+	}
+}

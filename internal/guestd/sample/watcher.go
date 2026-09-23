@@ -114,6 +114,10 @@ type Watcher struct {
 	// from it unless the socket has answered once already.
 	started    time.Time
 	dockerSeen bool
+	// listening is the last refresh's forwardable listeners, agentPanes
+	// the agent windows' pane pids and their agents (I-200).
+	listening  []*hostdv1.ListeningProc
+	agentPanes map[int]string
 	// warned remembers which one-shot warnings have been sent, so tmux_down
 	// and docker_down are announced once rather than every five seconds.
 	warned map[string]bool
@@ -162,6 +166,25 @@ func (w *Watcher) Refresh(ctx context.Context) {
 
 	w.refreshDocker(ctx)
 	w.refreshTmux(ctx)
+	w.refreshProcs()
+}
+
+// refreshProcs is the part of a refresh that reads /proc for I-200: the
+// listening processes status shows, and the OOM priorities, re-applied
+// every refresh so a dev server an agent started is back to 0 within one
+// interval. It runs whether or not the project's tmux session exists.
+func (w *Watcher) refreshProcs() {
+	listening := w.procs.listening()
+	w.mu.Lock()
+	w.listening = listening
+	panes := w.agentPanes
+	w.mu.Unlock()
+
+	children, _ := w.procs.childIndex()
+	devUID, _ := sysdep.DevIdentity()
+	if changes := w.procs.applyOOM(devUID, w.procs.agentPIDs(children, panes)); len(changes) > 0 {
+		w.log.Debug("oom priority applied", "event", "sample", "changed", len(changes))
+	}
 }
 
 func (w *Watcher) refreshDocker(ctx context.Context) {
@@ -227,6 +250,7 @@ func (w *Watcher) refreshTmux(ctx context.Context) {
 	w.refreshed = now
 
 	live := make(map[string]bool, len(windows))
+	panes := map[int]string{} // an agent window's pane pid -> its agent
 	for _, win := range windows {
 		agent := AgentOf(win.Name)
 		if agent == "" {
@@ -238,6 +262,7 @@ func (w *Watcher) refreshTmux(ctx context.Context) {
 			continue
 		}
 		live[win.Name] = true
+		panes[win.PanePID] = agent
 
 		ws := w.windows[win.Name]
 		if ws == nil {
@@ -282,6 +307,10 @@ func (w *Watcher) refreshTmux(ctx context.Context) {
 		delete(w.windows, name)
 		delete(w.hooks, name)
 	}
+	w.mu.Unlock()
+
+	w.mu.Lock()
+	w.agentPanes = panes
 	w.mu.Unlock()
 
 	for _, e := range states {
@@ -373,6 +402,7 @@ func (w *Watcher) Signals() (*hostdv1.GuestSignals, bool) {
 		TmuxClients:      w.clients,
 		DockerContainers: w.containers,
 		GuestdOk:         true,
+		Listening:        w.listening,
 	}
 	for name, ws := range w.windows {
 		sig.Agents = append(sig.Agents, &hostdv1.AgentProc{

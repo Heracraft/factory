@@ -78,6 +78,17 @@ type Signals struct {
 	// did not say. A running project with false is one `repose start`
 	// restarts (I-157).
 	GuestdOK *bool `json:"guestd_ok,omitempty"`
+	// Listening is the guest's listening processes from the newest sample
+	// (I-200); absent from an api or guest older than that.
+	Listening []ListeningSignal `json:"listening,omitempty"`
+}
+
+// ListeningSignal is one entry of Signals.Listening.
+type ListeningSignal struct {
+	Port       int    `json:"port"`
+	Comm       string `json:"comm,omitempty"`
+	AgeSeconds int64  `json:"age_seconds,omitempty"`
+	RSSBytes   int64  `json:"rss_bytes,omitempty"`
 }
 
 type AgentSignal struct {

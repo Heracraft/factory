@@ -111,7 +111,11 @@ GuestSample { string guest_id; string state; string class; uint64 cpu_ns_delta;
               uint64 disk_alloc_bytes; uint64 disk_used_bytes;
               GuestSignals signals; repeated ProcSample procs; }
 GuestSignals { uint32 ssh_sessions; uint32 tmux_clients; repeated AgentProc agents;
-               uint32 docker_containers; bool guestd_ok; }
+               uint32 docker_containers; bool guestd_ok;
+               repeated ListeningProc listening; }   // listening: DECISIONS I-200, I-207; new in this release, absent means none
+ListeningProc { uint32 port; string comm; uint64 age_seconds; uint64 rss_bytes; }
+               // a TCP listener on loopback or wildcard, port >= 1024, not 6080/6081/5900;
+               // comm, age and rss of its process when guestd found it; never argv
 AgentProc { string agent; string tmux_window; string state; }   // state: working|idle|needs_input|unknown
 ProcSample { string comm; uint64 cpu_ns_delta; uint64 rss_bytes; }  // comm only; never argv
 HostSample { uint64 mem_free; uint64 pool_free; double load1; uint32 builds_running; }

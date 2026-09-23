@@ -19,7 +19,8 @@ todo-app  large  running on az-eastus-01  up 2h14m
   config    r14 applied 2026-09-17 13:40
   git       main @ 3f9e2a1, tree dirty (2 files)
   agents    claude in todo-app:claude: working (last event 14m ago: completed "Added auth flow…")
-  ports     3000, 5432
+  listening node :5173 up 3d 410.0 MB
+            :5432
   disk      40 GB allocated, 6.2 GB used
   snapshot  2026-09-17 03:00 (2.1 GB)
   sessions  1 ssh, 1 tmux client
@@ -55,8 +56,14 @@ Status:
 - Git state is read by guestd (`branch`, `HEAD`, dirty count) as part of
   `Sample`, so the user knows work is waiting to be committed without
   attaching.
-- Listening ports come from guestd's `ss -ltn`; the CLI shows them so the
-  user knows what to `open`.
+- Listening processes come from guestd's sample (`signals.listening`,
+  DECISIONS I-200, I-207): each loopback or wildcard TCP listener on port
+  1024 and up with its process's name, age and memory, so a dev server
+  left running for days is easy to see and stop. Nothing is stopped for
+  the user; under memory pressure the kernel kills a dev server before
+  an agent (guest-conventions.md "Memory pressure"), and the `oom`
+  notification names what it killed. While attached, the same ports are
+  forwarded to the laptop (ports-and-previews.md).
 - `status` never triggers a certificate refresh or an SSH connection; it is
   API only and works when the guest is unreachable, showing the last known
   data with its age.

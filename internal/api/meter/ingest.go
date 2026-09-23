@@ -108,10 +108,15 @@ func (i *Ingest) OnSamples(ctx context.Context, hostID uuid.UUID, s *hostdv1.Sam
 			agents = append(agents, map[string]string{"agent": a.Agent, "window": a.TmuxWindow, "state": a.State})
 		}
 		aj, _ := json.Marshal(agents)
-		batch.Queue(`insert into meter_samples (ts, project_id, host_id, state, class, cpu_ns, mem_rss, net_tx, net_rx, disk_alloc, disk_used, ssh_sessions, tmux_clients, agents, docker_containers, guestd_ok)
-			values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) on conflict do nothing`,
+		listening := make([]Listening, 0, len(sig.Listening))
+		for _, l := range sig.Listening {
+			listening = append(listening, Listening{Port: int(l.Port), Comm: l.Comm, AgeSeconds: int64(l.AgeSeconds), RSSBytes: int64(l.RssBytes)})
+		}
+		lj, _ := json.Marshal(listening)
+		batch.Queue(`insert into meter_samples (ts, project_id, host_id, state, class, cpu_ns, mem_rss, net_tx, net_rx, disk_alloc, disk_used, ssh_sessions, tmux_clients, agents, docker_containers, guestd_ok, listening)
+			values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) on conflict do nothing`,
 			ts, pid, hostID, g.State, g.Class, int64(g.CpuNsDelta), int64(g.MemRssBytes), int64(g.NetTxBytesDelta), int64(g.NetRxBytesDelta), int64(g.DiskAllocBytes), int64(g.DiskUsedBytes),
-			int32(sig.SshSessions), int32(sig.TmuxClients), aj, int32(sig.DockerContainers), sig.GuestdOk)
+			int32(sig.SshSessions), int32(sig.TmuxClients), aj, int32(sig.DockerContainers), sig.GuestdOk, lj)
 		n++
 		seen := map[string]bool{}
 		for _, p := range g.Procs {
@@ -131,8 +136,20 @@ func (i *Ingest) OnSamples(ctx context.Context, hostID uuid.UUID, s *hostdv1.Sam
 	}
 }
 
+// Listening is one of the guest's listening processes (I-200), as
+// stored and as served in Project.signals.listening.
+type Listening struct {
+	Port       int    `json:"port"`
+	Comm       string `json:"comm,omitempty"`
+	AgeSeconds int64  `json:"age_seconds,omitempty"`
+	RSSBytes   int64  `json:"rss_bytes,omitempty"`
+}
+
 // Latest is the newest sample of a project, for GET /projects/:id.
 type Latest struct {
+	// Listening is nil when the sample carried none (a hostd or guestd
+	// older than I-200), empty when the guest listens on nothing.
+	Listening        []Listening
 	TS               time.Time
 	State            string
 	SSHSessions      int
@@ -146,9 +163,9 @@ type Latest struct {
 // LatestSample reads the newest sample; ok=false when there is none.
 func LatestSample(ctx context.Context, q store.Querier, projectID uuid.UUID) (*Latest, bool, error) {
 	var l Latest
-	var agents []byte
-	err := q.QueryRow(ctx, "select ts, state, ssh_sessions, tmux_clients, agents, docker_containers, disk_used, guestd_ok from meter_samples where project_id = $1 order by ts desc limit 1", projectID).
-		Scan(&l.TS, &l.State, &l.SSHSessions, &l.TmuxClients, &agents, &l.DockerContainers, &l.DiskUsed, &l.GuestdOK)
+	var agents, listening []byte
+	err := q.QueryRow(ctx, "select ts, state, ssh_sessions, tmux_clients, agents, docker_containers, disk_used, guestd_ok, listening from meter_samples where project_id = $1 order by ts desc limit 1", projectID).
+		Scan(&l.TS, &l.State, &l.SSHSessions, &l.TmuxClients, &agents, &l.DockerContainers, &l.DiskUsed, &l.GuestdOK, &listening)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, false, nil
@@ -156,5 +173,8 @@ func LatestSample(ctx context.Context, q store.Querier, projectID uuid.UUID) (*L
 		return nil, false, err
 	}
 	_ = json.Unmarshal(agents, &l.Agents) // stored by us; malformed means empty
+	if listening != nil {
+		_ = json.Unmarshal(listening, &l.Listening)
+	}
 	return &l, true, nil
 }
