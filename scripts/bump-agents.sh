@@ -137,7 +137,12 @@ for c in "${changed[@]}"; do
     chrome-devtools-mcp) attr="chrome-devtools-mcp"; b="chrome-devtools-mcp" ;;
     *) attr="$a.unwrapped"; b=$(binary "$a") ;;
   esac
-  out=$(nix build --no-link --print-out-paths "$root/nix#$attr")
+  # git+file, like ci.yml's builds: a bare absolute path is a path flake,
+  # and CI's Nix refuses a path flake whose lock has the relative, unlocked
+  # fragment-placeholder input ("lock file contains unlocked input"); the
+  # daily job failed on it from 2026-09-21. Dirty tracked files (the bump
+  # just edited) are still included.
+  out=$(nix build --no-link --print-out-paths "git+file://$root?dir=nix#$attr")
   echo "$a: built $out"
   HOME=$(mktemp -d) "$out/bin/$b" --version
 done
