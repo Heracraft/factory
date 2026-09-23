@@ -124,6 +124,21 @@ to look first.
   `SetupProject` creates with an `origin` (02/04's contract). If it is
   missing anyway, the sync creates it (`git init`) and adds `origin`
   rather than failing.
+- The first sync of a large GitHub repository clones in the guest
+  (DECISIONS I-203). When the guest has no commits yet, the remote is on
+  github.com and the laptop's `git count-objects -v` reports a
+  `size-pack` of 20 MB or more (the starting threshold, to be set from
+  measurement), the guest fetches every branch and tag from
+  `https://github.com/<owner>/<repo>.git` itself, after the credentials
+  step (so a private repository uses gh's login when it travelled; a
+  public one needs none). The laptop then bundles only the commits GitHub
+  lacks, and the diff, untracked and `.env` files follow as always. The
+  summary line ends `, history cloned from github.com`. A clone that
+  fails for any reason falls back to the full bundle, with `The guest
+  could not clone from GitHub (<git's reason>), so the history was sent
+  from your laptop instead.`; the run never fails for it. A full fetch,
+  never a partial clone: lazily fetched blobs fail later once a token
+  expires. Later syncs never clone.
 - A project made with `--name` in a directory with no git remote syncs the
   same way, without an `origin` or remote-tracking refs: its real commits
   travel, so a file deleted and committed on the laptop is deleted in the

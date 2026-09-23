@@ -59,6 +59,10 @@ type SyncSummary struct {
 	// guest kept because its copy was newer (I-197).
 	EnvFiles int
 	EnvKept  []string
+	// ClonedFrom is the host the guest cloned from on a first sync
+	// (I-203); CloneFailed is why it could not, when it tried.
+	ClonedFrom  string
+	CloneFailed string
 }
 
 // dirtyTreeError is 07-cli.md §6's exit 6, carrying the file list for the
@@ -168,6 +172,23 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 			return nil, err
 		}
 	}
+	// The first sync of a large GitHub repository clones in the guest,
+	// after the credentials (gh's helper) are in place (I-203).
+	var cloned, cloneFailed string
+	if len(probe.tips) == 0 && !opts.NoRemote {
+		if url := hybridCloneURL(opts.RemoteURL); url != "" && gitPackKiB(localRepoDir) >= hybridThresholdKiB {
+			tips, ok, why, err := hybridFetch(ctx, t, slug, url)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				probe.tips = tips
+				cloned = remoteHost(opts.RemoteURL)
+			} else {
+				cloneFailed = why
+			}
+		}
+	}
 
 	// What the guest should end up with: HEAD's commit, and, for a
 	// project with a remote, the laptop's view of origin/<branch> so the
@@ -195,7 +216,7 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	if err != nil {
 		return nil, stepFailed("count the commits to send", err, "")
 	}
-	summary := &SyncSummary{Branch: branch, Head: head}
+	summary := &SyncSummary{Branch: branch, Head: head, ClonedFrom: cloned, CloneFailed: cloneFailed}
 	_, _ = fmt.Sscanf(strings.TrimSpace(countOut), "%d", &summary.Commits)
 
 	payload, err := os.CreateTemp("", "repose-sync-*.tar")
@@ -592,6 +613,9 @@ func (s *SyncSummary) String() string {
 	case s.Commits > 1:
 		line += fmt.Sprintf(" (%d new commits)", s.Commits)
 	}
+	if s.ClonedFrom != "" {
+		line += ", history cloned from " + s.ClonedFrom
+	}
 	return line
 }
 
@@ -601,6 +625,9 @@ func (s *SyncSummary) Warnings() []string {
 	short := s.Head
 	if len(short) > 7 {
 		short = short[:7]
+	}
+	if s.CloneFailed != "" {
+		w = append(w, fmt.Sprintf("The guest could not clone from GitHub (%s), so the history was sent from your laptop instead.", s.CloneFailed))
 	}
 	for _, k := range s.EnvKept {
 		w = append(w, fmt.Sprintf("Kept the guest's %s: it is newer than the laptop's.", k))
