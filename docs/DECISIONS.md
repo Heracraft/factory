@@ -5899,3 +5899,75 @@ people, with examples and grouping a generator would lose; a check keeps
 both); checking only that flag names appear somewhere on the page (a flag
 documented under the wrong command would pass); leaving resize hidden and
 allowlisted (the allowlist is for things no user should type).
+
+**I-246. The agents' browser is one headed Chromium on the desktop's
+display, shared by both MCP servers over CDP, and the desktop only views
+it.** (2026-09-24) The owner ran `repose open --desktop` and saw an empty
+desktop: both MCP servers were registered with `--headless`, so each
+launched a private headless browser and nothing an agent did could be
+watched or taken over, while the homepage said "`repose open --desktop`
+lets you watch". Two designs were measured. (a) MCP servers launch headed
+browsers with `DISPLAY=:99` and Xvfb started on demand; (b) one long-running
+headed Chromium on `:99` with a DevTools port, which both servers attach to.
+(b) is chosen: the user's clicks and the agent share one window and one
+profile (log in or solve a captcha once, the agent continues), both servers
+see the same tabs, and there is one browser per guest instead of one per
+server. `repose-browser.socket` listens on 127.0.0.1:9224 and its
+`systemd-socket-proxyd` service pulls in `repose-browser.service`
+(Chromium as dev, profile `~/.local/share/repose/browser`, DevTools on
+127.0.0.1:9225, `--disable-gpu --enable-unsafe-swiftshader`), which pulls
+in Xvfb (1440x900) and openbox (every window maximised); nothing runs until
+the first DevTools connection. Playwright MCP is registered with
+`--cdp-endpoint http://127.0.0.1:9224` and uses the browser's default
+context (nixpkgs's wrapper forced an isolated in-memory context whenever no
+user data dir was set; the overlay now skips that when a CDP endpoint is
+given, with an assert that fails the build if the wrapper changes);
+chrome-devtools-mcp with `--browserUrl` (its wrapper passed
+`--executablePath`, which yargs refuses beside `--browserUrl`, so it is now
+added only when the server launches its own browser; `--no-performance-crux`
+is the default because CrUX lookups send the traced page's URL to Google).
+Robustness, checked in guest-desktop: the browser killed with SIGKILL
+stops the unit and the proxy (`BindsTo`), the next call through a still
+running MCP server restarts both through the socket with the same profile
+(both servers reconnect when `browser.connected` is false); the crashed
+flag in the profile is reset so no restore prompt covers the page. The
+browser runs in the system slice `repose-browser.slice` with the same
+37.5 percent `MemoryMax` as the user slice (1.5 GB small), `OOMPolicy=continue`
+so a renderer killed at the limit is a crashed tab, not a dead browser.
+The viewer (x11vnc, noVNC) wants the browser, so `repose open --desktop`
+always shows it; `--stop` stops only the viewer; Xvfb and openbox are
+`StopWhenUnneeded`. The idle check stops the viewer after 30 minutes
+without a client (as before) and the browser after 30 minutes with no
+client on 9225 and no viewer (an MCP server keeps its connection for the
+whole agent session). noVNC's `defaults.json` sets `resize=scale`.
+Measured in the VM test (1440x900, one static page, 3 GB guest): headed
+Chromium 155 MiB anonymous (554 MiB charged including page cache, which is
+reclaimable and was first read by this cgroup), headless 145 MiB anonymous;
+Xvfb 9 MiB, openbox 3 MiB; idle CPU over 30 s 1.01 s headed plus Xvfb
+against 0.75 s headless. Live on e2e-r3-desk (small, old base, the same
+flags started by hand): browser 427 MiB PSS, Xvfb 22, openbox 6, x11vnc 14,
+websockify 13. So a guest that browses pays about 25 MiB more than before
+and a guest that never browses pays nothing. Without `--disable-gpu` the
+GPU process failed EGL initialisation and relaunched 29 times at startup;
+with it, none, and WebGL still works. `DISPLAY=:99` stays exported into new
+shells while `/tmp/.X11-unix/X99` exists, which is now whenever the browser
+or the viewer runs: Playwright, Puppeteer and Cypress default to headless
+whatever `DISPLAY` says, so project test suites stay headless, and a headed
+browser someone asks for appears on the desktop instead of failing. A
+guest's existing `~/.claude.json` entries with the old `--headless` shape
+are replaced by `repose-agent-setup` (`/etc/repose/mcp.json` lists them
+under `repose_retired`; an entry the user changed is kept); agents already
+running keep their headless browser until restarted. The CLI never
+auto-forwards 9224 or 9225 (a laptop process must not drive the guest's
+logged-in browser); an older CLI will forward them while attached until
+upgraded, which is why they are not 9222, the port a user's own Chromium
+uses. `repose-guest-profile`'s `desktop.running` and `desktop status` now
+mean the viewer (`repose-x11vnc`), since the display can be up for the
+browser alone. *Rejected:* (a) (two browsers per agent session, no shared
+logins, the user's clicks land in a browser the agent's next launch
+discards); headless by default with a headed switch when the desktop opens
+(needs an agent restart or a second browser, the page the agent is on is
+lost); binding the DevTools endpoint to 127.0.0.2 so old CLIs skip it
+(headed Chromium ignores `--remote-debugging-address`); a user unit named
+`repose-desktop` for pre-0.1.12 CLIs (they would forward without printing
+the password; the fix is the CLI upgrade).

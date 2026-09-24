@@ -44,14 +44,16 @@ const forwardPortless = 1355
 
 // forwardPlatformPorts are the guest's own listeners, never forwarded:
 // the desktop's noVNC, websockify and VNC (guest-conventions.md "Ports"
-// and "Desktop"; `repose open --desktop` forwards 6080 itself), and the
+// and "Desktop"; `repose open --desktop` forwards 6080 itself), the agents'
+// browser's DevTools endpoint and the port behind it (9224, 9225: no
+// laptop process may drive the guest's logged-in browser, I-246), and the
 // name-resolution protocols a system service may answer on above 1024,
 // LLMNR (5355) and mDNS (5353): systemd-resolved listened on 0.0.0.0:5355
 // and every status bar showed ⇄ 5355 (DECISIONS I-215). Ports under 1024
 // (ssh, the DNS stub) are never forwarded at all. The rule is by port, not
 // by owner: a container the dev user publishes is served by root's
 // docker-proxy and must still forward.
-var forwardPlatformPorts = map[int]bool{6080: true, 6081: true, 5900: true, 5353: true, 5355: true}
+var forwardPlatformPorts = map[int]bool{6080: true, 6081: true, 5900: true, 9224: true, 9225: true, 5353: true, 5355: true}
 
 // forwardDisabled is REPOSE_NO_FORWARD=1, the one knob (15 §5.5).
 const forwardEnvOff = envNoForward

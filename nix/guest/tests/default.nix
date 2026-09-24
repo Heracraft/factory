@@ -856,47 +856,204 @@ in
     '';
   };
 
+  # The agents' browser on the desktop (DECISIONS I-33, I-246): an MCP
+  # server driven over stdio JSON-RPC navigates the shared headed browser,
+  # the X display shows the page, the other MCP server sees the same tab,
+  # and the browser comes back after a crash.
   guest-desktop = mkTest "guest-desktop" {
-    nodes.guest = node;
+    nodes.guest = { pkgs, ... }: {
+      imports = [ node ];
+      environment.systemPackages = [ pkgs.imagemagick pkgs.python3 ];
+    };
     testScript = ''
+      import json, shlex
+
       guest.start()
       guest.wait_for_unit("multi-user.target")
       guest.wait_for_unit("repose-novnc.socket")
-      with subtest("connecting to 6080 starts the chain"):
-          guest.succeed("systemctl is-active repose-xvfb.service && exit 1 || true")
-          out = guest.succeed("curl -s -m 20 -o /dev/null -w '%{http_code}' http://127.0.0.1:6080/vnc.html")
-          assert out.strip() == "200", out
-          guest.wait_for_unit("repose-xvfb.service")
-          guest.wait_for_unit("repose-x11vnc.service")
-          guest.wait_for_unit("repose-novnc.service")
-          guest.succeed("test -S /tmp/.X11-unix/X99")
-          pw = guest.succeed("cat /run/repose/desktop/vnc-password").strip()
-          assert len(pw) == 8, pw
+      guest.wait_for_unit("repose-browser.socket")
+
+      reg = json.loads(guest.succeed("cat /etc/repose/mcp.json"))["mcpServers"]
+
+      def mcp(server, *calls):
+          """Start the registered MCP server as dev and make the calls."""
+          e = reg[server]
+          argv = [e["command"]] + e["args"] + ["--"]
+          for name, args in calls:
+              argv += [name, json.dumps(args)]
+          cmd = "cd /home/dev && python3 ${./mcp-client.py} " + " ".join(shlex.quote(a) for a in argv)
+          status, out = guest.execute(f"sudo -u dev bash -lc {shlex.quote(cmd)} 2>/tmp/mcp-{server}.err")
+          if status != 0:
+              err = guest.execute(f"tail -20 /tmp/mcp-{server}.err")[1]
+              raise Exception(f"{server} failed ({status}):\n{out}\n{err}")
+          return out
+
+      def magenta_share(path, crop=""):
+          """Share of the screen (or of a crop of it) that is the page's magenta."""
+          out = guest.succeed(f"convert {path} {crop} -fuzz 5% -fill white -opaque '#ff00ff' -fill black +opaque white -colorspace gray -format '%[fx:mean]' info:")
+          return float(out.strip())
+
+      def memory(unit):
+          cg = guest.succeed(f"systemctl show -P ControlGroup {unit}").strip()
+          total = int(guest.succeed(f"cat /sys/fs/cgroup{cg}/memory.current").strip()) // (1024 * 1024)
+          stat = guest.succeed(f"cat /sys/fs/cgroup{cg}/memory.stat")
+          anon = int(dict(l.split() for l in stat.splitlines())["anon"]) // (1024 * 1024)
+          # anon is the process's own memory; the rest is page cache,
+          # charged to whichever cgroup read a file first.
+          return f"{anon} MiB anon / {total} MiB charged"
+
+      def cpu_usec(unit):
+          cg = guest.succeed(f"systemctl show -P ControlGroup {unit}").strip()
+          stat = guest.succeed(f"cat /sys/fs/cgroup{cg}/cpu.stat")
+          return int(stat.split("usage_usec ")[1].split()[0])
+
+      with subtest("nothing runs until asked for"):
+          for u in ["repose-xvfb", "repose-openbox", "repose-browser", "repose-x11vnc"]:
+              guest.fail(f"systemctl is-active {u}.service")
+          assert reg["playwright"]["args"] == ["--cdp-endpoint", "http://127.0.0.1:9224"], reg
+          assert reg["chrome-devtools"]["args"] == ["--browserUrl", "http://127.0.0.1:9224"], reg
+
+      guest.succeed("install -d -o dev -g dev /home/dev/site")
+      guest.succeed("""cat > /home/dev/site/magenta.html <<'EOF'
+      <html><head><title>repose magenta</title></head><body style="margin:0;background:#ff00ff"><h1>repose says hello</h1></body></html>
+      EOF""")
+      guest.succeed("systemd-run --unit site -p User=dev python3 -m http.server 8123 --bind 127.0.0.1 --directory /home/dev/site")
+      guest.wait_for_open_port(8123)
+      page = "http://127.0.0.1:8123/magenta.html"
+
+      with subtest("playwright MCP starts the browser, headed on :99, and the page shows there"):
+          out = mcp("playwright", ("browser_navigate", {"url": page}))
+          assert "magenta.html" in out, out
+          for u in ["repose-xvfb", "repose-openbox", "repose-browser"]:
+              guest.succeed(f"systemctl is-active {u}.service")
+          # The viewer is not needed for the browser to draw.
+          guest.fail("systemctl is-active repose-x11vnc.service")
+          assert "repose-browser.slice" in guest.succeed("systemctl show -P Slice repose-browser.service")
+          assert guest.succeed("systemctl show -P MemoryMax repose-browser.slice").strip() != "infinity"
+          guest.succeed("DISPLAY=:99 import -window root /tmp/screen.png")
+          guest.copy_from_machine("/tmp/screen.png", "")
+          share = magenta_share("/tmp/screen.png")
+          print(f"magenta share of the 1440x900 screen: {share:.3f}")
+          # The page fills the maximised window under the tab strip.
+          assert share > 0.8, share
+          # ...and reaches the screen's bottom-right corner.
+          corner = magenta_share("/tmp/screen.png", "-crop 20x20+1420+880 +repage")
+          assert corner > 0.95, corner
+          # The tab outlives the MCP server that opened it.
+          out = mcp("playwright", ("browser_tabs", {"action": "list"}))
+          assert "magenta.html" in out, out
+
+      with subtest("chrome-devtools MCP sees the same tab"):
+          out = mcp("chrome-devtools", ("list_pages", {}))
+          assert "magenta.html" in out, out
+
+      with subtest("software rendering: WebGL works, no GPU process relaunch loop"):
+          out = mcp("playwright", ("browser_evaluate", {"function": "() => 'webgl=' + !!document.createElement('canvas').getContext('webgl')"}))
+          assert "webgl=true" in out, out
+          fails = guest.succeed("journalctl -u repose-browser.service | grep -c 'GLDisplayEGL::Initialize failed' || true").strip()
+          print(f"MEASURE EGL init failures in the browser's journal: {fails}")
+          assert fails == "0", fails
+
+      with subtest("new shells get DISPLAY while the display is up"):
           disp = guest.succeed("sudo -u dev bash -lc 'echo $DISPLAY'").strip()
           assert disp == ":99", disp
+
+      with subtest("memory and CPU, headed on Xvfb against headless"):
+          guest.sleep(5)
+          headed = memory("repose-browser.service")
+          xvfb = memory("repose-xvfb.service")
+          openbox = memory("repose-openbox.service")
+          c0 = cpu_usec("repose-browser.service") + cpu_usec("repose-xvfb.service")
+          guest.sleep(30)
+          c1 = cpu_usec("repose-browser.service") + cpu_usec("repose-xvfb.service")
+          guest.succeed("systemd-run --unit headless-measure -p User=dev -p Environment=HOME=/home/dev ${pkgs.chromium}/bin/chromium --headless --user-data-dir=/tmp/headless-measure --remote-debugging-port=9333 --no-first-run " + page)
+          guest.wait_for_open_port(9333)
+          guest.sleep(5)
+          headless = memory("headless-measure.service")
+          h0 = cpu_usec("headless-measure.service")
+          guest.sleep(30)
+          h1 = cpu_usec("headless-measure.service")
+          guest.succeed("systemctl stop headless-measure.service")
+          print(f"MEASURE headed chromium {headed}; Xvfb {xvfb}; openbox {openbox}; headless chromium {headless}")
+          print(f"MEASURE idle CPU over 30 s: headed+Xvfb {(c1 - c0) / 1e6:.2f} s, headless {(h1 - h0) / 1e6:.2f} s")
+
+      with subtest("the browser comes back after a crash, and a running MCP server reconnects"):
+          out = mcp("playwright",
+                    ("browser_navigate", {"url": page + "?before"}),
+                    ("!sh", {"cmd": "pkill -KILL -o -f user-data-dir=/home/dev/.local/share/repos[e]/browser; sleep 3"}),
+                    ("browser_navigate", {"url": page + "?after"}))
+          assert "?after" in out, out
+          guest.succeed("systemctl is-active repose-browser.service")
+          guest.succeed("DISPLAY=:99 import -window root /tmp/screen2.png")
+          share = magenta_share("/tmp/screen2.png")
+          assert share > 0.8, share
+          out = mcp("chrome-devtools", ("list_pages", {}))
+          assert "?after" in out, out
+
+      with subtest("opening the desktop shows the same browser"):
+          out = guest.succeed("curl -s -m 20 -o /dev/null -w '%{http_code}' http://127.0.0.1:6080/vnc.html")
+          assert out.strip() == "200", out
+          guest.wait_for_unit("repose-x11vnc.service")
+          guest.wait_for_unit("repose-novnc.service")
+          guest.succeed("curl -sf http://127.0.0.1:6080/defaults.json | grep -q scale")
+          pw = guest.succeed("cat /run/repose/desktop/vnc-password").strip()
+          assert len(pw) == 8, pw
           prof = guest.succeed("sudo -u dev repose-guest-profile desktop status").strip()
           assert prof == "running", prof
+          out = mcp("chrome-devtools", ("list_pages", {}))
+          assert "?after" in out, out
 
-      with subtest("idle stop"):
-          guest.succeed("systemctl start repose-desktop-idle.service")
-          for u in ["repose-xvfb", "repose-x11vnc", "repose-novnc", "repose-openbox"]:
+      with subtest("stopping the desktop stops the viewer, not the agents' browser"):
+          guest.succeed("sudo -u dev repose-guest-profile desktop stop")
+          for u in ["repose-x11vnc", "repose-novnc"]:
               guest.fail(f"systemctl is-active {u}.service")
-          guest.succeed("systemctl is-active repose-novnc.socket")
+          for u in ["repose-browser", "repose-xvfb"]:
+              guest.succeed(f"systemctl is-active {u}.service")
+          prof = guest.succeed("sudo -u dev repose-guest-profile desktop status").strip()
+          assert prof == "stopped", prof
+
+      with subtest("the idle check stops the unused browser, and the display follows"):
+          guest.succeed("touch -d '-31 minutes' /run/repose/desktop/last-client /run/repose/desktop/last-cdp")
+          guest.succeed("systemctl start repose-desktop-idle-check.service")
+          for u in ["repose-browser", "repose-xvfb", "repose-openbox"]:
+              guest.wait_until_fails(f"systemctl is-active {u}.service")
+          guest.succeed("systemctl is-active repose-browser.socket repose-novnc.socket")
           disp = guest.succeed("sudo -u dev bash -lc 'echo -n $DISPLAY'")
           assert disp == "", disp
 
-      with subtest("idle check stops after the timeout"):
-          guest.succeed("curl -s -m 20 -o /dev/null http://127.0.0.1:6080/vnc.html")
-          guest.wait_for_unit("repose-xvfb.service")
+      with subtest("desktop start starts the browser; the viewer's idle stop leaves a used browser"):
+          pw = guest.succeed("sudo -u dev repose-guest-profile desktop start").strip().splitlines()[-1]
+          assert len(pw) == 8, pw
+          guest.succeed("systemctl is-active repose-browser.service repose-x11vnc.service")
           guest.succeed("touch -d '-31 minutes' /run/repose/desktop/last-client")
           guest.succeed("systemctl start repose-desktop-idle-check.service")
-          guest.fail("systemctl is-active repose-xvfb.service")
+          guest.fail("systemctl is-active repose-x11vnc.service")
+          guest.succeed("systemctl is-active repose-browser.service repose-xvfb.service")
+          guest.succeed("systemctl stop repose-browser.service")
+          guest.wait_until_fails("systemctl is-active repose-xvfb.service")
+
+      with subtest("a guest's old headless registration gives way; the user's own entries stay"):
+          guest.succeed("""cat > /home/dev/.claude.json <<'EOF'
+      {"mcpServers": {
+        "playwright": {"type": "stdio", "command": "playwright-mcp", "args": ["--headless"]},
+        "chrome-devtools": {"type": "stdio", "command": "chrome-devtools-mcp", "args": ["--headless", "--isolated"]},
+        "mine": {"type": "stdio", "command": "my-mcp", "args": []}
+      }, "other": 1}
+      EOF
+      chown dev:dev /home/dev/.claude.json""")
+          guest.succeed("sudo -u dev repose-agent-setup claude")
+          u = json.loads(guest.succeed("cat /home/dev/.claude.json"))
+          assert u["mcpServers"]["playwright"] == reg["playwright"], u
+          assert u["mcpServers"]["chrome-devtools"]["args"] == ["--headless", "--isolated"], u
+          assert u["mcpServers"]["mine"]["command"] == "my-mcp", u
+          assert u["other"] == 1, u
+          guest.succeed("sudo -u dev repose-agent-setup claude")
+          assert json.loads(guest.succeed("cat /home/dev/.claude.json")) == u
 
       with subtest("headless chromium renders a page"):
-          guest.succeed("install -d -o dev -g dev /home/dev/site && echo '<html><body><h1>repose says hello</h1></body></html>' > /home/dev/site/index.html")
-          guest.succeed("sudo -u dev bash -lc 'cd /home/dev && chromium --headless --disable-gpu --no-first-run --screenshot=/home/dev/a.png --window-size=800,600 file:///home/dev/site/index.html' 2>&1 | tail -5")
+          guest.succeed("sudo -u dev bash -lc 'cd /home/dev && chromium --headless --disable-gpu --no-first-run --screenshot=/home/dev/a.png --window-size=800,600 file:///home/dev/site/magenta.html' 2>&1 | tail -5")
           size = int(guest.succeed("stat -c %s /home/dev/a.png").strip())
-          assert size > 5000, size
+          assert size > 2000, size
           guest.copy_from_machine("/home/dev/a.png", "")
 
       with subtest("MCP servers run from the packaged versions, offline"):

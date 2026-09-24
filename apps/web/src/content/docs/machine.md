@@ -95,7 +95,7 @@ There are no public URLs for a project's ports. To show someone a running app, d
 
 ## Browser
 
-Claude Code on the machine has two browser tools registered, `playwright` and `chrome-devtools`, which drive a headless Chromium: navigate, fill forms, take screenshots, read the console and network. Ask for them in a prompt:
+Claude Code on the machine has two browser tools registered, `playwright` and `chrome-devtools`: navigate, fill forms, take screenshots, read the console and network. Both drive the same Chromium, which starts the first time an agent uses one of them and keeps its cookies and logins between runs. Ask for them in a prompt:
 
 ```
 repose run "start the dev server, open the signup page with playwright and screenshot each step"
@@ -111,7 +111,13 @@ http://localhost:6080/vnc.html?autoconnect=1 (Ctrl-C stops the forward; the desk
 VNC password: 5m2k8Q1p
 ```
 
-Enter the password in the page that opens. Browsers an agent starts in headed mode show up there. The desktop stops by itself after 30 minutes with nobody connected, or with `repose open --desktop --stop`.
+Enter the password in the page that opens. You see the agent's browser as it works, in the same window the agent uses, so you can click and type in it: solve a captcha, log in, approve a passkey. Whatever you log into there, the agent's browser tools can use afterwards. If no agent has used the browser yet, opening the desktop starts it.
+
+`repose open --desktop --stop` stops the viewer, and so does 30 minutes with nobody connected. The agent's browser keeps running while an agent uses it, and stops after 30 minutes with neither an agent nor you on it.
+
+An agent session started before September 25, 2026 has a headless browser of its own that the desktop can't show; restart the agent to switch it over.
+
+Playwright test suites (`pnpm exec playwright test` and the like) still run headless unless your config asks for headed browsers. While the agent's browser is up, new shells have `DISPLAY=:99`, so a headed browser you start yourself also appears on the desktop.
 
 ## Network
 

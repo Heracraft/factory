@@ -56,10 +56,24 @@ in
     # nixpkgs keeps playwright-mcp and playwright-driver in step; the two
     # are tightly coupled, so both come from the same locked rev, with the
     # browsers swapped for the chromium preset above.
-    playwright-mcp = prev.playwright-mcp.override {
-      playwright-test = final.reposePlaywrightTest;
-      playwright-driver = prev.playwright-driver // { browsers = final.reposePlaywrightBrowsers; };
-    };
+    #
+    # nixpkgs's wrapper forces an isolated (in-memory) context whenever no
+    # user data dir is set; attached to the guest's shared browser over
+    # CDP that would put the agent in a context of its own, apart from the
+    # window and logins the user sees on the desktop (I-246). With
+    # --cdp-endpoint the server uses the browser's default context.
+    playwright-mcp =
+      let
+        pkg = prev.playwright-mcp.override {
+          playwright-test = final.reposePlaywrightTest;
+          playwright-driver = prev.playwright-driver // { browsers = final.reposePlaywrightBrowsers; };
+        };
+        old = ''if [ -z "$PLAYWRIGHT_MCP_USER_DATA_DIR" ]; then export PLAYWRIGHT_MCP_ISOLATED=1; fi'';
+        new = ''case " $* " in *" --cdp-endpoint"*) ;; *) if [ -z "$PLAYWRIGHT_MCP_USER_DATA_DIR" ] && [ -z "''${PLAYWRIGHT_MCP_CDP_ENDPOINT:-}" ]; then export PLAYWRIGHT_MCP_ISOLATED=1; fi ;; esac'';
+      in
+      assert prev.lib.assertMsg (prev.lib.hasInfix old pkg.postInstall)
+        "playwright-mcp: nixpkgs's wrapper changed; revisit the isolated override (I-246)";
+      pkg.overrideAttrs (o: { postInstall = builtins.replaceStrings [ old ] [ new ] o.postInstall; });
     chrome-devtools-mcp = final.callPackage ./chrome-devtools-mcp.nix { };
   };
 

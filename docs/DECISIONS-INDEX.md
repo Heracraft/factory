@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-293 entries.
+294 entries.
 
 ## Scope
 
@@ -325,3 +325,4 @@ pointer, not a summary.
 - **I-239** A known cryptocurrency miner stops its guest automatically; three stops in 24 hours hold the project until an operator clears it; the pool ports are blocked; full CPU with nobody there for six hours is an alert — 2026-09-24; L5741
 - **I-240** New outbound flows are rate-limited per guest, far above what development does; flows over the limit are dropped and counted, open ones are never cut — 2026-09-24; L5822
 - **I-242** A feature without user docs is not done, and a test says so — 2026-09-24; L5865
+- **I-246** The agents' browser is one headed Chromium on the desktop's display, shared by both MCP servers over CDP, and the desktop only views it — 2026-09-24; L5903

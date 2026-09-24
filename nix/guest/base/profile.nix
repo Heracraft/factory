@@ -13,8 +13,10 @@ let
     runtimeInputs = [ pkgs.jq pkgs.coreutils pkgs.systemd ];
     text = ''
       project=/home/dev/.repose/project.json
+      # The desktop is the viewer; the display alone may be up for the
+      # agents' browser (DECISIONS I-246).
       desktop_running() {
-        systemctl is-active --quiet repose-xvfb.service
+        systemctl is-active --quiet repose-x11vnc.service
       }
       case "''${1:-}" in
         "")
@@ -41,7 +43,8 @@ let
         desktop)
           case "''${2:-}" in
             start)
-              # Starting the socket's service pulls the whole chain in.
+              # Starting the socket's service pulls the whole chain in,
+              # the agents' browser included.
               sudo -n systemctl start repose-novnc.service
               cat /run/repose/desktop/vnc-password
               ;;
