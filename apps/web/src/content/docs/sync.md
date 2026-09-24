@@ -14,7 +14,7 @@ Each `repose run` copies the current state of your checkout to the machine, once
 - **Commits.** Your current branch, including commits you haven't pushed. They go straight from your laptop, so private repositories work with no setup on the machine.
 - **Uncommitted changes** to tracked files.
 - **Untracked files** that git isn't ignoring.
-- **`.env` files.** Gitignored `.env` and `.env.*` files up to 1 MB each. If the machine's copy is newer, it's kept.
+- **`.env` files.** Gitignored `.env` and `.env.*` files up to 1 MB each. If the machine's copy is newer, it's kept. Unlike [secrets](/docs/secrets), they are files on the machine's disk, so they are in snapshots.
 
 Everything goes over your SSH connection. None of it is stored by repose.
 
@@ -46,10 +46,12 @@ The guest's working tree has uncommitted changes (3 files):
   ?? notes.md
 ```
 
-Nothing is changed and the command exits with code 6. Then either:
+Changes that are exactly what the previous sync wrote don't count: they are stashed on the machine as `repose run: last sync` (the newest 10 are kept) and the sync goes on.
+
+Otherwise nothing is changed and the command exits with code 6. Then either:
 
 - `repose attach` to look, and let the agent finish or commit;
-- `repose run --stash-remote` to keep the machine's changes in `git stash` there;
+- `repose run --stash-remote` to keep the machine's changes in `git stash` there, as `repose run`;
 - `repose run --discard-remote` to throw them away.
 
 If the agent committed on the branch and you haven't pulled those commits, the sync checks out your laptop's commit detached and leaves the agent's branch where it is. Nothing is lost. Push from the machine and pull on your laptop.
@@ -75,4 +77,4 @@ The checkout must be a git repository with at least one commit and full history.
 
 A directory without a remote needs a name the first time: `repose run --name scratch`.
 
-For a large repository on github.com, the first sync has the machine clone the history from GitHub and sends only what GitHub doesn't have.
+For a repository on github.com over about 20 MB, the first sync has the machine clone the history from GitHub and sends only what GitHub doesn't have. If that clone fails, the CLI sends everything itself.

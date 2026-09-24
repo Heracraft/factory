@@ -24,14 +24,18 @@ Your first day of compute is free.
 ## Examples
 
 - `large`, running all month: $99 + $4 disk = $103.
-- `large`, stopped 10 hours every night: about $58 + $4 = $62.
-- `small`, used for a day and then left stopped: $1.68, then $2 a month for the disk until you destroy it.
+- `large`, stopped 10 hours every night: about $59 + $4 = $63.
+- `small`, used for a day and then left stopped: the day is free, then $2 a month for the disk until you destroy it.
 
 ## Seeing what you've used
 
-`repose projects` and `repose status` show each project's cost today and this month. The dashboard adds the month projected at the current rate. Usage is totalled a few minutes past each hour, so figures can trail by up to an hour.
+`repose projects` and `repose status` show each project's cost today and this month. The dashboard adds the month projected at the current rate, and its **Billing** page has your hours per day this month by size, your invoices, and your payment card. Usage is totalled a few minutes past each hour, so figures can trail by up to an hour.
 
 ## Stopping the charges
 
 - `repose stop` ends compute. Disk continues.
 - `repose destroy` ends everything for that project. Its final snapshot is kept free for 30 days.
+
+## Deleting your account
+
+The dashboard's **Account** page shows your handle, email and GitHub login, and has **Delete account**. Type your handle to confirm. Every machine stops at once, and everything, snapshots included, is deleted 30 days later.

@@ -46,6 +46,15 @@ systemd unit present but not enabled, the error path that panics, the
 command that exists but prints "not implemented". `docs/CHECKLIST.md` lists
 the greps that catch these; run them before saying done.
 
+## A feature without user docs is not done
+
+Anything a user can see or do (a command, flag, config key, environment
+variable, exit code, message, limit, price, dashboard action, guest
+behaviour) ships with its update to the public docs in
+`apps/web/src/content/docs/` in the same commit, and a removal takes its
+docs with it. `internal/cli/docs_test.go` fails when the CLI and `cli.md`
+disagree; the rest is on `docs/CHECKLIST.md` (DECISIONS I-242).
+
 ## Ask before creating a branch
 
 Work on `main` unless told otherwise. Creating or switching to another branch

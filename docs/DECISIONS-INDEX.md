@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-292 entries.
+293 entries.
 
 ## Scope
 
@@ -324,3 +324,4 @@ pointer, not a summary.
 - **I-238** Guests cannot send mail straight to port 25; submission ports stay open, and blocked attempts are counted per guest — 2026-09-24; L5702
 - **I-239** A known cryptocurrency miner stops its guest automatically; three stops in 24 hours hold the project until an operator clears it; the pool ports are blocked; full CPU with nobody there for six hours is an alert — 2026-09-24; L5741
 - **I-240** New outbound flows are rate-limited per guest, far above what development does; flows over the limit are dropped and counted, open ones are never cut — 2026-09-24; L5822
+- **I-242** A feature without user docs is not done, and a test says so — 2026-09-24; L5865

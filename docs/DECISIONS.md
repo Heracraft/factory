@@ -5861,3 +5861,41 @@ seconds); disconnecting or stopping the guest over the limit (a burst is
 not abuse, and a sustained scan is a human's call); limiting only UDP or
 only TCP (floods use both); a per-destination limit (a scan's signature
 is many destinations, which a per-destination meter never sees).
+
+**I-242. A feature without user docs is not done, and a test says so.**
+(docs audit worker, owner, 2026-09-24) The owner's rule: no ghost
+features that are not documented. An audit of every `repose` command and
+flag, config.toml key, environment variable, exit code, dashboard page and
+guest behaviour, and of I-149..I-241, against the 14 pages of /docs found
+about 40 gaps and 6 wrong statements (listed in
+`docs/workstreams/DOCS-AUDIT.md`): snapshot retention was "the seven
+newest" where the code keeps 7 days plus the newest; project limits said
+higher limits "aren't self-serve" where the first paid invoice raises them
+to 10 (I-184); the `small` pricing example charged for the free first day;
+yarn was said to use the npm cache (only v1 does); the dashboard was said to
+show what `repose status` shows, ports included; secret names lacked the
+leading-letter and 64-character rules. All are fixed in the docs. Three
+code changes come with it. `repose resize SIZE` is no longer hidden (07
+§5.6 hid it and documented it only in features/config.md): it is a working,
+billed and irreversible action the dashboard offers too, so hiding it is
+the ghost the rule is about. The `gateway` config.toml key is gone: it was
+decoded and never read; a file that still sets it loads as before, since
+unknown keys are ignored (the old shape stays accepted). Ctrl-C's 130 is
+`ExitInterrupted` so the exit-code table can be checked. `repose __session`
+stays hidden: it is the helper the CLI starts for itself and does nothing
+typed by hand. `repose login --browser` and `--no-browser` stay visible and
+are documented as what they are (a flow the hosted Logto app can't serve,
+I-101, and a no-op kept for scripts). Enforcement: `internal/cli/docs_test.go`
+walks the cobra tree and fails when a visible command has no heading or row
+in `apps/web/src/content/docs/cli.md`, when a flag (long and short) is not
+named with its command, when a hidden command or flag has no written reason,
+when a `Config` toml key, an entry of `userEnvVars` (the new registry in
+`env.go`; every `REPOSE_*` read in the package must be in it or in the
+test's internal list) or an `Exit*` constant is missing from its section,
+and the other way round when cli.md names a command, flag, key, variable or
+exit code the CLI does not have. `docs/CHECKLIST.md` and `CLAUDE.md` carry
+the rule. *Rejected:* generating cli.md from cobra (the page is written for
+people, with examples and grouping a generator would lose; a check keeps
+both); checking only that flag names appear somewhere on the page (a flag
+documented under the wrong command would pass); leaving resize hidden and
+allowlisted (the allowlist is for things no user should type).

@@ -20,8 +20,9 @@ const apiResource = "https://api.repose.herakraft.co"
 
 // Config is config.toml (docs/interfaces/cli-config.md).
 type Config struct {
-	APIURL       string `toml:"api_url"`
-	Gateway      string `toml:"gateway"`
+	APIURL string `toml:"api_url"`
+	// "gateway" was here, read and never used; an old file that sets it
+	// still loads, since unknown keys are ignored (DECISIONS I-242).
 	DefaultClass string `toml:"default_class"`
 	DefaultAgent string `toml:"default_agent"`
 	// SyncExclude is sync.exclude. TOML spells that as a [sync] table

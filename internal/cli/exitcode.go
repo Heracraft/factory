@@ -14,6 +14,7 @@ const (
 	ExitPaymentRequired = 7
 	ExitCapacity        = 8
 	ExitBuildFailed     = 10
+	ExitInterrupted     = 130 // Ctrl-C, as a shell reports SIGINT
 )
 
 // exitError carries a message already printed (or to be printed) and the

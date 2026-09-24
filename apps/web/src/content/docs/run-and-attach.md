@@ -11,7 +11,7 @@ order: 10
 repose run "migrate the date handling to Temporal and fix the tests that break"
 ```
 
-Quotes are optional; everything after the flags is the prompt. `run` creates or starts the machine, [syncs](/docs/sync) your checkout, opens a new tmux window, starts the agent there, types your prompt and attaches you to it.
+Quotes are optional; everything after the flags is the prompt. A one-word prompt that is the name of one of your projects is refused as a likely slip (exit code 2); to send it anyway, name the agent: `repose run --agent claude todo-app`. `run` creates or starts the machine, [syncs](/docs/sync) your checkout, opens a new tmux window, starts the agent there, types your prompt and attaches you to it.
 
 Without a prompt, `repose run` syncs and drops you in the last active window.
 
@@ -90,7 +90,7 @@ While you're connected, your laptop's ssh-agent is forwarded to the machine. Tha
 
 ## Time zone
 
-`run` and `attach` set the machine's time zone to your laptop's. New shells pick it up.
+`run` and `attach` set the machine's time zone to your laptop's. New shells pick it up. Until the first `run`, a machine uses the time zone on the dashboard's **Settings** page.
 
 ## When the machine stops
 

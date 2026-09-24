@@ -21,7 +21,7 @@ import (
 var timingStart = time.Now()
 
 var timingOut = func() io.Writer {
-	if os.Getenv("REPOSE_TIMING") == "1" {
+	if os.Getenv(envTiming) == "1" {
 		return os.Stderr
 	}
 	return nil

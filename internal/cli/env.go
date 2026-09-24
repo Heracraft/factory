@@ -11,6 +11,32 @@ import (
 	"time"
 )
 
+// Environment variables the CLI reads that a user may set. Every read of
+// one goes through these names, and userEnvVars lists them all: each one is
+// in the "Environment variables" table of apps/web/src/content/docs/cli.md,
+// and docs_test.go fails when one is added here but not there, or when a
+// REPOSE_* name is read anywhere in this package without being listed
+// (DECISIONS I-242).
+const (
+	envProject         = "REPOSE_PROJECT"
+	envAPIURL          = "REPOSE_API_URL"
+	envTiming          = "REPOSE_TIMING"
+	envNoSpinner       = "REPOSE_NO_SPINNER"
+	envNoForward       = "REPOSE_NO_FORWARD"
+	envNoFastPath      = "REPOSE_NO_FASTPATH"
+	envNoBrowser       = "REPOSE_NO_BROWSER"
+	envInGuest         = "REPOSE" // "1" inside a repose guest: login never tries a browser there
+	envXDGConfigHome   = "XDG_CONFIG_HOME"
+	envClaudeConfigDir = "CLAUDE_CONFIG_DIR"
+	envVisual          = "VISUAL"
+	envEditor          = "EDITOR"
+)
+
+var userEnvVars = []string{
+	envProject, envAPIURL, envTiming, envNoSpinner, envNoForward, envNoFastPath, envNoBrowser,
+	envInGuest, envXDGConfigHome, envClaudeConfigDir, envVisual, envEditor,
+}
+
 // Env bundles what almost every command needs: config, the API client,
 // and the laptop-local caches (docs/interfaces/cli-config.md).
 type Env struct {
@@ -66,7 +92,7 @@ func newEnv(apiURLFlag string, jsonOut, verbose bool) (*Env, error) {
 	if err != nil {
 		return nil, err
 	}
-	if v := os.Getenv("REPOSE_API_URL"); v != "" {
+	if v := os.Getenv(envAPIURL); v != "" {
 		cfg.APIURL = v
 	}
 	if apiURLFlag != "" {
@@ -123,7 +149,7 @@ func (e *Env) resolveArg(explicit string) string {
 	if explicit != "" {
 		return explicit
 	}
-	return os.Getenv("REPOSE_PROJECT")
+	return os.Getenv(envProject)
 }
 
 func (e *Env) saveCache() error { return saveProjectsCache(e.Dir, e.Cache) }

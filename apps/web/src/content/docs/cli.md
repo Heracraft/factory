@@ -5,13 +5,13 @@ section: Reference
 order: 40
 ---
 
-`repose --help` and `repose <command> --help` print the same in your terminal.
+`repose --help`, `repose help COMMAND` and `repose COMMAND --help` print the same in your terminal.
 
 ## Which project
 
 Commands that act on a project use, in order: the `PROJECT` argument, `--project NAME`, the `REPOSE_PROJECT` environment variable, then the current checkout's git remote.
 
-Global flags: `--project NAME`, `-v` (debug output to stderr), `--version`.
+Global flags: `--project NAME`, `-v`/`--verbose` (debug output to stderr), `--version`, and `--api-url URL` (see [Other servers](#other-servers)).
 
 ## Working on a project
 
@@ -46,7 +46,7 @@ Forward one port to your laptop and open it in the browser, until `Ctrl-C`.
 
 ### `repose cp [-r] SRC DST`
 
-Copy files with `scp`. One side is `PROJECT:PATH`, or `:PATH` for this checkout's project. Relative machine paths start at the checkout.
+Copy files with `scp`. One side is `PROJECT:PATH`, or `:PATH` for this checkout's project. Relative machine paths start at the checkout. `-r`/`--recursive` copies directories.
 
 ### `repose scan [DIR]`
 
@@ -78,13 +78,17 @@ Delete the machine and disk; a final snapshot is kept 30 days. `-y`/`--yes` skip
 
 Bring back a project destroyed in the last 30 days. `--as NEW-NAME` for another name, `--snapshot ID` for an older snapshot.
 
+### `repose resize SIZE`
+
+Grow the project's disk, for example `repose resize 80G`. Disks can't shrink, and the larger disk is billed from then on.
+
 ### `repose logs [PROJECT]`
 
-`--kind console|build|ops` (default `console`), `--since 1h`, `-f` to follow, `--json`.
+`--kind console|build|ops` (default `console`), `--since 1h`, `-f`/`--follow` to follow, `--json`.
 
 ### `repose events [PROJECT]`
 
-`--since 72h` (default `24h`), `-f` to follow, `--json`.
+`--since 72h` (default `24h`), `-f`/`--follow` to follow, `--json`.
 
 ## Snapshots
 
@@ -114,37 +118,58 @@ Bring back a project destroyed in the last 30 days. `--as NEW-NAME` for another 
 
 ## Account
 
-| Command                             |                                                                         |
-| ----------------------------------- | ----------------------------------------------------------------------- |
-| `repose login`                      | Log in with a code in any browser.                                      |
-| `repose logout`                     | Log out and revoke SSH certificates. `--purge` removes the CLI's files. |
-| `repose notify set`                 | `--email on\|off`, `--ntfy URL\|none`.                                  |
-| `repose notify test`                | Send a test on every channel that's on.                                 |
-| `repose version`                    | Print the version.                                                      |
-| `repose completion bash\|zsh\|fish` | Print a shell completion script.                                        |
-
-`repose mcp forward` and `repose browser bridge` are reserved and not available yet.
+| Command                             |                                                                                                                  |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `repose login`                      | Log in with a code in any browser. `--no-browser` is the same; `--browser`, see [Other servers](#other-servers). |
+| `repose logout`                     | Log out and revoke SSH certificates. `--purge` removes the CLI's files.                                          |
+| `repose notify set`                 | `--email on\|off`, `--ntfy URL\|none`.                                                                           |
+| `repose notify test`                | Send a test on every channel that's on.                                                                          |
+| `repose version`                    | Print the version.                                                                                               |
+| `repose completion bash\|zsh\|fish` | Print a shell completion script.                                                                                 |
+| `repose help [COMMAND]`             | Print help for a command.                                                                                        |
+| `repose mcp forward`                | Reserved, not available yet. Prints what works today.                                                            |
+| `repose browser bridge`             | Reserved, not available yet. Prints what works today.                                                            |
 
 ## config.toml
 
 `~/.config/repose/config.toml` is optional.
 
 ```toml
-default_class = "small"     # size of new projects; default large
-default_agent = "codex"     # agent for new projects; default claude
+default_class = "small"
+default_agent = "codex"
 
 [sync]
-exclude = ["dist", "*.mp4"] # more gitignore-style patterns to leave out
+exclude = ["dist", "*.mp4"]
 ```
+
+| Key               | Default  |                                                                      |
+| ----------------- | -------- | -------------------------------------------------------------------- |
+| `default_class`   | `large`  | Size of new projects.                                                |
+| `default_agent`   | `claude` | Agent for new projects.                                              |
+| `sync.exclude`    | none     | More gitignore-style patterns the sync leaves out.                   |
+| `api_url`         | hosted   | See [Other servers](#other-servers).                                 |
+| `logto_issuer`    | hosted   | The login server. See [Other servers](#other-servers).               |
+| `logto_client_id` | hosted   | The CLI's application id there. See [Other servers](#other-servers). |
 
 ## Environment variables
 
-| Variable              |                                                      |
-| --------------------- | ---------------------------------------------------- |
-| `REPOSE_PROJECT`      | The project to act on, like `--project`.             |
-| `REPOSE_NO_FORWARD=1` | Don't forward ports automatically while attached.    |
-| `REPOSE_TIMING=1`     | Print how long each step of `run` and `attach` took. |
-| `REPOSE_NO_SPINNER=1` | One line per step instead of a progress line.        |
+| Variable               |                                                                                                                             |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `REPOSE_PROJECT`       | The project to act on, like `--project`.                                                                                    |
+| `REPOSE_NO_FORWARD=1`  | Don't forward ports automatically while attached.                                                                           |
+| `REPOSE_TIMING=1`      | Print how long each step of `run` and `attach` took.                                                                        |
+| `REPOSE_NO_SPINNER=1`  | One line per step instead of a progress line. `TERM=dumb` does the same.                                                    |
+| `REPOSE_NO_FASTPATH=1` | Check with the server before every connection instead of reusing the last one. Slower; for when a connection keeps failing. |
+| `REPOSE_NO_BROWSER=1`  | Never open a browser, even with `repose login --browser`.                                                                   |
+| `REPOSE_API_URL`       | Like `--api-url`.                                                                                                           |
+| `REPOSE=1`             | Set on every repose machine, so scripts can tell where they run.                                                            |
+| `XDG_CONFIG_HOME`      | If set, the CLI's files are in `$XDG_CONFIG_HOME/repose/`.                                                                  |
+| `CLAUDE_CONFIG_DIR`    | Where your laptop's Claude Code setup is copied from, instead of `~/.claude`.                                               |
+| `VISUAL`, `EDITOR`     | The editor for `repose config edit`. Default `vi`.                                                                          |
+
+## Other servers
+
+For a test or self-hosted repose server rather than the hosted one: `--api-url URL`, `REPOSE_API_URL` or `api_url` in config.toml pick the API, and `logto_issuer` and `logto_client_id` the login server and the CLI's application there. `repose login --browser` logs in through a browser on this computer instead of a code, for a login application that allows local redirects; the hosted one doesn't.
 
 ## Files on your laptop
 
@@ -170,3 +195,6 @@ exclude = ["dist", "*.mp4"] # more gitignore-style patterns to leave out
 | 7    | Account or payment problem.                            |
 | 8    | No capacity right now; try again in a few minutes.     |
 | 10   | The configuration build failed.                        |
+| 130  | Interrupted with `Ctrl-C`.                             |
+
+Once `run` or `attach` has connected you, the exit code is `ssh`'s. `repose cp` returns `scp`'s.

@@ -41,6 +41,14 @@ written so they cannot happen quietly.
       clean.
 - [ ] The workstream doc's checklist has been re-read and every item that
       the change affects has its evidence updated.
+- [ ] A user-visible change (a command, flag, config key, environment
+      variable, exit code, message, limit, price, dashboard action or guest
+      behaviour) ships with its /docs update (`apps/web/src/content/docs/`)
+      in the same commit, and anything the change removes leaves the docs
+      too (DECISIONS I-242). Evidence: `git show --stat` includes the docs
+      page, and `go test ./internal/cli -run TestDocs` passes (it fails on a
+      CLI command, flag, config.toml key, environment variable or exit code
+      missing from, or left behind in, `cli.md`).
 
 ## For every workstream, before it is called done
 

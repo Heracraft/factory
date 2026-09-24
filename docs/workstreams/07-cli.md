@@ -430,7 +430,8 @@ measures them):
   `snapshots restore` is unchanged, for restoring in place.
 - Resize is `repose config apply` with `volume_bytes` in the fragment
   header? No: it is its own route, so `repose resize 80G` exists as a
-  hidden alias of `POST /resize`; document it in `features/config.md` only.
+  command for `POST /resize`, visible and in the public CLI reference
+  (DECISIONS I-242; it was hidden before).
 
 ### 5.7 status
 

@@ -35,7 +35,7 @@ func Execute(version string) int {
 	}
 	if errors.Is(err, context.Canceled) && ctx.Err() != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "Interrupted.")
-		return 130
+		return ExitInterrupted
 	}
 	if usageErr, ok := err.(cobraUsageError); ok {
 		_, _ = fmt.Fprintln(os.Stderr, usageErr.Error())
@@ -217,10 +217,10 @@ func newLoginCmd() *cobra.Command {
 			}
 			opts := loginOptions{
 				Browser:   browser,
-				NoBrowser: noBrowser || os.Getenv("REPOSE_NO_BROWSER") == "1",
+				NoBrowser: noBrowser || os.Getenv(envNoBrowser) == "1",
 				Display:   os.Getenv("DISPLAY"),
 				GOOS:      goos(),
-				GuestEnv:  os.Getenv("REPOSE") == "1",
+				GuestEnv:  os.Getenv(envInGuest) == "1",
 			}
 			return runLogin(cmd.Context(), e.Dir, e.Cfg, e.httpClient, opts)
 		},
@@ -607,9 +607,9 @@ with ` + "`repose config edit`" + `.`,
 }
 
 func openInEditor(path string) error {
-	editor := os.Getenv("VISUAL")
+	editor := os.Getenv(envVisual)
 	if editor == "" {
-		editor = os.Getenv("EDITOR")
+		editor = os.Getenv(envEditor)
 	}
 	if editor == "" {
 		editor = "vi"
@@ -756,10 +756,9 @@ func newRestoreCmd(env func() (*Env, error)) *cobra.Command {
 
 func newResizeCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:    "resize SIZE",
-		Short:  "Grow the project's volume (e.g. 80G)",
-		Hidden: true,
-		Args:   cobra.ExactArgs(1),
+		Use:   "resize SIZE",
+		Short: "Grow the project's disk (e.g. 80G); disks can't shrink",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			bytes, err := parseSize(args[0])
 			if err != nil {
@@ -973,7 +972,7 @@ func readHiddenLine() ([]byte, error) {
 			case <-sig:
 				_ = stty("echo")
 				_, _ = fmt.Fprintln(os.Stderr)
-				os.Exit(130)
+				os.Exit(ExitInterrupted)
 			case <-done:
 			}
 		}()

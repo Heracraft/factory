@@ -47,7 +47,7 @@ func isTerminal(f *os.File) bool {
 	if f == nil {
 		return false
 	}
-	if os.Getenv("TERM") == "dumb" || os.Getenv("REPOSE_NO_SPINNER") == "1" {
+	if os.Getenv("TERM") == "dumb" || os.Getenv(envNoSpinner) == "1" {
 		return false
 	}
 	info, err := f.Stat()

@@ -41,7 +41,7 @@ For more detail on any command, add `-v`. `REPOSE_TIMING=1` shows where the time
 
 **A tool from your laptop didn't arrive.** The next `repose run` names it. The log is `~/.repose/tools-install.log` on the machine. `repose scan` shows what the CLI looked for.
 
-**A program you installed isn't on `PATH`.** Installs with npm, pnpm, `go install`, `cargo install`, uv, pip `--user`, bun and deno are on `PATH` in new shells. Open a new tmux window. Tools that manage `PATH` from their own shell setup (nvm, pyenv, rbenv) need that setup in `~/.bashrc`.
+**A program you installed isn't on `PATH`.** Installs with npm, pnpm, `go install`, `cargo install`, uv, pip `--user`, bun, deno, gem and composer are on `PATH` in new shells. Open a new tmux window. Tools that manage `PATH` from their own shell setup (nvm, pyenv, rbenv) need that setup in `~/.bashrc`.
 
 **A secret isn't in a program's environment.** Programs read their environment when they start. Open a new tmux window, or restart the program or agent.
 

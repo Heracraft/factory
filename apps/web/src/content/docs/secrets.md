@@ -27,7 +27,7 @@ repose secrets list
 repose secrets rm STRIPE_SECRET_KEY
 ```
 
-`list` shows names and dates, never values. Nothing shows a value again after you set it. Secrets belong to one project. Names are uppercase letters, digits and underscores; values up to 64 KB.
+`list` shows names and dates, never values. Nothing shows a value again after you set it. Secrets belong to one project. Names are uppercase letters, digits and underscores, start with a letter and are up to 64 characters; values up to 64 KB.
 
 The dashboard's project **Secrets** page does the same.
 
@@ -62,7 +62,7 @@ git config --global credential.helper '!f() { echo username=oauth2; echo "passwo
 
 ## Git and Claude Code settings
 
-Your global git settings are copied, minus credential helpers, signing, URL rewrites and anything that looks like a token. Settings you make on the machine win. Commits made on the machine are unsigned, since the signing key stays on your laptop.
+Your global git settings are copied, minus credential helpers, signing, URL rewrites, proxies, `core.sshCommand`, `core.hooksPath`, diff and merge tools, a pager or editor the machine doesn't have, and anything that looks like a token. Settings you make on the machine win. Commits made on the machine are unsigned, since the signing key stays on your laptop.
 
 Your Claude Code setup is copied too: `CLAUDE.md`, `settings.json` (with `env` and API key helpers removed), skills, agents, commands and the scripts your hooks run. [Agents](/docs/agents#your-claude-code-setup-comes-along) has the details.
 

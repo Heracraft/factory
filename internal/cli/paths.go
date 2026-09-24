@@ -8,7 +8,7 @@ import (
 // configDir is ~/.config/repose (or $XDG_CONFIG_HOME/repose), created 0700
 // if missing. docs/interfaces/cli-config.md.
 func configDir() (string, error) {
-	base := os.Getenv("XDG_CONFIG_HOME")
+	base := os.Getenv(envXDGConfigHome)
 	if base == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {

@@ -25,7 +25,7 @@ repose status todo-app
 repose status todo-app --watch
 ```
 
-The dashboard shows the same, plus events, snapshots and a projected monthly cost.
+The dashboard's project page shows the state, agents, SSH sessions and cost, plus events, snapshots, the last build and a projected monthly cost. It doesn't list listening ports.
 
 ## Stop and start
 
@@ -37,9 +37,9 @@ $ repose start todo-app
 todo-app is running (large), ready in 9s. `repose attach todo-app` to get in.
 ```
 
-Stopping ends every process and snapshots the disk (`--no-snapshot` skips that). The disk stays, with everything in `/home/dev`. A stopped machine costs only its disk. `repose run` in the checkout starts a stopped machine too.
+Stopping ends every process and snapshots the disk (`--no-snapshot`, or unticking **Snapshot on stop** in the dashboard, skips that). The disk stays, with everything in `/home/dev`. A stopped machine costs only its disk. `repose run` in the checkout starts a stopped machine too.
 
-`repose start` is also the fix for a project in the `error` state: it restarts the machine on its newest configuration.
+`repose start` is also the fix for a project in the `error` state: it restarts the machine on its newest configuration. The dashboard's **Start** button is there only while a project is stopped.
 
 ## Snapshots
 
@@ -50,7 +50,7 @@ repose snapshots create
 repose snapshots list
 ```
 
-The seven newest are kept, free. A snapshot holds the whole disk (checkout, home directory, logins made on the machine, installed tools) but not [secrets](/docs/secrets), which live only in memory.
+Snapshots from the last 7 days are kept, free, and the newest one is always kept. A snapshot holds the whole disk (checkout, home directory, logins made on the machine, installed tools) but not [secrets](/docs/secrets), which live only in memory.
 
 To put a project back to a snapshot, stop it first. Stopping takes its own snapshot, so this can be undone:
 
@@ -65,6 +65,8 @@ Or restore into a new project and leave the original alone:
 repose snapshots restore SNAPSHOT_ID --as-new todo-app-yesterday
 ```
 
+The dashboard's snapshot list has **Create**, **Restore** and **Restore as new…** too.
+
 ## Destroy and restore
 
 ```
@@ -73,7 +75,7 @@ Destroy todo-app? A final snapshot is kept for 30 days. [y/N] y
 Destroying todo-app. Bring it back within 30 days with: repose restore todo-app
 ```
 
-This deletes the machine and its disk and stops all charges for the project. `--yes` skips the question; `--wait` waits until it's done.
+This deletes the machine and its disk and stops all charges for the project. `--yes` skips the question; `--wait` waits until it's done. In the dashboard, **Destroy** asks you to type the project's name.
 
 Within 30 days, bring it back, running, with its size, configuration and git remote:
 
@@ -82,7 +84,9 @@ repose projects --destroyed
 repose restore todo-app
 ```
 
-`--as NEW-NAME` restores under another name, and `--snapshot ID` picks an older snapshot. After 30 days the snapshot is deleted.
+`--as NEW-NAME` restores under another name, and `--snapshot ID` picks an older snapshot. A restore started while the destroy is still running waits for it. After 30 days the snapshot is deleted.
+
+The dashboard's project list has the same under **Recently destroyed**, with the date each can be restored until.
 
 ## A second machine for the same repository
 

@@ -34,7 +34,7 @@ repose config remove air
 
 ## The menu
 
-The dashboard's project **Config** page has the same list as a menu: tick an entry, choose a version where there's a choice, **Apply**. Packages added with `repose config add` show under **Extra packages**.
+The dashboard's project **Config** page has the same list as a menu: tick an entry, choose a version where there's a choice, **Apply**. Packages added with `repose config add` show under **Extra packages**, each with **Remove**. While a build runs, the page shows its log.
 
 | Group     | Entries                                                                                           |
 | --------- | ------------------------------------------------------------------------------------------------- |
@@ -54,6 +54,8 @@ repose config show            # print it
 repose config edit            # edit in $EDITOR, apply on save
 repose config apply ./repose.nix
 ```
+
+Or use the **Nix** tab on the dashboard's Config page (**Edit as Nix** from the menu).
 
 An example:
 

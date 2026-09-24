@@ -24,7 +24,7 @@ import (
 
 // noFastPath turns the fast path off (REPOSE_NO_FASTPATH=1), for
 // measuring it against the slow one and as a way out if it misjudges.
-func noFastPath() bool { return os.Getenv("REPOSE_NO_FASTPATH") == "1" }
+func noFastPath() bool { return os.Getenv(envNoFastPath) == "1" }
 
 // sshFilesCover reports whether ~/.ssh/repose (sd) already lets the CLI
 // reach p: a certificate for the CLI's key with p's id among its

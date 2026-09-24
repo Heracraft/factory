@@ -119,7 +119,7 @@ type claudeCarry struct {
 // claudeConfigDir is where the laptop keeps its Claude config:
 // $CLAUDE_CONFIG_DIR when set, else ~/.claude.
 func claudeConfigDir(homeDir string) string {
-	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
+	if d := os.Getenv(envClaudeConfigDir); d != "" {
 		return d
 	}
 	return filepath.Join(homeDir, ".claude")

@@ -35,21 +35,26 @@ ntfy: ok
 
 A self-hosted ntfy server works the same way. For one that needs a login, put it in the URL (`https://user:password@ntfy.example.com/topic`). Turn ntfy off with `repose notify set --ntfy none`.
 
-Settings apply to every project. The dashboard's **Settings** page has the same controls.
+Settings apply to every project. The dashboard's **Settings** page has the same controls, plus **Send test**; changes there take effect when you press **Save**.
 
 ## What you'll get
 
-| Title                           | When                                                     |
-| ------------------------------- | -------------------------------------------------------- |
-| `todo-app: claude finished`     | The agent finished and is waiting.                       |
-| `todo-app: claude needs input`  | The agent is asking you something, usually a permission. |
-| `todo-app: claude hit an error` | The agent reported an error.                             |
-| `todo-app: snapshot failed`     | A snapshot couldn't be taken.                            |
-| `todo-app: base update failed`  | A platform update didn't build with your configuration.  |
+| Title                            | When                                                                                                                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `todo-app: claude finished`      | The agent finished and is waiting.                                                                                                                                      |
+| `todo-app: claude needs input`   | The agent is asking you something, usually a permission.                                                                                                                |
+| `todo-app: claude hit an error`  | The agent reported an error.                                                                                                                                            |
+| `todo-app: snapshot failed`      | A snapshot couldn't be taken.                                                                                                                                           |
+| `todo-app: base update failed`   | A platform update didn't build with your configuration.                                                                                                                 |
+| `todo-app: base updated`         | A platform update was switched into the machine.                                                                                                                        |
+| `todo-app: destroy failed`       | A destroy didn't finish; the body says why.                                                                                                                             |
+| `todo-app: host moved`           | The project was restored onto another server from its latest snapshot.                                                                                                  |
+| `todo-app: abuse stopped`        | The machine was stopped because a miner was running ([Limits](/docs/limits#what-isnt-allowed)). By email: `Your guest was stopped: a cryptocurrency miner was running`. |
+| `todo-app: notifications paused` | The project reached 30 notifications this hour.                                                                                                                         |
 
 The body is what the agent said at that moment, up to 1 KB. It's never your prompt or your terminal. It does pass through ntfy.sh or your email provider, so use a self-hosted ntfy server if that matters.
 
-Claude Code, Codex and opencode report through hooks, within about 10 seconds. Gemini CLI and pi have no hooks, so the machine sends `finished` when their processes go quiet, within about 90 seconds.
+Claude Code, Codex and opencode report through hooks, within about 10 seconds. Gemini CLI and pi have no hooks, so the machine sends `finished` when their processes go quiet, within about 90 seconds, with the body `gemini went idle` or `pi went idle`.
 
 ## Limits
 

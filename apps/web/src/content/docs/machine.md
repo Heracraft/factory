@@ -20,7 +20,9 @@ Each project gets its own virtual machine running NixOS, with its own kernel, di
 - **Build tools:** gcc, g++, make, cmake, pkg-config, so cgo, node-gyp, Python extensions and Rust crates like `openssl-sys` build.
 - **Containers:** Docker with `docker compose`.
 - **Browser:** Chromium and Playwright's browsers.
-- **Everyday tools:** git, gh, just, curl, wget, jq, ripgrep, fd, bat, fzf, eza, tree, htop, neovim, direnv, sqlite3, `psql` and `pg_dump` (no database server; [add one](/docs/config)), openssl, gnupg, dig, lsof, zip and unzip.
+- **Everyday tools:** git, gh, tmux, just, curl, wget, jq, ripgrep, fd, bat, fzf, eza, zoxide, tree, htop, neovim, direnv, sqlite3, `psql`, `pg_dump` and `pg_restore` (no database server; [add one](/docs/config)), openssl, gnupg, dig, lsof, killall, file, zip, unzip and zstd.
+
+The shell is bash with the starship prompt, and `ls` is `eza -al`. `dev` is in the `docker` group, so `docker` needs no `sudo`.
 
 Programs downloaded for other Linux systems run as they would on Ubuntu: Prisma's engines, Playwright's own browsers, numpy and other Python wheels, esbuild, Biome, and binaries from `curl | sh` installers.
 
@@ -36,7 +38,7 @@ uv tool install httpie
 nix profile add nixpkgs#ffmpeg
 ```
 
-`pip install --user`, bun, deno, gem and composer installs are on `PATH` too. `nix profile add` takes any package from nixpkgs; search names at [search.nixos.org](https://search.nixos.org/packages).
+`pip install --user`, bun, deno, gem and composer installs are on `PATH` too, as are the usual directories of yarn, dotnet, ghcup, cabal, opam, luarocks, mix, nimble, juliaup, krew and volta. `nix profile add` takes any package from nixpkgs; search names at [search.nixos.org](https://search.nixos.org/packages).
 
 Type a command the machine doesn't have and it tells you where to get it:
 
@@ -57,7 +59,7 @@ Installs made on the machine are not part of the project's configuration. To hav
 Installing 3 of your tools in the background: air, portless, typescript
 ```
 
-Nothing waits for these. If a tool fails to install, the next `run` says so; the log is `~/.repose/tools-install.log` on the machine. A Node major version pinned in `.nvmrc`, `.node-version` or `engines.node` is installed and made the default `node`.
+Each comes from nixpkgs when nixpkgs has it, so its version can differ from your laptop's; otherwise your laptop's version is installed with its own package manager. Nothing waits for these. If a tool fails to install, the next `run` says so; the log is `~/.repose/tools-install.log` on the machine. A Node major version pinned in `.nvmrc`, `.node-version`, `.tool-versions`, `volta.node` or `engines.node` (the first found) is installed and made the default `node`.
 
 To see the list without installing anything:
 
@@ -77,9 +79,9 @@ While you're attached with `repose run` or `repose attach`, every port a program
 ⇄ localhost:5173 → :5173
 ```
 
-Because it's `localhost`, cookies and OAuth redirects behave as they do locally. If the port is taken on your laptop, the next free one is used and the message says which.
+Because it's `localhost`, cookies and OAuth redirects behave as they do locally. If the port is taken on your laptop, the next free one (up to 20 higher) is used and the message says which.
 
-Ports below 1024 aren't forwarded, and neither are servers that listen only on another address such as a Docker network. A container port published with `-p 8080:80` is.
+Ports below 1024 aren't forwarded, nor are the machine's own 5353, 5355, 5900, 6080 and 6081, nor servers that listen only on another address such as a Docker network. A container port published with `-p 8080:80` is.
 
 To forward one port without attaching:
 
@@ -113,10 +115,10 @@ Enter the password in the page that opens. Browsers an agent starts in headed mo
 
 ## Network
 
-The machine can reach the internet. Nothing on the internet can reach the machine; the only way in is SSH through repose, with your certificate. Outbound traffic is limited to 200 Mbit/s. npm, pnpm, yarn and Docker Hub downloads go through a cache on the server. [Limits](/docs/limits) has what's blocked.
+The machine can reach the internet. Nothing on the internet can reach the machine; the only way in is SSH through repose, with your certificate. Outbound traffic is limited to 200 Mbit/s. npm, pnpm, yarn v1 and Docker Hub downloads go through a cache on the server. For npm, repose adds two lines to `~/.npmrc`; delete them to go direct. An `~/.npmrc` that already names a registry or holds an npmjs token is left alone. [Limits](/docs/limits) has what's blocked.
 
 ## Memory and disk
 
 When a machine runs out of memory, something is killed. Your agents and tmux are kept to the last, so a runaway test or dev server goes first. `sudo dmesg | grep -i killed` shows what went. Headless Chromium is stopped past 1.5, 3 or 6 GB depending on size.
 
-Grow the disk from the project's page in the dashboard (**Resize…** under Disk). Disks can't shrink. A project's size is chosen when it's created and can't be changed afterwards yet.
+Grow the disk with `repose resize 80G`, or from the project's page in the dashboard (**Resize…** under Disk, 20 to 320 GB). Disks can't shrink, and the larger disk is [billed](/docs/billing) from then on. A project's size is chosen when it's created and can't be changed afterwards yet.

@@ -7,14 +7,14 @@ order: 31
 
 ## Projects
 
-A new account can have 3 projects, at most 1 of them `xl`. Destroyed projects don't count. Higher limits aren't self-serve yet.
+A new account can have 3 projects, at most 1 of them `xl`. After your first paid invoice, the limit is 10 projects of any size. Destroyed projects don't count.
 
 ## Network
 
 - Outbound traffic is limited to 200 Mbit/s per machine. Downloads into the machine aren't limited.
 - Outbound connections to port 25 are blocked, so a machine can't send mail directly. Use your email provider's API, or its submission port (587 or 465) with a login.
-- The ports used by cryptocurrency mining pools are blocked.
-- There is a limit on how fast a machine can open new connections. Installing packages, running test suites and crawling your own app stay well under it.
+- Outbound connections to the ports mining pools use (3333, 5555, 7777, 14433 and 14444) are blocked.
+- A machine can open 200 new outbound connections a second, in bursts of up to 2000. Installing packages, running test suites and crawling your own app stay well under it.
 - Nothing on the internet can connect to the machine. Reach your own servers on it through [port forwarding](/docs/machine#ports).
 
 ## What isn't allowed
@@ -26,4 +26,4 @@ The [terms](/terms) have the full wording. In short, don't use a machine to:
 - attack, scan or flood other systems;
 - host or run anything illegal.
 
-A machine running a known miner is stopped, with a snapshot, and `repose status` says why. After three stops in a day the project can't be started until we've looked at it. Other abuse found by monitoring or reported to us gets the machine stopped and the account reviewed. Monitoring looks at process names and resource use, never at your files or terminal; see [what repose stores](/docs/secrets#what-repose-stores).
+A machine running a known miner is stopped, with a snapshot. You get a notification, and `repose status` and the dashboard say why. After three stops in a day the project can't be started until we've looked at it. Other abuse found by monitoring or reported to us gets the machine stopped and the account reviewed. Monitoring looks at process names and resource use, never at your files or terminal; see [what repose stores](/docs/secrets#what-repose-stores).

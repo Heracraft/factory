@@ -54,7 +54,7 @@ const forwardPortless = 1355
 var forwardPlatformPorts = map[int]bool{6080: true, 6081: true, 5900: true, 5353: true, 5355: true}
 
 // forwardDisabled is REPOSE_NO_FORWARD=1, the one knob (15 §5.5).
-const forwardEnvOff = "REPOSE_NO_FORWARD"
+const forwardEnvOff = envNoForward
 
 // guestListener is one forwardable listener: the port, and the address to
 // reach it at from the guest's side of the tunnel.
