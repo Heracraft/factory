@@ -1,8 +1,17 @@
-# The on-demand desktop: Xvfb :99, openbox, x11vnc on 127.0.0.1:5900, noVNC
-# on 127.0.0.1:6080, socket-activated. A connection to 6080 starts the
-# chain through systemd-socket-proxyd; nothing runs and nothing is paid for
-# until then. A per-minute check stops the chain after 30 minutes without a
-# client, and `systemctl start repose-desktop-idle` stops it now.
+# The on-demand desktop: Xvfb :99 (1440x900), openbox, x11vnc on
+# 127.0.0.1:5900, noVNC on 127.0.0.1:6080, socket-activated. The display
+# has two users (DECISIONS I-246): the agents' browser (browser.nix), which
+# draws on it whether or not anyone watches, and the viewer (x11vnc and
+# noVNC), which a connection to 6080 starts through systemd-socket-proxyd.
+# Starting the viewer starts the browser too, so the desktop is never
+# empty. Xvfb and openbox stop by themselves once neither needs them
+# (StopWhenUnneeded); nothing runs and nothing is paid for until one of
+# them is asked for.
+#
+# A per-minute check stops the viewer after 30 minutes without a client
+# (`systemctl start repose-desktop-idle` stops it now), and the browser
+# after 30 minutes with neither a DevTools client (an MCP server holds its
+# connection for the agent's whole session) nor a viewer.
 #
 # The password is generated at every x11vnc start into
 # /run/repose/desktop/vnc-password (0600 dev) for the CLI to print
@@ -23,11 +32,27 @@ let
   });
   # Only the web client's static files: `${pkgs.novnc}` itself carries a
   # novnc_proxy wrapper that pulls in a second Python (3.14) and websockify.
+  # defaults.json scales the remote screen to the browser tab; a setting
+  # the user changes in noVNC's panel still wins.
   novncWeb = "${pkgs.runCommand "novnc-web" { } ''
     mkdir -p $out
     cp -r ${pkgs.novnc}/share/webapps/novnc/. $out/
+    echo '{"resize": "scale"}' > $out/defaults.json
   ''}";
   idleSeconds = 1800;
+
+  # Every window maximised: the browser fills the screen the user watches.
+  openboxConfig = pkgs.writeText "repose-openbox-rc.xml" ''
+    <?xml version="1.0" encoding="UTF-8"?>
+    <openbox_config xmlns="http://openbox.org/3.4/rc">
+      <desktops><number>1</number></desktops>
+      <applications>
+        <application class="*">
+          <maximized>yes</maximized>
+        </application>
+      </applications>
+    </openbox_config>
+  '';
 
   genPassword = pkgs.writeShellApplication {
     name = "repose-vnc-password";
@@ -44,17 +69,28 @@ let
     name = "repose-desktop-idle-check";
     runtimeInputs = [ pkgs.coreutils pkgs.iproute2 pkgs.systemd ];
     text = ''
-      systemctl is-active --quiet repose-xvfb.service || exit 0
-      stamp=${dir}/last-client
-      clients=$(ss -Htn state established '( sport = :6081 or sport = :5900 )' | wc -l)
-      if [ "$clients" -gt 0 ]; then
-        touch "$stamp"
-        exit 0
-      fi
-      [ -e "$stamp" ] || touch "$stamp"
-      now=$(date +%s); last=$(stat -c %Y "$stamp")
-      if [ $((now - last)) -ge ${toString idleSeconds} ]; then
+      viewer=false; browser=false
+      systemctl is-active --quiet repose-x11vnc.service && viewer=true
+      systemctl is-active --quiet repose-browser.service && browser=true
+      [ "$viewer" = true ] || [ "$browser" = true ] || exit 0
+      now=$(date +%s)
+      # age <stamp>: seconds since the stamp, created now when missing.
+      age() {
+        [ -e "$1" ] || touch "$1"
+        echo $((now - $(stat -c %Y "$1")))
+      }
+      viewers=$(ss -Htn state established '( sport = :6081 or sport = :5900 )' | wc -l)
+      devtools=$(ss -Htn state established '( sport = :9225 )' | wc -l)
+      [ "$viewers" -eq 0 ] || touch ${dir}/last-client
+      [ "$devtools" -eq 0 ] || touch ${dir}/last-cdp
+      viewer_idle=$(age ${dir}/last-client)
+      cdp_idle=$(age ${dir}/last-cdp)
+      if [ "$viewer" = true ] && [ "$viewer_idle" -ge ${toString idleSeconds} ]; then
         systemctl start repose-desktop-idle.service
+      fi
+      if [ "$browser" = true ] && [ "$viewer_idle" -ge ${toString idleSeconds} ] \
+         && [ "$cdp_idle" -ge ${toString idleSeconds} ]; then
+        systemctl stop repose-browser-proxy.service repose-browser.service
       fi
     '';
   };
@@ -84,8 +120,9 @@ in
 
   systemd.services.repose-xvfb = lib.recursiveUpdate common {
     description = "repose desktop: Xvfb ${display}";
+    unitConfig.StopWhenUnneeded = true;
     serviceConfig = {
-      ExecStart = "${pkgs.xvfb}/bin/Xvfb ${display} -screen 0 1600x1000x24 -nolisten tcp -ac -noreset";
+      ExecStart = "${pkgs.xvfb}/bin/Xvfb ${display} -screen 0 1440x900x24 -nolisten tcp -ac -noreset";
       ExecStartPost = "${pkgs.coreutils}/bin/touch ${dir}/last-client";
     };
   };
@@ -95,7 +132,8 @@ in
     requires = [ "repose-xvfb.service" ];
     after = [ "repose-xvfb.service" ];
     bindsTo = [ "repose-xvfb.service" ];
-    serviceConfig.ExecStart = "${pkgs.openbox}/bin/openbox";
+    unitConfig.StopWhenUnneeded = true;
+    serviceConfig.ExecStart = "${pkgs.openbox}/bin/openbox --config-file ${openboxConfig}";
     # Xvfb needs a moment to open its socket.
     preStart = ''
       for _ in $(seq 1 50); do
@@ -108,13 +146,15 @@ in
   systemd.services.repose-x11vnc = lib.recursiveUpdate common {
     description = "repose desktop: x11vnc on 127.0.0.1:5900";
     requires = [ "repose-xvfb.service" ];
-    wants = [ "repose-openbox.service" ];
+    wants = [ "repose-openbox.service" "repose-browser.service" ];
     after = [ "repose-xvfb.service" "repose-openbox.service" ];
     bindsTo = [ "repose-xvfb.service" ];
     serviceConfig = {
       ExecStartPre = "${genPassword}/bin/repose-vnc-password";
       ExecStart = "${pkgs.x11vnc}/bin/x11vnc -display ${display} -localhost -rfbport 5900 -rfbauth ${dir}/vnc-passwd -forever -shared -noxdamage -quiet";
-      ExecStartPost = waitPort 5900;
+      # A viewer started while the browser had the display up for hours
+      # starts its own idle clock.
+      ExecStartPost = [ (waitPort 5900) "${pkgs.coreutils}/bin/touch ${dir}/last-client" ];
       # x11vnc exits 2 when told to stop; that is its normal shutdown.
       SuccessExitStatus = "2";
     };
@@ -151,16 +191,18 @@ in
     };
   };
 
+  # Stops the viewer. Xvfb and openbox follow unless the agents' browser
+  # still draws on them; the browser has its own idle stop above.
   systemd.services.repose-desktop-idle = {
-    description = "repose desktop: stop the desktop chain";
+    description = "repose desktop: stop the viewer";
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = "${pkgs.systemd}/bin/systemctl stop repose-novnc-proxy.service repose-novnc.service repose-x11vnc.service repose-openbox.service repose-xvfb.service";
+      ExecStart = "${pkgs.systemd}/bin/systemctl stop repose-novnc-proxy.service repose-novnc.service repose-x11vnc.service";
     };
   };
 
   systemd.services.repose-desktop-idle-check = {
-    description = "repose desktop: stop after ${toString (idleSeconds / 60)} minutes without a client";
+    description = "repose desktop: stop the viewer and the browser after ${toString (idleSeconds / 60)} minutes unused";
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${idleCheck}/bin/repose-desktop-idle-check";

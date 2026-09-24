@@ -70,7 +70,7 @@
 		},
 		{
 			title: 'A browser the agent can use',
-			text: 'Headless Chromium with Playwright, set up for Claude Code, so the agent can check its own changes in a real page. `repose open --desktop` lets you watch.'
+			text: 'Chromium with Playwright, set up for Claude Code, so the agent can check its own changes in a real page. `repose open --desktop` shows you that browser as the agent uses it, and you can take over.'
 		},
 		{
 			title: 'Your tools, and any others',

@@ -13,10 +13,10 @@ here exists in that module under exactly this name.
 | `/etc/repose/env` | `TZ=` and `REPOSE_PROJECT=` lines written by guestd at SetupProject, sourced by every shell; the CLI replaces the `TZ=` line (through `sudo`, root 0644, by rename) on `run` and `attach` when the laptop's zone differs (I-198) |
 | `/etc/repose/base-version` | the platform base version string (same as `nixos-version`'s label) |
 | `/etc/repose/claude-settings.json` | the platform hooks (`Notification`, `Stop` → `repose-hook`) the Claude wrapper merges into `~/.claude/settings.json` |
-| `/etc/repose/mcp.json` | the platform MCP servers (`playwright`, `chrome-devtools`, both `--headless`) the Claude wrapper merges into `~/.claude.json` `mcpServers` |
+| `/etc/repose/mcp.json` | the platform MCP servers (`playwright --cdp-endpoint http://127.0.0.1:9224`, `chrome-devtools --browserUrl http://127.0.0.1:9224`, DECISIONS I-246) the Claude wrapper merges into `~/.claude.json` `mcpServers`, and `repose_retired`: the entries earlier bases registered (both `--headless`), which the merge replaces when a user's entry is exactly one of them |
 | `/etc/repose/agent-guide.md` | the machine guide agents read, rendered from `nix/guest/base/agent-guide.md` (DECISIONS I-243); the same text is `/etc/claude-code/CLAUDE.md` (Claude Code's managed memory), `developer_instructions` in `/etc/codex/config.toml`, the file named by `instructions` in `/etc/opencode/opencode.json`, and `GEMINI.md` in `/etc/repose/gemini-extension/`; `/etc/repose/pi-extension.js` reads it at each pi run |
 | `/etc/repose/agents.json` | `{<agent>: {binary, version, hook}}` for every shipped agent, for `repose status --verbose` |
-| `/etc/profile.d/repose.sh` | sources `/etc/repose/env` and `/run/repose/secrets.env`, exports `DISPLAY=:99` while the desktop runs, prepends the user bin dirs to `PATH` |
+| `/etc/profile.d/repose.sh` | sources `/etc/repose/env` and `/run/repose/secrets.env`, exports `DISPLAY=:99` while the X display `:99` is up (the agents' browser or the desktop viewer runs), prepends the user bin dirs to `PATH` |
 | `/etc/ssh/principals/dev` | the accepted certificate principals (the project id), written by guestd `SetPrincipals` |
 | `/etc/ssh/ssh_host_ed25519_key`, `ssh_host_ed25519_key-cert.pub`, `user_ca.pub` | symlinks to the reserved secrets below (DECISIONS I-35) |
 | `/run/repose/` | tmpfs (part of `/run`), 0755 root |
@@ -29,6 +29,8 @@ here exists in that module under exactly this name.
 | `/var/lib/repose/paths-loaded` | sha256 of the last registration `nix-store --load-db` took, on the volume; a `RegisterPaths` with the same bytes and `/nix/var/nix/db/db.sqlite` present only writes the stamp above (DECISIONS I-225) |
 | `/run/repose/desktop/vnc-password` | the noVNC/VNC password for the current desktop start, 0600 dev (DECISIONS I-33) |
 | `/run/repose/desktop/last-client` | mtime of the last observed desktop client; the idle stop reads it |
+| `/run/repose/desktop/last-cdp` | mtime of the last observed DevTools client of the agents' browser (I-246); the idle stop reads it |
+| `/home/dev/.local/share/repose/browser` | the agents' browser's Chromium profile (I-246) |
 | `/nix/.ro-store` | read-only virtio-fs mount of the host store (tag `ro-store`) |
 | `/nix/.rw-store` | the guest's writable store overlay (upper dir `store/`, work dir `work/`), on the thin volume |
 | `/nix/store` | overlay of the two: what `nix profile install` in the guest writes lands in `/nix/.rw-store` |
@@ -300,8 +302,9 @@ package manager's user bin dir, listed in `nix/guest/base/user-bin-dirs.nix`
 non-login shells, tmux windows, and dev's systemd user units (I-227). `python`, `python3` and `python3.12` in
 `/run/current-system/sw/bin` are a wrapper that adds nix-ld's library
 directory to `LD_LIBRARY_PATH` for manylinux wheels and keeps its own
-path as `sys.executable` (I-228). `DISPLAY=:99` only while the desktop's X
-server socket `/tmp/.X11-unix/X99` exists (checked at every shell start).
+path as `sys.executable` (I-228). `DISPLAY=:99` only while the X server
+socket `/tmp/.X11-unix/X99` exists (checked at every shell start); it
+exists while the agents' browser or the desktop viewer runs (I-246).
 
 ## Ports
 
@@ -309,38 +312,58 @@ Anything the user binds on `0.0.0.0` or `127.0.0.1` (or `::`, `::1`)
 inside the guest is reachable through `repose open <port>` (SSH `-L`), and
 is forwarded automatically while a CLI is attached (DECISIONS I-199), read
 with `ss -Hltn` (iproute2, in the base). Platform-owned ports, never
-auto-forwarded: 6080, 6081, 5900. Each attached CLI records its forwarded
+auto-forwarded: 6080, 6081, 5900, 9224, 9225 (I-246). Each attached CLI records its forwarded
 ports in `/home/dev/.repose/forwards/<id>`; the project session's
 `status-right` is set from their union and unset when none is left.
 Nothing is exposed otherwise. The desktop listens only on `127.0.0.1`: noVNC on 6080 (the
-socket-activated entry point), websockify on 6081, VNC on 5900.
+socket-activated entry point), websockify on 6081, VNC on 5900; the agents'
+browser's DevTools on 9224 (`repose-browser.socket`, the entry point) and
+9225 (Chromium behind it).
 `repose-prisma-engines.socket` listens on `127.0.0.1:850` (under 1024, so
 never forwarded) and answers every GET with a redirect to
 binaries.prisma.sh, a `linux-nixos` engine path rewritten to
 `debian-openssl-3.0.x` (I-228).
 
-## Desktop (DECISIONS I-33)
+## Desktop (DECISIONS I-33, I-246)
 
-Units `repose-xvfb.service` (`Xvfb :99`, 1600x1000), `repose-openbox.service`,
-`repose-x11vnc.service` (127.0.0.1:5900, password from
-`/run/repose/desktop/vnc-password`, regenerated at every start),
-`repose-novnc.service` (websockify + noVNC on 127.0.0.1:6081), and
-`repose-novnc.socket` on 127.0.0.1:6080 whose proxy service pulls the whole
-chain in on the first connection. `repose-desktop-idle-check.timer` runs
-every minute and, after 30 minutes without a client on 6081 or 5900,
-starts `repose-desktop-idle.service`, which stops all of them;
-`systemctl start repose-desktop-idle` stops them now. The user's browsers
-and browser MCP servers run in the user slice `repose-browser.slice`
-(`MemoryMax` 1.5 GB small, 3 GB large, 6 GB xl).
+The display: `repose-xvfb.service` (`Xvfb :99`, 1440x900) and
+`repose-openbox.service` (every window maximised), both `StopWhenUnneeded`,
+so they run exactly while one of their two users does.
+
+The agents' browser: `repose-browser.service`, headed Chromium on `:99` as
+dev, profile `/home/dev/.local/share/repose/browser`, DevTools on
+127.0.0.1:9225, in the system slice `repose-browser.slice`, `OOMPolicy=continue`.
+`repose-browser.socket` on 127.0.0.1:9224 starts `repose-browser-proxy.service`
+(systemd-socket-proxyd to 9225), which pulls in the browser and the display
+on the first connection. Both platform MCP servers attach there. A browser
+that exits or is killed takes the proxy with it (`BindsTo`); the socket
+starts both again on the next connection.
+
+The viewer: `repose-x11vnc.service` (127.0.0.1:5900, password from
+`/run/repose/desktop/vnc-password`, regenerated at every start; it also
+wants the browser, so the desktop always shows it), `repose-novnc.service`
+(websockify + noVNC on 127.0.0.1:6081, `defaults.json` scales to the tab),
+and `repose-novnc.socket` on 127.0.0.1:6080 whose proxy service pulls the
+chain in on the first connection.
+
+`repose-desktop-idle-check.timer` runs every minute. After 30 minutes
+without a client on 6081 or 5900 it starts `repose-desktop-idle.service`,
+which stops the viewer (`systemctl start repose-desktop-idle` stops it
+now); after 30 minutes with no client on 9225 either, it stops the browser.
+The MCP servers and any Chromium the user starts run in the user slice
+`repose-browser.slice`. Both slices have `MemoryMax` 1.5 GB small, 3 GB
+large, 6 GB xl.
 
 ## `repose-guest-profile`
 
 The script the CLI's `open`, `sync` and the hooks rely on:
 
 - `repose-guest-profile` prints `{project_id, slug, name, dir, tz, class,
-  base_version, desktop: {running, display, novnc_port, password_file}}`.
-- `repose-guest-profile desktop start` starts the chain and prints the
-  password; `desktop stop` stops it; `desktop status` prints `running` or
+  base_version, desktop: {running, display, novnc_port, password_file}}`;
+  `desktop.running` is the viewer (`repose-x11vnc.service`), not the
+  display, which may be up for the agents' browser alone (I-246).
+- `repose-guest-profile desktop start` starts the viewer and the agents'
+  browser and prints the password; `desktop stop` stops the viewer; `desktop status` prints `running` or
   `stopped`.
 
 ## Runner contract (hostd ⇄ `mkGuestRunner`, DECISIONS I-34)

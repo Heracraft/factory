@@ -1,8 +1,9 @@
 # Browser for agents
 
-Every guest has a headless Chromium that agents can drive, and a desktop
-that can be switched on when a human needs to look at or take over that
-browser. Claude in Chrome is not available in a guest, and the doc says why.
+Every guest has one Chromium that agents drive, headed on a virtual
+display, and a desktop viewer that can be switched on when a human needs to
+look at or take over that same browser (DECISIONS I-246). Claude in Chrome
+is not available in a guest, and the doc says why.
 
 ## What the user sees
 
@@ -34,13 +35,22 @@ client.)
   Playwright version finds its browsers without `npx playwright install`;
   any other version downloads its own there, and the downloaded browsers
   run through nix-ld (DECISIONS I-228).
+- The agents' browser, `repose-browser.service`: Chromium, headed, on the
+  X display `:99` (Xvfb, 1440x900, with openbox maximising every window),
+  its profile in `~/.local/share/repose/browser` so cookies and logins
+  survive restarts, DevTools on 127.0.0.1:9225 behind the socket-activated
+  endpoint `http://127.0.0.1:9224`. The first connection to 9224 starts
+  Xvfb, the window manager and the browser; nothing runs before that.
 - Playwright MCP registered in Claude Code's user-scope MCP config as
-  `playwright`, headless by default. chrome-devtools-mcp registered as
-  `chrome-devtools`, also headless. Both can attach to an already running
-  Chrome over the DevTools protocol, which is what the desktop mode and the
-  later laptop bridge rely on.
-- Xvfb, a minimal window manager, x11vnc and noVNC as socket-activated
-  systemd units. Off until asked; they cost nothing idle.
+  `playwright` (`--cdp-endpoint http://127.0.0.1:9224`) and
+  chrome-devtools-mcp as `chrome-devtools` (`--browserUrl
+  http://127.0.0.1:9224`). Both attach to the agents' browser, so they see
+  the same tabs, and Playwright works in its default context: the window
+  and the logins the user sees. A guest's earlier `--headless` entries are
+  replaced by `repose-agent-setup` at the next agent start; an entry the
+  user changed is left alone.
+- x11vnc and noVNC as socket-activated systemd units, the viewer. Off until
+  asked; they cost nothing idle.
 - Fonts (a Liberation and Noto set) so screenshots do not render as boxes.
 - The sandbox: Chromium runs as `dev` inside a microVM, so it keeps its own
   sandbox on; nothing needs `--no-sandbox`.
@@ -52,22 +62,37 @@ client.)
   that.
 - Claude Code in a fresh guest lists `playwright` and `chrome-devtools` in
   `claude mcp list`.
-- `repose open --desktop` starts Xvfb on `:99`, the window manager, x11vnc
-  bound to localhost, and noVNC on 6080, then forwards 6080 over SSH and
-  prints the URL. The VNC password is generated per start (read from
-  `/run/repose/desktop/vnc-password` by `repose-guest-profile desktop
-  start`) and printed once. Starting when already started just forwards.
-  (DECISIONS I-33.)
-- When the desktop is up, `DISPLAY=:99` is exported into new shells in the
-  tmux session, so an agent asked to "open a headed browser" gets one on the
-  desktop and the user can see it in noVNC.
-- `repose open --desktop --stop` stops the units and clears `DISPLAY`.
+- `repose open --desktop` starts x11vnc bound to localhost and noVNC on
+  6080, and with them the agents' browser if it is not running, then
+  forwards 6080 over SSH and prints the URL. The user sees the page the
+  agent is on, live, and can click and type in it with no prompt and no
+  agent restart. noVNC scales the screen to the tab. The VNC password is
+  generated per start (read from `/run/repose/desktop/vnc-password` by
+  `repose-guest-profile desktop start`) and printed once. Starting when
+  already started just forwards. (DECISIONS I-33.)
+- While the display is up (the agents' browser or the viewer is running),
+  `DISPLAY=:99` is exported into new shells, so a headed browser an agent
+  or the user starts appears on the desktop too. Playwright, Puppeteer and
+  Cypress default to headless whatever `DISPLAY` says, so a project's test
+  suite stays headless unless its config asks otherwise (I-246).
+- `repose open --desktop --stop` stops the viewer. The agents' browser
+  keeps running for the agent; with it gone, Xvfb stops and `DISPLAY` is
+  no longer exported.
+- The viewer stops after 30 minutes with no client. The agents' browser
+  stops after 30 minutes with no DevTools client (an MCP server keeps its
+  connection for the agent's whole session) and no viewer client.
+- A crashed or killed browser starts again on the next DevTools
+  connection with the same profile, and both MCP servers reconnect on
+  their next call.
 - The desktop is never reachable except through the SSH forward. noVNC
   binds `127.0.0.1` in the guest; the guest has no inbound anyway.
-- Headless Chromium is killed when its RSS passes 1.5 GB on a small guest,
-  3 GB on large, 6 GB on xl (a systemd slice limit), because a runaway
-  page in a 4 GB guest takes the agent down with it and the user only sees
-  an unexplained stall.
+- The browser is limited to 1.5 GB on a small guest, 3 GB on large, 6 GB
+  on xl (the slice `repose-browser.slice`, system level for the agents'
+  browser, user level for the MCP servers and any Chromium a user starts),
+  because a runaway page in a 4 GB guest takes the agent down with it and
+  the user only sees an unexplained stall. A renderer killed at the limit
+  is one crashed tab; the browser stays up.
+- The DevTools ports 9224 and 9225 are never auto-forwarded to the laptop.
 
 ## Why Claude in Chrome cannot work here
 
@@ -86,8 +111,9 @@ For the "open Chrome and go to my thing" case while the laptop is open:
    (`--remote-debugging-port`) on localhost.
 2. It opens an SSH reverse tunnel from a guest port to that port.
 3. It rewrites the guest's `playwright` and `chrome-devtools` MCP entries to
-   attach to `http://127.0.0.1:<port>` (`--cdp-endpoint`, `--browser-url`)
-   for the life of the CLI process, restoring headless entries on exit.
+   attach to `http://127.0.0.1:<port>` (`--cdp-endpoint`, `--browserUrl`)
+   for the life of the CLI process, restoring the guest-browser entries on
+   exit.
 
 The agent then drives the laptop's real browser, with the user's sessions
 and extensions. It works only while the laptop is open and the tunnel is

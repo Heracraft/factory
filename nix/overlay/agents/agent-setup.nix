@@ -6,7 +6,9 @@
 #          running `repose-hook` are added unless an entry whose command
 #          contains "repose-hook" already exists under that event;
 #          ~/.claude.json mcpServers gains the platform servers from
-#          /etc/repose/mcp.json, user entries winning on name clash.
+#          /etc/repose/mcp.json, user entries winning on name clash
+#          except an entry the platform registered itself in an earlier
+#          base (mcp.json's repose_retired), which is replaced.
 # codex    ~/.codex/config.toml gains `notify = ["repose-hook"]` unless a
 #          `notify` key already exists.
 # opencode ~/.config/opencode/plugins/repose.js is installed if absent.
@@ -54,7 +56,14 @@ writeShellApplication {
         if [ ! -s "$userjson" ]; then
           jq '{ mcpServers: .mcpServers }' "$platform_mcp" | write_atomic "$userjson" 0600
         elif jq -e . "$userjson" >/dev/null 2>&1; then
-          jq -s '.[0] as $u | .[1] as $p | $u | .mcpServers = ($p.mcpServers + ($u.mcpServers // {}))' \
+          # A user entry that is exactly one the platform registered
+          # before (repose_retired) was written here, not by the user, and
+          # gives way to the current one (I-246).
+          jq -s '.[0] as $u | .[1] as $p
+            | (($u.mcpServers // {}) | with_entries(
+                .key as $k | .value as $v
+                | select(any((($p.repose_retired // {})[$k] // [])[]; . == $v) | not))) as $kept
+            | $u | .mcpServers = ($p.mcpServers + $kept)' \
             "$userjson" "$platform_mcp" | write_atomic "$userjson" 0600
         else
           echo "repose-agent-setup: $userjson is not valid JSON; leaving it alone" >&2
