@@ -20,12 +20,18 @@ const apiResource = "https://api.repose.herakraft.co"
 
 // Config is config.toml (docs/interfaces/cli-config.md).
 type Config struct {
-	APIURL       string   `toml:"api_url"`
-	Gateway      string   `toml:"gateway"`
-	DefaultClass string   `toml:"default_class"`
-	DefaultAgent string   `toml:"default_agent"`
-	SyncExclude  []string `toml:"sync.exclude"`
-	LogtoIssuer  string   `toml:"logto_issuer"`
+	APIURL       string `toml:"api_url"`
+	Gateway      string `toml:"gateway"`
+	DefaultClass string `toml:"default_class"`
+	DefaultAgent string `toml:"default_agent"`
+	// SyncExclude is sync.exclude. TOML spells that as a [sync] table
+	// with an exclude key, which Sync reads; the quoted top-level key
+	// "sync.exclude" is what this tag matched before and still works.
+	SyncExclude []string `toml:"sync.exclude"`
+	Sync        struct {
+		Exclude []string `toml:"exclude"`
+	} `toml:"sync"`
+	LogtoIssuer string `toml:"logto_issuer"`
 	// LogtoClientID overrides the built-in App ID for a different Logto
 	// (staging, a fork). Public.
 	LogtoClientID string `toml:"logto_client_id"`
@@ -58,6 +64,7 @@ func loadConfig(dir string) (Config, error) {
 	if cfg.APIURL == "" {
 		cfg.APIURL = defaultAPIURL
 	}
+	cfg.SyncExclude = append(cfg.SyncExclude, cfg.Sync.Exclude...)
 	if cfg.LogtoIssuer == "" {
 		cfg.LogtoIssuer = defaultLogtoIssuer
 	}

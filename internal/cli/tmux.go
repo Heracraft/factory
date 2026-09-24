@@ -131,3 +131,15 @@ func capturePane(ctx context.Context, t sshTarget, slug, windowName string) (str
 func shQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
+
+// agentNames are the five agents every guest ships (docs/features/agents.md).
+var agentNames = []string{"claude", "opencode", "codex", "gemini", "pi"}
+
+func isAgent(name string) bool {
+	for _, a := range agentNames {
+		if a == name {
+			return true
+		}
+	}
+	return false
+}

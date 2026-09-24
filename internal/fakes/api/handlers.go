@@ -335,10 +335,11 @@ func (f *Fake) listProjects(w http.ResponseWriter, r *http.Request) *apiError {
 
 func (f *Fake) createProject(w http.ResponseWriter, r *http.Request) *apiError {
 	var body struct {
-		Name      string `json:"name"`
-		RemoteURL string `json:"remote_url"`
-		Class     string `json:"class"`
-		TZ        string `json:"tz"`
+		Name         string `json:"name"`
+		RemoteURL    string `json:"remote_url"`
+		Class        string `json:"class"`
+		TZ           string `json:"tz"`
+		AgentDefault string `json:"agent_default"`
 	}
 	if e := decodeBody(r, &body, false); e != nil {
 		return e
@@ -355,6 +356,9 @@ func (f *Fake) createProject(w http.ResponseWriter, r *http.Request) *apiError {
 	if body.TZ != "" {
 		z := body.TZ
 		p.TZ = &z
+	}
+	if body.AgentDefault != "" {
+		p.AgentDefault = body.AgentDefault
 	}
 	if f.opts.CreateDelay > 0 {
 		// Under f.mu already (ServeHTTP); only the goroutine takes it.

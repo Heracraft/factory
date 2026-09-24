@@ -11,6 +11,14 @@ let
       export TERM=tmux-256color
     fi
     export COLORTERM=truecolor
+    # `repose run "prompt"` starts the agent as tmux new-window's command,
+    # a shell that is neither login nor interactive, so /etc/profile never
+    # ran: without this the agent has no named secrets
+    # (CLAUDE_CODE_OAUTH_TOKEN, GEMINI_API_KEY), no REPOSE_PROJECT and no
+    # ~/.local/bin on PATH. The file is idempotent (env.nix).
+    if [ -r /etc/profile.d/repose.sh ]; then
+      . /etc/profile.d/repose.sh
+    fi
     export REPOSE_HOOK_AGENT=${bin}
     # Registration failures must never block an agent (a blocked agent is a
     # silently wasted night), so setup is best-effort.

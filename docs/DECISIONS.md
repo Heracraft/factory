@@ -5162,3 +5162,43 @@ Not changed, measured for whoever takes it: the guest boot itself (kernel
 on the path to the first login, the 5.4 s no-op nix build a create pays
 when no running guest has the closure (I-160 reuses only a closure the
 host runs), and the guest's per-process cost.
+
+**I-227. Gaps the user docs found, closed in code rather than documented
+as broken.** (docs session, 2026-09-23) Writing the user-facing docs
+(`apps/web/src/content/docs/`, served at `/docs`) against the code turned
+up six places where the code disagreed with the feature docs or did
+nothing:
+- `repose open --desktop` ran `systemctl --user start repose-desktop`, a
+  unit no guest has (the desktop is socket-activated system units,
+  I-33), so it failed at "start the desktop in the guest", and it never
+  printed the VNC password noVNC asks for. It now runs
+  `repose-guest-profile desktop start`, which starts the chain and prints
+  the password, and prints `VNC password: ...`. `--desktop --stop` runs
+  `repose-guest-profile desktop stop`, as `features/browser.md` specified.
+- `sync.exclude` in `config.toml` was read only as the quoted top-level key
+  `"sync.exclude"`; the `[sync]` table with `exclude = [...]` that the
+  docs and every TOML reader expect was silently ignored. Both spellings
+  now reach the sync (`TestLoadConfigSyncExclude`).
+- `--agent` took any word and opened a tmux window running it;
+  `features/run-and-attach.md` says anything but the five exits 2 listing
+  them. It does now.
+- `default_agent` in `config.toml` had no effect: the api stores
+  `agent_default = claude` for every new project and `run` reads the
+  project's first. The CLI now sends `agent_default` from `config.toml`
+  on create (the api already accepted it; `interfaces/api.md` now lists
+  it). Existing projects keep theirs, and nothing yet changes one after
+  creation (`PATCH` has the field; no CLI or dashboard control).
+- Agents started by `repose run "prompt"` run as tmux `new-window`'s
+  command, a shell that is neither login nor interactive, so
+  `/etc/profile.d/repose.sh` never ran for them: no named secrets (the
+  `CLAUDE_CODE_OAUTH_TOKEN` fallback of `features/agents.md` could not
+  work), no `REPOSE_PROJECT`, no `~/.local/bin` on `PATH`. Probed on a
+  live guest: a `tmux new-window` command saw `TZ` (tmux's own
+  environment) and not `REPOSE_PROJECT`. The agent wrapper
+  (`nix/overlay/agents/wrap.nix`) now sources that file before exec; it
+  is idempotent. Needs a base release to reach guests.
+- `repose mcp forward` and `repose browser bridge` pointed users at
+  `docs/features/agents.md` and `docs/DESIGN.md §18`, files a user does
+  not have; they now name the public docs page.
+The dashboard's project page also gains Config and Secrets links: the
+secrets page existed with nothing linking to it.
