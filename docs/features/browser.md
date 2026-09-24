@@ -16,11 +16,16 @@ Watching or taking over:
 
 ```
 $ repose open --desktop
-Starting desktop on todo-app ... ready
-Open http://localhost:6080/vnc.html (password copied to clipboard)
-Press Ctrl-C to stop forwarding; the desktop keeps running until `repose
-open --desktop --stop`.
+http://localhost:6080/vnc.html?autoconnect=1 (Ctrl-C stops the forward; the desktop keeps running)
+VNC password: 5m2k8Q1p
+
+$ repose open --desktop --stop
+Stopped the desktop on todo-app.
 ```
+
+(The forms `notify set --ntfy` and this output are what shipped, DECISIONS
+I-8 and I-241; the desktop also stops itself after 30 minutes with no
+client.)
 
 ## What is in the guest
 

@@ -3,9 +3,17 @@ package cli
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
+
+// agentNames are the five agents every guest ships (docs/features/agents.md).
+var agentNames = []string{"claude", "opencode", "codex", "gemini", "pi"}
+
+func isAgent(name string) bool {
+	return slices.Contains(agentNames, name)
+}
 
 const paneIdleWait = 1 * time.Second
 const paneIdlePoll = 100 * time.Millisecond
