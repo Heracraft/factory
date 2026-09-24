@@ -365,3 +365,90 @@
 .nix-editor .cm-line-error {
 	@apply bg-red-100 dark:bg-red-950;
 }
+
+/* The user docs (/docs): prose from src/content/docs, in the site's own
+   palette rather than the typography plugin's defaults. Outside any layer
+   on purpose: the plugin's rules sit in a later layer than components, and
+   a layered rule loses to an unlayered one whatever its specificity. */
+.doc {
+	@apply leading-relaxed;
+}
+.doc :where(h2, h3) {
+	@apply relative scroll-mt-20;
+}
+.doc :where(h2) {
+	@apply mt-12 border-t pt-8 text-2xl;
+	border-color: var(--rule);
+}
+.doc :where(h2:first-child) {
+	@apply mt-0 border-t-0 pt-0;
+}
+.doc .anchor {
+	@apply absolute -left-5 font-normal text-zinc-400 no-underline opacity-0 transition-opacity;
+}
+.doc :where(h2, h3):hover .anchor,
+.doc .anchor:focus-visible {
+	@apply opacity-100;
+}
+.doc a:not(.anchor) {
+	@apply text-blue-700 decoration-1 underline-offset-2 dark:text-blue-300;
+}
+.doc :not(pre) > code {
+	@apply rounded-xs px-1 py-px font-normal text-zinc-800 before:content-none after:content-none dark:text-zinc-200;
+	background-color: var(--sunken);
+	font-size: 0.88em;
+}
+.doc pre {
+	@apply rounded-sm border text-[13px] leading-6 text-zinc-800 dark:text-zinc-200;
+	tab-size: 2;
+	background-color: var(--sunken);
+	border-color: var(--rule);
+}
+.doc .table-wrap {
+	@apply my-6 overflow-x-auto;
+}
+.doc .table-wrap table {
+	@apply my-0 text-sm;
+}
+.doc th {
+	@apply text-left font-medium text-zinc-600 dark:text-zinc-400;
+}
+.doc td code {
+	@apply whitespace-nowrap;
+}
+.doc .note {
+	@apply my-6 rounded-sm border-l-2 border-amber-500 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/60 dark:text-amber-100;
+}
+.doc .note p {
+	@apply my-0;
+}
+
+/* Nix code in the docs (highlightNix in lib/docs.ts): lezer's tok-* classes,
+   in muted tones that hold up on both the light and the dark code ground. */
+.doc pre .tok-keyword {
+	@apply text-purple-700 dark:text-purple-300;
+}
+.doc pre .tok-string,
+.doc pre .tok-string2 {
+	@apply text-emerald-700 dark:text-emerald-300;
+}
+.doc pre .tok-comment {
+	@apply text-zinc-500 italic dark:text-zinc-400;
+}
+.doc pre .tok-number,
+.doc pre .tok-bool,
+.doc pre .tok-atom {
+	@apply text-amber-700 dark:text-amber-300;
+}
+.doc pre .tok-propertyName {
+	@apply text-blue-700 dark:text-blue-300;
+}
+.doc pre .tok-variableName.tok-definition {
+	@apply text-blue-700 dark:text-blue-300;
+}
+.doc pre .tok-url {
+	@apply text-emerald-700 underline dark:text-emerald-300;
+}
+.doc pre .tok-punctuation {
+	@apply text-zinc-500 dark:text-zinc-400;
+}
