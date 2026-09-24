@@ -29,6 +29,7 @@
 		"@codemirror/language": "^6.11.4",
 		"@codemirror/state": "^6.5.2",
 		"@codemirror/view": "^6.38.6",
+		"@lezer/highlight": "1.2.3",
 		"@playwright/test": "^1.58.2",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/typescript-config": "workspace:*",

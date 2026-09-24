@@ -11,8 +11,11 @@
 
 	let { children } = $props();
 
-	// Routes reachable while signed out.
+	// Routes reachable while signed out: these, and everything under /docs.
 	const PUBLIC_PATHS = new Set(['/', '/callback', '/terms', '/privacy']);
+	function isPublic(path: string): boolean {
+		return PUBLIC_PATHS.has(path) || path === '/docs' || path.startsWith('/docs/');
+	}
 
 	onMount(() => {
 		void initAuth();
@@ -21,19 +24,15 @@
 	$effect(() => {
 		if (authState.authenticated === undefined) return;
 		const path = page.url.pathname;
-		if (!authState.authenticated && !PUBLIC_PATHS.has(path)) {
+		if (!authState.authenticated && !isPublic(path)) {
 			void goto(resolve('/'));
 		} else if (authState.authenticated && path === '/') {
 			void goto(resolve('/projects'));
 		}
 	});
 
-	let showHeader = $derived(
-		authState.authenticated === true && !PUBLIC_PATHS.has(page.url.pathname)
-	);
-	let showChildren = $derived(
-		authState.authenticated === true || PUBLIC_PATHS.has(page.url.pathname)
-	);
+	let showHeader = $derived(authState.authenticated === true && !isPublic(page.url.pathname));
+	let showChildren = $derived(authState.authenticated === true || isPublic(page.url.pathname));
 </script>
 
 <Toaster theme="system" position="bottom-right" richColors />

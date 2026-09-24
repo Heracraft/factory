@@ -213,6 +213,11 @@
 		<a href={resolve('/')} aria-label="repose, home"><Logo /></a>
 		<nav class="flex items-center gap-6 text-sm" aria-label="Main">
 			<a
+				href={resolve('/docs')}
+				class="hidden text-zinc-600 hover:text-zinc-900 sm:inline dark:text-zinc-400 dark:hover:text-zinc-100"
+				>Docs</a
+			>
+			<a
 				href="#features"
 				class="hidden text-zinc-600 hover:text-zinc-900 sm:inline dark:text-zinc-400 dark:hover:text-zinc-100"
 				>Features</a
@@ -464,6 +469,7 @@
 	>
 		<Logo size="sm" />
 		<nav class="flex gap-6" aria-label="Footer">
+			<a href={resolve('/docs')} class="hover:text-zinc-900 dark:hover:text-zinc-100">Docs</a>
 			<a href={SOURCE_URL} class="hover:text-zinc-900 dark:hover:text-zinc-100">GitHub</a>
 			<a href={resolve('/terms')} class="hover:text-zinc-900 dark:hover:text-zinc-100">Terms</a>
 			<a href={resolve('/privacy')} class="hover:text-zinc-900 dark:hover:text-zinc-100">Privacy</a>
