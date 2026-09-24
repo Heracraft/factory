@@ -26,4 +26,4 @@ The [terms](/terms) have the full wording. In short, don't use a machine to:
 - attack, scan or flood other systems;
 - host or run anything illegal.
 
-A machine running a known miner is stopped. Other abuse found by monitoring or reported to us gets the machine stopped and the account reviewed. Monitoring looks at process names and resource use, never at your files or terminal; see [what repose stores](/docs/secrets#what-repose-stores).
+A machine running a known miner is stopped, with a snapshot, and `repose status` says why. After three stops in a day the project can't be started until we've looked at it. Other abuse found by monitoring or reported to us gets the machine stopped and the account reviewed. Monitoring looks at process names and resource use, never at your files or terminal; see [what repose stores](/docs/secrets#what-repose-stores).
