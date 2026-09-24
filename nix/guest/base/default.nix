@@ -20,6 +20,7 @@
     ./tools-carry.nix
     ./compat.nix
     ./agents.nix
+    ./agent-guide.nix
     ./browser.nix
     ./desktop.nix
     ./sysctl.nix

@@ -5899,3 +5899,48 @@ people, with examples and grouping a generator would lose; a check keeps
 both); checking only that flag names appear somewhere on the page (a flag
 documented under the wrong command would pass); leaving resize hidden and
 allowlisted (the allowlist is for things no user should type).
+
+**I-243. Every agent in the guest is told what the machine offers, from one
+source, without a word written into the user's files.** (agent-guide worker,
+2026-09-24) Agents on a machine did not know that their servers' ports
+reach the user's laptop, that `nix profile add` installs now and `repose
+config add` keeps, where secrets are, that port 25 is blocked, or that the
+laptop is out of reach, so they guessed (tunnels, SSH keys, `apt`). The
+guide is `nix/guest/base/agent-guide.md`: short, factual lines, each ending
+in a comment naming the /docs section it summarises. `agent-guide.nix`
+renders it (comments dropped; a line marked `needs: CMD` kept only when the
+guest's system path has `CMD`, so `repose-notify`/`repose-ask` lines appear
+with the command that serves them and never before) and installs it where
+each agent reads global instructions: Claude Code's managed memory
+`/etc/claude-code/CLAUDE.md` (the path the 2.1.280 binary builds as
+`<managed dir>/CLAUDE.md`, managed dir `/etc/claude-code` on Linux); Codex's
+system config layer `/etc/codex/config.toml` as `developer_instructions`
+(a user-level `developer_instructions` replaces it, which is the user's
+call); opencode's managed config dir `/etc/opencode/opencode.json`
+`instructions`, which opencode unions with the user's list; Gemini CLI and
+pi through an extension each (`~/.gemini/extensions/repose-machine-guide`,
+`~/.pi/agent/extensions/repose-machine-guide.js`), symlinks into `/etc`
+that `repose-agent-setup` makes on every start, because neither has a
+system-level context file, Gemini refuses `@` imports from outside the
+workspace, and pi's extensions can add a system prompt section. Nothing is
+merged into `CLAUDE.md`, `AGENTS.md` or `GEMINI.md`; the carried
+`~/.claude/CLAUDE.md` (I-196) stays the user's. Enforcement:
+`internal/cli/agent_guide_test.go` fails when an H2/H3 of the machine,
+agents or limits page is referenced by no guide line and not in its
+allowlist with a reason, when a reference names a missing page or heading,
+when a guide line has no reference, when a `repose ...` span names no CLI
+command, and when another command the guide names is not in its
+guest-provenance table (checked against the package list or module) or
+marked `needs:`; it keeps `agent-guide.commands` current, which the
+`guest-agent-guide` VM test runs `command -v` over on a real guest. That
+test also runs all five agents against a stand-in model API and asserts each
+one's first request carries the guide and the user's own instruction file,
+with the user's files unchanged. `docs/CHECKLIST.md` requires a guide
+update with a new guest capability. *Rejected:* a marked block merged into
+each user file (the task allowed it as a fallback; no agent needed it, and
+editing a user file is what the carry promises not to do); `SYSTEM.md` or
+`GEMINI_SYSTEM_MD` (they replace the agent's own system prompt); pi's
+`--append-system-prompt` in the wrapper (a flag on every invocation,
+subcommands included); a system-level `includeDirectories` for Gemini (only
+loads memory with `loadMemoryFromIncludeDirectories`, which would change
+how the user's own include directories load).

@@ -73,6 +73,32 @@ Each binary is wrapped by `nix/overlay/agents/wrap.nix` to:
 `repose-hook` always exits 0. A hook that fails must never block an agent,
 because a blocked agent is a silently wasted night.
 
+## The machine guide (DECISIONS I-243)
+
+Every agent is told what the machine offers: that the laptop is out of
+reach, that its servers' ports reach the laptop's `localhost` while the user
+is attached, how to install a tool now and how the user keeps it, Docker and
+databases, secrets (and never to print them), the browser, how to reach the
+user, git over HTTPS, and the limits. The one source is
+`nix/guest/base/agent-guide.md`; `nix/guest/base/agent-guide.nix` renders it
+(comments dropped, a `needs: CMD` line kept only when the guest has `CMD`)
+and installs it where each agent reads global instructions without touching
+a file the user owns:
+
+| Agent | Where | Mechanism |
+|---|---|---|
+| Claude Code | `/etc/claude-code/CLAUDE.md` | managed memory, loaded before the user's `~/.claude/CLAUDE.md` |
+| Codex | `/etc/codex/config.toml` `developer_instructions` | system config layer; a user-level `developer_instructions` replaces it |
+| opencode | `/etc/opencode/opencode.json` `instructions` | managed config dir; `instructions` arrays are unioned with the user's |
+| Gemini CLI | `~/.gemini/extensions/repose-machine-guide` → `/etc/repose/gemini-extension` | extension context file, linked by the wrapper; no system-level context exists and `@` imports outside the workspace are refused |
+| pi | `~/.pi/agent/extensions/repose-machine-guide.js` → `/etc/repose/pi-extension.js` | extension adding a system prompt section, linked by the wrapper |
+
+The user's `CLAUDE.md`, `AGENTS.md` and `GEMINI.md` are never edited, and
+the carried `~/.claude/CLAUDE.md` (I-196) stays the user's. A new guest
+capability updates the guide in the same commit; `internal/cli/agent_guide_test.go`
+fails when a section of the machine, agents or limits page has no guide
+line, and the `guest-agent-guide` VM test checks every agent sends it.
+
 ## Versions
 
 Agents come from the platform overlay (`nix/overlay/agents/`), which

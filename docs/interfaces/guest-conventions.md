@@ -14,6 +14,7 @@ here exists in that module under exactly this name.
 | `/etc/repose/base-version` | the platform base version string (same as `nixos-version`'s label) |
 | `/etc/repose/claude-settings.json` | the platform hooks (`Notification`, `Stop` → `repose-hook`) the Claude wrapper merges into `~/.claude/settings.json` |
 | `/etc/repose/mcp.json` | the platform MCP servers (`playwright`, `chrome-devtools`, both `--headless`) the Claude wrapper merges into `~/.claude.json` `mcpServers` |
+| `/etc/repose/agent-guide.md` | the machine guide agents read, rendered from `nix/guest/base/agent-guide.md` (DECISIONS I-243); the same text is `/etc/claude-code/CLAUDE.md` (Claude Code's managed memory), `developer_instructions` in `/etc/codex/config.toml`, the file named by `instructions` in `/etc/opencode/opencode.json`, and `GEMINI.md` in `/etc/repose/gemini-extension/`; `/etc/repose/pi-extension.js` reads it at each pi run |
 | `/etc/repose/agents.json` | `{<agent>: {binary, version, hook}}` for every shipped agent, for `repose status --verbose` |
 | `/etc/profile.d/repose.sh` | sources `/etc/repose/env` and `/run/repose/secrets.env`, exports `DISPLAY=:99` while the desktop runs, prepends the user bin dirs to `PATH` |
 | `/etc/ssh/principals/dev` | the accepted certificate principals (the project id), written by guestd `SetPrincipals` |
@@ -78,7 +79,13 @@ Each agent binary is wrapped (`nix/overlay/agents/wrap.nix`) to:
      unless a `notify` key exists.
    - `opencode`: `~/.config/opencode/plugins/repose.js` is installed if
      absent (never overwritten).
-   - `gemini`, `pi`: nothing; guestd's pane-idle heuristic reports for them.
+   - `gemini`, `pi`: no hook (guestd's pane-idle heuristic reports for
+     them); the machine guide is linked in as an extension (I-243):
+     `~/.gemini/extensions/repose-machine-guide` →
+     `/etc/repose/gemini-extension`, and
+     `${PI_CODING_AGENT_DIR:-~/.pi/agent}/extensions/repose-machine-guide.js`
+     → `/etc/repose/pi-extension.js`. A stale link of that name is
+     repointed; anything else at the path is left alone.
 2. Set `TERM=tmux-256color` (when inside tmux), `COLORTERM=truecolor`, and
    `REPOSE_HOOK_AGENT=<binary>` so `repose-hook` knows who called it.
 3. Exec the real binary with `"$@"`.

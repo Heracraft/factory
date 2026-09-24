@@ -10,7 +10,11 @@
 # codex    ~/.codex/config.toml gains `notify = ["repose-hook"]` unless a
 #          `notify` key already exists.
 # opencode ~/.config/opencode/plugins/repose.js is installed if absent.
-# gemini, pi: nothing; guestd's pane-idle heuristic reports for them.
+# gemini, pi: no hooks (guestd's pane-idle heuristic reports for them); the
+#          machine guide (DECISIONS I-243) is linked in as an extension:
+#          ~/.gemini/extensions/repose-machine-guide -> /etc/repose/gemini-extension,
+#          ~/.pi/agent/extensions/repose-machine-guide.js -> /etc/repose/pi-extension.js.
+#          A file or directory the user put at either path is left alone.
 { lib, writeShellApplication, jq, coreutils, reposeOpencodePlugin }:
 writeShellApplication {
   name = "repose-agent-setup";
@@ -68,6 +72,29 @@ writeShellApplication {
       fi
     }
 
+    # link_owned <link> <target>: the link is ours by name; point it at the
+    # target unless something that is not a symlink sits there.
+    link_owned() {
+      local link="$1" target="$2"
+      [ -e "$target" ] || return 0
+      if [ -L "$link" ]; then
+        [ "$(readlink "$link")" = "$target" ] || ln -sfn "$target" "$link"
+      elif [ -e "$link" ]; then
+        echo "repose-agent-setup: $link is not a link to $target; leaving it alone" >&2
+      else
+        mkdir -p "$(dirname "$link")"
+        ln -s "$target" "$link"
+      fi
+    }
+
+    setup_gemini() {
+      link_owned "$HOME/.gemini/extensions/repose-machine-guide" /etc/repose/gemini-extension
+    }
+
+    setup_pi() {
+      link_owned "''${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/extensions/repose-machine-guide.js" /etc/repose/pi-extension.js
+    }
+
     setup_opencode() {
       local dir="$HOME/.config/opencode/plugins"
       mkdir -p "$dir"
@@ -80,7 +107,8 @@ writeShellApplication {
       claude) setup_claude ;;
       codex) setup_codex ;;
       opencode) setup_opencode ;;
-      gemini|pi) ;;
+      gemini) setup_gemini ;;
+      pi) setup_pi ;;
       *) echo "repose-agent-setup: unknown agent '$agent'" >&2 ;;
     esac
     exit 0

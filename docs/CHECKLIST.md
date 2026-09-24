@@ -49,6 +49,16 @@ written so they cannot happen quietly.
       page, and `go test ./internal/cli -run TestDocs` passes (it fails on a
       CLI command, flag, config.toml key, environment variable or exit code
       missing from, or left behind in, `cli.md`).
+- [ ] A new or changed guest capability (something installed, a port or
+      network rule, a limit, a command agents can run, how secrets, the
+      browser or notifications work) updates the agent guide,
+      `nix/guest/base/agent-guide.md`, in the same commit, so the agents on
+      the machine are told what the user docs say (DECISIONS I-243).
+      Evidence: `go test ./internal/cli -run AgentGuide` passes (it fails
+      when a section of the machine, agents or limits page has no guide
+      line, a guide reference has no such heading, or a command the guide
+      names is not in the guest), and for a new command the
+      `guest-agent-guide` VM test output is pasted.
 
 ## For every workstream, before it is called done
 

@@ -909,4 +909,124 @@ in
           guest.succeed("sudo -u dev bash -lc 'test -d \"$PLAYWRIGHT_BROWSERS_PATH\" && ls \"$PLAYWRIGHT_BROWSERS_PATH\" | grep -q chromium'")
     '';
   };
+
+  # I-243: the machine guide is installed where each of the five agents
+  # reads global instructions, each agent really sends it to its model
+  # (a stand-in API records the first request), the user's own instruction
+  # files are left byte for byte, and every command the guide names is on
+  # the machine. A stand-in repose-notify shows a `needs:` line rendered
+  # when its command exists; one whose command is missing is dropped.
+  guest-agent-guide = mkTest "guest-agent-guide" {
+    nodes.guest = { ... }: {
+      imports = [ node ];
+      environment.systemPackages = [ (pkgs.writeShellScriptBin "repose-notify" "exit 0") ];
+    };
+    testScript = ''
+      import json
+      import re
+      import shlex
+      import tomllib
+
+      guest.start()
+      guest.wait_for_unit("multi-user.target")
+
+      def dev(cmd, env=""):
+          return guest.succeed(f"sudo -H -u dev {env} bash -lc {shlex.quote(cmd)}")
+
+      def has(cmd):
+          return guest.execute(f"sudo -H -u dev bash -lc {shlex.quote('command -v ' + cmd)}")[0] == 0
+
+      source = open("${../base/agent-guide.md}").read()
+      commands = [l.split() for l in open("${../base/agent-guide.commands}") if l.strip() and not l.startswith("#")]
+
+      with subtest("rendered from the source: comments dropped, needs lines follow the guest"):
+          guide = guest.succeed("cat /etc/repose/agent-guide.md")
+          out, in_comment = [], False
+          for line in source.splitlines():
+              if in_comment:
+                  in_comment = "-->" not in line
+                  continue
+              if line.startswith("<!--") and "-->" not in line:
+                  in_comment = True
+                  continue
+              m = re.search(r"<!-- needs: ([A-Za-z0-9._-]+) -->", line)
+              if m and not has(m.group(1)):
+                  continue
+              out.append(re.sub(r"\s*<!--.*?-->", "", line).rstrip())
+          while out and out[0] == "":
+              out.pop(0)
+          assert guide == "\n".join(out) + "\n", guide
+          assert "<!--" not in guide, guide
+          assert "`repose-notify " in guide, "a needs line whose command exists is rendered"
+          for c in [c[0] for c in commands if c[1:] == ["needs"] and not has(c[0])]:
+              assert f"`{c} " not in guide, f"{c} is missing but the guide tells agents to run it"
+
+      with subtest("installed where each agent reads it"):
+          assert guest.succeed("cat /etc/claude-code/CLAUDE.md") == guide
+          assert guest.succeed("cat /etc/repose/gemini-extension/GEMINI.md") == guide
+          codex = tomllib.loads(guest.succeed("cat /etc/codex/config.toml"))
+          assert codex == {"developer_instructions": guide}, codex
+          oc = json.loads(guest.succeed("cat /etc/opencode/opencode.json"))
+          assert oc["instructions"] == ["/etc/repose/agent-guide.md"], oc
+          ext = json.loads(guest.succeed("cat /etc/repose/gemini-extension/gemini-extension.json"))
+          assert ext["contextFileName"] == "GEMINI.md", ext
+          guest.succeed("grep -q /etc/repose/agent-guide.md /etc/repose/pi-extension.js")
+
+      with subtest("every command the guide names is on the machine"):
+          for c in commands:
+              if c[1:] != ["needs"]:
+                  dev(f"command -v {c[0]}")
+
+      with subtest("each agent sends the guide and the user's own instructions"):
+          guest.succeed("systemd-run --unit capture-llm ${pkgs.python3}/bin/python3 ${./capture-llm.py} 18777 /tmp/caps")
+          guest.wait_until_succeeds("curl -s -o /dev/null http://127.0.0.1:18777/")
+          files = {
+              ".claude/CLAUDE.md": "USER-CLAUDE-MARK",
+              ".codex/AGENTS.md": "USER-CODEX-MARK",
+              ".config/opencode/AGENTS.md": "USER-OPENCODE-MARK",
+              ".gemini/GEMINI.md": "USER-GEMINI-MARK",
+              ".pi/agent/AGENTS.md": "USER-PI-MARK",
+          }
+          for f, mark in files.items():
+              dev(f"mkdir -p $(dirname ~/{f}) && printf '# mine\\n{mark}\\n' > ~/{f}")
+          dev("""printf 'model_provider = "fake"\\n[model_providers.fake]\\nname = "fake"\\nbase_url = "http://127.0.0.1:18777/v1"\\nenv_key = "FAKE_KEY"\\nwire_api = "responses"\\n' > ~/.codex/config.toml""")
+          dev("""echo '{"provider":{"fake":{"npm":"@ai-sdk/openai-compatible","options":{"baseURL":"http://127.0.0.1:18777/v1","apiKey":"x"},"models":{"m":{}}}},"model":"fake/m"}' > ~/.config/opencode/opencode.json""")
+          dev("""echo '{"security":{"auth":{"selectedType":"gemini-api-key"}}}' > ~/.gemini/settings.json""")
+          dev("""echo '{"providers":{"fake":{"baseUrl":"http://127.0.0.1:18777/v1","api":"openai-completions","apiKey":"x","models":[{"id":"m"}]}}}' > ~/.pi/agent/models.json""")
+          dev("mkdir -p ~/proj")
+          before = dev("cd ~ && sha256sum " + " ".join(files))
+          runs = {
+              "claude": ("USER-CLAUDE-MARK", "ANTHROPIC_BASE_URL=http://127.0.0.1:18777 ANTHROPIC_API_KEY=sk-x CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1", "claude -p hi --max-turns 1"),
+              "codex": ("USER-CODEX-MARK", "FAKE_KEY=x", "codex exec --skip-git-repo-check hi"),
+              "opencode": ("USER-OPENCODE-MARK", "OPENCODE_DISABLE_MODELS_FETCH=1 OPENCODE_DISABLE_AUTOUPDATE=1", "opencode run hi"),
+              "gemini": ("USER-GEMINI-MARK", "GEMINI_CLI_TRUST_WORKSPACE=true GEMINI_API_KEY=x GOOGLE_GEMINI_BASE_URL=http://127.0.0.1:18777", "gemini -p hi"),
+              "pi": ("USER-PI-MARK", "PI_OFFLINE=1", "pi --provider fake --model m -p hi"),
+          }
+          sentinel = "This is a repose machine"
+          for agent, (mark, env, cmd) in runs.items():
+              guest.succeed("rm -rf /tmp/caps/*")
+              print(guest.execute(f"sudo -H -u dev {env} bash -lc {shlex.quote('cd ~/proj && timeout 180 ' + cmd)} 2>&1 | tail -5")[1])
+              bodies = guest.succeed("cat /tmp/caps/* 2>/dev/null || true")
+              assert sentinel in bodies, f"{agent}: the guide is not in what it sent: {bodies[:3000]}"
+              assert mark in bodies, f"{agent}: the user's own instructions are not in what it sent"
+          after = dev("cd ~ && sha256sum " + " ".join(files))
+          assert before == after, (before, after)
+
+      with subtest("gemini and pi links: idempotent, a user's file at the path is left alone"):
+          assert dev("readlink ~/.gemini/extensions/repose-machine-guide").strip() == "/etc/repose/gemini-extension"
+          assert dev("readlink ~/.pi/agent/extensions/repose-machine-guide.js").strip() == "/etc/repose/pi-extension.js"
+          dev("mkdir -p ~/.gemini/extensions/mine && echo '{}' > ~/.gemini/extensions/mine/gemini-extension.json")
+          listing = dev("ls -la ~/.gemini/extensions ~/.pi/agent/extensions")
+          for _ in range(2):
+              dev("repose-agent-setup gemini && repose-agent-setup pi")
+          assert dev("ls -la ~/.gemini/extensions ~/.pi/agent/extensions") == listing
+          # a stale link of ours is repointed
+          dev("ln -sfn /nonexistent ~/.pi/agent/extensions/repose-machine-guide.js && repose-agent-setup pi")
+          assert dev("readlink ~/.pi/agent/extensions/repose-machine-guide.js").strip() == "/etc/repose/pi-extension.js"
+          # something that is not a link stays
+          dev("mkdir -p /tmp/h2/.pi/agent/extensions && echo mine > /tmp/h2/.pi/agent/extensions/repose-machine-guide.js")
+          dev("HOME=/tmp/h2 repose-agent-setup pi")
+          assert dev("cat /tmp/h2/.pi/agent/extensions/repose-machine-guide.js").strip() == "mine"
+    '';
+  };
 }
