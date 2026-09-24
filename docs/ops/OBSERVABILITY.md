@@ -52,10 +52,23 @@ Grafana "Host capacity", variable `host_id`. Then on the host itself:
 ## Looking for abuse
 
 Grafana "Abuse": fleet-wide top `comm` by CPU over 24 hours, top projects
-by egress, and guests at 100 percent CPU with zero sessions for over 24
-hours. A miner is a `comm` you do not recognise at the top of the first
+by egress, guests at 100 percent CPU with zero sessions for over 24
+hours, blocked outbound attempts by reason, and the api's automatic stops.
+A miner is a `comm` you do not recognise at the top of the first
 panel. Confirm with `repose-admin exec <id> -- ps -o comm,pcpu --sort
 -pcpu | head` (audited), then the runbook's "Suspend a user".
+
+Some of it is automatic (DECISIONS I-238..I-240). The host drops a
+guest's tcp 25, the mining-pool ports and new flows over 200 a second,
+and counts each per guest: `repose_host_egress_blocked_total{reason}`,
+`repose_host_egress_blocked_guests{reason}` (the EgressBlocked alert), and
+an `egress_blocked` hostd log line naming the guest, never an address. A
+sample naming a known miner stops the guest with a snapshot
+(`repose_api_abuse_stops_total`, MinerStopped, `abuse_stop` in the api's
+log, `repose-admin abuse list`); a third stop in 24 hours holds the
+project until `repose-admin abuse clear`. Six hours at full CPU with no
+session, tmux client or agent is BusyUnattended. The user is never
+suspended automatically.
 
 ## Log field rules
 
@@ -127,7 +140,7 @@ month has to age out, the real retention is 90 or 30 days plus up to a month.
 
 ## Alerts
 
-Thirteen rules in `ops/alerts.yaml`, routed by Alertmanager
+The rules in `ops/alerts.yaml`, routed by Alertmanager
 (`ops/alertmanager/repose-route.yaml`) to the owner's ntfy topic, with
 `page` on a topic of its own so a phone can be allowed to make a sound for
 those alone. Each alert name is a heading in `RUNBOOK.md`, and

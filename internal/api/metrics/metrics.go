@@ -55,6 +55,16 @@ type M struct {
 	// never fixes a difference silently; this is what alerts on one.
 	BillingMismatchCents prometheus.Gauge
 	KeyVaultErrorsTotal  prometheus.Counter
+	// AbuseStopsTotal counts guests the api stopped by itself, by kind
+	// (miner: DECISIONS I-239); MinerStopped alerts on any increase.
+	AbuseStopsTotal *prometheus.CounterVec
+	// AbuseHeldProjects is the projects whose start is refused until an
+	// operator runs `repose-admin abuse clear`.
+	AbuseHeldProjects prometheus.Gauge
+	// AbuseBusyUnattendedProjects is the BusyUnattended alert's input:
+	// projects at full CPU on every vCPU for six hours with no session, no
+	// tmux client and no agent (I-239), recomputed from meter_samples.
+	AbuseBusyUnattendedProjects prometheus.Gauge
 }
 
 // New registers every family on reg.
@@ -91,12 +101,18 @@ func New(reg prometheus.Registerer) *M {
 		StripePushBacklogSeconds:     prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_billing_stripe_push_backlog_seconds", Help: "Age of the oldest usage_hours row with no Stripe usage record."}),
 		BillingMismatchCents:         prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_billing_mismatch_cents", Help: "Largest usage_hours minus Stripe difference found by the last reconciliation."}),
 		KeyVaultErrorsTotal:          prometheus.NewCounter(prometheus.CounterOpts{Name: "repose_api_keyvault_errors_total", Help: "Key Vault failures."}),
+		AbuseStopsTotal:              prometheus.NewCounterVec(prometheus.CounterOpts{Name: "repose_api_abuse_stops_total", Help: "Guests the api stopped for abuse, by kind."}, []string{"kind"}),
+		AbuseHeldProjects:            prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_abuse_held_projects", Help: "Projects whose start is refused until repose-admin abuse clear."}),
+		AbuseBusyUnattendedProjects:  prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_abuse_busy_unattended_projects", Help: "Projects at full CPU on every vCPU for 6 h with no session, tmux client or agent."}),
 	}
+	// The alert on stops reads increase(); a series that exists from start
+	// is what lets the first stop register as one.
+	m.AbuseStopsTotal.WithLabelValues("miner")
 	reg.MustRegister(m.RequestsTotal, m.RequestDuration, m.Hosts, m.Projects, m.ScheduleTotal, m.CertsIssuedTotal, m.CertsRevokedTotal,
 		m.RollupLagSeconds, m.RollupDuration, m.NotifyTotal, m.NotifyDeliveryLatencySeconds, m.OutboxDepth, m.OutboxLagSeconds, m.StripeUsagePushTotal, m.StripeWebhookTotal, m.SnapshotAgeSeconds,
 		m.GRPCStreams, m.OpsTotal, m.OpsOpen, m.BuildDuration, m.SecretsOpsTotal, m.CommandsTotal, m.SamplesTotal, m.EventsTotal,
 		m.HostWarningsTotal, m.EgressAlertProjects, m.BillingGapMinutes, m.StripePushBacklogSeconds, m.BillingMismatchCents, m.KeyVaultErrorsTotal,
-		m.PartitionDropFailTotal)
+		m.PartitionDropFailTotal, m.AbuseStopsTotal, m.AbuseHeldProjects, m.AbuseBusyUnattendedProjects)
 	return m
 }
 

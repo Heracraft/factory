@@ -129,6 +129,8 @@ copy-paste version):
 | Move a project to another host | `repose-admin projects move <id> --to host-NN` (stop, snapshot, restore, start) |
 | Suspend a user | `repose-admin users suspend <handle> --reason "..."` (stops guests, freezes billing, audit row) |
 | Unsuspend | `repose-admin users unsuspend <handle>` |
+| See the api's automatic abuse stops | `repose-admin abuse list [--all]` (project, owner, process name, hold) |
+| Lift a project's abuse hold | `repose-admin abuse clear <id or slug.handle>` (clears its stops and strikes, audited as `abuse_clear`) |
 | Run a command in a guest (audited) | `repose-admin exec <project-id> -- <argv>` |
 | Force a snapshot | `repose-admin projects snapshot <id>` |
 | Restore a snapshot | `repose-admin projects restore <id> --snapshot <sid> [--to host-NN]` |
@@ -268,6 +270,55 @@ A project moved more than 1 TB in 24 hours.
    client, a scraper, or a miner's pool traffic looks different from
    `docker pull`.
 2. If legitimate, nothing (it is metered and billed). If not:
+   `repose-admin users suspend`.
+
+## EgressBlocked
+
+A guest keeps sending into one of the host's egress blocks (DECISIONS
+I-238..I-240); the `reason` label says which: `smtp` (over 100 packets to
+tcp 25 in ten minutes), `stratum` (over 30 to a mining-pool port) or
+`flows` (over 1000 new flows past the per-guest rate). The traffic is
+already dropped; nothing is stopped.
+
+1. Which guest: `{component="hostd", host_id="<host>"} | json |
+   event="egress_blocked"` in Loki names `guest_id` and `reason`;
+   `repose-admin projects show <guest id's project>` (or `projects list
+   --host`) gives the project and owner. On the host, `nft list counters
+   table inet repose | grep -A1 <reason>-<guest id>` is the running count.
+2. What it runs: the Abuse dashboard's top process names, then
+   `repose-admin exec <id> -- ps -o comm,pcpu --sort -pcpu` (audited).
+   An app retrying a mail send to port 25 is a user to tell about 587;
+   `stratum` with a CPU-bound process is a miner under another name;
+   `flows` with a scanner (masscan, zmap, nmap) is a scan.
+3. Decide on the account: `repose-admin users suspend <handle> --reason
+   "..."` stops every guest with a snapshot. Nothing here is automatic.
+
+## MinerStopped
+
+The api stopped a guest because its process sample named a cryptocurrency
+miner (I-239): the stop op took a snapshot, the user got an
+`abuse_stopped` notification and `repose status` says why.
+
+1. `repose-admin abuse list`: project, owner, process name, and `hold`
+   when this was the third stop in 24 hours (starts are refused).
+2. A false positive (a tool that happens to share a miner's name) is
+   `repose-admin abuse clear <project>` and a note to the user; add the
+   name out of `internal/abuse` (or make it exact-only) if it is a real tool.
+3. A real miner: `repose-admin users suspend <handle> --reason "mining"`.
+   The api never suspends by itself.
+
+## BusyUnattended
+
+A project ran every vCPU at 90 percent or more for six hours with no SSH
+session, no tmux client and no agent in any sample (I-239). Nothing is
+stopped: a runaway build or test loop looks the same, and a miner under
+another name does too.
+
+1. The Abuse dashboard's "Guests at full CPU" panel names it.
+2. `repose-admin exec <id> -- ps -o comm,pcpu --sort -pcpu | head`
+   (audited). A compiler or test runner that never ends is the user's to
+   hear about; an unknown name using every core is a miner.
+3. A miner: `repose-admin projects stop <id>`, then decide on
    `repose-admin users suspend`.
 
 ## PoolFull

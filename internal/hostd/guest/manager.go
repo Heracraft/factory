@@ -292,6 +292,7 @@ type Manager struct {
 	secrets  map[string][]*guestdv1.Secret
 	monitors map[string]*monitor
 	last     map[string]sampleCursor
+	blocked  *blockedTracker
 	ops      chan struct{}
 	buildCh  chan job
 	buildRun int

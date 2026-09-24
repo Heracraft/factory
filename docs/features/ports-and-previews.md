@@ -87,6 +87,36 @@ Auto-forward (I-199), run by the session helper (run-and-attach.md):
   (`systemctl --user start repose-desktop`) and forwards 6080; Ctrl-C
   stops only the forward, not the desktop.
 
+## Outbound connections
+
+A guest reaches the internet through its host's NAT, with the private
+ranges, the cloud's metadata services and other guests blocked
+(SECURITY.md). Three more limits keep one guest from getting the shared
+address blocklisted (DECISIONS I-238..I-240), and the terms' acceptable
+use names them:
+
+- **Port 25 is blocked.** Servers hand mail to each other on 25, and it is
+  how spam leaves rented machines. Send mail through a provider on its
+  submission port, which stays open: `smtp.resend.com:465`,
+  `email-smtp.<region>.amazonaws.com:587`, `smtp.postmarkapp.com:587`, or
+  its HTTP API. `nc -zv smtp.gmail.com 25` from a guest times out;
+  `nc -zv smtp.gmail.com 587` connects.
+- **Mining pools' default ports are blocked:** 3333, 5555, 7777, 14433
+  and 14444. Nothing a developer commonly reaches remotely listens there
+  (4444, Selenium Grid's port, and 8888, Jupyter's, stay open).
+- **New connections are rate-limited per guest**, at 200 new outbound
+  flows a second with a burst of 2000. A cold package install opens a few
+  dozen and a headless browser loading six news sites at once about 1700
+  over twenty seconds, so development does not reach it; a scan does.
+  Connections past the limit are dropped (the program sees a timeout),
+  connections already open are never touched, and traffic to the host's
+  npm and Docker caches does not count.
+
+Each blocked attempt is counted for the guest, as a number, and the
+operator is alerted when a guest keeps trying; nothing is stopped for
+it. A guest running a known cryptocurrency miner is stopped (with a
+snapshot); that is in stop-start-destroy.md.
+
 ## Designed for later: preview URLs
 
 `https://3000-todo-app.repose.herakraft.co` reaching port 3000 in the guest,

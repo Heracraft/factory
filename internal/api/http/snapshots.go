@@ -72,6 +72,13 @@ func (s *Server) restoreSnapshot(w http.ResponseWriter, r *http.Request) error {
 	if err := s.billingGate(u); err != nil {
 		return err
 	}
+	// A held project's snapshot does not start anywhere, as itself or as a
+	// new project, until the hold is cleared (DECISIONS I-239).
+	if start {
+		if err := s.abuseGate(ctx, src); err != nil {
+			return err
+		}
+	}
 	if body.AsNewProject != nil {
 		target, id, err := s.restoreAsNew(ctx, u, src, snap, *body.AsNewProject, start)
 		if err != nil {

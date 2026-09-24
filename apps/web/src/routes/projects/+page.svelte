@@ -7,6 +7,7 @@
 	import { money, normalizeRemoteDisplay, uptime } from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import StateDot from '$lib/components/StateDot.svelte';
+	import { abuseStopReason } from '$lib/abuse';
 	import RecentlyDestroyed from '$lib/components/RecentlyDestroyed.svelte';
 	import type { DestroyedProject, Project } from '$lib/api/types';
 
@@ -31,8 +32,13 @@
 		}
 	}
 
-	/** The sentence after "code: " in last_error, for a project in error. */
+	/**
+	 * The sentence after "code: " in last_error, for a project in error or
+	 * one the platform stopped because a miner was running (I-239).
+	 */
 	function reason(p: Project): string {
+		const abuse = abuseStopReason(p);
+		if (abuse) return abuse;
 		if (p.state !== 'error' || !p.last_error) return '';
 		const i = p.last_error.indexOf(': ');
 		return i > 0 ? p.last_error.slice(i + 2) : p.last_error;

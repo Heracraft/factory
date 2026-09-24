@@ -262,3 +262,55 @@ groups:
           summary: "{{ $value }} Stripe webhook deliveries rejected in ten minutes"
           description: "Check STRIPE_WEBHOOK_SECRET against the endpoint's signing secret, and that the endpoint's API version matches the deployed SDK (ops/AZURE-SETUP.md step 17). While this fires, invoice events are not being applied."
           runbook: "docs/ops/RUNBOOK.md#stripewebhookrejected"
+
+  # Anti-abuse (DECISIONS I-238..I-240). Nothing here pages: the guest is
+  # already blocked or stopped when these fire, and what remains is a
+  # human decision about the account (`repose-admin users suspend`).
+  - name: repose-abuse
+    interval: 1m
+    rules:
+      - alert: EgressBlocked
+        # hostd counts, per guest, the packets its blocks dropped: tcp 25
+        # (smtp), the mining-pool ports (stratum) and new flows over the
+        # per-guest rate (flows), and exports how many guests passed the
+        # reason's threshold in the last ten minutes (100, 30 and 1000
+        # packets). An app that tried to mail once stays under it; a spam
+        # loop, a miner retrying its pool or a scan does not. guest_id is
+        # never a label: hostd's egress_blocked log line names the guest.
+        expr: repose_host_egress_blocked_guests > 0
+        for: 2m
+        labels:
+          severity: warn
+        annotations:
+          summary: "{{ $value }} guest(s) on {{ $labels.host_id }} keep hitting the {{ $labels.reason }} block"
+          description: "Blocked and counted, not stopped. Find the guest in hostd's egress_blocked log line, then look at what it runs before deciding on the account."
+          runbook: "docs/ops/RUNBOOK.md#egressblocked"
+
+      - alert: MinerStopped
+        # The api stopped a guest because its process samples named a
+        # cryptocurrency miner (I-239). The stop is done; the account is
+        # the operator's call. Summed over api replicas: only the one that
+        # ingests the host's samples counts the stop.
+        expr: sum by (kind) (increase(repose_api_abuse_stops_total[15m])) > 0
+        for: 0m
+        labels:
+          severity: warn
+        annotations:
+          summary: "the api stopped a guest for abuse ({{ $labels.kind }})"
+          description: "`repose-admin abuse list` names the project, owner and process. The third stop in 24 hours holds the project until `repose-admin abuse clear`; suspending the user is `repose-admin users suspend`."
+          runbook: "docs/ops/RUNBOOK.md#minerstopped"
+
+      - alert: BusyUnattended
+        # Every vCPU at 90 percent or more for six hours, with no SSH
+        # session, no tmux client and no agent in any sample (I-239). An
+        # agent working for hours with nobody attached is the product, so a
+        # present agent never counts. A miner under another name looks like
+        # this; so does a runaway build. Alert only, nothing is stopped.
+        expr: max(repose_api_abuse_busy_unattended_projects) > 0
+        for: 15m
+        labels:
+          severity: warn
+        annotations:
+          summary: "{{ $value }} project(s) at full CPU for six hours with nobody attached"
+          description: "The Abuse dashboard's full-CPU panel names them; `repose-admin exec <id> -- ps -o comm,pcpu --sort -pcpu` (audited) shows what runs."
+          runbook: "docs/ops/RUNBOOK.md#busyunattended"

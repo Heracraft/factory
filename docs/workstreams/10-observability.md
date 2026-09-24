@@ -79,7 +79,8 @@ component must emit:
   `guest_state`, `build_start`, `build_done`, `build_fail`, `switch_done`,
   `snapshot_start`, `snapshot_done`, `snapshot_fail`, `stream_connect`,
   `stream_disconnect`, `guestd_lost`, `guestd_regained`, `pool_warning`,
-  `store_warning`.
+  `store_warning`, `egress_blocked` (a guest over a block's threshold,
+  DECISIONS I-238..I-240).
 - guestd: `ready`, `freeze`, `thaw`, `freeze_timeout`, `switch`,
   `agent_event`, `agent_state`, `oom_priority` (I-200, counts only),
   `hook_bad_payload`, plus the one-per-request
@@ -91,7 +92,7 @@ component must emit:
   `cert_revoke`, `schedule` (host chosen, free memory), `schedule_fail`,
   `command_send`, `command_result`, `build_reused` (a create whose closure
   was already on the host, DECISIONS I-160), `rollup_done`, `stripe_webhook`,
-  `notify_send`, `notify_fail`, `admin_action`.
+  `notify_send`, `notify_fail`, `admin_action`, `abuse_stop` (I-239).
 - gateway: `session_open`, `session_close`, `auth_fail` (reason enum:
   `bad_cert|expired|revoked|wrong_principal|stopped|not_found`),
   `route_fail`, `dial_fail`.
@@ -119,7 +120,10 @@ Families:
   `repose_host_commands_total{kind,result}`, `repose_host_guestd_lost`
   (gauge, count of guests with `guestd_ok=false`),
   `repose_host_guest_cpu_seconds_total{class}` (summed over guests),
-  `repose_host_guest_net_bytes_total{direction}`.
+  `repose_host_guest_net_bytes_total{direction}`,
+  `repose_host_egress_blocked_total{reason}` and
+  `repose_host_egress_blocked_guests{reason}` (reason `smtp`, `stratum`,
+  `flows`; I-238..I-240).
 - API: `repose_api_requests_total{route,method,status}`,
   `repose_api_request_duration_seconds{route}`,
   `repose_api_hosts{state}`, `repose_api_projects{state,class}`,
@@ -128,7 +132,9 @@ Families:
   `repose_api_notify_total{channel,result}`,
   `repose_api_stripe_usage_push_total{result}`,
   `repose_api_snapshot_age_seconds` (max over running projects; the alert
-  input).
+  input), `repose_api_abuse_stops_total{kind}`,
+  `repose_api_abuse_held_projects`,
+  `repose_api_abuse_busy_unattended_projects` (I-239).
 - Gateway: `repose_gateway_sessions` (gauge), `repose_gateway_sessions_total`,
   `repose_gateway_auth_fail_total{reason}`, `repose_gateway_dial_fail_total`,
   `repose_gateway_route_duration_seconds`.
@@ -181,6 +187,9 @@ Each maps to a `../ops/RUNBOOK.md` entry of the same name.
 | `GuestdLost` | `repose_host_guestd_lost > 0` for 5m | warn |
 | `RollupLag` | `repose_api_rollup_lag_seconds > 2*3600` | warn |
 | `StripePushFail` | `increase(repose_api_stripe_usage_push_total{result="error"}[1h]) > 0` | warn |
+| `EgressBlocked` | `repose_host_egress_blocked_guests > 0` for 2m (I-238..I-240) | warn |
+| `MinerStopped` | `sum by (kind) (increase(repose_api_abuse_stops_total[15m])) > 0` (I-239) | warn |
+| `BusyUnattended` | `max(repose_api_abuse_busy_unattended_projects) > 0` for 15m (I-239) | warn |
 
 ### Traces
 

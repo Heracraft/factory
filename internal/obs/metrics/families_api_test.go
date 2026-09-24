@@ -46,6 +46,10 @@ func TestAPIFamily(t *testing.T) {
 		"repose_api_snapshot_age_seconds":      nil,
 		"repose_api_egress_alert_projects":     nil,
 		"repose_api_partition_drop_fail_total": nil,
+		// I-239: the abuse alerts' inputs.
+		"repose_api_abuse_stops_total":              {"kind"},
+		"repose_api_abuse_held_projects":            nil,
+		"repose_api_abuse_busy_unattended_projects": nil,
 	}
 
 	fams, err := m.Registry().Gather()

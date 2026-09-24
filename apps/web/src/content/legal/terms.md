@@ -47,13 +47,37 @@ unmodified.
 
 ## Acceptable use
 
-Your environment is yours to use for software development and the
-workloads that come with it: builds, tests, containers, browsers, agents.
-You may not use it to mine cryptocurrency, to scan or attack networks or
-systems you do not own, to send unsolicited mail, to host content that is
-illegal where we or you are, or to attempt to reach other tenants'
-environments, our servers, or the cloud provider's metadata services. We
-record process names and network volumes to notice these things; the
+Your environment is for software development and the work that comes with
+it: builds, tests, containers, browsers, dev servers, agents. You may not
+use it to:
+
+- mine cryptocurrency, or run anything that does;
+- send spam or bulk email nobody asked for;
+- scan, probe or attack networks or systems you do not own or are not
+  allowed to test, or flood anyone with traffic;
+- run a proxy, VPN exit or relay that other people use to reach the
+  internet;
+- host or share content that is illegal where we or you are;
+- try to reach other tenants' environments, our servers, or the cloud
+  provider's metadata services.
+
+Some of this is blocked at the network. Environments cannot connect out to
+port 25, which is how servers hand mail to each other and how spam leaves
+rented machines; send mail through a provider such as Amazon SES, Postmark
+or Resend on its submission ports (465 or 587), which stay open. The usual
+ports of cryptocurrency mining pools are blocked too. New outbound
+connections are limited to a rate that development work does not come
+near (a cold package install opens a few dozen); connections past it are
+dropped, and connections already open are never cut.
+
+If your environment runs a program named as a cryptocurrency miner, such
+as xmrig, we stop it automatically, with a snapshot first so nothing on
+its disk is lost, and tell you why. The third such stop within 24 hours
+puts the project on hold: it cannot be started until we have looked at
+it. Anything else, and any action on your account, is decided by a
+person.
+
+We record process names and network volumes to notice these things; the
 privacy policy says exactly what we record and what we never record.
 
 Each project has a bandwidth ceiling, a monthly egress allowance, and

@@ -771,8 +771,11 @@ func TestReconcileAfterRestart(t *testing.T) {
 	// Simulate hostd dying: mark gid1 mid-transition and leave a tap for gid2.
 	_, _ = h.st.SetGuestState(gid1, StateStarting, "")
 	h.net.Taps[h.guest(gid2).Tap] = true
-	// and gid1's tap shaped the way an older hostd left it (I-217)
+	// and gid1's tap shaped the way an older hostd left it (I-217), with
+	// its rules as a hostd before I-238 left them (none of the new ones:
+	// the fake models them as the one element)
 	delete(h.net.Shaped, h.guest(gid1).Tap)
+	delete(h.net.Elements, gid1)
 	h.m.Close()
 	m2, err := New(h.cfg, h.m.d)
 	if err != nil {
@@ -788,6 +791,9 @@ func TestReconcileAfterRestart(t *testing.T) {
 	}
 	if got := h.net.Shaped[h.guest(gid1).Tap]; got != m2.cfg.EgressMbit || got == 0 {
 		t.Fatalf("running guest's shape not re-applied by reconcile: %d mbit", got)
+	}
+	if h.net.Elements[gid1] == "" {
+		t.Fatal("running guest's nft rules not re-applied by reconcile (I-238)")
 	}
 	if h.net.Taps[h.guest(gid2).Tap] {
 		t.Fatal("leftover tap of a stopped guest not removed")

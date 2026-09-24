@@ -513,3 +513,89 @@ tests:
       - eval_time: 11m
         alertname: StripeWebhookRejected
         exp_alerts: []
+
+  # --- EgressBlocked ------------------------------------------------------
+  - interval: 1m
+    name: EgressBlocked fires per host and reason while a guest keeps hitting a block
+    input_series:
+      - series: 'repose_host_egress_blocked_guests{job="hostd",instance="10.255.0.7:9101",host_id="host-01",reason="smtp"}'
+        values: "0 0 1 1 1 1 1 1"
+      - series: 'repose_host_egress_blocked_guests{job="hostd",instance="10.255.0.7:9101",host_id="host-01",reason="stratum"}'
+        values: "0+0x7"
+      - series: 'repose_host_egress_blocked_guests{job="hostd",instance="10.255.0.7:9101",host_id="host-01",reason="flows"}'
+        values: "0+0x7"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: EgressBlocked
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: EgressBlocked
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: hostd
+              instance: 10.255.0.7:9101
+              host_id: host-01
+              reason: smtp
+            exp_annotations:
+              summary: "1 guest(s) on host-01 keep hitting the smtp block"
+              description: "Blocked and counted, not stopped. Find the guest in hostd's egress_blocked log line, then look at what it runs before deciding on the account."
+              runbook: "docs/ops/RUNBOOK.md#egressblocked"
+
+  - interval: 1m
+    name: EgressBlocked stays quiet for a guest under the threshold
+    input_series:
+      - series: 'repose_host_egress_blocked_guests{job="hostd",instance="10.255.0.7:9101",host_id="host-01",reason="smtp"}'
+        values: "0+0x10"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: EgressBlocked
+        exp_alerts: []
+
+  # --- MinerStopped -------------------------------------------------------
+  - interval: 1m
+    name: MinerStopped fires on the first automatic stop, summed over replicas
+    input_series:
+      - series: 'repose_api_abuse_stops_total{job="api",instance="10.255.0.9:9103",kind="miner"}'
+        values: "0 0 0 1 1 1 1 1"
+      - series: 'repose_api_abuse_stops_total{job="api",instance="10.255.0.10:9103",kind="miner"}'
+        values: "0+0x7"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: MinerStopped
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: MinerStopped
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              kind: miner
+            exp_annotations:
+              summary: "the api stopped a guest for abuse (miner)"
+              description: "`repose-admin abuse list` names the project, owner and process. The third stop in 24 hours holds the project until `repose-admin abuse clear`; suspending the user is `repose-admin users suspend`."
+              runbook: "docs/ops/RUNBOOK.md#minerstopped"
+      - eval_time: 25m
+        alertname: MinerStopped
+        exp_alerts: []
+
+  # --- BusyUnattended -----------------------------------------------------
+  - interval: 1m
+    name: BusyUnattended fires when the api counts a project busy with nobody there
+    input_series:
+      - series: 'repose_api_abuse_busy_unattended_projects{job="api",instance="10.255.0.9:9103"}'
+        values: "0 0 1+0x20"
+      - series: 'repose_api_abuse_busy_unattended_projects{job="api",instance="10.255.0.10:9103"}'
+        values: "0 0 1+0x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: BusyUnattended
+        exp_alerts: []
+      - eval_time: 18m
+        alertname: BusyUnattended
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+            exp_annotations:
+              summary: "1 project(s) at full CPU for six hours with nobody attached"
+              description: "The Abuse dashboard's full-CPU panel names them; `repose-admin exec <id> -- ps -o comm,pcpu --sort -pcpu` (audited) shows what runs."
+              runbook: "docs/ops/RUNBOOK.md#busyunattended"

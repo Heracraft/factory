@@ -110,6 +110,11 @@ func (s *Server) restoreByName(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	start := body.Start == nil || *body.Start
+	if start {
+		if err := s.abuseGate(ctx, src); err != nil {
+			return err
+		}
+	}
 	target, opID, err := s.restoreAsNew(ctx, u, src, snap, name, start)
 	if err != nil {
 		return err

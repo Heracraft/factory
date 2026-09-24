@@ -4,9 +4,19 @@ ip link set dev tap-0192abcd master br-guests up
 bridge link set dev tap-0192abcd isolated on learning off flood off
 bridge fdb replace 52:54:01:92:ab:cd dev tap-0192abcd master static
 nft add element bridge repose guests { 52:54:01:92:ab:cd . 10.64.4.2 . tap-0192abcd }
-nft list counter inet repose egress-g1
+nft list counters table inet repose
 nft add counter inet repose egress-g1
+nft -a list chain inet repose guest_dyn
 nft add rule inet repose guest_dyn ip saddr 10.64.4.2 counter name "egress-g1"
+nft add counter inet repose smtp-g1
+nft -a list chain inet repose guest_smtp
+nft add rule inet repose guest_smtp ip saddr 10.64.4.2 counter name "smtp-g1"
+nft add counter inet repose stratum-g1
+nft -a list chain inet repose guest_stratum
+nft add rule inet repose guest_stratum ip saddr 10.64.4.2 counter name "stratum-g1"
+nft add counter inet repose flows-g1
+nft -a list chain inet repose guest_flows
+nft add rule inet repose guest_flows ip saddr 10.64.4.2 counter name "flows-g1"
 tc qdisc show dev tap-0192abcd
 tc qdisc add dev tap-0192abcd handle ffff: ingress
 tc filter replace dev tap-0192abcd parent ffff: protocol ip prio 1 handle 1 flower dst_ip 10.64.0.0/12 action pass
@@ -16,3 +26,9 @@ nft delete element bridge repose guests { 52:54:01:92:ab:cd . 10.64.4.2 . tap-01
 bridge fdb del 52:54:01:92:ab:cd dev tap-0192abcd master
 nft -a list chain inet repose guest_dyn
 nft delete rule inet repose guest_dyn handle 17
+nft -a list chain inet repose guest_smtp
+nft delete rule inet repose guest_smtp handle 18
+nft -a list chain inet repose guest_stratum
+nft delete rule inet repose guest_stratum handle 19
+nft -a list chain inet repose guest_flows
+nft delete rule inet repose guest_flows handle 20
