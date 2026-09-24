@@ -23,8 +23,7 @@
 
 <div class="flex gap-10">
 	<main class="min-w-0 flex-1 pt-8 pb-24">
-		<p class="text-sm text-zinc-600 dark:text-zinc-400">{doc.section}</p>
-		<h1 class="mt-1 text-3xl font-semibold sm:text-4xl">{doc.title}</h1>
+		<h1 class="text-3xl font-semibold sm:text-4xl">{doc.title}</h1>
 		{#if doc.description}
 			<p class="mt-3 text-lg text-zinc-600 dark:text-zinc-400">{doc.description}</p>
 		{/if}
@@ -66,9 +65,7 @@
 	{#if toc.length > 1}
 		<aside class="hidden w-52 shrink-0 xl:block">
 			<nav class="sticky top-14 pt-9 pb-10" aria-label="On this page">
-				<p class="text-xs font-medium tracking-wide text-zinc-600 uppercase dark:text-zinc-400">
-					On this page
-				</p>
+				<p class="text-sm font-medium">On this page</p>
 				<ul class="mt-2 space-y-1.5 text-sm">
 					{#each toc as h (h.id)}
 						<li>

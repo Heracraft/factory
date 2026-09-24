@@ -1,0 +1,29 @@
+---
+title: Limits and acceptable use
+description: How many projects you can have, what the network allows, and what gets a machine stopped.
+section: Account
+order: 31
+---
+
+## Projects
+
+A new account can have 3 projects, at most 1 of them `xl`. Destroyed projects don't count. Higher limits aren't self-serve yet.
+
+## Network
+
+- Outbound traffic is limited to 200 Mbit/s per machine. Downloads into the machine aren't limited.
+- Outbound connections to port 25 are blocked, so a machine can't send mail directly. Use your email provider's API, or its submission port (587 or 465) with a login.
+- The ports used by cryptocurrency mining pools are blocked.
+- There is a limit on how fast a machine can open new connections. Installing packages, running test suites and crawling your own app stay well under it.
+- Nothing on the internet can connect to the machine. Reach your own servers on it through [port forwarding](/docs/machine#ports).
+
+## What isn't allowed
+
+The [terms](/terms) have the full wording. In short, don't use a machine to:
+
+- mine cryptocurrency;
+- send spam or bulk mail;
+- attack, scan or flood other systems;
+- host or run anything illegal.
+
+A machine running a known miner is stopped. Other abuse found by monitoring or reported to us gets the machine stopped and the account reviewed. Monitoring looks at process names and resource use, never at your files or terminal; see [what repose stores](/docs/secrets#what-repose-stores).

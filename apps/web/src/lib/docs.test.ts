@@ -37,6 +37,22 @@ describe('user docs', () => {
 		for (const d of DOCS) expect(d.body.includes('—'), d.slug).toBe(false);
 	});
 
+	// Billing is not enforced yet: the docs must not send anyone to add a
+	// card first, and must not carry release caveats that went stale.
+	it('promises no card step and has no stale release notes', () => {
+		for (const d of DOCS) {
+			expect(d.text.includes('add a card'), d.slug).toBe(false);
+			expect(d.text.includes('not in a release yet'), d.slug).toBe(false);
+		}
+	});
+
+	it('gives every page its own title and a place in its section', () => {
+		const titles = new Set(DOCS.map((d) => d.title));
+		expect(titles.size).toBe(DOCS.length);
+		const places = new Set(DOCS.map((d) => `${d.section}/${d.order}`));
+		expect(places.size).toBe(DOCS.length);
+	});
+
 	it('slugs headings the way links spell them', () => {
 		expect(slugify("What you'll get")).toBe('what-youll-get');
 		expect(slugify('`repose open`')).toBe('repose-open');

@@ -1,109 +1,101 @@
 ---
 title: Run and attach
-description: Starting agents, the tmux session, and getting back to it.
+description: Start agents, move around the tmux session, get back to it later, and connect with SSH or an editor.
 section: Using repose
-order: 11
+order: 10
 ---
 
-## `repose run`
-
-`repose run` does everything needed to get you onto the machine, in order:
-
-1. Finds the project for this checkout, or creates it.
-2. Starts the machine if it's stopped, or waits for it if it's still building.
-3. Gets a fresh SSH certificate if the current one is close to expiring.
-4. Copies your tool logins and settings, then your git state and uncommitted work. See [What gets synced](/docs/sync).
-5. With a prompt, starts an agent in a new tmux window and types the prompt into it.
-6. Attaches your terminal to the machine's tmux session.
-
-Running it twice in a row is safe. The second run finds nothing new to copy and goes straight to attaching.
-
-Without a prompt, you land in whatever tmux window was active last. With a prompt:
+## Start an agent with a prompt
 
 ```
 repose run "migrate the date handling to Temporal and fix the tests that break"
 ```
 
-You don't need quotes. Everything after the flags is the prompt, so this works too:
+Quotes are optional; everything after the flags is the prompt. `run` creates or starts the machine, [syncs](/docs/sync) your checkout, opens a new tmux window, starts the agent there, types your prompt and attaches you to it.
+
+Without a prompt, `repose run` syncs and drops you in the last active window.
+
+Pick a different agent for one prompt with `--agent`:
 
 ```
-repose run fix the flaky upload test
+repose run --agent codex "port the build scripts to bun"
 ```
 
-### Flags
+The agent is the normal interactive program, the same as running `claude` yourself, so its history and any questions it asks are on screen when you attach.
 
-| Flag               | What it does                                                                                                                                                                                                    |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--agent NAME`     | Which agent gets the prompt: `claude`, `codex`, `opencode`, `gemini` or `pi`. Default: the project's, which is `claude` unless [`default_agent`](/docs/cli-config) said otherwise when the project was created. |
-| `--no-attach`      | Start the agent and return to your laptop's shell without attaching. Useful in scripts.                                                                                                                         |
-| `--no-sync`        | Skip the git sync and the copying of tool logins. Your git and Claude Code settings are still copied, as with `attach`.                                                                                         |
-| `--stash-remote`   | If the machine's checkout has uncommitted changes, stash them there before syncing.                                                                                                                             |
-| `--discard-remote` | If the machine's checkout has uncommitted changes, throw them away before syncing.                                                                                                                              |
-| `--size SIZE`      | `small`, `large` or `xl`, for a project being created. Ignored otherwise.                                                                                                                                       |
-| `--name NAME`      | Project name, for a directory with no remote or a second project for the same repository.                                                                                                                       |
-| `--project NAME`   | Run against a named project instead of this checkout's.                                                                                                                                                         |
+If that agent already has a window, the new one is named `claude-2`, and the CLI warns that two agents now share one working tree. Give one of them its own `git worktree` if that matters.
 
-`--stash-remote` and `--discard-remote` exist because the sync refuses to overwrite work on the machine that your laptop doesn't know about. [What gets synced](/docs/sync) explains when that happens.
+Running `repose run` twice in a row is safe. The second one finds nothing new to copy.
 
-## How an agent is started
+## Detach and come back
 
-With a prompt, the CLI opens a tmux window named after the agent (`claude`, `codex` and so on) in your checkout directory, starts the agent's normal interactive interface there, waits until it's ready for input, types your prompt and presses Enter. Then it attaches you to that window.
+Press `Ctrl-b`, let go, then `d`. You're back on your laptop and everything on the machine keeps running. Closing the terminal, losing Wi-Fi or closing the laptop does the same.
 
-This is the same interface you'd get running `claude` yourself, with its full history and any permission prompts visible when you attach. Nothing runs in a headless mode.
-
-If a window for that agent already exists, the new one is called `claude-2`, then `claude-3`. The CLI warns you:
+To get back, from the checkout or from anywhere:
 
 ```
-Another claude window is open; two agents share one working tree.
+repose attach
+repose attach todo-app
 ```
 
-Two agents editing the same checkout can step on each other. If that matters, have one of them work in a separate `git worktree` on the machine.
+`attach` doesn't sync your checkout, so it's safe to use from a second computer whose copy is older. It doesn't start a stopped machine either; it tells you to run `repose start`.
 
-The first time you send a prompt to Claude Code on a machine where it isn't logged in, the CLI opens the window and prints:
+Several terminals can be attached at once, from one computer or several. They see the same windows.
 
-```
-Claude Code is not logged in on this guest yet. Finish the login in the window that opens, then re-run with your prompt.
-```
+## tmux keys
 
-[Agents](/docs/agents) covers logins for all five agents.
+Each machine has one tmux session. Its first window, `shell`, opens in your checkout; agents get windows next to it. Press `Ctrl-b`, then:
 
-## The tmux session
+| Key     | Action                                          |
+| ------- | ----------------------------------------------- |
+| `d`     | Detach.                                         |
+| `w`     | Pick a window from a list.                      |
+| `n` `p` | Next or previous window.                        |
+| `c`     | New window with a shell.                        |
+| `[`     | Scroll back. Arrow keys or Page Up; `q` leaves. |
 
-Each machine has one tmux session, named after the project, that exists from the moment the machine boots. Its first window is `shell`, in `/home/dev/<project>`. Agents get their own windows next to it.
+The mouse works too: click a window name to switch, scroll to go back through output.
 
-The keys you'll need (press `Ctrl-b`, let go, then the key):
-
-| Keys               | Action                                                  |
-| ------------------ | ------------------------------------------------------- |
-| `Ctrl-b` `d`       | Detach. Everything keeps running.                       |
-| `Ctrl-b` `w`       | Pick a window from a list.                              |
-| `Ctrl-b` `n` / `p` | Next / previous window.                                 |
-| `Ctrl-b` `c`       | New window with a shell.                                |
-| `Ctrl-b` `[`       | Scroll back (then arrow keys or Page Up, `q` to leave). |
-
-The mouse works: click a window name in the status bar to switch, scroll with the wheel to go back through output. tmux keeps 50,000 lines per pane. Text you copy in tmux goes to your laptop's clipboard in terminals that support it (iTerm2, Kitty, WezTerm, Alacritty, Windows Terminal; in macOS Terminal it doesn't).
-
-Detaching never stops anything. Closing the terminal window, losing Wi-Fi and putting the laptop to sleep all count as detaching.
-
-## `repose attach`
+## Useful flags
 
 ```
-repose attach            # this checkout's project
-repose attach todo-app   # any project, from anywhere
+repose run --no-attach "..."     # start the agent and return to your shell
+repose run --no-sync             # skip the sync
+repose run --size xl             # size of a new project
+repose run --name scratch        # a directory with no git remote
+repose run --project todo-app    # a project other than this checkout's
 ```
 
-`attach` connects to the session without touching the checkout on the machine. In the background it still copies your git and Claude Code settings when they've changed (git settings only when you run it inside the checkout). Use it to check on an agent, or from a second computer where your checkout is older than the machine's. It doesn't start a stopped machine; it tells you the state and which command to run.
+The full list is in the [CLI reference](/docs/cli#repose-run-prompt).
 
-Several terminals can be attached at once, from one laptop or several. They all see the same windows. tmux sizes each window to fit the smallest attached terminal, so a narrow terminal shrinks the view for everyone.
+## SSH and editors
+
+Every project is also an SSH host called `<project>.repose`, so anything that speaks SSH works:
+
+```
+ssh todo-app.repose
+scp todo-app.repose:~/todo-app/report.html .
+ssh -L 9229:localhost:9229 todo-app.repose
+```
+
+You log in as `dev`. Plain `ssh` doesn't attach to tmux; run `tmux attach` for that.
+
+**VS Code and Cursor:** with the Remote - SSH extension, run **Remote-SSH: Connect to Host…**, pick `todo-app.repose` and open `/home/dev/todo-app`. **Zed:** open a remote project over SSH with the same host and folder.
+
+The CLI sets this up with one line in `~/.ssh/config`, `Include ~/.ssh/repose/config`. If your `~/.ssh/config` is read-only (managed by Nix or a dotfiles tool), the CLI tells you to add the line yourself.
+
+Your SSH certificate lasts 12 hours. `run`, `attach`, `open` and `cp` renew it. If `ssh` or your editor gets `Permission denied`, run `repose attach` once, detach, and try again.
+
+While you're connected, your laptop's ssh-agent is forwarded to the machine. That lets `git push` over SSH work, and it also lets processes on the machine ask your agent to sign while you're connected (they can't read the keys). An agent working alone should push over HTTPS instead; see [Secrets](/docs/secrets#logins-copied-from-your-laptop).
 
 ## Time zone
 
-`run` and `attach` set the machine's time zone to your laptop's. A change prints a line like `Time zone set to Asia/Tokyo.` New shells and new agent windows use the new zone. Shells that were already open keep the old one until you open a new one.
+`run` and `attach` set the machine's time zone to your laptop's. New shells pick it up.
 
 ## When the machine stops
 
-Stopping a machine ends every process on it, including agents in the middle of a task. After `repose start`, the tmux session is there again with a fresh `shell` window, and the agents' windows are gone. Claude Code can pick up where it was interrupted: start it in the checkout with `claude --resume` and choose the conversation.
+A stop ends every process, agents included. After the next start, the tmux session has a fresh `shell` window and the agents' windows are gone. To continue a Claude Code conversation, run `claude --resume` in the checkout and pick it.
 
-## Exit codes
+## Timing
 
-`run` and `attach` use the same codes as every other command. The useful ones: `3` not logged in, `5` the machine isn't running (from `attach`), `6` the machine has uncommitted changes and the sync refused, `7` no card on file, `8` no capacity right now, `10` the environment build failed. [Troubleshooting](/docs/troubleshooting) lists them all with the fix for each.
+`REPOSE_TIMING=1 repose run` prints how long each step took. A `run` into a running machine with nothing new to sync usually takes about a second; starting a stopped one, about 10.

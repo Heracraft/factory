@@ -1,75 +1,122 @@
 ---
 title: The machine
-description: What's installed on a project's machine, how it's laid out, and its limits.
+description: What's installed, installing more, your laptop's tools, ports, the browser, memory and disk.
 section: Using repose
-order: 19
+order: 12
 ---
 
-Each project runs in its own NixOS virtual machine (a Cloud Hypervisor microVM) with its own kernel, disk, memory and network address. The only thing it reads from the server it runs on is the Nix store holding the base and your configuration, mounted read-only.
+Each project gets its own virtual machine running NixOS, with its own kernel, disk, memory and Docker. You log in as `dev`, which has passwordless `sudo`. Your checkout is `/home/dev/<project>`, and everything under `/home/dev` survives a stop and is in snapshots.
 
-## You and the layout
-
-You log in as `dev`. `dev` has passwordless `sudo` and is in the `docker` group.
-
-| Path                   | What                                                                                            |
-| ---------------------- | ----------------------------------------------------------------------------------------------- |
-| `/home/dev/<project>`  | Your checkout. tmux windows open here.                                                          |
-| `/home/dev`            | Your home directory, on the project's disk. Everything here survives stops and is in snapshots. |
-| `/run/repose/secrets/` | Your [named secrets](/docs/secrets), in memory only.                                            |
-| `~/.repose/`           | repose's own bookkeeping on the machine. Leave it alone.                                        |
-
-The environment variable `REPOSE=1` is set in every shell, and `REPOSE_PROJECT` holds the project's name. Scripts can use them to tell they're on a repose machine.
+| Size    | vCPU | Memory | Disk  |
+| ------- | ---- | ------ | ----- |
+| `small` | 2    | 4 GB   | 20 GB |
+| `large` | 4    | 8 GB   | 40 GB |
+| `xl`    | 8    | 16 GB  | 80 GB |
 
 ## What's installed
 
-**Agents:** Claude Code, Codex CLI, opencode, Gemini CLI and pi. See [Agents](/docs/agents).
+- **Agents:** Claude Code, Codex CLI, opencode, Gemini CLI and pi.
+- **Languages:** Node.js 24 with npm and pnpm, Python 3.12 with uv, Go, and rustup (run `rustup default stable` once).
+- **Build tools:** gcc, g++, make, cmake, pkg-config, so cgo, node-gyp, Python extensions and Rust crates like `openssl-sys` build.
+- **Containers:** Docker with `docker compose`.
+- **Browser:** Chromium and Playwright's browsers.
+- **Everyday tools:** git, gh, just, curl, wget, jq, ripgrep, fd, bat, fzf, eza, tree, htop, neovim, direnv, sqlite3, `psql` and `pg_dump` (no database server; [add one](/docs/config)), openssl, gnupg, dig, lsof, zip and unzip.
 
-**Languages and package managers:** Node.js 24 with npm and pnpm, Python 3.12 with uv, Go, and rustup (run `rustup default stable` once to get a Rust toolchain).
+Programs downloaded for other Linux systems run as they would on Ubuntu: Prisma's engines, Playwright's own browsers, numpy and other Python wheels, esbuild, Biome, and binaries from `curl | sh` installers.
 
-**C and C++:** gcc, g++, make, cmake, pkg-config and binutils, for cgo, node-gyp, Python extensions and Rust's linker.
+## Installing more
 
-**Containers:** Docker with `docker compose`.
+Install on the machine the way you would anywhere. The result stays on the machine's disk and is on your `PATH`:
 
-**Browser:** Chromium, Playwright's browsers, and the two browser MCP servers. See [Browser](/docs/browser).
+```
+npm i -g tsx
+go install github.com/air-verse/air@latest
+cargo install ripgrep-all
+uv tool install httpie
+nix profile add nixpkgs#ffmpeg
+```
 
-**Command-line tools:** git, gh, just, curl, wget, jq, ripgrep, fd, bat, fzf, eza, tree, htop, tmux, neovim (the default `$EDITOR`), direnv with nix-direnv, starship, zoxide, sqlite, `psql` and the PostgreSQL client tools (no server; add one from the [menu](/docs/config#the-menu)), openssl, gnupg, dig, lsof, file, zip, unzip and zstd.
+`pip install --user`, bun, deno, gem and composer installs are on `PATH` too. `nix profile add` takes any package from nixpkgs; search names at [search.nixos.org](https://search.nixos.org/packages).
 
-Need something else? [Packages and configuration](/docs/config) covers every way to add it.
+Type a command the machine doesn't have and it tells you where to get it:
 
-### Programs built for other Linux systems
+```
+$ air
+air is not installed. It is in the nixpkgs package air:
+  now, in this guest:              nix profile add nixpkgs#air
+  from your laptop, kept for good: repose config add air
+```
 
-Prebuilt binaries that expect a regular Linux layout (Prisma's engines, esbuild and Biome from npm, anything a `curl | sh` installer drops) run as they would on Ubuntu. The machine provides the standard dynamic loader and common libraries for them.
+Installs made on the machine are not part of the project's configuration. To have a package on every rebuild, add it with [`repose config add`](/docs/config).
 
-### Projects with a `flake.nix`
+## Your laptop's tools come along
 
-direnv and nix-direnv are set up. Put `use flake` in the repository's `.envrc`, run `direnv allow` once on the machine, and the flake's dev shell loads whenever you `cd` into the checkout.
+`repose run` looks at the tools you installed globally on your laptop (with npm, pnpm, bun, `go install`, `cargo install`, uv or pipx) and at the commands your project's scripts call (`package.json`, `Makefile`, `justfile`, `Procfile`, `.air.toml`, compose files). Only names and versions are sent. The machine installs the ones it lacks in the background:
+
+```
+Installing 3 of your tools in the background: air, portless, typescript
+```
+
+Nothing waits for these. If a tool fails to install, the next `run` says so; the log is `~/.repose/tools-install.log` on the machine. A Node major version pinned in `.nvmrc`, `.node-version` or `engines.node` is installed and made the default `node`.
+
+To see the list without installing anything:
+
+```
+repose scan
+```
+
+## Projects with a flake.nix
+
+direnv is set up. Put `use flake` in the repository's `.envrc`, run `direnv allow` once on the machine, and the flake's dev shell loads when you `cd` into the checkout.
+
+## Ports
+
+While you're attached with `repose run` or `repose attach`, every port a program on the machine listens on appears on your laptop's `localhost` within a second or so. Start `pnpm dev` on the machine and open `http://localhost:5173` on your laptop. tmux shows each new forward:
+
+```
+⇄ localhost:5173 → :5173
+```
+
+Because it's `localhost`, cookies and OAuth redirects behave as they do locally. If the port is taken on your laptop, the next free one is used and the message says which.
+
+Ports below 1024 aren't forwarded, and neither are servers that listen only on another address such as a Docker network. A container port published with `-p 8080:80` is.
+
+To forward one port without attaching:
+
+```
+repose open 3000
+```
+
+It opens your browser and runs until `Ctrl-C`. `--local-port 8080` picks the laptop port, `--no-browser` only prints the URL. `REPOSE_NO_FORWARD=1` turns the automatic forwarding off.
+
+There are no public URLs for a project's ports. To show someone a running app, deploy it or use a tunnel such as `cloudflared`.
+
+## Browser
+
+Claude Code on the machine has two browser tools registered, `playwright` and `chrome-devtools`, which drive a headless Chromium: navigate, fill forms, take screenshots, read the console and network. Ask for them in a prompt:
+
+```
+repose run "start the dev server, open the signup page with playwright and screenshot each step"
+```
+
+Playwright test suites run without `npx playwright install`.
+
+To watch the browser or use it yourself (a captcha, a passkey), open the machine's desktop:
+
+```
+$ repose open --desktop
+http://localhost:6080/vnc.html?autoconnect=1 (Ctrl-C stops the forward; the desktop keeps running)
+VNC password: 5m2k8Q1p
+```
+
+Enter the password in the page that opens. Browsers an agent starts in headed mode show up there. The desktop stops by itself after 30 minutes with nobody connected, or with `repose open --desktop --stop`.
 
 ## Network
 
-The machine can reach the internet. Nothing on the internet can reach the machine: the only way in is SSH through repose's gateway, with your certificate. See [Ports and localhost](/docs/ports) for reaching your own servers on it.
+The machine can reach the internet. Nothing on the internet can reach the machine; the only way in is SSH through repose, with your certificate. Outbound traffic is limited to 200 Mbit/s. npm, pnpm, yarn and Docker Hub downloads go through a cache on the server. [Limits](/docs/limits) has what's blocked.
 
-Outbound traffic is limited to 200 Mbit/s per machine. The first 500 GB each month is included, then it's billed (see [Pricing](/docs/billing)).
+## Memory and disk
 
-npm, pnpm and yarn downloads and Docker Hub pulls go through a cache on the server first, which makes repeated installs faster. A project with its own `.npmrc` registry, or an npm token for registry.npmjs.org in `~/.npmrc`, goes direct instead. A Docker login or a private registry also goes direct.
+When a machine runs out of memory, something is killed. Your agents and tmux are kept to the last, so a runaway test or dev server goes first. `sudo dmesg | grep -i killed` shows what went. Headless Chromium is stopped past 1.5, 3 or 6 GB depending on size.
 
-## Memory
-
-| Size    | Memory | Browser limit |
-| ------- | ------ | ------------- |
-| `small` | 4 GB   | 1.5 GB        |
-| `large` | 8 GB   | 3 GB          |
-| `xl`    | 16 GB  | 6 GB          |
-
-A machine that runs out of memory has to kill something. The machine arranges for your agents and the tmux server to be the last candidates, so a runaway dev server or test process goes first. To see what was killed, run `sudo dmesg | grep -i killed` on the machine.
-
-`repose status todo-app` lists the processes listening on ports, with their age and memory, which helps spot a dev server left running for three days.
-
-## Disk
-
-The disk is 20, 40 or 80 GB depending on size. Grow it from the project's page in the dashboard (**Resize…** under Disk). It can't shrink.
-
-The Nix store on the machine is layered: the base and your configuration come read-only from the server, and anything you install on the machine goes into a writable layer on your disk.
-
-## Time
-
-The machine's clock follows your laptop's time zone. See [Run and attach](/docs/run-and-attach#time-zone).
+Grow the disk from the project's page in the dashboard (**Resize…** under Disk). Disks can't shrink. A project's size is chosen when it's created and can't be changed afterwards yet.

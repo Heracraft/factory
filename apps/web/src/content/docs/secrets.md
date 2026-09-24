@@ -1,19 +1,11 @@
 ---
-title: Secrets and logins
-description: API keys, tool logins and git settings, and where each one lives.
+title: Secrets and security
+description: API keys, tool logins and git settings, where each one lives, and what can reach what.
 section: Using repose
-order: 17
+order: 14
 ---
 
-A machine gets credentials in three ways, depending on what they are.
-
-| What                                                           | How it gets there               | Where repose keeps it                                        |
-| -------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------ |
-| API keys and tokens you name (`DATABASE_URL`, `STRIPE_KEY`)    | `repose secrets set`            | Encrypted in repose's database, and in memory on the machine |
-| Logins your laptop already has (`gh`, Codex, opencode, Vercel) | Copied by `repose run` over SSH | Nowhere. They go laptop to machine.                          |
-| Claude Code                                                    | You log in on the machine       | Nowhere. See [Agents](/docs/agents).                         |
-
-## Named secrets
+## Store an API key
 
 ```
 $ repose secrets set STRIPE_SECRET_KEY
@@ -21,94 +13,74 @@ Value for STRIPE_SECRET_KEY (not shown):
 Set STRIPE_SECRET_KEY (pushed to running guest)
 ```
 
-The value isn't echoed as you type. To read it from somewhere else:
+Or read the value from a file or from your laptop's environment:
 
 ```
 repose secrets set GOOGLE_CREDENTIALS --from-file ./service-account.json
 repose secrets set OPENAI_API_KEY --from-env
 ```
 
-`--from-env` reads the variable of the same name from your laptop's environment.
-
-On the machine, each secret is:
-
-- an environment variable in every new shell, and in every agent started after it was set;
-- a file, `/run/repose/secrets/NAME`, readable only by `dev`.
-
-Both live in memory (a tmpfs), so they're gone the moment the machine stops and are written again at the next start. They're never on the machine's disk and never in snapshots.
-
-A change reaches a running machine within a few seconds. Programs that were already running keep the old value until you restart them; open a new tmux window or run `exec $SHELL` to pick it up in a shell. If the machine is stopped, the CLI says `(will be delivered at next start)`.
+On the machine, each secret is an environment variable in new shells and agents, and a file at `/run/repose/secrets/NAME`. Both are kept in memory only: never on the machine's disk, never in snapshots. A change reaches a running machine within seconds; programs already running keep the old value until restarted (`exec $SHELL` in a shell).
 
 ```
-$ repose secrets list
-DATABASE_URL        2026-09-17 14:02
-STRIPE_SECRET_KEY   2026-09-23 09:41
-
-$ repose secrets rm STRIPE_SECRET_KEY
-Removed STRIPE_SECRET_KEY
+repose secrets list
+repose secrets rm STRIPE_SECRET_KEY
 ```
 
-Nothing, including the dashboard, ever shows a secret's value again after you set it. `list` shows names and dates only.
+`list` shows names and dates, never values. Nothing shows a value again after you set it. Secrets belong to one project. Names are uppercase letters, digits and underscores; values up to 64 KB.
 
-Rules:
-
-- Names are uppercase letters, digits and underscores, starting with a letter, up to 64 characters.
-- Values can be up to 64 KB, and binary is fine.
-- Secrets belong to one project. The same name in two projects is two separate secrets.
-
-The dashboard's Secrets page (from a project's page) does the same: add, list and delete.
-
-### How they're protected
-
-Values are encrypted with a key specific to your account, which is itself encrypted by a key held in Azure Key Vault. The API never returns a value once stored. Secrets don't appear in logs, events or notifications. Before a build log is stored, every current secret value of the project is searched for and replaced with `[redacted]`, and a Nix configuration that contains a secret's value is refused before it's built.
-
-Don't put secrets in your [Nix configuration](/docs/config). Anything in it ends up in the machine's Nix store, which every user on the machine can read.
+The dashboard's project **Secrets** page does the same.
 
 ## Logins copied from your laptop
 
-At each `repose run`, these files are copied from your laptop into the same place on the machine, with mode 0600, if they exist:
+At each `repose run`, these are copied straight to the machine over SSH if you have them. repose never stores them.
 
-| Tool       | File on your laptop                                                                                                   |
-| ---------- | --------------------------------------------------------------------------------------------------------------------- |
-| GitHub CLI | `~/.config/gh/hosts.yml`                                                                                              |
-| Codex CLI  | `~/.codex/auth.json`                                                                                                  |
-| opencode   | `~/.local/share/opencode/auth.json`                                                                                   |
-| Vercel CLI | `~/Library/Application Support/com.vercel.cli/auth.json` on macOS, `~/.local/share/com.vercel.cli/auth.json` on Linux |
+| Tool       | File                                                                                                        |
+| ---------- | ----------------------------------------------------------------------------------------------------------- |
+| GitHub CLI | `~/.config/gh/hosts.yml` (with the token, even if it's in the macOS keychain)                               |
+| Codex CLI  | `~/.codex/auth.json`                                                                                        |
+| opencode   | `~/.local/share/opencode/auth.json`                                                                         |
+| Vercel CLI | `~/Library/Application Support/com.vercel.cli/auth.json` (macOS), `~/.local/share/com.vercel.cli/auth.json` |
 
-The run prints which ones went: `Credentials: gh, codex`. A file is copied again only when it changed on your laptop, so a rotated token arrives at the next run. If the machine's copy is newer (because you logged in there), the machine's is kept and the CLI says so.
+With `gh` logged in and a github.com remote, git on the machine pushes over HTTPS with that login, so an agent can push without your SSH keys.
 
-If your `gh` token lives in the macOS keychain, the copy of `hosts.yml` sent to the machine includes the token so `gh` works there. If `gh` is logged in and the project's remote is on github.com, git on the machine is also set up to push over HTTPS using `gh`, so an agent can `git push` without your SSH keys.
-
-These files go straight from your laptop to the machine over SSH. repose's servers never store them.
-
-**Never copied**, whatever you have on your laptop: SSH private keys, Claude Code's `.credentials.json`, Gemini's OAuth file.
+Never copied: SSH private keys, Claude Code's login, Gemini's OAuth login. See [Agents](/docs/agents#log-in) for those.
 
 ### Other git hosts
 
-For GitLab, Bitbucket or a self-hosted server, give the machine a token. For example, with a GitLab personal access token stored as a secret:
+For GitLab, Bitbucket or your own server, store a token and tell git on the machine to use it:
 
 ```
 repose secrets set GITLAB_TOKEN
 ```
 
-then on the machine:
+then, on the machine:
 
 ```
 git config --global credential.helper '!f() { echo username=oauth2; echo "password=$GITLAB_TOKEN"; }; f'
 ```
 
-The machine's `~/.gitconfig` is on its disk, so this lasts for the life of the project.
+## Git and Claude Code settings
 
-Your laptop's ssh-agent is forwarded to the machine for as long as you're attached, so a push over SSH works then too. It stops working when you detach, which is why an HTTPS token is the better choice for an agent working on its own.
+Your global git settings are copied, minus credential helpers, signing, URL rewrites and anything that looks like a token. Settings you make on the machine win. Commits made on the machine are unsigned, since the signing key stays on your laptop.
 
-## Git settings
+Your Claude Code setup is copied too: `CLAUDE.md`, `settings.json` (with `env` and API key helpers removed), skills, agents, commands and the scripts your hooks run. [Agents](/docs/agents#your-claude-code-setup-comes-along) has the details.
 
-Your laptop's global git settings travel too, from the checkout's point of view, so an `includeIf` that sets a work email for this directory is applied. They're written to `~/.config/git/repose-carried` on the machine and included first from `~/.gitconfig`, so anything you set on the machine itself wins.
+## What an agent on the machine can reach
 
-Left out: credential helpers, SSH and URL rewrite settings, commit signing, proxies, hooks paths, merge and diff tools, and any value that looks like a token or password. A setting that points at a laptop path the machine doesn't have, or an editor or pager it doesn't have, is dropped with a note. Your global gitignore (`core.excludesFile`) travels as its contents.
+- **Everything on the machine**, including your checkout, `.env` files and the logins above. It has `sudo`.
+- **The internet**, outbound, with the limits in [Limits](/docs/limits).
+- **Your git host**, with whatever credentials the machine has.
+- **Not your other projects.** Each is a separate machine, and the network stops them from reaching each other.
+- **Not your laptop.** The machine can't open connections to it. While you're attached, two things link them: your ssh-agent is forwarded (processes can ask it to sign, not read keys), and ports on the machine appear on your laptop's `localhost`.
 
-Commit signing isn't carried because the signing key stays on your laptop. Commits the agent makes on the machine are unsigned.
+## What repose stores
 
-## `.env` files
+- Your account (GitHub login, email), and each project's name, git remote, size, state, configuration and build logs.
+- Named secrets, encrypted with a key for your account that is itself protected by a key in Azure Key Vault.
+- Once a minute, for billing and abuse detection: whether the machine is running, CPU, memory, network and disk use, and the names of running processes. Never their arguments or environment.
+- Agent events: which agent, what kind of event, and the agent's own one-line summary.
 
-Gitignored `.env` and `.env.*` files in the checkout are copied with the code. See [What gets synced](/docs/sync#your-code). They land on the machine's disk and so are included in snapshots, the same as your code.
+Never stored: your code, prompts, terminal contents, files on the machine, or the logins copied from your laptop. The [privacy policy](/privacy) has the full list.
+
+Disks aren't encrypted per project yet, so an operator with root on a server can read the disks on it. Every operator login and command inside a machine is audited, and operators look inside only for an incident, an abuse report or a support request you made. Machines and snapshots are in Azure East US.

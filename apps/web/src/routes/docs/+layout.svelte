@@ -104,9 +104,7 @@
 		{:else}
 			<nav class="mt-5" aria-label="Docs">
 				{#each groups as group (group.section)}
-					<p
-						class="mt-5 mb-1.5 px-2 text-xs font-medium tracking-wide text-zinc-600 uppercase first:mt-0 dark:text-zinc-400"
-					>
+					<p class="mt-5 mb-1 px-2 text-sm font-medium text-zinc-950 first:mt-0 dark:text-zinc-50">
 						{group.section}
 					</p>
 					<ul>

@@ -1,49 +1,98 @@
 ---
-title: Overview
-description: What repose is and how the pieces fit together.
+title: Quickstart
+description: Install the CLI, start a machine for your project and hand a task to an agent.
 section: Start here
 order: 1
 ---
 
-repose gives each of your projects its own Linux machine in the cloud. You start a coding agent there from your laptop's terminal, close the laptop, and the agent keeps working. It sends you a notification once it finishes or needs an answer, and you pick the session back up from any computer.
+repose gives each of your projects its own Linux machine in the cloud, with your code, tools and logins already on it. An agent there can run with full permissions for as long as the work takes. The worst it can do is wreck that one machine, and a snapshot puts it back. Your laptop, your SSH keys and your other projects are out of its reach.
 
-The agent runs with full permissions on that machine. It can install packages, run Docker, delete files and push to your branch. It has no network path to your laptop or to your other projects, and your SSH private keys are never copied to it. [Security](/docs/security) lists what does reach the machine, including the one thing that reaches back while you're attached.
+You need macOS or Linux (on Windows, use WSL) with `git` and `ssh`, a GitHub account, and a git checkout.
 
-## The pieces
-
-You work with three things.
-
-**The `repose` command** runs on your laptop (macOS or Linux). It creates the machine, copies your uncommitted work and your tool logins onto it, and drops you into a tmux session there. Almost everything you do goes through it.
-
-**The machine** is a NixOS microVM, one per project, with its own kernel, disk and Docker daemon. You log in as the user `dev`. Your checkout sits at `/home/dev/<project>`. Five coding agents, Node, Python, Go, Rust, a C toolchain, headless Chromium and the usual command-line tools are already installed. The machine stays on until you stop it.
-
-**The dashboard** at [repose.herakraft.co](https://repose.herakraft.co) shows every project's state and cost, lets you add packages from a menu, manage secrets and snapshots, set up notifications and pay.
-
-## A typical session
+## 1. Install and log in
 
 ```
-$ cd ~/code/todo-app
-$ repose run "add rate limiting to the login route, run the tests, commit when green"
+curl -fsSL https://repose.herakraft.co/install.sh | sh
+repose login
 ```
 
-The first time, this creates a machine for the checkout, builds its environment and boots it. Then it copies over your uncommitted edits and any commits you haven't pushed, starts Claude Code in a tmux window, types your prompt into it and attaches you to that window.
+`repose login` prints a URL and a code. Open the URL on any device, sign in with GitHub and enter the code. [Install](/docs/install) has the other ways to install.
 
-Press `Ctrl-b` then `d` to detach. The agent keeps going. Close the laptop if you like.
-
-Later, from the same laptop or another one:
+## 2. Start a machine for your checkout
 
 ```
-$ repose attach todo-app
+cd ~/code/your-project
+repose run
 ```
 
-You're back in the same tmux session, with the agent's full history on screen.
+```
+✓ Created your-project (large)  0.3s
+✓ Built the environment  6.1s
+✓ Booted your-project  5.2s
+Connected to your-project (large)
+Synced: 3 modified, 1 untracked (2 new commits)
+Credentials: gh
+Ready in 14s.
+```
 
-Once the work is ready, the agent commits and pushes from the machine the way you would. You pull on your laptop. Nothing syncs back on its own.
+You're now in a shell on the machine, in `/home/dev/your-project`, with your uncommitted changes and unpushed commits applied. The shell runs inside tmux, a terminal session that keeps running when you disconnect.
 
-## Where to go next
+## 3. Log in to Claude Code on the machine
 
-- [Quickstart](/docs/quickstart) takes you from nothing to a running agent in about five minutes.
-- [Run and attach](/docs/run-and-attach) covers the tmux session and how agents are started.
-- [What gets synced](/docs/sync) lists which files travel to the machine and which never do.
-- [Ports and localhost](/docs/ports) explains how a dev server on the machine shows up on your laptop.
-- [Pricing and billing](/docs/billing) has the rates and what a stopped machine costs.
+Claude Code's login is never copied from your laptop, so you log in once per machine. Type `claude`, open the URL it prints, approve, and paste the code back. The login stays on the machine's disk.
+
+Codex, opencode and GitHub CLI logins were copied from your laptop in step 2. [Agents](/docs/agents) covers the rest.
+
+## 4. Let it run without asking
+
+To have Claude Code skip permission prompts on every repose machine, add this to `~/.claude/settings.json` on your laptop. `repose run` copies it over.
+
+```json
+{
+	"permissions": {
+		"defaultMode": "bypassPermissions"
+	}
+}
+```
+
+## 5. Hand it a task
+
+Detach from tmux with `Ctrl-b` then `d`. Back on your laptop:
+
+```
+repose run "write tests for src/billing.ts, run them, commit and push when they pass"
+```
+
+The CLI starts Claude Code in a new tmux window on the machine, types your prompt and attaches you. Watch, or detach and close the laptop. The agent keeps working.
+
+## 6. Get a notification when it's done
+
+Email is on by default. For your phone, pick a long random [ntfy](https://ntfy.sh) topic, subscribe to it in the ntfy app, then:
+
+```
+repose notify set --ntfy https://ntfy.sh/repose-4f9c2a7e1b3d5c8a0f6e
+repose notify test
+```
+
+## 7. Come back and stop
+
+From any computer you're logged in on:
+
+```
+repose attach your-project
+```
+
+When the agent has pushed, pull on your laptop as usual. Nothing syncs back on its own. Stop the machine when you're done:
+
+```
+repose stop
+```
+
+A stopped machine costs only its disk. The next `repose run` starts it again in about 10 seconds with your files where you left them. Running processes, agents included, don't survive a stop.
+
+## Next
+
+- [Run and attach](/docs/run-and-attach): tmux, agents, SSH and editors.
+- [Sync](/docs/sync): what travels to the machine and what doesn't.
+- [The machine](/docs/machine): what's installed, ports, the browser.
+- [Pricing](/docs/billing).

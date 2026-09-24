@@ -1,102 +1,71 @@
 ---
-title: Stop, start, destroy
-description: What each state costs, snapshots, and bringing a project back.
+title: Projects and lifecycle
+description: Check on projects, stop and start them, take and restore snapshots, destroy and bring back.
 section: Using repose
-order: 20
+order: 17
 ---
 
-A machine runs until you stop it. repose never stops a machine for being idle. That's deliberate, since the point is to leave an agent working, but it means a machine you forget about keeps costing money. `repose projects` shows what's running.
+A project is one machine plus its disk, snapshots, secrets and configuration. The first `repose run` in a checkout creates it. After that, any checkout of the same repository, on any laptop you're logged in on, finds it by its git remote.
 
-## Stop
+To act on a project from elsewhere, name it: `repose attach todo-app`, `repose stop todo-app`. For `repose run`, whose argument is the prompt, use `--project todo-app`.
+
+## See what's running
+
+```
+$ repose projects
+PROJECT    CLASS  STATE    UP     AGENTS           TODAY  MONTH
+todo-app   large  running  2h14m  claude: working  $0.31  $18.40
+api-v2     xl     stopped  -      -                $0.00  $41.02
+```
+
+A machine runs until you stop it; repose never stops one for being idle. For one project in detail, including which processes are listening on ports:
+
+```
+repose status todo-app
+repose status todo-app --watch
+```
+
+The dashboard shows the same, plus events, snapshots and a projected monthly cost.
+
+## Stop and start
 
 ```
 $ repose stop todo-app
 Stopped todo-app in 38s. Snapshot 0192… (2.1 GB). Disk is still billed; `repose destroy todo-app` to stop that.
-```
 
-Stopping shuts the machine down, which ends every process on it: agents, dev servers, the tmux session. Then it takes a snapshot of the disk. The disk itself stays, with everything in `/home/dev`.
-
-`--no-snapshot` skips the snapshot and is faster. The newest snapshot is then the last nightly one.
-
-A stopped machine is charged for its disk only. See [Pricing](/docs/billing).
-
-## Start
-
-```
 $ repose start todo-app
-todo-app is running (large), ready in 14s. `repose attach todo-app` to get in.
+todo-app is running (large), ready in 9s. `repose attach todo-app` to get in.
 ```
 
-`repose run` in the checkout starts a stopped machine too, then syncs and attaches as usual. `repose attach` and `repose open` don't start anything; they say the machine is stopped and which command to run.
+Stopping ends every process and snapshots the disk (`--no-snapshot` skips that). The disk stays, with everything in `/home/dev`. A stopped machine costs only its disk. `repose run` in the checkout starts a stopped machine too.
 
-`start` is also the fix for a machine in the `error` state, or one whose status says "the environment's agent (guestd) is not answering". It restarts the machine without a snapshot and boots it on the newest built configuration:
-
-```
-$ repose start age-calculator
-Restarting age-calculator (its agent stopped answering)...
-age-calculator is running (large), ready in 21s. `repose attach age-calculator` to get in.
-```
-
-## States
-
-| State                  | What it means                                                                 | Billed for            |
-| ---------------------- | ----------------------------------------------------------------------------- | --------------------- |
-| `creating`, `building` | A new project's disk and environment are being made.                          | Nothing               |
-| `starting`             | Booting.                                                                      | Disk                  |
-| `running`              | On and reachable.                                                             | Compute, disk, egress |
-| `stopping`             | Shutting down and snapshotting.                                               | Compute until stopped |
-| `stopped`              | Off. The disk is kept.                                                        | Disk                  |
-| `restoring`            | A snapshot is being written onto the disk.                                    | Disk                  |
-| `destroying`           | Being deleted, final snapshot first.                                          | Until it's gone       |
-| `error`                | Something failed. `repose status` says what; `repose start` usually fixes it. | Disk                  |
-
-Compute is counted by the minute while the state is `running`.
+`repose start` is also the fix for a project in the `error` state: it restarts the machine on its newest configuration.
 
 ## Snapshots
 
-A running project's disk is snapshotted every night at 03:00 server time, and every project's disk is snapshotted when you stop it. You can take one yourself at any time:
+The disk is snapshotted every night while running, and whenever you stop. Take one yourself before something risky:
 
 ```
-$ repose snapshots create
-Snapshot of todo-app taken in 41s.
+repose snapshots create
+repose snapshots list
 ```
 
-Taking a snapshot of a running machine freezes its filesystem for under a second. Agents keep running. A database in the middle of a write gets the same copy it would get from a power cut, which databases are built to recover from.
+The seven newest are kept, free. A snapshot holds the whole disk (checkout, home directory, logins made on the machine, installed tools) but not [secrets](/docs/secrets), which live only in memory.
+
+To put a project back to a snapshot, stop it first. Stopping takes its own snapshot, so this can be undone:
 
 ```
-$ repose snapshots list
-ID          TAKEN             SIZE     REASON
-snap_01J8…  2026-09-17 03:00  2.1 GB   scheduled
-snap_01J8…  2026-09-16 22:14  2.0 GB   stop
+repose stop todo-app
+repose snapshots restore SNAPSHOT_ID --project todo-app
 ```
 
-The seven newest snapshots are kept; a manual one counts toward the seven. The oldest is deleted only after a newer one has succeeded. A project that's been stopped for a long time keeps its latest snapshot however old it is. Snapshots are free while the project exists.
-
-Snapshots contain the whole disk: your checkout, your home directory, logins you made on the machine, `.env` files, installed tools. They don't contain [named secrets](/docs/secrets), which only ever live in memory.
-
-### Restoring a snapshot
-
-Into the same project, which replaces its disk. The machine has to be stopped first:
+Or restore into a new project and leave the original alone:
 
 ```
-$ repose stop todo-app
-$ repose snapshots restore snap_01J8… --project todo-app
-Restore over the current volume? Anything since the snapshot is lost. [y/N] y
-Restored todo-app. `repose start todo-app` boots it.
+repose snapshots restore SNAPSHOT_ID --as-new todo-app-yesterday
 ```
 
-Stopping takes a snapshot first, so even this is reversible.
-
-Or into a new project next to the original, which leaves the original alone:
-
-```
-$ repose snapshots restore snap_01J8… --as-new todo-app-yesterday
-Restored into a new project, todo-app-yesterday. `repose projects` lists it.
-```
-
-The dashboard's project page lists snapshots with **Restore** and **Restore as new…** buttons, and a **Create** button.
-
-## Destroy
+## Destroy and restore
 
 ```
 $ repose destroy todo-app
@@ -104,27 +73,46 @@ Destroy todo-app? A final snapshot is kept for 30 days. [y/N] y
 Destroying todo-app. Bring it back within 30 days with: repose restore todo-app
 ```
 
-Destroying stops the machine if it's running, takes a final snapshot, and deletes the machine and its disk. Billing for the project stops. The final snapshot is kept for 30 days at no charge, and the project's slot is free for a new one at once.
+This deletes the machine and its disk and stops all charges for the project. `--yes` skips the question; `--wait` waits until it's done.
 
-The command returns as soon as the destroy has started. Pass `--yes` to skip the question (a script with no terminal must), and `--wait` to wait until it's finished. If a destroy fails, the project shows as `error` and you get a `destroy failed` notification; running `repose destroy` again picks it up.
-
-In the dashboard, the **Destroy** section at the bottom of the project page asks you to type the project's name.
-
-## Restore a destroyed project
+Within 30 days, bring it back, running, with its size, configuration and git remote:
 
 ```
-$ repose projects --destroyed
-PROJECT   CLASS  DESTROYED         SNAPSHOT          SIZE    RESTORABLE UNTIL  EARLIER
-todo-app  large  2026-09-23 02:23  2026-09-23 02:23  2.0 GB  2026-10-23
-
-$ repose restore todo-app
-Restored todo-app from its snapshot of 2026-09-23 02:23 in 31s; it is running (large). `repose attach todo-app` to get in.
+repose projects --destroyed
+repose restore todo-app
 ```
 
-The project comes back with its size, disk size, configuration and git remote, running. Inside the checkout, plain `repose restore` finds it by the remote. If a live project already has the name, restore under another with `--as NEW-NAME`. `--snapshot ID` restores an older snapshot instead of the newest.
+`--as NEW-NAME` restores under another name, and `--snapshot ID` picks an older snapshot. After 30 days the snapshot is deleted.
 
-After 30 days the snapshot is deleted and the project can't be restored.
+## A second machine for the same repository
 
-## Deleting your account
+For an experiment that shouldn't touch your main project, create another one by name:
 
-The Account page in the dashboard has **Delete account**. It stops every machine at once and marks every project destroyed. Snapshots are kept for 30 days, then deleted along with the rest of your data, except invoices and the audit log, which the [terms](/terms) say are retained.
+```
+repose run --name todo-app-experiment
+```
+
+Commands in the checkout still mean the original; reach the new one by name. This is also how to run several agents on one repository without them sharing a working tree.
+
+## Logs and events
+
+```
+repose logs                  # the machine's boot and kernel output
+repose logs --kind build     # the last configuration build
+repose logs --kind ops       # create, start, stop and snapshot history
+repose events                # agent and project events, last 24 hours
+```
+
+Your applications' output isn't collected; it stays on the machine.
+
+## States
+
+| State                  | Meaning                                                                       |
+| ---------------------- | ----------------------------------------------------------------------------- |
+| `creating`, `building` | A new project's disk and environment are being made.                          |
+| `starting`             | Booting.                                                                      |
+| `running`              | On. Compute is counted by the minute.                                         |
+| `stopping`, `stopped`  | Shutting down, or off with the disk kept.                                     |
+| `restoring`            | A snapshot is being written to the disk.                                      |
+| `destroying`           | Being deleted, final snapshot first.                                          |
+| `error`                | Something failed. `repose status` says what; `repose start` usually fixes it. |
