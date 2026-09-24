@@ -5497,3 +5497,18 @@ the volume changes outside the guest (restore, resize), the closure
 changes (base upgrade, ApplyConfig) or the guest moves hosts, and stopped
 storage would need a price. Worth doing, after those are designed, as a
 fast path beside the boot, never instead of it.
+
+**I-234. Two regressions of the faster boot, found live.** (conductor,
+2026-09-24) On host-01 after base 2026.09.24 (I-231, I-232), one start of
+five came back `guest_unresponsive` and one took 26 s. (1) guestd now
+answers while sshd's boot-time start job is still queued, and
+`systemctl reload-or-restart sshd` after writing the host key exited 1
+against it; WriteSecrets failed and so did the start. The reload is now
+retried every 250 ms within its 20 seconds (`TestSSHDReloadRetriesWhileItsStartIsQueued`).
+(2) The activation script ran `repose-pin-profile` in the foreground; after
+a stop had cut the previous background pass short, a boot copied 98 store
+paths up before systemd started (console: "pinned 98 store paths", first
+journal entry 23 s after StartGuest). At boot the unit now runs from
+`multi-user.target` in the background (Nice 10, idle I/O), and a switch
+starts it with `--no-block`. Waiting bought nothing: a pin protects against
+a later host garbage collection, never an earlier one.

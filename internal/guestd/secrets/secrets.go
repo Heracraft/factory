@@ -60,6 +60,8 @@ type Handler struct {
 	log   *slog.Logger
 	uid   int
 	gid   int
+
+	reloadRetry time.Duration // 0: 250 ms
 }
 
 // New builds the handler. uid and gid own the secret files; a real guest
@@ -206,21 +208,40 @@ func shellQuote(v string) string {
 	return "'" + strings.ReplaceAll(v, "'", `'\''`) + "'"
 }
 
+// reloadSSHD makes sshd use the host key just written. Since the boot
+// got faster (I-231) guestd answers while sshd's own start job is still
+// queued, and `reload-or-restart` then fails against it ("systemctl
+// exited 1", the start came back guest_unresponsive); it is retried until
+// the job settles, within the same 20 seconds.
 func (h *Handler) reloadSSHD(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	res, err := h.run.Run(ctx, sysdep.RunSpec{
-		Argv:      []string{"systemctl", "reload-or-restart", "sshd.service"},
-		MaxOutput: 4 << 10,
-		Env:       sysdep.DevEnv(h.paths, "root"),
-	})
-	if err != nil {
-		return sysdep.Errf(sysdep.CodeInternal, "reload sshd after writing host key: %w", err)
+	for {
+		res, err := h.run.Run(ctx, sysdep.RunSpec{
+			Argv:      []string{"systemctl", "reload-or-restart", "sshd.service"},
+			MaxOutput: 4 << 10,
+			Env:       sysdep.DevEnv(h.paths, "root"),
+		})
+		if err == nil && res.ExitCode == 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			if err != nil {
+				return sysdep.Errf(sysdep.CodeInternal, "reload sshd after writing host key: %w", err)
+			}
+			return sysdep.Errf(sysdep.CodeInternal, "reload sshd after writing host key: systemctl exited %d: %s", res.ExitCode, strings.TrimSpace(string(res.Stderr)))
+		case <-time.After(h.retryEvery()):
+		}
 	}
-	if res.ExitCode != 0 {
-		return sysdep.Errf(sysdep.CodeInternal, "reload sshd after writing host key: systemctl exited %d", res.ExitCode)
+}
+
+// retryEvery is the pause between sshd reload attempts; tests shorten it.
+func (h *Handler) retryEvery() time.Duration {
+	if h.reloadRetry > 0 {
+		return h.reloadRetry
 	}
-	return nil
+	return 250 * time.Millisecond
 }
 
 // IsReserved reports whether name is one of the sshd material names.

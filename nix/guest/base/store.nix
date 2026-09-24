@@ -94,17 +94,26 @@ in
 
   environment.systemPackages = [ pin ];
 
-  # At every activation (boot and switch) and whenever dev's profile
-  # changes, pin. The path unit fires on `nix profile install`.
+  # At every boot and switch, and whenever dev's profile changes, pin, in
+  # the background. It used to run inside the activation script, which at
+  # boot held the whole start up while it copied: 98 paths after a stop cut
+  # the previous pass short took a start from 5 s to 26 s (I-234). Nothing
+  # is safer for waiting: a pin protects against a later host garbage
+  # collection, never one that already happened. The path unit fires on
+  # `nix profile add`.
   system.activationScripts.repose-pin-profile = {
     deps = [ "users" ];
     text = ''
-      ${pin}/bin/repose-pin-profile || true
+      # During a switch systemd is up; at boot the unit's own WantedBy runs it.
+      if [ -d /run/systemd/system ]; then
+        ${pkgs.systemd}/bin/systemctl start --no-block repose-pin-profile.service || true
+      fi
     '';
   };
 
   systemd.services.repose-pin-profile = {
     description = "repose: copy dev's profile closure into the store overlay";
+    wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${pin}/bin/repose-pin-profile";

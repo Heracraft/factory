@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	guestdv1 "github.com/heracraft/repose/internal/gen/guestd/v1"
 	"github.com/heracraft/repose/internal/guestd/sysdep"
@@ -233,5 +234,29 @@ func TestIsReserved(t *testing.T) {
 	}
 	if IsReserved("ANTHROPIC_API_KEY") {
 		t.Error("a normal secret name is reported reserved")
+	}
+}
+
+// A reload that fails while sshd's boot-time start job is still queued is
+// retried until it goes through (the faster boot of I-231 made guestd
+// answer first, and one failed reload failed the whole start).
+func TestSSHDReloadRetriesWhileItsStartIsQueued(t *testing.T) {
+	h, _, run := newHandler(t)
+	h.reloadRetry = time.Millisecond
+	var reloads int
+	run.Match["reload-or-restart sshd.service"] = sysdep.RunResult{ExitCode: 1, Stderr: []byte("Job for sshd.service canceled.")}
+	run.Hook = func(spec sysdep.RunSpec) {
+		if strings.Contains(strings.Join(spec.Argv, " "), "reload-or-restart sshd.service") {
+			reloads++
+			if reloads == 3 {
+				run.Match["reload-or-restart sshd.service"] = sysdep.RunResult{}
+			}
+		}
+	}
+	if err := h.Write(context.Background(), []*guestdv1.Secret{secret(ReservedHostKey, "PRIVATE KEY")}); err != nil {
+		t.Fatalf("write after two failed reloads: %v", err)
+	}
+	if reloads != 3 {
+		t.Fatalf("reloads = %d, want 3", reloads)
 	}
 }
