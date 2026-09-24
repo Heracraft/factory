@@ -473,7 +473,23 @@ func (f *Fake) startProject(w http.ResponseWriter, r *http.Request) *apiError {
 	}
 	o := f.newOp(p, "start")
 	restart := p.State == "error" // api.md: a start from error is a restart (I-157)
-	if p.State != "running" {
+	if p.State != "running" && f.opts.StartDelay > 0 {
+		// Under f.mu already (ServeHTTP); only the goroutine takes it.
+		o.State = "running"
+		o.phase = "start_guest"
+		o.LogURL = "" // the api has a build log for build and create ops only
+		p.State = "starting"
+		p.OpID = o.id
+		go func() {
+			time.Sleep(f.opts.StartDelay)
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			p.OpID = ""
+			f.run(p)
+			o.State = "done"
+			o.phase = ""
+		}()
+	} else if p.State != "running" {
 		f.run(p)
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"op_id": o.id, "restart": restart})
@@ -511,11 +527,80 @@ func (f *Fake) findOp(u *userRec, projectID, opID string) (*project, *op, *apiEr
 }
 
 func (f *Fake) getOp(w http.ResponseWriter, r *http.Request) *apiError {
-	_, o, e := f.findOp(userFrom(r), r.PathValue("id"), r.PathValue("op_id"))
+	if r.URL.Query().Get("wait") != "" {
+		return f.getOpWait(w, r) // dispatched without mu (ServeHTTP)
+	}
+	p, o, e := f.findOp(userFrom(r), r.PathValue("id"), r.PathValue("op_id"))
 	if e != nil {
 		return e
 	}
-	writeJSON(w, http.StatusOK, o.Op)
+	writeJSON(w, http.StatusOK, f.opView(p, o))
+	return nil
+}
+
+// opView is the op as GET answers it. Callers hold mu.
+func (f *Fake) opView(p *project, o *op) Op {
+	v := o.Op
+	if f.opts.NoLongPoll {
+		return v
+	}
+	v.ProjectState = p.State
+	v.Phase = o.phase
+	v.Version = o.State + "." + o.phase + "." + p.State
+	return v
+}
+
+// getOpWait is the op read with ?wait (I-236): held until the op's
+// version differs from ?seen (or from the first read), the op finishes,
+// or the wait (capped at OpWaitMax) runs out. It takes mu per read.
+func (f *Fake) getOpWait(w http.ResponseWriter, r *http.Request) *apiError {
+	q := r.URL.Query()
+	wait, err := time.ParseDuration(q.Get("wait"))
+	if err != nil {
+		n, nerr := strconv.Atoi(q.Get("wait"))
+		if nerr != nil || n < 0 {
+			return invalid("wait: a duration such as 20s")
+		}
+		wait = time.Duration(n) * time.Second
+	}
+	if wait < 0 {
+		return invalid("wait: a duration such as 20s")
+	}
+	wait = min(wait, OpWaitMax)
+	read := func() (Op, *apiError) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		p, o, e := f.findOp(userFrom(r), r.PathValue("id"), r.PathValue("op_id"))
+		if e != nil {
+			return Op{}, e
+		}
+		return f.opView(p, o), nil
+	}
+	v, e := read()
+	if e != nil {
+		return e
+	}
+	if f.opts.NoLongPoll {
+		writeJSON(w, http.StatusOK, v)
+		return nil
+	}
+	base := q.Get("seen")
+	if base == "" {
+		base = v.Version
+	}
+	deadline := time.Now().Add(wait)
+	for v.Version == base && v.State != "done" && v.State != "error" && time.Now().Before(deadline) {
+		select {
+		case <-r.Context().Done():
+			return nil
+		case <-time.After(100 * time.Millisecond): // the api re-reads every 100 ms
+		}
+		if v, e = read(); e != nil {
+			return e
+		}
+	}
+	w.Header().Set(LongPollHeader, "1")
+	writeJSON(w, http.StatusOK, v)
 	return nil
 }
 

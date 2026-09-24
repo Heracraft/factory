@@ -86,6 +86,12 @@ func rateLimitWait(e *APIError) time.Duration {
 // refresh once, retry once"), and waiting out a rate_limited refusal for
 // up to rateLimitBudget.
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
+	return c.doHeader(ctx, method, path, body, out, nil)
+}
+
+// doHeader is do, also storing the successful response's headers in hdr
+// when it is not nil.
+func (c *Client) doHeader(ctx context.Context, method, path string, body any, out any, hdr *http.Header) error {
 	var refreshed bool
 	var limitedSince time.Time
 	for {
@@ -137,6 +143,9 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 		}
 		if apiErr != nil {
 			return apiErr
+		}
+		if hdr != nil {
+			*hdr = resp.Header
 		}
 		return nil
 	}

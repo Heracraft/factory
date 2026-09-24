@@ -64,6 +64,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	} else {
 		early = startEarlyProbe(ctx, e, opts)
 		e.early = early
+		e.guestUp = func(p *Project) { startBootProbe(ctx, e, p, !opts.NoSync) }
 	}
 
 	pr := e.newProgress()
@@ -116,6 +117,9 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	} else if err := ensureRunningFrom(ctx, e, project, pr, fresh); err != nil {
 		return err
 	}
+	// The probe that stands in for the sync's own: the early one, or the
+	// one started when the guest came up (I-237), which replaced it.
+	early = e.early
 	early.settle(ctx, e, project, wasRunning)
 
 	endEnsure()
@@ -337,6 +341,9 @@ func refusePromptThatIsASlug(ctx context.Context, e *Env, prompt string) error {
 // this command rides). It warns when the alias does not work from a
 // plain terminal and uses the generated config directly in that case.
 func connect(ctx context.Context, e *Env, project *Project) (sshTarget, error) {
+	if t, ok := e.early.connected(ctx, e, project); ok {
+		return t, nil
+	}
 	if t, ok, err := connectFast(ctx, e, project); ok {
 		return t, err
 	}
@@ -531,16 +538,11 @@ func waitForSSH(ctx context.Context, t sshTarget, onRefused func(*sshError) (boo
 	}
 }
 
-// ensureRunning is step 2: wait out a create or start in flight, start a
-// stopped (or errored) guest, and wait for the op, streaming the build
-// log when the op carries one. Every phase shows on pr.
-func ensureRunning(ctx context.Context, e *Env, project *Project, pr *progress) error {
-	return ensureRunningFrom(ctx, e, project, pr, false)
-}
-
-// ensureRunningFrom is ensureRunning; fresh says *project was read from
-// the api by this command a moment ago, and is acted on without reading
-// it again.
+// ensureRunningFrom is step 2: wait out a create or start in flight,
+// start a stopped (or errored) guest, and wait for the op, streaming the
+// build log when the op carries one. Every phase shows on pr. fresh says
+// *project was read from the api by this command a moment ago, and is
+// acted on without reading it again.
 func ensureRunningFrom(ctx context.Context, e *Env, project *Project, pr *progress, fresh bool) error {
 	var err error
 	var p *Project
@@ -569,6 +571,9 @@ func ensureRunningFrom(ctx context.Context, e *Env, project *Project, pr *progre
 			}
 			if op.State == "error" {
 				return failedStart(e, project, op, pr)
+			}
+			if e.guestUp != nil && project.State != "stopping" {
+				e.guestUp(project)
 			}
 		} else if err := waitState(ctx, e, project, pr); err != nil {
 			return err
@@ -626,6 +631,11 @@ func ensureRunningFrom(ctx context.Context, e *Env, project *Project, pr *progre
 		return failedStart(e, project, op, pr)
 	}
 	pr.End()
+	if e.guestUp != nil {
+		// The first connection goes out now, beside the read below
+		// (I-237).
+		e.guestUp(project)
+	}
 	p, err = e.Client.GetProject(ctx, project.ID)
 	if err != nil {
 		return err
@@ -695,25 +705,33 @@ func waitState(ctx context.Context, e *Env, project *Project, pr *progress) erro
 // through pr, and (when byState) relabels the phase from the project's
 // state on every poll: "Building the environment", then "Booting".
 func waitOpPhased(ctx context.Context, e *Env, project *Project, opID string, pr *progress, byState bool) (*Op, error) {
-	last := ""
-	tick := func() {
-		if !byState {
-			return
-		}
-		p, err := e.Client.GetProject(ctx, project.ID)
-		if err != nil || p.State == last {
-			return
-		}
-		last = p.State
-		if label, done := phaseForState(p.Slug, p.State); label != "" {
-			pr.Phase(label, done)
+	var w *opWatch
+	if byState {
+		last := ""
+		w = &opWatch{
+			show: func(state string) {
+				if state == "" || state == last {
+					return
+				}
+				last = state
+				if label, done := phaseForState(project.Slug, state); label != "" {
+					pr.Phase(label, done)
+				}
+			},
+			read: func() string {
+				p, err := e.Client.GetProject(ctx, project.ID)
+				if err != nil {
+					return ""
+				}
+				return p.State
+			},
 		}
 	}
 	var out io.Writer = pr
 	if pr == nil {
 		out = e.ErrOut
 	}
-	return waitOpWith(ctx, e.Client, project.ID, opID, out, tick)
+	return waitOpWith(ctx, e.Client, project.ID, opID, out, w)
 }
 
 // waitOp polls an op to completion, streaming its build log to out if one
@@ -722,19 +740,96 @@ func waitOp(ctx context.Context, c *Client, projectID, opID string, out io.Write
 	return waitOpWith(ctx, c, projectID, opID, out, nil)
 }
 
-func waitOpWith(ctx context.Context, c *Client, projectID, opID string, out io.Writer, tick func()) (*Op, error) {
+// opWatch relabels a wait's progress from the project's state: show gets
+// each state learned, read fetches it (GET /projects/:id) when the op
+// read does not carry it (an api without I-236).
+type opWatch struct {
+	show func(state string)
+	read func() string
+}
+
+// opWaitHold is how long one op read asks the api to hold (I-236; the api
+// caps it at 20 s, under every proxy's idle timeout).
+const opWaitHold = 20 * time.Second
+
+// opTransientBudget is how long a wait rides out the api being away (a
+// Coolify rolling redeploy answers 502 or 504, or drops the connection,
+// for a few seconds) before the failure reaches the user.
+var opTransientBudget = 30 * time.Second
+
+// opTransientPause is the pause between reads while the api is away.
+var opTransientPause = 500 * time.Millisecond
+
+// transientAPIError is a failure a moment later may not have: the api
+// unreachable, or the proxy in front of it answering 502/503/504 with
+// its own page instead of the api's envelope.
+func transientAPIError(err error) bool {
+	var ue *unreachableError
+	if errors.As(err, &ue) {
+		return true
+	}
+	var ae *APIError
+	if errors.As(err, &ae) && ae.Code == "internal" {
+		switch ae.Status {
+		case 502, 503, 504:
+			return true
+		}
+	}
+	return false
+}
+
+// readOp is one read of the op in a wait. With an api that long-polls
+// (the previous read carried a version), it is held until something
+// changes; otherwise it is a plain read, beside a read of the project's
+// state when w wants one, so an older api's two reads cost one round
+// trip, not two (I-236).
+func readOp(ctx context.Context, c *Client, projectID, opID string, prev *Op, w *opWatch) (op *Op, held bool, err error) {
+	if prev != nil && prev.Version != "" {
+		return c.GetOpWait(ctx, projectID, opID, opWaitHold, prev.Version)
+	}
+	if w == nil || w.read == nil {
+		op, err = c.GetOp(ctx, projectID, opID)
+		return op, false, err
+	}
+	state := make(chan string, 1)
+	go func() { state <- w.read() }()
+	op, err = c.GetOp(ctx, projectID, opID)
+	st := <-state
+	if err == nil && op.ProjectState == "" {
+		op.ProjectState = st
+	}
+	return op, false, err
+}
+
+func waitOpWith(ctx context.Context, c *Client, projectID, opID string, out io.Writer, w *opWatch) (*Op, error) {
 	seq := 0
 	streamDone := false
 	streamTries := 0
 	started := time.Now()
 	deadline := started.Add(opPollTimeout)
+	var prev *Op
+	var failingSince time.Time
 	for {
-		if tick != nil {
-			tick()
-		}
-		op, err := c.GetOp(ctx, projectID, opID)
+		asked := time.Now()
+		op, held, err := readOp(ctx, c, projectID, opID, prev, w)
 		if err != nil {
+			if transientAPIError(err) && ctx.Err() == nil {
+				if failingSince.IsZero() {
+					failingSince = time.Now()
+				}
+				if time.Since(failingSince) < opTransientBudget {
+					timingf("op wait: api away, retrying")
+					if err := sleepOrDone(ctx, opTransientPause); err != nil {
+						return nil, err
+					}
+					continue
+				}
+			}
 			return nil, err
+		}
+		failingSince = time.Time{}
+		if w != nil && w.show != nil {
+			w.show(op.ProjectState)
 		}
 		if op.LogURL != "" && !streamDone && streamTries < 5 && op.State != "done" && op.State != "error" {
 			streamTries++
@@ -764,7 +859,23 @@ func waitOpWith(ctx context.Context, c *Client, projectID, opID string, out io.W
 		if time.Now().After(deadline) {
 			return nil, exitf(ExitGeneric, "The operation is still running after %s; `repose status` shows where it is.", opPollTimeout)
 		}
-		if err := sleepOrDone(ctx, pollDelay(started)); err != nil {
+		// An api that held the read (or would have: the op had already
+		// changed) is asked again at once; one that did not (older, or
+		// its bound on held reads reached) is polled as before. A held
+		// read that came back at once with nothing new is not trusted
+		// to hold the next one either.
+		again := op.Version != "" && (prev == nil || prev.Version == "")
+		if held && (op.Version != prev.Version || time.Since(asked) >= opWaitHold/2) {
+			again = true
+		}
+		prev = op
+		if again {
+			continue
+		}
+		// The poll interval runs from one read's start to the next, as
+		// I-187's budget counted it: at a laptop's 200 ms the reads
+		// themselves no longer stretch it from 0.5 s to 0.9 s.
+		if err := sleepOrDone(ctx, pollDelay(started)-time.Since(asked)); err != nil {
 			return nil, err
 		}
 	}

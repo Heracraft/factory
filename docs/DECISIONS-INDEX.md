@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-286 entries.
+288 entries.
 
 ## Scope
 
@@ -318,3 +318,5 @@ pointer, not a summary.
 - **I-233** Resuming a stopped guest from a memory snapshot is not adopted yet; the numbers and what it needs are recorded — 2026-09-24; L5478
 - **I-234** Two regressions of the faster boot, found live — 2026-09-24; L5501
 - **I-235** Keeping a stopped guest's processes: the options for secrets, recorded; nothing built — 2026-09-24; L5516
+- **I-236** Waiting on an op is a long-poll: the api answers the moment the op or its project changes — 2026-09-24; L5558
+- **I-237** The first ssh to a guest that was just started goes out the moment its op finishes, and it is the sync's probe — 2026-09-24; L5605

@@ -514,22 +514,28 @@ func opJSON(r *http.Request, op *store.Op) map[string]any {
 }
 
 func (s *Server) userOp(r *http.Request) (*store.Op, error) {
+	_, op, err := s.userOpProject(r)
+	return op, err
+}
+
+// userOpProject is userOp plus the project it belongs to.
+func (s *Server) userOpProject(r *http.Request) (*store.Project, *store.Op, error) {
 	p, err := s.userProjectAny(r)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	opID, err := pathID(r, "op_id")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	op, err := store.GetOp(r.Context(), s.d.Pool, opID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if op.ProjectID == nil || *op.ProjectID != p.ID {
-		return nil, db.ErrNotFound
+		return nil, nil, db.ErrNotFound
 	}
-	return op, nil
+	return p, op, nil
 }
 
 func (s *Server) userProjectAny(r *http.Request) (*store.Project, error) {
@@ -538,15 +544,6 @@ func (s *Server) userProjectAny(r *http.Request) (*store.Project, error) {
 		return nil, err
 	}
 	return store.GetUserProjectAny(r.Context(), s.d.Pool, userFrom(r.Context()).ID, id)
-}
-
-func (s *Server) getOp(w http.ResponseWriter, r *http.Request) error {
-	op, err := s.userOp(r)
-	if err != nil {
-		return err
-	}
-	writeJSON(w, http.StatusOK, opJSON(r, op))
-	return nil
 }
 
 func (s *Server) resizeProject(w http.ResponseWriter, r *http.Request) error {

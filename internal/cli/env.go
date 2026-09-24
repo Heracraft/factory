@@ -40,8 +40,12 @@ type Env struct {
 
 	httpClient *http.Client
 
-	// early is `run`'s probe started before the api answered (I-223).
+	// early is `run`'s probe started before the api answered (I-223), or
+	// the one started the moment its guest's start finished (I-237).
 	early *earlyProbe
+	// guestUp, when set, is called by ensureRunningFrom the moment an op that
+	// started the guest has finished, before anything else is read.
+	guestUp func(p *Project)
 }
 
 func (e *Env) target(slug string) sshTarget {

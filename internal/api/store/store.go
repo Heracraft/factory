@@ -368,6 +368,29 @@ func GetOp(ctx context.Context, q Querier, id uuid.UUID) (*Op, error) {
 	return one[Op](ctx, q, "select "+opCols+" from ops where id = $1", id)
 }
 
+// OpMark is what a long-poll of an op watches (GET /projects/:id/ops/:op_id
+// ?wait, I-236): the op's state and step and its project's state.
+type OpMark struct {
+	State        string
+	Step         int
+	ProjectState string
+}
+
+// GetOpMark reads an op's OpMark in one small query; the long-poll calls
+// it every 100 ms and holds no connection in between.
+func GetOpMark(ctx context.Context, q Querier, id uuid.UUID) (OpMark, error) {
+	var m OpMark
+	var ps *string
+	err := q.QueryRow(ctx, "select o.state, o.step, p.state from ops o left join projects p on p.id = o.project_id where o.id = $1", id).Scan(&m.State, &m.Step, &ps)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return m, db.ErrNotFound
+	}
+	if ps != nil {
+		m.ProjectState = *ps
+	}
+	return m, err
+}
+
 // GetOpByCommand finds the op that sent a command.
 func GetOpByCommand(ctx context.Context, q Querier, commandID uuid.UUID) (*Op, error) {
 	return one[Op](ctx, q, "select "+opCols+" from ops where command_id = $1", commandID)

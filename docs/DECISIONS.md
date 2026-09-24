@@ -5555,3 +5555,94 @@ The options, in the order the owner would take them:
 Decision for now: none of these is built. Documented so the next session
 starts from here; the owner's lean is 1, then 2 with 3 if resumes after
 long stops are wanted.
+**I-236. Waiting on an op is a long-poll: the api answers the moment the
+op or its project changes.** (cli startup, 2026-09-24) After I-231..I-234 a
+`repose run` on a stopped guest took 8.9 s at a laptop's 200 ms (median,
+`ops/dev/startup-bench.sh -r 200 stopped`), and the CLI learned that the
+start had finished late: each poll was `GET /projects/:id` (for the phase
+label), then `GET .../ops/:op_id`, then a 500 ms pause, so a 0.9 s cycle,
+and then one more project read before the first ssh. Simulated at 200 ms
+(fake api, start of 2-3 s, 10 runs each), the time from the op finishing to
+the first ssh being free to go was 684-844 ms median, 1.1 s worst.
+- api: `GET /projects/:id/ops/:op_id?wait=<d>&seen=<version>` holds the
+  read until the op's `version` (state, step, the project's state)
+  differs from `seen` (or from what it was when the request came), the op
+  is finished, the wait (capped at 20 s, under the proxies' idle timeouts)
+  runs out, or the api starts draining (`SetReady(false)`: a rolling
+  deploy answers its held reads at once instead of waiting 20 s on them).
+  The handler re-reads one small row (`store.GetOpMark`) every 100 ms and
+  holds no connection in between: hostd's results land in api-grpc, a
+  different process, so there is no in-process event to wait on, and a
+  NOTIFY listener per waiter would hold a connection each. Held reads are
+  bounded, 4 per user and 1000 in all; past that the read answers at once
+  without `Repose-Long-Poll: 1` and the client pauses as before. Every op
+  read now also carries `version`, `project_state` and `phase`.
+- CLI: the first read is plain; when it carries `version` the next ones
+  are held, back to back, and the phase label comes from `project_state`
+  (no project reads). An api without them (the one live now) is polled as
+  before, but with the project read beside the op read rather than before
+  it, and the 500 ms counted from one read's start to the next (I-187's
+  budget counted it that way; at 200 ms the reads had stretched it to
+  0.9 s). A 502/503/504 page from the proxy or a dropped connection
+  (Coolify's rolling redeploy) is retried every 500 ms for up to 30 s
+  instead of ending the command. `repose start` acts on the project its
+  resolve read, like `run` (I-223), instead of reading it again.
+- Measured: the same simulation gives 296 ms median (103-571) for the new
+  CLI against the current api, 157-167 ms (101-200) with the long-poll.
+  Live at 200 ms against the current api, ensure-running went from 5365 to
+  5127 ms median (the boot is steady to a few ms there, so the old 0.9 s
+  cycle's phase decided the number; the simulation's spread is the honest
+  figure). Expected with the api deployed: about 0.15 s more off the
+  median and no tail past 0.2 s. The request histogram of this route will
+  show held reads of up to 20 s; they are waits, not slow answers.
+*Rejected:* SSE for ops (the CLI already has a stream for the build log,
+but a second stream per wait costs a connection per waiter behind the
+proxy, and a long-poll degrades to the old poll on any api); an in-process
+channel from the ops engine (results arrive in api-grpc; the engine in the
+api would miss them); LISTEN/NOTIFY per waiter (a pooled connection held
+for up to 20 s each).
+
+**I-237. The first ssh to a guest that was just started goes out the
+moment its op finishes, and it is the sync's probe.** (cli startup,
+2026-09-24) After the op, `run` read the project, checked the files, ran
+`ssh <slug>.repose true` (1.9 s at 200 ms: about 9 round trips, TCP, key
+exchange, `none` and a public key query before the signed one, channel
+open, exec) and then the probe (0.58 s) over the master. Now, when
+`~/.ssh/repose` covers the project, the op's end starts the probe itself
+as the first connection (`startBootProbe`), beside the project read that
+follows; `connect` takes that connection as the master, and the sync
+takes its reply. `run --no-sync` sends `true` instead. Before dialling,
+anything earlier is closed: an early probe (I-223) refused because the
+guest was stopped is waited for and marked unusable, and the slug's
+master is closed (`ssh -O exit`), so the new connection is never a session
+on a stale master. A boot probe that failed (refused, certificate, a
+guest not answering yet) is never used: `connect` closes its master and
+falls back to `ssh true` with its retries and the certificate re-issue,
+and the sync runs its own probe. The gateway caches a route answer for 5 s
+(`RouteTTL`), refusals included, so a boot probe whose early probe was
+refused (a checkout with a remote the cache knows) does not dial into the
+cached refusal: the refusal was cached when the early probe reached
+authentication, a fixed number of round trips after it began, and the new
+connection reaches authentication after as many, so it starts no sooner
+than 5.3 s after the early probe started (usually it is later anyway). Live at 200 ms against the current api (`e2e-rt`, 8 runs,
+v0.1.10 median 8988 ms): connect+probe 1919 + 576 ms became one 2037 ms
+ssh, started 204 ms earlier, and the whole run 8092 ms median; from a
+checkout with a remote (`e2e-rt2`, early probe refused, 5 runs each) 9009
+became 8596 ms.
+*Rejected:* dialling during the boot: the gateway refuses a guest that is
+not `running` at authentication and caches the refusal for 5 s, so a dial
+before the op ends costs up to 5 s; the op reports nothing earlier than
+its end (sshd's readiness is the tail of `StartGuest`). Holding the
+authentication in the gateway while the project is `starting` (it
+would hide about 7 of the 9 round trips, some 1.4 s at 200 ms) is the next
+cut, and belongs to the gateway (`interfaces/ssh-gateway.md`). Sending the
+start beside the resolve read (1 round trip): a start is billed and cannot
+be taken back, and `run` refuses some commands after the read (a one-word
+prompt that is a project's name) and resolves the project by remote,
+which the cache can only guess. Folding the sync's apply into the probe's
+ssh: the apply is built from the probe's answer (commits the guest lacks,
+its dirty state, the carry's markers); a guarded speculative apply would
+re-open I-210's three-times-reviewed script to save one round trip on
+runs that change something. On a run with nothing changed the apply is
+already skipped (I-224), so a stopped run is now one ssh before the
+attach.
