@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"time"
 )
@@ -140,6 +141,29 @@ func (c *Client) GetOp(ctx context.Context, projectID, opID string) (*Op, error)
 		return nil, err
 	}
 	return &op, nil
+}
+
+// opLongPollHeader is the api's mark on an op read whose ?wait it
+// honoured (I-236).
+const opLongPollHeader = "Repose-Long-Poll"
+
+// GetOpWait is GET /projects/:id/ops/:op_id?wait=&seen= (I-236): the api
+// answers when the op's version differs from seen, the op finishes, or
+// wait runs out. held reports that the api honoured the wait; an api
+// without it (older, or its waiter bound reached) answers at once and
+// held is false.
+func (c *Client) GetOpWait(ctx context.Context, projectID, opID string, wait time.Duration, seen string) (op *Op, held bool, err error) {
+	op = &Op{}
+	q := url.Values{"wait": {fmt.Sprintf("%dms", wait.Milliseconds())}}
+	if seen != "" {
+		q.Set("seen", seen)
+	}
+	var hdr http.Header
+	path := "/projects/" + url.PathEscape(projectID) + "/ops/" + url.PathEscape(opID) + "?" + q.Encode()
+	if err := c.doHeader(ctx, http.MethodGet, path, nil, op, &hdr); err != nil {
+		return nil, false, err
+	}
+	return op, hdr.Get(opLongPollHeader) != "", nil
 }
 
 func (c *Client) ResizeProject(ctx context.Context, id string, bytes int64) (string, error) {

@@ -41,7 +41,21 @@ type Options struct {
 	// the way the real engine does; a start meanwhile is a conflict. Zero
 	// keeps the instant create.
 	CreateDelay time.Duration
+	// StartDelay makes POST /projects/:id/start on a stopped project leave
+	// the project "starting" and its op "running" (phase start_guest) for
+	// the delay, then running and done. Zero keeps the instant start.
+	StartDelay time.Duration
+	// NoLongPoll makes GET /projects/:id/ops/:op_id ignore ?wait and
+	// answer without version, phase or project_state, as the api before
+	// I-236 did.
+	NoLongPoll bool
 }
+
+// OpWaitMax caps ?wait on the op read, as the api does (I-236).
+const OpWaitMax = 20 * time.Second
+
+// LongPollHeader marks an op read whose ?wait was honoured (I-236).
+const LongPollHeader = "Repose-Long-Poll"
 
 // CannedUser is the user every token maps to when Options.Users is nil.
 var CannedUser = User{
@@ -60,6 +74,7 @@ const (
 	// FakeHostName is the name GET /projects/:id/route reports for hostID.
 	FakeHostName = "fake-host-01"
 	logPattern   = "GET /v1/projects/{id}/ops/{op_id}/log"
+	opPattern    = "GET /v1/projects/{id}/ops/{op_id}"
 	rateWindow   = time.Minute
 	rateBurst    = 60
 )
@@ -380,7 +395,9 @@ func (f *Fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		r = r.WithContext(context.WithValue(r.Context(), ctxUser, u))
 	}
-	if pattern == logPattern {
+	if pattern == logPattern || (pattern == opPattern && r.URL.Query().Get("wait") != "") {
+		// The log streams and a long-poll of an op waits: both take mu
+		// themselves, for their reads only.
 		f.mu.Unlock()
 		f.mux.ServeHTTP(w, r)
 		return
@@ -459,7 +476,7 @@ func (f *Fake) register() {
 	f.handle("DELETE /v1/projects/{id}", f.destroyProject)
 	f.handle("POST /v1/projects/{id}/start", f.startProject)
 	f.handle("POST /v1/projects/{id}/stop", f.stopProject)
-	f.handle("GET /v1/projects/{id}/ops/{op_id}", f.getOp)
+	f.handle(opPattern, f.getOp)
 	f.handle(logPattern, f.opLog)
 	f.handle("POST /v1/projects/{id}/resize", f.resizeProject)
 	f.handle("GET /v1/projects/{id}/route", f.projectRoute)

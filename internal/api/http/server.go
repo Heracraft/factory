@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -109,6 +110,8 @@ type Server struct {
 	cfg      *ratelimit.Limiter
 	sessions *sessionTracker
 	ready    bool
+	waiters  opWaiters   // held op reads (I-236)
+	draining atomic.Bool // SetReady(false): held op reads answer now
 	mu       sync.Mutex
 }
 
@@ -160,11 +163,13 @@ func (s *Server) Routes() []string {
 	return out
 }
 
-// SetReady flips /readyz.
+// SetReady flips /readyz. false is the start of a drain: held op reads
+// (I-236) answer at their next check instead of holding the shutdown.
 func (s *Server) SetReady(v bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ready = v
+	s.draining.Store(!v)
 }
 
 type handler func(w http.ResponseWriter, r *http.Request) error

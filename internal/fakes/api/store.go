@@ -135,6 +135,11 @@ type Op struct {
 	State  string `json:"state"`
 	Error  string `json:"error,omitempty"`
 	LogURL string `json:"log_url,omitempty"`
+	// Version, Phase and ProjectState are the long-poll's fields (I-236),
+	// filled per read; Options.NoLongPoll leaves them out.
+	Version      string `json:"version,omitempty"`
+	Phase        string `json:"phase,omitempty"`
+	ProjectState string `json:"project_state,omitempty"`
 }
 
 // Host is one row of GET /internal/hosts.
@@ -183,6 +188,7 @@ type op struct {
 	id        string
 	projectID string
 	kind      string
+	phase     string // while running
 }
 
 type cert struct {

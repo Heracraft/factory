@@ -99,9 +99,6 @@ func connectFast(ctx context.Context, e *Env, project *Project) (target sshTarge
 	if e.TargetFor != nil || noFastPath() {
 		return sshTarget{}, false, nil
 	}
-	if t, ok := e.early.connected(ctx, e, project); ok {
-		return t, true, nil
-	}
 	sd, err := sshDir()
 	if err != nil {
 		return sshTarget{}, false, nil
@@ -230,7 +227,14 @@ type earlyProbe struct {
 	done     chan struct{}
 	out      []byte
 	err      error
-	usable   bool // set by settle
+	started  time.Time // when the ssh began
+	usable   bool      // set by settle
+	// boot is a probe started when the guest's start finished (I-237):
+	// it is this guest's, whatever the project was before the command.
+	boot bool
+	// noProbe is a boot connection made with `true` (run --no-sync): it
+	// proves the connection but has no checkout to report.
+	noProbe bool
 }
 
 func startEarlyProbe(ctx context.Context, e *Env, opts RunOptions) *earlyProbe {
@@ -248,11 +252,89 @@ func startEarlyProbe(ctx context.Context, e *Env, opts RunOptions) *earlyProbe {
 		timingf("run: cached project, no ssh master; probe (and master) started beside the api")
 	}
 	ep := &earlyProbe{id: guess.ID, slug: guess.Slug, target: target, cold: !master, done: make(chan struct{})}
+	ep.started = time.Now()
 	go func() {
 		defer close(ep.done)
 		ep.out, ep.err = runSSH(ctx, target, probeScript(guess.Slug), nil)
 	}()
 	return ep
+}
+
+// gatewayRouteTTL is how long the gateway keeps a project's route answer
+// (internal/gateway RouteTTL): a connection it refused because the guest
+// was stopped is refused again, from its cache, for that long.
+const gatewayRouteTTL = 5 * time.Second
+
+// routeTTLMargin is added to gatewayRouteTTL for the difference between
+// two connections' handshakes (the first one also resolved the name).
+const routeTTLMargin = 300 * time.Millisecond
+
+// startBootProbe makes the command's first connection to p's guest the
+// moment the op that started it has finished (I-237), beside the
+// project read that follows, instead of after it and the certificate
+// check as `ssh true`: with the sync on, the connection runs the sync's
+// probe, so the handshake and the probe are one ssh. The gateway refuses
+// a connection to a guest that is not running yet and caches the refusal
+// for gatewayRouteTTL, so nothing is dialled before the op says the guest
+// is up, and after an early probe the gateway refused, not before the
+// refusal it cached has expired: the refusal was cached when that probe
+// reached authentication, a fixed number of round trips after it began,
+// and the new connection reaches authentication after as many, so it
+// starts gatewayRouteTTL (and a margin) after the refused one started. Whatever was there before (an early probe refused because the
+// guest was stopped, a master of a guest that restarted) is closed
+// first, so the new connection is never a stale master's session.
+func startBootProbe(ctx context.Context, e *Env, p *Project, withProbe bool) {
+	var target sshTarget
+	if e.TargetFor != nil {
+		target = e.TargetFor(p.Slug)
+	} else {
+		if noFastPath() {
+			return
+		}
+		sd, err := sshDir()
+		if err != nil {
+			return
+		}
+		handle, covered := sshFilesCover(sd, p, time.Now())
+		if !covered {
+			return // connect's slow path issues the certificate first
+		}
+		if resolves, _ := aliasResolves(p.Slug, handle); !resolves {
+			return
+		}
+		target = e.target(p.Slug)
+	}
+	var notBefore time.Time
+	if old := e.early; old != nil {
+		select {
+		case <-old.done:
+		case <-time.After(3 * time.Second):
+			return // still dialling: settle closes it, and connect dials as before
+		}
+		if old.err != nil && old.slug == p.Slug {
+			notBefore = old.started.Add(gatewayRouteTTL + routeTTLMargin)
+		}
+		old.usable = false
+	}
+	closeMaster(ctx, e, p.Slug)
+	ep := &earlyProbe{id: p.ID, slug: p.Slug, target: target, cold: true, boot: true, usable: true, noProbe: !withProbe, done: make(chan struct{})}
+	script := "true"
+	if withProbe {
+		script = probeScript(p.Slug)
+	}
+	timingf("run: guest up; first connection started beside the project read")
+	go func() {
+		defer close(ep.done)
+		if d := time.Until(notBefore); d > 0 {
+			timingf("run: the gateway refused this project's early probe; waiting %dms out its route cache", d.Milliseconds())
+			if sleepOrDone(ctx, d) != nil {
+				ep.err = ctx.Err()
+				return
+			}
+		}
+		ep.out, ep.err = runSSH(ctx, target, script, nil)
+	}()
+	e.early = ep
 }
 
 // settle decides, once the api has answered, whether the probe stands in
@@ -265,7 +347,7 @@ func (ep *earlyProbe) settle(ctx context.Context, e *Env, p *Project, wasRunning
 	if ep == nil {
 		return
 	}
-	ep.usable = p != nil && p.ID == ep.id && wasRunning
+	ep.usable = p != nil && p.ID == ep.id && (wasRunning || ep.boot)
 	if !ep.usable && ep.cold {
 		<-ep.done
 		closeMaster(ctx, e, ep.slug)
@@ -275,7 +357,7 @@ func (ep *earlyProbe) settle(ctx context.Context, e *Env, p *Project, wasRunning
 // forProject is the probe's result as SyncOptions.Probe, or nil when
 // settle found it cannot stand in for the sync's own.
 func (ep *earlyProbe) forProject() func() ([]byte, error) {
-	if ep == nil || !ep.usable {
+	if ep == nil || !ep.usable || ep.noProbe {
 		return nil
 	}
 	return func() ([]byte, error) {
@@ -298,6 +380,10 @@ func (ep *earlyProbe) connected(ctx context.Context, e *Env, project *Project) (
 		closeMaster(ctx, e, ep.slug)
 		return sshTarget{}, false
 	}
-	timingf("connect: the early probe's connection is the master")
+	if ep.boot {
+		timingf("connect: the connection made when the guest came up is the master")
+	} else {
+		timingf("connect: the early probe's connection is the master")
+	}
 	return ep.target, true
 }

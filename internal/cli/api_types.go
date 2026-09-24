@@ -92,6 +92,13 @@ type Op struct {
 	State  string  `json:"state"`
 	Error  OpError `json:"error,omitempty"`
 	LogURL string  `json:"log_url,omitempty"`
+	// Version, Phase and ProjectState come from an api with the op
+	// long-poll (I-236); an older api leaves them empty. Version is
+	// opaque: it changes when the op's state or phase or the project's
+	// state does, and goes back as ?seen=.
+	Version      string `json:"version,omitempty"`
+	Phase        string `json:"phase,omitempty"`
+	ProjectState string `json:"project_state,omitempty"`
 }
 
 // OpError is an op's error as the api stores it: `{code, message}` (the

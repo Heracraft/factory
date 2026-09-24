@@ -51,7 +51,9 @@ func StartCmd(ctx context.Context, e *Env, projectArg string) error {
 	}
 	pr := e.newProgress()
 	defer pr.Fail()
-	if err := ensureRunning(ctx, e, project, pr); err != nil {
+	// requireProject read the project a moment ago: acted on without a
+	// second read (as run does, I-223).
+	if err := ensureRunningFrom(ctx, e, project, pr, true); err != nil {
 		return err
 	}
 	pr.Fail()

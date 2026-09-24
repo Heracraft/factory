@@ -36,7 +36,7 @@ unique; it is the second half of the SSH login name.
 | DELETE | `/projects/:id` | destroy (volume deleted, last snapshot kept 30 days) → `202 {op_id, state}`; the destroy is finished only when that op is `done` (`GET /projects/:id` then answers `404`). The project's state is `destroying` from the moment the DELETE answers; the op stops the guest, snapshots the stopped volume (reason `stop`) and deletes it (I-165). A failed destroy leaves the project in `error` with `last_error` and records a `destroy_failed` event, which notifies. A DELETE while a destroy op is open answers with that op. A dead guestd does not fail it (I-156). `state` is new in the previous release; `op_id` was always there |
 | POST | `/projects/:id/start` | → `{op_id, restart}`; `restart: true` when the project was in `error` or running with its guestd not answering, and the op stops and reboots it on its newest built revision (I-157). `restart` is new in this release |
 | POST | `/projects/:id/stop` | `{snapshot: bool=true}` → `{op_id}` |
-| GET | `/projects/:id/ops/:op_id` | `{state: pending\|running\|done\|error, error?: {code, message, detail?, fragment_line?}, log_url?}`; `message` is the sentence to show the user, `detail` the host's own wording for operators (I-159). Answers for a destroyed project's ops too |
+| GET | `/projects/:id/ops/:op_id` | `{state: pending\|running\|done\|error, error?: {code, message, detail?, fragment_line?}, log_url?, version, project_state, phase?}`; `message` is the sentence to show the user, `detail` the host's own wording for operators (I-159). Answers for a destroyed project's ops too. `?wait=<duration>` (`20s`, `1500ms`, or whole seconds; capped at 20 s) makes it a long-poll (I-236): the answer comes when the op's `version` differs from `?seen=<version>` (from the op as the request found it, without `seen`), when the op is `done` or `error`, when the wait runs out, or when the api begins a drain; a held (or already changed) answer carries the header `Repose-Long-Poll: 1`. Past 4 held reads per user the request is answered at once without the header, and the client pauses before its next read. `version` is opaque and changes with the op's state or phase or the project's state; `project_state` is the project's `state`; `phase` names the phase a `running` op is in (`build`, `start_guest`, ...). `version`, `project_state`, `phase` and `wait` are new in this release; a client that ignores them polls as before |
 | GET | `/projects/:id/ops/:op_id/log` | SSE stream of `BuildLog` lines (`id:` = seq, `data:` = `{seq, line}`), then a `done` event whose data is `{state}`; `?since=<seq>` or `Last-Event-ID` resumes after a line. Browsers cannot set headers on EventSource, so this route also accepts `?access_token=<jwt>`; the token is never logged and the route is the only one that accepts it. |
 | POST | `/projects/:id/resize` | `{volume_bytes}` (grow only) |
 | GET | `/projects/:id/route` | `{host_id, host_name?, host_state?, guest_ip, state, host_unreachable}` (used by CLI for `status` detail; `host_name` is what it shows, I-192) |
@@ -158,7 +158,8 @@ Per user: 600 GET requests/min, 60/min for every other method, 10/min on
 `POST /certs`, 5/min on `PUT /config` (I-187: a waiting CLI polls twice a
 second and shares the budget with the user's dashboard). A refusal is
 `429 rate_limited` with `Retry-After` in seconds; nothing ran, so the
-client may send the same request again after it. Per gateway: unlimited on
+client may send the same request again after it. A held op read (`?wait`) is
+one GET however long it is held. Per gateway: unlimited on
 internal.
 
 ## Fake
