@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
@@ -43,8 +44,12 @@ func (s *Server) patchMe(w http.ResponseWriter, r *http.Request) error {
 	var body struct {
 		TZ     *string `json:"tz"`
 		Notify *struct {
-			Email   *bool   `json:"email"`
-			NtfyURL *string `json:"ntfy_url"`
+			Email *bool `json:"email"`
+			// Raw so an explicit null (clear, as interfaces/api.md says
+			// and the CLI's `--ntfy none` sends) is told apart from an
+			// absent key (leave alone); a *string made both nil, and
+			// `--ntfy none` silently kept the old topic.
+			NtfyURL json.RawMessage `json:"ntfy_url"`
 		} `json:"notify"`
 	}
 	if err := decode(r, &body); err != nil {
@@ -59,8 +64,15 @@ func (s *Server) patchMe(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 	if body.Notify != nil {
-		if body.Notify.NtfyURL != nil {
-			v := strings.TrimSpace(*body.Notify.NtfyURL)
+		if len(body.Notify.NtfyURL) > 0 {
+			var ntfy *string
+			if err := json.Unmarshal(body.Notify.NtfyURL, &ntfy); err != nil {
+				return errf("invalid", "ntfy_url must be a string or null")
+			}
+			v := ""
+			if ntfy != nil {
+				v = strings.TrimSpace(*ntfy)
+			}
 			if v == "" {
 				if _, err := s.d.Pool.Exec(r.Context(), "update users set ntfy_url = null where id = $1", u.ID); err != nil {
 					return err

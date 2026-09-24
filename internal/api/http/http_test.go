@@ -1106,3 +1106,38 @@ func TestHealthz(t *testing.T) {
 		t.Fatalf("event from unknown ip: %d %s", ir.status, ir.raw)
 	}
 }
+
+// ntfy_url: null clears the topic (interfaces/api.md, and what the CLI's
+// `repose notify set --ntfy none` sends); an absent key leaves it; "" also
+// clears. Live, null was read as absent and the old topic stayed.
+func TestPatchMeNtfyNullClears(t *testing.T) {
+	e := newEnv(t)
+	tok := e.signIn(t, "sub-ntfy", "ntfyer")
+	ntfy := func() any {
+		r := e.do(t, tok, "GET", "/me", nil)
+		return r.body["notify"].(map[string]any)["ntfy_url"]
+	}
+	set := func(body map[string]any) {
+		t.Helper()
+		if r := e.do(t, tok, "PATCH", "/me", map[string]any{"notify": body}); r.status != 200 {
+			t.Fatalf("patch %v: %d %s", body, r.status, r.raw)
+		}
+	}
+	set(map[string]any{"ntfy_url": "https://ntfy.example/a"})
+	set(map[string]any{"email": false})
+	if got := ntfy(); got != "https://ntfy.example/a" {
+		t.Fatalf("absent ntfy_url changed it: %v", got)
+	}
+	set(map[string]any{"ntfy_url": nil})
+	if got := ntfy(); got != nil {
+		t.Fatalf("ntfy_url null did not clear: %v", got)
+	}
+	set(map[string]any{"ntfy_url": "https://ntfy.example/b"})
+	set(map[string]any{"ntfy_url": ""})
+	if got := ntfy(); got != nil {
+		t.Fatalf(`ntfy_url "" did not clear: %v`, got)
+	}
+	if r := e.do(t, tok, "PATCH", "/me", map[string]any{"notify": map[string]any{"ntfy_url": 5}}); r.status != 400 {
+		t.Fatalf("ntfy_url 5: %d, want 400", r.status)
+	}
+}
