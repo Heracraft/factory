@@ -5512,3 +5512,46 @@ journal entry 23 s after StartGuest). At boot the unit now runs from
 `multi-user.target` in the background (Nice 10, idle I/O), and a switch
 starts it with `--no-block`. Waiting bought nothing: a pin protects against
 a later host garbage collection, never an earlier one.
+
+**I-235. Keeping a stopped guest's processes: the options for secrets,
+recorded; nothing built.** (conductor with the owner, 2026-09-24) I-233
+measured a memory snapshot and resume (about 1 s instead of a boot) and
+left it out because the image is a fourth home for secrets. The threat it
+adds is at rest, not in use: the host can already read a running guest's
+RAM (no confidential computing) and the volumes are not encrypted on the
+host. What the image adds is secrets outliving the session: named
+secrets, tool logins and whatever agents hold in memory (Claude's and
+`gh`'s tokens, environment values), on the host's disk after a stop, and
+a secret deleted or rotated while the guest is stopped still in the image.
+The options, in the order the owner would take them:
+1. *Pause in RAM ("warm stop").* `stop` pauses the VM and leaves its
+   memory resident on the host; `start` resumes it in milliseconds with
+   tmux, agents and dev servers alive. No image, so no new home for
+   secrets. Costs host RAM while paused: after N idle hours, or when the
+   host needs the memory, it falls back to today's full stop; paused time
+   needs a price, since it holds capacity. Needs a clock step on resume
+   and a fall back to a boot on a base change. The recommended first step.
+2. *Encrypted image, key held by the api.* At stop hostd encrypts the image
+   with a fresh key and hands the key to the api, which stores it sealed
+   like a named secret in Postgres; at start the api returns it, hostd
+   decrypts and resumes. The image stays on that host (never uploaded) and
+   is deleted after resume or a time limit, after which the start is a
+   boot. At rest it is ciphertext whose key the host does not keep, the
+   Postgres model; a compromised host at resume time is not defended
+   against, and it could read live RAM anyway. The api discards the image
+   whenever it would be wrong: a secret changed or deleted, a base
+   upgrade or config apply, a volume restore or resize, a move of host.
+   Adopting it amends "secrets have three homes" (CLAUDE.md,
+   features/secrets.md) with a decision entry.
+3. *Wipe the known secrets before the snapshot.* guestd clears
+   /run/repose/secrets before `vm.snapshot`; every start re-delivers them
+   (WriteSecrets). Keeps named secrets out of the image but not copies in
+   process memory, so it is a layer on 2, never enough alone.
+4. *Confidential VMs (Intel TDX).* Guest memory encrypted from the host.
+   The strongest answer, but Cloud Hypervisor cannot snapshot a TDX guest
+   and it is a platform change; later.
+5. *Opt-in per project* ("keep processes across stop"), with any of the
+   above, so a project that never opts in keeps today's behaviour.
+Decision for now: none of these is built. Documented so the next session
+starts from here; the owner's lean is 1, then 2 with 3 if resumes after
+long stops are wanted.
