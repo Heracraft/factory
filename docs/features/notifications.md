@@ -7,11 +7,17 @@ keep working on top.
 ## What the user sees
 
 ```
-$ repose notify set ntfy https://ntfy.sh/heracraft-repose-8f3a
-Test notification sent. Check your phone.
+$ repose notify set --ntfy https://ntfy.sh/heracraft-repose-8f3a
+email: on
+ntfy: https://ntfy.sh/heracraft-repose-8f3a
 
-$ repose notify set email on
+$ repose notify test
+email: ok
+ntfy: ok
 ```
+
+(`notify set` takes flags, `--email on|off` and `--ntfy URL|none`, and
+does not send a test itself; `notify test` does, as 07-cli.md specifies under I-8.)
 
 On the phone (ntfy):
 

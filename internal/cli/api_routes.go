@@ -57,10 +57,11 @@ func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
 }
 
 type CreateProjectRequest struct {
-	Name      string `json:"name"`
-	RemoteURL string `json:"remote_url,omitempty"`
-	Class     string `json:"class"`
-	TZ        string `json:"tz,omitempty"`
+	Name         string `json:"name"`
+	RemoteURL    string `json:"remote_url,omitempty"`
+	Class        string `json:"class"`
+	TZ           string `json:"tz,omitempty"`
+	AgentDefault string `json:"agent_default,omitempty"`
 }
 
 func (c *Client) CreateProject(ctx context.Context, req CreateProjectRequest) (*Project, error) {

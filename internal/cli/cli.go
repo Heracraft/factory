@@ -260,6 +260,9 @@ func newRunCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Prompt = strings.TrimSpace(strings.Join(args, " "))
 			opts.ProjectArg = g.project
+			if opts.Agent != "" && !isAgent(opts.Agent) {
+				return cobraUsageError{fmt.Errorf("--agent must be one of %s, got %q", strings.Join(agentNames, ", "), opts.Agent)}
+			}
 			e, err := env()
 			if err != nil {
 				return err
@@ -274,7 +277,7 @@ func newRunCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	cmd.Flags().BoolVar(&opts.DiscardRemote, "discard-remote", false, "discard the guest's uncommitted changes before syncing")
 	cmd.Flags().BoolVar(&opts.NoSync, "no-sync", false, "skip the git and credential sync")
 	cmd.Flags().BoolVar(&opts.NoAttach, "no-attach", false, "do not attach after starting/sending the prompt")
-	_ = cmd.RegisterFlagCompletionFunc("agent", cobra.FixedCompletions([]string{"claude", "opencode", "codex", "gemini", "pi"}, cobra.ShellCompDirectiveNoFileComp))
+	_ = cmd.RegisterFlagCompletionFunc("agent", cobra.FixedCompletions(agentNames, cobra.ShellCompDirectiveNoFileComp))
 	_ = cmd.RegisterFlagCompletionFunc("size", cobra.FixedCompletions([]string{"small", "large", "xl"}, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
 }
@@ -403,16 +406,22 @@ func newProjectsCmd(envJSON func(*cobra.Command) (*Env, error)) *cobra.Command {
 }
 
 func newOpenCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
-	var desktop, noBrowser bool
+	var desktop, stop, noBrowser bool
 	var localPort int
 	cmd := &cobra.Command{
 		Use:   "open [PORT]",
 		Short: "Forward a guest port, or the desktop, to the laptop",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if stop && !desktop {
+				return cobraUsageError{fmt.Errorf("--stop goes with --desktop: repose open --desktop --stop")}
+			}
 			e, err := env()
 			if err != nil {
 				return err
+			}
+			if desktop && stop {
+				return StopDesktopCmd(cmd.Context(), e, g.project)
 			}
 			if desktop {
 				return OpenDesktopCmd(cmd.Context(), e, g.project, noBrowser)
@@ -428,6 +437,7 @@ func newOpenCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&desktop, "desktop", false, "open the on-demand desktop instead of a port")
+	cmd.Flags().BoolVar(&stop, "stop", false, "with --desktop: stop the desktop in the guest")
 	cmd.Flags().IntVar(&localPort, "local-port", 0, "local port to bind (defaults to PORT)")
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "print the URL instead of opening a browser")
 	return cmd

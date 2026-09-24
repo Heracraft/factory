@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-288 entries.
+289 entries.
 
 ## Scope
 
@@ -320,3 +320,4 @@ pointer, not a summary.
 - **I-235** Keeping a stopped guest's processes: the options for secrets, recorded; nothing built — 2026-09-24; L5516
 - **I-236** Waiting on an op is a long-poll: the api answers the moment the op or its project changes — 2026-09-24; L5558
 - **I-237** The first ssh to a guest that was just started goes out the moment its op finishes, and it is the sync's probe — 2026-09-24; L5605
+- **I-241** Gaps the user docs found, closed in code rather than documented as broken — 2026-09-23; L5650

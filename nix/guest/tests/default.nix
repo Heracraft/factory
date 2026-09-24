@@ -125,6 +125,23 @@ let
   numpyWheelName = "numpy-2.3.3-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl";
   userBinDirsForTest = import ../base/user-bin-dirs.nix;
 
+  # guest-devtools' stand-in agent (I-241): wrapped exactly like the five,
+  # it records what environment the wrapper handed it. repose-probe-0 is
+  # the first user bin dir's probe program from the I-227 subtest.
+  envProbeAgent = (import ../../overlay/agents/wrap.nix { inherit pkgs; }) {
+    name = "repose-env-probe";
+    pkg = pkgs.writeShellScriptBin "repose-env-probe" ''
+      {
+        echo "project=''${REPOSE_PROJECT:-}"
+        echo "secret=''${MY_TOKEN:-}"
+        echo "agent=''${REPOSE_HOOK_AGENT:-}"
+        if command -v repose-probe-0 >/dev/null 2>&1; then echo path=ok; fi
+        echo done
+      } > /tmp/out-agent 2>&1
+      sleep 30
+    '';
+  };
+
   mkTest = name: attrs: pkgs.testers.runNixOSTest ({ inherit name; } // attrs);
 
   # The exact scripts the CLI sends for I-198 and I-195, kept in step with
@@ -419,7 +436,10 @@ in
   # running a foreign ELF, the pinned nixpkgs registry, and
   # command-not-found with its install hints.
   guest-devtools = mkTest "guest-devtools" {
-    nodes.guest = node;
+    nodes.guest = { ... }: {
+      imports = [ node ];
+      environment.systemPackages = [ envProbeAgent ];
+    };
     testScript = ''
       guest.start()
       guest.wait_for_unit("multi-user.target")
@@ -583,6 +603,28 @@ in
           guest.succeed("sudo -H -u dev tmux send-keys -t todo-app:shell '/tmp/check-path > /tmp/out-pane 2>&1' Enter")
           check("tmux interactive pane", wait_out("pane"))
           check("systemd-run --user", via_user_unit())
+
+      # I-241: an agent `repose run "prompt"` starts is tmux new-window's
+      # command over SSH, a bash that is neither login nor interactive, in
+      # a tmux server started by a user unit before the project's env and
+      # any secret existed. The agent wrapper sources
+      # /etc/profile.d/repose.sh, so it sees both. The probe is wrapped by
+      # the same wrap.nix as the five agents and started the way
+      # startAgentWindow starts one.
+      with subtest("I-241: an agent started by tmux new-window over ssh sees REPOSE_PROJECT and named secrets"):
+          guest.succeed("printf 'TZ=UTC\\nREPOSE_PROJECT=todo-app\\n' > /etc/repose/env")
+          guest.succeed("install -m 0400 -o dev -g dev /dev/null /run/repose/secrets.env && echo \"export MY_TOKEN='s3cr3t'\" > /run/repose/secrets.env")
+          guest.succeed("rm -f /tmp/out-raw /tmp/out-agent")
+          # Without the wrapper (evidence only: what a bare command gets).
+          ssh("tmux new-window -t todo-app -n raw -c ~/todo-app -d 'sh -c \"echo project=$REPOSE_PROJECT secret=$MY_TOKEN; echo done\" > /tmp/out-raw 2>&1'")
+          print("bare new-window command: " + wait_out("raw"))
+          ssh("tmux new-window -t todo-app -n probe -c ~/todo-app -d 'repose-env-probe'")
+          out = wait_out("agent")
+          print(out)
+          assert "project=todo-app" in out, out
+          assert "secret=s3cr3t" in out, out
+          assert "path=ok" in out, out
+          assert "agent=repose-env-probe" in out, out
 
       with subtest("I-227: installs land on PATH (go install, npm i -g)"):
           guest.succeed("""install -d -o dev -g dev /tmp/gi /tmp/npmpkg/bin && cat > /tmp/gi/go.mod <<'EOF'

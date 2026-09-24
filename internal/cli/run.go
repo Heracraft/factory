@@ -891,6 +891,12 @@ func createProjectForRun(ctx context.Context, e *Env, remote string, opts RunOpt
 		class = e.Cfg.DefaultClass
 	}
 	req := CreateProjectRequest{Name: name, RemoteURL: remote, Class: class, TZ: localTZ()}
+	// config.toml's default_agent becomes the new project's own default,
+	// which is what `run PROMPT` without --agent reads; an existing
+	// project keeps the one it was created with (I-241).
+	if isAgent(e.Cfg.DefaultAgent) {
+		req.AgentDefault = e.Cfg.DefaultAgent
+	}
 
 	for attempt := 1; attempt <= 10; attempt++ {
 		p, err := e.Client.CreateProject(ctx, req)
