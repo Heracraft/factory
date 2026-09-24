@@ -134,6 +134,29 @@ sshd material (delivered by hostd into the same tmpfs from the explicit
 | GET | `/projects/:id/events?since=` | `[{id, ts, kind, agent?, summary}]` |
 | GET | `/projects/:id/logs?since=&kind=console\|build\|ops` | last 10k lines, JSON lines |
 
+Event kinds are those of `features/notifications.md`; `agent_message`
+(from `repose-notify`) and `agent_question` (from `repose-ask`, whose
+`summary` is the question text) were added by DECISIONS I-244. A client
+that does not know a kind shows it by name.
+
+## Questions (DECISIONS I-244, I-245)
+
+A question is what an agent asked with `repose-ask` in the guest:
+`Question = {id, project_id, project (slug), agent, window, text, options:
+[string] (0 to 3), state: pending|answered|cancelled|expired|no_channel,
+answer: string|null, answered_via: dashboard|cli|ntfy|email|null,
+created_at, expires_at, answered_at: time|null}`. `text` and `answer` are
+tenant content (at most 1 KB each): shown to the owner, never logged.
+
+| Method | Path | Body / result |
+|---|---|---|
+| GET | `/questions?state=pending\|all` | `{questions: [Question]}` across the user's projects, newest first, at most 50; `pending` (the default) lists only questions still waiting |
+| GET | `/projects/:id/questions?state=pending` | `{questions: [Question]}`, pending first, then the latest, at most 20 |
+| POST | `/projects/:id/questions/:qid/answer` | `{answer, via?: cli\|dashboard}` → `Question`. With options, `answer` must equal one of them (case does not matter; the stored answer uses the option's spelling), else `invalid` with `detail.options`. A question no longer pending (answered, expired, cancelled) is `conflict` with `detail.question`: the first answer wins |
+| POST | `/projects/:id/questions/:qid/cancel` | no body → `Question` in state `cancelled`; the waiting `repose-ask` exits 5. `conflict` when it is no longer pending |
+| GET | `/questions/reply?token=&via=` | no auth; the one-click link an email or ntfy notification carries for one option. The token is signed (the unsubscribe key, a separate domain) and names the question, the option and the question's expiry. Answers an HTML page showing the question and a button that POSTs; a GET never answers, because mail scanners open links. Expired → `410`, invalid → `400`, both HTML |
+| POST | `/questions/reply?token=&via=` | no auth; answers with the token's option (`token` and `via` may also be form fields). ntfy's `http` button calls it. `200` HTML on success; a question already answered or closed → `409` naming the answer it has; 20 tries per question per minute, then `429` |
+
 ## Usage and billing
 
 | Method | Path | Body / result |

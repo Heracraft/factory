@@ -47,7 +47,9 @@ Events (see agents.md for how each agent produces them):
   destroy, so its failure is announced), `host_moved` and
   `abuse_stopped` (I-239: the guest was stopped because a cryptocurrency
   miner was running; the summary says which process and, on the third
-  stop in 24 hours, that the project cannot start until reviewed). Each carries the agent name (agent kinds only), the
+  stop in 24 hours, that the project cannot start until reviewed), and
+  the agent-sent `agent_message` and `agent_question` (DECISIONS I-244,
+  below). Each carries the agent name (agent kinds only), the
   tmux window, a summary of at most 1 KB, and a timestamp.
 - The summary is what the agent's hook provided, truncated. It may include
   the agent's own last message. It never includes the prompt the user typed
@@ -68,6 +70,33 @@ Events (see agents.md for how each agent produces them):
   message says notifications are paused for this project until the top of
   the hour, and events are still recorded (never dropped, just not
   delivered past the cap).
+
+Agents can message you and ask questions (DECISIONS I-244, I-245):
+
+- `repose-notify TEXT` in any guest shell sends TEXT (1 KB) as an
+  `agent_message`: title `<project>: <agent> says`, ntfy priority 3. It
+  returns at once. Messages are never collapsed into each other and count
+  against the 30-an-hour cap like any event.
+- `repose-ask [--options A,B,C] [--timeout 30m] QUESTION` sends an
+  `agent_question` (title `<project>: <agent> asks`, ntfy priority 5) and
+  blocks until the owner answers, then prints the answer. Exit codes: 0
+  answered, 1 guestd unreachable, 2 usage, 3 timeout, 4 no channel on, 5
+  cancelled (dismissed, guest stopped, or the question is gone after a
+  reboot), 130 interrupted. At most 3 options; timeout 30 minutes by
+  default, 24 hours at most.
+- The owner answers from ntfy (one `http` button per option, calling a
+  signed reply link; no login), email (one link per option, which opens a
+  page whose button answers; replying to the email does nothing), the
+  dashboard's project page (buttons or a text box, and Dismiss), or the
+  laptop: `repose questions` lists the waiting ones, `repose reply
+  [PROJECT] [ANSWER]` answers, and lists instead of guessing when several
+  are waiting. The first answer wins everywhere; a later one is refused
+  with the answer that won.
+- The answer reaches the waiting command within seconds over the
+  hostd↔guestd channel, and survives a hostd, api or guestd restart; a
+  guest that stops or reboots ends its questions.
+- Question and answer text are tenant content: shown to the owner, never
+  logged, and stored like an event summary.
 
 Channels (`workstreams/13-notifications.md` §5.6):
 
@@ -99,6 +128,8 @@ Dashboard and CLI:
 - `repose status` shows the last event per agent window.
 - `repose events`, its own command, lists
   the last 50 events with timestamps.
+- `repose questions` and `repose reply` (above); the dashboard project
+  page shows pending questions above everything else.
 - The dashboard project page's Events card shows the event stream, newest
   first, with the agent and the summary. It answers the first half of "I
   got nothing": whether the event happened at all. It does not yet answer

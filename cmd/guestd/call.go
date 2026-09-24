@@ -87,6 +87,13 @@ var builders = map[string]func(string) (*guestdv1.Request, error){
 		}
 		return &guestdv1.Request{Req: &guestdv1.Request_Exec{Exec: m}}, nil
 	},
+	"answer-question": func(body string) (*guestdv1.Request, error) {
+		m := &guestdv1.AnswerQuestion{}
+		if err := unmarshal(body, m); err != nil {
+			return nil, err
+		}
+		return &guestdv1.Request{Req: &guestdv1.Request_AnswerQuestion{AnswerQuestion: m}}, nil
+	},
 	"shutdown": func(body string) (*guestdv1.Request, error) {
 		m := &guestdv1.Shutdown{}
 		if err := unmarshal(body, m); err != nil {

@@ -88,7 +88,14 @@ in
 {
   inherit generated;
   guestd = mkBin "guestd";
-  repose-hook = mkBin "repose-hook";
+  # repose-notify and repose-ask are the same binary under the names agents
+  # call (DECISIONS I-244); it picks the command from argv[0].
+  repose-hook = (mkBin "repose-hook").overrideAttrs (old: {
+    postInstall = (old.postInstall or "") + ''
+      ln -s repose-hook $out/bin/repose-notify
+      ln -s repose-hook $out/bin/repose-ask
+    '';
+  });
   hostd = mkBin "hostd";
   hostdev = mkBin "hostdev";
   api = mkBin "api";

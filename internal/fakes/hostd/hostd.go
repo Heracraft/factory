@@ -61,6 +61,9 @@ type Fake struct {
 	nextIP   int
 	send     func(*hostdv1.HostMessage) error
 	commands []*hostdv1.Command
+	// asks are the questions the fake's guests "know" (DECISIONS I-244):
+	// question_id -> the AnswerQuestion that closed it, nil while open.
+	asks map[string]*hostdv1.AnswerQuestion
 }
 
 // New returns a fake with defaults.
@@ -80,7 +83,38 @@ func New(opts Options) *Fake {
 	if opts.Fail == nil {
 		opts.Fail = map[string]string{}
 	}
-	return &Fake{opts: opts, guests: map[string]*Guest{}, results: map[string]*hostdv1.Result{}}
+	return &Fake{opts: opts, guests: map[string]*Guest{}, results: map[string]*hostdv1.Result{}, asks: map[string]*hostdv1.AnswerQuestion{}}
+}
+
+// Ask emits an AgentQuestion as a guest's repose-ask would, and makes the
+// fake's guest know the question so AnswerQuestion succeeds.
+func (f *Fake) Ask(q *hostdv1.AgentQuestion) {
+	f.mu.Lock()
+	if _, ok := f.asks[q.QuestionId]; !ok {
+		f.asks[q.QuestionId] = nil
+	}
+	f.mu.Unlock()
+	f.event(&hostdv1.Event{Ev: &hostdv1.Event_AgentQuestion{AgentQuestion: q}})
+}
+
+// Message emits an agent_message AgentEvent as repose-notify would.
+func (f *Fake) Message(guestID, agent, text string) {
+	f.event(&hostdv1.Event{Ev: &hostdv1.Event_AgentEvent{AgentEvent: &hostdv1.AgentEvent{GuestId: guestID, Agent: agent, Kind: "agent_message", Summary: text, TmuxWindow: agent}}})
+}
+
+// Answer is what closed a question, nil while it is open or unknown.
+func (f *Fake) Answer(questionID string) *hostdv1.AnswerQuestion {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.asks[questionID]
+}
+
+// ForgetQuestion makes the fake's guest forget a question, as a guest
+// reboot does: the next AnswerQuestion for it is not_found.
+func (f *Fake) ForgetQuestion(questionID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.asks, questionID)
 }
 
 // Guests returns the fake's guests.
@@ -298,6 +332,8 @@ func kind(cmd *hostdv1.Command) string {
 		return "Exec"
 	case *hostdv1.Command_Drain:
 		return "Drain"
+	case *hostdv1.Command_AnswerQuestion:
+		return "AnswerQuestion"
 	}
 	return ""
 }
@@ -530,6 +566,25 @@ func (f *Fake) execute(cmd *hostdv1.Command) *hostdv1.Result {
 		f.mu.Lock()
 		f.draining = true
 		f.mu.Unlock()
+		return ok(nil)
+	case *hostdv1.Command_AnswerQuestion:
+		a := c.AnswerQuestion
+		f.mu.Lock()
+		g, e := get(a.GuestId)
+		if e == nil && g.State != "running" {
+			e = errResult(id, "not_found", "guest is "+g.State)
+		}
+		if e == nil {
+			if _, known := f.asks[a.QuestionId]; !known {
+				e = errResult(id, "not_found", "no question "+a.QuestionId+" in this guest")
+			} else if f.asks[a.QuestionId] == nil {
+				f.asks[a.QuestionId] = a
+			}
+		}
+		f.mu.Unlock()
+		if e != nil {
+			return e
+		}
 		return ok(nil)
 	}
 	return errResult(id, "invalid_argument", "unknown command")

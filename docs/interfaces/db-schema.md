@@ -115,6 +115,17 @@ abuse_events (id pk, project_id fk, user_id fk, ts, kind text,  -- miner
               -- one row per guest the api stopped by itself (0005, I-239); a project
               -- with an uncleared held row cannot start until `repose-admin abuse clear`
 
+questions    (id pk,               -- chosen by guestd (UUIDv7); a re-announcement inserts nothing
+              project_id fk, guest_id uuid, event_id uuid,  -- the agent_question event that notified the owner
+              agent text, tmux_window text null, text text, options text[],  -- 0..3
+              state text,          -- pending|answered|cancelled|expired|no_channel
+              answer text null, answered_via text null,  -- dashboard|cli|ntfy|email
+              expires_at, answered_at null,
+              delivered_at null, delivery text null,  -- ok|gone|given_up|guest: the close reached the guest, or why not
+              deliver_command_id uuid null, deliver_attempts int, deliver_next_at null)
+              -- repose-ask (0006, I-244/I-245); text and answer are tenant content stored
+              -- like events.summary: plain, shown to the owner, never logged
+
 base_versions (version text pk, nix_rev text, changelog text, released_at,
               security bool)
 
@@ -128,12 +139,15 @@ schema_migrations (version int pk, name text, applied_at)
 Indexes: `projects(user_id)`, `projects(host_id) where state in ('running',
 'starting')`, `events(project_id, ts desc)`, `snapshots(project_id, taken_at
 desc)`, `certificates(user_id) where revoked_at is null`, `usage_hours(hour)`,
-`usage_hours(project_id, period_start)`, `abuse_events(project_id, ts desc)`, `usage_hours(hour) where
+`usage_hours(project_id, period_start)`, `abuse_events(project_id, ts desc)`,
+`questions(project_id, created_at desc)`, `questions(expires_at) where state
+= 'pending'`, `questions(deliver_next_at) where state <> 'pending' and
+delivered_at is null`, `questions(deliver_command_id)`, `usage_hours(hour) where
 stripe_usage_record_id is null`, `credit_ledger(user_id, created_at)`,
 `ops(state) where state in ('pending','running')`, `events_outbox(next_at)`.
 
 Migrations `0001_init`, `0002_outbox_sessions_settings`, `0003_billing`,
-`0004_gateway_session_id` and `0005_abuse_events` create all of this; `repose-admin db migrate --down 1` reverts one. Partitions of the
+`0004_gateway_session_id`, `0005_abuse_events` and `0006_questions` create all of this; `repose-admin db migrate --down 1` reverts one. Partitions of the
 sample tables are created for the current and next month at start and by
 the daily job, which also drops partitions past retention.
 

@@ -54,6 +54,9 @@ type Session interface {
 	Sample(ctx context.Context) (*guestdv1.SampleResult, error)
 	Exec(ctx context.Context, argv []string, timeoutS uint32, asUser string) (*guestdv1.ExecResult, error)
 	Shutdown(ctx context.Context, timeoutS uint32) error
+	// AnswerQuestion closes a question a repose-ask is waiting on
+	// (DECISIONS I-244).
+	AnswerQuestion(ctx context.Context, a *guestdv1.AnswerQuestion) error
 	Notifications() <-chan *guestdv1.Notify
 	Done() <-chan struct{}
 	Close() error
@@ -207,6 +210,11 @@ func (s *session) Exec(ctx context.Context, argv []string, timeoutS uint32, asUs
 
 func (s *session) Shutdown(ctx context.Context, timeoutS uint32) error {
 	_, err := s.call(ctx, DefaultTimeout, &guestdv1.Request{Req: &guestdv1.Request_Shutdown{Shutdown: &guestdv1.Shutdown{TimeoutS: timeoutS}}})
+	return err
+}
+
+func (s *session) AnswerQuestion(ctx context.Context, a *guestdv1.AnswerQuestion) error {
+	_, err := s.call(ctx, DefaultTimeout, &guestdv1.Request{Req: &guestdv1.Request_AnswerQuestion{AnswerQuestion: a}})
 	return err
 }
 

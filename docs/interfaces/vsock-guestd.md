@@ -26,14 +26,16 @@ framing; hostd picks by flag.
 | `Sample` | | GuestSignals + repeated ProcSample (shapes in grpc-hostd.md) + partial (bool) | hostd calls every 60 s. guestd walks `/proc` on the call and serves the tmux and Docker signals from a 5 s background refresh, so a sample costs under 20 ms and never forks (DECISIONS I-31). `partial` is set when a signal is missing rather than zero. The same 5 s refresh sets `oom_score_adj` (I-200): -800 for the tmux server and each agent window's agent process, 0 for any other `dev` process holding a negative value |
 | `Exec` | argv, timeout_s, as_user | exit_code, stdout, stderr | operator only; hostd audits every call |
 | `Shutdown` | timeout_s | | `systemctl poweroff` after flushing |
+| `AnswerQuestion` | question_id, status (`answered\|cancelled\|expired\|no_channel`), answer | | closes a question a `repose-ask` is waiting on (DECISIONS I-244); a repeat for a question already closed is a no-op, an unknown question_id is `not_found` (the guest rebooted, and its questions with it). The answer is tenant text and is never logged |
 
 ## Notifications (guestd → hostd)
 
 | Notify | Fields | Origin |
 |---|---|---|
 | `Ready` | boot_id | after network up and sshd listening |
-| `AgentEvent` | agent, tmux_window, kind (completed\|needs_input\|error), summary | agent hooks via the unix socket `/run/repose/hooks.sock` |
+| `AgentEvent` | agent, tmux_window, kind (completed\|needs_input\|error\|agent_message), summary | agent hooks via the unix socket `/run/repose/hooks.sock`; `agent_message` is `repose-notify` (DECISIONS I-244), whose agent may also be `shell` |
 | `AgentState` | agent, tmux_window, state | on change, debounced 5 s |
+| `Question` | question_id (UUIDv7, chosen by guestd), agent, tmux_window, text (1 KB), options (0 to 3, 64 bytes each), timeout_s, state (`""` open, else `cancelled\|expired` when the asker gave up or timed out) | `repose-ask` through the hook socket. Sent when the ask opens, again for every open question on each new hostd connection (the api ignores a repeat), and once more when guestd closes it itself. Open questions live in `/run/repose/questions/<id>.json` (root, 0600) so a guestd restart keeps them (DECISIONS I-244) |
 | `Warning` | kind, detail | kinds: `disk_high` (over 90 percent), `inotify_exhausted`, `docker_down`, `freeze_timeout`, `store_path_missing` (a path in the running system is absent from the share, which means the host GC'd it), `oom` (the kernel killed a process for memory; detail carries the process name), `tmux_down` (no tmux server for `dev`). Each kind is sent at most once per 10 minutes. See DECISIONS I-11 and I-29 |
 
 ## Hook socket
@@ -48,6 +50,18 @@ to 1 KB. `window` is optional: without it guestd resolves the calling process's
 wrapper for each agent is in `guest-conventions.md`; the payload mapping per
 agent is `internal/guestd/hooks` with a recorded fixture per shape in its
 `testdata/`.
+
+The same socket serves `repose-notify` and `repose-ask` (DECISIONS I-244;
+`guest-conventions.md` "Messages and questions"): `POST /notify {agent?,
+window?, text}` → 204, relayed as an `AgentEvent` of kind `agent_message`;
+`POST /ask {agent?, window?, text, options?, timeout_s?}` → `201 {id, state:
+open, expires_at}`, announced as a `Question`; `GET /ask/<id>?wait=<s>` (at
+most 25) → `{id, state, answer?, expires_at}` once the question closes or
+the wait ends; `DELETE /ask/<id>` → 204, closes it `cancelled`. An agent not
+among the five is recorded as `shell`. At most 16 questions may be open at
+once (`429 too_many_questions`); guestd expires an open question at its
+timeout (default 30 minutes, at most 24 hours). The hook POST to `/` is
+unchanged.
 
 ## Failure behaviour
 

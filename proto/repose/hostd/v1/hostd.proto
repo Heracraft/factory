@@ -183,6 +183,11 @@ message UpdateSecrets { string guest_id = 1; repeated Secret secrets = 2; }
 message SetPrincipals { string guest_id = 1; repeated string principals = 2; }
 message Exec { string guest_id = 1; repeated string argv = 2; uint32 timeout_s = 3; string audit_id = 4; }  // audit_id required (I-26)
 message Drain {}
+// AnswerQuestion carries the user's reply (or the question's end) to the
+// guest whose `repose-ask` is waiting (DECISIONS I-244). hostd forwards it
+// to guestd as the request of the same name; not_found means the guest no
+// longer knows the question (it rebooted, or the ask was never there).
+message AnswerQuestion { string guest_id = 1; string question_id = 2; string status = 3; string answer = 4; }
 
 message Command {
   string command_id = 1;
@@ -200,6 +205,7 @@ message Command {
     SetPrincipals set_principals = 20;
     Exec exec = 21;
     Drain drain = 22;
+    AnswerQuestion answer_question = 23;
   }
 }
 
@@ -266,6 +272,19 @@ message AgentEvent {
   // `window` of 13-notifications.md §5.1); empty when unknown. I-121.
   string tmux_window = 5;
 }
+// AgentQuestion is a guest's Question notify, relayed (DECISIONS I-244).
+// The text is tenant content: delivered to the user's channels, never
+// logged.
+message AgentQuestion {
+  string guest_id = 1;
+  string question_id = 2;
+  string agent = 3;
+  string tmux_window = 4;
+  string text = 5;
+  repeated string options = 6;
+  uint32 timeout_s = 7;
+  string state = 8;
+}
 message SnapshotDone { string guest_id = 1; string snapshot_id = 2; string blob_path = 3; uint64 bytes = 4; }
 message HostWarning { string kind = 1; string detail = 2; }
 // An operator's SSH login to the host, from the PAM hook that runs
@@ -289,5 +308,6 @@ message Event {
     SnapshotDone snapshot_done = 12;
     HostWarning host_warning = 13;
     OperatorLogin operator_login = 14;
+    AgentQuestion agent_question = 15;
   }
 }

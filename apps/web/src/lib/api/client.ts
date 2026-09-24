@@ -16,6 +16,7 @@ import type {
 	OpStatus,
 	Project,
 	ProjectEvent,
+	Question,
 	RestoreResult,
 	Revision,
 	Route,
@@ -167,6 +168,19 @@ export const listEvents = (id: string, since?: string) =>
 	request<ProjectEvent[]>(
 		`/projects/${id}/events${since ? `?since=${encodeURIComponent(since)}` : ''}`
 	);
+
+// Questions (repose-ask, I-245).
+export const listProjectQuestions = (id: string, pendingOnly = true) =>
+	request<{ questions: Question[] }>(
+		`/projects/${id}/questions${pendingOnly ? '?state=pending' : ''}`
+	).then((r) => r.questions);
+export const answerQuestion = (id: string, qid: string, answer: string) =>
+	request<Question>(`/projects/${id}/questions/${qid}/answer`, {
+		method: 'POST',
+		body: { answer, via: 'dashboard' }
+	});
+export const cancelQuestion = (id: string, qid: string) =>
+	request<Question>(`/projects/${id}/questions/${qid}/cancel`, { method: 'POST' });
 
 // Usage and billing.
 export const getUsage = (from: string, to: string) =>

@@ -28,6 +28,7 @@ import (
 	"github.com/heracraft/repose/internal/api/notify"
 	"github.com/heracraft/repose/internal/api/ops"
 	"github.com/heracraft/repose/internal/api/pki"
+	"github.com/heracraft/repose/internal/api/questions"
 	"github.com/heracraft/repose/internal/api/secrets"
 	"github.com/heracraft/repose/internal/api/snapshots"
 	"github.com/heracraft/repose/internal/billing"
@@ -43,26 +44,27 @@ import (
 
 // App is the assembled process.
 type App struct {
-	cfg     Config
-	log     *slog.Logger
-	pool    *db.Pool
-	reg     *prometheus.Registry
-	m       *metrics.M
-	sec     *secrets.Store
-	ca      *ca.CA
-	hostMgr *hostmgr.Server
-	engine  *ops.Engine
-	logs    *buildlog.Store
-	events  *events.Ingest
-	meterIn *meter.Ingest
-	abuse   *abuse.Guard
-	outbox  *notify.Outbox
-	stripe  *billing.Stripe
-	hooks   *billing.Webhooks
-	bcfg    billing.Config
-	server  *httpapi.Server
-	version string
-	otelOff func(context.Context) error
+	cfg       Config
+	log       *slog.Logger
+	pool      *db.Pool
+	reg       *prometheus.Registry
+	m         *metrics.M
+	sec       *secrets.Store
+	ca        *ca.CA
+	hostMgr   *hostmgr.Server
+	engine    *ops.Engine
+	logs      *buildlog.Store
+	events    *events.Ingest
+	meterIn   *meter.Ingest
+	abuse     *abuse.Guard
+	questions *questions.Service
+	outbox    *notify.Outbox
+	stripe    *billing.Stripe
+	hooks     *billing.Webhooks
+	bcfg      billing.Config
+	server    *httpapi.Server
+	version   string
+	otelOff   func(context.Context) error
 }
 
 // New wires the process. Nothing listens yet.
@@ -141,9 +143,16 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	abuse.TermsURL = strings.TrimSuffix(cfg.DashboardURL, "/") + "/terms"
 	a.engine = ops.New(a.pool, a.hostMgr, a.ca, a.sec, a.logs, a.events, a.m, log, ops.Config{BaseRef: cfg.BaseRef})
 	a.abuse = abuse.New(a.pool, a.engine, a.events, a.m, log)
+	a.questions = questions.New(a.pool, a.events, a.hostMgr, log)
+	a.events.SetQuestions(a.questions)
 	a.hostMgr.SetHandlers(hostmgr.Handlers{
-		Hello:  a.engine.OnHello,
-		Result: a.engine.OnResult,
+		Hello: a.engine.OnHello,
+		Result: func(ctx context.Context, hostID uuid.UUID, r *hostdv1.Result) {
+			if a.questions.OnResult(ctx, hostID, r) { // an AnswerQuestion delivery (I-245)
+				return
+			}
+			a.engine.OnResult(ctx, hostID, r)
+		},
 		Samples: func(ctx context.Context, hostID uuid.UUID, s *hostdv1.Samples) {
 			a.meterIn.OnSamples(ctx, hostID, s)
 			a.abuse.OnSamples(ctx, hostID, s) // DECISIONS I-239: a miner stops its guest
@@ -205,7 +214,7 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 		users = auth.NewProvisioner(a.pool, auth.NewLogtoManagement(cfg.LogtoIssuer, cfg.LogtoM2MID, cfg.LogtoM2MSecret, nil))
 	}
 	a.server = httpapi.New(httpapi.Deps{
-		Pool: a.pool, Verifier: verifier, Users: users, CA: a.ca, Secrets: a.sec, Engine: a.engine, Logs: a.logs, Events: a.events, Outbox: a.outbox, Unsub: unsub,
+		Pool: a.pool, Verifier: verifier, Users: users, CA: a.ca, Secrets: a.sec, Engine: a.engine, Logs: a.logs, Events: a.events, Outbox: a.outbox, Unsub: unsub, Questions: a.questions,
 		Parser: parser, Metrics: a.m, Registry: a.reg, Log: log, Billing: portal, Webhooks: a.hooks, BillingEnforce: bcfg.Enforce, Customers: customers,
 		Gateway: httpapi.Gateway{Host: cfg.GatewayHost, Port: cfg.GatewayPort},
 		Migrations: func(ctx context.Context) (int, error) {
@@ -321,6 +330,7 @@ func (a *App) Run(ctx context.Context) error {
 		}()
 		go a.engine.Run(bg)
 		go a.outbox.Run(bg)
+		go a.questions.Run(bg)
 		go a.loops(bg)
 	}
 	if a.cfg.MetricsListen != "" && a.cfg.MetricsListen != "off" {

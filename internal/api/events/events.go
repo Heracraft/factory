@@ -30,6 +30,24 @@ var notifyKinds = map[string]bool{
 	"notifications_paused": true,
 	// A guest stopped because a miner was running (DECISIONS I-239).
 	"abuse_stopped": true,
+	// repose-notify and repose-ask (DECISIONS I-244).
+	"agent_message": true, "agent_question": true,
+}
+
+// noDedupe are kinds the user sent on purpose, one notification each: two
+// messages in a minute are two messages, and a question collapsed into an
+// earlier one would never be answerable.
+var noDedupe = map[string]bool{"agent_message": true, "agent_question": true}
+
+// QuestionHandler is the question store (internal/api/questions), which
+// sits on top of this package.
+type QuestionHandler interface {
+	// OnQuestion records a guest's question and notifies the owner; an
+	// error leaves the host event unacked, so it is sent again.
+	OnQuestion(ctx context.Context, ts time.Time, q *hostdv1.AgentQuestion) error
+	// GuestStopped cancels the project's pending questions: the asker went
+	// down with its guest.
+	GuestStopped(ctx context.Context, projectID uuid.UUID) error
 }
 
 // MaxSummary is the summary cap.
@@ -43,11 +61,15 @@ const RatePerHour = 30
 
 // Ingest writes events.
 type Ingest struct {
-	pool *db.Pool
-	m    *metrics.M
-	log  *slog.Logger
-	now  func() time.Time
+	pool      *db.Pool
+	m         *metrics.M
+	log       *slog.Logger
+	now       func() time.Time
+	questions QuestionHandler
 }
+
+// SetQuestions installs the question store (before serving).
+func (i *Ingest) SetQuestions(q QuestionHandler) { i.questions = q }
 
 // New builds an ingest.
 func New(pool *db.Pool, m *metrics.M, log *slog.Logger) *Ingest {
@@ -56,6 +78,9 @@ func New(pool *db.Pool, m *metrics.M, log *slog.Logger) *Ingest {
 
 // Incoming describes an event to insert.
 type Incoming struct {
+	// ID, when set, is the event's id; a repeat insert with it is a
+	// duplicate. Questions set it so their row can name the event first.
+	ID          uuid.UUID
 	ProjectID   uuid.UUID
 	TS          time.Time
 	Kind        string
@@ -96,7 +121,7 @@ func (i *Ingest) Insert(ctx context.Context, n Incoming) (id uuid.UUID, inserted
 		n.Source = "host"
 	}
 	err = db.InTx(ctx, i.pool, func(tx db.Tx) error {
-		if notifyKinds[n.Kind] && n.Kind != "notifications_paused" {
+		if notifyKinds[n.Kind] && n.Kind != "notifications_paused" && !noDedupe[n.Kind] {
 			// Collapse a repeat within the window, appending a new summary.
 			var prevID uuid.UUID
 			var prevSummary string
@@ -120,7 +145,10 @@ func (i *Ingest) Insert(ctx context.Context, n Incoming) (id uuid.UUID, inserted
 				return err
 			}
 		}
-		id = store.NewID()
+		id = n.ID
+		if id == uuid.Nil {
+			id = store.NewID()
+		}
 		tag, err := tx.Exec(ctx, `insert into events (id, project_id, ts, ts_second, kind, agent, tmux_window, summary, source, skew_seconds, host_event_id) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict do nothing`,
 			id, n.ProjectID, ts, ts.Unix(), n.Kind, agent, window, n.Summary, n.Source, skew, hostEventID)
 		if err != nil {
@@ -225,6 +253,21 @@ func (i *Ingest) OnEvent(ctx context.Context, hostID uuid.UUID, ev *hostdv1.Even
 		_, _, err = i.Insert(ctx, Incoming{ProjectID: p.ID, TS: ts, Kind: "guest_state_changed", Summary: st, Source: "host", HostEventID: ev.EventId})
 		if err != nil {
 			i.log.Error("state event insert", "event", "guest_state", "err", err.Error())
+			return false
+		}
+		if i.questions != nil && st != "running" && st != "starting" && st != "creating" && st != "building" {
+			if err := i.questions.GuestStopped(ctx, p.ID); err != nil {
+				i.log.Error("cancel questions of a stopped guest", "event", "agent_question", "project_id", p.ID.String(), "err", err.Error())
+				return false
+			}
+		}
+		return true
+	case *hostdv1.Event_AgentQuestion:
+		if i.questions == nil {
+			return true
+		}
+		if err := i.questions.OnQuestion(ctx, ts, e.AgentQuestion); err != nil {
+			i.log.Error("agent question insert", "event", "agent_question", "err", err.Error())
 			return false
 		}
 		return true

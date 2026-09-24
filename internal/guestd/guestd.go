@@ -23,6 +23,7 @@ import (
 	"github.com/heracraft/repose/internal/guestd/fs"
 	"github.com/heracraft/repose/internal/guestd/hooks"
 	"github.com/heracraft/repose/internal/guestd/project"
+	"github.com/heracraft/repose/internal/guestd/questions"
 	"github.com/heracraft/repose/internal/guestd/sample"
 	"github.com/heracraft/repose/internal/guestd/secrets"
 	"github.com/heracraft/repose/internal/guestd/ssh"
@@ -98,6 +99,7 @@ type Server struct {
 	exec    *exec.Handler
 	warn    *warn.Checker
 	hooks   *hooks.Server
+	asks    *questions.Store
 
 	notify  chan *guestdv1.Envelope
 	dropped atomic.Uint64
@@ -164,6 +166,8 @@ func New(cfg Config) (*Server, error) {
 	}
 	_, devGID := sysdep.DevIdentity()
 	s.hooks = hooks.NewServer(hookPath, devGID, s.onHook, s.sampler.WindowOfPane, log)
+	s.asks = questions.New(paths.QuestionsDir(), s.emitQuestion, log, cfg.Now)
+	s.hooks.EnableAsk(s.asks, s.AgentEvent)
 	return s, nil
 }
 
@@ -208,6 +212,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	go s.watcher.Run(ctx)
+	go s.asks.Run(ctx)
 	go s.warn.Run(ctx)
 	go s.readyProbe(ctx)
 	go func() {
@@ -274,6 +279,12 @@ func (s *Server) serve(ctx context.Context, c net.Conn) {
 	// the guest is up without waiting for a boot.
 	if s.isReady() {
 		s.emitReady()
+	}
+	// Every question still waiting is announced again: the hostd that
+	// carried the first announcement may have restarted before the api
+	// acked it, and the api inserts by question_id (DECISIONS I-244).
+	for _, q := range s.asks.Pending() {
+		s.emitQuestion(q)
 	}
 }
 
@@ -369,6 +380,22 @@ func (s *Server) AgentEvent(agent, window, kind, summary string) {
 		AgentEvent: &guestdv1.AgentEvent{Agent: agent, TmuxWindow: window, Kind: kind, Summary: summary},
 	}})
 }
+
+// emitQuestion queues a Question notification for an ask that opened, is
+// re-announced, or was closed from this side.
+func (s *Server) emitQuestion(q questions.Question) {
+	state := q.State
+	if state == questions.StateOpen {
+		state = ""
+	}
+	s.enqueue(&guestdv1.Notify{N: &guestdv1.Notify_Question{Question: &guestdv1.Question{
+		QuestionId: q.ID, Agent: q.Agent, TmuxWindow: q.Window, Text: q.Text,
+		Options: q.Options, TimeoutS: q.TimeoutS, State: state,
+	}}})
+}
+
+// Questions is the ask store (tests).
+func (s *Server) Questions() *questions.Store { return s.asks }
 
 // onHook is what the hook socket calls: relay to hostd and fold into the
 // agent-state machine so the next Sample agrees with the notification.

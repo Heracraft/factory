@@ -1651,6 +1651,33 @@ clearly finished.
    timestamp: delivery succeeded and the miss is client-side (a stale
    ntfy subscription, a spam folder).
 
+## repose-ask never gets its answer
+
+A user answered an agent's question (ntfy button, email link, dashboard,
+`repose reply`) and the agent is still waiting, or `repose-ask` exited 5
+(DECISIONS I-244, I-245). Every step logs ids and states only, never the
+question or the answer; grep by `question_id`.
+
+1. `select state, answered_via, delivery, delivered_at, deliver_attempts,
+   deliver_next_at from questions where id = '<id>'`. `pending` means the
+   answer never landed: the reply link said why (expired, already
+   answered), or the dashboard/CLI got a `409`.
+2. `answered` with `delivered_at` null and `deliver_attempts` rising: the
+   worker (api grpc process, advisory lock 1010) sends `AnswerQuestion`
+   every 30 s. `command_send` lines with `kind=AnswerQuestion` and no
+   `command_result` mean the host is not connected or hostd is older than
+   I-244 (it answers `invalid_argument: unknown command`, which the api
+   logs as the result and retries; switch the host). `result=guest_unresponsive`
+   means guestd is not answering (`GuestdLost`).
+3. `delivery = gone`: the guest no longer knew the question: it rebooted
+   or stopped, and the ask ended with it. `given_up`: 25 hours without an
+   acknowledgement. `guest`: the guest closed it itself (timeout or
+   Ctrl-C) before the answer came.
+4. On the guest, `ls /run/repose/questions` lists what guestd holds (root
+   only), and `journalctl -u guestd | grep agent_question` shows it opened
+   and closed. `guestd call answer-question '{"questionId":"<id>","status":"answered","answer":"..."}'`
+   delivers by hand; the user's text is theirs, so ask before typing it.
+
 ## ntfy failing
 
 `delivered.ntfy` carries `"error: ..."` (retrying) or `"failed: 404"` (not

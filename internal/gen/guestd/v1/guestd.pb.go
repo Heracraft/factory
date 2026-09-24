@@ -740,6 +740,70 @@ func (x *Shutdown) GetTimeoutS() uint32 {
 	return 0
 }
 
+// AnswerQuestion closes a question a `repose-ask` in this guest is waiting
+// on (DECISIONS I-244): status answered|cancelled|expired|no_channel, and
+// the user's answer when answered. Answering an already-closed question
+// with the same status is a no-op; an unknown question_id is not_found.
+type AnswerQuestion struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	QuestionId    string                 `protobuf:"bytes,1,opt,name=question_id,json=questionId,proto3" json:"question_id,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	Answer        string                 `protobuf:"bytes,3,opt,name=answer,proto3" json:"answer,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AnswerQuestion) Reset() {
+	*x = AnswerQuestion{}
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnswerQuestion) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnswerQuestion) ProtoMessage() {}
+
+func (x *AnswerQuestion) ProtoReflect() protoreflect.Message {
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnswerQuestion.ProtoReflect.Descriptor instead.
+func (*AnswerQuestion) Descriptor() ([]byte, []int) {
+	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *AnswerQuestion) GetQuestionId() string {
+	if x != nil {
+		return x.QuestionId
+	}
+	return ""
+}
+
+func (x *AnswerQuestion) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *AnswerQuestion) GetAnswer() string {
+	if x != nil {
+		return x.Answer
+	}
+	return ""
+}
+
 type Request struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Req:
@@ -756,6 +820,7 @@ type Request struct {
 	//	*Request_Exec
 	//	*Request_Shutdown
 	//	*Request_RegisterPaths
+	//	*Request_AnswerQuestion
 	Req           isRequest_Req `protobuf_oneof:"req"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -763,7 +828,7 @@ type Request struct {
 
 func (x *Request) Reset() {
 	*x = Request{}
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[14]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -775,7 +840,7 @@ func (x *Request) String() string {
 func (*Request) ProtoMessage() {}
 
 func (x *Request) ProtoReflect() protoreflect.Message {
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[14]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -788,7 +853,7 @@ func (x *Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Request.ProtoReflect.Descriptor instead.
 func (*Request) Descriptor() ([]byte, []int) {
-	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{14}
+	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *Request) GetReq() isRequest_Req {
@@ -906,6 +971,15 @@ func (x *Request) GetRegisterPaths() *RegisterPaths {
 	return nil
 }
 
+func (x *Request) GetAnswerQuestion() *AnswerQuestion {
+	if x != nil {
+		if x, ok := x.Req.(*Request_AnswerQuestion); ok {
+			return x.AnswerQuestion
+		}
+	}
+	return nil
+}
+
 type isRequest_Req interface {
 	isRequest_Req()
 }
@@ -958,6 +1032,10 @@ type Request_RegisterPaths struct {
 	RegisterPaths *RegisterPaths `protobuf:"bytes,12,opt,name=register_paths,json=registerPaths,proto3,oneof"`
 }
 
+type Request_AnswerQuestion struct {
+	AnswerQuestion *AnswerQuestion `protobuf:"bytes,13,opt,name=answer_question,json=answerQuestion,proto3,oneof"`
+}
+
 func (*Request_Ping) isRequest_Req() {}
 
 func (*Request_Freeze) isRequest_Req() {}
@@ -982,6 +1060,8 @@ func (*Request_Shutdown) isRequest_Req() {}
 
 func (*Request_RegisterPaths) isRequest_Req() {}
 
+func (*Request_AnswerQuestion) isRequest_Req() {}
+
 type Error struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
@@ -992,7 +1072,7 @@ type Error struct {
 
 func (x *Error) Reset() {
 	*x = Error{}
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[15]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1004,7 +1084,7 @@ func (x *Error) String() string {
 func (*Error) ProtoMessage() {}
 
 func (x *Error) ProtoReflect() protoreflect.Message {
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[15]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1017,7 +1097,7 @@ func (x *Error) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Error.ProtoReflect.Descriptor instead.
 func (*Error) Descriptor() ([]byte, []int) {
-	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{15}
+	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Error) GetCode() string {
@@ -1045,7 +1125,7 @@ type PingResult struct {
 
 func (x *PingResult) Reset() {
 	*x = PingResult{}
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[16]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1057,7 +1137,7 @@ func (x *PingResult) String() string {
 func (*PingResult) ProtoMessage() {}
 
 func (x *PingResult) ProtoReflect() protoreflect.Message {
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[16]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1070,7 +1150,7 @@ func (x *PingResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingResult.ProtoReflect.Descriptor instead.
 func (*PingResult) Descriptor() ([]byte, []int) {
-	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{16}
+	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *PingResult) GetVersion() string {
@@ -1105,7 +1185,7 @@ type SwitchResult struct {
 
 func (x *SwitchResult) Reset() {
 	*x = SwitchResult{}
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[17]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1117,7 +1197,7 @@ func (x *SwitchResult) String() string {
 func (*SwitchResult) ProtoMessage() {}
 
 func (x *SwitchResult) ProtoReflect() protoreflect.Message {
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[17]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1130,7 +1210,7 @@ func (x *SwitchResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SwitchResult.ProtoReflect.Descriptor instead.
 func (*SwitchResult) Descriptor() ([]byte, []int) {
-	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{17}
+	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *SwitchResult) GetRebooted() bool {
@@ -1163,7 +1243,7 @@ type GrowFsResult struct {
 
 func (x *GrowFsResult) Reset() {
 	*x = GrowFsResult{}
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[18]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1175,7 +1255,7 @@ func (x *GrowFsResult) String() string {
 func (*GrowFsResult) ProtoMessage() {}
 
 func (x *GrowFsResult) ProtoReflect() protoreflect.Message {
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[18]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1188,7 +1268,7 @@ func (x *GrowFsResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GrowFsResult.ProtoReflect.Descriptor instead.
 func (*GrowFsResult) Descriptor() ([]byte, []int) {
-	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{18}
+	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GrowFsResult) GetNewBytes() uint64 {
@@ -1211,7 +1291,7 @@ type SampleResult struct {
 
 func (x *SampleResult) Reset() {
 	*x = SampleResult{}
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[19]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1223,7 +1303,7 @@ func (x *SampleResult) String() string {
 func (*SampleResult) ProtoMessage() {}
 
 func (x *SampleResult) ProtoReflect() protoreflect.Message {
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[19]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1236,7 +1316,7 @@ func (x *SampleResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SampleResult.ProtoReflect.Descriptor instead.
 func (*SampleResult) Descriptor() ([]byte, []int) {
-	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{19}
+	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SampleResult) GetSignals() *v1.GuestSignals {
@@ -1271,7 +1351,7 @@ type ExecResult struct {
 
 func (x *ExecResult) Reset() {
 	*x = ExecResult{}
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[20]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1283,7 +1363,7 @@ func (x *ExecResult) String() string {
 func (*ExecResult) ProtoMessage() {}
 
 func (x *ExecResult) ProtoReflect() protoreflect.Message {
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[20]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1296,7 +1376,7 @@ func (x *ExecResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecResult.ProtoReflect.Descriptor instead.
 func (*ExecResult) Descriptor() ([]byte, []int) {
-	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{20}
+	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ExecResult) GetExitCode() int32 {
@@ -1338,7 +1418,7 @@ type Response struct {
 
 func (x *Response) Reset() {
 	*x = Response{}
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[21]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1350,7 +1430,7 @@ func (x *Response) String() string {
 func (*Response) ProtoMessage() {}
 
 func (x *Response) ProtoReflect() protoreflect.Message {
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[21]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1363,7 +1443,7 @@ func (x *Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Response.ProtoReflect.Descriptor instead.
 func (*Response) Descriptor() ([]byte, []int) {
-	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{21}
+	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *Response) GetOk() bool {
@@ -1475,7 +1555,7 @@ type Ready struct {
 
 func (x *Ready) Reset() {
 	*x = Ready{}
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[22]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1487,7 +1567,7 @@ func (x *Ready) String() string {
 func (*Ready) ProtoMessage() {}
 
 func (x *Ready) ProtoReflect() protoreflect.Message {
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[22]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1500,7 +1580,7 @@ func (x *Ready) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ready.ProtoReflect.Descriptor instead.
 func (*Ready) Descriptor() ([]byte, []int) {
-	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{22}
+	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *Ready) GetBootId() string {
@@ -1522,7 +1602,7 @@ type AgentEvent struct {
 
 func (x *AgentEvent) Reset() {
 	*x = AgentEvent{}
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[23]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1534,7 +1614,7 @@ func (x *AgentEvent) String() string {
 func (*AgentEvent) ProtoMessage() {}
 
 func (x *AgentEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[23]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1547,7 +1627,7 @@ func (x *AgentEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentEvent.ProtoReflect.Descriptor instead.
 func (*AgentEvent) Descriptor() ([]byte, []int) {
-	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{23}
+	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *AgentEvent) GetAgent() string {
@@ -1589,7 +1669,7 @@ type AgentState struct {
 
 func (x *AgentState) Reset() {
 	*x = AgentState{}
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[24]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1601,7 +1681,7 @@ func (x *AgentState) String() string {
 func (*AgentState) ProtoMessage() {}
 
 func (x *AgentState) ProtoReflect() protoreflect.Message {
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[24]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1614,7 +1694,7 @@ func (x *AgentState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentState.ProtoReflect.Descriptor instead.
 func (*AgentState) Descriptor() ([]byte, []int) {
-	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{24}
+	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *AgentState) GetAgent() string {
@@ -1648,7 +1728,7 @@ type Warning struct {
 
 func (x *Warning) Reset() {
 	*x = Warning{}
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[25]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1660,7 +1740,7 @@ func (x *Warning) String() string {
 func (*Warning) ProtoMessage() {}
 
 func (x *Warning) ProtoReflect() protoreflect.Message {
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[25]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1673,7 +1753,7 @@ func (x *Warning) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Warning.ProtoReflect.Descriptor instead.
 func (*Warning) Descriptor() ([]byte, []int) {
-	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{25}
+	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *Warning) GetKind() string {
@@ -1690,6 +1770,103 @@ func (x *Warning) GetDetail() string {
 	return ""
 }
 
+// Question is a `repose-ask` (DECISIONS I-244). guestd sends it when the
+// ask starts, again on every new hostd connection while it is open (the
+// api inserts by question_id, so a repeat is harmless), and once more with
+// state cancelled|expired when the asker gives up. text is capped at 1 KB,
+// options at 3 of 64 bytes each. state "" means open.
+type Question struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	QuestionId    string                 `protobuf:"bytes,1,opt,name=question_id,json=questionId,proto3" json:"question_id,omitempty"`
+	Agent         string                 `protobuf:"bytes,2,opt,name=agent,proto3" json:"agent,omitempty"`
+	TmuxWindow    string                 `protobuf:"bytes,3,opt,name=tmux_window,json=tmuxWindow,proto3" json:"tmux_window,omitempty"`
+	Text          string                 `protobuf:"bytes,4,opt,name=text,proto3" json:"text,omitempty"`
+	Options       []string               `protobuf:"bytes,5,rep,name=options,proto3" json:"options,omitempty"`
+	TimeoutS      uint32                 `protobuf:"varint,6,opt,name=timeout_s,json=timeoutS,proto3" json:"timeout_s,omitempty"`
+	State         string                 `protobuf:"bytes,7,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Question) Reset() {
+	*x = Question{}
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Question) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Question) ProtoMessage() {}
+
+func (x *Question) ProtoReflect() protoreflect.Message {
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Question.ProtoReflect.Descriptor instead.
+func (*Question) Descriptor() ([]byte, []int) {
+	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *Question) GetQuestionId() string {
+	if x != nil {
+		return x.QuestionId
+	}
+	return ""
+}
+
+func (x *Question) GetAgent() string {
+	if x != nil {
+		return x.Agent
+	}
+	return ""
+}
+
+func (x *Question) GetTmuxWindow() string {
+	if x != nil {
+		return x.TmuxWindow
+	}
+	return ""
+}
+
+func (x *Question) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *Question) GetOptions() []string {
+	if x != nil {
+		return x.Options
+	}
+	return nil
+}
+
+func (x *Question) GetTimeoutS() uint32 {
+	if x != nil {
+		return x.TimeoutS
+	}
+	return 0
+}
+
+func (x *Question) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
 type Notify struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to N:
@@ -1698,6 +1875,7 @@ type Notify struct {
 	//	*Notify_AgentEvent
 	//	*Notify_AgentState
 	//	*Notify_Warning
+	//	*Notify_Question
 	N             isNotify_N `protobuf_oneof:"n"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1705,7 +1883,7 @@ type Notify struct {
 
 func (x *Notify) Reset() {
 	*x = Notify{}
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[26]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1717,7 +1895,7 @@ func (x *Notify) String() string {
 func (*Notify) ProtoMessage() {}
 
 func (x *Notify) ProtoReflect() protoreflect.Message {
-	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[26]
+	mi := &file_repose_guestd_v1_guestd_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1730,7 +1908,7 @@ func (x *Notify) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Notify.ProtoReflect.Descriptor instead.
 func (*Notify) Descriptor() ([]byte, []int) {
-	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{26}
+	return file_repose_guestd_v1_guestd_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *Notify) GetN() isNotify_N {
@@ -1776,6 +1954,15 @@ func (x *Notify) GetWarning() *Warning {
 	return nil
 }
 
+func (x *Notify) GetQuestion() *Question {
+	if x != nil {
+		if x, ok := x.N.(*Notify_Question); ok {
+			return x.Question
+		}
+	}
+	return nil
+}
+
 type isNotify_N interface {
 	isNotify_N()
 }
@@ -1796,6 +1983,10 @@ type Notify_Warning struct {
 	Warning *Warning `protobuf:"bytes,4,opt,name=warning,proto3,oneof"`
 }
 
+type Notify_Question struct {
+	Question *Question `protobuf:"bytes,5,opt,name=question,proto3,oneof"`
+}
+
 func (*Notify_Ready) isNotify_N() {}
 
 func (*Notify_AgentEvent) isNotify_N() {}
@@ -1803,6 +1994,8 @@ func (*Notify_AgentEvent) isNotify_N() {}
 func (*Notify_AgentState) isNotify_N() {}
 
 func (*Notify_Warning) isNotify_N() {}
+
+func (*Notify_Question) isNotify_N() {}
 
 var File_repose_guestd_v1_guestd_proto protoreflect.FileDescriptor
 
@@ -1848,7 +2041,12 @@ const file_repose_guestd_v1_guestd_proto_rawDesc = "" +
 	"\ttimeout_s\x18\x02 \x01(\rR\btimeoutS\x12\x17\n" +
 	"\aas_user\x18\x03 \x01(\tR\x06asUser\"'\n" +
 	"\bShutdown\x12\x1b\n" +
-	"\ttimeout_s\x18\x01 \x01(\rR\btimeoutS\"\xc7\x05\n" +
+	"\ttimeout_s\x18\x01 \x01(\rR\btimeoutS\"a\n" +
+	"\x0eAnswerQuestion\x12\x1f\n" +
+	"\vquestion_id\x18\x01 \x01(\tR\n" +
+	"questionId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x16\n" +
+	"\x06answer\x18\x03 \x01(\tR\x06answer\"\x94\x06\n" +
 	"\aRequest\x12,\n" +
 	"\x04ping\x18\x01 \x01(\v2\x16.repose.guestd.v1.PingH\x00R\x04ping\x122\n" +
 	"\x06freeze\x18\x02 \x01(\v2\x18.repose.guestd.v1.FreezeH\x00R\x06freeze\x12,\n" +
@@ -1862,7 +2060,8 @@ const file_repose_guestd_v1_guestd_proto_rawDesc = "" +
 	"\x04exec\x18\n" +
 	" \x01(\v2\x16.repose.guestd.v1.ExecH\x00R\x04exec\x128\n" +
 	"\bshutdown\x18\v \x01(\v2\x1a.repose.guestd.v1.ShutdownH\x00R\bshutdown\x12H\n" +
-	"\x0eregister_paths\x18\f \x01(\v2\x1f.repose.guestd.v1.RegisterPathsH\x00R\rregisterPathsB\x05\n" +
+	"\x0eregister_paths\x18\f \x01(\v2\x1f.repose.guestd.v1.RegisterPathsH\x00R\rregisterPaths\x12K\n" +
+	"\x0fanswer_question\x18\r \x01(\v2 .repose.guestd.v1.AnswerQuestionH\x00R\x0eanswerQuestionB\x05\n" +
 	"\x03req\"5\n" +
 	"\x05Error\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x18\n" +
@@ -1914,14 +2113,25 @@ const file_repose_guestd_v1_guestd_proto_rawDesc = "" +
 	"\x05state\x18\x03 \x01(\tR\x05state\"5\n" +
 	"\aWarning\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x16\n" +
-	"\x06detail\x18\x02 \x01(\tR\x06detail\"\xf7\x01\n" +
+	"\x06detail\x18\x02 \x01(\tR\x06detail\"\xc3\x01\n" +
+	"\bQuestion\x12\x1f\n" +
+	"\vquestion_id\x18\x01 \x01(\tR\n" +
+	"questionId\x12\x14\n" +
+	"\x05agent\x18\x02 \x01(\tR\x05agent\x12\x1f\n" +
+	"\vtmux_window\x18\x03 \x01(\tR\n" +
+	"tmuxWindow\x12\x12\n" +
+	"\x04text\x18\x04 \x01(\tR\x04text\x12\x18\n" +
+	"\aoptions\x18\x05 \x03(\tR\aoptions\x12\x1b\n" +
+	"\ttimeout_s\x18\x06 \x01(\rR\btimeoutS\x12\x14\n" +
+	"\x05state\x18\a \x01(\tR\x05state\"\xb1\x02\n" +
 	"\x06Notify\x12/\n" +
 	"\x05ready\x18\x01 \x01(\v2\x17.repose.guestd.v1.ReadyH\x00R\x05ready\x12?\n" +
 	"\vagent_event\x18\x02 \x01(\v2\x1c.repose.guestd.v1.AgentEventH\x00R\n" +
 	"agentEvent\x12?\n" +
 	"\vagent_state\x18\x03 \x01(\v2\x1c.repose.guestd.v1.AgentStateH\x00R\n" +
 	"agentState\x125\n" +
-	"\awarning\x18\x04 \x01(\v2\x19.repose.guestd.v1.WarningH\x00R\awarningB\x03\n" +
+	"\awarning\x18\x04 \x01(\v2\x19.repose.guestd.v1.WarningH\x00R\awarning\x128\n" +
+	"\bquestion\x18\x05 \x01(\v2\x1a.repose.guestd.v1.QuestionH\x00R\bquestionB\x03\n" +
 	"\x01nB=Z;github.com/heracraft/repose/internal/gen/guestd/v1;guestdv1b\x06proto3"
 
 var (
@@ -1936,7 +2146,7 @@ func file_repose_guestd_v1_guestd_proto_rawDescGZIP() []byte {
 	return file_repose_guestd_v1_guestd_proto_rawDescData
 }
 
-var file_repose_guestd_v1_guestd_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_repose_guestd_v1_guestd_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_repose_guestd_v1_guestd_proto_goTypes = []any{
 	(*Envelope)(nil),        // 0: repose.guestd.v1.Envelope
 	(*Secret)(nil),          // 1: repose.guestd.v1.Secret
@@ -1952,26 +2162,28 @@ var file_repose_guestd_v1_guestd_proto_goTypes = []any{
 	(*Sample)(nil),          // 11: repose.guestd.v1.Sample
 	(*Exec)(nil),            // 12: repose.guestd.v1.Exec
 	(*Shutdown)(nil),        // 13: repose.guestd.v1.Shutdown
-	(*Request)(nil),         // 14: repose.guestd.v1.Request
-	(*Error)(nil),           // 15: repose.guestd.v1.Error
-	(*PingResult)(nil),      // 16: repose.guestd.v1.PingResult
-	(*SwitchResult)(nil),    // 17: repose.guestd.v1.SwitchResult
-	(*GrowFsResult)(nil),    // 18: repose.guestd.v1.GrowFsResult
-	(*SampleResult)(nil),    // 19: repose.guestd.v1.SampleResult
-	(*ExecResult)(nil),      // 20: repose.guestd.v1.ExecResult
-	(*Response)(nil),        // 21: repose.guestd.v1.Response
-	(*Ready)(nil),           // 22: repose.guestd.v1.Ready
-	(*AgentEvent)(nil),      // 23: repose.guestd.v1.AgentEvent
-	(*AgentState)(nil),      // 24: repose.guestd.v1.AgentState
-	(*Warning)(nil),         // 25: repose.guestd.v1.Warning
-	(*Notify)(nil),          // 26: repose.guestd.v1.Notify
-	(*v1.GuestSignals)(nil), // 27: repose.hostd.v1.GuestSignals
-	(*v1.ProcSample)(nil),   // 28: repose.hostd.v1.ProcSample
+	(*AnswerQuestion)(nil),  // 14: repose.guestd.v1.AnswerQuestion
+	(*Request)(nil),         // 15: repose.guestd.v1.Request
+	(*Error)(nil),           // 16: repose.guestd.v1.Error
+	(*PingResult)(nil),      // 17: repose.guestd.v1.PingResult
+	(*SwitchResult)(nil),    // 18: repose.guestd.v1.SwitchResult
+	(*GrowFsResult)(nil),    // 19: repose.guestd.v1.GrowFsResult
+	(*SampleResult)(nil),    // 20: repose.guestd.v1.SampleResult
+	(*ExecResult)(nil),      // 21: repose.guestd.v1.ExecResult
+	(*Response)(nil),        // 22: repose.guestd.v1.Response
+	(*Ready)(nil),           // 23: repose.guestd.v1.Ready
+	(*AgentEvent)(nil),      // 24: repose.guestd.v1.AgentEvent
+	(*AgentState)(nil),      // 25: repose.guestd.v1.AgentState
+	(*Warning)(nil),         // 26: repose.guestd.v1.Warning
+	(*Question)(nil),        // 27: repose.guestd.v1.Question
+	(*Notify)(nil),          // 28: repose.guestd.v1.Notify
+	(*v1.GuestSignals)(nil), // 29: repose.hostd.v1.GuestSignals
+	(*v1.ProcSample)(nil),   // 30: repose.hostd.v1.ProcSample
 }
 var file_repose_guestd_v1_guestd_proto_depIdxs = []int32{
-	14, // 0: repose.guestd.v1.Envelope.request:type_name -> repose.guestd.v1.Request
-	21, // 1: repose.guestd.v1.Envelope.response:type_name -> repose.guestd.v1.Response
-	26, // 2: repose.guestd.v1.Envelope.notify:type_name -> repose.guestd.v1.Notify
+	15, // 0: repose.guestd.v1.Envelope.request:type_name -> repose.guestd.v1.Request
+	22, // 1: repose.guestd.v1.Envelope.response:type_name -> repose.guestd.v1.Response
+	28, // 2: repose.guestd.v1.Envelope.notify:type_name -> repose.guestd.v1.Notify
 	1,  // 3: repose.guestd.v1.WriteSecrets.secrets:type_name -> repose.guestd.v1.Secret
 	2,  // 4: repose.guestd.v1.Request.ping:type_name -> repose.guestd.v1.Ping
 	3,  // 5: repose.guestd.v1.Request.freeze:type_name -> repose.guestd.v1.Freeze
@@ -1985,23 +2197,25 @@ var file_repose_guestd_v1_guestd_proto_depIdxs = []int32{
 	12, // 13: repose.guestd.v1.Request.exec:type_name -> repose.guestd.v1.Exec
 	13, // 14: repose.guestd.v1.Request.shutdown:type_name -> repose.guestd.v1.Shutdown
 	6,  // 15: repose.guestd.v1.Request.register_paths:type_name -> repose.guestd.v1.RegisterPaths
-	27, // 16: repose.guestd.v1.SampleResult.signals:type_name -> repose.hostd.v1.GuestSignals
-	28, // 17: repose.guestd.v1.SampleResult.procs:type_name -> repose.hostd.v1.ProcSample
-	15, // 18: repose.guestd.v1.Response.error:type_name -> repose.guestd.v1.Error
-	16, // 19: repose.guestd.v1.Response.ping:type_name -> repose.guestd.v1.PingResult
-	17, // 20: repose.guestd.v1.Response.switch:type_name -> repose.guestd.v1.SwitchResult
-	18, // 21: repose.guestd.v1.Response.grow_fs:type_name -> repose.guestd.v1.GrowFsResult
-	19, // 22: repose.guestd.v1.Response.sample:type_name -> repose.guestd.v1.SampleResult
-	20, // 23: repose.guestd.v1.Response.exec:type_name -> repose.guestd.v1.ExecResult
-	22, // 24: repose.guestd.v1.Notify.ready:type_name -> repose.guestd.v1.Ready
-	23, // 25: repose.guestd.v1.Notify.agent_event:type_name -> repose.guestd.v1.AgentEvent
-	24, // 26: repose.guestd.v1.Notify.agent_state:type_name -> repose.guestd.v1.AgentState
-	25, // 27: repose.guestd.v1.Notify.warning:type_name -> repose.guestd.v1.Warning
-	28, // [28:28] is the sub-list for method output_type
-	28, // [28:28] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	14, // 16: repose.guestd.v1.Request.answer_question:type_name -> repose.guestd.v1.AnswerQuestion
+	29, // 17: repose.guestd.v1.SampleResult.signals:type_name -> repose.hostd.v1.GuestSignals
+	30, // 18: repose.guestd.v1.SampleResult.procs:type_name -> repose.hostd.v1.ProcSample
+	16, // 19: repose.guestd.v1.Response.error:type_name -> repose.guestd.v1.Error
+	17, // 20: repose.guestd.v1.Response.ping:type_name -> repose.guestd.v1.PingResult
+	18, // 21: repose.guestd.v1.Response.switch:type_name -> repose.guestd.v1.SwitchResult
+	19, // 22: repose.guestd.v1.Response.grow_fs:type_name -> repose.guestd.v1.GrowFsResult
+	20, // 23: repose.guestd.v1.Response.sample:type_name -> repose.guestd.v1.SampleResult
+	21, // 24: repose.guestd.v1.Response.exec:type_name -> repose.guestd.v1.ExecResult
+	23, // 25: repose.guestd.v1.Notify.ready:type_name -> repose.guestd.v1.Ready
+	24, // 26: repose.guestd.v1.Notify.agent_event:type_name -> repose.guestd.v1.AgentEvent
+	25, // 27: repose.guestd.v1.Notify.agent_state:type_name -> repose.guestd.v1.AgentState
+	26, // 28: repose.guestd.v1.Notify.warning:type_name -> repose.guestd.v1.Warning
+	27, // 29: repose.guestd.v1.Notify.question:type_name -> repose.guestd.v1.Question
+	30, // [30:30] is the sub-list for method output_type
+	30, // [30:30] is the sub-list for method input_type
+	30, // [30:30] is the sub-list for extension type_name
+	30, // [30:30] is the sub-list for extension extendee
+	0,  // [0:30] is the sub-list for field type_name
 }
 
 func init() { file_repose_guestd_v1_guestd_proto_init() }
@@ -2014,7 +2228,7 @@ func file_repose_guestd_v1_guestd_proto_init() {
 		(*Envelope_Response)(nil),
 		(*Envelope_Notify)(nil),
 	}
-	file_repose_guestd_v1_guestd_proto_msgTypes[14].OneofWrappers = []any{
+	file_repose_guestd_v1_guestd_proto_msgTypes[15].OneofWrappers = []any{
 		(*Request_Ping)(nil),
 		(*Request_Freeze)(nil),
 		(*Request_Thaw)(nil),
@@ -2027,19 +2241,21 @@ func file_repose_guestd_v1_guestd_proto_init() {
 		(*Request_Exec)(nil),
 		(*Request_Shutdown)(nil),
 		(*Request_RegisterPaths)(nil),
+		(*Request_AnswerQuestion)(nil),
 	}
-	file_repose_guestd_v1_guestd_proto_msgTypes[21].OneofWrappers = []any{
+	file_repose_guestd_v1_guestd_proto_msgTypes[22].OneofWrappers = []any{
 		(*Response_Ping)(nil),
 		(*Response_Switch)(nil),
 		(*Response_GrowFs)(nil),
 		(*Response_Sample)(nil),
 		(*Response_Exec)(nil),
 	}
-	file_repose_guestd_v1_guestd_proto_msgTypes[26].OneofWrappers = []any{
+	file_repose_guestd_v1_guestd_proto_msgTypes[28].OneofWrappers = []any{
 		(*Notify_Ready)(nil),
 		(*Notify_AgentEvent)(nil),
 		(*Notify_AgentState)(nil),
 		(*Notify_Warning)(nil),
+		(*Notify_Question)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -2047,7 +2263,7 @@ func file_repose_guestd_v1_guestd_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_repose_guestd_v1_guestd_proto_rawDesc), len(file_repose_guestd_v1_guestd_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   27,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

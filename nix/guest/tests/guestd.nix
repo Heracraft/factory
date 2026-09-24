@@ -319,6 +319,41 @@ pkgs.testers.runNixOSTest {
         guest.succeed("journalctl -u guestd | grep -q hook_bad_payload")
         guest.fail("journalctl -u guestd | grep -q aider")
 
+    with subtest("repose-notify and repose-ask reach hostd, and an answer reaches the ask"):
+        # DECISIONS I-244: the guest half of agent messages and questions,
+        # with guestd call standing in for hostd.
+        guest.execute(
+            "guestd call ping --dev-socket /run/repose/guestd.sock --watch 20s "
+            ">/tmp/ask-notes.txt 2>&1 &"
+        )
+        guest.sleep(1)
+        guest.succeed("sudo -u dev repose-notify 'deploy is green'")
+        guest.wait_until_succeeds("grep -q agent_message /tmp/ask-notes.txt", timeout=30)
+        guest.execute(
+            "sudo -u dev sh -c 'repose-ask --options yes,no --timeout 60 \"ship it?\" "
+            ">/tmp/ask-out.txt 2>/tmp/ask-err.txt; echo $? >/tmp/ask-rc.txt' >/dev/null 2>&1 &"
+        )
+        guest.wait_until_succeeds("ls /run/repose/questions | grep -q json", timeout=30)
+        guest.wait_until_succeeds("grep -q questionId /tmp/ask-notes.txt", timeout=30)
+        qid = guest.succeed("ls /run/repose/questions | head -1").strip().removesuffix(".json")
+        result = first_json(call("answer-question", {"questionId": qid, "status": "answered", "answer": "yes"}))
+        assert result["ok"] is True, result
+        guest.wait_until_succeeds("test -s /tmp/ask-rc.txt", timeout=40)
+        rc = guest.succeed("cat /tmp/ask-rc.txt").strip()
+        assert rc == "0", (rc, guest.succeed("cat /tmp/ask-err.txt"))
+        guest.succeed("grep -qx yes /tmp/ask-out.txt")
+        # An answer for a question the guest does not know is not_found.
+        status, out = guest.execute(
+            "guestd call answer-question "
+            "'{\"questionId\": \"0199aaaa-0000-7000-8000-000000000000\", \"status\": \"answered\"}' "
+            "--dev-socket /run/repose/guestd.sock"
+        )
+        assert status != 0 and "not_found" in out, (status, out)
+        # Neither the message nor the question nor the answer is in a log.
+        guest.fail("journalctl -u guestd | grep -q 'deploy is green'")
+        guest.fail("journalctl -u guestd | grep -q 'ship it'")
+        guest.succeed("journalctl -u guestd | grep -q agent_question")
+
     with subtest("Switch applies a new generation without a reboot"):
         guest.fail("test -e /run/current-system/sw/bin/htop")
         closure = guest.succeed(

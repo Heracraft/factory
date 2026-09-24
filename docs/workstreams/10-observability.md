@@ -83,7 +83,8 @@ component must emit:
   DECISIONS I-238..I-240).
 - guestd: `ready`, `freeze`, `thaw`, `freeze_timeout`, `switch`,
   `agent_event`, `agent_state`, `oom_priority` (I-200, counts only),
-  `hook_bad_payload`, plus the one-per-request
+  `hook_bad_payload`, `agent_question` (I-244: ids, states, counts and
+  byte sizes, never the text), plus the one-per-request
   events 04 emits: `grow_fs`, `write_secrets`, `set_principals`,
   `setup_project`, `sample` (debug, carries `duration_ms`), `exec` and
   `shutdown`, and `warning` (carries `kind`, the enumeration in

@@ -72,3 +72,19 @@ export async function setBilling(mode: 'off' | 'card' | 'nocard'): Promise<void>
 }
 
 export { BASE_URL };
+
+/** Has a project's guest ask a question, as repose-ask would (the fake's admin POST /question). */
+export async function addQuestion(
+	projectId: string,
+	q: { agent?: string; text: string; options?: string[]; timeout_s?: number }
+): Promise<{ id: string }> {
+	const adminURL = process.env.FAKEAPI_ADMIN_URL;
+	if (!adminURL) throw new Error('FAKEAPI_ADMIN_URL not set — run tests through global-setup.ts');
+	const res = await fetch(`${adminURL}/question`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ project_id: projectId, ...q })
+	});
+	if (!res.ok) throw new Error(`/question: ${res.status} ${await res.text()}`);
+	return res.json();
+}

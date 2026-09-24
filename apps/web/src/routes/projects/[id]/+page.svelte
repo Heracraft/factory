@@ -34,6 +34,7 @@
 	import StateDot from '$lib/components/StateDot.svelte';
 	import { abuseStopReason } from '$lib/abuse';
 	import ConfirmType from '$lib/components/ConfirmType.svelte';
+	import QuestionsCard from '$lib/components/QuestionsCard.svelte';
 	import type { Project, ProjectEvent, Snapshot, Revision } from '$lib/api/types';
 
 	const id = page.params.id as string;
@@ -320,6 +321,8 @@
 		{:else if startBanner === 'capacity'}
 			<div class="banner banner--warn mt-4">No capacity right now, try again in a few minutes.</div>
 		{/if}
+
+		<QuestionsCard projectId={id} />
 
 		<div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
 			<div class="card">

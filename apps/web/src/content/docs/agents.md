@@ -48,6 +48,10 @@ sandbox_mode = "danger-full-access"
 
 For the others, see each agent's own documentation.
 
+## Let it ask you
+
+Any agent can message you or ask you a question with two commands on the machine: `repose-notify "text"` sends a notification, and `repose-ask --options yes,no "question"` waits for your answer and prints it. Add a line to the agent's instructions (`CLAUDE.md`, `AGENTS.md`) telling it to use them. The answer can come from ntfy, email, the dashboard or `repose reply` on your laptop; see [Notifications](/docs/notifications#agents-can-message-you-and-ask-questions).
+
 ## Log in
 
 Logins are kept on the machine's disk. They survive stops and are in snapshots.

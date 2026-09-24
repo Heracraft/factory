@@ -26,7 +26,9 @@ created it from, its size class, its state, which server it runs on, its
 configuration (the Nix fragment or menu choices you gave us), the build
 logs of that configuration, and the events your agents report through the
 notification hooks (agent name, kind of event, and a short summary the
-agent produced, capped at 1 KB).
+agent produced, capped at 1 KB), and the messages and questions sent from
+the environment with `repose-notify` and `repose-ask`, with your answers
+(each capped at 1 KB).
 
 **Metering.** Once a minute, for every environment: whether it is running,
 its size class, CPU time, memory in use, bytes sent and received, disk

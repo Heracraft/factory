@@ -69,6 +69,7 @@ const (
 	LockSweeper     int64 = 1007
 	LockPartitions  int64 = 1008
 	LockCAInit      int64 = 1009
+	LockQuestions   int64 = 1010
 )
 
 // TryLock takes a session-level advisory lock on a dedicated connection
