@@ -90,6 +90,14 @@ Grow the project's disk, for example `repose resize 80G`. Disks can't shrink, an
 
 `--since 72h` (default `24h`), `-f`/`--follow` to follow, `--json`.
 
+### `repose questions [PROJECT]`
+
+The questions agents are waiting on you to answer, from all projects or one. Each shows the project, the agent, how long ago it asked, when it expires, the question and how to answer it. `--json` for JSON. See [Notifications](/docs/notifications#agents-can-message-you-and-ask-questions).
+
+### `repose reply [PROJECT] [ANSWER...]`
+
+Answer a waiting question: `repose reply todo-app yes`. The first word is the project when it names one with a waiting question; otherwise every word is the answer, which works when only one question is waiting. With several waiting, it lists them and sends nothing; name the project or pass `--question ID` (the id `repose questions` shows). With no answer, it asks for one in the terminal. When the question has options, the answer must be one of them. `--json` prints the answered question.
+
 ## Snapshots
 
 | Command                                |                                                                                                                    |

@@ -81,6 +81,7 @@ command_id returns the stored result) and one of:
 | `SetPrincipals` | guest_id, principals | |
 | `Exec` | guest_id, argv, timeout_s, audit_id (required, I-26; operator use only, audited: hostd logs `{audit_id, guest_id, argv}` at notice) | exit_code, stdout, stderr (each capped 64 KB) |
 | `Drain` | (host) | |
+| `AnswerQuestion` | guest_id, question_id, status (`answered\|cancelled\|expired\|no_channel`), answer | none. Relayed to guestd's request of the same name (DECISIONS I-244). `not_found` when the guest is not running or guestd does not know the question, which the api takes as final; any other error is retried by the api with a new command_id. The answer is tenant text and is never logged |
 
 **Result**: `command_id`, `ok`, `error {code, message}`, payload. Snapshot
 blob paths are `<user_id>/<project_id>/<ts>.img.zst` (`<project_id>/<ts>`
@@ -119,9 +120,14 @@ HostSample { uint64 mem_free; uint64 pool_free; double load1; uint32 builds_runn
 
 **Event** (host-originated, at most once each, api acks by `event_id`):
 `guest_state_changed {guest_id, state, reason}`, `agent_event {guest_id,
-agent, kind (completed|needs_input|error), summary (capped 1 KB),
+agent, kind (completed|needs_input|error|agent_message), summary (capped 1 KB),
 tmux_window (the window guestd resolved for the hook, empty when unknown;
 I-121)}`,
+`agent_question {guest_id, question_id, agent, tmux_window, text (capped 1
+KB), options, timeout_s, state}` (a guest's `Question` notify, relayed;
+DECISIONS I-244: the api stores it by question_id, so a re-announcement
+after a hostd restart is a no-op, and `state` cancelled|expired closes it;
+the text is tenant content and is never logged),
 `snapshot_done`, `host_warning {kind, detail}` with kinds `pool_high` (80
 percent), `store_high` (80 percent), `build_queue_deep`, `cache_unreachable`
 (substituter down; builds fall back to source and will be slow),

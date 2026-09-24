@@ -37,6 +37,27 @@ type Message struct {
 	// Unsubscribe is the one-click link the email template embeds; empty
 	// when no Unsubscriber is configured (dev) or the channel is not email.
 	Unsubscribe string
+	// ProjectID links the dashboard's project page.
+	ProjectID uuid.UUID
+	// Question is set on an agent_question (DECISIONS I-245).
+	Question *QuestionLinks
+}
+
+// QuestionLinks is what a question's notification carries beyond its text:
+// one signed reply link per fixed option, for this message's channel.
+type QuestionLinks struct {
+	ID      uuid.UUID
+	Options []string
+	Replies []string // parallel to Options; empty when no signer is configured
+	Expires time.Time
+}
+
+// ProjectURL is the dashboard page of the message's project.
+func (m Message) ProjectURL() string {
+	if m.ProjectID == uuid.Nil {
+		return m.Dashboard + "/projects"
+	}
+	return m.Dashboard + "/projects/" + m.ProjectID.String()
 }
 
 // Sender delivers on one channel.
@@ -126,6 +147,10 @@ type row struct {
 	notifyEmail bool
 	userID      uuid.UUID
 	eventTS     time.Time
+	projectID   uuid.UUID
+	questionID  *uuid.UUID
+	options     []string
+	expires     *time.Time
 }
 
 // Once delivers every due row and returns how many it attempted.
@@ -133,8 +158,9 @@ func (o *Outbox) Once(ctx context.Context) (int, error) {
 	now := o.Now()
 	var rows []row
 	err := db.InTx(ctx, o.pool, func(tx db.Tx) error {
-		rs, err := tx.Query(ctx, `select o.event_id, o.channel, o.attempts, e.kind, e.agent, e.summary, e.ts, p.slug, u.id, u.email, u.ntfy_url, u.notify_email
+		rs, err := tx.Query(ctx, `select o.event_id, o.channel, o.attempts, e.kind, e.agent, e.summary, e.ts, p.slug, u.id, u.email, u.ntfy_url, u.notify_email, p.id, q.id, q.options, q.expires_at
 			from events_outbox o join events e on e.id = o.event_id join projects p on p.id = e.project_id join users u on u.id = p.user_id
+			left join questions q on q.event_id = e.id
 			where o.next_at <= $1 order by o.next_at limit 100 for update of o skip locked`, now)
 		if err != nil {
 			return err
@@ -142,7 +168,7 @@ func (o *Outbox) Once(ctx context.Context) (int, error) {
 		defer rs.Close()
 		for rs.Next() {
 			var r row
-			if err := rs.Scan(&r.eventID, &r.channel, &r.attempts, &r.kind, &r.agent, &r.summary, &r.eventTS, &r.slug, &r.userID, &r.email, &r.ntfy, &r.notifyEmail); err != nil {
+			if err := rs.Scan(&r.eventID, &r.channel, &r.attempts, &r.kind, &r.agent, &r.summary, &r.eventTS, &r.slug, &r.userID, &r.email, &r.ntfy, &r.notifyEmail, &r.projectID, &r.questionID, &r.options, &r.expires); err != nil {
 				return err
 			}
 			rows = append(rows, r)
@@ -179,7 +205,16 @@ func (o *Outbox) deliver(ctx context.Context, r row) {
 		o.mark(ctx, r, errors.New("no sender configured"), true)
 		return
 	}
-	m := Message{EventID: r.eventID, Kind: r.kind, Project: r.slug, Summary: r.summary, Dashboard: o.Dashboard}
+	m := Message{EventID: r.eventID, Kind: r.kind, Project: r.slug, Summary: r.summary, Dashboard: o.Dashboard, ProjectID: r.projectID}
+	if r.questionID != nil && r.expires != nil {
+		q := &QuestionLinks{ID: *r.questionID, Options: r.options, Expires: *r.expires}
+		if o.Unsub != nil {
+			for i := range r.options {
+				q.Replies = append(q.Replies, o.Unsub.ReplyURL(o.APIBase, q.ID, i, q.Expires, r.channel))
+			}
+		}
+		m.Question = q
+	}
 	if r.agent != nil {
 		m.Agent = *r.agent
 	}
@@ -255,7 +290,7 @@ func (o *Outbox) gauges(ctx context.Context) {
 // Title renders the one-line title of a message: what the ntfy Title
 // header and ordinary email subjects use.
 func Title(m Message) string {
-	verb := map[string]string{"completed": "finished", "needs_input": "needs input", "error": "hit an error"}[m.Kind]
+	verb := map[string]string{"completed": "finished", "needs_input": "needs input", "error": "hit an error", "agent_message": "says", "agent_question": "asks"}[m.Kind]
 	if verb == "" {
 		verb = strings.ReplaceAll(m.Kind, "_", " ")
 	}
@@ -308,6 +343,18 @@ func (e *Email) Send(ctx context.Context, m Message) error {
 	}
 	subject := Subject(m)
 	body := fmt.Sprintf("%s\n\n%s\n\nAttach with `repose attach --project %s` or open %s/projects.\n", subject, m.Summary, m.Project, m.Dashboard)
+	if q := m.Question; q != nil {
+		body = fmt.Sprintf("%s\n\n%s\n\n", subject, m.Summary)
+		if len(q.Replies) == len(q.Options) && len(q.Options) > 0 {
+			body += "Answer with one click:\n"
+			for i, o := range q.Options {
+				body += fmt.Sprintf("  %s: %s\n", o, q.Replies[i])
+			}
+			body += "\n"
+		}
+		body += fmt.Sprintf("Answer on the dashboard: %s\nor from your laptop: repose reply %s\n\nThe question expires at %s.\n",
+			m.ProjectURL(), m.Project, q.Expires.UTC().Format("2006-01-02 15:04 UTC"))
+	}
 	if m.Unsubscribe != "" {
 		body += fmt.Sprintf("\nStop these emails: %s\n", m.Unsubscribe)
 	}
@@ -360,10 +407,20 @@ func (n *Ntfy) Send(ctx context.Context, m Message) error {
 		prio, tag = "5", "question"
 	case "error", "snapshot_failed", "base_update_failed", "billing_stopped", "destroy_failed", "abuse_stopped":
 		prio, tag = "4", "x"
+	case "agent_message":
+		prio, tag = "3", "speech_balloon"
+	case "agent_question":
+		prio, tag = "5", "question"
 	}
 	req.Header.Set("Priority", prio)
 	req.Header.Set("Tags", tag)
 	req.Header.Set("Click", m.Dashboard+"/projects")
+	if m.Question != nil {
+		req.Header.Set("Click", m.ProjectURL())
+		if a := ntfyActions(m); a != "" {
+			req.Header.Set("Actions", a)
+		}
+	}
 	client := n.HTTP
 	if client == nil {
 		client = &http.Client{Timeout: 15 * time.Second}
@@ -380,6 +437,55 @@ func (n *Ntfy) Send(ctx context.Context, m Message) error {
 		return Permanent{fmt.Errorf("ntfy: status %d", resp.StatusCode)}
 	}
 	return nil
+}
+
+// ntfyAction is one entry of ntfy's JSON action list.
+type ntfyAction struct {
+	Action string `json:"action"`
+	Label  string `json:"label"`
+	URL    string `json:"url"`
+	Method string `json:"method,omitempty"`
+	Clear  bool   `json:"clear,omitempty"`
+}
+
+// ntfyActions renders a question's buttons as ntfy's JSON action list, which
+// the Actions header accepts as well as the comma format and which needs no
+// quoting rules for an option containing a comma or a semicolon: an http
+// button per option POSTing its signed reply link, or one view button to
+// the project page when the question takes free text. Non-ASCII is escaped
+// so the header stays ASCII.
+func ntfyActions(m Message) string {
+	q := m.Question
+	var acts []ntfyAction
+	if len(q.Options) > 0 && len(q.Replies) == len(q.Options) {
+		for i, o := range q.Options {
+			acts = append(acts, ntfyAction{Action: "http", Label: o, URL: q.Replies[i], Method: "POST", Clear: true})
+		}
+	} else {
+		acts = append(acts, ntfyAction{Action: "view", Label: "Answer", URL: m.ProjectURL()})
+	}
+	b, err := json.Marshal(acts)
+	if err != nil {
+		return ""
+	}
+	return asciiJSON(string(b))
+}
+
+// asciiJSON escapes every non-ASCII rune of a JSON text as \uXXXX.
+func asciiJSON(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r < 0x80:
+			b.WriteRune(r)
+		case r > 0xFFFF:
+			r -= 0x10000
+			fmt.Fprintf(&b, "\\u%04x\\u%04x", 0xD800+(r>>10), 0xDC00+(r&0x3FF))
+		default:
+			fmt.Fprintf(&b, "\\u%04x", r)
+		}
+	}
+	return b.String()
 }
 
 // Test sends a test message directly through every configured channel

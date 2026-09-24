@@ -195,3 +195,44 @@ func derefStr(s *string) string {
 	}
 	return *s
 }
+
+// TestAgentMessagesAreNotCollapsedAndShareTheCap: repose-notify messages
+// (DECISIONS I-244) are one event each, even within the dedupe window, and
+// count against the project's notification cap like any other event.
+func TestAgentMessagesAreNotCollapsedAndShareTheCap(t *testing.T) {
+	pool := testdb.Open(t)
+	ctx := context.Background()
+	ing := events.New(pool, metrics.NewNop(), slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	pid, gid := seed(t, pool)
+	now := time.Now()
+	for i := 0; i < 3; i++ {
+		ev := &hostdv1.Event{EventId: fmt.Sprint("msg-", i), Ts: now.Unix(), Ev: &hostdv1.Event_AgentEvent{AgentEvent: &hostdv1.AgentEvent{GuestId: gid.String(), Agent: "shell", Kind: "agent_message", Summary: fmt.Sprint("step ", i)}}}
+		if !ing.OnEvent(ctx, uuid.Nil, ev) {
+			t.Fatal("not acked")
+		}
+	}
+	var n int
+	_ = pool.QueryRow(ctx, "select count(*) from events where kind = 'agent_message' and project_id = $1", pid).Scan(&n)
+	if n != 3 {
+		t.Fatalf("three messages in a second became %d events", n)
+	}
+	_ = pool.QueryRow(ctx, "select count(distinct event_id) from events_outbox").Scan(&n)
+	if n != 3 {
+		t.Fatalf("outbox events %d, want 3", n)
+	}
+	for i := 3; i < 40; i++ {
+		if _, _, err := ing.Insert(ctx, events.Incoming{ProjectID: pid, TS: now, Kind: "agent_message", Agent: "shell", Summary: fmt.Sprint("step ", i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var outboxEvents, paused int
+	_ = pool.QueryRow(ctx, "select count(distinct event_id) from events_outbox o join events e on e.id = o.event_id where e.kind = 'agent_message'").Scan(&outboxEvents)
+	_ = pool.QueryRow(ctx, "select count(*) from events where kind = 'notifications_paused'").Scan(&paused)
+	if outboxEvents != events.RatePerHour || paused != 1 {
+		t.Fatalf("past the cap: %d messages queued, %d pause notices", outboxEvents, paused)
+	}
+	_ = pool.QueryRow(ctx, "select count(*) from events where kind = 'agent_message'").Scan(&n)
+	if n != 40 {
+		t.Fatalf("capped messages were dropped: %d stored", n)
+	}
+}

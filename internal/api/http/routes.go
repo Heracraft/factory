@@ -47,6 +47,11 @@ func (s *Server) registerUserRoutes() {
 	// Events and logs
 	s.route(m, "GET /v1/projects/{id}/events", a(s.listEvents))
 	s.route(m, "GET /v1/projects/{id}/logs", a(s.projectLogs))
+	// Questions from repose-ask (DECISIONS I-245)
+	s.route(m, "GET /v1/questions", a(s.listQuestions))
+	s.route(m, "GET /v1/projects/{id}/questions", a(s.listProjectQuestions))
+	s.route(m, "POST /v1/projects/{id}/questions/{qid}/answer", a(s.answerQuestion))
+	s.route(m, "POST /v1/projects/{id}/questions/{qid}/cancel", a(s.cancelQuestion))
 	// Usage and billing
 	s.route(m, "GET /v1/usage", a(s.usage))
 	s.route(m, "POST /v1/billing/portal", a(s.billingPortal))

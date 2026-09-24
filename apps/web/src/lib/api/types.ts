@@ -190,6 +190,25 @@ export interface ProjectEvent {
 	summary: string;
 }
 
+/** A repose-ask question (docs/interfaces/api.md "Questions", I-245). */
+export type QuestionState = 'pending' | 'answered' | 'cancelled' | 'expired' | 'no_channel';
+
+export interface Question {
+	id: string;
+	project_id: string;
+	project: string;
+	agent: string;
+	window?: string;
+	text: string;
+	options: string[];
+	state: QuestionState;
+	answer: string | null;
+	answered_via: 'dashboard' | 'cli' | 'ntfy' | 'email' | null;
+	created_at: string;
+	expires_at: string;
+	answered_at: string | null;
+}
+
 export interface UsageRow {
 	guest_hours: Partial<Record<SizeClass, number>>;
 	gb_months: number;

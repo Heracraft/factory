@@ -104,6 +104,7 @@ type Fake struct {
 	hosts        []Host // nil means the one canned host
 	gatewayCerts int    // POST /internal/gateway-certs calls, for cache tests
 	sessions     []SessionReport
+	questions    []*Question // newest last (DECISIONS I-245)
 	// billing is BillingOff, BillingCard or BillingNoCard; Options.Billing
 	// starts it at BillingCard and SetBilling changes it at run time.
 	// It is atomic rather than under mu, because handlers run under mu.
@@ -380,7 +381,8 @@ func (f *Fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, errf(code, "forced by the test's error switch"))
 		return
 	}
-	if !strings.HasPrefix(r.URL.Path, "/v1/internal/") && r.URL.Path != "/v1/notify/unsubscribe" {
+	// The unsubscribe and reply links carry their own signed token.
+	if !strings.HasPrefix(r.URL.Path, "/v1/internal/") && r.URL.Path != "/v1/notify/unsubscribe" && r.URL.Path != "/v1/questions/reply" {
 		u, tok, ok := f.authenticate(r, pattern)
 		if !ok {
 			f.mu.Unlock()
@@ -500,6 +502,13 @@ func (f *Fake) register() {
 	// Events and logs.
 	f.handle("GET /v1/projects/{id}/events", f.listEvents)
 	f.handle("GET /v1/projects/{id}/logs", f.projectLogs)
+	// Questions (DECISIONS I-245).
+	f.handle("GET /v1/questions", f.listQuestions)
+	f.handle("GET /v1/projects/{id}/questions", f.listProjectQuestions)
+	f.handle("POST /v1/projects/{id}/questions/{qid}/answer", f.answerQuestion)
+	f.handle("POST /v1/projects/{id}/questions/{qid}/cancel", f.cancelQuestion)
+	f.handle("GET /v1/questions/reply", f.replyQuestion)
+	f.handle("POST /v1/questions/reply", f.replyQuestion)
 	// Usage and billing.
 	f.handle("GET /v1/usage", f.getUsage)
 	f.handle("POST /v1/billing/portal", f.billingPortal)

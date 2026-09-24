@@ -1,0 +1,216 @@
+package cli
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/url"
+	"strings"
+	"time"
+)
+
+// Questions an agent asked with repose-ask in a guest (DECISIONS I-244,
+// I-245): `repose questions` lists the waiting ones and `repose reply`
+// answers one.
+
+// Question is docs/interfaces/api.md "Questions".
+type Question struct {
+	ID          string     `json:"id"`
+	ProjectID   string     `json:"project_id"`
+	Project     string     `json:"project"`
+	Agent       string     `json:"agent"`
+	Window      string     `json:"window,omitempty"`
+	Text        string     `json:"text"`
+	Options     []string   `json:"options"`
+	State       string     `json:"state"`
+	Answer      *string    `json:"answer"`
+	AnsweredVia *string    `json:"answered_via"`
+	CreatedAt   time.Time  `json:"created_at"`
+	ExpiresAt   time.Time  `json:"expires_at"`
+	AnsweredAt  *time.Time `json:"answered_at"`
+}
+
+type questionList struct {
+	Questions []Question `json:"questions"`
+}
+
+// ListQuestions is GET /questions (pending only).
+func (c *Client) ListQuestions(ctx context.Context) ([]Question, error) {
+	var r questionList
+	if err := c.get(ctx, "/questions", &r); err != nil {
+		return nil, err
+	}
+	return r.Questions, nil
+}
+
+// AnswerQuestion is POST /projects/:id/questions/:qid/answer.
+func (c *Client) AnswerQuestion(ctx context.Context, projectID, questionID, answer string) (*Question, error) {
+	var q Question
+	path := "/projects/" + url.PathEscape(projectID) + "/questions/" + url.PathEscape(questionID) + "/answer"
+	if err := c.post(ctx, path, map[string]string{"answer": answer, "via": "cli"}, &q); err != nil {
+		return nil, err
+	}
+	return &q, nil
+}
+
+// matchesProject reports whether arg names q's project by slug or id.
+func matchesProject(q Question, arg string) bool {
+	arg = strings.ToLower(strings.TrimSpace(arg))
+	return arg != "" && (strings.ToLower(q.Project) == arg || q.ProjectID == arg)
+}
+
+func printQuestion(w io.Writer, q Question, now time.Time) {
+	_, _ = fmt.Fprintf(w, "%s  %s asked %s, expires in %s  (id %s)\n", q.Project, q.Agent, ageOf(now.Sub(q.CreatedAt)), humanDuration(q.ExpiresAt.Sub(now)), shortID(q.ID))
+	for _, line := range strings.Split(q.Text, "\n") {
+		_, _ = fmt.Fprintf(w, "  %s\n", line)
+	}
+	if len(q.Options) > 0 {
+		_, _ = fmt.Fprintf(w, "  answer: repose reply %s %s\n", q.Project, strings.Join(q.Options, "|"))
+	} else {
+		_, _ = fmt.Fprintf(w, "  answer: repose reply %s \"...\"\n", q.Project)
+	}
+}
+
+func ageOf(d time.Duration) string {
+	if d < time.Minute {
+		return "just now"
+	}
+	return humanDuration(d) + " ago"
+}
+
+func shortID(id string) string {
+	if len(id) > 8 {
+		return id[len(id)-8:]
+	}
+	return id
+}
+
+// QuestionsCmd implements `repose questions [PROJECT]`: every question
+// still waiting for an answer, or only PROJECT's.
+func QuestionsCmd(ctx context.Context, e *Env, projectArg string) error {
+	qs, err := e.Client.ListQuestions(ctx)
+	if err != nil {
+		return err
+	}
+	if projectArg != "" {
+		var keep []Question
+		for _, q := range qs {
+			if matchesProject(q, projectArg) {
+				keep = append(keep, q)
+			}
+		}
+		qs = keep
+	}
+	if e.JSON {
+		if qs == nil {
+			qs = []Question{}
+		}
+		return writeJSONOut(e.Out, qs)
+	}
+	if len(qs) == 0 {
+		_, _ = fmt.Fprintln(e.Out, "No questions are waiting.")
+		return nil
+	}
+	now := time.Now()
+	for i, q := range qs {
+		if i > 0 {
+			_, _ = fmt.Fprintln(e.Out)
+		}
+		printQuestion(e.Out, q, now)
+	}
+	return nil
+}
+
+// ReplyCmd implements `repose reply [PROJECT] [ANSWER...]`. The first word
+// is the project when it names one with a waiting question; otherwise every
+// word is the answer. With one waiting question (after the project and
+// --question narrow the list) it is answered; with several they are listed
+// and nothing is sent. With no answer on a terminal it asks for one.
+func ReplyCmd(ctx context.Context, e *Env, args []string, projectFlag, questionFlag string, in io.Reader, interactive bool) error {
+	qs, err := e.Client.ListQuestions(ctx)
+	if err != nil {
+		return err
+	}
+	project := projectFlag
+	if project == "" && len(args) > 0 {
+		for _, q := range qs {
+			if matchesProject(q, args[0]) {
+				project, args = args[0], args[1:]
+				break
+			}
+		}
+	}
+	var cands []Question
+	for _, q := range qs {
+		if project != "" && !matchesProject(q, project) {
+			continue
+		}
+		if questionFlag != "" && q.ID != questionFlag && !strings.HasSuffix(q.ID, questionFlag) {
+			continue
+		}
+		cands = append(cands, q)
+	}
+	switch {
+	case len(cands) == 0 && project != "":
+		return exitf(ExitGeneric, "No question is waiting in %s. `repose questions` lists the waiting ones.", project)
+	case len(cands) == 0:
+		return exitf(ExitGeneric, "No questions are waiting.")
+	case len(cands) > 1:
+		now := time.Now()
+		_, _ = fmt.Fprintf(e.ErrOut, "%d questions are waiting; say which with the project or --question ID:\n\n", len(cands))
+		for i, q := range cands {
+			if i > 0 {
+				_, _ = fmt.Fprintln(e.ErrOut)
+			}
+			printQuestion(e.ErrOut, q, now)
+		}
+		return silent(ExitUsage)
+	}
+	q := cands[0]
+	answer := strings.TrimSpace(strings.Join(args, " "))
+	if answer == "" {
+		if !interactive {
+			return exitf(ExitUsage, "No answer given. Run `repose reply %s ANSWER`.", q.Project)
+		}
+		printQuestion(e.ErrOut, q, time.Now())
+		prompt := "Answer: "
+		if len(q.Options) > 0 {
+			prompt = "Answer (" + strings.Join(q.Options, "/") + "): "
+		}
+		_, _ = fmt.Fprint(e.ErrOut, prompt)
+		line, err := bufio.NewReader(in).ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		if answer = strings.TrimSpace(line); answer == "" {
+			return exitf(ExitUsage, "No answer given; nothing was sent.")
+		}
+	}
+	got, err := e.Client.AnswerQuestion(ctx, q.ProjectID, q.ID, answer)
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.Code {
+		case "invalid":
+			if len(q.Options) > 0 {
+				return exitf(ExitUsage, "The answer is one of: %s.", strings.Join(q.Options, ", "))
+			}
+			return exitf(ExitUsage, "%s", apiErr.Message)
+		case "conflict":
+			return exitf(ExitGeneric, "Not sent: %s.", apiErr.Message)
+		}
+	}
+	if err != nil {
+		return err
+	}
+	if e.JSON {
+		return writeJSONOut(e.Out, got)
+	}
+	ans := answer
+	if got.Answer != nil {
+		ans = *got.Answer
+	}
+	_, _ = fmt.Fprintf(e.Out, "Answered %s in %s: %s\n", q.Agent, q.Project, ans)
+	return nil
+}

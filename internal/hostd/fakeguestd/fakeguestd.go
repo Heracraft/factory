@@ -208,6 +208,8 @@ func kindOf(req *guestdv1.Request) string {
 		return "Switch"
 	case *guestdv1.Request_RegisterPaths:
 		return "RegisterPaths"
+	case *guestdv1.Request_AnswerQuestion:
+		return "AnswerQuestion"
 	case *guestdv1.Request_GrowFs:
 		return "GrowFs"
 	case *guestdv1.Request_WriteSecrets:
@@ -325,6 +327,10 @@ func (s *Server) Handle(_ context.Context, req *guestdv1.Request) *guestdv1.Resp
 		s.mu.Unlock()
 		if f != nil {
 			go f()
+		}
+	case *guestdv1.Request_AnswerQuestion:
+		if r.AnswerQuestion.QuestionId == "" {
+			return fail("invalid_argument", "question_id required")
 		}
 	default:
 		return fail("invalid_argument", "unknown request")

@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/heracraft/repose/internal/guestd/questions"
 	"github.com/heracraft/repose/internal/guestd/sysdep"
 	"golang.org/x/sys/unix"
 )
@@ -58,7 +59,11 @@ type Server struct {
 	log      *slog.Logger
 	gid      int
 	srv      *http.Server
+	mux      *http.ServeMux
 	listener net.Listener
+	// questions backs /notify and /ask once EnableAsk is called (I-244).
+	questions *questions.Store
+	msgSink   Sink
 }
 
 // NewServer builds the hook server. gid owns the socket's group, so the dev
@@ -67,6 +72,7 @@ func NewServer(path string, gid int, sink Sink, resolve WindowResolver, log *slo
 	s := &Server{path: path, sink: sink, resolve: resolve, log: log, gid: gid}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handle)
+	s.mux = mux
 	s.srv = &http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,

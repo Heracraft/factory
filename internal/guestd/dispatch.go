@@ -2,10 +2,12 @@ package guestd
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	guestdv1 "github.com/heracraft/repose/internal/gen/guestd/v1"
 	"github.com/heracraft/repose/internal/guestd/exec"
+	"github.com/heracraft/repose/internal/guestd/questions"
 	"github.com/heracraft/repose/internal/guestd/sysdep"
 	"github.com/heracraft/repose/internal/guestd/system"
 	"github.com/heracraft/repose/internal/vsockrpc"
@@ -119,11 +121,30 @@ func (s *Server) handle(ctx context.Context, req *guestdv1.Request) *guestdv1.Re
 	case *guestdv1.Request_RegisterPaths:
 		return empty(s.system.RegisterPaths(ctx, r.RegisterPaths.GetRegistration()))
 
+	case *guestdv1.Request_AnswerQuestion:
+		return empty(s.answerQuestion(r.AnswerQuestion))
+
 	default:
 		// An unknown request from a newer hostd. Saying so by code is what
 		// lets hostd degrade per request (docs/workstreams/04-guestd.md §8).
 		return fail(sysdep.Invalid("guestd protocol version %s does not know this request", ProtocolVersion))
 	}
+}
+
+// answerQuestion closes a question a repose-ask is waiting on. The answer
+// is tenant text; the log line carries the id and the status only.
+func (s *Server) answerQuestion(a *guestdv1.AnswerQuestion) error {
+	err := s.asks.Answer(a.GetQuestionId(), a.GetStatus(), a.GetAnswer())
+	switch {
+	case errors.Is(err, questions.ErrNotFound):
+		return sysdep.NotFound("no question %s in this guest", a.GetQuestionId())
+	case errors.Is(err, questions.ErrInvalid):
+		return sysdep.Invalid("%v", err)
+	case err != nil:
+		return err
+	}
+	s.log.Info("agent question closed", "event", "agent_question", "question_id", a.GetQuestionId(), "status", a.GetStatus())
+	return nil
 }
 
 // shutdown powers the guest off after the response has been flushed.

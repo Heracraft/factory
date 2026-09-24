@@ -513,6 +513,8 @@ func (m *Manager) emitEvent(ev any) {
 		e.Ev = v
 	case *hostdv1.Event_HostWarning:
 		e.Ev = v
+	case *hostdv1.Event_AgentQuestion:
+		e.Ev = v
 	}
 	m.d.Emit.Event(e)
 }
@@ -693,6 +695,8 @@ func Kind(cmd *hostdv1.Command) string {
 		return "Exec"
 	case *hostdv1.Command_Drain:
 		return "Drain"
+	case *hostdv1.Command_AnswerQuestion:
+		return "AnswerQuestion"
 	}
 	return ""
 }
@@ -722,6 +726,8 @@ func Target(cmd *hostdv1.Command) string {
 		return c.SetPrincipals.GuestId
 	case *hostdv1.Command_Exec:
 		return c.Exec.GuestId
+	case *hostdv1.Command_AnswerQuestion:
+		return c.AnswerQuestion.GuestId
 	}
 	return ""
 }
@@ -957,6 +963,9 @@ func (m *Manager) execute(ctx context.Context, cmd *hostdv1.Command) *hostdv1.Re
 		return payloadOrErr(id, err, func(res *hostdv1.Result) { res.Payload = &hostdv1.Result_Exec{Exec: r} })
 	case *hostdv1.Command_Drain:
 		err := m.drain(ctx)
+		return payloadOrErr(id, err, nil)
+	case *hostdv1.Command_AnswerQuestion:
+		err := m.answerQuestion(ctx, c.AnswerQuestion)
 		return payloadOrErr(id, err, nil)
 	}
 	return errResult(id, errf(CodeInvalidArgument, "unknown command"))

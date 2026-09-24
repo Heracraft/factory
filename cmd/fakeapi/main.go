@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/heracraft/repose/internal/fakes/api"
 )
@@ -58,6 +59,7 @@ func (a *adminServer) Close() error { return a.Server.Close() }
 //	POST /fail-next  {"method","path","code"} -> f.FailNext
 //	POST /unfail     {"method","path"}        -> f.Unfail
 //	POST /billing    {"mode": off|card|nocard} -> f.SetBilling
+//	POST /question   {"project_id","agent","text","options","timeout_s"} -> f.AddQuestion
 func newAdminServer(f *api.Fake) (*adminServer, error) {
 	type req struct{ Method, Path, Code string }
 	decode := func(w http.ResponseWriter, r *http.Request) (req, bool) {
@@ -90,6 +92,26 @@ func newAdminServer(f *api.Fake) (*adminServer, error) {
 		default:
 			http.Error(w, "mode is off, card or nocard", http.StatusBadRequest)
 		}
+	})
+	mux.HandleFunc("POST /question", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ProjectID string   `json:"project_id"`
+			Agent     string   `json:"agent"`
+			Text      string   `json:"text"`
+			Options   []string `json:"options"`
+			TimeoutS  int      `json:"timeout_s"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		q, err := f.AddQuestion(body.ProjectID, body.Agent, body.Text, body.Options, time.Duration(body.TimeoutS)*time.Second)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(q)
 	})
 	mux.HandleFunc("POST /fail-next", func(w http.ResponseWriter, r *http.Request) {
 		if body, ok := decode(w, r); ok {

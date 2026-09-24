@@ -104,6 +104,45 @@ never blocks an agent. Mapping:
 Anything else is dropped silently. `window` is the tmux window name of the
 caller's `$TMUX_PANE` when set.
 
+## Messages and questions (DECISIONS I-244)
+
+`repose-notify` and `repose-ask` are `repose-hook` under two more names
+(symlinks in the same package; `repose-hook notify` and `repose-hook ask`
+are the same commands). Any process in the guest may run them: an agent's
+shell tool, a script, the user.
+
+```
+repose-notify [--agent NAME] MESSAGE...        # or the message on stdin
+repose-ask [--options A,B,C] [--timeout 30m] [--agent NAME] QUESTION...
+```
+
+- The agent is `--agent`, else `REPOSE_HOOK_AGENT` (the wrappers export it,
+  so every shell an agent starts inherits it), else the first of the five
+  agents found by process name (`/proc/<pid>/comm`, never arguments) among
+  the caller's ancestors, else `shell`. The window is
+  `REPOSE_AGENT_WINDOW`, else guestd's `$TMUX_PANE` lookup.
+- `repose-notify` POSTs `/notify` and returns at once. The message (1 KB)
+  goes to the owner's channels as kind `agent_message` and counts against
+  the project's notification cap (30 an hour, `features/notifications.md`).
+  Exit 0 sent, 1 guestd unreachable or refused, 2 usage.
+- `repose-ask` POSTs `/ask`, then long-polls `GET /ask/<id>` and prints the
+  answer on stdout. `--options` (at most 3, comma-separated, 64 bytes each)
+  makes the answer one of them and gives ntfy and email one-click buttons;
+  `--timeout` is a duration or seconds, default 30 minutes, at most 24
+  hours. Flags may come before or after the question. While guestd is
+  unreachable (a restart) it retries for 2 minutes. SIGINT, SIGTERM or
+  SIGHUP cancel the question (`DELETE /ask/<id>`) and exit 130.
+
+| Exit | Meaning |
+|---|---|
+| 0 | answered; the answer is on stdout |
+| 1 | guestd unreachable, refused the question, or lost for 2 minutes |
+| 2 | usage: no question, more than 3 options, a bad `--timeout` |
+| 3 | no answer before the timeout |
+| 4 | no notification channel is on for the owner (email off and no ntfy) |
+| 5 | cancelled: the owner dismissed it, the guest stopped, or the question is gone (the guest rebooted) |
+| 130 | interrupted |
+
 ## Credentials the CLI syncs into the guest
 
 | Laptop path | Guest path | Owner/mode |

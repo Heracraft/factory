@@ -5899,3 +5899,93 @@ people, with examples and grouping a generator would lose; a check keeps
 both); checking only that flag names appear somewhere on the page (a flag
 documented under the wrong command would pass); leaving resize hidden and
 allowlisted (the allowlist is for things no user should type).
+
+**I-244. Agents message the owner with `repose-notify` and ask with
+`repose-ask`; the answer comes back over the hostd channel.** (agent
+questions worker, owner, 2026-09-24) An agent that needs a decision today
+stops at a permission prompt or guesses; the owner hears "needs input" and
+has to attach to answer. Two guest commands close that loop. They are
+`repose-hook` under two more names (symlinks in the same package, so the
+guest base gains no binary; `repose-hook notify|ask` are the same), which
+keeps "repose" as the only prefix. `repose-notify TEXT` POSTs the hook
+socket's new `/notify` route and becomes an `AgentEvent` of the new kind
+`agent_message`, so an old hostd relays it unchanged and the api's outbox,
+channels and 30-an-hour cap apply as they are; messages are exempt from the
+60-second collapse, since two messages are two messages. `repose-ask`
+POSTs `/ask`, which guestd answers with a UUIDv7 it chose, writes the
+question to `/run/repose/questions/<id>.json` (root, 0600) and announces it
+as the new `Question` notify, relayed by hostd as the `agent_question`
+event; the ask then long-polls `GET /ask/<id>` (25 s at a time) and prints
+the answer. The answer travels down as the new `AnswerQuestion` command
+(api → hostd) and request (hostd → guestd). This design survives what it
+has to: a hostd restart loses unacked events, so guestd re-announces every
+open question on each new hostd connection and the api inserts by
+question id; an api restart loses nothing, because questions are rows and
+the delivery worker (grpc process, advisory lock 1010) picks every close
+not yet acknowledged and sends it again with a fresh command_id every 30
+s (a reused command_id would get hostd's stored failure back forever),
+while guestd treats a repeat answer as a no-op; a guestd restart keeps the
+tmpfs files and the ask reconnects for up to 2 minutes; a guest reboot
+empties the tmpfs, the asker died with it, and a later AnswerQuestion is
+`not_found`, which the api takes as final. The ask's exit codes are the
+contract agents script against: 0 answered, 1 guestd unreachable, 2 usage,
+3 timeout, 4 no channel on (the api closes the question at once rather
+than let it wait out its timeout unseen), 5 cancelled (dismissed, the
+guest stopped, or the question is gone), 130 interrupted (the question is
+withdrawn with `DELETE /ask/<id>`). The agent is `--agent`, else
+`REPOSE_HOOK_AGENT` (inherited by every shell an agent starts), else the
+first of the five found by process name among the caller's ancestors
+(`comm`, never arguments), else `shell`. Limits: 1 KB of text, at most 3
+options of 64 bytes (ntfy shows three buttons), timeout 30 minutes by
+default and 24 hours at most, 16 open questions per guest. The text is
+tenant content: it reaches the owner's channels and the dashboard and is
+never logged; every log line on the path carries ids, states, counts and
+byte sizes only. *Rejected:* a guest long-poll to the api through the
+edge's hook ingest (a second path to authenticate by source address, and
+the edge is the secondary path by I-4); `Exec` to push the answer (an
+operator-only, audited command carrying tenant text in argv); an ops-engine
+op for the delivery (one op per project at a time would block a start
+behind an unanswered question); separate `repose-notify` and `repose-ask`
+binaries (two more packages for the same socket client).
+
+**I-245. Questions are rows; the owner answers from ntfy, email, the
+dashboard or the CLI, and the first answer wins.** (agent questions
+worker, owner, 2026-09-24) Migration `0006_questions` adds `questions`,
+keyed by the guest's id, with the text, up to three options, a state
+(`pending|answered|cancelled|expired|no_channel`), the answer and where it
+came from, the expiry, and the delivery bookkeeping (`deliver_command_id`,
+attempts, next try, `delivered_at`, `delivery` ok|gone|given_up|guest).
+Text and answer are stored as plain text, like `events.summary`: they are
+what the owner is shown, not secrets, and no other tenant text is
+encrypted, so encrypting these would protect nothing the summary column
+does not already hold and would add a fourth place for key material. Each
+question is also an `agent_question` event (inserted by a fixed id after
+the row, so a failure between the two is repaired by the host's resend),
+and its outbox rows carry, per channel, one signed reply link per option:
+the token is the question id, the option index and the question's expiry,
+HMAC-SHA256 under the unsubscribe key with a separate domain string, so
+nothing is stored per link and no login is needed. The link is single use
+because the question is: the first answer closes it, and every later click
+says what the answer was. ntfy gets an `Actions` header in its JSON form
+(escaped to ASCII, so an option with a comma needs no quoting), one `http`
+POST button per option with `clear=true`, or a `view` button to the
+project page for a free-text question; email lists the links, the
+dashboard link, `repose reply <project>` and the expiry. A GET of a link
+only shows the question and a button that POSTs, because mail scanners
+open links and a GET that answered would answer for the owner; 20 tries
+per question a minute. Routes: `GET /questions`, `GET
+/projects/:id/questions`, `POST .../answer` (options enforced
+case-insensitively, stored in the option's spelling; `409 conflict` once
+closed), `POST .../cancel`, and the public `GET|POST /questions/reply`.
+The dashboard shows pending questions on the project page; the CLI adds
+`repose questions [PROJECT]` and `repose reply [PROJECT] [ANSWER...]`,
+which lists instead of guessing when more than one is waiting. A guest
+that stops cancels its pending questions; the worker expires a pending
+question 30 s after its timeout (the guest reports its own first) and
+gives up delivering after 25 hours. *Rejected:* answering by replying to
+the email (inbound mail, parsing and spoofing, for a path the links
+cover); a per-question random token stored hashed (a table of secrets for
+what a MAC does statelessly); answering on GET (scanners); folding
+questions into `repose status` (a question is an action item across
+projects, and status is one project's state; `repose questions` lists
+them all).

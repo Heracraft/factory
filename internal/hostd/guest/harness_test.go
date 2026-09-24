@@ -254,6 +254,8 @@ func cmd(c any) *hostdv1.Command {
 		out.Cmd = &hostdv1.Command_Exec{Exec: v}
 	case *hostdv1.Drain:
 		out.Cmd = &hostdv1.Command_Drain{Drain: v}
+	case *hostdv1.AnswerQuestion:
+		out.Cmd = &hostdv1.Command_AnswerQuestion{AnswerQuestion: v}
 	}
 	return out
 }

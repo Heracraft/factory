@@ -32,6 +32,7 @@ import (
 	"github.com/heracraft/repose/internal/api/metrics"
 	"github.com/heracraft/repose/internal/api/notify"
 	"github.com/heracraft/repose/internal/api/ops"
+	"github.com/heracraft/repose/internal/api/questions"
 	"github.com/heracraft/repose/internal/api/ratelimit"
 	"github.com/heracraft/repose/internal/api/secrets"
 	"github.com/heracraft/repose/internal/api/store"
@@ -59,12 +60,15 @@ type Deps struct {
 	Outbox   *notify.Outbox
 	// Unsub verifies the email unsubscribe link (13-notifications.md §5.6);
 	// nil disables GET /notify/unsubscribe with a 500 rather than a panic.
-	Unsub    *notify.Unsubscriber
-	Parser   *config.Parser
-	Metrics  *metrics.M
-	Registry *prometheus.Registry
-	Log      *slog.Logger
-	Billing  billing.Portal
+	Unsub *notify.Unsubscriber
+	// Questions is repose-ask's store (DECISIONS I-245); nil answers the
+	// question routes with 500.
+	Questions *questions.Service
+	Parser    *config.Parser
+	Metrics   *metrics.M
+	Registry  *prometheus.Registry
+	Log       *slog.Logger
+	Billing   billing.Portal
 	// Webhooks applies Stripe events (09-billing.md §5.6); nil makes
 	// POST /billing/webhook answer 503 billing_disabled.
 	Webhooks *billing.Webhooks
@@ -94,6 +98,9 @@ type RateLimits struct {
 	Config int
 }
 
+// ReplyLinkRate caps tries per question on the public reply links.
+const ReplyLinkRate = 20
+
 // DefaultRateLimits are 60/min for writes, 600/min for reads, 10/min POST
 // /certs, 5/min PUT /config (api.md "Rate limits", DECISIONS I-187).
 var DefaultRateLimits = RateLimits{General: 60, Reads: 600, Certs: 10, Config: 5}
@@ -108,6 +115,7 @@ type Server struct {
 	reads    *ratelimit.Limiter
 	certs    *ratelimit.Limiter
 	cfg      *ratelimit.Limiter
+	replies  *ratelimit.Limiter // per question, on the public reply links
 	sessions *sessionTracker
 	ready    bool
 	waiters  opWaiters   // held op reads (I-236)
@@ -131,10 +139,13 @@ func New(d Deps) *Server {
 		lim.Reads = 10 * lim.General
 	}
 	s := &Server{d: d, user: http.NewServeMux(), internal: http.NewServeMux(),
-		general: ratelimit.New(lim.General), reads: ratelimit.New(lim.Reads), certs: ratelimit.New(lim.Certs), cfg: ratelimit.New(lim.Config), sessions: newSessionTracker(d.Pool)}
+		general: ratelimit.New(lim.General), reads: ratelimit.New(lim.Reads), certs: ratelimit.New(lim.Certs), cfg: ratelimit.New(lim.Config), replies: ratelimit.New(ReplyLinkRate), sessions: newSessionTracker(d.Pool)}
 	s.registerUserRoutes()
 	s.registerInternalRoutes()
 	s.route(s.user, "GET /v1/notify/unsubscribe", s.unsubscribe)
+	// Reply links carry their own signed token, like the unsubscribe link.
+	s.route(s.user, "GET /v1/questions/reply", s.replyGet)
+	s.route(s.user, "POST /v1/questions/reply", s.replyPost)
 	s.user.HandleFunc("GET /healthz", s.healthz)
 	s.user.HandleFunc("GET /readyz", s.readyz)
 	// /metrics is not on this mux. The user listener sits behind the public
@@ -454,6 +465,7 @@ func (s *Server) SweepLimiters() {
 	s.reads.Sweep(10 * time.Minute)
 	s.certs.Sweep(10 * time.Minute)
 	s.cfg.Sweep(10 * time.Minute)
+	s.replies.Sweep(10 * time.Minute)
 }
 
 // --- health -------------------------------------------------------------

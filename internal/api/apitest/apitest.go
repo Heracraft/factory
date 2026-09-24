@@ -27,6 +27,7 @@ import (
 	"github.com/heracraft/repose/internal/api/meter"
 	"github.com/heracraft/repose/internal/api/metrics"
 	"github.com/heracraft/repose/internal/api/ops"
+	"github.com/heracraft/repose/internal/api/questions"
 	"github.com/heracraft/repose/internal/api/secrets"
 	"github.com/heracraft/repose/internal/api/store"
 	"github.com/heracraft/repose/internal/db"
@@ -52,6 +53,9 @@ type Harness struct {
 	Events  *events.Ingest
 	Meter   *meter.Ingest
 	Engine  *ops.Engine
+	// Questions is repose-ask's store; its worker is not running unless a
+	// test starts it (Questions.Once drives it by hand).
+	Questions *questions.Service
 
 	engine       atomic.Pointer[ops.Engine]
 	grpcAddr     string
@@ -97,6 +101,8 @@ func New(t *testing.T, o Options) *Harness {
 	h.Logs = buildlog.New(pool, log)
 	h.Events = events.New(pool, h.Metrics, log)
 	h.Meter = meter.New(pool, h.Metrics, log)
+	h.Questions = questions.New(pool, h.Events, h.HostMgr, log)
+	h.Events.SetQuestions(h.Questions)
 	h.HostMgr.SetHandlers(hostmgr.Handlers{
 		Hello: func(ctx context.Context, hostID uuid.UUID, hl *hostdv1.Hello) {
 			if e := h.engine.Load(); e != nil {
@@ -104,6 +110,9 @@ func New(t *testing.T, o Options) *Harness {
 			}
 		},
 		Result: func(ctx context.Context, hostID uuid.UUID, r *hostdv1.Result) {
+			if h.Questions.OnResult(ctx, hostID, r) {
+				return
+			}
 			if e := h.engine.Load(); e != nil {
 				e.OnResult(ctx, hostID, r)
 			}

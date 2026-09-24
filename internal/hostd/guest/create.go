@@ -698,6 +698,18 @@ func (mon *monitor) handleNotify(n *guestdv1.Notify) {
 		}
 		m.log(mon.g).Info("agent event", "event", "agent_event", "agent", v.AgentEvent.Agent, "kind", v.AgentEvent.Kind)
 		m.emitEvent(&hostdv1.Event_AgentEvent{AgentEvent: &hostdv1.AgentEvent{GuestId: mon.g.GuestID, Agent: v.AgentEvent.Agent, Kind: v.AgentEvent.Kind, Summary: summary, TmuxWindow: v.AgentEvent.TmuxWindow}})
+	case *guestdv1.Notify_Question:
+		q := v.Question
+		text := q.Text
+		if len(text) > 1024 {
+			text = text[:1024]
+		}
+		// The text is tenant content: counted, never logged.
+		m.log(mon.g).Info("agent question", "event", "agent_question", "agent", q.Agent, "question_id", q.QuestionId, "state", q.State, "text_bytes", len(q.Text))
+		m.emitEvent(&hostdv1.Event_AgentQuestion{AgentQuestion: &hostdv1.AgentQuestion{
+			GuestId: mon.g.GuestID, QuestionId: q.QuestionId, Agent: q.Agent, TmuxWindow: q.TmuxWindow,
+			Text: text, Options: q.Options, TimeoutS: q.TimeoutS, State: q.State,
+		}})
 	case *guestdv1.Notify_AgentState:
 		m.log(mon.g).Debug("agent state", "event", "agent_state", "agent", v.AgentState.Agent, "state", v.AgentState.State)
 	case *guestdv1.Notify_Warning:

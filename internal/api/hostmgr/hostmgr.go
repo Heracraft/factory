@@ -513,6 +513,8 @@ func Kind(cmd *hostdv1.Command) string {
 		return "Exec"
 	case *hostdv1.Command_Drain:
 		return "Drain"
+	case *hostdv1.Command_AnswerQuestion:
+		return "AnswerQuestion"
 	}
 	return "unknown"
 }

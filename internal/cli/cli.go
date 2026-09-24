@@ -118,6 +118,8 @@ func newRootCmd(version string) *cobra.Command {
 		newLogsCmd(envJSON, env, g),
 		newProjectsCmd(envJSON),
 		newEventsCmd(envJSON, env, g),
+		newQuestionsCmd(envJSON, env, g),
+		newReplyCmd(envJSON, g),
 		newNotifyCmd(env),
 		newResizeCmd(env, g),
 		newVersionCmd(version),
@@ -828,6 +830,46 @@ func newEventsCmd(envJSON func(*cobra.Command) (*Env, error), env func() (*Env, 
 	cmd.Flags().Bool("json", false, "print each event as JSON")
 	cmd.Flags().StringVar(&since, "since", "24h", "e.g. 24h")
 	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "poll for new events every 10s")
+	return cmd
+}
+
+func newQuestionsCmd(envJSON func(*cobra.Command) (*Env, error), env func() (*Env, error), g *globalFlags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:               "questions [PROJECT]",
+		Short:             "List the questions agents are waiting on you to answer",
+		Args:              projectArgs,
+		ValidArgsFunction: completeProject(env),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := projectFrom(args, g)
+			if err != nil {
+				return err
+			}
+			e, err := envJSON(cmd)
+			if err != nil {
+				return err
+			}
+			return QuestionsCmd(cmd.Context(), e, project)
+		},
+	}
+	cmd.Flags().Bool("json", false, "print the questions as JSON")
+	return cmd
+}
+
+func newReplyCmd(envJSON func(*cobra.Command) (*Env, error), g *globalFlags) *cobra.Command {
+	var question string
+	cmd := &cobra.Command{
+		Use:   "reply [PROJECT] [ANSWER...]",
+		Short: "Answer a question an agent asked with repose-ask",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			e, err := envJSON(cmd)
+			if err != nil {
+				return err
+			}
+			return ReplyCmd(cmd.Context(), e, args, g.project, question, os.Stdin, isTerminal(os.Stdin))
+		},
+	}
+	cmd.Flags().Bool("json", false, "print the answered question as JSON")
+	cmd.Flags().StringVar(&question, "question", "", "the question's id (or its last characters, as `repose questions` shows)")
 	return cmd
 }
 

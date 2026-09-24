@@ -53,6 +53,9 @@ func (p Paths) SecretsEnv() string { return p.join("run", "repose", "secrets.env
 // HooksSock is /run/repose/hooks.sock, the agent hook ingest.
 func (p Paths) HooksSock() string { return p.join("run", "repose", "hooks.sock") }
 
+// QuestionsDir holds the open `repose-ask` questions (DECISIONS I-244).
+func (p Paths) QuestionsDir() string { return p.join("run", "repose", "questions") }
+
 // DevSock is /run/repose/guestd.sock, the dev-mode stand-in for vsock.
 func (p Paths) DevSock() string { return p.join("run", "repose", "guestd.sock") }
 

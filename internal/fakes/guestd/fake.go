@@ -232,6 +232,8 @@ func Kind(req *guestdv1.Request) string {
 		return "switch"
 	case *guestdv1.Request_RegisterPaths:
 		return "register_paths"
+	case *guestdv1.Request_AnswerQuestion:
+		return "answer_question"
 	case *guestdv1.Request_GrowFs:
 		return "grow_fs"
 	case *guestdv1.Request_WriteSecrets:
