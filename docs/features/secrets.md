@@ -33,8 +33,9 @@ Copied at every `repose run` over the SSH session into the guest, owned by
 opencode's `auth.json`, the Vercel CLI's `auth.json` (from macOS's
 Application Support or Linux's `~/.local/share`), and the git identity (inside the carried git
 config below, since I-195); when gh's login
-travels and the remote is on github.com, the guest's git also gets gh as
-its credential helper for github over HTTPS, so an agent can push (a gh
+travels, whatever the project's remote, the guest's git also gets gh as
+its credential helper for github and rewrites `git@github.com:` and
+`ssh://git@github.com/` to HTTPS, so an agent can push to an SSH remote (a gh
 token the laptop keeps in its keyring is written into the copy of
 `hosts.yml` that travels; DECISIONS I-150). All of it is one ssh, before
 the checkout is synced. The platform never sees these; they travel laptop
@@ -43,7 +44,22 @@ to guest inside SSH.
 Why copy rather than store: the user already has them, they rotate on the
 laptop, and holding a copy of a GitHub token for every user in a database is
 a liability with no benefit. Why copy at all: the agent must push while the
-laptop is closed, so agent forwarding is not enough.
+laptop is closed, and the laptop's ssh-agent is never forwarded
+(DECISIONS I-247): with it, any process in the guest (an agent running
+with every permission, a package's install script) could sign with the
+laptop's keys while the user is attached, which is the exposure the
+machine exists to remove. The generated `~/.ssh/repose/config` says
+`ForwardAgent no` and the gateway refuses agent forwarding from any
+client.
+
+Other git hosts (GitLab, Bitbucket, self-hosted) have no copied login.
+Two options, both in the public docs' secrets page ("Other git hosts"):
+an HTTPS token stored as a named secret (kind 3) plus a per-host
+`credential.<url>.helper` that echoes it, with an `insteadOf` for the
+host's SSH URLs; or a deploy key generated in the guest and added to that
+one repository with write access. The deploy key is the user's own file
+on the guest disk (in snapshots), not a repose secret, the same as any
+other file the user writes there.
 
 Rules that must hold:
 

@@ -40,16 +40,17 @@ nix profile add nixpkgs#ffmpeg
 
 `pip install --user`, bun, deno, gem and composer installs are on `PATH` too, as are the usual directories of yarn, dotnet, ghcup, cabal, opam, luarocks, mix, nimble, juliaup, krew and volta. `nix profile add` takes any package from nixpkgs; search names at [search.nixos.org](https://search.nixos.org/packages).
 
-Type a command the machine doesn't have and it tells you where to get it:
+Type a command the machine doesn't have and it tells you which package has it and how to add it:
 
 ```
 $ air
-air is not installed. It is in the nixpkgs package air:
-  now, in this guest:              nix profile add nixpkgs#air
-  from your laptop, kept for good: repose config add air
+air: command not found
+  nix profile add nixpkgs#air  install it on this machine
+  repose config add air        keep it on every rebuild (run this on your laptop)
+Other packages with air: air-formatter
 ```
 
-Installs made on the machine are not part of the project's configuration. To have a package on every rebuild, add it with [`repose config add`](/docs/config).
+The last line only appears when other packages have a command by that name. Installs made on the machine are not part of the project's configuration. To have a package on every rebuild, add it with [`repose config add`](/docs/config).
 
 ## Your laptop's tools come along
 

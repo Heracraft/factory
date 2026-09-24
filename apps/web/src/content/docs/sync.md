@@ -37,24 +37,39 @@ exclude = ["dist", "*.mp4", "fixtures/large"]
 
 ## When the machine has changes of its own
 
-If something on the machine changed the checkout since your last sync (usually an agent), the sync stops instead of overwriting it:
+`repose run` only copies your laptop's work onto the machine. It never restarts or rebuilds the machine, so running it again on a machine an agent is working on is safe.
+
+If the machine changed since your last sync (usually an agent's edits or commits) and your laptop has nothing new since then, there is nothing to copy. The checkout is left as it is and you're attached:
 
 ```
-The guest's working tree has uncommitted changes (3 files):
-  M src/auth.ts
-  M src/routes/login.ts
-  ?? notes.md
+The machine has changes your laptop doesn't have (27 files); attaching without syncing. `repose run --stash-remote` puts them in git stash and syncs your laptop's work.
 ```
 
-Changes that are exactly what the previous sync wrote don't count: they are stashed on the machine as `repose run: last sync` (the newest 10 are kept) and the sync goes on.
+If your laptop does have new work, copying it would write over the machine's changes, so the sync stops, changes nothing and exits with code 6:
 
-Otherwise nothing is changed and the command exits with code 6. Then either:
+```
+`repose run` copies your laptop's work onto the machine. It doesn't restart or rebuild anything.
+The machine has uncommitted changes your laptop doesn't have (27 files), probably an agent's:
+  src/auth.ts
+  src/routes/login.ts
+  src/routes/logout.ts
+  src/session.ts
+  src/session.test.ts
+  package.json
+  pnpm-lock.yaml
+  notes.md
+  and 19 more
+Your laptop has new work as well, so syncing now would write over them. Nothing was changed. Pick one:
+  repose attach                  look at the machine first
+  repose run --stash-remote      put the machine's changes in git stash, then sync
+  repose run --discard-remote    throw the machine's changes away, then sync
+```
 
-- `repose attach` to look, and let the agent finish or commit;
-- `repose run --stash-remote` to keep the machine's changes in `git stash` there, as `repose run`;
-- `repose run --discard-remote` to throw them away.
+`--stash-remote` keeps the machine's changes in `git stash` there, named `repose run`. `--discard-remote` throws them away.
 
-If the agent committed on the branch and you haven't pulled those commits, the sync checks out your laptop's commit detached and leaves the agent's branch where it is. Nothing is lost. Push from the machine and pull on your laptop.
+Changes that are exactly what the previous sync wrote don't count as the machine's: they are stashed on the machine as `repose run: last sync` (the newest 10 are kept) and the sync goes on.
+
+If the agent committed on the branch and your laptop has new commits of its own, the sync checks out your laptop's commit detached and leaves the agent's branch where it is. Nothing is lost. Push from the machine and pull on your laptop.
 
 ## Getting work back
 

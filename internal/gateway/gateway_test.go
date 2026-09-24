@@ -3,6 +3,7 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -216,7 +217,12 @@ func TestRelayRemoteForward(t *testing.T) {
 	}
 }
 
-func TestRelayAgentForwarding(t *testing.T) {
+// TestRelayRefusesAgentForwarding is I-247: a client that still asks for
+// agent forwarding (an old ~/.ssh/repose/config, or ssh -A) is told no,
+// the request never reaches the guest, and an agent channel the guest
+// opens anyway is rejected, so nothing in a guest can sign with the
+// laptop's keys. The exec still returns (the I-110 hang stays fixed).
+func TestRelayRefusesAgentForwarding(t *testing.T) {
 	h := newHarness(t, harnessOpts{})
 	priv, key := genKey(t)
 	keyring := agent.NewKeyring()
@@ -236,29 +242,28 @@ func TestRelayAgentForwarding(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = sess.Close() }()
-	if err := agent.RequestAgentForwarding(sess); err != nil {
-		t.Fatalf("auth-agent-req: %v", err)
+	if err := agent.RequestAgentForwarding(sess); err == nil {
+		t.Fatal("auth-agent-req was accepted; the gateway must refuse agent forwarding")
 	}
 	var out, errb strings.Builder
 	sess.Stdout, sess.Stderr = &out, &errb
-	// The exec must return once the guest is done even though an agent
-	// channel was opened during it (I-110): a hang here is the bug.
 	done := make(chan error, 1)
 	go func() { done <- sess.Run("agent") }()
 	select {
 	case err := <-done:
-		if err != nil {
-			t.Fatalf("agent: %v %s", err, errb.String())
+		var ee *ssh.ExitError
+		if !errors.As(err, &ee) || ee.ExitStatus() != 1 {
+			t.Fatalf("agent: want exit 1 from a rejected agent channel, got %v (out %q, err %q)", err, out.String(), errb.String())
 		}
 	case <-time.After(15 * time.Second):
-		t.Fatal("exec with agent forwarding did not return: the agent channel's EOF was not relayed to the client")
+		t.Fatal("exec did not return after the agent channel was rejected")
 	}
-	if out.String() != "keys=1\n" {
-		t.Fatalf("guest listed %q", out.String())
+	if strings.Contains(out.String(), "keys=") || !strings.Contains(errb.String(), "agent channel") {
+		t.Fatalf("guest reached the agent: out %q, err %q", out.String(), errb.String())
 	}
 	_, agentReq, _, _ := h.guest.snapshot()
-	if !agentReq {
-		t.Fatal("auth-agent-req not relayed")
+	if agentReq {
+		t.Fatal("auth-agent-req reached the guest")
 	}
 }
 

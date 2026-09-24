@@ -154,9 +154,8 @@ After both sides exist, the gateway relays:
   the guest side with the same type and extra data; the two channels are
   piped both ways with `io.Copy` and stderr piped for `session`. Channel
   requests (`pty-req`, `env`, `shell`, `exec`, `subsystem`,
-  `window-change`, `signal`, `exit-status`, `exit-signal`,
-  `auth-agent-req@openssh.com`) are forwarded in both directions with
-  `WantReply` honoured.
+  `window-change`, `signal`, `exit-status`, `exit-signal`) are forwarded
+  in both directions with `WantReply` honoured.
 - `env` requests are filtered to a safe list (`TERM`, `LANG`, `LC_*`,
   `COLORTERM`, `TZ`), because sshd's `AcceptEnv` in the guest is the real
   guard and the filter just avoids noise.
@@ -164,10 +163,10 @@ After both sides exist, the gateway relays:
   to the guest, and the guest's resulting `forwarded-tcpip` channels are
   relayed back. `keepalive@openssh.com` is answered locally and also sent
   to the guest every 30 s so both halves notice a dead peer.
-- Agent forwarding: `auth-agent-req@openssh.com` on a session is forwarded
-  and the guest's `auth-agent@openssh.com` channel requests are relayed
-  back to the client, so `git push` over SSH inside the guest can use the
-  laptop's agent while attached.
+- Agent forwarding is refused (DECISIONS I-247): `auth-agent-req@openssh.com`
+  on a session is answered with failure and not forwarded, and a guest's
+  `auth-agent@openssh.com` channel is rejected, so nothing in a guest can
+  sign with the laptop's keys. `TestRelayRefusesAgentForwarding`.
 - Close handling: when either side closes, the other is closed after
   pending data flushes; on a session, exit status is delivered before
   EOF and close (DECISIONS I-212), and the guest's channel

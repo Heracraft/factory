@@ -42,23 +42,37 @@ At each `repose run`, these are copied straight to the machine over SSH if you h
 | opencode   | `~/.local/share/opencode/auth.json`                                                                         |
 | Vercel CLI | `~/Library/Application Support/com.vercel.cli/auth.json` (macOS), `~/.local/share/com.vercel.cli/auth.json` |
 
-With `gh` logged in and a github.com remote, git on the machine pushes over HTTPS with that login, so an agent can push without your SSH keys.
+Your SSH keys never reach the machine, and your ssh-agent isn't forwarded. With `gh` logged in on your laptop, git on the machine sends every GitHub URL, `git@github.com:owner/repo` and `ssh://git@github.com/owner/repo` included, over HTTPS with that login. An agent can push to an SSH remote without any change to it. If you log in to `gh` on the machine instead, run `gh auth setup-git` there once.
 
 Never copied: SSH private keys, Claude Code's login, Gemini's OAuth login. See [Agents](/docs/agents#log-in) for those.
 
 ### Other git hosts
 
-For GitLab, Bitbucket or your own server, store a token and tell git on the machine to use it:
+GitLab, Bitbucket and your own server have no login that repose copies, and your SSH keys stay on your laptop. Pick one of these.
+
+**A token, kept as a secret.** Create a token with write access to the repository on the git host, then store it:
 
 ```
 repose secrets set GITLAB_TOKEN
 ```
 
-then, on the machine:
+On the machine, tell git to use it for that host, and to send the host's SSH URLs over HTTPS:
 
 ```
-git config --global credential.helper '!f() { echo username=oauth2; echo "password=$GITLAB_TOKEN"; }; f'
+git config --global credential.https://gitlab.com.helper '!f() { echo username=oauth2; echo "password=$GITLAB_TOKEN"; }; f'
+git config --global url.https://gitlab.com/.insteadOf git@gitlab.com:
 ```
+
+Bitbucket takes your username and an app password or access token in the same place. The token is in memory on the machine only, like every secret.
+
+**A deploy key made on the machine.** On the machine:
+
+```
+ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519 -C todo-app.repose
+cat ~/.ssh/id_ed25519.pub
+```
+
+Add the public key to that one repository as a deploy key with write access. It can push to that repository and nothing else. The private key lives on the machine's disk, so it's in its snapshots; delete the deploy key on the git host when you destroy the project.
 
 ## Git and Claude Code settings
 
@@ -72,7 +86,7 @@ Your Claude Code setup is copied too: `CLAUDE.md`, `settings.json` (with `env` a
 - **The internet**, outbound, with the limits in [Limits](/docs/limits).
 - **Your git host**, with whatever credentials the machine has.
 - **Not your other projects.** Each is a separate machine, and the network stops them from reaching each other.
-- **Not your laptop.** The machine can't open connections to it. While you're attached, two things link them: your ssh-agent is forwarded (processes can ask it to sign, not read keys), and ports on the machine appear on your laptop's `localhost`.
+- **Not your laptop.** The machine can't open connections to it, and it never gets your SSH keys or your ssh-agent. While you're attached, ports on the machine appear on your laptop's `localhost`.
 
 ## What repose stores
 

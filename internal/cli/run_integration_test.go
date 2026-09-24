@@ -248,7 +248,8 @@ func TestSyncCredentialsCopiesExactlyTheFourRows(t *testing.T) {
 	// gh travelled and the remote is on github: the guest's git reaches
 	// github over HTTPS with gh as the helper, so an agent can push
 	// without the laptop's SSH keys (I-150).
-	if got := mustRun(t, f.guestHome, "git", "config", "--file", filepath.Join(f.guestHome, ".gitconfig"), "url.https://github.com/.insteadOf"); got != "git@github.com:" {
+	// Both SSH spellings, since the laptop's agent is not forwarded (I-247).
+	if got := mustRun(t, f.guestHome, "git", "config", "--file", filepath.Join(f.guestHome, ".gitconfig"), "--get-all", "url.https://github.com/.insteadOf"); got != "git@github.com:\nssh://git@github.com/" {
 		t.Fatalf("insteadOf = %q", got)
 	}
 	if got := mustRun(t, f.guestHome, "git", "config", "--file", filepath.Join(f.guestHome, ".gitconfig"), "credential.https://github.com.helper"); got != "!gh auth git-credential" {
@@ -286,8 +287,11 @@ func TestSyncCredentialsCarriesAKeyringGhToken(t *testing.T) {
 	if local, _ := os.ReadFile(p); strings.Contains(string(local), "oauth_token") {
 		t.Fatal("the laptop's hosts.yml was changed")
 	}
-	if cfg, err := os.ReadFile(filepath.Join(f.guestHome, ".gitconfig")); err == nil && strings.Contains(string(cfg), "insteadOf") {
-		t.Fatalf("insteadOf set for a non-github remote:\n%s", cfg)
+	// gh travelled, so github's SSH URLs go over HTTPS even for a project
+	// hosted elsewhere: with no agent forwarding (I-247) a submodule or a
+	// clone from github has no other way in.
+	if got := mustRun(t, f.guestHome, "git", "config", "--file", filepath.Join(f.guestHome, ".gitconfig"), "--get-all", "url.https://github.com/.insteadOf"); got != "git@github.com:\nssh://git@github.com/" {
+		t.Fatalf("insteadOf = %q", got)
 	}
 }
 

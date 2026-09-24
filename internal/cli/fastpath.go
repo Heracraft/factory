@@ -50,6 +50,11 @@ func sshFilesCover(sd string, p *Project, now time.Time) (handle string, ok bool
 	if err != nil {
 		return "", false
 	}
+	if strings.Contains(string(cfg), "ForwardAgent yes") {
+		// Written by a CLI before I-247: the slow path rewrites the whole
+		// file, so the upgrade drops agent forwarding on its first command.
+		return "", false
+	}
 	return hostBlockHandle(string(cfg), p.Slug)
 }
 

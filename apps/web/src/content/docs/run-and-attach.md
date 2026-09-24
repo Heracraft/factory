@@ -86,7 +86,11 @@ The CLI sets this up with one line in `~/.ssh/config`, `Include ~/.ssh/repose/co
 
 Your SSH certificate lasts 12 hours. `run`, `attach`, `open` and `cp` renew it. If `ssh` or your editor gets `Permission denied`, run `repose attach` once, detach, and try again.
 
-While you're connected, your laptop's ssh-agent is forwarded to the machine. That lets `git push` over SSH work, and it also lets processes on the machine ask your agent to sign while you're connected (they can't read the keys). An agent working alone should push over HTTPS instead; see [Secrets](/docs/secrets#logins-copied-from-your-laptop).
+### Your SSH keys stay on your laptop
+
+Your laptop's ssh-agent is never forwarded to the machine, and `ssh -A` is refused. Nothing running there, an agent or a package's install script, can use your keys, even while you're attached.
+
+Pushes to GitHub still work. When your `gh` login is copied over, git on the machine sends `git@github.com:` and `ssh://git@github.com/` URLs over HTTPS with that login, so `git push` works without changing the remote. For other git hosts, see [Other git hosts](/docs/secrets#other-git-hosts).
 
 ## Time zone
 

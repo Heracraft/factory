@@ -94,6 +94,12 @@ type SyncSummary struct {
 	// Unchanged: the guest already had exactly this sync's result, and
 	// only the carry (if anything) was sent (I-224).
 	Unchanged bool
+	// GuestAhead: the guest changed since the last sync (GuestFiles
+	// uncommitted files, or commits when 0) and the laptop had nothing new
+	// to send, so the checkout was left alone and only the carry went
+	// (I-248).
+	GuestAhead bool
+	GuestFiles int
 	// Copied and Carried are the outcome of SyncOptions.Carry: the logins
 	// copied, as syncCredentialsAndCarry returns them.
 	Copied  []string
@@ -101,17 +107,43 @@ type SyncSummary struct {
 }
 
 // dirtyTreeError is 07-cli.md §6's exit 6, carrying the file list for the
-// message in §5.5b.
+// message in §5.5b. It is only returned when the laptop has new work
+// that would land on the guest's changes (I-248); with nothing new the
+// run attaches instead.
 type dirtyTreeError struct{ files []string }
+
+// dirtyListMax is how many of the guest's changed files the refusal
+// names; the rest are counted.
+const dirtyListMax = 8
 
 func (e *dirtyTreeError) Error() string {
 	var b strings.Builder
-	_, _ = fmt.Fprintf(&b, "The guest's working tree has uncommitted changes (%d files):\n", len(e.files))
-	for _, f := range e.files {
-		_, _ = fmt.Fprintf(&b, "  %s\n", f)
+	b.WriteString("`repose run` copies your laptop's work onto the machine. It doesn't restart or rebuild anything.\n")
+	files := "1 file"
+	if len(e.files) != 1 {
+		files = fmt.Sprintf("%d files", len(e.files))
 	}
-	b.WriteString("An agent may still be working. Re-run with --stash-remote (keeps them in `git stash`) or --discard-remote (throws them away), or `repose attach` to look first.")
+	_, _ = fmt.Fprintf(&b, "The machine has uncommitted changes your laptop doesn't have (%s), probably an agent's:\n", files)
+	for i, f := range e.files {
+		if i == dirtyListMax && len(e.files) > dirtyListMax+1 {
+			_, _ = fmt.Fprintf(&b, "  and %d more\n", len(e.files)-dirtyListMax)
+			break
+		}
+		_, _ = fmt.Fprintf(&b, "  %s\n", porcelainPath(f))
+	}
+	b.WriteString("Your laptop has new work as well, so syncing now would write over them. Nothing was changed. Pick one:\n")
+	b.WriteString("  repose attach                  look at the machine first\n")
+	b.WriteString("  repose run --stash-remote      put the machine's changes in git stash, then sync\n")
+	b.WriteString("  repose run --discard-remote    throw the machine's changes away, then sync")
 	return b.String()
+}
+
+// porcelainPath drops `git status --porcelain`'s two status letters.
+func porcelainPath(l string) string {
+	if len(l) > 3 && l[2] == ' ' {
+		return l[3:]
+	}
+	return l
 }
 
 // guestProbe is what the first round trip learns about the guest's
@@ -299,7 +331,68 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		return nil, stepFailed("read the guest's checkout", err, "")
 	}
 	probe := parseProbe(string(out))
-	if len(probe.dirty) > 0 && !probe.syncedOnly && !opts.StashRemote && !opts.DiscardRemote {
+
+	// What the laptop would send, and its key, before anything is sent:
+	// all of it is local, and whether the laptop has anything new since
+	// the sync the guest last took decides what a dirty guest tree means
+	// (I-248).
+	// What the guest should end up with: HEAD's commit, and, for a
+	// project with a remote, the laptop's view of origin/<branch> so the
+	// agent's `git status` and `git push` know where origin stands.
+	track := ""
+	if branch != "" && !opts.NoRemote {
+		if sha, err := gitCmd(localRepoDir, "rev-parse", "-q", "--verify", "refs/remotes/origin/"+branch); err == nil {
+			track = sha
+		}
+	}
+	wantRefs := []string{"HEAD"}
+	if track != "" {
+		wantRefs = append(wantRefs, "refs/remotes/origin/"+branch)
+	}
+	localDirty, err := gitTrackedDirty(localRepoDir)
+	if err != nil {
+		return nil, stepFailed("read your working tree", err, "")
+	}
+	key := sha256.New()
+	_, _ = fmt.Fprintf(key, "%s\x00%s\x00%s\x00%s\x00%s\x00%v\x00", syncKeyVersion, head, branch, track, opts.RemoteURL, opts.NoRemote)
+	diff, err := gitDiffBinary(localRepoDir)
+	if err != nil {
+		return nil, stepFailed("diff your working tree", err, "")
+	}
+	_, _ = fmt.Fprintf(key, "%d\x00%s", len(diff), diff)
+	untracked, err := gitUntrackedFiles(localRepoDir)
+	if err != nil {
+		return nil, stepFailed("list your untracked files", err, "")
+	}
+	untracked, skipped, skippedDirs, skippedCap, err := filterUntracked(localRepoDir, untracked, opts.Exclude)
+	if err != nil {
+		return nil, err
+	}
+	var untrackedTar []byte
+	if len(untracked) > 0 {
+		if untrackedTar, err = tarFiles(localRepoDir, untracked); err != nil {
+			return nil, err
+		}
+		_, _ = fmt.Fprintf(key, "\x00%d\x00", len(untrackedTar))
+		_, _ = key.Write(untrackedTar)
+	}
+	syncKey := hex.EncodeToString(key.Sum(nil))
+
+	// nothingNew: the guest took exactly this sync last time and has every
+	// commit it would send, so the laptop has nothing to lay over what
+	// is there. Whatever changed in the guest since (an agent's edits or
+	// commits) is left alone and the run attaches (I-248); the flags
+	// still force a sync.
+	nothingNew := false
+	if !opts.StashRemote && !opts.DiscardRemote && probe.syncKey != "" && probe.syncKey == syncKey {
+		n, err := countCommitsToSend(localRepoDir, wantRefs, probe.tips)
+		if err != nil {
+			return nil, err
+		}
+		nothingNew = n == 0
+	}
+	guestChanged := len(probe.dirty) > 0 && !probe.syncedOnly
+	if guestChanged && !nothingNew && !opts.StashRemote && !opts.DiscardRemote {
 		return nil, &exitError{code: ExitDirtyRemoteTree, msg: (&dirtyTreeError{files: probe.dirty}).Error()}
 	}
 	if opts.BeforeApply != nil {
@@ -351,34 +444,14 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		}
 	}
 
-	// What the guest should end up with: HEAD's commit, and, for a
-	// project with a remote, the laptop's view of origin/<branch> so the
-	// agent's `git status` and `git push` know where origin stands.
-	track := ""
-	if branch != "" && !opts.NoRemote {
-		if sha, err := gitCmd(localRepoDir, "rev-parse", "-q", "--verify", "refs/remotes/origin/"+branch); err == nil {
-			track = sha
-		}
-	}
-
-	known, err := commitsKnownLocally(localRepoDir, probe.tips)
+	revs, err := revsToSend(localRepoDir, wantRefs, probe.tips)
 	if err != nil {
-		return nil, stepFailed("compare commits with the guest", err, "")
-	}
-	wantRefs := []string{"HEAD"}
-	if track != "" {
-		wantRefs = append(wantRefs, "refs/remotes/origin/"+branch)
-	}
-	revs := append([]string(nil), wantRefs...)
-	for _, k := range known {
-		revs = append(revs, "^"+k)
-	}
-	countOut, err := gitCmdStdin(localRepoDir, strings.Join(revs, "\n")+"\n", "rev-list", "--count", "--stdin")
-	if err != nil {
-		return nil, stepFailed("count the commits to send", err, "")
+		return nil, err
 	}
 	summary := &SyncSummary{Branch: branch, Head: head, ClonedFrom: cloned, CloneFailed: cloneFailed, Copied: copied, Carried: carried}
-	_, _ = fmt.Sscanf(strings.TrimSpace(countOut), "%d", &summary.Commits)
+	if summary.Commits, err = countRevs(localRepoDir, revs); err != nil {
+		return nil, err
+	}
 
 	payload, err := os.CreateTemp("", "repose-sync-*.tar")
 	if err != nil {
@@ -416,43 +489,17 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		}
 	}
 
-	localDirty, err := gitTrackedDirty(localRepoDir)
-	if err != nil {
-		return nil, stepFailed("read your working tree", err, "")
-	}
 	summary.Modified = len(localDirty)
-	key := sha256.New()
-	_, _ = fmt.Fprintf(key, "%s\x00%s\x00%s\x00%s\x00%s\x00%v\x00", syncKeyVersion, head, branch, track, opts.RemoteURL, opts.NoRemote)
-	diff, err := gitDiffBinary(localRepoDir)
-	if err != nil {
-		return nil, stepFailed("diff your working tree", err, "")
-	}
-	_, _ = fmt.Fprintf(key, "%d\x00%s", len(diff), diff)
 	if strings.TrimSpace(diff) != "" {
 		if err := tarAddBytes(tw, "diff", []byte(diff)); err != nil {
 			return nil, err
 		}
 	}
-
-	untracked, err := gitUntrackedFiles(localRepoDir)
-	if err != nil {
-		return nil, stepFailed("list your untracked files", err, "")
-	}
-	untracked, skipped, skippedDirs, skippedCap, err := filterUntracked(localRepoDir, untracked, opts.Exclude)
-	if err != nil {
-		return nil, err
-	}
 	summary.SkippedBig = skipped
 	summary.SkippedDirs = skippedDirs
 	summary.SkippedCap = skippedCap
 	if len(untracked) > 0 {
-		buf, err := tarFiles(localRepoDir, untracked)
-		if err != nil {
-			return nil, err
-		}
-		_, _ = fmt.Fprintf(key, "\x00%d\x00", len(buf))
-		_, _ = key.Write(buf)
-		if err := tarAddBytes(tw, "untracked.tar", buf); err != nil {
+		if err := tarAddBytes(tw, "untracked.tar", untrackedTar); err != nil {
 			return nil, err
 		}
 		summary.Untracked = len(untracked)
@@ -483,12 +530,20 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	if st, err := payload.Stat(); err == nil {
 		timingf("sync payload %dB commits=%d", st.Size(), summary.Commits)
 	}
-	syncKey := hex.EncodeToString(key.Sum(nil))
-	summary.Unchanged = !opts.StashRemote && !opts.DiscardRemote && cloned == "" && envScript == "" &&
-		guestAsLastSyncLeft(probe, syncKey, head, branch, summary.Commits, strings.TrimSpace(diff) == "" && len(untracked) == 0) &&
+	asLeft := guestAsLastSyncLeft(probe, syncKey, head, branch, summary.Commits, strings.TrimSpace(diff) == "" && len(untracked) == 0)
+	summary.Unchanged = !opts.StashRemote && !opts.DiscardRemote && cloned == "" && envScript == "" && asLeft &&
 		(probe.hasOrigin || opts.NoRemote || originURLFor(opts.RemoteURL) == "")
+	if nothingNew && !asLeft && cloned == "" {
+		// The guest moved on from the last sync (an agent's edits,
+		// commits or branch) and the laptop has nothing new: leave the
+		// guest's work where it is (I-248).
+		summary.GuestAhead = true
+		if guestChanged {
+			summary.GuestFiles = len(probe.dirty)
+		}
+	}
 	var script string
-	if summary.Unchanged {
+	if summary.Unchanged || summary.GuestAhead {
 		// Nothing the apply would change: the guest's tree is what the
 		// last sync left, and the laptop sends exactly what it sent then
 		// (I-224). Only the carry, when it has something, still goes.
@@ -548,6 +603,38 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		summary.Copied, summary.Carried = carry.finish(carryOut.String())
 	}
 	return summary, nil
+}
+
+// revsToSend is the rev-list input for what the laptop sends: wantRefs,
+// minus every guest tip this checkout also has.
+func revsToSend(localRepoDir string, wantRefs, tips []string) ([]string, error) {
+	known, err := commitsKnownLocally(localRepoDir, tips)
+	if err != nil {
+		return nil, stepFailed("compare commits with the guest", err, "")
+	}
+	revs := append([]string(nil), wantRefs...)
+	for _, k := range known {
+		revs = append(revs, "^"+k)
+	}
+	return revs, nil
+}
+
+func countRevs(localRepoDir string, revs []string) (int, error) {
+	out, err := gitCmdStdin(localRepoDir, strings.Join(revs, "\n")+"\n", "rev-list", "--count", "--stdin")
+	if err != nil {
+		return 0, stepFailed("count the commits to send", err, "")
+	}
+	n := 0
+	_, _ = fmt.Sscanf(strings.TrimSpace(out), "%d", &n)
+	return n, nil
+}
+
+func countCommitsToSend(localRepoDir string, wantRefs, tips []string) (int, error) {
+	revs, err := revsToSend(localRepoDir, wantRefs, tips)
+	if err != nil {
+		return 0, err
+	}
+	return countRevs(localRepoDir, revs)
 }
 
 // syncKeyVersion is folded into the sync key; a change to what an apply
@@ -946,6 +1033,19 @@ func tarAddFile(tw *tar.Writer, name, path string) error {
 }
 
 func (s *SyncSummary) String() string {
+	if s.GuestAhead {
+		what := "commits your laptop doesn't have"
+		switch {
+		case s.GuestFiles == 1:
+			what = "1 file"
+		case s.GuestFiles > 1:
+			what = fmt.Sprintf("%d files", s.GuestFiles)
+		}
+		if s.GuestFiles > 0 {
+			return fmt.Sprintf("The machine has changes your laptop doesn't have (%s); attaching without syncing. `repose run --stash-remote` puts them in git stash and syncs your laptop's work.", what)
+		}
+		return fmt.Sprintf("The machine has %s; attaching without syncing. Push them from the machine and pull, or `repose run --stash-remote` to sync your laptop's work over them.", what)
+	}
 	line := fmt.Sprintf("Synced: %d modified, %d untracked", s.Modified, s.Untracked)
 	switch {
 	case s.EnvFiles == 1:

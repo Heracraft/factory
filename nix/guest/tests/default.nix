@@ -510,9 +510,12 @@ in
       with subtest("I-219: an unknown command that nixpkgs has prints the hint"):
           out = guest.succeed("sudo -H -u dev bash -ic 'cowsay hi; echo status=$?' 2>&1 || true")
           print(out)
-          assert "cowsay is not installed. It is in the nixpkgs package cowsay:" in out, out
-          assert "nix profile add nixpkgs#cowsay" in out, out
-          assert "repose config add cowsay" in out, out
+          # I-249: the plain not-found line, then the two commands aligned.
+          lines = [l for l in out.splitlines() if l.strip()]
+          i = lines.index("cowsay: command not found")
+          assert lines[i + 1] == "  nix profile add nixpkgs#cowsay  install it on this machine", out
+          assert lines[i + 2] == "  repose config add cowsay        keep it on every rebuild (run this on your laptop)", out
+          assert "is not installed" not in out, out
           assert "status=127" in out, out
 
       with subtest("I-219: a truly unknown command prints the plain not-found"):
