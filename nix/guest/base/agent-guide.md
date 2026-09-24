@@ -42,7 +42,7 @@ You are `dev`, with passwordless `sudo`. The checkout is under `/home/dev`, and 
 ## Browser
 
 - Drive a browser with the `playwright` or `chrome-devtools` MCP tools when you have them (Claude Code does), or with Playwright from code. Its browsers are installed; skip `npx playwright install`. <!-- /docs/machine#browser -->
-- For a step only a person can do (a captcha, a passkey, a login), ask the user to run `repose open --desktop` on their laptop. A browser started in headed mode shows there. <!-- /docs/machine#browser -->
+- The `playwright` and `chrome-devtools` tools share one browser, which the user sees live when they run `repose open --desktop` on their laptop. For a step only a person can do (a captcha, a passkey, a login), ask them to open the desktop and do it in that browser; its logins are kept. <!-- /docs/machine#browser -->
 
 ## Memory and disk
 
