@@ -434,9 +434,17 @@ Ship everything, invade nothing.
   with no session for days, egress in the terabytes).
 - Control plane: structured JSON logs, OpenTelemetry traces exported to
   nothing yet (an OTLP endpoint env var, unset), Prometheus metrics.
-- Abuse response is manual in the first release: `repose-admin suspend
-  <user>` stops guests and freezes billing. Rate limits: 200 Mbit/s egress
-  shaping, 10 projects per user, 3 until first paid invoice.
+- Abuse response on an account is manual in the first release:
+  `repose-admin suspend <user>` stops guests and freezes billing. Rate
+  limits: 200 Mbit/s egress shaping, 10 projects per user, 3 until first
+  paid invoice. Three things are automatic and never touch the account
+  (DECISIONS I-238..I-240): a guest cannot connect out to tcp 25 or the
+  mining pools' default ports, and its new outbound flows are limited to
+  200 a second (dropped past it, counted, alerted); a guest whose process
+  sample names a known miner is stopped with a snapshot, and the third
+  such stop in 24 hours holds the project until `repose-admin abuse
+  clear`; six hours at full CPU with no session, tmux client or agent
+  is an alert.
 
 ## 16. Provider portability
 

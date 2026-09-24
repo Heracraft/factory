@@ -122,6 +122,25 @@ func projectReason(p *Project) string {
 	return reasonFor(code, msg)
 }
 
+// abuseStopCode is the last_error code the api writes when it stopped a
+// guest for abuse (DECISIONS I-239).
+const abuseStopCode = "abuse_stopped"
+
+// abuseStopReason is the api's sentence for a project the platform
+// stopped because a miner was running ("stopped: a cryptocurrency miner
+// (xmrig) was running; ..."), or "" for any other project. It is shown on
+// a stopped project, where last_error is otherwise not news.
+func abuseStopReason(p *Project) string {
+	if p.State != "stopped" || p.LastError == nil {
+		return ""
+	}
+	code, msg := splitLastError(*p.LastError)
+	if code != abuseStopCode {
+		return ""
+	}
+	return strings.TrimSpace(msg)
+}
+
 // notRunningError is what every command that needs a running guest says
 // when the project is not running: the true state, why (when known), and
 // the command that fixes it. The exit code stays 5 (cli-config.md).
@@ -133,6 +152,9 @@ func notRunningMessage(p *Project) string {
 	s := p.Slug
 	switch p.State {
 	case "stopped":
+		if r := abuseStopReason(p); r != "" {
+			return fmt.Sprintf("%s is %s", s, strings.TrimSuffix(r, ".")+".")
+		}
 		return fmt.Sprintf("%s is stopped. Start it with `repose start %s`, or `repose run` in its checkout to start, sync and attach.", s, s)
 	case "creating", "building", "starting":
 		return fmt.Sprintf("%s is still %s. `repose run` in its checkout waits for it and attaches; `repose status %s` shows progress.", s, p.State, s)

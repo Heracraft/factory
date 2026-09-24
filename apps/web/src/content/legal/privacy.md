@@ -132,10 +132,18 @@ and what it does and does not cover are published in the repository.
 
 The process names and network volumes we record are what we look at when
 we suspect abuse: a cryptocurrency miner, a port scanner, sustained full
-CPU for days with nobody attached, egress measured in terabytes. A short
+CPU for hours with nobody attached, egress measured in terabytes. A short
 list of process names always appears in samples so that a program hiding
-below the top of the list is still visible. A human reviews before any
-action; nothing is suspended automatically.
+below the top of the list is still visible.
+
+Two things happen without a person. An environment whose process samples
+name a known cryptocurrency miner is stopped, with a snapshot first, and
+the stop and that process name are recorded against the project. And the
+network blocks the terms describe (outbound port 25, mining-pool ports,
+new connections over the rate limit) count how many attempts each
+environment made, a number only: never the address it tried, and never
+what it sent. Any action on your account is decided by a person; nothing is
+suspended automatically.
 
 ## Your choices
 

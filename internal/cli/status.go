@@ -61,6 +61,9 @@ func writeProjectsTable(w io.Writer, projects []Project) {
 	_ = tw.Flush()
 	for i := range projects {
 		p := &projects[i]
+		if r := abuseStopReason(p); r != "" {
+			_, _ = fmt.Fprintf(w, "%s: %s\n", p.Slug, r)
+		}
 		if p.State == "error" {
 			reason := projectReason(p)
 			if reason == "" {
@@ -80,6 +83,10 @@ func orDash(s string) string {
 
 func writeStatusLines(w io.Writer, p *Project, route *Route, snaps []Snapshot, events []Event) {
 	_, _ = fmt.Fprintln(w, statusFirstLine(p))
+	if r := abuseStopReason(p); r != "" {
+		// DECISIONS I-239: the platform stopped it, and says why.
+		_, _ = fmt.Fprintf(w, "  %s\n", r)
+	}
 	if p.State == "error" {
 		reason := projectReason(p)
 		if reason == "" {

@@ -38,7 +38,10 @@ Events (see agents.md for how each agent produces them):
 - Kinds: `completed`, `needs_input`, `error`, plus the platform-originated
   `billing_stopped`, `base_updated`, `base_update_failed`, `snapshot_failed`,
   `destroy_failed` (DECISIONS I-165: the CLI no longer waits for a
-  destroy, so its failure is announced) and `host_moved`. Each carries the agent name (agent kinds only), the
+  destroy, so its failure is announced), `host_moved` and
+  `abuse_stopped` (I-239: the guest was stopped because a cryptocurrency
+  miner was running; the summary says which process and, on the third
+  stop in 24 hours, that the project cannot start until reviewed). Each carries the agent name (agent kinds only), the
   tmux window, a summary of at most 1 KB, and a timestamp.
 - The summary is what the agent's hook provided, truncated. It may include
   the agent's own last message. It never includes the prompt the user typed

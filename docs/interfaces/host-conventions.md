@@ -112,11 +112,18 @@ rotates keys does the same restart itself.
     the original direction, so nothing a guest opens reaches the host; no
     DHCP), `guest_fwd` (policy drop;
     established; `wg0 → br-guests` tcp 22 for the gateway; from
-    `br-guests`: IPv6 dropped, jump `guest_dyn`, then drop
+    `br-guests`: IPv6 dropped, tcp 25 to `smtp_drop` (DECISIONS I-238),
+    tcp 3333, 5555, 7777, 14433 and 14444 to `stratum_drop` (I-239), `ct
+    state new` over the per-guest bucket in set `guest_flow_rate`
+    (`limit rate over 200/second burst 2000 packets`, I-240) to
+    `flows_drop`, jump `guest_dyn`, then drop
     `169.254.169.254` and `168.63.129.16`, drop `10.64.0.0/12`, allow the
     edge WireGuard address on tcp 8443 and 6081, drop every private range
     (`10/8`, `172.16/12`, `192.168/16`, `100.64/10`, `169.254/16`), accept
-    to the provider NIC), `guest_dyn` (empty at boot, hostd-owned), `nat`
+    to the provider NIC), `smtp_drop`/`stratum_drop`/`flows_drop` (jump
+    the hostd-owned `guest_smtp`/`guest_stratum`/`guest_flows`, then
+    drop), `guest_dyn`, `guest_smtp`, `guest_stratum`, `guest_flows`
+    (empty at boot, hostd-owned), `nat`
     (masquerade `10.64.0.0/12` out of the provider NIC), `output` (accept).
   - `bridge repose`: set `guests` (`ether_addr . ipv4_addr . ifname`,
     hostd-owned), chain `forward` (policy drop: no frame is switched
@@ -125,8 +132,18 @@ rotates keys does the same restart itself.
   - Per-guest egress metering: `nft add counter inet repose
     egress-<guest_id>` and `nft add rule inet repose guest_dyn ip saddr
     <ip> counter name egress-<guest_id>`; read with `nft list counter`,
-    removed on destroy. A `systemctl reload nftables` flushes only the
-    chains listed above; `guest_dyn`, the counters and the `guests` set
+    removed on destroy. Blocked attempts likewise, one counter and rule per
+    kind (I-238..I-240): `nft add counter inet repose <kind>-<guest_id>`
+    and `nft add rule inet repose guest_<kind> ip saddr <ip> counter name
+    <kind>-<guest_id>` for `kind` in `smtp`, `stratum`, `flows`; hostd reads
+    them all with `nft list counters table inet repose` each sample. At
+    every start hostd adds a counter `nft list counters` lacks and a rule
+    its chain lacks (`nft -a list chain`), so a guest started again after
+    a stop, whose rules went and whose counters stayed, gets its rules
+    back; a stop deletes the rules by handle, a destroy the counters. A
+    `systemctl reload nftables` flushes only the chains this configuration
+    declares; `guest_dyn`, `guest_smtp`, `guest_stratum`, `guest_flows`,
+    the counters, the `guest_flow_rate` elements and the `guests` set
     survive.
 - Per-guest egress shape, 200 Mbit/s, on what the guest sends (hostd,
   DECISIONS I-217). A guest's egress is its tap's ingress, so each tap

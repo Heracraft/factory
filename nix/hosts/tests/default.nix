@@ -6,7 +6,10 @@
 #
 #   host-network   the nftables tables and bridge isolation, DHCP on the
 #                  provider NIC, repose-host-net from a fixture host.json,
-#                  wg0, listeners on wg0 only, the per-guest egress shape
+#                  wg0, listeners on wg0 only, the egress blocks (tcp 25 and
+#                  the mining-pool ports dropped and counted per guest, 465,
+#                  587 and 443 open, the per-guest new-flow rate) with
+#                  hostd's nft commands, the per-guest egress shape
 #                  (hostd's tc commands, measured), Fluent Bit to a real Loki
 #   host-storage   the disko data-disk layout on a virtual disk: PV, VG,
 #                  thin pool with autoextend, a thin volume, the pool monitor
@@ -24,6 +27,9 @@ let
   # hostd's tc commands for a guest's egress shape (DECISIONS I-217),
   # pinned by internal/hostd/net's Go test; host-network runs them.
   shapeGolden = ../../../internal/hostd/net/testdata/reshape.golden;
+  # hostd's nft commands for a guest's rules, including the per-guest
+  # counters of blocked attempts (DECISIONS I-238..I-240).
+  createGolden = ../../../internal/hostd/net/testdata/create.golden;
 
   hostNode = { lib, pkgs, ... }: {
     imports = hostModules;
@@ -155,7 +161,12 @@ in
 {
   host-network = pkgs.testers.runNixOSTest {
     name = "repose-host-network";
-    nodes.host = stubNode;
+    nodes.host = {
+      imports = [ stubNode ];
+      # A low rate so the test crosses it in a second (I-240); the real
+      # default is in nftables.nix.
+      repose.host.guestEgress = { flowRate = 20; flowBurst = 20; };
+    };
     nodes.inet = inetNode;
     testScript = ''
       inet.start()
@@ -272,6 +283,84 @@ in
           # host -> guest is declared in the ruleset, not inserted by hand,
           # so it comes back with the reload (DECISIONS I-74).
           host.succeed("ping -c1 -W2 10.64.4.2")
+
+      with subtest("tcp 25 and the mining-pool ports are dropped and counted per guest; submission and https are open"):
+          import re, time
+          # DECISIONS I-238/I-239. hostd's own commands for the guest's
+          # blocked-attempt counters, from the Go golden (g1 at 10.64.4.2
+          # is ga here); its egress rule is already in from the subtest above.
+          cmds = [l.replace("-g1", "-ga") for l in open("${createGolden}").read().splitlines()
+                  if l.startswith("nft add ") and any(f" guest_{k} " in l or f" {k}-g1" in l for k in ("smtp", "stratum", "flows"))]
+          print("\n".join(cmds))
+          assert len(cmds) == 6, cmds
+          for c in cmds:
+              host.succeed(c)
+          print(host.succeed("nft list chain inet repose guest_fwd"))
+          for port in (25, 465, 587, 443, 3333, 5555, 7777, 14444, 4444, 8888):
+              inet.succeed(f"systemd-run --unit sink-{port} --collect ${pkgs.bash}/bin/sh -c 'while true; do ${pkgs.netcat-openbsd}/bin/nc -l {port} >/dev/null; done'")
+              inet.wait_until_succeeds(f"ss -tlnH | grep -c ':{port} ' >/dev/null")
+          # Each port is reachable from the host itself: the listeners are up.
+          host.succeed("nc -z -w3 203.0.113.9 25")
+
+          def packets(counter):
+              out = host.succeed(f"nft list counter inet repose {counter}")
+              m = re.search(r"packets (\d+)", out)
+              assert m is not None, out
+              return int(m.group(1))
+
+          egress_before = packets("egress-ga")
+          host.fail(f"{ga} nc -z -w3 203.0.113.9 25")
+          for port in (465, 587, 443, 4444, 8888):
+              host.succeed(f"{ga} nc -z -w3 203.0.113.9 {port}")
+          for port in (3333, 5555, 7777, 14444):
+              host.fail(f"{ga} nc -z -w2 203.0.113.9 {port}")
+          smtp, stratum = packets("smtp-ga"), packets("stratum-ga")
+          print(f"smtp-ga {smtp} packets, stratum-ga {stratum} packets")
+          assert smtp >= 1, "the port 25 attempt was not counted for the guest"
+          assert stratum >= 4, "the stratum attempts were not counted for the guest"
+          # Blocked before guest_dyn: a blocked SYN is not egress. guest_dyn
+          # sees a flow's first packet (established ones are accepted above
+          # it), so the five open connections are five packets and the
+          # dozen blocked SYNs none.
+          egress = packets("egress-ga") - egress_before
+          assert egress < 10, f"{egress} egress packets for five connections and the blocked attempts"
+          # Another guest's counters are its own.
+          host.succeed("ip netns exec gb nc -z -w3 203.0.113.9 587")
+          host.fail("ip netns exec gb nc -z -w3 203.0.113.9 25")
+          assert packets("smtp-ga") == smtp, "gb's attempt counted as ga's"
+          # hostd's chains and counters survive a reload, like guest_dyn.
+          host.succeed("systemctl reload nftables.service")
+          host.succeed("nft list chain inet repose guest_smtp | grep -q 'counter name \"smtp-ga\"'")
+          host.fail(f"{ga} nc -z -w3 203.0.113.9 25")
+          assert packets("smtp-ga") > smtp, "the block or its counter did not survive the reload"
+
+      with subtest("new flows over the per-guest rate are dropped and counted; under it nothing is, and established flows carry on"):
+          # I-240, at the test's 20 flows/second with a burst of 20. UDP
+          # datagrams from fresh sockets are one new flow each.
+          flows = "import socket,sys,time\nn,gap=int(sys.argv[1]),float(sys.argv[2])\nfor _ in range(n):\n  s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.sendto(b'x',('203.0.113.9',9999)); s.close(); time.sleep(gap)\n"
+          host.succeed(f"cat > /tmp/flows.py <<'EOF'\n{flows}EOF")
+          # A connection opened before the flood, sending after it.
+          inet.succeed("systemd-run --unit est-sink --collect ${pkgs.bash}/bin/sh -c '${pkgs.netcat-openbsd}/bin/nc -l 9001 > /tmp/est'")
+          inet.wait_until_succeeds("ss -tlnH | grep -c ':9001 ' >/dev/null")
+          host.succeed(
+              "systemd-run --unit est-client --collect ip netns exec ga"
+              " ${pkgs.bash}/bin/sh -c '(echo before; sleep 6; echo after) | ${pkgs.netcat-openbsd}/bin/nc -N -w15 203.0.113.9 9001'"
+          )
+          inet.wait_until_succeeds("grep -q before /tmp/est")
+          time.sleep(2)  # the bucket refills from the connection's own flow
+          before = packets("flows-ga")
+          # 30 flows at 10 a second: under the rate, nothing dropped.
+          host.succeed(f"{ga} python3 /tmp/flows.py 30 0.1")
+          assert packets("flows-ga") == before, f"{packets('flows-ga') - before} flows dropped under the rate"
+          # 300 at once: the burst and the rate pass, the rest are dropped.
+          host.succeed(f"{ga} python3 /tmp/flows.py 300 0")
+          dropped = packets("flows-ga") - before
+          print(f"{dropped} of 300 new flows dropped at 20/s burst 20")
+          assert 200 < dropped < 300, f"{dropped} flows dropped"
+          # The established connection was never touched.
+          inet.wait_until_succeeds("grep -q after /tmp/est", timeout=20)
+          # gb has its own bucket: its flows pass while ga is limited.
+          host.succeed("ip netns exec gb nc -z -w3 203.0.113.9 587")
 
       with subtest("sshd and node_exporter listen on wg0 only; nothing on the provider NIC"):
           # grep -c reads to EOF; grep -q would SIGPIPE curl under pipefail and never succeed

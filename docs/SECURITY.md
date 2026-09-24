@@ -151,6 +151,15 @@ masscan  zmap  hashcat  john
 Keep this list and `watch.go` in step; `TestWatchListIsNotEmpty` checks the
 file is populated, and a reviewer checks the two agree.
 
+Beside the list, every name `internal/abuse.MinerName` matches is watched
+too (DECISIONS I-239): the miners whose name gets a guest stopped by the
+api, matched in any case and with a fork's suffix (lolMiner,
+xmrig-notls, SRBMiner-MULTI). The matching reads the name only, as the
+sample always has. The same decisions block a guest's outbound tcp 25 and
+the mining-pool ports and rate-limit its new outbound flows at the host
+(I-238, I-240), counting each attempt per guest as a number, never an
+address.
+
 ## Verifying the boundaries
 
 `test/isolation/` has one test per row of the boundary table in

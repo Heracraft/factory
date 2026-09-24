@@ -113,6 +113,7 @@ func (m *Manager) CollectSamples(ctx context.Context) *hostdv1.Samples {
 		m.d.Metrics.MemFreeBytes.Set(float64(m.FreeMemBytes()))
 		m.d.Metrics.MemReservedBytes.Set(float64(m.reservedBytes()))
 	}
+	m.sampleBlocked(ctx)
 	m.poolWarning()
 	return s
 }

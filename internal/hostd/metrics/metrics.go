@@ -44,7 +44,17 @@ type M struct {
 	GuestCPUSecondsTotal  *prometheus.CounterVec
 	GuestNetBytesTotal    *prometheus.CounterVec
 	EventsPending         prometheus.Gauge
+	// EgressBlockedTotal and EgressBlockedGuests are the per-guest
+	// nftables blocks summed per host (DECISIONS I-238..I-240): packets
+	// dropped by reason, and guests over their reason's threshold right
+	// now. Which guest is in the egress_blocked log line; guest_id is
+	// never a label.
+	EgressBlockedTotal  *prometheus.CounterVec
+	EgressBlockedGuests *prometheus.GaugeVec
 }
+
+// BlockedReasons is the `reason` enum of the two series above.
+var BlockedReasons = []string{"smtp", "stratum", "flows"}
 
 // New registers every instrument on a fresh registry.
 func New() *M { return NewVersion("dev") }
@@ -80,6 +90,14 @@ func NewVersion(version string) *M {
 		GuestCPUSecondsTotal:  f.counterVec("guest_cpu_seconds_total", "Guest CPU time summed by class.", "class"),
 		GuestNetBytesTotal:    f.counterVec("guest_net_bytes_total", "Guest network bytes by direction.", "direction"),
 		EventsPending:         f.gauge("events_pending", "Events awaiting an api ack."),
+		EgressBlockedTotal:    f.counterVec("egress_blocked_total", "Outbound packets guests sent into a block, by reason: smtp (tcp 25), stratum (mining-pool ports), flows (new flows over the per-guest rate).", "reason"),
+		EgressBlockedGuests:   f.gaugeVec("egress_blocked_guests", "Guests whose blocked packets in the last 10 minutes passed the reason's threshold.", "reason"),
+	}
+	// Every reason exists from startup, so the alert reads 0 rather than
+	// nothing on a host where no guest was ever blocked.
+	for _, r := range BlockedReasons {
+		m.EgressBlockedTotal.WithLabelValues(r)
+		m.EgressBlockedGuests.WithLabelValues(r).Set(0)
 	}
 	return m
 }

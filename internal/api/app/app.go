@@ -9,10 +9,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/heracraft/repose/internal/api/abuse"
 	"github.com/heracraft/repose/internal/api/auth"
 	"github.com/heracraft/repose/internal/api/basebump"
 	"github.com/heracraft/repose/internal/api/buildlog"
@@ -53,6 +55,7 @@ type App struct {
 	logs    *buildlog.Store
 	events  *events.Ingest
 	meterIn *meter.Ingest
+	abuse   *abuse.Guard
 	outbox  *notify.Outbox
 	stripe  *billing.Stripe
 	hooks   *billing.Webhooks
@@ -135,12 +138,17 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	a.meterIn = meter.New(a.pool, a.m, log)
 	a.hostMgr = hostmgr.New(a.pool, a.ca.X509(), cfg.ReplicaID, a.m, log)
 	a.hostMgr.SetHostCAPub(a.ca.HostCAPub)
+	abuse.TermsURL = strings.TrimSuffix(cfg.DashboardURL, "/") + "/terms"
 	a.engine = ops.New(a.pool, a.hostMgr, a.ca, a.sec, a.logs, a.events, a.m, log, ops.Config{BaseRef: cfg.BaseRef})
+	a.abuse = abuse.New(a.pool, a.engine, a.events, a.m, log)
 	a.hostMgr.SetHandlers(hostmgr.Handlers{
-		Hello:   a.engine.OnHello,
-		Result:  a.engine.OnResult,
-		Samples: a.meterIn.OnSamples,
-		Event:   a.events.OnEvent,
+		Hello:  a.engine.OnHello,
+		Result: a.engine.OnResult,
+		Samples: func(ctx context.Context, hostID uuid.UUID, s *hostdv1.Samples) {
+			a.meterIn.OnSamples(ctx, hostID, s)
+			a.abuse.OnSamples(ctx, hostID, s) // DECISIONS I-239: a miner stops its guest
+		},
+		Event: a.events.OnEvent,
 		BuildLog: func(ctx context.Context, hostID uuid.UUID, l *hostdv1.BuildLog) {
 			if opID, ok := a.logs.OpFor(l.CommandId); ok {
 				a.logs.Append(opID, int64(l.Seq), l.Line)
@@ -396,6 +404,17 @@ func (a *App) loops(ctx context.Context) {
 	bump := basebump.New(a.pool, a.engine, a.events, a.log)
 	a.engine.SetOnFinished(bump.OnOpFinished)
 	go bump.Run(ctx)
+	// The abuse gauges (BusyUnattended, EgressHigh, held projects) are
+	// read-only aggregates; every replica exports them and the alerts take
+	// the max (DECISIONS I-239).
+	abuseTick := time.NewTicker(5 * time.Minute)
+	defer abuseTick.Stop()
+	refreshAbuse := func() {
+		if err := a.abuse.Refresh(ctx); err != nil && ctx.Err() == nil {
+			a.log.Error("abuse gauges", "event", "abuse_refresh_fail", "err", err.Error())
+		}
+	}
+	refreshAbuse()
 	sweep := time.NewTicker(15 * time.Second)
 	hourly := time.NewTicker(time.Minute)
 	daily := time.NewTicker(24 * time.Hour)
@@ -469,6 +488,8 @@ func (a *App) loops(ctx context.Context) {
 			release()
 		case <-limiters.C:
 			a.server.SweepLimiters()
+		case <-abuseTick.C:
+			refreshAbuse()
 		}
 	}
 }

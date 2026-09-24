@@ -1,5 +1,7 @@
 package sample
 
+import "github.com/heracraft/repose/internal/abuse"
+
 // Watched process names are always reported in a sample even when they are
 // not in the top slice by CPU, so a miner that throttles itself to stay off
 // the top of the list still shows up. The list is mirrored in
@@ -29,8 +31,17 @@ var watched = map[string]bool{
 	"john":         true,
 }
 
-// Watched reports whether comm is on the watch list.
-func Watched(comm string) bool { return watched[comm] }
+// Watched reports whether comm is on the watch list or is a miner the api
+// stops a guest for (internal/abuse, DECISIONS I-239), in any case and with
+// any suffix (lolMiner, xmrig-notls), so a throttled miner below the top
+// slice still reaches the api.
+func Watched(comm string) bool {
+	if watched[comm] {
+		return true
+	}
+	_, miner := abuse.MinerName(comm)
+	return miner
+}
 
 // WatchList returns the names, for the SECURITY.md cross-check test.
 func WatchList() []string {

@@ -32,6 +32,7 @@
 	} from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import StateDot from '$lib/components/StateDot.svelte';
+	import { abuseStopReason } from '$lib/abuse';
 	import ConfirmType from '$lib/components/ConfirmType.svelte';
 	import type { Project, ProjectEvent, Snapshot, Revision } from '$lib/api/types';
 
@@ -301,6 +302,12 @@
 			{/if}
 			<code class="kbd">ssh {project.slug}.repose</code>
 		</p>
+
+		{#if abuseStopReason(project)}
+			<div class="banner banner--warn mt-4" data-testid="abuse-stop">
+				{abuseStopReason(project)}
+			</div>
+		{/if}
 
 		{#if startBanner === 'payment_required'}
 			<div class="banner banner--warn mt-4">

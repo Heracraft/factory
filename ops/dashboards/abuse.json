@@ -399,6 +399,128 @@
         "y": 16
       },
       "id": 6
+    },
+    {
+      "type": "timeseries",
+      "title": "Blocked outbound attempts by reason",
+      "description": "Packets guests sent into the host's blocks (DECISIONS I-238..I-240): smtp is tcp 25, stratum the mining-pool ports, flows new connections over the per-guest rate. Which guest: hostd's egress_blocked log line (the EgressBlocked alert).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (reason) (rate(repose_host_egress_blocked_total[5m]))",
+          "legendFormat": "{{reason}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0
+          },
+          "unit": "pps",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 25
+      },
+      "id": 7
+    },
+    {
+      "type": "table",
+      "title": "Automatic stops, 7 days",
+      "description": "Guests the api stopped because a miner's name was in their process samples (I-239). hold means starts are refused until `repose-admin abuse clear`; the account is untouched until someone runs `repose-admin users suspend`.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "repose-postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "repose-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select a.ts as time, p.slug as project, u.handle as owner, a.kind, a.detail->>'process' as process, a.hold, a.cleared_at, a.cleared_by from abuse_events a join projects p on p.id = a.project_id join users u on u.id = a.user_id where a.ts > now() - interval '7 days' order by a.ts desc limit 50",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 25
+      },
+      "id": 8
     }
   ]
 }

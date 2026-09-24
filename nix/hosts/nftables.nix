@@ -10,7 +10,11 @@
 #              echo rate-limited, everything else dropped (there is no
 #              DHCP; guests get static addresses).
 #   guest_fwd  policy drop: established both ways; the gateway over wg0 to
-#              guest sshd; guests out through guest_dyn (hostd's counters)
+#              guest sshd; from guests: IPv6 dropped (guests have none),
+#              tcp 25 dropped through smtp_drop (DECISIONS I-238), the
+#              mining-pool ports dropped through stratum_drop (I-239), new
+#              flows over the per-guest rate dropped through flows_drop
+#              (I-240); then through guest_dyn (hostd's counters)
 #              and then to the internet only: IMDS, the Azure wire server,
 #              every private range (10.64.0.0/12 is other guests, the rest
 #              is the VNet, the WireGuard mesh, link-local) all dropped,
@@ -19,6 +23,15 @@
 #              egress-<guest_id>` rules and owns them. Reloading this
 #              ruleset flushes the chains declared here and never touches
 #              guest_dyn or its counters (see extraDeletions).
+#   guest_smtp, guest_stratum, guest_flows
+#              empty at boot; hostd adds `ip saddr <ip> counter name
+#              <smtp|stratum|flows>-<guest_id>` to each, so a blocked
+#              attempt is counted per guest before the static drop after
+#              the jump. Owned by hostd like guest_dyn.
+#   smtp_drop, stratum_drop, flows_drop
+#              jump to hostd's counting chain, then drop. The drop is here,
+#              not in hostd's rule, so a guest hostd has not (yet) given a
+#              rule is still blocked.
 #   nat        masquerade guest traffic leaving on the provider NIC.
 #
 # bridge repose
@@ -30,6 +43,7 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.repose.host;
+  egress = cfg.guestEgress;
   uplink = cfg.uplinkInterface;
   edge = cfg.edgeWireGuardAddress;
 
@@ -41,6 +55,9 @@ let
     guest_fwd = "type filter hook forward priority filter; policy drop;";
     nat = "type nat hook postrouting priority srcnat; policy accept;";
     guest_in = "";
+    smtp_drop = "";
+    stratum_drop = "";
+    flows_drop = "";
   };
   bridgeChains = {
     forward = "type filter hook forward priority filter; policy drop;";
@@ -53,9 +70,31 @@ let
   '';
   flushes = family: name: chains:
     lib.concatStringsSep "\n" (map (c: "flush chain ${family} ${name} ${c}") (lib.attrNames chains));
+  ports = l: lib.concatMapStringsSep ", " toString l;
 in
 {
-  networking.nftables = {
+  options.repose.host.guestEgress = {
+    blockedTcpPorts = lib.mkOption {
+      type = lib.types.listOf lib.types.port;
+      # DECISIONS I-239: the stratum ports mining pools publish as their
+      # defaults, minus any a developer commonly uses to reach a remote
+      # service (4444 Selenium Grid, 8888 Jupyter, 9000/9999 too generic).
+      default = [ 3333 5555 7777 14433 14444 ];
+      description = "TCP destination ports a guest may not open outside the host, besides 25 (mining pools, I-239).";
+    };
+    flowRate = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 200;
+      description = "New outbound flows per second a guest may open, sustained (DECISIONS I-240).";
+    };
+    flowBurst = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 2000;
+      description = "New outbound flows a guest may open at once above flowRate before the rate applies (I-240).";
+    };
+  };
+
+  config.networking.nftables = {
     enable = true;
     flushRuleset = false;
     checkRuleset = true;
@@ -73,6 +112,36 @@ in
         # hostd-owned: per-guest egress counter rules. Declared here so it
         # exists from boot; never flushed by a reload.
         chain guest_dyn {
+        }
+        # hostd-owned: per-guest counters of blocked attempts (I-238..I-240).
+        chain guest_smtp {
+        }
+        chain guest_stratum {
+        }
+        chain guest_flows {
+        }
+
+        # One token bucket per guest address for new outbound flows
+        # (I-240). An element expires a minute after the guest's last new
+        # flow; a reload keeps the elements.
+        set guest_flow_rate {
+          type ipv4_addr
+          size 65535
+          flags dynamic,timeout
+          timeout 1m
+        }
+
+        chain smtp_drop {
+          jump guest_smtp
+          counter drop
+        }
+        chain stratum_drop {
+          jump guest_stratum
+          counter drop
+        }
+        chain flows_drop {
+          jump guest_flows
+          counter drop
         }
 
         chain input {
@@ -127,6 +196,17 @@ in
           iifname "wg0" oifname "br-guests" ip daddr 10.64.0.0/12 tcp dport 22 accept
 
           iifname "br-guests" meta nfproto ipv6 counter drop
+          # Mail straight to port 25 is how a rented machine sends spam; a
+          # provider's authenticated submission on 465 and 587 stays open
+          # (DECISIONS I-238). Before guest_dyn, so blocked attempts are
+          # never counted as egress.
+          iifname "br-guests" tcp dport 25 goto smtp_drop
+          # Mining pools' default stratum ports (I-239).
+          iifname "br-guests" tcp dport { ${ports egress.blockedTcpPorts} } goto stratum_drop
+          # New flows past the per-guest rate: a scan or a flood, never a
+          # package manager (I-240 has the measurement). Only the flows
+          # over the limit are dropped; established ones are untouched.
+          iifname "br-guests" ct state new update @guest_flow_rate { ip saddr limit rate over ${toString egress.flowRate}/second burst ${toString egress.flowBurst} packets } goto flows_drop
           iifname "br-guests" jump guest_dyn
 
           # Azure instance metadata (managed-identity tokens) and the wire

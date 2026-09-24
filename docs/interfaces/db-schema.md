@@ -107,6 +107,14 @@ invoices     (id pk, user_id fk, stripe_invoice_id text unique, period_start,
 audit_log    (id pk, ts, actor text, action text, target text, detail jsonb)
               -- every Exec, every admin action, every cert issue and revoke
 
+abuse_events (id pk, project_id fk, user_id fk, ts, kind text,  -- miner
+              detail jsonb,        -- {"process": "<name>"}: a process name, never arguments
+              op_id uuid null,     -- the stop op
+              hold bool,           -- set on the stop that makes three uncleared ones within 24 h
+              cleared_at null, cleared_by text null)
+              -- one row per guest the api stopped by itself (0005, I-239); a project
+              -- with an uncleared held row cannot start until `repose-admin abuse clear`
+
 base_versions (version text pk, nix_rev text, changelog text, released_at,
               security bool)
 
@@ -120,12 +128,12 @@ schema_migrations (version int pk, name text, applied_at)
 Indexes: `projects(user_id)`, `projects(host_id) where state in ('running',
 'starting')`, `events(project_id, ts desc)`, `snapshots(project_id, taken_at
 desc)`, `certificates(user_id) where revoked_at is null`, `usage_hours(hour)`,
-`usage_hours(project_id, period_start)`, `usage_hours(hour) where
+`usage_hours(project_id, period_start)`, `abuse_events(project_id, ts desc)`, `usage_hours(hour) where
 stripe_usage_record_id is null`, `credit_ledger(user_id, created_at)`,
 `ops(state) where state in ('pending','running')`, `events_outbox(next_at)`.
 
-Migrations `0001_init`, `0002_outbox_sessions_settings` and `0003_billing`
-create all of this; `repose-admin db migrate --down 1` reverts one. Partitions of the
+Migrations `0001_init`, `0002_outbox_sessions_settings`, `0003_billing`,
+`0004_gateway_session_id` and `0005_abuse_events` create all of this; `repose-admin db migrate --down 1` reverts one. Partitions of the
 sample tables are created for the current and next month at start and by
 the daily job, which also drops partitions past retention.
 

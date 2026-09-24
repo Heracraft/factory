@@ -67,6 +67,10 @@ test('/account renders', async ({ page }) => {
 test('/terms and /privacy render', async ({ page }) => {
 	await page.goto('/terms');
 	await expect(page.locator('article')).toBeVisible();
+	// The acceptable-use rules the platform enforces (DECISIONS I-238..I-240).
+	await expect(page.getByRole('heading', { name: 'Acceptable use' })).toBeVisible();
+	await expect(page.getByText('mine cryptocurrency, or run anything that does')).toBeVisible();
+	await expect(page.getByText(/cannot connect out to\s+port 25/)).toBeVisible();
 	await page.goto('/privacy');
 	await expect(page.locator('article')).toBeVisible();
 	await expect(page.getByText('Draft:')).toBeVisible();

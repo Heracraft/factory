@@ -28,6 +28,8 @@ var notifyKinds = map[string]bool{
 	"billing_stopped": true, "base_updated": true, "base_update_failed": true, "snapshot_failed": true, "host_moved": true,
 	"destroy_failed":       true,
 	"notifications_paused": true,
+	// A guest stopped because a miner was running (DECISIONS I-239).
+	"abuse_stopped": true,
 }
 
 // MaxSummary is the summary cap.

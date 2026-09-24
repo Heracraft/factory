@@ -4,7 +4,9 @@
 // in the `bridge repose` table's `guests` set (mac . ip . tap, which is what
 // admits the guest's ARP and IPv4 frames to the host at all), a per-guest
 // egress counter and rule in the hostd-owned `inet repose` chain
-// `guest_dyn`, and a policer on the tap's ingress limiting what the guest
+// `guest_dyn`, a counter and rule per blocked kind (smtp, stratum, flows)
+// in the hostd-owned chains the host's static drops jump to (DECISIONS
+// I-238..I-240), and a policer on the tap's ingress limiting what the guest
 // sends (DECISIONS I-217). DECISIONS I-18 explains why
 // the admission lives in the bridge family: frames between two taps never
 // traverse the inet forward hook, and `learning off` plus the static FDB
@@ -39,7 +41,11 @@ type Net interface {
 	Unshape(ctx context.Context, tap string) error
 	// CounterBytes reads the guest's egress counter.
 	CounterBytes(ctx context.Context, guestID string) (uint64, error)
-	// DelCounter removes the counter after its final value was read.
+	// BlockedPackets reads every guest's blocked-attempt counters in one
+	// call: guest id -> kind (BlockedKinds) -> packets dropped.
+	BlockedPackets(ctx context.Context) (map[string]map[string]uint64, error)
+	// DelCounter removes the guest's counters after the egress counter's
+	// final value was read.
 	DelCounter(ctx context.Context, guestID string) error
 	// TapStats returns bytes from the guest's point of view: rx is what the
 	// guest received (the tap's tx), tx what it sent (the tap's rx).
@@ -50,6 +56,26 @@ type Net interface {
 
 // CounterName is the nft counter for a guest.
 func CounterName(guestID string) string { return "egress-" + guestID }
+
+// The kinds of blocked outbound attempt the host counts per guest: tcp 25
+// (DECISIONS I-238), a mining pool's stratum port (I-239), a new flow over
+// the per-guest rate (I-240). Each is the metric's `reason` label, the
+// prefix of the guest's counter and the suffix of the hostd-owned chain the
+// static drop jumps to (nix/hosts/nftables.nix).
+const (
+	BlockedSMTP    = "smtp"
+	BlockedStratum = "stratum"
+	BlockedFlows   = "flows"
+)
+
+// BlockedKinds lists them in rule order.
+var BlockedKinds = []string{BlockedSMTP, BlockedStratum, BlockedFlows}
+
+// BlockedCounterName is the nft counter of one kind for a guest.
+func BlockedCounterName(kind, guestID string) string { return kind + "-" + guestID }
+
+// BlockedChain is the hostd-owned chain counting one kind.
+func BlockedChain(kind string) string { return "guest_" + kind }
 
 // Real drives ip, bridge, nft and tc through a shell.Runner.
 type Real struct {
@@ -113,21 +139,27 @@ func (n *Real) DelTap(ctx context.Context, tap string) error {
 	return err
 }
 
-func (n *Real) counterExists(ctx context.Context, guestID string) (bool, error) {
-	_, err := n.R.Run(ctx, "nft", "list", "counter", n.Family, n.Table, CounterName(guestID))
-	var ee *shell.ExitError
-	if errors.As(err, &ee) {
-		return false, nil
-	}
-	return err == nil, err
-}
-
 func (n *Real) element(ip, mac, tap string) string {
 	return "{ " + mac + " . " + ip + " . " + tap + " }"
 }
 
+// guestCounters is every (chain, counter) pair a guest has: the egress
+// counter in guest_dyn and one per blocked kind.
+func (n *Real) guestCounters(guestID string) [][2]string {
+	out := [][2]string{{n.Chain, CounterName(guestID)}}
+	for _, k := range BlockedKinds {
+		out = append(out, [2]string{BlockedChain(k), BlockedCounterName(k, guestID)})
+	}
+	return out
+}
+
 // AddGuestRules implements Net. `bridge fdb replace` and `nft add element`
-// are both idempotent, so a re-run after a crash converges.
+// are idempotent; a counter is added when `nft list counters` lacks it and
+// a rule when its chain lacks one naming the counter, so a re-run after a
+// crash converges, and a guest started again after a stop (its rules gone,
+// its counters kept until destroy) gets its rules back. Before I-238 the
+// rule was skipped whenever the counter existed, so a restarted guest's
+// egress went uncounted.
 func (n *Real) AddGuestRules(ctx context.Context, guestID, ip, mac, tap string) error {
 	if _, err := n.R.Run(ctx, "bridge", "fdb", "replace", mac, "dev", tap, "master", "static"); err != nil {
 		return err
@@ -135,25 +167,60 @@ func (n *Real) AddGuestRules(ctx context.Context, guestID, ip, mac, tap string) 
 	if _, err := n.R.Run(ctx, "nft", "add", "element", n.BridgeFamily, n.BridgeTable, n.Set, n.element(ip, mac, tap)); err != nil {
 		return err
 	}
-	ok, err := n.counterExists(ctx, guestID)
+	res, err := n.R.Run(ctx, "nft", "list", "counters", "table", n.Family, n.Table)
 	if err != nil {
 		return err
 	}
-	if ok {
-		return nil
+	have := map[string]bool{}
+	for _, m := range counterRe.FindAllSubmatch(res.Stdout, -1) {
+		have[string(m[1])] = true
 	}
-	if _, err := n.R.Run(ctx, "nft", "add", "counter", n.Family, n.Table, CounterName(guestID)); err != nil {
-		return err
+	for _, cc := range n.guestCounters(guestID) {
+		chain, counter := cc[0], cc[1]
+		if !have[counter] {
+			if _, err := n.R.Run(ctx, "nft", "add", "counter", n.Family, n.Table, counter); err != nil {
+				return err
+			}
+		}
+		handles, err := n.ruleHandles(ctx, chain, counter)
+		if err != nil {
+			return err
+		}
+		if len(handles) > 0 {
+			continue
+		}
+		if _, err := n.R.Run(ctx, "nft", "add", "rule", n.Family, n.Table, chain, "ip", "saddr", ip, "counter", "name", `"`+counter+`"`); err != nil {
+			return err
+		}
 	}
-	_, err = n.R.Run(ctx, "nft", "add", "rule", n.Family, n.Table, n.Chain, "ip", "saddr", ip, "counter", "name", `"`+CounterName(guestID)+`"`)
-	return err
+	return nil
 }
 
-var handleRe = regexp.MustCompile(`counter name "([^"]+)".*# handle (\d+)`)
+// ruleHandles lists the handles of the rules in chain that name counter.
+func (n *Real) ruleHandles(ctx context.Context, chain, counter string) ([]string, error) {
+	res, err := n.R.Run(ctx, "nft", "-a", "list", "chain", n.Family, n.Table, chain)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, line := range strings.Split(string(res.Stdout), "\n") {
+		m := handleRe.FindStringSubmatch(line)
+		if m != nil && m[1] == counter {
+			out = append(out, m[2])
+		}
+	}
+	return out, nil
+}
 
-// DelGuestRules implements Net: set element, FDB entry, the rule (found by
-// handle) and nothing else; the counter stays until DelCounter reads its
-// final value. An element or entry that is already gone is not an error.
+var (
+	handleRe  = regexp.MustCompile(`counter name "?([^"\s]+)"?.*# handle (\d+)`)
+	counterRe = regexp.MustCompile(`counter (\S+) \{\s*packets (\d+) bytes (\d+)`)
+)
+
+// DelGuestRules implements Net: set element, FDB entry, the rules (found
+// by handle) and nothing else; the counters stay until DelCounter reads the
+// egress counter's final value. An element or entry that is already gone
+// is not an error.
 func (n *Real) DelGuestRules(ctx context.Context, guestID, ip, mac, tap string) error {
 	_, err := n.R.Run(ctx, "nft", "delete", "element", n.BridgeFamily, n.BridgeTable, n.Set, n.element(ip, mac, tap))
 	var ee *shell.ExitError
@@ -164,14 +231,13 @@ func (n *Real) DelGuestRules(ctx context.Context, guestID, ip, mac, tap string) 
 	if err != nil && !errors.As(err, &ee) {
 		return err
 	}
-	res, err := n.R.Run(ctx, "nft", "-a", "list", "chain", n.Family, n.Table, n.Chain)
-	if err != nil {
-		return err
-	}
-	for _, line := range strings.Split(string(res.Stdout), "\n") {
-		m := handleRe.FindStringSubmatch(line)
-		if m != nil && m[1] == CounterName(guestID) {
-			if _, err := n.R.Run(ctx, "nft", "delete", "rule", n.Family, n.Table, n.Chain, "handle", m[2]); err != nil {
+	for _, cc := range n.guestCounters(guestID) {
+		handles, err := n.ruleHandles(ctx, cc[0], cc[1])
+		if err != nil {
+			return err
+		}
+		for _, h := range handles {
+			if _, err := n.R.Run(ctx, "nft", "delete", "rule", n.Family, n.Table, cc[0], "handle", h); err != nil {
 				return err
 			}
 		}
@@ -269,14 +335,45 @@ func (n *Real) CounterBytes(ctx context.Context, guestID string) (uint64, error)
 	return strconv.ParseUint(string(m[1]), 10, 64)
 }
 
-// DelCounter implements Net.
-func (n *Real) DelCounter(ctx context.Context, guestID string) error {
-	_, err := n.R.Run(ctx, "nft", "delete", "counter", n.Family, n.Table, CounterName(guestID))
-	var ee *shell.ExitError
-	if errors.As(err, &ee) {
-		return nil
+// BlockedPackets implements Net with one `nft list counters`: every
+// counter named <kind>-<guest id> for a kind in BlockedKinds.
+func (n *Real) BlockedPackets(ctx context.Context) (map[string]map[string]uint64, error) {
+	res, err := n.R.Run(ctx, "nft", "list", "counters", "table", n.Family, n.Table)
+	if err != nil {
+		return nil, err
 	}
-	return err
+	out := map[string]map[string]uint64{}
+	for _, m := range counterRe.FindAllSubmatch(res.Stdout, -1) {
+		name := string(m[1])
+		for _, k := range BlockedKinds {
+			gid, ok := strings.CutPrefix(name, k+"-")
+			if !ok || gid == "" {
+				continue
+			}
+			v, err := strconv.ParseUint(string(m[2]), 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			if out[gid] == nil {
+				out[gid] = map[string]uint64{}
+			}
+			out[gid][k] = v
+		}
+	}
+	return out, nil
+}
+
+// DelCounter implements Net: the egress counter and the blocked-attempt
+// counters. One already gone is not an error.
+func (n *Real) DelCounter(ctx context.Context, guestID string) error {
+	for _, cc := range n.guestCounters(guestID) {
+		_, err := n.R.Run(ctx, "nft", "delete", "counter", n.Family, n.Table, cc[1])
+		var ee *shell.ExitError
+		if err != nil && !errors.As(err, &ee) {
+			return err
+		}
+	}
+	return nil
 }
 
 func readUint(path string) (uint64, error) {
@@ -331,14 +428,15 @@ type Fake struct {
 	Shaped   map[string]int
 	Elements map[string]string // mac . ip . tap by guest
 	Counters map[string]uint64
-	Stats    map[string][2]uint64 // tap -> rx, tx (guest view)
-	FailOn   map[string]error     // "tap", "rules", "shape"
+	Blocked  map[string]map[string]uint64 // guest -> kind -> packets
+	Stats    map[string][2]uint64         // tap -> rx, tx (guest view)
+	FailOn   map[string]error             // "tap", "rules", "shape"
 	Ops      []string
 }
 
 // NewFake returns an empty fake network.
 func NewFake() *Fake {
-	return &Fake{Taps: map[string]bool{}, Shaped: map[string]int{}, Elements: map[string]string{}, Counters: map[string]uint64{}, Stats: map[string][2]uint64{}, FailOn: map[string]error{}}
+	return &Fake{Taps: map[string]bool{}, Shaped: map[string]int{}, Elements: map[string]string{}, Counters: map[string]uint64{}, Blocked: map[string]map[string]uint64{}, Stats: map[string][2]uint64{}, FailOn: map[string]error{}}
 }
 
 func (f *Fake) TapExists(_ context.Context, tap string) (bool, error) {
@@ -423,7 +521,32 @@ func (f *Fake) DelCounter(_ context.Context, guestID string) error {
 	defer f.mu.Unlock()
 	f.Ops = append(f.Ops, "counter-"+guestID)
 	delete(f.Counters, guestID)
+	delete(f.Blocked, guestID)
 	return nil
+}
+
+func (f *Fake) BlockedPackets(context.Context) (map[string]map[string]uint64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[string]map[string]uint64{}
+	for g, kinds := range f.Blocked {
+		out[g] = map[string]uint64{}
+		for k, v := range kinds {
+			out[g][k] = v
+		}
+	}
+	return out, nil
+}
+
+// Block adds packets to a guest's blocked counter of kind, as the kernel
+// does when the guest's attempts hit a drop.
+func (f *Fake) Block(guestID, kind string, packets uint64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Blocked[guestID] == nil {
+		f.Blocked[guestID] = map[string]uint64{}
+	}
+	f.Blocked[guestID][kind] += packets
 }
 
 func (f *Fake) TapStats(tap string) (uint64, uint64, error) {

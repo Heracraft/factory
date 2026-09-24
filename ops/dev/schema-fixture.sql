@@ -11,6 +11,19 @@
 -- When 05's migrations land, this file's job shrinks to whatever they do not
 -- cover, and pgcheck.sh should run against a migrated database instead.
 
+create table if not exists abuse_events (
+  id uuid primary key,
+  project_id uuid not null,
+  user_id uuid not null,
+  ts timestamptz not null default now(),
+  kind text not null,
+  detail jsonb not null default '{}',
+  op_id uuid,
+  hold boolean not null default false,
+  cleared_at timestamptz,
+  cleared_by text
+);
+
 create table if not exists users (
   id uuid primary key,
   logto_sub text unique,

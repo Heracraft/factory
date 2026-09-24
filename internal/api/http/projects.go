@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/heracraft/repose/internal/api/abuse"
 	"github.com/heracraft/repose/internal/api/meter"
 	"github.com/heracraft/repose/internal/api/ops"
 	"github.com/heracraft/repose/internal/api/scheduler"
@@ -153,6 +154,19 @@ func (s *Server) billingGate(u *store.User) error {
 		return withDetail(errf("payment_required", "your trial credit is used up"), map[string]any{"reason": "trial_depleted"})
 	}
 	return nil
+}
+
+// abuseGate refuses to start a project on hold after three miner stops in
+// 24 hours, until an operator clears it (DECISIONS I-239).
+func (s *Server) abuseGate(ctx context.Context, p *store.Project) error {
+	h, err := abuse.StartHold(ctx, s.d.Pool, p.ID)
+	if err != nil {
+		return err
+	}
+	if h == nil {
+		return nil
+	}
+	return withDetail(errf("forbidden", "%s", abuse.HoldMessage(p.Slug, h)), map[string]any{"reason": "abuse_hold"})
 }
 
 func (s *Server) createProject(w http.ResponseWriter, r *http.Request) error {
@@ -398,6 +412,9 @@ func (s *Server) startProject(w http.ResponseWriter, r *http.Request) error {
 	}
 	u := userFrom(r.Context())
 	if err := s.billingGate(u); err != nil {
+		return err
+	}
+	if err := s.abuseGate(r.Context(), p); err != nil {
 		return err
 	}
 	// A project in error, or one running whose guestd stopped answering,

@@ -69,6 +69,7 @@ const Usage = `repose-admin <command> [args]
   operator-cert --pubkey FILE [--ttl 8h] [--name NAME]
   edge      init --endpoint HOST:PORT --pubkey WGPUB [--out DIR] | loki [URL]
   audit     [--user HANDLE] [--since 24h] [--action A]
+  abuse     list [--all] | clear ID|SLUG   (automatic miner stops, I-239; suspending the user is users suspend)
   ops       list [--project ID] [--host N] [--state S] | log OPID
   version
 `
@@ -121,6 +122,8 @@ func Run(ctx context.Context, e *Env, args []string) error {
 		return e.edge(ctx, rest)
 	case "audit":
 		return e.audit(ctx, rest)
+	case "abuse":
+		return e.abuseCmd(ctx, rest)
 	case "ops":
 		return e.opsCmd(ctx, rest)
 	}

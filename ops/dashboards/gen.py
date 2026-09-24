@@ -779,6 +779,22 @@ def abuse() -> dict:
                 w=24, h=9,
                 overrides=[{"matcher": {"id": "byName", "options": "egress"}, "properties": [{"id": "unit", "value": "bytes"}]}],
             ),
+            panel(
+                "timeseries", "Blocked outbound attempts by reason",
+                [q("sum by (reason) (rate(repose_host_egress_blocked_total[5m]))", "{{reason}}")],
+                desc="Packets guests sent into the host's blocks (DECISIONS I-238..I-240): smtp is tcp 25, stratum the mining-pool ports, flows new connections over the per-guest rate. Which guest: hostd's egress_blocked log line (the EgressBlocked alert).",
+                unit="pps", w=12, h=8,
+            ),
+            panel(
+                "table", "Automatic stops, 7 days",
+                [sql("""select a.ts as time, p.slug as project, u.handle as owner, a.kind,
+                        a.detail->>'process' as process, a.hold, a.cleared_at, a.cleared_by
+                        from abuse_events a join projects p on p.id = a.project_id join users u on u.id = a.user_id
+                        where a.ts > now() - interval '7 days'
+                        order by a.ts desc limit 50""", fmt="table")],
+                desc="Guests the api stopped because a miner's name was in their process samples (I-239). hold means starts are refused until `repose-admin abuse clear`; the account is untouched until someone runs `repose-admin users suspend`.",
+                w=12, h=8,
+            ),
         ],
     )
 

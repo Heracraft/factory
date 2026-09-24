@@ -5646,3 +5646,166 @@ re-open I-210's three-times-reviewed script to save one round trip on
 runs that change something. On a run with nothing changed the apply is
 already skipped (I-224), so a stopped run is now one ssh before the
 attach.
+
+**I-238. Guests cannot send mail straight to port 25; submission ports
+stay open, and blocked attempts are counted per guest.** (anti-abuse,
+2026-09-24) The owner: "def crack down on abuse, smtp, crypto bros".
+DESIGN §15 left abuse manual, and nothing stopped a guest from being a
+spam relay: a rented cloud address sending to other servers' port 25 is
+the spam a mail provider cannot see coming, and the address that gets
+blocklisted is the host's, shared by every guest through the NAT.
+`guest_fwd` now sends any guest's `tcp dport 25` to a static chain
+`smtp_drop`, before `jump guest_dyn`, so a blocked SYN is never counted
+as egress: `smtp_drop` jumps to the hostd-owned chain `guest_smtp`, where
+hostd keeps one `ip saddr <ip> counter name smtp-<guest_id>` per guest,
+and then drops. The drop is the host's, not in hostd's rule, so a guest
+whose rules hostd has not written yet (a crash mid-start) is blocked all
+the same. 465 and 587 (authenticated submission to SES, Postmark, Resend,
+Gmail) stay open: that is how an app in a guest should send mail, and the
+terms say so. Guests have no IPv6 (the rule above drops all of it), so
+there is no v6 path to close. hostd reads every guest's blocked counters
+with one `nft list counters` per 60 s sample and exports
+`repose_host_egress_blocked_total{reason}` (packets, summed per host) and
+`repose_host_egress_blocked_guests{reason}` (guests whose count over the
+last ten minutes passed the reason's threshold: 100 for smtp, about
+fifteen blocked connects, each being about six SYNs). guest_id is never a
+label (`internal/obs/metrics` refuses it), so the guest is named by the
+`egress_blocked` log line hostd writes when it crosses, as with
+`guestd_lost`. The EgressBlocked alert (warn) reads the gauge. A blocked
+attempt is a number only: no address and no contents, in the metric, the
+log or anywhere else; the privacy policy says so.
+Found on the way: `AddGuestRules` skipped the egress rule whenever the
+guest's counter existed, and a stop removes the rule but keeps the counter
+until destroy, so every guest started again after a stop had no egress
+rule. It now adds a counter when `nft list counters` lacks it and a rule
+when the chain lacks one naming the counter, for the egress counter and
+the three new ones alike (`TestGuestRulesReconcileAcrossRestart`).
+*Rejected:* a per-guest opt-in to port 25 (nobody has asked; a
+provider's submission port does the job); dropping in hostd's rule only
+(a guest without rules would be open); counting in a dynamic nft set
+keyed by address (addresses are reused by the next guest, so the
+per-guest history would be wrong).
+
+**I-239. A known cryptocurrency miner stops its guest automatically;
+three stops in 24 hours hold the project until an operator clears it; the
+pool ports are blocked; full CPU with nobody there for six hours is an
+alert.** (anti-abuse, 2026-09-24) Four parts.
+(a) Stratum ports. `guest_fwd` drops `tcp dport { 3333, 5555, 7777,
+14433, 14444 }` through `stratum_drop`/`guest_stratum`, counted like
+port 25 (threshold 30 packets in ten minutes: a miner retries its pool
+every few seconds). These are the defaults mining pools publish
+(3333/5555/7777 on most Monero pools, 14433/14444 on nanopool's). Left
+open on purpose: 4444 (Selenium Grid's hub, which developers do reach
+remotely), 8888 (Jupyter), 9000 and 9999 (too many ordinary services).
+Pools also listen on 443 and 80, which are never blocked, so this catches
+default configurations only; the name check is the real one. The list is
+`repose.host.guestEgress.blockedTcpPorts`.
+(b) The miner's name. guestd already sends each process's name (comm, at
+most 15 bytes) and CPU every 60 s, the privacy policy already says so,
+and the api receives them in `Samples` on the host stream.
+`internal/abuse` holds the names (xmrig, xmr-stak, cpuminer, minerd,
+ccminer, t-rex, nbminer, lolminer, gminer, teamredminer, phoenixminer,
+ethminer, nanominer, srbminer, bzminer, onezerominer, rigel, kdevtmpfsi
+and more), matched on the lower-cased name: by prefix for miners whose
+forks add a suffix (xmrig-notls, SRBMiner-MULTI, cpuminer-opt), exactly
+for names too short or too generic to be a prefix (rigel, miniz, xmr);
+`minizinc`, `minikube`, `miner` and `node` do not match
+(`miners_test.go`). guestd's watch list uses the same matcher, so a
+throttled miner below the top 50 by CPU still reaches the api in any
+spelling. The api's `abuse.Guard.OnSamples` runs after meter ingest: for
+a running guest whose sample names a miner, under a row lock on the
+project, it enqueues the ordinary stop op with `snapshot: true` (nothing
+on the disk is lost) and `reason: abuse`, inserts an `abuse_events` row
+(migration 0005: project, user, kind `miner`, `detail.process` = the
+name, op id, `hold`), sets `last_error` to `abuse_stopped: stopped: a
+cryptocurrency miner (xmrig) was running; mining is not allowed on
+repose, see the terms at <dashboard>/terms`, records an `abuse_stopped`
+platform event (the user's email and ntfy, subject "Your guest was
+stopped: a cryptocurrency miner was running"), counts
+`repose_api_abuse_stops_total{kind="miner"}` (the MinerStopped alert,
+which is the operator's notification) and logs `abuse_stop` with ids and
+the process name. It is idempotent: a project that is not
+`running`/`starting`, one with an op open (this stop, still running), or
+a sample older than the project's `started_at` (resent after a
+reconnect) is left alone, so one miner is one stop however many samples
+name it, and a restart that runs it again is stopped again. `repose
+status`, `repose projects`, a command that needs the guest running, and
+the dashboard show the sentence on a stopped project whose `last_error`
+has the `abuse_stopped` code (a successful start clears `last_error`, as
+before). The stop that makes three uncleared ones within 24 hours sets
+`hold`; `POST /projects/:id/start`, and a restore with `start` from that
+project's snapshots, then answer `403 forbidden` with `detail.reason:
+"abuse_hold"` and a sentence naming the process and the terms, until
+`repose-admin abuse clear <project>` clears every uncleared stop (the
+hold and the strikes toward the next one), audited as `abuse_clear`.
+`repose-admin abuse list [--all]` shows the stops. The user is never
+suspended from here: `repose-admin users suspend` stays a human's
+decision, as DESIGN §15 and the privacy policy say.
+(c) Busy with nobody there. Every five minutes the api (every replica;
+the queries only read) counts the projects whose samples over the last
+six hours show every vCPU at 90 percent or more (host-side `cpu_ns` over
+`samples * 60 s * the class's vCPUs`), at least 300 samples starting in
+the window's first ten minutes, no SSH session, no tmux client and no
+agent in any sample, and guestd answering in all of them (a sample with
+guestd down says nothing about who is there). An agent that works for
+hours with nobody attached is what repose sells, so an agent's presence
+excludes a project outright. `repose_api_abuse_busy_unattended_projects`
+is the BusyUnattended alert (warn, `for: 15m`); nothing is stopped, since
+a runaway build looks the same. The same job now sets
+`repose_api_egress_alert_projects` (over 1 TB in 24 h), which was
+registered but never set, so EgressHigh could not fire, and
+`repose_api_abuse_held_projects`.
+(d) A renamed miner passes the name check. (a), (c) and the Abuse
+dashboard's top-name panel are for that; a name is the cheapest certain
+signal, not the only one.
+*Rejected:* suspending the user on a match (the owner: the operator
+decides; a false positive would cut off every project of a paying user);
+killing the process inside the guest through guestd (a guest the user
+controls can hide or restart it, and the stop with a snapshot is the one
+path already safe for data); matching command lines or binary hashes
+(arguments and paths are what the privacy policy promises never to read);
+a hold that lapses by itself after 24 hours (the owner asked for the
+operator to clear it).
+
+**I-240. New outbound flows are rate-limited per guest, far above what
+development does; flows over the limit are dropped and counted, open ones
+are never cut.** (anti-abuse, 2026-09-24) A guest could scan the
+internet or flood a target from the host's address at line rate.
+`guest_fwd` now keeps an nft set `guest_flow_rate` (`ipv4_addr`, dynamic,
+one-minute timeout) and sends the `ct state new` packets of a guest
+address whose token bucket is past `limit rate over 200/second burst 2000
+packets` to `flows_drop`/`guest_flows` (counted per guest; EgressBlocked
+at 1000 dropped in ten minutes). Only new flows are metered: established
+traffic is accepted above, so a download or an SSH session is never
+touched, and flows to the host's caches and the gateway never reach the
+forward hook. Measured on a large guest on host-01 (`e2e-abuse`,
+destroyed after) with tcpdump of every outbound SYN, UDP datagram and
+ICMP packet the host forwards, counted as conntrack would (a TCP
+retransmit, or a UDP packet on a live 5-tuple, is not new): cold `pnpm
+install` of the vite monorepo through the host npm cache 14 flows, peak
+6/s; the same straight from registry.npmjs.org 79 flows, peak 74/s in
+one second and 7.8/s over the busiest ten; `git clone --depth 1` of ruff
+9, peak 8/s; cold `cargo fetch` of ruff 20, peak 8/s; cold `go mod
+download` of terraform 16, peak 5/s; `docker pull` of node:22,
+postgres:16 and python:3.12 through the host mirror 1; images from
+ghcr.io, quay.io and mcr.microsoft.com 39, peak 13/s; cold `pip install`
+of jupyterlab, pandas, scikit-learn and boto3 7, peak 6/s; `npm install`
+of react-scripts, @angular/cli and aws-sdk with no lockfile (965
+packages) 15, peak 12/s. The heaviest was not a package manager: headless
+Chromium loading six ad-heavy news sites one after another opened 1114
+flows, peak 196/s in one second and 68.7/s over ten; all six at once
+1718, peak 152/s and 82.2/s over ten (a quarter of them DNS to 1.1.1.1).
+So the sustained rate is 200/s, about 2.4 times a browser agent's busiest
+ten seconds and 25 times any package manager's, and the burst of 2000
+covers the six-site run whole. A scanner held to 200 new flows a second
+does a small fraction of what it does unlimited, and the alert names it
+within minutes. The rate and burst are
+`repose.host.guestEgress.flowRate`/`flowBurst`; the host VM test runs at
+20/s with a burst of 20 and checks that 30 flows at 10/s lose none, 300
+at once lose 280, another guest's bucket is its own, and a connection
+opened before the flood still sends after it.
+*Rejected:* a lower rate (50/s would throttle a browser agent's busy
+seconds); disconnecting or stopping the guest over the limit (a burst is
+not abuse, and a sustained scan is a human's call); limiting only UDP or
+only TCP (floods use both); a per-destination limit (a scan's signature
+is many destinations, which a per-destination meter never sees).

@@ -220,4 +220,10 @@ func TestWatchListIsNotEmpty(t *testing.T) {
 	if !Watched("xmrig") || Watched("node") {
 		t.Fatal("Watched does not agree with the list")
 	}
+	// A miner the api stops a guest for is watched in any spelling (I-239).
+	for _, comm := range []string{"lolMiner", "xmrig-notls", "SRBMiner-MULTI", "nanominer"} {
+		if !Watched(comm) {
+			t.Errorf("Watched(%q) = false", comm)
+		}
+	}
 }

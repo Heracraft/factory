@@ -270,6 +270,7 @@ func Title(m Message) string {
 // an agent, is what changed state, so "<project>: <verb>" reads wrong.
 var platformSubjects = map[string]string{
 	"billing_stopped": "Your guests were stopped for non-payment",
+	"abuse_stopped":   "Your guest was stopped: a cryptocurrency miner was running",
 }
 
 // Subject is the email subject line: Title for agent events, the
@@ -357,7 +358,7 @@ func (n *Ntfy) Send(ctx context.Context, m Message) error {
 	switch m.Kind {
 	case "needs_input":
 		prio, tag = "5", "question"
-	case "error", "snapshot_failed", "base_update_failed", "billing_stopped", "destroy_failed":
+	case "error", "snapshot_failed", "base_update_failed", "billing_stopped", "destroy_failed", "abuse_stopped":
 		prio, tag = "4", "x"
 	}
 	req.Header.Set("Priority", prio)

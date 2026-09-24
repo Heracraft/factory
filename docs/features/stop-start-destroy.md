@@ -183,6 +183,18 @@ Failure handling:
 - hostd restart mid-operation: the op is replayed by the API with the same
   command id and completes or is idempotently skipped
   (`interfaces/grpc-hostd.md`). No state is lost.
+- A guest whose process sample names a known cryptocurrency miner (xmrig
+  and the like, by name only) is stopped by the platform through the
+  ordinary stop, snapshot first (DECISIONS I-239). `repose status`,
+  `repose projects` and the dashboard then say `stopped: a cryptocurrency
+  miner (xmrig) was running; mining is not allowed on repose, see the
+  terms at https://repose.herakraft.co/terms`, and an `abuse_stopped`
+  notification goes out. `repose start` works as usual, and a guest that
+  runs it again is stopped again; the third such stop within 24 hours
+  holds the project: `repose start` and a restore answer "hashy is on
+  hold: it was stopped 3 times within 24 hours because a cryptocurrency
+  miner (xmrig) was running ..." until an operator runs `repose-admin
+  abuse clear`. The account itself is never suspended by this.
 
 ## Depends on
 

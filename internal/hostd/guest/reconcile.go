@@ -118,10 +118,17 @@ func (m *Manager) reconcileGuest(ctx context.Context, g *state.Guest, unitActive
 // that changes it (DECISIONS I-217 moved it from the tap's root to its
 // ingress) reaches guests that were already running. Shape replaces in
 // place; connections survive. A failure leaves the old shape and is
-// retried at the next start of hostd.
+// retried at the next start of hostd. The guest's nft rules and counters
+// are re-applied the same way (AddGuestRules adds only what is missing),
+// so a guest running across the upgrade that added the blocked-attempt
+// counters (DECISIONS I-238..I-240) is counted without a restart; the
+// blocks themselves are the host's and apply to it already.
 func (m *Manager) reshape(ctx context.Context, g *state.Guest) {
 	if err := m.d.Net.Shape(ctx, g.Tap, m.cfg.EgressMbit); err != nil {
 		m.d.Log.Warn("egress shape not re-applied", "event", "reconcile_shape", "guest_id", g.GuestID, "err", err.Error())
+	}
+	if err := m.d.Net.AddGuestRules(ctx, g.GuestID, g.IP, g.MAC, g.Tap); err != nil {
+		m.d.Log.Warn("guest rules not re-applied", "event", "reconcile_rules", "guest_id", g.GuestID, "err", err.Error())
 	}
 }
 
