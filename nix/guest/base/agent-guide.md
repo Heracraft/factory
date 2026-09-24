@@ -52,8 +52,8 @@ You are `dev`, with passwordless `sudo`. The checkout is under `/home/dev`, and 
 ## Reaching the user
 
 - The user is notified when you finish or wait for input. You don't have to do anything for that. <!-- /docs/notifications#what-youll-get -->
-- To tell the user something while they're away, run `repose-notify "MESSAGE"`. <!-- /docs/notifications --> <!-- needs: repose-notify -->
-- When you're blocked on a decision only the user can make, run `repose-ask "QUESTION"`. It waits for their reply and prints it. Don't ask what you can decide yourself. <!-- /docs/notifications --> <!-- needs: repose-ask -->
+- To tell the user something while they're away, run `repose-notify "MESSAGE"`. It reaches their phone or email. <!-- /docs/notifications#agents-can-message-you-and-ask-questions --> <!-- needs: repose-notify -->
+- When you're blocked on a decision only the user can make, run `repose-ask --options yes,no "QUESTION"` (or without `--options` for a free answer). It waits up to 30 minutes (`--timeout`) and prints their answer; exit 3 means no answer came, 4 that they have no notifications set up. Don't ask what you can decide yourself. <!-- /docs/agents#let-it-ask-you --> <!-- needs: repose-ask -->
 
 ## Git
 
