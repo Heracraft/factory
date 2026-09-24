@@ -525,10 +525,14 @@ func (m *Manager) session(id string) (vsockclient.Session, *Error) {
 
 // awaitSession waits up to max for a fresh guestd session of guest id,
 // polling the monitor; the monitor's own retry timer paces reconnects.
-func (m *Manager) awaitSession(ctx context.Context, id string, max time.Duration) (vsockclient.Session, *Error) {
+// gone is the session that just failed: until the monitor has noticed the
+// drop it is still the current one, and handing it back made the retry
+// fail on the same dead connection ("vsockrpc: EOF", the TestBuildAndApply
+// flake in CI).
+func (m *Manager) awaitSession(ctx context.Context, id string, max time.Duration, gone vsockclient.Session) (vsockclient.Session, *Error) {
 	deadline := time.Now().Add(max)
 	for {
-		if s, err := m.session(id); err == nil {
+		if s, err := m.session(id); err == nil && s != gone {
 			return s, nil
 		}
 		if time.Now().After(deadline) {
@@ -537,7 +541,7 @@ func (m *Manager) awaitSession(ctx context.Context, id string, max time.Duration
 		select {
 		case <-ctx.Done():
 			return nil, errf(CodeGuestUnresponsive, "guestd unreachable for guest %s", id)
-		case <-time.After(m.cfg.GuestdRetry / 2):
+		case <-time.After(min(m.cfg.GuestdRetry/2, 100*time.Millisecond)):
 		}
 	}
 }

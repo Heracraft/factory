@@ -143,7 +143,7 @@ func (m *Manager) apply(ctx context.Context, c *hostdv1.ApplyConfig) (*hostdv1.A
 			// no-op), so once guestd is back it is asked again, once
 			// (I-148). Longer than that is the guestd_lost path.
 			m.log(g).Warn("guestd went away during Switch; waiting for it", "event", "switch_retry", "err", err.Error())
-			if again, serr := m.awaitSession(ctx, g.GuestID, m.cfg.GuestdLostAfter+30*time.Second); serr == nil {
+			if again, serr := m.awaitSession(ctx, g.GuestID, m.cfg.GuestdLostAfter+30*time.Second, sess); serr == nil {
 				sw, err = again.Switch(ctx, c.SystemClosure, false, reg)
 			}
 		}
