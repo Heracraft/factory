@@ -32,12 +32,13 @@ rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 installing="$rt/repose-installing"
 user="${USER:-$(id -un)}"
 
-# The login PATH's directories in the login order (env.nix prepends the
-# first three; NixOS puts the nix profile before the per-user and system
-# profiles), then whatever this process has. ~/go/bin and ~/.cargo/bin are
-# not on the login PATH, so a command there does not count.
+# The login PATH's directories: this process's PATH (a login shell's, which
+# since I-227 starts with every package manager's user bin dir), then the
+# directories that must count even when it was not (a plain ssh command on
+# an older base). ~/go/bin and ~/.cargo/bin are on it, so a tool the user
+# installed with `go install` or `cargo install` is not installed again.
 search_path() {
-  printf '%s' "$HOME/.local/bin:$HOME/.local/share/pnpm:$HOME/.npm-global/bin:$HOME/.nix-profile/bin:$HOME/.local/state/nix/profile/bin:/etc/profiles/per-user/$user/bin:/run/current-system/sw/bin:${PATH:-}"
+  printf '%s' "${PATH:-}:$HOME/.local/bin:$HOME/.local/share/pnpm:$HOME/.npm-global/bin:$HOME/go/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/.deno/bin:$HOME/.nix-profile/bin:$HOME/.local/state/nix/profile/bin:/etc/profiles/per-user/$user/bin:/run/current-system/sw/bin"
 }
 
 has_cmd() {
