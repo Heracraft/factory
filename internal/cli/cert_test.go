@@ -45,7 +45,7 @@ Host blog.repose
   CertificateFile ~/.ssh/repose/id_ed25519-cert.pub
   IdentitiesOnly yes
   UserKnownHostsFile ~/.ssh/repose/known_hosts
-  ForwardAgent yes
+  ForwardAgent no
   ServerAliveInterval 30
   ControlMaster auto
   ControlPath ~/.ssh/repose/cm-%C
@@ -57,7 +57,7 @@ Host todo-app.repose
   CertificateFile ~/.ssh/repose/id_ed25519-cert.pub
   IdentitiesOnly yes
   UserKnownHostsFile ~/.ssh/repose/known_hosts
-  ForwardAgent yes
+  ForwardAgent no
   ServerAliveInterval 30
   ControlMaster auto
   ControlPath ~/.ssh/repose/cm-%C
@@ -70,6 +70,11 @@ Host todo-app.repose
 	win := renderSSHConfig(testProjects(), "heracraft", false)
 	if strings.Contains(win, "Control") {
 		t.Fatalf("multiplexing lines in the non-multiplexed config:\n%s", win)
+	}
+	// I-247: the laptop's agent is never forwarded, and the explicit "no"
+	// wins over a later `Host *` block with ForwardAgent yes.
+	if strings.Contains(got, "ForwardAgent yes") || strings.Contains(win, "ForwardAgent yes") {
+		t.Fatal("the generated config forwards the agent (I-247)")
 	}
 	if strings.Contains(got, "~/.ssh/id_ed25519") {
 		t.Fatal("the user's own key must never appear in the generated config (I-149)")

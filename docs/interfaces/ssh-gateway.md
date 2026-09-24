@@ -44,8 +44,8 @@ Two CAs, both ed25519, private keys in the api's secret store:
    certificate gets no second "certificate required" banner (I-189).
 4. Terminate the client's SSH session at the gateway, then open a second
    SSH session to `guest_ip:22` over WireGuard and relay channels between
-   the two (session, `direct-tcpip` for `-L`, `auth-agent@openssh.com` for
-   agent forwarding, pty requests, window changes, signals, exit status).
+   the two (session, `direct-tcpip` for `-L`, `forwarded-tcpip` for `-R`,
+   pty requests, window changes, signals, exit status).
    The gateway authenticates to the guest with a **gateway-issued
    certificate**: 5-minute validity, principal = project id, `key_id`
    suffixed `:via-gateway`, signed by the User CA with the gateway's own key
@@ -56,7 +56,13 @@ Two CAs, both ed25519, private keys in the api's secret store:
    own `session_id` (16 random bytes, hex; DECISIONS I-176): a session is
    a relay, not a certificate, so two terminals under one certificate
    count as two and closing one leaves the other.
-6. Port forwards (`-L`) and agent forwarding are passed through.
+6. Port forwards (`-L`, `-R`) are passed through. Agent forwarding is
+   refused (DECISIONS I-247): an `auth-agent-req@openssh.com` from the
+   client is answered with failure and never reaches the guest, and an
+   `auth-agent@openssh.com` channel the guest opens is rejected
+   (`administratively prohibited`). Through v0.1.13 the CLI's config said
+   `ForwardAgent yes`; such a client still connects, and only the agent
+   request is refused.
 
 ## Guest sshd
 
@@ -82,7 +88,7 @@ Host todo-app.repose
   CertificateFile ~/.ssh/repose/id_ed25519-cert.pub
   IdentitiesOnly yes
   UserKnownHostsFile ~/.ssh/repose/known_hosts
-  ForwardAgent yes
+  ForwardAgent no
   ServerAliveInterval 30
   ControlMaster auto
   ControlPath ~/.ssh/repose/cm-%C

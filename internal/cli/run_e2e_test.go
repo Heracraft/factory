@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -207,6 +208,10 @@ func TestRunDirtyRemoteTreeRefusesWithExitSix(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(f.guestRepo(), "README.md"), []byte("agent left this dirty\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// The laptop has new work that would land on the agent's (I-248).
+	if err := os.WriteFile(filepath.Join(f.local, "README.md"), []byte("laptop work\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	env2 := &Env{
 		Dir: f.env.Dir, Cfg: f.env.Cfg, Cache: f.env.Cache, Cwd: f.local, HomeDir: f.env.HomeDir,
@@ -263,10 +268,11 @@ func TestRunTwiceWithADirtyLaptopTree(t *testing.T) {
 		t.Fatalf("guest README.md = %q", b)
 	}
 
-	// An agent's changes: a synced file edited, then a new file. Each
-	// refuses, and nothing in the guest is touched.
-	for _, change := range []struct{ rel, body string }{{"notes/todo.md", "the agent's edit\n"}, {"agent-scratch.txt", "new\n"}} {
+	// An agent's changes: a synced file edited, then a new file. With new
+	// laptop work each refuses, and nothing in the guest is touched.
+	for i, change := range []struct{ rel, body string }{{"notes/todo.md", "the agent's edit\n"}, {"agent-scratch.txt", "new\n"}} {
 		write(f.guestRepo(), change.rel, change.body)
+		write(f.local, "README.md", fmt.Sprintf("edited on the laptop, round %d\n", i))
 		err := runRun(ctx, newEnv(), RunOptions{NoAttach: true}, false)
 		ee, ok := err.(*exitError)
 		if !ok || ee.code != ExitDirtyRemoteTree {

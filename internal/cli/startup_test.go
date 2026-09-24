@@ -212,6 +212,13 @@ func TestSSHFilesCover(t *testing.T) {
 	if _, ok := sshFilesCover(sd, &Project{ID: p.ID, Slug: "renamed"}, now); ok {
 		t.Fatal("covered without a Host block for the slug")
 	}
+	// A config from a CLI before I-247 still forwards the agent: not
+	// covered, so the slow path rewrites it.
+	old := strings.Replace(renderSSHConfig([]Project{*p}, "user-x1", true), "ForwardAgent no", "ForwardAgent yes", 1)
+	_ = os.WriteFile(filepath.Join(sd, "config"), []byte(old), 0o600)
+	if _, ok := sshFilesCover(sd, p, now); ok {
+		t.Fatal("covered by a config that still has ForwardAgent yes")
+	}
 }
 
 // testCertLine signs pub as a user certificate for principals, valid
@@ -270,8 +277,10 @@ func TestUnchangedSyncSkipsTheApply(t *testing.T) {
 	}
 }
 
-// Anything that moved on either side since the last sync makes the apply
-// run: a laptop edit, a commit, the guest's branch, the guest's tree.
+// Anything new on the laptop since the last sync makes the apply run: a
+// laptop edit, a commit, or a guest that lost the last sync's key. The
+// guest moving on by itself (its branch) with nothing new on the laptop
+// is left alone (I-248, TestSyncLeavesTheGuestAloneWhenTheLaptopHasNothingNew).
 func TestChangedSyncApplies(t *testing.T) {
 	ctx := context.Background()
 	for name, change := range map[string]func(f *syncFixture){
@@ -282,9 +291,6 @@ func TestChangedSyncApplies(t *testing.T) {
 			_ = os.WriteFile(filepath.Join(f.local, "c.txt"), []byte("c\n"), 0o644)
 			mustRun(t, f.local, "git", "add", "c.txt")
 			mustRun(t, f.local, "git", "commit", "-q", "-m", "c")
-		},
-		"guest branch": func(f *syncFixture) {
-			mustRun(t, f.guestRepo(), "git", "checkout", "-q", "-b", "other")
 		},
 		"guest key gone": func(f *syncFixture) {
 			_ = os.Remove(filepath.Join(f.guestRepo(), ".git", "repose-synced-key"))
@@ -303,13 +309,15 @@ func TestChangedSyncApplies(t *testing.T) {
 			t.Fatalf("%s: the apply was skipped", name)
 		}
 	}
-	// An agent's edit after the sync is not the sync's: refused, as before.
+	// An agent's edit after the sync is not the sync's: with a laptop
+	// edit to lay over it, refused, as before.
 	f := newSyncFixture(t)
 	_ = os.WriteFile(filepath.Join(f.local, "README.md"), []byte("laptop\n"), 0o644)
 	if _, err := syncGuest(ctx, f.target, f.local, testSlug, SyncOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	_ = os.WriteFile(filepath.Join(f.guestRepo(), "README.md"), []byte("agent\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(f.local, "README.md"), []byte("laptop, later\n"), 0o644)
 	_, err := syncGuest(ctx, f.target, f.local, testSlug, SyncOptions{})
 	wantDirtyRefusal(t, err)
 }

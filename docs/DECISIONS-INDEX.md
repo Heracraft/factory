@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-293 entries.
+296 entries.
 
 ## Scope
 
@@ -325,3 +325,6 @@ pointer, not a summary.
 - **I-239** A known cryptocurrency miner stops its guest automatically; three stops in 24 hours hold the project until an operator clears it; the pool ports are blocked; full CPU with nobody there for six hours is an alert — 2026-09-24; L5741
 - **I-240** New outbound flows are rate-limited per guest, far above what development does; flows over the limit are dropped and counted, open ones are never cut — 2026-09-24; L5822
 - **I-242** A feature without user docs is not done, and a test says so — 2026-09-24; L5865
+- **I-247** The laptop's ssh-agent is never forwarded; GitHub pushes go over HTTPS with the carried gh login — 2026-09-24; L5903
+- **I-248** `repose run` with nothing new on the laptop attaches without syncing instead of refusing a guest that changed — 2026-09-24; L5942
+- **I-249** The command-not-found hint is the plain bash line plus two aligned commands — 2026-09-24; L5974

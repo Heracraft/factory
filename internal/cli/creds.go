@@ -39,10 +39,10 @@ func (r credRow) laptopRel() string {
 // credSyncOptions says what the git side of the credential sync should
 // set up in the guest.
 type credSyncOptions struct {
-	// RemoteURL is the project's normalised remote. When it is on
-	// github.com and gh's login travelled, the guest's git is told to
-	// reach github over HTTPS with gh as the credential helper, so an
-	// agent's `git push` works without the laptop's SSH keys (I-150).
+	// RemoteURL is the project's normalised remote. Whenever gh's login
+	// travelled, the guest's git is told to reach github over HTTPS with
+	// gh as the credential helper, so an agent's `git push` works without
+	// the laptop's SSH keys (I-150; for every remote since I-247).
 	RemoteURL string
 	// ghToken returns the laptop's gh token when hosts.yml does not hold
 	// one (gh 2.40+ keeps it in the system keyring). Nil means `gh auth
@@ -168,10 +168,18 @@ func buildCredentialsAndCarry(homeDir, repoDir string, opts credSyncOptions, co 
 		labels = append(labels, "git")
 		hashParts = append(hashParts, []byte("identity"), []byte(name), []byte(email))
 	}
-	if ghCopied && remoteHost(opts.RemoteURL) == "github.com" {
-		lines = append(lines, "git config --global url.https://github.com/.insteadOf git@github.com:",
+	if ghCopied {
+		// Whatever the project's remote: with no agent forwarding (I-247)
+		// an SSH URL for github.com (the origin guestd sets, a submodule,
+		// a repository cloned in the guest) has no key to use, and gh's
+		// login is the one way to github the guest has. Each rewrite is
+		// set by value, so a second run, or another insteadOf the user
+		// added under the same key, is left as it is.
+		lines = append(lines,
+			"git config --global --replace-all url.https://github.com/.insteadOf git@github.com: '^git@github\\.com:$'",
+			"git config --global --replace-all url.https://github.com/.insteadOf ssh://git@github.com/ '^ssh://git@github\\.com/$'",
 			"git config --global --replace-all credential.https://github.com.helper '!gh auth git-credential'")
-		hashParts = append(hashParts, []byte("gh-helper"))
+		hashParts = append(hashParts, []byte("gh-helper-2"))
 	}
 	if len(lines) > 0 {
 		hash := carryHash(hashParts...)

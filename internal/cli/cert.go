@@ -315,7 +315,10 @@ func renderSSHConfig(projects []Project, handle string, multiplex bool) string {
 		b.WriteString("  CertificateFile ~/.ssh/repose/id_ed25519-cert.pub\n")
 		b.WriteString("  IdentitiesOnly yes\n")
 		b.WriteString("  UserKnownHostsFile ~/.ssh/repose/known_hosts\n")
-		b.WriteString("  ForwardAgent yes\n")
+		// No agent forwarding (I-247): anything running in the guest
+		// could sign with the laptop's keys while attached. Pushes to
+		// GitHub go over HTTPS with the carried gh login instead.
+		b.WriteString("  ForwardAgent no\n")
 		b.WriteString("  ServerAliveInterval 30\n")
 		if multiplex {
 			// One handshake per `repose run`: every later ssh rides this

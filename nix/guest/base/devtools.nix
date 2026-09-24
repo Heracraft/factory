@@ -64,12 +64,16 @@ let
         attr=$(printf '%s\n' "$attrs" | head -n1)
       fi
       others=$(printf '%s\n' "$attrs" | grep -vxF -- "$attr" | head -n3 | paste -sd, - | sed 's/,/, /g')
+      # Plain and aligned (I-249): the not-found line bash users know,
+      # then each command with what it does beside it.
+      now="nix profile add nixpkgs#$attr"
+      keep="repose config add $attr"
       {
-        printf '%s is not installed. It is in the nixpkgs package %s:\n' "$cmd" "$attr"
-        printf '  now, in this guest:              nix profile add nixpkgs#%s\n' "$attr"
-        printf '  from your laptop, kept for good: repose config add %s\n' "$attr"
+        printf '%s: command not found\n' "$cmd"
+        printf '  %-*s  %s\n' "''${#now}" "$now" "install it on this machine"
+        printf '  %-*s  %s\n' "''${#now}" "$keep" "keep it on every rebuild (run this on your laptop)"
         if [ -n "$others" ]; then
-          printf 'Also in: %s\n' "$others"
+          printf 'Other packages with %s: %s\n' "$cmd" "$others"
         fi
       } >&2
       exit 127

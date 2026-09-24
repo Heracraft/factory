@@ -32,17 +32,28 @@ is and the guest is on 4f2a9c1, detached. Push them from the guest (or
 `repose attach` to look) and pull on the laptop.
 ```
 
-Guest tree is dirty:
+Guest changed since the last sync, laptop has nothing new (DECISIONS
+I-248):
 
 ```
 $ repose run
-The guest's working tree has uncommitted changes (3 files):
-  M src/auth.ts
-  M src/routes/login.ts
-  ?? notes.md
-An agent may still be working. Re-run with --stash-remote (keeps them in
-`git stash`) or --discard-remote (throws them away), or `repose attach`
-to look first.
+The machine has changes your laptop doesn't have (27 files); attaching without syncing. `repose run --stash-remote` puts them in git stash and syncs your laptop's work.
+```
+
+Guest changed and the laptop has new work that would land on it:
+
+```
+$ repose run
+`repose run` copies your laptop's work onto the machine. It doesn't restart or rebuild anything.
+The machine has uncommitted changes your laptop doesn't have (27 files), probably an agent's:
+  src/auth.ts
+  src/routes/login.ts
+  ...(eight names in all)
+  and 19 more
+Your laptop has new work as well, so syncing now would write over them. Nothing was changed. Pick one:
+  repose attach                  look at the machine first
+  repose run --stash-remote      put the machine's changes in git stash, then sync
+  repose run --discard-remote    throw the machine's changes away, then sync
 ```
 
 ## Behaviour that must hold
@@ -51,9 +62,18 @@ to look first.
   any other command. There is no standalone `repose sync`.
 - The guest checks `git status --porcelain` in `/home/dev/<slug>` first
   (this includes untracked files, so an agent's scratch file counts as
-  dirty too). If it is non-empty and neither `--stash-remote` nor
-  `--discard-remote` was given, the CLI prints the block above and exits
-  6; nothing else in the sync step runs. `--stash-remote` runs `git stash
+  dirty too). If it is non-empty (and not the last sync's own, below)
+  and neither `--stash-remote` nor `--discard-remote` was given, what
+  happens depends on the laptop (DECISIONS I-248). When the laptop has
+  nothing new since the sync the guest last took (its sync key equals the
+  guest's `.git/repose-synced-key` and the guest has every commit it
+  would send), there is nothing to write over: the checkout is left
+  alone, only the logins and carry go, and the run attaches with the
+  one-line notice above. The same holds when the guest's tree is clean
+  but it moved on (an agent's commits, another branch): no detached
+  checkout of an older laptop commit. Otherwise the CLI prints the
+  refusal above (eight names, then a count) and exits 6; nothing else in
+  the sync step runs. `--stash-remote` runs `git stash
   push -u -m "repose run"` in the guest first; `--discard-remote` runs
   `git reset --hard && git clean -fd`. Neither asks for confirmation —
   the flag itself is the confirmation.

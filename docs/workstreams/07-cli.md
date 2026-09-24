@@ -282,15 +282,9 @@ $ repose run
       points at, and whether `origin` exists. If the status is non-empty
       and neither `--stash-remote` nor `--discard-remote`: exit 6 with
 
-      ```
-      The guest's working tree has uncommitted changes (3 files):
-        M src/auth.go
-        ?? notes.md
-        ...
-      An agent may still be working. Re-run with --stash-remote (keeps them in
-      `git stash`) or --discard-remote (throws them away), or `repose attach`
-      to look first.
-      ```
+      the refusal in `features/sync-at-launch.md`, but only when the
+      laptop has new work since the guest's last sync; with nothing new
+      the checkout is left alone and the run attaches (DECISIONS I-248).
 
       `--stash-remote` runs `git stash push -u -m "repose run"`,
       `--discard-remote` runs `git reset --hard && git clean -fd`; both run

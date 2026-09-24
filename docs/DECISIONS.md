@@ -5899,3 +5899,92 @@ people, with examples and grouping a generator would lose; a check keeps
 both); checking only that flag names appear somewhere on the page (a flag
 documented under the wrong command would pass); leaving resize hidden and
 allowlisted (the allowlist is for things no user should type).
+
+**I-247. The laptop's ssh-agent is never forwarded; GitHub pushes go over
+HTTPS with the carried gh login.** (round-3 CLI fixes worker, owner,
+2026-09-24; supersedes the `ForwardAgent yes` kept by I-108 and I-150) The
+owner: "there is no point in doing the vm then if we are exposing our
+users to more danger. NO." With `ForwardAgent yes` in the generated
+`~/.ssh/repose/config`, any process in the guest while the user is
+attached (an agent running with `--dangerously-skip-permissions`, an npm
+postinstall script) could ask the laptop's agent to sign with every key
+it holds: GitHub, production servers, anything. Three layers now refuse
+it. The CLI writes `ForwardAgent no` (explicit, so it wins over a later
+`Host *` block with `ForwardAgent yes`; the Include sits at the top of
+`~/.ssh/config`). The gateway answers `auth-agent-req@openssh.com` with
+failure without forwarding it and rejects a guest's
+`auth-agent@openssh.com` channel, so `ssh -A` and an old CLI's config get
+nothing (`TestRelayRefusesAgentForwarding`). The guest's sshd has
+`AllowAgentForwarding no`. The CLI rewrites the whole generated file on
+its slow path, and the connect fast path (I-223) treats a file containing
+`ForwardAgent yes` as not covering the project, so the first command after
+the upgrade rewrites it (`TestSSHFilesCover`). Pushing still works for
+GitHub: whenever gh's login travels, whatever the project's remote, the
+guest's `~/.gitconfig` gets `url.https://github.com/.insteadOf` for both
+`git@github.com:` and `ssh://git@github.com/` (each set by value with
+`--replace-all` and a value pattern, so a second run adds nothing and
+another value under the key stays) plus `!gh auth git-credential` as the
+helper for github.com; the carry hash part changed so guests synced before
+get the second rewrite on the next run. The condition used to be "the
+remote is on github.com", which left a submodule or a repository cloned in
+the guest to the forwarded agent. Other git hosts get two documented
+options (public docs, secrets "Other git hosts"; features/secrets.md): an
+HTTPS token as a named secret with a per-host credential helper and
+insteadOf, or a deploy key generated in the guest for that one
+repository. Interfaces: `ssh-gateway.md` (step 4 and 6, the CLI block) and
+`guest-conventions.md` (the `.gitconfig` row) in this commit; the old
+config shape still connects (only the agent request is refused).
+*Rejected:* forwarding only while attached (the exposure is exactly while
+attached); a confirm-each-use agent (`ssh-add -c`, which needs an askpass
+on every laptop and still lets a guest ask); keeping forwarding for hosts
+other than GitHub (the key used for GitLab is usually the same key).
+
+**I-248. `repose run` with nothing new on the laptop attaches without
+syncing instead of refusing a guest that changed.** (round-3 CLI fixes
+worker, owner, 2026-09-24; narrows I-210's refusal) The owner ran
+`repose run` in a checkout whose guest an agent had been working in and
+got "The guest's working tree has uncommitted changes (27 files): ... Re-run
+with --stash-remote ... or --discard-remote", and read it as run trying to
+restart or rebuild the machine. With nothing new on the laptop there is
+nothing to write over, so there is nothing to refuse. The sync now works
+out the laptop's sync key (I-224) before deciding: when it equals the key
+the guest recorded at its last completed sync and the guest has every
+commit the laptop would send, the checkout is left alone whatever changed
+there (uncommitted files, the agent's commits, another branch), only the
+logins and carry go, and the run prints "The machine has changes your
+laptop doesn't have (27 files); attaching without syncing. `repose run
+--stash-remote` puts them in git stash and syncs your laptop's work." and
+attaches. This also ends the detached checkout of the laptop's older
+commit over a guest whose agent committed on the branch when the laptop
+had nothing new. Only when the laptop has new work does exit 6 remain,
+and its message now says what `run` does ("copies your laptop's work onto
+the machine. It doesn't restart or rebuild anything"), what is on the
+machine (eight paths without git's status letters, then "and N more"),
+and the three choices, one per line, aligned. `--stash-remote` and
+`--discard-remote` still force a sync. A guest with no recorded key (an
+interrupted sync, a CLI before I-224) is refused as before.
+`TestSyncLeavesTheGuestAloneWhenTheLaptopHasNothingNew`,
+`TestSyncLeavesTheGuestsCommitsAlone`, `TestSyncRefusalSaysWhatRunDoes`,
+`TestRunAttachesWhenOnlyTheMachineChanged`; the I-210 tests now add a
+laptop edit before expecting a refusal. *Rejected:* a prompt ("sync
+anyway?") (the run is often scripted, and the right answer with nothing
+new is always "no"); skipping when the file lists merely differ (the key
+already says whether the laptop moved).
+
+**I-249. The command-not-found hint is the plain bash line plus two
+aligned commands.** (round-3 CLI fixes worker, owner, 2026-09-24; the
+layout of I-219) The owner: "this formatting is ass, No need for fancy,
+just organized". The hint is now
+
+```
+air: command not found
+  nix profile add nixpkgs#air  install it on this machine
+  repose config add air        keep it on every rebuild (run this on your laptop)
+Other packages with air: air-formatter
+```
+
+with the last line only when nix-locate found other packages. The first
+line is what bash prints for any unknown command, so the hint reads as an
+addition to it; the commands come first so they can be copied, and the
+description column is aligned to the longer one. The guest-devtools VM
+test asserts the exact lines.

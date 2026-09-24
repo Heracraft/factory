@@ -78,13 +78,14 @@ too (DECISIONS I-36), and so does `nix profile add nixpkgs#<attr>`,
 which resolves `nixpkgs` to the base's own pinned nixpkgs, needs no
 download of it, and fetches the package from cache.nixos.org (I-218).
 Typing a command the guest does not have names the nixpkgs package that
-has it and both ways to add it (I-219):
+has it and both ways to add it (I-219; plain layout I-249):
 
 ```
 $ air
-air is not installed. It is in the nixpkgs package air:
-  now, in this guest:              nix profile add nixpkgs#air
-  from your laptop, kept for good: repose config add air
+air: command not found
+  nix profile add nixpkgs#air  install it on this machine
+  repose config add air        keep it on every rebuild (run this on your laptop)
+Other packages with air: air-formatter
 ```
 
 The first is immediate and survives restarts; the second puts it in the

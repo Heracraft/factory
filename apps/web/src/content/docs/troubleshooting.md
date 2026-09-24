@@ -29,7 +29,7 @@ For more detail on any command, add `-v`. `REPOSE_TIMING=1` shows where the time
 
 ## Sync
 
-**`The guest's working tree has uncommitted changes`.** Something on the machine, usually an agent, changed files since your last sync. `repose attach` to look, or re-run with `--stash-remote` to keep them in `git stash` or `--discard-remote` to drop them. See [Sync](/docs/sync#when-the-machine-has-changes-of-its-own).
+**`The machine has uncommitted changes your laptop doesn't have`.** Something on the machine, usually an agent, changed files since your last sync, and your laptop has new work that would write over them. `repose attach` to look, or re-run with `--stash-remote` to keep them in `git stash` or `--discard-remote` to drop them. With nothing new on your laptop, `repose run` just attaches. See [Sync](/docs/sync#when-the-machine-has-changes-of-its-own).
 
 **`Not sent: web/node_modules`.** Dependency directories never travel. Run your install command on the machine.
 

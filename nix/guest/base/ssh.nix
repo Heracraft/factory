@@ -52,7 +52,9 @@ in
       ClientAliveInterval = 30;
       ClientAliveCountMax = 4;
       X11Forwarding = false;
-      AllowAgentForwarding = true;
+      # Never (DECISIONS I-247): the gateway refuses it already; this is the
+      # guest's own second no, for a laptop's keys the guest must not use.
+      AllowAgentForwarding = false;
       AllowTcpForwarding = true;
       GatewayPorts = "no";
       StreamLocalBindUnlink = true;

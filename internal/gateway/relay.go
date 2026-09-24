@@ -42,9 +42,12 @@ type session struct {
 }
 
 // Channel types relayed in each direction (06-gateway-edge.md §5.4).
+// auth-agent@openssh.com is not among them: agent forwarding is refused
+// outright (I-247), so nothing in a guest can ask the laptop's agent to
+// sign, even behind a client that still sends ForwardAgent.
 var (
 	clientChannelTypes = map[string]bool{"session": true, "direct-tcpip": true}
-	guestChannelTypes  = map[string]bool{"forwarded-tcpip": true, "auth-agent@openssh.com": true}
+	guestChannelTypes  = map[string]bool{"forwarded-tcpip": true}
 )
 
 // run dials the guest and relays until either side closes, the session
@@ -358,8 +361,8 @@ func (s *session) clientChannel(ctx context.Context, nc ssh.NewChannel) {
 	}()
 }
 
-// guestChannel relays a channel the guest opened (a remote forward or the
-// agent) back to the client.
+// guestChannel relays a channel the guest opened (a remote forward) back
+// to the client. An agent channel is rejected (I-247).
 func (s *session) guestChannel(ctx context.Context, nc ssh.NewChannel) {
 	if !guestChannelTypes[nc.ChannelType()] {
 		s.reject(nc, ssh.Prohibited, "channel type not relayed by the gateway")
@@ -533,8 +536,8 @@ func (s *session) pipe(cch ssh.Channel, creqs <-chan *ssh.Request, gch ssh.Chann
 }
 
 // forwardChannelRequest sends one channel request to the other side with
-// WantReply honoured. `env` is filtered on the way to the guest; X11 is
-// refused.
+// WantReply honoured. `env` is filtered on the way to the guest; X11 and
+// agent forwarding are refused (I-247).
 func (s *session) forwardChannelRequest(req *ssh.Request, to ssh.Channel, isSession, toGuest bool) {
 	if toGuest && isSession {
 		switch req.Type {
@@ -543,7 +546,7 @@ func (s *session) forwardChannelRequest(req *ssh.Request, to ssh.Channel, isSess
 				s.reply(req, false)
 				return
 			}
-		case "x11-req":
+		case "x11-req", "auth-agent-req@openssh.com":
 			s.reply(req, false)
 			return
 		}

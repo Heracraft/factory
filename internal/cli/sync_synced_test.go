@@ -51,6 +51,11 @@ func TestSyncedTreeWithASubmoduleChangeRefuses(t *testing.T) {
 	if err := os.WriteFile(agent, []byte("the agent's work\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// New laptop work, so the sync would apply (with nothing new it
+	// attaches without touching the guest, I-248).
+	if err := os.WriteFile(filepath.Join(f.local, "README.md"), []byte("laptop, later\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	_, err := syncGuest(ctx, f.target, f.local, testSlug, SyncOptions{})
 	wantDirtyRefusal(t, err)
 	if b, _ := os.ReadFile(agent); string(b) != "the agent's work\n" {
@@ -77,6 +82,9 @@ func TestSyncedTreeIgnoresShowUntrackedFilesNo(t *testing.T) {
 	}
 	agent := filepath.Join(f.guestRepo(), "notes.md")
 	if err := os.WriteFile(agent, []byte("the agent's notes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.local, "notes.md"), []byte("laptop notes, later\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	_, err := syncGuest(ctx, f.target, f.local, testSlug, SyncOptions{})
@@ -289,6 +297,9 @@ func TestSyncedProbeWritesNoObjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(f.guestRepo(), "agent.txt"), []byte("brand new content 8d1f\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.local, "README.md"), []byte("laptop, later\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	before := mustRun(t, f.guestRepo(), "git", "count-objects")
