@@ -86,8 +86,9 @@ runner using the host's shared store. Everything in
 - `nix/guest/base/sysctl.nix`: `fs.inotify.max_user_watches = 1048576`,
   `fs.inotify.max_user_instances = 1024`, `fs.file-max = 2097152`,
   `net.core.somaxconn = 4096`, `vm.swappiness = 10`, and a 2 GB zram swap
-  (`zramSwap.enable`) so a build that briefly exceeds RAM degrades rather
-  than OOM-kills the agent.
+  (`repose-zram-swap.service`, off the boot's critical chain, DECISIONS
+  I-231; it was `zramSwap.enable`) so a build that briefly exceeds RAM
+  degrades rather than OOM-kills the agent.
 - `nix/guest/base/env.nix`: `environment.variables` `LANG = "C.UTF-8"`,
   `EDITOR = "nvim"`, `REPOSE = "1"`, `COLORTERM = "truecolor"`; `TZ` and
   `REPOSE_PROJECT` come from `/etc/repose/env` written by guestd at

@@ -153,7 +153,7 @@ type Config struct {
 	// GuestdBootRetry is the dial interval until a monitor's first guestd
 	// session: a booting guest's guestd starts listening at an unknown
 	// moment on every start's critical path, and a 2 s retry cost a
-	// second of each start on average (DECISIONS I-225).
+	// second of each start on average (DECISIONS I-225; 50 ms since I-232).
 	GuestdBootRetry time.Duration
 	GuestdLostAfter time.Duration
 	UnitPoll        time.Duration
@@ -209,7 +209,10 @@ func (c Config) Defaults() Config {
 		c.GuestdRetry = 2 * time.Second
 	}
 	if c.GuestdBootRetry == 0 {
-		c.GuestdBootRetry = 200 * time.Millisecond
+		// A failed dial is a connect to Cloud Hypervisor's socket and one
+		// line; at 200 ms the wait after guestd listened averaged 100 ms of
+		// every start (DECISIONS I-232).
+		c.GuestdBootRetry = 50 * time.Millisecond
 	}
 	if c.GuestdBootRetry > c.GuestdRetry {
 		c.GuestdBootRetry = c.GuestdRetry

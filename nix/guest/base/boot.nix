@@ -3,6 +3,35 @@
 # is the one docs/workstreams/02-guest-base.md names; the microvm.nix module
 # adds its own initrd modules on top when the runner composes this base.
 { config, lib, pkgs, ... }:
+let
+  # DECISIONS I-231: the setuid wrappers, restored from a copy made at the
+  # first boot of these exact wrappers. The key is the NixOS script, which
+  # names every wrapper's program, owner, mode and capabilities.
+  wrappersCache = "/var/lib/repose/wrappers";
+  wrappersKey = builtins.substring 0 32 (builtins.hashString "sha256" config.systemd.services.suid-sgid-wrappers.script);
+  # ExecCondition: exit 0 runs NixOS's script, exit 1 skips it.
+  wrappersRestore = pkgs.writeShellScript "repose-wrappers-restore" ''
+    c=${wrappersCache}/${wrappersKey}
+    if [ -e /run/wrappers/bin ] || [ ! -f "$c/.complete" ]; then
+      exit 0
+    fi
+    ${pkgs.coreutils}/bin/cp -a "$c" /run/wrappers/wrappers.${wrappersKey} || exit 0
+    ${pkgs.coreutils}/bin/ln -s /run/wrappers/wrappers.${wrappersKey} /run/wrappers/bin || exit 0
+    exit 1
+  '';
+  wrappersSave = pkgs.writeShellScript "repose-wrappers-save" ''
+    set -eu
+    c=${wrappersCache}/${wrappersKey}
+    [ ! -f "$c/.complete" ] || exit 0
+    ${pkgs.coreutils}/bin/rm -rf ${wrappersCache}
+    ${pkgs.coreutils}/bin/mkdir -p -m 0700 ${wrappersCache}
+    t=$(${pkgs.coreutils}/bin/mktemp --directory --tmpdir=${wrappersCache} tmp.XXXXXXXXXX)
+    ${pkgs.coreutils}/bin/cp -a /run/wrappers/bin/. "$t/"
+    ${pkgs.coreutils}/bin/chmod 0755 "$t"
+    ${pkgs.coreutils}/bin/touch "$t/.complete"
+    ${pkgs.coreutils}/bin/mv "$t" "$c"
+  '';
+in
 {
   # Latest LTS from nixpkgs (linuxPackages is the LTS default).
   boot.kernelPackages = lib.mkDefault pkgs.linuxPackages;
@@ -22,7 +51,15 @@
     "virtiofs"
     "overlay"
   ];
-  boot.initrd.systemd.enable = lib.mkDefault true;
+  # The scripted stage 1, not systemd's initrd (DECISIONS I-231). The guest's
+  # stage 1 only loads the virtio modules and mounts the volume, the store
+  # share and its overlay; the systemd initrd took 2.1 s of a 9 s boot on the
+  # dev box for it (unit machinery, the mount-monitor rate limit below
+  # holding the store mounts back 0.55 s, a switch-root) and its image was
+  # 27 MB against 11. The scripted one does it in 0.6 s. microvm.nix sets
+  # the systemd initrd with mkDefault for Cloud Hypervisor, hence mkForce.
+  # The activation script now runs in stage 2's init, as before 24.11.
+  boot.initrd.systemd.enable = lib.mkForce false;
 
   boot.loader.grub.enable = false;
   boot.loader.systemd-boot.enable = false;
@@ -46,7 +83,8 @@
   # mounts tripped systemd's mount-monitor rate limit, which then held
   # sysroot.mount back for about 0.7 s on every boot. A guest passes no
   # credentials, so the imports go (DECISIONS I-161). systemd-fsck-root and
-  # the sysroot tmpfiles unit are upstream units and take a drop-in.
+  # the sysroot tmpfiles unit are upstream units and take a drop-in. Inert
+  # with the scripted stage 1 (I-231); kept for a return to systemd's.
   boot.initrd.systemd.services =
     lib.genAttrs [
       "systemd-journald"
@@ -59,6 +97,68 @@
       (_: { serviceConfig.ImportCredential = ""; })
     // lib.genAttrs [ "systemd-fsck-root" "systemd-tmpfiles-setup-sysroot" ]
       (_: { overrideStrategy = "asDropin"; serviceConfig.ImportCredential = ""; });
+
+  # The same in stage 2 (DECISIONS I-231). Every unit that imports
+  # credentials gets its own tmpfs on /run/credentials/<unit>, mounted when
+  # it starts and, for the oneshots, unmounted when it ends; with the API
+  # mounts that systemd starts beside them, that was more than five mount
+  # table changes in a second right after the switch to the real root, so
+  # systemd's mount monitor held every later mount back until the second
+  # was over: /run/wrappers, and so local-fs.target, sysinit.target and
+  # guestd, started 0.6 s late on every boot. The guest gets no credentials.
+  systemd.services = lib.genAttrs [
+    "systemd-journald"
+    "systemd-tmpfiles-setup-dev-early"
+    "systemd-tmpfiles-setup-dev"
+    "systemd-tmpfiles-setup"
+    "systemd-tmpfiles-clean"
+    "systemd-sysctl"
+    "systemd-vconsole-setup"
+    "systemd-network-generator"
+    "systemd-networkd"
+    "systemd-resolved"
+    "getty@"
+    "serial-getty@"
+  ]
+    (_: { serviceConfig.ImportCredential = ""; })
+  // {
+    # Also off the critical chain (DECISIONS I-231): copying and chmodding
+    # the setuid wrappers (sudo, mount, newuidmap...) is about 45 processes,
+    # 0.3 s on host-01, and NixOS orders it before sysinit.target, which
+    # everything waits for. Nothing a boot starts needs a wrapper except
+    # PAM (unix_chkpwd), for dev's lingering user manager, which logind
+    # starts, and for logins; so it comes before logind and user sessions.
+    suid-sgid-wrappers.before = lib.mkForce [ "systemd-logind.service" "systemd-user-sessions.service" "shutdown.target" ];
+    # Even off sysinit, making them took 1.2-1.5 s of a boot on the dev box
+    # (45 short processes against everything else starting), and logind
+    # waits for it. The finished directory for these exact wrappers is kept
+    # on the volume, root-only, and a boot copies it back in one cp -a
+    # (modes, owners and file capabilities included), skipping NixOS's
+    # script. Different wrappers (a new base, a fragment adding one) are a
+    # different key: the script runs as before and the copy is replaced.
+    suid-sgid-wrappers.serviceConfig = {
+      ExecCondition = "${wrappersRestore}";
+      ExecStartPost = "-${wrappersSave}";
+    };
+  };
+
+  # The rest of that burst is systemd's API mounts. These five serve nothing
+  # a guest runs at boot (debugfs and tracefs are for tracing tools, configfs
+  # for kernel targets, fusectl for aborting FUSE connections, hugetlbfs for
+  # explicit huge pages); a user who wants one mounts it with sudo.
+  systemd.suppressedSystemUnits = [
+    "sys-kernel-debug.mount"
+    "sys-kernel-tracing.mount"
+    "sys-kernel-config.mount"
+    "sys-fs-fuse-connections.mount"
+    "dev-hugepages.mount"
+  ];
+
+  # No BPF LSM (DECISIONS I-231): with it, systemd loads its restrict-fs
+  # program at startup, 0.07 s in the initrd and 0.27 s after the switch to
+  # the real root on the dev box. It only enforces RestrictFileSystems=, and
+  # the guest's boundary is the VM.
+  security.lsm = lib.mkForce [ "landlock" "yama" ];
 
   # The guest's whole state is on its thin volume (/), which the kernel sees
   # as the first virtio disk; the shared store is a virtio-fs tag. Both are

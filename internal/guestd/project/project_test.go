@@ -20,9 +20,6 @@ func newHandler(t *testing.T) (*Handler, sysdep.Paths, *sysdep.FakeRunner) {
 	t.Helper()
 	p := sysdep.Paths{Root: t.TempDir()}
 	run := sysdep.NewFakeRunner()
-	// systemctl is-active returns non-zero when the unit is not running, which
-	// is the state a fresh guest is in; the start that follows succeeds.
-	run.Match["is-active"] = sysdep.RunResult{ExitCode: 3}
 	h := New(p, run, quietLog())
 	h.uid, h.gid = -1, -1
 	return h, p, run
@@ -116,7 +113,6 @@ func TestSetupIsIdempotent(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(p.ProjectDir("todo-app"), ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	run.Match["is-active"] = sysdep.RunResult{ExitCode: 0}
 	run.Reset()
 
 	if err := h.Setup(ctx, req()); err != nil {
@@ -125,8 +121,18 @@ func TestSetupIsIdempotent(t *testing.T) {
 	if _, ok := run.Ran("git init"); ok {
 		t.Fatal("git init ran again over an existing repository")
 	}
-	if _, ok := run.Ran("start " + TmuxUnit); ok {
-		t.Fatal("the tmux unit was started again while it was already active")
+	// One `start`, which systemd does not repeat for an active unit; never
+	// a restart, and no separate is-active login first (I-231).
+	var argvs []string
+	for _, c := range run.Calls() {
+		argvs = append(argvs, strings.Join(c.Argv, " "))
+	}
+	calls := strings.Join(argvs, "\n")
+	if strings.Contains(calls, "restart") || strings.Contains(calls, "is-active") {
+		t.Fatalf("second setup ran %q", calls)
+	}
+	if n := strings.Count(calls, "start "+TmuxUnit); n != 1 {
+		t.Fatalf("second setup started the tmux unit %d times; calls: %q", n, calls)
 	}
 }
 

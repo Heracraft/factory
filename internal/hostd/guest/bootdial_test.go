@@ -17,7 +17,7 @@ func TestBootDialFindsGuestdSoon(t *testing.T) {
 		boot    time.Duration
 		maxTook time.Duration
 	}{
-		{0, 1800 * time.Millisecond},               // the default, 200 ms
+		{0, 1800 * time.Millisecond},               // the default, 50 ms
 		{2 * time.Second, 2500 * time.Millisecond}, // what every start paid before
 	} {
 		h := newHarness(t, func(cfg *Config) {

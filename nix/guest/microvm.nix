@@ -105,7 +105,7 @@ let
         # console lives on ttyS0.
         boot.kernelParams = [ "console=ttyS0" ];
       }
-      {
+      ({ config, pkgs, ... }: {
         home-manager.useGlobalPkgs = true;
         home-manager.useUserPackages = true;
         home-manager.backupFileExtension = "repose-bak";
@@ -114,7 +114,33 @@ let
           home.homeDirectory = "/home/dev";
           home.stateVersion = "26.11";
         };
-      }
+        # home-manager-dev runs before systemd-user-sessions, so every boot's
+        # first login (hostd's SetupProject, the user's ssh) waited for its
+        # activation: 1.2 s on host-01 for a generation that the volume already
+        # had in place. When the generation dev's home last activated is this
+        # one, there is nothing to link, so the unit ends at once; a changed
+        # fragment or base is a new generation and activates as before
+        # (DECISIONS I-231). The fallback is home-manager's own hm-setup-env,
+        # line for line.
+        systemd.services.home-manager-dev.serviceConfig.ExecStart =
+          let
+            hmStart = pkgs.writeScript "repose-hm-start" ''
+              #! ${pkgs.bash}/bin/bash -el
+              gen=$1
+              current=$(readlink -e "$HOME/.local/state/home-manager/gcroots/current-home" || true)
+              if [ "$current" = "$gen" ]; then
+                echo "home-manager generation already active; nothing to do"
+                exit 0
+              fi
+              eval "$(
+                XDG_RUNTIME_DIR=''${XDG_RUNTIME_DIR:-/run/user/$UID} systemctl --user show-environment 2> /dev/null \
+                | ${pkgs.gnused}/bin/sed -En '/^(DBUS_SESSION_BUS_ADDRESS|DISPLAY|WAYLAND_DISPLAY|XAUTHORITY|XDG_RUNTIME_DIR)=/s/^/export /p'
+              )"
+              exec "$gen/activate" --driver-version 1
+            '';
+          in
+          lib.mkForce "${hmStart} ${config.home-manager.users.dev.home.activationPackage}";
+      })
     ] ++ extraModules;
   };
 

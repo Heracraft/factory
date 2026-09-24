@@ -271,6 +271,14 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 	if err := m.d.Systemd.Run(ctx, GuestUnit(g.GuestID), props, argv); err != nil {
 		return m.fail(g, stepHypervisr, err)
 	}
+	// The registration RegisterPaths sends is read while the guest boots,
+	// not after its guestd answers: `nix-store -qR` and `--dump-db` took
+	// 70 ms of every start's critical path on host-01 (DECISIONS I-232).
+	dump := make(chan dumpResult, 1)
+	go func(closure string) {
+		b, err := m.d.Nix.DumpDB(ctx, closure)
+		dump <- dumpResult{b, err}
+	}(g.SystemClosure)
 
 	// Step 10: wait for guestd, deliver, mark running.
 	if err := m.injected(stepReady); err != nil {
@@ -283,7 +291,7 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 		m.removeMonitor(g.GuestID)
 		return m.fail(g, stepReady, fmt.Errorf("guest did not become ready: %w", err))
 	}
-	if err := m.deliver(ctx, g, sess); err != nil {
+	if err := m.deliver(ctx, g, sess, dump); err != nil {
 		mon.stop()
 		m.removeMonitor(g.GuestID)
 		return m.fail(g, stepReady, err)
@@ -295,11 +303,24 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 	return nil
 }
 
+// dumpResult is a `nix-store --dump-db` read ahead of Ready.
+type dumpResult struct {
+	b   []byte
+	err error
+}
+
 // deliver sends secrets, principals and the project setup after Ready.
-func (m *Manager) deliver(ctx context.Context, g *state.Guest, sess vsockclient.Session) error {
+// dump delivers the closure's registration, read while the guest booted.
+func (m *Manager) deliver(ctx context.Context, g *state.Guest, sess vsockclient.Session, dump <-chan dumpResult) error {
 	// The booted closure is on disk in the guest but unknown to its nix
 	// database until registered (DECISIONS I-67).
-	reg, err := m.d.Nix.DumpDB(ctx, g.SystemClosure)
+	var d dumpResult
+	select {
+	case d = <-dump:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	reg, err := d.b, d.err
 	if err != nil {
 		return fmt.Errorf("nix-store --dump-db: %w", err)
 	}
@@ -369,10 +390,18 @@ func (m *Manager) waitVirtiofsSocket(ctx context.Context, guestID, socket string
 		if time.Now().After(deadline) {
 			return fmt.Errorf("virtiofsd did not create %s within %s", filepath.Base(socket), m.cfg.VirtiofsSocketWait)
 		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(100 * time.Millisecond):
+		// virtiofsd binds its socket a few ms after it starts; a 100 ms
+		// step made every start wait most of one (DECISIONS I-232). The
+		// unit is asked about every tenth step only.
+		for i := 0; i < 10; i++ {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(10 * time.Millisecond):
+			}
+			if _, err := os.Stat(socket); err == nil {
+				return nil
+			}
 		}
 	}
 }

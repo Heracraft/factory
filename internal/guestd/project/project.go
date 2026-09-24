@@ -88,7 +88,7 @@ func (h *Handler) load() (Info, error) {
 
 // Setup is idempotent: every field it writes is rewritten, the directory is
 // created if missing, git init runs only on a directory with no .git, and the
-// tmux unit is started only when it is not already active.
+// tmux unit is started, which systemd does not repeat for an active unit.
 func (h *Handler) Setup(ctx context.Context, req *guestdv1.SetupProject) error {
 	slug := req.GetProjectSlug()
 	if !slugRe.MatchString(slug) {
@@ -121,7 +121,7 @@ func (h *Handler) Setup(ctx context.Context, req *guestdv1.SetupProject) error {
 	if err := h.ensureOrigin(ctx, slug, req.GetRemoteUrl()); err != nil {
 		return err
 	}
-	started, err := h.ensureTmux(ctx)
+	err = h.ensureTmux(ctx)
 	if err != nil {
 		return err
 	}
@@ -138,7 +138,7 @@ func (h *Handler) Setup(ctx context.Context, req *guestdv1.SetupProject) error {
 	}
 	h.log.Info("project set up",
 		"event", "setup_project", "project_id", id,
-		"dir_created", created, "git_init", initialised, "tmux_started", started)
+		"dir_created", created, "git_init", initialised)
 	return nil
 }
 
@@ -300,29 +300,22 @@ func originURL(remote string) string {
 	return "git@" + host + ":" + path + ".git"
 }
 
-// ensureTmux starts the user unit if it is not already running.
-func (h *Handler) ensureTmux(ctx context.Context) (bool, error) {
-	active, err := h.run.Run(ctx, sysdep.RunSpec{
-		Argv:      []string{"systemctl", "--user", "-M", "dev@", "is-active", "--quiet", TmuxUnit},
-		MaxOutput: 4 << 10,
-		Env:       sysdep.DevEnv(h.paths, "root"),
-	})
-	if err != nil {
-		return false, sysdep.Errf(sysdep.CodeInternal, "query the tmux session unit: %w", err)
-	}
-	if active.ExitCode == 0 {
-		return false, nil
-	}
+// ensureTmux starts the user unit if it is not already running. A start of
+// an active unit is a no-op in systemd, so one `start` does both: each
+// `-M dev@` call is a PAM login and a bridge to dev's manager, and a
+// separate is-active first cost about 0.2 s of every boot's SetupProject
+// (DECISIONS I-231).
+func (h *Handler) ensureTmux(ctx context.Context) error {
 	res, err := h.run.Run(ctx, sysdep.RunSpec{
 		Argv:      []string{"systemctl", "--user", "-M", "dev@", "start", TmuxUnit},
 		MaxOutput: 8 << 10,
 		Env:       sysdep.DevEnv(h.paths, "root"),
 	})
 	if err != nil {
-		return false, sysdep.Errf(sysdep.CodeInternal, "start the tmux session unit: %w", err)
+		return sysdep.Errf(sysdep.CodeInternal, "start the tmux session unit: %w", err)
 	}
 	if res.ExitCode != 0 {
-		return false, sysdep.Errf(sysdep.CodeInternal, "start the tmux session unit: systemctl exited %d", res.ExitCode)
+		return sysdep.Errf(sysdep.CodeInternal, "start the tmux session unit: systemctl exited %d", res.ExitCode)
 	}
-	return true, nil
+	return nil
 }

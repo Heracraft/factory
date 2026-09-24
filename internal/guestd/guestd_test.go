@@ -89,7 +89,6 @@ func newHarness(t *testing.T) *harness {
 		docker:  &sysdep.FakeDocker{Up: true, Containers: 1},
 	}
 	h.runner.Match["list-windows"] = sysdep.RunResult{}
-	h.runner.Match["is-active"] = sysdep.RunResult{ExitCode: 3}
 
 	srv, err := New(Config{
 		Root:           root,

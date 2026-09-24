@@ -5373,3 +5373,127 @@ VM (tmux, agents, unsaved state). The other large guest on host-01 was at
   tuning the host's dirty limits (global, and pages under writeback are
   the unreclaimable part anyway); moving the RAM to hugetlbfs (a separate
   accounting change, not needed for this).
+
+**I-231. A guest boot's path to Ready and to its first login carries only
+what they need: a scripted stage 1, no mount-rate-limit stall, zram and the
+setuid wrappers off the chain, and no home-manager run for an unchanged
+generation.** (boot time, 2026-09-24) Measured on host-01 (e2e-boot, large,
+base 2026.09.23.4, `ops/dev/startup-bench.sh -r 200 stopped`): 12.6-13.1 s
+from `repose run` to the tmux screen (one outlier 28.7 s), of which
+StartGuest to `running` 8.24-8.34 s. In the guest: kernel 0.98 s, systemd
+initrd 2.94 s (0.55 s of it the store mounts held back by systemd's
+mount-monitor rate limit, 1.18 s the activation script), stage 2 to guestd
+listening 2.6 s (credential tmpfs mounts and API mounts tripping the same
+rate limit, 0.6 s; zram before swap.target, 0.37 s, which every tmpfs mount
+waits for; the setuid wrappers before sysinit.target; the BPF LSM program
+0.27 s), then 1.19 s of home-manager on the path to the first login (hostd's
+SetupProject is a login). Reproduced on the dev box with the guest runner
+under Cloud Hypervisor 53, an ext4 volume, virtiofsd and a tap, driven by a
+stand-in for hostd's boot+deliver (Ping at the dial interval, RegisterPaths,
+SetPrincipals, SetupProject): CH start to `running` 8.9-9.3 s before, the
+same shape as host-01. Changes, each measured there:
+- *Scripted stage 1* (`boot.initrd.systemd.enable = mkForce false`;
+  microvm.nix sets systemd's with mkDefault). It loads the virtio modules,
+  mounts the volume, the store share and the overlay in 0.6 s against
+  2.1 s; the initrd is 11 MB against 27. The activation script runs in
+  stage 2's init as it did before NixOS 24.11 (0.66 s). The store
+  overlay's options now name `/mnt-root`, not `/sysroot`:
+  `repose-pin-profile` strips both (without it its "already pinned" check
+  looked in a path that does not exist and every pin touched the whole
+  profile closure again; guest-base's own check of the upper dir failed),
+  and so does the test.
+  Running: 7.3 -> 5.9 s.
+- *Stage 2 without the rate-limit stall*: `ImportCredential=` emptied for
+  the twelve units that import credentials (each got a tmpfs on
+  /run/credentials; the guest is passed none), and debugfs, tracefs,
+  configfs, fusectl and hugetlbfs no longer mounted
+  (`systemd.suppressedSystemUnits`; `sudo mount` gives any of them back).
+  The burst was more than five mount-table changes in a second; systemd
+  then starts no mount unit until the second is over (hard-coded, not
+  configurable in 261).
+- *zram off the chain*: zram-generator's swap is `Before=swap.target` and
+  every tmpfs mount is `After=swap.target`, so /run/wrappers,
+  local-fs.target and all after waited for the device, mkswap and swapon.
+  `repose-zram-swap.service` makes the same swap (zstd, half the RAM up to
+  2 GiB, priority 5) with no default dependencies, wanted by
+  multi-user.target. Docs 02 updated.
+- *Setuid wrappers*: before `systemd-logind` and `systemd-user-sessions`
+  instead of sysinit.target (PAM's unix_chkpwd is the only boot-time user:
+  logind starts dev's lingering user manager; without the ordering its
+  first start failed). Still 1.2-1.5 s under the boot's load (45
+  processes), so the finished directory is kept in
+  `/var/lib/repose/wrappers/<key>` (root-only; key = hash of NixOS's
+  script, which names every wrapper, owner, mode and capability) and an
+  `ExecCondition` copies it back with one `cp -a` and skips the script;
+  a changed key runs the script and replaces the copy (`ExecStartPost`).
+  `sudo` works and `getcap` shows the capabilities after a restore.
+- *No BPF LSM* (`security.lsm = [ landlock yama ]`): it only serves
+  RestrictFileSystems=, and loading it cost 0.27 s after the switch.
+- *home-manager*: `home-manager-dev` ends at once when
+  `~/.local/state/home-manager/gcroots/current-home` already is this
+  generation (the fallback is home-manager's hm-setup-env, line for line).
+  A new base or fragment is a new generation and activates as before.
+  Lost: a boot no longer re-links a managed dotfile the user deleted, and a
+  fragment's `home.activation` scripts run when the generation changes, not
+  at every boot. 1.19 s on host-01, 1.9 s on the dev box.
+- *repose-npm-registry* (user unit, I-202/I-208) has no default
+  dependencies: default.target waited for it, the tmux session waits for
+  default.target, and with the cache not answering it retries for 60 s,
+  so a start with the cache down failed SetupProject's 60 s timeout.
+- *guestd's SetupProject* runs one `systemctl --user -M dev@ start` for
+  the tmux unit, not `is-active` and then `start`: each `-M dev@` is a PAM
+  login and a bridge (about 0.2 s at boot), and systemd does not repeat a
+  start of an active unit. The `tmux_started` log field is gone.
+Result on the dev box, the same runner and volume, interleaved: CH start to
+guestd Ready 6.48-6.72 s -> 4.35-4.58 s, to `running` 8.88-9.28 s (median
+9.09) -> 5.49-5.83 s (median 5.71). Where the 5.7 s go now: kernel 0.85,
+stage 1 0.61, activation 0.66, systemd to local-fs 1.04, to basic.target
+0.81, guestd listening +0.19, logind 0.2, dev's user manager 0.66 (unit
+loading 0.3), tmux session 0.36, hostd's side and its dial the rest.
+Expected on host-01: StartGuest to `running` from 8.3 s to about 5.2 s.
+Not changed, measured: users (perl) 0.27 s and /etc 0.15 s of the
+activation (`services.userborn` and an /etc overlay would cut them but
+change how users are made on existing volumes); dev's user manager's own
+start; the kernel's memory init (0.35 s for 8 GiB, grows with the class).
+*Rejected:* dropping the initrd (the init lives in the store, which only
+stage 1 can mount); `Nice=` on the wrappers (no change: it is exec cost).
+VM tests: guest-base, guest-parity, guest-compat, guest-tools-carry,
+guest-devtools, guest-desktop, guest-docker, guestd, guest-closure-size,
+guest-runner-builds, host-services pass.
+
+**I-232. hostd's start path: the boot dial every 50 ms, virtiofsd's socket
+looked for every 10 ms, and the registration read while the guest boots.**
+(boot time, 2026-09-24) host-01's journal for a start: StartGuest to
+virtiofsd started 45 ms, to Cloud Hypervisor started 160 ms (virtiofsd's
+socket was checked every 100 ms and is there a few ms after start), and
+after guestd answered, `nix-store -qR` plus `--dump-db` (70 ms) ran before
+RegisterPaths. Now `GuestdBootRetry` defaults to 50 ms (a failed dial is a
+connect to CH's socket and one line; 200 ms averaged 100 ms of waiting),
+`waitVirtiofsSocket` stats every 10 ms and asks systemd about the unit every
+tenth step, and the dump is read in a goroutine started when CH is, which
+deliver waits for (a failure still fails the create or start at step 10 as
+before). Expected: about 0.25 s off every start and create. Needs a host
+switch. `TestBootDialFindsGuestdSoon` and the guest package's tests.
+
+**I-233. Resuming a stopped guest from a memory snapshot is not adopted
+yet; the numbers and what it needs are recorded.** (boot time, 2026-09-24)
+Measured on the dev box with Cloud Hypervisor 53 and the I-231 runner
+(large, 8 GiB, booted, 20 s idle): `vm.pause` 6 ms, `vm.snapshot` 0.29 s,
+the memory file sparse at 0.78 GB (what the guest had touched); restore and
+`vm.resume` 0.54 s with the file in the host's page cache, 1.2 s cold;
+guestd answered 10 ms later and tmux still had its session. A start would
+go from about 5 s of boot to about 1 s. Not adopted because: the image
+holds everything in the guest's RAM, secrets from /run/repose/secrets and
+tool logins included, on the host's disk, which is a fourth home for
+secrets (CLAUDE.md) unless encrypted with a key the host does not keep;
+the guest clock resumes at the snapshot time (seen: 10 s behind) until
+guestd sets it; a guest that did real work has GBs of page cache, so up to
+the class's RAM per stopped guest on the host and seconds per stop, unless
+guestd drops caches first; virtiofsd is a new process after restore and
+the guest kernel's FUSE inodes come from the old one (it worked for the
+commands tried, but CH does not migrate virtiofsd's state and nothing
+proves open store files survive); the snapshot must be discarded whenever
+the volume changes outside the guest (restore, resize), the closure
+changes (base upgrade, ApplyConfig) or the guest moves hosts, and stopped
+storage would need a price. Worth doing, after those are designed, as a
+fast path beside the boot, never instead of it.

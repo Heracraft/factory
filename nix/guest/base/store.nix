@@ -32,8 +32,11 @@ let
     text = ''
       upper=$(awk '$2 == "/nix/store" && $3 == "overlay" { print $4 }' /proc/mounts \
         | tr ',' '\n' | grep '^upperdir=' | head -n1 | cut -d= -f2-)
-      # Mounted in the initrd, the options still name the /sysroot view.
+      # Mounted in the initrd, the options still name its view of the real
+      # root: /sysroot with a systemd initrd, /mnt-root with the scripted
+      # one the guest boots with since I-231.
       upper=''${upper#/sysroot}
+      upper=''${upper#/mnt-root}
       if [ -z "$upper" ]; then
         echo "repose-pin-profile: /nix/store is not an overlay; nothing to pin" >&2
         exit 0

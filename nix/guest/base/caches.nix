@@ -74,6 +74,14 @@ in
       description = "repose: point npm at the host's cache, once";
       wantedBy = [ "default.target" ];
       unitConfig.ConditionUser = "dev";
+      # Outside default.target's ordering: a target waits for the units it
+      # wants unless they have no default dependencies, and the project's
+      # tmux session (so hostd's SetupProject, so every start) waits for
+      # default.target. With the cache not answering, this retries for about
+      # a minute, and every start waited that minute (DECISIONS I-231).
+      unitConfig.DefaultDependencies = false;
+      conflicts = [ "shutdown.target" ];
+      before = [ "shutdown.target" ];
       serviceConfig = {
         Type = "oneshot";
         ExecStart = "${npmRegistry}/bin/repose-npm-registry";
