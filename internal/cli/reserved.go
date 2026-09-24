@@ -10,7 +10,7 @@ import "fmt"
 func NotAvailableMessage(name string) string {
 	page := "agents#mcp-servers"
 	if name == "repose browser bridge" {
-		page = "browser#things-that-dont-work-yet"
+		page = "machine#browser"
 	}
 	return fmt.Sprintf("%s is not available yet. https://repose.herakraft.co/docs/%s says what works today.", name, page)
 }

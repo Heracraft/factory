@@ -10,7 +10,7 @@ import (
 func TestNotAvailableMessage(t *testing.T) {
 	for name, want := range map[string]string{
 		"repose mcp forward":    "https://repose.herakraft.co/docs/agents#mcp-servers",
-		"repose browser bridge": "https://repose.herakraft.co/docs/browser#things-that-dont-work-yet",
+		"repose browser bridge": "https://repose.herakraft.co/docs/machine#browser",
 	} {
 		msg := NotAvailableMessage(name)
 		if !strings.Contains(msg, want) || strings.Contains(msg, "DESIGN.md") || strings.Contains(msg, "docs/features") {
