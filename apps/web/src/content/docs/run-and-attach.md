@@ -56,6 +56,43 @@ Each machine has one tmux session. Its first window, `shell`, opens in your chec
 
 The mouse works too: click a window name to switch, scroll to go back through output.
 
+## Paste an image
+
+`Ctrl-V` in Claude Code reads the clipboard of the computer it runs on, which is the machine, not your laptop. To give an agent a screenshot, copy it on your laptop and run, in the checkout:
+
+```
+repose paste
+```
+
+The image goes to `/tmp/repose-paste/` on the machine, and its path is pasted into the tmux window you were last in, as if you had dropped the file there. Claude Code shows it as an attached image; add your words and press Enter. Other agents get the path as text.
+
+- `repose paste todo-app` from anywhere; `--window claude-2` for another window; `--print` to only print the path.
+- On macOS it uses `pngpaste` if you have it, otherwise `osascript`. On Linux it uses `wl-paste` (from wl-clipboard) under Wayland and `xclip` under X11.
+- Windows isn't supported. Under WSL it reads the Linux clipboard, which may not have images copied in Windows.
+- Only you and the machine's `dev` user can read the files. Up to 20 MB per image; pastes older than a day, and all but the newest 50, are deleted at the next paste.
+
+To paste with a key, bind one in your terminal to run `repose paste` on the laptop. Use the full path from `command -v repose` if the terminal doesn't find it.
+
+kitty, in `kitty.conf` (runs in the directory of the window you're in, so the checkout's project is found):
+
+```
+map ctrl+alt+v launch --type=background --cwd=current repose paste
+```
+
+WezTerm, in `wezterm.lua`, for one project:
+
+```lua
+config.keys = {
+  {
+    key = 'v',
+    mods = 'CTRL|ALT',
+    action = wezterm.action_callback(function()
+      wezterm.background_child_process { 'repose', 'paste', 'todo-app' }
+    end),
+  },
+}
+```
+
 ## Useful flags
 
 ```

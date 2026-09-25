@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-302 entries.
+303 entries.
 
 ## Scope
 
@@ -334,3 +334,4 @@ pointer, not a summary.
 - **I-246** The agents' browser is one headed Chromium on the desktop's display, shared by both MCP servers over CDP, and the desktop only views it — 2026-09-24; L6124
 - **I-256** Vercel and portless stay menu entries, voice mode is not a repose feature, and a quick path to production stays deferred — 2026-09-25; L6196
 - **I-257** The terms say a machine is not for serving production traffic to others — 2026-09-25; L6218
+- **I-252** `repose paste` sends the laptop's clipboard image to the guest and pastes its path; one direction, no socket — 2026-09-25; L6234

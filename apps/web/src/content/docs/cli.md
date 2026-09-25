@@ -48,6 +48,15 @@ Forward one port to your laptop and open it in the browser, until `Ctrl-C`.
 
 Copy files with `scp`. One side is `PROJECT:PATH`, or `:PATH` for this checkout's project. Relative machine paths start at the checkout. `-r`/`--recursive` copies directories.
 
+### `repose paste [PROJECT]`
+
+Copy the image on your clipboard to `/tmp/repose-paste/` on the machine and paste its path into the tmux session's current pane, where Claude Code attaches it. Nothing is sent with it; you press Enter. See [Paste an image](/docs/run-and-attach#paste-an-image).
+
+| Flag            |                                                                  |
+| --------------- | ---------------------------------------------------------------- |
+| `--window NAME` | Paste into this tmux window (name or number) instead.            |
+| `--print`       | Copy the image and print its path on the machine; paste nothing. |
+
 ### `repose scan [DIR]`
 
 List the tools the next `repose run` would install on the machine, and why. Installs nothing. `--json` for JSON.
@@ -174,6 +183,8 @@ exclude = ["dist", "*.mp4"]
 | `XDG_CONFIG_HOME`      | If set, the CLI's files are in `$XDG_CONFIG_HOME/repose/`.                                                                  |
 | `CLAUDE_CONFIG_DIR`    | Where your laptop's Claude Code setup is copied from, instead of `~/.claude`.                                               |
 | `VISUAL`, `EDITOR`     | The editor for `repose config edit`. Default `vi`.                                                                          |
+| `WAYLAND_DISPLAY`      | On Linux, `repose paste` reads the Wayland clipboard with `wl-paste` when this is set.                                      |
+| `DISPLAY`              | Otherwise it reads the X11 clipboard with `xclip`.                                                                          |
 
 ## Other servers
 
@@ -205,4 +216,4 @@ For a test or self-hosted repose server rather than the hosted one: `--api-url U
 | 10   | The configuration build failed.                        |
 | 130  | Interrupted with `Ctrl-C`.                             |
 
-Once `run` or `attach` has connected you, the exit code is `ssh`'s. `repose cp` returns `scp`'s.
+Once `run` or `attach` has connected you, the exit code is `ssh`'s. `repose cp` returns `scp`'s. `repose paste` exits 1 when there is no image on the clipboard or no tool to read it, and says which tool to install.

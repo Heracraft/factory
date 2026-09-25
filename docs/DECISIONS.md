@@ -6231,3 +6231,52 @@ blocking tunnels such as cloudflared or ngrok (they are how a preview gets
 shown until preview URLs exist, and I-251 adds cloudflared to the menu);
 metering inbound tunnel traffic (repose cannot tell a demo from a product
 without reading traffic, which it never does).
+**I-252. `repose paste` sends the laptop's clipboard image to the guest
+and pastes its path; one direction, no socket.** (2026-09-25;
+backlog triage item 3, owner-approved; dev-ergonomics item 8 had
+rejected a clipboard socket into the guest.) `repose paste
+[PROJECT] [--window NAME] [--print]`:
+
+- *Clipboard.* A PNG from `pngpaste -`, else `osascript` writing `the
+  clipboard as «class PNGf»` to a temp file (macOS); `wl-paste` when
+  `WAYLAND_DISPLAY` is set, else `xclip` when `DISPLAY` is (Linux, the
+  offered types listed first so "no image" and "tool failed" read
+  differently). Windows is refused with a pointer to `repose cp`; WSL is
+  Linux, with a hint that a Windows-side image may not be on its
+  clipboard. The reader is an interface so tests need no clipboard.
+- *Transport.* One `runSSH` over the project's ssh target, the
+  ControlMaster `repose cp` rides, with the image on stdin: no scp, so
+  no SFTP-versus-legacy quoting, and saving, cleanup and the paste are
+  one round trip.
+- *Where and how long.* `/tmp/repose-paste/<UTC yyyymmdd-hhmmss-ms>.png`,
+  umask 077 (directory 0700, file 0600, `dev`'s). /tmp is shared, so a
+  directory that is a symlink or not `dev`'s is refused, not followed.
+  Each paste first deletes pastes over a day old and all but the newest
+  50; one image is capped at 20 MB (a 5K screenshot is about 15). /tmp,
+  not the home volume: pastes are throwaway and must not reach snapshots.
+- *The paste.* `tmux set-buffer` + `paste-buffer -p -d` into the active
+  pane of the session's current window (`=<slug>:`), or of `--window
+  NAME`. `-p` makes it a bracketed paste when the program asked for one,
+  which is how a terminal delivers a dropped file and what Claude Code
+  attaches as an image; `send-keys -l` (the task's first sketch) types
+  key by key, which a TUI may not treat as a paste. No Enter: the user
+  adds words. The pane is found with `list-panes`, because
+  `display-message` falls back to the current pane for a missing window.
+  A missing window leaves the file and prints its path, exit 1.
+  `--print` only prints the path.
+- *Exit codes.* No new code: no image, not a PNG, too large, no tool,
+  Windows are exit 1 with a message naming the tool to install; 4 and 5
+  as every project command. Nothing a script branches on needs a code
+  of its own, and the codes are a shared interface.
+- *Key binding.* Documented for kitty (`launch --type=background
+  --cwd=current`) and WezTerm (`background_child_process`), not shipped;
+  none for iTerm2 or Ghostty, whose key actions do not run a background
+  program on the laptop that we could verify.
+- Nothing is logged; the image and the path stay between the laptop and
+  the guest.
+
+*Rejected:* a clipboard socket or `xclip` shim in the guest (anything in
+the guest could read the laptop's clipboard while attached); the CLI as a
+pty proxy catching Ctrl-V (real work; revisit if the explicit command is
+used); typing Claude's `@path` (a pasted path is what drag and drop
+sends, and works for every agent that opens files).

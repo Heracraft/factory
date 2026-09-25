@@ -36,6 +36,16 @@ target (the multiplexed `<slug>.repose` alias), so it refreshes the
 certificate like `run`, needs a running guest (exit 5 otherwise), and
 exits with scp's code.
 
+`repose paste [PROJECT] [--window NAME] [--print]` (DECISIONS I-252):
+reads a PNG from the laptop's clipboard (pngpaste/osascript, wl-paste,
+xclip; `WAYLAND_DISPLAY` then `DISPLAY` pick the Linux tool), writes it
+over the project's ssh target to `/tmp/repose-paste/<ts>.png` in the
+guest (0700 directory, 0600 file, pastes over a day old or past the
+newest 50 deleted), and pastes the path into the session's active pane
+(`paste-buffer -p`, no Enter). `--print` only prints the path. Exit 1
+for no image, no tool, Windows or over 20 MB; 4 and 5 as for any
+project command.
+
 `repose scan [DIR] [--json]` (DECISIONS I-222): prints what the next
 `run` would ask the guest to install, the laptop's global tools and the
 checkout's commands, with where each was found and why the rest were
