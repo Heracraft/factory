@@ -45,15 +45,7 @@ Codex, opencode and GitHub CLI logins were copied from your laptop in step 2. [A
 
 ## 4. Let it run without asking
 
-To have Claude Code skip permission prompts on every repose machine, add this to `~/.claude/settings.json` on your laptop. `repose run` copies it over.
-
-```json
-{
-	"permissions": {
-		"defaultMode": "bypassPermissions"
-	}
-}
-```
+Claude Code on the machine starts in `bypassPermissions` mode, so it doesn't stop to ask before running a command. If your laptop's `~/.claude/settings.json` sets another `defaultMode`, the machine uses yours. [Agents](/docs/agents#let-it-run-without-asking) has the details.
 
 ## 5. Hand it a task
 

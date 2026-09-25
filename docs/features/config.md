@@ -70,7 +70,7 @@ todo-app will stay on base 2026.09.15 until `repose config unhold`.
 
 The menu is a catalog (`GET /catalog`) of packages and services with labels
 and groups: languages, databases, browsers, tools, and deploy CLIs
-(wrangler, the Supabase CLI and flyctl from nixpkgs; the Vercel CLI and
+(wrangler, the Supabase CLI, flyctl and cloudflared from nixpkgs; the Vercel CLI and
 portless, which nixpkgs does not carry, installed once with `npm i -g`
 into `~/.npm-global` by a user unit after the network is up). None of
 these needs the menu: `npm i -g <cli>` in the guest works and persists

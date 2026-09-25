@@ -3,7 +3,13 @@
 # own files on first run (guest-conventions.md "Agent wrappers").
 { config, lib, pkgs, ... }:
 let
+  # A guest is a VM an agent may wreck, so Claude Code starts
+  # without permission prompts unless the user set another defaultMode;
+  # repose-agent-setup adds these two keys only where defaultMode is unset
+  # (DECISIONS I-250). User settings, never managed settings, so the user wins.
   claudeSettings = {
+    permissions.defaultMode = "bypassPermissions";
+    skipDangerousModePermissionPrompt = true;
     hooks = {
       Notification = [
         { matcher = ""; hooks = [ { type = "command"; command = "repose-hook"; } ]; }

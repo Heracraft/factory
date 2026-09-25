@@ -6280,3 +6280,70 @@ the guest could read the laptop's clipboard while attached); the CLI as a
 pty proxy catching Ctrl-V (real work; revisit if the explicit command is
 used); typing Claude's `@path` (a pasted path is what drag and drop
 sends, and works for every agent that opens files).
+**I-250. Claude Code in a guest starts in `bypassPermissions` unless the
+user set another default.** (round-4 worker A, owner, 2026-09-25; backlog
+triage item 11) `/etc/repose/claude-settings.json` now carries
+`permissions.defaultMode: "bypassPermissions"` and
+`skipDangerousModePermissionPrompt: true` beside the repose-hook entries.
+A guest with no `~/.claude/settings.json` gets the whole file from
+`repose-agent-setup claude` (the wrapper runs it at every start). An
+existing file, which every guest made before this base has and which the
+I-196 carry may have written before Claude first ran, gains both keys only
+when it has no `permissions.defaultMode`, and
+`skipDangerousModePermissionPrompt` only when that is unset too; a file
+whose `permissions` is not an object is left alone. So existing guests get
+the default at their first Claude start after the base update, and a
+`defaultMode` the user set in the guest or carried from the laptop is never
+touched: the I-196 merge is still the guest file under the laptop file
+(`$G * $L`), so a laptop `defaultMode` wins, and with none the guest's
+value stays. The merge itself is unchanged; it reads only `hooks` from the
+platform file, which the goldens now show with the new platform file
+(`mode-kept`, `mode-laptop-wins`). Opting out is setting another mode
+(`default`, `acceptEdits`, `plan`, `auto`); deleting the key brings the
+default back at the next start, so the docs tell users to set a mode.
+Verified against Claude Code's docs (permission-modes.md and
+settings-reference.md, fetched 2026-09-25; the base has 2.1.280): the
+setting is `permissions.defaultMode` with value `bypassPermissions`,
+honoured from user, `--settings` and managed settings and ignored from a
+project's `.claude/settings*.json` since 2.1.257;
+`skipDangerousModePermissionPrompt` is a top-level boolean, scope "User,
+local, or managed", which Claude Code itself writes to user settings when
+the warning dialog is accepted; the mode is refused as root or under sudo,
+and `dev` is not root; deny rules, explicit ask rules and `rm`/`rmdir` of
+critical paths still apply. On Pro, Max and Team, Claude Code asks once
+whether to change a non-auto `defaultMode` to auto; the user docs say to
+answer no to keep bypass. The other agents, not built: Codex needs two
+keys (`approval_policy = "never"`, `sandbox_mode = "danger-full-access"`,
+from its config reference) in `config.toml`, which the setup edits only by
+prepending `notify`, and doing it without clobbering a user's value would
+need a TOML-aware merge; Gemini CLI's `general.defaultApprovalMode` accepts
+`default`, `auto_edit` and `plan` only, and YOLO is command-line only
+(`--yolo`), so it would take a wrapper flag the user could not turn off
+from config; opencode already allows most tools by default (`doom_loop`
+and `external_directory` ask), and `"permission": "allow"` in
+`opencode.json` would allow the rest, but that file may be JSONC, which the
+setup's jq cannot parse; pi was not checked. The user docs keep Codex's two
+keys and point at each agent's own docs for the rest. *Rejected:* managed
+settings (`/etc/claude-code/managed-settings.json` or `.d/`), which outrank
+user settings, so a user who wants another mode could not have it; setting
+the mode only in the carry merge (a guest never reached by `repose run`, or
+a CLI older than this, would not get it, while the wrapper runs at every
+start); adding the keys whatever the user has (overwrites a chosen mode); a
+wrapper `--permission-mode` flag (outranks settings, so the user's default
+would lose).
+
+**I-251. cloudflared is a menu entry in group `deploy`.** (round-4 worker A,
+owner, 2026-09-25; backlog triage item 14) A project's ports have no public
+URL, and the machine docs already pointed at `cloudflared` for showing a
+running app. The entry is `pkgs.cloudflared` in `home.packages`, like
+wrangler and flyctl (nixpkgs carries it under Apache-2.0, so the unfree
+allowlist is unchanged), added with `repose config add cloudflared` or the
+dashboard menu. The machine docs now give the quick tunnel command
+(`cloudflared tunnel --url http://localhost:3000`) and its limits from
+Cloudflare's TryCloudflare page: a random `trycloudflare.com` URL, no
+account, at most 200 in-flight requests, no server-sent events, testing
+only, and it does not work while `~/.cloudflared/config.yaml` exists; a
+named tunnel on the user's own domain is the stable option. *Rejected:*
+cloudflared in the base (most projects never need a public URL, and the
+menu makes it one command); ngrok (unfree, and needs an account for any
+tunnel).

@@ -277,6 +277,15 @@ in
           guest.succeed("sudo -u dev repose-agent-setup claude")
           s2 = json.loads(guest.succeed("cat /home/dev/.claude/settings.json"))
           assert s2 == s, (s, s2)
+          # I-250: bypassPermissions (and no warning dialog) where the user
+          # set no defaultMode; a user's own defaultMode is kept.
+          assert s["permissions"]["defaultMode"] == "bypassPermissions" and s["skipDangerousModePermissionPrompt"] is True, s
+          guest.succeed("sudo -u dev sh -c 'mkdir -p /tmp/fresh && HOME=/tmp/fresh repose-agent-setup claude'")
+          fresh = json.loads(guest.succeed("cat /tmp/fresh/.claude/settings.json"))
+          assert fresh["permissions"]["defaultMode"] == "bypassPermissions" and fresh["skipDangerousModePermissionPrompt"] is True, fresh
+          guest.succeed("sudo -u dev sh -c 'mkdir -p /tmp/plan/.claude && echo {\\\"permissions\\\":{\\\"defaultMode\\\":\\\"plan\\\"}} > /tmp/plan/.claude/settings.json && HOME=/tmp/plan repose-agent-setup claude && HOME=/tmp/plan repose-agent-setup claude'")
+          plan = json.loads(guest.succeed("cat /tmp/plan/.claude/settings.json"))
+          assert plan["permissions"] == {"defaultMode": "plan"} and "skipDangerousModePermissionPrompt" not in plan and "repose-hook" in json.dumps(plan["hooks"]), plan
           mcp = json.loads(guest.succeed("cat /home/dev/.claude.json"))
           assert set(mcp["mcpServers"]) >= {"playwright", "chrome-devtools"}, mcp
           guest.succeed("sudo -u dev repose-agent-setup codex && grep -q 'notify = \\[\"repose-hook\"\\]' /home/dev/.codex/config.toml")

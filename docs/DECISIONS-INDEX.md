@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-303 entries.
+305 entries.
 
 ## Scope
 
@@ -335,3 +335,5 @@ pointer, not a summary.
 - **I-256** Vercel and portless stay menu entries, voice mode is not a repose feature, and a quick path to production stays deferred — 2026-09-25; L6196
 - **I-257** The terms say a machine is not for serving production traffic to others — 2026-09-25; L6218
 - **I-252** `repose paste` sends the laptop's clipboard image to the guest and pastes its path; one direction, no socket — 2026-09-25; L6234
+- **I-250** Claude Code in a guest starts in `bypassPermissions` unless the user set another default — 2026-09-25; L6283
+- **I-251** cloudflared is a menu entry in group `deploy` — 2026-09-25; L6335

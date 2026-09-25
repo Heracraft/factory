@@ -92,7 +92,13 @@ repose open 3000
 
 It opens your browser and runs until `Ctrl-C`. `--local-port 8080` picks the laptop port, `--no-browser` only prints the URL. `REPOSE_NO_FORWARD=1` turns the automatic forwarding off.
 
-There are no public URLs for a project's ports. To show someone a running app, deploy it or use a tunnel such as `cloudflared`.
+There are no public URLs for a project's ports. To show someone a running app, deploy it or use a tunnel. `cloudflared` is in the menu: `repose config add cloudflared` on your laptop. Then, on the machine:
+
+```
+cloudflared tunnel --url http://localhost:3000
+```
+
+This quick tunnel needs no Cloudflare account and prints a random `trycloudflare.com` URL that lasts until you stop it. It is for testing only: it carries at most 200 requests at a time and no server-sent events, and it doesn't work while `~/.cloudflared/config.yaml` exists, so rename that file first. For a stable URL, set up a named tunnel on your own domain with a Cloudflare account.
 
 ## Browser
 

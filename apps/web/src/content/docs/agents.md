@@ -25,19 +25,21 @@ To change the default for projects you create from now on, set `default_agent = 
 
 ## Let it run without asking
 
-No agent starts in its no-questions mode unless you configure it. An agent waiting on a permission prompt sends a "needs input" notification (Claude Code and opencode) or waits until you attach.
+Claude Code starts in `bypassPermissions` mode on every machine: it runs commands and edits files without asking. The machine is the limit of what it can break, and a snapshot can put it back. Your deny rules still apply, and removing a critical path such as a home directory still asks.
 
-**Claude Code:** in `~/.claude/settings.json` on your laptop (copied to every machine) or on one machine:
+To start in another mode, set `defaultMode` in `~/.claude/settings.json`, on your laptop (copied to every machine at `run`) or on one machine. Your value is kept.
 
 ```json
 {
 	"permissions": {
-		"defaultMode": "bypassPermissions"
+		"defaultMode": "default"
 	}
 }
 ```
 
-Claude Code may ask you to confirm this mode the first time. Attach and accept once per machine. `Shift-Tab` switches modes inside a session.
+`default` asks before edits and commands, `acceptEdits` asks before most commands but not edits, `plan` plans first. `Shift-Tab` switches modes inside a session. On a Pro, Max or Team plan, Claude Code may ask once whether to switch to auto mode; answer no to keep bypass.
+
+The other agents ask as they normally do unless you configure them. An agent waiting on a permission prompt sends a "needs input" notification (Claude Code and opencode) or waits until you attach.
 
 **Codex CLI:** in `~/.codex/config.toml` on the machine:
 

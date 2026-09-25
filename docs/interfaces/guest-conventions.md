@@ -12,7 +12,7 @@ here exists in that module under exactly this name.
 | `/home/dev/.repose/project.json` | `{project_id, slug, name, remote_url, user_handle, class, tz}` written by guestd at SetupProject |
 | `/etc/repose/env` | `TZ=` and `REPOSE_PROJECT=` lines written by guestd at SetupProject, sourced by every shell; the CLI replaces the `TZ=` line (through `sudo`, root 0644, by rename) on `run` and `attach` when the laptop's zone differs (I-198) |
 | `/etc/repose/base-version` | the platform base version string (same as `nixos-version`'s label) |
-| `/etc/repose/claude-settings.json` | the platform hooks (`Notification`, `Stop` → `repose-hook`) the Claude wrapper merges into `~/.claude/settings.json` |
+| `/etc/repose/claude-settings.json` | the platform hooks (`Notification`, `Stop` → `repose-hook`) the Claude wrapper merges into `~/.claude/settings.json`, and the default `permissions.defaultMode: "bypassPermissions"` with `skipDangerousModePermissionPrompt: true` it adds where the user's file has no `defaultMode` (I-250) |
 | `/etc/repose/mcp.json` | the platform MCP servers (`playwright --cdp-endpoint http://127.0.0.1:9224`, `chrome-devtools --browserUrl http://127.0.0.1:9224`, DECISIONS I-246) the Claude wrapper merges into `~/.claude.json` `mcpServers`, and `repose_retired`: the entries earlier bases registered (both `--headless`), which the merge replaces when a user's entry is exactly one of them |
 | `/etc/repose/agent-guide.md` | the machine guide agents read, rendered from `nix/guest/base/agent-guide.md` (DECISIONS I-243); the same text is `/etc/claude-code/CLAUDE.md` (Claude Code's managed memory), `developer_instructions` in `/etc/codex/config.toml`, the file named by `instructions` in `/etc/opencode/opencode.json`, and `GEMINI.md` in `/etc/repose/gemini-extension/`; `/etc/repose/pi-extension.js` reads it at each pi run |
 | `/etc/repose/agents.json` | `{<agent>: {binary, version, hook}}` for every shipped agent, for `repose status --verbose` |
@@ -74,7 +74,9 @@ Each agent binary is wrapped (`nix/overlay/agents/wrap.nix`) to:
    - `claude`: `~/.claude/settings.json` gains the entries from
      `/etc/repose/claude-settings.json` under `hooks.Notification` and
      `hooks.Stop` unless an entry whose command contains `repose-hook`
-     already exists under that event; `~/.claude.json` `mcpServers` gains
+     already exists under that event, and its `permissions.defaultMode`
+     and `skipDangerousModePermissionPrompt` only when the user's file has
+     no `permissions.defaultMode` (I-250); `~/.claude.json` `mcpServers` gains
      the servers from `/etc/repose/mcp.json`, user entries winning on a
      name clash.
    - `codex`: `~/.codex/config.toml` gains `notify = ["repose-hook"]`

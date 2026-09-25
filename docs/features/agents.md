@@ -73,6 +73,28 @@ Each binary is wrapped by `nix/overlay/agents/wrap.nix` to:
 `repose-hook` always exits 0. A hook that fails must never block an agent,
 because a blocked agent is a silently wasted night.
 
+## Claude Code starts without permission prompts (DECISIONS I-250)
+
+The guest's baseline `~/.claude/settings.json` (from
+`/etc/repose/claude-settings.json`) carries
+`permissions.defaultMode: "bypassPermissions"` and
+`skipDangerousModePermissionPrompt: true`, so Claude Code in a guest runs
+commands and edits without asking and shows no warning dialog, including
+in `repose run`. The guest is the blast radius and a
+snapshot restores it; `dev` is not root, which bypass mode requires.
+
+- The Claude wrapper's setup adds both keys to an existing file only when
+  it has no `permissions.defaultMode`; a value the user set, in the guest
+  or carried from the laptop by the I-196 merge (laptop on top), is never
+  changed. Opting out is setting another `defaultMode`; deleting the key
+  brings the default back at the next start.
+- These are user settings, never managed settings
+  (`/etc/claude-code/managed-settings.json`), which would outrank the user.
+- Deny rules, explicit ask rules and removals of critical paths still
+  prompt or block in this mode (Claude Code's own rules).
+- Codex, opencode, Gemini CLI and pi keep their own defaults; the user docs
+  show Codex's two keys.
+
 ## The machine guide (DECISIONS I-243)
 
 Every agent is told what the machine offers: that the laptop is out of

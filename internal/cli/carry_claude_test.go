@@ -49,7 +49,10 @@ func runClaudeMerge(t *testing.T, home string, laptop []byte, laptopHome string,
 // The golden cases: permissions union (union), the laptop-home rewrite
 // with hooks the guest cannot run dropped (rewrite), repose-hook entries
 // stripped from both sides and the platform's added once, last (hooks),
-// and a guest with no settings.json yet (fresh). Each is merged twice;
+// a guest with no settings.json yet (fresh), the guest's
+// bypassPermissions default kept when the laptop sets no defaultMode
+// (mode-kept) and the laptop's own defaultMode winning over it
+// (mode-laptop-wins, DECISIONS I-250). Each is merged twice;
 // the second run must not change a byte.
 func TestClaudeSettingsMergeGolden(t *testing.T) {
 	cases, err := os.ReadDir(filepath.Join("testdata", "claude-merge"))
