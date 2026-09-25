@@ -302,3 +302,14 @@
       Service.ExecStart = "${pkgs.bash}/bin/bash -lc 'command -v portless >/dev/null || npm i -g portless'";
       Install.WantedBy = [ "default.target" ];
     };
+
+# A project's ports have no public URL (machine.md); cloudflared's quick
+# tunnel gives one for testing, a named tunnel on the user's own domain a
+# stable one (DECISIONS I-251).
+- id: cloudflared
+  label: cloudflared (Cloudflare Tunnel)
+  group: deploy
+  kind: package
+  description: Cloudflare Tunnel's client, for a public URL to a port on the machine.
+  hm: |
+    home.packages = [ pkgs.cloudflared ];

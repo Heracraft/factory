@@ -5,6 +5,9 @@
 # claude   ~/.claude/settings.json  hooks.Notification / hooks.Stop entries
 #          running `repose-hook` are added unless an entry whose command
 #          contains "repose-hook" already exists under that event;
+#          permissions.defaultMode and skipDangerousModePermissionPrompt
+#          from the platform file are added only when the user's file sets
+#          no permissions.defaultMode (DECISIONS I-250);
 #          ~/.claude.json mcpServers gains the platform servers from
 #          /etc/repose/mcp.json, user entries winning on name clash
 #          except an entry the platform registered itself in an earlier
@@ -47,6 +50,16 @@ writeShellApplication {
             | reduce ($platform.hooks | keys[]) as $ev ($user;
                 if has_repose(.hooks[$ev]) then .
                 else .hooks[$ev] = ((.hooks[$ev] // []) + $platform.hooks[$ev]) end)
+            # The platform default mode (I-250) only where the user has
+            # none: a defaultMode the user or the laptop set is theirs.
+            | if ($platform.permissions.defaultMode? // null) == null
+                 or ((.permissions // {}) | type) != "object"
+                 or ((.permissions // {}) | has("defaultMode"))
+              then .
+              else .permissions.defaultMode = $platform.permissions.defaultMode
+                | if has("skipDangerousModePermissionPrompt") or ($platform | has("skipDangerousModePermissionPrompt") | not) then .
+                  else .skipDangerousModePermissionPrompt = $platform.skipDangerousModePermissionPrompt end
+              end
           ' "$settings" "$platform_claude" | write_atomic "$settings" 0600
         else
           echo "repose-agent-setup: $settings is not valid JSON; leaving it alone" >&2

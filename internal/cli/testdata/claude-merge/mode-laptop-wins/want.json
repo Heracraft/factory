@@ -1,0 +1,33 @@
+{
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "repose-hook"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "repose-hook"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "defaultMode": "plan",
+    "allow": [
+      "Bash(git status)"
+    ]
+  },
+  "skipDangerousModePermissionPrompt": true
+}

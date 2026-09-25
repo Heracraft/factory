@@ -41,7 +41,7 @@ The dashboard's project **Config** page has the same list as a menu: tick an ent
 | Runtimes  | Bun, Deno, Node.js (20 or 22), Python (3.11 or 3.13), Go tools, Zig, Elixir, Ruby, Java, .NET SDK |
 | Databases | PostgreSQL, Redis, MySQL (MariaDB), Memcached, RabbitMQ, Meilisearch, NATS                        |
 | Tools     | AWS CLI, OpenTofu, Kubernetes tools, Shell extras                                                 |
-| Deploy    | Wrangler, Supabase CLI, flyctl, Vercel CLI, portless                                              |
+| Deploy    | Wrangler, Supabase CLI, flyctl, Vercel CLI, portless, cloudflared                                 |
 
 Databases listen on localhost only. PostgreSQL has a `dev` superuser and a `dev` database with no password, so `psql` and `postgres://localhost/dev` work straight away.
 

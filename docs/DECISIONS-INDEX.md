@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-300 entries.
+302 entries.
 
 ## Scope
 
@@ -332,3 +332,5 @@ pointer, not a summary.
 - **I-244** Agents message the owner with `repose-notify` and ask with `repose-ask`; the answer comes back over the hostd channel — 2026-09-24; L6035
 - **I-245** Questions are rows; the owner answers from ntfy, email, the dashboard or the CLI, and the first answer wins — 2026-09-24; L6083
 - **I-246** The agents' browser is one headed Chromium on the desktop's display, shared by both MCP servers over CDP, and the desktop only views it — 2026-09-24; L6124
+- **I-250** Claude Code in a guest starts in `bypassPermissions` unless the user set another default — 2026-09-25; L6196
+- **I-251** cloudflared is a menu entry in group `deploy` — 2026-09-25; L6248
