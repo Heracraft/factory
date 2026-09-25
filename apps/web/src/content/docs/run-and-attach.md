@@ -23,9 +23,29 @@ repose run --agent codex "port the build scripts to bun"
 
 The agent is the normal interactive program, the same as running `claude` yourself, so its history and any questions it asks are on screen when you attach.
 
-If that agent already has a window, the new one is named `claude-2`, and the CLI warns that two agents now share one working tree. Give one of them its own `git worktree` if that matters.
+If that agent already has a window, the new one is named `claude-2`, then `claude-3`, and so on, and the CLI warns that the agents share one working tree.
 
 Running `repose run` twice in a row is safe. The second one finds nothing new to copy.
+
+## Several agents, separate trees
+
+`--worktree` starts the agent in its own git worktree, so it doesn't edit the files another agent is working on:
+
+```
+$ repose run --worktree "try the other approach"
+Worktree: ~/todo-app-claude-2 on branch repose/claude-2
+```
+
+The worktree is a folder next to your checkout on the machine, on a new branch from the checkout's last commit. Uncommitted changes in the checkout aren't in it. `repose run` never syncs it, and what the agent does there doesn't count as changes on the machine. Commit on the branch and merge or push it like any other.
+
+Each `--worktree` run makes a new one. They stay until you remove them, from the checkout on the machine:
+
+```
+git worktree remove ~/todo-app-claude-2
+git branch -D repose/claude-2
+```
+
+The machine's checkout needs at least one commit; otherwise `--worktree` is refused with exit code 2. Dependencies aren't shared, so the agent installs them again in the worktree, and gitignored files such as `.env` aren't copied.
 
 ## Detach and come back
 

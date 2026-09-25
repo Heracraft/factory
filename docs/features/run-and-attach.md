@@ -70,10 +70,27 @@ Run a prompt while an agent is already running:
 
 ```
 $ repose run "also update the README"
-warning: claude is already running in todo-app:claude on the same working tree.
-Starting a second claude in window todo-app:claude-2. Two agents on one tree
-can conflict; use `git worktree` inside the guest if that matters.
+Another claude window is open; two agents share one working tree. `repose run --worktree` gives the next one its own.
 ```
+
+The window is `claude-2`, then `claude-3`, and so on: the lowest free
+number, with no limit (DECISIONS I-253).
+
+Run a prompt in its own git worktree (I-253):
+
+```
+$ repose run --worktree "try the other approach"
+Worktree: ~/todo-app-claude-2 on branch repose/claude-2
+The worktree starts at the last commit; the uncommitted changes in ~/todo-app are not in it.
+```
+
+The second line appears only when the guest's checkout is dirty.
+`--worktree` needs a prompt (exit 2 without one) and works for the first
+window too (`~/todo-app-claude`, `repose/claude`). A guest checkout with
+no `.git` or no commit is refused with exit 2. Each `--worktree` run makes
+a new worktree; a later run never reuses one, and nothing removes them
+but the user (`git worktree remove ~/todo-app-claude-2 && git branch -D
+repose/claude-2`, documented in /docs/run-and-attach).
 
 Running against a stopped project starts it first (the `Starting
 todo-app` phase on stderr) before the usual `Connected to todo-app
@@ -93,7 +110,10 @@ Session and windows (see `interfaces/guest-conventions.md`):
   current window.
 - A prompt opens a window named after the agent (`claude`, `opencode`,
   `codex`, `gemini`, `pi`). If that window already exists, the new one is
-  `<agent>-2`, then `-3`. The agent's interactive TUI runs in that window,
+  the lowest free `<agent>-N` (`-2`, `-3`, ... with no limit, I-253). With
+  `--worktree` the window opens in `~/<slug>-<window>`, a git worktree on
+  branch `repose/<window>` (guest-conventions "tmux"); otherwise in the
+  checkout. The agent's interactive TUI runs in that window,
   never a headless or print mode, because the point is that the user can
   attach and see the live session with its history.
 - The prompt is typed into the TUI only once the TUI is up. The CLI polls
@@ -199,6 +219,6 @@ tmux control, send-keys idle wait), 02 (guest base, wrappers), 06 (gateway),
 
 ## Deferred
 
-`repose run --worktree` to start a second agent in a git worktree
-automatically (DECISIONS R4-10 chose warn-and-proceed). Queueing prompts for
+Worktrees by default (DECISIONS R4-10 chose warn-and-proceed; I-253 made
+`--worktree` opt-in). A command that lists or removes worktrees. Queueing prompts for
 when the current agent finishes. Web terminal in the dashboard (R4-18).

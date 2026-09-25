@@ -85,6 +85,7 @@ repose login [--no-browser]
 repose logout
 repose run [PROMPT...] [--agent claude|opencode|codex|gemini|pi] [--size small|large|xl]
             [--name NAME] [--stash-remote | --discard-remote] [--no-sync] [--no-attach]
+            [--worktree]
 repose attach [PROJECT]
 repose start [PROJECT]
 repose stop [PROJECT] [--no-snapshot]
@@ -326,7 +327,11 @@ $ repose run
    Print one line `Credentials: gh, opencode` naming what step 5 copied.
 7. If PROMPT given: agent = `--agent` or project `agent_default`. Over SSH:
    `tmux new-window -t <slug> -n <agent> -c ~/<slug> -d '<agent>'` (name
-   becomes `<agent>-2` if the window exists), wait until the pane has been
+   becomes the lowest free `<agent>-N`, N >= 2, if the window exists,
+   DECISIONS I-253; with `--worktree`, which needs a PROMPT, the directory
+   is a new `git worktree add -b repose/<window> ~/<slug>-<window> HEAD`
+   and the name also skips any N whose worktree path or branch exists; a
+   checkout with no `.git` or no commit is refused with exit 2), wait until the pane has been
    idle 1 second (`tmux display -p '#{pane_current_command}'` is the agent
    and no output for 1 s), then `tmux send-keys -t <slug>:<window> -l
    '<prompt>'` and `send-keys Enter`. If the agent is `claude` and
@@ -570,7 +575,7 @@ command line, a guest id, or the host's own wording (that is the op's
 | API unreachable | exit 1, `Cannot reach api.repose.herakraft.co: <err>`; never retried more than 3 times with backoff |
 | Rate limited on `/certs` | reuse existing cert if valid, warn on stderr |
 | Prompt given but agent not installed in guest | exit 1, `Agent 'pi' is not in this guest's config. Add it with \`repose config edit\`.` |
-| Second prompt while agent window exists | new window `<agent>-2`, stderr warning `Another claude window is open; two agents share one working tree.` |
+| Second prompt while agent window exists | new window `<agent>-2` (then `-3`, ..., the lowest free, I-253), stderr warning `Another claude window is open; two agents share one working tree. \`repose run --worktree\` gives the next one its own.` (no warning with `--worktree`) |
 
 ## 7. Testing
 
@@ -702,7 +707,10 @@ removes all of them including the `Include` line.
       the agent UI. — closed: `TestPromptSendAndSecondWindowNaming`
       (capture-pane shows each prompt in `cat` and `cat-2`) and
       `TestRunWithPromptSendsIntoTmuxWindow` in internal/cli; live prompt
-      sends in the "Real-API evidence" below
+      sends in the "Real-API evidence" below. I-253: the same test now
+      opens `cat`, `cat-2`, `cat-3` and hands out a closed `cat-2` again;
+      `TestPickWindowHasNoCap` (claude-10), `TestRunWorktree`,
+      `TestRunWorktreeRefusals`, `TestRunWorktreeThenPlainRun`
 - [x] Claude not-logged-in path attaches instead of sending. Evidence:
       integration test. — closed: `TestRunClaudeNotLoggedInAttachesInstead`
       in internal/cli/run_e2e_test.go (commit d61bf56)

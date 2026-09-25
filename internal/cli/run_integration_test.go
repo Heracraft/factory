@@ -355,47 +355,193 @@ func TestPromptSendAndSecondWindowNaming(t *testing.T) {
 		t.Fatalf("tmux new-session: %v", err)
 	}
 
-	name1, existed1, err := windowNameFor(ctx, f.target, testSlug, "cat")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if name1 != "cat" || existed1 {
-		t.Fatalf("first window name = %q existed=%v, want cat/false", name1, existed1)
-	}
-	if err := startAgentWindow(ctx, f.target, testSlug, name1, "cat", "hello agent", false); err != nil {
-		t.Fatalf("startAgentWindow: %v", err)
-	}
-	pane, err := waitForCapture(ctx, f.target, testSlug, name1, "hello agent")
-	if err != nil {
-		t.Fatalf("prompt never appeared in the pane: %v\nlast capture:\n%s", err, pane)
-	}
-
-	name2, existed2, err := windowNameFor(ctx, f.target, testSlug, "cat")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if name2 != "cat-2" || !existed2 {
-		t.Fatalf("second window name = %q existed=%v, want cat-2/true", name2, existed2)
-	}
-	if err := startAgentWindow(ctx, f.target, testSlug, name2, "cat", "second prompt", false); err != nil {
-		t.Fatalf("startAgentWindow (second): %v", err)
-	}
-	if _, err := waitForCapture(ctx, f.target, testSlug, name2, "second prompt"); err != nil {
-		t.Fatalf("second prompt never appeared: %v", err)
+	// Three prompts, three windows: cat, cat-2, cat-3 (I-253: no cap at -2).
+	for i, want := range []string{"cat", "cat-2", "cat-3"} {
+		name, othersOpen, err := windowNameFor(ctx, f.target, testSlug, "cat")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if name != want || othersOpen != (i > 0) {
+			t.Fatalf("window %d = %q othersOpen=%v, want %q/%v", i+1, name, othersOpen, want, i > 0)
+		}
+		prompt := "prompt number " + want
+		if err := startAgentWindow(ctx, f.target, testSlug, name, "~/"+testSlug, "cat", prompt, false); err != nil {
+			t.Fatalf("startAgentWindow %s: %v", name, err)
+		}
+		if pane, err := waitForCapture(ctx, f.target, testSlug, name, prompt); err != nil {
+			t.Fatalf("prompt never appeared in %s: %v\nlast capture:\n%s", name, err, pane)
+		}
 	}
 
-	windows, err := runSSH(ctx, f.target, "tmux list-windows -t "+testSlug+" -F '#{window_name}'", nil)
+	// A closed window's name is the next one handed out.
+	if _, err := runSSH(ctx, f.target, "tmux kill-window -t "+testSlug+":cat-2", nil); err != nil {
+		t.Fatal(err)
+	}
+	if name, _, err := windowNameFor(ctx, f.target, testSlug, "cat"); err != nil || name != "cat-2" {
+		t.Fatalf("after closing cat-2: name = %q, err = %v, want cat-2", name, err)
+	}
+
+	windows, err := listWindows(ctx, f.target, testSlug)
 	if err != nil {
 		t.Fatal(err)
 	}
-	list := nonEmptyLines(string(windows))
 	has := map[string]bool{}
-	for _, w := range list {
+	for _, w := range windows {
 		has[w] = true
 	}
-	if !has["cat"] || !has["cat-2"] {
-		t.Fatalf("windows = %v, want cat and cat-2 among them", list)
+	if !has["cat"] || !has["cat-3"] || has["cat-2"] {
+		t.Fatalf("windows = %v, want cat and cat-3 and no cat-2", windows)
 	}
+}
+
+func TestPickWindowHasNoCap(t *testing.T) {
+	open := []string{"shell", "claude", "claude-2", "claude-3", "claude-4", "claude-5", "claude-6", "claude-7", "claude-8", "claude-9", "codex"}
+	if name, others := pickWindow("claude", open, nil); name != "claude-10" || !others {
+		t.Fatalf("pickWindow = %q/%v, want claude-10/true", name, others)
+	}
+	if name, others := pickWindow("pi", open, nil); name != "pi" || others {
+		t.Fatalf("pickWindow(pi) = %q/%v, want pi/false", name, others)
+	}
+	// A window named like another agent's, or with a non-numeric suffix,
+	// is not one of claude's windows.
+	if name, others := pickWindow("claude", []string{"claude-x", "claudette"}, nil); name != "claude" || others {
+		t.Fatalf("pickWindow over lookalikes = %q/%v, want claude/false", name, others)
+	}
+	taken := map[string]bool{"claude": true, "claude-2": true}
+	if name, _ := pickWindow("claude", nil, func(n string) bool { return taken[n] }); name != "claude-3" {
+		t.Fatalf("pickWindow with worktree leftovers = %q, want claude-3", name)
+	}
+}
+
+func TestRunWorktree(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	if _, err := runSSH(ctx, f.target, "tmux new-session -d -s "+testSlug+" -c ~/"+testSlug, nil); err != nil {
+		t.Fatalf("tmux new-session: %v", err)
+	}
+	head := mustRun(t, f.guestRepo(), "git", "rev-parse", "HEAD")
+
+	// The first window may be a worktree too.
+	wt, err := prepareWorktree(ctx, f.target, testSlug, "cat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wt.Window != "cat" || wt.Dir != "~/proj-cat" || wt.Branch != "repose/cat" || wt.Base != head || wt.Dirty {
+		t.Fatalf("worktree = %+v", wt)
+	}
+	dir := filepath.Join(f.guestHome, "proj-cat")
+	if got := mustRun(t, dir, "git", "rev-parse", "--abbrev-ref", "HEAD"); got != "repose/cat" {
+		t.Fatalf("worktree branch = %q", got)
+	}
+	if err := startAgentWindow(ctx, f.target, testSlug, wt.Window, wt.Dir, "cat", "in the worktree", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := waitForCapture(ctx, f.target, testSlug, wt.Window, "in the worktree"); err != nil {
+		t.Fatal(err)
+	}
+	pwd, err := runSSH(ctx, f.target, "tmux display -p -t "+testSlug+":cat '#{pane_current_path}'", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := filepath.EvalSymlinks(strings.TrimSpace(string(pwd))); got != mustEval(t, dir) {
+		t.Fatalf("pane path = %q, want %q", got, dir)
+	}
+
+	// The agent's work in the worktree is invisible to the checkout and
+	// to the sync: the probe sees a clean tree, and a laptop change syncs.
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("worktree agent\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runSSH(ctx, f.target, probeScript(testSlug), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := parseProbe(string(out)); len(p.dirty) != 0 {
+		t.Fatalf("a worktree made the checkout dirty: %v", p.dirty)
+	}
+	if err := os.WriteFile(filepath.Join(f.local, "laptop.txt"), []byte("from the laptop\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := syncGuest(ctx, f.target, f.local, testSlug, SyncOptions{}); err != nil {
+		t.Fatalf("sync with a worktree present: %v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "README.md")); string(b) != "worktree agent\n" {
+		t.Fatalf("the sync touched the worktree: README.md = %q", b)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "laptop.txt")); err == nil {
+		t.Fatal("the sync wrote into the worktree")
+	}
+
+	// Now the checkout is dirty (the synced untracked file): a second
+	// worktree says its start lacks those changes, and is cat-2.
+	wt2, err := prepareWorktree(ctx, f.target, testSlug, "cat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wt2.Window != "cat-2" || wt2.Branch != "repose/cat-2" || !wt2.Dirty {
+		t.Fatalf("second worktree = %+v", wt2)
+	}
+	if _, err := os.Stat(filepath.Join(f.guestHome, "proj-cat-2", "laptop.txt")); err == nil {
+		t.Fatal("the uncommitted laptop.txt is in the new worktree")
+	}
+
+	// A later --worktree never reuses one: with window cat closed but
+	// ~/proj-cat and repose/cat still there, the next is cat-3.
+	if _, err := runSSH(ctx, f.target, "tmux kill-window -t "+testSlug+":cat", nil); err != nil {
+		t.Fatal(err)
+	}
+	wt3, err := prepareWorktree(ctx, f.target, testSlug, "cat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wt3.Window != "cat-3" {
+		t.Fatalf("third worktree = %+v, want cat-3", wt3)
+	}
+	// The documented cleanup works.
+	mustRun(t, f.guestRepo(), "git", "worktree", "remove", "--force", dir)
+	mustRun(t, f.guestRepo(), "git", "branch", "-D", "repose/cat")
+	wt4, err := prepareWorktree(ctx, f.target, testSlug, "cat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wt4.Window != "cat" {
+		t.Fatalf("after cleanup = %+v, want cat again", wt4)
+	}
+}
+
+func TestRunWorktreeRefusals(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	if _, err := runSSH(ctx, f.target, "tmux new-session -d -s "+testSlug+" -c ~", nil); err != nil {
+		t.Fatalf("tmux new-session: %v", err)
+	}
+	if err := os.RemoveAll(f.guestRepo()); err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, f.guestHome, "git", "init", "-q", testSlug)
+	_, err := prepareWorktree(ctx, f.target, testSlug, "cat")
+	if exitCodeOf(err) != ExitUsage || !strings.Contains(err.Error(), "no commits yet") {
+		t.Fatalf("empty repo: err = %v (exit %d)", err, exitCodeOf(err))
+	}
+	if err := os.RemoveAll(filepath.Join(f.guestRepo(), ".git")); err != nil {
+		t.Fatal(err)
+	}
+	_, err = prepareWorktree(ctx, f.target, testSlug, "cat")
+	if exitCodeOf(err) != ExitUsage || !strings.Contains(err.Error(), "not one") {
+		t.Fatalf("no git: err = %v (exit %d)", err, exitCodeOf(err))
+	}
+}
+
+func mustEval(t *testing.T, p string) string {
+	t.Helper()
+	r, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
 }
 
 func waitForCapture(ctx context.Context, t sshTarget, slug, window, want string) (string, error) {

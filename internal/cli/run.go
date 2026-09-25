@@ -21,6 +21,7 @@ type RunOptions struct {
 	DiscardRemote bool
 	NoSync        bool
 	NoAttach      bool
+	Worktree      bool // the agent works in its own git worktree (I-253)
 	ProjectArg    string
 }
 
@@ -255,16 +256,32 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			agent = e.Cfg.DefaultAgent
 		}
 		pr.Phase("Starting "+agent, "")
-		name, existed, err := windowNameFor(ctx, target, project.Slug, agent)
-		if err != nil {
-			return stepFailed("list the guest's tmux windows", err, "")
+		name, dir := "", "~/"+project.Slug
+		if opts.Worktree {
+			wt, err := prepareWorktree(ctx, target, project.Slug, agent)
+			if err != nil {
+				return err
+			}
+			name, dir = wt.Window, wt.Dir
+			pr.End()
+			_, _ = fmt.Fprintf(e.Out, "Worktree: %s on branch %s\n", wt.Dir, wt.Branch)
+			if wt.Dirty {
+				_, _ = fmt.Fprintf(e.ErrOut, "The worktree starts at the last commit; the uncommitted changes in ~/%s are not in it.\n", project.Slug)
+			}
+			pr.Phase("Starting "+agent, "")
+		} else {
+			n, othersOpen, err := windowNameFor(ctx, target, project.Slug, agent)
+			if err != nil {
+				return stepFailed("list the guest's tmux windows", err, "")
+			}
+			name = n
+			if othersOpen {
+				pr.Fail()
+				_, _ = fmt.Fprintf(e.ErrOut, "Another %s window is open; two agents share one working tree. `repose run --worktree` gives the next one its own.\n", agent)
+				pr.Phase("Starting "+agent, "")
+			}
 		}
 		window = name
-		if existed {
-			pr.Fail()
-			_, _ = fmt.Fprintf(e.ErrOut, "Another %s window is open; two agents share one working tree.\n", agent)
-			pr.Phase("Starting "+agent, "")
-		}
 
 		attachInstead := false
 		if agent == "claude" {
@@ -277,7 +294,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 				return err
 			}
 		}
-		if err := startAgentWindow(ctx, target, project.Slug, name, agent, opts.Prompt, attachInstead); err != nil {
+		if err := startAgentWindow(ctx, target, project.Slug, name, dir, agent, opts.Prompt, attachInstead); err != nil {
 			return stepFailed("start "+agent+" in the guest", err, "")
 		}
 		pr.End()

@@ -265,6 +265,9 @@ func newRunCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 			if opts.Agent != "" && !isAgent(opts.Agent) {
 				return cobraUsageError{fmt.Errorf("--agent must be one of %s, got %q", strings.Join(agentNames, ", "), opts.Agent)}
 			}
+			if opts.Worktree && opts.Prompt == "" {
+				return cobraUsageError{fmt.Errorf("--worktree starts an agent in its own worktree and needs a PROMPT")}
+			}
 			e, err := env()
 			if err != nil {
 				return err
@@ -279,6 +282,7 @@ func newRunCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	cmd.Flags().BoolVar(&opts.DiscardRemote, "discard-remote", false, "discard the guest's uncommitted changes before syncing")
 	cmd.Flags().BoolVar(&opts.NoSync, "no-sync", false, "skip the git and credential sync")
 	cmd.Flags().BoolVar(&opts.NoAttach, "no-attach", false, "do not attach after starting/sending the prompt")
+	cmd.Flags().BoolVar(&opts.Worktree, "worktree", false, "start the agent in its own git worktree, ~/<slug>-<window> on branch repose/<window>")
 	_ = cmd.RegisterFlagCompletionFunc("agent", cobra.FixedCompletions(agentNames, cobra.ShellCompDirectiveNoFileComp))
 	_ = cmd.RegisterFlagCompletionFunc("size", cobra.FixedCompletions([]string{"small", "large", "xl"}, cobra.ShellCompDirectiveNoFileComp))
 	return cmd

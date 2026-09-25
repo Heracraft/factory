@@ -23,6 +23,7 @@ Create or start this checkout's machine, sync, and attach. With a prompt, start 
 | ------------------------- | ----------------------------------------------------------------- |
 | `--agent NAME`            | `claude`, `codex`, `opencode`, `gemini` or `pi`.                  |
 | `--no-attach`             | Don't attach afterwards.                                          |
+| `--worktree`              | Start the agent in its own git worktree. Needs a prompt.          |
 | `--no-sync`               | Skip the git sync and the copied logins.                          |
 | `--stash-remote`          | Stash the machine's uncommitted changes before syncing.           |
 | `--discard-remote`        | Discard the machine's uncommitted changes before syncing.         |

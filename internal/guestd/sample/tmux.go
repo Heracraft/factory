@@ -9,8 +9,9 @@ import (
 )
 
 // Agents are the window names that mean an agent, from
-// docs/interfaces/guest-conventions.md. A second instance of an agent gets
-// "<agent>-2", which agentOf also recognises.
+// docs/interfaces/guest-conventions.md. Further instances of an agent get
+// "<agent>-N" for any N >= 2 (DECISIONS I-253), which AgentOf also
+// recognises.
 var Agents = []string{"claude", "opencode", "codex", "gemini", "pi"}
 
 // binaries maps an agent to the process name to look for in the pane's

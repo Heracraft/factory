@@ -6192,3 +6192,54 @@ lost); binding the DevTools endpoint to 127.0.0.2 so old CLIs skip it
 (headed Chromium ignores `--remote-debugging-address`); a user unit named
 `repose-desktop` for pre-0.1.12 CLIs (they would forward without printing
 the password; the fix is the CLI upgrade).
+
+**I-253. Any number of agent windows in one guest, and `repose run
+--worktree` puts one in its own git worktree beside the checkout.**
+(round-4 worker C, owner-approved backlog item 12, 2026-09-25; extends
+R3-14 + R4-10) `windowNameFor` returned `<agent>` or `<agent>-2`, so a
+third prompt opened a second window also named `claude-2`. It now picks
+the lowest free `<agent>-N` (N >= 2, no cap), so a closed window's number
+is handed out again. Everything that reads window names already took any
+digits: guestd's `sample.AgentOf` (states, hooks, OOM protection, I-213),
+`repose-hook`, questions and the dashboard carry the name as an opaque
+string. The shared-working-tree warning now fires when any other window of
+that agent is open (not only the bare name) and points at `--worktree`.
+`--worktree` (needs a PROMPT, exit 2 without one; allowed for the first
+window too, since "this agent gets its own tree" does not depend on
+whether another is running) makes `git worktree add -b repose/<window>
+~/<slug>-<window> <HEAD>` in the guest and opens the window there. Where:
+a sibling of `~/<slug>`, never inside it, so the sync's `git status`,
+I-210 fingerprint, stash, `--discard-remote` and untracked tar see
+nothing, and the guest does not look dirty (a nested worktree would show
+as an untracked directory and be refused or stashed). The sync's
+`for-each-ref` tips do include the `repose/*` branches; unknown tips are
+only ever excluded from the bundle, and I-248's "the guest has every
+commit the laptop would send" is unaffected, so they neither dirty the
+guest nor travel to the laptop. Branch: `repose/<window>` from the
+checkout's HEAD commit, whatever branch it is on; uncommitted changes in
+the checkout are not in it, and the CLI says so when the checkout is
+dirty (carrying the diff would be a second sync with its own conflict
+cases). Later runs: never reuse. The name skips any N whose window,
+`~/<slug>-<window>` path or `repose/<window>` branch exists, so every
+`--worktree` run starts clean from HEAD and never lands a new prompt on
+an old attempt's files. Refusals, exit 2 like the laptop's "not a git
+checkout": `~/<slug>` without `.git` (possible only with `--no-sync`) and
+a checkout with no commit. Cleanup: the user's, documented as `git
+worktree remove` plus `git branch -D`; no command. The probe (windows,
+HEAD, dirty, existing dirs and branches) is one ssh and the `worktree add`
+a second, only on `--worktree`. The worktree has no `node_modules` and no
+carried `.env` (gitignored files are not copied); /docs says so. Claude
+Code asks whether to trust a folder it has not seen, and each worktree is
+a new folder; whether that dialog eats the prompt the CLI types is to be
+checked live (the same holds for a fresh `~/<slug>`).
+`TestPromptSendAndSecondWindowNaming` (cat, cat-2, cat-3, a closed cat-2
+reissued), `TestPickWindowHasNoCap` (claude-10), `TestRunWorktree` (pane
+path, sync with a worktree present leaves it alone and the probe clean,
+dirty notice, no reuse, cleanup), `TestRunWorktreeRefusals`,
+`TestRunWorktreeThenPlainRun`. *Rejected:* worktrees inside the checkout
+(`.worktrees/`, needs an ignore rule in the user's repo or the sync sees
+them); under `~/.repose/` (hidden from the user who has to merge them);
+reusing a worktree whose window closed (a new prompt on stale work, and
+"which one did I get" is not visible); `repose worktree list/remove`
+(git already has both); worktrees by default (R4-10 still holds: most
+second prompts are follow-ups on the same tree).
