@@ -96,6 +96,7 @@ type Fake struct {
 	users        map[string]*userRec
 	projects     map[string]*project
 	ops          map[string]*op
+	forks        map[string][]forkRec // by user id and request_id (I-254)
 	certs        map[uint64]*cert
 	revoked      []revocation
 	failOnce     []failRule
@@ -138,6 +139,7 @@ func New(opts Options) *Fake {
 		users:      map[string]*userRec{},
 		projects:   map[string]*project{},
 		ops:        map[string]*op{},
+		forks:      map[string][]forkRec{},
 		certs:      map[uint64]*cert{},
 		failAlways: map[string]string{},
 		hits:       map[string][]time.Time{},
@@ -499,6 +501,7 @@ func (f *Fake) register() {
 	f.handle("GET /v1/projects/{id}/snapshots", f.listSnapshots)
 	f.handle("POST /v1/projects/{id}/snapshots", f.createSnapshot)
 	f.handle("POST /v1/projects/{id}/snapshots/{sid}/restore", f.restoreSnapshot)
+	f.handle("POST /v1/projects/{id}/fork", f.forkProject)
 	// Events and logs.
 	f.handle("GET /v1/projects/{id}/events", f.listEvents)
 	f.handle("GET /v1/projects/{id}/logs", f.projectLogs)

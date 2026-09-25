@@ -124,8 +124,9 @@ sshd material (delivered by hostd into the same tmpfs from the explicit
 | Method | Path | Body / result |
 |---|---|---|
 | GET | `/projects/:id/snapshots` | `[{id, created_at, bytes, reason}]` |
-| POST | `/projects/:id/snapshots` | manual snapshot → `{op_id}` |
+| POST | `/projects/:id/snapshots` | manual snapshot → `{op_id}`; the op, once `done`, carries `result: {snapshot_id}` (the api has always set it; documented with I-254) |
 | POST | `/projects/:id/snapshots/:sid/restore` | `{as_new_project?: name, start?: bool=true}` → `{op_id, project_id}`; without `as_new_project`, replaces the stopped project's volume. `:id` may be a destroyed project. `POST /projects/restore` is the same restore resolved by name |
+| POST | `/projects/:id/fork` | `{snapshot_id, count?: 1..10 = 1, name?, class?, start?: bool=true, request_id?: uuid}` → `202 {snapshot_id, snapshot_created_at, from_project_id, projects: [{project_id, name, slug, class, op_id}]}` (I-254). Restores `snapshot_id`, which must be one of the live project `:id`'s, into `count` new projects called `<name>-<k>` (default `name` is `<slug>-fork`; `k` the lowest numbers no live project uses; trimmed to a 40-character slug), each with the source's volume size, configuration and named secrets, class `class` (default the source's), and no `remote_url`, so the source keeps its checkout. All are created in one transaction: past the project limit (or, for `xl`, the xl limit) for all `count`, nothing is created and the answer is `400 invalid` with `detail: {limit, projects, requested}` (or `{xl_limit, xl, requested}`). A request with a `request_id` seen before answers with the projects that request made. Each project's restore op is its own; one failing leaves the others. New in this release |
 
 ## Events and logs
 

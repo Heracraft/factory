@@ -80,6 +80,32 @@ Restoring:
 - A restore verifies the download checksum before writing the volume, and
   a failed restore leaves the target volume untouched.
 
+Forking (DECISIONS I-254, I-255):
+
+- `repose fork [PROJECT] [-n N] [--name NAME] [--size S] [--snapshot ID]
+  [--prompt TEXT [--agent A]]` takes a manual snapshot of a live project
+  (running or stopped; the source keeps running) unless `--snapshot`
+  names one of its own, then `POST /projects/:id/fork` restores it into N
+  new projects called `<slug>-fork-<k>` (or `NAME-<k>`), `k` the lowest
+  numbers no live project uses, each started on the host with the most
+  free memory.
+- The N projects are created in one transaction under the user's row
+  lock: the project limit (and the xl limit for xl copies) is checked for
+  all N first, and past it nothing is created (`invalid`, as for create).
+  A resent request with the same `request_id` answers with the projects
+  the first one made. Each copy's restore is its own op; one failing
+  leaves the others running, and the CLI lists which failed and exits 1.
+- A copy gets the source's volume size, configuration revision and named
+  secrets (ciphertext rows copied; not the guest's sshd material), and no
+  `remote_url`: the source keeps its checkout, so `repose run` there still
+  means the source. The copy's `~/<slug>` is a symlink to the source's
+  `~/<slug>` on the copied volume, made by guestd's `SetupProject`.
+- With `--prompt`, the CLI starts the agent with that prompt in each
+  running copy, without syncing the laptop into it, and does not attach.
+- Each copy is a project: it counts toward the limit and is billed like
+  one. There is no fork lineage in the api, no "promote a copy", and no
+  dashboard action yet.
+
 Alerts:
 
 - A running project whose newest snapshot is older than 36 hours raises an

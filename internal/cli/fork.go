@@ -1,0 +1,262 @@
+package cli
+
+import (
+	"context"
+	"crypto/rand"
+	"errors"
+	"fmt"
+	"net/url"
+	"strings"
+	"text/tabwriter"
+	"time"
+)
+
+// `repose fork` (DECISIONS I-254): snapshot a project now (or take one of
+// its snapshots) and restore it into N new projects, each its own machine,
+// so N agents can try N approaches from the same state. The api creates
+// all N in one transaction (POST /projects/:id/fork); the CLI takes the
+// snapshot, waits for the forks to run, and optionally starts an agent
+// with the same prompt in each.
+
+// ForkOptions is `repose fork`'s flags.
+type ForkOptions struct {
+	ProjectArg string
+	Count      int
+	Name       string
+	Size       string
+	SnapshotID string
+	Prompt     string
+	Agent      string
+}
+
+// ForkRequest is POST /projects/:id/fork's body.
+type ForkRequest struct {
+	SnapshotID string `json:"snapshot_id"`
+	Count      int    `json:"count"`
+	Name       string `json:"name,omitempty"`
+	Class      string `json:"class,omitempty"`
+	RequestID  string `json:"request_id,omitempty"`
+}
+
+// ForkedProject is one project a fork made.
+type ForkedProject struct {
+	ProjectID string `json:"project_id"`
+	Name      string `json:"name"`
+	Slug      string `json:"slug"`
+	Class     string `json:"class"`
+	OpID      string `json:"op_id"`
+	// State and Error are the CLI's own, filled once its restore ended
+	// (for --json).
+	State string `json:"state,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+// ForkResult is POST /projects/:id/fork's answer.
+type ForkResult struct {
+	SnapshotID        string          `json:"snapshot_id"`
+	SnapshotCreatedAt time.Time       `json:"snapshot_created_at"`
+	FromProjectID     string          `json:"from_project_id"`
+	Projects          []ForkedProject `json:"projects"`
+}
+
+func (c *Client) Fork(ctx context.Context, projectID string, req ForkRequest) (*ForkResult, error) {
+	var r ForkResult
+	if err := c.post(ctx, "/projects/"+url.PathEscape(projectID)+"/fork", req, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// maxForks is the api's bound on one fork request.
+const maxForks = 10
+
+// forkStartAgent starts the agent with the prompt in one fork, without
+// syncing the laptop's checkout into it (the fork's state is the
+// snapshot's) and without attaching. Tests replace it.
+var forkStartAgent = func(ctx context.Context, e *Env, slug, agent, prompt string) error {
+	return runRun(ctx, e, RunOptions{ProjectArg: slug, Agent: agent, Prompt: prompt, NoSync: true, NoAttach: true}, false)
+}
+
+// newRequestID is a random UUID (version 4) naming one fork request, so a
+// resend after a lost answer gets the same projects back.
+func newRequestID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	b[6] = b[6]&0x0f | 0x40
+	b[8] = b[8]&0x3f | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// ForkCmd implements `repose fork [PROJECT] [-n N] [--name BASE] [--size
+// S] [--snapshot ID] [--prompt TEXT] [--agent A]`.
+func ForkCmd(ctx context.Context, e *Env, opts ForkOptions) error {
+	if opts.Count < 1 || opts.Count > maxForks {
+		return exitf(ExitUsage, "--count must be 1 to %d, got %d.", maxForks, opts.Count)
+	}
+	src, err := requireProject(ctx, e, opts.ProjectArg)
+	if err != nil {
+		return err
+	}
+	// The limit is the api's to enforce, for all N at once; asking first
+	// only spares a snapshot that nothing would use.
+	if me, err := e.Client.GetMe(ctx); err == nil && me.Limits.Projects > 0 {
+		if projects, err := e.Client.ListProjects(ctx); err == nil && len(projects)+opts.Count > me.Limits.Projects {
+			return exitf(ExitGeneric, "You have %d of %d projects, and %d more would make %d. Destroy some (`repose projects` lists them), or add a card and pay your first invoice to raise the limit.",
+				len(projects), me.Limits.Projects, opts.Count, len(projects)+opts.Count)
+		}
+	}
+
+	pr := e.newProgress()
+	defer pr.Fail()
+	snapID := opts.SnapshotID
+	if snapID == "" {
+		if src.State != "running" && src.State != "stopped" {
+			return notRunningError(src)
+		}
+		opID, err := e.Client.CreateSnapshot(ctx, src.ID)
+		if err != nil {
+			return err
+		}
+		pr.Phase("Snapshotting "+src.Slug, "Snapshot of "+src.Slug+" taken")
+		op, err := waitOpPhased(ctx, e, src, opID, pr, false)
+		if err != nil {
+			return err
+		}
+		if op.State == "error" {
+			pr.Fail()
+			return e.opFailed("snapshot", src.Slug, op.Error, "Nothing was forked.")
+		}
+		snapID, _ = op.Result["snapshot_id"].(string)
+		if snapID == "" {
+			// An api that does not return the op's result: the newest
+			// manual snapshot is the one just taken.
+			snaps, err := e.Client.ListSnapshots(ctx, src.ID)
+			if err != nil {
+				return err
+			}
+			if s := newestSnapshot(snaps); s != nil {
+				snapID = s.ID
+			}
+		}
+		if snapID == "" {
+			pr.Fail()
+			return exitf(ExitGeneric, "The snapshot of %s finished but the api did not say which it is. `repose snapshots list --project %s` shows it; `repose fork %s --snapshot ID` forks from it.", src.Slug, src.Slug, src.Slug)
+		}
+	}
+
+	req := ForkRequest{SnapshotID: snapID, Count: opts.Count, Name: opts.Name, Class: opts.Size, RequestID: newRequestID()}
+	pr.Phase(fmt.Sprintf("Forking %s into %d", src.Slug, opts.Count), "")
+	res, err := forkWithRetry(ctx, e, src.ID, req)
+	if err != nil {
+		pr.Fail()
+		var apiErr *APIError
+		if errors.As(err, &apiErr) && (apiErr.Code == "invalid" || apiErr.Code == "not_found") {
+			return exitf(ExitGeneric, "Could not fork %s: %s. Nothing was created.", src.Slug, strings.TrimSuffix(humaneMessage(apiErr.Message), "."))
+		}
+		return err
+	}
+	if len(res.Projects) == 0 {
+		return exitf(ExitGeneric, "The api answered the fork of %s without any project. `repose projects` shows what exists.", src.Slug)
+	}
+
+	// Each fork's restore is its own op; they run side by side on the
+	// api, so waiting on them in turn takes as long as the slowest.
+	failed := 0
+	for i := range res.Projects {
+		f := &res.Projects[i]
+		pr.Phase("Starting "+f.Slug, "")
+		op, err := waitOp(ctx, e.Client, f.ProjectID, f.OpID, pr)
+		if err != nil {
+			return err
+		}
+		if p, err := e.Client.GetProject(ctx, f.ProjectID); err == nil {
+			f.State = p.State
+			if p.LastError != nil {
+				f.Error = *p.LastError
+			}
+		}
+		if op.State == "error" {
+			f.State = "error"
+			if f.Error == "" {
+				f.Error = humaneMessage(op.Error.Message)
+			}
+		}
+		if f.State != "running" {
+			failed++
+		}
+	}
+	pr.Fail()
+	// A fork's name may be one a destroyed project had, whose ssh master
+	// leads to the old guest; and the certificate must name the new ones.
+	for _, f := range res.Projects[1:] {
+		closeMaster(ctx, e, f.Slug)
+	}
+	refreshSSHAccess(ctx, e, res.Projects[0].Slug)
+
+	if opts.Prompt != "" {
+		for _, f := range res.Projects {
+			if f.State != "running" {
+				continue
+			}
+			if err := forkStartAgent(ctx, e, f.Slug, opts.Agent, opts.Prompt); err != nil {
+				e.warn("Could not start the agent in %s: %s. `repose run --project %s --no-sync PROMPT` tries again.", f.Slug, oneLine(err.Error()), f.Slug)
+			}
+		}
+	}
+
+	if e.JSON {
+		if err := writeJSONOut(e.Out, res); err != nil {
+			return err
+		}
+	} else {
+		writeForkSummary(e, src, res, pr.Total())
+	}
+	if failed > 0 {
+		return exitf(ExitGeneric, "%d of %d forks did not start. Each failed fork is still a project: `repose destroy NAME` removes it, and `repose fork %s --snapshot %s` makes another from the same snapshot.", failed, len(res.Projects), src.Slug, res.SnapshotID)
+	}
+	return nil
+}
+
+// forkWithRetry posts the fork, and posts it again with the same
+// request_id while the api is away (a redeploy's 502, a dropped
+// connection), so a request the api did take is answered with its
+// projects instead of making N more.
+func forkWithRetry(ctx context.Context, e *Env, projectID string, req ForkRequest) (*ForkResult, error) {
+	var since time.Time
+	for {
+		res, err := e.Client.Fork(ctx, projectID, req)
+		if err == nil || !transientAPIError(err) || ctx.Err() != nil {
+			return res, err
+		}
+		if since.IsZero() {
+			since = time.Now()
+		}
+		if time.Since(since) > opTransientBudget {
+			return nil, err
+		}
+		if err := sleepOrDone(ctx, opTransientPause); err != nil {
+			return nil, err
+		}
+	}
+}
+
+func writeForkSummary(e *Env, src *Project, res *ForkResult, took time.Duration) {
+	n := len(res.Projects)
+	noun := "projects"
+	if n == 1 {
+		noun = "project"
+	}
+	_, _ = fmt.Fprintf(e.Out, "Forked %s into %d %s from its snapshot of %s in %s:\n", src.Slug, n, noun, res.SnapshotCreatedAt.Local().Format("2006-01-02 15:04"), fmtElapsed(took))
+	tw := tabwriter.NewWriter(e.Out, 0, 0, 2, ' ', 0)
+	for _, f := range res.Projects {
+		state := stateWords(f.State) + " (" + f.Class + ")"
+		if f.State == "error" && f.Error != "" {
+			state = "error: " + f.Error
+		}
+		_, _ = fmt.Fprintf(tw, "  %s\t%s\n", f.Slug, state)
+	}
+	_ = tw.Flush()
+	first := res.Projects[0].Slug
+	_, _ = fmt.Fprintf(e.Out, "Each is its own machine, billed like any project; %s is unchanged and is still the one `repose run` uses in its checkout.\n", src.Slug)
+	_, _ = fmt.Fprintf(e.Out, "`repose attach %s` to get in; `repose destroy %s` when you are done with one.\n", first, first)
+}

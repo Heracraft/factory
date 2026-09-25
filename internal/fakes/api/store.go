@@ -140,6 +140,13 @@ type Op struct {
 	Version      string `json:"version,omitempty"`
 	Phase        string `json:"phase,omitempty"`
 	ProjectState string `json:"project_state,omitempty"`
+	// Result is a finished op's result: `{snapshot_id}` for a snapshot.
+	Result map[string]any `json:"result,omitempty"`
+}
+
+// forkRec is one project a fork request made, kept to answer its resend.
+type forkRec struct {
+	projectID, name, class, opID string
 }
 
 // Host is one row of GET /internal/hosts.

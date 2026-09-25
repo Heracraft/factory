@@ -6397,3 +6397,125 @@ reusing a worktree whose window closed (a new prompt on stale work, and
 "which one did I get" is not visible); `repose worktree list/remove`
 (git already has both); worktrees by default (R4-10 still holds: most
 second prompts are follow-ups on the same tree).
+**I-254. `repose fork`: one snapshot, N new projects created in one api
+transaction, each its own machine.** (fork, 05/07, 2026-09-25; owner
+approved backlog triage items 10 and 12) N agents trying N approaches from
+one starting point, each with full permissions on a machine of its own,
+built on the snapshot and as-new restore that exist. CLI: `repose fork
+[PROJECT] [-n/--count N] [--name NAME] [--size S] [--snapshot ID]
+[--prompt TEXT [--agent A]] [--json]`. PROJECT is the argument, as for
+every command whose object is a project (I-155), so the prompt is a
+flag, not `run`'s positional; the same prompt to every copy is best-of-N,
+and a different prompt per copy is `repose attach` or `repose run
+--project X --no-sync "..."`. Count is 1 by default and at most 10.
+The source is a manual snapshot taken now (a running guest's snapshot
+freezes it for under a second, I-171, and the source keeps running),
+found from the snapshot op's `result.snapshot_id` (the api has always set
+it; api.md now says so), or the newest snapshot for an api that omits
+it; `--snapshot ID` takes one of the project's own instead. Copies are
+named `<slug>-fork-<k>`, or `NAME-<k>`, with `k` the lowest numbers no
+live project uses, trimmed to fit a 40-character slug; always numbered,
+also for one copy, so the rule has no exception. api: `POST
+/projects/:id/fork {snapshot_id, count, name?, class?, start?,
+request_id?}` → `202 {snapshot_id, snapshot_created_at, from_project_id,
+projects: [{project_id, name, slug, class, op_id}]}`, a new route (nothing
+old changes shape). An endpoint rather than N calls to `POST
+/projects/restore`, because the owner's rule is that a fork past the
+project limit creates nothing, and only one transaction holding the
+user's row lock (the lock create and restore take) can check the limit
+for all N and create them; the CLI's own look at `GET /me` and `GET
+/projects` first only spares a snapshot the api would refuse. Past the
+limit the answer is the existing `400 invalid` with `detail: {limit,
+projects, requested}`, past the xl limit `{xl_limit, xl, requested}` (an
+xl source forked twice would otherwise make three xl projects; the
+as-new restore still does not check the xl limit, which is a separate
+gap). Idempotent: the CLI sends a random `request_id`, stored in each
+restore op's params (`fork_request_id`, beside `fork_of`); a request
+whose id is already there answers with those projects, and the CLI
+resends with the same id while the api is away (502/503/504 or no
+connection, the 30 s budget of an op wait), so a redeploy mid-request
+never makes 2N. No migration. Partial failure: all N rows exist or none
+do, but each restore is its own op on its own host placement, so one can
+fail (capacity, a host) while the others run; the CLI waits on each,
+lists every copy with its state or the api's `last_error`, exits 1 with
+`N of M forks did not start`, and says the failed copy is a project to
+destroy and that `repose fork X --snapshot <id>` makes another from the
+same snapshot. A copy gets the source's class (or `--size`), volume size,
+zone, agent, base and configuration revision with its closure, through
+the code the as-new restore already used (now `insertRestored`, shared),
+and the source's named secrets: the ciphertext rows are copied in the
+same transaction (same user key, bound to the same names, same table, so
+no new home; the lowercase sshd material is not copied, every guest gets
+its own, I-3). Secrets live on a tmpfs, not on the disk the snapshot
+copies, so without this an agent in a copy would lack the keys the
+source's agent had, and "same starting point" would be false. A copy has no
+`remote_url`: the source is live and keeps its remote (the rule the as-new
+restore follows), so `repose run` in the checkout still means the source,
+and no `by_dir` entry is written. Getting back is plain: `repose
+projects` lists the copies (the names say where they came from), `repose
+attach <copy>` gets in, work comes back through git (commit in the copy,
+push a branch, fetch on the laptop; the copy's disk has the origin remote
+and the gh login `run` carried into the source), and `repose destroy
+<copy>` removes the rest. After the forks run, the CLI closes any ssh
+master left under a reused name and renews the SSH certificate, as
+`restore` does. With `--prompt`, the agent starts in each running copy
+through `run`'s own code with `--no-sync --no-attach`. Billing: each copy
+is a project and is billed like one; the CLI and the docs say so. Logins
+made inside the source (Claude Code's included) are on its disk and so in
+its snapshot and in every copy, exactly as with `restore --as-new` today;
+whether that is "copying" Claude credentials is the open question of the
+Claude-login proposal (2026-09-24), which would take the file off the disk,
+and is the owner's to settle, not this entry's. Tests: `TestFork` (api,
+Postgres: result.snapshot_id, missing snapshot_id, count 0, someone else's
+snapshot, over the limit with nothing created and the detail, the xl
+limit, two copies named -1/-2 running without the remote with the secret
+and without shared sshd rows, the source unchanged, the resend answering
+the same two and creating none, lowest-free numbering, a long name
+trimmed, `start: false`, another user 404), `TestFork` (CLI against the
+fake: the summary, the prompt to each copy with the agent, the limit
+refused before a snapshot, `--count 11`, `--snapshot` + `--name` +
+`--size` + `--json`, an unknown snapshot creating nothing),
+`TestNewRequestIDIsAUUID`. Not built, on purpose: fork lineage in the api
+(a `forked_from` column; the names carry it), a fork list or a "keep
+this one" command, promoting a copy to own the checkout's remote (a
+`PATCH remote_url` someone can design when asked), a fork of a destroyed
+project, per-copy prompts, `--no-start` in the CLI (the api has `start`),
+and the dashboard (a Fork button needs a count field, the limit message
+and the N-op progress; not trivial, so not done). *Rejected:* CLI-only
+orchestration of N restores (cannot refuse the whole fork at the limit
+without racing another create, and leaves 1 of 3 on a failure halfway);
+the api taking the snapshot itself (a restore op waiting on a snapshot op
+is a dependency the engine does not have, for a step the CLI already
+does in one call); a positional PROMPT (conflicts with I-155's
+positional PROJECT); unnumbered names for one copy.
+
+**I-255. A volume set up under another slug links its old checkout to
+the new name.** (fork, 04, 2026-09-25) The guest's checkout is
+`/home/dev/<slug>`, and the tmux session, `run`'s sync and every agent
+window start there. A volume restored into a project with another slug
+(every fork, and every `restore --as-new NEWNAME` since R3-6) had its
+code at `~/<old slug>` while `SetupProject` created an empty, git-inited
+`~/<new slug>`, so the user attached to an empty repository. guestd's
+`SetupProject` now reads the slug the volume's
+`/home/dev/.repose/project.json` named before rewriting it, and when
+`~/<slug>` does not exist and `~/<old slug>` resolves to a directory
+inside the home, makes `~/<slug>` a relative symlink to it (to the real
+directory, so a fork of a fork does not chain links), instead of a new
+directory. A symlink rather than a rename, because absolute paths inside
+the checkout keep working: a virtualenv's scripts, a compose file's bind
+mount, the agent's own session history under the old path. Idempotent:
+on every later start `~/<slug>` exists and nothing changes; a dangling
+link (the user deleted the old checkout) is replaced by an empty
+directory; a `project.json` naming a slug that is not a directory of the
+home (a link out of it, `..`) links nothing. The directory is made
+before `project.json` is rewritten, so a guestd killed between the two
+still finds the old slug next time. The log line gains `dir_linked`.
+guest-conventions.md and vsock-guestd.md say so in this commit.
+`TestSetupUnderANewNameLinksTheOldCheckout`,
+`TestPreviousCheckoutStaysInTheHome`. Needs a base publish; a copy of a
+project whose base predates it gets the empty directory until its base
+is bumped (its guestd comes with the copied closure). *Rejected:* moving
+the directory (breaks the absolute paths above); telling the api the old
+slug in `SetupProject` (the volume already knows it, and hostd would need
+a new field for the same answer); the CLI fixing it over SSH after the
+fact (the tmux session has already started in the empty directory).

@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-306 entries.
+308 entries.
 
 ## Scope
 
@@ -338,3 +338,5 @@ pointer, not a summary.
 - **I-250** Claude Code in a guest starts in `bypassPermissions` unless the user set another default — 2026-09-25; L6283
 - **I-251** cloudflared is a menu entry in group `deploy` — 2026-09-25; L6335
 - **I-253** Any number of agent windows in one guest, and `repose run --worktree` puts one in its own git worktree beside the checkout — 2026-09-25; L6350
+- **I-254** `repose fork`: one snapshot, N new projects created in one api transaction, each its own machine — 2026-09-25; L6400
+- **I-255** A volume set up under another slug links its old checkout to the new name — 2026-09-25; L6492

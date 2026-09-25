@@ -115,6 +115,7 @@ func newRootCmd(version string) *cobra.Command {
 		newSnapshotsCmd(env, g),
 		newDestroyCmd(env, g),
 		newRestoreCmd(env),
+		newForkCmd(envJSON, env, g),
 		newLogsCmd(envJSON, env, g),
 		newProjectsCmd(envJSON),
 		newEventsCmd(envJSON, env, g),
@@ -758,6 +759,49 @@ func newRestoreCmd(env func() (*Env, error)) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&as, "as", "", "name for the restored project (default: its old name)")
 	cmd.Flags().StringVar(&snapshot, "snapshot", "", "restore this snapshot instead of the newest (`repose snapshots list --project ID` lists them)")
+	return cmd
+}
+
+func newForkCmd(envJSON func(*cobra.Command) (*Env, error), env func() (*Env, error), g *globalFlags) *cobra.Command {
+	opts := ForkOptions{Count: 1}
+	cmd := &cobra.Command{
+		Use:   "fork [PROJECT]",
+		Short: "Snapshot a project and start copies of it as new projects, one machine each",
+		Long: "Snapshots PROJECT (this checkout's, by default) and restores the snapshot into --count new\n" +
+			"projects, NAME-1, NAME-2, ... (NAME defaults to PROJECT-fork), each running on its own machine\n" +
+			"with the same files, configuration and secrets. PROJECT keeps running and stays the project\n" +
+			"`repose run` uses in its checkout. With --prompt, the agent starts in every fork with that prompt.\n" +
+			"Each fork is a project: it counts toward your project limit and is billed like one.",
+		Args:              projectArgs,
+		ValidArgsFunction: completeProject(env),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := projectFrom(args, g)
+			if err != nil {
+				return err
+			}
+			if opts.Agent != "" && !isAgent(opts.Agent) {
+				return cobraUsageError{fmt.Errorf("--agent must be one of %s, got %q", strings.Join(agentNames, ", "), opts.Agent)}
+			}
+			if opts.Agent != "" && opts.Prompt == "" {
+				return cobraUsageError{fmt.Errorf("--agent goes with --prompt")}
+			}
+			e, err := envJSON(cmd)
+			if err != nil {
+				return err
+			}
+			opts.ProjectArg = project
+			return ForkCmd(cmd.Context(), e, opts)
+		},
+	}
+	cmd.Flags().IntVarP(&opts.Count, "count", "n", 1, "how many forks (1 to 10)")
+	cmd.Flags().StringVar(&opts.Name, "name", "", "name the forks NAME-1, NAME-2, ... (default: PROJECT-fork)")
+	cmd.Flags().StringVar(&opts.Size, "size", "", "small|large|xl for the forks (default: PROJECT's)")
+	cmd.Flags().StringVar(&opts.SnapshotID, "snapshot", "", "fork from this snapshot of PROJECT instead of taking one now")
+	cmd.Flags().StringVar(&opts.Prompt, "prompt", "", "start the agent in every fork with this prompt")
+	cmd.Flags().StringVar(&opts.Agent, "agent", "", "with --prompt: claude|opencode|codex|gemini|pi (default: PROJECT's)")
+	cmd.Flags().Bool("json", false, "print the forks as JSON")
+	_ = cmd.RegisterFlagCompletionFunc("agent", cobra.FixedCompletions(agentNames, cobra.ShellCompDirectiveNoFileComp))
+	_ = cmd.RegisterFlagCompletionFunc("size", cobra.FixedCompletions([]string{"small", "large", "xl"}, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
 }
 

@@ -1037,8 +1037,137 @@ func (f *Fake) createSnapshot(w http.ResponseWriter, r *http.Request) *apiError 
 		return e
 	}
 	o := f.newOp(p, "snapshot")
-	f.snapshot(p, "manual")
+	s := f.snapshot(p, "manual")
+	o.Result = map[string]any{"snapshot_id": s.ID}
 	return opResult(w, o)
+}
+
+// forkProject is POST /projects/:id/fork (I-254): count projects restored
+// from one of p's snapshots, named <base>-<k> for the lowest free k,
+// without p's remote, with its secrets; the limit is checked for all of
+// them first, and a resent request_id answers with the same projects.
+func (f *Fake) forkProject(w http.ResponseWriter, r *http.Request) *apiError {
+	var body struct {
+		SnapshotID string `json:"snapshot_id"`
+		Count      *int   `json:"count"`
+		Name       string `json:"name"`
+		Class      string `json:"class"`
+		Start      *bool  `json:"start"`
+		RequestID  string `json:"request_id"`
+	}
+	if e := decodeBody(r, &body, false); e != nil {
+		return e
+	}
+	u := userFrom(r)
+	p, e := f.project(u, r.PathValue("id"))
+	if e != nil {
+		return e
+	}
+	if body.SnapshotID == "" {
+		return invalid("snapshot_id is required: take a snapshot of %s first (POST /projects/:id/snapshots)", p.Slug)
+	}
+	count := 1
+	if body.Count != nil {
+		count = *body.Count
+	}
+	if count < 1 || count > 10 {
+		return invalid("count must be 1 to 10")
+	}
+	var snap *Snapshot
+	for _, s := range p.snapshots {
+		if s.ID == body.SnapshotID {
+			snap = s
+		}
+	}
+	if snap == nil {
+		return errf("not_found", "that snapshot is not one of %s's, or it has expired", p.Slug)
+	}
+	class := p.Class
+	if body.Class != "" {
+		if _, ok := classes[body.Class]; !ok {
+			return invalid("class must be small, large or xl")
+		}
+		class = body.Class
+	}
+	base := body.Name
+	if base == "" {
+		base = p.Slug + "-fork"
+	}
+	if !nameRe.MatchString(base) || slugOf(base) == "" {
+		return invalid("name must match [A-Za-z0-9._-]{1,64}")
+	}
+	type forked struct {
+		ProjectID string `json:"project_id"`
+		Name      string `json:"name"`
+		Slug      string `json:"slug"`
+		Class     string `json:"class"`
+		OpID      string `json:"op_id"`
+	}
+	answer := func(list []forked) *apiError {
+		writeJSON(w, http.StatusAccepted, map[string]any{"snapshot_id": snap.ID, "snapshot_created_at": snap.CreatedAt, "from_project_id": p.ID, "projects": list})
+		return nil
+	}
+	if body.RequestID != "" {
+		if prev := f.forks[u.ID+"/"+body.RequestID]; prev != nil {
+			var list []forked
+			for _, fp := range prev {
+				list = append(list, forked{ProjectID: fp.projectID, Name: fp.name, Slug: fp.name, Class: fp.class, OpID: fp.opID})
+			}
+			return answer(list)
+		}
+	}
+	live := f.userProjects(u)
+	limits := f.meOf(u).Limits
+	if len(live)+count > limits.Projects {
+		return invalid("you have %d of %d projects, and %d more would make %d; destroy some or add a card and pay your first invoice to raise the limit", len(live), limits.Projects, count, len(live)+count).
+			withDetail(map[string]any{"limit": limits.Projects, "projects": len(live), "requested": count})
+	}
+	xl := 0
+	taken := map[string]bool{}
+	for _, q := range live {
+		taken[q.Slug] = true
+		if q.Class == "xl" {
+			xl++
+		}
+	}
+	if class == "xl" && xl+count > limits.XL {
+		return invalid("you have %d of %d xl projects, and %d more would make %d; fork with a smaller class", xl, limits.XL, count, xl+count).
+			withDetail(map[string]any{"xl_limit": limits.XL, "xl": xl, "requested": count})
+	}
+	b := slugOf(base)
+	var list []forked
+	var rec []forkRec
+	for k := 1; len(list) < count; k++ {
+		suffix := fmt.Sprintf("-%d", k)
+		bb := b
+		if len(bb)+len(suffix) > 40 {
+			bb = strings.TrimRight(bb[:40-len(suffix)], "-")
+		}
+		name := bb + suffix
+		if taken[name] {
+			continue
+		}
+		taken[name] = true
+		np, e := f.create(u, name, "", class)
+		if e != nil {
+			return e
+		}
+		for n, s := range p.secrets {
+			c := *s
+			np.secrets[n] = &c
+		}
+		if body.Start != nil && !*body.Start {
+			f.stop(np, false)
+		}
+		f.event(np, "volume.restored", "", "restored from snapshot "+snap.ID+" of "+p.Name)
+		o := f.newOp(np, "restore")
+		list = append(list, forked{ProjectID: np.ID, Name: np.Name, Slug: np.Slug, Class: np.Class, OpID: o.id})
+		rec = append(rec, forkRec{projectID: np.ID, name: np.Slug, class: np.Class, opID: o.id})
+	}
+	if body.RequestID != "" {
+		f.forks[u.ID+"/"+body.RequestID] = rec
+	}
+	return answer(list)
 }
 
 func (f *Fake) restoreSnapshot(w http.ResponseWriter, r *http.Request) *apiError {
