@@ -98,6 +98,26 @@ repose run --name todo-app-experiment
 
 Commands in the checkout still mean the original; reach the new one by name. This is also how to run several agents on one repository without them sharing a working tree.
 
+## Fork a project
+
+To have several agents try different approaches from the same starting point, each with a machine of its own, fork the project:
+
+```
+$ repose fork todo-app -n 3
+Forked todo-app into 3 projects from its snapshot of 2026-09-25 14:02 in 48s:
+  todo-app-fork-1  running (large)
+  todo-app-fork-2  running (large)
+  todo-app-fork-3  running (large)
+```
+
+`repose fork` snapshots the project and restores the snapshot into new projects. Each copy starts with the same disk: the code and its uncommitted changes, installed dependencies, Docker images, logins made on the machine. It also gets the project's configuration and [secrets](/docs/secrets). Processes don't carry over; each copy boots fresh. The code is at `~/todo-app-fork-1` in the first copy, which links to `~/todo-app`, so paths inside the project keep working.
+
+`--prompt "..."` starts the agent in every copy with the same prompt. To give each copy its own prompt, attach to it and type it, or run `repose run --project todo-app-fork-2 --no-sync "..."`.
+
+The original keeps running and is still the project `repose run` uses in your checkout. Reach the copies by name: `repose attach todo-app-fork-2`. To keep one copy's work, commit it there and push a branch (`git push origin HEAD:try-2`), then fetch it on your laptop. Destroy the copies you don't need with `repose destroy todo-app-fork-1`.
+
+Each copy is a project: it counts toward your [project limit](/docs/limits) and is billed like any project while it runs. If the copies would take you past the limit, `repose fork` creates none of them. `--size small` makes cheaper copies; `--name` changes their names.
+
 ## Logs and events
 
 ```

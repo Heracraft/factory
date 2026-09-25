@@ -7,7 +7,7 @@ order: 31
 
 ## Projects
 
-A new account can have 3 projects, at most 1 of them `xl`. After your first paid invoice, the limit is 10 projects of any size. Destroyed projects don't count.
+A new account can have 3 projects, at most 1 of them `xl`. After your first paid invoice, the limit is 10 projects of any size. Destroyed projects don't count. Each copy [`repose fork`](/docs/lifecycle#fork-a-project) makes is a project.
 
 ## Network
 

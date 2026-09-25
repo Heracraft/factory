@@ -216,7 +216,6 @@ func (s *Server) restoreAsNew(ctx context.Context, u *store.User, src *store.Pro
 		return nil, uuid.Nil, errf("forbidden", "account is cancelled")
 	}
 	newID := store.NewID()
-	rid := store.NewID()
 	var opID uuid.UUID
 	err := db.InTx(ctx, s.d.Pool, func(tx db.Tx) error {
 		var count int
@@ -238,43 +237,8 @@ func (s *Server) restoreAsNew(ctx context.Context, u *store.User, src *store.Pro
 				remote = src.RemoteURL
 			}
 		}
-		_, err := tx.Exec(ctx, `insert into projects (id, user_id, name, slug, remote_url, class, state, volume_bytes, tz, agent_default, base_version, config_revision_id) values ($1, $2, $3, $4, $5, $6, 'stopped', $7, $8, $9, $10, $11)`,
-			newID, u.ID, name, Slug(name), remote, src.Class, src.VolumeBytes, src.TZ, src.AgentDefault, src.BaseVersion, rid)
-		if err != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-				return withDetail(errf("conflict", "a project named %s already exists; pick another name for the restored one", Slug(name)), map[string]any{"reason": "name_taken", "name": Slug(name)})
-			}
-			return err
-		}
-		if src.ConfigRevisionID != nil {
-			cur, err := store.GetRevision(ctx, tx, *src.ConfigRevisionID)
-			if err != nil {
-				return err
-			}
-			// A destroyed project's closure lost its GC roots with its
-			// guest (DECISIONS I-115), so the copy carries no closure
-			// and the restore plan rebuilds before it boots.
-			if src.DestroyedAt != nil {
-				cur.SystemClosure, cur.ClosureBytes = nil, nil
-			}
-			if _, err := tx.Exec(ctx, "insert into config_revisions (id, project_id, fragment, menu, base_version, status, system_closure, closure_bytes, kernel_changed, built_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())",
-				rid, newID, cur.Fragment, cur.Menu, cur.BaseVersion, revisionStatusForCopy(cur), cur.SystemClosure, cur.ClosureBytes, cur.KernelChanged); err != nil {
-				return err
-			}
-		} else if _, err := tx.Exec(ctx, "insert into config_revisions (id, project_id, fragment, status) values ($1, $2, $3, 'building')", rid, newID, DefaultFragment); err != nil {
-			return err
-		}
-		target, err := store.GetProject(ctx, tx, newID)
-		if err != nil {
-			return err
-		}
-		hasClosure := false
-		if rev, err := store.GetRevision(ctx, tx, rid); err == nil && rev.SystemClosure != nil {
-			hasClosure = true
-		}
-		sid := snap.ID
-		opID, err = s.d.Engine.Enqueue(ctx, tx, ops.NewOp{Kind: ops.KindRestore, ProjectID: &newID, SnapshotID: &sid, Params: map[string]any{"start": start}, Phases: ops.PlanRestore(target, hasClosure, start)}, false)
+		var err error
+		opID, err = s.insertRestored(ctx, tx, u, src, snap, newID, name, src.Class, remote, start, nil)
 		return err
 	})
 	if err != nil {
@@ -286,4 +250,55 @@ func (s *Server) restoreAsNew(ctx context.Context, u *store.User, src *store.Pro
 		return nil, uuid.Nil, err
 	}
 	return target, opID, nil
+}
+
+// insertRestored inserts the project a restore creates (id newID, called
+// name, of class, with remote) from src's volume size, zone, agent, base
+// and configuration, and enqueues the restore of snap into it with
+// params added to the op's own. The caller holds the user's row lock and
+// has checked the limits. A name a live project holds is `409 conflict`
+// with `detail.reason = "name_taken"`.
+func (s *Server) insertRestored(ctx context.Context, tx db.Tx, u *store.User, src *store.Project, snap *store.Snapshot, newID uuid.UUID, name, class string, remote *string, start bool, params map[string]any) (uuid.UUID, error) {
+	rid := store.NewID()
+	_, err := tx.Exec(ctx, `insert into projects (id, user_id, name, slug, remote_url, class, state, volume_bytes, tz, agent_default, base_version, config_revision_id) values ($1, $2, $3, $4, $5, $6, 'stopped', $7, $8, $9, $10, $11)`,
+		newID, u.ID, name, Slug(name), remote, class, src.VolumeBytes, src.TZ, src.AgentDefault, src.BaseVersion, rid)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return uuid.Nil, withDetail(errf("conflict", "a project named %s already exists; pick another name for the restored one", Slug(name)), map[string]any{"reason": "name_taken", "name": Slug(name)})
+		}
+		return uuid.Nil, err
+	}
+	if src.ConfigRevisionID != nil {
+		cur, err := store.GetRevision(ctx, tx, *src.ConfigRevisionID)
+		if err != nil {
+			return uuid.Nil, err
+		}
+		// A destroyed project's closure lost its GC roots with its
+		// guest (DECISIONS I-115), so the copy carries no closure
+		// and the restore plan rebuilds before it boots.
+		if src.DestroyedAt != nil {
+			cur.SystemClosure, cur.ClosureBytes = nil, nil
+		}
+		if _, err := tx.Exec(ctx, "insert into config_revisions (id, project_id, fragment, menu, base_version, status, system_closure, closure_bytes, kernel_changed, built_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())",
+			rid, newID, cur.Fragment, cur.Menu, cur.BaseVersion, revisionStatusForCopy(cur), cur.SystemClosure, cur.ClosureBytes, cur.KernelChanged); err != nil {
+			return uuid.Nil, err
+		}
+	} else if _, err := tx.Exec(ctx, "insert into config_revisions (id, project_id, fragment, status) values ($1, $2, $3, 'building')", rid, newID, DefaultFragment); err != nil {
+		return uuid.Nil, err
+	}
+	target, err := store.GetProject(ctx, tx, newID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	hasClosure := false
+	if rev, err := store.GetRevision(ctx, tx, rid); err == nil && rev.SystemClosure != nil {
+		hasClosure = true
+	}
+	opParams := map[string]any{"start": start}
+	for k, v := range params {
+		opParams[k] = v
+	}
+	sid := snap.ID
+	return s.d.Engine.Enqueue(ctx, tx, ops.NewOp{Kind: ops.KindRestore, ProjectID: &newID, SnapshotID: &sid, Params: opParams, Phases: ops.PlanRestore(target, hasClosure, start)}, false)
 }

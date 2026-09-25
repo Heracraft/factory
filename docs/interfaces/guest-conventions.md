@@ -8,7 +8,7 @@ here exists in that module under exactly this name.
 
 | Path | What |
 |---|---|
-| `/home/dev/<slug>` | the project checkout; the tmux session's default directory |
+| `/home/dev/<slug>` | the project checkout; the tmux session's default directory. On a volume restored under another slug (a fork, a restore `--as-new`), a relative symlink to the checkout of the slug `/home/dev/.repose/project.json` named before, made by `SetupProject` when `/home/dev/<slug>` does not exist (DECISIONS I-255) |
 | `/home/dev/.repose/project.json` | `{project_id, slug, name, remote_url, user_handle, class, tz}` written by guestd at SetupProject |
 | `/etc/repose/env` | `TZ=` and `REPOSE_PROJECT=` lines written by guestd at SetupProject, sourced by every shell; the CLI replaces the `TZ=` line (through `sudo`, root 0644, by rename) on `run` and `attach` when the laptop's zone differs (I-198) |
 | `/etc/repose/base-version` | the platform base version string (same as `nixos-version`'s label) |

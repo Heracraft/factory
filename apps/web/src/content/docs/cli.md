@@ -78,6 +78,10 @@ Delete the machine and disk; a final snapshot is kept 30 days. `-y`/`--yes` skip
 
 Bring back a project destroyed in the last 30 days. `--as NEW-NAME` for another name, `--snapshot ID` for an older snapshot.
 
+### `repose fork [PROJECT]`
+
+Snapshot the project now and start copies of it as new projects, each on its own machine, so several agents can try different approaches from the same starting point. `-n`/`--count N` makes N copies (1 to 10, default 1), named `PROJECT-fork-1`, `PROJECT-fork-2` and so on; `--name NAME` names them `NAME-1`, `NAME-2`. `--size` sets their size (default: the project's). `--snapshot ID` copies one of the project's snapshots instead of taking a new one. `--prompt TEXT` starts the agent in every copy with that prompt (`--agent` picks the agent). `--json` prints the copies as JSON. The project itself keeps running. Each copy counts toward your project limit and is billed like any project. If the copies would take you past the limit, nothing is created. See [Fork a project](/docs/lifecycle#fork-a-project).
+
 ### `repose resize SIZE`
 
 Grow the project's disk, for example `repose resize 80G`. Disks can't shrink, and the larger disk is billed from then on.

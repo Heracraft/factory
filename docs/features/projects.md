@@ -61,6 +61,9 @@ Limits:
   limit returns `invalid` with the limit in `detail`, and the CLI prints
   `you have 3 of 3 projects; destroy one or add a card and pay your first
   invoice to raise the limit`.
+- `repose fork` makes N projects at once and is refused whole, before any
+  is created, when N more would pass the limit (snapshots.md, "Forking";
+  DECISIONS I-254).
 - A user without a card on file cannot start a guest at all
   (`payment_required`, exit 7). Creating the project row is allowed so the
   dashboard can show it, but nothing boots.

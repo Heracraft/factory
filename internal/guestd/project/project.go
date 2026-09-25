@@ -104,14 +104,21 @@ func (h *Handler) Setup(ctx context.Context, req *guestdv1.SetupProject) error {
 	ctx, cancel := context.WithTimeout(ctx, DefaultTimeout)
 	defer cancel()
 
+	// The slug this volume was set up under before, read before
+	// project.json is rewritten: a volume restored into a project with
+	// another name (a fork, a restore --as-new) has its checkout there.
+	prev := ""
+	if info, err := h.load(); err == nil {
+		prev = info.Slug
+	}
+	created, linked, err := h.ensureProjectDir(slug, prev)
+	if err != nil {
+		return err
+	}
 	if err := h.writeProjectJSON(req); err != nil {
 		return err
 	}
 	if err := h.writeEnvFile(req); err != nil {
-		return err
-	}
-	created, err := h.ensureProjectDir(slug)
-	if err != nil {
 		return err
 	}
 	initialised, err := h.ensureGitRepo(ctx, slug)
@@ -138,7 +145,7 @@ func (h *Handler) Setup(ctx context.Context, req *guestdv1.SetupProject) error {
 	}
 	h.log.Info("project set up",
 		"event", "setup_project", "project_id", id,
-		"dir_created", created, "git_init", initialised)
+		"dir_created", created, "dir_linked", linked, "git_init", initialised)
 	return nil
 }
 
@@ -199,20 +206,68 @@ func (h *Handler) writeEnvFile(req *guestdv1.SetupProject) error {
 	return nil
 }
 
-func (h *Handler) ensureProjectDir(slug string) (bool, error) {
+// ensureProjectDir makes ~/<slug> exist. When it does not and the volume
+// was set up before under prev (a fork or a restore under another name,
+// DECISIONS I-255), ~/<slug> becomes a symlink to the checkout there, so
+// the agent, the tmux session and the CLI find the code the snapshot
+// holds; a symlink rather than a rename, because absolute paths inside
+// the checkout (a virtualenv, a bind mount, the agent's own history) keep
+// working. created reports a new empty directory, linked a new symlink.
+func (h *Handler) ensureProjectDir(slug, prev string) (created, linked bool, err error) {
 	dir := h.paths.ProjectDir(slug)
 	if _, err := os.Stat(dir); err == nil {
-		return false, nil
+		return false, false, nil
 	} else if !os.IsNotExist(err) {
-		return false, sysdep.Errf(sysdep.CodeInternal, "stat project directory: %w", err)
+		return false, false, sysdep.Errf(sysdep.CodeInternal, "stat project directory: %w", err)
+	}
+	// A symlink whose target is gone (the user removed the old
+	// checkout) is replaced, not followed into an error.
+	if fi, err := os.Lstat(dir); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		if err := os.Remove(dir); err != nil {
+			return false, false, sysdep.Errf(sysdep.CodeInternal, "remove a dangling project link: %w", err)
+		}
+	}
+	if target := h.previousCheckout(slug, prev); target != "" {
+		if err := os.Symlink(target, dir); err != nil {
+			return false, false, sysdep.Errf(sysdep.CodeInternal, "link the project directory: %w", err)
+		}
+		if err := os.Lchown(dir, h.uid, h.gid); err != nil && !os.IsPermission(err) {
+			return false, false, sysdep.Errf(sysdep.CodeInternal, "chown project link: %w", err)
+		}
+		return false, true, nil
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return false, sysdep.Errf(sysdep.CodeInternal, "create project directory: %w", err)
+		return false, false, sysdep.Errf(sysdep.CodeInternal, "create project directory: %w", err)
 	}
 	if err := os.Chown(dir, h.uid, h.gid); err != nil && !os.IsPermission(err) {
-		return false, sysdep.Errf(sysdep.CodeInternal, "chown project directory: %w", err)
+		return false, false, sysdep.Errf(sysdep.CodeInternal, "chown project directory: %w", err)
 	}
-	return true, nil
+	return true, false, nil
+}
+
+// previousCheckout is the link target for ~/<slug>: the directory ~/<prev>
+// resolves to, relative to the home directory, when prev is another valid
+// slug whose directory exists inside the home; "" otherwise.
+func (h *Handler) previousCheckout(slug, prev string) string {
+	if prev == "" || prev == slug || !slugRe.MatchString(prev) {
+		return ""
+	}
+	home, err := filepath.EvalSymlinks(h.paths.Home())
+	if err != nil {
+		return ""
+	}
+	real, err := filepath.EvalSymlinks(h.paths.ProjectDir(prev))
+	if err != nil {
+		return ""
+	}
+	if fi, err := os.Stat(real); err != nil || !fi.IsDir() {
+		return ""
+	}
+	rel, err := filepath.Rel(home, real)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") || strings.Contains(rel, string(filepath.Separator)) {
+		return ""
+	}
+	return rel
 }
 
 // ensureGitRepo runs git init as dev when the directory has no .git, so the

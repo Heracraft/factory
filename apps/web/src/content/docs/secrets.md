@@ -27,7 +27,7 @@ repose secrets list
 repose secrets rm STRIPE_SECRET_KEY
 ```
 
-`list` shows names and dates, never values. Nothing shows a value again after you set it. Secrets belong to one project. Names are uppercase letters, digits and underscores, start with a letter and are up to 64 characters; values up to 64 KB.
+`list` shows names and dates, never values. Nothing shows a value again after you set it. Secrets belong to one project; [`repose fork`](/docs/lifecycle#fork-a-project) gives each copy the project's secrets as they are at the time. Names are uppercase letters, digits and underscores, start with a letter and are up to 64 characters; values up to 64 KB.
 
 The dashboard's project **Secrets** page does the same.
 

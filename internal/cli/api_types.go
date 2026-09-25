@@ -99,6 +99,8 @@ type Op struct {
 	Version      string `json:"version,omitempty"`
 	Phase        string `json:"phase,omitempty"`
 	ProjectState string `json:"project_state,omitempty"`
+	// Result is a finished op's result; a snapshot's is {snapshot_id}.
+	Result map[string]any `json:"result,omitempty"`
 }
 
 // OpError is an op's error as the api stores it: `{code, message}` (the
