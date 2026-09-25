@@ -57,6 +57,9 @@ use it to:
   allowed to test, or flood anyone with traffic;
 - run a proxy, VPN exit or relay that other people use to reach the
   internet;
+- serve production traffic to other people: host your product elsewhere
+  and use your environment to build it (showing work in progress to
+  someone is fine);
 - host or share content that is illegal where we or you are;
 - try to reach other tenants' environments, our servers, or the cloud
   provider's metadata services.

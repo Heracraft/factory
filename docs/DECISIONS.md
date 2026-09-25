@@ -6192,3 +6192,42 @@ lost); binding the DevTools endpoint to 127.0.0.2 so old CLIs skip it
 (headed Chromium ignores `--remote-debugging-address`); a user unit named
 `repose-desktop` for pre-0.1.12 CLIs (they would forward without printing
 the password; the fix is the CLI upgrade).
+
+**I-256. Vercel and portless stay menu entries, voice mode is not a
+repose feature, and a quick path to production stays deferred.** (conductor,
+owner, 2026-09-25; items 1, 2 and 5 of
+`docs/proposals/2026-09-24-backlog-triage.md`) The owner approved the
+proposal's recommendation on all three. (1) `vercel` and `portless` remain
+opt-in entries in the menu's `deploy` group, and the tools carry (I-221)
+already reinstalls them when the laptop has them globally; nothing is added
+to the base. portless gives each app a random port behind a local HTTPS
+proxy with its own CA, which per-port forwarding cannot present on the
+laptop; if its users ask, the answer is preview URLs, not a base change.
+(2) Claude Code's voice dictation needs a local microphone and does not
+work over SSH, so repose builds nothing for it; the user's OS dictation on
+the laptop types into the terminal, and the Claude app's Remote Control
+works once the user has logged in inside the guest. (3) Repose does not
+host production. Deploying to the user's own Vercel, Coolify or Fly stays
+deferred (proposal 2026-09-23 item 13) until invited users ask for it; the
+menu already has wrangler, supabase, flyctl, vercel and, since I-251,
+cloudflared. *Rejected:* portless or vercel in the base (a few hundred MB
+per guest for tools most projects never call); a microphone relay from the
+laptop into the guest (a device channel into every guest for a feature the
+OS already offers).
+
+**I-257. The terms say a machine is not for serving production traffic
+to others.** (conductor, owner, 2026-09-25; item 15 of
+`docs/proposals/2026-09-24-backlog-triage.md`) Nothing technical stops
+someone running Coolify, a public tunnel or a small site from a guest, and
+nothing will: there is no inbound path (R4-6), egress past 500 GB is
+billed, and there is no stable address. The owner chose to write the rule
+down anyway, so that a guest quietly serving a live product is plainly
+outside the terms. The acceptable-use list in
+`apps/web/src/content/legal/terms.md` and its summary in
+`/docs/limits` gain one line: don't serve production traffic to other
+people. Showing work in progress to someone through a tunnel or a
+forwarded port is still development and stays allowed. *Rejected:*
+blocking tunnels such as cloudflared or ngrok (they are how a preview gets
+shown until preview URLs exist, and I-251 adds cloudflared to the menu);
+metering inbound tunnel traffic (repose cannot tell a demo from a product
+without reading traffic, which it never does).

@@ -24,6 +24,7 @@ The [terms](/terms) have the full wording. In short, don't use a machine to:
 - mine cryptocurrency;
 - send spam or bulk mail;
 - attack, scan or flood other systems;
+- host a live product for other people (showing someone work in progress is fine);
 - host or run anything illegal.
 
 A machine running a known miner is stopped, with a snapshot. You get a notification, and `repose status` and the dashboard say why. After three stops in a day the project can't be started until we've looked at it. Other abuse found by monitoring or reported to us gets the machine stopped and the account reviewed. Monitoring looks at process names and resource use, never at your files or terminal; see [what repose stores](/docs/secrets#what-repose-stores).
