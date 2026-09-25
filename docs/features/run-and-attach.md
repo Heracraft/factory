@@ -191,6 +191,38 @@ Failure output:
 - Any failed step in the guest: exit 1, `Could not <step>: <why> (<ssh's
   last line>).`, never the raw remote command (I-153).
 
+## Paste an image (I-252)
+
+Claude Code reads a pasted image from the clipboard of the machine it
+runs on, so `Ctrl-V` in the guest never sees the laptop's screenshot.
+`repose paste [PROJECT] [--window NAME] [--print]` carries it across:
+
+- The CLI reads a PNG from the laptop's clipboard: `pngpaste -`, else
+  `osascript` writing `«class PNGf»` to a temp file, on macOS;
+  `wl-paste --type image/png` when `WAYLAND_DISPLAY` is set, else
+  `xclip -selection clipboard -t image/png -o` when `DISPLAY` is, on
+  Linux (the offered types are listed first, so "no image" and "tool
+  failed" differ). Windows is refused; WSL is Linux. No image, bytes that
+  are not a PNG, over 20 MB, or no tool: exit 1 before any api call,
+  naming the tool to install.
+- One ssh command over the project's multiplexed connection (as `cp`)
+  writes stdin to `/tmp/repose-paste/<UTC yyyymmdd-hhmmss-ms>.png` (umask
+  077: directory 0700, file 0600, owned by `dev`), refusing a directory
+  that is a symlink or not `dev`'s, and first deletes pastes over a day
+  old and all but the newest 50.
+- In the same command, the path goes into the target pane with `tmux
+  set-buffer` and `paste-buffer -p`: a bracketed paste when the program
+  asked for one, which is how a terminal delivers a dropped file and what
+  Claude Code attaches. No Enter. The target is the session's current
+  window's active pane, or `=<slug>:<NAME>` with `--window`. A window
+  that does not exist leaves the file saved and exits 1 with its path.
+- `--print` saves and prints the guest path only.
+- Nothing is logged; the path and the image stay between the laptop and
+  the guest.
+
+A terminal key binding that runs it (kitty, WezTerm) is documented on
+/docs/run-and-attach, not shipped.
+
 ## Depends on
 
 Workstreams 07 (cli), 05 (projects, certs, ops), 04 (guestd SetupProject,

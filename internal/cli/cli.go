@@ -127,6 +127,7 @@ func newRootCmd(version string) *cobra.Command {
 		newMCPCmd(),
 		newBrowserCmd(),
 		newCpCmd(env, g),
+		newPasteCmd(env, g),
 		newScanCmd(),
 		newSessionHelperCmd(),
 	)

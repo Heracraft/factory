@@ -30,11 +30,14 @@ const (
 	envClaudeConfigDir = "CLAUDE_CONFIG_DIR"
 	envVisual          = "VISUAL"
 	envEditor          = "EDITOR"
+	envWaylandDisplay  = "WAYLAND_DISPLAY" // repose paste: read the Wayland clipboard (I-252)
+	envDisplay         = "DISPLAY"         // repose paste: else the X11 one
 )
 
 var userEnvVars = []string{
 	envProject, envAPIURL, envTiming, envNoSpinner, envNoForward, envNoFastPath, envNoBrowser,
 	envInGuest, envXDGConfigHome, envClaudeConfigDir, envVisual, envEditor,
+	envWaylandDisplay, envDisplay,
 }
 
 // Env bundles what almost every command needs: config, the API client,
