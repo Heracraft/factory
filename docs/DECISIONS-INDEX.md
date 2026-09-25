@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-305 entries.
+306 entries.
 
 ## Scope
 
@@ -337,3 +337,4 @@ pointer, not a summary.
 - **I-252** `repose paste` sends the laptop's clipboard image to the guest and pastes its path; one direction, no socket — 2026-09-25; L6234
 - **I-250** Claude Code in a guest starts in `bypassPermissions` unless the user set another default — 2026-09-25; L6283
 - **I-251** cloudflared is a menu entry in group `deploy` — 2026-09-25; L6335
+- **I-253** Any number of agent windows in one guest, and `repose run --worktree` puts one in its own git worktree beside the checkout — 2026-09-25; L6350

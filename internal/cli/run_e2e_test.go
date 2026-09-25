@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -175,10 +176,11 @@ func TestRunClaudeNotLoggedInAttachesInstead(t *testing.T) {
 	var exists bool
 	for deadline := time.Now().Add(5 * time.Second); ; {
 		var err error
-		exists, err = windowExists(ctx, f.target, testSlug, "claude")
+		windows, err := listWindows(ctx, f.target, testSlug)
 		if err != nil {
 			t.Fatal(err)
 		}
+		exists = slices.Contains(windows, "claude")
 		if exists || time.Now().After(deadline) {
 			break
 		}
@@ -193,6 +195,58 @@ func TestRunClaudeNotLoggedInAttachesInstead(t *testing.T) {
 	}
 	if strings.Contains(pane, "finish the feature") {
 		t.Fatalf("prompt must not have been sent: %s", pane)
+	}
+}
+
+// TestRunWorktreeThenPlainRun: `repose run --worktree PROMPT` opens the
+// agent in ~/<slug>-<window> on repose/<window> and says so; a plain run
+// after it opens <agent>-2 in the checkout with the shared-tree warning
+// (DECISIONS I-253).
+func TestRunWorktreeThenPlainRun(t *testing.T) {
+	stub := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stub, "claude"), []byte("#!/bin/sh\nexec sleep 60\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", stub+string(os.PathListSeparator)+os.Getenv("PATH"))
+	fake := fakeapi.New(fakeapi.Options{})
+	defer fake.Close()
+	f := newRunFixture(t, fake)
+	ctx := context.Background()
+	var out, errOut strings.Builder
+	f.env.Out, f.env.ErrOut = &out, &errOut
+
+	// Claude is not logged in in the fixture, so the window opens and
+	// nothing is typed: what matters here is where it opens.
+	if err := runRun(ctx, f.env, RunOptions{Name: testSlug, Agent: "claude", Prompt: "try it one way", NoAttach: true, Worktree: true}, false); err != nil {
+		t.Fatalf("runRun --worktree: %v", err)
+	}
+	if !strings.Contains(out.String(), "Worktree: ~/proj-claude on branch repose/claude\n") {
+		t.Fatalf("stdout lacks the worktree line: %s", out.String())
+	}
+	if strings.Contains(errOut.String(), "share one working tree") {
+		t.Fatalf("a worktree run warned about a shared tree: %s", errOut.String())
+	}
+	pwd, err := runSSH(ctx, f.target, "tmux display -p -t "+testSlug+":claude '#{pane_current_path}'", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := filepath.EvalSymlinks(strings.TrimSpace(string(pwd))); got != mustEval(t, filepath.Join(f.guestHome, "proj-claude")) {
+		t.Fatalf("claude's pane is in %q, want ~/proj-claude", got)
+	}
+
+	errOut.Reset()
+	if err := runRun(ctx, f.env, RunOptions{Name: testSlug, Agent: "claude", Prompt: "try it another way", NoAttach: true}, false); err != nil {
+		t.Fatalf("runRun: %v", err)
+	}
+	if !strings.Contains(errOut.String(), "Another claude window is open; two agents share one working tree. `repose run --worktree` gives the next one its own.") {
+		t.Fatalf("stderr lacks the shared-tree warning: %s", errOut.String())
+	}
+	pwd, err = runSSH(ctx, f.target, "tmux display -p -t "+testSlug+":claude-2 '#{pane_current_path}'", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := filepath.EvalSymlinks(strings.TrimSpace(string(pwd))); got != mustEval(t, f.guestRepo()) {
+		t.Fatalf("claude-2's pane is in %q, want the checkout", got)
 	}
 }
 

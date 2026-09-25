@@ -59,6 +59,7 @@ You are `dev`, with passwordless `sudo`. The checkout is under `/home/dev`, and 
 
 - Push over HTTPS. When the user's `gh` login was copied, `git push` to github.com works, and `git@github.com:` remotes are rewritten to HTTPS. There is no SSH key on this machine. <!-- /docs/secrets#logins-copied-from-your-laptop -->
 - Commits made here are unsigned; the signing key stays on the laptop. <!-- /docs/secrets#git-and-claude-code-settings -->
+- If you were started in a folder next to the checkout (`~/PROJECT-claude-2` and the like), it is a git worktree on its own branch (repose/claude-2 and the like), so other agents' files are not yours. Commit your work on that branch; don't copy it into the checkout. <!-- /docs/run-and-attach#several-agents-separate-trees -->
 
 ## Agents
 

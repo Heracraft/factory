@@ -9,6 +9,7 @@ here exists in that module under exactly this name.
 | Path | What |
 |---|---|
 | `/home/dev/<slug>` | the project checkout; the tmux session's default directory |
+| `/home/dev/<slug>-<window>` | a git worktree of the checkout on branch `repose/<window>`, made by `repose run --worktree` (DECISIONS I-253); see "tmux" |
 | `/home/dev/.repose/project.json` | `{project_id, slug, name, remote_url, user_handle, class, tz}` written by guestd at SetupProject |
 | `/etc/repose/env` | `TZ=` and `REPOSE_PROJECT=` lines written by guestd at SetupProject, sourced by every shell; the CLI replaces the `TZ=` line (through `sudo`, root 0644, by rename) on `run` and `attach` when the laptop's zone differs (I-198) |
 | `/etc/repose/base-version` | the platform base version string (same as `nixos-version`'s label) |
@@ -45,7 +46,17 @@ here exists in that module under exactly this name.
   `/home/dev/.repose/project.json` exists, and by guestd at SetupProject)
   with window `shell` in `/home/dev/<slug>`. Running it again is a no-op.
 - Agent windows are named after the agent: `claude`, `opencode`, `codex`,
-  `gemini`, `pi`. A second instance gets `claude-2`.
+  `gemini`, `pi`. Further instances get the lowest free `claude-N`, N >= 2,
+  with no upper limit (DECISIONS I-253); anything reading window names
+  accepts any number of digits (guestd's `sample.AgentOf` always did).
+- `repose run --worktree "prompt"` (I-253) first runs `git -C
+  /home/dev/<slug> worktree add -b repose/<window> /home/dev/<slug>-<window>
+  <HEAD>` and opens the agent's window there (`-c
+  /home/dev/<slug>-<window>`). The window name skips any N whose window,
+  `/home/dev/<slug>-<window>` path or `repose/<window>` branch exists, so a
+  worktree is never reused. Worktrees live beside the checkout, never in
+  it, so the sync's status, stash, fingerprint and tar never see them;
+  nothing removes them but the user (`git worktree remove`).
 - `repose attach` = `tmux attach -t <slug>`; `repose run "prompt"` =
   `tmux new-window -t <slug> -n <agent> -c /home/dev/<slug> '<agent> ...'`
   then `tmux send-keys -t <slug>:<agent> '<prompt>' Enter` after the TUI is
