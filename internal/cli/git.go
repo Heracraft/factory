@@ -65,8 +65,10 @@ func gitCurrentBranch(dir string) (string, error) {
 // gitTrackedDirty is the local "dirty list" of 07-cli.md §5.5a: modified
 // tracked files only, since untracked ones are counted separately by
 // gitUntrackedFiles and the two must not double up in the sync summary.
+// Submodules are left out: the files changed inside each are counted on
+// their own (I-263).
 func gitTrackedDirty(dir string) ([]string, error) {
-	out, err := gitCmd(dir, "status", "--porcelain", "--untracked-files=no")
+	out, err := gitCmd(dir, "status", "--porcelain", "--untracked-files=no", "--ignore-submodules=all")
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +100,8 @@ func nonEmptyLines(s string) []string {
 // gitDiffsBinary returns the laptop's tracked changes as two patches, so
 // the guest ends up with the same split between staged and unstaged work
 // (I-258): "git diff --cached --binary" (HEAD to index) and "git diff
-// --binary" (index to working tree).
+// --binary" (index to working tree). Submodules are left out: their
+// commits and changes travel on their own (sync_submodule.go, I-263).
 func gitDiffsBinary(dir string) (staged, unstaged string, err error) {
 	run := func(args ...string) (string, error) {
 		cmd := exec.Command("git", args...)
@@ -106,10 +109,10 @@ func gitDiffsBinary(dir string) (staged, unstaged string, err error) {
 		out, err := cmd.Output()
 		return string(out), err
 	}
-	if staged, err = run("diff", "--cached", "--binary"); err != nil {
+	if staged, err = run("diff", "--cached", "--binary", "--ignore-submodules=all"); err != nil {
 		return "", "", err
 	}
-	if unstaged, err = run("diff", "--binary"); err != nil {
+	if unstaged, err = run("diff", "--binary", "--ignore-submodules=all"); err != nil {
 		return "", "", err
 	}
 	return staged, unstaged, nil

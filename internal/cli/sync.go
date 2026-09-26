@@ -104,6 +104,11 @@ type SyncSummary struct {
 	// copied, as syncCredentialsAndCarry returns them.
 	Copied  []string
 	Carried *carryOutcome
+	// SubFailed are "<path>\t<git's last line>" for shallow submodules the
+	// guest could not fetch itself; SubNotSent are shallow submodules whose
+	// changes on the laptop did not travel (I-263).
+	SubFailed  []string
+	SubNotSent []string
 }
 
 // dirtyTreeError is 07-cli.md §6's exit 6, carrying the file list for the
@@ -158,7 +163,10 @@ type guestProbe struct {
 	envNewer  []string
 	tips      []string // every commit a ref (or HEAD) in the guest points at
 	hasOrigin bool
-	markers   map[string]string // the carry's markers (carry.go)
+	// subTips are the commits every ref (or HEAD) of each checked-out
+	// submodule in the guest points at, by path (I-263).
+	subTips map[string][]string
+	markers map[string]string // the carry's markers (carry.go)
 	// head is the guest's HEAD commit, headRef its .git/HEAD line
 	// ("ref: refs/heads/main", or a commit when detached), and syncKey
 	// the key the last sync that completed recorded (I-224).
@@ -184,16 +192,33 @@ type guestProbe struct {
 // mtime, which git's racy-clean check compares against), and with a throwaway
 // object directory (the real one as its alternate) so a probe leaves no
 // objects behind. A submodule is only its commit in that tree, so an edit
-// inside one would not change it: any submodule change makes the
-// fingerprint "failed", which never matches. The apply stores it after
-// laying down the laptop's diff and untracked files; the next probe
-// compares, so the tree the sync itself made dirty is not taken for an
-// agent's work.
+// inside one would not change it: each checked-out submodule (nested ones
+// too, repose_sublist) adds its own HEAD and tree, so any change inside
+// one changes the fingerprint (I-263; before it, any submodule change
+// made it "failed"). The apply stores it after laying down the laptop's
+// diff and untracked files; the next probe compares, so the tree the sync
+// itself made dirty is not taken for an agent's work.
 const syncedFP = `repose_c="-c status.showUntrackedFiles=normal -c submodule.recurse=false -c filter.lfs.required=false"
 repose_git() { git $repose_c "$@"; }
 repose_dirty() { repose_git status --porcelain --ignore-submodules=none; }
+repose_tab=$(printf '\t')
+repose_sublist() {
+  [ -f "${1:-.}/.gitmodules" ] || return 0
+  git -C "${1:-.}" -c core.quotePath=false ls-files -s 2>/dev/null | while IFS= read -r l; do
+    case $l in 160000\ *) ;; *) continue ;; esac
+    p=${l#*"$repose_tab"}
+    p=${1:+$1/}$p
+    [ -e "$p/.git" ] || continue
+    printf '%s\n' "$p"
+    repose_sublist "$p"
+  done
+}
 repose_fp() {
-  if repose_git status --porcelain=v2 --ignore-submodules=none | grep -q '^[12u] .. S'; then echo failed; return; fi
+  r=$(repose_fp1)
+  s=$(repose_sublist | while IFS= read -r p; do printf ' %s=%s' "$p" "$(cd "$p" && repose_fp1)"; done)
+  case "$r$s" in *failed*) echo failed ;; *) printf '%s%s\n' "$r" "$s" ;; esac
+}
+repose_fp1() {
   i=$(mktemp)
   o=$(mktemp -d)
   x=$(git rev-parse --git-path index)
@@ -231,6 +256,7 @@ echo '#synced'
 if [ -n "$st" ] && [ -s "$repose_synced" ] && [ "$(repose_fp)" = "$(cat "$repose_synced")" ]; then echo yes; fi
 echo '#tips'
 git for-each-ref --format='%%(objectname)'
+repose_sublist | while IFS= read -r p; do printf '#sub %%s\n' "$p"; git -C "$p" for-each-ref --format='%%(objectname)'; git -C "$p" rev-parse -q --verify HEAD || true; done
 echo '#head'
 git rev-parse -q --verify HEAD || true
 [ -f .git/HEAD ] && IFS= read -r repose_h < .git/HEAD && printf '#headref %%s\n' "$repose_h"
@@ -243,7 +269,7 @@ if [ -f %s ]; then while IFS= read -r p; do [ -e "$p" ] || { echo '#credsmissing
 
 func parseProbe(out string) guestProbe {
 	p := guestProbe{markers: parseMarkers(out)}
-	section := ""
+	section, sub := "", ""
 	seen := map[string]bool{}
 	for _, l := range strings.Split(out, "\n") {
 		if strings.HasPrefix(l, "#marker ") {
@@ -259,6 +285,13 @@ func parseProbe(out string) guestProbe {
 		}
 		if rest, ok := strings.CutPrefix(l, "#synckey "); ok {
 			p.syncKey = strings.TrimSpace(rest)
+			continue
+		}
+		if rest, ok := strings.CutPrefix(l, "#sub "); ok {
+			section, sub = "#sub", rest
+			if p.subTips == nil {
+				p.subTips = map[string][]string{}
+			}
 			continue
 		}
 		if l == "#credsmissing" {
@@ -293,6 +326,8 @@ func parseProbe(out string) guestProbe {
 			}
 		case "#origin":
 			p.hasOrigin = strings.TrimSpace(l) == "yes"
+		case "#sub":
+			p.subTips[sub] = append(p.subTips[sub], strings.TrimSpace(l))
 		}
 	}
 	return p
@@ -361,10 +396,27 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	}
 	_, _ = fmt.Fprintf(key, "%d\x00%s%d\x00%s", len(stagedDiff), stagedDiff, len(unstagedDiff), unstagedDiff)
 	noDiff := strings.TrimSpace(stagedDiff) == "" && strings.TrimSpace(unstagedDiff) == ""
+	// Submodules travel on their own (I-263): their state goes in the key,
+	// their untracked files in the one untracked tar.
+	subs, err := readLaptopSubs(localRepoDir)
+	if err != nil {
+		return nil, err
+	}
+	superOps, err := gitlinkIndexOps(localRepoDir)
+	if err != nil {
+		return nil, stepFailed("read your submodules", err, "")
+	}
+	hashSubs(key, subs)
+	_, _ = fmt.Fprintf(key, "\x00%d\x00%s", len(superOps), superOps)
 	untracked, err := gitUntrackedFiles(localRepoDir)
 	if err != nil {
 		return nil, stepFailed("list your untracked files", err, "")
 	}
+	subFiles, err := subUntracked(localRepoDir, subs)
+	if err != nil {
+		return nil, err
+	}
+	untracked = append(untracked, subFiles...)
 	untracked, skipped, skippedDirs, skippedCap, err := filterUntracked(localRepoDir, untracked, opts.Exclude)
 	if err != nil {
 		return nil, err
@@ -384,13 +436,17 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	// is there. Whatever changed in the guest since (an agent's edits or
 	// commits) is left alone and the run attaches (I-248); the flags
 	// still force a sync.
+	subCommits, err := planSubCommits(localRepoDir, subs, probe.subTips)
+	if err != nil {
+		return nil, err
+	}
 	nothingNew := false
 	if !opts.StashRemote && !opts.DiscardRemote && probe.syncKey != "" && probe.syncKey == syncKey {
 		n, err := countCommitsToSend(localRepoDir, wantRefs, probe.tips)
 		if err != nil {
 			return nil, err
 		}
-		nothingNew = n == 0
+		nothingNew = n == 0 && subCommits == 0
 	}
 	guestChanged := len(probe.dirty) > 0 && !probe.syncedOnly
 	if guestChanged && !nothingNew && !opts.StashRemote && !opts.DiscardRemote {
@@ -453,6 +509,8 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	if summary.Commits, err = countRevs(localRepoDir, revs); err != nil {
 		return nil, err
 	}
+	superCommits := summary.Commits
+	summary.Commits += subCommits
 
 	payload, err := os.CreateTemp("", "repose-sync-*.tar")
 	if err != nil {
@@ -462,7 +520,7 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	tw := tar.NewWriter(payload)
 
 	var bundleRefs []string
-	if summary.Commits > 0 {
+	if superCommits > 0 {
 		bundle, err := os.CreateTemp("", "repose-bundle-*")
 		if err != nil {
 			return nil, err
@@ -491,6 +549,16 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	}
 
 	summary.Modified = len(localDirty)
+	for _, s := range subs {
+		summary.Modified += s.Dirty
+		if s.Shallow && s.Dirty > 0 {
+			summary.SubNotSent = append(summary.SubNotSent, s.Path)
+		}
+	}
+	subScript, err := addSubsToApply(tw, localRepoDir, subs)
+	if err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(stagedDiff) != "" {
 		if err := tarAddBytes(tw, "staged.diff", []byte(stagedDiff)); err != nil {
 			return nil, err
@@ -536,7 +604,11 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	if st, err := payload.Stat(); err == nil {
 		timingf("sync payload %dB commits=%d", st.Size(), summary.Commits)
 	}
-	asLeft := guestAsLastSyncLeft(probe, syncKey, head, branch, summary.Commits, noDiff && len(untracked) == 0)
+	subsClean := superOps == ""
+	for _, s := range subs {
+		subsClean = subsClean && !s.changed()
+	}
+	asLeft := guestAsLastSyncLeft(probe, syncKey, head, branch, summary.Commits, noDiff && len(untracked) == 0 && subsClean)
 	summary.Unchanged = !opts.StashRemote && !opts.DiscardRemote && cloned == "" && envScript == "" && asLeft &&
 		(probe.hasOrigin || opts.NoRemote || originURLFor(opts.RemoteURL) == "")
 	if nothingNew && !asLeft && cloned == "" {
@@ -562,7 +634,7 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		// The key is cleared before the checkout is touched and written
 		// once the apply has finished, so a sync that stopped half way
 		// never matches.
-		script = applyScript(slug, head, branch, track, bundleRefs, len(bundleRefs) > 0, opts, probe) + envScript + recordSyncedScript +
+		script = applyScript(slug, head, branch, track, bundleRefs, len(bundleRefs) > 0, opts, probe, subScript+superOps) + envScript + recordSyncedScript +
 			fmt.Sprintf("printf '%%s\\n' %s > \"$repose_synced-key\"\n", syncKey)
 		// Right after the unpack, before anything touches the checkout:
 		// the stash below needs the identity the git part carries.
@@ -597,6 +669,9 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 			summary.Detached, summary.Diverged = true, true
 		case "#stashedsync":
 			summary.StashedLastSync = true
+		}
+		if rest, ok := strings.CutPrefix(l, "#subfailed "); ok {
+			summary.SubFailed = append(summary.SubFailed, rest)
 		}
 		if rest, ok := strings.CutPrefix(l, "#kept "); ok {
 			summary.EnvKept = append(summary.EnvKept, rest)
@@ -645,7 +720,7 @@ func countCommitsToSend(localRepoDir string, wantRefs, tips []string) (int, erro
 
 // syncKeyVersion is folded into the sync key; a change to what an apply
 // does bumps it, so no guest skips the first apply of the new shape.
-const syncKeyVersion = "sync-2"
+const syncKeyVersion = "sync-3"
 
 // guestAsLastSyncLeft reports whether the probe found the guest exactly
 // as the last completed sync left it, and that sync sent what this one
@@ -708,7 +783,7 @@ while IFS= read -r l || [ -n "$l" ]; do printf '%s%%s
 // guest's tree aside if asked, fetch the bundle, move the refs, check
 // out, and lay the staged and unstaged diffs and the untracked files on
 // top.
-func applyScript(slug, head, branch, track string, bundleRefs []string, hasBundle bool, opts SyncOptions, probe guestProbe) string {
+func applyScript(slug, head, branch, track string, bundleRefs []string, hasBundle bool, opts SyncOptions, probe guestProbe, subScript string) string {
 	var b strings.Builder
 	_, _ = fmt.Fprintf(&b, "set -e\ncd ~/%s\n", slug)
 	b.WriteString(syncedFP)
@@ -722,8 +797,10 @@ func applyScript(slug, head, branch, track string, bundleRefs []string, hasBundl
 	if len(probe.dirty) > 0 {
 		switch {
 		case opts.DiscardRemote:
+			b.WriteString(inEverySub("if git rev-parse -q --verify HEAD >/dev/null; then repose_git reset -q --hard; fi; repose_git clean -fdq"))
 			b.WriteString("if git rev-parse -q --verify HEAD >/dev/null; then repose_git reset -q --hard; fi\nrepose_git clean -fdq\n")
 		case opts.StashRemote:
+			b.WriteString(inEverySub("repose_git stash push -q -u -m 'repose run'"))
 			b.WriteString("repose_git stash push -q -u -m 'repose run'\n")
 		case probe.syncedOnly:
 			// The last sync's own changes, which the laptop still has (or
@@ -731,6 +808,7 @@ func applyScript(slug, head, branch, track string, bundleRefs []string, hasBundl
 			// lands after this check is still recoverable; and not at all
 			// if something moved since the probe looked.
 			_, _ = fmt.Fprintf(&b, "if [ \"$(repose_fp)\" != \"$(cat \"$repose_synced\" 2>/dev/null)\" ]; then echo %s >&2; exit 3; fi\n", shQuote(syncedChanged))
+			b.WriteString(inEverySub("repose_git stash push -q -u -m 'repose run: last sync'\n" + pruneSyncStashes))
 			b.WriteString("repose_git stash push -q -u -m 'repose run: last sync'\necho '#stashedsync'\n" + pruneSyncStashes)
 		}
 	}
@@ -765,8 +843,19 @@ fi
 	// laptop (I-258).
 	b.WriteString("if [ -s \"$t/staged.diff\" ]; then git apply --index \"$t/staged.diff\"; fi\n")
 	b.WriteString("if [ -s \"$t/unstaged.diff\" ]; then git apply \"$t/unstaged.diff\"; fi\n")
+	// Submodules after the superproject's diffs (a new one's .gitmodules
+	// entry is among them) and before the untracked tar, which holds
+	// their untracked files too (I-263).
+	b.WriteString(subScript)
 	b.WriteString("if [ -f \"$t/untracked.tar\" ]; then tar -x -f \"$t/untracked.tar\"; fi\n")
 	return b.String()
+}
+
+// inEverySub runs cmd in each checked-out submodule of the guest's
+// checkout, nested ones included, before the superproject's own: a stash
+// or reset there does not reach into them (submodule.recurse=false).
+func inEverySub(cmd string) string {
+	return "repose_sublist | while IFS= read -r repose_p; do (cd \"$repose_p\" || exit 1; " + strings.TrimRight(cmd, "\n") + "\n) || exit 1; done\n"
 }
 
 // syncStashKeep is how many "repose run: last sync" stashes the guest
@@ -1088,6 +1177,13 @@ func (s *SyncSummary) Warnings() []string {
 	short := s.Head
 	if len(short) > 7 {
 		short = short[:7]
+	}
+	for _, f := range s.SubFailed {
+		p, why, _ := strings.Cut(f, "\t")
+		w = append(w, fmt.Sprintf("Submodule %s is empty on the machine: it is a shallow clone on your laptop, so the machine fetched it itself, and that failed (%s).", p, why))
+	}
+	for _, p := range s.SubNotSent {
+		w = append(w, fmt.Sprintf("Your changes inside submodule %s were not sent: it is a shallow clone on your laptop. Run `git -C %s fetch --unshallow` to send them next time.", p, p))
 	}
 	if s.CloneFailed != "" {
 		w = append(w, fmt.Sprintf("The guest could not clone from GitHub (%s), so the history was sent from your laptop instead.", s.CloneFailed))

@@ -6602,3 +6602,64 @@ release; the dashboard ships with the web app. *Rejected:* an opt-in
 it); a daily repeat of the email (a nag the user cannot silence short of
 turning email off); a column in the `projects` table (every row would
 pay for a rare state).
+**I-263. Submodules travel with the sync, their commits bundled from the
+laptop like the superproject's.** (feature round, worker D, 2026-09-26; a
+fact-check found the carry never recursed into submodules and nothing ran
+`git submodule update` on the guest, so a submodule arrived as an empty
+directory and edits inside one never travelled) Every submodule the
+laptop has checked out (a `.git` in its directory), nested ones
+included, parents first, is carried the way I-150 carries the
+superproject: the probe lists each checked-out submodule of the guest's
+checkout with the commits its refs and `HEAD` point at; the laptop
+bundles its submodule's `HEAD` minus what the guest's copy has; the apply
+`git init`s the directory when needed, `git bundle unbundle`s, checks out
+the laptop's submodule `HEAD` (its branch created or fast-forwarded when
+the laptop is on one, detached otherwise, an agent's diverged branch left
+alone), records that commit in `refs/repose/laptop-head` (so the next
+probe finds it after an agent's commit moves `HEAD`, and gc keeps a
+commit only the laptop has), applies the staged and unstaged diffs as
+I-258 does, and runs `git submodule init` and `sync` for it, so its
+`origin` is what `.gitmodules` names, resolved against the guest's
+origin. A laptop submodule `HEAD` that differs from the recorded commit
+arrives as it is, so `git status` reads "new commits" on both sides. The
+superproject's diffs now pass `--ignore-submodules=all` (a "Subproject
+commit" hunk does not apply to a checkout), and a staged submodule
+change, addition or removal is set with `git update-index --cacheinfo`
+/ `--force-remove` in each repository. Untracked files of every
+submodule join the one untracked tar, so I-194's limits and skipped
+directories count them together; gitignored `.env` files in submodules
+join I-197's carry. The summary's modified count counts files inside
+submodules and no longer counts a submodule as a file. I-210's
+fingerprint no longer fails on any submodule change: it appends each
+checked-out submodule's own `HEAD` and `git add -A` tree, so the tree a
+sync left with submodule edits is still recognised as the last sync's,
+and `--stash-remote`, `--discard-remote` and the last-sync stash (with
+its prune) run in every submodule before the superproject. I-248 counts
+submodule commits in "nothing new". Both the laptop and the guest skip
+the listing when a repository has no `.gitmodules` (the laptop also
+reads `.gitmodules` in `HEAD` for a staged removal), so a repository
+without submodules pays a stat. The sync key hashes all of it and its
+version moves to `sync-3`. A shallow laptop submodule cannot be bundled:
+the guest runs `git submodule update --init` for it itself
+(`GIT_TERMINAL_PROMPT=0`, ssh in batch mode, so nothing prompts), which
+works for github.com with the carried gh login; a failure prints
+`Submodule <path> is empty on the machine: ...` with git's last line
+and the run goes on, and edits inside a shallow submodule are not sent,
+with a warning naming `git -C <path> fetch --unshallow`. A submodule the
+laptop never checked out stays empty in the guest. Not done: I-203's
+GitHub clone for a large submodule's first sync (the laptop sends the
+whole history); the laptop's `origin/<branch>` refs inside submodules.
+`TestSyncCarriesSubmodules`, `TestSyncNestedAndNewSubmodulesIntoAnEmptyGuest`,
+`TestSyncLeavesAnAgentsSubmoduleCommitAlone`,
+`TestSyncShallowSubmoduleFailsSoftly`,
+`TestSyncedFingerprintCoversSubmodulesUnderPOSIXSh`,
+`TestEnvCarryIncludesSubmodules`. Interfaces: none (CLI and stock git on
+the guest; no guestd or base change). `features/sync-at-launch.md`,
+`07-cli.md` §5.5 and the public `sync.md` say so in this commit.
+*Rejected:* `git submodule update --init --recursive` on the guest for
+every submodule (needs credentials for each remote, which the guest has
+only for github.com, and loses unpushed submodule commits, the reason
+I-150 bundles); carrying the submodule's files as a tar (no history, and
+an agent could not commit in it); keeping I-210's "any submodule change
+fails the fingerprint" (every sync that carried a submodule edit would
+refuse the next run with new work as an agent's).

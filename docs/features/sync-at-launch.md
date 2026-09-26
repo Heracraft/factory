@@ -92,8 +92,9 @@ Your laptop has new work as well, so syncing now would write over them. Nothing 
   misjudged is lost; only the newest 10 such stashes are kept, and the
   user's own stashes and `--stash-remote`'s are never dropped), lays down the laptop's current ones, and the summary
   line ends "the last sync's changes stashed in the guest". An edit to a
-  synced file, a new file, a commit, or any change inside a submodule
-  changes the fingerprint and refuses as above, including one made
+  synced file, a new file, a commit, or a change inside a submodule
+  (each checked-out submodule adds its own `HEAD` and tree to the
+  fingerprint, DECISIONS I-263) changes the fingerprint and refuses as above, including one made
   between the probe and the apply; a tree that was clean at the probe is
   checked again before the files are laid down, so an agent's new file is
   never overwritten by one the laptop sends. `git stash push -u` cleans
@@ -132,6 +133,25 @@ Your laptop has new work as well, so syncing now would write over them. Nothing 
   in `~/<slug>`. Bundle, diff and untracked tar go as one payload in one
   ssh; nothing writes a custom sync helper into the guest, and every
   command there is stock git and tar.
+- Submodules travel like the superproject (DECISIONS I-263). Every
+  submodule the laptop has checked out, nested ones included, arrives
+  checked out at the laptop's submodule `HEAD` (which may differ from the
+  commit the superproject records, and then `git status` says so on both
+  sides). Its commits go as a bundle of what the guest's copy lacks, so a
+  submodule commit only the laptop has travels and a private submodule
+  remote needs nothing on the guest; its staged and unstaged diffs,
+  untracked files (inside the same size limits and skipped directories)
+  and gitignored `.env` files follow the superproject's rules. A staged
+  submodule change, addition or removal is staged in the guest too. The
+  guest registers each one (`git submodule init` and `sync`), so its
+  `origin` is the URL `.gitmodules` names. `--stash-remote`,
+  `--discard-remote` and the last-sync stash act inside every submodule
+  as well. A submodule the laptop never checked out stays empty in the
+  guest. A shallow submodule cannot be bundled: the guest runs `git
+  submodule update --init` for it itself (gh's login covers github.com);
+  when that fails the run goes on and says `Submodule <path> is empty on
+  the machine: ...`, and edits inside a shallow submodule are not sent,
+  with a warning to `git -C <path> fetch --unshallow`.
 - An empty guest checkout (a bare `git init`, or no directory at all) is
   filled the same way: the first bundle is the full history.
 - A laptop directory that is not a git repository, has no commit yet, or

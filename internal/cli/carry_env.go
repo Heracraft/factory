@@ -36,8 +36,28 @@ func isEnvName(base string) bool {
 
 // buildEnvCarry lists the checkout's ignored, untracked files (collapsing
 // ignored directories, so a node_modules tree costs one line) and keeps
-// the .env files among them.
+// the .env files among them, in every checked-out submodule too (I-263),
+// with paths relative to the superproject.
 func buildEnvCarry(repoDir string) ([]envFile, error) {
+	files, err := envFilesIn(repoDir, "")
+	if err != nil {
+		return nil, err
+	}
+	for _, sub := range populatedSubmodules(repoDir) {
+		more, err := envFilesIn(repoDir, sub.Path)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, more...)
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].Rel < files[j].Rel })
+	return files, nil
+}
+
+// envFilesIn lists the .env files of the repository at top/sub ("" for
+// top itself), as paths relative to top.
+func envFilesIn(top, sub string) ([]envFile, error) {
+	repoDir := filepath.Join(top, filepath.FromSlash(sub))
 	out, err := gitCmdStdin(repoDir, "", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
 	if err != nil {
 		return nil, err
@@ -59,9 +79,8 @@ func buildEnvCarry(repoDir string) ([]envFile, error) {
 		if err != nil {
 			continue
 		}
-		files = append(files, envFile{Rel: rel, Body: b, Mtime: info.ModTime().Unix()})
+		files = append(files, envFile{Rel: path.Join(sub, rel), Body: b, Mtime: info.ModTime().Unix()})
 	}
-	sort.Slice(files, func(i, j int) bool { return files[i].Rel < files[j].Rel })
 	return files, nil
 }
 

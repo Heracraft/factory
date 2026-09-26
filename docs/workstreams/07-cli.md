@@ -305,7 +305,10 @@ $ repose run
       first (`git stash push -u -m "repose run: last sync"`, said in the
       summary line; stashes with exactly that message past the newest 10
       are dropped, others never), after checking the fingerprint again (a change in
-      between is exit 6). A submodule change always fails the fingerprint.
+      between is exit 6). Each checked-out submodule, nested ones too,
+      adds its own `HEAD` and `git add -A` tree to the fingerprint, and
+      the stash, discard and last-sync stash run in each of them as well
+      (I-263).
       Every status here runs with `-c status.showUntrackedFiles=normal -c
       submodule.recurse=false --ignore-submodules=none`. Step d ends by
       writing the fingerprint when it leaves the tree dirty, and removing
@@ -329,6 +332,14 @@ $ repose run
       100 MB with a warning, dependency/cache directories at any depth
       (named once), and anything past 500 MB in total; symlinks travel as
       symlinks. Respect `sync.exclude`, matched at any depth (I-194).
+      Submodules the laptop has checked out go the same way, parents
+      first (I-263): a bundle of what the guest's copy lacks (its refs come
+      back from the probe), checkout of the laptop's submodule `HEAD`, a
+      ref `refs/repose/laptop-head`, the two diffs, the index's submodule
+      entries set with `git update-index`, `git submodule init` and
+      `sync`; their untracked files ride the one untracked tar. The
+      superproject's diffs pass `--ignore-submodules=all`. A shallow
+      submodule is fetched by the guest itself, a failure a warning.
    e. Print `Synced: 4 modified, 2 untracked`, plus `(3 new commits)` when
       commits travelled.
    f. A project created with `--name` in a directory that has no git

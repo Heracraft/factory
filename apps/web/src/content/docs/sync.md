@@ -35,6 +35,12 @@ To leave out more, add gitignore-style patterns to `~/.config/repose/config.toml
 exclude = ["dist", "*.mp4", "fixtures/large"]
 ```
 
+## Submodules
+
+Submodules you have checked out travel the same way, nested ones included. Each arrives at the commit your laptop has checked out in it, with its uncommitted changes, untracked files and `.env` files, under the same rules and limits as the rest of the checkout. Submodule commits you haven't pushed travel too, and a private submodule needs no access from the machine. A submodule you never checked out on your laptop stays empty on the machine.
+
+A submodule that is a shallow clone on your laptop can't be sent. The machine fetches it from its own remote instead, which works for github.com when you're logged in to `gh`. If that fails, the run goes on and the CLI says the submodule is empty on the machine. Changes inside a shallow submodule aren't sent; run `git -C <path> fetch --unshallow` on your laptop to send them.
+
 ## When the machine has changes of its own
 
 `repose run` only copies your laptop's work onto the machine. It never restarts or rebuilds the machine, so running it again on a machine an agent is working on is safe.
