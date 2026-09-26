@@ -1,11 +1,29 @@
 # Backlog triage: the owner's open notes (proposal, 2026-09-24)
 
-**Status: analysis only. Nothing here is decided.** Each item below is an
-unticked line from the owner's personal notes. For each one, this file
-records what the repo has today (with file references), what outside
-research found, and a recommendation. An item becomes real only through a
-`DECISIONS.md` entry. The Claude login item has its own file:
-`2026-09-24-claude-login-shared-folder.md`.
+**Status: settled on 2026-09-25; every item has an outcome below.** The
+body is a snapshot of the repo and the research on 2026-09-24, kept as the
+reasoning record: its "Today" sections describe the repo before those
+outcomes and are not updated. Where this file and a decision entry
+disagree, the entry wins.
+
+| # | Item | Outcome |
+|---|---|---|
+| 1 | Vercel CLI and portless | recorded: stay menu entries (I-256) |
+| 2 | Voice mode | recorded: dropped (I-256) |
+| 3 | Image paste | built: `repose paste` (I-252) |
+| 4 | Preview URLs | not approved on 2026-09-25 |
+| 5 | Quick path to production | recorded: stays deferred (I-256) |
+| 6 | Log into Claude once | open: `2026-09-24-claude-login-shared-folder.md` |
+| 7 | Home page additions | not approved on 2026-09-25 |
+| 8 | Test the browser features | done in round 3 (I-246, checked live) |
+| 9 | Try exe.dev | the owner's own trial, not repose work |
+| 10 | Something special because it's a microVM | built: `repose fork` (I-254, I-255) |
+| 11 | `bypassPermissions` as the default | built for Claude Code (I-250) |
+| 12 | Several runs of one project | built: any number of windows, `--worktree` (I-253) |
+| 13 | Platform CLAUDE.md / AGENTS.md | done in round 3 (I-243, I-244) |
+| 14 | cloudflared | built: menu entry (I-251) |
+| 15 | Coolify or hosting in a guest | recorded: terms line, no technical block (I-257) |
+| 16 | Private invite beta | not approved on 2026-09-25 |
 
 Sources:
 - Repo state as of `a2aad99` on local main. Local main was 10 commits ahead of

@@ -18,6 +18,9 @@ says secrets have three homes.
 - **The fallback:** R2-15 documents `claude setup-token` stored as the
   `CLAUDE_CODE_OAUTH_TOKEN` named secret. `ANTHROPIC_API_KEY` is also
   documented.
+- **Copies of a disk:** `repose fork` (I-254) and `snapshots restore
+  --as-new` copy the whole volume, so a login made in the source guest
+  comes along in every copy. Undecided whether that counts as copying.
 - **The settings carry:** it strips `env`, `apiKeyHelper` and cloud-auth
   helpers from `settings.json` (I-196, `internal/cli/carry_claude.go:207-214`).
 

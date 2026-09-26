@@ -16,18 +16,18 @@ the direction in conversation; it is still not a decision until recorded.
 |---|---|---|
 | 1 | Carry laptop config (git, Claude) at `run`/`attach` | agreed: git denylist, Claude merge; measure; `config.toml` parked |
 | 2 | Timezone follows the laptop on every run | agreed (small) |
-| 3 | Extra CLIs (vercel, portless) | agreed: no base change |
+| 3 | Extra CLIs (vercel, portless) | agreed: no base change (recorded as I-256) |
 | 4 | Shared package store per host | agreed: download cache for npm/pnpm and Docker on each host |
 | 5 | Ports: auto-forward while attached | agreed (option A, printed in tmux) |
 | 6 | Process lifetime and stale dev servers | agreed (OOMScoreAdjust, visibility) |
 | 7 | Copying out: `repose cp`, clipboard shims, last-output bindings | decided: `cp` (I-201); shims and bindings not agreed |
-| 8 | Image paste and voice | deferred, documented here |
-| 9 | Claude login across N projects | open: needs its own session; N logins not acceptable |
+| 8 | Image paste and voice | later: paste built as `repose paste` (I-252), voice dropped (I-256) |
+| 9 | Claude login across N projects | open: continued in `2026-09-24-claude-login-shared-folder.md` |
 | 9b | Secrets and `.env` | decided: copy `.env` over SSH (I-197) |
 | 10 | Hybrid first sync (clone from GitHub, bundle the rest) | agreed |
 | 11 | GitHub access without platform branding | connector dropped for now |
 | 12 | Trial credit | decided: one day of compute, $3.36 credit (I-205) |
-| 13 | Quick path to production | deferred |
+| 13 | Quick path to production | deferred (recorded as I-256) |
 | 14 | Observability with Alloy | declined |
 
 ---
@@ -364,7 +364,7 @@ Proposed, cheap:
 
 ---
 
-## 8. Image paste and voice (deferred)
+## 8. Image paste and voice (deferred; later I-252 and I-256)
 
 > Voice mode and image pasting gotta work somehow
 
