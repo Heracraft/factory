@@ -117,6 +117,12 @@ cd ~/code/your-project && repose run</pre>
 										up {uptime(p.started_at)}
 									</div>
 								{/if}
+								{#if p.state === 'running' && p.idle}
+									<!-- Nobody on it for a day, still billing (I-262). -->
+									<div class="mt-0.5 text-xs text-amber-700 dark:text-amber-400">
+										idle {uptime(p.idle.since)} · ~{money(p.idle.hourly_cents)}/h
+									</div>
+								{/if}
 								{#if reason(p)}
 									<div class="mt-0.5 max-w-xs text-xs text-red-700 dark:text-red-400">
 										{reason(p)}

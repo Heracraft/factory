@@ -64,6 +64,9 @@ func writeProjectsTable(w io.Writer, projects []Project) {
 		if r := abuseStopReason(p); r != "" {
 			_, _ = fmt.Fprintf(w, "%s: %s\n", p.Slug, r)
 		}
+		if l := idleLine(p, time.Now()); l != "" {
+			_, _ = fmt.Fprintf(w, "%s: %s\n", p.Slug, l)
+		}
 		if p.State == "error" {
 			reason := projectReason(p)
 			if reason == "" {
@@ -86,6 +89,10 @@ func writeStatusLines(w io.Writer, p *Project, route *Route, snaps []Snapshot, e
 	if r := abuseStopReason(p); r != "" {
 		// DECISIONS I-239: the platform stopped it, and says why.
 		_, _ = fmt.Fprintf(w, "  %s\n", r)
+	}
+	if l := idleLine(p, time.Now()); l != "" {
+		// DECISIONS I-262: nobody on it for a day, and still billing.
+		_, _ = fmt.Fprintf(w, "  %s\n", l)
 	}
 	if p.State == "error" {
 		reason := projectReason(p)

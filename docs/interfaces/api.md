@@ -48,7 +48,8 @@ Project { id, name, slug, remote_url, class, state, host_id?, guest_ip?,
           signals?: {ssh_sessions, tmux_clients, agents: [{agent, window, state}],
                      guestd_ok},
           cost_today_cents, cost_month_cents, last_snapshot_at?,
-          last_error?, host_unreachable, tz }
+          last_error?, host_unreachable, tz,
+          idle?: {since, hourly_cents} }
 
 DestroyedProject { id, name, slug, class, remote_url?, volume_bytes,
           destroyed_at, name_free, restorable_until?,
@@ -65,6 +66,14 @@ has missed heartbeats for 90 seconds; `signals.guestd_ok` is false when
 the newest sample found the environment's agent not answering (I-157).
 The api has returned all three since I-157/I-159; they are documented
 here since I-167. `signals` is absent until the first sample.
+`idle` (DECISIONS I-262) is present only on a `running` project that has
+gone 24 hours with no sample showing an SSH session, a tmux client, a
+working agent (an agent in `idle` or `needs_input` is not working) or
+guestd not answering, counted from `started_at`, and whose newest sample
+is at most 10 minutes old; `since` is when that stretch began (looking
+back at most 14 days, so on a longer stretch it is 14 days ago) and
+`hourly_cents` the class's hourly price. Older clients ignore it; an api
+without it means "not idle".
 
 A `DestroyedProject`'s `snapshot` is its newest restorable snapshot and
 `restorable_until` that snapshot's `expires_at` (30 days after the
@@ -138,7 +147,9 @@ sshd material (delivered by hostd into the same tmpfs from the explicit
 Event kinds are those of `features/notifications.md`; `agent_message`
 (from `repose-notify`) and `agent_question` (from `repose-ask`, whose
 `summary` is the question text) were added by DECISIONS I-244. A client
-that does not know a kind shows it by name.
+that does not know a kind shows it by name. `idle_running` (source
+`api`, once per idle stretch; the summary names the class, the hourly
+rate and `repose stop <slug>`) was added by DECISIONS I-262.
 
 ## Questions (DECISIONS I-244, I-245)
 

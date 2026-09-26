@@ -290,7 +290,7 @@ func (o *Outbox) gauges(ctx context.Context) {
 // Title renders the one-line title of a message: what the ntfy Title
 // header and ordinary email subjects use.
 func Title(m Message) string {
-	verb := map[string]string{"completed": "finished", "needs_input": "needs input", "error": "hit an error", "agent_message": "says", "agent_question": "asks"}[m.Kind]
+	verb := map[string]string{"completed": "finished", "needs_input": "needs input", "error": "hit an error", "agent_message": "says", "agent_question": "asks", "idle_running": "idle, still billing"}[m.Kind]
 	if verb == "" {
 		verb = strings.ReplaceAll(m.Kind, "_", " ")
 	}

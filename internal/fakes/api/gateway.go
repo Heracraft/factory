@@ -1,6 +1,9 @@
 package api
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 // Test helpers for the gateway (workstream 06): direct control over what
 // the internal routes answer, without going through the user routes.
@@ -65,6 +68,22 @@ func (f *Fake) SetState(projectID, state string) {
 		f.ipSeq++
 		p.GuestIP = "10.64.4." + itoa(10+f.ipSeq)
 	}
+}
+
+// SetIdle marks a project idle since the given time at the given hourly
+// rate, or clears it with a nil since (DECISIONS I-262).
+func (f *Fake) SetIdle(projectID string, since *time.Time, hourlyCents int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.projects[projectID]
+	if !ok {
+		return
+	}
+	if since == nil {
+		p.Idle = nil
+		return
+	}
+	p.Idle = &Idle{Since: *since, HourlyCents: hourlyCents}
 }
 
 // SetGuestIP sets a running project's guest address (tests point it at an

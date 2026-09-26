@@ -18,7 +18,7 @@ todo-app   large  running  2h14m  claude: working  $0.31  $18.40
 api-v2     xl     stopped  -      -                $0.00  $41.02
 ```
 
-A machine runs until you stop it; repose never stops one for being idle. For one project in detail, including which processes are listening on ports:
+A machine runs until you stop it; repose never stops one for being idle. It does tell you when one is, see [Idle machines](#idle-machines). For one project in detail, including which processes are listening on ports:
 
 ```
 repose status todo-app
@@ -40,6 +40,23 @@ todo-app is running (large), ready in 9s. `repose attach todo-app` to get in.
 Stopping ends every process and snapshots the disk (`--no-snapshot`, or unticking **Snapshot on stop** in the dashboard, skips that). The disk stays, with everything in `/home/dev`. A stopped machine costs only its disk. `repose run` in the checkout starts a stopped machine too.
 
 `repose start` is also the fix for a project in the `error` state: it restarts the machine on its newest configuration. The dashboard's **Start** button is there only while a project is stopped.
+
+## Idle machines
+
+A machine is idle when it has been running for 24 hours with no SSH session, no tmux client and no agent working. An agent sitting at its prompt, finished or waiting for you, doesn't count as working. repose doesn't stop an idle machine, because an agent's long job can look the same from outside. It tells you instead:
+
+```
+$ repose projects
+PROJECT    CLASS  STATE    UP      AGENTS         TODAY  MONTH
+todo-app   large  running  31h02m  claude: idle   $3.36  $22.10
+todo-app: idle 26h, billing ~$0.14/h; `repose stop todo-app` stops it
+```
+
+- `repose status` shows the same line, and the dashboard's project list shows the idle time and rate under the state.
+- `repose run` and `repose attach` in another project print one line naming it, once per idle stretch.
+- You get one notification, by email and ntfy if you have them on ([Notifications](/docs/notifications)), with the title `todo-app: idle, still billing`. You get another only after the machine has been used and gone idle again.
+
+The rate is the class's hourly price; the month's compute still stops at the class's cap ([Billing](/docs/billing)). When the server hasn't reported on the machine for 10 minutes, for example while it's unreachable, repose can't tell and says nothing.
 
 ## Snapshots
 

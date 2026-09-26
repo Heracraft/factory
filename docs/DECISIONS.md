@@ -6558,3 +6558,47 @@ the terms ("within twenty-four hours"), DESIGN, SECURITY and RUNBOOK say
 so in this commit. Needs an api redeploy; existing 12-hour certificates
 run out on their own. *Rejected:* a `ProxyCommand` that renews on every
 connection (more code for the same morning; the research ranked it low).
+**I-262. An idle running machine is announced, never stopped.**
+(feature round, 2026-09-26; research report breakage 2: a forgotten
+`large` machine bills up to its $99 cap plus disk) R1-5 stands: repose
+does not stop a machine for being idle. It now says so, from the signals
+R1-5 had recorded since day one (`meter_samples.ssh_sessions`,
+`tmux_clients`, `agents`, `guestd_ok`, one row a minute per guest). No
+new signal, no guestd or hostd change and no migration. A `running`
+project is idle when, counted from `started_at`, no sample for 24 hours
+showed an SSH session, a tmux client, an agent in a state other than
+`idle` or `needs_input`, or guestd not answering, and its newest sample
+is at most 10 minutes old (an unreachable host, or a gap in samples, is
+not evidence that nobody is there). The brief said "no agent process";
+this counts an agent at its prompt as not working, because the machine
+people forget is the one whose `repose run` left Claude open at its
+prompt, and a warning (unlike a stop) costs nothing when it is wrong.
+Surfaces: `idle: {since, hourly_cents}` on the Project of GET /projects
+(api.md, added in this commit; absent means not idle, so older clients
+and older apis agree); a line under `repose projects` and in `repose
+status` ("idle 26h, billing ~$0.14/h; `repose stop <slug>` stops it");
+one line on `run` and `attach` naming the other idle projects, once per
+idle stretch, remembered in `~/.config/repose/idle-noted.json`
+(cli-config.md), skipped on the attach fast path because that path makes
+no api call (I-223); the dashboard's project list shows "idle 26h ·
+~$0.14/h" under the state; and one `idle_running` event per idle
+stretch, which goes through the ordinary outbox to email and ntfy under
+the user's existing settings and unsubscribe link (title `<project>:
+idle, still billing`). The warner runs on the hourly rollup tick under
+its advisory lock; "once" is `no idle_running event with ts at or after
+the stretch's start`, so a restart, a second replica or a resent tick
+never warns twice, and a machine that is used and goes idle again warns
+again. GET /projects looks back at most 14 days for the last use, so a
+machine up for months costs a list two weeks of its samples and shows
+"idle 14d" at most; the warner looks back to `started_at`, where a
+stretch's start does not slide. The event summary carries the slug,
+hours, class and price only.
+`TestIdleRunningProjectWarnsOncePerStretch`, `TestProjectJSONIdle`,
+`TestSince`, `TestIdleOthersNoteOncePerStretch`,
+`TestRunMentionsOtherIdleProject`. Needs an api redeploy and a CLI
+release; the dashboard ships with the web app. *Rejected:* an opt-in
+`idle_stop` (overrides R1-5; the owner's call, research report question
+2); a new guestd "last attach" signal (the minute samples already say
+it); a daily repeat of the email (a nag the user cannot silence short of
+turning email off); a column in the `projects` table (every row would
+pay for a rare state).

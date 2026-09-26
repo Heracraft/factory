@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-310 entries.
+311 entries.
 
 ## Scope
 
@@ -342,3 +342,4 @@ pointer, not a summary.
 - **I-255** A volume set up under another slug links its old checkout to the new name — 2026-09-25; L6492
 - **I-258** The sync keeps the laptop's split between staged and unstaged work — 2026-09-26; L6523
 - **I-267** User SSH certificates last 24 hours — 2026-09-26; L6544
+- **I-262** An idle running machine is announced, never stopped — 2026-09-26; L6561

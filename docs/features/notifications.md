@@ -49,7 +49,10 @@ Events (see agents.md for how each agent produces them):
   destroy, so its failure is announced), `host_moved` and
   `abuse_stopped` (I-239: the guest was stopped because a cryptocurrency
   miner was running; the summary says which process and, on the third
-  stop in 24 hours, that the project cannot start until reviewed), and
+  stop in 24 hours, that the project cannot start until reviewed),
+  `idle_running` (DECISIONS I-262: a running guest with no SSH session,
+  no tmux client and no working agent for 24 hours; once per idle
+  stretch, title `<project>: idle, still billing`, never a stop), and
   the agent-sent `agent_message` and `agent_question` (DECISIONS I-244,
   below). Each carries the agent name (agent kinds only), the
   tmux window, a summary of at most 1 KB, and a timestamp.

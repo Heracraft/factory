@@ -34,6 +34,8 @@ Create or start this checkout's machine, sync, and attach. With a prompt, start 
 
 Attach to the project's tmux session without syncing.
 
+`run` and `attach` print one line when another of your projects is running idle, once per idle stretch. An `attach` that reuses an open connection makes no api call and skips it.
+
 ### `repose open [PORT]`
 
 Forward one port to your laptop and open it in the browser, until `Ctrl-C`.
@@ -66,11 +68,11 @@ List the tools the next `repose run` would install on the machine, and why. Inst
 
 ### `repose projects`
 
-Every project in a table. `--json` for full records, `--destroyed` for destroyed projects that can still be restored (with `--all`, every one).
+Every project in a table, with a line under it for each running project nobody has used for a day ([Idle machines](/docs/lifecycle#idle-machines)). `--json` for full records, `--destroyed` for destroyed projects that can still be restored (with `--all`, every one).
 
 ### `repose status [PROJECT]`
 
-One project in detail, including processes listening on ports. `--json`, `--watch` (every 5 seconds).
+One project in detail, including processes listening on ports, and the idle line when it has had nobody on it for a day. `--json`, `--watch` (every 5 seconds).
 
 ### `repose start [PROJECT]`
 

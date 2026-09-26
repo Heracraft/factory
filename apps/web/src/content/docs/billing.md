@@ -34,6 +34,7 @@ Your first day of compute is free.
 ## Stopping the charges
 
 - `repose stop` ends compute. Disk continues.
+- A running machine nobody has used for 24 hours keeps billing. repose tells you, in the CLI and the dashboard and once by email, but doesn't stop it ([Idle machines](/docs/lifecycle#idle-machines)).
 - `repose destroy` ends everything for that project. Its final snapshot is kept free for 30 days.
 
 ## Deleting your account
