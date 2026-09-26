@@ -62,7 +62,8 @@ The desktop also stops itself after 30 minutes with no client.
   `claude mcp list`.
 - `repose open --desktop` starts x11vnc bound to localhost and noVNC on
   6080, and with them the agents' browser if it is not running, then
-  forwards 6080 over SSH and prints the URL. The user sees the page the
+  forwards 6080 over SSH (to laptop port 6080, or a free port with a
+  message when 6080 is taken, I-261) and prints the URL. The user sees the page the
   agent is on, live, and can click and type in it with no prompt and no
   agent restart. noVNC scales the screen to the tab. The VNC password is
   generated per start (read from `/run/repose/desktop/vnc-password` by

@@ -71,37 +71,46 @@ type guestListener struct {
 func parseListeners(out string) map[int]guestListener {
 	ls := map[int]guestListener{}
 	for _, line := range strings.Split(out, "\n") {
-		f := strings.Fields(line)
-		if len(f) < 4 {
-			continue
-		}
-		local := f[3]
-		i := strings.LastIndex(local, ":")
-		if i < 0 {
-			continue
-		}
-		host, portS := local[:i], local[i+1:]
-		port, err := strconv.Atoi(portS)
-		if err != nil || port < 1024 || port > 65535 || forwardPlatformPorts[port] {
-			continue
-		}
-		host = strings.Trim(host, "[]")
-		var reach string
-		switch host {
-		case "127.0.0.1", "0.0.0.0", "*", "::", "::ffff:127.0.0.1":
-			reach = "127.0.0.1"
-		case "::1":
-			reach = "::1"
-		default:
+		l, ok := parseListenerLine(line)
+		if !ok || l.Port < 1024 || forwardPlatformPorts[l.Port] {
 			continue
 		}
 		// An IPv4 listener wins over a v6-only loopback one on the same port.
-		if prev, ok := ls[port]; ok && prev.Host == "127.0.0.1" {
+		if prev, ok := ls[l.Port]; ok && prev.Host == "127.0.0.1" {
 			continue
 		}
-		ls[port] = guestListener{Port: port, Host: reach}
+		ls[l.Port] = l
 	}
 	return ls
+}
+
+// parseListenerLine reads one `ss -Hltn` line: the port, and the address
+// that reaches the listener from the guest's side of the tunnel. A
+// wildcard listener (0.0.0.0, ::, *) and a 127.0.0.1 one are reached at
+// 127.0.0.1; a listener on ::1 alone only at ::1 (Vite's default where
+// localhost resolves to ::1 first). Other addresses are not forwardable.
+func parseListenerLine(line string) (guestListener, bool) {
+	f := strings.Fields(line)
+	if len(f) < 4 {
+		return guestListener{}, false
+	}
+	local := f[3]
+	i := strings.LastIndex(local, ":")
+	if i < 0 {
+		return guestListener{}, false
+	}
+	host, portS := local[:i], local[i+1:]
+	port, err := strconv.Atoi(portS)
+	if err != nil || port < 1 || port > 65535 {
+		return guestListener{}, false
+	}
+	switch strings.Trim(host, "[]") {
+	case "127.0.0.1", "0.0.0.0", "*", "::", "::ffff:127.0.0.1":
+		return guestListener{Port: port, Host: "127.0.0.1"}, true
+	case "::1":
+		return guestListener{Port: port, Host: "::1"}, true
+	}
+	return guestListener{}, false
 }
 
 // forwarder keeps the laptop's forwards equal to the guest's listeners.

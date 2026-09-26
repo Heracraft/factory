@@ -411,6 +411,9 @@ func (f *Fake) execute(cmd *hostdv1.Command) *hostdv1.Result {
 		if g.State != "running" {
 			f.mu.Lock()
 			g.GuestdDead = false // a boot brings a fresh guestd
+			if c.StartGuest.Class != "" {
+				g.Class = c.StartGuest.Class // I-260, as hostd
+			}
 			f.mu.Unlock()
 			f.setState(g, "starting", "")
 			f.setState(g, "running", "")

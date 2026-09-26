@@ -15,6 +15,8 @@ You pay per project, for three things.
 | `large` | 4    | 8 GB   | $0.14    | $99         |
 | `xl`    | 8    | 16 GB  | $0.28    | $199        |
 
+A project that [changes size](/docs/machine#changing-the-size) during the month is billed each hour at the size it ran at, up to the cap of the largest size it ran at that month.
+
 **Disk**, $0.10 per GB per month on the disk's full size, running or stopped, until you destroy the project. A `large` project's 40 GB disk is $4 a month. Snapshots are free.
 
 **Egress**, data the machine sends to the internet: 500 GB per project per month included, then $0.05 per GB. Incoming data and your own SSH traffic, port forwards included, don't count.

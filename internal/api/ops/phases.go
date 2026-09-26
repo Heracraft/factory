@@ -609,6 +609,7 @@ func (e *Engine) buildStart(ctx context.Context, op *store.Op, p *store.Project,
 	}
 	return &hostdv1.Command{CommandId: newCommandID(), Cmd: &hostdv1.Command_StartGuest{StartGuest: &hostdv1.StartGuest{
 		GuestId: p.GuestID.String(), Secrets: d.secrets, Env: d.env, SshCaPub: e.ca.UserCAPub(), Principals: d.principals, HostKey: d.hostKey, HostCert: d.hostCert, ProjectJson: d.project,
+		Class: p.Class, // I-260: a class changed while stopped applies at this start
 	}}}, *p.HostID, false, nil
 }
 

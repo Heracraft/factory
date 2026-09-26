@@ -806,22 +806,54 @@ func newForkCmd(envJSON func(*cobra.Command) (*Env, error), env func() (*Env, er
 }
 
 func newResizeCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
+	var size string
+	var yes bool
 	cmd := &cobra.Command{
-		Use:   "resize SIZE",
-		Short: "Grow the project's disk (e.g. 80G); disks can't shrink",
-		Args:  cobra.ExactArgs(1),
+		Use:   "resize [DISK] [--size small|large|xl]",
+		Short: "Grow the project's disk (e.g. 80G), or change its size with --size",
+		Long: "With DISK, grows the project's disk (e.g. 80G); disks can't shrink.\n" +
+			"With --size, changes the project's size: small, large or xl. A stopped project starts at the\n" +
+			"new size; a running one is stopped (with a snapshot), changed and started again, after a\n" +
+			"confirmation that --yes skips.",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			bytes, err := parseSize(args[0])
-			if err != nil {
-				return cobraUsageError{err}
+			if len(args) == 0 && size == "" {
+				return cobraUsageError{fmt.Errorf("resize needs a disk size (e.g. 80G), --size small|large|xl, or both")}
+			}
+			var bytes int64
+			if len(args) == 1 {
+				var err error
+				if bytes, err = parseSize(args[0]); err != nil {
+					return cobraUsageError{err}
+				}
+			}
+			if size != "" {
+				if _, ok := classSpecs[size]; !ok {
+					return cobraUsageError{fmt.Errorf("--size must be small, large or xl, got %q", size)}
+				}
 			}
 			e, err := env()
 			if err != nil {
 				return err
 			}
-			return ResizeCmd(cmd.Context(), e, g.project, bytes)
+			if bytes > 0 {
+				if err := ResizeCmd(cmd.Context(), e, g.project, bytes); err != nil {
+					return err
+				}
+			}
+			if size == "" {
+				return nil
+			}
+			var confirm func(string) (bool, error)
+			if !yes {
+				confirm = func(prompt string) (bool, error) { return askYesNo(prompt, false, "restarting the machine") }
+			}
+			return ResizeClassCmd(cmd.Context(), e, g.project, size, confirm)
 		},
 	}
+	cmd.Flags().StringVar(&size, "size", "", "small|large|xl: change the project's size")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "with --size on a running project: stop and start it without asking")
+	_ = cmd.RegisterFlagCompletionFunc("size", cobra.FixedCompletions([]string{"small", "large", "xl"}, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
 }
 

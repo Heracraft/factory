@@ -6540,3 +6540,75 @@ left exactly as the last sync left it is still not dirty.
 what the owner did stage); `git stash create` on the laptop and applying
 the stash on the guest (needs the stash's objects in the bundle and a
 stash entry the user never made).
+
+**I-260. `repose resize --size` changes a project's class, and every
+start carries the class to the host.** (feature round, 2026-09-26; the
+research report's breakage 8: small OOMs on real stacks, and the class
+could not be changed from the CLI) The api already accepted `class` on
+`PATCH /projects/:id` while the project is stopped. The CLI shape is
+`repose resize [DISK] [--size small|large|xl] [--yes|-y]`: `resize`
+already means "give this project more", `--size` is the flag `run` and
+`fork` use for the class, and the disk argument (renamed `DISK` in the
+usage from `SIZE`, which read as the class) stays as it was, so both can
+go in one command. A stopped project is patched and starts at the new
+class; a running one is stopped with a snapshot, patched and started
+again, after a `[y/N]` question naming what the stop ends (agents
+included), which `--yes` skips and which without a terminal is exit 2,
+as `destroy` does. The same class prints "already" and does nothing; a
+PATCH refused after the stop (the xl limit) starts the project again at
+its old class before reporting why. The CLI prints the class's vCPUs,
+memory, hourly price and monthly cap from its own table
+(`classSpecs`), pinned by a test to `internal/billing` and hostd's
+`Classes`; it does not import billing, which pulls Stripe into the CLI.
+Checking that the host applies it found it did not: hostd booted a
+guest from the class recorded at `CreateGuest`, and `StartGuest` carried
+none, so a PATCH changed the api's label and nothing else, while the
+samples, and so billing, kept the old class. `StartGuest` gains `class`
+(field 10); the api sends the project's class on every start, and hostd,
+when it differs, checks memory for the new class, boots at its vCPUs and
+memory (unit `MemoryMax` included) and records it. Empty keeps the
+recorded class, so an api without the field is still accepted, and an
+old hostd ignores it (the class then changes at the next hostd deploy's
+first start). A host without memory for the larger class refuses the
+start with `insufficient_capacity` as any start would; the project is
+not moved. Billing already handles a mid-period change (the period's
+cap is the largest class run in it; billing.md says so now). The `oom`
+guestd warning the brief asked to name the command reaches only the api
+log and metric (`events.go`), never the user, so there is no warning
+text to change; machine.md's memory paragraph and troubleshooting.md
+name `repose resize --size` instead. `TestResizeClass`,
+`TestClassSpecsMatchBillingAndHost`, `TestStartAppliesChangedClass`,
+`TestLifecycle` (StartGuest carries the class). Interfaces:
+grpc-hostd.md says so in this commit. *Rejected:* a separate `repose
+size` command (a second verb for one idea); `--class` (the CLI calls the
+class "size" everywhere users see it); restarting a running project
+without asking (it ends running agents and changes what hours cost);
+refusing a running project with "stop it first" (the stop and start are
+what the user would type next).
+
+**I-261. `repose open` reaches a server on `::1`, and `open --desktop`
+picks a free laptop port.** (feature round, 2026-09-26) `repose open
+PORT` always forwarded to the guest's 127.0.0.1, so a dev server
+listening only on ::1 (Vite where localhost resolves to ::1 first) was
+unreachable, while auto-forward (I-199) already knew better. `open` now
+reads the guest's listeners once (`ss -Hltn` over the connection it has
+just made, bounded at 5 s) and forwards to ::1 when the port listens
+only there, else 127.0.0.1, which also reaches 0.0.0.0 and ::; the
+line parser is auto-forward's, shared (`parseListenerLine`), without
+auto-forward's platform-port filter since the user named the port. When
+nothing listens yet it forwards to 127.0.0.1 and says so on stderr; a
+server that later binds ::1 alone needs `repose open` again. `open
+--desktop` bound laptop port 6080 with no check, so a second project's
+desktop (or anything on 6080) failed after the desktop had started; it
+now uses 6080 when free and otherwise a free port, with the same
+"port N is taken; forwarding to M instead" line `open PORT` prints, and
+the URL names the port. Both use auto-forward's laptop check
+(`laptopPortFree`: 127.0.0.1, ::1 and the wildcards), not the old
+127.0.0.1-only one, so a laptop server on ::1 no longer hides the remap.
+`TestOpenForwardReachesWhereTheServerListens`,
+`TestOpenForwardsToAnIPv6OnlyServer` (a real sshd: the new forward
+reaches a ::1-only server, the old one does not),
+`TestPickLocalPortRemapsABusyPort`. *Rejected:* forwarding to
+`localhost` and letting the guest's sshd try each address (works only
+while the guest's resolver lists both, and hides which one was used);
+forwarding both addresses (ssh -L has one target per local port).

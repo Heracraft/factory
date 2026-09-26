@@ -431,6 +431,18 @@ func (m *Manager) start(ctx context.Context, c *hostdv1.StartGuest) *Error {
 	} else if !ok {
 		return errf(CodeNotFound, "volume for guest %s is missing", g.GuestID)
 	}
+	// DECISIONS I-260: the api sends the project's class on every start,
+	// so a class changed while the project was stopped takes effect here:
+	// the hypervisor's vCPUs and memory, the unit's MemoryMax and the
+	// class the samples (and so billing) report. The record is written by
+	// boot's first state change; a start refused below leaves it as it was.
+	if c.Class != "" && c.Class != g.Class {
+		if _, ok := Classes[c.Class]; !ok {
+			return errf(CodeInvalidArgument, "class %q must be small, large or xl", c.Class)
+		}
+		m.log(g).Info("guest class changed", "event", "guest_start", "class", c.Class, "prev", g.Class)
+		g.Class = c.Class
+	}
 	if m.FreeMemBytes() < (Classes[g.Class].MemMiB+OverheadMiB)<<20 {
 		return errf(CodeInsufficientCapacity, "not enough free memory for a %s guest", g.Class)
 	}

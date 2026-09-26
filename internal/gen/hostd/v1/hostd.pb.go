@@ -1129,6 +1129,9 @@ func (x *CreateGuest) GetProjectJson() []byte {
 // I-26) so a host that restarted, and holds nothing on disk, can deliver
 // secrets and sshd material again. All are optional; an old-shape
 // StartGuest with only guest_id is still accepted.
+// class is the project's size class; when set and different from the one
+// the guest was created with, hostd boots the guest at this class and
+// records it (DECISIONS I-260). Empty keeps the recorded class.
 type StartGuest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	GuestId       string                 `protobuf:"bytes,1,opt,name=guest_id,json=guestId,proto3" json:"guest_id,omitempty"`
@@ -1140,6 +1143,7 @@ type StartGuest struct {
 	HostKey       []byte                 `protobuf:"bytes,7,opt,name=host_key,json=hostKey,proto3" json:"host_key,omitempty"`
 	HostCert      []byte                 `protobuf:"bytes,8,opt,name=host_cert,json=hostCert,proto3" json:"host_cert,omitempty"`
 	ProjectJson   []byte                 `protobuf:"bytes,9,opt,name=project_json,json=projectJson,proto3" json:"project_json,omitempty"`
+	Class         string                 `protobuf:"bytes,10,opt,name=class,proto3" json:"class,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1235,6 +1239,13 @@ func (x *StartGuest) GetProjectJson() []byte {
 		return x.ProjectJson
 	}
 	return nil
+}
+
+func (x *StartGuest) GetClass() string {
+	if x != nil {
+		return x.Class
+	}
+	return ""
 }
 
 type StopGuest struct {
@@ -4124,7 +4135,7 @@ const file_repose_hostd_v1_hostd_proto_rawDesc = "" +
 	"\fproject_json\x18\x10 \x01(\fR\vprojectJson\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x86\x03\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9c\x03\n" +
 	"\n" +
 	"StartGuest\x12\x19\n" +
 	"\bguest_id\x18\x01 \x01(\tR\aguestId\x121\n" +
@@ -4138,7 +4149,9 @@ const file_repose_hostd_v1_hostd_proto_rawDesc = "" +
 	"\fhooks_config\x18\x06 \x01(\fR\vhooksConfig\x12\x19\n" +
 	"\bhost_key\x18\a \x01(\fR\ahostKey\x12\x1b\n" +
 	"\thost_cert\x18\b \x01(\fR\bhostCert\x12!\n" +
-	"\fproject_json\x18\t \x01(\fR\vprojectJson\x1a6\n" +
+	"\fproject_json\x18\t \x01(\fR\vprojectJson\x12\x14\n" +
+	"\x05class\x18\n" +
+	" \x01(\tR\x05class\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"j\n" +

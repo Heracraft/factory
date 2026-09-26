@@ -90,7 +90,7 @@ To forward one port without attaching:
 repose open 3000
 ```
 
-It opens your browser and runs until `Ctrl-C`. `--local-port 8080` picks the laptop port, `--no-browser` only prints the URL. `REPOSE_NO_FORWARD=1` turns the automatic forwarding off.
+It opens your browser and runs until `Ctrl-C`. It reaches a server listening on `127.0.0.1`, `0.0.0.0` or only on `::1` (as Vite does on some setups); if nothing listens on the port yet, it says so and forwards to `127.0.0.1`. If the port is taken on your laptop, it uses a free one and says which. `--local-port 8080` picks the laptop port, `--no-browser` only prints the URL. `REPOSE_NO_FORWARD=1` turns the automatic forwarding off.
 
 There are no public URLs for a project's ports. To show someone a running app, deploy it or use a tunnel. `cloudflared` is in the menu: `repose config add cloudflared` on your laptop. Then, on the machine:
 
@@ -118,7 +118,7 @@ http://localhost:6080/vnc.html?autoconnect=1 (Ctrl-C stops the forward; the desk
 VNC password: 5m2k8Q1p
 ```
 
-Enter the password in the page that opens. You see the agent's browser as it works, in the same window the agent uses, so you can click and type in it: solve a captcha, log in, approve a passkey. Whatever you log into there, the agent's browser tools can use afterwards. If no agent has used the browser yet, opening the desktop starts it.
+If port 6080 is taken on your laptop (another project's desktop, say), a free port is used instead and the URL shows it. Enter the password in the page that opens. You see the agent's browser as it works, in the same window the agent uses, so you can click and type in it: solve a captcha, log in, approve a passkey. Whatever you log into there, the agent's browser tools can use afterwards. If no agent has used the browser yet, opening the desktop starts it.
 
 `repose open --desktop --stop` stops the viewer, and so does 30 minutes with nobody connected. The agent's browser keeps running while an agent uses it, and stops after 30 minutes with neither an agent nor you on it.
 
@@ -132,6 +132,14 @@ The machine can reach the internet. Nothing on the internet can reach the machin
 
 ## Memory and disk
 
-When a machine runs out of memory, something is killed. Your agents and tmux are kept to the last, so a runaway test or dev server goes first. `sudo dmesg | grep -i killed` shows what went. Headless Chromium is stopped past 1.5, 3 or 6 GB depending on size.
+When a machine runs out of memory, something is killed. Your agents and tmux are kept to the last, so a runaway test or dev server goes first. `sudo dmesg | grep -i killed` shows what went. Headless Chromium is stopped past 1.5, 3 or 6 GB depending on size. If it keeps happening, give the machine more memory with `repose resize --size large` (or `xl`); see [Changing the size](#changing-the-size).
 
-Grow the disk with `repose resize 80G`, or from the project's page in the dashboard (**Resize…** under Disk, 20 to 320 GB). Disks can't shrink, and the larger disk is [billed](/docs/billing) from then on. A project's size is chosen when it's created and can't be changed afterwards yet.
+Grow the disk with `repose resize 80G`, or from the project's page in the dashboard (**Resize…** under Disk, 20 to 320 GB). Disks can't shrink, and the larger disk is [billed](/docs/billing) from then on.
+
+## Changing the size
+
+A project's size is chosen when it's created (`repose run --size`, default `large`) and can be changed later with `repose resize --size small|large|xl`. Only the vCPUs and memory change; the disk keeps its size, and everything on it stays.
+
+The size changes while the machine is stopped. On a stopped project, `repose resize --size xl` changes it and the machine boots at the new size on its next start. On a running one, repose asks first, then stops it (taking a snapshot), changes it and starts it again. The stop ends every process on the machine, agents included, so let running work finish first; `-y`/`--yes` skips the question. Asking for the size a project already has does nothing.
+
+It prints what the new size gives and costs, for example `xl: 8 vCPU, 16 GB memory, $0.28 an hour up to $199 a month`. Hours are billed at the size the machine ran at; see [Pricing](/docs/billing). `xl` counts toward the [limit on xl projects](/docs/limits).
