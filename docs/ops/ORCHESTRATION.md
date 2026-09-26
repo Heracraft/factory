@@ -3,7 +3,9 @@
 What actually happened while building Repose with many agents at once, written
 as the procedure to repeat. The design docs say what to build; this says how
 the building is coordinated. It is descriptive: every step below was run at
-least once between 2026-09-19 and 2026-09-20.
+least once between 2026-09-19 and 2026-09-20. Since 2026-09-23 the work runs
+as rounds instead of waves; "Rounds" below is how, and where it differs
+from the wave cycle, it wins.
 
 ## Roles
 
@@ -62,12 +64,13 @@ least once between 2026-09-19 and 2026-09-20.
 - **Append-only docs union-merge.** `.gitattributes` marks
   `docs/workstreams/STATUS.md` and `docs/DECISIONS.md` as `merge=union`, so
   parallel additions never conflict. Everything else is resolved by hand.
-- **Decision ids collide every wave.** Workers number from the `main` they
-  branched off, so several branches add the same `I-<n>`. After merging,
-  renumber each branch's new entries in merge order and rewrite the
-  cross-references in the files that branch touched (a script did this for
-  waves one and two; it lives in the conductor's history and is worth
-  turning into `scripts/renumber-decisions.py`).
+- **Decision ids are assigned before the work starts.** In waves one and
+  two, workers numbered from the `main` they branched off, several branches
+  added the same `I-<n>`, and the conductor renumbered them by hand after
+  merging (no script was ever committed). Now the conductor gives each
+  worker its range of `I-<n>` in the launch prompt, so nothing is
+  renumbered. After a merge, regenerate the index with
+  `python3 ops/dev/decisions-index.py`.
 - **`go.mod` and `go.sum`**: take one side, run `go mod tidy`, rebuild.
 - **`nix/packages.nix` vendor hash**: it changes whenever any branch adds a
   Go dependency. Set it to `lib.fakeHash`, build once, paste the reported
@@ -104,6 +107,37 @@ least once between 2026-09-19 and 2026-09-20.
   PATH.** The dev box has `claude`; the runner does not, so a tmux window
   running it exits at once. Fix the fixture (remain-on-exit, a stub), not
   the assertion, and reproduce first with an exiting shim on PATH.
+
+## Rounds (since 2026-09-23)
+
+- **One conductor session in the main checkout** takes a batch of work
+  (the owner's findings from a live session, a triage list, a proposal) and
+  splits it into items that touch different files. A round is named in
+  STATUS (`round 3`, `16-guest-tooling (conductor-run)`); it has no
+  workstream doc.
+- **Workers are Agent-tool subagents with `isolation: worktree`**, each on
+  its own `worktree-agent-*` branch, all Opus 5.5. The launch prompt names
+  the files the worker may touch, its pre-assigned decision numbers, and
+  what to report. Workers commit on their branch, never push, never deploy
+  and never touch live machines unless the prompt says so.
+- **Nix builds share one lock.** Every `nix build` or `nix flake check` a
+  worker or the conductor runs goes through
+  `flock /mnt/nixstore/repose-ws/nix-build.lock`, so parallel workers queue
+  instead of exhausting the box's memory and disk.
+- **The conductor merges** each finished branch onto `main`, regenerates
+  `docs/DECISIONS-INDEX.md`, and reruns the VM checks the merged change
+  touches on the merge itself, not only on the branch.
+- **Then it deploys and tests live**: push (Coolify redeploys api and web),
+  publish a base or tag a CLI release when the round needs one, and try the
+  change end to end on throwaway `e2e-*` projects on host-01, never on the
+  owner's projects. At most two test projects alive at once per item.
+- **Applies and switches go to the owner.** The conductor's permission
+  classifier refuses `tofu apply` and `nixos-rebuild switch` to a host with
+  tenant guests on it. The conductor writes the exact command into a tmux
+  buffer (`apply`, `switch`) and asks the owner to run it. Announce anything
+  that drops live sessions (an edge switch does, for about a second).
+- **Workers and integration sessions never** force-unlock state, use the
+  Coolify UI, or put anything about the owner's personal server in a file.
 
 ## When a worker stalls
 
@@ -146,8 +180,8 @@ least once between 2026-09-19 and 2026-09-20.
 
 ## What to improve next time
 
-- A `scripts/renumber-decisions.py` and a `just merge-wave` recipe that runs
-  the merge order and checks, so the conductor stops re-deriving them.
+- A `just merge-wave` recipe that runs the merge order and checks, so the
+  conductor stops re-deriving them.
 - Workers should run `git merge main` at the start of every turn that
   touches shared files; most conflicts came from branches that never did.
 - CI needs the same Nix version and a Postgres service from day one; both

@@ -1,3 +1,5 @@
+Archived 2026-09-26; superseded by [../STATUS.md](../STATUS.md) and [../../ops/ORCHESTRATION.md](../../ops/ORCHESTRATION.md); open items moved to [../CHECKLIST-AUDIT.md](../CHECKLIST-AUDIT.md) ("Waits on the owner").
+
 # Update 2026-09-23 (conductor, Opus 5.5)
 
 Read this section first; the 2026-09-21 text below is history where it

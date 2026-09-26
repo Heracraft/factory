@@ -52,9 +52,11 @@ them.
 ## Claiming and coordinating
 
 - Work on `main`. Do not create a branch without asking (repo rule).
-- After a conducted run, `HANDOFF.md` in this directory says where every
-  machine, session and milestone stood and what the next session does
-  first; read it before `STATUS.md`.
+- Since 2026-09-23 most work runs as conductor "rounds": one conductor
+  session splits the work across worker agents in their own worktrees,
+  merges, deploys and tests live (`../ops/ORCHESTRATION.md`). STATUS labels
+  such as "16-guest-tooling" or "round 3" name that work; they have no
+  workstream doc here.
 - Before starting, add a line to `STATUS.md` in this directory: workstream,
   who (session id or agent name), date, what you intend to finish. Update it
   when you stop, with what is done and what is not. Sequential sessions read

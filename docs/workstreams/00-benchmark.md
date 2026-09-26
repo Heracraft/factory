@@ -1,5 +1,7 @@
 # 00: Benchmark gate
 
+> Deferred (DECISIONS I-12); nothing here was built. The paths in §2 and below (`packages/core/flake.nix`, `nix/hosts/bench.nix`, `nix/guest/bench.nix`, `scripts/bench/`) do not exist: the bench files were never written, and `packages/core` was retired in 4b1ec14. The first host records timings instead (`RESEARCH.md` §11 to §13).
+
 Milestone: M0. Owns no interfaces. Blocks nothing except the final host SKU
 decision; every other workstream starts in parallel with this one.
 

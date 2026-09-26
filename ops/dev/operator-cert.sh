@@ -18,8 +18,9 @@ set -euo pipefail
 
 CONTROL=${1:-20.121.138.150}
 KEY=${2:-$HOME/.ssh/id_ed25519}
-# The `api` Coolify application's container name prefix (HANDOFF "Live
-# environment"); Coolify appends a deploy suffix.
+# The `api` Coolify application's container name prefix (docs/workstreams/
+# archive/HANDOFF-2026-09.md "Live environment"); Coolify appends a deploy
+# suffix.
 API_PREFIX=${REPOSE_API_CONTAINER_PREFIX:-8kpqxzfejbbsgwjhooep2ymc}
 
 if [ ! -s "$KEY.pub" ]; then

@@ -69,3 +69,18 @@ echo 'system-features = nixos-test benchmark big-parallel kvm uid-range' >> ~/.c
 
 Log in again (or prefix one command with `sg kvm -c '...'`) so the group
 applies. Each test boots one or two VMs and takes two to five minutes.
+
+## Go tests and Playwright
+
+Inside `nix develop` the temporary directory is `/tmp/nix-shell.*`, and the
+tests that put unix sockets under `t.TempDir()` (tmux and vsock fakes) fail
+with "File name too long" on the socket path limit. Run them with a short
+one: `mkdir -p /tmp/rt && TMPDIR=/tmp/rt go test ./...`.
+
+Playwright's downloaded Chromium does not run here (glibc mismatch). Point
+the web tests at a nixpkgs one; the configs in `apps/web` read
+`PLAYWRIGHT_CHROMIUM_PATH`:
+
+```
+export PLAYWRIGHT_CHROMIUM_PATH=$(nix build --no-link --print-out-paths nixpkgs#chromium)/bin/chromium
+```
