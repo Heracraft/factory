@@ -14,9 +14,12 @@ doc in the same commit and keeps the old shape accepted for one release.
 | [cli-config.md](cli-config.md) | cli ⇄ user's filesystem | |
 | [guest-conventions.md](guest-conventions.md) | guest image ⇄ cli, guestd, hooks | |
 | [host-conventions.md](host-conventions.md) | host image ⇄ hostd, infra | |
+| [nix-build-contract.md](nix-build-contract.md) | hostd ⇄ the platform flake in `nix/` | |
 
 Naming rules across all of them: ids are UUIDv7 strings; timestamps are RFC
 3339 UTC; sizes are bytes as integers; durations are seconds as integers;
 enums are lower_snake strings; the size class enum is `small|large|xl`; the
 guest state enum is `creating|building|starting|running|stopping|stopped|
-restoring|destroying|destroyed|error`.
+restoring|destroying|destroyed|error`. The api's error codes are listed in
+[api.md](api.md) (the error envelope at the top); hostd's are in
+[grpc-hostd.md](grpc-hostd.md).
