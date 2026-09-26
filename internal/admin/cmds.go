@@ -1510,7 +1510,7 @@ func (e *Env) caCmd(ctx context.Context, args []string) error {
 		if _, err := e.audited(ctx, "ca_rotate", "", map[string]any{"user": user, "host": host}); err != nil {
 			return err
 		}
-		_, _ = fmt.Fprintln(e.Stdout, "rotated; restart the api so it loads the new keys. User certificates signed by the old CA expire within 12 h; guests get new host certificates at their next start; hosts need `hosts rotate-cert` after a host CA rotation.")
+		_, _ = fmt.Fprintln(e.Stdout, "rotated; restart the api so it loads the new keys. User certificates signed by the old CA expire within 24 h; guests get new host certificates at their next start; hosts need `hosts rotate-cert` after a host CA rotation.")
 		return nil
 	case "sign-host":
 		fs, err := flagsFor("sign-host", args[1:], func(fs *flag.FlagSet) {

@@ -200,7 +200,7 @@ For a test or self-hosted repose server rather than the hosted one: `--api-url U
 | Path                |                                                                                                                   |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `~/.config/repose/` | Your login (mode 0600; on macOS the token is in the keychain), `config.toml`, and caches that are safe to delete. |
-| `~/.ssh/repose/`    | The CLI's own SSH key and 12-hour certificate, and one `Host` block per project.                                  |
+| `~/.ssh/repose/`    | The CLI's own SSH key and 24-hour certificate, and one `Host` block per project.                                  |
 | `~/.ssh/config`     | One added line: `Include ~/.ssh/repose/config`.                                                                   |
 
 `repose logout --purge` removes all of these.

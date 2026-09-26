@@ -15,8 +15,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// UserCertTTL is the lifetime of a user certificate (DECISIONS R3-9).
-const UserCertTTL = 12 * time.Hour
+// UserCertTTL is the lifetime of a user certificate (DECISIONS R3-9, I-267).
+const UserCertTTL = 24 * time.Hour
 
 // GatewayCertTTL is the lifetime of a gateway-issued certificate (I-1).
 const GatewayCertTTL = 5 * time.Minute

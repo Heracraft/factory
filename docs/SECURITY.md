@@ -68,8 +68,8 @@ they stop an actor the component map does not draw.
    host, the VNet, or the mesh.
 3. **SSH certificates with project principals**, checked twice: at the
    gateway (route lookup plus principal match) and at the guest's sshd.
-   12-hour validity, revocation list. Stops: a tenant or a stolen
-   certificate opening another project; a stolen laptop after 12 hours or
+   24-hour validity (I-267), revocation list. Stops: a tenant or a stolen
+   certificate opening another project; a stolen laptop after 24 hours or
    after `repose logout` from another device.
 4. **mTLS per host** with the host id as CN; every command checked against
    the stream's identity. Stops: a compromised host acting on another
@@ -127,7 +127,7 @@ Rules that hold regardless of convenience. Each names its failure.
   only environ open, and only on that path.
 - **Every `Exec` is audited.** Operator convenience that skips the audit is
   an unrecorded access to tenant data.
-- **Certificates expire in 12 hours** and the gateway checks revocation.
+- **Certificates expire in 24 hours** and the gateway checks revocation.
   A longer lifetime makes a stolen laptop a longer problem.
 - **`security_type = Standard` and Intel hosts.** Not security in itself,
   but a Trusted Launch host silently has no `/dev/kvm`, and a fallback to

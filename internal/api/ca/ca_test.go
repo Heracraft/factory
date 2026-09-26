@@ -89,7 +89,7 @@ func TestInitLoadAndUserCert(t *testing.T) {
 			t.Fatalf("missing extension %s", ext)
 		}
 	}
-	if d := time.Until(time.Unix(int64(cert.ValidBefore), 0)); d < 11*time.Hour || d > 12*time.Hour+time.Minute {
+	if d := time.Until(time.Unix(int64(cert.ValidBefore), 0)); d < sshca.UserCertTTL-time.Hour || d > sshca.UserCertTTL+time.Minute {
 		t.Fatalf("validity %v", d)
 	}
 	caPub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(c.UserCAPub()))

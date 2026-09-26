@@ -15,7 +15,7 @@ For more detail on any command, add `-v`. `REPOSE_TIMING=1` shows where the time
 
 **`This directory has no git remote.`** Give the project a name: `repose run --name scratch`.
 
-**`ssh todo-app.repose` says `Permission denied`.** Your certificate is older than 12 hours. Run `repose attach todo-app`, detach, and try again. If the CLI works but plain `ssh` never does, the `Include ~/.ssh/repose/config` line is missing from `~/.ssh/config`; the CLI printed a message when it couldn't add it.
+**`ssh todo-app.repose` says `Permission denied`.** Your certificate is older than 24 hours. Run `repose attach todo-app`, detach, and try again. If the CLI works but plain `ssh` never does, the `Include ~/.ssh/repose/config` line is missing from `~/.ssh/config`; the CLI printed a message when it couldn't add it.
 
 **`Guest is running but SSH did not answer in 60s.`** `repose logs --kind console` shows the boot log. `repose start` restarts a stuck machine.
 

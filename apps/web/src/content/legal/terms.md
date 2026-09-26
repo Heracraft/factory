@@ -30,7 +30,7 @@ You sign in with a GitHub account. One person, one account; you are
 responsible for what happens under it, including what your agents do. Keep
 your laptop's SSH key and your CLI login private; if you lose a laptop,
 `repose logout` from another device revokes its certificates, and every
-certificate expires on its own within twelve hours.
+certificate expires on its own within twenty-four hours.
 
 ## Coding agents and their providers
 

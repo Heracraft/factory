@@ -239,8 +239,8 @@ func TestWalkthrough(t *testing.T) {
 	if certRes.Gateway.Host != "ssh.repose.herakraft.co" || certRes.Gateway.Port != 22 || !strings.HasPrefix(certRes.Gateway.HostCAPub, "ssh-ed25519 ") {
 		t.Fatalf("gateway: %+v", certRes.Gateway)
 	}
-	if d := time.Until(certRes.ExpiresAt); d < 11*time.Hour || d > 13*time.Hour {
-		t.Fatalf("expires_at %v is not 12h ahead", certRes.ExpiresAt)
+	if d := time.Until(certRes.ExpiresAt); d < 23*time.Hour || d > 25*time.Hour {
+		t.Fatalf("expires_at %v is not 24h ahead", certRes.ExpiresAt)
 	}
 	wantErr(t, call(t, f, "POST", "/v1/certs", tok, map[string]any{"public_key": "rsa junk", "project_ids": []string{p.ID}}), 400, "invalid")
 	wantErr(t, call(t, f, "POST", "/v1/certs", tok, map[string]any{"public_key": "ssh-ed25519 AAAA", "project_ids": []string{}}), 400, "invalid")

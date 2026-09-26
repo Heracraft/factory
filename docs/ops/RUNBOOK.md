@@ -249,7 +249,7 @@ reach it with `ssh -p <edge_operator_ssh_port> root@<edge ip>` and read
 | `gateway cannot reach control plane; try again shortly` | the api is down or the CA/revocation caches aged past 1 h | `journalctl -u gateway \| grep route_fail`; check the api and `api-grpc` app; existing sessions keep working, new ones resume when a refresh succeeds |
 | `environment is not accepting connections yet` | the guest's sshd is not up yet, or dialed a throwaway host key | the CLI retries 60 s after a `start`; if it persists, `repose-admin projects show` for the guest state, then "Guest not ready" |
 | `cannot reach environment: no route to host` | no WireGuard peer or route for the guest's host | on the edge `wg show wg0` and `ip route \| grep <guest cidr>`; `wgsync` adds them from `/internal/hosts` within 30 s — see "HostWgDown" |
-| `permission denied (certificate expired)` / `... not yet valid` | the user's certificate is outside its 12 h validity | the CLI refreshes and retries once; a spike of `expired` is "GatewayAuthSpike" step 2 |
+| `permission denied (certificate expired)` / `... not yet valid` | the user's certificate is outside its 24 h validity | the CLI refreshes and retries once; a spike of `expired` is "GatewayAuthSpike" step 2 |
 | `permission denied (certificate revoked)` | logout or a revoked serial | expected; takes effect within 30 s of `repose logout` |
 | `certificate not valid for this project` | the certificate's principals do not contain the resolved project id | the CLI re-requests a cert for the project; repeated from one user is probing ("GatewayAuthSpike" step 3) |
 | `<slug> is stopped; run \`repose start\`` | the project is stopped | expected; the user starts it |

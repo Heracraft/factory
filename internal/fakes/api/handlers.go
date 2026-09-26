@@ -867,7 +867,7 @@ func (f *Fake) issueCert(w http.ResponseWriter, r *http.Request) *apiError {
 		}
 	}
 	f.serial++
-	c := &cert{serial: f.serial, owner: u.ID, projectIDs: body.ProjectIDs, expiresAt: f.now().Add(12 * time.Hour)}
+	c := &cert{serial: f.serial, owner: u.ID, projectIDs: body.ProjectIDs, expiresAt: f.now().Add(sshca.UserCertTTL)}
 	f.certs[c.serial] = c
 	line := fmt.Sprintf("ssh-ed25519-cert-v01@openssh.com AAAA...fake serial %d", c.serial)
 	if f.opts.CA != nil {

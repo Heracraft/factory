@@ -125,8 +125,8 @@ when there is more than one host.**
 **R2-5. SSH certificate authority in the control plane, short-lived
 certificates, a gateway that routes by login name.** *Rejected:* temporary
 keypair injected into guests per run (key distribution into running guests);
-per-user WireGuard (a second product to run). Certificate lifetime 12 hours
-(R3-9), refreshed silently while the Logto refresh token is valid.
+per-user WireGuard (a second product to run). Certificate lifetime 12 hours,
+24 since I-267 (R3-9), refreshed silently while the Logto refresh token is valid.
 
 **R2-6. Dev-server access is `repose open <port>` (SSH forward) now; per-
 project HTTPS preview URLs later, documented from day one.**
@@ -6540,3 +6540,21 @@ left exactly as the last sync left it is still not dirty.
 what the owner did stage); `git stash create` on the laptop and applying
 the stash on the guest (needs the stash's objects in the bundle and a
 stash entry the user never made).
+
+**I-267. User SSH certificates last 24 hours.** (feature research round,
+2026-09-26; the owner asked for it) R3-9 set 12 hours, so someone who
+opened an editor over Remote-SSH in the evening got `Permission denied`
+the next morning until a `repose` command renewed the certificate. 24
+hours covers a working day plus the night. `sshca.UserCertTTL` is now 24
+hours; the fake api signs with the same constant. Revocation is unchanged:
+`repose logout` from another device still revokes a lost laptop's
+certificates at once, and the gateway still checks the revocation list,
+so the longer lifetime only matters for a stolen laptop nobody logged out.
+The CLI's reuse margin (30 minutes, `cert.go`) is unchanged. hostdev's
+own 12-hour certificates are a dev tool and stay. Interfaces:
+`ssh-gateway.md` says `now+24h`; nothing parses the lifetime, so there is
+no old shape to keep. /docs (`run-and-attach`, `troubleshooting`, `cli`),
+the terms ("within twenty-four hours"), DESIGN, SECURITY and RUNBOOK say
+so in this commit. Needs an api redeploy; existing 12-hour certificates
+run out on their own. *Rejected:* a `ProxyCommand` that renews on every
+connection (more code for the same morning; the research ranked it low).

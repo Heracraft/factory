@@ -241,7 +241,7 @@ guest ──vsock──▶ hostd
   `run` and `attach` the CLI sends the public half of its own key
   (`~/.ssh/repose/id_ed25519`, generated without a passphrase and used for
   nothing else; the user's keys are never touched, DECISIONS I-149) and
-  gets back a certificate with principal `<project-id>`, valid 12 hours,
+  gets back a certificate with principal `<project-id>`, valid 24 hours,
   extensions `permit-agent-forwarding,permit-port-forwarding,permit-pty`.
   The CLI writes `~/.ssh/repose/config` with one `Host` block per project
   (multiplexed, so a command makes one connection), included from the

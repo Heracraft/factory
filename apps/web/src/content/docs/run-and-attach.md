@@ -141,7 +141,7 @@ You log in as `dev`. Plain `ssh` doesn't attach to tmux; run `tmux attach` for t
 
 The CLI sets this up with one line in `~/.ssh/config`, `Include ~/.ssh/repose/config`. If your `~/.ssh/config` is read-only (managed by Nix or a dotfiles tool), the CLI tells you to add the line yourself.
 
-Your SSH certificate lasts 12 hours. `run`, `attach`, `open` and `cp` renew it. If `ssh` or your editor gets `Permission denied`, run `repose attach` once, detach, and try again.
+Your SSH certificate lasts 24 hours. `run`, `attach`, `open` and `cp` renew it. If `ssh` or your editor gets `Permission denied`, run `repose attach` once, detach, and try again.
 
 ### Your SSH keys stay on your laptop
 

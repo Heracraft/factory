@@ -13,7 +13,7 @@ Two CAs, both ed25519, private keys in the api's secret store:
 
 - **User CA** signs user certificates. `POST /certs` returns a certificate
   for the user's public key with: `principals = [project_id...]`, `valid
-  after now-1m`, `valid before now+12h`, `serial` = monotonic bigint,
+  after now-1m`, `valid before now+24h` (12h before I-267), `serial` = monotonic bigint,
   `key_id = "<user_id>:<handle>"`, extensions `permit-pty`,
   `permit-port-forwarding`, `permit-agent-forwarding`. No
   `source-address` restriction (laptops move).
