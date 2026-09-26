@@ -2,7 +2,7 @@
 
 **Status: open.** The research, with its fact-check, is in
 `research_notes/Repose feature research/feature_research.md`; read the
-Errata box at its top first. On 2026-09-26 the owner had seven items built
+Errata box at its top first. On 2026-09-26 the owner had the items in the first rows built
 (table below) and asked for the rest to be left documented here. Nothing
 below is built. Where this file and a decision entry disagree, the entry
 wins.
