@@ -16,8 +16,8 @@ email: ok
 ntfy: ok
 ```
 
-(`notify set` takes flags, `--email on|off` and `--ntfy URL|none`, and
-does not send a test itself; `notify test` does, as 07-cli.md specifies under I-8.)
+`notify set` takes `--email on|off` and `--ntfy URL|none` (I-8) and sends
+no test; `notify test` does, and exits 1 when neither channel answered ok.
 
 On the phone (ntfy):
 
@@ -34,7 +34,9 @@ codex needs input: "Should I drop the legacy sessions table?"
 In `repose status`:
 
 ```
-todo-app   large   running   claude: needs_input (2m ago)   last: "Should I drop..."
+todo-app   large  running   3h12m   codex: needs_input   today $0.41   month $6.20
+  ...
+  last event 2m ago: codex needs_input "Should I drop the legacy sessions table?"
 ```
 
 ## Behaviour that must hold
@@ -111,8 +113,9 @@ Channels (`workstreams/13-notifications.md` §5.6):
 - ntfy: the user sets any ntfy-compatible URL, including a self-hosted
   server; the platform POSTs the message with a title, a priority (higher
   for `needs_input` and failures), and a `click` URL pointing at the
-  project in the dashboard. A test notification is sent on set (`repose
-  notify test` / the dashboard's test button, `POST /me/notify-test`).
+  project in the dashboard. Setting the URL sends nothing; a test is sent
+  only on request (`repose notify test` / the dashboard's test button,
+  `POST /me/notify-test`).
   Topic URLs are stored as configuration, not secrets, but never logged.
 - Both can be on. Neither is required. Turning one off deletes its
   already-queued deliveries rather than sending one more batch to a
@@ -147,7 +150,7 @@ Workstreams 13 (delivery, dedupe, rate cap, Resend, ntfy, unsubscribe), 04
 (ingest, events routes, `PATCH /me` notify settings, the ops engine's
 platform-event hook), 07 (`notify` and `events` commands), 08 (settings and
 event stream pages), 02 (`repose-hook` and wrappers), 09 (`billing_stopped`'s
-producer, not yet built — see `DECISIONS.md` I-16 and I-49).
+producer, `internal/billing/dunning.go`).
 
 ## Deferred
 

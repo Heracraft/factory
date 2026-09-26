@@ -7,23 +7,22 @@ exists because the other two would be wrong for that kind.
 
 ```
 $ repose secrets set DATABASE_URL
-Enter value (input hidden): ********
-Stored for todo-app. Available as $DATABASE_URL and /run/repose/secrets/DATABASE_URL.
+Value for DATABASE_URL (not shown):
+Set DATABASE_URL (pushed to running guest)
 
 $ repose secrets list
-NAME               UPDATED
-DATABASE_URL       2026-09-17 14:02
-GEMINI_API_KEY     2026-09-15 09:41
+DATABASE_URL	2026-09-17 14:02
+GEMINI_API_KEY	2026-09-15 09:41
 
 $ repose secrets rm GEMINI_API_KEY
-Removed. Running processes that already read it keep their copy until restart.
+Removed GEMINI_API_KEY
 ```
 
-Synced logins happen silently inside `repose run`:
+On a stopped guest `set` prints `Set NAME (will be delivered at next
+start)`. `--from-file PATH` and `--from-env` read the value without a
+prompt. `list` prints name and last update, tab-separated, no header.
 
-```
-Credentials: gh, codex, opencode, git
-```
+Synced logins happen inside `repose run` with no output of their own.
 
 ## Kind 1: tool logins the laptop already has
 
@@ -181,8 +180,8 @@ Rules that must hold:
 
 ## Where secrets are not
 
-Not in the repo (gitignored `.env` files do not sync; see
-sync-at-launch.md). Not in the fragment (a Nix expression is a build input,
+Not in the repo. Gitignored `.env` files do travel, over the sync's SSH and
+never through the API (Kind 1 above, I-197; sync-at-launch.md). Not in the fragment (a Nix expression is a build input,
 lands in the world-readable store, and shows in build logs; the pipeline
 rejects a fragment containing a string that matches a current secret value
 of that project). Not in tmux history the platform can see; the platform

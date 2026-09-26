@@ -560,53 +560,15 @@ Coolify on NixOS is unsupported on both sides:
 
 ## 10. Benchmark results (M0)
 
-To be filled by workstream 00. Record the exact SKUs, kernel versions, Cloud
-Hypervisor and virtiofsd versions, microvm.nix revision, and the date.
-
-| Axis | Workload | Plain Azure VM (D4s_v5) | Guest on D64s_v5 host | Penalty | Pass (< ~20%) |
-|---|---|---|---|---|---|
-| CPU | `nix build` of fixed derivation set, wall time | | | | |
-| CPU | Go test suite, wall time | | | | |
-| Disk | `docker pull` + extract of a fixed 2 GB image | | | | |
-| Disk | `fio` 4k random read/write IOPS | | | | |
-| Network | `git clone` of a fixed 1 GB repo from GitHub | | | | |
-| Network | `iperf3` to the edge | | | | |
-
-Repeat on D64s_v6 if any axis fails. If both fail, open the Hetzner decision
-(DECISIONS R3-20).
+Deferred (DECISIONS I-12): no plain-VM comparison was run. The first host
+measured itself instead; see §11 to §14, and §15 for fragment timings on
+the dev box.
 
 ---
 
 How this was gathered: web research by sub-agents on 2026-09-16 and
 2026-09-17, summarised in the design interview; every URL above is one those
 agents cited. Prices are as quoted on those dates and will drift.
-
-## 11. Fragment evaluation and build timings (dev box, 2026-09-20)
-
-Measured by workstream 12 on the dev box (Azure AMD, `nix` 2.35.2,
-single-user store, `eval-cache` off as in production), with the exact
-command lines of `interfaces/nix-build-contract.md` and the platform
-flake at commit `c863eff`. The base closure was already in the store, as
-it is on a host after its first guest. Not a host measurement (AGENTS.md);
-the shape is what 05 needs to set expectations, the host numbers replace
-these when the M1 session has them.
-
-| Step | Fragment | Wall time | Note |
-|---|---|---|---|
-| `nix eval` of `guestSystem` | empty | 3.6 s | 880 MB RSS; the module system plus nixpkgs instantiation; the 60 s cap is a ceiling for pathological expressions, not a budget |
-| `nix eval` of `guestSystem` | `zig`, `shellcheck`, `programs.direnv` | 4.1 s | |
-| `nix eval` of `guestSystem` | the whole menu catalog (21 entries) | 3.6 s | |
-| `nix build` of that system | `zig`, `shellcheck`, `programs.direnv` | 25 s | one path substituted from cache.nixos.org, the rest was local; a cold host substitutes tens of paths and is bound by its egress |
-| `nix build` of three example systems | `docs/features/config-examples` | 36 s total | `checks.fragment-examples`, includes a fixed-output fetch and a jq rebuild through an overlay |
-| build timeout case | a derivation sleeping 31 minutes, cap 5 s | 5 s to `build_timeout` | `internal/hostd/nixbuild` real-Nix corpus |
-| closure cap case | 120 MB output, cap 100 MB | under 1 s after the build | `closure_too_large` with the ten largest paths |
-
-So a package-only change on a warm host is about 5 s of evaluation plus
-the substitution of what is new, and the CLI's `Building ... 38s` in
-`features/config.md` is the right order of magnitude. The first build on
-a fresh host also pulls the base closure's build-time dependencies that
-the guest itself never needs (home-manager's activation scripts and the
-like), which is what the platform cache (DECISIONS I-46) removes.
 
 ## 11. First host timings (M1, host-01, 2026-09-20)
 
@@ -774,3 +736,30 @@ registration hostd sends after Ready; so `running` is within 60 ms of the
 first moment a login succeeds, and hostd's number is the right one to
 optimise. The rest of the owner's 1 m 43 s was the CLI (SSH prompts and a
 2 s op poll), which the cli-ux worker owns.
+
+## 15. Fragment evaluation and build timings (dev box, 2026-09-20)
+
+Measured by workstream 12 on the dev box (Azure AMD, `nix` 2.35.2,
+single-user store, `eval-cache` off as in production), with the exact
+command lines of `interfaces/nix-build-contract.md` and the platform
+flake at commit `c863eff`. The base closure was already in the store, as
+it is on a host after its first guest. Not a host measurement (CLAUDE.md);
+the shape is what 05 needs to set expectations, the host numbers replace
+these when the M1 session has them.
+
+| Step | Fragment | Wall time | Note |
+|---|---|---|---|
+| `nix eval` of `guestSystem` | empty | 3.6 s | 880 MB RSS; the module system plus nixpkgs instantiation; the 60 s cap is a ceiling for pathological expressions, not a budget |
+| `nix eval` of `guestSystem` | `zig`, `shellcheck`, `programs.direnv` | 4.1 s | |
+| `nix eval` of `guestSystem` | the whole menu catalog (21 entries) | 3.6 s | |
+| `nix build` of that system | `zig`, `shellcheck`, `programs.direnv` | 25 s | one path substituted from cache.nixos.org, the rest was local; a cold host substitutes tens of paths and is bound by its egress |
+| `nix build` of three example systems | `docs/features/config-examples` | 36 s total | `checks.fragment-examples`, includes a fixed-output fetch and a jq rebuild through an overlay |
+| build timeout case | a derivation sleeping 31 minutes, cap 5 s | 5 s to `build_timeout` | `internal/hostd/nixbuild` real-Nix corpus |
+| closure cap case | 120 MB output, cap 100 MB | under 1 s after the build | `closure_too_large` with the ten largest paths |
+
+So a package-only change on a warm host is about 5 s of evaluation plus
+the substitution of what is new, and the CLI's `Building ... 38s` in
+`features/config.md` is the right order of magnitude. The first build on
+a fresh host also pulls the base closure's build-time dependencies that
+the guest itself never needs (home-manager's activation scripts and the
+like), which is what the platform cache (DECISIONS I-46) removes.

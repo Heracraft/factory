@@ -9,20 +9,25 @@ the directory it runs in.
 ```
 $ cd ~/code/todo-app
 $ repose run
-Creating project todo-app (github.com/heracraft/todo-app) as large ...
+✓ Created todo-app (large)  4s
+...
 ```
 
 ```
 $ cd ~/scratch/no-remote
 $ repose run
-error: this directory has no git remote. Give the project a name:
-  repose run --name scratch
+This directory has no git remote. Pass --name NAME to create a project anyway.
 ```
 
 ```
 $ repose run --name todo-app-experiment
-Creating project todo-app-experiment (github.com/heracraft/todo-app) ...
+✓ Created todo-app-experiment (large)  4s
+...
 ```
+
+(The class is `--size`, or `default_class` from `config.toml`, `large`
+unless set. On a terminal the phase line is a spinner that becomes the ✓
+line; elsewhere it prints `Creating todo-app...`.)
 
 ## Behaviour that must hold
 
@@ -40,8 +45,10 @@ Identity:
   for such a project), and naming a project explicitly (`repose attach
   izma`, `--project`) never writes it, so one checkout can never be sent
   to another checkout's guest (DECISIONS I-152).
-- A directory with no remote and no `--name` exits 2 with the one-line fix
-  above. It never creates a project named after the directory, because the
+- `repose run` in a directory with no remote and no `--name` exits 2 with
+  the one line above. Any other command that finds no project exits 4
+  (`No repose project here, and this directory has no git remote. Name
+  one: ...`). It never creates a project named after the directory, because the
   directory name is not unique and the project would be unfindable from a
   second checkout.
 - The project name becomes the slug: lowercase, `[a-z0-9-]`, other characters
@@ -67,8 +74,10 @@ Limits:
 - A user without a card on file cannot start a guest at all
   (`payment_required`, exit 7). Creating the project row is allowed so the
   dashboard can show it, but nothing boots.
-- Changing a project's class requires it to be stopped. The CLI stops it with
-  a prompt if asked to resize a running project.
+- `repose resize SIZE` only grows the disk (`80G`; disks never shrink).
+  Neither the CLI nor the dashboard changes a project's class. The API
+  accepts `class` on `PATCH /projects/:id` only while the project is
+  stopped (`conflict` otherwise).
 
 Ownership:
 

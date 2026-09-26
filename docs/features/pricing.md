@@ -10,9 +10,11 @@ themselves are in [`../PRICING.md`](../PRICING.md); the implementation is
 
 ```
 $ repose run
-error: add a card before starting a guest
-       https://repose.herakraft.co/billing
+Add a card at https://repose.herakraft.co/billing first.
 ```
+
+The CLI prints that line for every `payment_required`, whatever the
+reason, and exits 7 (`internal/cli/env.go`).
 
 "Add a card" on the dashboard's billing page opens Stripe's own card page,
 which also asks for the billing address tax is worked out from, and comes
@@ -89,7 +91,7 @@ prints it for the hour in question.
 
 ```
 $ repose status
-todo-app   large   running  2h14m   claude: working   $0.31 so far today
+todo-app   large  running   2h14m   claude: working      today $0.31   month $6.20
 ```
 
 `cost_today_cents` and `cost_month_cents` on a project, and `GET /usage` for

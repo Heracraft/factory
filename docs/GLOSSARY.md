@@ -122,8 +122,10 @@ all month costs the cap and never more.
 volume GB-months by allocated size, egress GB. Recorded in `usage_hours`,
 pushed to Stripe hourly.
 
-**held**, a project whose base updates are paused by `repose config hold`.
-It keeps its base version until unheld.
+**held**, a project whose base updates are paused by the dashboard's
+**Hold base updates** checkbox (`hold_base_updates`). It keeps its base
+version until the box is unticked. Not the same as an abuse hold (I-239),
+which stops a project from starting.
 
 **workstream**, a chunk of the build that one agent or session can own
 end to end, with named interfaces and its own checklist. Listed in

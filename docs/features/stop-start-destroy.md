@@ -94,11 +94,14 @@ Stop:
 Start:
 
 - `start` on a stopped project boots the same volume on the same host. If
-  that host is `unreachable` or `retired`, the CLI says so and offers
-  `start --restore-latest`, which restores the newest snapshot onto another
-  host as the same project. This is the host-loss path and it is rehearsed.
-- Pending config revisions marked `--later` apply during start, and base
-  bumps that needed a reboot apply here too; the CLI prints what changed.
+  that host is `unreachable`, `retired` or `lost`, the api answers
+  `conflict` (`<slug>'s host is <state>; restore its latest snapshot onto
+  another host`, `detail.host_state`). There is no `start
+  --restore-latest`; the way out is `repose snapshots restore <id>
+  --as-new NAME`.
+- The newest built revision not yet applied (a change that needed a
+  reboot, including a base bump) is put in place during start
+  (`ops.PendingRevision`).
 - Start is refused with `payment_required` when billing is `past_due` for
   more than 3 days or `suspended`, with the dashboard billing link.
 - `run` on a stopped project starts it implicitly; `attach` does not, and

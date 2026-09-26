@@ -1,5 +1,7 @@
 # Architecture
 
+A slice of [DESIGN.md](DESIGN.md) by component; where the two disagree, DESIGN.md wins.
+
 ## The one idea
 
 A guest is a NixOS closure that already exists in the host's store before the
