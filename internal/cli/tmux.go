@@ -17,7 +17,21 @@ func isAgent(name string) bool {
 
 const paneIdleWait = 1 * time.Second
 const paneIdlePoll = 100 * time.Millisecond
-const paneIdleTimeout = 30 * time.Second
+
+// paneIdleTimeout is a variable so a test can show a load outlasting it.
+var paneIdleTimeout = 30 * time.Second
+
+// devShellLoadTimeout bounds how long startAgentWindow keeps waiting while
+// the agent wrapper loads the checkout's dev environment, which it marks
+// with the pane option devShellLoadingOption (DECISIONS I-259). A first
+// load builds the dev shell, which can take minutes, and a prompt typed
+// before the agent runs is lost.
+const devShellLoadTimeout = 30 * time.Minute
+
+// devShellLoadingOption is the tmux pane option the agent wrapper
+// (nix/overlay/agents/devshell.sh) sets to "loading" while it loads the
+// dev environment and unsets after (guest-conventions.md "Agent wrappers").
+const devShellLoadingOption = "@repose-devshell"
 
 // listWindows returns the names of tmux session slug's windows.
 func listWindows(ctx context.Context, t sshTarget, slug string) ([]string, error) {
@@ -108,8 +122,9 @@ func needsClaudeLogin(ctx context.Context, t sshTarget, hasOAuthSecret bool) (bo
 // must settle on before the prompt is sent; production passes the agent's
 // real binary name, tests substitute a stand-in. dir is the window's
 // working directory as the guest's shell spells it: "~/<slug>", or a
-// worktree's "~/<slug>-<window>" (I-253).
-func startAgentWindow(ctx context.Context, t sshTarget, slug, windowName, dir, binary, prompt string, attachOnly bool) error {
+// worktree's "~/<slug>-<window>" (I-253). onLoading, when not nil, is
+// called once if the wrapper says it is loading the dev environment.
+func startAgentWindow(ctx context.Context, t sshTarget, slug, windowName, dir, binary, prompt string, attachOnly bool, onLoading func()) error {
 	cmd := fmt.Sprintf("tmux new-window -t %s -n %s -c %s -d %s", slug, windowName, dir, shQuote(binary))
 	if _, err := runSSH(ctx, t, cmd, nil); err != nil {
 		return err
@@ -117,7 +132,7 @@ func startAgentWindow(ctx context.Context, t sshTarget, slug, windowName, dir, b
 	if attachOnly {
 		return nil
 	}
-	if err := waitPaneIdle(ctx, t, slug, windowName, binary); err != nil {
+	if err := waitPaneIdle(ctx, t, slug, windowName, binary, onLoading); err != nil {
 		return err
 	}
 	if _, err := runSSH(ctx, t, fmt.Sprintf("tmux send-keys -t %s:%s -l %s", slug, windowName, shQuote(prompt)), nil); err != nil {
@@ -128,22 +143,37 @@ func startAgentWindow(ctx context.Context, t sshTarget, slug, windowName, dir, b
 }
 
 // waitPaneIdle polls pane_current_command until it names binary and its
-// captured content has not changed for paneIdleWait.
-func waitPaneIdle(ctx context.Context, t sshTarget, slug, windowName, binary string) error {
-	deadline := time.Now().Add(paneIdleTimeout)
+// captured content has not changed for paneIdleWait. While the pane
+// carries devShellLoadingOption the agent has not started yet, and the
+// wait goes on past paneIdleTimeout, up to devShellLoadTimeout (I-259).
+func waitPaneIdle(ctx context.Context, t sshTarget, slug, windowName, binary string, onLoading func()) error {
+	start := time.Now()
+	deadline := start.Add(paneIdleTimeout)
 	var lastCapture string
 	var stableSince time.Time
+	sawLoading := false
 	for {
-		cmdOut, err := runSSH(ctx, t, fmt.Sprintf("tmux display -p -t %s:%s '#{pane_current_command}'", slug, windowName), nil)
+		cmdOut, err := runSSH(ctx, t, fmt.Sprintf("tmux display -p -t %s:%s '#{pane_current_command} #{%s}'", slug, windowName, devShellLoadingOption), nil)
 		if err != nil {
 			return err
 		}
-		current := strings.TrimSpace(string(cmdOut))
+		current, marker, _ := strings.Cut(strings.TrimSpace(string(cmdOut)), " ")
+		loading := strings.TrimSpace(marker) == "loading"
 		capture, err := runSSH(ctx, t, fmt.Sprintf("tmux capture-pane -p -t %s:%s", slug, windowName), nil)
 		if err != nil {
 			return err
 		}
-		if current == binary {
+		if loading {
+			stableSince = time.Time{}
+			if !sawLoading && onLoading != nil {
+				onLoading()
+			}
+			sawLoading = true
+			deadline = time.Now().Add(paneIdleTimeout)
+			if limit := start.Add(devShellLoadTimeout); deadline.After(limit) {
+				deadline = limit
+			}
+		} else if current == binary {
 			if string(capture) == lastCapture {
 				if !stableSince.IsZero() && time.Since(stableSince) >= paneIdleWait {
 					return nil

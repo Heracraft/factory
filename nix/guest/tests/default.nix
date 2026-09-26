@@ -142,6 +142,47 @@ let
     '';
   };
 
+  # guest-devshell's stand-in agent (I-259): wrapped like the five, it
+  # records what of the checkout's dev environment it sees, in a file
+  # named after its working directory.
+  devshellProbeAgent = (import ../../overlay/agents/wrap.nix { inherit pkgs; }) {
+    name = "repose-devshell-probe";
+    pkg = pkgs.writeShellScriptBin "repose-devshell-probe" ''
+      out=/tmp/out-$(basename "$PWD")
+      {
+        echo "flake=''${REPOSE_FLAKE_PROBE:-}"
+        echo "envrc=''${ENVRC_ONLY:-}"
+        echo "project=''${REPOSE_PROJECT:-}"
+        if command -v flake-tool >/dev/null 2>&1; then echo "tool=$(flake-tool)"; fi
+        echo done
+      } > "$out.tmp" 2>&1
+      mv "$out.tmp" "$out"
+      sleep 60
+    '';
+  };
+  # What only the test flake's dev shell puts on PATH.
+  flakeTool = pkgs.writeShellScriptBin "flake-tool" "echo flake-tool-ok";
+  # A flake with no inputs whose dev shell is a bare derivation (no
+  # stdenv), so it evaluates and builds offline from paths the VM has.
+  # Its paths are plain strings, which is why the test turns the build
+  # sandbox off, as guest-tools-carry does.
+  devshellFlake = pkgs.writeText "flake.nix" ''
+    {
+      outputs = { self }: {
+        devShells.x86_64-linux.default = derivation {
+          name = "probe-shell";
+          system = "x86_64-linux";
+          builder = "${pkgs.bash}/bin/bash";
+          args = [ "-c" "echo > $out" ];
+          # get-env.sh writes to each of $outputs, set only when named.
+          outputs = [ "out" ];
+          PATH = "${flakeTool}/bin:${pkgs.coreutils}/bin";
+          REPOSE_FLAKE_PROBE = "from-the-flake";
+        };
+      };
+    }
+  '';
+
   mkTest = name: attrs: pkgs.testers.runNixOSTest ({ inherit name; } // attrs);
 
   # The exact scripts the CLI sends for I-198 and I-195, kept in step with
@@ -1196,6 +1237,118 @@ in
           dev("mkdir -p /tmp/h2/.pi/agent/extensions && echo mine > /tmp/h2/.pi/agent/extensions/repose-machine-guide.js")
           dev("HOME=/tmp/h2 repose-agent-setup pi")
           assert dev("cat /tmp/h2/.pi/agent/extensions/repose-machine-guide.js").strip() == "mine"
+    '';
+  };
+
+  # I-259: an agent started the repose way (tmux new-window <agent> from
+  # an SSH command) runs inside the checkout's dev environment: its
+  # .envrc, allowed for it when never allowed on this machine and left out
+  # when denied, or the flake's dev shell when there is no .envrc. A
+  # worktree window gets the same; a broken flake still starts the agent
+  # with a message; a slow load marks the pane for `repose run`.
+  guest-devshell = mkTest "guest-devshell" {
+    nodes.guest = { lib, ... }: {
+      imports = [ node ];
+      environment.systemPackages = [ devshellProbeAgent ];
+      virtualisation.additionalPaths = [ flakeTool pkgs.bash pkgs.coreutils ];
+      nix.settings.sandbox = lib.mkForce false;
+      nix.settings.substituters = lib.mkForce [ ];
+    };
+    testScript = ''
+      import shlex
+
+      guest.start()
+      guest.wait_for_unit("multi-user.target")
+
+      def dev(cmd):
+          return guest.succeed(f"sudo -H -u dev bash -lc {shlex.quote(cmd)}")
+
+      guest.succeed("printf 'TZ=UTC\\nREPOSE_PROJECT=todo-app\\n' > /etc/repose/env")
+      guest.succeed("install -d -o dev -g dev -m 0700 /home/dev/.repose")
+      guest.succeed("""echo '{"project_id":"0192e4b0-0000-7000-8000-000000000001","slug":"todo-app","name":"todo-app","tz":"UTC","class":"large"}' > /home/dev/.repose/project.json && chown dev:dev /home/dev/.repose/project.json""")
+      guest.wait_until_succeeds("sudo -H -u dev tmux ls | grep -q '^todo-app:'", timeout=60)
+      guest.succeed("ssh-keygen -q -t ed25519 -N ''' -f /root/ca && ssh-keygen -q -t ed25519 -N ''' -f /root/user")
+      guest.succeed("install -m 0644 /root/ca.pub /run/repose/user_ca.pub")
+      guest.succeed("echo 0192e4b0-0000-7000-8000-000000000001 > /etc/ssh/principals/dev && systemctl reload sshd")
+      guest.succeed("ssh-keygen -q -s /root/ca -I 'user:t' -n 0192e4b0-0000-7000-8000-000000000001 -V -1m:+12h /root/user.pub")
+
+      def ssh(cmd):
+          return guest.succeed("ssh -n -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o CertificateFile=/root/user-cert.pub -i /root/user dev@127.0.0.1 " + shlex.quote(cmd))
+
+      # How startAgentWindow starts an agent.
+      def launch(window, d):
+          tag = d.rsplit("/", 1)[-1]
+          guest.succeed(f"rm -f /tmp/out-{tag}")
+          ssh(f"tmux new-window -t todo-app -n {window} -c {d} -d repose-devshell-probe")
+          out = guest.wait_until_succeeds(f"grep -q done /tmp/out-{tag} && cat /tmp/out-{tag}", timeout=180)
+          pane = guest.succeed(f"sudo -H -u dev tmux capture-pane -p -J -t todo-app:{window}")
+          print(f"{window} in {d}:\n{out}\npane:\n{pane}")
+          return out, pane
+
+      def git_repo(d, files):
+          dev(f"mkdir -p {d} && cd {d} && git init -q -b main . && git add {files} && git -c user.email=t@t -c user.name=t commit -q -m init")
+
+      dev("cp ${devshellFlake} ~/todo-app/flake.nix && chmod 644 ~/todo-app/flake.nix")
+      git_repo("~/todo-app", "flake.nix")
+
+      with subtest("a flake without .envrc: the agent runs in its dev shell"):
+          ssh("tmux new-window -t todo-app -n raw -c ~/todo-app -d 'sh -c \"echo flake=$REPOSE_FLAKE_PROBE; command -v flake-tool; echo done\" > /tmp/out-raw 2>&1'")
+          raw = guest.wait_until_succeeds("grep -q done /tmp/out-raw && cat /tmp/out-raw", timeout=30)
+          print("a bare command in a new window: " + raw)
+          assert "from-the-flake" not in raw, raw
+          out, pane = launch("bare", "/home/dev/todo-app")
+          assert "flake=from-the-flake" in out, out
+          assert "tool=flake-tool-ok" in out, out
+          assert "project=todo-app" in out, out
+          assert "repose: loading the dev shell from /home/dev/todo-app/flake.nix" in pane, pane
+          # The generated .envrc lives outside the checkout, which stays clean.
+          guest.succeed("test ! -e /home/dev/todo-app/.envrc && test ! -e /home/dev/todo-app/.direnv")
+          assert "use flake /home/dev/todo-app" in dev("cat ~/.cache/repose/devshell/*/.envrc")
+          assert dev("cd ~/todo-app && git status --porcelain").strip() == ""
+
+      with subtest("an .envrc never allowed here is allowed, and the agent gets all of it"):
+          dev("cd ~/todo-app && printf 'use flake\\nexport ENVRC_ONLY=yes\\n' > .envrc && git add .envrc && git -c user.email=t@t -c user.name=t commit -q -m envrc")
+          assert '"allowed": 1' in dev("cd ~/todo-app && direnv status --json")
+          out, pane = launch("envrc", "/home/dev/todo-app")
+          assert "flake=from-the-flake" in out and "tool=flake-tool-ok" in out, out
+          assert "envrc=yes" in out, out
+          assert "repose: allowed /home/dev/todo-app/.envrc" in pane, pane
+          assert '"allowed": 0' in dev("cd ~/todo-app && direnv status --json")
+
+      with subtest("a --worktree window, in another directory, gets the same environment"):
+          dev("cd ~/todo-app && git worktree add -q -b repose/probe-2 ~/todo-app-probe-2")
+          out, pane = launch("probe-2", "/home/dev/todo-app-probe-2")
+          assert "flake=from-the-flake" in out and "envrc=yes" in out, out
+          assert "repose: allowed /home/dev/todo-app-probe-2/.envrc" in pane, pane
+
+      with subtest("a denied .envrc is left out and the agent still starts"):
+          dev("direnv deny ~/todo-app")
+          out, pane = launch("denied", "/home/dev/todo-app")
+          assert "project=todo-app" in out, out
+          assert "flake=\n" in out and "envrc=\n" in out, out
+          assert "/home/dev/todo-app/.envrc is denied" in pane, pane
+
+      with subtest("a broken flake: the agent starts without it and the pane says why"):
+          dev("mkdir -p ~/broken && printf '{ outputs = { self }: { devShells = ; }; }\\n' > ~/broken/flake.nix")
+          git_repo("~/broken", "flake.nix")
+          out, pane = launch("broken", "/home/dev/broken")
+          assert "project=todo-app" in out and "flake=\n" in out, out
+          assert "repose: the dev shell from /home/dev/broken/flake.nix did not load" in pane, pane
+
+      with subtest("the pane is marked while the environment loads, for repose run"):
+          dev("mkdir -p ~/slow && printf 'sleep 8\\nexport ENVRC_ONLY=slow\\n' > ~/slow/.envrc")
+          guest.succeed("rm -f /tmp/out-slow")
+          ssh("tmux new-window -t todo-app -n slow -c ~/slow -d repose-devshell-probe")
+          guest.wait_until_succeeds("sudo -H -u dev tmux show-options -p -v -t todo-app:slow @repose-devshell | grep -qx loading", timeout=30)
+          out = guest.wait_until_succeeds("grep -q done /tmp/out-slow && cat /tmp/out-slow", timeout=60)
+          assert "envrc=slow" in out, out
+          assert guest.succeed("sudo -H -u dev tmux show-options -p -v -t todo-app:slow @repose-devshell || true").strip() == ""
+
+      with subtest("an agent started from a shell that has the environment loads nothing again"):
+          guest.succeed("rm -f /tmp/out-slow")
+          out = dev("cd ~/slow && eval \"$(direnv export bash 2>/dev/null)\" && timeout 5 repose-devshell-probe 2>&1 || true")
+          assert "loading the dev shell" not in out, out
+          assert "envrc=slow" in guest.succeed("cat /tmp/out-slow")
     '';
   };
 }

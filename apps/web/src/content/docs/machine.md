@@ -70,7 +70,14 @@ repose scan
 
 ## Projects with a flake.nix
 
-direnv is set up. Put `use flake` in the repository's `.envrc`, run `direnv allow` once on the machine, and the flake's dev shell loads when you `cd` into the checkout.
+Agents start in the project's dev environment, so they and every command they run see the tools and variables it provides. This holds for every window, `--worktree` ones included:
+
+- With an `.envrc`, agents get what it sets. The first time an agent starts in a checkout, repose runs `direnv allow` for its `.envrc`, and again after the file changes; the agent's window says so. If you ran `direnv deny` on it, agents start without it.
+- With a `flake.nix` that defines a dev shell and no `.envrc`, agents start in that dev shell. Nothing is written to the checkout.
+
+The first load builds the dev shell and can take minutes. `repose run` shows `Loading the project's dev shell` meanwhile and sends your prompt once the agent is up. If the dev shell fails to load, the agent starts without it and its window shows the error first.
+
+In your own shells, direnv is set up: put `use flake` in the repository's `.envrc`, run `direnv allow` once on the machine, and the flake's dev shell loads when you `cd` into the checkout. To keep agents out of a flake's dev shell, add an `.envrc` that doesn't `use flake`.
 
 ## Ports
 

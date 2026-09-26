@@ -365,7 +365,7 @@ func TestPromptSendAndSecondWindowNaming(t *testing.T) {
 			t.Fatalf("window %d = %q othersOpen=%v, want %q/%v", i+1, name, othersOpen, want, i > 0)
 		}
 		prompt := "prompt number " + want
-		if err := startAgentWindow(ctx, f.target, testSlug, name, "~/"+testSlug, "cat", prompt, false); err != nil {
+		if err := startAgentWindow(ctx, f.target, testSlug, name, "~/"+testSlug, "cat", prompt, false, nil); err != nil {
 			t.Fatalf("startAgentWindow %s: %v", name, err)
 		}
 		if pane, err := waitForCapture(ctx, f.target, testSlug, name, prompt); err != nil {
@@ -391,6 +391,68 @@ func TestPromptSendAndSecondWindowNaming(t *testing.T) {
 	}
 	if !has["cat"] || !has["cat-3"] || has["cat-2"] {
 		t.Fatalf("windows = %v, want cat and cat-3 and no cat-2", windows)
+	}
+}
+
+// TestPromptWaitsForDevShellLoad (I-259): while the agent wrapper loads
+// the checkout's dev environment it marks the pane @repose-devshell, and
+// the prompt is typed only after the agent runs. The stand-in "wrapper"
+// swallows whatever is typed while it loads, as a terminal does to input
+// that arrives before an agent's TUI starts, so a prompt sent early never
+// reaches the stand-in agent (cat writing to a file).
+func TestPromptWaitsForDevShellLoad(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	if _, err := runSSH(ctx, f.target, "tmux new-session -d -s "+testSlug+" -c ~/"+testSlug, nil); err != nil {
+		t.Fatalf("tmux new-session: %v", err)
+	}
+	// The load outlasts the ordinary wait for an agent to start.
+	defer func(d time.Duration) { paneIdleTimeout = d }(paneIdleTimeout)
+	paneIdleTimeout = 1 * time.Second
+	got := filepath.Join(f.guestHome, "got")
+	script := filepath.Join(f.guestHome, "fake-wrapper")
+	body := "#!/bin/sh\n" +
+		"tmux set-option -p -t \"$TMUX_PANE\" " + devShellLoadingOption + " loading\n" +
+		"echo 'repose: loading the dev shell'\n" +
+		"read -r swallowed; read -r swallowed\n" + // no output for well over paneIdleWait
+		"tmux set-option -p -u -t \"$TMUX_PANE\" " + devShellLoadingOption + "\n" +
+		"exec cat > " + got + "\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The stand-in's loading ends when the test says so (two lines typed
+	// by the test, not by startAgentWindow), four seconds in.
+	go func() {
+		time.Sleep(4 * time.Second)
+		_, _ = runSSH(ctx, f.target, "tmux send-keys -t "+testSlug+":cat 'x' Enter 'y' Enter", nil)
+	}()
+	if _, err := runSSH(ctx, f.target, "tmux new-window -t "+testSlug+" -n cat -c ~/"+testSlug+" -d "+shQuote(script), nil); err != nil {
+		t.Fatal(err)
+	}
+	loadingSeen := 0
+	start := time.Now()
+	if err := waitPaneIdle(ctx, f.target, testSlug, "cat", "cat", func() { loadingSeen++ }); err != nil {
+		t.Fatal(err)
+	}
+	if loadingSeen != 1 {
+		t.Fatalf("onLoading called %d times, want 1", loadingSeen)
+	}
+	if waited := time.Since(start); waited < 4*time.Second {
+		t.Fatalf("waitPaneIdle returned after %s, before the dev shell loaded", waited)
+	}
+	if _, err := runSSH(ctx, f.target, "tmux send-keys -t "+testSlug+":cat -l "+shQuote("the prompt")+" && tmux send-keys -t "+testSlug+":cat Enter", nil); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		b, _ := os.ReadFile(got)
+		if strings.Contains(string(b), "the prompt") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the agent never got the prompt; its input: %q", b)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
@@ -433,7 +495,7 @@ func TestRunWorktree(t *testing.T) {
 	if got := mustRun(t, dir, "git", "rev-parse", "--abbrev-ref", "HEAD"); got != "repose/cat" {
 		t.Fatalf("worktree branch = %q", got)
 	}
-	if err := startAgentWindow(ctx, f.target, testSlug, wt.Window, wt.Dir, "cat", "in the worktree", false); err != nil {
+	if err := startAgentWindow(ctx, f.target, testSlug, wt.Window, wt.Dir, "cat", "in the worktree", false, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := waitForCapture(ctx, f.target, testSlug, wt.Window, "in the worktree"); err != nil {
