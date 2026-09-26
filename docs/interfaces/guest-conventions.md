@@ -122,7 +122,12 @@ Each agent binary is wrapped (`nix/overlay/agents/wrap.nix`) to:
    and the agent starts without it. While it loads inside tmux, the pane
    option `@repose-devshell` is `loading`; `repose run` waits (up to 30
    minutes) while it is set before typing the prompt. The option is new;
-   a CLI that does not read it waits 30 s as before.
+   a CLI that does not read it waits 30 s as before. The same loader is
+   installed as `/etc/repose/devshell.sh` (I-275): sourcing it defines
+   `_repose_devshell NAME`, which `repose exec` calls in the checkout
+   before it execs the user's command, NAME being the command's name in
+   the `repose:` messages. A base without the file gets `direnv export
+   bash` from the CLI instead.
 4. Exec the real binary with `"$@"`.
 
 `repose-hook` takes the agent from `REPOSE_HOOK_AGENT` or `--agent`

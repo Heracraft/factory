@@ -145,7 +145,7 @@ func TestRestoreWaitsForADestroyInProgress(t *testing.T) {
 	}
 }
 
-// `repose projects --destroyed` listed izma three times with no way to
+// `repose ls --destroyed` listed izma three times with no way to
 // tell which one `repose restore izma` takes (I-192).
 func TestDestroyedListIsOneRowPerName(t *testing.T) {
 	at := func(h int) time.Time { return time.Date(2026, 9, 23, h, 0, 0, 0, time.Local) }

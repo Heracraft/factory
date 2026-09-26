@@ -23,6 +23,13 @@ in
   reposeAgents = builtins.mapAttrs (name: pkg: wrap { inherit name pkg; })
     final.reposeAgentsUnwrapped;
 
+  # The checkout's dev environment loader every agent wrapper sources
+  # (DECISIONS I-259), also at /etc/repose/devshell.sh for `repose exec`
+  # (I-275), so a command run that way sees what an agent sees.
+  reposeDevshell = final.replaceVars ./devshell.sh {
+    inherit (final) direnv jq tmux coreutils;
+  };
+
   # Runs once per agent start: idempotent hook and MCP registration.
   repose-agent-setup = final.callPackage ./agent-setup.nix { };
 

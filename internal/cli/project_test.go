@@ -123,7 +123,7 @@ func TestResolveProjectOrder(t *testing.T) {
 		deps := resolveDeps{RemoteFor: func(string) string { return "" }}
 		_, err := resolveProject(ctx, client, t.TempDir(), "/cwd", "nope", &cache, deps)
 		ee, ok := err.(*exitError)
-		if !ok || ee.code != ExitProjectNotFound || !strings.Contains(ee.msg, "repose projects") {
+		if !ok || ee.code != ExitProjectNotFound || !strings.Contains(ee.msg, "repose ls") {
 			t.Fatalf("err = %v", err)
 		}
 	})

@@ -12,11 +12,13 @@ To act on a project from elsewhere, name it: `repose attach todo-app`, `repose s
 ## See what's running
 
 ```
-$ repose projects
+$ repose ls
 PROJECT    CLASS  STATE    UP     AGENTS           TODAY  MONTH
 todo-app   large  running  2h14m  claude: working  $0.31  $18.40
 api-v2     xl     stopped  -      -                $0.00  $41.02
 ```
+
+`repose ls -q` prints only the names, for scripts: `repose ls -q | xargs -n1 repose stop` stops everything.
 
 A machine runs until you stop it; repose never stops one for being idle. It does tell you when one is, see [Idle machines](#idle-machines). For one project in detail, including which processes are listening on ports:
 
@@ -31,7 +33,7 @@ The dashboard's project page shows the state, agents, SSH sessions and cost, plu
 
 ```
 $ repose stop todo-app
-Stopped todo-app in 38s. Snapshot 0192… (2.1 GB). Disk is still billed; `repose destroy todo-app` to stop that.
+Stopped todo-app in 38s. Snapshot 0192… (2.1 GB). Disk is still billed; `repose rm todo-app` to stop that.
 
 $ repose start todo-app
 todo-app is running (large), ready in 9s. `repose attach todo-app` to get in.
@@ -46,7 +48,7 @@ Stopping ends every process and snapshots the disk (`--no-snapshot`, or untickin
 A machine is idle when it has been running for 24 hours with no SSH session, no tmux client and no agent working. An agent sitting at its prompt, finished or waiting for you, doesn't count as working. repose doesn't stop an idle machine, because an agent's long job can look the same from outside. It tells you instead:
 
 ```
-$ repose projects
+$ repose ls
 PROJECT    CLASS  STATE    UP      AGENTS         TODAY  MONTH
 todo-app   large  running  31h02m  claude: idle   $3.36  $22.10
 todo-app: idle 26h, billing ~$0.14/h; `repose stop todo-app` stops it
@@ -87,17 +89,17 @@ The dashboard's snapshot list has **Create**, **Restore** and **Restore as new�
 ## Destroy and restore
 
 ```
-$ repose destroy todo-app
+$ repose rm todo-app
 Destroy todo-app? A final snapshot is kept for 30 days. [y/N] y
 Destroying todo-app. Bring it back within 30 days with: repose restore todo-app
 ```
 
-This deletes the machine and its disk and stops all charges for the project. `--yes` skips the question; `--wait` waits until it's done. In the dashboard, **Destroy** asks you to type the project's name.
+This deletes the machine and its disk and stops all charges for the project. `--yes` skips the question; `--wait` waits until it's done. `repose rm` was called `repose destroy`, and `repose ls` was `repose projects`; the old names still work. In the dashboard, **Destroy** asks you to type the project's name.
 
 Within 30 days, bring it back, running, with its size, configuration and git remote:
 
 ```
-repose projects --destroyed
+repose ls --destroyed
 repose restore todo-app
 ```
 
@@ -139,7 +141,7 @@ git fetch fork-2
 git merge fork-2/main
 ```
 
-Pushing a branch from the copy (`git push origin HEAD:try-2`) works too. Destroy the copies you don't need with `repose destroy todo-app-fork-1`.
+Pushing a branch from the copy (`git push origin HEAD:try-2`) works too. Destroy the copies you don't need with `repose rm todo-app-fork-1`.
 
 Each copy is a project: it counts toward your [project limit](/docs/limits) and is billed like any project while it runs. If the copies would take you past the limit, `repose fork` creates none of them. `--size small` makes cheaper copies; `--name` changes their names.
 

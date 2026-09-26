@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-321 entries.
+326 entries.
 
 ## Scope
 
@@ -353,3 +353,8 @@ pointer, not a summary.
 - **I-268** `repose resize` takes the project as its first argument — 2026-09-26; L6895
 - **I-272** The laptop checkout gets a fetch-only `repose` git remote for the machine's checkout — 2026-09-26; L6911
 - **I-269** A capacity waitlist holds a new user's first project when the fleet is near full — 2026-09-26; L6982
+- **I-273** `repose ls` and `repose rm` are the names; `projects` and `destroy` are aliases — 2026-09-26; L7037
+- **I-274** `repose ps` lists the tmux windows — 2026-09-26; L7064
+- **I-275** `repose exec` runs one command in the checkout; `repose ssh` opens a shell there — 2026-09-26; L7082
+- **I-276** Did-you-mean for commands, `-q` on listings — 2026-09-26; L7122
+- **I-277** `repose secrets import` sets every NAME=VALUE of a .env file — 2026-09-26; L7142

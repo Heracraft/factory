@@ -248,6 +248,26 @@ runs on, so `Ctrl-V` in the guest never sees the laptop's screenshot.
 A terminal key binding that runs it (kitty, WezTerm) is documented on
 /docs/run-and-attach, not shipped.
 
+## ps, exec and ssh (I-274, I-275)
+
+- `repose ps [PROJECT]` is one ssh over the project's connection:
+  `date +%s` and `tmux list-windows` with index, name,
+  `pane_current_command` (the process name, never its arguments),
+  `window_activity` and `window_active`. Idle time is the guest's clock
+  minus the activity time, so a skewed laptop clock does not matter.
+  `-q` prints names, `--json` the records. Nothing is logged.
+- `repose exec [PROJECT] -- CMD...` runs, over ssh, `cd ~/<slug>` (home
+  with a stderr note when missing), `/etc/profile.d/repose.sh`, then
+  `/etc/repose/devshell.sh` (the agent wrappers' loader, I-259) or, on an
+  older base, `direnv export bash`, then `exec` of the arguments, each
+  single-quoted. No stdin without `-i`, a remote tty only with `-t`
+  (`ssh -tt`). Once the command runs, repose exits with its status; repose's
+  own codes only come before, with a message.
+- `repose ssh [PROJECT]` replaces the CLI with `ssh -t <slug>.repose` running
+  a login shell in the checkout, outside tmux.
+- All three need a running project (exit 5 otherwise) and ensure the
+  certificate and config the way `attach` does.
+
 ## Depends on
 
 Workstreams 07 (cli), 05 (projects, certs, ops), 04 (guestd SetupProject,

@@ -80,7 +80,7 @@ func StopCmd(ctx context.Context, e *Env, projectArg string, snapshot bool) erro
 		return err
 	}
 	if project.State == "stopped" {
-		_, _ = fmt.Fprintf(e.Out, "%s is already stopped. Disk is still billed; `repose destroy %s` to stop that.\n", project.Slug, project.Slug)
+		_, _ = fmt.Fprintf(e.Out, "%s is already stopped. Disk is still billed; `repose rm %s` to stop that.\n", project.Slug, project.Slug)
 		return nil
 	}
 	pr := e.newProgress()
@@ -119,9 +119,9 @@ func StopCmd(ctx context.Context, e *Env, projectArg string, snapshot bool) erro
 		}
 	}
 	if snapshot && snapID != "" {
-		_, _ = fmt.Fprintf(e.Out, "Stopped %s in %s. Snapshot %s (%s). Disk is still billed; `repose destroy %s` to stop that.\n", p.Slug, fmtElapsed(pr.Total()), snapID, humanBytes(snapBytes), p.Slug)
+		_, _ = fmt.Fprintf(e.Out, "Stopped %s in %s. Snapshot %s (%s). Disk is still billed; `repose rm %s` to stop that.\n", p.Slug, fmtElapsed(pr.Total()), snapID, humanBytes(snapBytes), p.Slug)
 	} else {
-		_, _ = fmt.Fprintf(e.Out, "Stopped %s in %s. Disk is still billed; `repose destroy %s` to stop that.\n", p.Slug, fmtElapsed(pr.Total()), p.Slug)
+		_, _ = fmt.Fprintf(e.Out, "Stopped %s in %s. Disk is still billed; `repose rm %s` to stop that.\n", p.Slug, fmtElapsed(pr.Total()), p.Slug)
 	}
 	if reason := projectReason(p); reason != "" && p.LastError != nil {
 		// I-158: a stop whose snapshot failed leaves the project stopped
@@ -138,9 +138,9 @@ func destroyPrompt(slug string) string {
 	return fmt.Sprintf("Destroy %s? A final snapshot is kept for 30 days. [y/N] ", slug)
 }
 
-// DestroyCmd implements `repose destroy [PROJECT] [--yes] [--wait]`.
+// DestroyCmd implements `repose rm [PROJECT] [--yes] [--wait]`.
 // By default it returns as soon as the api has accepted the destroy
-// (DECISIONS I-166): the project reads `destroying` in `repose projects`
+// (DECISIONS I-166): the project reads `destroying` in `repose ls`
 // from then on, and a failure shows there, in `repose status`, and as a
 // destroy_failed notification (I-165). With wait it prints "Destroyed"
 // only when the destroy op is done and the project is gone (api.md:
@@ -186,7 +186,7 @@ func DestroyCmd(ctx context.Context, e *Env, projectArg string, yes, wait bool, 
 		return nil
 	}
 	pr.Phase("Destroying "+project.Slug, "")
-	retry := fmt.Sprintf("`repose destroy %s` tries again.", project.Slug)
+	retry := fmt.Sprintf("`repose rm %s` tries again.", project.Slug)
 	if opID != "" {
 		op, err := waitOpPhased(ctx, e, project, opID, pr, false)
 		if err != nil {

@@ -26,7 +26,7 @@ Restore over the current volume? Anything since the snapshot is lost. [y/N] y
 Restored todo-app. `repose start todo-app` boots it.
 
 $ repose snapshots restore 0199a1c2-3f40-7b8e-9d21-4c5e6f7a8b90 --as-new todo-app-yesterday
-Restored into a new project, todo-app-yesterday. `repose projects` lists it.
+Restored into a new project, todo-app-yesterday. `repose ls` lists it.
 ```
 
 Snapshot ids are UUIDv7 like every id (interfaces/README.md). TAKEN is
@@ -62,7 +62,7 @@ Retention (DECISIONS R4-11):
 - Seven daily snapshots per project, oldest deleted after the newest
   succeeds, never before. Manual snapshots count toward the seven.
 - After `destroy`, the last snapshot is kept 30 days and listed under
-  "Recently destroyed" in the dashboard and in `repose projects
+  "Recently destroyed" in the dashboard and in `repose ls
   --destroyed`; `repose restore <name>` (or the dashboard's Restore)
   brings it back as a new project (DECISIONS I-167), and `snapshots
   restore <id> --as-new` still does.

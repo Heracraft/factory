@@ -301,7 +301,7 @@ func TestDestroyStopsFirstAndReportsItsFailure(t *testing.T) {
 	evs, _ := store.ListEvents(h.Ctx, h.Pool, bid, time.Time{}, 50)
 	found := false
 	for _, e := range evs {
-		found = found || (e.Kind == "destroy_failed" && strings.Contains(e.Summary, "repose destroy stuck"))
+		found = found || (e.Kind == "destroy_failed" && strings.Contains(e.Summary, "repose rm stuck"))
 	}
 	if !found {
 		t.Fatalf("no destroy_failed event: %+v", evs)

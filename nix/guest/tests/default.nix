@@ -1374,6 +1374,18 @@ in
           assert "use flake /home/dev/todo-app" in dev("cat ~/.cache/repose/devshell/*/.envrc")
           assert dev("cd ~/todo-app && git status --porcelain").strip() == ""
 
+      # I-275: `repose exec todo-app -- sh -c '...'` sends this command line
+      # (internal/cli/testdata/exec-script.sh, which TestExecScriptGolden
+      # holds to the CLI's execScript); it gets what the agent got.
+      with subtest("repose exec runs its command in the agent's dev environment"):
+          guest.succeed("test -r /etc/repose/devshell.sh")
+          out = ssh(open("${../../../internal/cli/testdata/exec-script.sh}").read())
+          print("repose exec: " + out)
+          assert "flake=from-the-flake" in out, out
+          assert "project=todo-app" in out, out
+          assert "pwd=/home/dev/todo-app" in out, out
+          assert "flake-tool-ok" in out, out
+
       with subtest("an .envrc never allowed here is allowed, and the agent gets all of it"):
           dev("cd ~/todo-app && printf 'use flake\\nexport ENVRC_ONLY=yes\\n' > .envrc && git add .envrc && git -c user.email=t@t -c user.name=t commit -q -m envrc")
           assert '"allowed": 1' in dev("cd ~/todo-app && direnv status --json")

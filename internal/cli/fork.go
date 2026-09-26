@@ -101,7 +101,7 @@ func ForkCmd(ctx context.Context, e *Env, opts ForkOptions) error {
 	// only spares a snapshot that nothing would use.
 	if me, err := e.Client.GetMe(ctx); err == nil && me.Limits.Projects > 0 {
 		if projects, err := e.Client.ListProjects(ctx); err == nil && len(projects)+opts.Count > me.Limits.Projects {
-			return exitf(ExitGeneric, "You have %d of %d projects, and %d more would make %d. Destroy some (`repose projects` lists them), or add a card and pay your first invoice to raise the limit.",
+			return exitf(ExitGeneric, "You have %d of %d projects, and %d more would make %d. Destroy some (`repose ls` lists them), or add a card and pay your first invoice to raise the limit.",
 				len(projects), me.Limits.Projects, opts.Count, len(projects)+opts.Count)
 		}
 	}
@@ -156,7 +156,7 @@ func ForkCmd(ctx context.Context, e *Env, opts ForkOptions) error {
 		return err
 	}
 	if len(res.Projects) == 0 {
-		return exitf(ExitGeneric, "The api answered the fork of %s without any project. `repose projects` shows what exists.", src.Slug)
+		return exitf(ExitGeneric, "The api answered the fork of %s without any project. `repose ls` shows what exists.", src.Slug)
 	}
 
 	// Each fork's restore is its own op; they run side by side on the
@@ -212,7 +212,7 @@ func ForkCmd(ctx context.Context, e *Env, opts ForkOptions) error {
 		writeForkSummary(e, src, res, pr.Total())
 	}
 	if failed > 0 {
-		return exitf(ExitGeneric, "%d of %d forks did not start. Each failed fork is still a project: `repose destroy NAME` removes it, and `repose fork %s --snapshot %s` makes another from the same snapshot.", failed, len(res.Projects), src.Slug, res.SnapshotID)
+		return exitf(ExitGeneric, "%d of %d forks did not start. Each failed fork is still a project: `repose rm NAME` removes it, and `repose fork %s --snapshot %s` makes another from the same snapshot.", failed, len(res.Projects), src.Slug, res.SnapshotID)
 	}
 	return nil
 }
@@ -258,5 +258,5 @@ func writeForkSummary(e *Env, src *Project, res *ForkResult, took time.Duration)
 	_ = tw.Flush()
 	first := res.Projects[0].Slug
 	_, _ = fmt.Fprintf(e.Out, "Each is its own machine, billed like any project; %s is unchanged and is still the one `repose run` uses in its checkout.\n", src.Slug)
-	_, _ = fmt.Fprintf(e.Out, "`repose attach %s` to get in; `repose destroy %s` when you are done with one.\n", first, first)
+	_, _ = fmt.Fprintf(e.Out, "`repose attach %s` to get in; `repose rm %s` when you are done with one.\n", first, first)
 }

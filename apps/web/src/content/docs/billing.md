@@ -31,13 +31,13 @@ Your first day of compute is free.
 
 ## Seeing what you've used
 
-`repose projects` and `repose status` show each project's cost today and this month. The dashboard adds the month projected at the current rate, and its **Billing** page has your hours per day this month by size, your invoices, and your payment card. Usage is totalled a few minutes past each hour, so figures can trail by up to an hour.
+`repose ls` and `repose status` show each project's cost today and this month. The dashboard adds the month projected at the current rate, and its **Billing** page has your hours per day this month by size, your invoices, and your payment card. Usage is totalled a few minutes past each hour, so figures can trail by up to an hour.
 
 ## Stopping the charges
 
 - `repose stop` ends compute. Disk continues.
 - A running machine nobody has used for 24 hours keeps billing. repose tells you, in the CLI and the dashboard and once by email, but doesn't stop it ([Idle machines](/docs/lifecycle#idle-machines)).
-- `repose destroy` ends everything for that project. Its final snapshot is kept free for 30 days.
+- `repose rm` ends everything for that project. Its final snapshot is kept free for 30 days.
 
 ## Deleting your account
 

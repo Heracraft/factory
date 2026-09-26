@@ -53,6 +53,9 @@ type Env struct {
 	ErrOut  io.Writer
 	JSON    bool
 	Verbose bool
+	// Quiet is -q on a listing: only the names or ids, one per line, for
+	// a pipe into xargs (DECISIONS I-276).
+	Quiet bool
 	// TTY is whether stderr is a terminal: a spinner there, plain phase
 	// lines otherwise (I-154).
 	TTY bool

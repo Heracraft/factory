@@ -252,7 +252,7 @@ func TestDocsNameEveryCommandAndFlag(t *testing.T) {
 			ghosts = append(ghosts, "`"+sp+"` names "+ghost+", which is not a command")
 		}
 		for _, tok := range spanTokens(sp) {
-			if strings.HasPrefix(tok, "-") && len(tok) > 1 && !flagOf[tok] && tok != "--help" && tok != "-h" {
+			if strings.HasPrefix(tok, "-") && len(tok) > 1 && !flagOf[tok] && tok != "--help" && tok != "-h" && tok != "--" {
 				ghosts = append(ghosts, "`"+sp+"` names "+tok+", which no command has")
 			}
 		}

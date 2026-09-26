@@ -10,7 +10,7 @@ import (
 )
 
 // DECISIONS I-262: an idle project says so, with its rate and the stop
-// command, on `repose status` and under `repose projects`; a project that
+// command, on `repose status` and under `repose ls`; a project that
 // is not idle, or not running, says nothing.
 func TestIdleLineOnStatusAndProjects(t *testing.T) {
 	since := time.Now().Add(-26*time.Hour - 10*time.Minute)

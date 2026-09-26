@@ -233,7 +233,7 @@ done"'`: the line carries `format`, `raw_reason`, `used_bytes`,
 
 A destroy the user no longer waits for (I-166) that fails leaves the
 project in `error` with a `destroy_failed` event; `repose-admin projects
-show <id>` has the op error, and `repose destroy` (or the admin's
+show <id>` has the op error, and `repose rm` (or the admin's
 destroy) resumes it.
 
 ## BuildQueueStuck

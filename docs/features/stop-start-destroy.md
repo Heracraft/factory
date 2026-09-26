@@ -13,10 +13,10 @@ and elapsed time on a terminal, or one line per phase elsewhere (I-154).
 ```
 $ repose stop todo-app
 Snapshotting and stopping todo-app...
-Stopped todo-app in 38s. Snapshot 0192… (2.1 GB). Disk is still billed; `repose destroy todo-app` to stop that.
+Stopped todo-app in 38s. Snapshot 0192… (2.1 GB). Disk is still billed; `repose rm todo-app` to stop that.
 
 $ repose stop --no-snapshot
-Stopped todo-app in 6.2s. Disk is still billed; `repose destroy todo-app` to stop that.
+Stopped todo-app in 6.2s. Disk is still billed; `repose rm todo-app` to stop that.
 
 $ repose start todo-app
 Starting todo-app...
@@ -26,11 +26,11 @@ $ repose start age-calculator          # in `error`: the api restarts it (I-157)
 Restarting age-calculator (its agent stopped answering)...
 age-calculator is running (large), ready in 21s. `repose attach age-calculator` to get in.
 
-$ repose destroy todo-app
+$ repose rm todo-app
 Destroy todo-app? A final snapshot is kept for 30 days. [y/N] y
 Destroying todo-app. Bring it back within 30 days with: repose restore todo-app
 
-$ repose projects --destroyed
+$ repose ls --destroyed
 PROJECT   CLASS  DESTROYED         SNAPSHOT          SIZE    RESTORABLE UNTIL
 todo-app  large  2026-09-23 02:23  2026-09-23 02:23  2.0 MB  2026-10-23
 `repose restore NAME` brings one back (`--as NEW-NAME` when the name is in use).
@@ -41,14 +41,14 @@ Restored todo-app from its snapshot of 2026-09-23 02:23 in 31s; it is running (l
 
 The destroy returns as soon as the api has accepted it (DECISIONS
 I-166); the project reads `destroying` until it is gone. A destroy that
-fails shows in `repose projects` and `repose status` as `error` with the
+fails shows in `repose ls` and `repose status` as `error` with the
 reason and the retry, and as a `destroy_failed` notification (I-165).
 `--wait` waits and reports, for scripts, and never prints "Destroyed"
 for a destroy that failed (I-153):
 
 ```
-$ repose destroy age-calculator --yes --wait
-Could not destroy age-calculator: the host could not remove the volume (internal). age-calculator is still there, in state error. `repose destroy age-calculator` tries again.
+$ repose rm age-calculator --yes --wait
+Could not destroy age-calculator: the host could not remove the volume (internal). age-calculator is still there, in state error. `repose rm age-calculator` tries again.
 ```
 
 ## States
@@ -146,15 +146,15 @@ Destroy:
   is the one kept 30 days. A guest the host no longer has is already
   destroyed. The op ends `error` only for a real host failure (deleting
   the volume, uploading the snapshot), and destroying again resumes.
-- `DELETE` answers with the destroy's `op_id`; `repose destroy --wait`
+- `DELETE` answers with the destroy's `op_id`; `repose rm --wait`
   waits for that op and prints "Destroyed." only when it is `done`. A
   failed destroy leaves the project in `error` with a reason that names
-  `repose destroy <slug>` as the retry, and sends `destroy_failed`.
+  `repose rm <slug>` as the retry, and sends `destroy_failed`.
 - Within 30 days, `repose restore <slug>` (or plain `repose restore` in
   the project's checkout, which finds it by the git remote, I-172) brings
   it back as a new project under the same name (or `--as NEW-NAME` when a live project has it),
   from its newest snapshot or `--snapshot ID`, with its class, volume
-  size, configuration and remote (I-167). `repose projects --destroyed`
+  size, configuration and remote (I-167). `repose ls --destroyed`
   and the dashboard's "Recently destroyed" list what can be restored and
   until when. `repose snapshots restore <id> --as-new <name>` still
   works. After 30 days the snapshot is deleted by the retention job and
@@ -189,7 +189,7 @@ Failure handling:
 - A guest whose process sample names a known cryptocurrency miner (xmrig
   and the like, by name only) is stopped by the platform through the
   ordinary stop, snapshot first (DECISIONS I-239). `repose status`,
-  `repose projects` and the dashboard then say `stopped: a cryptocurrency
+  `repose ls` and the dashboard then say `stopped: a cryptocurrency
   miner (xmrig) was running; mining is not allowed on repose, see the
   terms at https://repose.herakraft.co/terms`, and an `abuse_stopped`
   notification goes out. `repose start` works as usual, and a guest that
