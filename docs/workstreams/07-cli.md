@@ -92,6 +92,8 @@ repose stop [PROJECT] [--no-snapshot]
 repose status [PROJECT] [--json] [--watch]
 repose open PORT [--local-port N] [--no-browser]
 repose open --desktop [--no-browser]
+repose cp [-r] SRC DST        # PROJECT:PATH, or :PATH for this checkout's (I-201)
+repose paste [PROJECT] [--window NAME] [--print]   # clipboard image to the guest (I-252)
 repose secrets set NAME [--from-file PATH] [--from-env]
 repose secrets list
 repose secrets rm NAME
@@ -108,6 +110,13 @@ repose restore [NAME] [--as NEW-NAME] [--snapshot ID]   # no NAME: the checkout'
 repose logs [PROJECT] [--kind console|build|ops] [--since 1h] [--follow|-f]
 repose events [PROJECT] [--since 24h] [--follow|-f]
 repose projects [--destroyed [--all]]  # list all, ignores cwd; --destroyed: what can be restored
+repose fork [PROJECT] [-n N] [--name NAME] [--size S] [--snapshot ID] [--prompt TEXT [--agent A]] [--json]   # I-254
+repose resize SIZE             # grow the disk only (e.g. 80G)
+repose scan [DIR] [--json]     # dry run of what run installs (I-222)
+repose questions [PROJECT] [--json]            # I-245
+repose reply [PROJECT] [ANSWER...] [--question ID] [--json]
+repose notify set [--email on|off] [--ntfy URL|none]
+repose notify test
 repose version
 repose completion bash|zsh|fish
 repose mcp forward ...           # reserved, prints not-available message

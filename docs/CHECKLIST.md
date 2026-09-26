@@ -164,9 +164,10 @@ written so they cannot happen quietly.
       https://repose.herakraft.co/privacy | tr -s '[:space:]' ' ' | grep -c
       'We sample the processes'` is 1, verified live at 2026-09-21 02:47Z
       after the web roll, and the terms phrase likewise).
-- [ ] The Anthropic API key leaked in commit `b1a5915` has been rotated
+- [x] The Anthropic API key leaked in commit `b1a5915` has been rotated
       (done 2026-09-17) and the history has been rewritten or the repo made
-      private before it is shared with contributors.
+      private before it is shared with contributors. Closed by DECISIONS
+      I-193: the key was rotated and stays in history.
 - [ ] `repose --version` prints a version, and `curl -fsSL
       https://repose.herakraft.co/install.sh | sh` installs it on macOS
       arm64, macOS x86_64, Linux x86_64, Linux arm64. Partial (M5 session,

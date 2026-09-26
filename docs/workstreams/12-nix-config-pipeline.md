@@ -495,11 +495,14 @@ and whose host half is one of the `ops/checks/menu.sh` or
       agents print their versions. Evidence: a merged PR link and CI log.
       The workflow exists (`.github/workflows/bump-agents.yml`) and every
       overlay package prints its version locally (STATUS 12); no run has
-      happened on GitHub yet (owner). — open: the scheduled workflow ran
-      (success 2026-09-20, no PR) and has failed daily since 2026-09-21 (`gh
-      run list --workflow bump-agents.yml`: `lock file contains unlocked input
-      ./guest/fragment-placeholder`); fix the workflow's flake update, then a
-      merged PR link and the CI log close it.
+      happened on GitHub yet (owner). — open, half closed (2026-09-26): the
+      workflow's flake update was fixed in 01b6243; scheduled runs pass
+      (35984425847, 36122532223) and open PRs; #1 and #3 are merged
+      (https://github.com/Heracraft/factory/pull/3). Still missing: a CI log
+      of the PR building the agents and printing their versions. The ci
+      workflow on bump PRs waits for approval (`action_required`) and was
+      never run before merging; approve it on the next bump PR (#4 is open)
+      and paste that log.
 - [ ] Overlay cache is populated and a fresh host substitutes the agents
       instead of fetching upstream (`nix build --print-build-logs` shows
       `copying path ... from <cache>`). Evidence: pasted. Waits on the

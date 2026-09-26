@@ -36,7 +36,7 @@ wrong only if a `DECISIONS.md` entry says so.
 | [DESIGN-LANGUAGE.md](DESIGN-LANGUAGE.md) | You are building any screen. What to copy from the recruiting app and what not to. |
 | [ops/DEV-BOX.md](ops/DEV-BOX.md) | You are on the dev VM and something about disks, Nix or az is odd. |
 | [ops/AZURE-SETUP.md](ops/AZURE-SETUP.md) | The one-time human steps in Azure, Cloudflare, Logto, Stripe and Resend before agents start. |
-| [workstreams/PROMPTS.md](workstreams/PROMPTS.md) | The prompt and model to use when launching an agent on a workstream. |
+| [workstreams/PROMPTS.md](workstreams/PROMPTS.md) | The prompt for launching an agent on a workstream with `/ws` (every worker runs on the current Opus model). |
 
 ## How parallel work is organised
 
