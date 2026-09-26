@@ -3,7 +3,8 @@
 Git is the exchange channel between the laptop and the guest. `repose run`
 adds one thing on top: the uncommitted work in the laptop's tree is carried
 over once, at launch, so the agent starts from what the user actually sees.
-Work comes back only through git. Nothing syncs continuously.
+Work comes back only through git (`git fetch repose`, I-272). Nothing
+syncs continuously.
 
 ## What the user sees
 
@@ -28,9 +29,13 @@ $ repose run
 Connected to todo-app (large)
 Synced: 1 modified, 0 untracked (1 new commit)
 The guest's main has commits your laptop does not have; it was left as it
-is and the guest is on 4f2a9c1, detached. Push them from the guest (or
-`repose attach` to look) and pull on the laptop.
+is and the guest is on 4f2a9c1, detached. `git fetch repose` brings them
+to your laptop (or `repose attach` to look).
 ```
+
+The laptop checkout has a fetch-only `repose` remote for the guest's
+checkout, so that fetch is plain git with no push to origin (DECISIONS
+I-272; /docs `sync.md` "Getting work back").
 
 Guest changed since the last sync, laptop has nothing new (DECISIONS
 I-248):

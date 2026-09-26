@@ -5,7 +5,7 @@ section: Using repose
 order: 11
 ---
 
-Each `repose run` copies the current state of your checkout to the machine, once, at the start. Nothing syncs continuously and nothing comes back on its own: the agent commits and pushes, and you pull.
+Each `repose run` copies the current state of your checkout to the machine, once, at the start. Nothing syncs continuously and nothing comes back on its own: the agent commits, and you fetch its commits with `git fetch repose`.
 
 `repose attach` and `repose run --no-sync` leave the machine's checkout alone.
 
@@ -77,11 +77,50 @@ Your laptop has new work as well, so syncing now would write over them. Nothing 
 
 Changes that are exactly what the previous sync wrote don't count as the machine's: they are stashed on the machine as `repose run: last sync` (the newest 10 are kept) and the sync goes on.
 
-If the agent committed on the branch and your laptop has new commits of its own, the sync checks out your laptop's commit detached and leaves the agent's branch where it is. Nothing is lost. Push from the machine and pull on your laptop.
+If the agent committed on the branch and your laptop has new commits of its own, the sync checks out your laptop's commit detached and leaves the agent's branch where it is. Nothing is lost. `git fetch repose` brings the agent's branch to your laptop, where you merge or rebase it as you would any other.
 
 ## Getting work back
 
-The machine's checkout has the same `origin` as yours, so `git push` there works as it does locally. If you're logged in to the GitHub CLI (`gh`) on your laptop and the remote is on github.com, that login is copied and git on the machine pushes over HTTPS with it. For other git hosts, see [Secrets](/docs/secrets#other-git-hosts).
+`repose run` adds a git remote named `repose` to your checkout. It points at the checkout on the machine, over the same SSH connection as `ssh todo-app.repose`. Once the agent has committed, fetch its commits like any other remote's:
+
+```
+$ git fetch repose
+From todo-app.repose:~/todo-app
+ * [new branch]      main            -> repose/main
+ * [new branch]      repose/claude-2 -> repose/repose/claude-2
+$ git log --oneline main..repose/main
+16df520 Show errors under each field
+da9c3c3 Validate the email field
+```
+
+Then use them as you would any branch:
+
+```
+git diff main repose/main          # what the agent changed
+git merge repose/main              # take all of it
+git cherry-pick da9c3c3            # take one commit
+git pull repose main               # fetch and merge in one step
+```
+
+Nothing goes through GitHub, and the agent doesn't need to push. Only commits travel: files the agent changed but didn't commit stay on the machine. Ask the agent to commit, or `repose attach` and commit yourself.
+
+A branch on the machine appears under `repose/` followed by its name there. The branch of a [`--worktree` agent](/docs/run-and-attach#several-agents-separate-trees), `repose/claude-2` on the machine, is `repose/repose/claude-2` on your laptop, and `git pull repose repose/claude-2` names it as the machine does.
+
+The remote is for fetching. `git push repose` fails with `'this remote is fetch-only; repose run sends your work to the machine' does not appear to be a git repository`: the machine's checkout has a branch checked out, and pushing would move it under the agent. To send your work, run `repose run`. `git fetch --all` skips the remote, so it doesn't try a machine that's stopped.
+
+Details:
+
+- `repose run` and `repose attach` add the remote when the checkout is the project's own, and say so the first time. They leave it alone after that. It lives in `.git/config`, which isn't committed, so nothing changes in your repository.
+- If your checkout already has a remote named `repose` that points somewhere else, it's left alone, and the CLI says once how to add the machine under another name: `git remote add NAME todo-app.repose:~/todo-app`.
+- `repose destroy` in the checkout removes the remote. Branches you already fetched stay as `repose/...` until you delete them with `git branch -rd`.
+- Copies made with [`repose fork`](/docs/lifecycle#fork-a-project) don't get a remote of their own. Add one by hand: `git remote add fork-2 todo-app-fork-2.repose:~/todo-app-fork-2`.
+- The machine has to be running. On a stopped one, `git fetch repose` fails with ``todo-app is stopped; run `repose start todo-app` ``.
+
+### Pushing from the machine
+
+The machine's checkout has the same `origin` as yours, so `git push` there works as it does locally. If you're logged in to the GitHub CLI (`gh`) on your laptop and the remote is on github.com, that login is copied and git on the machine pushes over HTTPS with it. For other git hosts, see [Secrets](/docs/secrets#other-git-hosts). This is the way when the work should land on GitHub anyway, for a pull request.
+
+### Single files
 
 For a file that shouldn't go through git, use `repose cp`. A path after `:` is on the machine, relative to the checkout:
 

@@ -152,6 +152,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	if attachOnly {
 		// The carry runs beside the attach, never before it (I-195).
 		helper.Carry = true
+		e.addReposeRemote(project) // I-272
 		startSessionHelper(e, helper)
 		tzSaved()
 		return attachTmux(target, project.Slug, "", tz)
@@ -250,6 +251,9 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	} else {
 		helper.Carry = true
 	}
+	// The machine has its checkout now: point this checkout's `repose`
+	// remote at it (I-272).
+	e.addReposeRemote(project)
 
 	window := ""
 	if opts.Prompt != "" {

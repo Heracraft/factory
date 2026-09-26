@@ -175,6 +175,11 @@ func DestroyCmd(ctx context.Context, e *Env, projectArg string, yes, wait bool, 
 		return err
 	}
 	closeMaster(ctx, e, project.Slug)
+	if forgetReposeRemote(gitRepoRoot(e.Cwd), project.Slug) {
+		// The machine this checkout's `repose` remote pointed at is going
+		// away (I-272); what was fetched from it stays.
+		_, _ = fmt.Fprintln(e.ErrOut, "Removed the git remote repose; branches already fetched from it stay as repose/*.")
+	}
 	if !wait {
 		pr.Fail()
 		_, _ = fmt.Fprintf(e.Out, "Destroying %s. Bring it back within 30 days with: %s\n", project.Slug, restoreHint(project.Slug))

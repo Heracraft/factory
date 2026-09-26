@@ -1144,7 +1144,7 @@ func (s *SyncSummary) String() string {
 		if s.GuestFiles > 0 {
 			return fmt.Sprintf("The machine has changes your laptop doesn't have (%s); attaching without syncing. `repose run --stash-remote` puts them in git stash and syncs your laptop's work.", what)
 		}
-		return fmt.Sprintf("The machine has %s; attaching without syncing. Push them from the machine and pull, or `repose run --stash-remote` to sync your laptop's work over them.", what)
+		return fmt.Sprintf("The machine has %s; attaching without syncing. `git fetch repose` brings them to your laptop, or `repose run --stash-remote` syncs your laptop's work over them.", what)
 	}
 	line := fmt.Sprintf("Synced: %d modified, %d untracked", s.Modified, s.Untracked)
 	switch {
@@ -1192,7 +1192,7 @@ func (s *SyncSummary) Warnings() []string {
 		w = append(w, fmt.Sprintf("Kept the guest's %s: it is newer than the laptop's.", k))
 	}
 	if s.Diverged {
-		w = append(w, fmt.Sprintf("The guest's %s has commits your laptop does not have; it was left as it is and the guest is on %s, detached. Push them from the guest (or `repose attach` to look) and pull on the laptop.", s.Branch, short))
+		w = append(w, fmt.Sprintf("The guest's %s has commits your laptop does not have; it was left as it is and the guest is on %s, detached. `git fetch repose` brings them to your laptop (or `repose attach` to look).", s.Branch, short))
 	}
 	for _, f := range s.SkippedBig {
 		w = append(w, fmt.Sprintf("Skipped %s: over 100 MB.", f))

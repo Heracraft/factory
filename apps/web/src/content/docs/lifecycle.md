@@ -131,7 +131,15 @@ Forked todo-app into 3 projects from its snapshot of 2026-09-25 14:02 in 48s:
 
 `--prompt "..."` starts the agent in every copy with the same prompt. To give each copy its own prompt, attach to it and type it, or run `repose run --project todo-app-fork-2 --no-sync "..."`.
 
-The original keeps running and is still the project `repose run` uses in your checkout. Reach the copies by name: `repose attach todo-app-fork-2`. To keep one copy's work, commit it there and push a branch (`git push origin HEAD:try-2`), then fetch it on your laptop. Destroy the copies you don't need with `repose destroy todo-app-fork-1`.
+The original keeps running and is still the project `repose run` uses in your checkout. Reach the copies by name: `repose attach todo-app-fork-2`. To keep one copy's work, commit it there and fetch it into your checkout with a remote for that copy:
+
+```
+git remote add fork-2 todo-app-fork-2.repose:~/todo-app-fork-2
+git fetch fork-2
+git merge fork-2/main
+```
+
+Pushing a branch from the copy (`git push origin HEAD:try-2`) works too. Destroy the copies you don't need with `repose destroy todo-app-fork-1`.
 
 Each copy is a project: it counts toward your [project limit](/docs/limits) and is billed like any project while it runs. If the copies would take you past the limit, `repose fork` creates none of them. `--size small` makes cheaper copies; `--name` changes their names.
 
