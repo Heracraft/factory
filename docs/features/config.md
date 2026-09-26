@@ -33,38 +33,23 @@ other name is a nixpkgs attribute path, such as `gcc`, `nodejs_22`,
 The fragment:
 
 ```
-$ repose config edit          # opens $EDITOR on the fragment
-$ repose config apply         # or `repose config apply ./my-fragment.nix`
-Building todo-app config r15 ...
-error: attribute 'nodejs_25' missing
-       at fragment.nix:7:5
-  home.packages = [ pkgs.nodejs_25 ];
-                    ^
-Fix the fragment and run `repose config apply` again. r14 is still active.
+$ repose config show              # print it; --revisions lists revisions
+$ repose config edit              # opens $EDITOR on the fragment, applies on save
+$ repose config apply ./repose.nix
 ```
 
-A change that needs a reboot:
+A failed apply prints the error's first line, then the fragment line it
+points at (`internal/cli/buildlog.go` `RenderBuildError`), and exits 10;
+the previous revision stays active.
 
-```
-Applying to running guest ... this revision changes the kernel; a reboot is
-required and claude is running in todo-app:claude.
-  repose config apply --reboot     reboot now (agents will be interrupted)
-  repose config apply --later      apply at next start
-```
+A change that needs a reboot is built but not switched in; the CLI prints
+`This change needs a reboot; run `repose stop && repose start` when the
+agent is idle.` and the next `start` boots it. The dashboard can also
+re-apply it with a reboot (`POST .../config/revisions/:rid/apply?reboot=true`).
 
-A base bump:
-
-```
-$ repose status
-todo-app   large   running   base 2026.09.22 (was 2026.09.15: claude-code 2.1.280, kernel 6.17.4)
-```
-
-Holding:
-
-```
-$ repose config hold
-todo-app will stay on base 2026.09.15 until `repose config unhold`.
-```
+Holding a project on its base is the **Hold base updates** checkbox on the
+dashboard's Config page (`hold_base_updates` on the project). There is no
+CLI command for it.
 
 ## Menu versus fragment
 
@@ -224,30 +209,30 @@ Applying (DECISIONS R3-3):
   addition, and asserts the agent's PID and tmux window survive and the new
   binary is on `PATH` in a new shell.
 - If the kernel, initrd, or virtio-fs share layout changed, guestd reports
-  `needs_reboot` and does nothing. The CLI then offers `--reboot` or
-  `--later`. `--later` marks the revision `built` and applies it on the next
-  `start`.
-- On a stopped guest, apply happens at next start and the CLI says so.
-- Switching back: `repose config revisions` lists revisions; `repose
-  config apply --revision r12` rebuilds nothing (the closure is a GC root
-  while the revision exists) and switches to it.
+  a reboot is required and switches nothing. The revision stays `built`
+  with `reboot_required`; the CLI says to `repose stop && repose start`,
+  and a start boots the newest built revision. Applying it to a running
+  guest from the API needs `?reboot=true` (409 `conflict` without it).
+- On a stopped guest, apply happens at next start.
+- Switching back: `repose config show --revisions` lists revisions; the
+  dashboard's Revisions list re-applies an earlier one, which rebuilds
+  nothing while its closure is still a GC root.
 
 Base bumps (DECISIONS R4-5):
 
 - The platform releases a new base version weekly, sooner for security
-  fixes. Every project not holding gets its fragment rebuilt against the
-  new base and switched in place. If that needs a reboot, it happens at the
-  project's next `stop`/`start` cycle or, after 14 days, at 03:00 in the
-  project's timezone with a notification 24 hours before, unless the guest
-  has an agent in `working` state at that moment, in which case it waits
-  for the next night.
+  fixes. The api sweeps daily at 04:00 UTC, and within ten minutes of a
+  security release (`internal/api/basebump`). Every project not holding
+  gets its fragment rebuilt against the new base and switched in place.
+  If that needs a reboot, the revision stays `built` and takes effect at
+  the project's next `stop`/`start`; the `base_updated` event says so. No
+  forced overnight reboot is built.
 - A rebuild against a new base that fails does not change the project; it
-  raises an event to the user with the error and an alert to the operator,
-  since a base that breaks a fragment is usually the platform's bug.
-- `repose config hold` pins the base; `unhold` releases it and triggers the
-  rebuild. `status` shows the held version and how far behind it is.
-- The changelog line in `status` lists agent version changes and kernel
-  changes, since those are what users notice.
+  raises a `base_update_failed` event with the error. A base that breaks
+  a fragment is usually the platform's bug.
+- The dashboard's **Hold base updates** checkbox (`hold_base_updates`)
+  pins the base; unticking it releases the project to the next rollout.
+  The Config page shows the base the project is on.
 
 ## Depends on
 

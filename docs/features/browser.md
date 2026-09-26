@@ -24,9 +24,7 @@ $ repose open --desktop --stop
 Stopped the desktop on todo-app.
 ```
 
-(The forms `notify set --ntfy` and this output are what shipped, DECISIONS
-I-8 and I-241; the desktop also stops itself after 30 minutes with no
-client.)
+The desktop also stops itself after 30 minutes with no client.
 
 ## What is in the guest
 
@@ -103,7 +101,9 @@ from the laptop today. Agents that need browsing use Playwright MCP or
 chrome-devtools-mcp instead, which cover navigation, forms, screenshots,
 console and network capture.
 
-## Planned: `repose browser bridge`
+## Not built: `repose browser bridge`
+
+The command is reserved: it prints that it is not available yet and exits 0.
 
 For the "open Chrome and go to my thing" case while the laptop is open:
 

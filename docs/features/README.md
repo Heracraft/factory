@@ -8,21 +8,21 @@ feature doc wins; on internals, the workstream doc wins.
 
 | Feature | One line | Status |
 |---|---|---|
-| [projects.md](projects.md) | How a directory becomes a project, `--name`, per-account limits | first release |
-| [run-and-attach.md](run-and-attach.md) | `repose run`, `repose attach`, tmux sessions and windows, the agent picker | first release |
-| [sync-at-launch.md](sync-at-launch.md) | Git plus the one-shot diff of uncommitted work, refuse-on-dirty | first release |
-| [agents.md](agents.md) | The five agents, wrappers, hooks, Claude login, MCP support | first release (`mcp forward` later) |
-| [browser.md](browser.md) | Headless Chromium, Playwright MCP, chrome-devtools-mcp, `open --desktop` | first release (`browser bridge` later) |
-| [secrets.md](secrets.md) | Synced tool logins and named secrets | first release |
-| [config.md](config.md) | The menu, the Nix fragment, apply, base bumps, hold | first release |
-| [snapshots.md](snapshots.md) | Nightly and on-stop snapshots, list, restore | first release |
-| [notifications.md](notifications.md) | Completed and needs-input events by email and ntfy | first release (Telegram, Discord later) |
-| [ports-and-previews.md](ports-and-previews.md) | `repose open <port>` now, preview URLs later | first release / later |
-| [stop-start-destroy.md](stop-start-destroy.md) | Lifecycle states, what each one costs, retention | first release |
-| [status-and-logs.md](status-and-logs.md) | `repose status`, `repose logs`, the dashboard view | first release |
-| [pricing.md](pricing.md) | Card before compute, the first day of compute, what is charged, the invoice, a failed payment | first release |
+| [projects.md](projects.md) | How a directory becomes a project, `--name`, per-account limits | built |
+| [run-and-attach.md](run-and-attach.md) | `repose run`, `repose attach`, tmux sessions and windows, the agent picker | built |
+| [sync-at-launch.md](sync-at-launch.md) | Git plus the one-shot diff of uncommitted work, refuse-on-dirty | built |
+| [agents.md](agents.md) | The five agents, wrappers, hooks, Claude login, MCP support | built; `mcp forward` not built |
+| [browser.md](browser.md) | The shared headed Chromium, Playwright MCP, chrome-devtools-mcp, `open --desktop` | built; `browser bridge` not built |
+| [secrets.md](secrets.md) | Synced tool logins, `.env` files and named secrets | built |
+| [config.md](config.md) | The menu, the Nix fragment, apply, base bumps, hold | built |
+| [snapshots.md](snapshots.md) | Nightly and on-stop snapshots, list, restore, fork | built |
+| [notifications.md](notifications.md) | Agent events by email and ntfy, `repose-notify`, `repose-ask` | built; Telegram, Discord not built |
+| [ports-and-previews.md](ports-and-previews.md) | Auto-forward while attached, `repose open <port>`, preview URLs | partly built; preview URLs not built, not approved (2026-09-25) |
+| [stop-start-destroy.md](stop-start-destroy.md) | Lifecycle states, what each one costs, retention | built; idle auto-stop not built |
+| [status-and-logs.md](status-and-logs.md) | `repose status`, `repose projects`, `repose logs`, the dashboard view | partly built; git state in status not built |
+| [pricing.md](pricing.md) | Card before compute, the first day of compute, what is charged, the invoice, a failed payment | built |
 
-Deferred features with a written design live in the doc for the nearest
-first-release feature (preview URLs in ports-and-previews.md, `mcp forward` in
-agents.md, `browser bridge` in browser.md). Teams have no doc because there is
-no design yet; see `../DECISIONS.md` R5-6.
+Features with a written design that is not built live in the doc for the
+nearest built feature (preview URLs in ports-and-previews.md, `mcp
+forward` in agents.md, `browser bridge` in browser.md). Teams have no doc
+because there is no design yet; see `../DECISIONS.md` R5-6.

@@ -9,22 +9,28 @@ survives a host dying.
 
 ```
 $ repose snapshots list
-ID          TAKEN                 SIZE     REASON
-snap_01J8…  2026-09-17 03:00 UTC  2.1 GB   scheduled
-snap_01J8…  2026-09-16 22:14 UTC  2.0 GB   stop
-snap_01J8…  2026-09-16 03:00 UTC  1.9 GB   scheduled
+ID                                    TAKEN             SIZE    REASON
+0199a1c2-3f40-7b8e-9d21-4c5e6f7a8b90  2026-09-17 03:00  2.1 GB  scheduled
+0199a0f1-8e22-7c01-a3b4-1d2e3f405162  2026-09-16 22:14  2.0 GB  stop
+01999c9b-1a07-7d55-8e66-0f1a2b3c4d5e  2026-09-16 03:00  1.9 GB  scheduled
 
 $ repose snapshots create
-Snapshotting todo-app ... 2.1 GB uploaded in 41s (snap_01J8…)
+Snapshot of todo-app taken in 41s.
 
-$ repose snapshots restore snap_01J8…
-todo-app is running. Restoring replaces its current disk. Stop it first?
-[y/N] y
-Stopping (with a final snapshot) ... restoring 2.1 GB ... starting ... done.
+$ repose snapshots restore 0199a1c2-3f40-7b8e-9d21-4c5e6f7a8b90
+todo-app must be stopped before restoring over it: `repose stop todo-app` first, or restore into a new project with --as-new NAME.
 
-$ repose snapshots restore snap_01J8… --as-new todo-app-yesterday
-Created todo-app-yesterday (large) from snap_01J8… on az-eastus-01 ... done.
+$ repose stop && repose snapshots restore 0199a1c2-3f40-7b8e-9d21-4c5e6f7a8b90
+...
+Restore over the current volume? Anything since the snapshot is lost. [y/N] y
+Restored todo-app. `repose start todo-app` boots it.
+
+$ repose snapshots restore 0199a1c2-3f40-7b8e-9d21-4c5e6f7a8b90 --as-new todo-app-yesterday
+Restored into a new project, todo-app-yesterday. `repose projects` lists it.
 ```
+
+Snapshot ids are UUIDv7 like every id (interfaces/README.md). TAKEN is
+the laptop's local time. `--yes` skips the question.
 
 ## Behaviour that must hold
 
@@ -69,9 +75,10 @@ Retention (DECISIONS R4-11):
 
 Restoring:
 
-- `restore` into the same project requires the guest to be stopped; the CLI
-  offers to stop it, which takes a final snapshot first so the restore is
-  reversible.
+- `restore` into the same project requires the guest to be stopped. On a
+  project that is not stopped the CLI refuses and exits 5, naming `repose
+  stop` and `--as-new`; it does not stop it. `repose stop` takes a final
+  snapshot, which is what makes an in-place restore reversible.
 - `restore --as-new NAME` creates a new project with the same class and
   volume size, on the host with the most free memory, and starts it. It
   counts toward the project limit.

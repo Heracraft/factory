@@ -7,25 +7,22 @@ operations history. The dashboard shows the same data with history.
 ## What the user sees
 
 ```
-$ repose status
-PROJECT     CLASS  STATE    UP       AGENTS                   TODAY    MONTH
-todo-app    large  running  2h14m    claude: working          $0.31    $18.40
-api-v2      xl     stopped  -        -                        $0.00    $41.02
-scratch     small  running  6d3h     -                        $1.63    $9.88
+$ repose projects
+PROJECT   CLASS  STATE    UP     AGENTS           TODAY  MONTH
+todo-app  large  running  2h14m  claude: working  $0.31  $18.40
+api-v2    xl     stopped  -      -                $0.00  $41.02
 
-$ repose status --project todo-app
-todo-app  large  running on az-eastus-01  up 2h14m
-  base      2026.09.15 (held; latest 2026.09.22)
-  config    r14 applied 2026-09-17 13:40
-  git       main @ 3f9e2a1, tree dirty (2 files)
-  agents    claude in todo-app:claude: working (last event 14m ago: completed "Added auth flow…")
-  listening node :5173 up 3d 410.0 MB
-            :5432
-  disk      40 GB allocated, 6.2 GB used
-  snapshot  2026-09-17 03:00 (2.1 GB)
-  sessions  1 ssh, 1 tmux client
-  cost      today $0.31 · month $18.40 · cap $99.00
+$ repose status todo-app          # or --project todo-app, or from the checkout
+todo-app   large  running   2h14m   claude: working      today $0.31   month $18.40
+  host host-01   ip 10.100.0.12   disk 6.2 GB/40.0 GB   snapshot 11h8m ago
+  sessions 1   tmux clients 1   docker 0
+  last event 14m ago: claude completed "Added auth flow"
+  listening  node :5173 up 3d 410.0 MB
+             :5432
 ```
+
+(`internal/cli/status.go`. A project the platform stopped for mining, or
+in `error`, gets one more line saying why and what to run.)
 
 ```
 $ repose logs                    # console, last 200 lines, follow with -f
@@ -45,17 +42,16 @@ project as their argument (`repose logs izma -f`, I-155).
 
 Status:
 
-- The table view lists every non-destroyed project with class, state,
+- `repose projects` lists every non-destroyed project with class, state,
   uptime since the last `running` transition, per-agent state, and cost
   today and month to date in dollars from `usage_hours` plus the current
-  partial hour estimated at the class rate.
+  partial hour estimated at the class rate. `repose status` prints the
+  same columns for one project, then its detail lines.
 - Agent state per window comes from guestd's latest `AgentState`
   (`working`, `idle`, `needs_input`, `unknown`) and is at most 60 seconds
-  stale on a healthy guest; older than 5 minutes is shown as `?` with the
-  age.
-- Git state is read by guestd (`branch`, `HEAD`, dirty count) as part of
-  `Sample`, so the user knows work is waiting to be committed without
-  attaching.
+  stale on a healthy guest.
+- Not built: git state (branch, `HEAD`, dirty count) in `Sample`, the
+  base and config revision lines, and marking stale agent state with `?`.
 - Listening processes (DECISIONS I-200, I-207): `repose status PROJECT`
   of a running guest lists each loopback or wildcard TCP listener on port
   1024 and up with its process's name, age and memory, so a dev server
@@ -76,7 +72,7 @@ Status:
   a bounded, best-effort SSH read that is left out when it fails.
 - `--json` prints the `Project` object from `interfaces/api.md` verbatim.
 - Exit code is 0 even when a project is in `error`; the state is the
-  information. `status --project X` on an unknown project exits 4.
+  information. `status X` (or `--project X`) on an unknown project exits 4.
 
 Logs:
 

@@ -1,8 +1,9 @@
 # Ports and previews
 
 A dev server running in the guest reaches the user's browser through an SSH
-port forward the CLI manages. Public preview URLs per project are designed
-here and built later, so the gateway is written with that path in mind.
+port forward the CLI manages. Public preview URLs per project have a
+design below; they are not built, and were not approved on 2026-09-25
+(`docs/proposals/2026-09-24-backlog-triage.md`).
 
 ## What the user sees
 
@@ -41,8 +42,10 @@ Auto-forward (I-199), run by the session helper (run-and-attach.md):
 - The helper reads the guest's listeners with `ss -Hltn` over the
   command's multiplexed connection every second. It forwards listeners
   on `127.0.0.1`, `0.0.0.0`, `::1`, `::` and `*`, ports 1024 and up,
-  except the guest's own (6080, 6081, 5900: the desktop, which `repose
-  open --desktop` forwards). A listener only on another address (a
+  except the guest's own (`forwardPlatformPorts` in
+  `internal/cli/forward.go`): 6080, 6081, 5900 (the desktop, which `repose
+  open --desktop` forwards), 9224, 9225 (the agents' browser's DevTools
+  endpoint, I-246) and 5353, 5355 (mDNS, LLMNR, I-215). A listener only on another address (a
   Docker bridge, the guest's own IP) is not forwarded, and nor is a port
   bound only inside a Docker network.
 - A forward is `ssh -O forward -L <laptop>:127.0.0.1:<port>` on the
@@ -71,9 +74,9 @@ Auto-forward (I-199), run by the session helper (run-and-attach.md):
   <local>:127.0.0.1:<port> <slug>.repose` using the CLI's SSH config, so
   anything the CLI can reach, a plain `ssh -L` can reach too, and opens
   the URL in the default browser unless `--no-browser`. One port per
-  invocation; there is no multi-port, `--background`, `--list` or
-  `--stop` form in the first release (that needs a forwards registry this
-  workstream did not build).
+  invocation; there is no multi-port, `--background` or `--list` form
+  (that needs a forwards registry nobody built). `--stop` exists only with
+  `--desktop`.
 - The local port defaults to the port number. If it is taken, the CLI
   picks a free one and forwards to that instead, with a message saying
   so, rather than failing.
@@ -117,7 +120,7 @@ operator is alerted when a guest keeps trying; nothing is stopped for
 it. A guest running a known cryptocurrency miner is stopped (with a
 snapshot); that is in stop-start-destroy.md.
 
-## Designed for later: preview URLs
+## Not built; not approved on 2026-09-25: preview URLs
 
 `https://3000-todo-app.repose.herakraft.co` reaching port 3000 in the guest,
 so a teammate or a phone can see a running dev server and a browser-driving
@@ -158,10 +161,10 @@ demand.
 
 ## Depends on
 
-Workstreams 07 (`open`), 04 (listening ports in signals),
-06 (preview proxy, later), 11 (wildcard DNS and certificate, later), 05
-(route by slug and owner, `preview` flag, later), 08 (preview links, later).
+Workstreams 07 (`open`, auto-forward), 04 (listening ports in signals).
+Preview URLs would need 06 (proxy), 11 (wildcard DNS and certificate), 05
+(route by slug and owner, `preview` flag) and 08 (preview links).
 
 ## Deferred
 
-Preview URLs as designed above. Custom domains. Tunnelling arbitrary TCP.
+Preview URLs as designed above (not approved). Custom domains. Tunnelling arbitrary TCP.

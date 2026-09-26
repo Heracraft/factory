@@ -162,8 +162,10 @@ Agent picker:
 
 - `--agent` accepts exactly `claude`, `opencode`, `codex`, `gemini`, `pi`.
   Anything else exits 2 listing the five. The default is the project's
-  `agent_default`, which starts as `claude` and can be changed with
-  `repose config` or the dashboard.
+  `agent_default`, set at creation from `default_agent` in the laptop's
+  `~/.config/repose/config.toml` (`claude` unless set; I-241). An existing
+  project keeps its own; the API accepts `agent_default` on `PATCH
+  /projects/:id`, but no CLI command or dashboard control changes it.
 - The wrapper for the chosen agent installs its hooks (see agents.md) before
   exec. A prompt for an agent whose login is missing is handled as
   agents.md describes: the TUI's own login prompt appears in the window and

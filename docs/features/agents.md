@@ -9,15 +9,15 @@ binaries, unmodified.
 
 ```
 $ repose run "write tests for the payment module"
-Starting claude in window todo-app:claude
+...
+Starting claude...          (then attaches to the tmux window todo-app:claude)
 ```
 
 First use of Claude in a guest with no credentials:
 
 ```
 $ repose run "write tests for the payment module"
-claude is not logged in on todo-app. Complete the login in the window that
-opens (paste the code from your browser), then rerun this command.
+Claude Code is not logged in on this guest yet. Finish the login in the window that opens, then re-run with your prompt.
 ```
 
 Setting the headless fallback:
@@ -25,29 +25,34 @@ Setting the headless fallback:
 ```
 $ claude setup-token                       # on the laptop
 $ repose secrets set CLAUDE_CODE_OAUTH_TOKEN
-Enter value: ********
-Stored. claude on todo-app will use it on next start (no Remote Control,
-connectors, or Claude in Chrome with a setup token).
+Value for CLAUDE_CODE_OAUTH_TOKEN (not shown):
+Set CLAUDE_CODE_OAUTH_TOKEN (pushed to running guest)
 ```
 
-Picking a default:
+Picking a default for projects created from now on, in
+`~/.config/repose/config.toml` on the laptop:
 
+```toml
+default_agent = "codex"
 ```
-$ repose config set agent codex
-```
+
+A project keeps the default it was created with; `repose run --agent NAME`
+picks another for one prompt.
 
 ## The five agents
 
-| Agent | Binary | Window | Hook mechanism | Login in guest |
+| Agent | Binary | Window | How it reports | Login in guest |
 |---|---|---|---|---|
-| Claude Code | `claude` | `claude` | `Notification` and `Stop` hooks in `~/.claude/settings.json` calling `repose-hook` | `claude` prints a paste code over SSH; or `CLAUDE_CODE_OAUTH_TOKEN` named secret |
-| opencode | `opencode` | `opencode` | its plugin/event hook if present in the shipped version; otherwise tmux pane-idle heuristic | `~/.local/share/opencode/auth.json` synced from the laptop |
-| Codex CLI | `codex` | `codex` | `notify` config entry pointing at `repose-hook` | `~/.codex/auth.json` synced from the laptop |
-| Gemini CLI | `gemini` | `gemini` | tmux pane-idle heuristic | `GEMINI_API_KEY` named secret |
-| pi | `pi` | `pi` | its hooks if present in the shipped version; otherwise pane-idle heuristic | provider API key as a named secret |
+| Claude Code | `claude` | `claude` | `Notification` and `Stop` hooks in `~/.claude/settings.json` run `repose-hook`: finished, needs input | `claude` prints a paste code over SSH; or `CLAUDE_CODE_OAUTH_TOKEN` named secret |
+| opencode | `opencode` | `opencode` | plugin `~/.config/opencode/plugins/repose.js` sends `session.idle` (finished), `permission.asked` (needs input), `session.error` | `~/.local/share/opencode/auth.json` synced from the laptop |
+| Codex CLI | `codex` | `codex` | `notify = ["repose-hook"]` in `~/.codex/config.toml`: finished only | `~/.codex/auth.json` synced from the laptop |
+| Gemini CLI | `gemini` | `gemini` | no hook; tmux pane-idle heuristic | `GEMINI_API_KEY` named secret, or log in on the machine |
+| pi | `pi` | `pi` | no hook; tmux pane-idle heuristic | provider API key as a named secret |
 
-The exact hook mechanism per agent is verified when the overlay is built and
-recorded in `workstreams/02-guest-base.md`; the table is the intent. The
+`repose-agent-setup` (`nix/overlay/agents/agent-setup.nix`) writes these
+entries each time the agent starts. It adds its entry only when none running
+`repose-hook` is there and never removes the user's. Claude Code also starts
+in `bypassPermissions` mode (below, DECISIONS I-250). The
 payload each agent actually sends is recorded as a fixture under
 `internal/guestd/hooks/testdata/<agent>/`, one file per shape, so a change in
 an agent's payload shows up as a failing test rather than as a notification
@@ -64,7 +69,7 @@ knows what they are being told.
 
 Each binary is wrapped by `nix/overlay/agents/wrap.nix` to:
 
-1. Write or patch its hook configuration so completion and needs-input
+1. Run `repose-agent-setup`, which writes its hook configuration so completion and needs-input
    events go to `repose-hook`, which POSTs to `/run/repose/hooks.sock`.
    The patch is idempotent and preserves the user's other hooks.
 2. Export `TERM=tmux-256color` and `COLORTERM=truecolor` so the TUIs render.
@@ -147,7 +152,7 @@ party reuse of subscription OAuth is forbidden. So:
 - The fallback is `claude setup-token` on the laptop, stored as the named
   secret `CLAUDE_CODE_OAUTH_TOKEN`. It works headless and survives guest
   restarts, but loses Remote Control, connectors and Claude in Chrome. The
-  CLI says so when the secret is set.
+  public agents page says so; the CLI does not.
 - The wrapper does not modify the binary. Hooks are configuration.
 
 ## Your Claude Code config comes with you (DECISIONS I-196)
@@ -217,7 +222,9 @@ project-scoped entries are keyed on absolute laptop paths that do not exist
 in the guest; a user who wants an MCP in the guest adds it there, or in the
 repo's `.mcp.json`, which syncs with the repo.
 
-### Planned: `repose mcp forward NAME`
+### Not built: `repose mcp forward NAME`
+
+The command is reserved: it prints that it is not available yet and exits 0.
 
 For when the laptop is open and a laptop-bound server is wanted anyway:
 
@@ -237,7 +244,7 @@ to escape, so it is a convenience, not a promise.
 
 Workstreams 02 (overlay, wrappers, `repose-hook`), 04 (hook socket,
 pane-idle heuristic, AgentState), 05 (events ingest), 07 (`--agent`,
-`config set agent`, secrets), 13 (delivery).
+`default_agent`, secrets), 13 (delivery).
 
 ## Deferred
 
