@@ -1,9 +1,9 @@
 {
   "claude-code": {
-    "version": "2.1.280",
+    "version": "2.1.282",
     "x86_64-linux": {
-      "url": "https://downloads.claude.ai/claude-code-releases/2.1.280/linux-x64/claude",
-      "hash": "sha256-HghQPb3zwssNcG0y80CCdziNHHbvEIZz6P5CwbMikls="
+      "url": "https://downloads.claude.ai/claude-code-releases/2.1.282/linux-x64/claude",
+      "hash": "sha256-Ov6FNcDMM/DiT3sl2rehcnuLWSGW+Elqi8MCuiFh7tM="
     }
   },
   "opencode": {
@@ -14,17 +14,17 @@
     }
   },
   "codex": {
-    "version": "0.156.1",
+    "version": "0.157.0",
     "x86_64-linux": {
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.156.1/codex-x86_64-unknown-linux-musl.tar.gz",
-      "hash": "sha256-r/RlOag6/4bjxixZK84sUNlTkfnfKJr68DpQwB0UUz0="
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.157.0/codex-x86_64-unknown-linux-musl.tar.gz",
+      "hash": "sha256-2z/jrao1xQ7ftoqYihF3gv40kpYPtj1wA+tnSMzAZXs="
     }
   },
   "gemini-cli": {
-    "version": "0.60.0",
+    "version": "0.61.0",
     "npm": {
-      "url": "https://registry.npmjs.org/@google/gemini-cli/-/gemini-cli-0.60.0.tgz",
-      "hash": "sha256-zssk6r8usj8PSb8THN3WQOZQFzNrYpjakpe9+dITzAs="
+      "url": "https://registry.npmjs.org/@google/gemini-cli/-/gemini-cli-0.61.0.tgz",
+      "hash": "sha256-vE76XJJcRDAQW1UoIO0xZLvv+p3CJ5kPySL5VHM7zX0="
     }
   },
   "pi-coding-agent": {
