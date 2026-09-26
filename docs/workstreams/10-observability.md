@@ -262,7 +262,7 @@ two open rows are the two that need a machine of the owner's.
       rather than retrying an empty host name for ever. Fluent Bit
       itself answers on host-01 (`10.255.0.2:2021`,
       `/api/v1/metrics/prometheus`, 200). — open: the Loki URL now exists
-      (DECISIONS I-170, `http://10.255.0.3:3100`; HANDOFF "Owner's
+      (DECISIONS I-170, `http://10.255.0.3:3100`; archive/HANDOFF-2026-09.md "Owner's
       monitoring server joined": the edge and host-01 ship, streams carry
       `service_name`), but no Loki query output for one guest's console
       stream with the documented labels is recorded; paste a `logcli` or
@@ -280,9 +280,9 @@ two open rows are the two that need a machine of the owner's.
       parts and the `/etc/hosts` line the api's router needs (I-133).
       Closing this row also means checking that
       `curl https://api.repose.herakraft.co/metrics` from outside
-      answers 403. — waits on: owner (HANDOFF owner item 5, the api's
+      answers 403. — waits on: owner (CHECKLIST-AUDIT.md "Waits on the owner", the api's
       `/metrics` Traefik router labels in Coolify, I-133). The WireGuard
-      peer is live (I-170) and HANDOFF records hosts, hostd, fluent-bit,
+      peer is live (I-170) and archive/HANDOFF-2026-09.md records hosts, hostd, fluent-bit,
       gateway and api-grpc `up` in the owner's Prometheus, but the `up`
       series are not listed anywhere and the outside 403 check is not
       recorded.

@@ -674,7 +674,7 @@ removes all of them including the `Include` line.
       connection), `TestEnsureCertMovesOffTheUsersKey`, and a transcript
       on a laptop whose `~/.ssh/id_ed25519` has a passphrase. — waits on:
       owner (laptop transcript with a passphrase-protected
-      `~/.ssh/id_ed25519`, zero prompts; HANDOFF 2026-09-23 "Still owed");
+      `~/.ssh/id_ed25519`, zero prompts; CHECKLIST-AUDIT.md "Waits on the owner");
       the two tests pass in commit 7a8af85's output
 - [x] The owner's 2026-09-23 findings each have a test: destroy reports a
       failed op, `[y/N]` prompt, positional PROJECT, dir-cache poisoning,
@@ -729,7 +729,8 @@ removes all of them including the `Include` line.
 - [ ] `open PORT` and `open --desktop` work, browser opens, Ctrl-C leaves
       the desktop running. Evidence: transcript on a real guest. — waits on:
       owner (a real laptop with a browser; STATUS 2026-09-21 m2 gate-done
-      line and HANDOFF 2026-09-23 list both as untested)
+      line and archive/HANDOFF-2026-09.md list both as untested;
+      CHECKLIST-AUDIT.md "Waits on the owner")
 - [ ] `status`, `projects`, `secrets`, `config`, `snapshots`, `logs`,
       `destroy` each round-trip against the real API. Evidence: transcript.
       — open: status/projects/destroy are in the STATUS 2026-09-20 m2 e2e

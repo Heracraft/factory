@@ -25,6 +25,10 @@ registration) are ticked on a STATUS or RESEARCH record of the result on
 host-01 rather than the literal paste the row names; a reviewer who wants
 strict pastes should reopen those six.
 
+Refreshed on 2026-09-26: the 04 Ready, 07 help-tree and 12 bump-agents
+items below, and the owner items moved from the archived handoff. The
+counts table is still as of 2026-09-23.
+
 ## Counts per workstream
 
 "Before" is `[x]` / `[~]` / `[ ]` at d3b72d3. "Closed" is rows ticked by this
@@ -61,13 +65,13 @@ pasted; a few need a CI job. The row in the workstream doc carries the detail.
 - 02: build the guest-base, guest-docker, guest-desktop and guestd VM checks in CI.
 - 04: install strace on the runner and run `go test -run TestStrace -v` so the log shows the test name.
 - 07: a CI step running `repose status --json | jq .`.
-- 12: fix `bump-agents.yml` (failing daily since 2026-09-21 with `lock file contains unlocked input ./guest/fragment-placeholder`, a new finding), then paste a merged PR and the built agents' versions.
+- 12: `bump-agents.yml` failed daily 2026-09-21..23 (`lock file contains unlocked input ./guest/fragment-placeholder`); fixed by 01b6243 (install-nix-action v31). Scheduled runs pass since 2026-09-24 (runs 35984425847, 36122532223); PRs #1 and #3 merged, #4 open. The row's evidence now exists; tick it in 12 §9 with those links and the built agents' versions.
 
 **Grep lists and tables nobody wrote:**
 - 01: grep `interfaces/host-conventions.md` paths and unit names against `nix/hosts`, paste the list.
 - 02: the same for `interfaces/guest-conventions.md` against `nix/guest/base`.
 - 04: a request-to-handler table from `internal/guestd/dispatch.go` against `interfaces/vsock-guestd.md`.
-- 07: `repose --help` tree pasted and diffed against §5.1 (which has grown: restore, cp, projects --destroyed).
+- 07: `repose --help` tree pasted and diffed against §5.1. The CLI has grown since the row was written: restore, projects --destroyed, run --worktree are in §5.1; cp, fork, paste, scan, resize, questions and reply are not (they are in `apps/web/src/content/docs/cli.md`, which `internal/cli/docs_test.go` checks against the CLI).
 - 07: a reviewer grep of log calls plus a test capturing `-v` output for secrets, tokens, certs, prompts.
 
 **Output from a real guest (one session on host-01 closes most of 02 and 04):**
@@ -87,7 +91,7 @@ pasted; a few need a CI job. The row in the workstream doc carries the detail.
 - 02: `echo $TZ $LANG $REPOSE $REPOSE_PROJECT` in a login shell.
 - 02: `/etc/repose/base-version` next to the api's `base_version` (not pasted since I-118 fixed `dirty`).
 - 04: guestd VM-test subtests (freeze/thaw, Switch, GrowFs, WriteSecrets, SetPrincipals, Sample): paste the lines from `nix build ./nix#checks.x86_64-linux.guestd -L`; six rows.
-- 04: `listening on vsock port 5000` and hostd's `Ready`; Ready is 11.7 s on host-01 (RESEARCH §11), not under 5 s, so this row fails as written until boot is faster or the target changes.
+- 04: `listening on vsock port 5000` and hostd's `Ready`. Ready was 11.7 s on host-01 (RESEARCH §11). The boot work since (I-161, I-231..I-234) cut a stopped guest's start: live on host-01 on 2026-09-24, ensure-running median 5.37 s and `repose run` to the tmux screen median 8.9 s (conductor line 2026-09-24 02:10Z in the archive). Nobody has pasted a Ready time itself, and nothing shows it under 5 s, so the row is still open as written.
 - 04: an `"event":"sample"` line with `duration_ms` under 20.
 - 04: guestd memory size: `ls -l` of the binary and `ps -o rss=` idle.
 - 13: `repose status` showing `last event` and agent state after a hook fires.
@@ -137,6 +141,31 @@ pasted; a few need a CI job. The row in the workstream doc carries the detail.
 - A laptop: 06 VS Code Remote-SSH screenshot; 07 macOS keychain, zero-prompt run with a passphrase key, `open PORT`/`--desktop`; 15 macOS timing table.
 - Someone who did not write it follows `infra/README.md`: 11.
 - Bootstrap-key retirement (I-177): 14 operator access.
+
+Moved here on 2026-09-26 from the archived conductor handoff
+([archive/HANDOFF-2026-09.md](archive/HANDOFF-2026-09.md)); no workstream row
+tracks them:
+
+- Front-end analytics with self-hosted Umami (owner's choice, 2026-09-23;
+  Google Analytics rejected: a third party the privacy policy would have to
+  name, cookies and a consent banner, dropped by most ad blockers). Owner:
+  deploy Umami from Coolify's template on the homeserver (for example
+  `stats.herakraft.co`) and hand over its URL and website id. Then, in
+  `apps/web`: load the script first-party, proxied through the dashboard's
+  own domain; only on public pages (landing, install, pricing, docs), never
+  the signed-in dashboard, whose paths carry project names; two events,
+  `install_copied` and `signup`; one sentence in
+  `apps/web/src/content/legal/privacy.md` "Where your data lives" (page
+  visits counted with Umami, self-hosted, no cookies, no IP stored); a
+  DECISIONS entry recording this and why the dashboard is excluded. Nothing
+  of it is built.
+- Coolify watch paths on the api, api-grpc and web apps, so docs-only pushes
+  stop redeploying them (optional; they roll cleanly).
+- The owner has two account rows (`heracraft` by GitHub and an email row)
+  with projects under both. There is no transfer command: log in as the
+  email account for those projects, or destroy and recreate them under
+  `heracraft`. A `repose-admin projects transfer` is worth adding before
+  there are more users.
 
 ## Waits on a second host
 

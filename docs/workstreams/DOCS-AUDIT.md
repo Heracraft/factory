@@ -1,5 +1,7 @@
 # User docs audit (DECISIONS I-242, 2026-09-24)
 
+> One-off audit of 2026-09-24 (I-242); `internal/cli/docs_test.go` now enforces the CLI, config.toml, environment-variable and exit-code parts, and `docs/CHECKLIST.md` the rest. Not maintained.
+
 Every user-visible behaviour on main at a2aad99, checked against the 14
 pages of `apps/web/src/content/docs/` (served at `/docs/<page>`). Status:
 **ok** was already documented and right, **added** was missing, **fixed**

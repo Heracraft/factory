@@ -192,7 +192,8 @@ suites back most of it: `apps/web/tests/` against `internal/fakes/api`
       skip with the command that arms them:
       `pnpm --filter web run live:auth` once, then `run live`. — waits on:
       owner (the GitHub sign-in in a browser: `pnpm --filter web run
-      live:auth` from apps/web, then `run live`; HANDOFF owner item 2).
+      live:auth` from apps/web, then `run live`; CHECKLIST-AUDIT.md "Waits on
+      the owner").
 - [x] No server routes other than `/healthz`; no `$env/static/private` or
       `$env/dynamic/private` imports anywhere. Evidence: `rg 'env/static/private|env/dynamic/private|\+server\.ts' apps/web/src`
       returns only `src/routes/healthz/+server.ts`, and

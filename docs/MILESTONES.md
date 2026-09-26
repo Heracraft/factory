@@ -71,6 +71,12 @@ credential for which exists in this repository, so there is no R2 bucket, no
 on-VM check and no rehearsal script left to gate on. What remains gateable
 here is that the schedule exists, which is a look at that tab.*
 
+*Where it stands, 2026-09-26: the api side is proven on host-01 (05, 12,
+13, 14 rows closed with evidence). Open, all on the owner: the dashboard's
+signed-in live tests (`pnpm --filter web run live:auth`), the Postgres
+backup schedule, and the Traefik drain for rolling deploys
+(`workstreams/CHECKLIST-AUDIT.md` "Waits on the owner").*
+
 ## M4. Billing
 
 Workstreams: `09-billing`.
@@ -80,12 +86,25 @@ Gate: a real card is charged the right amount for a known usage pattern
 matches the `usage` rows to the cent. Trial credit depletes and blocks a start
 at zero. A failed payment stops guests after 3 days.
 
+*Where it stands, 2026-09-26: built and merged (I-179..I-185); the gate
+waits on the owner's Stripe test-mode key, after which `ops/M4-GATE.md`
+is the runbook.*
+
 ## M5. Public
 
 Workstreams: `14-security` (final review), `ops` docs, launch checklist in
 `CHECKLIST.md`.
 
 Gate: `CHECKLIST.md` closed. Landing page at `repose.herakraft.co`.
+
+*Where it stands, 2026-09-26: the deployed-state review
+(`security/review-2026-09-21.md`), tenant isolation on host-01, dashboards,
+alerts, runbook and the published privacy policy are closed. Open in
+`CHECKLIST.md` "Release (M5)": a second human on their own laptop, the
+installer on real macOS and Linux arm64 machines, the Postgres backup
+schedule, restore onto a different host and host loss (both need a second
+host), and the Stripe invoice (M4). The b1a5915 row is settled by I-193
+(key rotated, history kept) but not yet ticked.*
 
 ## Later, in order of likely demand
 

@@ -18,6 +18,9 @@
 If Fable is unavailable or rate-limited, Opus 5 takes its rows. Never
 Haiku for building; it is fine for the `done-check` grep pass at the end.
 
+The table is the split the first waves used. Since 2026-09-23 every
+worker, conductor-run or `/ws`, has been Opus 5.5.
+
 Sequential sessions work the same way: one prompt per session, same
 model choice, and `STATUS.md` carries the state between them.
 
@@ -25,8 +28,8 @@ model choice, and `STATUS.md` carries the state between them.
 
 The repo ships a project skill at `.claude/skills/ws/SKILL.md`. In a worktree,
 start Claude Code and type `/ws 03`; it loads the preamble and the `03`
-block below and begins. `/ws m1` through `/ws m5` (and `/ws m3-web`) run
-the integration sessions (the "M<n> bring-up" sections below). The full
+block below and begins. `/ws m4` and `/ws m5` run the integration
+sessions (the "M<n> bring-up" sections below; M1 to M3 are done). The full
 text below is what the skill expands to, kept here so it can be read and
 edited in one place.
 
@@ -52,190 +55,25 @@ number). Merge the workstreams that own interfaces first (03, 05), then
 their consumers. Delete the worktree after merging: `git worktree remove
 ../repose-ws/03-hostd`.
 
+Since 2026-09-23 the conductor runs workers in rounds instead, with
+pre-assigned decision numbers; `docs/ops/ORCHESTRATION.md` describes it.
+
 Nix and Go caches are shared across worktrees (`/nix/store`, `~/go/pkg`),
 so parallel builds do not multiply disk use. The store lives on the dev
 box's temp disk (`docs/ops/DEV-BOX.md`); keep 40 GB free on `/nix`.
 
-## M1 bring-up (owner runs the apply, then `/ws m1`)
+## M1 and M2 bring-up (done)
 
-The apply creates paid resources, so it is run by the owner, from `main`,
-with the local tfvars in place (`infra/azure/prod/prod.local.tfvars`):
+Both milestones are closed (`docs/MILESTONES.md`). The prompts those
+sessions ran are in git history: `git show
+d9b0090:docs/workstreams/PROMPTS.md`.
 
-```
-cd infra && nix shell nixpkgs#opentofu nixpkgs#azure-cli nixpkgs#gnumake nixpkgs#nixos-anywhere -c \
-  bash -c 'make init ENV=prod && tofu -chdir=azure/prod apply -input=false -var-file=prod.tfvars -var-file=prod.local.tfvars'
-```
+## M3 bring-up (`/ws m3` and `/ws m3-web`, done as far as one host allows)
 
-That builds the network, NAT gateway, snapshot storage, Key Vault and the
-edge VM, and installs NixOS on the edge through nixos-anywhere (about ten
-minutes). Then the M1 integration session (`/ws m1` in
-`../repose-ws/m1-integration`) does, in order:
-
-1. Copy `hostdev` to the edge (`nix copy --to ssh://root@<edge-ip>
-   'git+file://.?dir=nix#hostdev'`), run `hostdev init --listen 0.0.0.0:443
-   --names <edge-ip>` there and `hostdev serve` as a transient unit. The
-   edge NSG already opens 443. The token it prints is host-01's join token.
-2. Set `repose.host.apiAddr = "<edge-ip>:443"` for host-01 (a per-host
-   module passed through `lib.mkHost`, or the host module's default until
-   the api exists) so hostd registers with hostdev rather than
-   `api.repose.herakraft.co`.
-3. Add `"host-01"` to `hosts` in `prod.tfvars`, `host-01 = "<token>"` to
-   `join_tokens` in `prod.local.tfvars`, then `make plan` and (owner) apply
-   again: nixos-anywhere installs the host through the edge, delivers the
-   token, hostd registers, `hostdev status` shows the host.
-4. Close the real-host checklist items of 01, 02, 03 and 04: lsblk, /dev/kvm,
-   kvm_intel nested, IMDS blocked from a guest, thin pool, bridge, then
-   `hostdev create --project todo --class large --closure <guest-system>`
-   and SSH into the guest through the edge and host. Record timings in
-   `docs/RESEARCH.md` (DECISIONS I-12).
-
-WireGuard between edge and hosts is workstream 06; until it exists the M1
-session reaches guests by jumping edge → host → guest.
-
-## M2 bring-up (`/ws m2` in `../repose-ws/m2-integration`)
-
-Wave three is merged (06, 07, 08, 13 and the rest of 11) and the control
-plane runs as Coolify resources on the control VM (DECISIONS I-83 to I-91):
-`api` answers at `https://api.repose.herakraft.co/healthz` with a Let's
-Encrypt certificate, `web` at `https://repose.herakraft.co`, Postgres is the
-`repose-postgres` Service, the api migrated itself and created the CA at
-first start. Logto is the owner's `accounts.herakraft.co` (I-84) with the
-`repose-cli`, `repose-web` and `repose-api` applications in place. What is
-*not* yet true, and is this session's work, in order:
-
-1. **Control VM ⇄ edge WireGuard.** The VM's key exists
-   (`/etc/wireguard/publickey`); the edge is still the wave-one install
-   (sshd on 22, hostdev on 443, no `wg0`). Redeploy the edge from `main`
-   (`nix/edge`, workstream 06: gateway on 22, operator sshd on 2222, `wg0`,
-   `wgsync`, preview stub, hook ingest), then peer the two per
-   `infra/README.md` "Wiring the control plane to the edge" and record the
-   hub with `repose-admin edge init`. The conductor runs the apply; you
-   prepare the tfvars change and ask.
-2. **api-grpc reachable where hostd and the gateway look for it.** The
-   design puts gRPC (8443) and `/internal` (8444) on the VM's WireGuard
-   address `10.255.255.1`, never on the public IP (`ops/coolify/README.md`);
-   the Coolify `api-grpc` app needs its port mappings and the control VM
-   must route those to the tunnel. Verify with `openssl s_client` from the
-   edge and with the gateway client certificate
-   (`repose-admin ca sign-client --name gateway`), then `wgsync` pulls
-   `/internal/hosts`.
-3. **host-01 registers with the real api.** It is registered with `hostdev`
-   on the edge (M1). Settle the bootstrap order, which the docs leave
-   circular: a host reaches the api over WireGuard, but learns the hub's
-   peer from the api. Candidates: the edge's public key and endpoint in the
-   host's Nix config (not secret, like `apiCA` today) so `wg0` is up before
-   hostd starts, with the edge accepting the host's first handshake through
-   `wgsync` after registration; or a bootstrap path through the edge on the
-   VNet. Pick one, record it as a DECISIONS entry, implement it in
-   `nix/hosts` and `nix/edge` as needed, drop `apiAddr`/`apiCA`/`bootstrap`
-   from `host-01.nix`, issue a join token from the api, and have the
-   conductor apply. `repose-admin hosts list` shows host-01 `ready`; stop
-   `hostdev` on the edge and note it in STATUS.
-4. **Owner-run gate.** You cannot sign in to GitHub. When `repose login`
-   and `repose run` will work, write the exact commands for the owner and
-   for a second person into STATUS.md and your report, and message the
-   conductor. While they run them, verify from the host and the api side
-   that each landed in their own guest, that the second cannot reach the
-   first's guest (`test/isolation`, 14-security's checks on the real host),
-   that sessions were reported to the api, and that the finished-agent
-   notification arrived (13). Close the real-host rows of 06 and 07's
-   checklists with evidence, and record timings in `docs/RESEARCH.md`.
-
-Rules that apply on top of the preamble: never `tofu apply`, never
-`force-unlock`, never touch the Coolify UI yourself; the owner and the
-conductor do those, and you tell them exactly what to click or run. Nothing
-about the owner's personal server (addresses, keys) goes in any file.
-`docs/ops/coolify.md` "Coolify facts that cost a round trip each" is the
-list of things already learned the hard way; read it before touching a
-Coolify resource.
-
-## M3 bring-up (`/ws m3` and `/ws m3-web`, two sessions)
-
-M2 put the real path together: api and web on Coolify (control VM, a
-server of the owner's Coolify, I-83), the edge on WireGuard with the gateway
-on 22, host-01 registered with the api over the VNet (I-92). The M3 gate
-(`docs/MILESTONES.md`): rolling deploys, Postgres backed up to R2 nightly
-with a rehearsed restore, a secret set in the dashboard appears in a guest,
-a non-Nix user adds a package from the menu and sees it in their guest
-without a reboot. Every checklist row of 05, 08, 10, 12, 13 and 14 that
-says "real host", "real guest", "Coolify" or "Logto" is closed in these two
-sessions with evidence; rows already closed locally are ticked from the
-evidence in the workstream's STATUS lines and commits, not re-run.
-
-### `m3` (Fable 5.1, `../repose-ws/m3-integration`): guests through the api
-
-Owns host-01 and everything on it; nobody else creates guests while it runs.
-In order:
-
-1. A project created through the api lands on host-01 and reaches
-   `running`; `repose run` from the dev box (the owner's login is in
-   `~/.config/repose`, or use the device flow with the owner watching)
-   attaches. Base publish (`repose-admin base publish --rev <main sha>`) if
-   M2 did not.
-2. **Secrets** (`docs/features/secrets.md`, 05 §secrets, 04): set one via
-   the api, see the file in the guest's tmpfs with the documented mode,
-   delete it, see it gone; the value never appears in api logs, hostd logs
-   or the build log.
-3. **Menu and Nix** (12 §5, `docs/features/config.md`): add a package from
-   the catalog through the api, watch the build log stream, confirm the
-   package is in the guest without a reboot; then the fragment edit and
-   takeover flow; `kernel_changed` true for a base kernel bump; the
-   restricted-eval refusals on the real host (readFile /etc/passwd, import
-   <nixpkgs>, fetchurl without a hash); closure cap; GC roots after
-   destroy. Record eval and build timings in `docs/RESEARCH.md`.
-4. **Notifications** (13's two open rows): each of the five agents produces
-   a `completed` event in a real guest; `repose status` and the dashboard
-   show it; the email or ntfy delivery arrives (the owner's ntfy URL, asked
-   through the conductor).
-5. **api resilience on the real path** (05): kill `api-grpc` during an op
-   and see hostd reconnect with nothing lost; ops survive an api restart;
-   base bump job builds unheld projects and skips held ones; snapshot expiry.
-6. **Security on the shared host** (14): every row of the boundary table
-   as a test on host-01, fork bomb and memory hog leaving the neighbour
-   within limits, audit_log rows for every audited action, operator
-   password attempt refused. Coordinate with the conductor before anything
-   that could take host-01 down.
-7. M1 follow-up (a): `nix/hosts/tests` host-services needs a fake api for
-   the repose-register assertion now that the real hostd is installed.
-
-### `m3-web` (Opus 5, `../repose-ws/m3-web`): dashboard, deploys, backups, ops
-
-Does not create guests; project flows that need one wait for `m3`'s step 1
-(ask the conductor). In order:
-
-1. **Dashboard against the real Logto and api** (08): sign-in, callback,
-   refresh, sign-out at `https://repose.herakraft.co`; settings (timezone,
-   email toggle, ntfy URL, test button); account deletion flow; the
-   Lighthouse accessibility score on `/projects` and the project page;
-   landing page with the install command and the pricing table matching
-   `docs/features/pricing.md`. Playwright against the real site where the
-   fake-api suite already passes locally.
-2. **Rolling deploys** (05, 08): **closed 2026-09-20** and not zero.
-   Coolify redeploys on every push to `main` (`ops/coolify.md` fact 16),
-   so the measurement is `ops/deploy-probe.sh` running across merges
-   rather than deploys anybody triggers. Seven switchovers, ~30,000
-   responses: every one loses a request or two per client at a delay
-   fixed per application (fact 13). Re-measure only if the proxy's drain
-   changes.
-3. **Backups**: nothing. They are Coolify's, on the Postgres service's
-   Backups tab, against a destination in the owner's own Coolify
-   (DECISIONS I-112). No token, no bucket, no on-VM check, no rehearsal
-   script, no alert. A session that finds itself writing backup
-   machinery has misread this.
-4. **Observability on the real path** (10): the api's, edge's and host's
-   metrics are scrapeable over WireGuard; Fluent Bit on host-01 ships
-   journald and guest console logs; the seven dashboards render with real
-   data and the eleven alerts load. The Prometheus, Loki and Grafana are the
-   owner's (personal server); what they need from the owner (a WireGuard
-   peer for the scraper, endpoints) goes through the conductor with the
-   exact config to paste.
-5. `ops/RUNBOOK.md` rows for 08 and 10; `docs/features/*` match what is
-   live; `docs/SECURITY.md` and the privacy and terms passages (14's text
-   rows).
-
-Both sessions: the rules of the M2 block apply (no apply, no force-unlock,
-no Coolify UI; the owner and the conductor do those on your exact
-instructions). Read `docs/ops/coolify.md` "Coolify facts" first.
+The two sessions ran on 2026-09-20 and 2026-09-21; `docs/MILESTONES.md` M3
+says what is still open. The full prompt, including the numbered steps of
+"M3 bring-up / m3" that the headers of `ops/checks/*.sh` cite, is in git
+history: `git show d9b0090:docs/workstreams/PROMPTS.md`.
 
 ## M4 bring-up (`/ws m4`, Opus 5, `../repose-ws/m4-billing`)
 
@@ -273,7 +111,12 @@ Stripe account yet. In order:
    `ops/RUNBOOK.md` rows for push backlog, mismatch, "user says they were
    overcharged".
 
-Rules as in the M2 block. Anything that costs money is announced to the
+Rules on top of the preamble (they were the M2 block's): never `tofu
+apply`, never `force-unlock`, never touch the Coolify UI yourself; the
+owner and the conductor do those, and you tell them exactly what to click
+or run. Nothing about the owner's personal server (addresses, keys) goes in
+any file. Read `docs/ops/coolify.md` "Coolify facts that cost a round trip
+each" before touching a Coolify resource. Anything that costs money is announced to the
 conductor before it runs.
 
 ## M5 bring-up (`/ws m5`, Fable 5.1, `../repose-ws/m5-release`)
@@ -299,9 +142,9 @@ release checklist, in order:
    the steps they had to guess written into the docs.
 4. **Release mechanics**: `repose --version`, `install.sh` on the four
    targets, Grafana dashboards and alerts wired to the owner's stack with
-   runbook rows for every alert, privacy and terms published, the leaked
-   key's commit (`b1a5915`) either rewritten out of history or the repo
-   private before it is shared (owner's decision, recorded).
+   runbook rows for every alert, privacy and terms published. The leaked
+   key's commit (`b1a5915`) is settled (DECISIONS I-193): the key was
+   rotated and the history stays.
 5. Tick every row of `docs/CHECKLIST.md` "Release (M5)" with its evidence,
    and the workstream checklists' remaining rows with theirs.
 

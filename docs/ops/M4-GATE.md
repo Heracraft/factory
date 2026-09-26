@@ -21,15 +21,15 @@ What the owner provides, exactly:
 
 Conventions: `ra` below is `docker exec <api container> repose-admin` on the
 control VM (the container has `DATABASE_URL` and, after step 1, every
-`STRIPE_*` variable). Commands under "dev box" run from a checkout of this
-branch, outside or inside `nix develop ./nix`. Read the key into the shell
+`STRIPE_*` variable). Commands under "dev box" run from a checkout of
+`main`, outside or inside `nix develop ./nix`. Read the key into the shell
 without echoing it, never on a command line:
 
 ```
 read -rs STRIPE_SECRET_KEY && export STRIPE_SECRET_KEY    # paste sk_test_..., Enter
 ```
 
-## 0. Before: this branch is deployed
+## 0. Before: `main` is deployed
 
 The api and web must run the code that has `stripe-bootstrap`,
 `billing show`, `billing cycle-now`, the Checkout card flow and I-179's
