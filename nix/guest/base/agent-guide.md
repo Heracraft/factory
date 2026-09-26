@@ -68,7 +68,7 @@ You are `dev`, with passwordless `sudo`. The checkout is under `/home/dev`, and 
 - If an agent says it isn't logged in, ask the user to log it in on this machine; logins are never copied here for Claude Code. <!-- /docs/agents#log-in -->
 - `~/.claude/CLAUDE.md`, settings and skills are copied from the user's laptop at each `repose run`, so lasting changes to them belong on the laptop. <!-- /docs/agents#your-claude-code-setup-comes-along -->
 - MCP servers that need the laptop (Apple Notes, Xcode, Claude in Chrome) don't work here. HTTP servers and `npx` servers do; put their tokens in secrets and refer to them as `${NAME}`. <!-- /docs/agents#mcp-servers -->
-- Images the user pastes with `repose paste` are saved in `/tmp/repose-paste/`, and the file's path is pasted into your prompt. Claude Code attaches it; other agents can open the file. <!-- /docs/run-and-attach#paste-an-image -->
+- Files and images the user drops or pastes into the terminal are copied to `/tmp/repose-paste/`, and the file's path there is pasted into your prompt; a file from the checkout arrives as its path in the checkout instead. Claude Code attaches images; other agents can open the file. Copies are deleted after a day. <!-- /docs/run-and-attach#drop-a-file-or-paste-an-image -->
 
 ## Limits
 

@@ -279,6 +279,24 @@ func PasteCmd(ctx context.Context, e *Env, opts PasteOptions) error {
 	return nil
 }
 
+// pasteSaveScript saves stdin as guestPath (in pasteGuestDir) and prunes
+// the directory first: files over a day old, and all but the newest
+// pasteKeep. `repose paste`, and the input proxy's drops and Ctrl+V
+// (I-280), share it and the directory.
+func pasteSaveScript(guestPath string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "umask 077\nd=%s\nf=%s\n", shQuote(pasteGuestDir), shQuote(guestPath))
+	fmt.Fprintf(&b, `mkdir -p "$d" 2>/dev/null
+if [ -L "$d" ] || [ ! -d "$d" ] || [ ! -O "$d" ]; then cat >/dev/null; exit %d; fi
+chmod 700 "$d" || exit 1
+find "$d" -maxdepth 1 -type f -mmin +%d -delete 2>/dev/null
+ls -1t "$d" 2>/dev/null | grep -v '\.part$' | tail -n +%d | while IFS= read -r old; do rm -f "$d/$old"; done
+cat > "$f.part" || { rm -f "$f.part"; exit 1; }
+mv -f "$f.part" "$f" || exit 1
+`, pasteExitUnsafeDir, pasteMaxAgeMinutes, pasteKeep)
+	return b.String()
+}
+
 // Exit statuses of pasteScript that mean something to PasteCmd.
 const (
 	pasteExitUnsafeDir = 3
@@ -295,17 +313,8 @@ const (
 // display-message, finds the pane: display-message falls back to the
 // current pane when the target window does not exist.
 func pasteScript(slug, guestPath string, opts PasteOptions) string {
-	dir := pasteGuestDir
 	var b strings.Builder
-	fmt.Fprintf(&b, "umask 077\nd=%s\nf=%s\n", shQuote(dir), shQuote(guestPath))
-	fmt.Fprintf(&b, `mkdir -p "$d" 2>/dev/null
-if [ -L "$d" ] || [ ! -d "$d" ] || [ ! -O "$d" ]; then cat >/dev/null; exit %d; fi
-chmod 700 "$d" || exit 1
-find "$d" -maxdepth 1 -type f -name '*.png*' -mmin +%d -delete 2>/dev/null
-ls -1t "$d" 2>/dev/null | grep '\.png$' | tail -n +%d | while IFS= read -r old; do rm -f "$d/$old"; done
-cat > "$f.part" || { rm -f "$f.part"; exit 1; }
-mv -f "$f.part" "$f" || exit 1
-`, pasteExitUnsafeDir, pasteMaxAgeMinutes, pasteKeep)
+	b.WriteString(pasteSaveScript(guestPath))
 	if opts.Print {
 		return b.String()
 	}

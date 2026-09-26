@@ -365,10 +365,13 @@ $ repose run
    Claude Code is not logged in on this guest yet. Finish the login in the
    window that opens, then re-run with your prompt.
    ```
-8. Unless `--no-attach`: `exec ssh -t <slug>.repose tmux attach -t <slug>`
-   (attaches to the window just created when there was a prompt). The CLI
-   process replaces itself with ssh so signals and the terminal behave
-   exactly like plain ssh.
+8. Unless `--no-attach`: `ssh -t <slug>.repose tmux attach -t <slug>`
+   (attaches to the window just created when there was a prompt). On
+   macOS and Linux ssh runs on a pty of the CLI's, which passes the
+   terminal through and copies dropped files and Ctrl+V clipboard images
+   to the guest (the input proxy, DECISIONS I-280); the exit status is
+   ssh's. With `REPOSE_INPUT_PROXY=0`, on Windows, or when stdin or stdout
+   is not a terminal, the CLI process replaces itself with ssh as before.
 
 `repose attach [PROJECT]` is steps 1 (resolve, no create), 3, 4, 8. A
 project that is not running exits 5 with its true state, the reason
@@ -736,11 +739,15 @@ removes all of them including the `Include` line.
 - [x] Claude not-logged-in path attaches instead of sending. Evidence:
       integration test. — closed: `TestRunClaudeNotLoggedInAttachesInstead`
       in internal/cli/run_e2e_test.go (commit d61bf56)
-- [ ] `attach` execs ssh (the CLI process is replaced). Evidence: `ps`
-      shows no `repose` parent during a session. — open: no `ps` capture
-      during a session is recorded (the code is `syscall.Exec` in
-      internal/cli/sysexec_unix.go, kept by DECISIONS I-206); run `repose
-      attach` and `ps -o pid,ppid,comm` from a second terminal
+- [ ] `attach` runs ssh under the input proxy on macOS and Linux, and
+      execs ssh (the CLI process is replaced) with `REPOSE_INPUT_PROXY=0`
+      (DECISIONS I-280, which replaces the old "no `repose` parent" item).
+      Evidence: `ps -o pid,ppid,comm` from a second terminal during a
+      session shows `ssh` under `repose`, and under the shell with
+      `REPOSE_INPUT_PROXY=0`; a file dropped on a Mac terminal shows as
+      `[Image #1]` in Claude Code. — open: needs a real laptop.
+      `TestInputProxyDropReachesTheSession` covers the proxy against the
+      fake guest
 - [x] Build log SSE renders, error block matches 5.8 with the marked line.
       Evidence: golden test with a fake eval error. — closed:
       `TestRenderBuildErrorGolden` (fake `nodejs_25` eval error, marked line

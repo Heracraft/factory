@@ -154,7 +154,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		helper.Carry = true
 		startSessionHelper(e, helper)
 		tzSaved()
-		return attachTmux(target, project.Slug, "", tz)
+		return attachTmux(target, project.Slug, "", tz, helper.RepoDir)
 	}
 
 	if !opts.NoSync {
@@ -315,7 +315,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		return nil
 	}
 	startSessionHelper(e, helper)
-	return attachTmux(target, project.Slug, window, tz)
+	return attachTmux(target, project.Slug, window, tz, helper.RepoDir)
 }
 
 // saveProjectTZ moves the project's stored zone to the laptop's when they
@@ -498,13 +498,18 @@ func hasOAuthSecret(ctx context.Context, c *Client, projectID string) (bool, err
 	return false, nil
 }
 
-// attachTmux is step 8: exec ssh -t <slug>.repose tmux attach [-t
-// <slug>:<window>], replacing the CLI process.
+// attachTmux is step 8: ssh -t <slug>.repose tmux attach [-t
+// <slug>:<window>]. On macOS and Linux ssh runs under the input proxy
+// (I-280), which gets dropped files and Ctrl+V images to the session;
+// repoDir is the laptop checkout that is ~/<slug> on the machine, "" when
+// the attach is not from the project's own checkout. With
+// REPOSE_INPUT_PROXY=0, on Windows, or without a terminal, the CLI process
+// is replaced by ssh as before.
 //
 // tz, when known, travels as the session's TZ (sshd's AcceptEnv and the
 // gateway pass it), so a base whose tmux takes TZ from the attaching
 // client (update-environment) gets the laptop's zone rather than none.
-func attachTmux(t sshTarget, slug, window, tz string) error {
+func attachTmux(t sshTarget, slug, window, tz, repoDir string) error {
 	target := slug
 	if window != "" {
 		target = slug + ":" + window
@@ -515,7 +520,14 @@ func attachTmux(t sshTarget, slug, window, tz string) error {
 			extra = append(extra, "-o", "SendEnv=TZ")
 		}
 	}
-	return execReplaceSSH(t, extra, fmt.Sprintf("tmux attach -t %s", shQuote(target)))
+	remote := fmt.Sprintf("tmux attach -t %s", shQuote(target))
+	if inputProxyEnabled() {
+		args := append(append(append([]string{}, extra...), t.Args...), remote)
+		if handled, err := runInputProxy(args, newDropHandler(t, slug, repoDir)); handled {
+			return err
+		}
+	}
+	return execReplaceSSH(t, extra, remote)
 }
 
 // waitForSSH is step 4: `ssh <target> true` until it answers, for up to

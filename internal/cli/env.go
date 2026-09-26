@@ -25,7 +25,8 @@ const (
 	envNoForward       = "REPOSE_NO_FORWARD"
 	envNoFastPath      = "REPOSE_NO_FASTPATH"
 	envNoBrowser       = "REPOSE_NO_BROWSER"
-	envInGuest         = "REPOSE" // "1" inside a repose guest: login never tries a browser there
+	envInputProxy      = "REPOSE_INPUT_PROXY" // "0": run and attach become ssh, no drops or Ctrl+V images (I-280)
+	envInGuest         = "REPOSE"             // "1" inside a repose guest: login never tries a browser there
 	envXDGConfigHome   = "XDG_CONFIG_HOME"
 	envClaudeConfigDir = "CLAUDE_CONFIG_DIR"
 	envVisual          = "VISUAL"
@@ -37,7 +38,7 @@ const (
 var userEnvVars = []string{
 	envProject, envAPIURL, envTiming, envNoSpinner, envNoForward, envNoFastPath, envNoBrowser,
 	envInGuest, envXDGConfigHome, envClaudeConfigDir, envVisual, envEditor,
-	envWaylandDisplay, envDisplay,
+	envWaylandDisplay, envDisplay, envInputProxy,
 }
 
 // Env bundles what almost every command needs: config, the API client,
