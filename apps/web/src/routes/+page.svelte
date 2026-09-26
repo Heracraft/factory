@@ -4,7 +4,13 @@
 	import { toast } from 'svelte-sonner';
 	import { signIn } from '$lib/auth.svelte';
 	import Logo from '$lib/components/Logo.svelte';
-	import Session from '$lib/components/illustrations/Session.svelte';
+	import Hero from '$lib/components/landing/Hero.svelte';
+	import OneCommand from '$lib/components/landing/OneCommand.svelte';
+	import ComesBack from '$lib/components/landing/ComesBack.svelte';
+	import Browser from '$lib/components/landing/Browser.svelte';
+	import Localhost from '$lib/components/landing/Localhost.svelte';
+	import Ready from '$lib/components/landing/Ready.svelte';
+	import Editor from '$lib/components/landing/Editor.svelte';
 
 	const INSTALL_COMMAND = 'curl -fsSL https://repose.herakraft.co/install.sh | sh';
 	const SOURCE_URL = 'https://github.com/Heracraft/factory';
@@ -42,42 +48,6 @@
 		}
 	}
 
-	// Copy below marks commands with backticks; `inline` splits on them so
-	// the odd-numbered parts render as code.
-	function inline(text: string): { text: string; code: boolean }[] {
-		return text.split('`').map((part, i) => ({ text: part, code: i % 2 === 1 }));
-	}
-
-	const facts = [
-		{
-			title: 'Your working state',
-			text: '`repose run` in any checkout brings your uncommitted edits, unpushed commits, flake.nix, secrets and git logins. The toolchain is already installed.'
-		},
-		{
-			title: 'Check in from anywhere',
-			text: 'Close the laptop. You get a notification when the agent needs you, and `repose attach` picks up the same session from any computer.'
-		},
-		{
-			title: 'One machine per project',
-			text: 'Each project is isolated. Destroy one in a second; `repose restore` brings it back for 30 days.'
-		}
-	];
-
-	const extras = [
-		{
-			title: 'Your dev server on your localhost',
-			text: 'Start `pnpm dev` in the machine and open `localhost:5173` on your laptop. Every port it listens on is forwarded while you are attached.'
-		},
-		{
-			title: 'A browser the agent can use',
-			text: 'Chromium with Playwright, set up for Claude Code, so the agent can check its own changes in a real page. `repose open --desktop` shows you that browser as the agent uses it, and you can take over.'
-		},
-		{
-			title: 'Your tools, and any others',
-			text: 'Tools you installed globally on your laptop are installed on the first run. `repose config add postgresql bun` adds anything from nixpkgs, and Docker works.'
-		}
-	];
-
 	const steps = [
 		{
 			title: 'Install the CLI',
@@ -92,26 +62,13 @@
 		{
 			title: 'Run in any checkout',
 			text: 'The first run creates the machine, syncs your work and attaches you to it.',
-			command: 'cd ~/code/izma && repose run'
+			command: 'cd ~/code/recruiting && repose run'
 		}
 	];
-	const runOutput: [string, string][] = [
-		['Created izma (large)', '0.1s'],
-		['Built the environment', '5.3s'],
-		['Booted izma', '11s'],
-		['Synced: 4 modified, 2 untracked (3 new commits)', ''],
-		['Ready in 15s.', '']
-	];
-
 	const tiers = [
 		{ name: 'small', vcpu: 2, ram: '4 GB', disk: '20 GB', hour: '$0.07', cap: '$49' },
 		{ name: 'large', vcpu: 4, ram: '8 GB', disk: '40 GB', hour: '$0.14', cap: '$99' },
 		{ name: 'xl', vcpu: 8, ram: '16 GB', disk: '80 GB', hour: '$0.28', cap: '$199' }
-	];
-
-	const pricingNotes = [
-		'A machine left running all month costs its monthly cap. A stopped one is charged for its disk only.',
-		'Your first day of compute is on us.'
 	];
 </script>
 
@@ -122,11 +79,6 @@
 		content="A disposable dev machine per project with your code, tools and secrets on it in 15 seconds, so coding agents can run with full permissions and your laptop stays out of reach."
 	/>
 </svelte:head>
-
-{#snippet rich(text: string)}{#each inline(text) as part, i (i)}{#if part.code}<code
-				class="rounded-xs bg-[var(--sunken)] px-1 py-px text-[0.88em] whitespace-nowrap text-zinc-800 dark:text-zinc-200"
-				>{part.text}</code
-			>{:else}{part.text}{/if}{/each}{/snippet}
 
 {#snippet sample(lines: string[])}
 	<pre class="codeblock !text-[12.5px] !leading-6">{#each lines as line, i (i)}<span
@@ -170,12 +122,8 @@
 			Let your agents run with full permissions
 		</h1>
 		<p class="mt-5 max-w-2xl text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
-			Your code, tools and secrets on a disposable machine in 15 seconds. Leave them running for as
-			long as the work takes.
-		</p>
-		<p class="mt-3 max-w-2xl leading-relaxed text-zinc-600 dark:text-zinc-400">
-			The agent works on a machine of its own, so it can't reach your laptop, your SSH keys or your
-			other projects.
+			One command puts your work on a machine of its own. The agent can wreck it, and a snapshot
+			puts it back.
 		</p>
 
 		<div class="mt-7 flex flex-wrap items-center gap-3">
@@ -208,46 +156,29 @@
 			</div>
 		</div>
 
-		<figure class="mt-8">
-			<Session />
-			<figcaption class="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
-				Recorded on a repose machine: Claude Code fixes a bug while the app's dev server reloads.
-				The notification and the reattach at the end are illustrated.
-			</figcaption>
-		</figure>
+		<div class="mt-8">
+			<Hero />
+		</div>
 	</section>
 
 	<section class="border-t border-[var(--rule)]">
-		<div class="mx-auto grid max-w-5xl gap-10 px-5 py-16 sm:grid-cols-3">
-			{#each facts as f (f.title)}
-				<div>
-					<h2 class="text-lg font-semibold">{f.title}</h2>
-					<p class="mt-2 text-zinc-600 dark:text-zinc-400">{@render rich(f.text)}</p>
-				</div>
-			{/each}
-		</div>
+		<div class="mx-auto max-w-5xl px-5 py-16"><OneCommand animated /></div>
 	</section>
 
 	<section id="features" class="scroll-mt-6 border-t border-[var(--rule)]">
 		<div class="mx-auto max-w-5xl px-5 py-16">
-			<h2 class="text-2xl font-semibold">Already on the machine</h2>
-			<div class="mt-8 grid gap-10 sm:grid-cols-3">
-				{#each extras as f (f.title)}
-					<div>
-						<h3 class="text-lg font-semibold">{f.title}</h3>
-						<p class="mt-2 text-zinc-600 dark:text-zinc-400">{@render rich(f.text)}</p>
-					</div>
-				{/each}
+			<h2 class="text-2xl font-semibold">On every machine</h2>
+			<div class="mt-8 grid gap-x-10 gap-y-12 md:grid-cols-2">
+				<ComesBack />
+				<Browser />
+				<Localhost />
+				<Editor />
 			</div>
-			<p class="mt-10 text-zinc-600 dark:text-zinc-400">
-				Claude Code, Codex, opencode, Gemini CLI and pi come installed.
-				<a
-					href={resolve('/docs')}
-					class="underline underline-offset-4 hover:text-zinc-900 dark:hover:text-zinc-100"
-					>Read the docs</a
-				> for secrets, snapshots, notifications and the rest.
-			</p>
 		</div>
+	</section>
+
+	<section class="border-t border-[var(--rule)]">
+		<div class="mx-auto max-w-5xl px-5 py-16"><Ready /></div>
 	</section>
 
 	<section class="border-t border-[var(--rule)]">
@@ -267,12 +198,6 @@
 						</div>
 						<div class="min-w-0">
 							{@render sample([`$ ${step.command}`])}
-							{#if i === steps.length - 1}
-								<div class="mt-2 overflow-x-auto">
-									<!-- prettier-ignore -->
-									<pre class="codeblock !text-[12.5px] !leading-6 !whitespace-pre">{#each runOutput as [text, time] (text)}<span class="block">{#if time}<span class="text-emerald-600 dark:text-emerald-400">✓</span> {text.padEnd(26)}<span class="text-zinc-600 dark:text-zinc-400">{time}</span>{:else}{text}{/if}</span>{/each}</pre>
-								</div>
-							{/if}
 						</div>
 					</li>
 				{/each}
@@ -329,13 +254,6 @@
 					</li>
 				{/each}
 			</ul>
-
-			<div class="mt-6 space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
-				{#each pricingNotes as note (note)}
-					<p>{@render rich(note)}</p>
-				{/each}
-				<p>Disk $0.10 per GB-month. 500 GB egress included per project, then $0.05 per GB.</p>
-			</div>
 
 			<div class="mt-10 flex flex-wrap items-center gap-4">
 				<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>

@@ -5,9 +5,9 @@
   right logging the reloads as Claude saves files. session.json holds the
   frames (ANSI converted to styled runs, lines de-duplicated); this component
   only plays them back, then shows what the laptop's terminal prints after
-  Ctrl-b d. The ending after that is drawn here, not recorded: the
-  notification a phone gets, `repose attach` typed on the laptop, and the
-  same session back on Claude's finished answer. Playback starts where the
+  Ctrl-b d. The ending after that is drawn here, not recorded:
+  `repose attach` typed on the laptop, and the same session back on Claude's
+  finished answer. Playback starts where the
   prompt is typed, since the recording's first ten seconds are an idle
   screen. Below 640px only Claude's pane is shown, so its text stays
   readable. Reduced motion shows Claude's finished answer.
@@ -56,10 +56,10 @@
 
 	// The timeline, in the recording's milliseconds. The recording opens on
 	// ten idle seconds, so the loop starts just before the prompt is typed.
-	// Everything from NOTIFY on is drawn here rather than recorded.
+	// Everything from BACK on is drawn here rather than recorded.
 	const START = 9800;
 	const DETACH = seq[seq.length - 1].at;
-	const NOTIFY = DETACH + 1500;
+	const BACK = DETACH + 1500;
 	const TYPE_AT = DETACH + 3800;
 	const TYPED = 'repose attach';
 	const KEY_MS = 75;
@@ -69,7 +69,7 @@
 	const chapters = [
 		{ label: 'Claude works', at: START },
 		{ label: 'You detach', at: DETACH },
-		{ label: 'You come back', at: NOTIFY }
+		{ label: 'You come back', at: BACK }
 	];
 
 	// Below this width only Claude's pane is drawn (87 columns plus padding);
@@ -98,7 +98,6 @@
 		return lo;
 	});
 	let frame = $derived(seq[index]);
-	let notified = $derived(t >= NOTIFY);
 	let typed = $derived(
 		t >= TYPE_AT && t < ATTACH
 			? TYPED.slice(0, Math.min(TYPED.length, Math.floor((t - TYPE_AT) / KEY_MS) + 1))
@@ -234,7 +233,7 @@
 		class="session relative w-full"
 		style="aspect-ratio: {stageW} / 630"
 		role="img"
-		aria-label="A tmux session on a repose machine: Claude Code on the left fixes a hardcoded graduation year in a SvelteKit app, reading the component, updating the client and server validation and running the tests; the app's Vite dev server on the right reloads as each file is saved. Then the laptop detaches, a notification says Claude finished, and repose attach brings back the same session."
+		aria-label="A tmux session on a repose machine: Claude Code on the left fixes a hardcoded graduation year in a SvelteKit app, reading the component, updating the client and server validation and running the tests; the app's Vite dev server on the right reloads as each file is saved. Then the laptop detaches while Claude keeps working, and repose attach brings back the same session."
 	>
 		<div class="stage" style="width: {stageW}px; transform: scale({scale})" aria-hidden="true">
 			<div class="titlebar">
@@ -278,15 +277,6 @@
 						<span>{compact ? '18:41' : '"repose-guest" 18:41 23-Sep-26'}</span>
 					</div>
 				{/if}
-			</div>
-			<!-- What a phone shows when Claude's Stop hook fires (ntfy). The
-			     summary is two sentences from Claude's own answer above. -->
-			<div class="notice" class:shown={notified && t < ATTACH}>
-				<div class="notice-head"><span>repose · izma</span><span>now</span></div>
-				<div class="notice-title">claude finished</div>
-				<div class="notice-body">
-					All 13 tests pass, and svelte-check reports 0 errors. Nothing is committed.
-				</div>
 			</div>
 		</div>
 	</div>
@@ -420,42 +410,6 @@
 		50% {
 			opacity: 0;
 		}
-	}
-	.notice {
-		position: absolute;
-		top: 44px;
-		right: 20px;
-		width: 340px;
-		padding: 12px 14px;
-		border-radius: 4px;
-		background: #f4f4f2;
-		color: #1c1c1b;
-		font-family: ui-sans-serif, system-ui, sans-serif;
-		font-size: 14px;
-		line-height: 1.4;
-		border: 1px solid #cfcfcb;
-		opacity: 0;
-		transform: translateY(-16px);
-		transition:
-			opacity 0.35s ease,
-			transform 0.35s ease;
-	}
-	.notice.shown {
-		opacity: 1;
-		transform: none;
-	}
-	.notice-head {
-		display: flex;
-		justify-content: space-between;
-		font-size: 12px;
-		color: #6b6b66;
-	}
-	.notice-title {
-		margin-top: 4px;
-		font-weight: 600;
-	}
-	.notice-body {
-		color: #3a3a38;
 	}
 	.chapters {
 		display: grid;
