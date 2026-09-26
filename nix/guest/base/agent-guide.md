@@ -37,7 +37,7 @@ You are `dev`, with passwordless `sudo`. The checkout is under `/home/dev`, and 
 
 - The user's secrets are environment variables in your shell and files in `/run/repose/secrets/`. <!-- /docs/secrets#store-an-api-key -->
 - Never print, log or commit a secret's value, and never write one into the repository. Refer to it by name, as `$NAME`. <!-- /docs/secrets#store-an-api-key -->
-- If you need a secret that isn't set, ask the user to run `repose secrets set NAME` on their laptop. New values reach new shells; restart a running server to pick one up. <!-- /docs/secrets#store-an-api-key -->
+- If you need a secret that isn't set, ask the user to run `repose secrets set NAME` on their laptop, or `repose secrets import` to set every line of a `.env` file there. New values reach new shells; restart a running server to pick one up. <!-- /docs/secrets#store-an-api-key -->
 
 ## Browser
 

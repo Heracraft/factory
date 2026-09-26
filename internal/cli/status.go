@@ -27,7 +27,7 @@ func StatusCmd(ctx context.Context, e *Env, projectArg string) error {
 	return nil
 }
 
-// ProjectsCmd implements `repose projects`: a table of every project,
+// ProjectsCmd implements `repose ls`: a table of every project,
 // ignoring cwd, with a header row and, under a project in `error`, why
 // (DECISIONS I-153). --json is the api's list, unchanged.
 func ProjectsCmd(ctx context.Context, e *Env) error {
@@ -40,6 +40,12 @@ func ProjectsCmd(ctx context.Context, e *Env) error {
 			projects = []Project{}
 		}
 		return writeJSONOut(e.Out, projects)
+	}
+	if e.Quiet {
+		for _, p := range projects {
+			_, _ = fmt.Fprintln(e.Out, p.Slug)
+		}
+		return nil
 	}
 	if len(projects) == 0 {
 		_, _ = fmt.Fprintln(e.Out, "No projects yet. `repose run` in a git checkout creates one.")

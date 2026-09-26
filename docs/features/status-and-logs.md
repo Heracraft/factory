@@ -7,7 +7,7 @@ operations history. The dashboard shows the same data with history.
 ## What the user sees
 
 ```
-$ repose projects
+$ repose ls
 PROJECT   CLASS  STATE    UP     AGENTS           TODAY  MONTH
 todo-app  large  running  2h14m  claude: working  $0.31  $18.40
 api-v2    xl     stopped  -      -                $0.00  $41.02
@@ -30,7 +30,7 @@ $ repose logs --kind build       # the last build's output
 $ repose logs --kind ops         # create/start/stop/apply/snapshot history
 ```
 
-`repose projects` is that table (header row, `-` where a column does
+`repose ls` is that table (header row, `-` where a column does
 not apply, uptime only while running), followed by one line per project
 in `error` with the reason the api recorded and the command that fixes
 it, e.g. `age-calculator: the environment's agent (guestd) stopped
@@ -42,7 +42,7 @@ project as their argument (`repose logs izma -f`, I-155).
 
 Status:
 
-- `repose projects` lists every non-destroyed project with class, state,
+- `repose ls` lists every non-destroyed project with class, state,
   uptime since the last `running` transition, per-agent state, and cost
   today and month to date in dollars from `usage_hours` plus the current
   partial hour estimated at the class rate. `repose status` prints the

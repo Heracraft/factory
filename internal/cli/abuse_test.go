@@ -6,7 +6,7 @@ import (
 )
 
 // DECISIONS I-239: a project the platform stopped because a miner was
-// running says so on `repose status`, in `repose projects` and when a
+// running says so on `repose status`, in `repose ls` and when a
 // command needs it running; an older reason on a stopped project (a failed
 // snapshot) is not shown as if it were one.
 func TestAbuseStopReasonIsShown(t *testing.T) {

@@ -12,8 +12,8 @@ import (
 )
 
 // TestDestroyThenRestoreByName is the owner's 2026-09-23 request end to
-// end against the fake api: `repose destroy izma` returns at once with
-// `repose restore izma` (I-166), `repose projects --destroyed` lists it
+// end against the fake api: `repose rm izma` returns at once with
+// `repose restore izma` (I-166), `repose ls --destroyed` lists it
 // with its expiry, and `repose restore izma` brings it back under its
 // name (I-167).
 func TestDestroyThenRestoreByName(t *testing.T) {
@@ -93,7 +93,7 @@ func TestDestroyThenRestoreByName(t *testing.T) {
 
 	// Nothing by that name.
 	err = RestoreCmd(ctx, e, "nope", "", "", nil)
-	if ee, ok := err.(*exitError); !ok || ee.code != ExitProjectNotFound || !strings.Contains(ee.msg, "projects --destroyed") {
+	if ee, ok := err.(*exitError); !ok || ee.code != ExitProjectNotFound || !strings.Contains(ee.msg, "repose ls --destroyed") {
 		t.Fatalf("restore of an unknown name: %v", err)
 	}
 	if err := RestoreCmd(ctx, e, "", "", "", nil); err == nil {
@@ -105,10 +105,10 @@ func TestDestroyThenRestoreByName(t *testing.T) {
 // projects` with the api's reason, whose own next step (destroy again)
 // wins over the generic "start restarts it" (I-165, I-166).
 func TestProjectsShowAFailedDestroy(t *testing.T) {
-	le := "internal: destroying izma failed: the host could not remove the volume. `repose destroy izma` tries again"
+	le := "internal: destroying izma failed: the host could not remove the volume. `repose rm izma` tries again"
 	var out strings.Builder
 	writeProjectsTable(&out, []Project{{Slug: "izma", Class: "large", State: "error", LastError: &le}})
-	if !strings.Contains(out.String(), "izma: destroying izma failed") || !strings.Contains(out.String(), "`repose destroy izma` tries again") ||
+	if !strings.Contains(out.String(), "izma: destroying izma failed") || !strings.Contains(out.String(), "`repose rm izma` tries again") ||
 		strings.Contains(out.String(), "repose start izma") {
 		t.Fatalf("projects table:\n%s", out.String())
 	}

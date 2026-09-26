@@ -68,7 +68,7 @@ Three things, per project:
   less.
 - **Storage**, on the *allocated* volume size, for as long as the project
   exists — running, stopped, whatever. This is the line that surprises
-  people: a stopped project is not a free project. `repose destroy` is what
+  people: a stopped project is not a free project. `repose rm` is what
   stops it.
 - **Egress**, 500 GB included per project per billing period, then $0.05 a
   GB. Traffic to the gateway (SSH, noVNC, hooks) is not counted; only what

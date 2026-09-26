@@ -6907,3 +6907,135 @@ tree). /docs `cli.md`, `features/projects.md` and `07-cli.md` say so in
 this commit. Needs a CLI release. *Rejected:* a separate verb for the
 class (a second name for resizing); making DISK a flag (breaks
 `repose resize 80G`, which the docs and the machine guide name).
+
+**I-273. `repose ls` and `repose rm` are the names; `projects` and
+`destroy` are aliases.** (dev-CLI round, 2026-09-26; the owner: "we might
+as well just not advertise `projects` and `destroy` and keep the aliases as
+the 'real' ones") The command that lists projects is `repose ls` and the
+one that destroys a project is `repose rm [PROJECT]`, with destroy's
+confirmation, `-y`/`--yes` and `--wait` unchanged, as `docker ps`/`rm`,
+`fly apps list`/`destroy` users type. The old names stay as cobra aliases,
+so scripts and muscle memory keep working: they are not in `repose --help`'s
+list, `repose ls --help` shows them on its `Aliases:` line, and cli.md and
+lifecycle.md say in one line each that the old names still work. Every
+message that tells a user a command to type now names `ls`/`rm` (the CLI's
+hints, the api's destroy-failed reason in `ops/phases.go`), and so do
+/docs, `docs/features/*`, RUNBOOK and 07-cli.md's command tree; DECISIONS
+entries and status archives keep the words of their day. **Names are fixed
+(CLAUDE.md):** `ls` and `rm` are the names from now on; `projects` and
+`destroy` must not reappear in text as a command to type, and no third
+name is added. The nouns "project" and "destroy" (the operation, the
+`destroying` state, `destroy_failed`, the dashboard's **Destroy**) are
+unchanged: `rm` is the verb that starts a destroy. The two `list`
+subcommands, `secrets list` and `snapshots list`, gain the alias `ls` so
+`ls` means list everywhere; `secrets rm` already existed. ops/checks keep
+calling `projects`/`destroy`, which the released CLI they may run has.
+`TestPositionalProject` (both names), `TestUnknownCommandSuggests`.
+Needs a CLI release. *Rejected:* hidden duplicate commands (two command
+objects to keep in step, and `docs_test`'s hidden list); removing the old
+names (breaks scripts for no gain).
+
+**I-274. `repose ps` lists the tmux windows.** (dev-CLI round, 2026-09-26) `repose ps
+[PROJECT]` is one ssh over the project's multiplexed connection running
+`date +%s` and `tmux list-windows -t =<slug>` with index, name,
+`pane_current_command`, `window_activity` and `window_active`, printed as
+`WINDOW COMMAND ACTIVE` (`1:claude*  claude  now`, `*` the current window,
+as tmux marks it). COMMAND is the process name tmux reports, never its
+arguments; the output goes to the user's terminal and is not logged
+anywhere. ACTIVE is the guest's clock minus the window's last output, so a
+laptop clock that is off does not skew it; rounded to now, minutes, hours
+(under 48) or days. `-q`/`--quiet` prints names only, `--json` records
+`{index, name, command, current, activity, idle_seconds}`. A project that
+is not running is exit 5; no session says `repose attach` starts one.
+`TestPsListsWindows` (real tmux over the sshd harness, asserts no
+argument is printed), `TestParsePs`. Needs a CLI release only.
+*Rejected:* guestd's agent states from the api (per agent, not per window,
+and a minute stale); `ps` of the guest's processes (arguments, and not
+what the user means by "what's running").
+
+**I-275. `repose exec` runs one command in the checkout; `repose ssh`
+opens a shell there.** (dev-CLI round, 2026-09-26) `repose exec [PROJECT] -- COMMAND
+[ARG...]`, `docker exec` shaped: `--` is required (a project and a command
+cannot otherwise be told apart), each argument is single-quoted so it
+arrives as typed (a pipeline is `sh -c`'s job, as with docker), stdin is
+passed only with `-i`/`--interactive`, a remote terminal only with
+`-t`/`--tty` (`ssh -tt`, so it is given even when stdin is not a
+terminal, as docker's `-t`). The remote side is `cd ~/<slug>` (home, with
+a `repose:` note on stderr, when the checkout is not there), then
+`/etc/profile.d/repose.sh` (project variables, named secrets), then the
+agent wrappers' own dev environment loader, so the command sees exactly
+what an agent sees (I-259): the base now installs `devshell.sh` as
+`/etc/repose/devshell.sh` (overlay attribute `reposeDevshell`, which
+`wrap.nix` uses too); a base without it gets `direnv export bash`, which
+is what an interactive shell has. **Exit codes:** before the command
+runs, a failure is one of repose's own codes with a message (4 no
+project, 5 not running, 3 not logged in); once it runs, repose exits with
+the command's status, whatever it is, and prints nothing, so `repose exec
+-- make check && deploy` works; 255 is ssh losing the connection. This
+is `docker exec`'s rule without its 125-127 band: a command that is not
+found is the guest shell's 127, which means the same. cli.md's exit code
+table says so. `repose ssh [PROJECT]` replaces the CLI with `ssh -t
+<slug>.repose` running the login shell in the checkout, outside tmux;
+arguments are not passed to ssh (that is `exec`, or plain `ssh
+<slug>.repose` with the user's own flags). Both require a running project
+and reuse `connect` (certificate, config, fast path), without touching
+cert.go's rendering. `TestExecRunsInTheCheckout` (cwd, arguments with
+spaces, `$` and quotes unchanged, no stdin without `-i`, `-i` passes it,
+exit 42 and 127 come back), `TestExecScriptGolden` holds
+`internal/cli/testdata/exec-script.sh`, which VM test `guest-devshell`
+runs over ssh in a checkout with a flake and no `.envrc` and asserts the
+flake's variables and tool, `REPOSE_PROJECT` and the cwd. docs_test's
+ghost check now accepts `--` as a token. Needs a CLI release and a base
+publish (`/etc/repose/devshell.sh`; without it exec falls back as above).
+*Rejected:* `repose exec PROJECT CMD` without `--` (`repose exec npm
+test` in a checkout would look up a project called npm); running the
+command through `bash -lc STRING` (the user's quoting would be read by a
+second shell); `direnv exec` (a failing `.envrc` would stop the command,
+where the agent wrapper starts anyway).
+
+**I-276. Did-you-mean for commands, `-q` on listings.** (dev-CLI round, 2026-09-26)
+cobra suggested only at the top level, only by a command's own name, and
+a group with an unknown subcommand (`repose secrets lsit`) printed the
+group's help and exited 0. `Execute` now checks the arguments first on a
+throwaway command tree: an unknown word under the root or under a group is
+`unknown command "lsit" for "repose secrets"` / `Did you mean `repose
+secrets list`?` / `Run `repose secrets --help` for its commands.`, exit 2.
+Candidates are visible subcommands whose name or alias is within one edit
+(names of four letters or fewer) or two (longer), Damerau-Levenshtein so a
+swapped pair counts once, or starts with what was typed, or that list the
+word in `SuggestFor` (`list` and `project` lead to `ls`, `delete` and
+`remove` to `rm`); at most three, closest first. Aliases count, so
+`projetcs` suggests `ls`. `__complete` and `help` are left to cobra.
+`logs -f` and `events -f` already existed. `-q`/`--quiet` prints names or
+ids one per line on `repose ls` (slugs; with `--destroyed`, each name
+once), `repose snapshots list` (ids) and `repose ps` (window names), for
+`repose ls -q | xargs -n1 repose stop`; with `--json` it is a usage
+error. No command had `-q` before. `TestUnknownCommandSuggests`,
+`TestProjectsTable`, `TestPsListsWindows`. Needs a CLI release.
+
+**I-277. `repose secrets import` sets every NAME=VALUE of a .env file.**
+(dev-CLI round, 2026-09-26) `repose secrets import [FILE]` reads `./.env` by default,
+`-` for stdin (so `op inject … | repose secrets import -` never puts
+values on disk), and PUTs each name through the api path `secrets set`
+uses: the values go to named secrets' one home and nowhere else, the file
+is only read, and only names are printed. Format, as docker compose and
+the dotenv libraries share it: `#` comments and blank lines skipped, an
+`export ` prefix ignored, `'single'` literal, `"double"` with `\n \r \t
+\" \\ \$` escapes, quoted values may span lines (PEM keys), an unquoted
+value ends at ` #` and is trimmed, no `${VAR}` expansion, a repeated name
+takes its last value. A parse error names the line and never its text.
+Every name and value is checked first (name pattern, reserved names, 64 KB)
+and a file with any bad one is refused whole, exit 2, listing the lines:
+half an import is worse than none. **Existing names are replaced**, as
+`secrets set`, `fly secrets import`, `gh secret set -f` and `heroku
+config:set` do; the summary marks them `NAME (replaced)` (from a `GET
+.../secrets` first), and `--dry-run` shows the same list and sends
+nothing. A failure part way prints which names were set before it; running
+again is safe. No count limit exists server-side; each PUT to a running
+project enqueues the usual UpdateSecrets. `TestParseDotenv`,
+`TestSecretsImport` (values as the api received them, no value in any
+output, bad names send nothing). Needs a CLI release. *Rejected:*
+refusing existing names without `--overwrite` (vercel's `env add` does,
+but import's usual reason is updating values, and `set` already
+replaces); expanding `${VAR}` (would read the laptop's environment into a
+secret silently).

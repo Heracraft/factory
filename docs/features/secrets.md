@@ -22,6 +22,13 @@ On a stopped guest `set` prints `Set NAME (will be delivered at next
 start)`. `--from-file PATH` and `--from-env` read the value without a
 prompt. `list` prints name and last update, tab-separated, no header.
 
+`repose secrets import [FILE]` (I-277) sets every `NAME=VALUE` of a dotenv
+file (default `./.env`, `-` for stdin) through the same PUT, one per name,
+replacing existing ones like `set`; the summary names names only
+(`OLD (replaced)`), `--dry-run` sends nothing, and a file with any invalid
+name or oversize value is refused whole before anything is sent. The file
+is read, never written; the values go to the one home named secrets have.
+
 Synced logins happen inside `repose run` with no output of their own.
 
 ## Kind 1: tool logins the laptop already has

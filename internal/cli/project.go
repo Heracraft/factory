@@ -52,7 +52,7 @@ func resolveProject(ctx context.Context, client *Client, dir, cwd, explicit stri
 			return nil, err
 		}
 		if p == nil {
-			return nil, exitf(ExitProjectNotFound, "No repose project is called %s. `repose projects` lists yours.", explicit)
+			return nil, exitf(ExitProjectNotFound, "No repose project is called %s. `repose ls` lists yours.", explicit)
 		}
 		return &ResolveResult{Project: p}, nil
 	}
@@ -167,7 +167,7 @@ func errNoProjectFoundFor(remote, command string) error {
 		usage = "`" + command + " PROJECT`"
 	}
 	if remote == "" {
-		return exitf(ExitProjectNotFound, "No repose project here, and this directory has no git remote. Name one: %s (`repose projects` lists them).", usage)
+		return exitf(ExitProjectNotFound, "No repose project here, and this directory has no git remote. Name one: %s (`repose ls` lists them).", usage)
 	}
 	return exitf(ExitProjectNotFound, "No repose project for %s. Run `repose run` here to create one, or name one: %s.", remote, usage)
 }

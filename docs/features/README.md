@@ -19,7 +19,7 @@ feature doc wins; on internals, the workstream doc wins.
 | [notifications.md](notifications.md) | Agent events by email and ntfy, `repose-notify`, `repose-ask` | built; Telegram, Discord not built |
 | [ports-and-previews.md](ports-and-previews.md) | Auto-forward while attached, `repose open <port>`, preview URLs | partly built; preview URLs not built, not approved (2026-09-25) |
 | [stop-start-destroy.md](stop-start-destroy.md) | Lifecycle states, what each one costs, retention | built; idle auto-stop not built |
-| [status-and-logs.md](status-and-logs.md) | `repose status`, `repose projects`, `repose logs`, the dashboard view | partly built; git state in status not built |
+| [status-and-logs.md](status-and-logs.md) | `repose status`, `repose ls`, `repose logs`, the dashboard view | partly built; git state in status not built |
 | [pricing.md](pricing.md) | Card before compute, the first day of compute, what is charged, the invoice, a failed payment | built |
 
 Features with a written design that is not built live in the doc for the

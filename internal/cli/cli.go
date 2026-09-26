@@ -21,6 +21,13 @@ import (
 // value ("dev" outside a release build). It returns the process exit code
 // per docs/interfaces/cli-config.md.
 func Execute(version string) int {
+	// A mistyped command or subcommand is answered before cobra runs, on a
+	// throwaway tree (its flag parsing leaves state behind), with the
+	// command the user probably meant (DECISIONS I-276).
+	if msg := unknownCommand(newRootCmd(version), os.Args[1:]); msg != "" {
+		_, _ = fmt.Fprintln(os.Stderr, msg)
+		return ExitUsage
+	}
 	root := newRootCmd(version)
 	root.SilenceErrors = true
 	root.SilenceUsage = true
@@ -113,11 +120,14 @@ func newRootCmd(version string) *cobra.Command {
 		newSecretsCmd(env, g),
 		newConfigCmd(env, g),
 		newSnapshotsCmd(env, g),
-		newDestroyCmd(env, g),
+		newRmCmd(env, g),
 		newRestoreCmd(env),
 		newForkCmd(envJSON, env, g),
 		newLogsCmd(envJSON, env, g),
-		newProjectsCmd(envJSON),
+		newLsCmd(envJSON),
+		newPsCmd(envJSON, env, g),
+		newExecCmd(env, g),
+		newSSHCmd(env, g),
 		newEventsCmd(envJSON, env, g),
 		newQuestionsCmd(envJSON, env, g),
 		newReplyCmd(envJSON, g),
@@ -387,12 +397,17 @@ func newStatusCmd(envJSON func(*cobra.Command) (*Env, error), env func() (*Env, 
 	return cmd
 }
 
-func newProjectsCmd(envJSON func(*cobra.Command) (*Env, error)) *cobra.Command {
-	var destroyed, all bool
+// newLsCmd is `repose ls`, which lists projects. It was `repose
+// projects` until DECISIONS I-273; that name stays an alias so scripts
+// keep working, and no text tells a user to type it.
+func newLsCmd(envJSON func(*cobra.Command) (*Env, error)) *cobra.Command {
+	var destroyed, all, quiet bool
 	cmd := &cobra.Command{
-		Use:   "projects",
-		Short: "List every project",
-		Args:  noArgs,
+		Use:        "ls",
+		Aliases:    []string{"projects"},
+		SuggestFor: []string{"list", "project"},
+		Short:      "List every project",
+		Args:       noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := envJSON(cmd)
 			if err != nil {
@@ -401,6 +416,10 @@ func newProjectsCmd(envJSON func(*cobra.Command) (*Env, error)) *cobra.Command {
 			if all && !destroyed {
 				return cobraUsageError{fmt.Errorf("--all goes with --destroyed")}
 			}
+			if quiet && e.JSON {
+				return cobraUsageError{fmt.Errorf("-q and --json are two different outputs; pass one")}
+			}
+			e.Quiet = quiet
 			if destroyed {
 				return DestroyedCmd(cmd.Context(), e, all)
 			}
@@ -409,7 +428,8 @@ func newProjectsCmd(envJSON func(*cobra.Command) (*Env, error)) *cobra.Command {
 	}
 	cmd.Flags().Bool("json", false, "print as JSON")
 	cmd.Flags().BoolVar(&destroyed, "destroyed", false, "list destroyed projects that can still be restored, and until when")
-	cmd.Flags().BoolVar(&all, "all", false, "with --destroyed: every destroyed project, not only the one `repose restore NAME` picks per name")
+	cmd.Flags().BoolVar(&all, "all", false, "with --destroyed: every destroyed project, not only the one repose restore NAME picks per name")
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "print only the project names, one per line")
 	return cmd
 }
 
@@ -475,9 +495,10 @@ func newSecretsCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	set.Flags().BoolVar(&fromEnv, "from-env", false, "read the value from $NAME")
 
 	list := &cobra.Command{
-		Use:   "list",
-		Short: "List secret names",
-		Args:  noArgs,
+		Use:     "list",
+		Aliases: []string{"ls"},
+		Short:   "List secret names",
+		Args:    noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := env()
 			if err != nil {
@@ -498,7 +519,7 @@ func newSecretsCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 			return SecretsRmCmd(cmd.Context(), e, g.project, args[0])
 		},
 	}
-	root.AddCommand(set, list, rm)
+	root.AddCommand(set, list, rm, newSecretsImportCmd(env, g))
 	return root
 }
 
@@ -634,19 +655,26 @@ func newSnapshotsCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	root := &cobra.Command{Use: "snapshots", Short: "Manage snapshots"}
 	var asNew string
 	var yes bool
+	var quiet bool
 	list := &cobra.Command{
-		Use:   "list",
-		Short: "List snapshots",
-		Args:  noArgs,
+		Use:     "list",
+		Aliases: []string{"ls"},
+		Short:   "List snapshots",
+		Args:    noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if quiet && g.json {
+				return cobraUsageError{fmt.Errorf("-q and --json are two different outputs; pass one")}
+			}
 			e, err := env()
 			if err != nil {
 				return err
 			}
+			e.Quiet = quiet
 			return SnapshotsListCmd(cmd.Context(), e, g.project)
 		},
 	}
 	list.Flags().BoolVar(&g.json, "json", false, "print as JSON")
+	list.Flags().BoolVarP(&quiet, "quiet", "q", false, "print only the snapshot ids, one per line")
 	create := &cobra.Command{
 		Use:   "create",
 		Short: "Take a manual snapshot",
@@ -683,10 +711,14 @@ func newSnapshotsCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	return root
 }
 
-func newDestroyCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
+// newRmCmd is `repose rm`, which destroys a project. It was `repose
+// destroy` until DECISIONS I-273; that name stays an alias.
+func newRmCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var yes, wait bool
 	cmd := &cobra.Command{
-		Use:               "destroy [PROJECT]",
+		Use:               "rm [PROJECT]",
+		Aliases:           []string{"destroy"},
+		SuggestFor:        []string{"delete", "remove"},
 		Short:             "Destroy a project (a final snapshot is kept for 30 days)",
 		Args:              projectArgs,
 		ValidArgsFunction: completeProject(env),
@@ -719,7 +751,7 @@ func newRestoreCmd(env func() (*Env, error)) *cobra.Command {
 		Long: "Restores NAME, a project you destroyed in the last 30 days (or one that still exists), from its\n" +
 			"newest snapshot into a new project called NAME, or --as NEW-NAME when that name is in use.\n" +
 			"Without NAME, inside a checkout, it restores the destroyed project with this checkout's remote.\n" +
-			"`repose projects --destroyed` lists what can be restored. `repose snapshots restore` still\n" +
+			"`repose ls --destroyed` lists what can be restored. `repose snapshots restore` still\n" +
 			"restores a given snapshot over a stopped project in place.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 1 {

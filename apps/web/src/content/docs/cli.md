@@ -36,6 +36,35 @@ Attach to the project's tmux session without syncing.
 
 `run` and `attach` print one line when another of your projects is running idle, once per idle stretch. An `attach` that reuses an open connection makes no api call and skips it.
 
+### `repose ps [PROJECT]`
+
+The project's tmux windows: number and name, the program running in each (its name, not its arguments), and when it last printed something. `*` marks the current window, the one `attach` opens on. `-q`/`--quiet` prints only the names; `--json` for JSON.
+
+```
+$ repose ps
+WINDOW     COMMAND  ACTIVE
+0:shell    bash     3h ago
+1:claude*  claude   now
+2:codex    codex    12m ago
+```
+
+### `repose exec [PROJECT] -- COMMAND [ARG...]`
+
+Run one command in the checkout on the machine, with the environment an agent there has: your secrets and the project's dev shell. Output streams back and the exit code is the command's. Everything after `--` is the command, passed word for word and not read by a shell; for a pipeline, run a shell yourself, as in the last example.
+
+```
+$ repose exec -- npm test
+$ repose exec todo-app -- git log --oneline -3
+$ repose exec -it -- psql
+$ repose exec -- sh -c "npm run build && npm test"
+```
+
+`-i`/`--interactive` passes your input to the command; without it the command reads nothing. `-t`/`--tty` gives it a terminal. Pass both, as with `docker exec`, for anything interactive.
+
+### `repose ssh [PROJECT]`
+
+Open a shell on the machine in the checkout, outside tmux; `exit` ends it. For one command, use `repose exec`.
+
 ### `repose open [PORT]`
 
 Forward one port to your laptop and open it in the browser, until `Ctrl-C`. Works for servers on `127.0.0.1`, `0.0.0.0` or `::1`.
@@ -66,9 +95,13 @@ List the tools the next `repose run` would install on the machine, and why, and 
 
 ## Projects
 
-### `repose projects`
+### `repose ls`
 
-Every project in a table, with a line under it for each running project nobody has used for a day ([Idle machines](/docs/lifecycle#idle-machines)). `--json` for full records, `--destroyed` for destroyed projects that can still be restored (with `--all`, every one).
+Every project in a table, with a line under it for each running project nobody has used for a day ([Idle machines](/docs/lifecycle#idle-machines)). `--json` for full records, `--destroyed` for destroyed projects that can still be restored (with `--all`, every one). `-q`/`--quiet` prints only the names, one per line:
+
+```
+repose ls -q | xargs -n1 repose stop
+```
 
 ### `repose status [PROJECT]`
 
@@ -82,9 +115,11 @@ Start a stopped machine, or restart one in `error`. Doesn't sync.
 
 Stop the machine and snapshot its disk. `--no-snapshot` skips the snapshot.
 
-### `repose destroy [PROJECT]`
+### `repose rm [PROJECT]`
 
-Delete the machine and disk; a final snapshot is kept 30 days. `-y`/`--yes` skips the question (required without a terminal). `--wait` waits until it's done.
+Destroy the project: delete the machine and disk; a final snapshot is kept 30 days. `-y`/`--yes` skips the question (required without a terminal). `--wait` waits until it's done.
+
+`repose projects` and `repose destroy`, the old names, still work.
 
 ### `repose restore [NAME]`
 
@@ -120,17 +155,18 @@ Answer a waiting question: `repose reply todo-app yes`. The first word is the pr
 
 | Command                                |                                                                                                                    |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `repose snapshots list`                | `--json` for JSON.                                                                                                 |
+| `repose snapshots list`                | Alias `ls`. `--json` for JSON, `-q`/`--quiet` for the ids only.                                                    |
 | `repose snapshots create`              | Take one now.                                                                                                      |
 | `repose snapshots restore SNAPSHOT_ID` | Replace a stopped project's disk. `--as-new NAME` restores into a new project instead; `--yes` skips the question. |
 
 ## Secrets
 
-| Command                   |                                                                 |
-| ------------------------- | --------------------------------------------------------------- |
-| `repose secrets set NAME` | Asks for the value. `--from-file PATH` or `--from-env` instead. |
-| `repose secrets list`     | Names and dates, never values.                                  |
-| `repose secrets rm NAME`  | Delete it.                                                      |
+| Command                        |                                                                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `repose secrets set NAME`      | Asks for the value. `--from-file PATH` or `--from-env` instead.                                                           |
+| `repose secrets import [FILE]` | Set every `NAME=VALUE` in a `.env` file (default `./.env`, `-` for stdin). `--dry-run` lists the names and sends nothing. |
+| `repose secrets list`          | Names and dates, never values. Alias `ls`.                                                                                |
+| `repose secrets rm NAME`       | Delete it.                                                                                                                |
 
 ## Configuration
 
@@ -225,4 +261,4 @@ For a test or self-hosted repose server rather than the hosted one: `--api-url U
 | 10   | The configuration build failed.                        |
 | 130  | Interrupted with `Ctrl-C`.                             |
 
-Once `run` or `attach` has connected you, the exit code is `ssh`'s. `repose cp` returns `scp`'s. `repose paste` exits 1 when there is no image on the clipboard or no tool to read it, and says which tool to install.
+Once `run`, `attach` or `ssh` has connected you, the exit code is `ssh`'s. Once `repose exec` has started the command, the exit code is the command's, whatever it is (a `4` from your test runner is the test runner's); the codes above come only from failures before it starts, which print a message first. `255` means `ssh` lost the connection. `repose cp` returns `scp`'s. `repose paste` exits 1 when there is no image on the clipboard or no tool to read it, and says which tool to install.

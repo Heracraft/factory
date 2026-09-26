@@ -78,6 +78,34 @@ The mouse works too: click a window name to switch, scroll to go back through ou
 
 Shift+Enter starts a new line in Claude Code instead of sending the prompt, when your terminal reports modified keys to tmux (xterm's modifyOtherKeys; Ghostty, WezTerm, iTerm2 and xterm do, Apple's Terminal doesn't). If Shift+Enter still sends the prompt, type `\` and then Enter, or press Ctrl+J. Links an agent prints are clickable in terminals that support links (OSC 8), and a program in the window you're looking at can send escape sequences through tmux to your terminal.
 
+## See what's running, run one command
+
+`repose ps` lists the tmux windows without attaching: what runs in each and when it last printed something. `*` is the window `attach` opens on.
+
+```
+$ repose ps
+WINDOW     COMMAND  ACTIVE
+0:shell    bash     3h ago
+1:claude*  claude   now
+2:codex    codex    12m ago
+```
+
+An agent that's working usually shows `now`; one that has been waiting for you shows roughly how long. COMMAND is the program's name only, never its arguments.
+
+`repose exec` runs one command in the checkout on the machine and gives you its output and exit code, the way `docker exec` does. The command gets what an agent there gets: your [secrets](/docs/secrets) as environment variables and the project's dev shell (its `.envrc`, or its `flake.nix` dev shell).
+
+```
+$ repose exec -- npm test
+$ repose exec todo-app -- git status --short
+$ repose exec -it -- psql
+```
+
+Everything after `--` is the command. Without `-i` it reads no input, and without `-t` it has no terminal; `-it` is for something interactive, like a REPL. In a script, `repose exec -- make check && echo passed` works as you'd expect, since the exit code is the command's.
+
+`repose ssh` opens a plain shell in the checkout instead of the tmux session, and `exit` closes it. Start long jobs in tmux (`repose attach`), where they outlive the connection.
+
+Like `attach`, these start no machine: a stopped one gets you exit code 5 and the command to start it.
+
 ## Paste an image
 
 `Ctrl-V` in Claude Code reads the clipboard of the computer it runs on, which is the machine, not your laptop. To give an agent a screenshot, copy it on your laptop and run, in the checkout:

@@ -58,7 +58,11 @@ Exit codes: 0 ok; 1 generic; 2 usage; 3 not logged in; 4 project not found;
 8 capacity; 10 build failed (Nix error printed); 130 interrupted (Ctrl-C).
 Usage covers cobra's own refusals too: an unknown command or flag, a
 wrong number of arguments, and two different projects named at once
-(DECISIONS I-155).
+(DECISIONS I-155), and an unknown subcommand under a group (`repose
+secrets lsit`), which names the closest commands (I-276). Once `repose
+exec` has started its command, the exit code is the command's and
+nothing is added; the codes above come only from failures before it
+(I-275). `run`, `attach` and `ssh` exit with ssh's code once connected.
 
 Output: results on stdout; progress (phase lines, or one spinner line
 on a terminal), warnings and errors on stderr; `REPOSE_NO_SPINNER=1` or

@@ -56,6 +56,10 @@ in
 
     environment.etc."repose/claude-settings.json".text = builtins.toJSON claudeSettings;
 
+    # The agent wrappers' dev environment loader, at a path `repose exec`
+    # sources so a command it runs gets what an agent gets (DECISIONS I-275).
+    environment.etc."repose/devshell.sh".source = pkgs.reposeDevshell;
+
     # Every agent that has a hook system is registered here; the rest use
     # guestd's pane-idle heuristic (docs/features/agents.md).
     environment.etc."repose/agents.json".text = builtins.toJSON (lib.mapAttrs (name: pkg: {

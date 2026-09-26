@@ -404,7 +404,7 @@ func (s *Server) destroyProject(w http.ResponseWriter, r *http.Request) error {
 	}
 	// The project reads `destroying` from the moment the destroy is
 	// accepted, in the same transaction, because the CLI returns right
-	// away (I-166) and the next `repose projects` must not show it running.
+	// away (I-166) and the next `repose ls` must not show it running.
 	var id uuid.UUID
 	ctx := r.Context()
 	err = db.InTx(ctx, s.d.Pool, func(tx db.Tx) error {

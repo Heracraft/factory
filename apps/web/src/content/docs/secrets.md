@@ -20,6 +20,17 @@ repose secrets set GOOGLE_CREDENTIALS --from-file ./service-account.json
 repose secrets set OPENAI_API_KEY --from-env
 ```
 
+To set several at once from a `.env` file, import it:
+
+```
+$ repose secrets import .env.production
+Set 3 on todo-app from .env.production (pushed to the running machine): DATABASE_URL (replaced), STRIPE_SECRET_KEY, OPENAI_API_KEY
+```
+
+Without a file name it reads `./.env`; `-` reads stdin, so a secrets manager can pipe into it without the values touching your disk. Each `NAME=VALUE` becomes a secret, replacing one of the same name, as `secrets set` does. `--dry-run` lists the names it would set and sends nothing. Only names are printed, never values.
+
+The file is read the way docker compose and the dotenv libraries read it: `#` comments and blank lines are skipped, `export ` in front of a name is ignored, `'single quotes'` keep a value exactly as written, `"double quotes"` understand `\n`, `\t`, `\"` and `\\` and can span lines (a PEM key, say), and an unquoted value ends at ` #`. `${VAR}` is not expanded. If any name isn't a valid secret name (below), nothing is imported and the error lists the lines to fix.
+
 On the machine, each secret is an environment variable in new shells and agents, and a file at `/run/repose/secrets/NAME`. Both are kept in memory only: never on the machine's disk, never in snapshots. A change reaches a running machine within seconds; programs already running keep the old value until restarted (`exec $SHELL` in a shell).
 
 ```

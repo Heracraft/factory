@@ -6,9 +6,7 @@
 { name, pkg }:
 let
   bin = pkg.meta.mainProgram or name;
-  devshell = pkgs.replaceVars ./devshell.sh {
-    inherit (pkgs) direnv jq tmux coreutils;
-  };
+  devshell = pkgs.reposeDevshell;
   wrapper = pkgs.writeShellScript "repose-${bin}-wrapper" ''
     if [ -n "''${TMUX:-}" ]; then
       export TERM=tmux-256color

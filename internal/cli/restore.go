@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// Restore by name (DECISIONS I-167). `repose destroy` used to end with
+// Restore by name (DECISIONS I-167). `repose destroy` (now `rm`) used to end with
 // `repose snapshots restore <snapshot id> --project <project id> --as-new
 // NAME`; now it ends with `repose restore <slug>`, and the api resolves
 // the name, the snapshot and the new project.
@@ -164,7 +164,7 @@ func RestoreCmd(ctx context.Context, e *Env, name, as, snapshotID string, askNam
 			req.Name = strings.TrimSpace(newName)
 			continue
 		case apiErr.Code == "not_found":
-			return exitf(ExitProjectNotFound, "%s. `repose projects --destroyed` lists what can be restored.", strings.TrimSuffix(humaneMessage(apiErr.Message), "."))
+			return exitf(ExitProjectNotFound, "%s. `repose ls --destroyed` lists what can be restored.", strings.TrimSuffix(humaneMessage(apiErr.Message), "."))
 		}
 		return err
 	}
@@ -180,7 +180,7 @@ func RestoreCmd(ctx context.Context, e *Env, name, as, snapshotID string, askNam
 	}
 	pr.Fail()
 	if op.State == "error" {
-		return e.opFailed("restore", res.Slug, op.Error, fmt.Sprintf("`repose status %s` shows where it stopped; `repose destroy %s` removes it, and the snapshot stays restorable.", res.Slug, res.Slug))
+		return e.opFailed("restore", res.Slug, op.Error, fmt.Sprintf("`repose status %s` shows where it stopped; `repose rm %s` removes it, and the snapshot stays restorable.", res.Slug, res.Slug))
 	}
 	p, err := e.Client.GetProject(ctx, res.ProjectID)
 	if err != nil {
@@ -201,7 +201,7 @@ func RestoreCmd(ctx context.Context, e *Env, name, as, snapshotID string, askNam
 func destroyedForCheckout(ctx context.Context, e *Env, ask func(prompt string) (string, error)) (*DestroyedProject, error) {
 	remote := gitRemoteOrigin(e.Cwd)
 	if remote == "" {
-		return nil, exitf(ExitUsage, "Name the project to restore: `repose restore NAME` (this directory has no git remote to find it by). `repose projects --destroyed` lists what can be restored.")
+		return nil, exitf(ExitUsage, "Name the project to restore: `repose restore NAME` (this directory has no git remote to find it by). `repose ls --destroyed` lists what can be restored.")
 	}
 	list, err := e.Client.ListDestroyed(ctx)
 	if err != nil {
@@ -221,7 +221,7 @@ func destroyedForCheckout(ctx context.Context, e *Env, ask func(prompt string) (
 	}
 	switch {
 	case len(slugs) == 0:
-		return nil, exitf(ExitProjectNotFound, "No destroyed project was a checkout of %s. `repose projects --destroyed` lists what can be restored; `repose restore NAME` restores one.", remote)
+		return nil, exitf(ExitProjectNotFound, "No destroyed project was a checkout of %s. `repose ls --destroyed` lists what can be restored; `repose restore NAME` restores one.", remote)
 	case len(slugs) == 1:
 		return newest[slugs[0]], nil
 	}
@@ -245,7 +245,7 @@ func destroyedForCheckout(ctx context.Context, e *Env, ask func(prompt string) (
 	}
 }
 
-// DestroyedCmd implements `repose projects --destroyed`: what can be
+// DestroyedCmd implements `repose ls --destroyed`: what can be
 // restored, and until when. A name destroyed several times (izma ×3) is
 // one row, the one `repose restore NAME` picks, with a count of the
 // earlier ones; all lists every row with the id that restores it (I-192).
@@ -259,6 +259,16 @@ func DestroyedCmd(ctx context.Context, e *Env, all bool) error {
 			list = []DestroyedProject{}
 		}
 		return writeJSONOut(e.Out, list)
+	}
+	if e.Quiet {
+		seen := map[string]bool{}
+		for _, d := range list {
+			if !seen[d.Slug] {
+				seen[d.Slug] = true
+				_, _ = fmt.Fprintln(e.Out, d.Slug)
+			}
+		}
+		return nil
 	}
 	if len(list) == 0 {
 		_, _ = fmt.Fprintln(e.Out, "Nothing to restore: no project destroyed in the last 30 days still has a snapshot.")
@@ -328,7 +338,7 @@ func writeDestroyedTable(w io.Writer, list []DestroyedProject) {
 	_ = tw.Flush()
 	_, _ = fmt.Fprintln(w, "`repose restore NAME` restores the row shown: the newest snapshot of the projects that had that name.")
 	if earlier {
-		_, _ = fmt.Fprintln(w, "EARLIER counts older destroyed projects of the same name; `repose projects --destroyed --all` lists them with the id that restores one.")
+		_, _ = fmt.Fprintln(w, "EARLIER counts older destroyed projects of the same name; `repose ls --destroyed --all` lists them with the id that restores one.")
 	}
 	for _, d := range inUse {
 		// With a live project of the name, `repose restore NAME` means the

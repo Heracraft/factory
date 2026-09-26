@@ -94,22 +94,26 @@ repose open PORT [--local-port N] [--no-browser]
 repose open --desktop [--no-browser]
 repose cp [-r] SRC DST        # PROJECT:PATH, or :PATH for this checkout's (I-201)
 repose paste [PROJECT] [--window NAME] [--print]   # clipboard image to the guest (I-252)
+repose ps [PROJECT] [-q|--quiet] [--json]      # the tmux windows (I-274)
+repose exec [PROJECT] [-i] [-t] -- CMD [ARG...]  # one command in the checkout, its exit code (I-275)
+repose ssh [PROJECT]           # login shell in the checkout, outside tmux (I-275)
 repose secrets set NAME [--from-file PATH] [--from-env]
-repose secrets list
+repose secrets import [FILE|-] [--dry-run]   # dotenv, default ./.env (I-277)
+repose secrets list            # alias ls
 repose secrets rm NAME
 repose config show [--revisions]
 repose config edit
 repose config apply [PATH]      # PATH defaults to ./repose.nix if present, else opens editor
 repose config add NAME...       # catalog id, else any nixpkgs attribute path (I-220)
 repose config remove NAME...    # alias rm
-repose snapshots list
+repose snapshots list [-q|--quiet] [--json]   # alias ls
 repose snapshots create
 repose snapshots restore SNAPSHOT_ID [--as-new NAME]
-repose destroy [PROJECT] [--yes|-y] [--wait]
+repose rm [PROJECT] [--yes|-y] [--wait]   # alias destroy, the old name (I-273)
 repose restore [NAME] [--as NEW-NAME] [--snapshot ID]   # no NAME: the checkout's remote finds it
 repose logs [PROJECT] [--kind console|build|ops] [--since 1h] [--follow|-f]
 repose events [PROJECT] [--since 24h] [--follow|-f]
-repose projects [--destroyed [--all]]  # list all, ignores cwd; --destroyed: what can be restored
+repose ls [--destroyed [--all]] [-q|--quiet]  # list all, ignores cwd; --destroyed: what can be restored; alias projects, the old name (I-273)
 repose fork [PROJECT] [-n N] [--name NAME] [--size S] [--snapshot ID] [--prompt TEXT [--agent A]] [--json]   # I-254
 repose resize [PROJECT] [DISK] [--size small|large|xl] [--yes|-y]   # grow the disk (e.g. 80G); --size changes the class (I-260); PROJECT positional (I-268)
 repose scan [DIR] [--json]     # dry run of what run installs (I-222)
@@ -414,7 +418,7 @@ measures them):
 
 - `stop [PROJECT]`: `POST /stop {snapshot: !--no-snapshot}`, phase on the
   op, then `Stopped <slug> in <time>. Snapshot <id> (1.2 GB). Disk is
-  still billed; \`repose destroy <slug>\` to stop that.` Already stopped:
+  still billed; \`repose rm <slug>\` to stop that.` Already stopped:
   says so, exit 0.
 - `start [PROJECT]`: `POST /start`, wait, print `<slug> is running
   (<class>), ready in <time>. \`repose attach <slug>\` to get in.` Does not
@@ -427,8 +431,8 @@ measures them):
   Then `DELETE /projects/:id` → `202 {op_id}` (api.md, I-156) and, by
   default, returns at once (DECISIONS I-166): `Destroying <slug>. Bring it
   back within 30 days with: repose restore <slug>`. The project reads
-  `destroying` in `repose projects` from then on; a destroy that fails
-  shows there as `error` with the reason and `repose destroy <slug>` as
+  `destroying` in `repose ls` from then on; a destroy that fails
+  shows there as `error` with the reason and `repose rm <slug>` as
   the retry, in `repose status`, and as a `destroy_failed` notification
   (I-165). `--wait` keeps the old behaviour for scripts: wait on the op,
   then on `GET` answering 404, and only then print `Destroyed <slug> in
@@ -446,7 +450,7 @@ measures them):
   slug, else the destroyed ones, newest snapshot first. A name in use
   (`409` with `detail.reason = "name_taken"`) asks for another name on a
   terminal (empty cancels) and otherwise exits 2 naming `--as`; nothing to
-  restore exits 3 with the api's sentence and `repose projects
+  restore exits 3 with the api's sentence and `repose ls
   --destroyed`. Completion offers the destroyed projects' slugs.
   `snapshots restore` is unchanged, for restoring in place.
 - Resize is `repose config apply` with `volume_bytes` in the fragment
@@ -466,12 +470,12 @@ todo-app   large   running   2h14m   claude: working   today $0.31   month $12.4
 
 `--watch` refreshes every 5 seconds. `--json` prints the `Project` object.
 A project in `error` gets an `error: <reason>` line under the first.
-`repose projects` prints a table with a header row (`PROJECT CLASS STATE
+`repose ls` prints a table with a header row (`PROJECT CLASS STATE
 UP AGENTS TODAY MONTH`, `-` where a column does not apply, uptime only
 while running), then one line per project in `error` with its reason and
 the command that fixes it; with no projects it says how to create one.
 `--json` is the api's list, unchanged (DECISIONS I-153).
-`repose projects --destroyed` lists `GET /projects/destroyed` one row per
+`repose ls --destroyed` lists `GET /projects/destroyed` one row per
 name, the one `repose restore NAME` restores (that name's newest
 snapshot): `PROJECT CLASS DESTROYED SNAPSHOT SIZE RESTORABLE UNTIL
 EARLIER`, EARLIER counting older destroyed projects of the name,
@@ -706,8 +710,8 @@ removes all of them including the `Include` line.
       TestResolveProjectOrder, TestAttachToAnErroredGuestSaysError,
       TestNotRunningMessagesSayTheTruth, TestProjectsTable,
       TestSSHErrorsAreSentences
-- [ ] `repose destroy` returns within 2 s of the `[y/N]` with the restore
-      command, `repose projects` shows `destroying`, and `repose restore
+- [ ] `repose rm` returns within 2 s of the `[y/N]` with the restore
+      command, `repose ls` shows `destroying`, and `repose restore
       NAME` brings the project back under its name (I-166, I-167).
       Evidence: `TestDestroyThenRestoreByName`,
       `TestProjectsShowAFailedDestroy`, and a laptop transcript with

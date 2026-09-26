@@ -9,7 +9,7 @@ import (
 // projectForSnapshots resolves the project for the snapshot commands. A
 // destroyed project no longer resolves by name, but its snapshots are
 // kept 30 days and the api serves them by id (userProjectAny), which is
-// exactly what `repose destroy` prints: `--project <id>` (I-153).
+// exactly what `repose rm` prints: `--project <id>` (I-153).
 func projectForSnapshots(ctx context.Context, e *Env, projectArg string) (*Project, error) {
 	arg := e.resolveArg(projectArg)
 	if looksLikeUUID(arg) {
@@ -40,6 +40,12 @@ func SnapshotsListCmd(ctx context.Context, e *Env, projectArg string) error {
 			snaps = []Snapshot{}
 		}
 		return writeJSONOut(e.Out, snaps)
+	}
+	if e.Quiet {
+		for _, s := range snaps {
+			_, _ = fmt.Fprintln(e.Out, s.ID)
+		}
+		return nil
 	}
 	if len(snaps) == 0 {
 		_, _ = fmt.Fprintf(e.Out, "%s has no snapshots yet. `repose snapshots create --project %s` takes one.\n", project.Slug, project.Slug)
@@ -124,7 +130,7 @@ func SnapshotsRestoreCmd(ctx context.Context, e *Env, projectArg, snapshotID, as
 	}
 	if asNew != "" {
 		refreshSSHAccess(ctx, e, asNew)
-		_, _ = fmt.Fprintf(e.Out, "Restored into a new project, %s. `repose projects` lists it.\n", asNew)
+		_, _ = fmt.Fprintf(e.Out, "Restored into a new project, %s. `repose ls` lists it.\n", asNew)
 		return nil
 	}
 	_, _ = fmt.Fprintf(e.Out, "Restored %s. `repose start %s` boots it.\n", project.Slug, project.Slug)

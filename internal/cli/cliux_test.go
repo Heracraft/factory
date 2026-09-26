@@ -53,9 +53,9 @@ func TestDestroyReportsAFailedOp(t *testing.T) {
 		wants []string
 	}{
 		{"older api: the host's wording", map[string]any{"code": "guest_unresponsive", "message": rawGuestdError},
-			[]string{"Could not destroy todo-app", "stopped responding", "(guest_unresponsive)", "`repose destroy todo-app` tries again", "still there"}},
+			[]string{"Could not destroy todo-app", "stopped responding", "(guest_unresponsive)", "`repose rm todo-app` tries again", "still there"}},
 		{"api with I-159 sentences", map[string]any{"code": "internal", "message": "the host could not remove the volume", "detail": "lvremove: exit 5"},
-			[]string{"Could not destroy todo-app: the host could not remove the volume (internal).", "`repose destroy todo-app` tries again"}},
+			[]string{"Could not destroy todo-app: the host could not remove the volume (internal).", "`repose rm todo-app` tries again"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := fakeapi.New(fakeapi.Options{})
@@ -237,6 +237,17 @@ func TestProjectsTable(t *testing.T) {
 		t.Fatalf("no reason for the errored project:\n%s", out.String())
 	}
 
+	// -q (I-276): the names alone, for xargs.
+	out.Reset()
+	e.Quiet = true
+	if err := ProjectsCmd(ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != "izma\nage-calculator\n" && got != "age-calculator\nizma\n" {
+		t.Fatalf("ls -q = %q", got)
+	}
+	e.Quiet = false
+
 	out.Reset()
 	e.JSON = true
 	if err := ProjectsCmd(ctx, e); err != nil {
@@ -319,11 +330,29 @@ func TestPositionalProject(t *testing.T) {
 	if ee, ok := err.(*exitError); !ok || ee.code != ExitProjectNotFound {
 		t.Fatalf("attach projects: %v", err)
 	}
+	// `ls` and `rm` are the names (I-273); `projects` and `destroy`
+	// still work as aliases.
+	if err := run("ls", "extra"); !isUsage(err) {
+		t.Fatalf("ls with a stray word: %v", err)
+	}
+	if err := run("ls", "-q", "--json"); !isUsage(err) {
+		t.Fatalf("ls -q --json: %v", err)
+	}
 	if err := run("destroy", "other", "--yes"); err != nil {
 		t.Fatalf("repose destroy other --yes: %v", err)
 	}
 	if _, err := client.GetProject(ctx, other.ID); !isNotFound(err) {
 		t.Fatalf("other not destroyed: %v", err)
+	}
+	third, err := client.CreateProject(ctx, CreateProjectRequest{Name: "third", Class: "large"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := run("rm", "third", "-y"); err != nil {
+		t.Fatalf("repose rm third -y: %v", err)
+	}
+	if _, err := client.GetProject(ctx, third.ID); !isNotFound(err) {
+		t.Fatalf("third not removed: %v", err)
 	}
 
 	// Completion offers the account's slugs for the argument.
