@@ -220,19 +220,6 @@ Written down so nobody believes otherwise.
   `repose.host.bootstrap.enable` is on (I-92), so operator access is
   "certificate or the bootstrap key", not certificate-only, until 01/11
   turn bootstrap off.
-- ~~The edge's sshd runs with NixOS defaults (review M-2)~~ Closed on
-  the live edge 2026-09-21: operator sshd on 2222 with password and
-  keyboard-interactive off, `prohibit-password`, verbose logging, admitted
-  only from the tunnel and the operator address
-  ([security/review-2026-09-21.md](security/review-2026-09-21.md)).
-- ~~hostdev holds secrets in plaintext on the edge (review M-4)~~
-  Closed 2026-09-21: `hostdev` is gone from the edge (unit not found)
-  and its state directory and the M1 identity on host-01 were removed
-  with no copies kept (the M5 review).
-- **The api's `/metrics` was on the public entry point** until I-136
-  (M5 review, High): fixed in the application; I-133's allow-list router
-  is now defence in depth.
-
 - **Operator access to tenant volumes.** Root on a host can read any thin
   volume. Mitigation is per-project LUKS with keys held by the api
   (DECISIONS R3-10). Until then the audit log records operator logins and
@@ -246,8 +233,14 @@ Written down so nobody believes otherwise.
 - **Nested-virtualization escape.** The guest-to-host boundary is KVM
   running inside Hyper-V. A KVM escape lands in the Azure VM, not in
   Azure. This is the same posture as AKS Pod Sandboxing.
-- **Abuse detection is manual.** Process samples and egress are recorded
-  and dashboarded; a human decides to suspend. No automatic kill.
+- **Abuse detection is partly automatic.** A guest running a known
+  cryptocurrency miner (by process name) is stopped with a snapshot, and
+  three such stops in 24 hours hold the project until an operator runs
+  `repose-admin abuse clear` (DECISIONS I-239). Outbound tcp 25 and the
+  mining pools' default ports are blocked (I-238, I-239), and new outbound
+  flows are rate-limited per guest (I-240). Anything else (a miner under
+  another name, a scanner, spam over a submission port) is a sample or a
+  counter on a dashboard, and a human decides.
 - **Denial of service against the gateway or api.** Rate limits exist per
   user; no upstream DDoS protection beyond what Azure gives a public IP.
 - **Supply chain of the agent overlay.** Agents are repackaged from
@@ -256,6 +249,20 @@ Written down so nobody believes otherwise.
 - **A tenant's agent misusing the tenant's own tool logins.** Inside the
   guest, gh and Codex tokens are readable by any process as `dev`. That is
   the same exposure as on the tenant's laptop.
+
+## Fixed since the reviews
+
+- **The api's `/metrics` was on the public entry point** (M5 review,
+  High). Fixed by I-136: the user listener no longer serves it; I-133's
+  allow-list router is defence in depth.
+- **The edge's sshd ran with NixOS defaults** (review M-2). Closed on the
+  live edge 2026-09-21: operator sshd on 2222 with password and
+  keyboard-interactive off, `prohibit-password`, verbose logging, admitted
+  only from the tunnel and the operator address
+  ([security/review-2026-09-21.md](security/review-2026-09-21.md)).
+- **hostdev held secrets in plaintext on the edge** (review M-4). Closed
+  2026-09-21: `hostdev` is gone from the edge and its state directory and
+  the M1 identity on host-01 were removed with no copies kept.
 
 ## Reporting
 

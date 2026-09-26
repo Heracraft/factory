@@ -103,13 +103,11 @@ large or 14 small. v7 sizes expose disks over NVMe only: OS at
 an alert fires at 80 percent reserved memory and a human runs the OpenTofu
 apply for the next host.
 
-**Benchmark gate.** Before any other milestone, one host is provisioned and a
-microvm.nix Cloud Hypervisor guest with the shared store and Docker inside is
-measured against the same work on a plain Azure VM of the guest's size
-(CPU-bound build, disk-bound Docker image pull and extract, network-bound git
-clone). If the penalty exceeds roughly 20 percent on any axis, hosts move to
-Hetzner metal and nothing else in this design changes. The numbers go into
-`RESEARCH.md`.
+**Benchmark gate.** Deferred (DECISIONS I-12): the separate M0 benchmark
+was not run; the first M1 host measured itself instead (`RESEARCH.md` §11
+onwards). The rule stands: if nested virtualization costs more than roughly
+20 percent on CPU, disk or network against a plain Azure VM of the guest's
+size, hosts move to Hetzner metal and nothing else in this design changes.
 
 ## 5. Guests
 
@@ -148,14 +146,14 @@ of user config:
 - The agents from the platform overlay: `claude-code`, `opencode`, `codex`,
   `gemini-cli`, `pi-coding-agent`. Each has a `repose` wrapper that installs
   the notification hooks and names its tmux window.
-- Headless Chromium and `playwright-driver.browsers`, with Playwright MCP and
-  chrome-devtools-mcp registered in Claude Code's user-scope MCP config,
-  headless by default.
-- Xvfb, a minimal window manager, x11vnc and noVNC as socket-activated
-  services, off until `repose open --desktop` or the dashboard asks.
-- Toolchain from the current `packages/core/flake.nix`: node 24, pnpm, python
+- One headed Chromium for the agents on the X display `:99` (Xvfb,
+  openbox), shared by Playwright MCP and chrome-devtools-mcp over CDP, plus
+  `playwright-driver.browsers` (DECISIONS I-246). x11vnc and noVNC stay off
+  until `repose open --desktop` or the dashboard asks, and only view that
+  same browser (`features/browser.md`).
+- Toolchain from `nix/guest/base/tool-list.nix`: node 24, pnpm, python
   3.12, uv, go, rustup, just, ripgrep, jq, gh, git, direnv with nix-direnv,
-  starship, zoxide, eza. This flake becomes `nix/guest/base/tools.nix`.
+  starship, zoxide, eza, a C toolchain and everyday CLIs (I-218).
 - `fs.inotify.max_user_watches=1048576`, `max_user_instances=1024`.
 - `TZ` and `LANG=C.UTF-8` set from the user's profile; `TZ` defaults to the
   laptop's zone as reported by the CLI at project creation.
@@ -265,7 +263,7 @@ guest ──vsock──▶ hostd
 
 ## 9. Control plane
 
-Four Go binaries in one module, one Postgres.
+Go binaries in one module (`cmd/`), one Postgres.
 
 - **`api`**: HTTP JSON for the CLI and dashboard, gRPC server for hosts,
   scheduler, SSH CA, secrets, metering aggregation, Stripe webhooks, hook
@@ -277,6 +275,9 @@ Four Go binaries in one module, one Postgres.
   tmux setup, process sampling, hook relay, notification of readiness.
 - **`gateway`**: on the edge. SSH relay plus, later, the HTTPS preview proxy.
 - **`repose`**: the CLI.
+- **`repose-admin`**: the operator's CLI, run in the api container.
+- **`repose-hook`**: in each guest; agent hooks run it to POST events to
+  guestd's hook socket.
 
 Postgres holds users, projects, hosts, guests, volumes, snapshots, secrets
 (ciphertext), certificates issued, meter samples, invoices, notifications,
@@ -300,11 +301,10 @@ Ubuntu VM.
 
 ## 10. The CLI
 
-`repose`, one static Go binary, installed by `curl | sh` or `nix run`.
-Commands: `login`, `logout`, `run [prompt] [--agent] [--size] [--name]`,
-`attach`, `stop`, `start`, `status`, `open <port> | --desktop`, `secrets
-set|list|rm`, `config apply|edit|show`, `snapshots list|restore`, `destroy`,
-`logs`, `events`, `notify set|test`, `cp` (DECISIONS I-201), `version`. Global `--project` overrides the cwd-derived project.
+`repose`, one static Go binary, installed by `curl | sh` or `nix run`. The
+command list and flags are `apps/web/src/content/docs/cli.md`, which
+`internal/cli/docs_test.go` keeps equal to the binary. Global `--project`
+overrides the cwd-derived project.
 
 Project resolution: read `git remote get-url origin`, normalise
 (`git@github.com:a/b.git` and `https://github.com/a/b` are the same), look up
@@ -318,11 +318,12 @@ and no `--name` is an error with a one-line fix.
 2. Ensure the guest is running; stream build output if a config build is
    pending.
 3. Get or refresh the SSH certificate, write SSH config.
-4. Sync: the guest fetches the remote and checks out the local `HEAD` commit
-   (pushing first if the commit is not on the remote, with a prompt). Then the
-   CLI sends `git diff HEAD` plus untracked files not ignored by gitignore as a
-   tar stream over the SSH connection and applies it. If the guest's tree is
-   dirty, refuse and offer `--stash-remote` or `--discard-remote`.
+4. Sync: the laptop's commits travel in a git bundle over SSH (the guest
+   never fetches from origin, nothing is pushed), the laptop's `HEAD` is
+   checked out, and staged and unstaged changes follow as two diffs, with
+   untracked files as a tar. If the guest's tree has changes of its own,
+   refuse and offer `--stash-remote` or `--discard-remote`
+   (`features/sync-at-launch.md`).
 5. Sync credential files listed in `features/secrets.md` (gh, Codex,
    opencode). Never `~/.claude/.credentials.json`.
 6. If a prompt was given: open a tmux window named after the agent, start the
@@ -350,10 +351,10 @@ All of it is idempotent; running `repose run` twice attaches twice.
   Control, connectors and Claude in Chrome. Anthropic's terms require each
   user to authenticate with their own credentials on hosted platforms; the
   platform never stores or proxies Claude auth.
-- Browser: headless Chromium plus Playwright MCP and chrome-devtools-mcp in
-  every guest. `repose open --desktop` starts Xvfb, x11vnc and noVNC and
-  forwards the noVNC port so the user can watch or take over a browser the
-  agent is stuck on. Claude in Chrome cannot work from a guest; a later CLI
+- Browser: one headed Chromium on a virtual display, shared by Playwright
+  MCP and chrome-devtools-mcp, in every guest (I-246). `repose open
+  --desktop` starts x11vnc and noVNC and forwards the noVNC port so the
+  user can watch or take over the browser the agent is using. Claude in Chrome cannot work from a guest; a later CLI
   feature (`repose browser bridge`) reverse-tunnels the laptop's Chrome
   DevTools port so agents in the guest can drive the laptop's browser while
   the laptop is open.
@@ -367,8 +368,9 @@ All of it is idempotent; running `repose run` twice attaches twice.
 Three kinds, three treatments:
 
 1. **Tool logins the laptop already has**: `~/.config/gh/hosts.yml`,
-   `~/.codex/auth.json`, `~/.local/share/opencode/auth.json`, `~/.gitconfig`
-   (user.name and user.email only). Copied at `run` over SSH into the guest,
+   `~/.codex/auth.json`, `~/.local/share/opencode/auth.json`, and the
+   laptop's whole effective git config minus a denylist (credentials, ssh,
+   signing, proxies; DECISIONS I-195). Copied at `run` over SSH into the guest,
    mode 0600, owned by `dev`. The platform never sees them.
 2. **Claude Code**: never copied. See section 11.
 3. **Named secrets** (`repose secrets set NAME`): encrypted by the API with a
@@ -460,25 +462,26 @@ by restoring one Postgres dump into a Coolify elsewhere and re-pointing DNS.
 ```
 repose/
   go.mod                     module github.com/heracraft/repose
-  cmd/api  cmd/hostd  cmd/guestd  cmd/gateway  cmd/repose
+  cmd/api  cmd/hostd  cmd/guestd  cmd/gateway  cmd/repose  cmd/repose-admin
+  cmd/repose-hook            (plus fakeapi, fake-logto, hostdev for tests)
   internal/                  shared Go: proto, db, ca, secrets, meter, ...
   proto/                     hostd.proto, guestd vsock messages
   nix/
     flake.nix                one flake: hosts, edge, guest base, overlay, dev shell
     hosts/                   NixOS host config, nixos-anywhere disko layout
     edge/                    NixOS edge config
-    guest/base/              platform guest module (tools.nix is today's flake)
+    guest/base/              platform guest module (tools.nix, tool-list.nix)
     guest/microvm.nix        microvm.nix wiring, runner package function
     overlay/agents/          claude-code, opencode, codex, gemini-cli, pi
-  infra/                     OpenTofu: azure/ (hosts, disks, blob, kv, coolify-vm), r2/
+  infra/                     OpenTofu: azure/, dns/, bootstrap/, policy/
   apps/web/                  SvelteKit dashboard (existing)
-  packages/                  existing TS packages
+  packages/                  TS packages: ui, eslint-config, typescript-config
   docs/
 ```
 
-Turborepo keeps running only the TypeScript side. `packages/core/flake.nix`
-is retired into `nix/guest/base/tools.nix` once the guest base exists; until
-then it stays so the current dev box keeps working.
+Turborepo keeps running only the TypeScript side. The old
+`packages/core/flake.nix` is gone; its tools are
+`nix/guest/base/tool-list.nix`, shared with the dev shell.
 
 ## 18. Out of scope for the first release
 
@@ -491,7 +494,8 @@ when it becomes in scope.
 ## 19. Known risks
 
 - Nested virtualization on Azure is officially unsupported by Microsoft even
-  though Microsoft ships it in AKS. The benchmark gate exists for this.
+  though Microsoft ships it in AKS. The benchmark gate (deferred, I-12)
+  exists for this.
 - Cloud Hypervisor's virtio-fs snapshot/restore matured only in v52. We do not
   use CH snapshot/restore; we stop and start guests and snapshot the volume.
 - microvm.nix's shared-store model means a guest cannot outlive a host
