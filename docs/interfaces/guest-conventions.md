@@ -66,7 +66,16 @@ here exists in that module under exactly this name.
   terminal-overrides ",*:Tc"`, `set -s escape-time 10`, `set -g
   focus-events on`, `set -g update-environment "DISPLAY SSH_AUTH_SOCK
   SSH_CONNECTION LANG COLORTERM"` (no `TZ`: an attach from a terminal
-  without one would clear the session's zone).
+  without one would clear the session's zone), and since DECISIONS I-264
+  `set -g extended-keys on`, `set -g extended-keys-format csi-u`, `set -as
+  terminal-features ",*:extkeys"`, `set -as terminal-features
+  ",*:hyperlinks"`, `set -g allow-passthrough on` (tmux 3.7: tmux asks
+  every client terminal for modifyOtherKeys, `\E[>4;2m`, and a program
+  in a pane that asks for extended keys gets Shift+Enter as `\E[13;2u`;
+  OSC 8 links reach the client; `DCS tmux;` passthrough from a visible
+  pane). What types into a pane (`send-keys`, guestd's prompt delivery)
+  is unaffected: text and an unmodified Enter (`\r`) are the same bytes
+  in every mode.
 - `TZ` in tmux: the global environment's `TZ` is the project's zone, set
   by `repose-tmux-session` from `/etc/repose/env` when it creates the
   session, and set again (global and every session) by the CLI on each
@@ -210,19 +219,30 @@ state and is named once.
 
 `~/.repose/tools-wanted.json`, written by the CLI:
 `{"v":1, "hash":"<32 hex>", "items":[{"name", "bins":[...], "manager",
-"pkg", "version", "from":"laptop"|"project"}], "node":"<major>"}`.
+"pkg", "version", "from":"laptop"|"project"}], "node":"<major>",
+"ruby":"<x.y>", "java":"<major>"}`.
 `manager` is `npm`, `pnpm`, `bun`, `go`, `cargo`, `uv`, `pipx` or absent
 (nixpkgs only); `pkg` is the manager's name (the Go package path for
 `go`); names, versions and commands are restricted to
 `[A-Za-z0-9@/._+-]` by the CLI. `node` is absent when the project pins no
-single major.
+single major. `ruby` and `java` (DECISIONS I-265) are absent when the
+project pins none; when present they are already resolved by the CLI to
+a version in `nix/guest/base/runtime-versions.json` (the same pinned
+series or major, else the oldest newer one, else the newest), so the
+guest never picks. A base older than I-265 ignores both keys; the
+installer ignores a value that is not digits and dots.
+
+The runtimes and their attributes: `node` → `nodejs_<major>`, `ruby` →
+`ruby_<x>_<y>`, `java` → `jdk<major>_headless`. The version found on the
+login PATH is `node --version`'s major, `ruby --version`'s `x.y`, and
+the major of `java -version`'s quoted version (`1.8.0_x` is 8).
 
 `repose-tools-install plan` (dev, in the carry's ssh, milliseconds):
 prints `#installing <name> ...` for the items none of whose `bins` is on
-the login PATH and that did not fail before, plus `nodejs_<major>` when
-the guest's node is another major and dev's nix profile comes first on
-PATH; prints `#warn ...` naming `repose config add nodejs_<major>` when it
-does not; writes the missing commands, one per line, to
+the login PATH and that did not fail before, plus each runtime's
+attribute when the guest's version is another and dev's nix profile
+comes first on PATH; prints `#warn ...` naming `repose config add
+<attribute>` when it does not; writes the missing commands, one per line, to
 `$XDG_RUNTIME_DIR/repose-installing`; starts the user unit
 `repose-tools-carry` (`--no-block`). A base without the command leaves
 the file in place and writes no marker, so the list is sent again after
@@ -245,10 +265,12 @@ is done; the file is removed when the pass ends. Output goes to
 `Could not install <name>: <last output line>` to `~/.repose/tools-notices`,
 which the next carry prints as `#warn` lines and deletes, and records the
 item in `~/.repose/tools/failed`, so it is not tried again until its
-entry changes. The node step records the attribute it added in
-`~/.repose/tools/node` and replaces it when the project asks for another
-major; it removes what it added when `bash -lc 'node --version'` does not
-then report the major.
+entry changes. Before the items, each runtime step (node, ruby, java)
+records the attribute it added in `~/.repose/tools/<runtime>` and
+replaces it when the project asks for another version; it removes what it
+added, and writes `Could not make <runtime> <version> the guest's
+<runtime>: ...` to the notices, when a new login shell does not then
+report the version.
 
 ## Caches (DECISIONS I-202, I-208)
 
@@ -300,7 +322,7 @@ prefix), `PNPM_HOME=/home/dev/.local/share/pnpm`,
 `repose-playwright-seed.service` links the base's packaged browser
 revisions into it at boot, never over a real directory; until I-228 it
 was the read-only store path), `PRISMA_ENGINES_MIRROR=http://127.0.0.1:850`
-(I-228), `PKG_CONFIG_PATH` naming openssl, zlib, sqlite and libffi (I-228),
+(I-228), `PKG_CONFIG_PATH` naming openssl, zlib, sqlite and libffi (I-228) and libyaml, libpq, libxml2, libxslt and libmysqlclient, with `pg_config` and `mysql_config` on PATH (I-265),
 `PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1`, `PUPPETEER_SKIP_DOWNLOAD=1`,
 `PUPPETEER_EXECUTABLE_PATH` and `CHROME_BIN` (the guest's chromium).
 `GOPATH=/home/dev/go`, `CARGO_HOME=/home/dev/.cargo`,

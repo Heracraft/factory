@@ -11,7 +11,7 @@ import (
 // The scan of each fixture, as `repose scan` prints it (the laptop part
 // empty), against testdata/scan/<name>.golden. -update rewrites them.
 func TestScanFixtures(t *testing.T) {
-	for _, name := range []string{"monorepo", "goproj", "rustproj", "uvproj"} {
+	for _, name := range []string{"monorepo", "goproj", "rustproj", "uvproj", "railsproj"} {
 		t.Run(name, func(t *testing.T) {
 			sc := scanProject(filepath.Join("testdata", "scan", name))
 			var out bytes.Buffer

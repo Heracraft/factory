@@ -76,6 +76,8 @@ Each machine has one tmux session. Its first window, `shell`, opens in your chec
 
 The mouse works too: click a window name to switch, scroll to go back through output.
 
+Shift+Enter starts a new line in Claude Code instead of sending the prompt, when your terminal reports modified keys to tmux (xterm's modifyOtherKeys; Ghostty, WezTerm, iTerm2 and xterm do, Apple's Terminal doesn't). If Shift+Enter still sends the prompt, type `\` and then Enter, or press Ctrl+J. Links an agent prints are clickable in terminals that support links (OSC 8), and a program in the window you're looking at can send escape sequences through tmux to your terminal.
+
 ## Paste an image
 
 `Ctrl-V` in Claude Code reads the clipboard of the computer it runs on, which is the machine, not your laptop. To give an agent a screenshot, copy it on your laptop and run, in the checkout:
@@ -136,6 +138,8 @@ ssh -L 9229:localhost:9229 todo-app.repose
 ```
 
 You log in as `dev`. Plain `ssh` doesn't attach to tmux; run `tmux attach` for that.
+
+mosh doesn't work: it needs a UDP connection straight to the machine, and the only way in is SSH through repose. A dropped connection loses nothing, since the agents keep running in tmux; `repose attach` gets you back.
 
 **VS Code and Cursor:** with the Remote - SSH extension, run **Remote-SSH: Connect to Host…**, pick `todo-app.repose` and open `/home/dev/todo-app`. **Zed:** open a remote project over SSH with the same host and folder.
 

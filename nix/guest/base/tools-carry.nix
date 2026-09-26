@@ -16,8 +16,20 @@ let
     runtimeInputs = [ pkgs.jq pkgs.coreutils pkgs.gnugrep pkgs.gnused pkgs.systemd pkgs.bash ];
     text = builtins.readFile ./tools-carry.sh;
   };
+  # The ruby series and java majors the CLI may ask for (I-265), the same
+  # list as internal/cli/scan_runtimes.go: each must be an attribute of
+  # this nixpkgs, or the base does not build.
+  runtimeVersions = lib.importJSON ./runtime-versions.json;
+  runtimeAttrs =
+    map (v: "ruby_" + lib.replaceStrings [ "." ] [ "_" ] v) runtimeVersions.ruby
+    ++ map (v: "jdk${v}_headless") runtimeVersions.java;
 in
 {
+  assertions = map (a: {
+    assertion = pkgs ? ${a};
+    message = "runtime-versions.json names ${a}, which this nixpkgs does not have; update it and internal/cli/scan_runtimes.go (DECISIONS I-265)";
+  }) runtimeAttrs;
+
   environment.systemPackages = [ install ];
 
   systemd.user.services.repose-tools-carry = {

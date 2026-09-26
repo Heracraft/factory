@@ -17,7 +17,7 @@ import (
 )
 
 // The project scan (DECISIONS I-222): which commands the checkout's own
-// scripts run that the guest may lack, and which node major it pins. It
+// scripts run that the guest may lack, and which node, ruby and java it pins. It
 // reads a fixed set of small files at the root and in each workspace
 // package (package.json and its scripts, Makefile, justfile, Procfile,
 // .air.toml, compose files, version files); it never walks the tree, so a
@@ -32,6 +32,9 @@ type scanResult struct {
 	Skipped []scanSkip
 	// Node is the node major the project pins, nil for none.
 	Node *scanVersion
+	// Ruby and Java are the ruby series and java major the guest makes
+	// its default (DECISIONS I-265), nil for none.
+	Ruby, Java *scanVersion
 	// Versions are the other version files, for `repose scan`: the
 	// toolchains that honour them fetch the version themselves.
 	Versions []scanVersion
@@ -41,7 +44,8 @@ type scanSkip struct{ Name, Why string }
 
 type scanVersion struct {
 	Tool, Version, Source string
-	// Major is the pinned node major; Note says what happens.
+	// Major is the pinned node major, or the ruby series ("3.3") or java
+	// major ("21") the guest installs; Note says what happens.
 	Major, Note string
 }
 
@@ -340,6 +344,8 @@ func (s *scanner) versions(rootPkg *scanPackage) {
 			default:
 				v.Note = "the first pin (" + s.res.Node.Source + ") wins"
 			}
+		case "ruby", "java":
+			s.runtimePin(&v)
 		case "go":
 			v.Note = "go fetches it itself (GOTOOLCHAIN)"
 		case "rust":
@@ -363,7 +369,7 @@ func (s *scanner) versions(rootPkg *scanPackage) {
 			if len(f) < 2 || strings.HasPrefix(f[0], "#") {
 				continue
 			}
-			tool := map[string]string{"nodejs": "node", "node": "node", "golang": "go", "go": "go", "rust": "rust", "python": "python"}[f[0]]
+			tool := map[string]string{"nodejs": "node", "node": "node", "golang": "go", "go": "go", "rust": "rust", "python": "python", "ruby": "ruby", "java": "java"}[f[0]]
 			if tool != "" {
 				add(tool, f[1], ".tool-versions")
 			}
@@ -398,6 +404,7 @@ func (s *scanner) versions(rootPkg *scanPackage) {
 	if b := s.read(".python-version"); b != nil {
 		add("python", firstLineOf(b), ".python-version")
 	}
+	s.runtimeFiles(add)
 }
 
 func firstLineOf(b []byte) string {
@@ -530,6 +537,10 @@ func (s *scanner) provided(w scanWorkspace, cmd string) string {
 	switch {
 	case baseCommands[cmd]:
 		return "in the guest base"
+	case s.res.Ruby != nil && rubyBins[cmd]:
+		return "comes with " + runtimeAttr("ruby", s.res.Ruby.Major)
+	case s.res.Java != nil && javaBins[cmd]:
+		return "comes with " + runtimeAttr("java", s.res.Java.Major)
 	case s.local[cmd]:
 		return "the project's own command"
 	case s.pydeps[strings.ToLower(cmd)]:
@@ -930,11 +941,14 @@ func scanJSON(global []toolItem, sc *scanResult) any {
 		}
 		return out
 	}
-	node := ""
-	if sc.Node != nil {
-		node = sc.Node.Major
+	major := func(v *scanVersion) string {
+		if v == nil {
+			return ""
+		}
+		return v.Major
 	}
-	return map[string]any{"laptop": conv(global), "project": conv(sc.Candidates), "node": node}
+	return map[string]any{"laptop": conv(global), "project": conv(sc.Candidates), "node": major(sc.Node),
+		"ruby": major(sc.Ruby), "java": major(sc.Java)}
 }
 
 func printScan(out io.Writer, dir string, global []toolItem, sc *scanResult) {
@@ -986,6 +1000,17 @@ func printScan(out io.Writer, dir string, global []toolItem, sc *scanResult) {
 		n = len(tc.Wanted.Items)
 	}
 	p("\n%d to check in the guest; each one it lacks is installed in the background after `repose run`.\n", n)
+	if tc != nil {
+		var pins []string
+		for _, r := range []struct{ tool, v string }{{"node", tc.Wanted.Node}, {"ruby", tc.Wanted.Ruby}, {"java", tc.Wanted.Java}} {
+			if r.v != "" {
+				pins = append(pins, r.tool+" "+r.v)
+			}
+		}
+		if len(pins) > 0 {
+			p("Made the guest's default the same way when it has another version: %s.\n", strings.Join(pins, ", "))
+		}
+	}
 }
 
 func newScanCmd() *cobra.Command {
@@ -996,7 +1021,9 @@ func newScanCmd() *cobra.Command {
 		Long: `List what the next ` + "`repose run`" + ` sends to the guest's tool installer, and why:
 the tools this laptop installed globally (npm, pnpm, bun, go, cargo, uv,
 pipx), and the commands the checkout's scripts run that neither the guest
-base nor the project's own dependencies provide. Nothing is installed and
+base nor the project's own dependencies provide, and the node, ruby and
+java versions the checkout pins with the version the guest gets (the
+closest nixpkgs has when it lacks the pinned one). Nothing is installed and
 nothing leaves the laptop. DIR defaults to the current checkout.`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 1 {

@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-309 entries.
+312 entries.
 
 ## Scope
 
@@ -341,3 +341,6 @@ pointer, not a summary.
 - **I-254** `repose fork`: one snapshot, N new projects created in one api transaction, each its own machine — 2026-09-25; L6400
 - **I-255** A volume set up under another slug links its old checkout to the new name — 2026-09-25; L6492
 - **I-258** The sync keeps the laptop's split between staged and unstaged work — 2026-09-26; L6523
+- **I-264** tmux passes modified keys, OSC 8 links and passthrough to the laptop's terminal — 2026-09-26; L6544
+- **I-265** Ruby and Java pins are installed like the Node pin; Rails' native gem libraries are in the base — 2026-09-26; L6578
+- **I-266** mosh is not offered — 2026-09-26; L6627

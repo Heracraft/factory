@@ -144,6 +144,38 @@ let
 
   mkTest = name: attrs: pkgs.testers.runNixOSTest ({ inherit name; } // attrs);
 
+  # I-265: one call into each library Rails' native gems link.
+  nativeGemProbe = pkgs.writeText "native-gems.c" ''
+    #include <stdio.h>
+    #include <yaml.h>
+    #include <libpq-fe.h>
+    #include <libxml/parser.h>
+    #include <libxslt/xslt.h>
+    #include <mysql.h>
+    int main(void) {
+      int a, b, c;
+      yaml_get_version(&a, &b, &c);
+      xmlCheckVersion(LIBXML_VERSION);
+      printf("%d %d %d %s\n", a, PQlibVersion() > 0, xsltLibxsltVersion > 0, mysql_get_client_info());
+      return 0;
+    }
+  '';
+
+  # I-264: a tmux server on /etc/tmux.conf, a pane in raw mode that asks
+  # for extended keys and records its input, then Shift+Enter and Enter.
+  tmuxKeysProbe = pkgs.writeShellScript "tmux-keys-probe" ''
+    set -eu
+    t() { ${pkgs.tmux}/bin/tmux -L keysprobe -f /etc/tmux.conf "$@"; }
+    rm -f /tmp/keys
+    t new-session -d -s k -x 80 -y 24 "stty raw -echo; printf '\033[>4;1m'; od -An -c > /tmp/keys"
+    sleep 1
+    t send-keys -t k S-Enter
+    t send-keys -t k Enter
+    sleep 1
+    t kill-server
+    for _ in $(seq 50); do [ -s /tmp/keys ] && break; sleep 0.1; done
+  '';
+
   # The exact scripts the CLI sends for I-198 and I-195, kept in step with
   # the code by internal/cli's TestGuestPartsGolden.
   guestParts = ../../../internal/cli/testdata/guest-parts;
@@ -152,6 +184,9 @@ let
   # packages, each one script copied into $out/bin; nothing to download.
   fakeBin = name: text: pkgs.writeScript name "#!${pkgs.bash}/bin/bash\n${text}\n";
   fakeNode = fakeBin "node" ''if [ "''${1:-}" = --version ]; then echo v22.1.0; else exec /run/current-system/sw/bin/node "$@"; fi'';
+  # I-265: what ruby --version and java -version (on stderr) print.
+  fakeRuby = fakeBin "ruby" ''echo "ruby 3.3.9 (2025-07-24 revision f5c772fc7c) +PRISM [x86_64-linux]"'';
+  fakeJava = fakeBin "java" ''echo 'openjdk version "21.0.8" 2025-07-15' >&2'';
   fakeNixpkgs = pkgs.writeTextDir "flake.nix" ''
     {
       outputs = { self }:
@@ -167,6 +202,8 @@ let
             hello = mk "hello-2.12" "hello" "${fakeBin "hello" "echo Hello from the stand-in nixpkgs"}";
             greeter = mk "greeter-1.0" "greet" "${fakeBin "greet" "echo greetings"}";
             nodejs_22 = mk "nodejs-22.1.0" "node" "${fakeNode}";
+            ruby_3_3 = mk "ruby-3.3.9" "ruby" "${fakeRuby}";
+            jdk21_headless = mk "openjdk-headless-21.0.8" "java" "${fakeJava}";
           };
         };
     }
@@ -250,6 +287,24 @@ in
           win = guest.succeed("sudo -u dev tmux list-windows -t todo-app -F '#{window_name} #{pane_current_path}'").strip()
           assert win == "shell /home/dev/todo-app", win
           guest.succeed("grep -Eq 'set-clipboard +on' /etc/tmux.conf && grep -Eq 'mouse +on' /etc/tmux.conf && grep -Eq 'history-limit +50000' /etc/tmux.conf")
+
+      with subtest("I-264: the running server has extended keys, passthrough and hyperlinks"):
+          def opt(scope, name):
+              return guest.succeed(f"sudo -H -u dev tmux show-options {scope} {name}").strip()
+          assert opt("-sv", "extended-keys") == "on", opt("-s", "extended-keys")
+          assert opt("-sv", "extended-keys-format") == "csi-u", opt("-s", "extended-keys-format")
+          assert opt("-gv", "allow-passthrough") == "on", opt("-g", "allow-passthrough")
+          features = guest.succeed("sudo -H -u dev tmux show-options -s terminal-features")
+          print(features)
+          assert "*:extkeys" in features and "*:hyperlinks" in features, features
+          # Shift+Enter reaches a program that asked for extended keys
+          # (mode 1, as Claude Code does) as CSI 13;2 u, and Enter stays CR.
+          # A server of its own on /etc/tmux.conf, so the session is not
+          # touched.
+          guest.succeed("${tmuxKeysProbe}")
+          keys = guest.succeed("cat /tmp/keys")
+          print(keys)
+          assert keys.split()[:8] == ["033", "[", "1", "3", ";", "2", "u", "\\r"], keys
 
       with subtest("agent binaries and wrappers"):
           for cmd in ["claude", "opencode", "codex", "gemini", "pi"]:
@@ -723,7 +778,7 @@ in
       with subtest("plan: the one line, the installing file, no install yet"):
           out = guest.succeed("sudo -H -u dev XDG_RUNTIME_DIR=/run/user/1000 sh -e /tmp/p/tools.sh /tmp/p")
           print(out)
-          assert "#installing fake-tool greet hello nonexistent-cmd nodejs_22" in out, out
+          assert "#installing fake-tool greet hello nonexistent-cmd nodejs_22 ruby_3_3 jdk21_headless" in out, out
           listed = guest.succeed("cat /run/user/1000/repose-installing").split()
           assert sorted(listed) == ["fake-tool", "greet", "hello", "nonexistent-cmd"], listed
           assert guest.succeed("cat /home/dev/.repose/tools-wanted.json").strip() == json.dumps(wanted, separators=(",", ":"))
@@ -741,9 +796,13 @@ in
           assert "greet: installed nixpkgs#greeter" in ilog, ilog
           assert "fake-tool: installed with npm" in ilog, ilog
           assert "node: nodejs_22 is the node of new shells" in ilog, ilog
+          assert "ruby: ruby_3_3 is the ruby of new shells" in ilog, ilog
+          assert "java: jdk21_headless is the java of new shells" in ilog, ilog
+          assert guest.succeed("sudo -H -u dev bash -lc ruby").startswith("ruby 3.3.9")
+          assert "21.0.8" in guest.succeed("sudo -H -u dev bash -lc 'java -version 2>&1'")
           # dev's profile holds them, so the store overlay pins them
           profile = guest.succeed("sudo -H -u dev nix profile list")
-          assert "hello" in profile and "greeter" in profile and "nodejs_22" in profile, profile
+          assert "hello" in profile and "greeter" in profile and "nodejs_22" in profile and "ruby_3_3" in profile and "jdk21_headless" in profile, profile
 
       with subtest("what could not be installed is said once"):
           notices = guest.succeed("cat /home/dev/.repose/tools-notices")
@@ -846,6 +905,15 @@ in
       with subtest("I-228: pkg-config finds the common system libraries"):
           out = dev("pkg-config --modversion openssl zlib sqlite3 libffi")
           assert len(out.split()) == 4, out
+
+      with subtest("I-265: Rails' native gem libraries build and link, and their configs are on PATH"):
+          libs = "yaml-0.1 libpq libxml-2.0 libxslt mysqlclient"
+          print(dev(f"pkg-config --modversion {libs}"))
+          dev(f"install -d /tmp/gems && cp ${nativeGemProbe} /tmp/gems/t.c && cd /tmp/gems && cc t.c $(pkg-config --cflags --libs {libs}) -o t")
+          out = dev("/tmp/gems/t")
+          assert out.startswith("0 1 1 "), out
+          assert dev("pg_config --libdir").strip() == dev("pkg-config --variable=libdir libpq").strip()
+          assert "-lmariadb" in dev("mysql_config --libs") or "-lmysqlclient" in dev("mysql_config --libs")
     '';
   };
 

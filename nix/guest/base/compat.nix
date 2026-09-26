@@ -24,7 +24,9 @@
 #   it (python3 -m venv, uv venv) links back to the wrapper and keeps it.
 # - Build scripts that ask pkg-config for a system library (openssl-sys in
 #   every reqwest/native-tls crate, cgo `#cgo pkg-config:`, meson) find
-#   openssl, zlib, sqlite and libffi.
+#   openssl, zlib, sqlite and libffi, and, for Rails' native gems (I-265),
+#   libyaml, libpq, libxml2, libxslt and the MySQL client, whose
+#   pg_config and mysql_config are on PATH.
 { config, lib, pkgs, ... }:
 let
   # Loopback and under 1024: never auto-forwarded by the CLI (I-199), and
@@ -118,10 +120,24 @@ let
     done
   '';
 
-  # zlib installs its .pc under share/, the others under lib/.
+  # zlib installs its .pc under share/, the others under lib/. libyaml,
+  # libpq, libxml2, libxslt and the MySQL client are what Rails' native
+  # gems ask for (psych, pg, nokogiri with system libraries, mysql2;
+  # DECISIONS I-265).
   pkgConfigPath = lib.concatStringsSep ":" (lib.concatMap
     (p: [ "${lib.getDev p}/lib/pkgconfig" "${lib.getDev p}/share/pkgconfig" ])
-    (with pkgs; [ openssl zlib sqlite libffi ]));
+    (with pkgs; [ openssl zlib sqlite libffi libyaml libpq libxml2 libxslt libmysqlclient ]));
+
+  # pg and mysql2 look for pg_config and mysql_config before pkg-config
+  # (mysql2 never asks pkg-config), so both are on PATH, each naming its
+  # library's own directories. Only these two commands: the rest of
+  # libmysqlclient's dev output stays off PATH.
+  nativeGemConfigs = pkgs.runCommand "repose-native-gem-configs" { } ''
+    mkdir -p $out/bin
+    ln -s ${pkgs.libpq.pg_config}/bin/pg_config $out/bin/pg_config
+    ln -s ${lib.getDev pkgs.libmysqlclient}/bin/mysql_config $out/bin/mysql_config
+    ln -s ${lib.getDev pkgs.libmysqlclient}/bin/mariadb_config $out/bin/mariadb_config
+  '';
 in
 {
   options.repose.compat.prismaMirror = lib.mkOption {
@@ -132,7 +148,7 @@ in
   };
 
   config = {
-    environment.systemPackages = [ (lib.hiPrio pythonCompat) ];
+    environment.systemPackages = [ (lib.hiPrio pythonCompat) nativeGemConfigs ];
 
     environment.variables = {
       PRISMA_ENGINES_MIRROR = config.repose.compat.prismaMirror;

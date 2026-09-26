@@ -6540,3 +6540,114 @@ left exactly as the last sync left it is still not dirty.
 what the owner did stage); `git stash create` on the laptop and applying
 the stash on the guest (needs the stash's objects in the bundle and a
 stash entry the user never made).
+
+**I-264. tmux passes modified keys, OSC 8 links and passthrough to the
+laptop's terminal.** (feature round, 2026-09-26; research breakage 11:
+Shift+Enter in Claude Code sent the prompt instead of a newline)
+`/etc/tmux.conf` gains `extended-keys on`, `extended-keys-format csi-u`,
+`terminal-features ",*:extkeys"`, `terminal-features ",*:hyperlinks"`
+and `allow-passthrough on`, checked against the base's tmux 3.7c. With
+`extkeys` tmux asks every client terminal for modifyOtherKeys
+(`\E[>4;2m`); a program that asks tmux for extended keys (Claude Code
+does) then gets Shift+Enter as `\E[13;2u` while Enter stays `\r`, so
+guestd's `send-keys '<prompt>' Enter` is unchanged. `extkeys` and
+`hyperlinks` are declared for every `TERM`, not a list: laptops present
+`xterm-256color`, `xterm-ghostty`, `xterm-kitty`, `wezterm` and more,
+and a terminal without the feature ignores the request (modifyOtherKeys)
+or the OSC 8 wrapper. `allow-passthrough on` (not `all`) lets only the
+visible pane write `DCS tmux;` sequences to the laptop's terminal: that
+is what the user is looking at, and the terminal already accepts OSC 52
+clipboard writes from it (`set-clipboard on`). `csi-u` over `xterm`
+because it is the form Claude Code, crossterm (Codex) and most TUI
+libraries parse. Synchronized output (`sync`) is not added: tmux 3.7
+already declares it for the terminals that have it, and nothing here
+measured flicker. What a user may need: a terminal that answers
+modifyOtherKeys (Ghostty, WezTerm, iTerm2, xterm); elsewhere (Apple's
+Terminal) Shift+Enter still submits, and `\` Enter or Ctrl+J is the
+newline; run-and-attach.md says so. guest-base checks the running
+server's options and, with a tmux of its own on `/etc/tmux.conf`, that
+a pane in extended-keys mode 1 reads Shift+Enter as `\E[13;2u` and
+Enter as `\r`. Needs a base publish; takes effect when a machine's tmux
+server starts (a machine's next start). *Rejected:* a per-terminal list
+in `terminal-features` (misses every terminal not on it, and the
+request is harmless where unsupported); `extended-keys always` (forces
+mode 1 on programs that never asked, which changes the bytes shells and
+older TUIs see); `allow-passthrough all` (invisible panes writing to the
+laptop's terminal).
+
+**I-265. Ruby and Java pins are installed like the Node pin; Rails'
+native gem libraries are in the base.** (feature round, 2026-09-26;
+research breakage 13) The scan (I-222) read no Ruby or Java pin, and
+pkg-config found only openssl, zlib, sqlite and libffi, so `bundle
+install` of a Rails app failed at psych, pg or mysql2. The scan now
+reads `.ruby-version`, a Gemfile's `ruby "x.y.z"` line, `.java-version`,
+`.sdkmanrc`'s `java=` and the `ruby`/`java` lines of `.tool-versions`;
+the first pin of each wins, in the order `.tool-versions`,
+`.ruby-version`, Gemfile and `.tool-versions`, `.java-version`,
+`.sdkmanrc`. nixpkgs keeps one Ruby per minor (ruby_3_3, ruby_3_4,
+ruby_4_0 in the base's nixpkgs today) and one JDK per major (8, 11, 17,
+21, 25), so a pin resolves to its series or major, else the oldest newer
+one (Ruby 3.2 → 3.3, Java 9 → 11: newer runs older code more often than
+the reverse), else the newest; `repose scan` prints which, and says so
+when it is not the pinned one. Pre-release, JRuby, TruffleRuby and
+ranges (`>= 3.2`) install nothing. The CLI resolves, not the guest,
+because the scan must say what happens without a machine; the list lives
+twice, in `internal/cli/scan_runtimes.go` and
+`nix/guest/base/runtime-versions.json`, and the base's build asserts
+each attribute exists in its nixpkgs while `TestRuntimeVersionsFile`
+fails when the two lists differ, so a nixpkgs bump that drops a version
+fails loudly. tools-wanted.json gains `"ruby":"x.y"` and
+`"java":"<major>"` (additive; an older installer ignores them), and
+repose-tools-install's node step becomes one step per runtime (node,
+ruby, java), with the same rules: installed with `nix profile add` only
+when dev's profile comes first on PATH, else a `#warn` naming `repose
+config add <attr>`; recorded in `~/.repose/tools/<runtime>`; undone and
+said once when a new login shell does not report the version. Java is
+`jdk<N>_headless`: servers, Gradle and Maven need no AWT, and the full
+JDK pulls GTK into dev's profile. `GEM_HOME` was already
+`~/.local/share/gem` (I-227), so gems and `bundle install` land on the
+volume. The scan counts `bundle`, `rake`, `java`, `javac` and the other
+commands the pinned runtime brings as provided. compat.nix adds libyaml,
+libpq, libxml2, libxslt and libmysqlclient (mariadb-connector-c) to
+`PKG_CONFIG_PATH` and puts `pg_config` (libpq's) and
+`mysql_config`/`mariadb_config` on PATH, because pg looks for pg_config
+first and mysql2 never asks pkg-config; nokogiri uses its precompiled
+gem and needs none of it unless told to use system libraries.
+guest-compat compiles and runs a C program against all five libraries
+through `pkg-config --cflags --libs`; guest-tools-carry installs stand-in
+`ruby_3_3` and `jdk21_headless` from the golden list. The libraries add 11,889,808 bytes
+to the base closure (guest-closure-size 6,151,526,064 at b49e83a → 6,163,415,872, limit 6 GiB). Needs a CLI release (scan, the list's
+new keys) and a base publish (installer, libraries). *Rejected:*
+installing the exact patch release (nixpkgs has one per series; building
+Ruby from source per project is minutes of CPU on the tenant's machine
+and a toolchain we would support); mise or rbenv in the base (a second
+version manager beside nix profiles, and each needs its own download
+and build); the full `jdk<N>` (GTK).
+
+**I-266. mosh is not offered.** (feature round, 2026-09-26; research
+breakage 15 suggested "ship mosh in the base") mosh-server listens on a
+UDP port of the machine and the client sends datagrams straight to the
+address it reached with SSH. A guest has no address the laptop can
+reach: it is `10.64.x.y` behind the host's WireGuard tunnel to the edge
+(DESIGN §7), the host has no inbound, and the only way in is the SSH
+gateway, which terminates SSH and relays channels (ssh-gateway.md).
+SSH channels carry TCP streams, not datagrams, so there is no cheap
+path: mosh in the base alone would install a program that can never
+connect. What mosh would take: a UDP relay on the edge with a public
+port range; the gateway reading mosh-server's `MOSH CONNECT <port>
+<key>` line in the session, allocating an edge port for that guest and
+rewriting the line so the client aims at the edge; nftables rules from
+the edge to the guest's port over WireGuard; expiry of idle mappings.
+That is L-sized work across the gateway, the edge's firewall and the
+host's nftables, and it is security-relevant: a UDP flow after setup is
+authenticated only by mosh's session key, so certificate revocation
+(refreshed every 30 s) and the 12 h certificate lifetime would no
+longer end a session, and `POST /internal/sessions` (I-176) would not
+see it end. A UDP-over-SSH tunnel (socat both ends) keeps mosh's local
+echo but puts it back on TCP, loses roaming, and is two more processes
+per session. The latency complaint behind the request is better met by
+a region nearer the user (L, a product decision) and, for dropped
+connections, by what already exists: agents run in tmux and `repose
+attach` reconnects. run-and-attach.md says in one line that mosh does
+not work and why. Revisit if the gateway gains a UDP path for another
+reason (previews over QUIC, a region with its own edge).

@@ -9,3 +9,4 @@ This project (uvproj):
   not installed: celery (a Python dependency), gunicorn (a Python dependency), mypy (a Python dependency), ruff (a Python dependency), svc (the project's own command)
 
 1 to check in the guest; each one it lacks is installed in the background after `repose run`.
+Made the guest's default the same way when it has another version: node 20.

@@ -7,8 +7,8 @@
 #   plan  a few ms: prints `#installing <names>` for what the guest lacks,
 #         writes their commands to $XDG_RUNTIME_DIR/repose-installing (one
 #         per line, read by command-not-found), prints a `#warn` when the
-#         project's node major cannot be made the default, and starts the
-#         unit. Nothing is installed here.
+#         project's node, ruby or java version cannot be made the default,
+#         and starts the unit. Nothing is installed here.
 #   run   installs each missing tool: a nixpkgs package that has
 #         bin/<command> first (nix-locate, else the attribute named like
 #         the command), with `nix profile add`; else the laptop's manager,
@@ -52,19 +52,66 @@ where_cmd() {
   dirname "$p"
 }
 
-node_major() {
-  local v
-  v=$(PATH="$(search_path)" node --version 2>/dev/null) || return 0
-  v=${v#v}
-  printf '%s' "${v%%.*}"
+# The runtimes a project pins (DECISIONS I-265 added ruby and java to
+# node): the key in tools-wanted.json is also the command.
+runtimes="node ruby java"
+
+# runtime_attr prints the nixpkgs attribute for a runtime's version.
+runtime_attr() {
+  case $1 in
+    node) printf 'nodejs_%s' "$2" ;;
+    ruby) printf 'ruby_%s' "${2//./_}" ;;
+    java) printf 'jdk%s_headless' "$2" ;;
+  esac
 }
 
-# node_profile_wins: a nodejs in dev's nix profile would be the node of a
-# new login shell, because the node found today is not in one of the
+# parse_version reads a runtime's version output on stdin and prints the
+# part a pin names: node's major, ruby's series ("3.3"), java's major
+# ("1.8.0_462" is 8).
+parse_version() {
+  local v
+  case $1 in
+    node) v=$(head -n 1); v=${v#v}; printf '%s' "${v%%.*}" ;;
+    ruby) sed -n '1s/^ruby \([0-9]*\.[0-9]*\).*/\1/p' ;;
+    java)
+      v=$(sed -n 's/.*version "\([^"]*\)".*/\1/p' | head -n 1)
+      case $v in 1.*) v=${v#1.} ;; esac
+      printf '%s' "${v%%[._+-]*}" ;;
+  esac
+}
+
+version_cmd() {
+  case $1 in
+    java) printf 'java -version 2>&1' ;;
+    *) printf '%s --version' "$1" ;;
+  esac
+}
+
+# runtime_version: the version of the runtime found on the login PATH now.
+runtime_version() {
+  { PATH="$(search_path)" bash -c "$(version_cmd "$1")" 2>/dev/null | parse_version "$1"; } || true
+}
+
+# login_version: the version a new login shell finds.
+login_version() {
+  { bash -lc "$(version_cmd "$1")" 2>/dev/null | parse_version "$1"; } || true
+}
+
+# runtime_want: the version tools-wanted.json asks for, "" for none or for
+# anything but digits and dots.
+runtime_want() {
+  local v
+  v=$(jq -r --arg k "$1" '.[$k] // empty' "$wanted")
+  case $v in "" | *[!0-9.]*) return 0 ;; esac
+  printf '%s' "$v"
+}
+
+# profile_wins: the runtime in dev's nix profile would be the one of a
+# new login shell, because the one found today is not in one of the
 # directories env.nix puts before the profile.
-node_profile_wins() {
+profile_wins() {
   local d
-  d=$(where_cmd node)
+  d=$(where_cmd "$1")
   case "$d" in
     "" | "$HOME/.nix-profile/bin" | "$HOME/.local/state/nix/profile/bin" | "/etc/profiles/per-user/$user/bin" | /run/current-system/sw/bin) return 0 ;;
   esac
@@ -81,7 +128,7 @@ is_failed() { [ -f "$failed" ] && grep -qxF "$1" "$failed"; }
 
 plan() {
   [ -s "$wanted" ] || return 0
-  local hash names=() cmds=() name manager pkg version bins b present want cur
+  local hash names=() cmds=() name manager pkg version bins b present want cur lang attr
   hash=$(jq -r '.hash' "$wanted")
   if [ -f "$marker" ] && [ "$(cat "$marker")" = "$hash" ]; then
     return 0
@@ -97,17 +144,18 @@ plan() {
     names+=("$name")
     for b in $bins; do cmds+=("$b"); done
   done < <(items_tsv)
-  want=$(jq -r '.node // empty' "$wanted")
-  if [ -n "$want" ]; then
-    cur=$(node_major)
-    if [ "$cur" != "$want" ]; then
-      if node_profile_wins; then
-        names+=("nodejs_$want")
-      else
-        echo "#warn This project asks for node $want and the guest's node is ${cur:-missing}, from $(where_cmd node), which comes before the nix profile on PATH; run \`repose config add nodejs_$want\` to make node $want the guest's."
-      fi
+  for lang in $runtimes; do
+    want=$(runtime_want "$lang")
+    [ -n "$want" ] || continue
+    cur=$(runtime_version "$lang")
+    [ "$cur" != "$want" ] || continue
+    attr=$(runtime_attr "$lang" "$want")
+    if profile_wins "$lang"; then
+      names+=("$attr")
+    else
+      echo "#warn This project asks for $lang $want and the guest's $lang is ${cur:-missing}, from $(where_cmd "$lang"), which comes before the nix profile on PATH; run \`repose config add $attr\` to make $lang $want the guest's."
     fi
-  fi
+  done
   if [ "${#cmds[@]}" -gt 0 ]; then
     mkdir -p "$rt" 2>/dev/null || true
     printf '%s\n' "${cmds[@]}" > "$installing.new" && mv -f "$installing.new" "$installing" || true
@@ -245,31 +293,39 @@ notice() {
   logline "$*"
 }
 
-node_pass() {
-  local want cur prev
-  want=$(jq -r '.node // empty' "$wanted")
+# runtime_pass makes the pinned version of one runtime the one of new
+# login shells: node's major, ruby's series, java's major (I-265). The
+# attribute it added is recorded in ~/.repose/tools/<runtime> and replaced
+# when the project asks for another version.
+runtime_pass() {
+  local lang=$1 want cur prev attr
+  want=$(runtime_want "$lang")
   [ -n "$want" ] || return 0
-  cur=$(node_major)
+  cur=$(runtime_version "$lang")
   [ "$cur" != "$want" ] || return 0
-  node_profile_wins || return 0 # plan said so already
-  prev=$(cat "$state/node" 2>/dev/null || true)
-  if [ -n "$prev" ] && [ "$prev" != "nodejs_$want" ]; then
+  profile_wins "$lang" || return 0 # plan said so already
+  attr=$(runtime_attr "$lang" "$want")
+  prev=$(cat "$state/$lang" 2>/dev/null || true)
+  if [ -n "$prev" ] && [ "$prev" != "$attr" ]; then
     nix profile remove "$prev" >/dev/null 2>&1 || true
   fi
-  if attempt profile_add "nodejs_$want" && [ "$(bash -lc 'node --version' 2>/dev/null | sed 's/^v//; s/\..*//')" = "$want" ]; then
-    printf '%s\n' "nodejs_$want" > "$state/node"
-    logline "node: nodejs_$want is the node of new shells"
+  reason=
+  if attempt profile_add "$attr" && [ "$(login_version "$lang")" = "$want" ]; then
+    printf '%s\n' "$attr" > "$state/$lang"
+    logline "$lang: $attr is the $lang of new shells"
     return 0
   fi
-  nix profile remove "nodejs_$want" >/dev/null 2>&1 || true
-  rm -f "$state/node"
-  notice "Could not make node $want the guest's node: ${reason:-another node comes first on PATH}. Run \`repose config add nodejs_$want\`."
+  nix profile remove "$attr" >/dev/null 2>&1 || true
+  rm -f "$state/$lang"
+  notice "Could not make $lang $want the guest's $lang: ${reason:-another $lang comes first on PATH}. Run \`repose config add $attr\`."
 }
 
 pass() {
-  local name manager pkg version bins b present key
+  local name manager pkg version bins b present key lang
   mkdir -p "$state"
-  node_pass
+  for lang in $runtimes; do
+    runtime_pass "$lang"
+  done
   while IFS=$'\x1f' read -r name manager pkg version bins; do
     [ -n "$name" ] || continue
     present=
