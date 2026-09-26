@@ -12,10 +12,12 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/heracraft/repose/internal/api/abuse"
+	"github.com/heracraft/repose/internal/api/idle"
 	"github.com/heracraft/repose/internal/api/meter"
 	"github.com/heracraft/repose/internal/api/ops"
 	"github.com/heracraft/repose/internal/api/scheduler"
 	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/obs"
 )
@@ -44,6 +46,7 @@ type projectExtras struct {
 	costToday, costMonth int64
 	lastSnapshot         *time.Time
 	latest               *meter.Latest
+	idleSince            *time.Time
 }
 
 func (s *Server) extras(ctx context.Context, p *store.Project, tz string) (projectExtras, error) {
@@ -70,6 +73,17 @@ func (s *Server) extras(ctx context.Context, p *store.Project, tz string) (proje
 	if ok {
 		x.latest = l
 	}
+	// Only a machine up longer than idle.After can be idle; the others
+	// skip the query.
+	if p.State == "running" && p.StartedAt != nil && time.Since(*p.StartedAt) >= idle.After {
+		since, isIdle, err := idle.Project(ctx, s.d.Pool, p, time.Now())
+		if err != nil {
+			return x, err
+		}
+		if isIdle {
+			x.idleSince = &since
+		}
+	}
 	return x, nil
 }
 
@@ -91,6 +105,10 @@ func (s *Server) projectJSON(ctx context.Context, p *store.Project, u *store.Use
 	}
 	if p.GuestIP != nil {
 		out["guest_ip"] = p.GuestIP.String()
+	}
+	if x.idleSince != nil {
+		// A running machine unused for a day, still billing (I-262).
+		out["idle"] = map[string]any{"since": *x.idleSince, "hourly_cents": billing.Hourly(p.Class)}
 	}
 	if x.latest != nil {
 		out["disk_used_bytes"] = x.latest.DiskUsed

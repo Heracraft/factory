@@ -32,6 +32,9 @@ var notifyKinds = map[string]bool{
 	"abuse_stopped": true,
 	// repose-notify and repose-ask (DECISIONS I-244).
 	"agent_message": true, "agent_question": true,
+	// A running machine nobody used for a day, once per idle stretch
+	// (internal/api/idle, DECISIONS I-262).
+	"idle_running": true,
 }
 
 // noDedupe are kinds the user sent on purpose, one notification each: two

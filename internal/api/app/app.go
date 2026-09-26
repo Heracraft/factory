@@ -23,6 +23,7 @@ import (
 	"github.com/heracraft/repose/internal/api/events"
 	"github.com/heracraft/repose/internal/api/hostmgr"
 	httpapi "github.com/heracraft/repose/internal/api/http"
+	"github.com/heracraft/repose/internal/api/idle"
 	"github.com/heracraft/repose/internal/api/meter"
 	"github.com/heracraft/repose/internal/api/metrics"
 	"github.com/heracraft/repose/internal/api/notify"
@@ -412,6 +413,7 @@ func (a *App) loops(ctx context.Context) {
 	dunning := billing.NewDunning(a.pool, a.engine, a.events, a.log, a.bcfg.Enforce)
 	reconciler := billing.NewReconciler(a.pool, reader, a.m, a.log)
 	bump := basebump.New(a.pool, a.engine, a.events, a.log)
+	idleWarn := &idle.Warner{Pool: a.pool, Events: a.events}
 	a.engine.SetOnFinished(bump.OnOpFinished)
 	go bump.Run(ctx)
 	// The abuse gauges (BusyUnattended, EgressHigh, held projects) are
@@ -461,6 +463,13 @@ func (a *App) loops(ctx context.Context) {
 			// under the same lock, so only one replica acts (§5.6).
 			if _, err := dunning.Run(ctx); err != nil && ctx.Err() == nil {
 				a.log.Error("dunning", "event", "dunning_fail", "err", err.Error())
+			}
+			// The idle-cost warning: one notification per idle stretch,
+			// never a stop (DECISIONS I-262, R1-5).
+			if n, err := idleWarn.Run(ctx, now); err != nil && ctx.Err() == nil {
+				a.log.Error("idle warning", "event", "idle_warn_fail", "err", err.Error())
+			} else if n > 0 {
+				a.log.Info("idle warnings raised", "event", "idle_warn", "count", n)
 			}
 			release()
 			lastRollup = now

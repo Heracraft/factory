@@ -50,6 +50,7 @@ Settings apply to every project. The dashboard's **Settings** page has the same 
 | `todo-app: destroy failed`       | A destroy didn't finish; the body says why.                                                                                                                             |
 | `todo-app: host moved`           | The project was restored onto another server from its latest snapshot.                                                                                                  |
 | `todo-app: abuse stopped`        | The machine was stopped because a miner was running ([Limits](/docs/limits#what-isnt-allowed)). By email: `Your guest was stopped: a cryptocurrency miner was running`. |
+| `todo-app: idle, still billing`  | The machine has run 24 hours with nobody on it and no agent working. Once per idle stretch ([Idle machines](/docs/lifecycle#idle-machines)).                            |
 | `todo-app: claude says`          | An agent, or you, ran `repose-notify` on the machine. The body is the message.                                                                                          |
 | `todo-app: claude asks`          | An agent ran `repose-ask` and is waiting for your answer. See below.                                                                                                    |
 | `todo-app: notifications paused` | The project reached 30 notifications this hour.                                                                                                                         |

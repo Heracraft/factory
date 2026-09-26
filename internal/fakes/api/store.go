@@ -40,6 +40,15 @@ type Project struct {
 	LastError        *string    `json:"last_error"`
 	HostUnreachable  bool       `json:"host_unreachable"`
 	TZ               *string    `json:"tz"`
+	// Idle is set by a test to stand for a running project nobody has used
+	// for a day (DECISIONS I-262).
+	Idle *Idle `json:"idle,omitempty"`
+}
+
+// Idle is Project.idle.
+type Idle struct {
+	Since       time.Time `json:"since"`
+	HourlyCents int64     `json:"hourly_cents"`
 }
 
 // DestroyedProject is one row of GET /projects/destroyed (I-167).

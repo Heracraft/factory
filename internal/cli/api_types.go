@@ -63,6 +63,16 @@ type Project struct {
 	// TZ is the zone the guest gets at its next start; the CLI moves it
 	// to the laptop's when they differ (I-198). Absent from older apis.
 	TZ *string `json:"tz,omitempty"`
+	// Idle is set while the project has run for a day with no SSH
+	// session and no agent working (DECISIONS I-262). Absent from older
+	// apis, which the CLI treats as "not idle".
+	Idle *ProjectIdle `json:"idle,omitempty"`
+}
+
+// ProjectIdle is Project.idle.
+type ProjectIdle struct {
+	Since       time.Time `json:"since"`
+	HourlyCents int64     `json:"hourly_cents"`
 }
 
 type Signals struct {

@@ -96,6 +96,8 @@ export interface Project {
 	/** The last failed op's "code: sentence" (I-159); null once an op succeeds. */
 	last_error?: string | null;
 	host_unreachable?: boolean;
+	/** Set while it has run a day with no SSH session and no agent working (I-262). */
+	idle?: { since: string; hourly_cents: number };
 }
 
 /** GET /projects/destroyed (I-167): a destroyed project that can still be restored. */

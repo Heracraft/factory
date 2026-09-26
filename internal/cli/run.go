@@ -68,6 +68,10 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		e.guestUp = func(p *Project) { startBootProbe(ctx, e, p, !opts.NoSync) }
 	}
 
+	// Other projects left running with nobody on them (I-262), read
+	// beside the command and printed once connected.
+	idleNote := startIdleNote(ctx, e)
+
 	pr := e.newProgress()
 	defer pr.Fail() // clears a spinner line left by an early return
 
@@ -136,6 +140,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	endConnect()
 	pr.End()
 	_, _ = fmt.Fprintf(e.Out, "Connected to %s (%s)\n", project.Slug, project.Class)
+	idleNote(project.ID)
 
 	helper := sessionOptions{Slug: project.Slug, Target: target.Args, TZ: tz, HomeDir: e.HomeDir, Forward: os.Getenv(forwardEnvOff) != "1"}
 	if root := gitRepoRoot(e.Cwd); root != "" && res.Remote != "" && res.Remote == project.RemoteURL {

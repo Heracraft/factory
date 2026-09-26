@@ -279,6 +279,11 @@ func TestSubjectUsesPlatformWording(t *testing.T) {
 	if got != "todo-app: snapshot failed" {
 		t.Fatalf("subject %q", got)
 	}
+	// The idle-cost warning (DECISIONS I-262).
+	got = notify.Subject(notify.Message{Kind: "idle_running", Project: "todo-app"})
+	if got != "todo-app: idle, still billing" {
+		t.Fatalf("subject %q", got)
+	}
 }
 
 func mustUUID(s string) uuid.UUID {
