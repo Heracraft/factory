@@ -1,9 +1,9 @@
 {
   "claude-code": {
-    "version": "2.1.280",
+    "version": "2.1.281",
     "x86_64-linux": {
-      "url": "https://downloads.claude.ai/claude-code-releases/2.1.280/linux-x64/claude",
-      "hash": "sha256-HghQPb3zwssNcG0y80CCdziNHHbvEIZz6P5CwbMikls="
+      "url": "https://downloads.claude.ai/claude-code-releases/2.1.281/linux-x64/claude",
+      "hash": "sha256-Vv49qIRYRl+yfX6Smd3bP+rVV1D7nC3nlfIzte6m3OE="
     }
   },
   "opencode": {
@@ -21,10 +21,10 @@
     }
   },
   "gemini-cli": {
-    "version": "0.60.0",
+    "version": "0.61.0",
     "npm": {
-      "url": "https://registry.npmjs.org/@google/gemini-cli/-/gemini-cli-0.60.0.tgz",
-      "hash": "sha256-zssk6r8usj8PSb8THN3WQOZQFzNrYpjakpe9+dITzAs="
+      "url": "https://registry.npmjs.org/@google/gemini-cli/-/gemini-cli-0.61.0.tgz",
+      "hash": "sha256-vE76XJJcRDAQW1UoIO0xZLvv+p3CJ5kPySL5VHM7zX0="
     }
   },
   "pi-coding-agent": {
