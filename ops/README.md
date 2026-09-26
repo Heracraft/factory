@@ -11,7 +11,7 @@ other end of those.
 
 | Path | What it is |
 |---|---|
-| `alerts.yaml` | The 14 Prometheus alert rules. Every name is a heading in `docs/ops/RUNBOOK.md`. |
+| `alerts.yaml` | The 21 Prometheus alert rules. Every name is a heading in `docs/ops/RUNBOOK.md`. |
 | `alerts_test.yaml` | `promtool test rules` cases: each alert fires on the series it was written for and stays quiet just below it. |
 | `alertmanager/repose-route.yaml` | Route and inhibitions for the owner's ntfy topics; `page` has its own receiver. |
 | `prometheus/prometheus.yml` | Scrape config: hosts (`:9100`, `:9101`, Fluent Bit `:2021`), edge (`:9102`), api (`:9103`), all over WireGuard. |
@@ -19,8 +19,9 @@ other end of those.
 | `prometheus/wireguard-peer.conf` | How the monitoring server joins the edge's WireGuard hub, and how to check it. |
 | `loki/retention.yaml` | 90 days for component logs, 30 for guest console logs, with the compactor that makes it happen. |
 | `grafana/provisioning/` | Datasources (three fixed uids) and the dashboard provider. |
-| `dashboards/*.json` | The seven dashboards. Generated: edit `dashboards/gen.py` and re-run it. |
+| `dashboards/*.json` | The eight dashboards. Generated: edit `dashboards/gen.py` and re-run it. |
 | `dashboards/gen.py` | The dashboards' source of truth. `--check` fails if the JSON is stale. |
+| `dashboards/push.py` | Imports every dashboard into a real Grafana, in one folder, rewriting the dev datasource uids to the target's. Idempotent; the token comes from `GRAFANA_TOKEN`. |
 | `dashboards/validate.py` | Structure, datasource uids, forbidden Prometheus labels, SQL against `db-schema.md`, and `--query` to see which panels have data. |
 | `sql/partitions.sql` | The operator's copy of the partition maintenance the api does in Go: create this month and next, drop what is past retention. |
 | `check.sh` | Everything above that can be checked without a host. `--grafana` also loads the dashboards into a real Grafana. |
@@ -60,7 +61,8 @@ ops/dev/pgcheck.sh                    # schema, synthetic samples, every panel's
 
 Grafana is then on `http://<this box's Tailscale address>:3000` (anonymous
 admin, folder `repose`); Prometheus on `:9090`. `ops/check.sh --grafana` does
-the same thing non-interactively and asserts that all seven dashboards loaded.
+the same thing non-interactively and asserts that seven of the eight
+dashboards loaded (it does not check the overview).
 
 `docker compose -f ops/dev/docker-compose.yml down -v` removes it, volumes
 included.
@@ -72,9 +74,9 @@ every alert has a runbook heading; the dashboards match the generator; every
 panel has a title, a description, a provisioned datasource and a query; no
 Prometheus query selects on `project_id`, `guest_id` or `user_id`; every SQL
 query names tables and columns that `db-schema.md` has; every Prometheus
-expression parses. With `--grafana`, that Grafana accepts all seven.
+expression parses. With `--grafana`, that Grafana accepts seven of them (not the overview).
 
-`ops/dev/pgcheck.sh` runs all 20 Postgres panel queries against a real
+`ops/dev/pgcheck.sh` runs every Postgres panel query against a real
 Postgres and makes one partition drop happen.
 
 What none of that shows: whether a real host's values are sensible, whether

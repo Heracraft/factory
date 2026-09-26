@@ -11,15 +11,16 @@ a day.
    credit expiry date; put it in your calendar a month early. Everything
    below goes into this subscription.
 
-2. **Request vCPU quota in East US.** Portal: Quotas → Compute → filter
-   region East US. Request:
-   - `Standard DSv5 Family vCPUs`: 64 for now (the pre-launch host is a
-     `D16s_v5` at 16, the Coolify VM 4, the edge 2, and room for a `D32s_v5`
-     if 16 is tight). Raise it to 160 before launch for the `D64s_v5`.
-   - `Total Regional vCPUs`: 100 for now.
-   Checked 2026-09-19: the subscription already has 65 on both lines, so no
-   request is needed until launch. Approval is often automatic within minutes for
-   these sizes; if it goes to a ticket it can take a day. Do this first.
+2. **Check vCPU quota in East US.** Portal: Quotas → Compute → filter
+   region East US. Every VM is in the Dsv7 family (`host_size`, `edge_size`
+   and `coolify_size` in `infra/azure/prod/prod.tfvars`):
+   - `Standard Dsv7 Family vCPUs` (`StandardDsv7Family`): 350 by default,
+     enough for the `D16s_v7` host, the `D4s_v7` control VM, the `D2s_v7`
+     edge, and the `D64s_v7` at launch. No request needed.
+   - `Total Regional vCPUs`: 65 when checked on 2026-09-19. Today's 22 fit;
+     the launch set (64 + 4 + 2) does not, so ask for 100 before launch.
+     Approval is often automatic within minutes; if it goes to a ticket it
+     can take a day.
 
 3. **Register resource providers** (done 2026-09-19; once per subscription): Microsoft.Compute, Microsoft.Network, Microsoft.Storage,
    Microsoft.KeyVault, Microsoft.ManagedIdentity. Portal: Subscription →

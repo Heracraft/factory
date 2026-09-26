@@ -140,10 +140,7 @@ the apply log, because it travels as file content and never as an argument.
 ## Adding a host
 
 ```bash
-# M1, before the api exists: the one-host dev driver mints it (DECISIONS I-17)
-hostdev init --host host-02                              # prints a token
-# once the api is up:
-# repose-admin hosts add --name host-02 --provider azure
+repose-admin hosts add --name host-02 --provider azure  # prints a token
 ```
 
 Then:
@@ -173,8 +170,7 @@ closure copy.
 A host that never registered, or one whose token was seen by someone:
 
 ```bash
-hostdev init --host host-02 --reissue                 # new token (M1)
-# repose-admin hosts add --name host-02 --reissue      # once the api exists
+repose-admin hosts add --name host-02 --reissue       # new token
 # replace the value in prod.local.tfvars
 make apply ENV=prod
 ```

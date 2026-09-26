@@ -21,10 +21,12 @@ server (`DECISIONS.md` R4-2). cloud-init leaves it exactly as Coolify's
 server validation wants to find it: root login by key, with the operator keys
 and the instance's key (`coolify_public_key` in `prod.tfvars`) in
 `/root/.ssh/authorized_keys`; Docker Engine and the compose plugin from
-Docker's apt repository; Tailscale installed but not joined; `rclone` and
-`pg_restore` for the runbook's restore procedure; the WireGuard peer script;
-and nothing listening but sshd. `terraform_data.ready` fails the apply if any
-of that is missing.
+Docker's apt repository; Tailscale installed but not joined;
+`wireguard-tools` and the WireGuard peer script; and nothing listening but
+sshd. Nothing for backups or restores is installed: those are Coolify's
+(`DECISIONS.md` I-112). `terraform_data.ready` fails the apply if cloud-init
+did not finish, Docker or its compose plugin is missing or stopped,
+Tailscale is missing, or the instance's key is not in `authorized_keys`.
 
 ## Adding the server, in order
 

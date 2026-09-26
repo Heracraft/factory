@@ -110,7 +110,7 @@ copy-paste version):
 - `ops/alerts.yaml` goes in its rule files, `ops/alertmanager/repose-route.yaml`
   into Alertmanager (ntfy to the owner).
 - `ops/grafana/provisioning/` and `ops/dashboards/*.json` are Grafana's
-  provisioning; the seven dashboards appear in a `repose` folder.
+  provisioning; the eight dashboards appear in a `repose` folder.
 - `ops/loki/retention.yaml` sets 90 days for component logs and 30 for guest
   console logs, and needs the compactor enabled to do anything.
 - The server joins the edge's WireGuard as one more peer:
@@ -123,7 +123,7 @@ copy-paste version):
 | Task | Command |
 |---|---|
 | List hosts with capacity | `repose-admin hosts list` |
-| Add a host | `hostdev init --host host-NN` (M1) or `repose-admin hosts add --name host-NN` (once the api exists), then `make -C infra apply ENV=prod` (workstream 11) |
+| Add a host | `repose-admin hosts add --name host-NN` (prints a join token), then `make -C infra apply ENV=prod` (`infra/README.md` "Adding a host") |
 | Drain a host (no new placements) | `repose-admin hosts drain host-NN` |
 | Retire a host (after all projects moved) | `repose-admin hosts retire host-NN` |
 | Move a project to another host | `repose-admin projects move <id> --to host-NN` (stop, snapshot, restore, start) |
@@ -615,9 +615,8 @@ A new host has been up for more than five minutes and is not in `hosts
 list`.
 
 1. `ssh -J root@<edge ip>:2222 root@<private ip>`: `journalctl -u hostd`.
-   `token_expired` or `token_used`: mint a new one (`hostdev init --host
-   <name> --reissue` for M1, `repose-admin hosts add --reissue` once the api
-   exists), put it in `infra/azure/prod/prod.local.tfvars` and
+   `token_expired` or `token_used`: mint a new one (`repose-admin hosts
+   add --name <name> --reissue`), put it in `infra/azure/prod/prod.local.tfvars` and
    `make -C infra apply ENV=prod` (only the token-delivery step re-runs), or
    by hand `install -d -m 0755 /run/repose && umask 077 && cat >
    /run/repose/join-token` and `systemctl restart hostd`. The token is never
@@ -673,25 +672,6 @@ already triggers GC of unrooted paths during builds and hostd refuses
    biggest closures and `repose-admin projects list --host host-NN --sort
    closure`; a tenant near the 20 GB closure cap on a small host is the
    usual cause. See "StoreFull" for the 85 percent alert.
-
-## Reaching a guest before WireGuard exists (M1)
-
-Until workstream 06 lands, hosts are not on WireGuard and the gateway does
-not exist. Operators reach a guest by jumping through the edge and the host:
-
-1. `ssh -J root@<edge ip> root@<host private ip>` (bootstrap sshd on the
-   provider NIC, `repose.host.bootstrap.enable`, DECISIONS I-40).
-2. Nothing to do: `guest_in` admits replies to flows the host itself
-   opened (`ct direction reply ct state established,related`, DECISIONS
-   I-74), so the host reaches a guest's sshd and a reload does not undo it.
-   Guests still cannot open anything towards the host; on a host built
-   before I-74 the equivalent is the runtime
-   `nft insert rule inet repose input iifname "br-guests" ct state established,related accept`,
-   removed again with `nft -a list chain inet repose input` and
-   `nft delete rule inet repose input handle <n>`.
-3. `hostdev ssh-cert --project <p> --pubkey ~/.ssh/id_ed25519.pub >
-   ~/.ssh/id_ed25519-cert.pub` on the edge, then
-   `ssh -J root@<edge ip>,root@<host ip> dev@<guest ip>`.
 
 ## Host never configured its bridge (registration ran, br-guests has no address)
 
@@ -1261,8 +1241,7 @@ already used`.
 1. The token was consumed by an earlier registration attempt that did not
    finish writing `/var/lib/repose/hostd/{cert,key}.pem`, or the host was
    re-imaged with the same cloud-init payload.
-2. Mint a new token: `repose-admin hosts add --reissue <host>` (or `hostdev
-   init` output on a hostdev-driven host), write it to
+2. Mint a new token: `repose-admin hosts add --name <host> --reissue`, write it to
    `/run/repose/join-token`, `systemctl restart hostd`.
 
 ## hostd: api unreachable
@@ -1272,8 +1251,7 @@ already used`.
 locally from `repose-snapshot.timer`.
 
 1. `hostd status` (control socket) shows `stream_connected: false`.
-2. From the host: `curl -sv https://api.repose.herakraft.co:443` (or the
-   hostdev address). A TLS error naming the client certificate means the
+2. From the host: `curl -sv https://api.repose.herakraft.co:443`. A TLS error naming the client certificate means the
    host certificate expired without rotation: `journalctl -u hostd | grep
    rotate`; rotation needs the stream, so if the certificate is past
    expiry re-register with a new token (previous entry) after moving the
@@ -1327,7 +1305,7 @@ and its tap, tc, nft membership and units are gone; the volume stays.
    -u virtiofsd@<id>`.
 3. A boot that reaches login but never Ready: guestd is not running in the
    guest; the base image is at fault (workstream 02).
-4. Fix, then `repose-admin projects start <id>` (or `hostdev start`).
+4. Fix, then `repose-admin projects start <id>`.
 
 Since I-62 a virtiofsd that exits before creating its socket fails the
 create at step 8 instead; on an older hostd, `systemctl status
