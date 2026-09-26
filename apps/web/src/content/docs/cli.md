@@ -211,18 +211,18 @@ For a test or self-hosted repose server rather than the hosted one: `--api-url U
 
 ## Exit codes
 
-| Code | Meaning                                                |
-| ---- | ------------------------------------------------------ |
-| 0    | Worked.                                                |
-| 1    | Failed; the message says why.                          |
-| 2    | Wrong usage.                                           |
-| 3    | Not logged in.                                         |
-| 4    | No such project.                                       |
-| 5    | The machine isn't running.                             |
-| 6    | The machine has uncommitted changes; the sync stopped. |
-| 7    | Account or payment problem.                            |
-| 8    | No capacity right now; try again in a few minutes.     |
-| 10   | The configuration build failed.                        |
-| 130  | Interrupted with `Ctrl-C`.                             |
+| Code | Meaning                                                                                                                             |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Worked.                                                                                                                             |
+| 1    | Failed; the message says why.                                                                                                       |
+| 2    | Wrong usage.                                                                                                                        |
+| 3    | Not logged in.                                                                                                                      |
+| 4    | No such project.                                                                                                                    |
+| 5    | The machine isn't running.                                                                                                          |
+| 6    | The machine has uncommitted changes; the sync stopped.                                                                              |
+| 7    | Account or payment problem.                                                                                                         |
+| 8    | No capacity right now; try again in a few minutes. For a first project, you're on the [waitlist](/docs/limits#when-repose-is-full). |
+| 10   | The configuration build failed.                                                                                                     |
+| 130  | Interrupted with `Ctrl-C`.                                                                                                          |
 
 Once `run` or `attach` has connected you, the exit code is `ssh`'s. `repose cp` returns `scp`'s. `repose paste` exits 1 when there is no image on the clipboard or no tool to read it, and says which tool to install.

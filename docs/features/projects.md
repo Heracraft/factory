@@ -71,6 +71,23 @@ Limits:
 - `repose fork` makes N projects at once and is refused whole, before any
   is created, when N more would pass the limit (snapshots.md, "Forking";
   DECISIONS I-254).
+- The capacity waitlist (DECISIONS I-269). A user's first project waits
+  when the fleet is near full: if the memory reserved on ready hosts, plus
+  8 GB for each user admitted in the last 72 hours who has not created a
+  project yet, plus the new project's class, would pass `WAITLIST_PERCENT`
+  (default 80, the HostMemory80 line) of the hosts' usable memory, or when
+  anyone is already waiting, `POST /projects` returns 503 `waitlisted` with
+  `{position, joined_at, email}` and the user joins the queue; a retry
+  keeps the place. The CLI prints `repose is at capacity. You're number N
+  on the waitlist; we'll email you@example.com when there's room.` and
+  exits 8. `GET /me` carries the place and the dashboard's empty projects
+  page shows it. Every minute the api admits the queue oldest first while
+  that projection, with each admission counted as a large, stays under the
+  line, and sends one email per admission (transactional: it goes out even
+  with notify email off). Users who have ever had a project, users once
+  admitted and `exempt` accounts are never waitlisted; they can still meet
+  plain `capacity`. `repose-admin waitlist list | admit HANDLE | admit
+  --next N` lets an operator see and move the queue.
 - A user without a card on file cannot start a guest at all
   (`payment_required`, exit 7). Creating the project row is allowed so the
   dashboard can show it, but nothing boots.

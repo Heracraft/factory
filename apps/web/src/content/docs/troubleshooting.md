@@ -27,6 +27,8 @@ For more detail on any command, add `-v`. `REPOSE_TIMING=1` shows where the time
 
 **`No capacity right now`.** The servers are full. Nothing was changed. Try again in a few minutes.
 
+**`repose is at capacity. You're number 3 on the waitlist`.** Your first project waits until there's room. You'll get an email when it's your turn; then run `repose run` again. See [When repose is full](/docs/limits#when-repose-is-full).
+
 ## Sync
 
 **`The machine has uncommitted changes your laptop doesn't have`.** Something on the machine, usually an agent, changed files since your last sync, and your laptop has new work that would write over them. `repose attach` to look, or re-run with `--stash-remote` to keep them in `git stash` or `--discard-remote` to drop them. With nothing new on your laptop, `repose run` just attaches. See [Sync](/docs/sync#when-the-machine-has-changes-of-its-own).

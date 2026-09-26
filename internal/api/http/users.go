@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -35,7 +36,16 @@ func (s *Server) getMe(w http.ResponseWriter, r *http.Request) error {
 			u = fresh
 		}
 	}
-	writeJSON(w, http.StatusOK, userJSON(u))
+	j := userJSON(u)
+	// The user's place on the capacity waitlist while they hold one
+	// (DECISIONS I-269); null otherwise.
+	j["waitlist"] = nil
+	if e, err := store.GetWaitlistEntry(r.Context(), s.d.Pool, u.ID); err == nil && e.AdmittedAt == nil && e.Position > 0 {
+		j["waitlist"] = map[string]any{"position": e.Position, "joined_at": e.JoinedAt}
+	} else if err != nil && !errors.Is(err, db.ErrNotFound) {
+		return err
+	}
+	writeJSON(w, http.StatusOK, j)
 	return nil
 }
 

@@ -110,6 +110,18 @@ type Fake struct {
 	// starts it at BillingCard and SetBilling changes it at run time.
 	// It is atomic rather than under mu, because handlers run under mu.
 	billing atomic.Int32
+	// waitlist is the place SetWaitlisted gave; 0 is no waitlist.
+	waitlist int
+}
+
+// SetWaitlisted makes POST /projects of a user with no project answer
+// `waitlisted` at the given place, as the api does while the fleet is
+// near full (DECISIONS I-269); GET /me then shows the place. 0 turns it
+// off.
+func (f *Fake) SetWaitlisted(position int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.waitlist = position
 }
 
 // Billing modes for SetBilling.
@@ -279,6 +291,7 @@ var statusOf = map[string]int{
 	"conflict":         http.StatusConflict,
 	"payment_required": http.StatusPaymentRequired,
 	"capacity":         http.StatusServiceUnavailable,
+	"waitlisted":       http.StatusServiceUnavailable,
 	"rate_limited":     http.StatusTooManyRequests,
 	"internal":         http.StatusInternalServerError,
 	"billing_disabled": http.StatusServiceUnavailable,

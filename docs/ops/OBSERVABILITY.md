@@ -49,6 +49,12 @@ Grafana "Host capacity", variable `host_id`. Then on the host itself:
 `systemctl list-units 'guest@*'`, `lvs vg-guests`, `nft list counters`,
 `journalctl -u hostd -f`.
 
+The fleet as a whole: `repose_api_waitlist_waiting` is the users held on
+the capacity waitlist (DECISIONS I-269), `repose_api_waitlist_joined_total`
+and `repose_api_waitlist_admitted_total` the traffic through it; the api
+logs `waitlist_join` (user_id, position, class) and `waitlist_admit`
+(count), never an email address. `repose-admin waitlist list` names them.
+
 ## Looking for abuse
 
 Grafana "Abuse": fleet-wide top `comm` by CPU over 24 hours, top projects

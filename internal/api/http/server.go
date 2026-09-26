@@ -36,6 +36,7 @@ import (
 	"github.com/heracraft/repose/internal/api/ratelimit"
 	"github.com/heracraft/repose/internal/api/secrets"
 	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/api/waitlist"
 	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/obs"
@@ -85,6 +86,9 @@ type Deps struct {
 	Migrations func(ctx context.Context) (pending int, err error)
 	// Limits override the documented per-minute rate limits (tests).
 	Limits *RateLimits
+	// Waitlist gates a user's first project on fleet capacity (DECISIONS
+	// I-269); nil or Percent 0 lets every create through.
+	Waitlist *waitlist.Gate
 }
 
 // RateLimits are the per-user limits from docs/interfaces/api.md.
@@ -228,7 +232,7 @@ func statusOf(code string) int {
 		return http.StatusConflict
 	case "payment_required":
 		return http.StatusPaymentRequired
-	case "capacity", "billing_disabled":
+	case "capacity", "waitlisted", "billing_disabled":
 		return http.StatusServiceUnavailable
 	case "rate_limited":
 		return http.StatusTooManyRequests

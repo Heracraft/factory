@@ -286,6 +286,32 @@ func TestSubjectUsesPlatformWording(t *testing.T) {
 	}
 }
 
+// DECISIONS I-269: the waitlist admission names no project, so its email
+// has its own subject and no attach line.
+func TestWaitlistAdmissionEmail(t *testing.T) {
+	var got struct {
+		Subject string   `json:"subject"`
+		Text    string   `json:"text"`
+		To      []string `json:"to"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+	e := &notify.Email{APIKey: "re_test", URL: srv.URL}
+	m := notify.Message{Kind: "waitlist_admitted", Summary: "repose has room for your first machine now.", Email: "new@example.com", Dashboard: "https://dash.test"}
+	if err := e.Send(context.Background(), m); err != nil {
+		t.Fatal(err)
+	}
+	if got.Subject != "[repose] There is room for you on repose" || len(got.To) != 1 || got.To[0] != "new@example.com" {
+		t.Fatalf("subject %q to %v", got.Subject, got.To)
+	}
+	if !strings.Contains(got.Text, "room for your first machine") || strings.Contains(got.Text, "repose attach") || strings.Contains(got.Text, "unsubscribe") {
+		t.Fatalf("body: %s", got.Text)
+	}
+}
+
 func mustUUID(s string) uuid.UUID {
 	u, err := parseUUID(s)
 	if err != nil {

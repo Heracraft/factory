@@ -70,6 +70,7 @@ const (
 	LockPartitions  int64 = 1008
 	LockCAInit      int64 = 1009
 	LockQuestions   int64 = 1010
+	LockWaitlist    int64 = 1011
 )
 
 // TryLock takes a session-level advisory lock on a dedicated connection

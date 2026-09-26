@@ -67,7 +67,9 @@ snapshots    (id pk, project_id fk, host_id fk, blob_path text unique, bytes big
               reason text,  -- scheduled|stop|manual
               taken_at, expires_at, deleted_at, restoring_op_id uuid null)  -- set while a restore reads it; expiry skips it
 
-events       (id pk, project_id fk, ts timestamptz, ts_second bigint, kind text, agent text null,
+events       (id pk, project_id fk null, user_id fk null,  -- one of them is set (0007, I-269):
+              -- user_id alone for an account event (waitlist_admitted)
+              ts timestamptz, ts_second bigint, kind text, agent text null,
               tmux_window text null, summary text, source text,  -- host|http|api
               skew_seconds int null, host_event_id text unique,
               delivered jsonb)  -- {email: ts|"error: ..."|"failed: ...", ntfy: ...}
@@ -126,6 +128,11 @@ questions    (id pk,               -- chosen by guestd (UUIDv7); a re-announceme
               -- repose-ask (0006, I-244/I-245); text and answer are tenant content stored
               -- like events.summary: plain, shown to the owner, never logged
 
+waitlist     (user_id pk fk, joined_at, admitted_at null,
+              admitted_by text null)   -- auto | the operator's audit actor
+              -- the capacity waitlist (0007, I-269); a row is kept after
+              -- admission, which is what lets the user past the gate
+
 base_versions (version text pk, nix_rev text, changelog text, released_at,
               security bool)
 
@@ -144,10 +151,13 @@ desc)`, `certificates(user_id) where revoked_at is null`, `usage_hours(hour)`,
 = 'pending'`, `questions(deliver_next_at) where state <> 'pending' and
 delivered_at is null`, `questions(deliver_command_id)`, `usage_hours(hour) where
 stripe_usage_record_id is null`, `credit_ledger(user_id, created_at)`,
-`ops(state) where state in ('pending','running')`, `events_outbox(next_at)`.
+`ops(state) where state in ('pending','running')`, `events_outbox(next_at)`,
+`events(user_id, ts desc) where user_id is not null`, `waitlist(joined_at,
+user_id) where admitted_at is null`, `waitlist(admitted_at) where
+admitted_at is not null`.
 
 Migrations `0001_init`, `0002_outbox_sessions_settings`, `0003_billing`,
-`0004_gateway_session_id`, `0005_abuse_events` and `0006_questions` create all of this; `repose-admin db migrate --down 1` reverts one. Partitions of the
+`0004_gateway_session_id`, `0005_abuse_events`, `0006_questions` and `0007_waitlist` create all of this; `repose-admin db migrate --down 1` reverts one. Partitions of the
 sample tables are created for the current and next month at start and by
 the daily job, which also drops partitions past retention.
 

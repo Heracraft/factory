@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/heracraft/repose/internal/api/secrets"
+	"github.com/heracraft/repose/internal/api/waitlist"
 	"os"
 	"strconv"
 	"strings"
@@ -44,6 +45,10 @@ type Config struct {
 	DashboardURL    string
 	BaseRef         string
 	ReplicaID       string
+	// WaitlistPercent is WAITLIST_PERCENT: the share of usable fleet
+	// memory, reserved, past which a first project waits (DECISIONS
+	// I-269). 0 turns the waitlist off.
+	WaitlistPercent int
 	// Dev enables the in-memory Key Vault and self-issued certificates;
 	// it is refused unless REPOSE_DEV=1 and never in a container with a
 	// KEYVAULT_URL.
@@ -98,6 +103,11 @@ func FromEnv() (Config, error) {
 		return c, errors.New("GATEWAY_PORT is not a number")
 	}
 	c.GatewayPort = port
+	pct, err := strconv.Atoi(env("WAITLIST_PERCENT", strconv.Itoa(waitlist.DefaultPercent)))
+	if err != nil || pct < 0 || pct > 100 {
+		return c, errors.New("WAITLIST_PERCENT must be a whole number from 0 to 100")
+	}
+	c.WaitlistPercent = pct
 	if c.ReplicaID == "" {
 		h, err := os.Hostname()
 		if err != nil || h == "" {

@@ -7,14 +7,18 @@ user id). Internal routes under `/internal/` are for the gateway and use a
 shared mTLS client certificate. Errors: `{ "error": { "code": "...",
 "message": "...", "detail": {...} } }` with codes `unauthenticated`,
 `forbidden`, `not_found`, `invalid`, `conflict`, `payment_required`,
-`capacity`, `rate_limited`, `billing_disabled`, `internal`. Every response
+`capacity`, `waitlisted`, `rate_limited`, `billing_disabled`, `internal`.
+`waitlisted` (503) refuses a user's first project while the fleet is near
+full and puts them on the capacity waitlist; `detail` is `{position,
+joined_at, email}` and `message` is the whole sentence (DECISIONS I-269).
+Every response
 carries `X-Request-Id`.
 
 ## Users
 
 | Method | Path | Body / result |
 |---|---|---|
-| GET | `/me` | `{id, handle, email, github_login, tz, created_at, billing: {status: trial\|active\|past_due\|suspended\|exempt, trial_credit_cents, has_card}, limits: {projects, xl}}` |
+| GET | `/me` | `{id, handle, email, github_login, tz, created_at, billing: {status: trial\|active\|past_due\|suspended\|exempt, trial_credit_cents, has_card}, limits: {projects, xl}, waitlist: {position, joined_at}\|null}` (`waitlist` is set while the user holds a place on the capacity waitlist, I-269) |
 | PATCH | `/me` | `{tz?, notify: {email?: bool, ntfy_url?: string\|null}}` |
 | DELETE | `/me` | begins cancellation (stops guests, 30-day retention) |
 | POST | `/me/notify-test` | sends a test event to every configured channel → `{email: ok\|error, ntfy: ok\|error}` |
@@ -28,7 +32,7 @@ unique; it is the second half of the SSH login name.
 | Method | Path | Body / result |
 |---|---|---|
 | GET | `/projects` | `[Project]` |
-| POST | `/projects` | `{name, remote_url?, class, tz?, agent_default?}` → `Project` (`agent_default` defaults to `claude`; the CLI sends `config.toml`'s `default_agent`, I-241) (409 if `(user, remote_url)` or `(user, name)` exists) |
+| POST | `/projects` | `{name, remote_url?, class, tz?, agent_default?}` → `Project` (`agent_default` defaults to `claude`; the CLI sends `config.toml`'s `default_agent`, I-241) (409 if `(user, remote_url)` or `(user, name)` exists). A user who has never had a project, was never admitted from the waitlist and is not `exempt` gets 503 `waitlisted` when the reserved memory of ready hosts, plus 8 GB per admission of the last 72 h not yet taken up, plus this class, would pass `WAITLIST_PERCENT` (default 80) of their usable memory, or when anyone is already waiting; a retry keeps the place (I-269) |
 | GET | `/projects/destroyed` | `[DestroyedProject]`: the user's destroyed projects that still have a restorable snapshot, newest destroy first (I-167). Added with I-167 |
 | POST | `/projects/restore` | `{slug \| project_id \| snapshot_id, name?, start?: bool=true}` → `202 {op_id, project_id, name, slug, snapshot_id, snapshot_created_at, from_project_id}`. Restores as a new project called `name` (default: the source's name). `slug` means the live project with that slug if there is one, else the user's destroyed projects with it; the newest restorable snapshot among them is used unless `snapshot_id` names one. `404 not_found` when nothing can be restored (`detail.reason: "no_snapshot"` when the project exists); `409 conflict` with `detail: {reason: "name_taken", name}` when a live project holds the name, and with `detail.reason: "destroying"` when `slug` names a live project whose destroy has not taken its final snapshot yet (retry in a few seconds; I-190). The new project gets the source's class, volume size, configuration and, when no live project has it, its `remote_url` (I-167). Added with I-167 |
 | GET | `/projects/:id` | `Project` |

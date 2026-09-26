@@ -65,6 +65,14 @@ type meView struct {
 	Billing   billingView `json:"billing"`
 	Limits    limitsView  `json:"limits"`
 	Notify    notifyView  `json:"notify"`
+	// Waitlist is the place on the capacity waitlist, null when not
+	// waiting (DECISIONS I-269).
+	Waitlist *waitlistView `json:"waitlist"`
+}
+
+type waitlistView struct {
+	Position int       `json:"position"`
+	JoinedAt time.Time `json:"joined_at"`
 }
 
 type billingView struct {
@@ -91,6 +99,9 @@ func (f *Fake) meOf(u *userRec) meView {
 	if u.NtfyURL != "" {
 		url := u.NtfyURL
 		v.Notify.NtfyURL = &url
+	}
+	if f.waitlist > 0 && len(f.userProjects(u)) == 0 {
+		v.Waitlist = &waitlistView{Position: f.waitlist, JoinedAt: u.CreatedAt}
 	}
 	switch f.billingMode() {
 	case BillingCard:
@@ -349,7 +360,12 @@ func (f *Fake) createProject(w http.ResponseWriter, r *http.Request) *apiError {
 			return invalid("tz: unknown time zone")
 		}
 	}
-	p, e := f.create(userFrom(r), body.Name, body.RemoteURL, body.Class)
+	u := userFrom(r)
+	if f.waitlist > 0 && len(f.userProjects(u)) == 0 {
+		return errf("waitlisted", "repose is at capacity. You're number %d on the waitlist; we'll email %s when there's room.", f.waitlist, u.Email).
+			withDetail(map[string]any{"position": f.waitlist, "joined_at": u.CreatedAt, "email": u.Email})
+	}
+	p, e := f.create(u, body.Name, body.RemoteURL, body.Class)
 	if e != nil {
 		return e
 	}

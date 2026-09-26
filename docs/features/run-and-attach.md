@@ -202,6 +202,9 @@ Failure output:
 - Host capacity exhausted: exit 8, `No capacity right now; try again in a
   few minutes. (We have been alerted.)` The API also raises a capacity
   alert.
+- A first project while the fleet is near full: exit 8, `repose is at
+  capacity. You're number N on the waitlist; we'll email <address> when
+  there's room.` (projects.md, "Limits"; DECISIONS I-269).
 - Build failed: exit 10, the Nix error verbatim, the fragment line if known,
   and `edit with \`repose config edit\``.
 - SSH does not answer within 60s of the API reporting `running`: exit 1,
