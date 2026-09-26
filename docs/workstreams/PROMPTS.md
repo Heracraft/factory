@@ -311,8 +311,8 @@ Paste this first, then the workstream block.
 
 ```
 You are building one workstream of repose in the repository root (`git rev-parse --show-toplevel`).
-Read, in order: AGENTS.md, docs/README.md, docs/DESIGN.md, docs/DECISIONS.md,
-docs/workstreams/README.md, then your workstream doc and every docs/interfaces/
+Read, in order: CLAUDE.md, docs/README.md, docs/DESIGN.md, docs/DECISIONS-INDEX.md
+(then docs/DECISIONS.md at the entries you need), docs/workstreams/README.md, then your workstream doc and every docs/interfaces/
 file it owns or consumes. Do not skim; the checklists reference exact names.
 
 Rules:

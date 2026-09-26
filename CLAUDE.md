@@ -14,7 +14,7 @@ the other way round.
 
 ## The nix work is for remote environments
 
-Never run a direct install of anything from `nix/` or `packages/core` on this
+Never run a direct install of anything from `nix/` on this
 machine. Host, edge and guest configurations are built here and deployed
 there. The dev shell (`nix develop`) is the only thing meant to run locally.
 This box is an Azure AMD size; hosts must be Intel (`docs/DESIGN.md` §4), so

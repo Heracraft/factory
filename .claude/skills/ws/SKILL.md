@@ -15,8 +15,9 @@ Then:
    your standing instructions for this whole session, and find the
    per-workstream block whose heading starts with the number in
    `$ARGUMENTS` (for example `### 03 hostd`). That block is your task.
-2. Read, in order, exactly as the preamble says: `AGENTS.md`, `docs/README.md`,
-   `docs/DESIGN.md`, `docs/DECISIONS.md`, `docs/workstreams/README.md`, the
+2. Read, in order, exactly as the preamble says: `CLAUDE.md`, `docs/README.md`,
+   `docs/DESIGN.md`, `docs/DECISIONS-INDEX.md` (then `docs/DECISIONS.md` at the
+   entries you need), `docs/workstreams/README.md`, the
    workstream doc named in the block, and every `docs/interfaces/` file that
    doc lists under "Interfaces owned / consumed". Do not skim.
 3. Add your claim line to `docs/workstreams/STATUS.md` and commit it.
