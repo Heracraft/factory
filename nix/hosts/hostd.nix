@@ -17,6 +17,7 @@ let
     else
       "--snapshot-dir ${lib.escapeShellArg cfg.snapshots.localDir}";
   buildFlags = "--build-user ${lib.escapeShellArg cfg.buildUser}"
+    + lib.optionalString (!cfg.claudeLoginShare) " --claude-login-share=false"
     + lib.optionalString (cfg.baseRepo.url != "") " --base-repo-url ${lib.escapeShellArg cfg.baseRepo.url}"
     + lib.optionalString (cfg.baseRepo.sshKeyFile != "") " --base-repo-ssh-key ${lib.escapeShellArg cfg.baseRepo.sshKeyFile}"
     + lib.optionalString (cfg.overlayCache.url != "") " --substituters ${lib.escapeShellArg "https://cache.nixos.org ${cfg.overlayCache.url}"}";
@@ -163,6 +164,9 @@ in
     # 0711: virtiofsd reaches its socket directory under its guest's
     # directory; the per-guest directories are 1770 root:hostd (I-51).
     "d /var/lib/repose/guests 0711 root root -"
+    # Per-user Claude login shares (I-278); hostd creates each user's
+    # directory, the auth virtiofsd traverses this one.
+    "d /var/lib/repose/users 0711 root root -"
     "d /var/lib/repose/builds 0711 root root -"
     "d /var/lib/repose/base 0755 root root -"
     "d /var/log/repose 0750 root root -"

@@ -348,13 +348,16 @@ All of it is idempotent; running `repose run` twice attaches twice.
   hostd, which forwards to the API. Claude Code uses its `Notification` and
   `Stop` hooks; the others use their equivalents or a tmux pane-idle
   heuristic where no hook exists, and the doc for that agent says which.
-- Claude login happens inside the guest: the first `run` with agent claude
-  detects no credentials and runs `claude` so the user pastes the code from
-  the browser. `repose secrets set CLAUDE_CODE_OAUTH_TOKEN` (from `claude
+- Claude login happens inside a guest, once per user: the first `run` with
+  agent claude detects no credentials and runs `claude` so the user pastes
+  the code from the browser. The file Claude Code writes is shared into
+  every guest of that user on the host, so the other projects are signed in
+  too (DECISIONS I-278). `repose secrets set CLAUDE_CODE_OAUTH_TOKEN` (from `claude
   setup-token` on the laptop) is the headless fallback and loses Remote
   Control, connectors and Claude in Chrome. Anthropic's terms require each
   user to authenticate with their own credentials on hosted platforms; the
-  platform never stores or proxies Claude auth.
+  platform never reads, copies or proxies Claude auth; the login share is
+  storage the user's own guests share, which hostd creates but never opens.
 - Browser: one headed Chromium on a virtual display, shared by Playwright
   MCP and chrome-devtools-mcp, in every guest (I-246). `repose open
   --desktop` starts x11vnc and noVNC and forwards the noVNC port so the
@@ -376,7 +379,9 @@ Three kinds, three treatments:
    laptop's whole effective git config minus a denylist (credentials, ssh,
    signing, proxies; DECISIONS I-195). Copied at `run` over SSH into the guest,
    mode 0600, owned by `dev`. The platform never sees them.
-2. **Claude Code**: never copied. See section 11.
+2. **Claude Code**: never copied. The user's own `/login` writes it to a
+   per-user directory on the host that only that user's guests mount
+   (DECISIONS I-278). See section 11.
 3. **Named secrets** (`repose secrets set NAME`): encrypted by the API with a
    per-user data key, itself wrapped by an Azure Key Vault key. Ciphertext and wrapped DEK in Postgres. Delivered to
    the guest at start as `/run/repose/secrets/NAME` (tmpfs, 0400 dev) and

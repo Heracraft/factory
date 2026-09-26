@@ -34,6 +34,10 @@ type Spec struct {
 	VCPUs        uint32
 	MemMiB       uint64
 	StoreTag     string // ro-store
+	// AuthTag is the user's Claude login share (DECISIONS I-278); empty
+	// when the guest has none (no user id recorded), and then no second
+	// --fs is rendered.
+	AuthTag string // claude-auth
 }
 
 // Paths under the guest directory.
@@ -44,6 +48,10 @@ func ConsoleSocket(dir string) string { return filepath.Join(dir, "console.sock"
 // VirtiofsSocket lives in a subdirectory virtiofsd owns, since the guest
 // directory itself is writable only by hostd and the hypervisor's user.
 func VirtiofsSocket(dir string) string { return filepath.Join(dir, "virtiofsd", "virtiofsd.sock") }
+
+// AuthSocket is the login share's virtiofsd socket, in its own directory
+// for the same reason (DECISIONS I-278).
+func AuthSocket(dir string) string { return filepath.Join(dir, "virtiofsd-auth", "virtiofsd.sock") }
 
 // Cmdline renders the kernel command line: the closure's init and params,
 // the serial console, and the static address the guest's networkd reads.
@@ -59,7 +67,7 @@ func (s Spec) Cmdline() string {
 
 // Args renders the cloud-hypervisor argv.
 func (s Spec) Args() []string {
-	return []string{
+	args := []string{
 		"cloud-hypervisor",
 		"--api-socket", APISocket(s.GuestDir),
 		"--kernel", s.Kernel,
@@ -86,6 +94,10 @@ func (s Spec) Args() []string {
 		// default, or an operator reading ch.args, sees the filter is on.
 		"--seccomp", "true",
 	}
+	if s.AuthTag != "" {
+		args = append(args, "--fs", fmt.Sprintf("tag=%s,socket=%s", s.AuthTag, AuthSocket(s.GuestDir)))
+	}
+	return args
 }
 
 // Client is the API-socket side.

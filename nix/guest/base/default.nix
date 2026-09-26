@@ -20,6 +20,7 @@
     ./tools-carry.nix
     ./compat.nix
     ./agents.nix
+    ./claude-auth.nix
     ./agent-guide.nix
     ./browser.nix
     ./desktop.nix

@@ -91,7 +91,8 @@ var Classes = map[string]Class{
 // (about 4 MiB per GiB of RAM), io_uring and slab, and the page cache of
 // the kernel and initrd it read. With the disk opened O_DIRECT that is
 // under 150 MiB for xl (DECISIONS I-230); the rest is margin. virtiofsd is
-// its own unit (virtiofsd@<id>, MemoryMax=1G) and is not in this number.
+// its own unit (virtiofsd@<id>, MemoryMax=1G), as is the login share
+// (virtiofsd-auth@<id>, MemoryMax=64M, I-278); neither is in this number.
 // Placement (FreeMemBytes) and the api count class RAM plus this.
 const OverheadMiB = 512
 
@@ -137,6 +138,17 @@ type Config struct {
 	StoreExport        string
 	VirtiofsUser       string
 	VirtiofsBinary     string
+	// The Claude login share (DECISIONS I-278): UsersDir/<user_id>/claude-auth
+	// holds one user's .credentials.json, served into each of that user's
+	// guests as AuthTag by a virtiofsd running as AuthUser.
+	UsersDir string
+	AuthTag  string
+	AuthUser string
+	// NoAuthShare starts no login share: guests boot as before I-278.
+	NoAuthShare bool
+	// AuthKeep is how long a user's login share outlives their last guest
+	// on this host; zero means 30 days, the snapshot retention.
+	AuthKeep time.Duration
 	// GuestUser is the unprivileged user guest@<id> (Cloud Hypervisor) runs
 	// as (I-51). It owns the taps and is in group kvm; the guest volumes
 	// are group-owned by it through the host's udev rule.
@@ -186,6 +198,18 @@ func (c Config) Defaults() Config {
 	}
 	if c.VirtiofsUser == "" {
 		c.VirtiofsUser = "virtiofsd"
+	}
+	if c.UsersDir == "" {
+		c.UsersDir = "/var/lib/repose/users"
+	}
+	if c.AuthTag == "" {
+		c.AuthTag = "claude-auth"
+	}
+	if c.AuthUser == "" {
+		c.AuthUser = "repose-auth"
+	}
+	if c.AuthKeep == 0 {
+		c.AuthKeep = 30 * 24 * time.Hour
 	}
 	if c.GuestUser == "" {
 		c.GuestUser = "hostd"

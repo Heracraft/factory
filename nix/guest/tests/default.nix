@@ -1431,4 +1431,76 @@ in
           assert "envrc=slow" in guest.succeed("cat /tmp/out-slow")
     '';
   };
+
+  # I-278: the Claude login share. The test VM has no virtio-fs device, so
+  # a tmpfs mounted at the share's mount point before the unit runs stands
+  # in for the host's claude-auth tag (the unit then skips its own mount).
+  # The real tag was checked on host-01 (experiment B and the production
+  # virtiofsd shape, docs/proposals/2026-09-24-claude-login-shared-folder.md).
+  guest-claude-auth = mkTest "guest-claude-auth" {
+    nodes.guest = { pkgs, ... }: {
+      imports = [ node ];
+      systemd.services.test-fake-auth-share = {
+        wantedBy = [ "repose-claude-auth.service" ];
+        before = [ "repose-claude-auth.service" ];
+        unitConfig.DefaultDependencies = false;
+        serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
+        path = [ pkgs.util-linux ];
+        script = "mkdir -p /run/repose/claude-auth && mount -t tmpfs -o mode=0700,uid=1000,gid=1000 fake /run/repose/claude-auth";
+      };
+    };
+    testScript = ''
+      import json
+      import shlex
+
+      guest.start()
+      guest.wait_for_unit("multi-user.target")
+      guest.wait_for_unit("repose-claude-auth.service")
+      print(guest.succeed("systemctl status --no-pager test-fake-auth-share repose-claude-auth || true"))
+      target = "/home/dev/.claude/.credentials.json"
+      share = "/run/repose/claude-auth"
+
+      def dev(cmd):
+          return guest.succeed(f"sudo -H -u dev sh -c {shlex.quote(cmd)}")
+
+      with subtest("one file bind-mounted, owned by dev, 0600"):
+          guest.succeed(f"findmnt -n --mountpoint {target}")
+          assert guest.succeed(f"stat -c '%U %a' {share}/.credentials.json").strip() == "dev 600"
+          assert guest.succeed(f"ls -A {share}").split() == [".credentials.json"]
+
+      with subtest("Claude Code's write (temp file, rename refused, rewrite in place) lands in the share"):
+          dev(f"echo '{{\"claudeAiOauth\":{{\"expiresAt\":1}}}}' > {target}.tmp.x")
+          code, out = guest.execute(f"sudo -H -u dev mv -T {target}.tmp.x {target} 2>&1")
+          assert code != 0 and "busy" in out, out
+          dev(f"echo '{{\"claudeAiOauth\":{{\"expiresAt\":2}}}}' > {target} && rm {target}.tmp.x")
+          assert json.loads(guest.succeed(f"cat {share}/.credentials.json"))["claudeAiOauth"]["expiresAt"] == 2
+
+      with subtest("the rest of ~/.claude stays in the machine"):
+          dev("repose-agent-setup claude")
+          guest.succeed("test -s /home/dev/.claude/settings.json")
+          assert guest.succeed(f"ls -A {share}").split() == [".credentials.json"]
+          guest.fail("findmnt -n --mountpoint /home/dev/.claude")
+          guest.fail("findmnt -n --mountpoint /home/dev/.claude/settings.json")
+
+      with subtest("onboarding is marked done where the share is mounted, and a user value wins"):
+          assert json.loads(guest.succeed("cat /home/dev/.claude.json"))["hasCompletedOnboarding"] is True
+          guest.succeed("sudo -H -u dev sh -c 'jq \".hasCompletedOnboarding=false\" ~/.claude.json > /tmp/cj && cat /tmp/cj > ~/.claude.json'")
+          dev("repose-agent-setup claude")
+          assert json.loads(guest.succeed("cat /home/dev/.claude.json"))["hasCompletedOnboarding"] is False
+
+      with subtest("idempotent: a restart adds no second mount"):
+          guest.succeed("systemctl restart repose-claude-auth && systemctl restart repose-claude-auth")
+          assert guest.succeed(f"findmnt -n --mountpoint {target} | wc -l").strip() == "1"
+
+      with subtest("no share on the host: the machine keeps its own login"):
+          guest.succeed(f"umount {target} && umount {share}")
+          guest.succeed("systemctl restart repose-claude-auth")
+          guest.fail(f"findmnt -n --mountpoint {target}")
+          guest.succeed(f"test -f {target}")
+          out = guest.succeed("journalctl -u repose-claude-auth -b --no-pager")
+          assert "keeps its login in this machine" in out, out
+          guest.succeed("rm -f /home/dev/.claude.json && sudo -H -u dev repose-agent-setup claude")
+          assert "hasCompletedOnboarding" not in guest.succeed("cat /home/dev/.claude.json")
+    '';
+  };
 }

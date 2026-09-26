@@ -206,7 +206,8 @@ the `hosts.yml` that travels carries that token as `oauth_token` under
 `github.com:`; the laptop's own file is not changed. All of this is one
 ssh, before the git steps of the sync.
 
-Never `~/.claude/.credentials.json`, never `~/.gemini/oauth_creds.json`
+Never `~/.claude/.credentials.json` (it is the login share's, below),
+never `~/.gemini/oauth_creds.json`
 (OAuth over SSH is unreliable; Gemini uses `GEMINI_API_KEY` as a named
 secret), never SSH private keys.
 
@@ -445,3 +446,24 @@ the runner uses one queue pair. Memory is `shared=on` (virtio-fs needs it);
 the volume is opened `direct=on` (O_DIRECT, DECISIONS I-230).
 The kernel line gets `ip=<ip>::<gateway>:<netmask>:<hostname>:eth0:off`,
 which the guest turns into its static network configuration.
+
+## The Claude login share (DECISIONS I-278)
+
+`repose-claude-auth.service` (oneshot, before `systemd-user-sessions` and
+`user@1000`) mounts the virtio-fs tag `claude-auth` at
+`/run/repose/claude-auth` (`nosuid,nodev,noexec`), creates
+`/run/repose/claude-auth/.credentials.json` and
+`/home/dev/.claude/.credentials.json` empty, as `dev`, mode 0600, when
+missing, and bind-mounts the first over the second. The share appears
+owned by `dev`: the host maps uid and gid 1000 to its own account. Nothing
+else under `~/.claude` is shared. With no tag (a guest with no user id, an
+older hostd, a share that failed to start) the unit logs "no Claude login
+share on this host" and exits 0, and the file stays the guest's own. A
+symlink at `~/.claude/.credentials.json` is left alone and not shared.
+Re-running the unit changes nothing.
+
+`repose-agent-setup claude` sets `hasCompletedOnboarding: true` in
+`~/.claude.json` when `~/.claude/.credentials.json` is a mount point and
+the key is absent, since Claude Code's first-run onboarding asks for a
+login method even when the shared file holds one.
+

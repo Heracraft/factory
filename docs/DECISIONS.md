@@ -7347,3 +7347,87 @@ showing progress over the pane (it would corrupt the tmux screen). Not
 verified here: a real Mac or Linux desktop terminal, and Terminal.app's
 bracketing of a drop; the owner's live check is in 07-cli.md's
 checklist.
+**I-278. One Claude login per user: the login share.** (owner,
+2026-09-26; supersedes the "log in inside each guest" half of R2-8 and
+amends CLAUDE.md's "Secrets have three homes") Logging in to Claude Code
+once per project was, in the owner's words, load-bearing: users expect
+one login and only notice when it is missing. Each user now has one
+directory per host, `/var/lib/repose/users/<user_id>/claude-auth`
+(0700, host account `repose-auth`), shared into every guest of that user
+as the read-write virtio-fs tag `claude-auth` by its own
+`virtiofsd-auth@<guest id>` (unprivileged, `--sandbox namespace`,
+`--cache never`, guest uid/gid 1000 translated to `repose-auth`). In the
+guest, `repose-claude-auth.service` mounts it at `/run/repose/claude-auth`
+and bind-mounts its one file, `.credentials.json`, over
+`~/.claude/.credentials.json` before any login session starts. The user
+runs `/login` in any guest, through Anthropic's own flow, with the
+unmodified binary; the file Claude Code writes is then the file every
+other guest of that user reads, and a token refresh in one is seen by
+all. Repose code never opens, reads, copies, moves or transmits the file:
+hostd creates and serves the directory, the guest unit creates an empty
+file and mounts it.
+
+Evidence (docs/proposals/2026-09-24-claude-login-shared-folder.md,
+experiments A and B, Claude Code 2.1.280/2.1.281 on host-01): Claude Code
+writes the file as a temp file renamed over it, so a symlink into a
+shared directory is silently replaced by a local file; over a file bind
+mount the rename fails with EBUSY and Claude Code rewrites the file in
+place, which the other guests see. One `/login` in e2e-cc-a served
+e2e-cc-b; a forced refresh in one was picked up by the other's running
+session with no restart; three rounds of both refreshing at once left
+both signed in and the file valid. The production virtiofsd shape was
+checked the same day on host-01 (guest sees dev 1000:1000, rename
+refused, in-place write lands, root-created files map to dev too).
+
+Only the one file is shared, never `~/.claude`: `settings.json` holds
+hooks, and a shared hook would let an agent in one project run commands
+in every other project of the user. The worst an agent can do with the
+shared file is read the token (it can already, in its own guest) or
+corrupt it, which signs the user out everywhere until the next `/login`.
+
+First-run onboarding (theme, then "Select login method") shows even when
+the shared file holds a valid login and does not skip on Esc, so
+`repose-agent-setup claude` sets `hasCompletedOnboarding: true` in
+`~/.claude.json` when the share is mounted and the key is absent (a user
+value, including false, wins). No auth method is removed; `/login` and
+`/logout` are Claude Code's own.
+
+Retention: the share is not on the guest volume, so it is in no snapshot
+and survives destroy, restore and base changes. hostd stamps
+`users/<id>/last-guest` whenever a guest of that user boots and at every
+sweep while one exists; the sweep (hostd start and daily) removes a
+user's directory 30 days after their last guest on the host went, the
+same window account cancellation keeps snapshots in. No new command: the
+api needs no change and an account cancellation (which destroys every
+project) empties the host within 30 days.
+
+Failure is local: a guest with no user id, a user id that is not a safe
+path segment, or a share whose virtiofsd fails to start boots without
+the share (logged `auth_share`), and the guest unit leaves Claude Code
+with its own login in the guest. A running guest picks the share up at
+its next start; hostd attaches it only after its socket exists. The CLI's
+"not logged in yet" check (07-cli.md §5.5) is `test -s`, since the
+bind-mounted file always exists and is empty until the first login.
+
+Consequences: a login made inside a guest before this is hidden under the
+mount (still on the volume) and the user logs in once more, after which
+every project is signed in; the owner accepted this over any migration,
+which would mean repose code moving a credential. One login per host:
+guests of one user on two hosts need one login each (today there is one
+host); scheduling a user's guests together is for when there is a second.
+The fallback EBUSY write is undocumented Claude Code behaviour; a release
+that drops it fails every refresh on the share, so a Claude Code version
+bump in the base re-runs the experiment-A trace
+(`ops/dev/claude-auth-trace.sh`) before publish. Built before Anthropic's
+answer to experiment C (whether this counts as "store or intermediate"),
+on the owner's call; if the answer is no, `repose.host.claudeLoginShare =
+false` (hostd `--claude-login-share=false`) starts no share and the
+per-guest login returns.
+`TestCreateAttachesTheUsersLoginShare`, `TestNoUserIDNoLoginShare`,
+`TestLoginShareFailureStillBoots`, `TestSweepAuthShares`,
+`TestStartAuthRendersTranslatedUncachedShare`, VM check
+`guest-claude-auth`. *Rejected:* a symlink (replaced on the first
+refresh); `CLAUDE_CONFIG_DIR` on the share (shares hooks); the CLI or
+hostd copying the file between guests (copies a credential, and the
+terms name that); a new hostd command at account deletion (the sweep
+already bounds it by the snapshot window).

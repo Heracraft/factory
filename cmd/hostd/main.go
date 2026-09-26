@@ -70,6 +70,7 @@ func options(fs *flag.FlagSet) *app.Options {
 	fs.StringVar(&o.StoreExport, "store-export", "/run/repose/store-export", "directory virtiofsd shares")
 	fs.StringVar(&o.VirtiofsUser, "virtiofsd-user", "virtiofsd", "user virtiofsd runs as")
 	fs.StringVar(&o.GuestUser, "guest-user", "hostd", "unprivileged user the guest@ (Cloud Hypervisor) units run as")
+	fs.BoolVar(&o.ClaudeLoginShare, "claude-login-share", true, "share each user's Claude Code login into all their guests (DECISIONS I-278)")
 	fs.StringVar(&o.VG, "vg", "vg-guests", "volume group")
 	fs.StringVar(&o.Pool, "pool", "thin", "thin pool")
 	fs.IntVar(&o.MaxOps, "max-ops", 8, "concurrent guest operations")

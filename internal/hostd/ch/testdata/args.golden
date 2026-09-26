@@ -25,3 +25,5 @@ socket=/var/lib/repose/guests/0192f0a1-1111-7000-8000-000000000001/console.sock
 off
 --seccomp
 true
+--fs
+tag=claude-auth,socket=/var/lib/repose/guests/0192f0a1-1111-7000-8000-000000000001/virtiofsd-auth/virtiofsd.sock

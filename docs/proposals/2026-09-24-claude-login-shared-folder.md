@@ -1,7 +1,9 @@
 # Claude login once per user: the shared credential folder (proposal, 2026-09-24)
 
-**Status: open, not decided. Two experiments and one question to
-Anthropic come first.** This continues item 9 of
+**Status: decided and built, DECISIONS I-278 (2026-09-26).** Experiment A
+passed (file bind mount), B passed its forced tests, and the owner chose
+to build before B's 24-hour run (ends 2026-09-27 20:30Z) and before
+Anthropic's answer to C. Below is the record of how it got there. This continues item 9 of
 `2026-09-23-dev-ergonomics.md` ("users logging in N times is not
 acceptable"). If it goes ahead, it needs a `DECISIONS.md` entry and a
 `SECURITY.md` note, because it adds a place a secret lives. CLAUDE.md
@@ -125,6 +127,40 @@ This decides whether a symlink or bind mount can work.
      rule above), so another way must be found or the idea fails here.
 4. Record the result, with the Claude Code version, in this file.
 
+**Result (2026-09-26, Claude Code 2.1.280, guest e2e-cc-a on host-01):
+a file bind mount works; a symlink does not.** A refresh was forced by
+setting `expiresAt` to 1000 in place, then `claude -p` was run under
+`strace -f -e trace=openat,rename,…`. Traces are in the guest under
+`~/cc-exp/`.
+
+- **Plain file.** Claude Code opens `~/.claude/.credentials.json.tmp.<hex>`
+  (`O_WRONLY|O_CREAT|O_EXCL`, 0600) in the same directory, renames it over
+  the file, then chmods it 0600. The inode changes (525571 → 525619).
+- **Symlink into a shared dir.** The same rename replaces the symlink with
+  a regular local file. The shared file keeps the stale token (still
+  `expiresAt=1000`). Sharing stops silently, as feared.
+- **File bind mount** (`mount --bind <shared>/.credentials.json
+  ~/.claude/.credentials.json`). The rename fails with `EBUSY`. Claude Code
+  then falls back to writing in place: `openat(…/.credentials.json,
+  O_WRONLY|O_CREAT|O_NONBLOCK|O_NOFOLLOW)`, write, unlink the temp file,
+  chmod. The inode stays 525619, and the shared file holds the refreshed
+  token. The prompt succeeded.
+
+**What this means for the design:**
+- The guest mounts the share and bind-mounts one file,
+  `<share>/.credentials.json`, over `~/.claude/.credentials.json`. The rest
+  of `~/.claude` stays local, as the rule above requires.
+- The file must exist before the bind mount, and the mount must be in
+  place before the first `/login`.
+- The fallback write is not atomic. Another guest reading during it can see
+  a truncated file, which Claude Code treats as corrupt (no login) for that
+  read. B measures whether that ever shows.
+- Because of `O_NOFOLLOW`, the fallback refuses a symlink at the path.
+- The fallback is undocumented Claude Code behaviour. A release that drops
+  it breaks sharing: every refresh would fail with `EBUSY`. So the release
+  base needs a check that repeats this trace for each Claude Code version
+  bump.
+
 ### B. Do two guests on one file stay logged in?
 
 This is the rotation question.
@@ -143,6 +179,45 @@ This is the rotation question.
    prompt both). File locking over virtiofs is limited. The acceptable
    result is at worst one logout, never a corrupt file that needs manual
    repair.
+
+**Setup (2026-09-26):**
+- Two e2e guests on host-01: e2e-cc-a (Claude Code 2.1.280) and e2e-cc-b
+  (2.1.281; built after base 2026.09.26.1).
+- On the host, `/var/lib/repose/exp-cc-auth` (0700, uid 1000) is served by
+  one root virtiofsd per guest (`--sandbox chroot --cache never`) and
+  hot-plugged as tag `cc-auth` with `ch-remote add-fs`. hostd is untouched.
+- Each guest mounts the tag at `/mnt/cc-auth` and bind-mounts
+  `/mnt/cc-auth/.credentials.json` over `~/.claude/.credentials.json`.
+- Scripts and traces are in the session scratchpad, `exp-b-host.sh` and
+  `exp-b.sh`; the per-guest log is `~/cc-exp/b.log`.
+
+**Interim results (2026-09-26 20:30Z):**
+- **One login served both guests.** The owner ran `/login` once in
+  e2e-cc-a. It wrote through the bind mount (same host inode, no local
+  file). `claude -p` in e2e-cc-b then worked with no login of its own.
+- **Rotation, sequential.** The token was expired in the shared file and
+  e2e-cc-a prompted, so e2e-cc-a refreshed. e2e-cc-b's already-running
+  interactive session then answered 10 s later with no restart.
+- **Rotation, simultaneous.** Three rounds of: expire the token, then prompt
+  both running sessions at the same moment. All six prompts answered. The
+  file parsed afterwards with a refresh token present. No logout, no
+  corruption.
+- **Long run.** Running since 20:26Z: one interactive session per guest,
+  prompted every 30 min. The result is due after 2026-09-27 20:30Z.
+
+**New finding: first-run onboarding asks for a login anyway.**
+- A guest whose `~/.claude.json` lacks `hasCompletedOnboarding` starts
+  interactive `claude` with the theme picker, then "Select login method".
+  This happens even though valid shared credentials are present and
+  `claude -p` works. Esc does not skip it.
+- With `hasCompletedOnboarding: true` set in the guest's own
+  `~/.claude.json`, Claude goes straight to the folder-trust dialog, then
+  the prompt, signed in ("Claude Pro") from the shared file.
+- So the build must also seed that flag in a new guest's `~/.claude.json`.
+  It is an onboarding flag, not a credential, and no auth method is
+  removed: `/login` still works.
+- Otherwise the user would log in again in every new project, which is
+  what this proposal exists to prevent.
 
 ### C. Ask Anthropic
 

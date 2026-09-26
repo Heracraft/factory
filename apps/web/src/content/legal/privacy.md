@@ -67,8 +67,11 @@ and are the only way a project moves between servers.
 
 The process-sample boundary above is the important one. Beyond it:
 
-- We never copy, store or proxy your Claude Code credentials. You log in
-  to Claude inside your environment with your own account.
+- We never copy, read or proxy your Claude Code credentials. You log in
+  to Claude inside your environment with your own account. The file Claude
+  Code writes is kept on the host, on storage only your own environments
+  mount, so one login covers all of them; our software never opens it, and
+  it is deleted 30 days after your last environment on that host is gone.
 - We never store the tool logins the repose CLI copies from your laptop
   (GitHub CLI, Codex, opencode, your git identity). They travel from your
   laptop to your environment inside your own SSH session and are not

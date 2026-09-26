@@ -1974,3 +1974,33 @@ If neither is true, someone is posting at the endpoint. It is
 unauthenticated by design (the signature is the authentication) and a
 forged body cannot pass, so this is noise rather than an incident; the
 rate limit in front of the api is the answer if it becomes constant.
+
+## Claude asks for a login in every project (login share, I-278)
+
+A tenant logged in to Claude Code in one machine and another still asks,
+or all of them ask again at once.
+
+1. In the machine that asks: `repose-admin exec <id> -- findmnt
+   /home/dev/.claude/.credentials.json`. No output means the share is not
+   mounted: `journalctl -u repose-claude-auth -b` in the guest says why
+   ("no Claude login share on this host" = no `claude-auth` tag).
+2. On the host: `systemctl status virtiofsd-auth@<guest id>` and
+   `grep claude-auth /var/lib/repose/guests/<guest id>/ch.args`. The tag is
+   only attached when that unit came up before the hypervisor; hostd logs
+   `auth_share` with the reason when it did not (a guest with no user id
+   has no share by design). A restart of the project (`repose stop`, then
+   `start`) retries.
+3. All machines asking at once after they worked: the file was emptied or
+   corrupted (an agent, or a refresh cut off by a host crash mid-write).
+   `ls -l /var/lib/repose/users/<user_id>/claude-auth/` shows its size; do
+   not open it. The tenant runs `/login` once in any machine and every
+   machine is signed in again.
+4. Every refresh failing right after a base publish with a new Claude
+   Code: the in-place fallback may be gone. `ops/dev/claude-auth-trace.sh`
+   in an e2e machine shows it; roll the base back (DECISIONS I-278).
+
+A user's directory is removed by hostd 30 days after their last guest on
+that host (`auth_share_sweep`). To turn the share off host-wide, set
+`repose.host.claudeLoginShare = false` and switch the host (hostd then
+runs with `--claude-login-share=false`): guests started after that boot
+without it and keep a login of their own.

@@ -9,7 +9,7 @@ Every machine has five coding agents installed, unmodified:
 
 | Agent       | `--agent`  | Login                                      | Notifies you          |
 | ----------- | ---------- | ------------------------------------------ | --------------------- |
-| Claude Code | `claude`   | Log in on the machine, or a setup token    | Finished, needs input |
+| Claude Code | `claude`   | Log in once, or a setup token              | Finished, needs input |
 | Codex CLI   | `codex`    | Copied from your laptop                    | Finished              |
 | opencode    | `opencode` | Copied from your laptop                    | Finished, needs input |
 | Gemini CLI  | `gemini`   | `GEMINI_API_KEY` secret, or on the machine | When it goes idle     |
@@ -56,11 +56,11 @@ Any agent can message you or ask you a question with two commands on the machine
 
 ## Log in
 
-Logins are kept on the machine's disk. They survive stops and are in snapshots.
+Logins are kept on the machine's disk, except Claude Code's (below). They survive stops and are in snapshots.
 
-**Claude Code.** Its login is never copied from your laptop, so log in once per machine: type `claude`, open the URL on your laptop, approve, paste the code back. If you send a prompt before logging in, the CLI opens the Claude window for the login and asks you to run the prompt again after. A subscription login keeps Remote Control, so you can follow the session in the Claude app.
+**Claude Code.** Its login is never copied from your laptop, so log in once on any of your machines: type `claude`, open the URL on your laptop, approve, paste the code back. Your other machines are then logged in too, including ones you create later. The login is kept on the host, next to your machines rather than on their disks, so it isn't in snapshots and outlasts destroying a project; it's deleted 30 days after your last machine is gone. If you send a prompt before logging in, the CLI opens the Claude window for the login and asks you to run the prompt again after. A subscription login keeps Remote Control, so you can follow the session in the Claude app.
 
-To skip the per-machine login, store a long-lived token from your laptop as a secret. Remote Control, connectors and Claude in Chrome don't work with it.
+Instead of logging in, you can store a long-lived token from your laptop as a secret. Remote Control, connectors and Claude in Chrome don't work with it.
 
 ```
 claude setup-token

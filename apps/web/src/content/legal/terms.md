@@ -39,8 +39,11 @@ own account with that agent's provider. repose does not hold, proxy, or
 resell those credentials. You are responsible for complying with each
 provider's terms for hosted use.
 
-In particular: the platform never copies or stores your Claude Code login;
-you authenticate inside the environment, and the only alternative we offer
+In particular: the platform never copies, reads or proxies your Claude Code
+login; you authenticate inside your environment, through Anthropic's own
+sign-in, and the file Claude Code writes is kept on storage that only your
+own environments on that host mount, and deleted 30 days after your last
+one there is gone. The only alternative we offer
 is a token you generate yourself and store as a named secret of your own
 project. The agent binaries we ship are the providers' own releases,
 unmodified.

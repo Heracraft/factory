@@ -58,6 +58,21 @@ in
     description = "virtiofsd store share (no write access anywhere under the store)";
   };
 
+  # The Claude login share (DECISIONS I-278): one directory per user under
+  # /var/lib/repose/users, served into each of that user's guests by a
+  # virtiofsd@-like unit running as this account. It owns every user's
+  # share and nothing else; the store's virtiofsd user cannot write a
+  # credential and this one cannot read the store. In group hostd for the
+  # store user's reasons (I-69): the guest directory it traverses and
+  # `--socket-group hostd`.
+  users.groups.repose-auth = { };
+  users.users.repose-auth = {
+    isSystemUser = true;
+    group = "repose-auth";
+    extraGroups = [ "hostd" ];
+    description = "virtiofsd Claude login share (owns /var/lib/repose/users/*/claude-auth)";
+  };
+
   # hostd itself runs as root (LVM, nftables, taps). The guest@<id> units
   # it starts, Cloud Hypervisor, run as this account (DECISIONS I-51,
   # security review H-2): it owns the taps (`ip tuntap add ... user hostd`),
