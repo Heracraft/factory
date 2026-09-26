@@ -26,7 +26,7 @@ You are `dev`, with passwordless `sudo`. The checkout is under `/home/dev`, and 
 - Installs made here are not part of the project's configuration. To keep a package on every rebuild, tell the user to run `repose config add NAME` on their laptop. <!-- /docs/config#add-a-package -->
 - Tools the user has on their laptop are installed in the background after each `repose run`. If one is missing right after a start, check `~/.repose/tools-install.log` before installing it yourself. <!-- /docs/machine#your-laptops-tools-come-along -->
 - npm, pnpm, yarn v1 and Docker Hub downloads go through a cache on the server. Leave the two lines repose added to `~/.npmrc` in place. <!-- /docs/machine#network -->
-- For a repository with a `flake.nix`, put `use flake` in `.envrc` and run `direnv allow`. <!-- /docs/machine#projects-with-a-flake-nix -->
+- You started inside the project's dev environment: its `.envrc`, or its flake's dev shell when it has a `flake.nix` and no `.envrc`. If a tool the flake provides is missing, the load failed or the `.envrc` is denied; the top of your tmux window says which. <!-- /docs/machine#projects-with-a-flake-nix -->
 
 ## Docker and databases
 

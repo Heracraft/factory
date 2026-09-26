@@ -6734,3 +6734,50 @@ reaches a ::1-only server, the old one does not),
 `localhost` and letting the guest's sshd try each address (works only
 while the guest's resolver lists both, and hides which one was used);
 forwarding both addresses (ssh -L has one target per local port).
+**I-259. Agents start in the checkout's dev environment.** (feature round,
+2026-09-26; the machine guide and /docs/machine told users to `use flake`
+in `.envrc`, but only an interactive shell's direnv hook read it) An agent
+`repose run` starts is `tmux new-window <agent>`, a bash that is neither
+login nor interactive, and the wrapper sourced only
+`/etc/profile.d/repose.sh`, so the agent and every command its tools ran
+missed the flake's tools and variables. The agent wrapper
+(`nix/overlay/agents/devshell.sh`, sourced by `wrap.nix`) now loads the
+environment into its own process before it execs the agent, so it holds
+however the agent starts (`repose run`, `--worktree`, typed in a shell):
+the `.envrc` direnv finds from the working directory up, via `direnv
+export bash`; else a `flake.nix` below `$HOME` whose text mentions
+`devShell`, through a generated `.envrc` (`use flake <dir>`) under
+`~/.cache/repose/devshell/<hash>`, so nix-direnv's cache and GC root are
+kept and nothing is written to the checkout; else nothing. A load that
+fails prints `repose: the dev shell from X did not load` and the agent
+starts anyway: a non-zero `direnv export` leaves the environment as it
+was, and a flake that fails to evaluate (nix-direnv falls back to the
+last dev shell it built and sets `NIX_DIRENV_DID_FALLBACK`, while direnv
+reports success) keeps that last one, or none. An
+environment the process already has (`DIRENV_DIR` names the directory) is
+not announced again and `direnv export` is a no-op. **Not allowed:** an
+`.envrc` never allowed on this guest is allowed by the wrapper, which
+says so in the pane. Every new guest, every `--worktree` directory and
+every edit of the file would otherwise start the agent without its
+environment until someone opened a shell to allow it, and the agent is
+about to run this checkout's code (its build, its tests, its scripts)
+with the same rights anyway; the file came from the user's own checkout.
+An `.envrc` the user **denied** (`direnv deny`) is respected: the agent
+starts without it and the pane says so, and no flake is loaded instead.
+**Slow first load:** while the wrapper loads inside tmux it sets the pane
+option `@repose-devshell=loading`; `waitPaneIdle` does not count that time
+against its 30 s and waits up to 30 minutes, and `repose run` shows
+`Loading the project's dev shell`, so the prompt is not typed into a pane
+whose agent has not started. A CLI without this waits 30 s as before; a
+guest without it never sets the option. `TestPromptWaitsForDevShellLoad`
+(fails with the option ignored), VM test `guest-devshell`.
+Interfaces: `guest-conventions.md` "Agent wrappers" step 3, in this
+commit. Needs a base publish (the wrapper) and a CLI release (the wait).
+*Rejected:* `direnv exec DIR agent` (a failing `.envrc` exits non-zero
+and the agent never starts: a dead window); `nix develop --command` for a
+bare flake (no cache or GC root, re-evaluates every start); leaving an
+unallowed `.envrc` out with a message (the common case, a fresh guest or
+worktree, would silently miss the environment); allowing all of
+`/home/dev` in direnv's config (changes interactive shells too and
+overrides a deny); evaluating the flake to check for a devShell (a full
+evaluation, input fetches included, on every start without one).

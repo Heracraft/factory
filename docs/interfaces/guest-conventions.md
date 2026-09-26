@@ -103,7 +103,18 @@ Each agent binary is wrapped (`nix/overlay/agents/wrap.nix`) to:
      repointed; anything else at the path is left alone.
 2. Set `TERM=tmux-256color` (when inside tmux), `COLORTERM=truecolor`, and
    `REPOSE_HOOK_AGENT=<binary>` so `repose-hook` knows who called it.
-3. Exec the real binary with `"$@"`.
+3. Load the checkout's dev environment into its own process
+   (`nix/overlay/agents/devshell.sh`, DECISIONS I-259), from the working
+   directory up: the `.envrc` direnv finds (running `direnv allow` on it
+   when it was never allowed on this guest, leaving it out when denied),
+   else a `flake.nix` that mentions `devShell` below `$HOME`, loaded
+   through a generated `~/.cache/repose/devshell/<hash>/.envrc` holding
+   `use flake <dir>`, else nothing. A failed load prints a `repose:` line
+   and the agent starts without it. While it loads inside tmux, the pane
+   option `@repose-devshell` is `loading`; `repose run` waits (up to 30
+   minutes) while it is set before typing the prompt. The option is new;
+   a CLI that does not read it waits 30 s as before.
+4. Exec the real binary with `"$@"`.
 
 `repose-hook` takes the agent from `REPOSE_HOOK_AGENT` or `--agent`
 (`REPOSE_AGENT` is accepted for one release, DECISIONS I-58) and the socket

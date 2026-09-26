@@ -299,7 +299,8 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 				return err
 			}
 		}
-		if err := startAgentWindow(ctx, target, project.Slug, name, dir, agent, opts.Prompt, attachInstead); err != nil {
+		loadingDevShell := func() { pr.Phase("Loading the project's dev shell", "Dev shell loaded") }
+		if err := startAgentWindow(ctx, target, project.Slug, name, dir, agent, opts.Prompt, attachInstead, loadingDevShell); err != nil {
 			return stepFailed("start "+agent+" in the guest", err, "")
 		}
 		pr.End()
