@@ -20,6 +20,17 @@ creates, reads or changes `~/.ssh/id_*`. In `~/.ssh/config` it owns one
 line; a symlinked config is edited at its target, or, when that is read
 only, left alone with a message saying where to add the line (I-151).
 
+In a project's own checkout (its origin is the project's remote, or its
+root is the project's `by_dir` entry), `run` and `attach` own the
+`[remote "repose"]` section of `.git/config` when its `url` has the shape
+`<slug>.repose:~/<slug>`: `url` (retargeted when the slug differs),
+git's default `fetch` refspec, `pushurl = this remote is fetch-only;
+repose run sends your work to the machine` and `skipFetchAll = true`.
+A `repose` remote with any other URL is the user's and is never
+changed; `repose.remoteNoted = true` records that the CLI has said so
+once. `destroy` removes the section (not the fetched `refs/remotes/repose/*`)
+when it points at the destroyed project (DECISIONS I-272).
+
 Remote URL normalisation: strip scheme and `git@`, replace `:` after host
 with `/`, strip trailing `.git`, lowercase the whole result (DECISIONS
 I-73: not just the host, so the worked example below actually holds).

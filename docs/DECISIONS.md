@@ -6907,3 +6907,75 @@ tree). /docs `cli.md`, `features/projects.md` and `07-cli.md` say so in
 this commit. Needs a CLI release. *Rejected:* a separate verb for the
 class (a second name for resizing); making DISK a flag (breaks
 `repose resize 80G`, which the docs and the machine guide name).
+
+**I-272. The laptop checkout gets a fetch-only `repose` git remote for
+the machine's checkout.** (dev-friendly CLI round, W3, 2026-09-26; owner:
+"as close to their existing workflows and tools as possible") The only way
+back was the agent pushing to origin and the user pulling, which needs
+the machine's git credentials, a round trip through GitHub and a push the
+user may not want published. `repose run` and `repose attach` now add
+`remote.repose.url = <slug>.repose:~/<slug>` to the checkout's
+`.git/config`: the checkout the sync writes (~/<slug>, I-150), over the
+`<slug>.repose` alias every other ssh use goes through (I-151, and the
+wildcard of I-270), so ControlMaster, the certificate and the gateway's
+exec relay are the ones `repose run` already uses. `git fetch repose`,
+`git log repose/main`, `git diff main repose/main`, `git cherry-pick`,
+`git merge repose/main` and `git pull repose main` are then plain git.
+*When:* on `run` after the sync (also with `--no-sync`), and on
+`attach` (both the api and the no-api path of I-223), so a project made
+before this release gets it on the next command; a local `git config`
+read, no ssh. *Which project:* only the checkout's own: the project's
+remote is the checkout's origin, or, for a `--name` project without a
+remote, the directory's by_dir entry (I-152). A project named with
+`--project`, and every `repose fork` copy (whose remote_url is empty,
+I-254), gets no remote, because the rule "`repose` is this checkout's
+machine" has no exception that way; /docs shows the one `git remote add`
+line for a fork copy. *Ours or not:* a remote named repose whose URL has
+the exact shape `<s>.repose:~/<s>` is the CLI's and may be retargeted
+(set-url) or removed; any other URL is the user's, left alone, and the
+CLI says once (recorded as `repose.remoteNoted=true` in that checkout's
+config) how to add the machine under another name. No marker key: the
+shape is what a user can see in `git remote -v`, and a hand-made remote
+of that shape points where the CLI would point it anyway. *Fetch-only:*
+the machine's checkout is non-bare with the branch checked out, so a
+push is refused (`receive.denyCurrentBranch`) or, if allowed, moves the
+agent's branch under its working tree. `remote.repose.pushurl` is the
+text `this remote is fetch-only; repose run sends your work to the
+machine`: with no colon or slash git takes it as a local path and
+prints it back (`fatal: '<text>' does not appear to be a git
+repository`), so the refusal explains itself with no hook. Sending work
+stays `repose run`. `remote.repose.skipFetchAll = true`: `git fetch
+--all` and IDE auto-fetch of all remotes would otherwise reach for a
+machine that may be stopped. *Worktree branches* (I-253): git's default
+refspec, so the machine's `repose/claude-2` is `repose/repose/claude-2`
+here. Kept: the rule "remote name, then the machine's branch name" has
+no exception, and `git pull repose repose/claude-2` names the branch as
+`repose run --worktree` printed it. *Rejected:* a second refspec mapping
+`refs/heads/repose/*` to `refs/remotes/repose/*` (a machine branch named
+`claude-2` and the worktree branch `repose/claude-2` would land on the
+same ref, and one branch would have two names). *Removal:* `repose
+destroy` (to be `rm`, I-273) run in the checkout removes the remote's
+config section when it is the CLI's and points at that project; the
+fetched refs `repose/*` stay, so work fetched just before the destroy is
+not deleted with it (`git remote remove` would delete them). A restore
+gets the remote back on the next run. `logout --purge` leaves remotes in
+checkouts alone (it does not know where they are). *R3-11:* nothing is
+committed to the repository; `.git/config` is local to the clone and
+never travels with a push, and the sync sends refs and files, not
+config. *Stopped machine:* the fetch fails with the gateway's banner
+(`todo-app is stopped; run \`repose start todo-app\``) and ssh's error;
+troubleshooting.md says so. Only commits travel this way; uncommitted
+work stays on the machine, and the agent guide now tells agents that
+committing is enough for the user to get their work. The two sync
+messages that said to push from the machine and pull (guest ahead,
+diverged branch) now name `git fetch repose`.
+`TestReposeRemoteAddedOnce`, `TestReposeRemoteLeavesAForeignOneAlone`,
+`TestIsReposeRemoteURL`, `TestCheckoutOwnsProject`,
+`TestFetchReposeBringsTheMachinesCommits` (a real `git fetch repose`
+over SSH to the in-process fake guest with the URL the CLI writes:
+guest commit and worktree branch arrive, merge, cherry-pick, pull,
+`fetch --all` skips it, removal keeps the refs),
+`TestRunAddsTheReposeRemote` (run adds and says so once, destroy
+removes). Needs a CLI release and a base publish (the guide line); the
+guest needs `git-upload-pack` on dev's non-interactive PATH (it is in
+the git package the base installs), to be checked live.

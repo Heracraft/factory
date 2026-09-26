@@ -36,7 +36,7 @@ $ repose run --worktree "try the other approach"
 Worktree: ~/todo-app-claude-2 on branch repose/claude-2
 ```
 
-The worktree is a folder next to your checkout on the machine, on a new branch from the checkout's last commit. Uncommitted changes in the checkout aren't in it. `repose run` never syncs it, and what the agent does there doesn't count as changes on the machine. Commit on the branch and merge or push it like any other.
+The worktree is a folder next to your checkout on the machine, on a new branch from the checkout's last commit. Uncommitted changes in the checkout aren't in it. `repose run` never syncs it, and what the agent does there doesn't count as changes on the machine. Commit on the branch and merge or push it like any other. On your laptop, `git fetch repose` brings it as `repose/repose/claude-2` ([Getting work back](/docs/sync#getting-work-back)).
 
 Each `--worktree` run makes a new one. They stay until you remove them, from the checkout on the machine:
 

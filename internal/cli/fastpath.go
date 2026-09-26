@@ -212,6 +212,7 @@ func attachFast(ctx context.Context, e *Env, explicit string) (done bool, err er
 		// Guessed from this checkout's remote: the checkout is the
 		// project's own, whose git config the carry takes.
 		helper.RepoDir = root
+		e.addReposeRemote(guess) // I-272
 	}
 	startSessionHelper(e, helper)
 	return true, attachTmux(target, guess.Slug, "", tz)

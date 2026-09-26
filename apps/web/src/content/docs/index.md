@@ -74,7 +74,7 @@ From any computer you're logged in on:
 repose attach your-project
 ```
 
-When the agent has pushed, pull on your laptop as usual. Nothing syncs back on its own. Stop the machine when you're done:
+When the agent has committed, `git fetch repose` in your checkout brings its commits to your laptop, and `git merge repose/main` takes them ([Getting work back](/docs/sync#getting-work-back)). Nothing syncs back on its own. Stop the machine when you're done:
 
 ```
 repose stop

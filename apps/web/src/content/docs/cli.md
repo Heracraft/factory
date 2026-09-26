@@ -19,6 +19,8 @@ Global flags: `--project NAME`, `-v`/`--verbose` (debug output to stderr), `--ve
 
 Create or start this checkout's machine, sync, and attach. With a prompt, start an agent and type the prompt into it. See [Run and attach](/docs/run-and-attach).
 
+On your laptop, `run` changes one thing in the checkout: it adds a git remote named `repose` for the machine's checkout, so `git fetch repose` brings the agent's commits back. See [Getting work back](/docs/sync#getting-work-back).
+
 | Flag                      |                                                                   |
 | ------------------------- | ----------------------------------------------------------------- |
 | `--agent NAME`            | `claude`, `codex`, `opencode`, `gemini` or `pi`.                  |
@@ -32,7 +34,7 @@ Create or start this checkout's machine, sync, and attach. With a prompt, start 
 
 ### `repose attach [PROJECT]`
 
-Attach to the project's tmux session without syncing.
+Attach to the project's tmux session without syncing. In the project's checkout, it adds the `repose` git remote too if it's missing.
 
 `run` and `attach` print one line when another of your projects is running idle, once per idle stretch. An `attach` that reuses an open connection makes no api call and skips it.
 
@@ -84,7 +86,7 @@ Stop the machine and snapshot its disk. `--no-snapshot` skips the snapshot.
 
 ### `repose destroy [PROJECT]`
 
-Delete the machine and disk; a final snapshot is kept 30 days. `-y`/`--yes` skips the question (required without a terminal). `--wait` waits until it's done.
+Delete the machine and disk; a final snapshot is kept 30 days. `-y`/`--yes` skips the question (required without a terminal). `--wait` waits until it's done. Run in the project's checkout, it removes the `repose` git remote; branches already fetched from it stay.
 
 ### `repose restore [NAME]`
 
@@ -206,8 +208,9 @@ For a test or self-hosted repose server rather than the hosted one: `--api-url U
 | `~/.config/repose/` | Your login (mode 0600; on macOS the token is in the keychain), `config.toml`, and caches that are safe to delete. |
 | `~/.ssh/repose/`    | The CLI's own SSH key and 24-hour certificate, and one `Host` block per project.                                  |
 | `~/.ssh/config`     | One added line: `Include ~/.ssh/repose/config`.                                                                   |
+| `.git/config`       | In each project's checkout, the `repose` remote. Nothing is committed.                                            |
 
-`repose logout --purge` removes all of these.
+`repose logout --purge` removes all of these but the `repose` remotes; `git remote remove repose` removes one.
 
 ## Exit codes
 

@@ -1,0 +1,144 @@
+package cli
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+// The `repose` git remote (DECISIONS I-272): the laptop checkout gets a
+// remote pointing at the machine's checkout over the `<slug>.repose` ssh
+// alias, so `git fetch repose` brings an agent's commits back with plain
+// git and no round trip through origin. It lives in .git/config, which
+// is never committed (R3-11 holds: nothing is written to the repository).
+
+// reposeRemoteName is the one remote name the CLI manages.
+const reposeRemoteName = "repose"
+
+// reposeRemotePushURL makes the remote fetch-only. The machine's checkout
+// is a working tree with a branch checked out, so a push would be refused
+// (receive.denyCurrentBranch) or move the agent's branch under it; work
+// goes the other way with `repose run`. The text has no colon and no
+// slash, so git takes it as a local path and prints it back in its error:
+// "fatal: '<this text>' does not appear to be a git repository".
+const reposeRemotePushURL = "this remote is fetch-only; repose run sends your work to the machine"
+
+// reposeRemoteNotedKey records, in the checkout's .git/config, that the
+// CLI already said once that a remote named repose points elsewhere.
+const reposeRemoteNotedKey = "repose.remoteNoted"
+
+// reposeRemoteURL is the machine's checkout of slug: ~/<slug> on the
+// machine, over the ssh alias every project has.
+func reposeRemoteURL(slug string) string { return slug + ".repose:~/" + slug }
+
+// reposeRemoteShape matches every URL reposeRemoteURL makes. A remote
+// named repose with this shape is the CLI's own, so it may be retargeted
+// or removed; any other is the user's and is never touched.
+var reposeRemoteShape = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*)\.repose:~/([a-z0-9][a-z0-9-]*)$`)
+
+func isReposeRemoteURL(u string) bool {
+	m := reposeRemoteShape.FindStringSubmatch(u)
+	return m != nil && m[1] == m[2]
+}
+
+// remoteURLOf is the raw configured URL of a remote (no insteadOf
+// rewriting), or "" when the checkout has no such remote.
+func remoteURLOf(root, name string) string {
+	u, err := gitCmd(root, "config", "--get", "remote."+name+".url")
+	if err != nil {
+		return ""
+	}
+	return u
+}
+
+// ensureReposeRemote makes the `repose` remote of the checkout at root
+// point at slug's machine. Idempotent: an existing remote of the CLI's
+// shape is retargeted if needed and otherwise left as it is; a remote
+// named repose with any other URL is the user's and is left alone, with
+// a note the first time. It returns what to tell the user ("" for
+// nothing): a line when the remote is added, and the one-time note.
+func ensureReposeRemote(root, slug string) (string, error) {
+	want := reposeRemoteURL(slug)
+	cur := remoteURLOf(root, reposeRemoteName)
+	switch {
+	case cur == want:
+		return "", nil
+	case cur == "":
+		if _, err := gitCmd(root, "remote", "add", reposeRemoteName, want); err != nil {
+			return "", err
+		}
+	case isReposeRemoteURL(cur):
+		if _, err := gitCmd(root, "remote", "set-url", reposeRemoteName, want); err != nil {
+			return "", err
+		}
+	default:
+		if noted, _ := gitCmd(root, "config", "--get", reposeRemoteNotedKey); noted == "true" {
+			return "", nil
+		}
+		if _, err := gitCmd(root, "config", reposeRemoteNotedKey, "true"); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("This checkout already has a git remote named repose that points elsewhere; it was left alone. To fetch from the machine under another name: git remote add NAME %s", want), nil
+	}
+	// Fetch-only, and left out of `git fetch --all`, which would
+	// otherwise reach for a machine that may be stopped.
+	if _, err := gitCmd(root, "config", "remote."+reposeRemoteName+".pushurl", reposeRemotePushURL); err != nil {
+		return "", err
+	}
+	if _, err := gitCmd(root, "config", "remote."+reposeRemoteName+".skipFetchAll", "true"); err != nil {
+		return "", err
+	}
+	if cur != "" {
+		return "", nil
+	}
+	return "Added the git remote repose: `git fetch repose` brings the machine's commits to this checkout.", nil
+}
+
+// forgetReposeRemote removes the `repose` remote of the checkout at root
+// when it is the CLI's and points at slug's machine, which is going away.
+// Only the remote's config goes: the branches already fetched from it
+// (repose/main and the rest) stay, so work fetched before the machine
+// was removed is not lost with it. It reports whether it removed one.
+func forgetReposeRemote(root, slug string) bool {
+	if root == "" || remoteURLOf(root, reposeRemoteName) != reposeRemoteURL(slug) {
+		return false
+	}
+	_, err := gitCmd(root, "config", "--remove-section", "remote."+reposeRemoteName)
+	return err == nil
+}
+
+// checkoutOwnsProject reports whether the checkout at root is project's
+// own: the project's remote is the checkout's origin, or, for a project
+// with no remote, the checkout is the directory `repose run --name`
+// created it from (the by_dir cache). Only then is the `repose` remote
+// added: another project run or attached from this checkout (a fork copy,
+// a project named with --project) would point the checkout's remote at a
+// different repository's machine.
+func (e *Env) checkoutOwnsProject(root string, p *Project) bool {
+	if root == "" || p == nil || p.Slug == "" {
+		return false
+	}
+	remote := gitRemoteOrigin(root)
+	if p.RemoteURL != "" || remote != "" {
+		return remote == p.RemoteURL
+	}
+	return p.ID != "" && e.Cache.ByDir[root] == p.ID
+}
+
+// addReposeRemote is what run and attach call: the remote for the
+// project when this checkout is its own. A failure is a warning, never a
+// failed command: the remote is a convenience beside the run.
+func (e *Env) addReposeRemote(p *Project) {
+	root := gitRepoRoot(e.Cwd)
+	if !e.checkoutOwnsProject(root, p) {
+		return
+	}
+	note, err := ensureReposeRemote(root, p.Slug)
+	if err != nil {
+		e.warn("Could not add the git remote repose (%s).", oneLine(err.Error()))
+		return
+	}
+	if note != "" {
+		_, _ = fmt.Fprintln(e.ErrOut, strings.TrimSpace(note))
+	}
+}
