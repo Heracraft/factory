@@ -39,6 +39,7 @@ var guideSkippedSections = map[string]string{
 	"agents#let-it-run-without-asking":              "the user's own permission settings, not something the machine offers",
 	"agents#what-agents-are-told-about-the-machine": "describes this guide",
 	"limits#projects":                               "account limits on the number of projects, not the machine",
+	"limits#when-repose-is-full":                    "the waitlist for a new account's first project; an agent on a machine is past it",
 }
 
 // guestCommands is every command the guide may tell an agent to run, with
