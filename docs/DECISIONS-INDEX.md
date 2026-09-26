@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-312 entries.
+314 entries.
 
 ## Scope
 
@@ -344,3 +344,5 @@ pointer, not a summary.
 - **I-267** User SSH certificates last 24 hours — 2026-09-26; L6544
 - **I-262** An idle running machine is announced, never stopped — 2026-09-26; L6561
 - **I-263** Submodules travel with the sync, their commits bundled from the laptop like the superproject's — 2026-09-26; L6605
+- **I-260** `repose resize --size` changes a project's class, and every start carries the class to the host — 2026-09-26; L6666
+- **I-261** `repose open` reaches a server on `::1`, and `open --desktop` picks a free laptop port — 2026-09-26; L6711

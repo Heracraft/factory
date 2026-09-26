@@ -111,7 +111,7 @@ repose logs [PROJECT] [--kind console|build|ops] [--since 1h] [--follow|-f]
 repose events [PROJECT] [--since 24h] [--follow|-f]
 repose projects [--destroyed [--all]]  # list all, ignores cwd; --destroyed: what can be restored
 repose fork [PROJECT] [-n N] [--name NAME] [--size S] [--snapshot ID] [--prompt TEXT [--agent A]] [--json]   # I-254
-repose resize SIZE             # grow the disk only (e.g. 80G)
+repose resize [DISK] [--size small|large|xl] [--yes|-y]   # grow the disk (e.g. 80G); --size changes the class (I-260)
 repose scan [DIR] [--json]     # dry run of what run installs (I-222)
 repose questions [PROJECT] [--json]            # I-245
 repose reply [PROJECT] [ANSWER...] [--question ID] [--json]

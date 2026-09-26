@@ -70,21 +70,27 @@ Auto-forward (I-199), run by the session helper (run-and-attach.md):
 
 `repose open`:
 
-- `repose open PORT [--local-port N] [--no-browser]` runs `ssh -N -L
-  <local>:127.0.0.1:<port> <slug>.repose` using the CLI's SSH config, so
+- `repose open PORT [--local-port N] [--no-browser]` reads the guest's
+  listeners once (`ss -Hltn` over SSH, 5 s bound) and runs `ssh -N -L
+  127.0.0.1:<local>:<host>:<port> <slug>.repose`, where host is `::1` when
+  the port listens only on `::1` and `127.0.0.1` otherwise, including
+  when nothing listens yet, which it says on stderr (DECISIONS I-261).
+  It uses the CLI's SSH config, so
   anything the CLI can reach, a plain `ssh -L` can reach too, and opens
   the URL in the default browser unless `--no-browser`. One port per
   invocation; there is no multi-port, `--background` or `--list` form
   (that needs a forwards registry nobody built). `--stop` exists only with
   `--desktop`.
-- The local port defaults to the port number. If it is taken, the CLI
+- The local port defaults to the port number. If it is taken (on the
+  laptop's 127.0.0.1, ::1 or wildcard, as auto-forward checks), the CLI
   picks a free one and forwards to that instead, with a message saying
-  so, rather than failing.
+  so, rather than failing. `open --desktop` does the same for 6080
+  (I-261).
 - Forwards run in the foreground and die with the CLI (Ctrl-C, or the
   parent process exiting); nothing survives the CLI process to reattach
   to later.
-- Anything bound on `0.0.0.0` or `127.0.0.1` in the guest is reachable this
-  way. Nothing in the guest is reachable any other way; the guest has no
+- Anything bound on `0.0.0.0`, `::`, `127.0.0.1` or `::1` in the guest is
+  reachable this way. Nothing in the guest is reachable any other way; the guest has no
   inbound path except through the gateway.
 - `repose open --desktop` starts the guest's desktop chain over SSH
   (`systemctl --user start repose-desktop`) and forwards 6080; Ctrl-C

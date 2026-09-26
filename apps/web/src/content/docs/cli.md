@@ -38,14 +38,14 @@ Attach to the project's tmux session without syncing.
 
 ### `repose open [PORT]`
 
-Forward one port to your laptop and open it in the browser, until `Ctrl-C`.
+Forward one port to your laptop and open it in the browser, until `Ctrl-C`. Works for servers on `127.0.0.1`, `0.0.0.0` or `::1`.
 
-| Flag               |                                                              |
-| ------------------ | ------------------------------------------------------------ |
-| `--local-port N`   | Port on the laptop. Default: the same, or the next free one. |
-| `--no-browser`     | Print the URL only.                                          |
-| `--desktop`        | Start the machine's desktop and forward it.                  |
-| `--desktop --stop` | Stop the desktop.                                            |
+| Flag               |                                                                                |
+| ------------------ | ------------------------------------------------------------------------------ |
+| `--local-port N`   | Port on the laptop. Default: the same, or a free one if it's taken.            |
+| `--no-browser`     | Print the URL only.                                                            |
+| `--desktop`        | Start the machine's desktop and forward it to laptop port 6080, or a free one. |
+| `--desktop --stop` | Stop the desktop.                                                              |
 
 ### `repose cp [-r] SRC DST`
 
@@ -94,9 +94,11 @@ Bring back a project destroyed in the last 30 days. `--as NEW-NAME` for another 
 
 Snapshot the project now and start copies of it as new projects, each on its own machine, so several agents can try different approaches from the same starting point. `-n`/`--count N` makes N copies (1 to 10, default 1), named `PROJECT-fork-1`, `PROJECT-fork-2` and so on; `--name NAME` names them `NAME-1`, `NAME-2`. `--size` sets their size (default: the project's). `--snapshot ID` copies one of the project's snapshots instead of taking a new one. `--prompt TEXT` starts the agent in every copy with that prompt (`--agent` picks the agent). `--json` prints the copies as JSON. The project itself keeps running. Each copy counts toward your project limit and is billed like any project. If the copies would take you past the limit, nothing is created. See [Fork a project](/docs/lifecycle#fork-a-project).
 
-### `repose resize SIZE`
+### `repose resize [DISK]`
 
 Grow the project's disk, for example `repose resize 80G`. Disks can't shrink, and the larger disk is billed from then on.
+
+`--size small|large|xl` changes the project's size, for example `repose resize --size xl` when it keeps running out of memory. A stopped project starts at the new size next time. A running one has to be stopped for it: repose asks, then stops it (taking a snapshot), changes it and starts it again, which ends every process on it, agents included. `-y`/`--yes` skips the question (required without a terminal). It prints what the new size gives and costs; the new rate applies from the next start. See [Changing the size](/docs/machine#changing-the-size).
 
 ### `repose logs [PROJECT]`
 

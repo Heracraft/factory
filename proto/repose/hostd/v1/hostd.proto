@@ -132,6 +132,9 @@ message CreateGuest {
 // I-26) so a host that restarted, and holds nothing on disk, can deliver
 // secrets and sshd material again. All are optional; an old-shape
 // StartGuest with only guest_id is still accepted.
+// class is the project's size class; when set and different from the one
+// the guest was created with, hostd boots the guest at this class and
+// records it (DECISIONS I-260). Empty keeps the recorded class.
 message StartGuest {
   string guest_id = 1;
   repeated Secret secrets = 2;
@@ -142,6 +145,7 @@ message StartGuest {
   bytes host_key = 7;
   bytes host_cert = 8;
   bytes project_json = 9;
+  string class = 10;
 }
 message StopGuest { string guest_id = 1; bool snapshot_first = 2; uint32 timeout_s = 3; }
 message DestroyGuest { string guest_id = 1; bool keep_volume = 2; }

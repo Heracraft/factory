@@ -105,7 +105,10 @@ func TestLifecycle(t *testing.T) {
 	if len(snaps) != 1 || snaps[0].Reason != "stop" || snaps[0].Bytes == 0 {
 		t.Fatalf("snapshots after stop: %+v", snaps)
 	}
-	// start
+	// start, after a class change made while stopped (PATCH, I-260)
+	if _, err := h.Pool.Exec(ctx, "update projects set class = 'small' where id = $1", pid); err != nil {
+		t.Fatal(err)
+	}
 	op = h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindStart, ProjectID: &pid, Phases: ops.PlanStart(false)}))
 	if op.State != "done" {
 		t.Fatalf("start: %+v", op.Error)
@@ -119,7 +122,7 @@ func TestLifecycle(t *testing.T) {
 			start = sg
 		}
 	}
-	if start == nil || len(start.HostKey) == 0 || len(start.Secrets) != 2 || start.SshCaPub == "" {
+	if start == nil || len(start.HostKey) == 0 || len(start.Secrets) != 2 || start.SshCaPub == "" || start.Class != "small" {
 		t.Fatalf("StartGuest delivery fields: %+v", start)
 	}
 	// manual snapshot

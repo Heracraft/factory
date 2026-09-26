@@ -74,10 +74,16 @@ Limits:
 - A user without a card on file cannot start a guest at all
   (`payment_required`, exit 7). Creating the project row is allowed so the
   dashboard can show it, but nothing boots.
-- `repose resize SIZE` only grows the disk (`80G`; disks never shrink).
-  Neither the CLI nor the dashboard changes a project's class. The API
-  accepts `class` on `PATCH /projects/:id` only while the project is
-  stopped (`conflict` otherwise).
+- `repose resize DISK` grows the disk (`80G`; disks never shrink).
+  `repose resize --size small|large|xl` changes the class (DECISIONS
+  I-260): the API accepts `class` on `PATCH /projects/:id` only while the
+  project is stopped (`conflict` otherwise), so a running project is
+  stopped with a snapshot, patched and started again after a y/N question
+  (`--yes` skips it; no terminal and no `--yes` is exit 2). The same class
+  is a no-op; a refused PATCH (the xl limit) starts the project again at
+  its old class. StartGuest carries the class on every start, so the
+  guest boots at the new vCPUs and memory and its samples, and so its
+  billing, report the new class. The dashboard does not change a class.
 
 Ownership:
 

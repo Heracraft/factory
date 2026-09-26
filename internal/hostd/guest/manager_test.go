@@ -366,6 +366,46 @@ func TestStopStartDestroy(t *testing.T) {
 	h.mustFail(cmd(&hostdv1.DestroyGuest{GuestId: gid1}), CodeNotFound)
 }
 
+// TestStartAppliesChangedClass: the api sends the project's class on every
+// start (I-260), so a class changed while the project was stopped reaches
+// the hypervisor, the unit's memory limit and the record the samples read.
+func TestStartAppliesChangedClass(t *testing.T) {
+	h := newHarness(t, nil)
+	h.create(gid1) // large
+	h.mustOK(cmd(&hostdv1.StopGuest{GuestId: gid1}))
+	res := h.mustFail(cmd(&hostdv1.StartGuest{GuestId: gid1, Class: "huge"}), CodeInvalidArgument)
+	if !strings.Contains(res.Error.Message, "small, large or xl") {
+		t.Fatalf("message %s", res.Error.Message)
+	}
+	if g := h.guest(gid1); g.Class != "large" || g.State != StateStopped {
+		t.Fatalf("a refused start changed the record: %+v", g)
+	}
+	h.mustOK(cmd(&hostdv1.StartGuest{GuestId: gid1, Class: "xl"}))
+	if g := h.guest(gid1); g.Class != "xl" || g.State != StateRunning {
+		t.Fatalf("after start at xl %+v", g)
+	}
+	u := h.sd.Units["guest@"+gid1]
+	if u == nil || u.Props[0] != "MemoryMax=16896M" || u.Props[2] != "CPUQuota=800%" {
+		t.Fatalf("unit %+v", u)
+	}
+	argv := strings.Join(u.Argv, " ")
+	if !strings.Contains(argv, "--memory size=16384M,shared=on") || !strings.Contains(argv, "--cpus boot=8") {
+		t.Fatalf("argv %v", u.Argv)
+	}
+	// An old-shape start (no class) keeps the recorded one.
+	h.mustOK(cmd(&hostdv1.StopGuest{GuestId: gid1}))
+	h.mustOK(cmd(&hostdv1.StartGuest{GuestId: gid1}))
+	if g := h.guest(gid1); g.Class != "xl" {
+		t.Fatalf("class without a class in StartGuest: %s", g.Class)
+	}
+	// And back down.
+	h.mustOK(cmd(&hostdv1.StopGuest{GuestId: gid1}))
+	h.mustOK(cmd(&hostdv1.StartGuest{GuestId: gid1, Class: "small"}))
+	if !strings.Contains(strings.Join(h.sd.Units["guest@"+gid1].Argv, " "), "--memory size=4096M,shared=on") {
+		t.Fatalf("argv after small %v", h.sd.Units["guest@"+gid1].Argv)
+	}
+}
+
 func TestDestroyKeepVolume(t *testing.T) {
 	h := newHarness(t, nil)
 	h.create(gid1)
