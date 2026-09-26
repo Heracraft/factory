@@ -63,6 +63,19 @@ in
       set -g mouse on
       set -ga terminal-overrides ",*:Tc"
       set -g focus-events on
+      # Modified keys reach the program in the pane (DECISIONS I-264):
+      # Shift+Enter is a newline in Claude Code, not a submit. tmux asks
+      # the laptop's terminal for extended keys (extkeys, for every
+      # TERM: a terminal without them ignores the request) and hands them
+      # on as CSI u to a program that asks for them.
+      set -g extended-keys on
+      set -g extended-keys-format csi-u
+      set -as terminal-features ",*:extkeys"
+      # OSC 8 hyperlinks from a program in the pane are drawn as links on
+      # the laptop's terminal; a pane in view may pass other escape
+      # sequences through (DCS tmux; ...) to it.
+      set -as terminal-features ",*:hyperlinks"
+      set -g allow-passthrough on
       set -g default-shell ${pkgs.bash}/bin/bash
       # Env the CLI sets on the SSH session should reach new windows. TZ
       # is not among them: an attach from a terminal without TZ would

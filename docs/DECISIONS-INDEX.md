@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-315 entries.
+318 entries.
 
 ## Scope
 
@@ -347,3 +347,6 @@ pointer, not a summary.
 - **I-260** `repose resize --size` changes a project's class, and every start carries the class to the host — 2026-09-26; L6666
 - **I-261** `repose open` reaches a server on `::1`, and `open --desktop` picks a free laptop port — 2026-09-26; L6711
 - **I-259** Agents start in the checkout's dev environment — 2026-09-26; L6737
+- **I-264** tmux passes modified keys, OSC 8 links and passthrough to the laptop's terminal — 2026-09-26; L6784
+- **I-265** Ruby and Java pins are installed like the Node pin; Rails' native gem libraries are in the base — 2026-09-26; L6818
+- **I-266** mosh is not offered — 2026-09-26; L6867

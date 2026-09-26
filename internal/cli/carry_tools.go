@@ -55,6 +55,10 @@ type toolsWanted struct {
 	Items []toolItem `json:"items"`
 	// Node is the major version the project pins, "" for none.
 	Node string `json:"node,omitempty"`
+	// Ruby and Java are the ruby series and java major the project's pin
+	// resolves to in the base's nixpkgs (scan_runtimes.go), "" for none.
+	Ruby string `json:"ruby,omitempty"`
+	Java string `json:"java,omitempty"`
 }
 
 // toolsCarry is what the tools part sends.
@@ -88,6 +92,8 @@ var baseCommands = setOf(
 	"make", "gmake", "pkg-config", "cmake", "ctest", "lsof", "dig", "nslookup", "host", "sqlite3",
 	"psql", "pg_dump", "pg_dumpall", "pg_restore", "pg_isready", "openssl", "gpg", "gpg2",
 	"killall", "fuser", "nc", "strace", "rsync", "nix-locate",
+	// the native gems' configs (compat.nix, I-265)
+	"pg_config", "mysql_config", "mariadb_config",
 	// agents and their helpers (agents.nix)
 	"claude", "codex", "opencode", "gemini", "pi", "playwright-mcp", "chrome-devtools-mcp",
 	// shell builtins and keywords
@@ -693,11 +699,17 @@ func newToolsCarry(items []toolItem, sc *scanResult) *toolsCarry {
 		if sc.Node != nil {
 			w.Node = sc.Node.Major
 		}
+		if sc.Ruby != nil {
+			w.Ruby = sc.Ruby.Major
+		}
+		if sc.Java != nil {
+			w.Java = sc.Java.Major
+		}
 	}
 	if w.Items == nil {
 		w.Items = []toolItem{}
 	}
-	if len(w.Items) == 0 && w.Node == "" {
+	if len(w.Items) == 0 && w.Node == "" && w.Ruby == "" && w.Java == "" {
 		return nil
 	}
 	body, _ := json.Marshal(w)

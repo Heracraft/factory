@@ -322,6 +322,8 @@ func TestToolsGuestPartsGolden(t *testing.T) {
 			{Name: "nonexistent-cmd", Bins: []string{"nonexistent-cmd"}, From: "project"},
 		},
 		Node: &scanVersion{Tool: "node", Major: "22"},
+		Ruby: &scanVersion{Tool: "ruby", Major: "3.3"},
+		Java: &scanVersion{Tool: "java", Major: "21"},
 	})
 	files := map[string][]byte{
 		"tools.sh":          []byte(toolsPart),

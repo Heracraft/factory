@@ -62,7 +62,7 @@ Copy the image on your clipboard to `/tmp/repose-paste/` on the machine and past
 
 ### `repose scan [DIR]`
 
-List the tools the next `repose run` would install on the machine, and why. Installs nothing. `--json` for JSON.
+List the tools the next `repose run` would install on the machine, and why, and the Node, Ruby and Java versions the project pins with the version the machine gets (the closest nixpkgs has when it lacks the pinned one). Installs nothing. `--json` for JSON.
 
 ## Projects
 
