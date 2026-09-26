@@ -307,14 +307,16 @@ $ repose run
       bundled when the guest already has everything; the first sync of an
       empty guest carries the whole history. Nothing is pushed and nothing
       is asked: an unpushed commit travels like any other.
-   d. Remote, one ssh whose stdin is one tar (the bundle, `git diff HEAD
-      --binary`, a tar of the untracked list): `git fetch` from the bundle;
+   d. Remote, one ssh whose stdin is one tar (the bundle, `git diff
+      --cached --binary` and `git diff --binary`, a tar of the untracked
+      list): `git fetch` from the bundle;
       move `origin/<branch>` forward to the laptop's value; add `origin`
       (guestd's `git@host:owner/repo.git`) if missing; check out `H` on
       `<branch>`, creating it or fast-forwarding it, or, when the guest's
       branch has commits the laptop lacks, leave the branch alone and check
-      `H` out detached with a warning; set the branch's upstream; `git
-      apply --index` the diff; extract the untracked tar. Skip files over
+      `H` out detached with a warning; set the branch's upstream; apply
+      the staged diff with `git apply --index` and the unstaged one with
+      `git apply` (I-258); extract the untracked tar. Skip files over
       100 MB with a warning, dependency/cache directories at any depth
       (named once), and anything past 500 MB in total; symlinks travel as
       symlinks. Respect `sync.exclude`, matched at any depth (I-194).

@@ -122,8 +122,11 @@ Your laptop has new work as well, so syncing now would write over them. Nothing 
   the branch is left exactly where it is, the laptop's commit is checked
   out detached, and a warning says so; an agent's work is never moved off
   its branch. A detached `HEAD` on the laptop is checked out detached.
-- The diff, not a tar, carries tracked changes: `git diff HEAD --binary`
-  on the laptop, applied with `git apply --index` in the guest. Only
+- Two diffs, not a tar, carry tracked changes: `git diff --cached
+  --binary` (what is staged) applied with `git apply --index`, then
+  `git diff --binary` (what is not) applied with `git apply`, so the
+  guest's `git status` shows the same staged and unstaged files as the
+  laptop's (I-258). Only
   the untracked files (`git ls-files --others --exclude-standard`,
   filtered by `sync.exclude` in `config.toml`) travel as a tar, extracted
   in `~/<slug>`. Bundle, diff and untracked tar go as one payload in one

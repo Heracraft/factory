@@ -355,11 +355,12 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	}
 	key := sha256.New()
 	_, _ = fmt.Fprintf(key, "%s\x00%s\x00%s\x00%s\x00%s\x00%v\x00", syncKeyVersion, head, branch, track, opts.RemoteURL, opts.NoRemote)
-	diff, err := gitDiffBinary(localRepoDir)
+	stagedDiff, unstagedDiff, err := gitDiffsBinary(localRepoDir)
 	if err != nil {
 		return nil, stepFailed("diff your working tree", err, "")
 	}
-	_, _ = fmt.Fprintf(key, "%d\x00%s", len(diff), diff)
+	_, _ = fmt.Fprintf(key, "%d\x00%s%d\x00%s", len(stagedDiff), stagedDiff, len(unstagedDiff), unstagedDiff)
+	noDiff := strings.TrimSpace(stagedDiff) == "" && strings.TrimSpace(unstagedDiff) == ""
 	untracked, err := gitUntrackedFiles(localRepoDir)
 	if err != nil {
 		return nil, stepFailed("list your untracked files", err, "")
@@ -490,8 +491,13 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	}
 
 	summary.Modified = len(localDirty)
-	if strings.TrimSpace(diff) != "" {
-		if err := tarAddBytes(tw, "diff", []byte(diff)); err != nil {
+	if strings.TrimSpace(stagedDiff) != "" {
+		if err := tarAddBytes(tw, "staged.diff", []byte(stagedDiff)); err != nil {
+			return nil, err
+		}
+	}
+	if strings.TrimSpace(unstagedDiff) != "" {
+		if err := tarAddBytes(tw, "unstaged.diff", []byte(unstagedDiff)); err != nil {
 			return nil, err
 		}
 	}
@@ -530,7 +536,7 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	if st, err := payload.Stat(); err == nil {
 		timingf("sync payload %dB commits=%d", st.Size(), summary.Commits)
 	}
-	asLeft := guestAsLastSyncLeft(probe, syncKey, head, branch, summary.Commits, strings.TrimSpace(diff) == "" && len(untracked) == 0)
+	asLeft := guestAsLastSyncLeft(probe, syncKey, head, branch, summary.Commits, noDiff && len(untracked) == 0)
 	summary.Unchanged = !opts.StashRemote && !opts.DiscardRemote && cloned == "" && envScript == "" && asLeft &&
 		(probe.hasOrigin || opts.NoRemote || originURLFor(opts.RemoteURL) == "")
 	if nothingNew && !asLeft && cloned == "" {
@@ -639,7 +645,7 @@ func countCommitsToSend(localRepoDir string, wantRefs, tips []string) (int, erro
 
 // syncKeyVersion is folded into the sync key; a change to what an apply
 // does bumps it, so no guest skips the first apply of the new shape.
-const syncKeyVersion = "sync-1"
+const syncKeyVersion = "sync-2"
 
 // guestAsLastSyncLeft reports whether the probe found the guest exactly
 // as the last completed sync left it, and that sync sent what this one
@@ -700,7 +706,8 @@ while IFS= read -r l || [ -n "$l" ]; do printf '%s%%s
 
 // applyScript is the second round trip: unpack the payload, set the
 // guest's tree aside if asked, fetch the bundle, move the refs, check
-// out, and lay the diff and the untracked files on top.
+// out, and lay the staged and unstaged diffs and the untracked files on
+// top.
 func applyScript(slug, head, branch, track string, bundleRefs []string, hasBundle bool, opts SyncOptions, probe guestProbe) string {
 	var b strings.Builder
 	_, _ = fmt.Fprintf(&b, "set -e\ncd ~/%s\n", slug)
@@ -753,7 +760,11 @@ fi
 			_, _ = fmt.Fprintf(&b, "git branch -q --set-upstream-to=%s %s >/dev/null 2>&1 || true\n", shQuote("origin/"+branch), br)
 		}
 	}
-	b.WriteString("if [ -s \"$t/diff\" ]; then git apply --index \"$t/diff\"; fi\n")
+	// Staged work goes into the index and the tree, unstaged work into
+	// the tree only, so `git status` on the guest reads as it does on the
+	// laptop (I-258).
+	b.WriteString("if [ -s \"$t/staged.diff\" ]; then git apply --index \"$t/staged.diff\"; fi\n")
+	b.WriteString("if [ -s \"$t/unstaged.diff\" ]; then git apply \"$t/unstaged.diff\"; fi\n")
 	b.WriteString("if [ -f \"$t/untracked.tar\" ]; then tar -x -f \"$t/untracked.tar\"; fi\n")
 	return b.String()
 }

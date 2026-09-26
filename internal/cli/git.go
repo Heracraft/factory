@@ -95,14 +95,22 @@ func nonEmptyLines(s string) []string {
 	return out
 }
 
-// gitDiffBinary is "git diff HEAD --binary", the patch the run sequence
-// applies remotely.
-func gitDiffBinary(dir string) (string, error) {
-	cmd := exec.Command("git", "diff", "HEAD", "--binary")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		return "", err
+// gitDiffsBinary returns the laptop's tracked changes as two patches, so
+// the guest ends up with the same split between staged and unstaged work
+// (I-258): "git diff --cached --binary" (HEAD to index) and "git diff
+// --binary" (index to working tree).
+func gitDiffsBinary(dir string) (staged, unstaged string, err error) {
+	run := func(args ...string) (string, error) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.Output()
+		return string(out), err
 	}
-	return string(out), nil
+	if staged, err = run("diff", "--cached", "--binary"); err != nil {
+		return "", "", err
+	}
+	if unstaged, err = run("diff", "--binary"); err != nil {
+		return "", "", err
+	}
+	return staged, unstaged, nil
 }

@@ -6519,3 +6519,24 @@ the directory (breaks the absolute paths above); telling the api the old
 slug in `SetupProject` (the volume already knows it, and hostd would need
 a new field for the same answer); the CLI fixing it over SSH after the
 fact (the tmux session has already started in the empty directory).
+
+**I-258. The sync keeps the laptop's split between staged and unstaged
+work.** (landing page review, 2026-09-26; the owner asked why edits that
+were unstaged on the laptop showed as staged on the machine) The sync
+sent one patch, `git diff HEAD --binary`, and applied it with `git apply
+--index`, so every tracked change arrived staged whatever its state on the
+laptop. It now sends two: `git diff --cached --binary` (HEAD to index),
+applied with `git apply --index`, then `git diff --binary` (index to
+working tree), applied with plain `git apply`, and `git status` on the
+guest lists the same files as staged and unstaged as the laptop's. The
+file contents are what they were before. The sync key (I-224) hashes both
+patches and its version moves to `sync-2`, so no guest skips the first
+apply of the new shape. The synced-tree fingerprint (I-210) is the tree
+`git add -A` would record, which does not depend on the index, so a guest
+left exactly as the last sync left it is still not dirty.
+`TestSyncKeepsStagedAndUnstaged`. Interfaces: none;
+`features/sync-at-launch.md` and `07-cli.md` §5.5d say so in this commit.
+*Rejected:* keeping one patch and resetting the index afterwards (loses
+what the owner did stage); `git stash create` on the laptop and applying
+the stash on the guest (needs the stash's objects in the bundle and a
+stash entry the user never made).
