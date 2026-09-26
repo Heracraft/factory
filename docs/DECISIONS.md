@@ -7248,3 +7248,102 @@ themselves. `TestCodeOpensTheCheckoutOverSSH`. /docs `cli.md` and
 `ssh-and-editors.md`. *Rejected:* a JetBrains Gateway launcher: its
 `jetbrains-gateway://connect#...` URL is not documented by JetBrains and
 could not be checked here; starting a stopped machine (I-281).
+**I-280. `run` and `attach` proxy the terminal, so a dropped file or a
+Ctrl+V image reaches the agent in the guest.** (dev-friendly CLI round,
+worker W1, 2026-09-26; the owner: "I want to be able to do native image
+dropping in and it gets to the agent session. It must happen.")
+Supersedes I-252's "*Rejected:* the CLI as a pty proxy catching Ctrl-V"
+and I-206's "*Rejected:* keeping the CLI as ssh's parent"; `repose paste`
+itself stays.
+
+- *Probe first.* Claude Code 2.1.280 on this box, in a scratch tmux
+  session, no prompt sent: an absolute PNG path delivered with `tmux
+  paste-buffer -p` (a bracketed paste) became `[Image #1]`, plain, in
+  single quotes, in double quotes, and backslash-escaped with spaces; two
+  paths separated by a space became two images; two separated by a
+  newline, a `file://` URI and a relative path stayed text; the same path
+  sent as keys (no paste markers) stayed text; `ESC[200~path ESC[201~`
+  written into a tmux client's terminal (as the laptop's terminal sends
+  it) reached Claude as `[Image #n]`. I-252's assumption (a bracketed
+  paste of the path attaches, no `@path`) holds. tmux 3.7c (the guest's)
+  turns bracketed paste on in the attached terminal whatever the pane
+  runs, so a drop always reaches the CLI with paste markers from any
+  terminal that sends pastes bracketed.
+- *Shape.* On macOS and Linux, when stdin and stdout are terminals,
+  `attachTmux` runs the same `ssh -t [-o SendEnv=TZ] <target> tmux attach`
+  on a pty (github.com/creack/pty, golang.org/x/term for raw mode)
+  instead of exec'ing it: output copied out, SIGWINCH copied to the pty,
+  SIGHUP/TERM/INT/QUIT handed to ssh, and ssh's exit status returned
+  (128+N for a signal), so the documented "the exit code is ssh's"
+  holds. ControlMaster use is unchanged (same target args). Windows, a
+  non-terminal, or a pty that cannot open: exec as before.
+  `REPOSE_INPUT_PROXY=0` is the kill switch (cli.md, cli-config.md). The
+  session helper needs no change: its parent is the CLI, which now exits
+  when ssh does.
+- *The scanner* (`inputproxy.go`, pure, table-tested at every split
+  offset) passes input through byte for byte. It holds back only a cut
+  prefix of a watched sequence (paste start, the two Ctrl+V encodings),
+  for 30 ms at most, so a lone Escape is delayed by that and nothing else
+  is. Two interceptions: a bracketed paste whose content is only absolute
+  paths of existing regular files (backslash-escaped as Terminal.app,
+  iTerm2, Ghostty and WezTerm's default send them, quoted as kitty, GNOME
+  Terminal and Konsole do, `file://` URIs, space- or newline-separated, or
+  one unquoted path with spaces); and Ctrl+V as 0x16, CSI u `118;5u` or
+  modifyOtherKeys `27;5;118~` (the guest's tmux asks for extended keys,
+  I-264). A paste of text, of a missing path, of a path under a system
+  directory (`/etc`, `/usr`, `/nix`, ... where the user means the
+  machine's own file), of a hidden file or a file in a hidden directory
+  (an agent that asks the user to paste `~/.ssh/id_ed25519`'s path must
+  not get the key), or over 64 KiB goes through unchanged. A whole read
+  with no markers that is only such paths also counts as a drop (a
+  terminal not asked for bracketed paste; a person typing sends a key per
+  read). Which terminals quote how was taken from their documentation
+  and source as far as known, not tested on each: the parser accepts
+  every form, so an unlisted terminal works if it sends one of them.
+- *What a drop does.* Every file goes over the project's multiplexed ssh
+  with `repose paste`'s save script, now shared (`pasteSaveScript`:
+  umask 077, symlink or foreign directory refused, pruning over a day
+  and past 50 now applies to every file in the directory), as
+  `/tmp/repose-paste/<UTC ts>-<n>-<name>`, the name reduced to
+  `[A-Za-z0-9._-]` so the extension (how Claude Code tells an image)
+  survives. The proxy then types one bracketed paste of the guest paths,
+  backslash-escaped, space-separated, with the drop's trailing space
+  kept. A file inside the checkout the command was run from, when that
+  checkout is the project's (the session helper's `RepoDir`), is not
+  copied: one ssh reads the size of `$HOME/<slug>/<rel>` and, when it
+  matches, that path is typed (a file not yet synced, or changed since,
+  is copied instead). Non-images are copied too: the agent can read a
+  PDF or a log by path. *Limits:* 20 files and 20 MB a file, the same
+  cap as a pasted image, because the copy holds up the keys typed after
+  it and /tmp is not for large files (`repose cp` is); over either,
+  nothing is copied, the original paste goes through, and the tmux status
+  line says why.
+- *Ctrl+V* reads the clipboard with `repose paste`'s reader, bounded at
+  2 s. A PNG (up to 20 MB) is copied as `<ts>.png` and its path typed;
+  no image, no tool, or a timeout sends the key on untouched and prints
+  nothing, so vim's block select and readline's quoted insert keep
+  working; a missing tool on a desktop is said once per session. With
+  an image on the clipboard, Ctrl+V pastes it in every window: the
+  documented trade.
+- *While a copy runs* later input waits in a queue and follows in order;
+  after 0.5 s the status line says a copy is running. Messages go through
+  `tmux display-message` over the multiplexed connection, never over the
+  pane. Nothing is logged; file names appear only in the user's own
+  status line.
+- *Docs.* run-and-attach's "Paste an image" became "Drop a file or paste
+  an image", drop and Ctrl+V first, `repose paste` for scripts and other
+  windows; its kitty and WezTerm key bindings are gone (Ctrl+V does it).
+  cli.md (attach, paste, `REPOSE_INPUT_PROXY`), troubleshooting (Cmd+V
+  sends nothing with only an image on the clipboard; which cases paste
+  the laptop's path), and the agent guide line (the base publish carries
+  it).
+
+*Rejected:* tmux-side detection (the guest cannot read the laptop's
+files; the laptop path is useless there); an OSC 52 or clipboard socket
+into the guest (I-252's reasons stand); uploading on every paste that
+merely contains a path (a sentence mentioning a file must stay text);
+a larger cap for non-images (the same keystroke-queue and /tmp reasons);
+showing progress over the pane (it would corrupt the tmux screen). Not
+verified here: a real Mac or Linux desktop terminal, and Terminal.app's
+bracketing of a drop; the owner's live check is in 07-cli.md's
+checklist.

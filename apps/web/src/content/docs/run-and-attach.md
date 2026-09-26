@@ -106,42 +106,38 @@ Everything after `--` is the command. Without `-i` it reads no input, and withou
 
 Like `attach`, these start no machine: a stopped one gets you exit code 5 and the command to start it.
 
-## Paste an image
+## Drop a file or paste an image
 
-`Ctrl-V` in Claude Code reads the clipboard of the computer it runs on, which is the machine, not your laptop. To give an agent a screenshot, copy it on your laptop and run, in the checkout:
+While you're attached, drag a file onto the terminal, or press `Ctrl+V` with a screenshot on your laptop's clipboard. The file is copied to `/tmp/repose-paste/` on the machine and its path there is pasted where your cursor is:
+
+```
+❯ [Image #1] the button overlaps the footer on this screen
+```
+
+Claude Code shows an image as `[Image #1]`; add your words and press Enter. Other agents, and the shell, get the path as text, and can open the file.
+
+- A file from your checkout isn't copied. You get its path in the machine's checkout, such as `/home/dev/todo-app/docs/mockup.png`. If the machine's copy isn't there yet or differs in size, the file is copied like any other.
+- Drop several files at once to paste several paths.
+- Up to 20 files and 20 MB per file. A bigger drop pastes your laptop's path unchanged, and the tmux status line says why; use [`repose cp`](/docs/cli#repose-cp--r-src-dst) for large files.
+- Only you and the machine's `dev` user can read the copies. Copies older than a day, and all but the newest 50, are deleted at the next copy.
+- A paste that is nothing but paths of files on your laptop counts as a drop, so pasting a copied path works too. Paths under system folders such as `/etc`, `/usr` and `/nix` are pasted as they are, and so are hidden files and anything in a hidden folder such as `~/.ssh`: those are never copied.
+
+Any terminal that types a dropped file's path works: plain, quoted, with backslashes before spaces, or as a `file://` address.
+
+On macOS, press Ctrl+V, not Cmd+V: with only an image on the clipboard, Cmd+V sends the terminal nothing. Ctrl+V reads the clipboard with `pngpaste` if you have it, otherwise `osascript`. On Linux it uses `wl-paste` (from wl-clipboard) under Wayland and `xclip` under X11. With no image on the clipboard, Ctrl+V is an ordinary Ctrl+V, so vim and the shell behave as usual. With one, Ctrl+V pastes the image in every window.
+
+`REPOSE_INPUT_PROXY=0` turns this off: `run` and `attach` then hand your terminal straight to `ssh`, and a drop pastes your laptop's path. On Windows it's always off; copy the file with `repose cp FILE :/tmp/` and type its path.
+
+### From a script or another window
+
+`repose paste` copies the image on the clipboard and pastes its path into the tmux window you were last in, without a key press:
 
 ```
 repose paste
 ```
 
-The image goes to `/tmp/repose-paste/` on the machine, and its path is pasted into the tmux window you were last in, as if you had dropped the file there. Claude Code shows it as an attached image; add your words and press Enter. Other agents get the path as text.
-
 - `repose paste todo-app` from anywhere; `--window claude-2` for another window; `--print` to only print the path.
-- On macOS it uses `pngpaste` if you have it, otherwise `osascript`. On Linux it uses `wl-paste` (from wl-clipboard) under Wayland and `xclip` under X11.
-- Windows isn't supported. Under WSL it reads the Linux clipboard, which may not have images copied in Windows.
-- Only you and the machine's `dev` user can read the files. Up to 20 MB per image; pastes older than a day, and all but the newest 50, are deleted at the next paste.
-
-To paste with a key, bind one in your terminal to run `repose paste` on the laptop. Use the full path from `command -v repose` if the terminal doesn't find it.
-
-kitty, in `kitty.conf` (runs in the directory of the window you're in, so the checkout's project is found):
-
-```
-map ctrl+alt+v launch --type=background --cwd=current repose paste
-```
-
-WezTerm, in `wezterm.lua`, for one project:
-
-```lua
-config.keys = {
-  {
-    key = 'v',
-    mods = 'CTRL|ALT',
-    action = wezterm.action_callback(function()
-      wezterm.background_child_process { 'repose', 'paste', 'todo-app' }
-    end),
-  },
-}
-```
+- It reads the clipboard with the same tools as Ctrl+V. Under WSL it reads the Linux clipboard, which may not have images copied in Windows.
 
 ## Useful flags
 

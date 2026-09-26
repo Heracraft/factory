@@ -13,13 +13,14 @@ import (
 )
 
 // The session helper is what keeps working beside an attached tmux once
-// the CLI has become ssh (07-cli.md: the CLI process is replaced, so
-// nothing of it survives the attach). `run` and `attach` start it just
-// before the exec, detached, with the same ssh target. It carries the
+// the CLI has become ssh, or is busy proxying its terminal (the input
+// proxy, I-280). `run` and `attach` start it just before the attach,
+// detached, with the same ssh target. It carries the
 // laptop's config on `attach` (I-195, I-196, I-198), where doing it first
 // would delay the first keystroke, and reports through tmux, never over
 // the pane. It ends when the ssh it was started beside ends: the CLI's pid
-// is ssh's after the exec, so the helper's parent changing is the signal.
+// is ssh's after an exec, and the proxy exits when its ssh does, so the
+// helper's parent changing is the signal either way.
 //
 // Nothing it does is allowed to delay or break the attach: it starts in a
 // few milliseconds, never reads the terminal, and every failure is at

@@ -38,6 +38,8 @@ Attach to the project's tmux session without syncing. In the project's checkout,
 
 `run` and `attach` print one line when another of your projects is running idle, once per idle stretch. An `attach` that reuses an open connection makes no api call and skips it.
 
+While you're attached, a file you drop on the terminal, or an image you paste with `Ctrl+V`, is copied to the machine and its path there is pasted. See [Drop a file or paste an image](/docs/run-and-attach#drop-a-file-or-paste-an-image).
+
 ### `repose ps [PROJECT]`
 
 The project's tmux windows: number and name, the program running in each (its name, not its arguments), and when it last printed something. `*` marks the current window, the one `attach` opens on. `-q`/`--quiet` prints only the names; `--json` for JSON.
@@ -99,7 +101,7 @@ Copy files with `scp`. One side is `PROJECT:PATH`, or `:PATH` for this checkout'
 
 ### `repose paste [PROJECT]`
 
-Copy the image on your clipboard to `/tmp/repose-paste/` on the machine and paste its path into the tmux session's current pane, where Claude Code attaches it. Nothing is sent with it; you press Enter. See [Paste an image](/docs/run-and-attach#paste-an-image).
+Copy the image on your clipboard to `/tmp/repose-paste/` on the machine and paste its path into the tmux session's current pane, where Claude Code attaches it. Nothing is sent with it; you press Enter. While you're attached, `Ctrl+V` does the same; `repose paste` is for scripts and other windows. See [Drop a file or paste an image](/docs/run-and-attach#drop-a-file-or-paste-an-image).
 
 | Flag            |                                                                  |
 | --------------- | ---------------------------------------------------------------- |
@@ -240,6 +242,7 @@ exclude = ["dist", "*.mp4"]
 | `REPOSE_NO_SPINNER=1`  | One line per step instead of a progress line. `TERM=dumb` does the same.                                                    |
 | `REPOSE_NO_FASTPATH=1` | Check with the server before every connection instead of reusing the last one. Slower; for when a connection keeps failing. |
 | `REPOSE_NO_BROWSER=1`  | Never open a browser, even with `repose login --browser`.                                                                   |
+| `REPOSE_INPUT_PROXY=0` | Don't copy dropped files or `Ctrl+V` images to the machine; `run` and `attach` hand the terminal straight to `ssh`.         |
 | `REPOSE_API_URL`       | Like `--api-url`.                                                                                                           |
 | `REPOSE=1`             | Set on every repose machine, so scripts can tell where they run.                                                            |
 | `XDG_CONFIG_HOME`      | If set, the CLI's files are in `$XDG_CONFIG_HOME/repose/`.                                                                  |

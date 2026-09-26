@@ -245,8 +245,48 @@ runs on, so `Ctrl-V` in the guest never sees the laptop's screenshot.
 - Nothing is logged; the path and the image stay between the laptop and
   the guest.
 
-A terminal key binding that runs it (kitty, WezTerm) is documented on
-/docs/run-and-attach, not shipped.
+`repose paste` stays for scripts, other windows and a disabled proxy;
+the kitty and WezTerm key bindings that ran it left /docs/run-and-attach
+when Ctrl+V did the same through the input proxy (I-280).
+
+## Drop a file or paste an image while attached (I-280)
+
+On macOS and Linux, `run` and `attach` run `ssh -t ... tmux attach` on a
+pty of the CLI's own (creack/pty; the laptop terminal in raw mode;
+SIGWINCH copied to the pty; SIGHUP, SIGTERM, SIGINT, SIGQUIT handed to
+ssh; the exit status is ssh's, 128+N for a signal). Input goes through
+byte for byte, a lone ESC or a cut escape sequence held at most 30 ms,
+with two exceptions:
+
+- A bracketed paste (the guest's tmux 3.7 turns bracketed paste on in the
+  laptop terminal whatever the pane runs) whose content is only absolute
+  paths of existing regular files on the laptop: backslash-escaped,
+  single- or double-quoted, `file://` URIs (empty host or `localhost`),
+  separated by spaces or newlines, or one unquoted path with spaces.
+  Paths under system directories (`/etc`, `/usr`, `/nix`, ...), paths
+  with a hidden component (`~/.ssh/id_ed25519`, `.env`) and pastes over
+  64 KiB are text. A read with no paste markers that is only such
+  paths is a drop too (a terminal not asked for bracketed paste).
+  Each file is copied over the project's multiplexed ssh with
+  `repose paste`'s script (same directory, modes, symlink and owner
+  refusal, pruning) to `/tmp/repose-paste/<ts>-<n>-<safe name>`, and the
+  proxy types a bracketed paste of the guest paths, backslash-escaped and
+  space-separated, which Claude Code attaches (checked with Claude Code
+  2.1.280). A file inside the checkout the CLI was run from (its git
+  toplevel, when that checkout is the project's) whose guest copy under
+  `$HOME/<slug>` has the same size is not copied: its guest path is
+  typed. Over 20 files or a file over 20 MB: nothing copied, the original
+  paste goes through, and `tmux display-message` says why.
+- Ctrl+V (0x16, CSI u `118;5u`, modifyOtherKeys `27;5;118~`): the
+  clipboard is read as `repose paste` reads it, for up to 2 s. A PNG is
+  copied to `/tmp/repose-paste/<ts>.png` and its path typed as above;
+  anything else sends the key on. A missing clipboard tool on a desktop is
+  said once per session on the tmux status line.
+
+Input typed during a copy waits and follows it in order. A copy that
+takes over 0.5 s says so on the status line; nothing is ever written
+over the pane. `REPOSE_INPUT_PROXY=0`, Windows, or a stdin or stdout that
+is not a terminal: the CLI execs ssh as before. Nothing is logged.
 
 ## ps, exec and ssh (I-274, I-275)
 

@@ -222,7 +222,7 @@ func attachFast(ctx context.Context, e *Env, explicit string) (done bool, err er
 		e.addReposeRemote(guess) // I-272
 	}
 	startSessionHelper(e, helper)
-	return true, attachTmux(target, guess.Slug, "", tz)
+	return true, attachTmux(target, guess.Slug, "", tz, helper.RepoDir)
 }
 
 // earlyProbe is the sync's probe, started before the api has answered
