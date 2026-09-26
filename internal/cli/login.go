@@ -67,7 +67,32 @@ func runLogin(ctx context.Context, dir string, cfg Config, httpClient *http.Clie
 	if !me.Billing.HasCard {
 		fmt.Printf("No card on file. Add one at https://repose.herakraft.co/billing before the first `repose run`.\n")
 	}
+	if !opts.GuestEnv {
+		setUpPlainSSH()
+	}
 	return nil
+}
+
+// setUpPlainSSH writes ~/.ssh/repose/config and the Include line at login,
+// so `ssh <project>.repose` works for every project straight after it,
+// before any `repose run` (I-281): the first ssh writes the certificate
+// and the Host block. A failure is a warning; run and attach try again.
+func setUpPlainSSH() {
+	sd, err := sshDir()
+	if err == nil {
+		err = writeSSHEntry(sd)
+	}
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "warning: could not write ~/.ssh/repose/config (%v); `repose run` tries again.\n", err)
+		return
+	}
+	usc, err := userSSHConfig()
+	if err != nil {
+		return
+	}
+	if err := ensureIncludeLine(usc); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "warning: %s\n", includeProblemText(usc, err))
+	}
 }
 
 func runLogout(ctx context.Context, dir string, cfg Config, httpClient *http.Client, purge bool) error {

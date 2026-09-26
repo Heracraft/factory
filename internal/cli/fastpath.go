@@ -29,7 +29,8 @@ func noFastPath() bool { return os.Getenv(envNoFastPath) == "1" }
 // sshFilesCover reports whether ~/.ssh/repose (sd) already lets the CLI
 // reach p: a certificate for the CLI's key with p's id among its
 // principals and certReuseMargin of validity left, the known_hosts file,
-// and a Host block for p's slug in the generated config. handle is the
+// ~/.ssh/repose/config as this binary writes it, and a Host block for p's
+// slug in ~/.ssh/repose/hosts. handle is the
 // account handle the block names.
 func sshFilesCover(sd string, p *Project, now time.Time) (handle string, ok bool) {
 	if p == nil || p.ID == "" || p.Slug == "" {
@@ -46,7 +47,13 @@ func sshFilesCover(sd string, p *Project, now time.Time) (handle string, ok bool
 	if !certIsFor(cert, pub) || !certUsableFor(cert, []string{p.ID}, now, certReuseMargin) {
 		return "", false
 	}
-	cfg, err := os.ReadFile(filepath.Join(sd, "config"))
+	if !sshEntryCurrent(sd) {
+		// ~/.ssh/repose/config from before I-281 (the Host blocks
+		// themselves), or naming a repose binary that has moved: the slow
+		// path writes both files.
+		return "", false
+	}
+	cfg, err := os.ReadFile(filepath.Join(sd, sshHostsName))
 	if err != nil {
 		return "", false
 	}

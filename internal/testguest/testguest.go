@@ -77,6 +77,42 @@ func New(home string, authorizedKey ssh.PublicKey) (*Guest, error) {
 	return g, nil
 }
 
+// NewWithCA starts a fake guest that, like the gateway, accepts only a
+// user certificate signed by userCA whose principals include
+// principalFor(login), where login is the SSH user name the client sent
+// (`<slug>.<handle>`). principalFor returns "" for a login it does not
+// know. It is for tests of the laptop's own ssh config (DECISIONS I-281):
+// the right User, key and certificate, or no connection.
+func NewWithCA(home string, userCA ssh.PublicKey, principalFor func(login string) string) (*Guest, error) {
+	g, err := New(home, userCA)
+	if err != nil {
+		return nil, err
+	}
+	checker := &ssh.CertChecker{
+		IsUserAuthority: func(auth ssh.PublicKey) bool {
+			return string(auth.Marshal()) == string(userCA.Marshal())
+		},
+	}
+	g.config.PublicKeyCallback = func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+		principal := principalFor(conn.User())
+		if principal == "" {
+			return nil, fmt.Errorf("unknown login %q", conn.User())
+		}
+		cert, ok := key.(*ssh.Certificate)
+		if !ok {
+			return nil, fmt.Errorf("certificate required")
+		}
+		if !checker.IsUserAuthority(cert.SignatureKey) {
+			return nil, fmt.Errorf("certificate not signed by the repose ca")
+		}
+		if err := checker.CheckCert(principal, cert); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+	return g, nil
+}
+
 // Close stops accepting connections and kills any tmux server the fake
 // guest started.
 func (g *Guest) Close() {

@@ -84,7 +84,8 @@ A stopped machine costs only its disk. The next `repose run` starts it again in 
 
 ## Next
 
-- [Run and attach](/docs/run-and-attach): tmux, agents, SSH and editors.
+- [Run and attach](/docs/run-and-attach): tmux and agents.
+- [SSH and editors](/docs/ssh-and-editors): ssh, scp, rsync, git, VS Code, Cursor and Zed on any project.
 - [Sync](/docs/sync): what travels to the machine and what doesn't.
 - [The machine](/docs/machine): what's installed, ports, the browser.
 - [Pricing](/docs/billing).

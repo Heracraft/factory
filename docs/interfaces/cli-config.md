@@ -13,8 +13,10 @@ All under `~/.config/repose/` (respecting `$XDG_CONFIG_HOME`), mode 0700.
 `~/.ssh/repose/` (0700) holds `id_ed25519` and `id_ed25519.pub` (the
 CLI's own key pair, generated without a passphrase, private half 0600;
 DECISIONS I-149), `id_ed25519-cert.pub` (the current certificate, for
-that key), `known_hosts`, `config` (see ssh-gateway.md), and `cm-*`, the
-ControlMaster sockets of open multiplexed connections. The CLI never
+that key), `known_hosts`, `config` and `hosts` (see ssh-gateway.md "CLI
+side"; before I-281 `config` held the Host blocks itself), `.prepare.lock`
+(serialises `repose ssh-prepare`), and `cm-*`, the ControlMaster sockets
+of open multiplexed connections. The CLI never
 creates, reads or changes `~/.ssh/id_*`. In `~/.ssh/config` it owns one
 `Include ~/.ssh/repose/config` line before the first `Host` or `Match`
 line; a symlinked config is edited at its target, or, when that is read

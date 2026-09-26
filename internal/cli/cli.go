@@ -21,6 +21,7 @@ import (
 // value ("dev" outside a release build). It returns the process exit code
 // per docs/interfaces/cli-config.md.
 func Execute(version string) int {
+	markSSHPrepared() // before any child starts (I-281)
 	// A mistyped command or subcommand is answered before cobra runs, on a
 	// throwaway tree (its flag parsing leaves state behind), with the
 	// command the user probably meant (DECISIONS I-276).
@@ -141,6 +142,8 @@ func newRootCmd(version string) *cobra.Command {
 		newPasteCmd(env, g),
 		newScanCmd(),
 		newSessionHelperCmd(),
+		newSSHPrepareCmd(env),
+		newCodeCmd(env, g),
 	)
 	return root
 }

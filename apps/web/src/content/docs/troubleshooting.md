@@ -15,7 +15,11 @@ For more detail on any command, add `-v`. `REPOSE_TIMING=1` shows where the time
 
 **`This directory has no git remote.`** Give the project a name: `repose run --name scratch`.
 
-**`ssh todo-app.repose` says `Permission denied`.** Your certificate is older than 24 hours. Run `repose attach todo-app`, detach, and try again. If the CLI works but plain `ssh` never does, the `Include ~/.ssh/repose/config` line is missing from `~/.ssh/config`; the CLI printed a message when it couldn't add it.
+**`ssh todo-app.repose` says `Could not resolve hostname`.** If a line before it says ``Not logged in. Run `repose login`.``, log in and connect again. With no other message, ssh isn't reading `~/.ssh/repose/config`: the `Include ~/.ssh/repose/config` line must be in `~/.ssh/config` before its first `Host` or `Match` line. The CLI prints a message when it can't add it. See [SSH and editors](/docs/ssh-and-editors#when-it-doesnt-connect).
+
+**`ssh todo-app.repose` says `Permission denied`.** The certificate couldn't be renewed, most often because you're logged out: run `repose login`, then connect again. `repose attach todo-app` also renews it.
+
+**Your editor can't connect to `todo-app.repose`.** Run `ssh todo-app.repose true` in a terminal. It shows the same error the editor got, with the reason. A stopped machine says ``todo-app is stopped; run `repose start todo-app` ``; connecting never starts one.
 
 **`Guest is running but SSH did not answer in 60s.`** `repose logs --kind console` shows the boot log. `repose start` restarts a stuck machine.
 

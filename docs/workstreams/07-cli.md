@@ -233,10 +233,12 @@ This directory has no git remote. Pass --name NAME to create a project anyway.
   certificate, and the key has no passphrase to cache.
 - Write `~/.ssh/repose/known_hosts` with `@cert-authority
   ssh.repose.herakraft.co,10.64.* <host_ca_pub>` from the response.
-- Rewrite `~/.ssh/repose/config` with one `Host <slug>.repose` block per
+- Rewrite `~/.ssh/repose/hosts` with one `Host <slug>.repose` block per
   project (the block in `interfaces/ssh-gateway.md`, with `ControlMaster
   auto`, `ControlPath ~/.ssh/repose/cm-%C`, `ControlPersist 10m` except on
-  Windows, so every ssh of a command shares one connection). Ensure
+  Windows, so every ssh of a command shares one connection), and
+  `~/.ssh/repose/config`, whose Match line runs `repose ssh-prepare` before
+  ssh reads the blocks (I-281; ssh-gateway.md "CLI side"). Ensure
   `~/.ssh/config` has `Include ~/.ssh/repose/config` before its first
   `Host` or `Match` line (inserted once as its first line with a comment
   `# added by repose`; one that exists only after a `Host` line does not

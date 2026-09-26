@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-326 entries.
+328 entries.
 
 ## Scope
 
@@ -358,3 +358,5 @@ pointer, not a summary.
 - **I-275** `repose exec` runs one command in the checkout; `repose ssh` opens a shell there — 2026-09-26; L7082
 - **I-276** Did-you-mean for commands, `-q` on listings — 2026-09-26; L7122
 - **I-277** `repose secrets import` sets every NAME=VALUE of a .env file — 2026-09-26; L7142
+- **I-281** Every ssh to `<project>.repose` first runs `repose ssh-prepare`, so plain ssh, scp, rsync, git and editors reach every project — 2026-09-26; L7169
+- **I-282** `repose code [PROJECT]` opens the checkout in VS Code, Cursor or Zed over that host — 2026-09-26; L7232

@@ -243,11 +243,15 @@ guest ──vsock──▶ hostd
   nothing else; the user's keys are never touched, DECISIONS I-149) and
   gets back a certificate with principal `<project-id>`, valid 24 hours,
   extensions `permit-agent-forwarding,permit-port-forwarding,permit-pty`.
-  The CLI writes `~/.ssh/repose/config` with one `Host` block per project
-  (multiplexed, so a command makes one connection), included from the
-  user's main config by a line the CLI adds once and verifies with `ssh
-  -G` (I-151). The CLI refreshes the certificate silently while the Logto
-  refresh token is valid.
+  The CLI writes `~/.ssh/repose/hosts` with one `Host` block per project
+  (multiplexed, so a command makes one connection), and
+  `~/.ssh/repose/config`, included from the user's main config by a line
+  the CLI adds once and verifies with `ssh -G` (I-151). That config runs
+  `repose ssh-prepare` before any ssh to `<project>.repose` reads the
+  blocks, so plain ssh, scp, rsync, git and editors reach every project,
+  one created elsewhere or with an expired certificate included (I-281).
+  The CLI refreshes the certificate silently while the Logto refresh
+  token is valid.
 - **Gateway.** Go, `golang.org/x/crypto/ssh`. Login name is
   `<project-slug>.<user-handle>` (e.g. `todo-app.heracraft`). The gateway
   verifies the certificate against the CA, resolves the project through the

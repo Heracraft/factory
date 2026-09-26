@@ -35,6 +35,10 @@ var hiddenCommands = map[string]string{
 	// reads its options from REPOSE_SESSION and does nothing useful when
 	// typed by hand.
 	"repose __session": "internal helper process",
+	// Run by ssh itself from the Match line in ~/.ssh/repose/config
+	// (I-281), before every ssh to <project>.repose; typing it does what
+	// that ssh would have done, and nobody needs to.
+	"repose ssh-prepare": "run by ssh from ~/.ssh/repose/config",
 }
 
 // undocumentedFlags is "<command path> --<flag>" for any flag that is
@@ -44,6 +48,7 @@ var undocumentedFlags = map[string]string{}
 // internalEnvVars are REPOSE_* names the package reads that no user sets.
 var internalEnvVars = map[string]string{
 	"REPOSE_SESSION":         "the session helper's options, set by the CLI for its own child (session.go)",
+	"REPOSE_SSH_PREPARED":    "set by the CLI for its own ssh, so ssh-prepare skips work already done (sshprepare.go)",
 	"REPOSE_TEST_GOOS":       "tests only: pretend to be another OS (goos())",
 	"REPOSE_CLAUDE_PLATFORM": "tests only: the guest's platform settings path in the Claude merge script",
 }

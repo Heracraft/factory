@@ -32,12 +32,14 @@ const (
 	envEditor          = "EDITOR"
 	envWaylandDisplay  = "WAYLAND_DISPLAY" // repose paste: read the Wayland clipboard (I-252)
 	envDisplay         = "DISPLAY"         // repose paste: else the X11 one
+	envReposeEditor    = "REPOSE_EDITOR"   // repose code: the editor when --editor is not given (I-282)
 )
 
 var userEnvVars = []string{
 	envProject, envAPIURL, envTiming, envNoSpinner, envNoForward, envNoFastPath, envNoBrowser,
 	envInGuest, envXDGConfigHome, envClaudeConfigDir, envVisual, envEditor,
 	envWaylandDisplay, envDisplay,
+	envReposeEditor,
 }
 
 // Env bundles what almost every command needs: config, the API client,

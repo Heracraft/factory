@@ -6917,7 +6917,7 @@ user may not want published. `repose run` and `repose attach` now add
 `remote.repose.url = <slug>.repose:~/<slug>` to the checkout's
 `.git/config`: the checkout the sync writes (~/<slug>, I-150), over the
 `<slug>.repose` alias every other ssh use goes through (I-151, and the
-wildcard of I-270), so ControlMaster, the certificate and the gateway's
+wildcard of I-281), so ControlMaster, the certificate and the gateway's
 exec relay are the ones `repose run` already uses. `git fetch repose`,
 `git log repose/main`, `git diff main repose/main`, `git cherry-pick`,
 `git merge repose/main` and `git pull repose main` are then plain git.
@@ -7165,3 +7165,86 @@ refusing existing names without `--overwrite` (vercel's `env add` does,
 but import's usual reason is updating values, and `set` already
 replaces); expanding `${VAR}` (would read the laptop's environment into a
 secret silently).
+
+**I-281. Every ssh to `<project>.repose` first runs `repose ssh-prepare`,
+so plain ssh, scp, rsync, git and editors reach every project.** (dev-
+friendly CLI round, W2, 2026-09-26; found live 2026-09-25: a project
+created on another laptop had no Host block, and an editor failed once the
+certificate expired) `~/.ssh/repose/config`, the file `~/.ssh/config`
+includes (I-151), is now `Match originalhost "*.repose,!*'*" exec
+"'<repose>' ssh-prepare '%n'"`, `Match all`, `Include ~/.ssh/repose/hosts`,
+and the Host blocks moved to `hosts`, each with a `# project <id>` line.
+ssh runs the exec before it reads the next line and opens `hosts` only at
+the Include, so what the prepare writes is what that connection reads;
+checked with the system ssh of OpenSSH 8.2, 8.8, 9.6 and 10.5
+(`TestPlainSSH*` pass on each). The prepare's fast path (block present,
+certificate for the CLI's key carrying the block's id with 30 minutes
+left, known_hosts) reads files and returns: 2 ms per run measured, no api
+call (the test counts them). Otherwise it takes
+`~/.ssh/repose/.prepare.lock` (flock; concurrent connections queue and
+the rest find the files ready: 6 at once issue one certificate), reads
+the Env after the lock (a token refresh by another prepare rotated the
+refresh token), lists the projects and runs `ensureCert`, bounded by 10 s
+(VS Code's connect timeout is 15). It never prompts: not logged in,
+an unknown project (`repose: you have no project called X`) or an api
+it cannot reach is one stderr line and a failed ssh, unless the
+certificate on disk is still valid for a minute, which is then used with
+a warning. *Stopped machines:* connecting does not start one. An editor
+reconnects in the background, so a start there would restart a machine
+the user stopped on purpose and bill for it, and a start takes longer
+than VS Code's connect timeout; the gateway's banner already names
+`repose start`. The same rule as attach, exec and ssh. *Binary path:* the
+PATH entry when it is the same file as the running binary (install.sh's
+`~/.local/bin`, a package-manager symlink, both stable across upgrades),
+else `os.Executable()`; a binary not named `repose` (the test binary,
+which would run its whole suite: it did once, before this rule) gets no
+Match line, and neither does a path with a quote, backslash or `%`, nor
+Windows (Win32-OpenSSH runs the exec through `system()`/cmd.exe, and the
+CLI is not supported there). The Include is unconditional, so a failed
+prepare or a moved binary leaves the blocks on disk working as before;
+`sshFilesCover` treats a `config` that is not what this binary writes as
+not covering, so the next command that connects rewrites it, and
+`repose login` writes it too, so a new laptop needs no `run`. The CLI
+sets `REPOSE_SSH_PREPARED=1` for its own children (captured before it is
+set), and the prepare returns at once for them; without it, ensureCert's
+`ssh -G` would wait on its own lock. `repose code` removes it from the
+editor's environment. Paths in the files are spelled `~` when $HOME is
+the passwd home (what ssh expands `~` to), else absolute. `!*'*` keeps a
+host name with a quote out of the shell; OpenSSH 9.6+ refuses such names
+anyway. *Rejected:* `Host *.repose` with `User %n`-style tokens (User
+takes no tokens before OpenSSH 10: `ssh -G` printed `user %n-user` on
+8.2, 8.8 and 9.6); `ProxyCommand repose ssh-proxy` to renew the
+certificate (every version tested loads `CertificateFile` before the
+proxy command produces a byte, so the connection offers the old one, and
+the User problem remains); `ProxyCommand ssh -W` through the gateway (the
+gateway terminates SSH and relays channels, and the inner connection has
+the same User problem); writing blocks only on run/attach (the bug).
+`TestPlainSSHToAProjectNeverRunHere` (ssh, scp, rsync, git ls-remote and
+clone against a project with no block and an expired certificate, a fake
+guest that checks the certificate like the gateway),
+`TestPlainSSHConcurrentConnectionsIssueOnce`, `TestPlainSSHNotLoggedIn`,
+`TestPlainSSHUnknownProject`, `TestRenderSSHEntry`, `TestSSHFilesCover`.
+Interfaces: `ssh-gateway.md` "CLI side", `cli-config.md`; /docs page
+`ssh-and-editors.md`. Needs a CLI release; JetBrains Gateway (its own
+SSH client, which does not run the exec) is documented with a manual
+`ssh <project>.repose true` first and is untested.
+
+**I-282. `repose code [PROJECT]` opens the checkout in VS Code, Cursor or
+Zed over that host.** (dev-friendly CLI round, W2, 2026-09-26) VS Code
+and Cursor get `--remote ssh-remote+<slug>.repose /home/dev/<slug>`, Zed
+`ssh://<slug>.repose/home/dev/<slug>` (the checkout of
+guest-conventions.md). The editor is `--editor code|cursor|zed`, else
+`REPOSE_EDITOR`, else the first found in that order: on PATH (`zed` or
+`zeditor`), then on macOS the launchers inside `/Applications` and
+`~/Applications`, for an editor installed without its shell command.
+None found is exit 1 naming the three and the /docs page; an unknown name
+is exit 2. Before launching it proves the connection the way `exec` and
+`ssh` do (`connectRunning`, shared with them now): the project must be
+running (exit 5, as attach; see I-281 for why nothing starts a machine
+implicitly), and the certificate and block are written, so the editor's
+own ssh finds them. The editor's environment has no
+`REPOSE_SSH_PREPARED`, so its later connections renew the certificate
+themselves. `TestCodeOpensTheCheckoutOverSSH`. /docs `cli.md` and
+`ssh-and-editors.md`. *Rejected:* a JetBrains Gateway launcher: its
+`jetbrains-gateway://connect#...` URL is not documented by JetBrains and
+could not be checked here; starting a stopped machine (I-281).

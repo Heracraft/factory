@@ -111,7 +111,7 @@ func TestRestoreRenewsTheCertificate(t *testing.T) {
 	if cert == nil || !certUsableFor(cert, []string{back.ID}, time.Now(), 0) {
 		t.Fatalf("the certificate does not cover the restored project %s: %+v", back.ID, cert)
 	}
-	cfg, _ := os.ReadFile(filepath.Join(home, ".ssh", "repose", "config"))
+	cfg, _ := os.ReadFile(filepath.Join(home, ".ssh", "repose", sshHostsName))
 	if !strings.Contains(string(cfg), "Host e2e-a-private.repose") {
 		t.Fatalf("config has no Host block for the restored project:\n%s", cfg)
 	}

@@ -54,7 +54,7 @@ laptop is closed, and the laptop's ssh-agent is never forwarded
 (DECISIONS I-247): with it, any process in the guest (an agent running
 with every permission, a package's install script) could sign with the
 laptop's keys while the user is attached, which is the exposure the
-machine exists to remove. The generated `~/.ssh/repose/config` says
+machine exists to remove. The generated `~/.ssh/repose/hosts` says
 `ForwardAgent no` and the gateway refuses agent forwarding from any
 client.
 

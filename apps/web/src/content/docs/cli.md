@@ -67,6 +67,21 @@ $ repose exec -- sh -c "npm run build && npm test"
 
 Open a shell on the machine in the checkout, outside tmux; `exit` ends it. For one command, use `repose exec`.
 
+### `repose code [PROJECT]`
+
+Open the project's checkout, `/home/dev/<project>`, in an editor on your laptop, over SSH to `<project>.repose`. It uses VS Code (`code`) if it's installed, else Cursor (`cursor`), else Zed (`zed`); on a Mac it also looks in `/Applications`. The machine must be running.
+
+```
+$ repose code todo-app
+Opening todo-app.repose:/home/dev/todo-app in VS Code
+```
+
+| Flag              |                                                                            |
+| ----------------- | -------------------------------------------------------------------------- |
+| `--editor EDITOR` | `code`, `cursor` or `zed`. Default: `REPOSE_EDITOR`, else the first found. |
+
+Other editors: see [SSH and editors](/docs/ssh-and-editors).
+
 ### `repose open [PORT]`
 
 Forward one port to your laptop and open it in the browser, until `Ctrl-C`. Works for servers on `127.0.0.1`, `0.0.0.0` or `::1`.
@@ -232,6 +247,7 @@ exclude = ["dist", "*.mp4"]
 | `VISUAL`, `EDITOR`     | The editor for `repose config edit`. Default `vi`.                                                                          |
 | `WAYLAND_DISPLAY`      | On Linux, `repose paste` reads the Wayland clipboard with `wl-paste` when this is set.                                      |
 | `DISPLAY`              | Otherwise it reads the X11 clipboard with `xclip`.                                                                          |
+| `REPOSE_EDITOR`        | The editor `repose code` opens: `code`, `cursor` or `zed`.                                                                  |
 
 ## Other servers
 
@@ -239,12 +255,12 @@ For a test or self-hosted repose server rather than the hosted one: `--api-url U
 
 ## Files on your laptop
 
-| Path                |                                                                                                                   |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `~/.config/repose/` | Your login (mode 0600; on macOS the token is in the keychain), `config.toml`, and caches that are safe to delete. |
-| `~/.ssh/repose/`    | The CLI's own SSH key and 24-hour certificate, and one `Host` block per project.                                  |
-| `~/.ssh/config`     | One added line: `Include ~/.ssh/repose/config`.                                                                   |
-| `.git/config`       | In each project's checkout, the `repose` remote. Nothing is committed.                                            |
+| Path                |                                                                                                                                                                                                                                                                                                                        |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `~/.config/repose/` | Your login (mode 0600; on macOS the token is in the keychain), `config.toml`, and caches that are safe to delete.                                                                                                                                                                                                      |
+| `~/.ssh/repose/`    | The CLI's own SSH key and 24-hour certificate, `hosts` with one `Host` block per project, and `config`, which has `ssh` run `repose ssh-prepare` before connecting to a `.repose` host, so the certificate is renewed and a new project's block written first ([SSH and editors](/docs/ssh-and-editors#how-it-works)). |
+| `~/.ssh/config`     | One added line: `Include ~/.ssh/repose/config`.                                                                                                                                                                                                                                                                        |
+| `.git/config`       | In each project's checkout, the `repose` remote. Nothing is committed.                                                                                                                                                                                                                                                 |
 
 `repose logout --purge` removes all of these but the `repose` remotes; `git remote remove repose` removes one.
 

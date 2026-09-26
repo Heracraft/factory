@@ -78,10 +78,19 @@ AllowUsers dev
 ## CLI side
 
 `~/.ssh/repose/config` (included from `~/.ssh/config` by a line the CLI adds
-once, `Include ~/.ssh/repose/config`):
+once, `Include ~/.ssh/repose/config`), since I-281:
+
+```
+Match originalhost "*.repose,!*'*" exec "'/home/you/.local/bin/repose' ssh-prepare '%n'"
+Match all
+Include ~/.ssh/repose/hosts
+```
+
+and `~/.ssh/repose/hosts`, one block per project:
 
 ```
 Host todo-app.repose
+  # project 01a0cfac-8500-75e2-b8ee-2a60cce7b7aa
   HostName ssh.repose.herakraft.co
   User todo-app.heracraft
   IdentityFile ~/.ssh/repose/id_ed25519
@@ -106,12 +115,38 @@ one client connection per command (and the master may stay open for up
 to ten minutes after it), carrying as many session channels as the
 command needs.
 
-So `ssh todo-app.repose` works from any tool (VS Code Remote-SSH, Zed,
-Cursor) without the CLI, as long as the certificate is fresh. `repose run`
-refreshes it, and checks with `ssh -G todo-app.repose` that the alias
-resolves to the gateway; when the `Include` line is not effective it
-says what to change and uses `ssh -F ~/.ssh/repose/config` for its own
-connections (I-151).
+The Match line makes `ssh todo-app.repose` work from any tool that runs
+the system's ssh (scp, rsync, git, VS Code Remote-SSH, Cursor, Zed)
+without a `repose` command first (DECISIONS I-281). ssh runs the `exec`
+before it reads the next line and opens `hosts` only at the `Include`, so
+what `repose ssh-prepare <host>` writes is what that same connection
+reads. The prepare returns at once, with no api call, when `hosts` has
+the project's block and the certificate on disk carries the id in the
+block's `# project` line with 30 minutes left; else it takes
+`~/.ssh/repose/.prepare.lock`, lists the account's projects and runs the
+same certificate issue as `repose run`, which rewrites `hosts` for every
+project. It never prompts: not logged in, an unknown project, or an api
+it cannot reach within 10 s is one line on stderr and a failed ssh
+(unless the certificate on disk is still valid, which is then used). It
+does not start a stopped machine; the gateway's banner says how. The
+`Include` is unconditional, so a prepare that fails, or a `repose` binary
+that moved, leaves the blocks on disk working as before. `!*'*` keeps a
+host name with a quote out of the shell (OpenSSH before 9.6 passes one
+through). The `exec` names the binary by the PATH entry that resolves to
+it (an upgrade in place keeps the path); a path the line cannot carry
+(a quote, a backslash, `%`) and Windows get no Match line. The CLI's own
+ssh children carry `REPOSE_SSH_PREPARED=1`, and the prepare does nothing
+for them.
+
+The files are rewritten on `repose login` (`config` only), on every
+certificate issue or reuse (both), and when the CLI finds a `config`
+from before I-281 or naming another binary. `repose run` checks with
+`ssh -G todo-app.repose` that the alias resolves to the gateway; when the
+`Include` line is not effective it says what to change and uses `ssh -F
+~/.ssh/repose/config` for its own connections (I-151). Through v0.1.17
+the blocks were in `~/.ssh/repose/config` itself, with no `# project`
+line; ssh reads that shape as before, and the first command that
+connects after the upgrade replaces it.
 
 ## Test CA
 

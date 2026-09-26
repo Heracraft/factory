@@ -117,11 +117,7 @@ func newExecCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 // one of repose's exit codes with a message; after, the exit code is the
 // command's (ssh's own failure is 255).
 func ExecCmd(ctx context.Context, e *Env, opts ExecOptions, stdin io.Reader) error {
-	project, err := requireRunningProject(ctx, e, opts.ProjectArg)
-	if err != nil {
-		return err
-	}
-	target, err := connect(ctx, e, project)
+	project, target, err := connectRunning(ctx, e, opts.ProjectArg)
 	if err != nil {
 		return err
 	}
@@ -180,11 +176,7 @@ func newSSHCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 // SSHCmd implements `repose ssh`: the certificate and config as for
 // attach, then ssh replaces this process, so its exit code is ssh's.
 func SSHCmd(ctx context.Context, e *Env, projectArg string) error {
-	project, err := requireRunningProject(ctx, e, projectArg)
-	if err != nil {
-		return err
-	}
-	target, err := connect(ctx, e, project)
+	project, target, err := connectRunning(ctx, e, projectArg)
 	if err != nil {
 		return err
 	}

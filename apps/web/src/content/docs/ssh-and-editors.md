@@ -1,0 +1,86 @@
+---
+title: SSH and editors
+description: Reach every project with ssh, scp, rsync and git, and open it in VS Code, Cursor, Zed or JetBrains Gateway.
+section: Using repose
+order: 10.5
+---
+
+## Every project is an SSH host
+
+Once you've run `repose login`, each of your projects is an SSH host called `<project>.repose`. Anything that uses your `ssh` can reach it: projects you created on another laptop, and projects you've never run from this one, included. You don't need a `repose` command first.
+
+```
+ssh todo-app.repose
+ssh todo-app.repose 'cd todo-app && git log --oneline -3'
+scp todo-app.repose:todo-app/report.html .
+rsync -a todo-app.repose:todo-app/dist/ ./dist/
+ssh -L 9229:localhost:9229 todo-app.repose
+```
+
+You log in as `dev`. Paths are relative to `/home/dev`, and the project's checkout is `/home/dev/<project>`. Plain `ssh` doesn't attach to tmux; run `tmux attach` for that, or use `repose attach`.
+
+git works over the same host:
+
+```
+git clone todo-app.repose:todo-app todo-app-from-machine
+git ls-remote todo-app.repose:todo-app
+```
+
+## VS Code and Cursor
+
+```
+repose code todo-app
+```
+
+```
+Opening todo-app.repose:/home/dev/todo-app in VS Code
+```
+
+`repose code` checks the machine is running and that SSH to it works, then opens the checkout. It uses VS Code if `code` is installed, else Cursor, else Zed. Pick one with `--editor code`, `--editor cursor` or `--editor zed`, or set `REPOSE_EDITOR` to one of those.
+
+To connect by hand, install the **Remote - SSH** extension (Cursor has its own), run **Remote-SSH: Connect to Host…** from the Command Palette, type `todo-app.repose`, pick **Linux** if it asks, and open `/home/dev/todo-app`. From a terminal:
+
+```
+code --remote ssh-remote+todo-app.repose /home/dev/todo-app
+```
+
+No VS Code settings are needed. If `code` isn't found on a Mac, run **Shell Command: Install 'code' command in PATH** in VS Code; `repose code` also finds VS Code, Cursor and Zed in `/Applications` without it.
+
+## Zed
+
+```
+repose code --editor zed
+```
+
+or from a terminal, `zed ssh://todo-app.repose/home/dev/todo-app`. In Zed itself, open a remote project, add a server with `ssh todo-app.repose`, and open `/home/dev/todo-app`.
+
+## JetBrains Gateway
+
+Gateway uses its own SSH client instead of your `ssh`, so it can't renew the certificate for you. Run `ssh todo-app.repose true` before connecting, and again after 24 hours. Then in Gateway, choose **SSH**, add a connection to host `todo-app.repose`, choose **OpenSSH config and authentication agent** for authentication, and open `/home/dev/todo-app`. We haven't tested Gateway yet.
+
+## How it works
+
+`repose login` adds one line to `~/.ssh/config`, `Include ~/.ssh/repose/config`, and writes that file. Before every `ssh` to a `.repose` host, the file has ssh run `repose ssh-prepare`, which checks the host's entry and your certificate:
+
+- When both are in place, it returns at once. It reads a few files and makes no network call.
+- When the certificate has expired (they last 24 hours) or the project is new to this laptop, it gets a new certificate and writes the project's entry, then ssh goes on with them.
+
+It never asks you anything, so an editor can't hang on it. The entries themselves are in `~/.ssh/repose/hosts`, one per project.
+
+Connecting never starts a stopped machine. An editor that reconnects in the background would otherwise start a machine you stopped on purpose. `repose start todo-app` starts it, and so does `repose run` in its checkout.
+
+## When it doesn't connect
+
+**``Not logged in. Run `repose login`.``** followed by `Could not resolve hostname todo-app.repose`: log in, then connect again.
+
+**``repose: you have no project called todo-ap (`repose ls` lists them).``** The name is wrong, or the project was destroyed.
+
+**``todo-app is stopped; run `repose start todo-app` ``**: the machine is stopped. Start it and connect again.
+
+**`Could not resolve hostname todo-app.repose` with no other message.** ssh isn't reading `~/.ssh/repose/config`. The `Include ~/.ssh/repose/config` line must come before the first `Host` or `Match` line of `~/.ssh/config`. If your `~/.ssh/config` is read-only (managed by Nix or a dotfiles tool), add the line where it's generated; `repose login` prints what to add when it can't.
+
+**You moved or reinstalled the `repose` binary** and ssh says `not found` before connecting: run `repose login` or `repose attach` once, and the path is written again.
+
+## Windows
+
+Install the CLI inside WSL. `ssh`, `scp`, `rsync` and `git` inside WSL work as above. VS Code, Cursor and Zed running on Windows use Windows' own `ssh`, which doesn't read the `~/.ssh` in WSL, so they can't connect to a project yet.
