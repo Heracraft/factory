@@ -45,6 +45,18 @@ type Guest struct {
 // tmux server started by one exec is found by the next, as it is on a
 // real, long-lived guest.
 func New(home string, authorizedKey ssh.PublicKey) (*Guest, error) {
+	return start(home, func(_ ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+		if string(key.Marshal()) != string(authorizedKey.Marshal()) {
+			return nil, fmt.Errorf("unrecognised key")
+		}
+		return nil, nil
+	})
+}
+
+// start builds the server with its auth callback fixed before the first
+// connection is accepted: setting the callback after serve() has started
+// is a data race with every handshake (go test -race, CI).
+func start(home string, auth func(ssh.ConnMetadata, ssh.PublicKey) (*ssh.Permissions, error)) (*Guest, error) {
 	hostKey, err := generateHostKey()
 	if err != nil {
 		return nil, fmt.Errorf("testguest: host key: %w", err)
@@ -55,14 +67,7 @@ func New(home string, authorizedKey ssh.PublicKey) (*Guest, error) {
 	}
 
 	g := &Guest{Home: home, sockDir: sockDir}
-	g.config = &ssh.ServerConfig{
-		PublicKeyCallback: func(_ ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-			if string(key.Marshal()) != string(authorizedKey.Marshal()) {
-				return nil, fmt.Errorf("unrecognised key")
-			}
-			return nil, nil
-		},
-	}
+	g.config = &ssh.ServerConfig{PublicKeyCallback: auth}
 	g.config.AddHostKey(hostKey)
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -84,16 +89,12 @@ func New(home string, authorizedKey ssh.PublicKey) (*Guest, error) {
 // know. It is for tests of the laptop's own ssh config (DECISIONS I-281):
 // the right User, key and certificate, or no connection.
 func NewWithCA(home string, userCA ssh.PublicKey, principalFor func(login string) string) (*Guest, error) {
-	g, err := New(home, userCA)
-	if err != nil {
-		return nil, err
-	}
 	checker := &ssh.CertChecker{
 		IsUserAuthority: func(auth ssh.PublicKey) bool {
 			return string(auth.Marshal()) == string(userCA.Marshal())
 		},
 	}
-	g.config.PublicKeyCallback = func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+	return start(home, func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 		principal := principalFor(conn.User())
 		if principal == "" {
 			return nil, fmt.Errorf("unknown login %q", conn.User())
@@ -109,8 +110,7 @@ func NewWithCA(home string, userCA ssh.PublicKey, principalFor func(login string
 			return nil, err
 		}
 		return nil, nil
-	}
-	return g, nil
+	})
 }
 
 // Close stops accepting connections and kills any tmux server the fake
