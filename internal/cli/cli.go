@@ -74,7 +74,7 @@ func newRootCmd(version string) *cobra.Command {
 	g := &globalFlags{}
 	root := &cobra.Command{
 		Use:           "repose",
-		Short:         "repose: persistent remote environments for coding agents",
+		Short:         "repose: a dev machine in the cloud for each project, where agents keep working",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		// Version makes cobra accept `repose --version` (docs/CHECKLIST.md
@@ -225,7 +225,7 @@ func newLoginCmd() *cobra.Command {
 	var noBrowser, browser bool
 	cmd := &cobra.Command{
 		Use:   "login",
-		Short: "Log in with Logto",
+		Short: "Log in to repose in your browser",
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := newEnv("", false, false)
@@ -269,7 +269,7 @@ func newRunCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var opts RunOptions
 	cmd := &cobra.Command{
 		Use:   "run [PROMPT]",
-		Short: "Create/start this checkout's environment, sync it and attach; with PROMPT, start an agent on it",
+		Short: "Create or start this checkout's machine, sync it and attach; with PROMPT, start an agent on it",
 		Long: "Create/start this checkout's environment, sync it and attach; with PROMPT, start an agent on it.\n\n" +
 			"PROMPT is everything after the flags, so quoting is optional. The project is the one for\n" +
 			"this checkout; name another with --project (`repose attach PROJECT` attaches without syncing).",
@@ -326,7 +326,7 @@ func newAttachCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 func newStartCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:               "start [PROJECT]",
-		Short:             "Start a project's environment without syncing (restarts one in error)",
+		Short:             "Start a project's machine without syncing (restarts one in error)",
 		Args:              projectArgs,
 		ValidArgsFunction: completeProject(env),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -347,7 +347,7 @@ func newStopCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var noSnapshot bool
 	cmd := &cobra.Command{
 		Use:               "stop [PROJECT]",
-		Short:             "Snapshot and stop a project's environment",
+		Short:             "Snapshot and stop a project's machine",
 		Args:              projectArgs,
 		ValidArgsFunction: completeProject(env),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -441,7 +441,7 @@ func newOpenCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var localPort int
 	cmd := &cobra.Command{
 		Use:   "open [PORT]",
-		Short: "Forward a guest port, or the desktop, to the laptop",
+		Short: "Forward a port on the machine, or its desktop, to the laptop",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if stop && !desktop {
@@ -554,7 +554,7 @@ func readSecretValue(name, fromFile string, fromEnv bool) ([]byte, error) {
 }
 
 func newConfigCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
-	root := &cobra.Command{Use: "config", Short: "Manage the guest's Nix configuration"}
+	root := &cobra.Command{Use: "config", Short: "Manage the machine's Nix configuration"}
 	var showRevisions bool
 	show := &cobra.Command{
 		Use:   "show",
@@ -600,8 +600,8 @@ func newConfigCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	}
 	add := &cobra.Command{
 		Use:   "add <package>...",
-		Short: "Add catalog entries or any nixpkgs package to the guest",
-		Long: `Add packages to the project's menu and rebuild the guest.
+		Short: "Add catalog entries or any nixpkgs package to the machine",
+		Long: `Add packages to the project's menu and rebuild the machine.
 
 A name the catalog has (bun, postgresql, portless, ... as the dashboard's
 menu lists them) adds that catalog entry, services included. Any other name
@@ -1102,7 +1102,7 @@ func newMCPCmd() *cobra.Command {
 	root := &cobra.Command{Use: "mcp", Short: "MCP helpers (reserved)"}
 	root.AddCommand(&cobra.Command{
 		Use:   "forward",
-		Short: "Forward a laptop-bound MCP server into the guest (not available yet)",
+		Short: "Forward a laptop-bound MCP server into the machine (not available yet)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Println(NotAvailableMessage("repose mcp forward"))
 			return nil
@@ -1115,7 +1115,7 @@ func newBrowserCmd() *cobra.Command {
 	root := &cobra.Command{Use: "browser", Short: "Browser helpers (reserved)"}
 	root.AddCommand(&cobra.Command{
 		Use:   "bridge",
-		Short: "Bridge the laptop's Chrome into the guest (not available yet)",
+		Short: "Bridge the laptop's Chrome into the machine (not available yet)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Println(NotAvailableMessage("repose browser bridge"))
 			return nil

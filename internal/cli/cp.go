@@ -65,7 +65,7 @@ func newCpCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var recursive bool
 	cmd := &cobra.Command{
 		Use:   "cp [-r] SRC DST",
-		Short: "Copy files to or from a project's guest (PROJECT:PATH, or :PATH for this checkout's)",
+		Short: "Copy files to or from a project's machine (PROJECT:PATH, or :PATH for this checkout's)",
 		Long: `Copy files between the laptop and a guest with scp. One side names the
 guest: PROJECT:PATH for a project, :PATH for this checkout's. A relative
 guest path starts at the project's checkout (~/<slug>).

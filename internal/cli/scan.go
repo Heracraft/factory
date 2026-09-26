@@ -1017,7 +1017,7 @@ func newScanCmd() *cobra.Command {
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "scan [DIR]",
-		Short: "Show which of your tools and which project commands `repose run` installs in a guest (dry run)",
+		Short: "Show which of your tools and which project commands `repose run` installs on a machine (dry run)",
 		Long: `List what the next ` + "`repose run`" + ` sends to the guest's tool installer, and why:
 the tools this laptop installed globally (npm, pnpm, bun, go, cargo, uv,
 pipx), and the commands the checkout's scripts run that neither the guest
