@@ -170,8 +170,8 @@
 			<h2 class="text-2xl font-semibold">On every machine</h2>
 			<div class="mt-8 grid gap-x-10 gap-y-12 md:grid-cols-2">
 				<ComesBack />
-				<Browser />
 				<Localhost />
+				<Browser />
 				<Editor />
 			</div>
 		</div>

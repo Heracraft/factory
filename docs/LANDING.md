@@ -35,8 +35,8 @@ Frames of it for reference: record them from the live page before starting.
 
 - Show only what carries the point. A list of fifteen files where two
   matter is noise: the viewer can't find the important ones fast. Show the
-  few things that matter (a small group reads instantly, like `.ssh`,
-  `passwords.csv`), cut the rest, or mute it hard.
+  few things that matter (a small group reads instantly, like `.ssh`
+  and a cat photo), cut the rest, or mute it hard.
 - Transfers are quick: one folder, or at most three items, moving across;
   not every file.
 
@@ -90,6 +90,24 @@ Frames of it for reference: record them from the live page before starting.
   sense without text: the viewer sees a snapshot being taken and the
   machine coming back from it.
 - The poisoned thing is "malicious skill", not "npx malicious-skill".
+- No `passwords.csv`: nobody has one, it reads as silly. Private items are
+  things people really have (`.ssh`, a cat photo, tax documents).
+- Order of the story: the agent first does real, good work (file rows with
+  green `+` and red `-` line counts, the way a diff stat looks), running in
+  `--dangerously-skip-permissions` mode; snapshots are taken along the way
+  (at least two); only then does it go out to the internet and the
+  malicious skill comes in. The skill is not on screen from the start. The
+  wreck follows, and the machine comes back from the most recent snapshot,
+  good work included.
+- Show the agent's permission mode the way Claude Code itself does: the
+  pink `⏵⏵ bypass permissions on` line at the bottom left of the machine,
+  not a `--dangerously-skip-permissions` flag chip.
+- No connector lines from the agent to the files it edits; the edits show
+  on the file rows themselves (counts appear, rows change).
+- Anything that moves exists once: the malicious skill travels from the
+  internet (globe) into the machine; no second, faded copy left behind.
+- Snapshots are small. The newest shows its time; older ones stack behind
+  it as just an icon and a timestamp, contents hidden.
 - No chapter labels ("repose run", "The agent wrecks it", "A snapshot puts
   it back"). The three beats must be understood from the motion alone.
 - The laptop is full, not empty: several things live on it (your repo, and
@@ -133,8 +151,19 @@ fires; `node_modules/` stays behind, struck. Keep it animated.
   your laptop is forwarded from the cloud machine. The job listings
   (Boeing, RTX) don't fit the page's vibe.
 - Editor: the explorer sidebar must be narrow relative to the code.
+- Snapshots are about the machine, not the source. Git already brings back
+  deleted source files; a snapshot is the whole disk (the root overlay's
+  writable layer and /home, DESIGN.md §6): databases and Docker volumes,
+  installed tools and PATH, logins made on the machine, uncommitted work.
+  Show damage git can't undo, and the machine back in minutes (a restore
+  took about two minutes in real runs; never claim "a minute"). The hero's
+  wreck and the snapshot card tell this same story.
+- Order of "On every machine": snapshots, localhost, the agent's browser,
+  your editor.
 - "Break it and roll it back": same aesthetic as the working-state section,
-  animated with anime.js.
+  animated with anime.js. At least two snapshots: one is taken, some edits
+  happen, a second is taken and stacks on top, shown only as an icon and a
+  timestamp with its contents hidden.
 - "Five agents and a full toolchain on first boot" is super clean; leave it.
 
 ## Where terminals are allowed

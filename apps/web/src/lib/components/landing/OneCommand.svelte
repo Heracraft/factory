@@ -4,9 +4,10 @@
   of the owner's job-alerts app (git -C .../landing/recruiting log/status)
   and its machine after `repose run --no-attach`, whose real output was
   "Synced: 2 modified, 1 untracked, 1 env file (2 new commits)" and
-  "Ready in 0.6s.". On the machine the edits are staged because the sync
-  applies them with `git apply --index` (internal/cli/sync.go); the
-  untracked test file stays untracked. The machine's node_modules/ is its
+  "Ready in 0.6s.". On the machine the edits sit under Changes exactly as on
+  the laptop: the sync sends staged and unstaged work as two patches and
+  keeps the split (I-258, internal/cli/sync.go); the untracked test file
+  stays untracked. The machine's node_modules/ is its
   own install (9 node_modules/ in its `git status --ignored`); dependency
   directories never travel (docs sync.md "What doesn't"), so the laptop's
   is struck and stays behind.
@@ -43,7 +44,7 @@
 		'Two source control panels side by side, your laptop and your cloud machine. On the laptop, branch fetch-timeout ' +
 		'has 2 new commits, 2 modified files (.env.example and poller.ts), an untracked timeout.test.ts and a gitignored .env; ' +
 		'its node_modules folder is struck out. After repose run, ready in 0.6 seconds, the cloud machine shows the same branch, ' +
-		'the same commits, the two edits staged, the same untracked test and .env, and a node_modules of its own.';
+		'the same commits, the same two modified files and untracked test, the same .env, and a node_modules of its own.';
 
 	let pic: HTMLDivElement;
 	let fly: HTMLDivElement;
@@ -322,10 +323,9 @@
 						</svg>
 					</li>
 				{:else}
-					{@render group('Staged changes', 2, true)}
+					{@render group('Changes', 3, true)}
 					{@render file(envExample, where)}
 					{@render file(poller, where)}
-					{@render group('Changes', 1, true)}
 					{@render file(test, where)}
 					{@render group('Ignored', null, true)}
 					{@render file(env, where)}
