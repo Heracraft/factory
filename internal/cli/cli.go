@@ -809,23 +809,22 @@ func newResizeCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var size string
 	var yes bool
 	cmd := &cobra.Command{
-		Use:   "resize [DISK] [--size small|large|xl]",
+		Use:   "resize [PROJECT] [DISK] [--size small|large|xl]",
 		Short: "Grow the project's disk (e.g. 80G), or change its size with --size",
 		Long: "With DISK, grows the project's disk (e.g. 80G); disks can't shrink.\n" +
 			"With --size, changes the project's size: small, large or xl. A stopped project starts at the\n" +
 			"new size; a running one is stopped (with a snapshot), changed and started again, after a\n" +
-			"confirmation that --yes skips.",
-		Args: cobra.MaximumNArgs(1),
+			"confirmation that --yes skips.\n" +
+			"PROJECT defaults to this checkout's project; one argument that reads as a size is DISK.",
+		Args:              resizeArgs,
+		ValidArgsFunction: completeResize(env),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 && size == "" {
-				return cobraUsageError{fmt.Errorf("resize needs a disk size (e.g. 80G), --size small|large|xl, or both")}
+			project, bytes, err := parseResizeArgs(args, g)
+			if err != nil {
+				return err
 			}
-			var bytes int64
-			if len(args) == 1 {
-				var err error
-				if bytes, err = parseSize(args[0]); err != nil {
-					return cobraUsageError{err}
-				}
+			if bytes == 0 && size == "" {
+				return cobraUsageError{fmt.Errorf("resize needs a disk size (e.g. 80G), --size small|large|xl, or both")}
 			}
 			if size != "" {
 				if _, ok := classSpecs[size]; !ok {
@@ -837,7 +836,7 @@ func newResizeCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 				return err
 			}
 			if bytes > 0 {
-				if err := ResizeCmd(cmd.Context(), e, g.project, bytes); err != nil {
+				if err := ResizeCmd(cmd.Context(), e, project, bytes); err != nil {
 					return err
 				}
 			}
@@ -848,13 +847,63 @@ func newResizeCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 			if !yes {
 				confirm = func(prompt string) (bool, error) { return askYesNo(prompt, false, "restarting the machine") }
 			}
-			return ResizeClassCmd(cmd.Context(), e, g.project, size, confirm)
+			return ResizeClassCmd(cmd.Context(), e, project, size, confirm)
 		},
 	}
 	cmd.Flags().StringVar(&size, "size", "", "small|large|xl: change the project's size")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "with --size on a running project: stop and start it without asking")
 	_ = cmd.RegisterFlagCompletionFunc("size", cobra.FixedCompletions([]string{"small", "large", "xl"}, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
+}
+
+// resizeArgs allows `resize [PROJECT] [DISK]`: the project is positional
+// like every other command's (I-155), and a disk size can follow it.
+func resizeArgs(cmd *cobra.Command, args []string) error {
+	if len(args) > 2 {
+		return cobraUsageError{fmt.Errorf("%s takes at most PROJECT and DISK, got %d arguments: %s", cmd.CommandPath(), len(args), strings.Join(args, " "))}
+	}
+	return nil
+}
+
+// parseResizeArgs reads `[PROJECT] [DISK]`. With two arguments the first is
+// the project and the second must be a size. One argument is DISK when it
+// reads as a size (`repose resize 80G` keeps working) and PROJECT otherwise
+// (`repose resize izma --size xl`); a project whose name reads as a size is
+// named with --project.
+func parseResizeArgs(args []string, g *globalFlags) (string, int64, error) {
+	var projectArgs []string
+	var disk string
+	switch len(args) {
+	case 2:
+		projectArgs, disk = args[:1], args[1]
+	case 1:
+		if _, err := parseSize(args[0]); err == nil {
+			disk = args[0]
+		} else {
+			projectArgs = args
+		}
+	}
+	project, err := projectFrom(projectArgs, g)
+	if err != nil {
+		return "", 0, err
+	}
+	var bytes int64
+	if disk != "" {
+		if bytes, err = parseSize(disk); err != nil {
+			return "", 0, cobraUsageError{err}
+		}
+	}
+	return project, bytes, nil
+}
+
+// completeResize offers the account's slugs for the first argument only.
+func completeResize(env func() (*Env, error)) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) > 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return projectSlugsForCompletion(env), cobra.ShellCompDirectiveNoFileComp
+	}
 }
 
 func newLogsCmd(envJSON func(*cobra.Command) (*Env, error), env func() (*Env, error), g *globalFlags) *cobra.Command {

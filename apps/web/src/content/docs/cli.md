@@ -94,11 +94,11 @@ Bring back a project destroyed in the last 30 days. `--as NEW-NAME` for another 
 
 Snapshot the project now and start copies of it as new projects, each on its own machine, so several agents can try different approaches from the same starting point. `-n`/`--count N` makes N copies (1 to 10, default 1), named `PROJECT-fork-1`, `PROJECT-fork-2` and so on; `--name NAME` names them `NAME-1`, `NAME-2`. `--size` sets their size (default: the project's). `--snapshot ID` copies one of the project's snapshots instead of taking a new one. `--prompt TEXT` starts the agent in every copy with that prompt (`--agent` picks the agent). `--json` prints the copies as JSON. The project itself keeps running. Each copy counts toward your project limit and is billed like any project. If the copies would take you past the limit, nothing is created. See [Fork a project](/docs/lifecycle#fork-a-project).
 
-### `repose resize [DISK]`
+### `repose resize [PROJECT] [DISK]`
 
-Grow the project's disk, for example `repose resize 80G`. Disks can't shrink, and the larger disk is billed from then on.
+Grow the project's disk, for example `repose resize 80G`, or `repose resize todo-app 80G` for a project other than this checkout's. Disks can't shrink, and the larger disk is billed from then on. A single argument that reads as a size is the disk; anything else is the project.
 
-`--size small|large|xl` changes the project's size, for example `repose resize --size xl` when it keeps running out of memory. A stopped project starts at the new size next time. A running one has to be stopped for it: repose asks, then stops it (taking a snapshot), changes it and starts it again, which ends every process on it, agents included. `-y`/`--yes` skips the question (required without a terminal). It prints what the new size gives and costs; the new rate applies from the next start. See [Changing the size](/docs/machine#changing-the-size).
+`--size small|large|xl` changes the project's size, for example `repose resize --size xl` (or `repose resize todo-app --size xl`) when it keeps running out of memory. A stopped project starts at the new size next time. A running one has to be stopped for it: repose asks, then stops it (taking a snapshot), changes it and starts it again, which ends every process on it, agents included. `-y`/`--yes` skips the question (required without a terminal). It prints what the new size gives and costs; the new rate applies from the next start. See [Changing the size](/docs/machine#changing-the-size).
 
 ### `repose logs [PROJECT]`
 

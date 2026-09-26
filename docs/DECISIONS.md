@@ -6891,3 +6891,19 @@ connections, by what already exists: agents run in tmux and `repose
 attach` reconnects. run-and-attach.md says in one line that mosh does
 not work and why. Revisit if the gateway gains a UDP path for another
 reason (previews over QUIC, a region with its own edge).
+
+**I-268. `repose resize` takes the project as its first argument.**
+(live check of v0.1.17, 2026-09-26) `repose resize --size large e2e-fr`
+failed with `"E2E-FR" is not a size like 80G`: resize's one positional
+was DISK, while every other command whose object is a project takes the
+project there (I-155). The shape is now `resize [PROJECT] [DISK]`. Two
+arguments are PROJECT then DISK. One argument is DISK when it parses as a
+size, so `repose resize 80G` in a checkout keeps working, and PROJECT
+otherwise. A project whose name parses as a size (`80g`) is named with
+`--project`. A positional project and a different `--project` are a usage
+error, as elsewhere. Completion offers slugs for the first argument only.
+`TestParseResizeArgs`, `TestResizeTakesProject` (through the command
+tree). /docs `cli.md`, `features/projects.md` and `07-cli.md` say so in
+this commit. Needs a CLI release. *Rejected:* a separate verb for the
+class (a second name for resizing); making DISK a flag (breaks
+`repose resize 80G`, which the docs and the machine guide name).

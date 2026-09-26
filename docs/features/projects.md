@@ -74,7 +74,9 @@ Limits:
 - A user without a card on file cannot start a guest at all
   (`payment_required`, exit 7). Creating the project row is allowed so the
   dashboard can show it, but nothing boots.
-- `repose resize DISK` grows the disk (`80G`; disks never shrink).
+- `repose resize [PROJECT] [DISK]` grows the disk (`80G`; disks never shrink).
+  PROJECT is positional like every other command's (I-155); a lone
+  argument that parses as a size is DISK (I-268).
   `repose resize --size small|large|xl` changes the class (DECISIONS
   I-260): the API accepts `class` on `PATCH /projects/:id` only while the
   project is stopped (`conflict` otherwise), so a running project is

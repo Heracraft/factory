@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-318 entries.
+319 entries.
 
 ## Scope
 
@@ -350,3 +350,4 @@ pointer, not a summary.
 - **I-264** tmux passes modified keys, OSC 8 links and passthrough to the laptop's terminal — 2026-09-26; L6784
 - **I-265** Ruby and Java pins are installed like the Node pin; Rails' native gem libraries are in the base — 2026-09-26; L6818
 - **I-266** mosh is not offered — 2026-09-26; L6867
+- **I-268** `repose resize` takes the project as its first argument — 2026-09-26; L6895
