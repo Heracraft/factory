@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { listDestroyed, listProjects } from '$lib/api/client';
+	import { getMe, listDestroyed, listProjects } from '$lib/api/client';
 	import { toastApiError } from '$lib/api/toast';
 	import { pollWhileVisible } from '$lib/poll';
 	import { money, normalizeRemoteDisplay, uptime } from '$lib/format';
@@ -13,6 +13,8 @@
 
 	let projects = $state<Project[] | undefined>(undefined);
 	let destroyed = $state<DestroyedProject[]>([]);
+	/** The place on the capacity waitlist, for a user with no project yet (I-269). */
+	let waitlist = $state<{ position: number; email: string } | undefined>(undefined);
 
 	async function refresh() {
 		try {
@@ -29,6 +31,14 @@
 			destroyed = await listDestroyed();
 		} catch {
 			destroyed = [];
+		}
+		if (projects.length === 0) {
+			try {
+				const me = await getMe();
+				waitlist = me.waitlist ? { position: me.waitlist.position, email: me.email } : undefined;
+			} catch {
+				waitlist = undefined;
+			}
 		}
 	}
 
@@ -74,6 +84,12 @@
 		<p class="text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
 	{:else if projects.length === 0}
 		<div class="max-w-xl">
+			{#if waitlist}
+				<div class="banner banner--warn mb-6">
+					repose is at capacity. You’re number {waitlist.position} on the waitlist; we’ll email
+					{waitlist.email} when there’s room. Then run <code>repose run</code> again.
+				</div>
+			{/if}
 			<h2 class="text-xl font-semibold">No projects yet</h2>
 			<p class="mt-2 text-zinc-600 dark:text-zinc-400">
 				Projects are created from the CLI, in a git checkout. Install it, then run

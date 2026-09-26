@@ -138,6 +138,8 @@ copy-paste version):
 | Rotate a host's mTLS cert | `repose-admin hosts rotate-cert host-NN` |
 | Rotate the Key Vault wrapping key | `az keyvault key rotate` then `repose-admin secrets rewrap` |
 | Query audit log | `repose-admin audit --user <handle> --since 24h` |
+| See the capacity waitlist | `repose-admin waitlist list` (position, handle, joined, admitted, by) |
+| Let someone in ahead of the queue | `repose-admin waitlist admit <handle>`, or `repose-admin waitlist admit --next N` for the next N; audited, one email each (I-269) |
 | Publish a base version | `repose-admin base publish --rev <full 40-hex sha on main> --changelog "..." [--security]`; a short, unknown or off-main sha is refused (I-173); `--unverified-rev` skips only the GitHub check, for when GitHub is down |
 | Smoke-test a host | `repose-admin hosts smoke host-NN` (create, snapshot, stop, start, destroy a throwaway guest) |
 | Initialise the CAs (once) | `repose-admin ca init`; then `repose-admin ca sign-client --name gateway --out <dir>` for the edge |
@@ -155,6 +157,32 @@ Reserved memory on a host is above 80 percent.
    drift").
 2. Add a host (workstream 11 §5). Until it is `ready`, the scheduler still
    places on the full host; drain it if placements must stop now.
+3. New users are already being held: past the same 80 percent line across
+   the fleet, a first project goes on the waitlist ("Waitlist growing").
+
+## Waitlist growing
+
+`repose_api_waitlist_waiting` above zero, or `repose-admin waitlist list`
+shows people waiting (DECISIONS I-269). A user's first project waits while
+the memory reserved on ready, undrained hosts, plus 8 GB per admission of
+the last 72 hours not yet taken up, plus the new project, would pass
+`WAITLIST_PERCENT` (default 80) of their usable memory.
+
+1. Add a host (workstream 11 §5), as for HostMemory80. Nothing else: once
+   it is `ready`, the api's minute tick admits the queue oldest first
+   while the projection stays under the line, and each admitted user gets
+   one email telling them to run `repose run` again. `waitlist_admit` in
+   the api log (grpc app) carries the count.
+2. To let one person in now (a tester, someone who wrote in):
+   `repose-admin waitlist admit <handle>`. They are counted against
+   capacity like any admission.
+3. To turn the waitlist off (a demo, a launch with hosts to spare), set
+   `WAITLIST_PERCENT=0` on both api apps and redeploy: nobody new is
+   held, and the tick admits, and emails, everyone still waiting. Users
+   then meet plain `capacity` if no host fits.
+4. Nobody is admitted with no ready host at all: with every host
+   unreachable or draining there is no usable memory, and the gate stops
+   holding new users (they meet `capacity`) until one is back.
 
 ## HostUnreachable
 

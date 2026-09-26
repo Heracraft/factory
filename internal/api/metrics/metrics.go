@@ -65,6 +65,14 @@ type M struct {
 	// projects at full CPU on every vCPU for six hours with no session, no
 	// tmux client and no agent (I-239), recomputed from meter_samples.
 	AbuseBusyUnattendedProjects prometheus.Gauge
+	// WaitlistWaiting is the users holding a place on the capacity
+	// waitlist (DECISIONS I-269), set by the admission tick; a queue that
+	// grows is a host to add (RUNBOOK "Waitlist growing").
+	WaitlistWaiting prometheus.Gauge
+	// WaitlistJoinedTotal counts users put on the waitlist by a refused
+	// first create; WaitlistAdmittedTotal those the api admitted.
+	WaitlistJoinedTotal   prometheus.Counter
+	WaitlistAdmittedTotal prometheus.Counter
 }
 
 // New registers every family on reg.
@@ -104,6 +112,9 @@ func New(reg prometheus.Registerer) *M {
 		AbuseStopsTotal:              prometheus.NewCounterVec(prometheus.CounterOpts{Name: "repose_api_abuse_stops_total", Help: "Guests the api stopped for abuse, by kind."}, []string{"kind"}),
 		AbuseHeldProjects:            prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_abuse_held_projects", Help: "Projects whose start is refused until repose-admin abuse clear."}),
 		AbuseBusyUnattendedProjects:  prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_abuse_busy_unattended_projects", Help: "Projects at full CPU on every vCPU for 6 h with no session, tmux client or agent."}),
+		WaitlistWaiting:              prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_waitlist_waiting", Help: "Users waiting on the capacity waitlist."}),
+		WaitlistJoinedTotal:          prometheus.NewCounter(prometheus.CounterOpts{Name: "repose_api_waitlist_joined_total", Help: "Users put on the capacity waitlist."}),
+		WaitlistAdmittedTotal:        prometheus.NewCounter(prometheus.CounterOpts{Name: "repose_api_waitlist_admitted_total", Help: "Waitlisted users the api admitted."}),
 	}
 	// The alert on stops reads increase(); a series that exists from start
 	// is what lets the first stop register as one.
@@ -112,7 +123,8 @@ func New(reg prometheus.Registerer) *M {
 		m.RollupLagSeconds, m.RollupDuration, m.NotifyTotal, m.NotifyDeliveryLatencySeconds, m.OutboxDepth, m.OutboxLagSeconds, m.StripeUsagePushTotal, m.StripeWebhookTotal, m.SnapshotAgeSeconds,
 		m.GRPCStreams, m.OpsTotal, m.OpsOpen, m.BuildDuration, m.SecretsOpsTotal, m.CommandsTotal, m.SamplesTotal, m.EventsTotal,
 		m.HostWarningsTotal, m.EgressAlertProjects, m.BillingGapMinutes, m.StripePushBacklogSeconds, m.BillingMismatchCents, m.KeyVaultErrorsTotal,
-		m.PartitionDropFailTotal, m.AbuseStopsTotal, m.AbuseHeldProjects, m.AbuseBusyUnattendedProjects)
+		m.PartitionDropFailTotal, m.AbuseStopsTotal, m.AbuseHeldProjects, m.AbuseBusyUnattendedProjects,
+		m.WaitlistWaiting, m.WaitlistJoinedTotal, m.WaitlistAdmittedTotal)
 	return m
 }
 

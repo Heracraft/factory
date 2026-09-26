@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-320 entries.
+321 entries.
 
 ## Scope
 
@@ -352,3 +352,4 @@ pointer, not a summary.
 - **I-266** mosh is not offered — 2026-09-26; L6867
 - **I-268** `repose resize` takes the project as its first argument — 2026-09-26; L6895
 - **I-272** The laptop checkout gets a fetch-only `repose` git remote for the machine's checkout — 2026-09-26; L6911
+- **I-269** A capacity waitlist holds a new user's first project when the fleet is near full — 2026-09-26; L6982

@@ -26,6 +26,7 @@ export type ErrorCode =
 	| 'conflict'
 	| 'payment_required'
 	| 'capacity'
+	| 'waitlisted'
 	| 'rate_limited'
 	| 'internal'
 	| 'billing_disabled';
@@ -56,6 +57,8 @@ export interface Me {
 		email: boolean;
 		ntfy_url: string | null;
 	};
+	/** The place on the capacity waitlist while the user holds one (I-269). */
+	waitlist?: { position: number; joined_at: string } | null;
 }
 
 export interface AgentSignal {

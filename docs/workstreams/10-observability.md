@@ -93,7 +93,8 @@ component must emit:
   `cert_revoke`, `schedule` (host chosen, free memory), `schedule_fail`,
   `command_send`, `command_result`, `build_reused` (a create whose closure
   was already on the host, DECISIONS I-160), `rollup_done`, `stripe_webhook`,
-  `notify_send`, `notify_fail`, `admin_action`, `abuse_stop` (I-239).
+  `notify_send`, `notify_fail`, `admin_action`, `abuse_stop` (I-239),
+  `waitlist_join`, `waitlist_admit`, `waitlist_admit_fail` (I-269).
 - gateway: `session_open`, `session_close`, `auth_fail` (reason enum:
   `bad_cert|expired|revoked|wrong_principal|stopped|not_found`),
   `route_fail`, `dial_fail`.
@@ -135,7 +136,9 @@ Families:
   `repose_api_snapshot_age_seconds` (max over running projects; the alert
   input), `repose_api_abuse_stops_total{kind}`,
   `repose_api_abuse_held_projects`,
-  `repose_api_abuse_busy_unattended_projects` (I-239).
+  `repose_api_abuse_busy_unattended_projects` (I-239),
+  `repose_api_waitlist_waiting`, `repose_api_waitlist_joined_total`,
+  `repose_api_waitlist_admitted_total` (I-269).
 - Gateway: `repose_gateway_sessions` (gauge), `repose_gateway_sessions_total`,
   `repose_gateway_auth_fail_total{reason}`, `repose_gateway_dial_fail_total`,
   `repose_gateway_route_duration_seconds`.

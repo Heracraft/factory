@@ -30,11 +30,11 @@ func TestMigrateUpDownUp(t *testing.T) {
 		t.Fatalf("down 1 reverted %v", down)
 	}
 	var n int
-	if err := pool.QueryRow(ctx, "select count(*) from information_schema.tables where table_name = 'questions'").Scan(&n); err != nil {
+	if err := pool.QueryRow(ctx, "select count(*) from information_schema.tables where table_name = 'waitlist'").Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	if n != 0 {
-		t.Fatal("questions still exists after down (0006)")
+		t.Fatal("waitlist still exists after down (0007)")
 	}
 	up, err := db.MigrateUp(ctx, pool)
 	if err != nil {

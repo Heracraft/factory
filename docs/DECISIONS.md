@@ -6979,3 +6979,58 @@ guest commit and worktree branch arrive, merge, cherry-pick, pull,
 removes). Needs a CLI release and a base publish (the guide line); the
 guest needs `git-upload-pack` on dev's non-interactive PATH (it is in
 the git package the base installs), to be checked live.
+**I-269. A capacity waitlist holds a new user's first project when the fleet is near full.**
+(owner, 2026-09-26: "we should just have a waitlist once hosts are close
+to being full. And we email people once done.") Memory is never
+oversubscribed and hosts are added by hand at HostMemory80, so a burst of
+sign-ups could fill the fleet before the next host is up and turn every
+later `repose run` into `capacity`. Now `POST /projects` from a user who
+has never had a project (any `projects` row, destroyed included), was
+never admitted and is not `exempt` checks the fleet: the memory reserved
+on `ready`, undrained hosts, plus 8 GB (a large, the default class) for
+each user admitted in the last 72 hours who has no project yet, plus the
+new project's class, against `WAITLIST_PERCENT` (default 80, the alert's
+line; 0 turns it off) of those hosts' usable memory (RAM minus the host
+reserve). Past the line, or with anyone already waiting, the answer is
+503 `waitlisted` (a new error code, api.md) with `{position, joined_at,
+email}` and a message that is the whole sentence, and the user gets a
+`waitlist` row; a retry keeps the place. The CLI prints `repose is at
+capacity. You're number N on the waitlist; we'll email <address> when
+there's room.` and exits 8, the capacity code: the action is the same
+(wait, run again) and scripts that know 8 need nothing new; an older CLI
+prints `waitlisted: ` and the api's sentence and exits 1. `GET /me` carries `waitlist:
+{position, joined_at}` and the dashboard's empty projects page shows it
+(the dashboard creates no projects, and restore and fork need a project
+already, so `POST /projects` is the only gate). Admission: every minute,
+under advisory lock 1011 on the grpc app, the api admits waiting users
+oldest first while the projection with one more large fits, stopping at
+the first that does not (strict order); `admitted_at` and the email's
+event and outbox row are written in one transaction guarded by `admitted_at
+is null`, so a restart, a second replica or `repose-admin waitlist admit`
+racing the tick still sends one email. With `WAITLIST_PERCENT=0` the tick
+admits everyone still waiting. `repose-admin waitlist list | admit HANDLE
+| admit --next N` (audited `waitlist_admit`) shows and moves the queue.
+The email goes through the notification outbox like every other: `events`
+gains a nullable `user_id` and `project_id` becomes nullable, with a check
+that one is set (migration 0007; the down script deletes the user-only
+events first), and the outbox reads the user through either. It is
+transactional: sent whatever `notify_email` says and without an
+unsubscribe link, since it answers the user's own request and nothing
+else tells them it is their turn; its text is fixed. Suspended,
+cancelled and deleted accounts hold no place. With no usable host at all
+(every host down or draining) the gate holds nobody and placement answers
+`capacity`: that is an outage, not a full fleet. Metrics
+`repose_api_waitlist_waiting`, `_joined_total`, `_admitted_total`; logs
+`waitlist_join` (user_id, position, class), `waitlist_admit` (count), no
+address. RUNBOOK "Waitlist growing": add a host, admission is automatic.
+`TestWaitlistGateAndAdmission`, `TestWaitlistCommands`,
+`TestRunWaitlistedPrintsPlaceAndExits8`, `TestWaitlistAdmissionEmail`.
+Needs an api redeploy (it migrates itself), a web deploy and a CLI
+release. *Rejected:* gating every create (users with machines would be
+refused by a queue meant for newcomers; they still get `capacity`); a
+separate mail path beside the outbox (a second retry schedule and no
+`delivered` record); honouring `notify_email` (the user would wait for an
+email that never comes); letting a newcomer take room while others wait
+(jumps the queue); a new exit code (nothing a script would do differently
+from 8); holding the admitted room forever (a user who never comes back
+would block the queue; 72 h is three days to read an email).

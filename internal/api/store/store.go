@@ -505,3 +505,44 @@ func SetSetting(ctx context.Context, q Querier, key, value string) error {
 	_, err := q.Exec(ctx, "insert into settings (key, value) values ($1, $2) on conflict (key) do update set value = excluded.value", key, value)
 	return err
 }
+
+// --- waitlist (DECISIONS I-269) -----------------------------------------
+
+// WaitlistEntry is a waitlist row with the user's handle and, while the
+// user waits, their place in the queue (1 is next).
+type WaitlistEntry struct {
+	UserID     uuid.UUID  `db:"user_id"`
+	Handle     string     `db:"handle"`
+	JoinedAt   time.Time  `db:"joined_at"`
+	AdmittedAt *time.Time `db:"admitted_at"`
+	AdmittedBy *string    `db:"admitted_by"`
+	// Position is 0 once admitted, and for a waiting user whose account
+	// is suspended, cancelled or deleted: such a user holds no place.
+	Position int `db:"position"`
+}
+
+// waitlistSQL numbers the waiting users of live accounts oldest first;
+// everyone else gets position 0.
+const waitlistSQL = `select w.user_id, u.handle, w.joined_at, w.admitted_at, w.admitted_by,
+	coalesce(q.position, 0)::integer as position
+	from waitlist w join users u on u.id = w.user_id
+	left join (select w2.user_id, row_number() over (order by w2.joined_at, w2.user_id) as position
+	             from waitlist w2 join users u2 on u2.id = w2.user_id
+	            where w2.admitted_at is null and u2.suspended_at is null and u2.cancelled_at is null and u2.deleted_at is null) q
+	  on q.user_id = w.user_id`
+
+// GetWaitlistEntry returns the user's row, or db.ErrNotFound.
+func GetWaitlistEntry(ctx context.Context, q Querier, userID uuid.UUID) (*WaitlistEntry, error) {
+	return one[WaitlistEntry](ctx, q, waitlistSQL+" where w.user_id = $1", userID)
+}
+
+// ListWaiting returns the users holding a place, next first.
+func ListWaiting(ctx context.Context, q Querier) ([]WaitlistEntry, error) {
+	return many[WaitlistEntry](ctx, q, waitlistSQL+" where q.position is not null order by q.position")
+}
+
+// ListWaitlist returns every row: the waiting in order, then the rest,
+// newest admission first.
+func ListWaitlist(ctx context.Context, q Querier) ([]WaitlistEntry, error) {
+	return many[WaitlistEntry](ctx, q, waitlistSQL+" order by q.position nulls last, w.admitted_at desc nulls last, w.joined_at")
+}

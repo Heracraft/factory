@@ -17,6 +17,7 @@ import (
 	"github.com/heracraft/repose/internal/api/ops"
 	"github.com/heracraft/repose/internal/api/scheduler"
 	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/api/waitlist"
 	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/obs"
@@ -227,6 +228,20 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) error {
 	}
 	if u.CancelledAt != nil {
 		return errf("forbidden", "account is cancelled")
+	}
+	// A first project waits for room once the fleet is near full
+	// (DECISIONS I-269). Joining is idempotent: a retry keeps the place.
+	if wl, joined, err := s.d.Waitlist.Check(ctx, u, body.Class, time.Now()); err != nil {
+		return err
+	} else if wl != nil {
+		if joined {
+			obs.Logger(ctx, s.d.Log).Info("user waitlisted", "event", "waitlist_join", "user_id", u.ID.String(), "position", wl.Position, "class", body.Class)
+		}
+		email := ""
+		if u.Email != nil {
+			email = *u.Email
+		}
+		return withDetail(errf("waitlisted", "%s", waitlist.Message(wl.Position, email)), map[string]any{"position": wl.Position, "joined_at": wl.JoinedAt, "email": email})
 	}
 	pid := store.NewID()
 	rid := store.NewID()

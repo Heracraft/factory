@@ -9,6 +9,12 @@ order: 31
 
 A new account can have 3 projects, at most 1 of them `xl`. After your first paid invoice, the limit is 10 projects of any size. Destroyed projects don't count. Each copy [`repose fork`](/docs/lifecycle#fork-a-project) makes is a project.
 
+## When repose is full
+
+Machines never share memory, so there's room for a fixed number of them. When the servers are close to full, a new account's first project waits: `repose run` says `repose is at capacity. You're number 3 on the waitlist; we'll email you@example.com when there's room.` and exits with code 8. Running it again keeps your place. The dashboard shows your place too.
+
+We let people in, in the order they joined, as room frees up or we add a server. You get one email when it's your turn; it's sent even if you've turned notification emails off. Then run `repose run` again. Once you're in, or once you've had a project, you never wait in this queue again.
+
 ## Network
 
 - Outbound traffic is limited to 200 Mbit/s per machine. Downloads into the machine aren't limited.

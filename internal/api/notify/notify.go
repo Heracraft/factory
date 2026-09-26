@@ -21,6 +21,7 @@ import (
 
 	"github.com/heracraft/repose/internal/api/metrics"
 	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/api/waitlist"
 	"github.com/heracraft/repose/internal/db"
 )
 
@@ -158,8 +159,9 @@ func (o *Outbox) Once(ctx context.Context) (int, error) {
 	now := o.Now()
 	var rows []row
 	err := db.InTx(ctx, o.pool, func(tx db.Tx) error {
-		rs, err := tx.Query(ctx, `select o.event_id, o.channel, o.attempts, e.kind, e.agent, e.summary, e.ts, p.slug, u.id, u.email, u.ntfy_url, u.notify_email, p.id, q.id, q.options, q.expires_at
-			from events_outbox o join events e on e.id = o.event_id join projects p on p.id = e.project_id join users u on u.id = p.user_id
+		// An event names its project, or (0007, I-269) only its user.
+		rs, err := tx.Query(ctx, `select o.event_id, o.channel, o.attempts, e.kind, e.agent, e.summary, e.ts, coalesce(p.slug, ''), u.id, u.email, u.ntfy_url, u.notify_email, coalesce(p.id, '00000000-0000-0000-0000-000000000000'::uuid), q.id, q.options, q.expires_at
+			from events_outbox o join events e on e.id = o.event_id left join projects p on p.id = e.project_id join users u on u.id = coalesce(p.user_id, e.user_id)
 			left join questions q on q.event_id = e.id
 			where o.next_at <= $1 order by o.next_at limit 100 for update of o skip locked`, now)
 		if err != nil {
@@ -195,8 +197,9 @@ func (o *Outbox) Once(ctx context.Context) (int, error) {
 }
 
 func (o *Outbox) deliver(ctx context.Context, r row) {
-	// A channel disabled since the row was queued is dropped.
-	if (r.channel == "email" && (!r.notifyEmail || r.email == nil || *r.email == "")) || (r.channel == "ntfy" && (r.ntfy == nil || *r.ntfy == "")) {
+	// A channel disabled since the row was queued is dropped. The waitlist
+	// admission is transactional mail and ignores notify_email (I-269).
+	if (r.channel == "email" && ((!r.notifyEmail && !transactional[r.kind]) || r.email == nil || *r.email == "")) || (r.channel == "ntfy" && (r.ntfy == nil || *r.ntfy == "")) {
 		_, _ = o.pool.Exec(ctx, "delete from events_outbox where event_id = $1 and channel = $2", r.eventID, r.channel) // best effort; it is re-picked and dropped again otherwise
 		return
 	}
@@ -224,7 +227,7 @@ func (o *Outbox) deliver(ctx context.Context, r row) {
 	if r.ntfy != nil {
 		m.NtfyURL = *r.ntfy
 	}
-	if r.channel == "email" && o.Unsub != nil {
+	if r.channel == "email" && o.Unsub != nil && !transactional[r.kind] {
 		m.Unsubscribe = o.Unsub.URL(o.APIBase, r.userID)
 	}
 	sctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -287,6 +290,11 @@ func (o *Outbox) gauges(ctx context.Context) {
 	}
 }
 
+// transactional kinds are account mail the user asked for: sent whatever
+// notify_email says and without an unsubscribe link, since there is
+// nothing to unsubscribe from (DECISIONS I-269).
+var transactional = map[string]bool{waitlist.Kind: true}
+
 // Title renders the one-line title of a message: what the ntfy Title
 // header and ordinary email subjects use.
 func Title(m Message) string {
@@ -306,6 +314,8 @@ func Title(m Message) string {
 var platformSubjects = map[string]string{
 	"billing_stopped": "Your guests were stopped for non-payment",
 	"abuse_stopped":   "Your guest was stopped: a cryptocurrency miner was running",
+	// The event has no project to name (I-269).
+	waitlist.Kind: waitlist.Subject,
 }
 
 // Subject is the email subject line: Title for agent events, the
@@ -343,6 +353,10 @@ func (e *Email) Send(ctx context.Context, m Message) error {
 	}
 	subject := Subject(m)
 	body := fmt.Sprintf("%s\n\n%s\n\nAttach with `repose attach --project %s` or open %s/projects.\n", subject, m.Summary, m.Project, m.Dashboard)
+	if m.Project == "" {
+		// An account event (the waitlist admission): no project to attach.
+		body = fmt.Sprintf("%s\n\n%s\n\nThe docs: %s/docs\n", subject, m.Summary, m.Dashboard)
+	}
 	if q := m.Question; q != nil {
 		body = fmt.Sprintf("%s\n\n%s\n\n", subject, m.Summary)
 		if len(q.Replies) == len(q.Options) && len(q.Options) > 0 {

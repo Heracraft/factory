@@ -32,6 +32,7 @@ import (
 	"github.com/heracraft/repose/internal/api/questions"
 	"github.com/heracraft/repose/internal/api/secrets"
 	"github.com/heracraft/repose/internal/api/snapshots"
+	"github.com/heracraft/repose/internal/api/waitlist"
 	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/fakes/kv"
@@ -217,7 +218,8 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	a.server = httpapi.New(httpapi.Deps{
 		Pool: a.pool, Verifier: verifier, Users: users, CA: a.ca, Secrets: a.sec, Engine: a.engine, Logs: a.logs, Events: a.events, Outbox: a.outbox, Unsub: unsub, Questions: a.questions,
 		Parser: parser, Metrics: a.m, Registry: a.reg, Log: log, Billing: portal, Webhooks: a.hooks, BillingEnforce: bcfg.Enforce, Customers: customers,
-		Gateway: httpapi.Gateway{Host: cfg.GatewayHost, Port: cfg.GatewayPort},
+		Gateway:  httpapi.Gateway{Host: cfg.GatewayHost, Port: cfg.GatewayPort},
+		Waitlist: &waitlist.Gate{Pool: a.pool, Percent: cfg.WaitlistPercent, M: a.m},
 		Migrations: func(ctx context.Context) (int, error) {
 			st, err := db.MigrateStatus(ctx, a.pool)
 			return len(st.Pending), err
@@ -414,6 +416,7 @@ func (a *App) loops(ctx context.Context) {
 	reconciler := billing.NewReconciler(a.pool, reader, a.m, a.log)
 	bump := basebump.New(a.pool, a.engine, a.events, a.log)
 	idleWarn := &idle.Warner{Pool: a.pool, Events: a.events}
+	admitter := &waitlist.Admitter{Pool: a.pool, Percent: a.cfg.WaitlistPercent, M: a.m}
 	a.engine.SetOnFinished(bump.OnOpFinished)
 	go bump.Run(ctx)
 	// The abuse gauges (BusyUnattended, EgressHigh, held projects) are
@@ -445,6 +448,16 @@ func (a *App) loops(ctx context.Context) {
 				a.log.Error("host sweep", "event", "sweep_fail", "err", err.Error())
 			}
 		case now := <-hourly.C:
+			// The capacity waitlist lets users in every minute as room
+			// appears, one replica at a time (DECISIONS I-269).
+			if release, ok, err := db.TryLock(ctx, a.pool, db.LockWaitlist); err == nil && ok {
+				if n, err := admitter.Run(ctx, now); err != nil && ctx.Err() == nil {
+					a.log.Error("waitlist admission", "event", "waitlist_admit_fail", "err", err.Error())
+				} else if n > 0 {
+					a.log.Info("waitlisted users admitted", "event", "waitlist_admit", "count", n)
+				}
+				release()
+			}
 			// Rollup at :05 past each hour, under the advisory lock.
 			if now.Minute() < 5 || now.Sub(lastRollup) < 50*time.Minute {
 				continue
