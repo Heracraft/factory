@@ -52,10 +52,12 @@ Claude Code on the machine starts in `bypassPermissions` mode, so it doesn't sto
 Detach from tmux with `Ctrl-b` then `d`. Back on your laptop:
 
 ```
-repose run "write tests for src/billing.ts, run them, commit and push when they pass"
+repose run "write tests for src/billing.ts, run them and commit when they pass"
 ```
 
 The CLI starts Claude Code in a new tmux window on the machine, types your prompt and attaches you. Watch, or detach and close the laptop. The agent keeps working.
+
+To show the agent a screenshot, press `Ctrl+V` in its window, or drag a file onto the terminal. The file is copied to the machine and its path lands in the prompt.
 
 ## 6. Get a notification when it's done
 
@@ -68,7 +70,7 @@ repose notify test
 
 ## 7. Come back and stop
 
-From any computer you're logged in on:
+From any computer you're logged in on (`repose ls` lists your projects):
 
 ```
 repose attach your-project
@@ -84,8 +86,8 @@ A stopped machine costs only its disk. The next `repose run` starts it again in 
 
 ## Next
 
-- [Run and attach](/docs/run-and-attach): tmux and agents.
-- [SSH and editors](/docs/ssh-and-editors): ssh, scp, rsync, git, VS Code, Cursor and Zed on any project.
-- [Sync](/docs/sync): what travels to the machine and what doesn't.
+- [Run and attach](/docs/run-and-attach): tmux, several agents, `repose ps`, and `repose exec -- npm test` to run one command.
+- [SSH and editors](/docs/ssh-and-editors): `ssh your-project.repose`, scp, rsync, and `repose code` for VS Code, Cursor or Zed.
+- [Sync](/docs/sync): what travels to the machine, and `git fetch repose` for what comes back.
 - [The machine](/docs/machine): what's installed, ports, the browser.
 - [Pricing](/docs/billing).

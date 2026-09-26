@@ -91,7 +91,7 @@ Servers that need your laptop (Apple Notes, Xcode, desktop automation, Claude in
 
 ## What agents are told about the machine
 
-Every agent on the machine is given a short guide to it: that it's a separate machine and can't reach your laptop, that the ports its servers listen on reach your laptop's `localhost`, how to install a missing tool and how you keep it (`repose config add`), Docker and databases, where your secrets are and never to print them, the browser tools, how to reach you, and the [limits](/docs/limits). To read it, on the machine:
+Every agent on the machine is given a short guide to it: that it's a separate machine and can't reach your laptop, that the ports its servers listen on reach your laptop's `localhost`, how to install a missing tool and how you keep it (`repose config add`), Docker and databases, where your secrets are and never to print them, the browser tools, that its commits reach you with `git fetch repose`, where files you drop arrive, how to reach you, and the [limits](/docs/limits). To read it, on the machine:
 
 ```
 cat /etc/claude-code/CLAUDE.md

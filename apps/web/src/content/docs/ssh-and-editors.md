@@ -26,6 +26,8 @@ git clone todo-app.repose:todo-app todo-app-from-machine
 git ls-remote todo-app.repose:todo-app
 ```
 
+In a checkout you've used `repose run` in, you don't need these: the `repose` remote already points at the machine, and `git fetch repose` brings the agent's commits ([Getting work back](/docs/sync#getting-work-back)). To run one command, `repose exec -- npm test` is shorter than `ssh` with a `cd` ([See what's running, run one command](/docs/run-and-attach#see-whats-running-run-one-command)).
+
 ## VS Code and Cursor
 
 ```
@@ -44,7 +46,7 @@ To connect by hand, install the **Remote - SSH** extension (Cursor has its own),
 code --remote ssh-remote+todo-app.repose /home/dev/todo-app
 ```
 
-No VS Code settings are needed. If `code` isn't found on a Mac, run **Shell Command: Install 'code' command in PATH** in VS Code; `repose code` also finds VS Code, Cursor and Zed in `/Applications` without it.
+No VS Code settings are needed. If `code` isn't found on a Mac, run **Shell Command: Install 'code' command in PATH** in VS Code; `repose code` also finds VS Code, Cursor and Zed in `/Applications` and `~/Applications` without it.
 
 ## Zed
 
@@ -80,6 +82,12 @@ Connecting never starts a stopped machine. An editor that reconnects in the back
 **`Could not resolve hostname todo-app.repose` with no other message.** ssh isn't reading `~/.ssh/repose/config`. The `Include ~/.ssh/repose/config` line must come before the first `Host` or `Match` line of `~/.ssh/config`. If your `~/.ssh/config` is read-only (managed by Nix or a dotfiles tool), add the line where it's generated; `repose login` prints what to add when it can't.
 
 **You moved or reinstalled the `repose` binary** and ssh says `not found` before connecting: run `repose login` or `repose attach` once, and the path is written again.
+
+## Your SSH keys stay on your laptop
+
+Your laptop's ssh-agent is never forwarded to the machine, and `ssh -A` is refused. Nothing running there, an agent or a package's install script, can use your keys, even while you're attached.
+
+Pushes to GitHub still work. When your `gh` login is copied over, git on the machine sends `git@github.com:` and `ssh://git@github.com/` URLs over HTTPS with that login, so `git push` works without changing the remote. For other git hosts, see [Other git hosts](/docs/secrets#other-git-hosts).
 
 ## Windows
 

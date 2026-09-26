@@ -9,6 +9,7 @@ on the machine. Keep it short and factual; the user reads it too. -->
 
 This is a repose machine: a NixOS virtual machine for one project, where agents keep working after the user's laptop closes. <!-- /docs/machine -->
 The user works from their laptop. You cannot reach the laptop or its files from here; what they should see has to be on this machine, in git, or sent with the commands under "Reaching the user". <!-- /docs/secrets#what-an-agent-on-the-machine-can-reach -->
+The user can also work in this checkout from their laptop without attaching: in their editor over SSH (`repose code`), or one command at a time (`repose exec`), so files here can change while you work. <!-- /docs/ssh-and-editors -->
 You are `dev`, with passwordless `sudo`. The checkout is under `/home/dev`, and everything in `/home/dev` survives a stop. <!-- /docs/machine -->
 
 ## Servers and ports

@@ -118,7 +118,7 @@ Claude Code shows an image as `[Image #1]`; add your words and press Enter. Othe
 
 - A file from your checkout isn't copied. You get its path in the machine's checkout, such as `/home/dev/todo-app/docs/mockup.png`. If the machine's copy isn't there yet or differs in size, the file is copied like any other.
 - Drop several files at once to paste several paths.
-- Up to 20 files and 20 MB per file. A bigger drop pastes your laptop's path unchanged, and the tmux status line says why; use [`repose cp`](/docs/cli#repose-cp--r-src-dst) for large files.
+- Up to 20 files and 20 MB per file. A bigger drop pastes your laptop's path unchanged, and the tmux status line says why; use [`repose cp`](/docs/sync#single-files) for large files.
 - Only you and the machine's `dev` user can read the copies. Copies older than a day, and all but the newest 50, are deleted at the next copy.
 - A paste that is nothing but paths of files on your laptop counts as a drop, so pasting a copied path works too. Paths under system folders such as `/etc`, `/usr` and `/nix` are pasted as they are, and so are hidden files and anything in a hidden folder such as `~/.ssh`: those are never copied.
 
@@ -153,36 +153,16 @@ The full list is in the [CLI reference](/docs/cli#repose-run-prompt).
 
 ## SSH and editors
 
-Every project is also an SSH host called `<project>.repose`, so anything that speaks SSH works, for every project you have, with no `repose` command first:
+Every project is also an SSH host called `<project>.repose`, so `ssh`, `scp`, `rsync`, git and editors reach it with no `repose` command first. `repose code` opens the checkout in VS Code, Cursor or Zed:
 
 ```
 ssh todo-app.repose
-scp todo-app.repose:todo-app/report.html .
-rsync -a todo-app.repose:todo-app/dist/ ./dist/
-ssh -L 9229:localhost:9229 todo-app.repose
-```
-
-You log in as `dev`. Plain `ssh` doesn't attach to tmux; run `tmux attach` for that.
-
-`repose code` opens the checkout in VS Code, Cursor or Zed:
-
-```
 repose code todo-app
 ```
 
-[SSH and editors](/docs/ssh-and-editors) has the details: git over SSH, connecting each editor by hand, JetBrains Gateway, and what to do when a connection fails.
+Plain `ssh` doesn't attach to tmux; run `tmux attach` for that. [SSH and editors](/docs/ssh-and-editors) has the rest: scp and rsync, git over SSH, each editor by hand, and what to do when a connection fails.
 
 mosh doesn't work: it needs a UDP connection straight to the machine, and the only way in is SSH through repose. A dropped connection loses nothing, since the agents keep running in tmux; `repose attach` gets you back.
-
-The CLI sets this up with one line in `~/.ssh/config`, `Include ~/.ssh/repose/config`. If your `~/.ssh/config` is read-only (managed by Nix or a dotfiles tool), the CLI tells you to add the line yourself.
-
-Your SSH certificate lasts 24 hours. Any `ssh` to a project renews it when it has expired, and so do `run`, `attach` and the other commands that connect.
-
-### Your SSH keys stay on your laptop
-
-Your laptop's ssh-agent is never forwarded to the machine, and `ssh -A` is refused. Nothing running there, an agent or a package's install script, can use your keys, even while you're attached.
-
-Pushes to GitHub still work. When your `gh` login is copied over, git on the machine sends `git@github.com:` and `ssh://git@github.com/` URLs over HTTPS with that login, so `git push` works without changing the remote. For other git hosts, see [Other git hosts](/docs/secrets#other-git-hosts).
 
 ## Time zone
 

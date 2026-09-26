@@ -48,6 +48,6 @@ repose logout --purge
 rm ~/.local/bin/repose
 ```
 
-`--purge` also deletes `~/.config/repose/`, `~/.ssh/repose/` and the `Include` line the CLI added to `~/.ssh/config`. Your projects keep running on the server, so stop or destroy them first. [Files on your laptop](/docs/cli#files-on-your-laptop) lists everything the CLI writes.
+`--purge` also deletes `~/.config/repose/`, `~/.ssh/repose/` and the `Include` line the CLI added to `~/.ssh/config`. Your projects keep running on the server, so stop them, or remove them with `repose rm`, first. [Files on your laptop](/docs/cli#files-on-your-laptop) lists everything the CLI writes.
 
 The CLI never reads or changes your own keys in `~/.ssh`, and it writes nothing into your repositories.
