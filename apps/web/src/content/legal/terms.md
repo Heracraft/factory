@@ -84,21 +84,40 @@ person.
 We record process names and network volumes to notice these things; the
 privacy policy says exactly what we record and what we never record.
 
-Each project has a bandwidth ceiling, a monthly egress allowance, and
-build limits. Accounts start with a limit on the number of projects and on
-the largest size class until a first invoice is paid.
+Each project has a bandwidth ceiling and build limits; the plan sets the
+egress allowance, the disk, what may run at once and the number of
+projects. When every seat on our servers is taken, new plans wait on a
+waitlist and are offered in order as seats free.
 
 ## Billing
 
-You provide a payment card before your first environment starts. New
-accounts receive a trial credit consumed at the same hourly rates.
-Environments are billed by the hour while running, with a monthly cap per
-project equal to that size class's flat price; disk is billed by the
-gigabyte-month while the project exists; egress beyond the included
-allowance is billed by the gigabyte. Invoices are monthly. If a payment
-fails we retry; after three days we stop your environments, and after
-thirty days we may delete them. Prices are published on the site and a
-change takes effect at the start of your next billing month.
+repose is sold as a monthly plan, Solo or Pro, through Paddle, which is
+the merchant of record: Paddle takes the payment, adds and remits the tax
+for your country, and issues the receipt. Prices are published on the site
+in US dollars before tax. A plan sets how much memory may run at once,
+how much disk may be allocated and how much traffic may leave your
+environments in a month; egress past the allowance is added to the next
+invoice at the published rate, and at four times the allowance your
+environments are stopped for the rest of the period.
+
+Every plan starts with seven days free. You provide a payment card at
+checkout and the first charge is made on the eighth day unless you cancel
+before then. The plan renews monthly on the same card until you cancel.
+Cancelling ends the plan at the end of the period you have paid for; your
+environments run until then, stop at that point, and their snapshots are
+kept for 30 days. Upgrading takes effect at once, prorated; downgrading
+takes effect at the next renewal.
+
+If a payment fails we tell you the same day and stop starting new
+environments; the ones running keep running. Paddle retries the card. If
+the payment has not gone through after three days, we snapshot and stop
+every environment and suspend the account; thirty days after that the
+snapshots are deleted. A successful payment at any point restores the
+account. Refunds are described in the [refund policy](/refunds).
+
+We may change prices with at least 30 days' notice by email; an existing
+plan keeps its price until that date. A plan is for one person's own use;
+seats for other people are not sold yet.
 
 ## Your data
 
