@@ -184,7 +184,7 @@ pointer, not a summary.
 - **I-95** `RegisterResponse` carries `loki_url`, from a setting an operator records with `repose-admin edge loki`; Fluent Bit refuses to start without one — 2026-09-20; L2160
 - **I-96** Where `features/` promised a dashboard that was never specified, the feature doc is corrected, not the dashboard — 2026-09-20; L2208
 - **I-100** A first sign-in without a GitHub identity gets a `user-<sub>` handle; `repose-admin users rename` and `projects destroy` exist for the operator to put that right — 2026-09-20; L2246
-- **I-98** CLI releases are GitHub releases of the `Heracraft/factory` repository, cut from `v*` tags; the dashboard serves `install.sh` — 2026-09-20; L2270
+- **I-98** CLI releases are GitHub releases of the `Heracraft/factory` repository (renamed `Heracraft/repose`, I-286), cut from `v*` tags; the dashboard serves `install.sh` — 2026-09-20; L2270
 - **I-99** The CLI's OAuth client id is Logto's App ID for `repose-cli`, a config value with that default, recorded in the credentials file — 2026-09-20; L2286
 - **I-101** `repose login` uses the device-code flow by default; the loopback PKCE flow is `--browser` — 2026-09-20; L2301
 - **I-102** Every Logto token request from the CLI carries `resource=https://api.repose.herakraft.co` — 2026-09-20; L2318
@@ -363,3 +363,4 @@ pointer, not a summary.
 - **I-280** `run` and `attach` proxy the terminal, so a dropped file or a Ctrl+V image reaches the agent in the guest — 2026-09-26; L7259
 - **I-278** One Claude login per user: the login share — 2026-09-26; L7358
 - **I-283** No auto-mode offer on a machine in bypass mode — 2026-09-27; L7443
+- **I-286** The repository is `Heracraft/repose`; the old name redirects — 2026-09-27; L7471

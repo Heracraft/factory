@@ -7467,3 +7467,17 @@ counts the file as a login and sends the prompt instead of attaching.
 screen it cannot see); waiting for the dialog in `startAgentWindow` (a
 Claude Code UI string to match, per release).
 
+
+**I-286. The repository is `Heracraft/repose`.** (owner, 2026-09-27) The
+rename I-98 left as the owner's step is done: GitHub answers the old
+`Heracraft/factory` URLs with a redirect (web 301, git fetch and clone,
+release downloads), so a CLI, `install.sh` or host still naming it keeps
+working. `install.sh`, `DefaultBaseRepo` (`repose-admin base publish`),
+`nix/hosts/host-01.nix` `baseRepo.url` and the source links on the landing
+page and /docs now name `repose`; host-01 picks its URL up on its next
+switch, and hostd clones only a missing base checkout, so no existing
+checkout changes. Evidence links in workstream docs and STATUS keep the old
+URLs, which redirect. The checkout on the dev box stays at
+`~/projects/factory`. *Rejected:* keeping the old name (the product, module
+path and binary are `repose`, and a second name is how a grep misses half
+the uses).

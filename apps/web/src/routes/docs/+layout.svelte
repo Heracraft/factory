@@ -40,7 +40,7 @@
 		</div>
 		<nav class="flex items-center gap-5 text-sm" aria-label="Site">
 			<a
-				href="https://github.com/Heracraft/factory"
+				href="https://github.com/Heracraft/repose"
 				class="hidden text-zinc-600 hover:text-zinc-900 sm:inline dark:text-zinc-400 dark:hover:text-zinc-100"
 				>GitHub</a
 			>

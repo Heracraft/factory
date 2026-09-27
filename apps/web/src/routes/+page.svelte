@@ -13,7 +13,7 @@
 	import Editor from '$lib/components/landing/Editor.svelte';
 
 	const INSTALL_COMMAND = 'curl -fsSL https://repose.herakraft.co/install.sh | sh';
-	const SOURCE_URL = 'https://github.com/Heracraft/factory';
+	const SOURCE_URL = 'https://github.com/Heracraft/repose';
 
 	let signingIn = $state(false);
 	let copied = $state(false);
