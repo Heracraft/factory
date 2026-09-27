@@ -34,7 +34,7 @@ In a checkout you've used `repose run` in, you don't need these: the `repose` re
 repose code todo-app
 ```
 
-```
+```text
 Opening todo-app.repose:/home/dev/todo-app in VS Code
 ```
 

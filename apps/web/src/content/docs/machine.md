@@ -56,7 +56,7 @@ The last line only appears when other packages have a command by that name. Inst
 
 `repose run` looks at the tools you installed globally on your laptop (with npm, pnpm, bun, `go install`, `cargo install`, uv or pipx) and at the commands your project's scripts call (`package.json`, `Makefile`, `justfile`, `Procfile`, `.air.toml`, compose files). Only names and versions are sent. The machine installs the ones it lacks in the background:
 
-```
+```text
 Installing 3 of your tools in the background: air, portless, typescript
 ```
 
@@ -85,7 +85,7 @@ In your own shells, direnv is set up: put `use flake` in the repository's `.envr
 
 While you're attached with `repose run` or `repose attach`, every port a program on the machine listens on appears on your laptop's `localhost` within a second or so. Start `pnpm dev` on the machine and open `http://localhost:5173` on your laptop. tmux shows each new forward:
 
-```
+```text
 ⇄ localhost:5173 → :5173
 ```
 

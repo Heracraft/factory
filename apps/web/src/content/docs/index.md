@@ -25,7 +25,7 @@ cd ~/code/your-project
 repose run
 ```
 
-```
+```text
 ✓ Created your-project (large)  0.3s
 ✓ Built the environment  6.1s
 ✓ Booted your-project  5.2s

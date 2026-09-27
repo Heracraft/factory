@@ -28,7 +28,7 @@ repose notify set --ntfy https://ntfy.sh/repose-4f9c2a7e1b3d5c8a0f6e
 repose notify test
 ```
 
-```
+```text
 email: ok
 ntfy: ok
 ```
