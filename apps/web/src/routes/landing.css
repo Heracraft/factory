@@ -399,6 +399,9 @@
 	.tiers {
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
+	.tiers--two {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
 }
 .tier {
 	position: relative;
@@ -470,9 +473,16 @@
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 1rem;
+	gap: 1rem 1.5rem;
 	padding: 2rem var(--land-x) var(--land-y);
 	border-top: 1px solid var(--rule);
+}
+/* The seats left, live from the api (I-290): one line beside the button,
+   in the muted ink, the reading of the launch's gauge. */
+.cta-row .seats {
+	margin: 0;
+	font-size: 0.9375rem;
+	color: var(--ink-muted);
 }
 
 /* The sign-off: the page's shapes, one to a cell between the rails. */
