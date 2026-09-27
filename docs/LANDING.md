@@ -241,3 +241,50 @@ paragraphs.
   1440×900 and 390px, light and dark, and look before calling anything done.
 - When motion could help, it's fine to offer an animated and a static
   version for the owner to choose (anime.js is allowed).
+
+## The page's grammar (design system, 2026-09-27)
+
+The pictures draw a machine as a panel with hairline edges, and the hero
+shows those edges as the wall the attack stops at. The page takes that
+drawing as its own grammar, in `apps/web/src/routes/landing.css` (imported
+by `+page.svelte` alone; the house tokens stay in `layout.css`):
+
+- **Rails.** The content stands between two hairlines (`.rails`) that run
+  from the top bar to the footer, 1120px apart at most. They are hidden
+  below 768px. On load they draw themselves from the top down, once; the
+  one motion the chrome has.
+- **Rules run wall to wall, ticked.** Every section (`.sec`) opens with a
+  rule across the full width, and a small cross (`::before`/`::after`)
+  marks where it meets each rail, as a drawing marks an intersection. The
+  top bar's rule is ticked the same way.
+- **A section is a head, then a stage.** The head (`SectionHead.svelte`)
+  is a number and a one-word label in mono small caps (`01 Run`, `02
+  Machine`, `03 Toolchain`, `04 Start`, `05 Pricing`), the bold serif title
+  and one sentence, inset from the rails by `--land-x`. The stage
+  (`.landing-stage`) is sunken and fills the width between the rails, so a
+  picture reads as a bay inside the walls. The hero's picture sits on a
+  stage the same way; only the hero has no number.
+- **Cells, not cards.** The features (`.cells`/`.cell`), the steps
+  (`.step`) and the sizes (`.tier`) are cut by the same hairlines, and the
+  dividers cross the full width. Each feature picture is cropped to one
+  `.shot` frame; the title and sentence under it belong to the page, not to
+  the picture's component.
+- **The hero.** The headline spans the width; under it, on one row, the
+  lead on the left and the two ways in on the right (the button over the
+  install command, as one block). The blue bar under "full permissions"
+  and on the prices is unchanged.
+- **Commands are rows.** The install command and each step's command are
+  one `.cmd`: a mono row on a sunken ground with a hairline, the way a
+  picture shows a row of a terminal.
+- **The sign-off.** The footer's shape set stands one to a cell between
+  the rails (`.frieze`), the rule under it, then the wordmark and links.
+  Six cells on a phone.
+- **Type.** Display `clamp(2.75rem, 6.6vw, 5.25rem)`; section titles
+  `clamp(1.9rem, 3.4vw, 2.5rem)`; cell and step titles 1.125rem serif
+  600; lead `clamp(1rem, 1.3vw, 1.125rem)`; labels 11px mono, 0.14em
+  tracking, uppercase. Ink in three steps (`--ink`, `--ink-muted`,
+  `--ink-faint`), redefined for the dark scheme.
+
+Everything in "Shape language" still holds: shapes encode or are absent,
+the palette is the neutrals and the one blue, the pictures are untouched.
+

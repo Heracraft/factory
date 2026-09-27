@@ -414,63 +414,52 @@
 	</div>
 {/snippet}
 
-<div class="min-w-0">
-	<div
-		class="h-60 overflow-hidden rounded-xs border border-[var(--rule)] bg-[var(--sunken)]"
-		role="img"
-		aria-label={label}
-	>
-		<div class="pic" bind:this={pic} aria-hidden="true" style:--s={s}>
-			<div class="win machine">
-				<div class="title">
-					<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" class="tm">
-						<path
-							d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A5.5 5.5 0 0 0 7.4 9.1 4.7 4.7 0 0 0 7 18.5z"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.5"
-							stroke-linejoin="round"
-						/>
-					</svg>
-					<span class="who">your cloud machine</span><i class="dot"></i>
-				</div>
-				<ul class="rows" bind:this={mRows}>
-					{#each rows as r (r.k)}{@render row(r)}{/each}
-				</ul>
-			</div>
-
-			<div class="hop">
-				<svg class="arr take" viewBox="0 0 20 10" aria-hidden="true"
-					><path
-						d="M1 5h16M13 1.5L17.5 5 13 8.5"
+<div class="shot" role="img" aria-label={label}>
+	<div class="pic" bind:this={pic} aria-hidden="true" style:--s={s}>
+		<div class="win machine">
+			<div class="title">
+				<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" class="tm">
+					<path
+						d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A5.5 5.5 0 0 0 7.4 9.1 4.7 4.7 0 0 0 7 18.5z"
 						fill="none"
 						stroke="currentColor"
 						stroke-width="1.5"
-					/></svg
-				>
-				<svg class="arr give" viewBox="0 0 20 10" aria-hidden="true"
-					><path
-						d="M19 5H3M7 1.5L2.5 5 7 8.5"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.5"
-					/></svg
-				>
+						stroke-linejoin="round"
+					/>
+				</svg>
+				<span class="who">your cloud machine</span><i class="dot"></i>
 			</div>
-
-			<div class="stack">
-				{@render tile('21:22', 'old')}
-				{@render tile('21:25', 'new')}
-			</div>
-
-			<div class="fly" bind:this={fly}></div>
+			<ul class="rows" bind:this={mRows}>
+				{#each rows as r (r.k)}{@render row(r)}{/each}
+			</ul>
 		</div>
+
+		<div class="hop">
+			<svg class="arr take" viewBox="0 0 20 10" aria-hidden="true"
+				><path
+					d="M1 5h16M13 1.5L17.5 5 13 8.5"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.5"
+				/></svg
+			>
+			<svg class="arr give" viewBox="0 0 20 10" aria-hidden="true"
+				><path
+					d="M19 5H3M7 1.5L2.5 5 7 8.5"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.5"
+				/></svg
+			>
+		</div>
+
+		<div class="stack">
+			{@render tile('21:22', 'old')}
+			{@render tile('21:25', 'new')}
+		</div>
+
+		<div class="fly" bind:this={fly}></div>
 	</div>
-	<h3 class="mt-5 text-lg font-semibold">Let it break the whole machine</h3>
-	<p class="mt-1.5 text-zinc-600 dark:text-zinc-400">
-		Snapshots hold the whole disk: databases, installed tools, logins and uncommitted work. Restore
-		one and the machine is back in minutes.
-	</p>
 </div>
 
 <style>

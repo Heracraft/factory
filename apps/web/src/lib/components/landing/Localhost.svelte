@@ -175,90 +175,80 @@
 		><path d="M1 6.5h8M6.5 4l2.5 2.5M9 10.5H1M3.5 13L1 10.5" /></svg
 	>{/snippet}
 
-<div class="min-w-0">
-	<div class="frame h-60 overflow-hidden rounded-xs border border-[var(--rule)] bg-[var(--sunken)]">
-		<div
-			class="lh"
-			bind:this={pic}
-			role="img"
-			aria-label="Your cloud machine runs the Vite dev server on localhost:5173, and its tmux status bar lists port 5173 as forwarded. The forward reaches your laptop, whose browser opens localhost:5173 and shows the app served from the machine."
-		>
-			<div class="win machine" aria-hidden="true">
-				<div class="title">
-					<svg viewBox="0 0 24 24" width="16" height="16" class="mark">
-						<path
-							d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A5.5 5.5 0 0 0 7.4 9.1 4.7 4.7 0 0 0 7 18.5z"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.5"
-							stroke-linejoin="round"
-						/>
-					</svg>
-					<span class="who">your cloud machine</span><i class="dot"></i>
+<div class="shot frame">
+	<div
+		class="lh"
+		bind:this={pic}
+		role="img"
+		aria-label="Your cloud machine runs the Vite dev server on localhost:5173, and its tmux status bar lists port 5173 as forwarded. The forward reaches your laptop, whose browser opens localhost:5173 and shows the app served from the machine."
+	>
+		<div class="win machine" aria-hidden="true">
+			<div class="title">
+				<svg viewBox="0 0 24 24" width="16" height="16" class="mark">
+					<path
+						d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A5.5 5.5 0 0 0 7.4 9.1 4.7 4.7 0 0 0 7 18.5z"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.5"
+						stroke-linejoin="round"
+					/>
+				</svg>
+				<span class="who">your cloud machine</span><i class="dot"></i>
+			</div>
+			<div class="term">
+				<div class="tr">
+					{#each local as seg, j (j)}<span style={seg.style}>{seg.text}</span>{/each}
 				</div>
-				<div class="term">
-					<div class="tr">
-						{#each local as seg, j (j)}<span style={seg.style}>{seg.text}</span>{/each}
-					</div>
-					<div class="bar">
-						<span class="left">{BAR_LEFT}</span>
-						<span class="right"
-							><span class="ports"
-								><span class="port">{@render fw()}{BAR_PORT}</span><span>{BAR_REST}</span><span
-									class="clock">{BAR_CLOCK}</span
-								></span
+				<div class="bar">
+					<span class="left">{BAR_LEFT}</span>
+					<span class="right"
+						><span class="ports"
+							><span class="port">{@render fw()}{BAR_PORT}</span><span>{BAR_REST}</span><span
+								class="clock">{BAR_CLOCK}</span
 							></span
-						>
-					</div>
-				</div>
-			</div>
-
-			<div class="hop" aria-hidden="true">
-				<i class="wire"></i>
-				<span class="chip" class:fire>{@render fw()}{BAR_PORT}</span>
-				<i class="wire arrow"></i>
-			</div>
-
-			<div class="win laptop" aria-hidden="true">
-				<div class="title">
-					<svg viewBox="0 0 24 24" width="16" height="16" class="mark">
-						<g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
-							<rect x="4.5" y="5" width="15" height="10.5" rx="1" />
-							<path d="M2 18.5h20" stroke-linecap="round" />
-						</g>
-					</svg>
-					<span class="who">your laptop</span>
-					<span class="url" class:typing
-						>{#each ADDR as c, i (i)}<span class="ch">{c}</span>{/each}</span
+						></span
 					>
-				</div>
-				<div class="page">
-					<picture>
-						<source
-							srcset="/landing/localhost-home-narrow-dark.webp"
-							media="(max-width: 479px) and (prefers-color-scheme: dark)"
-						/>
-						<source srcset="/landing/localhost-home-narrow-light.webp" media="(max-width: 479px)" />
-						<source
-							srcset="/landing/localhost-home-dark.webp"
-							media="(prefers-color-scheme: dark)"
-						/>
-						<img
-							src="/landing/localhost-home-light.webp"
-							width="720"
-							height="300"
-							alt="The app's home page: Get to new roles on time."
-						/>
-					</picture>
 				</div>
 			</div>
 		</div>
+
+		<div class="hop" aria-hidden="true">
+			<i class="wire"></i>
+			<span class="chip" class:fire>{@render fw()}{BAR_PORT}</span>
+			<i class="wire arrow"></i>
+		</div>
+
+		<div class="win laptop" aria-hidden="true">
+			<div class="title">
+				<svg viewBox="0 0 24 24" width="16" height="16" class="mark">
+					<g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+						<rect x="4.5" y="5" width="15" height="10.5" rx="1" />
+						<path d="M2 18.5h20" stroke-linecap="round" />
+					</g>
+				</svg>
+				<span class="who">your laptop</span>
+				<span class="url" class:typing
+					>{#each ADDR as c, i (i)}<span class="ch">{c}</span>{/each}</span
+				>
+			</div>
+			<div class="page">
+				<picture>
+					<source
+						srcset="/landing/localhost-home-narrow-dark.webp"
+						media="(max-width: 479px) and (prefers-color-scheme: dark)"
+					/>
+					<source srcset="/landing/localhost-home-narrow-light.webp" media="(max-width: 479px)" />
+					<source srcset="/landing/localhost-home-dark.webp" media="(prefers-color-scheme: dark)" />
+					<img
+						src="/landing/localhost-home-light.webp"
+						width="720"
+						height="300"
+						alt="The app's home page: Get to new roles on time."
+					/>
+				</picture>
+			</div>
+		</div>
 	</div>
-	<h3 class="mt-5 text-lg font-semibold">Your dev server on your localhost</h3>
-	<p class="mt-1.5 text-zinc-600 dark:text-zinc-400">
-		While you're attached, every port the machine listens on is on your laptop's localhost, so
-		cookies and OAuth redirects work as they do locally.
-	</p>
 </div>
 
 <style>

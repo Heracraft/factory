@@ -452,30 +452,23 @@
 	});
 </script>
 
-<div class="min-w-0">
-	<div class="h-60 overflow-hidden rounded-xs border border-[var(--rule)] bg-[var(--sunken)]">
-		<div
-			class="screen"
-			role="img"
-			aria-label="Neovim with LazyVim running on the machine, full screen: a narrow file explorer of the repo on the left, two of the worker's files open in tabs, and its TypeScript config in the editor."
-		>
-			{#each lines as line, y (y)}
-				<div class="ln" aria-hidden="true">
-					{#each line as p, i (i)}<span
-							class:c={p.cell}
-							class:cur={p.cursor}
-							class={p.box ? `bx ${p.box}` : undefined}
-							style={styles[p.s]}>{p.t}</span
-						>{/each}
-				</div>
-			{/each}
-		</div>
+<div class="shot">
+	<div
+		class="screen"
+		role="img"
+		aria-label="Neovim with LazyVim running on the machine, full screen: a narrow file explorer of the repo on the left, two of the worker's files open in tabs, and its TypeScript config in the editor."
+	>
+		{#each lines as line, y (y)}
+			<div class="ln" aria-hidden="true">
+				{#each line as p, i (i)}<span
+						class:c={p.cell}
+						class:cur={p.cursor}
+						class={p.box ? `bx ${p.box}` : undefined}
+						style={styles[p.s]}>{p.t}</span
+					>{/each}
+			</div>
+		{/each}
 	</div>
-	<h3 class="mt-5 text-lg font-semibold">Open it in your editor</h3>
-	<p class="mt-1.5 text-zinc-600 dark:text-zinc-400">
-		Each machine is an SSH host named after your repo, so Neovim runs right on it and VS Code,
-		Cursor or Zed connect over SSH.
-	</p>
 </div>
 
 <style>

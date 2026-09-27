@@ -281,105 +281,96 @@
 	});
 </script>
 
-<div class="min-w-0">
-	<div class="frame h-60 overflow-hidden rounded-xs border border-[var(--rule)] bg-[var(--sunken)]">
-		<div class="stage" role="img" aria-label={label} bind:this={pic}>
-			<div class="br" aria-hidden="true">
-				<div class="tb">
-					<img
-						class="layer tb-blank"
-						src="/landing/browser-tb-blank.webp"
-						width="574"
-						height="48"
-						alt=""
-					/>
-					<img
-						class="layer tb-live on"
-						src="/landing/browser-tb.webp"
-						width="574"
-						height="48"
-						alt=""
-					/>
-				</div>
-				<div class="vp">
-					<div class="pg">
-						<div class="layer l-blank"></div>
-						<img
-							class="layer l-nav"
-							src="/landing/browser-p-nav.webp"
-							width="574"
-							height="536"
-							alt=""
-						/>
-						<img
-							class="layer l-typed"
-							src="/landing/browser-p-typed.webp"
-							width="574"
-							height="536"
-							alt=""
-						/>
-						<img
-							class="layer l-bug"
-							src="/landing/browser-p-bug.webp"
-							width="574"
-							height="536"
-							alt=""
-						/>
-						<img
-							class="layer l-t0"
-							src="/landing/browser-p-t0.webp"
-							width="574"
-							height="536"
-							alt=""
-						/>
-						<img
-							class="layer l-t1"
-							src="/landing/browser-p-t1.webp"
-							width="574"
-							height="536"
-							alt=""
-						/>
-						<img
-							class="layer l-t2 on"
-							src="/landing/browser-p-t2.webp"
-							width="574"
-							height="536"
-							alt=""
-						/>
-					</div>
-				</div>
-				<i class="ring"></i>
-				<span class="chip">repose open --desktop</span>
-				<svg class="pointer" viewBox="0 0 12 18" aria-hidden="true">
-					<path
-						d="M1 1v13.2l3.3-3.1 2.2 5.1 2.1-.9-2.2-5h4.6z"
-						fill="#111"
-						stroke="#fff"
-						stroke-width="1.1"
-						stroke-linejoin="round"
-					/>
-				</svg>
+<div class="shot frame">
+	<div class="stage" role="img" aria-label={label} bind:this={pic}>
+		<div class="br" aria-hidden="true">
+			<div class="tb">
+				<img
+					class="layer tb-blank"
+					src="/landing/browser-tb-blank.webp"
+					width="574"
+					height="48"
+					alt=""
+				/>
+				<img
+					class="layer tb-live on"
+					src="/landing/browser-tb.webp"
+					width="574"
+					height="48"
+					alt=""
+				/>
 			</div>
-			<div class="term" aria-hidden="true">
-				<div class="clip">
-					<div class="rows">
-						{#each rows as row, i (i)}
-							<div class="tr" style={row.bg ? `background:${row.bg}` : ''}>
-								{#each row.segs as seg, j (j)}<span style={seg.style}>{seg.text}</span>{/each}
-							</div>
-						{/each}
-					</div>
+			<div class="vp">
+				<div class="pg">
+					<div class="layer l-blank"></div>
+					<img
+						class="layer l-nav"
+						src="/landing/browser-p-nav.webp"
+						width="574"
+						height="536"
+						alt=""
+					/>
+					<img
+						class="layer l-typed"
+						src="/landing/browser-p-typed.webp"
+						width="574"
+						height="536"
+						alt=""
+					/>
+					<img
+						class="layer l-bug"
+						src="/landing/browser-p-bug.webp"
+						width="574"
+						height="536"
+						alt=""
+					/>
+					<img
+						class="layer l-t0"
+						src="/landing/browser-p-t0.webp"
+						width="574"
+						height="536"
+						alt=""
+					/>
+					<img
+						class="layer l-t1"
+						src="/landing/browser-p-t1.webp"
+						width="574"
+						height="536"
+						alt=""
+					/>
+					<img
+						class="layer l-t2 on"
+						src="/landing/browser-p-t2.webp"
+						width="574"
+						height="536"
+						alt=""
+					/>
+				</div>
+			</div>
+			<i class="ring"></i>
+			<span class="chip">repose open --desktop</span>
+			<svg class="pointer" viewBox="0 0 12 18" aria-hidden="true">
+				<path
+					d="M1 1v13.2l3.3-3.1 2.2 5.1 2.1-.9-2.2-5h4.6z"
+					fill="#111"
+					stroke="#fff"
+					stroke-width="1.1"
+					stroke-linejoin="round"
+				/>
+			</svg>
+		</div>
+		<div class="term" aria-hidden="true">
+			<div class="clip">
+				<div class="rows">
+					{#each rows as row, i (i)}
+						<div class="tr" style={row.bg ? `background:${row.bg}` : ''}>
+							{#each row.segs as seg, j (j)}<span style={seg.style}>{seg.text}</span>{/each}
+						</div>
+					{/each}
 				</div>
 			</div>
 		</div>
 	</div>
-	<h3 class="mt-5 text-lg font-semibold">Watch the agent use the browser</h3>
-	<p class="mt-1.5 text-zinc-600 dark:text-zinc-400">
-		The agent drives Chromium on the machine and reads the console. <code
-			class="rounded-xs bg-[var(--sunken)] px-1 py-px text-[0.88em] whitespace-nowrap text-zinc-800 dark:text-zinc-200"
-			>repose open --desktop</code
-		> shows you the same window, and you can take over.
-	</p>
 </div>
 
 <style>

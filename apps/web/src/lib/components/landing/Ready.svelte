@@ -89,7 +89,7 @@
 {/snippet}
 
 <div
-	class="ready mt-8 rounded-sm border border-[var(--rule)] bg-[var(--sunken)]"
+	class="ready"
 	role="img"
 	aria-label="A new machine has five coding agents installed: Claude Code, Codex CLI, opencode, Gemini CLI and pi. Also Node.js 24, pnpm, Python 3.12, Go, rustup, Docker, Nix, Chromium and everyday tools. A shell on the machine: typing pgcli, which is not installed, prints how to install it with nix profile add nixpkgs#pgcli or keep it on every rebuild with repose config add pgcli; after the install, pgcli --version prints 4.6.0."
 >

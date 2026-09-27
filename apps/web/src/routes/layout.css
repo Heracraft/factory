@@ -161,21 +161,8 @@
 }
 
 @layer components {
-	/* A landing section heading: bold serif, a size up from the app's.
-	   The orange bar is kept for "full permissions" and the prices
-	   (docs/LANDING.md, "Shape language"). */
-	.landing-h {
-		@apply text-3xl font-bold tracking-[-0.015em] text-balance sm:text-4xl;
-	}
-	/* The panel a landing picture sits on: sunken, hairline, as the grid
-	   cards' pictures already do, so a picture reads apart from its
-	   header. */
-	.landing-stage {
-		@apply relative rounded-sm border;
-		border-color: var(--rule);
-		background-color: var(--sunken);
-		padding: clamp(1rem, 3vw, 2rem);
-	}
+	/* The landing's own classes (rails, sections, stages, cells) are in
+	   routes/landing.css, imported by routes/+page.svelte alone. */
 
 	/* The landing's one motion for shapes: a group lands, one shape after
 	   another, when it comes into view (landOnView in landing/inview.ts

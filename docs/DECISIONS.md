@@ -7513,3 +7513,24 @@ URLs, which redirect. The checkout on the dev box stays at
 `~/projects/factory`. *Rejected:* keeping the old name (the product, module
 path and binary are `repose`, and a second name is how a grep misses half
 the uses).
+**I-287. The landing has a design system of its own, drawn from its
+pictures.** (owner asked for a design language built on what the landing
+already had, 2026-09-27) The pictures draw the machine as a hairline panel
+whose edge is the wall an attack stops at; the page now takes that
+drawing as its grammar: two rails the content stands between, rules that
+run wall to wall and are ticked at each rail, numbered section heads on
+paper, pictures on stages that fill the width between the rails, and
+features, steps and sizes as cells cut by the same hairlines. It lives in
+`apps/web/src/routes/landing.css`, imported by `+page.svelte` alone, over
+the house tokens in `layout.css`; `docs/LANDING.md` "The page's grammar"
+records the rules and `SectionHead.svelte` and the four feature pictures
+(`ComesBack`, `Localhost`, `Browser`, `Editor`) changed shape to fit
+(the picture alone in one `.shot` frame, the copy on the page). The
+pictures, the palette, the blue bar and the shape rules of "Shape
+language" are unchanged. *Rejected:* a second colour or a new typeface
+for the system (the pairing is the identity, `DESIGN-LANGUAGE.md`); cards
+with gaps for the features and sizes (a floating box is not how the
+pictures draw anything); a section label inside a picture (LANDING.md
+forbids chapter labels; the number and label are the page's running head,
+outside every stage).
+
