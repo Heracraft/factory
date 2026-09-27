@@ -81,14 +81,18 @@ backup schedule, and the Traefik drain for rolling deploys
 
 Workstreams: `09-billing`.
 
-Gate: a real card is charged the right amount for a known usage pattern
-(one large guest, 100 hours, 40 GB, 10 GB egress) and the Stripe invoice
-matches the `usage` rows to the cent. Trial credit depletes and blocks a start
-at zero. A failed payment stops guests after 3 days.
+Gate (I-289, replacing the hourly gate of I-185): in Paddle's sandbox, a
+checkout with a test card creates a `trialing` subscription that holds a
+seat; the webhook makes the account `trial`; a simulated
+`transaction.completed` makes it `active`; a simulated
+`transaction.payment_failed` makes it `past_due` and the 3-day tick stops
+the machine; an overage line for a known egress appears on the next
+transaction to the cent. `ops/M4-GATE.md` is the runbook.
 
-*Where it stands, 2026-09-26: built and merged (I-179..I-185); the gate
-waits on the owner's Stripe test-mode key, after which `ops/M4-GATE.md`
-is the runbook.*
+*Where it stands, 2026-09-27: the hourly Stripe design was built and merged
+(I-179..I-185) but its gate never ran (no Stripe key). Superseded by plans
+on Paddle (I-289); the gate waits on the owner's Paddle sandbox key,
+`ops/LAUNCH.md` §1.*
 
 ## M5. Public
 
