@@ -87,7 +87,7 @@ the code in the tweet; the checkout has a discount field.
    `repose-admin base publish --rev <sha of main> --changelog "repose
    browser: one command, the screen follows your tab"`. Machines pick it
    up at their next start or the 04:00 UTC rebuild.
-3. Tag the CLI: `git tag v0.1.20 && git push origin v0.1.20`; the release
+3. Tag the CLI: `git tag v0.1.21 && git push origin v0.1.21`; the release
    workflow builds the binaries and `repose` self-updates. The new plan
    sentences, hours in `repose status` and `repose browser` need it.
 4. Try it end to end on a throwaway account: sign in, choose Solo in the
