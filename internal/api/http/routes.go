@@ -58,6 +58,10 @@ func (s *Server) registerUserRoutes() {
 	s.route(m, "POST /v1/billing/portal", a(s.billingPortal))
 	s.route(m, "POST /v1/billing/setup", a(s.billingSetup))
 	s.route(m, "GET /v1/billing/invoices", a(s.billingInvoices))
+	// The seats waitlist (DECISIONS I-290); /public/seats is the landing
+	// page's count and needs no token.
+	s.route(m, "POST /v1/billing/waitlist", a(s.billingWaitlist))
+	s.route(m, "GET /v1/public/seats", s.publicSeats)
 	// Stripe authenticates itself with the Stripe-Signature header, so the
 	// webhook carries no bearer token (09-billing.md §5.6).
 	s.route(m, "POST /v1/billing/webhook", s.billingWebhook)

@@ -9,8 +9,10 @@ import (
 	"github.com/heracraft/repose/internal/api/apitest"
 )
 
-// DECISIONS I-269: `waitlist list` shows the queue, `waitlist admit`
-// lets one user or the next N in, audited, with one email each.
+// DECISIONS I-269, I-290: `waitlist list` shows the queue with the hold
+// columns, `waitlist admit` invites one user or the next N (a 72-hour seat
+// hold and one email each), audited as waitlist_admit; `seats` prints the
+// count and where the total came from.
 func TestWaitlistCommands(t *testing.T) {
 	h := apitest.New(t, apitest.Options{NoHost: true})
 	e := &admin.Env{KV: h.KV, Actor: "admin:test"}
@@ -27,16 +29,16 @@ func TestWaitlistCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) != 4 || !strings.HasPrefix(lines[1], "1 ") || !strings.Contains(lines[1], "ann") || !strings.Contains(lines[3], "cyd") {
+	if len(lines) != 4 || !strings.HasPrefix(lines[1], "1 ") || !strings.Contains(lines[1], "ann") || !strings.Contains(lines[3], "cyd") || !strings.Contains(lines[0], "HOLD") || !strings.Contains(lines[0], "EXPIRED") {
 		t.Fatalf("list:\n%s", out)
 	}
-	if out, err := run(t, e, "waitlist", "admit", "bob"); err != nil || !strings.Contains(out, "bob admitted") {
+	if out, err := run(t, e, "waitlist", "admit", "bob"); err != nil || !strings.Contains(out, "bob invited") {
 		t.Fatalf("admit bob: %s %v", out, err)
 	}
-	if out, err := run(t, e, "waitlist", "admit", "bob"); err != nil || !strings.Contains(out, "bob was already admitted") {
+	if out, err := run(t, e, "waitlist", "admit", "bob"); err != nil || !strings.Contains(out, "bob was already invited") {
 		t.Fatalf("admit bob again: %s %v", out, err)
 	}
-	if out, err := run(t, e, "waitlist", "admit", "--next", "5"); err != nil || !strings.Contains(out, "ann admitted") || !strings.Contains(out, "cyd admitted") {
+	if out, err := run(t, e, "waitlist", "admit", "--next", "5"); err != nil || !strings.Contains(out, "ann invited") || !strings.Contains(out, "cyd invited") {
 		t.Fatalf("admit --next: %s %v", out, err)
 	}
 	if out, err := run(t, e, "waitlist", "admit", "--next", "1"); err != nil || !strings.Contains(out, "nobody is waiting") {
@@ -49,14 +51,33 @@ func TestWaitlistCommands(t *testing.T) {
 		t.Fatal("admit with both a handle and --next was accepted")
 	}
 	var audits, emails int
-	if err := h.Pool.QueryRow(h.Ctx, "select (select count(*) from audit_log where action = 'waitlist_admit' and actor = 'admin:test'), (select count(*) from events_outbox o join events ev on ev.id = o.event_id where ev.kind = 'waitlist_admitted')").Scan(&audits, &emails); err != nil {
+	if err := h.Pool.QueryRow(h.Ctx, "select (select count(*) from audit_log where action = 'waitlist_admit' and actor = 'admin:test'), (select count(*) from events_outbox o join events ev on ev.id = o.event_id where ev.kind = 'waitlist_invited')").Scan(&audits, &emails); err != nil {
 		t.Fatal(err)
 	}
 	if audits != 3 || emails != 3 {
 		t.Fatalf("audits %d emails %d, want 3 and 3", audits, emails)
 	}
+	var holds int
+	if err := h.Pool.QueryRow(h.Ctx, "select count(*) from waitlist where invited_at is not null and hold_until = invited_at + interval '72 hours' and converted_at is null").Scan(&holds); err != nil || holds != 3 {
+		t.Fatalf("holds %d %v", holds, err)
+	}
 	out, _ = run(t, e, "waitlist", "list")
 	if !strings.Contains(out, "admin:test") || strings.Contains(out, "\n1 ") {
-		t.Fatalf("list after admission:\n%s", out)
+		t.Fatalf("list after invitation:\n%s", out)
+	}
+	// seats: no ready host in this harness, so the total is 0 from the
+	// hosts and the three holds are held; with SEATS_TOTAL the source and
+	// the free count change.
+	out, err = run(t, e, "seats")
+	if err != nil || !strings.Contains(out, "TOTAL") || !strings.Contains(out, "\n0 ") || !strings.Contains(out, "total from the ready, undrained hosts") {
+		t.Fatalf("seats:\n%s %v", out, err)
+	}
+	t.Setenv("SEATS_TOTAL", "30")
+	out, err = run(t, e, "seats")
+	if err != nil || !strings.Contains(out, "\n30 ") || !strings.Contains(out, " 27 ") || !strings.Contains(out, "total from SEATS_TOTAL") {
+		t.Fatalf("seats from config:\n%s %v", out, err)
+	}
+	if _, err := run(t, e, "seats", "extra"); err == nil {
+		t.Fatal("seats with an argument was accepted")
 	}
 }

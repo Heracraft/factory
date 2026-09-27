@@ -396,8 +396,9 @@ func (f *Fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, errf(code, "forced by the test's error switch"))
 		return
 	}
-	// The unsubscribe and reply links carry their own signed token.
-	if !strings.HasPrefix(r.URL.Path, "/v1/internal/") && r.URL.Path != "/v1/notify/unsubscribe" && r.URL.Path != "/v1/questions/reply" {
+	// The unsubscribe and reply links carry their own signed token; the
+	// seats count is the landing page's (I-290).
+	if !strings.HasPrefix(r.URL.Path, "/v1/internal/") && r.URL.Path != "/v1/notify/unsubscribe" && r.URL.Path != "/v1/questions/reply" && r.URL.Path != "/v1/public/seats" {
 		u, tok, ok := f.authenticate(r, pattern)
 		if !ok {
 			f.mu.Unlock()
@@ -530,6 +531,8 @@ func (f *Fake) register() {
 	f.handle("POST /v1/billing/portal", f.billingPortal)
 	f.handle("POST /v1/billing/setup", f.billingSetup)
 	f.handle("GET /v1/billing/invoices", f.billingInvoices)
+	f.handle("POST /v1/billing/waitlist", f.billingWaitlist)
+	f.handle("GET /v1/public/seats", f.publicSeats)
 	f.handle("POST /v1/billing/webhook", f.billingWebhook)
 	// Internal (gateway).
 	f.handle("GET /v1/internal/route", f.internalRoute)

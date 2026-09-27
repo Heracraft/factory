@@ -1,270 +1,428 @@
-// Package waitlist is the capacity waitlist (DECISIONS I-269). Memory is
-// never oversubscribed and hosts are added by hand when reserved memory
-// passes 80 percent (DESIGN.md §4, RUNBOOK HostMemory80), so a burst of
-// sign-ups can fill the fleet before the next host is up. From that line
-// on, a user asking for their first project is refused with `waitlisted`
-// and put in a queue; the api admits the queue oldest first as room
-// appears and emails each user once when they are in.
+// Package waitlist is the seats waitlist (DECISIONS I-269, amended by
+// I-290). Memory is never oversubscribed, so the fleet has exactly as
+// many seats as its ready, undrained hosts have usable 8 GB blocks, or as
+// many as SEATS_TOTAL says. A seat is held by every live subscription
+// (its plan's seats) and by every invitation whose hold has not run out.
+// Checkout asks Reserve before it creates a Paddle transaction; without a
+// free seat the user joins the list and gets `waitlisted`. Every minute
+// the Inviter hands free seats to the oldest waiting users, one seat each
+// and strictly in order, holding each for 72 hours; a hold that runs out
+// unconverted moves the user to the back and says so by email.
 //
-// Only a first project is gated. A user who has ever had a project, who
-// was admitted, or whose account is exempt is never waitlisted: they may
-// still meet plain `capacity` when no host fits.
+// Every email here is an account event through the outbox
+// (events.InsertAccount): joined, invited, expired.
 package waitlist
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/heracraft/repose/internal/api/events"
 	"github.com/heracraft/repose/internal/api/metrics"
-	"github.com/heracraft/repose/internal/api/scheduler"
 	"github.com/heracraft/repose/internal/api/store"
 	"github.com/heracraft/repose/internal/db"
 )
 
-// DefaultPercent is the reserved-memory line, the HostMemory80 alert's.
-const DefaultPercent = 80
+// SeatBytes is one seat: the memory a running `large` takes.
+const SeatBytes = int64(8) << 30
 
-// AdmitWindow is how long an admitted user who has not created a project
-// yet still counts against capacity, so a burst of admissions cannot
-// promise the same room twice. After it the room is assumed not taken up;
-// the user stays admitted.
-const AdmitWindow = 72 * time.Hour
+// HoldDuration is how long an invitation holds a seat.
+const HoldDuration = 72 * time.Hour
 
-// PendingClass is the class an admitted user is assumed to ask for: the
-// api's default class for POST /projects.
-const PendingClass = "large"
-
-// Kind is the event (and email) an admission raises.
-const Kind = "waitlist_admitted"
-
-// Subject is the admission email's subject line.
-const Subject = "There is room for you on repose"
-
-// Summary is the admission email's body: fixed text, nothing the user or
-// any guest wrote.
-const Summary = "repose has room for your first machine now. Run `repose run` again in your project's checkout to create it."
-
-// Fleet is the memory picture the gate and the admitter share.
-type Fleet struct {
-	// Usable is RAM minus the host reserve over ready, undrained hosts.
-	Usable int64
-	// Reserved is memory promised to guests on those hosts.
-	Reserved int64
-	// Pending is admitted users inside AdmitWindow with no project yet.
-	Pending int
-}
-
-// Projected is what the fleet would have reserved with extra more bytes
-// and every pending admission taken up.
-func (f Fleet) Projected(extra int64) int64 {
-	return f.Reserved + int64(f.Pending)*scheduler.ClassRAM(PendingClass) + extra
-}
-
-// Fits reports whether extra more bytes stay at or under percent of the
-// usable memory. A fleet with no usable memory fits nothing.
-func (f Fleet) Fits(percent int, extra int64) bool {
-	return f.Usable > 0 && f.Projected(extra)*100 <= int64(percent)*f.Usable
-}
-
-// ReadFleet reads the picture at now.
-func ReadFleet(ctx context.Context, q store.Querier, now time.Time) (Fleet, error) {
-	var f Fleet
-	err := q.QueryRow(ctx, `select
-		coalesce(sum(h.mem_bytes - case when h.mem_bytes >= (128::bigint<<30) then 16::bigint<<30 else 8::bigint<<30 end), 0)::bigint,
-		coalesce(sum(r.reserved_bytes), 0)::bigint
-		from hosts h left join host_reservations r on r.host_id = h.id
-		where h.state = 'ready' and not h.draining`).Scan(&f.Usable, &f.Reserved)
-	if err != nil {
-		return f, err
-	}
-	if f.Usable < 0 {
-		f.Usable = 0
-	}
-	err = q.QueryRow(ctx, `select count(*) from waitlist w
-		where w.admitted_at > $1 and not exists (select 1 from projects p where p.user_id = w.user_id)`, now.Add(-AdmitWindow)).Scan(&f.Pending)
-	return f, err
-}
-
-// Gate is the check before a first project is created.
-type Gate struct {
-	Pool *db.Pool
-	// Percent is WAITLIST_PERCENT; 0 turns the waitlist off.
-	Percent int
-	M       *metrics.M
-}
-
-// Check returns the user's waitlist entry when their create must wait,
-// and nil when it may go ahead. A user who must wait and is not on the
-// list yet is added; a user already waiting keeps their place, even when
-// room has appeared, since the admitter lets the queue in in order.
-// joined says whether this call added them.
-func (g *Gate) Check(ctx context.Context, u *store.User, class string, now time.Time) (e *store.WaitlistEntry, joined bool, err error) {
-	if g == nil || g.Percent <= 0 || u.BillingStatus == "exempt" {
-		return nil, false, nil
-	}
-	var hadProject bool
-	if err := g.Pool.QueryRow(ctx, "select exists(select 1 from projects where user_id = $1)", u.ID).Scan(&hadProject); err != nil {
-		return nil, false, err
-	}
-	if hadProject {
-		return nil, false, nil
-	}
-	cur, err := store.GetWaitlistEntry(ctx, g.Pool, u.ID)
-	switch {
-	case errors.Is(err, db.ErrNotFound):
-	case err != nil:
-		return nil, false, err
-	case cur.AdmittedAt != nil:
-		return nil, false, nil
-	default:
-		return cur, false, nil
-	}
-	f, err := ReadFleet(ctx, g.Pool, now)
-	if err != nil {
-		return nil, false, err
-	}
-	// No usable host at all is an outage or an empty dev fleet, not a
-	// full one: placement answers that with plain `capacity`.
-	if f.Usable == 0 {
-		return nil, false, nil
-	}
-	var waiting int
-	if err := g.Pool.QueryRow(ctx, `select count(*) from waitlist w join users u on u.id = w.user_id
-		where w.admitted_at is null and u.suspended_at is null and u.cancelled_at is null and u.deleted_at is null`).Scan(&waiting); err != nil {
-		return nil, false, err
-	}
-	// Nobody waiting and room below the line: go ahead. With a queue, a
-	// newcomer joins its end rather than taking the room the next
-	// admission is about to hand out.
-	if waiting == 0 && f.Fits(g.Percent, scheduler.ClassRAM(class)) {
-		return nil, false, nil
-	}
-	tag, err := g.Pool.Exec(ctx, "insert into waitlist (user_id, joined_at) values ($1, $2) on conflict (user_id) do nothing", u.ID, now)
-	if err != nil {
-		return nil, false, err
-	}
-	e, err = store.GetWaitlistEntry(ctx, g.Pool, u.ID)
-	if err != nil {
-		return nil, false, err
-	}
-	if e.AdmittedAt != nil {
-		return nil, false, nil // admitted between the two reads
-	}
-	joined = tag.RowsAffected() == 1
-	if joined && g.M != nil {
-		g.M.WaitlistJoinedTotal.Inc()
-	}
-	return e, joined, nil
-}
+// Event kinds this package raises; each is an account email (I-291).
+const (
+	KindJoined  = "waitlist_joined"
+	KindInvited = "waitlist_invited"
+	KindExpired = "waitlist_expired"
+)
 
 // Message is the `waitlisted` error's message, the whole sentence a CLI
 // that does not know the code prints as it is.
 func Message(position int, email string) string {
 	if email == "" {
-		return fmt.Sprintf("repose is at capacity. You're number %d on the waitlist. Run `repose run` again later.", position)
+		return fmt.Sprintf("repose is full right now. You're number %d on the waitlist. The dashboard's plan page shows your place.", position)
 	}
-	return fmt.Sprintf("repose is at capacity. You're number %d on the waitlist; we'll email %s when there's room.", position, email)
+	return fmt.Sprintf("repose is full right now. You're number %d on the waitlist; we'll email %s when there's a seat.", position, email)
 }
 
-// Admit lets one waiting user in: admitted_at is set and the admission
-// email is queued in the same transaction, so each admission sends one
-// email whoever runs it, however often. It reports false when the user
-// was not waiting (already admitted, or never on the list).
-func Admit(ctx context.Context, pool *db.Pool, userID uuid.UUID, by string, now time.Time) (bool, error) {
-	admitted := false
+// Service implements Seats on Postgres. Total is SEATS_TOTAL; 0 derives
+// the count from the hosts. Now is the clock (tests).
+type Service struct {
+	Pool *db.Pool
+	// Total is SEATS_TOTAL when the operator set it; 0 derives the count
+	// from the ready, undrained hosts.
+	Total int
+	M     *metrics.M
+	Log   *slog.Logger
+	Now   func() time.Time
+}
+
+var _ Seats = (*Service)(nil)
+
+func (s *Service) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
+}
+
+// Source says where a Count's Total came from.
+type Source string
+
+// Sources of the total.
+const (
+	SourceConfig Source = "SEATS_TOTAL"
+	SourceHosts  Source = "hosts"
+)
+
+// CountSource is Count with where Total came from, for repose-admin seats.
+func (s *Service) CountSource(ctx context.Context) (Count, Source, error) {
+	c, err := count(ctx, s.Pool, s.Total, s.now())
+	src := SourceHosts
+	if s.Total > 0 {
+		src = SourceConfig
+	}
+	return c, src, err
+}
+
+// Count implements Seats.
+func (s *Service) Count(ctx context.Context) (Count, error) {
+	c, err := count(ctx, s.Pool, s.Total, s.now())
+	if err == nil {
+		s.gauges(c)
+	}
+	return c, err
+}
+
+// count is the seat arithmetic of I-290 at now, on q (a pool or the
+// locked transaction).
+func count(ctx context.Context, q store.Querier, total int, now time.Time) (Count, error) {
+	var c Count
+	if total > 0 {
+		c.Total = total
+	} else {
+		// floor((RAM - reserve) / 8 GB) per ready, undrained host; the
+		// reserve is the scheduler's rule (16 GB from 128 GB of RAM, 8
+		// below), repeated in SQL as the scheduler repeats it.
+		err := q.QueryRow(ctx, `select coalesce(sum(greatest(0, (h.mem_bytes - case when h.mem_bytes >= (128::bigint<<30) then 16::bigint<<30 else 8::bigint<<30 end) / $1)), 0)::integer
+			from hosts h where h.state = 'ready' and not h.draining`, SeatBytes).Scan(&c.Total)
+		if err != nil {
+			return c, err
+		}
+	}
+	err := q.QueryRow(ctx, `select
+		(select coalesce(sum(seats), 0) from subscriptions where status in ('trialing','active','past_due'))::integer
+		+ (select count(*) from waitlist where invited_at is not null and converted_at is null and hold_until > $1)::integer,
+		(select count(*) from waitlist w join users u on u.id = w.user_id
+		  where w.invited_at is null and u.suspended_at is null and u.cancelled_at is null and u.deleted_at is null)::integer`, now).Scan(&c.Held, &c.Waiting)
+	if err != nil {
+		return c, err
+	}
+	c.Free = max(0, c.Total-c.Held)
+	return c, nil
+}
+
+func (s *Service) gauges(c Count) {
+	if s.M == nil {
+		return
+	}
+	s.M.SeatsTotal.Set(float64(c.Total))
+	s.M.SeatsHeld.Set(float64(c.Held))
+	s.M.WaitlistWaiting.Set(float64(c.Waiting))
+}
+
+// lock takes the waitlist advisory lock for the transaction: Reserve,
+// Join, the Inviter and repose-admin all count and write under it, so two
+// checkouts cannot both take the last seat.
+func lock(ctx context.Context, tx db.Tx) error {
+	_, err := tx.Exec(ctx, "select pg_advisory_xact_lock($1)", db.LockWaitlist)
+	return err
+}
+
+// Reserve implements Seats: ok when Free, plus one for this user's own
+// unexpired invitation, covers seats; otherwise the user is on the list
+// afterwards (joining is idempotent) and place is their position.
+func (s *Service) Reserve(ctx context.Context, userID string, seats int) (bool, *Place, error) {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return false, nil, fmt.Errorf("waitlist: user id: %w", err)
+	}
+	if seats < 1 {
+		seats = 1
+	}
+	now := s.now()
+	var (
+		ok    bool
+		place *Place
+		c     Count
+	)
+	err = db.InTx(ctx, s.Pool, func(tx db.Tx) error {
+		if err := lock(ctx, tx); err != nil {
+			return err
+		}
+		var err error
+		c, err = count(ctx, tx, s.Total, now)
+		if err != nil {
+			return err
+		}
+		own := 0
+		cur, err := store.GetWaitlistEntry(ctx, tx, uid)
+		switch {
+		case errors.Is(err, db.ErrNotFound):
+		case err != nil:
+			return err
+		case cur.Holding(now):
+			own = 1
+		}
+		if c.Free+own >= seats {
+			ok = true
+			return nil
+		}
+		place, err = s.join(ctx, tx, uid, now)
+		return err
+	})
+	if err != nil {
+		return false, nil, err
+	}
+	if ok {
+		s.gauges(c)
+		return true, nil, nil
+	}
+	return false, place, nil
+}
+
+// Join puts the user on the list without a checkout (POST
+// /billing/waitlist), idempotently: a second call answers the same place.
+func (s *Service) Join(ctx context.Context, userID uuid.UUID) (*Place, error) {
+	now := s.now()
+	var place *Place
+	err := db.InTx(ctx, s.Pool, func(tx db.Tx) error {
+		if err := lock(ctx, tx); err != nil {
+			return err
+		}
+		var err error
+		place, err = s.join(ctx, tx, userID, now)
+		return err
+	})
+	return place, err
+}
+
+// join is the idempotent insert under the lock. A row whose hold ran out
+// is re-queued here rather than waiting for the tick; a row that was
+// converted (a plan that has since ended) is re-queued too, since the user
+// is asking again. A row that is waiting or holding keeps its place. A new
+// row raises the joined email.
+func (s *Service) join(ctx context.Context, tx db.Tx, userID uuid.UUID, now time.Time) (*Place, error) {
+	tag, err := tx.Exec(ctx, "insert into waitlist (user_id, joined_at) values ($1, $2) on conflict (user_id) do nothing", userID, now)
+	if err != nil {
+		return nil, err
+	}
+	joined := tag.RowsAffected() == 1
+	if !joined {
+		// Re-queue an expired hold or a converted row; leave a waiting or
+		// holding row alone.
+		if _, err := tx.Exec(ctx, `update waitlist set joined_at = $2, invited_at = null, hold_until = null, invited_by = null, converted_at = null,
+			expired_invites = expired_invites + case when converted_at is null then 1 else 0 end
+			where user_id = $1 and invited_at is not null and (converted_at is not null or hold_until <= $2)`, userID, now); err != nil {
+			return nil, err
+		}
+	}
+	e, err := store.GetWaitlistEntry(ctx, tx, userID)
+	if err != nil {
+		return nil, err
+	}
+	var email *string
+	if err := tx.QueryRow(ctx, "select email from users where id = $1", userID).Scan(&email); err != nil {
+		return nil, err
+	}
+	p := place(e, email)
+	if joined {
+		if _, err := events.InsertAccount(ctx, tx, userID, now, KindJoined, JoinedPayload{Position: p.Position}); err != nil {
+			return nil, err
+		}
+		if s.M != nil {
+			s.M.WaitlistJoinedTotal.Inc()
+		}
+		if s.Log != nil {
+			s.Log.Info("user joined the waitlist", "event", "waitlist_join", "user_id", userID.String(), "position", p.Position)
+		}
+	}
+	return p, nil
+}
+
+func place(e *store.WaitlistEntry, email *string) *Place {
+	p := &Place{Position: e.Position, JoinedAt: e.JoinedAt, InvitedAt: e.InvitedAt, HoldUntil: e.HoldUntil}
+	if email != nil {
+		p.Email = *email
+	}
+	return p
+}
+
+// Converted implements Seats: the invited user's subscription arrived.
+// The row stays, converted_at set, so the count keeps it and the hold
+// stops counting. A user never on the list is not an error.
+func (s *Service) Converted(ctx context.Context, userID string) error {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return fmt.Errorf("waitlist: user id: %w", err)
+	}
+	tag, err := s.Pool.Exec(ctx, "update waitlist set converted_at = $2 where user_id = $1 and converted_at is null", uid, s.now())
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 1 && s.M != nil {
+		s.M.WaitlistConvertedTotal.Inc()
+	}
+	return nil
+}
+
+// JoinedPayload is waitlist_joined's and waitlist_expired's summary.
+type JoinedPayload struct {
+	Position int `json:"position"`
+}
+
+// InvitedPayload is waitlist_invited's summary.
+type InvitedPayload struct {
+	HoldUntil time.Time `json:"hold_until"`
+}
+
+// Invite hands one seat to a waiting user: invited_at, the 72-hour hold
+// and the invitation email in one transaction guarded by `invited_at is
+// null`, so each invitation sends one email whoever runs it, however
+// often. It reports false when the user was not waiting (already invited,
+// or never on the list). The caller holds the waitlist lock, or accepts
+// that a seat may be promised twice (repose-admin does: an operator
+// letting someone in ahead of the queue means it).
+func Invite(ctx context.Context, pool *db.Pool, userID uuid.UUID, by string, now time.Time) (bool, error) {
+	invited := false
 	err := db.InTx(ctx, pool, func(tx db.Tx) error {
-		tag, err := tx.Exec(ctx, "update waitlist set admitted_at = $2, admitted_by = $3 where user_id = $1 and admitted_at is null", userID, now, by)
-		if err != nil || tag.RowsAffected() == 0 {
-			return err
-		}
-		admitted = true
-		var email *string
-		if err := tx.QueryRow(ctx, "select email from users where id = $1", userID).Scan(&email); err != nil {
-			return err
-		}
-		id := store.NewID()
-		if _, err := tx.Exec(ctx, `insert into events (id, project_id, user_id, ts, ts_second, kind, summary, source) values ($1, null, $2, $3, $4, $5, $6, 'api')`,
-			id, userID, now, now.Unix(), Kind, Summary); err != nil {
-			return err
-		}
-		// The admission email is transactional: it answers the user's own
-		// request, so it goes out whatever notify_email says (I-269).
-		if email != nil && *email != "" {
-			if _, err := tx.Exec(ctx, "insert into events_outbox (event_id, channel) values ($1, 'email')", id); err != nil {
+		return inviteTx(ctx, tx, userID, by, now, &invited)
+	})
+	return invited, err
+}
+
+func inviteTx(ctx context.Context, tx db.Tx, userID uuid.UUID, by string, now time.Time, invited *bool) error {
+	until := now.Add(HoldDuration)
+	tag, err := tx.Exec(ctx, "update waitlist set invited_at = $2, hold_until = $3, invited_by = $4 where user_id = $1 and invited_at is null", userID, now, until, by)
+	if err != nil || tag.RowsAffected() == 0 {
+		return err
+	}
+	*invited = true
+	_, err = events.InsertAccount(ctx, tx, userID, now, KindInvited, InvitedPayload{HoldUntil: until.UTC()})
+	return err
+}
+
+// Inviter is the minute tick: expiries first, then invitations while a
+// seat is free. The caller holds db.LockWaitlist (TryLock) so one replica
+// runs it; the transaction lock inside keeps Reserve out meanwhile.
+type Inviter struct {
+	Pool  *db.Pool
+	Total int
+	M     *metrics.M
+	Log   *slog.Logger
+}
+
+// Run expires the holds that ran out, then invites the oldest waiting
+// users while Free > 0, strictly in order and one seat each. It returns
+// how many it invited and how many holds it expired.
+func (a *Inviter) Run(ctx context.Context, now time.Time) (invited, expired int, err error) {
+	expired, err = a.expire(ctx, now)
+	if err != nil {
+		return 0, expired, err
+	}
+	for {
+		var more bool
+		err = db.InTx(ctx, a.Pool, func(tx db.Tx) error {
+			if err := lock(ctx, tx); err != nil {
 				return err
 			}
+			c, err := count(ctx, tx, a.Total, now)
+			if err != nil {
+				return err
+			}
+			if a.M != nil {
+				a.M.SeatsTotal.Set(float64(c.Total))
+				a.M.SeatsHeld.Set(float64(c.Held))
+				a.M.WaitlistWaiting.Set(float64(c.Waiting))
+			}
+			if c.Free <= 0 || c.Waiting == 0 {
+				return nil
+			}
+			waiting, err := store.ListWaiting(ctx, tx)
+			if err != nil || len(waiting) == 0 {
+				return err
+			}
+			var ok bool
+			if err := inviteTx(ctx, tx, waiting[0].UserID, "auto", now, &ok); err != nil {
+				return err
+			}
+			more = ok
+			return nil
+		})
+		if err != nil || !more {
+			return invited, expired, err
 		}
-		return nil
-	})
-	return admitted, err
+		invited++
+		if a.M != nil {
+			a.M.WaitlistInvitedTotal.Inc()
+		}
+	}
 }
 
-// Admitter lets the queue in as room appears.
-type Admitter struct {
-	Pool    *db.Pool
-	Percent int
-	M       *metrics.M
-}
-
-// Run admits waiting users oldest first while the fleet, with every
-// admission inside AdmitWindow assumed to become a PendingClass guest,
-// stays at or under Percent. It stops at the first user who does not fit:
-// the queue is strictly in order. The caller holds db.LockWaitlist.
-func (a *Admitter) Run(ctx context.Context, now time.Time) (int, error) {
-	waiting, err := store.ListWaiting(ctx, a.Pool)
+// expire moves every unconverted hold that ran out to the back of the
+// list, one transaction each, with the email saying where they are now.
+func (a *Inviter) expire(ctx context.Context, now time.Time) (int, error) {
+	rows, err := a.Pool.Query(ctx, "select user_id from waitlist where invited_at is not null and converted_at is null and hold_until < $1 order by hold_until", now)
 	if err != nil {
+		return 0, err
+	}
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
 		return 0, err
 	}
 	n := 0
-	defer func() {
-		if a.M != nil {
-			a.M.WaitlistWaiting.Set(float64(len(waiting) - n))
-		}
-	}()
-	if a.Percent <= 0 || len(waiting) == 0 {
-		// With the waitlist off, nobody new joins; those already waiting
-		// are let in (the operator turned it off to open the doors).
-		if a.Percent <= 0 {
-			for _, w := range waiting {
-				ok, err := Admit(ctx, a.Pool, w.UserID, "auto", now)
-				if err != nil {
-					return n, err
-				}
-				if ok {
-					n++
-					a.inc()
-				}
+	for _, id := range ids {
+		err := db.InTx(ctx, a.Pool, func(tx db.Tx) error {
+			if err := lock(ctx, tx); err != nil {
+				return err
 			}
-		}
-		return n, nil
-	}
-	f, err := ReadFleet(ctx, a.Pool, now)
-	if err != nil {
-		return 0, err
-	}
-	for _, w := range waiting {
-		if !f.Fits(a.Percent, scheduler.ClassRAM(PendingClass)) {
-			break
-		}
-		ok, err := Admit(ctx, a.Pool, w.UserID, "auto", now)
+			// Guarded again under the lock: a checkout that converted the
+			// user meanwhile keeps its row.
+			tag, err := tx.Exec(ctx, `update waitlist set invited_at = null, hold_until = null, invited_by = null, joined_at = $2, expired_invites = expired_invites + 1
+				where user_id = $1 and invited_at is not null and converted_at is null and hold_until < $2`, id, now)
+			if err != nil || tag.RowsAffected() == 0 {
+				return err
+			}
+			e, err := store.GetWaitlistEntry(ctx, tx, id)
+			if err != nil {
+				return err
+			}
+			if _, err := events.InsertAccount(ctx, tx, id, now, KindExpired, JoinedPayload{Position: e.Position}); err != nil {
+				return err
+			}
+			n++
+			return nil
+		})
 		if err != nil {
 			return n, err
 		}
-		if ok {
-			n++
-			f.Pending++
-			a.inc()
-		}
+	}
+	if n > 0 && a.M != nil {
+		a.M.WaitlistExpiredTotal.Add(float64(n))
 	}
 	return n, nil
-}
-
-func (a *Admitter) inc() {
-	if a.M != nil {
-		a.M.WaitlistAdmittedTotal.Inc()
-	}
 }

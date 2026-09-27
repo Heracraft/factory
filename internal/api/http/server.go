@@ -86,9 +86,11 @@ type Deps struct {
 	Migrations func(ctx context.Context) (pending int, err error)
 	// Limits override the documented per-minute rate limits (tests).
 	Limits *RateLimits
-	// Waitlist gates a user's first project on fleet capacity (DECISIONS
-	// I-269); nil or Percent 0 lets every create through.
-	Waitlist *waitlist.Gate
+	// Seats is the seats waitlist (DECISIONS I-290): POST /billing/waitlist
+	// joins it, GET /public/seats and GET /billing read its count, and
+	// checkout asks it before a Paddle transaction. nil answers those
+	// routes with 500 (tests that do not care).
+	Seats *waitlist.Service
 }
 
 // RateLimits are the per-user limits from docs/interfaces/api.md.
@@ -121,6 +123,7 @@ type Server struct {
 	cfg      *ratelimit.Limiter
 	replies  *ratelimit.Limiter // per question, on the public reply links
 	sessions *sessionTracker
+	seats    seatsCache // GET /public/seats, a minute old at most
 	ready    bool
 	waiters  opWaiters   // held op reads (I-236)
 	draining atomic.Bool // SetReady(false): held op reads answer now

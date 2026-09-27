@@ -65,14 +65,24 @@ type M struct {
 	// projects at full CPU on every vCPU for six hours with no session, no
 	// tmux client and no agent (I-239), recomputed from meter_samples.
 	AbuseBusyUnattendedProjects prometheus.Gauge
-	// WaitlistWaiting is the users holding a place on the capacity
-	// waitlist (DECISIONS I-269), set by the admission tick; a queue that
+	// SeatsTotal and SeatsHeld are the fleet's seats (DECISIONS I-290):
+	// the 8 GB blocks of the ready hosts (or SEATS_TOTAL) and those held
+	// by live subscriptions and unexpired invitations.
+	SeatsTotal prometheus.Gauge
+	SeatsHeld  prometheus.Gauge
+	// WaitlistWaiting is the users holding a place on the seats waitlist
+	// (DECISIONS I-269, I-290), set by the invite tick; a queue that
 	// grows is a host to add (RUNBOOK "Waitlist growing").
 	WaitlistWaiting prometheus.Gauge
 	// WaitlistJoinedTotal counts users put on the waitlist by a refused
-	// first create; WaitlistAdmittedTotal those the api admitted.
-	WaitlistJoinedTotal   prometheus.Counter
-	WaitlistAdmittedTotal prometheus.Counter
+	// checkout or POST /billing/waitlist; WaitlistInvitedTotal the
+	// invitations the tick sent, WaitlistConvertedTotal the invited users
+	// whose subscription arrived, WaitlistExpiredTotal the holds that ran
+	// out.
+	WaitlistJoinedTotal    prometheus.Counter
+	WaitlistInvitedTotal   prometheus.Counter
+	WaitlistConvertedTotal prometheus.Counter
+	WaitlistExpiredTotal   prometheus.Counter
 }
 
 // New registers every family on reg.
@@ -112,9 +122,13 @@ func New(reg prometheus.Registerer) *M {
 		AbuseStopsTotal:              prometheus.NewCounterVec(prometheus.CounterOpts{Name: "repose_api_abuse_stops_total", Help: "Guests the api stopped for abuse, by kind."}, []string{"kind"}),
 		AbuseHeldProjects:            prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_abuse_held_projects", Help: "Projects whose start is refused until repose-admin abuse clear."}),
 		AbuseBusyUnattendedProjects:  prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_abuse_busy_unattended_projects", Help: "Projects at full CPU on every vCPU for 6 h with no session, tmux client or agent."}),
-		WaitlistWaiting:              prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_waitlist_waiting", Help: "Users waiting on the capacity waitlist."}),
-		WaitlistJoinedTotal:          prometheus.NewCounter(prometheus.CounterOpts{Name: "repose_api_waitlist_joined_total", Help: "Users put on the capacity waitlist."}),
-		WaitlistAdmittedTotal:        prometheus.NewCounter(prometheus.CounterOpts{Name: "repose_api_waitlist_admitted_total", Help: "Waitlisted users the api admitted."}),
+		SeatsTotal:                   prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_seats_total", Help: "Seats on the fleet: 8 GB blocks of the ready hosts, or SEATS_TOTAL."}),
+		SeatsHeld:                    prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_seats_held", Help: "Seats held by live subscriptions and unexpired waitlist invitations."}),
+		WaitlistWaiting:              prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_waitlist_waiting", Help: "Users waiting on the seats waitlist."}),
+		WaitlistJoinedTotal:          prometheus.NewCounter(prometheus.CounterOpts{Name: "repose_api_waitlist_joined_total", Help: "Users put on the seats waitlist."}),
+		WaitlistInvitedTotal:         prometheus.NewCounter(prometheus.CounterOpts{Name: "repose_api_waitlist_invited_total", Help: "Waitlist invitations the api sent."}),
+		WaitlistConvertedTotal:       prometheus.NewCounter(prometheus.CounterOpts{Name: "repose_api_waitlist_converted_total", Help: "Invited users whose subscription arrived."}),
+		WaitlistExpiredTotal:         prometheus.NewCounter(prometheus.CounterOpts{Name: "repose_api_waitlist_expired_total", Help: "Waitlist invitations whose 72-hour hold ran out."}),
 	}
 	// The alert on stops reads increase(); a series that exists from start
 	// is what lets the first stop register as one.
@@ -124,7 +138,7 @@ func New(reg prometheus.Registerer) *M {
 		m.GRPCStreams, m.OpsTotal, m.OpsOpen, m.BuildDuration, m.SecretsOpsTotal, m.CommandsTotal, m.SamplesTotal, m.EventsTotal,
 		m.HostWarningsTotal, m.EgressAlertProjects, m.BillingGapMinutes, m.StripePushBacklogSeconds, m.BillingMismatchCents, m.KeyVaultErrorsTotal,
 		m.PartitionDropFailTotal, m.AbuseStopsTotal, m.AbuseHeldProjects, m.AbuseBusyUnattendedProjects,
-		m.WaitlistWaiting, m.WaitlistJoinedTotal, m.WaitlistAdmittedTotal)
+		m.SeatsTotal, m.SeatsHeld, m.WaitlistWaiting, m.WaitlistJoinedTotal, m.WaitlistInvitedTotal, m.WaitlistConvertedTotal, m.WaitlistExpiredTotal)
 	return m
 }
 

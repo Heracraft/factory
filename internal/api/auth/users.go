@@ -15,6 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/heracraft/repose/internal/api/events"
 	"github.com/heracraft/repose/internal/api/store"
 	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/db"
@@ -235,7 +236,14 @@ func (p *Provisioner) EnsureUser(ctx context.Context, sub string) (*store.User, 
 				uid, sub, handle, email, gh, billing.ProjectLimitTrial, billing.XLLimitTrial); err != nil {
 				return err
 			}
-			_, err := billing.Credit(ctx, tx, uid, billing.TrialCreditCents, billing.ReasonTrial, "signup:"+uid.String())
+			if _, err := billing.Credit(ctx, tx, uid, billing.TrialCreditCents, billing.ReasonTrial, "signup:"+uid.String()); err != nil {
+				return err
+			}
+			// The welcome email (DECISIONS I-291): install, run, choose a
+			// plan. An account event with no project, in the same commit
+			// as the row, so a user exists with the email queued or not at
+			// all.
+			_, err := events.InsertAccount(ctx, tx, uid, time.Now(), "welcome", nil)
 			return err
 		})
 		if err == nil {
