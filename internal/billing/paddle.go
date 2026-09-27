@@ -65,7 +65,7 @@ func NewPaddle(cfg Config, log *slog.Logger) *Paddle {
 		}
 	}
 	if log == nil {
-		log = slog.New(slog.NewTextHandler(io.Discard, nil))
+		log = obs.NewLogger(obs.LogOptions{Component: obs.ComponentAPI, Writer: io.Discard})
 	}
 	return &Paddle{cfg: cfg, base: strings.TrimRight(base, "/"), http: &http.Client{Timeout: 30 * time.Second},
 		log: log.With("component", obs.ComponentAPI), Sleep: time.Sleep, Tries: 3}

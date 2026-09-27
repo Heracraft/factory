@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"time"
@@ -69,7 +70,7 @@ type Gate struct {
 // NewGate builds the gate.
 func NewGate(pool *db.Pool, cfg Config, m *metrics.M, log *slog.Logger) *Gate {
 	if log == nil {
-		log = slog.Default()
+		log = obs.NewLogger(obs.LogOptions{Component: obs.ComponentAPI, Writer: io.Discard})
 	}
 	return &Gate{pool: pool, cfg: cfg, log: log.With("component", obs.ComponentAPI), m: m, Enabled: cfg.Enabled(), Enforce: cfg.Enforce, Now: time.Now}
 }
