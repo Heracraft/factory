@@ -7119,6 +7119,14 @@ command through `bash -lc STRING` (the user's quoting would be read by a
 second shell); `direnv exec` (a failing `.envrc` would stop the command,
 where the agent wrapper starts anyway).
 
+*Amended 2026-09-27 (found live on v0.1.18):* exec loads the dev shell
+with `REPOSE_DEVSHELL_QUIET=1`, so a load that works prints nothing: its
+stderr is the user's command's. direnv's messages are held back and shown
+only when the load fails, and the "loading the dev shell" line appears
+only after 2 seconds. Agent windows keep every message, since the pane is
+where a slow or broken load should be seen. The `guest-devshell` VM test
+asserts a cached exec's stderr is empty.
+
 **I-276. Did-you-mean for commands, `-q` on listings.** (dev-CLI round, 2026-09-26)
 cobra suggested only at the top level, only by a command's own name, and
 a group with an unknown subcommand (`repose secrets lsit`) printed the

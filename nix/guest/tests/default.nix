@@ -1385,6 +1385,12 @@ in
           assert "project=todo-app" in out, out
           assert "pwd=/home/dev/todo-app" in out, out
           assert "flake-tool-ok" in out, out
+          # A dev shell that loads from its cache says nothing: stderr is
+          # the user's command's own (found live on v0.1.18: six lines of
+          # direnv on every exec).
+          err = ssh("{ " + open("${../../../internal/cli/testdata/exec-script.sh}").read() + "\n} 2>&1 >/dev/null")
+          print("repose exec stderr, cached: " + repr(err))
+          assert "repose:" not in err and "direnv:" not in err, err
 
       with subtest("an .envrc never allowed here is allowed, and the agent gets all of it"):
           dev("cd ~/todo-app && printf 'use flake\\nexport ENVRC_ONLY=yes\\n' > .envrc && git add .envrc && git -c user.email=t@t -c user.name=t commit -q -m envrc")

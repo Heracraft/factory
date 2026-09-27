@@ -20,8 +20,14 @@
 # @direnv@, @jq@, @tmux@ and @coreutils@ are store paths, substituted by
 # wrap.nix. Everything is local to the function; the caller runs it as
 # `_repose_devshell <agent>` and then execs.
+#
+# REPOSE_DEVSHELL_QUIET=1 (set by `repose exec`, whose stderr is the
+# user's own command output) keeps a load that works silent: direnv's
+# messages are held back and shown only when the load fails, and the
+# "loading" line appears only once a load has taken 2 seconds.
 _repose_devshell() {
-  local agent=$1 status rc allowed dir label d root shadow want out loaded
+  local agent=$1 status rc allowed dir label d root shadow want out loaded quiet= errf= timer=
+  [ "${REPOSE_DEVSHELL_QUIET:-}" = 1 ] && quiet=1
 
   # Where the NixOS module puts the direnvrc that loads nix-direnv; a
   # variable of /etc/set-environment, which a tmux server started by a
@@ -47,7 +53,7 @@ _repose_devshell() {
           echo "repose: could not allow $rc; starting $agent without it" >&2
           return 0
         fi
-        echo "repose: allowed $rc (direnv allow) so $agent starts in its environment" >&2
+        [ -n "$quiet" ] || echo "repose: allowed $rc (direnv allow) so $agent starts in its environment" >&2
         ;;
     esac
     dir=${rc%/*}
@@ -78,28 +84,54 @@ use flake $(printf '%q' "$root")"
   loaded=
   [ "${DIRENV_DIR:-}" = "-$dir" ] && loaded=1
   if [ -z "$loaded" ]; then
-    echo "repose: loading the dev shell from $label (the first load can take minutes)" >&2
+    if [ -n "$quiet" ]; then
+      (@coreutils@/bin/sleep 2 && echo "repose: loading the dev shell from $label (the first load can take minutes)" >&2) &
+      timer=$!
+    else
+      echo "repose: loading the dev shell from $label (the first load can take minutes)" >&2
+    fi
+  fi
+  if [ -n "$quiet" ]; then
+    errf=$(@coreutils@/bin/mktemp) || errf=
   fi
   if [ -n "${TMUX_PANE:-}" ]; then
     @tmux@/bin/tmux set-option -p -t "$TMUX_PANE" @repose-devshell loading 2>/dev/null || true
   fi
   # direnv export prints nothing when this process already has the
   # current environment of $dir, and a diff otherwise.
-  if out=$(cd "$dir" && @direnv@/bin/direnv export bash); then
+  if out=$(cd "$dir" && @direnv@/bin/direnv export bash 2>"${errf:-/dev/stderr}"); then
     eval "$out"
     # A dev shell that failed to evaluate is not an error to direnv:
     # nix-direnv falls back to the last one it built (none, the first
     # time), says so above and sets this.
     if [ -n "${NIX_DIRENV_DID_FALLBACK:-}" ]; then
+      _repose_devshell_done "$timer" "$errf" 1
       echo "repose: the dev shell from $label did not load (the error is above); starting $agent with the last one that did, if any" >&2
-      sleep 3
+      [ -n "$quiet" ] || sleep 3
+    else
+      _repose_devshell_done "$timer" "$errf" ""
     fi
   else
+    _repose_devshell_done "$timer" "$errf" 1
     echo "repose: the dev shell from $label did not load (the error is above); starting $agent without it" >&2
-    sleep 3
+    [ -n "$quiet" ] || sleep 3
   fi
   if [ -n "${TMUX_PANE:-}" ]; then
     @tmux@/bin/tmux set-option -p -u -t "$TMUX_PANE" @repose-devshell 2>/dev/null || true
+  fi
+  return 0
+}
+
+# _repose_devshell_done TIMER ERRFILE FAILED stops the quiet mode's
+# "loading" timer and, when the load failed, prints what direnv said.
+_repose_devshell_done() {
+  if [ -n "$1" ]; then
+    kill "$1" 2>/dev/null
+    wait "$1" 2>/dev/null
+  fi
+  if [ -n "$2" ]; then
+    [ -n "$3" ] && @coreutils@/bin/cat "$2" >&2
+    @coreutils@/bin/rm -f "$2"
   fi
   return 0
 }

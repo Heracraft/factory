@@ -50,7 +50,7 @@ func execScript(slug string, argv []string) string {
 	}
 	return fmt.Sprintf(`cd ~/%[1]s 2>/dev/null || { echo "repose: ~/%[1]s does not exist on the machine yet; running in ~" >&2; cd ~; }
 [ -r /etc/profile.d/repose.sh ] && . /etc/profile.d/repose.sh
-if [ -r %[2]s ]; then . %[2]s; _repose_devshell %[3]s; unset -f _repose_devshell
+if [ -r %[2]s ]; then . %[2]s; REPOSE_DEVSHELL_QUIET=1 _repose_devshell %[3]s; unset -f _repose_devshell _repose_devshell_done
 elif command -v direnv >/dev/null 2>&1; then eval "$(direnv export bash 2>/dev/null)"; fi
 exec %[4]s`, slug, execDevshell, shQuote(name), strings.Join(quoted, " "))
 }

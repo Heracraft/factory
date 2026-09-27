@@ -92,7 +92,7 @@ WINDOW     COMMAND  ACTIVE
 
 An agent that's working usually shows `now`; one that has been waiting for you shows roughly how long. COMMAND is the program's name only, never its arguments.
 
-`repose exec` runs one command in the checkout on the machine and gives you its output and exit code, the way `docker exec` does. The command gets what an agent there gets: your [secrets](/docs/secrets) as environment variables and the project's dev shell (its `.envrc`, or its `flake.nix` dev shell).
+`repose exec` runs one command in the checkout on the machine and gives you its output and exit code, the way `docker exec` does. The command gets what an agent there gets: your [secrets](/docs/secrets) as environment variables and the project's dev shell (its `.envrc`, or its `flake.nix` dev shell). Loading it prints nothing unless it takes more than 2 seconds or fails.
 
 ```
 $ repose exec -- npm test

@@ -356,8 +356,8 @@ pointer, not a summary.
 - **I-273** `repose ls` and `repose rm` are the names; `projects` and `destroy` are aliases — 2026-09-26; L7037
 - **I-274** `repose ps` lists the tmux windows — 2026-09-26; L7064
 - **I-275** `repose exec` runs one command in the checkout; `repose ssh` opens a shell there — 2026-09-26; L7082
-- **I-276** Did-you-mean for commands, `-q` on listings — 2026-09-26; L7122
-- **I-277** `repose secrets import` sets every NAME=VALUE of a .env file — 2026-09-26; L7142
-- **I-281** Every ssh to `<project>.repose` first runs `repose ssh-prepare`, so plain ssh, scp, rsync, git and editors reach every project — 2026-09-26; L7169
-- **I-282** `repose code [PROJECT]` opens the checkout in VS Code, Cursor or Zed over that host — 2026-09-26; L7232
-- **I-280** `run` and `attach` proxy the terminal, so a dropped file or a Ctrl+V image reaches the agent in the guest — 2026-09-26; L7251
+- **I-276** Did-you-mean for commands, `-q` on listings — 2026-09-26; L7130
+- **I-277** `repose secrets import` sets every NAME=VALUE of a .env file — 2026-09-26; L7150
+- **I-281** Every ssh to `<project>.repose` first runs `repose ssh-prepare`, so plain ssh, scp, rsync, git and editors reach every project — 2026-09-26; L7177
+- **I-282** `repose code [PROJECT]` opens the checkout in VS Code, Cursor or Zed over that host — 2026-09-26; L7240
+- **I-280** `run` and `attach` proxy the terminal, so a dropped file or a Ctrl+V image reaches the agent in the guest — 2026-09-26; L7259

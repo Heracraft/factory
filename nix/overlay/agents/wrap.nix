@@ -30,7 +30,7 @@ let
     # when it has no .envrc (DECISIONS I-259). Never blocks the agent.
     . ${devshell}
     _repose_devshell ${bin}
-    unset -f _repose_devshell
+    unset -f _repose_devshell _repose_devshell_done
     exec ${pkg}/bin/${bin} "$@"
   '';
 in
