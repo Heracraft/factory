@@ -1,9 +1,9 @@
 # Claude login once per user: the shared credential folder (proposal, 2026-09-24)
 
 **Status: decided and built, DECISIONS I-278 (2026-09-26).** Experiment A
-passed (file bind mount), B passed its forced tests, and the owner chose
-to build before B's 24-hour run (ends 2026-09-27 20:30Z) and before
-Anthropic's answer to C. Below is the record of how it got there. This continues item 9 of
+passed (file bind mount), B passed its forced tests and 7 hours of its
+long run before the owner ended it to ship, and C (Anthropic's answer) was
+not waited for. Below is the record of how it got there. This continues item 9 of
 `2026-09-23-dev-ergonomics.md` ("users logging in N times is not
 acceptable"). If it goes ahead, it needs a `DECISIONS.md` entry and a
 `SECURITY.md` note, because it adds a place a secret lives. CLAUDE.md
@@ -202,8 +202,13 @@ This is the rotation question.
   both running sessions at the same moment. All six prompts answered. The
   file parsed afterwards with a refresh token present. No logout, no
   corruption.
-- **Long run.** Running since 20:26Z: one interactive session per guest,
-  prompted every 30 min. The result is due after 2026-09-27 20:30Z.
+- **Long run, ended early by the owner at 2026-09-27 03:30Z (7 h).** One
+  interactive session per guest, prompted every 30 min: 19 of 19 prompts
+  answered in each guest, no logout, no 401, the file valid and the same
+  inode throughout. No access token expired on its own in that window: the
+  last forced refresh (the claude-auth-trace.sh run at 21:17Z) set expiry to
+  04:16Z. A natural expiry across guests is therefore first seen in
+  production; the forced refreshes above are the same code path.
 
 **New finding: first-run onboarding asks for a login anyway.**
 - A guest whose `~/.claude.json` lacks `hasCompletedOnboarding` starts
