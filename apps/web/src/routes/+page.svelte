@@ -4,6 +4,8 @@
 	import { resolve } from '$app/paths';
 	import { toast } from 'svelte-sonner';
 	import { signIn } from '$lib/auth.svelte';
+	import { publicSeats } from '$lib/api/client';
+	import type { PublicSeats } from '$lib/api/types';
 	import Logo from '$lib/components/Logo.svelte';
 	import Hero from '$lib/components/landing/Hero.svelte';
 	import Gauge from '$lib/components/landing/Gauge.svelte';
@@ -23,8 +25,15 @@
 
 	let signingIn = $state(false);
 	let copied = $state(false);
+	/** GET /public/seats (I-290): the launch's gauge; undefined until it answers, and if it never does. */
+	let seats = $state<PublicSeats | undefined>(undefined);
 
 	onMount(() => {
+		publicSeats()
+			.then((s) => (seats = s))
+			.catch(() => {
+				// The plans stand on their own without the count.
+			});
 		// Logto sends the user back here (not /callback) when sign-in itself
 		// was cancelled or failed before a code was issued.
 		const params = new URLSearchParams(location.search);
@@ -59,17 +68,32 @@
 		{ title: 'Sign in', command: 'repose login' },
 		{ title: 'Run in any checkout', command: 'cd ~/code/recruiting && repose run' }
 	];
-	const tiers: {
+	// docs/PRICING.md's two plans. The Units count is the memory that may
+	// run at once, one square per GB, so the plans compare at a glance.
+	const plans: {
 		name: string;
-		vcpu: number;
-		ram: string;
+		price: string;
+		memory: number;
+		runs: string;
 		disk: string;
-		hour: string;
-		cap: string;
+		egress: string;
 	}[] = [
-		{ name: 'small', vcpu: 2, ram: '4 GB', disk: '20 GB', hour: '$0.07', cap: '$49' },
-		{ name: 'large', vcpu: 4, ram: '8 GB', disk: '40 GB', hour: '$0.14', cap: '$99' },
-		{ name: 'xl', vcpu: 8, ram: '16 GB', disk: '80 GB', hour: '$0.28', cap: '$199' }
+		{
+			name: 'Solo',
+			price: '$29',
+			memory: 8,
+			runs: 'one large, or two small',
+			disk: '100 GB',
+			egress: '250 GB'
+		},
+		{
+			name: 'Pro',
+			price: '$59',
+			memory: 16,
+			runs: 'one xl, two large, or any mix',
+			disk: '250 GB',
+			egress: '500 GB'
+		}
 	];
 	// The footer's row: every shape the page used, in the order it used
 	// them, so the row reads as the page's own symbols and none appears
@@ -221,21 +245,25 @@
 
 		<section class="sec">
 			<SectionHead id="pricing" title="Pricing">
-				Per hour while a machine runs, capped each month.
+				Two plans. Seven days free, card at checkout.
 			</SectionHead>
-			<ul class="tiers" use:landOnView>
-				{#each tiers as t, i (t.name)}
+			<ul class="tiers tiers--two" use:landOnView>
+				{#each plans as t, i (t.name)}
 					<li class="tier">
 						<div class="tier-top">
 							<h3 class="tier-name">{t.name}</h3>
-							<span class="tier-units land" style="--d: {i * 110}ms"><Units count={t.vcpu} /></span>
+							<span class="tier-units land" style="--d: {i * 110}ms"
+								><Units count={t.memory} /></span
+							>
 						</div>
-						<p class="tier-spec">{t.vcpu} vCPU · {t.ram} memory · {t.disk} disk</p>
-						<p class="tier-price">
-							<span class="n">{t.hour}</span>
-							<span class="per">per hour</span>
+						<p class="tier-spec">
+							{t.memory} GB running at once · {t.disk} disk · {t.egress} egress
 						</p>
-						<p class="tier-cap">Capped at <b>{t.cap}</b> a month</p>
+						<p class="tier-price">
+							<span class="n">{t.price}</span>
+							<span class="per">a month</span>
+						</p>
+						<p class="tier-cap"><b>{t.memory} GB</b> is {t.runs}</p>
 					</li>
 				{/each}
 			</ul>
@@ -243,6 +271,15 @@
 				<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
 					Start with GitHub
 				</button>
+				{#if seats}
+					<p class="seats" data-testid="seats-line">
+						{#if seats.free > 0}
+							{seats.free} of {seats.total} seats left
+						{:else}
+							Full for now. {seats.waiting} waiting; join the list and you're emailed when a seat frees.
+						{/if}
+					</p>
+				{/if}
 			</div>
 		</section>
 	</main>
@@ -264,6 +301,7 @@
 				<a href={SOURCE_URL}>GitHub</a>
 				<a href={resolve('/terms')}>Terms</a>
 				<a href={resolve('/privacy')}>Privacy</a>
+				<a href={resolve('/refunds')}>Refunds</a>
 			</nav>
 		</div>
 	</footer>

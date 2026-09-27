@@ -27,9 +27,9 @@ test('the saved session lands on /projects, not the landing page', async ({ page
 	await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
 	// Either a project table or the empty-state card, never "Loading…"
 	// forever: both mean GET /projects answered with a real token.
-	await expect(
-		page.locator('table').or(page.getByText('No projects yet'))
-	).toBeVisible({ timeout: 30_000 });
+	await expect(page.locator('table').or(page.getByText('No projects yet'))).toBeVisible({
+		timeout: 30_000
+	});
 });
 
 // 08 §9 "Sign-in, callback, token refresh and sign-out work against the
@@ -49,9 +49,9 @@ test('a dropped access token is refreshed against the real Logto', async ({ page
 
 	await page.reload();
 	await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible({ timeout: 30_000 });
-	await expect(
-		page.locator('table').or(page.getByText('No projects yet'))
-	).toBeVisible({ timeout: 30_000 });
+	await expect(page.locator('table').or(page.getByText('No projects yet'))).toBeVisible({
+		timeout: 30_000
+	});
 	// A failed refresh signs out with this exact toast (08 §6 row 2).
 	await expect(page.getByText('Session expired, sign in again.')).toHaveCount(0);
 });
@@ -61,7 +61,9 @@ test('/account shows the real identity and guards deletion', async ({ page }) =>
 	const handle = (await page.locator('dd.font-mono').first().innerText()).trim();
 	expect(handle, 'no handle rendered on /account').not.toBe('');
 
-	await expect(page.getByText('Everything, including snapshots, is deleted 30 days later.')).toBeVisible();
+	await expect(
+		page.getByText('Everything, including snapshots, is deleted 30 days later.')
+	).toBeVisible();
 
 	const button = page.getByRole('button', { name: 'Delete account' });
 	await expect(button).toBeDisabled();
@@ -113,10 +115,9 @@ test('/settings round-trips timezone, email toggle and ntfy URL', async ({ page 
 // pass here, and the run's output says which happened.
 test('Send test reaches POST /me/notify-test', async ({ page }) => {
 	await gotoSignedIn(page, '/settings');
-	const responded = page.waitForResponse(
-		(r) => r.url().includes('/me/notify-test'),
-		{ timeout: 30_000 }
-	);
+	const responded = page.waitForResponse((r) => r.url().includes('/me/notify-test'), {
+		timeout: 30_000
+	});
 	await page.getByRole('button', { name: 'Send test' }).click();
 	const res = await responded;
 	expect([200, 404]).toContain(res.status());
@@ -134,10 +135,15 @@ test('Send test reaches POST /me/notify-test', async ({ page }) => {
 test('/billing renders against the real api', async ({ page }) => {
 	await gotoSignedIn(page, '/billing');
 	await expect(page.getByRole('heading', { name: 'Billing' })).toBeVisible();
-	// DECISIONS I-16: without STRIPE_* the api answers billing_disabled and
-	// the page must say so rather than show a broken card form.
+	// DECISIONS I-289: without PADDLE_API_KEY the api answers
+	// billing_disabled and the page must say so; with it, the plan cards,
+	// the full state or the subscription (08-dashboard.md §5.8).
 	await expect(
-		page.getByText(/not enabled yet/i).or(page.getByText(/Card on file|Add a card/i))
+		page
+			.getByTestId('billing-disabled')
+			.or(page.getByTestId('plan-solo'))
+			.or(page.getByTestId('full'))
+			.or(page.getByTestId('plan'))
 	).toBeVisible({ timeout: 30_000 });
 });
 

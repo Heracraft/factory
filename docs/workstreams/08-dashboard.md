@@ -81,7 +81,7 @@ DECISIONS I-289).
 | `/projects/[id]` | header with state and actions (Start, Stop, Destroy with confirm typing the slug); cards: connect (`repose run` and `ssh <slug>.repose`), signals (ssh sessions, tmux clients, agents and their state, docker containers, updated N s ago), cost (today, month, projected month at current run rate, using `GET /usage`), disk (used / allocated, Resize with a size picker), events (list from `GET /events`, newest first, agent icon, summary), snapshots (list, Create, Restore with confirm, restore-as-new with a name field), last build (status, link to config) |
 | `/projects/[id]/config` | two tabs: **Menu** and **Nix**. Menu: groups from `GET /catalog` rendered as checkbox lists with descriptions and a search box, plus a "Services" group for things like Postgres and Redis if the catalog has them; Apply sends `{menu}`. Nix: CodeMirror 6 editor with Nix syntax, Apply sends `{fragment}`. Both then open the build log panel (SSE from `/ops/:op/log`), auto-scrolled, and on failure show the error block with the fragment line highlighted in the editor. Revisions list with Re-apply. A `Hold base updates` toggle (PATCH `hold_base_updates`) with the current base version and its changelog. |
 | `/projects/[id]/secrets` | list of names with dates; Add (name, value textarea or file upload, client validates the name regex); Delete with confirm. Values are never displayed after save. |
-| `/billing` | the plan page (DECISIONS I-289, I-290): status banner (no plan, trial ending, past due, suspended, egress stopped); the two plans with the seats left, "Choose" opening Paddle.js with `POST /billing/checkout`'s transaction (or the waitlist place on `503 waitlisted`); the current plan with usage against it (memory running, disk, egress and the overage so far from `GET /billing`), upgrade/downgrade (`POST /billing/plan`), cancel and resume; "Manage card and receipts" (`POST /billing/portal`); invoices table from `GET /billing/invoices`; hours per day by class from `GET /usage`. |
+| `/billing` | the plan page (§5.8, DECISIONS I-289, I-290): plan cards and Paddle's checkout while there is no subscription and a seat is free, the waitlist while there is none, and with a subscription the plan, its status, usage of the plan, plan changes, cancellation, Paddle's portal and the invoices. |
 | `/settings` | timezone (auto-detected default, select), email notifications toggle, ntfy URL field with a "Send test" button (calls `POST /me/notify-test`, added to `interfaces/api.md` by this workstream if missing: see §6), install command, SSH config hint. |
 | `/account` | handle, email, GitHub login, Delete account (types handle, calls `DELETE /me`, explains 30-day retention). |
 | `/healthz` | `200 ok` |
@@ -111,7 +111,10 @@ will replace it").
 ### 5.5 Errors
 
 Every API error renders as a toast with `message`; `payment_required` on
-Start renders an inline banner linking to `/billing`; `capacity` renders
+Start (and on a resize) renders an inline banner with the api's sentence,
+a link to `/billing` named for `detail.reason` (§5.8), and for
+`plan_limit` a Stop for each machine `detail.projects` names that is this
+user's; `capacity` renders
 "No capacity right now, try again in a few minutes"; `rate_limited` waits and
 retries once. Network failures show a persistent "Cannot reach the API" bar
 until a poll succeeds.
@@ -129,10 +132,49 @@ the four `PUBLIC_*` values.
 ### 5.7 Landing page
 
 One screen: the one-idea sentence, the four-line terminal example from
-`DESIGN.md` §2, pricing table from `PRICING.md` (small/large/xl caps,
-storage, egress, trial), install command, "Sign in with GitHub". Links to
-terms and privacy (static markdown rendered from `docs/legal/` once 14
-writes them; placeholders until then must be visibly marked draft).
+`DESIGN.md` §2, the two plans from `PRICING.md` (name, price a month, the
+memory that runs at once with the Units squares counting its GB, disk,
+egress; head "Two plans. Seven days free, card at checkout."), and beside
+the "Start with GitHub" button one line from `GET /public/seats`
+("12 of 30 seats left" while `free > 0`; "Full for now. 41 waiting; join
+the list and you're emailed when a seat frees." at 0; nothing when the
+fetch fails), install command, "Sign in with GitHub". Links to terms,
+privacy and refunds (static markdown from `src/content/legal/`,
+prerendered; the frontmatter's `status` marks a draft). The rules are
+`../LANDING.md`.
+
+### 5.8 The plan page (`/billing`, DECISIONS I-289, I-290)
+
+One `GET /me` and one `GET /billing` on load, invoices only with a
+subscription. States, by what `GET /billing` answers, with the element
+names the tests use (`data-testid`):
+
+| State | When | What the page shows |
+|---|---|---|
+| billing off | `503 billing_disabled` | one line, `billing-disabled`: "Billing is not switched on yet." |
+| exempt | `me.billing.status = exempt`, no subscription | an ok banner "This account is billing-exempt. No plan is needed." over the plan cards |
+| plan cards | no subscription, some `plans[].available` | `seats-line` ("18 of 30 seats left."), then `plan-solo` and `plan-pro` from `plans`: name, `price_cents` a month, "Running at once" (`memory_gb`: one large, or two small / one xl, two large, or any mix), disk, egress a month, projects, "7 days free, card at checkout, cancel any time.", a "Choose Solo/Pro" button; an unavailable plan's button is disabled with "Needs N seats; M free." |
+| held seat | `waitlist.hold_until` in the future | `seat-held` ("Your seat is held until <time> (<n> left). Choose a plan before then.") over the plan cards |
+| full | no subscription, no plan available, no hold | `full`: "repose is full", "All T seats are taken and W people are waiting.", `join-waitlist` (`POST /billing/waitlist`); with a place, `waitlist-place`: "You're number N on the waitlist. We'll email <email> when a seat frees; you'll have 72 hours to choose a plan." |
+| checkout | "Choose" pressed | `POST /billing/checkout {plan}`; Paddle.js (`https://cdn.paddle.com/paddle/v2/paddle.js`, loaded here only) `Environment.set('sandbox')` when sandbox, `Initialize({token, eventCallback})`, `Checkout.open({transactionId, settings: {displayMode: overlay, theme: the page's scheme, successUrl: /billing?checkout=done}})`; `environment: fake` calls `window.__reposePaddleStub.open` instead (`src/lib/paddle.ts`); `503 waitlisted` reloads into the full state with the place |
+| setting up | `checkout.completed`, or `?checkout=done` with no subscription | `setting-up` ("Setting up your plan"), `GET /billing` every 2 s up to 60 s until `subscription` is set, then the plan; after 60 s a warn banner and the cards again |
+| plan | `subscription` set | `plan`: name, price a month, `plan-status` ("Trial. First charge of $29 on <date>." / "Active. Renews <date>." / "Payment past due since <date>." / "Cancelled. Ends <date>; machines stop then and snapshots stay 30 days." plus "Changes to Solo on <date>." with `scheduled_plan`); three `Meter` bars `meter-running-now` (`running_gb` of `memory_gb`), `meter-disk-allocated`, `meter-egress-this-period` (with "Over by N GB: $x on the next invoice at $0.05 a GB." when `overage_cents > 0`); `projects-count`; buttons Change plan, Cancel plan, "Manage card and receipts" (`POST /billing/portal`); Resume plan instead of the first two while `cancel_at` is set |
+| past due | `subscription.status = past_due` | `status-past-due` banner with "Update card" (`POST /billing/portal {"for":"payment_method"}`) over the plan |
+| suspended | `me.billing.status = suspended` | `status-suspended` banner with "Update card and pay" over the plan |
+| change plan | Change plan pressed | `change-plan`: the other plan's numbers; "Upgrade to Pro" (at once, prorated) or "Downgrade to Solo" (at the renewal; what runs and what is allocated has to fit); with a `scheduled_plan`, "Keep <current>" (`POST /billing/plan {plan: current}`); a `409 conflict` (`over_plan`, `no_seat`) shows its message in `change-error` |
+| cancel | Cancel plan pressed | `confirm-cancel`: the end date (the trial's end while trialing), "Cancel plan" (`POST /billing/cancel`), "Keep it" |
+| invoices | with a subscription | the list from `GET /billing/invoices`: date, number, status badge, amount (tax in brackets), a PDF link (`pdf_url`, else `hosted_url` as View); "No invoices yet. The first comes with the first charge." |
+
+Every state ends with the tax line and a link to `/refunds`. The page is
+one column at 390 wide (the two cards stack under 480px) and `max-w-2xl`
+at 1440; every state was captured at both widths in both colour schemes
+before it was called done (2026-09-27).
+
+Elsewhere: the project page's `refusal` banner (§5.5) and its Plan card
+(the class's memory of the plan's `limits.memory_gb`, a link to Billing);
+the projects list's empty state shows `seat-held`, `waitlist-place` or
+`no-plan` from `GET /me`; an idle project's note says "idle <time> · still
+running"; the list has no cost columns.
 
 ## 6. Failure modes
 
@@ -142,7 +184,7 @@ writes them; placeholders until then must be visibly marked draft).
 | Access token refresh fails | sign out, redirect to landing, toast `Session expired, sign in again.` |
 | API 5xx or unreachable | persistent bar, polling continues with backoff to 60 s |
 | Build fails | error block under the editor, fragment line highlighted, revision marked failed, Apply re-enabled |
-| Start with no card | inline banner with a link to `/billing`; button stays enabled |
+| Start refused for a billing reason | inline banner with the api's sentence and the link the reason wants (§5.8); button stays enabled |
 | Destroy typed wrong | button disabled until the slug matches exactly |
 | Secret value over 64 KB | client-side error before sending |
 | `POST /me/notify-test` missing on the API | button shows `Test not available yet`; this workstream files the route in `interfaces/api.md` and DECISIONS I-n |
@@ -227,14 +269,28 @@ suites back most of it: `apps/web/tests/` against `internal/fakes/api`
       The file path is its own: it stores a deliberately non-UTF-8 byte
       sequence, asserts the base64 never reaches the DOM, reads the name
       back from the api, and refuses a file over 64 KB.
-- [ ] Billing: the plan page chooses a plan through Paddle.js, shows usage
-      against the plan, changes and cancels it, links to the portal, and
-      renders invoices and hours from fixtures (DECISIONS I-289). Evidence:
-      `tests/billing.spec.ts` against `internal/fakes/api`, plus a
-      screenshot against Paddle's sandbox (`docs/ops/M4-GATE.md` §2). The
-      Stripe fixture this row had went with I-289; the web workstream
-      rebuilds it. — waits on: the web worker (fixture) and the owner (the
-      sandbox key for the screenshot).
+- [x] Billing (§5.8, superseding the Stripe row with DECISIONS I-289):
+      every state of the plan page against the fake. Evidence:
+      `tests/billing.spec.ts` 13/13 on 2026-09-27 (billing off; the plan
+      cards from `GET /billing`; one seat free; a checkout through the
+      Paddle stub to a trialing plan; `?checkout=done`; full, the waitlist
+      and the place; the held seat; trial with the overage line; active
+      with Paddle invoices and the portal; past due and suspended; upgrade
+      and the `over_plan` conflict; a scheduled downgrade and its undo;
+      cancel and resume), `tests/landing.spec.ts` 3/3 (the plans, the seats
+      line free and full, the Refunds link), `tests/routes.spec.ts`
+      "/terms, /privacy and /refunds render". Captures of each state at
+      390 and 1440, light and dark, were looked at at 1x before closing.
+- [ ] Billing against Paddle's sandbox: a checkout with a test card through
+      the real overlay makes the account `trial`; the CSP admits Paddle.js
+      and its frame. Evidence: a recording against the deployed dashboard
+      with `PADDLE_*` set (`docs/ops/M4-GATE.md`). Open, waits on the owner
+      for the sandbox keys.
+- [x] The six `payment_required` reasons on the project page (§5.5).
+      Evidence: `tests/failure-modes.spec.ts` 7/7 on 2026-09-27
+      (`subscription_required` with "Choose a plan", no reason with
+      "Billing", `plan_limit` naming the machine with a Stop that works,
+      `disk_limit` on a resize, `egress_limit`, `past_due`, `suspended`).
 - [x] Settings: timezone, email toggle, ntfy URL, test button. Evidence:
       `tests/settings-account.spec.ts`.
 - [x] Account deletion flow requires typing the handle and explains

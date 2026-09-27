@@ -31,7 +31,7 @@ For more detail on any command, add `-v`. `REPOSE_TIMING=1` shows where the time
 
 **`No capacity right now`.** The servers are full. Nothing was changed. Try again in a few minutes.
 
-**`repose is at capacity. You're number 3 on the waitlist`.** Your first project waits until there's room. You'll get an email when it's your turn; then run `repose run` again. See [When repose is full](/docs/limits#when-repose-is-full).
+**`repose is full right now`.** Every seat is taken. Join the waitlist from the dashboard's [Billing page](https://repose.herakraft.co/billing); you're emailed when a seat frees, with 72 hours to choose a plan. See [When repose is full](/docs/limits#when-repose-is-full).
 
 ## Sync
 

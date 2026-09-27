@@ -7788,3 +7788,47 @@ sentence (it told the user to run `repose run` again, which does nothing
 for a seat); dropping a converted row on re-checkout (loses the converted
 count); refusing `admit` on a full fleet (the operator has no other way to
 let a tester in).
+**I-295. The dashboard under plans: the fake's default is exempt, the
+Paddle stub, one site-wide CSP, and what the pages stop showing.**
+(web workstream, 2026-09-27, building I-289 and I-290 into `apps/web` and
+`internal/fakes/api` before the api's own rewrite landed.) Decisions the
+spec left open: (1) `internal/fakes/api` starts with billing off and the
+account `exempt`, so every test that is not about billing keeps its
+compute; the billing modes (`none|trial|active|past_due|suspended|exempt`)
+are a knob, and `SetWaitlisted(n)` keeps its name but now means "no plan,
+no free seat, place n", answered by the gate as `payment_required`
+`subscription_required` with `detail.waitlist` (I-290 moved the waitlist
+off `POST /projects`); the CLI's waitlist test changes with the CLI. The
+fake refuses a `suspended` account at the compute gates only and keeps
+answering reads, so the dashboard can draw the suspended state; the api's
+three-route rule for suspended accounts (api.md) is the api's to enforce.
+(2) Against `paddle.environment = "fake"` the dashboard calls
+`window.__reposePaddleStub.open({transactionId, onCompleted})` instead of
+loading Paddle.js, and a Playwright test installs a stub that completes
+the transaction through the fake's admin listener (`POST
+/paddle/complete`, CORS on) and reports completion; the same page code
+then polls `GET /billing`, so the flow is the production flow minus the
+overlay. (3) The app had no Content-Security-Policy and nothing in front
+of it sets one, so `svelte.config.js` sets one site-wide through
+`kit.csp` (SvelteKit cannot scope it to a route): `script-src 'self'
+https://cdn.paddle.com https://*.paddle.com`, `frame-src` Paddle's
+checkout, `connect-src 'self' https:` plus the loopback the test fixtures
+use (the api and Logto are runtime `PUBLIC_*` values, so they cannot be
+named at build time), `style-src` with `'unsafe-inline'` for Svelte's
+style attributes. (4) With compute cents 0 under `plan-v1`, the project
+page's Cost card becomes a Plan card (the class's memory of the plan's)
+and the projects list drops its Today and This month columns and the
+money in its summary; `cost_today_cents`, `cost_month_cents` and
+`idle.hourly_cents` are still read from the api and ignored. A
+`disk_limit` on a resize is shown as the same banner as a start's
+refusal. (5) The landing's Units squares count the memory that runs at
+once (8 and 16), not vCPUs, since a plan is sold by memory. (6)
+`refunds.md` says two things `PRICING.md` "Refunds" does not: an egress
+overage is not refunded (it records traffic that was sent) and a charge
+made in error is refunded whenever it happened. *Rejected:* enforcing the
+suspended account's three-route rule in the fake (the dashboard's other
+pages would need a state the api has not specified); a CSP as a
+dynamically inserted meta tag on the billing page alone (a meta CSP
+cannot be withdrawn on the next client-side navigation, so it would apply
+to the rest of the session anyway, unstated); keeping the Cost card with
+three zeros.

@@ -30,6 +30,7 @@
 	<nav class="flex gap-4 text-sm text-zinc-500 dark:text-zinc-400">
 		<a href={resolve('/terms')} class="hover:text-zinc-900 dark:hover:text-zinc-100">Terms</a>
 		<a href={resolve('/privacy')} class="hover:text-zinc-900 dark:hover:text-zinc-100">Privacy</a>
+		<a href={resolve('/refunds')} class="hover:text-zinc-900 dark:hover:text-zinc-100">Refunds</a>
 	</nav>
 </header>
 

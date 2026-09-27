@@ -12,7 +12,7 @@
 	let { children } = $props();
 
 	// Routes reachable while signed out: these, and everything under /docs.
-	const PUBLIC_PATHS = new Set(['/', '/callback', '/terms', '/privacy']);
+	const PUBLIC_PATHS = new Set(['/', '/callback', '/terms', '/privacy', '/refunds']);
 	function isPublic(path: string): boolean {
 		return PUBLIC_PATHS.has(path) || path === '/docs' || path.startsWith('/docs/');
 	}

@@ -555,7 +555,7 @@ func TestMe(t *testing.T) {
 		} `json:"limits"`
 	}
 	r.json(t, &me)
-	if me.ID != CannedUser.ID || me.Handle != "heracraft" || me.Email != "dev@example.com" || me.Billing.Status != "trial" || me.Limits.Projects != 3 {
+	if me.ID != CannedUser.ID || me.Handle != "heracraft" || me.Email != "dev@example.com" || me.Billing.Status != "exempt" || me.Limits.Projects != 25 {
 		t.Fatalf("me: %s", r.body)
 	}
 	r = call(t, f, "POST", "/v1/me/notify-test", tok, nil)
@@ -717,31 +717,43 @@ func TestUsageAndBilling(t *testing.T) {
 		t.Fatalf("usage: %s", r.body)
 	}
 	wantErr(t, call(t, f, "GET", "/v1/usage?from=yesterday", tok, nil), 400, "invalid")
-	for _, rt := range [][2]string{{"POST", "/v1/billing/portal"}, {"POST", "/v1/billing/setup"}, {"GET", "/v1/billing/invoices"}} {
+	// Billing off: every billing route is 503 (api.md "Usage and billing").
+	for _, rt := range [][2]string{{"GET", "/v1/billing"}, {"POST", "/v1/billing/checkout"}, {"POST", "/v1/billing/waitlist"}, {"POST", "/v1/billing/plan"}, {"POST", "/v1/billing/cancel"}, {"POST", "/v1/billing/resume"}, {"POST", "/v1/billing/portal"}, {"GET", "/v1/billing/invoices"}} {
 		r := call(t, f, rt[0], rt[1], tok, nil)
 		wantErr(t, r, 503, "billing_disabled")
 		if !strings.Contains(string(r.body), "billing is not configured") {
 			t.Fatalf("%s: %s", rt[1], r.body)
 		}
 	}
+	// The public count needs no token and no billing.
+	r = call(t, f, "GET", "/v1/public/seats", "", nil)
+	want(t, r, 200)
+	if string(bytes.TrimSpace(r.body)) != `{"total":30,"free":18,"waiting":0}` {
+		t.Fatalf("seats: %s", r.body)
+	}
 
 	g := New(Options{Billing: true})
 	defer g.Close()
 	r = call(t, g, "POST", "/v1/billing/portal", tok, nil)
 	want(t, r, 200)
-	if !strings.Contains(string(r.body), `"url":"https://`) {
+	if !strings.Contains(string(r.body), `"url":"https://customer-portal.paddle.com/`) {
 		t.Fatalf("portal: %s", r.body)
 	}
-	r = call(t, g, "POST", "/v1/billing/setup", tok, nil)
+	r = call(t, g, "POST", "/v1/billing/portal", tok, map[string]string{"for": "payment_method"})
 	want(t, r, 200)
-	if !strings.Contains(string(r.body), `"client_secret":"seti_`) {
-		t.Fatalf("setup: %s", r.body)
+	if !strings.Contains(string(r.body), `update-payment-method`) {
+		t.Fatalf("portal payment_method: %s", r.body)
 	}
-	want(t, call(t, g, "GET", "/v1/billing/invoices", tok, nil), 200)
+	r = call(t, g, "GET", "/v1/billing/invoices", tok, nil)
+	want(t, r, 200)
+	if !strings.Contains(string(r.body), `"number":"REPOSE-0001"`) || !strings.Contains(string(r.body), `"pdf_url":"https://`) {
+		t.Fatalf("invoices: %s", r.body)
+	}
 	r = call(t, g, "GET", "/v1/me", tok, nil)
-	if !strings.Contains(string(r.body), `"status":"active"`) || !strings.Contains(string(r.body), `"has_card":true`) {
+	if !strings.Contains(string(r.body), `"status":"active"`) || !strings.Contains(string(r.body), `"plan":"solo"`) || !strings.Contains(string(r.body), `"has_card":true`) {
 		t.Fatalf("me with billing: %s", r.body)
 	}
+	wantErr(t, call(t, g, "POST", "/v1/billing/webhook", tok, `{}`), 400, "invalid")
 }
 
 func TestRateLimit(t *testing.T) {

@@ -16,7 +16,23 @@ export type GuestState =
 	| 'destroyed'
 	| 'error';
 
-export type BillingStatus = 'trial' | 'active' | 'past_due' | 'suspended' | 'exempt';
+/** GET /me's billing.status: a projection of the subscription (I-289).
+ * `none` is an account with no plan yet, `trial` a trialing one. */
+export type BillingStatus = 'none' | 'trial' | 'active' | 'past_due' | 'suspended' | 'exempt';
+
+export type PlanId = 'solo' | 'pro';
+
+/** The subscription's own status, Paddle's words (docs/interfaces/api.md GET /billing). */
+export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'paused' | 'canceled';
+
+/** `detail.reason` of a `payment_required` refusal (api.md "Usage and billing"). */
+export type PaymentRequiredReason =
+	| 'subscription_required'
+	| 'plan_limit'
+	| 'disk_limit'
+	| 'egress_limit'
+	| 'past_due'
+	| 'suspended';
 
 export type ErrorCode =
 	| 'unauthenticated'
@@ -46,19 +62,115 @@ export interface Me {
 	created_at: string;
 	billing: {
 		status: BillingStatus;
-		trial_credit_cents: number;
+		plan: PlanId | null;
+		seats: number;
+		period_end: string | null;
+		trial_end: string | null;
+		cancel_at: string | null;
+		/** Whether a subscription exists; kept one release (I-289). */
 		has_card: boolean;
+		/** Always 0 since I-289; kept one release. */
+		trial_credit_cents: number;
 	};
 	limits: {
 		projects: number;
 		xl: number;
+		memory_gb: number;
+		disk_gb: number;
+		egress_gb: number;
 	};
 	notify?: {
 		email: boolean;
 		ntfy_url: string | null;
 	};
-	/** The place on the capacity waitlist while the user holds one (I-269). */
-	waitlist?: { position: number; joined_at: string } | null;
+	/** The place on the waitlist while the user holds one (I-269, I-290). */
+	waitlist?: WaitlistPlace | null;
+}
+
+/** The user's place on the waitlist (I-290): invited_at and hold_until are
+ * set once a seat is held for them, for 72 hours. */
+export interface WaitlistPlace {
+	position: number;
+	joined_at: string;
+	invited_at?: string | null;
+	hold_until?: string | null;
+}
+
+/** GET /billing's subscription, null without one. */
+export interface Subscription {
+	plan: PlanId;
+	status: SubscriptionStatus;
+	seats: number;
+	period_start: string;
+	period_end: string;
+	next_billed_at: string | null;
+	trial_end: string | null;
+	cancel_at: string | null;
+	scheduled_plan: PlanId | null;
+}
+
+/** GET /billing's usage: this period's, or the last 30 days without a plan. */
+export interface Usage {
+	running_gb: number;
+	memory_gb: number;
+	disk_allocated_gb: number;
+	disk_gb: number;
+	egress_gb: number;
+	egress_included_gb: number;
+	overage_cents: number;
+	projects: number;
+	project_limit: number;
+}
+
+/** One of GET /billing's plans (docs/PRICING.md). */
+export interface Plan {
+	id: PlanId;
+	name: string;
+	price_cents: number;
+	currency: string;
+	trial_days: number;
+	seats: number;
+	memory_gb: number;
+	disk_gb: number;
+	egress_gb: number;
+	project_limit: number;
+	/** Whether this plan's seats are free for this user right now. */
+	available: boolean;
+}
+
+export interface Seats {
+	total: number;
+	held: number;
+	free: number;
+	waiting: number;
+}
+
+/** GET /public/seats, no auth: the landing page's count. */
+export interface PublicSeats {
+	total: number;
+	free: number;
+	waiting: number;
+}
+
+/** GET /billing (docs/interfaces/api.md "Usage and billing", I-289, I-290). */
+export interface Billing {
+	subscription: Subscription | null;
+	usage: Usage;
+	plans: Plan[];
+	seats: Seats;
+	waitlist: WaitlistPlace | null;
+	paddle: {
+		/** `fake` is internal/fakes/api: the dashboard uses window.__reposePaddleStub instead of Paddle.js. */
+		environment: 'sandbox' | 'live' | 'fake';
+		client_token: string;
+	};
+}
+
+/** POST /billing/checkout's answer: what Paddle.js opens. */
+export interface Checkout {
+	transaction_id: string;
+	client_token: string;
+	environment: 'sandbox' | 'live' | 'fake';
 }
 
 export interface AgentSignal {
@@ -99,7 +211,8 @@ export interface Project {
 	/** The last failed op's "code: sentence" (I-159); null once an op succeeds. */
 	last_error?: string | null;
 	host_unreachable?: boolean;
-	/** Set while it has run a day with no SSH session and no agent working (I-262). */
+	/** Set while it has run a day with no SSH session and no agent working
+	 * (I-262). hourly_cents is 0 since plans (I-289) and is not shown. */
 	idle?: { since: string; hourly_cents: number };
 }
 
@@ -221,10 +334,10 @@ export interface UsageRow {
 	cost_cents: number;
 }
 
-/** One element of GET /billing/invoices (docs/interfaces/api.md, I-183). */
+/** One element of GET /billing/invoices: a Paddle transaction (I-289). */
 export interface Invoice {
 	id: string;
-	number?: string;
+	number?: string | null;
 	status: string;
 	currency: string;
 	amount_cents: number;
@@ -233,8 +346,8 @@ export interface Invoice {
 	created_at: string;
 	period_start: string;
 	period_end: string;
-	hosted_url?: string;
-	pdf_url?: string;
+	hosted_url?: string | null;
+	pdf_url?: string | null;
 }
 
 export interface Route {

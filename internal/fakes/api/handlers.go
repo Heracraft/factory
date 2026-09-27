@@ -65,27 +65,31 @@ type meView struct {
 	Billing   billingView `json:"billing"`
 	Limits    limitsView  `json:"limits"`
 	Notify    notifyView  `json:"notify"`
-	// Waitlist is the place on the capacity waitlist, null when not
-	// waiting (DECISIONS I-269).
-	Waitlist *waitlistView `json:"waitlist"`
+	// Waitlist is the place on the waitlist, null when not waiting
+	// (DECISIONS I-269, I-290).
+	Waitlist *WaitlistPlace `json:"waitlist"`
 }
 
-type waitlistView struct {
-	Position  int        `json:"position"`
-	JoinedAt  time.Time  `json:"joined_at"`
-	InvitedAt *time.Time `json:"invited_at"`
-	HoldUntil *time.Time `json:"hold_until"`
-}
-
+// billingView is GET /me's billing block: a projection of the subscription
+// (I-289). trial_credit_cents is always 0 and has_card means a
+// subscription exists; both are kept one release.
 type billingView struct {
-	Status           string `json:"status"`
-	TrialCreditCents int64  `json:"trial_credit_cents"`
-	HasCard          bool   `json:"has_card"`
+	Status           string     `json:"status"`
+	Plan             *string    `json:"plan"`
+	Seats            int        `json:"seats"`
+	PeriodEnd        *time.Time `json:"period_end"`
+	TrialEnd         *time.Time `json:"trial_end"`
+	CancelAt         *time.Time `json:"cancel_at"`
+	HasCard          bool       `json:"has_card"`
+	TrialCreditCents int64      `json:"trial_credit_cents"`
 }
 
 type limitsView struct {
 	Projects int `json:"projects"`
 	XL       int `json:"xl"`
+	MemoryGB int `json:"memory_gb"`
+	DiskGB   int `json:"disk_gb"`
+	EgressGB int `json:"egress_gb"`
 }
 
 type notifyView struct {
@@ -95,22 +99,13 @@ type notifyView struct {
 
 func (f *Fake) meOf(u *userRec) meView {
 	v := meView{User: u.User, TZ: u.TZ, CreatedAt: u.CreatedAt,
-		Billing: billingView{Status: "trial", TrialCreditCents: 336},
-		Limits:  limitsView{Projects: 3, XL: 1},
-		Notify:  notifyView{Email: u.NotifyEmail}}
+		Billing:  f.meBilling(),
+		Limits:   f.meLimits(),
+		Notify:   notifyView{Email: u.NotifyEmail},
+		Waitlist: f.bill.waitlist}
 	if u.NtfyURL != "" {
 		url := u.NtfyURL
 		v.Notify.NtfyURL = &url
-	}
-	if f.waitlist > 0 && len(f.userProjects(u)) == 0 {
-		v.Waitlist = &waitlistView{Position: f.waitlist, JoinedAt: u.CreatedAt}
-	}
-	switch f.billingMode() {
-	case BillingCard:
-		v.Billing = billingView{Status: "active", HasCard: true}
-		v.Limits = limitsView{Projects: 10, XL: 3}
-	case BillingNoCard:
-		v.Billing = billingView{Status: "trial", TrialCreditCents: 336}
 	}
 	return v
 }
@@ -307,6 +302,11 @@ func (f *Fake) create(u *userRec, name, remoteURL, class string) (*project, *api
 	if slug == "" {
 		return nil, invalid("name: yields an empty slug")
 	}
+	// The billing gate runs on every create, fork and restore as on a
+	// start (I-290): no plan, no compute; a plan, its memory and disk.
+	if e := f.gate(u, class, classes[class], nil); e != nil {
+		return nil, e
+	}
 	for _, p := range f.userProjects(u) {
 		switch {
 		case p.Name == name:
@@ -363,10 +363,6 @@ func (f *Fake) createProject(w http.ResponseWriter, r *http.Request) *apiError {
 		}
 	}
 	u := userFrom(r)
-	if f.waitlist > 0 && len(f.userProjects(u)) == 0 {
-		return errf("waitlisted", "repose is full right now. You're number %d on the waitlist; we'll email %s when there's a seat.", f.waitlist, u.Email).
-			withDetail(map[string]any{"position": f.waitlist, "joined_at": u.CreatedAt, "email": u.Email})
-	}
 	p, e := f.create(u, body.Name, body.RemoteURL, body.Class)
 	if e != nil {
 		return e
@@ -492,6 +488,11 @@ func (f *Fake) startProject(w http.ResponseWriter, r *http.Request) *apiError {
 	if p.State == "creating" || p.State == "starting" {
 		// What the api answers while the create op is still running.
 		return errf("conflict", "%s is already starting", p.Slug)
+	}
+	if p.State != "running" {
+		if e := f.gate(userFrom(r), p.Class, 0, p); e != nil {
+			return e
+		}
 	}
 	o := f.newOp(p, "start")
 	restart := p.State == "error" // api.md: a start from error is a restart (I-157)
@@ -684,6 +685,9 @@ func (f *Fake) resizeProject(w http.ResponseWriter, r *http.Request) *apiError {
 	}
 	if body.VolumeBytes <= p.VolumeBytes {
 		return invalid("volume_bytes: volumes only grow").withDetail(map[string]any{"volume_bytes": p.VolumeBytes})
+	}
+	if e := f.gate(userFrom(r), "", body.VolumeBytes-p.VolumeBytes, nil); e != nil {
+		return e
 	}
 	o := f.newOp(p, "resize")
 	p.VolumeBytes = body.VolumeBytes
@@ -1440,101 +1444,6 @@ func (f *Fake) getUsage(w http.ResponseWriter, r *http.Request) *apiError {
 		}
 	}
 	writeJSON(w, http.StatusOK, []UsageRow{})
-	return nil
-}
-
-func (f *Fake) billingDisabled() *apiError {
-	if f.billingMode() != BillingOff {
-		return nil
-	}
-	return errf("billing_disabled", "billing is not configured")
-}
-
-// billingWaitlist is POST /billing/waitlist (DECISIONS I-290): the place
-// SetWaitlisted set, or 1 when none was, always the same on a retry.
-func (f *Fake) billingWaitlist(w http.ResponseWriter, r *http.Request) *apiError {
-	u := userFrom(r)
-	pos := f.waitlist
-	if pos < 1 {
-		pos = 1
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"position": pos, "joined_at": u.CreatedAt})
-	return nil
-}
-
-// publicSeats is GET /public/seats (no auth): a fixed fleet of 30 seats
-// with the waitlist position as the number waiting.
-func (f *Fake) publicSeats(w http.ResponseWriter, r *http.Request) *apiError {
-	free := 0
-	if f.waitlist == 0 {
-		free = 12
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"total": 30, "free": free, "waiting": f.waitlist})
-	return nil
-}
-
-func (f *Fake) billingPortal(w http.ResponseWriter, r *http.Request) *apiError {
-	if e := f.billingDisabled(); e != nil {
-		return e
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"url": "https://billing.stripe.com/p/session/fake"})
-	return nil
-}
-
-func (f *Fake) billingSetup(w http.ResponseWriter, r *http.Request) *apiError {
-	if e := f.billingDisabled(); e != nil {
-		return e
-	}
-	// `{"flow": "checkout"}` answers the hosted page's URL (DECISIONS
-	// I-182). It points back at the dashboard's own success URL so a
-	// browser test lands where Stripe would send it.
-	var body struct {
-		Flow string `json:"flow"`
-	}
-	if r.ContentLength != 0 {
-		_ = json.NewDecoder(r.Body).Decode(&body)
-	}
-	if body.Flow == "checkout" {
-		// Stripe would send setup_intent.succeeded while the user is on
-		// its page; the card is on file by the time they come back.
-		if f.billingMode() == BillingNoCard {
-			f.SetBilling(BillingCard)
-		}
-		back := r.Header.Get("Origin")
-		if back == "" {
-			back = "https://checkout.stripe.com"
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"url": back + "/billing?card=saved"})
-		return nil
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"client_secret": "seti_fake_secret_fake"})
-	return nil
-}
-
-func (f *Fake) billingInvoices(w http.ResponseWriter, r *http.Request) *apiError {
-	if e := f.billingDisabled(); e != nil {
-		return e
-	}
-	writeJSON(w, http.StatusOK, []map[string]any{{
-		"id": "in_fake_000001", "number": "REPOSE-0001", "status": "paid", "currency": "usd",
-		"amount_cents": 800, "subtotal_cents": 800, "tax_cents": 0,
-		"created_at": f.now().AddDate(0, -1, 0), "period_start": f.now().AddDate(0, -2, 0), "period_end": f.now().AddDate(0, -1, 0),
-		"hosted_url": "https://invoice.stripe.com/i/fake", "pdf_url": "https://pay.stripe.com/invoice/fake/pdf",
-	}})
-	return nil
-}
-
-// billingWebhook stands in for Stripe's endpoint: it verifies nothing (the
-// fake has no webhook secret) and answers what the real route answers, so a
-// dashboard or CLI test that pokes it sees the documented shape.
-func (f *Fake) billingWebhook(w http.ResponseWriter, r *http.Request) *apiError {
-	if e := f.billingDisabled(); e != nil {
-		return e
-	}
-	if r.Header.Get("Stripe-Signature") == "" {
-		return errf("invalid", "stripe signature verification failed")
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"received": true})
 	return nil
 }
 

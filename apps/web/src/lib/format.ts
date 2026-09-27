@@ -45,26 +45,6 @@ export function relativeTime(iso: string): string {
 }
 
 /**
- * Projected cost for the whole month at today's run rate, shown beside
- * cost_today/cost_month on the project detail cost card (5.2): what today's
- * hourly rate (cost_today / hours elapsed today) would add up to over every
- * remaining hour this month, on top of what the month has already billed.
- */
-export function projectedMonthCents(
-	costMonthCents: number,
-	costTodayCents: number,
-	now = new Date()
-): number {
-	const hoursElapsedToday = now.getHours() + now.getMinutes() / 60;
-	if (hoursElapsedToday < 1) return costMonthCents;
-	const ratePerHour = costTodayCents / hoursElapsedToday;
-	const totalHoursThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() * 24;
-	const hoursElapsedThisMonth = (now.getDate() - 1) * 24 + hoursElapsedToday;
-	const hoursRemaining = totalHoursThisMonth - hoursElapsedThisMonth;
-	return Math.round(costMonthCents + ratePerHour * hoursRemaining);
-}
-
-/**
  * Normalizes a git remote URL for display, the same way interfaces/cli-
  * config.md does for its lookup cache: strip the scheme and `git@`, turn
  * the `:` after the host into `/`, drop a trailing `.git`, lowercase the
@@ -87,21 +67,39 @@ export function normalizeRemoteDisplay(remoteUrl: string): string {
 	return s.slice(0, firstSlash).toLowerCase() + s.slice(firstSlash);
 }
 
-/** Hourly rates in cents (internal/billing/prices.go HourLarge, HourSmall). */
-const HOUR_LARGE_CENTS = 14;
-const HOUR_SMALL_CENTS = 7;
+/** "$29" for a whole-dollar price, "$2.50" otherwise: a plan's price a month. */
+export function price(cents: number): string {
+	return cents % 100 === 0 ? `$${cents / 100}` : money(cents);
+}
+
+/** "40 GB" or "1.5 GB" from a GB figure the api already computed. */
+export function gbs(n: number): string {
+	return `${Number.isInteger(n) ? n : n.toFixed(1)} GB`;
+}
+
+/** "2026-10-04" in the browser's local time, for a charge or renewal date. */
+export function dateOnly(iso: string): string {
+	const d = new Date(iso);
+	const pad = (n: number) => String(n).padStart(2, '0');
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 /**
- * What is left of the trial, in time, never in money (DECISIONS I-205:
- * every user-facing string calls it "your first day of compute").
- * 336 cents is "24 hours left on large (48 on small)".
+ * "3 days" or "18 hours" until a time, for a waitlist hold or a trial's
+ * end; "less than an hour" under one, "" once passed.
  */
-export function trialTimeLeft(cents: number): string {
-	const large = Math.floor(Math.max(cents, 0) / HOUR_LARGE_CENTS);
-	const small = Math.floor(Math.max(cents, 0) / HOUR_SMALL_CENTS);
-	if (small === 0) return 'Your first day of compute is used up.';
-	if (large === 0)
-		return 'Your first day of compute: under an hour left on large (1 hour on small).';
-	const h = (n: number) => (n === 1 ? '1 hour' : `${n} hours`);
-	return `Your first day of compute: ${h(large)} left on large (${small} on small).`;
+export function timeUntil(iso: string, now = new Date()): string {
+	const ms = new Date(iso).getTime() - now.getTime();
+	if (ms <= 0) return '';
+	const hours = Math.floor(ms / 3_600_000);
+	if (hours < 1) return 'less than an hour';
+	if (hours < 48) return hours === 1 ? '1 hour' : `${hours} hours`;
+	const days = Math.floor(hours / 24);
+	return `${days} days`;
+}
+
+/** The share of a limit, clamped to [0, 1] for a usage bar; 0 when there is no limit. */
+export function share(used: number, limit: number): number {
+	if (limit <= 0) return 0;
+	return Math.min(1, Math.max(0, used / limit));
 }

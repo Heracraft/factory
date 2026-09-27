@@ -40,25 +40,33 @@ test('landing renders with the install command and the sign-in button', async ({
 	});
 });
 
-// docs/PRICING.md "Tiers": the caps and the two extra lines. A change to
-// either file that is not matched in the other fails here.
-test('landing pricing table matches PRICING.md', async ({ page }) => {
+// docs/PRICING.md "Plans" (DECISIONS I-289): the two plans and the seats
+// line. A change to either file that is not matched in the other fails
+// here.
+test('landing pricing matches PRICING.md', async ({ page }) => {
 	await page.goto('/');
-	const rows: Array<[string, string, string, string, string]> = [
-		['small', '2', '4 GB', '20 GB', '$49'],
-		['large', '4', '8 GB', '40 GB', '$99'],
-		['xl', '8', '16 GB', '80 GB', '$199']
+	const pricing = page.locator('section', { has: page.getByRole('heading', { name: 'Pricing' }) });
+	await expect(pricing.getByText('Two plans. Seven days free, card at checkout.')).toBeVisible();
+	const plans: Array<[string, string, string]> = [
+		['Solo', '$29', '8 GB running at once · 100 GB disk · 250 GB egress'],
+		['Pro', '$59', '16 GB running at once · 250 GB disk · 500 GB egress']
 	];
-	for (const [name, vcpu, ram, volume, cap] of rows) {
-		const row = page.locator('tr', { has: page.getByRole('cell', { name, exact: true }) });
-		await expect(row).toContainText(vcpu);
-		await expect(row).toContainText(ram);
-		await expect(row).toContainText(volume);
-		await expect(row).toContainText(cap);
+	for (const [name, price, spec] of plans) {
+		const cell = pricing.locator('.tier', {
+			has: page.getByRole('heading', { name, exact: true })
+		});
+		await expect(cell).toContainText(price);
+		await expect(cell).toContainText(spec);
 	}
-	await expect(page.getByText('$0.10/GB-month')).toBeVisible();
-	await expect(page.getByText('$0.05/GB of egress beyond 500 GB')).toBeVisible();
-	await expect(page.getByText('Your first day of compute is on us.')).toBeVisible();
+	await expect(pricing.getByText('per hour')).toHaveCount(0);
+	// GET /public/seats (I-290): one of the two sentences, or nothing when
+	// the api is unreachable; never a third wording.
+	const seats = page.getByTestId('seats-line');
+	if ((await seats.count()) > 0) {
+		await expect(seats).toHaveText(
+			/^(\d+ of \d+ seats left|Full for now\. \d+ waiting; join the list and you're emailed when a seat frees\.)$/
+		);
+	}
 });
 
 test('landing links to terms and privacy, and both render', async ({ page }) => {
@@ -152,10 +160,7 @@ test('a signed-out visitor is sent away from a signed-in route', async ({ page }
 test('the deploy serves no api of its own', async ({ request }) => {
 	for (const path of ['/api', '/v1/me', '/projects/x/secrets.json']) {
 		const res = await request.get(path, { failOnStatusCode: false });
-		expect(
-			[200, 404].includes(res.status()),
-			`${path} answered ${res.status()}`
-		).toBeTruthy();
+		expect([200, 404].includes(res.status()), `${path} answered ${res.status()}`).toBeTruthy();
 		if (res.status() === 200) {
 			// SvelteKit's SPA fallback serves the app shell for unknown
 			// paths; what must never come back is data.
