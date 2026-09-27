@@ -44,7 +44,7 @@ Auto-forward (I-199), run by the session helper (run-and-attach.md):
   on `127.0.0.1`, `0.0.0.0`, `::1`, `::` and `*`, ports 1024 and up,
   except the guest's own (`forwardPlatformPorts` in
   `internal/cli/forward.go`): 6080, 6081, 5900 (the desktop, which `repose
-  open --desktop` forwards), 9224, 9225 (the agents' browser's DevTools
+  browser` forwards), 9224, 9225 (the agents' browser's DevTools
   endpoint, I-246) and 5353, 5355 (mDNS, LLMNR, I-215). A listener only on another address (a
   Docker bridge, the guest's own IP) is not forwarded, and nor is a port
   bound only inside a Docker network.

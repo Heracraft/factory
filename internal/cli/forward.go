@@ -44,7 +44,7 @@ const forwardPortless = 1355
 
 // forwardPlatformPorts are the guest's own listeners, never forwarded:
 // the desktop's noVNC, websockify and VNC (guest-conventions.md "Ports"
-// and "Desktop"; `repose open --desktop` forwards 6080 itself), the agents'
+// and "Desktop"; `repose browser` forwards 6080 itself), the agents'
 // browser's DevTools endpoint and the port behind it (9224, 9225: no
 // laptop process may drive the guest's logged-in browser, I-246), and the
 // name-resolution protocols a system service may answer on above 1024,

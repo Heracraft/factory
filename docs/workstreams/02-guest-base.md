@@ -148,7 +148,7 @@ runner using the host's shared store. Everything in
   created from a fixture `project.json`, `repose-hook` posts to a fake
   socket, hooks are merged into a fixture `~/.claude/settings.json` without
   clobbering an existing hook, inotify sysctls applied, noVNC socket
-  activation starts Xvfb, `repose-desktop-idle` stops it.
+  activation starts Xvnc, `repose-desktop-idle` stops the viewer.
 
 ## 3. Scope: does not build
 
