@@ -32,7 +32,15 @@ func TestLaptopPortTakenOnAnyAddress(t *testing.T) {
 			t.Errorf("port %d held on %s reads as free", port, host)
 		}
 		_ = l.Close()
-		if !laptopPortFree(port) {
+		// A just-closed port can read as taken for a moment under load
+		// (seen under -race on the dev box); give it a second to settle.
+		free := false
+		for i := 0; i < 20 && !free; i++ {
+			if free = laptopPortFree(port); !free {
+				time.Sleep(50 * time.Millisecond)
+			}
+		}
+		if !free {
 			t.Errorf("port %d reads as taken after %s let it go", port, host)
 		}
 	}
