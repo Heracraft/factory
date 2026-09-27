@@ -192,8 +192,14 @@ and underlined every heading. The page is one system:
   the restore; its agent tile cycles the five agents' marks. It does not
   move on its own otherwise. No labels on any of it. Under
   `prefers-reduced-motion` every shape is still and whole.
+- **No new colours.** The shapes and the bar use the palette the page
+  already had: each `--sh-*` token in `layout.css` is an alias of a house
+  scale (blue-600 and its lighter steps, emerald-600, red-500 and its tints,
+  amber-400, zinc for ink and paper). A new colour needs a reason the house
+  palette can't meet, recorded here. The slide template's own brighter hues
+  were tried and dropped (owner, 2026-09-27).
 - The shapes live in `landing/Shape.svelte` and draw only from the `--sh-*`
-  tokens in `layout.css`. The app's own pages never use them.
+  tokens. The app's own pages never use them.
 
 ## Where terminals are allowed
 

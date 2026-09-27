@@ -77,9 +77,9 @@
 	{:else if kind === 'sphere'}
 		<defs>
 			<radialGradient id="{id}g" cx="0.34" cy="0.3" r="0.8">
-				<stop offset="0" stop-color="#ffb08f" />
+				<stop offset="0" stop-color="var(--color-red-200)" />
 				<stop offset="0.45" stop-color="var(--sh-coral)" />
-				<stop offset="1" stop-color="#e2401d" />
+				<stop offset="1" stop-color="var(--color-red-600)" />
 			</radialGradient>
 			<filter id="{id}n" x="0" y="0" width="100%" height="100%">
 				<feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="3" />

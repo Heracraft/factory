@@ -71,9 +71,10 @@ palette, not chips or segmented groups:
 
 ## The landing's exception
 
-The landing page adds a shape set with its own saturated palette (the
-`--sh-*` tokens), an amber bar under its headings, and two textured shapes
-drawn with SVG noise and a gradient. Those exist only on `/` and are
+The landing page adds a shape set (the `--sh-*` tokens, each an alias of
+a colour of the scales above, so no new colours), an amber bar under its
+headline and prices, and two textured shapes drawn with SVG noise and a
+gradient. Those exist only on `/` and are
 described in `LANDING.md`, "Shape language". Every other page follows the
 rules above with no exception.
 

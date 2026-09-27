@@ -95,23 +95,25 @@
 		--rule: #e6e6e3;
 		--rule-strong: #cfcfcb;
 
-		/* The landing's shape set (Shape.svelte): flat, saturated colours
-		   for illustration and the amber bar under a landing heading. The
-		   app's own pages keep to the neutral palette and the one blue. */
-		--sh-pink: #f6a5aa;
-		--sh-blue: #0a6cc2;
-		--sh-sky: #4f8ff0;
-		--sh-red: #f03d14;
-		--sh-amber: #f5970f;
-		--sh-purple: #9383cb;
-		--sh-green: #3b6c40;
-		--sh-coral: #f4643c;
-		--sh-ink: #151514;
-		--sh-paper: #f4f3ef;
+		/* The landing's shape set (Shape.svelte) and its heading bar. No new
+		   colours: each is a colour of the scales above, so the shapes sit
+		   in the same palette as the pictures (docs/LANDING.md, "Shape
+		   language"). The names say the shape's role in the set, not a
+		   hue of their own. */
+		--sh-pink: var(--color-red-200);
+		--sh-blue: var(--color-blue-600);
+		--sh-sky: var(--color-blue-400);
+		--sh-red: var(--color-red-500);
+		--sh-amber: var(--color-amber-400);
+		--sh-purple: var(--color-blue-300);
+		--sh-green: var(--color-emerald-600);
+		--sh-coral: var(--color-red-400);
+		--sh-ink: var(--color-zinc-900);
+		--sh-paper: var(--color-zinc-100);
 	}
 	@media (prefers-color-scheme: dark) {
 		:root {
-			--sh-ink: #0b0b0a;
+			--sh-ink: var(--color-zinc-950);
 			--page: #111110;
 			--surface: #161615;
 			--sunken: #1b1b1a;
