@@ -212,7 +212,7 @@
 				edits.
 			</SectionHead>
 			<div class="landing-stage mt-14">
-				<Perch shapes={['pill', 'star', 'sun']} />
+				<Perch shapes={['pill', 'pinwheel', 'sun']} />
 				<OneCommand animated />
 			</div>
 		</div>
@@ -241,7 +241,7 @@
 				> keeps it on every rebuild.
 			</SectionHead>
 			<div class="relative mt-14">
-				<Perch shapes={['halves', 'diamond', 'leaf']} />
+				<Perch shapes={['halves', 'star', 'leaf']} />
 				<Ready />
 			</div>
 		</div>
@@ -360,7 +360,7 @@
 		line-height: 1.22;
 		-webkit-box-decoration-break: clone;
 		box-decoration-break: clone;
-		background: linear-gradient(var(--sh-amber), var(--sh-amber)) no-repeat 0 100% / 100% 0.13em;
+		background: linear-gradient(var(--sh-warm), var(--sh-warm)) no-repeat 0 100% / 100% 0.13em;
 	}
 	@media (prefers-reduced-motion: no-preference) {
 		.hero-h .bar {
@@ -407,7 +407,7 @@
 		gap: 0.6rem;
 		margin-top: 1.5rem;
 		padding-top: 1.25rem;
-		background: linear-gradient(var(--sh-amber), var(--sh-amber)) no-repeat 0 0 / 100% 4px;
+		background: linear-gradient(var(--sh-warm), var(--sh-warm)) no-repeat 0 0 / 100% 4px;
 	}
 
 	.step-mark {

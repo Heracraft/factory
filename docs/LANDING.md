@@ -197,13 +197,22 @@ and underlined every heading. The page is one system:
   back up at the restore; its agent tile cycles the five agents' marks.
   It does not move on its own otherwise. No labels on any of it. Under
   `prefers-reduced-motion` every shape is still and whole.
-- **The pictures' colours, role for role.** Blue is the accent (what
-  moves), red what stops, green what's added, amber the M of a changed
-  file, the agent's orange; fills take each scale's 500 on paper and 400
-  in the dark, pale shapes are tints of those, ink and greys are zinc.
-  No colour the page didn't already use. A new one needs a reason the
-  house palette can't meet, recorded here. The slide template's own
-  brighter hues were tried and dropped (owner, 2026-09-27).
+- **The palette the landing had before the shapes, and nothing else.**
+  The pictures were drawn in neutrals, one blue accent and Claude Code's
+  orange, with red for what a wreck breaks. The shapes use exactly those,
+  at the pictures' own values (`--sh-*` in `layout.css`): two greys and an
+  ink from zinc, the blue accent (blue-600, blue-400 in the dark), the
+  orange `#d97757`, and the red of `--stop` only for the knocked-over
+  agent. The bar under "full permissions" and the price rules are the
+  orange. In the dark, ink is the pictures' dim zinc-400, so a solid
+  shape reads as quietly as their icons. No green, amber, pink or purple:
+  the slide template's own hues were tried and dropped (owner,
+  2026-09-27), and a new colour needs a reason recorded here.
+- **Where a shape and a mark are the same form, they are one.** The star
+  is Gemini's sparkle (`SPARKLE` in `marks.ts`), and Gemini CLI's mark in
+  the toolchain box and the hero's agent tile is that sparkle, so the
+  shape reads as an agent's mark and the mark as part of the set. The
+  toolchain's own three shapes carry the star, standing just above it.
 - The shapes live in `landing/Shape.svelte` and draw only from the `--sh-*`
   tokens. The app's own pages never use them.
 

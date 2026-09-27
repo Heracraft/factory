@@ -200,8 +200,8 @@
 	}
 	/* The agent turns red when it goes rogue, as it does in the picture. */
 	.down .agent-bg {
-		fill: var(--sh-red);
-		stroke: var(--sh-red);
+		fill: var(--sh-stop);
+		stroke: var(--sh-stop);
 	}
 	.down .agent-mark {
 		fill: var(--surface);

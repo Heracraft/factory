@@ -95,39 +95,27 @@
 		--rule: #e6e6e3;
 		--rule-strong: #cfcfcb;
 
-		/* The landing's shape set (Shape.svelte) and its heading bar take
-		   the colours the landing's pictures already use, role for role,
-		   light and dark alike (Hero.svelte's --accent, --stop, --add, --ink,
-		   --faint; OneCommand's amber M): blue what moves, red what stops,
-		   green what's added. A filled shape takes the scale's 500 on
-		   paper and 400 in the dark (the pictures' text takes the darker
-		   600, which turns muddy as a fill). The pale ones are tints of
-		   those, the way the
-		   pictures tint a row they light up. The names say the shape's role
-		   in the set, not a hue of their own (docs/LANDING.md). */
-		--sh-blue: var(--color-blue-500);
-		--sh-red: var(--color-red-500);
-		--sh-green: var(--color-emerald-500);
-		--sh-amber: var(--color-amber-500);
-		--sh-coral: #d97757; /* Claude Code's orange, as the hero's agent */
+		/* The landing's shape set (Shape.svelte), its bar and its perches
+		   use the palette the landing's pictures were drawn in before the
+		   shapes came, and nothing else (docs/LANDING.md, "Shape
+		   language"): the neutrals, the one blue accent, Claude Code's
+		   orange, and the red a wreck turns things, each at the value the
+		   pictures use (Hero.svelte's --accent, --claude, --faint, --stop). */
+		--sh-accent: var(--color-blue-600);
+		--sh-warm: #d97757;
+		--sh-grey: var(--color-zinc-400);
+		--sh-light: var(--color-zinc-200);
 		--sh-ink: var(--color-zinc-800);
-		--sh-purple: var(--color-zinc-400);
-		--sh-paper: var(--sunken);
-		--sh-sky: color-mix(in oklab, var(--sh-blue) 45%, var(--surface));
-		--sh-pink: color-mix(in oklab, var(--sh-red) 30%, var(--surface));
+		--sh-paper: var(--surface);
+		--sh-stop: var(--color-red-600);
 	}
 	@media (prefers-color-scheme: dark) {
 		:root {
-			--sh-blue: var(--color-blue-400);
-			--sh-red: var(--color-red-400);
-			--sh-green: var(--color-emerald-400);
-			--sh-amber: var(--color-amber-400);
-			--sh-ink: var(--color-zinc-950);
-			--sh-purple: var(--color-zinc-600);
-			/* On a dark page a tint toward the surface only darkens, so the
-			   pale shapes mix toward a light grey instead. */
-			--sh-sky: color-mix(in oklab, var(--sh-blue) 55%, var(--color-zinc-200));
-			--sh-pink: color-mix(in oklab, var(--sh-red) 40%, var(--color-zinc-200));
+			--sh-accent: var(--color-blue-400);
+			--sh-grey: var(--color-zinc-600);
+			--sh-light: var(--color-zinc-800);
+			--sh-ink: var(--color-zinc-400);
+			--sh-stop: var(--color-red-400);
 			--page: #111110;
 			--surface: #161615;
 			--sunken: #1b1b1a;
