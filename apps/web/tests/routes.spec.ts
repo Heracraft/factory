@@ -83,6 +83,10 @@ test('/terms, /privacy and /refunds render', async ({ page }) => {
 	await expect(page.getByRole('link', { name: "Paddle's privacy policy" })).toBeVisible();
 	await page.goto('/refunds');
 	await expect(page.getByRole('heading', { name: 'Refund policy' })).toBeVisible();
+	// Public: the layout must not bounce a signed-out reader to the landing
+	// page once it hydrates (it did, 2026-09-27).
+	await page.waitForTimeout(1500);
+	expect(new URL(page.url()).pathname).toBe('/refunds');
 	await expect(page.getByText(/within 14\s+days of that first charge/)).toBeVisible();
 	await expect(page.getByText(/A renewal is not refunded for a part of a month/)).toBeVisible();
 });

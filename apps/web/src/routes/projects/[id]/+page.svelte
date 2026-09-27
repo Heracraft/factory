@@ -312,6 +312,14 @@
 
 	const CLASS_GB: Record<string, number> = { small: 4, large: 8, xl: 16 };
 
+	/** "8 GB of 8 GB": the class's memory, of what the plan runs at once. */
+	let memoryLine = $derived.by(() => {
+		if (!project) return '—';
+		const own = CLASS_GB[project.class];
+		if (own === undefined) return '—';
+		return me && me.limits.memory_gb > 0 ? `${own} GB of ${me.limits.memory_gb} GB` : `${own} GB`;
+	});
+
 	/** The link a payment_required reason wants, on the billing page. */
 	function refusalLink(reason?: PaymentRequiredReason): string {
 		switch (reason) {
@@ -464,10 +472,7 @@
 				<dl class="mt-3 space-y-1 text-sm">
 					<div class="flex justify-between">
 						<dt class="text-zinc-500 dark:text-zinc-400">Memory while running</dt>
-						<dd>
-							{CLASS_GB[project.class] ?? '—'} GB{#if me && me.limits.memory_gb > 0}
-								of {me.limits.memory_gb}{/if}
-						</dd>
+						<dd>{memoryLine}</dd>
 					</div>
 					{#if me?.billing.plan}
 						<div class="flex justify-between">

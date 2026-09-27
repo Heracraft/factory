@@ -225,19 +225,19 @@
 				</div>
 				<dl class="mt-4 space-y-1.5 text-sm">
 					<div class="flex justify-between gap-4">
-						<dt class="text-zinc-500 dark:text-zinc-400">Running at once</dt>
+						<dt class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">Running at once</dt>
 						<dd class="text-right">{p.memory_gb} GB: {runsAtOnce(p)}</dd>
 					</div>
 					<div class="flex justify-between gap-4">
-						<dt class="text-zinc-500 dark:text-zinc-400">Disk</dt>
+						<dt class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">Disk</dt>
 						<dd>{p.disk_gb} GB</dd>
 					</div>
 					<div class="flex justify-between gap-4">
-						<dt class="text-zinc-500 dark:text-zinc-400">Egress a month</dt>
+						<dt class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">Egress a month</dt>
 						<dd>{p.egress_gb} GB</dd>
 					</div>
 					<div class="flex justify-between gap-4">
-						<dt class="text-zinc-500 dark:text-zinc-400">Projects</dt>
+						<dt class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">Projects</dt>
 						<dd>{p.project_limit}</dd>
 					</div>
 				</dl>
