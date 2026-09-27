@@ -1,13 +1,13 @@
 <!--
   A circle filled to a fraction, clockwise from twelve o'clock: the pie of
   the shape set used as a measure, the way Isotype lets a shape's fill carry
-  a quantity. The steps count up with it (a third, two thirds, done) and the
-  pricing cards show a size's share of the largest (2, 4 and 8 vCPU). A
-  hairline ring marks the whole, so a quarter reads as a quarter. Always
+  a quantity: the steps count up with it (a third, two thirds, done). Grey
+  by default; the page gives orange only to the one that says "done". A
+  hairline ring marks the whole, so a third reads as a third. Always
   decorative: the number it shows is also in the text beside it.
 -->
 <script lang="ts">
-	let { fraction, tone = 'warm' }: { fraction: number; tone?: 'warm' | 'accent' | 'neutral' } =
+	let { fraction, tone = 'neutral' }: { fraction: number; tone?: 'warm' | 'accent' | 'neutral' } =
 		$props();
 
 	const FILL = {

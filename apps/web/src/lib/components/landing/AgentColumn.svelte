@@ -53,7 +53,6 @@
 	{#each agentMarks as m, i (m.name)}
 		<span
 			class="tile land"
-			class:lead={i === 0}
 			data-state={i === 0 ? mode : 'idle'}
 			style="--d: {i * 80}ms"
 			title={m.name}

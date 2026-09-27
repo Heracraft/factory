@@ -7,6 +7,7 @@
 	import Hero from '$lib/components/landing/Hero.svelte';
 	import AgentColumn, { type Beat } from '$lib/components/landing/AgentColumn.svelte';
 	import Gauge from '$lib/components/landing/Gauge.svelte';
+	import Units from '$lib/components/landing/Units.svelte';
 	import Shape, { type Kind, type Tone } from '$lib/components/landing/Shape.svelte';
 	import SectionHead from '$lib/components/landing/SectionHead.svelte';
 	import { landOnView } from '$lib/components/landing/inview';
@@ -100,14 +101,12 @@
 		['pinwheel', 'accent'],
 		['arch', 'neutral'],
 		['ring', 'warm'],
-		['pie', 'neutral'],
 		['star', 'accent'],
 		['halves', 'neutral'],
 		['leaf', 'neutral'],
 		['sphere', 'neutral'],
 		['pill', 'neutral']
 	];
-	let friezeTurn = $state(frieze.map(() => 0));
 </script>
 
 <svelte:head>
@@ -251,8 +250,11 @@
 					>
 						<div>
 							<h3 class="flex items-center gap-3 text-lg font-semibold">
-								<span class="step-mark land" style="--d: {i * 110}ms"
-									><Gauge fraction={(i + 1) / steps.length} /></span
+								<span class="step-mark land" style="--d: {i * 110}ms" aria-hidden="true"
+									><Gauge
+										fraction={(i + 1) / steps.length}
+										tone={i === steps.length - 1 ? 'warm' : 'neutral'}
+									/></span
 								>{step.title}
 							</h3>
 							<p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{step.text}</p>
@@ -275,11 +277,9 @@
 			<ul class="mt-8 grid gap-5 md:grid-cols-3" use:landOnView>
 				{#each tiers as t, i (t.name)}
 					<li class="tier">
-						<div class="flex items-start justify-between gap-3">
+						<div class="flex items-center justify-between gap-3">
 							<h3 class="tier-name">{t.name}</h3>
-							<span class="tier-gauge land" style="--d: {i * 110}ms"
-								><Gauge fraction={t.vcpu / tiers[tiers.length - 1].vcpu} /></span
-							>
+							<span class="tier-units land" style="--d: {i * 110}ms"><Units count={t.vcpu} /></span>
 						</div>
 						<p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
 							{t.vcpu} vCPU · {t.ram} memory · {t.disk} disk
@@ -311,15 +311,7 @@
 	<div class="border-b border-[var(--rule)]">
 		<div class="frieze" aria-hidden="true" use:landOnView>
 			{#each frieze as [k, tone], i (i)}
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span
-					class="frieze-tile land"
-					style="--d: {i * 60}ms"
-					onpointerenter={() => (friezeTurn[i] += 90)}
-					><span class="turn block h-full w-full" style="--a: {friezeTurn[i]}deg"
-						><Shape kind={k} {tone} /></span
-					></span
-				>
+				<span class="frieze-tile land" style="--d: {i * 60}ms"><Shape kind={k} {tone} /></span>
 			{/each}
 		</div>
 	</div>
@@ -337,7 +329,7 @@
 </footer>
 
 <style>
-	/* The headline: bold serif, one thick amber bar under "full
+	/* The headline: bold serif, one thick orange bar under "full
 	   permissions", drawn in on load. */
 	.hero-h {
 		font-size: clamp(2.4rem, 5vw, 3.5rem);
@@ -368,7 +360,7 @@
 		}
 	}
 
-	/* Pricing: a card per size, a gauge of its share of the largest. */
+	/* Pricing: a card per size, its vCPUs counted in squares. */
 	.tier {
 		position: relative;
 		overflow: hidden;
@@ -377,11 +369,10 @@
 		border-radius: 3px;
 		background: var(--surface);
 	}
-	/* The size's share of the largest (vCPU), as a gauge. */
-	.tier-gauge {
+	/* The size's vCPUs, one square each. */
+	.tier-units {
 		flex: none;
-		width: clamp(2.25rem, 4vw, 3rem);
-		height: clamp(2.25rem, 4vw, 3rem);
+		line-height: 0;
 	}
 	.tier-name {
 		position: relative;
@@ -406,26 +397,22 @@
 		flex: none;
 	}
 
-	/* The footer's row of shapes across the page, standing on its rule,
-	   with room between them and above them. */
+	/* The footer's row: the whole shape set once, as the page's sign-off,
+	   standing on the footer's rule. It fits the width: the shapes shrink
+	   together rather than run off the edge. */
 	.frieze {
 		display: flex;
 		align-items: flex-end;
 		justify-content: center;
-		gap: clamp(14px, 2.6vw, 44px);
+		gap: clamp(8px, 2.2vw, 36px);
 		overflow: hidden;
 		margin-top: clamp(1rem, 4vw, 3rem);
 		padding: 0 clamp(14px, 2.6vw, 44px);
 	}
-	/* Where the row is wider than the screen it starts at the left edge,
-	   rather than losing shapes off both ends. */
-	@media (max-width: 1023px) {
-		.frieze {
-			justify-content: flex-start;
-		}
-	}
 	.frieze-tile {
-		flex: 0 0 clamp(40px, 5.6vw, 88px);
+		flex: 1 1 0;
+		min-width: 22px;
+		max-width: 80px;
 		aspect-ratio: 1;
 	}
 </style>

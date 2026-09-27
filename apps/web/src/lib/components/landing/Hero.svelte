@@ -145,6 +145,7 @@
 			cancelAnimationFrame(raf);
 			raf = requestAnimationFrame(() => {
 				if (still || !tl) return measure();
+				onbeat?.('out');
 				tl.pause();
 				tl = null;
 				fresh = true;
@@ -154,6 +155,10 @@
 		window.addEventListener('resize', onResize);
 		let go: (() => void) | undefined;
 		let fresh = true;
+
+		// Until the timeline runs (and always under reduced motion) the
+		// picture is its still frame, the agent rogue; say so.
+		onbeat?.('wreck');
 
 		if (!still) {
 			const q = (s: string) => Array.from(pic.querySelectorAll<HTMLElement>(s));
@@ -224,6 +229,8 @@
 
 				function run() {
 					pre();
+					// An empty machine: no agent at work yet.
+					onbeat?.('out');
 
 					const box = pic.getBoundingClientRect();
 					const rel = (el: Element) => {
@@ -313,7 +320,9 @@
 
 					const t = createTimeline({ autoplay: false, onComplete: () => cycle() })
 						// repose run: the repo row travels, the machine opens it.
-						.call(beat('run'), T.run)
+						// The agents beside the headline follow the picture's agent:
+						// at work when it appears, rogue when it turns.
+						.call(beat('run'), T.agent)
 						.call(() => (fire = true), T.run)
 						.call(() => (fire = false), T.run + 520)
 						.set(c, { opacity: 1 }, T.fly)
@@ -388,13 +397,13 @@
 						.add(q('.lines .reach'), { opacity: [1, 0], duration: 300 }, T.pull + 1000)
 						// The agent turns rogue and deletes its own work.
 						.add(q('.mwin .agent .red'), { opacity: [0, 1], duration: 350 }, T.rogue)
+						.call(beat('wreck'), T.rogue)
 						.add(
 							q('.mwin .agent'),
 							{ x: [0, -2, 2, -1, 0], duration: 360, ease: 'linear' },
 							T.rogue + 200
 						)
 						.call(() => pic.classList.add('wrecked'), T.strike)
-						.call(beat('wreck'), T.strike)
 						.add(
 							q('.mwin .kid.x .xbg'),
 							{ opacity: [0, 1], duration: 250, delay: stagger(120) },

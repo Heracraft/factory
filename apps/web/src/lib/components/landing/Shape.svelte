@@ -1,7 +1,8 @@
 <!--
   One tile of the landing's shape language: flat geometric forms in a
-  100 x 100 box, plus two textured ones (marble, sphere) drawn with SVG
-  noise so no image is fetched. Colours are the pictures' own, by role
+  100 x 100 box, and a sphere textured with SVG noise so no image is
+  fetched. They appear together once, in the footer's row, and the ring
+  alone is the logo's mark. Colours are the pictures' own, by role
   (the --sh-* tokens in routes/layout.css): two greys, ink, the blue
   accent and Claude Code's orange, nothing else. Each shape has one main
   tone (neutral, accent or warm); its other parts stay grey or ink, so a
@@ -13,39 +14,31 @@
 <script lang="ts" module>
 	let next = 0;
 	export type Kind =
-		| 'diamond'
-		| 'pie'
 		| 'pill'
 		| 'halves'
 		| 'asterisk'
 		| 'ring'
 		| 'star'
-		| 'marble'
 		| 'arch'
 		| 'sphere'
 		| 'leaf'
 		| 'sun'
 		| 'moon'
-		| 'burst'
 		| 'pinwheel';
 	export type Tone = 'neutral' | 'accent' | 'warm';
 
 	// A shape's tone when the page doesn't pick one.
 	const TONE: Record<Kind, Tone> = {
-		diamond: 'neutral',
-		pie: 'accent',
 		pill: 'neutral',
 		halves: 'neutral',
 		asterisk: 'neutral',
 		ring: 'warm',
 		star: 'accent',
-		marble: 'neutral',
 		arch: 'neutral',
 		sphere: 'warm',
 		leaf: 'neutral',
 		sun: 'warm',
 		moon: 'neutral',
-		burst: 'accent',
 		pinwheel: 'neutral'
 	};
 	const MAIN: Record<Tone, string> = {
@@ -69,13 +62,7 @@
 	style="--main: {main}"
 	aria-hidden="true"
 >
-	{#if kind === 'diamond'}
-		<circle cx="50" cy="50" r="50" fill="var(--sh-light)" />
-		<path d="M50 13 L82 50 L18 50 Z" fill="var(--sh-ink)" />
-		<path d="M18 50 L82 50 L50 87 Z" fill="var(--main)" />
-	{:else if kind === 'pie'}
-		<path d="M50 0 A50 50 0 1 0 100 50 L50 50 Z" fill="var(--main)" />
-	{:else if kind === 'pill'}
+	{#if kind === 'pill'}
 		<path d="M100 6 H48 A44 44 0 0 0 48 94 H100 Z" fill="var(--main)" />
 		<path d="M100 30 H48 A20 20 0 0 0 48 70 H100 Z" fill="var(--sh-light)" />
 	{:else if kind === 'halves'}
@@ -93,21 +80,6 @@
 		<path d="M50 50 V84 A34 34 0 0 0 84 50 Z" fill="var(--sh-accent)" />
 	{:else if kind === 'star'}
 		<path d={SPARKLE} transform="translate(-2 -2) scale(4.3333)" fill="var(--main)" />
-	{:else if kind === 'marble'}
-		<defs>
-			<!-- Noise folded into bands reads as the veins of grey marble. -->
-			<filter id="{id}f" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-				<feTurbulence type="fractalNoise" baseFrequency="0.022 0.045" numOctaves="4" seed="11" />
-				<feColorMatrix values="1.4 0 0 0 -0.2  1.4 0 0 0 -0.2  1.4 0 0 0 -0.2  0 0 0 0 1" />
-				<feComponentTransfer>
-					<feFuncR type="table" tableValues="0.28 0.8 0.46 0.86 0.36 0.78 0.3" />
-					<feFuncG type="table" tableValues="0.28 0.8 0.46 0.86 0.36 0.78 0.3" />
-					<feFuncB type="table" tableValues="0.28 0.79 0.45 0.84 0.36 0.77 0.3" />
-				</feComponentTransfer>
-			</filter>
-			<clipPath id="{id}c"><circle cx="50" cy="50" r="50" /></clipPath>
-		</defs>
-		<rect width="100" height="100" filter="url(#{id}f)" clip-path="url(#{id}c)" />
 	{:else if kind === 'arch'}
 		<path d="M8 100 V44 A42 42 0 0 1 92 44 V100 Z" fill="var(--main)" />
 		<path d="M29 100 V46 A21 21 0 0 1 71 46 V100 Z" fill="var(--sh-ink)" />
@@ -132,13 +104,6 @@
 		<circle cx="50" cy="50" r="50" fill="var(--main)" />
 	{:else if kind === 'moon'}
 		<path d="M72 4 A50 50 0 1 0 72 96 A40 40 0 1 1 72 4 Z" fill="var(--main)" />
-	{:else if kind === 'burst'}
-		<g stroke="var(--main)" stroke-width="6">
-			{#each Array.from({ length: 12 }, (_, i) => i * 15) as a (a)}
-				<path d="M0 50 H100" transform="rotate({a} 50 50)" />
-			{/each}
-		</g>
-		<circle cx="50" cy="50" r="15" fill="var(--main)" />
 	{:else if kind === 'pinwheel'}
 		<path d="M50 50 V0 A50 50 0 0 0 0 50 Z" fill="var(--main)" />
 		<path d="M50 50 V100 A50 50 0 0 0 100 50 Z" fill="var(--sh-light)" />

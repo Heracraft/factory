@@ -186,15 +186,19 @@ and underlined every heading. The page is one system:
     the headline, as the five agents on every machine, each a circle tile
     with its mark, standing in a column on the hero stage's top edge (a
     row on a phone), the one the picture shows (Claude Code) at the foot.
-    That tile fills with its orange while the picture's agent works, turns
-    red when it goes rogue and goes back at the restore; all hop at a
-    snapshot. Nothing else moves.
+    That tile fills with its orange when the picture's agent appears,
+    turns red the moment it turns rogue and goes back at the restore; all
+    hop at a snapshot. Before the timeline runs, and under reduced motion,
+    it matches the picture's still frame (rogue). Nothing else moves.
   - *Progress* (`Gauge.svelte`): each of the three steps is a circle
-    filled a third, two thirds, then whole.
-  - *Capacity*: each pricing card's gauge is its share of the largest
-    size by vCPU (2, 4, 8 of 8), so the sizes compare at a glance.
+    filled a third, two thirds, then whole; grey, and orange for the last,
+    "done", so the bottom half is not all orange.
+  - *Capacity* (`Units.svelte`): each pricing card counts its vCPUs in
+    small squares (2, 4, 8), Isotype's own form for a quantity, so the
+    sizes compare at a glance.
   Section headers carry no shapes: there is nothing there for one to say.
-  The footer's row is the one place the whole set appears, as a sign-off.
+  The footer's row is the one place the whole set appears, as a sign-off;
+  it fits the width, and has no pie (it would read as a gauge).
 - **Anchored, never floating.** The agents stand on the hero stage's
   edge, the gauges sit in their line or card, the footer's shapes stand on
   its rule.

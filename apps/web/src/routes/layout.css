@@ -95,8 +95,8 @@
 		--rule: #e6e6e3;
 		--rule-strong: #cfcfcb;
 
-		/* The landing's shape set (Shape.svelte), its bar and its perches
-		   use the palette the landing's pictures were drawn in before the
+		/* The landing's shapes (Shape.svelte, Gauge, Units, the agents)
+		   and its bar use the palette the landing's pictures were drawn in before the
 		   shapes came, and nothing else (docs/LANDING.md, "Shape
 		   language"): the neutrals, the one blue accent, Claude Code's
 		   orange, and the red a wreck turns things, each at the value the
@@ -120,7 +120,9 @@
 			--sh-grey: var(--color-zinc-500);
 			--sh-light: var(--color-zinc-600);
 			--sh-ink: var(--color-zinc-900);
-			--sh-stop: var(--color-red-400);
+			/* red-400 sits too close to the orange in the dark for a tile
+			   turning rogue to show; red-500 does not. */
+			--sh-stop: var(--color-red-500);
 			--page: #111110;
 			--surface: #161615;
 			--sunken: #1b1b1a;
@@ -164,7 +166,7 @@
 
 @layer components {
 	/* A landing section heading: bold serif, a size up from the app's.
-	   The amber bar is kept for the hero's headline and the prices
+	   The orange bar is kept for "full permissions" and the prices
 	   (docs/LANDING.md, "Shape language"). */
 	.landing-h {
 		@apply text-3xl font-bold tracking-[-0.015em] text-balance sm:text-4xl;
@@ -181,8 +183,8 @@
 	}
 
 	/* The landing's one motion for shapes: a group lands, one shape after
-	   another (landOnView in landing/inview.ts sets data-land), and a
-	   shape turns a quarter on hover (.turn, with --a set by the page). */
+	   another, when it comes into view (landOnView in landing/inview.ts
+	   sets data-land; each .land gets its --d delay). */
 	[data-land] .land {
 		transition:
 			opacity 0.3s ease-out var(--d, 0ms),
@@ -192,13 +194,8 @@
 		opacity: 0;
 		transform: translateY(30%) scale(0.5);
 	}
-	.turn {
-		transform: rotate(var(--a, 0deg));
-		transition: transform 0.9s cubic-bezier(0.65, 0, 0.35, 1);
-	}
 	@media (prefers-reduced-motion: reduce) {
-		[data-land] .land,
-		.turn {
+		[data-land] .land {
 			transition: none;
 		}
 	}
