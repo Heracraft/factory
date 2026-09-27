@@ -36,8 +36,7 @@ Synced logins happen inside `repose run` with no output of their own.
 Copied at every `repose run` over the SSH session into the guest, owned by
 `dev`, mode 0600. The list is exact and lives in
 `interfaces/guest-conventions.md`: gh's `hosts.yml`, Codex's `auth.json`,
-opencode's `auth.json`, the Vercel CLI's `auth.json` (from macOS's
-Application Support or Linux's `~/.local/share`), and the git identity (inside the carried git
+opencode's `auth.json`, and the git identity (inside the carried git
 config below, since I-195); when gh's login
 travels, whatever the project's remote, the guest's git also gets gh as
 its credential helper for github and rewrites `git@github.com:` and
@@ -66,6 +65,17 @@ host's SSH URLs; or a deploy key generated in the guest and added to that
 one repository with write access. The deploy key is the user's own file
 on the guest disk (in snapshots), not a repose secret, the same as any
 other file the user writes there.
+
+The Vercel CLI's login is not copied (DECISIONS I-298): its `auth.json`
+holds a token for the whole Vercel account, every team and project, where
+an agent with full permissions could deploy, delete or read env vars of
+projects that are not this one, and could take the token off the machine.
+Two paths, both in the public docs' secrets page: `vercel login` on the
+machine (the file lands on the guest disk, in snapshots, like the deploy
+key above), or a token the user scopes to one team and gives an expiry,
+stored as a named secret `VERCEL_TOKEN` (kind 3), which the Vercel CLI
+reads from the environment. A copy an earlier CLI made is removed at the
+next `run` while it is still byte for byte the laptop's file.
 
 Rules that must hold:
 

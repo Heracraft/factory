@@ -46,16 +46,29 @@ The dashboard's project **Secrets** page does the same.
 
 At each `repose run`, these are copied straight to the machine over SSH if you have them. repose never stores them.
 
-| Tool       | File                                                                                                        |
-| ---------- | ----------------------------------------------------------------------------------------------------------- |
-| GitHub CLI | `~/.config/gh/hosts.yml` (with the token, even if it's in the macOS keychain)                               |
-| Codex CLI  | `~/.codex/auth.json`                                                                                        |
-| opencode   | `~/.local/share/opencode/auth.json`                                                                         |
-| Vercel CLI | `~/Library/Application Support/com.vercel.cli/auth.json` (macOS), `~/.local/share/com.vercel.cli/auth.json` |
+| Tool       | File                                                                          |
+| ---------- | ----------------------------------------------------------------------------- |
+| GitHub CLI | `~/.config/gh/hosts.yml` (with the token, even if it's in the macOS keychain) |
+| Codex CLI  | `~/.codex/auth.json`                                                          |
+| opencode   | `~/.local/share/opencode/auth.json`                                           |
 
 Your SSH keys never reach the machine, and your ssh-agent isn't forwarded. With `gh` logged in on your laptop, git on the machine sends every GitHub URL, `git@github.com:owner/repo` and `ssh://git@github.com/owner/repo` included, over HTTPS with that login. An agent can push to an SSH remote without any change to it. If you log in to `gh` on the machine instead, run `gh auth setup-git` there once.
 
-Never copied: SSH private keys, Claude Code's login, Gemini's OAuth login. See [Agents](/docs/agents#log-in) for those.
+Never copied: SSH private keys, Claude Code's login, Gemini's OAuth login, the Vercel CLI's login. See [Agents](/docs/agents#log-in) for the agents' logins.
+
+The Vercel CLI's login stays on your laptop because it reaches your whole Vercel account: every team and every project, not just this one. An agent on the machine could deploy, delete a project or read another project's environment variables with it. To use Vercel on the machine, either log in there:
+
+```
+vercel login
+```
+
+That login is saved on the machine's disk, so it's in its snapshots. Or create a token in Vercel's account settings, scoped to one team and with an expiry, and store it as a secret. The Vercel CLI reads `VERCEL_TOKEN` from the environment:
+
+```
+repose secrets set VERCEL_TOKEN
+```
+
+repose used to copy this login. If an earlier `repose run` copied it, the next `repose run` removes that copy and says so. A login you made on the machine is left alone, and so is a copy the Vercel CLI on the machine has rewritten since; delete `~/.local/share/com.vercel.cli/auth.json` there to remove it. Snapshots taken before then still hold the copy; to be sure, revoke that login's token in Vercel's settings and run `vercel login` on your laptop again.
 
 ### Other git hosts
 

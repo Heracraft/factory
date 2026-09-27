@@ -7638,3 +7638,43 @@ long "guide" page (the landing sends a visitor to one job, and a page
 per job is what search and the sidebar can point at); moving the how-to
 paragraphs out of the reference pages (they answer the reader who is
 already there).
+
+**I-298. The Vercel CLI's login stays on the laptop.** (owner request,
+2026-09-27) This amends the I-195..I-205 list, which added the Vercel
+CLI's `auth.json` to the logins `repose run` copies (proposal item 3; it
+never had an entry of its own, and `creds.go` cited I-205, the trial
+decision). That file holds a token for the whole Vercel account: every
+team and every project the user has, not just this one. An agent running
+with full permissions on the machine can deploy, delete projects or read
+the env vars of unrelated projects with it, and with open egress it can
+take the token off the machine. The PocketOS incident (April 2026) is this
+class: an agent found a root-scoped Railway token in an unrelated file and
+deleted a production database and its backups in one API call. A snapshot
+undoes none of that. The research is in `reports/Repose credentials
+without a firewall.md` §4 (it ranks deploy tokens second, after GitHub,
+and calls this the easiest fix) and `reports/Repose credential proxy
+research.md` (a proxy would inject the same token, so only scope helps).
+So the row leaves the copied list. A user who wants Vercel on the machine
+has two existing paths, and no new flag or config key: `vercel login` in
+the guest (the file lands on the volume like any file the user writes,
+and the copy rule never touches it since the laptop no longer sends one),
+or a token scoped to one team with an expiry, stored as `repose secrets
+set VERCEL_TOKEN`, which the Vercel CLI reads from the environment.
+Guests that already hold a copy: `run` sends the SHA-256 of the laptop's
+file (never its bytes) and the guest removes
+`~/.local/share/com.vercel.cli/auth.json` only while its SHA-256 is the
+same, printing one notice; a login made in the guest, or a copy the
+guest's CLI has since rewritten, differs and is left, and the public docs
+say how to delete it by hand. The creds marker version moves to `creds-2`
+so every guest takes the logins' part once more; after that the removal
+is a no-op. Snapshots taken before keep the copy; the docs say to revoke
+that token to be sure. gh's login is unchanged here; scoping it is a
+separate decision. `TestSyncCredentialsLeavesVercelsLoginHome`.
+*Rejected:* an opt-in knob (`carry_vercel` or a flag; the two paths above
+already exist, and a knob would keep the full-account token one line
+away); leaving old copies in place (the risk is the same whether the copy
+is new or old); removing any file at that path (it would delete a login
+the user made in the guest); comparing mtimes (a rotated laptop token
+makes them ambiguous); minting a project-scoped Vercel token per machine
+(needs a full-account parent token in repose's database, a bigger change
+the research puts after the user study).
