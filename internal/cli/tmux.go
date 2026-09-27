@@ -110,10 +110,10 @@ func needsClaudeLogin(ctx context.Context, t sshTarget, hasOAuthSecret bool) (bo
 	if hasOAuthSecret {
 		return false, nil
 	}
-	// Size check on the guest only; the file is never read or copied
-	// (DECISIONS R2-8). Non-empty, not just present: with the Claude login
-	// share the file is always there, bind-mounted, and empty until the
-	// user's first /login in any of their machines (I-278).
+	// Non-empty, not just present: with the Claude login share (I-278) the
+	// file is always there, bind-mounted, and empty until the user's first
+	// /login in any of their machines. A size check on the guest only; the
+	// file is never read or copied (DECISIONS R2-8).
 	err := runSSHOK(ctx, t, "test -s ~/.claude/.credentials.json")
 	return err != nil, nil // a non-zero test means no login yet
 }
