@@ -1,8 +1,8 @@
 <!--
   The header every landing section shares: a bold serif heading and one
-  sentence. A section's shapes are not here: they stand on the edge of its
-  picture's panel (Perch.svelte), so they are anchored to the page's
-  structure instead of floating beside the words.
+  sentence. No shapes here: a shape on the landing encodes something (the
+  agents, a step's progress, a size's share), and a section header has
+  nothing for one to encode (docs/LANDING.md, "Shape language").
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';

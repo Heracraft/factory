@@ -5,7 +5,8 @@
 	import { signIn } from '$lib/auth.svelte';
 	import Logo from '$lib/components/Logo.svelte';
 	import Hero from '$lib/components/landing/Hero.svelte';
-	import Perch, { type Beat } from '$lib/components/landing/Perch.svelte';
+	import AgentColumn, { type Beat } from '$lib/components/landing/AgentColumn.svelte';
+	import Gauge from '$lib/components/landing/Gauge.svelte';
 	import Shape, { type Kind, type Tone } from '$lib/components/landing/Shape.svelte';
 	import SectionHead from '$lib/components/landing/SectionHead.svelte';
 	import { landOnView } from '$lib/components/landing/inview';
@@ -71,12 +72,6 @@
 			command: 'cd ~/code/recruiting && repose run'
 		}
 	];
-	// The steps' marks: one shape each, the last the repose ring itself.
-	const stepShapes: [Kind, Tone][] = [
-		['sphere', 'neutral'],
-		['pinwheel', 'accent'],
-		['ring', 'warm']
-	];
 	const tiers: {
 		name: string;
 		vcpu: number;
@@ -84,19 +79,17 @@
 		disk: string;
 		hour: string;
 		cap: string;
-		shape: Kind;
 	}[] = [
-		{ name: 'small', vcpu: 2, ram: '4 GB', disk: '20 GB', hour: '$0.07', cap: '$49', shape: 'sun' },
+		{ name: 'small', vcpu: 2, ram: '4 GB', disk: '20 GB', hour: '$0.07', cap: '$49' },
 		{
 			name: 'large',
 			vcpu: 4,
 			ram: '8 GB',
 			disk: '40 GB',
 			hour: '$0.14',
-			cap: '$99',
-			shape: 'halves'
+			cap: '$99'
 		},
-		{ name: 'xl', vcpu: 8, ram: '16 GB', disk: '80 GB', hour: '$0.28', cap: '$199', shape: 'burst' }
+		{ name: 'xl', vcpu: 8, ram: '16 GB', disk: '80 GB', hour: '$0.28', cap: '$199' }
 	];
 	// Mostly grey, with a spot of orange or blue every few shapes, the
 	// way the pictures use colour.
@@ -203,7 +196,7 @@
 			</div>
 		</div>
 		<div class="landing-stage mt-20 md:mt-12">
-			<Perch large column shapes={['diamond', 'pie', 'agent', 'halves']} {beat} />
+			<AgentColumn {beat} />
 			<Hero onbeat={(kind) => (beat = { kind, n: ++beats })} />
 		</div>
 	</section>
@@ -217,8 +210,7 @@
 				> in any checkout and your cloud machine picks up where your laptop is, down to the uncommitted
 				edits.
 			</SectionHead>
-			<div class="landing-stage mt-14">
-				<Perch shapes={['pill', 'pinwheel', 'sun']} />
+			<div class="landing-stage mt-8">
 				<OneCommand animated />
 			</div>
 		</div>
@@ -227,8 +219,7 @@
 	<section class="border-t border-[var(--rule)]">
 		<div class="mx-auto max-w-5xl px-5 py-16">
 			<SectionHead id="features" title="On every machine" />
-			<div class="relative mt-14 grid gap-x-10 gap-y-12 md:grid-cols-2">
-				<Perch shapes={['arch', 'moon:accent', 'asterisk']} />
+			<div class="mt-8 grid gap-x-10 gap-y-12 md:grid-cols-2">
 				<ComesBack />
 				<Localhost />
 				<Browser />
@@ -246,10 +237,7 @@
 					>repose config add</code
 				> keeps it on every rebuild.
 			</SectionHead>
-			<div class="relative mt-14">
-				<Perch shapes={['halves', 'star', 'leaf']} />
-				<Ready />
-			</div>
+			<Ready />
 		</div>
 	</section>
 
@@ -263,10 +251,8 @@
 					>
 						<div>
 							<h3 class="flex items-center gap-3 text-lg font-semibold">
-								<span class="step-mark land" style="--d: {i * 110}ms" aria-hidden="true"
-									><span class="turn block h-full w-full"
-										><Shape kind={stepShapes[i][0]} tone={stepShapes[i][1]} /></span
-									></span
+								<span class="step-mark land" style="--d: {i * 110}ms"
+									><Gauge fraction={(i + 1) / steps.length} /></span
 								>{step.title}
 							</h3>
 							<p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{step.text}</p>
@@ -289,10 +275,12 @@
 			<ul class="mt-8 grid gap-5 md:grid-cols-3" use:landOnView>
 				{#each tiers as t, i (t.name)}
 					<li class="tier">
-						<span class="tier-shape land" style="--d: {i * 110}ms" aria-hidden="true"
-							><span class="turn block h-full w-full"><Shape kind={t.shape} /></span></span
-						>
-						<h3 class="tier-name">{t.name}</h3>
+						<div class="flex items-start justify-between gap-3">
+							<h3 class="tier-name">{t.name}</h3>
+							<span class="tier-gauge land" style="--d: {i * 110}ms"
+								><Gauge fraction={t.vcpu / tiers[tiers.length - 1].vcpu} /></span
+							>
+						</div>
 						<p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
 							{t.vcpu} vCPU · {t.ram} memory · {t.disk} disk
 						</p>
@@ -380,7 +368,7 @@
 		}
 	}
 
-	/* Pricing: a card per size, its shape bleeding off the corner. */
+	/* Pricing: a card per size, a gauge of its share of the largest. */
 	.tier {
 		position: relative;
 		overflow: hidden;
@@ -389,16 +377,11 @@
 		border-radius: 3px;
 		background: var(--surface);
 	}
-	.tier-shape {
-		position: absolute;
-		top: -3rem;
-		right: -3rem;
-		width: 7.5rem;
-		height: 7.5rem;
-	}
-	.tier:hover .turn,
-	.step:hover .turn {
-		--a: 90deg;
+	/* The size's share of the largest (vCPU), as a gauge. */
+	.tier-gauge {
+		flex: none;
+		width: clamp(2.25rem, 4vw, 3rem);
+		height: clamp(2.25rem, 4vw, 3rem);
 	}
 	.tier-name {
 		position: relative;

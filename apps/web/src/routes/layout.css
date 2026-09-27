@@ -171,8 +171,8 @@
 	}
 	/* The panel a landing picture sits on: sunken, hairline, as the grid
 	   cards' pictures already do, so a picture reads apart from its
-	   header. A stage is also what the landing's shapes stand on
-	   (Perch.svelte). */
+	   header. A stage is also what the hero's agents stand on
+	   (AgentColumn.svelte). */
 	.landing-stage {
 		@apply relative rounded-sm border;
 		border-color: var(--rule);

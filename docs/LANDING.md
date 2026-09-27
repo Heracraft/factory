@@ -178,27 +178,32 @@ and underlined every heading. The page is one system:
   one sentence) and then its picture on a stage, the sunken hairline panel
   the grid cards already use. The hero picture and "Your working state"
   sit on a stage too, which keeps the headline apart from the picture.
-- **Shapes are anchored, never floating.** Every shape stands on an edge
-  or is cut by one: a picture section's shapes stand on the top edge of its
-  stage (`Perch.svelte`), the pricing shapes sit in their card's corner,
-  the footer's stand on its rule, the step marks sit in their line. The
-  owner's words for shapes left beside the words: "bolted in".
-- **Shapes appear once per section.** The hero's four shapes (diamond,
-  pie, the agent tile, halves) are a column
-  standing on the hero stage's top edge, flush with the page's right edge,
-  rising beside the headline opposite it (a row on the edge on a phone); "Your working state", "On every machine" (on the top edge of the
-  grid) and the toolchain each have three on their stage; the steps and
-  the pricing cards carry theirs in the content; the footer has the full
-  row. No two neighbouring sections use the same shape.
-- **The amber bar marks "full permissions" and the prices, nothing else.**
+- **A shape encodes something, or it isn't there.** Owner, 2026-09-27:
+  shapes placed "just to have shapes" read as gimmicks, however well they
+  are coloured or anchored. The model is Isotype: a shape stands for a
+  thing, and its fill or count carries a quantity. The landing has three:
+  - *The agents* (`AgentColumn.svelte`): "Let your agents run", beside
+    the headline, as the five agents on every machine, each a circle tile
+    with its mark, standing in a column on the hero stage's top edge (a
+    row on a phone), the one the picture shows (Claude Code) at the foot.
+    That tile fills with its orange while the picture's agent works, turns
+    red when it goes rogue and goes back at the restore; all hop at a
+    snapshot. Nothing else moves.
+  - *Progress* (`Gauge.svelte`): each of the three steps is a circle
+    filled a third, two thirds, then whole.
+  - *Capacity*: each pricing card's gauge is its share of the largest
+    size by vCPU (2, 4, 8 of 8), so the sizes compare at a glance.
+  Section headers carry no shapes: there is nothing there for one to say.
+  The footer's row is the one place the whole set appears, as a sign-off.
+- **Anchored, never floating.** The agents stand on the hero stage's
+  edge, the gauges sit in their line or card, the footer's shapes stand on
+  its rule.
+- **The orange bar marks "full permissions" and the prices, nothing else.**
   Section headings are bold serif with no bar.
 - **One motion vocabulary**: a group rises into place when it comes into
-  view, and a shape turns a quarter on hover. The hero row also follows
-  the hero picture (`Hero.svelte`'s `onbeat`): it hops at each snapshot,
-  is knocked over at the wreck (the agent tile turns red), and stands
-  back up at the restore; its agent tile cycles the five agents' marks.
-  It does not move on its own otherwise. No labels on any of it. Under
-  `prefers-reduced-motion` every shape is still and whole.
+  view. The only other motion is the agents following the picture, above.
+  No labels on any of it. Under `prefers-reduced-motion` every shape is
+  still and whole.
 - **The palette the landing had before the shapes, and nothing else.**
   The pictures were drawn in neutrals, one blue accent and Claude Code's
   orange, with red for what a wreck breaks. The shapes use exactly those,
@@ -206,8 +211,7 @@ and underlined every heading. The page is one system:
   ink from zinc, the blue accent (blue-600, blue-400 in the dark), the
   orange `#d97757`, and the red of `--stop` only for the knocked-over
   agent. The bar under "full permissions" and the price rules are the
-  orange. In the dark, ink is the pictures' dim zinc-400, so a solid
-  shape reads as quietly as their icons. No green, amber, pink or purple:
+  orange. No green, amber, pink or purple:
   the slide template's own hues were tried and dropped (owner,
   2026-09-27), and a new colour needs a reason recorded here.
 - **Mostly grey, a spot of colour, even weight.** Each shape has one
@@ -220,10 +224,8 @@ and underlined every heading. The page is one system:
   orange does; ink only for small details (a hole, a diamond's top),
   never a whole shape. Judge it on a full-page screenshot in both themes.
 - **Where a shape and a mark are the same form, they are one.** The star
-  is Gemini's sparkle (`SPARKLE` in `marks.ts`), and Gemini CLI's mark in
-  the toolchain box and the hero's agent tile is that sparkle, so the
-  shape reads as an agent's mark and the mark as part of the set. The
-  toolchain's own three shapes carry the star, standing just above it.
+  is Gemini's sparkle (`SPARKLE` in `marks.ts`); Gemini CLI's mark in the
+  toolchain box and the hero's agents is that sparkle.
 - The shapes live in `landing/Shape.svelte` and draw only from the `--sh-*`
   tokens. The app's own pages never use them.
 
