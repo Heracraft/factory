@@ -210,6 +210,48 @@ func TestSyncLeavesAnAgentsSubmoduleCommitAlone(t *testing.T) {
 	}
 }
 
+// The agent pulled newer work into a submodule and committed on top, so
+// no ref in the guest's submodule points at a commit the laptop's
+// submodule knows; with nothing new on the laptop the submodule is left
+// alone all the same (I-284, the submodule half).
+func TestSyncLeavesASubmoduleThatPulledPastTheLaptopAlone(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	subBare := newSubRepo(t)
+	addSubmodule(t, f.local, subBare, "lib")
+	if _, err := syncGuest(ctx, f.target, f.local, testSlug, SyncOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	mate := t.TempDir()
+	mustRun(t, mate, "git", "clone", "-q", subBare, ".")
+	writeFile(t, filepath.Join(mate, "s"), "sub v2\n")
+	mustRun(t, mate, "git", "-c", "user.email=m@x", "-c", "user.name=m", "commit", "-q", "-am", "a teammate's")
+	mustRun(t, mate, "git", "push", "-q", "origin", "main")
+
+	gsub := filepath.Join(f.guestRepo(), "lib")
+	mustRun(t, gsub, "git", "-c", "protocol.file.allow=always", "fetch", "-q", subBare, "main")
+	mustRun(t, gsub, "git", "checkout", "-q", "FETCH_HEAD")
+	writeFile(t, filepath.Join(gsub, "s"), "the agent's\n")
+	mustRun(t, gsub, "git", "-c", "user.email=a@x", "-c", "user.name=a", "commit", "-q", "-am", "agent")
+	agentHead := mustRun(t, gsub, "git", "rev-parse", "HEAD")
+	// Nothing in the guest's submodule may still name the laptop's commit.
+	laptopSubHead := mustRun(t, filepath.Join(f.local, "lib"), "git", "rev-parse", "HEAD")
+	for _, ref := range strings.Fields(mustRun(t, gsub, "git", "for-each-ref", "--points-at", laptopSubHead, "--format=%(refname)")) {
+		mustRun(t, gsub, "git", "update-ref", "-d", ref)
+	}
+
+	summary, err := syncGuest(ctx, f.target, f.local, testSlug, SyncOptions{})
+	if err != nil {
+		t.Fatalf("syncGuest: %v", err)
+	}
+	if !summary.GuestAhead {
+		t.Fatalf("summary = %+v, want GuestAhead", summary)
+	}
+	if got := mustRun(t, gsub, "git", "rev-parse", "HEAD"); got != agentHead {
+		t.Fatalf("the agent's submodule commit was moved: HEAD %s, want %s", got, agentHead)
+	}
+}
+
 // A submodule that is a shallow clone on the laptop cannot be bundled:
 // the guest fetches it itself, and when that fails (here git refuses the
 // file:// remote) the run goes on with a warning naming it.

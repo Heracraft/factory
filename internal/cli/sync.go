@@ -173,8 +173,9 @@ type guestProbe struct {
 	head, headRef, syncKey string
 	// syncHas: the guest still has every commit the last completed sync
 	// recorded under its key (the laptop's HEAD and origin/<branch> of
-	// that sync), so a laptop with the same key has none to send, even
-	// when no guest ref points at a commit the laptop knows (I-284).
+	// that sync, and each bundled submodule's HEAD in that submodule), so
+	// a laptop with the same key has none to send, even when no guest ref
+	// points at a commit the laptop knows (I-284).
 	syncHas bool
 }
 
@@ -266,7 +267,7 @@ echo '#head'
 git rev-parse -q --verify HEAD || true
 [ -f .git/HEAD ] && IFS= read -r repose_h < .git/HEAD && printf '#headref %%s\n' "$repose_h"
 [ -f "$repose_synced-key" ] && IFS= read -r repose_k < "$repose_synced-key" && printf '#synckey %%s\n' "$repose_k"
-[ -f "$repose_synced-key" ] && tail -n +2 "$repose_synced-key" | { repose_n=0; while IFS= read -r c; do repose_n=1; git cat-file -e "$c^{commit}" 2>/dev/null || exit 1; done; [ "$repose_n" = 1 ]; } && echo '#synchas'
+[ -f "$repose_synced-key" ] && tail -n +2 "$repose_synced-key" | { repose_n=0; while IFS=' ' read -r c p; do repose_n=1; if [ -n "$p" ]; then git -C "$p" cat-file -e "$c^{commit}" 2>/dev/null || exit 1; else git cat-file -e "$c^{commit}" 2>/dev/null || exit 1; fi; done; [ "$repose_n" = 1 ]; } && echo '#synchas'
 echo '#origin'
 git remote get-url origin >/dev/null 2>&1 && echo yes || true
 if [ -f %s ]; then while IFS= read -r p; do [ -e "$p" ] || { echo '#credsmissing'; break; }; done < %s; fi
@@ -458,13 +459,15 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		// for a guest whose key file predates that record; on its own it
 		// cannot see a guest that pulled past every commit the laptop
 		// knows (I-284).
-		n := 0
-		if !probe.syncHas {
-			if n, err = countCommitsToSend(localRepoDir, wantRefs, probe.tips); err != nil {
+		if probe.syncHas {
+			nothingNew = true
+		} else {
+			n, err := countCommitsToSend(localRepoDir, wantRefs, probe.tips)
+			if err != nil {
 				return nil, err
 			}
+			nothingNew = n == 0 && subCommits == 0
 		}
-		nothingNew = n == 0 && subCommits == 0
 	}
 	guestChanged := len(probe.dirty) > 0 && !probe.syncedOnly
 	if guestChanged && !nothingNew && !opts.StashRemote && !opts.DiscardRemote {
@@ -652,14 +655,8 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		// The key is cleared before the checkout is touched and written
 		// once the apply has finished, so a sync that stopped half way
 		// never matches.
-		// Under the key, the commits this sync delivers, for the next
-		// probe to check are still there (I-284).
-		synced := []string{syncKey, head}
-		if track != "" {
-			synced = append(synced, track)
-		}
 		script = applyScript(slug, head, branch, track, bundleRefs, len(bundleRefs) > 0, opts, probe, subScript+superOps) + envScript + recordSyncedScript +
-			fmt.Sprintf("printf '%%s\\n' %s > \"$repose_synced-key\"\n", strings.Join(synced, " "))
+			fmt.Sprintf("printf '%%s\\n' %s > \"$repose_synced-key\"\n", syncedKeyLines(syncKey, head, track, subs))
 		// Right after the unpack, before anything touches the checkout:
 		// the stash below needs the identity the git part carries.
 		script = strings.Replace(script, applyUnpack, applyUnpack+carryScript+": > \"$repose_synced-key\"\n", 1)
@@ -740,6 +737,29 @@ func countCommitsToSend(localRepoDir string, wantRefs, tips []string) (int, erro
 		return 0, err
 	}
 	return countRevs(localRepoDir, revs)
+}
+
+// syncedKeyLines is what an apply writes to .git/repose-synced-key, as
+// quoted printf arguments: the key, then the commits this sync delivers
+// for the next probe to check are still there (I-284): HEAD, the
+// laptop's origin/<branch>, and "<sha> <path>" for each bundled
+// submodule's HEAD, checked inside that submodule. A shallow submodule
+// is fetched by the guest, not bundled, and is not listed. The key covers
+// every one of these, so an equal key names the same commits.
+func syncedKeyLines(key, head, track string, subs []laptopSub) string {
+	lines := []string{key, head}
+	if track != "" {
+		lines = append(lines, track)
+	}
+	for _, s := range subs {
+		if !s.Shallow && s.Head != "" {
+			lines = append(lines, s.Head+" "+s.Path)
+		}
+	}
+	for i, l := range lines {
+		lines[i] = shQuote(l)
+	}
+	return strings.Join(lines, " ")
 }
 
 // syncKeyVersion is folded into the sync key; a change to what an apply

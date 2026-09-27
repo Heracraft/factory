@@ -7488,10 +7488,15 @@ probe answers `#synchas` when `git cat-file -e` finds them all. The key
 covers those same two commits, so an equal key with `#synchas` means
 nothing to send; the tip count stays as the fallback for a key file
 written before this. No extra round trip, no probe input from the laptop
-(the probe starts before the laptop computes its side). The submodule
-tips have the same gap and are not changed here.
-`TestSyncLeavesTheGuestAloneWhenItPulledPastTheLaptop` failed before
-(guest HEAD moved to the laptop's commit) and passes. *Rejected:* sending
+(the probe starts before the laptop computes its side). Submodules had
+the same gap (their tips counted in `planSubCommits`): each bundled
+submodule's HEAD is recorded too, as `<sha> <path>`, and the probe checks
+it with `git -C <path> cat-file -e`; a shallow submodule is fetched by the
+guest, not bundled, and is not listed. The key already covers every
+submodule's path and HEAD. `TestSyncLeavesTheGuestAloneWhenItPulledPastTheLaptop`
+failed before (guest HEAD moved to the laptop's commit) and passes;
+`TestSyncLeavesASubmoduleThatPulledPastTheLaptopAlone` failed with the
+superproject half alone (refused as new laptop work) and passes. *Rejected:* sending
 the laptop's SHAs in the probe (the probe runs before `syncGuest` knows
 them, I-225's startup overlap); trusting the key alone (a guest that lost
 the commits, a gc after a reset, would be told nothing is missing).
