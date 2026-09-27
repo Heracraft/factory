@@ -1,0 +1,44 @@
+// DECISIONS I-290: the landing page's pricing section shows the two plans
+// and one live line from GET /public/seats, and stands without it.
+import { test, expect } from '@playwright/test';
+import { setBilling, resetBilling } from './helpers';
+
+test.afterAll(async () => {
+	await resetBilling();
+});
+
+test('the pricing section shows the two plans and the seats left', async ({ page }) => {
+	await resetBilling();
+	await page.goto('/');
+	const pricing = page.locator('section', { has: page.getByRole('heading', { name: 'Pricing' }) });
+	await expect(pricing.getByText('Two plans. Seven days free, card at checkout.')).toBeVisible();
+	await expect(pricing.getByRole('heading', { name: 'Solo' })).toBeVisible();
+	await expect(pricing.getByRole('heading', { name: 'Pro' })).toBeVisible();
+	await expect(pricing.getByText('$29')).toBeVisible();
+	await expect(pricing.getByText('$59')).toBeVisible();
+	await expect(
+		pricing.getByText('8 GB running at once · 100 GB disk · 250 GB egress')
+	).toBeVisible();
+	await expect(
+		pricing.getByText('16 GB running at once · 250 GB disk · 500 GB egress')
+	).toBeVisible();
+	await expect(pricing.getByText('per hour')).toHaveCount(0);
+	await expect(page.getByTestId('seats-line')).toHaveText('18 of 30 seats left');
+	await expect(pricing.getByRole('button', { name: 'Start with GitHub' })).toBeVisible();
+});
+
+test('when full, the line says so with the number waiting', async ({ page }) => {
+	await setBilling({ seats: { total: 30, held: 30, waiting: 41 } });
+	await page.goto('/');
+	await expect(page.getByTestId('seats-line')).toContainText('Full for now. 41 waiting;');
+	await expect(page.getByTestId('seats-line')).toContainText(
+		"join the list and you're emailed when a seat frees."
+	);
+});
+
+test('the footer links to the refund policy', async ({ page }) => {
+	await page.goto('/');
+	await expect(
+		page.getByRole('contentinfo').getByRole('link', { name: 'Refunds' })
+	).toHaveAttribute('href', '/refunds');
+});

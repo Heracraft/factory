@@ -37,12 +37,18 @@ describe('user docs', () => {
 		for (const d of DOCS) expect(d.body.includes('—'), d.slug).toBe(false);
 	});
 
-	// Billing is not enforced yet: the docs must not send anyone to add a
-	// card first, and must not carry release caveats that went stale.
-	it('promises no card step and has no stale release notes', () => {
+	// Plans, not a card and not an hourly meter (DECISIONS I-289): the docs
+	// send nobody to add a card and quote no price per hour. billing, cli
+	// and limits are checked once their owners' rewrite lands (their pages
+	// are still the hourly ones on this branch); the rest must be clean now.
+	it('promises no card step, no hourly price, and has no stale release notes', () => {
+		const stillHourly = new Set(['billing', 'cli', 'limits']);
 		for (const d of DOCS) {
 			expect(d.text.includes('add a card'), d.slug).toBe(false);
 			expect(d.text.includes('not in a release yet'), d.slug).toBe(false);
+			if (stillHourly.has(d.slug)) continue;
+			expect(d.text.toLowerCase().includes('per hour'), d.slug).toBe(false);
+			expect(/\$\d+(\.\d+)?\/h\b/.test(d.text), d.slug).toBe(false);
 		}
 	});
 

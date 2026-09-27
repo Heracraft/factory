@@ -49,16 +49,16 @@ A machine is idle when it has been running for 24 hours with no SSH session, no 
 
 ```
 $ repose ls
-PROJECT    CLASS  STATE    UP      AGENTS         TODAY  MONTH
-todo-app   large  running  31h02m  claude: idle   $3.36  $22.10
-todo-app: idle 26h, billing ~$0.14/h; `repose stop todo-app` stops it
+PROJECT    CLASS  STATE    UP      AGENTS
+todo-app   large  running  31h02m  claude: idle
+todo-app: idle 26h, still running; `repose stop todo-app` stops it
 ```
 
-- `repose status` shows the same line, and the dashboard's project list shows the idle time and rate under the state.
+- `repose status` shows the same line, and the dashboard's project list shows the idle time under the state.
 - `repose run` and `repose attach` in another project print one line naming it, once per idle stretch.
-- You get one notification, by email and ntfy if you have them on ([Notifications](/docs/notifications)), with the title `todo-app: idle, still billing`. You get another only after the machine has been used and gone idle again.
+- You get one notification, by email and ntfy if you have them on ([Notifications](/docs/notifications)), naming the project as idle. You get another only after the machine has been used and gone idle again.
 
-The rate is the class's hourly price; the month's compute still stops at the class's cap ([Billing](/docs/billing)). When the server hasn't reported on the machine for 10 minutes, for example while it's unreachable, repose can't tell and says nothing.
+An idle machine costs nothing extra on a plan, but its memory counts against what your plan runs at once, so another machine can be refused until it stops ([Billing](/docs/billing)). When the server hasn't reported on the machine for 10 minutes, for example while it's unreachable, repose can't tell and says nothing.
 
 ## Snapshots
 

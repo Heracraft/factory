@@ -28,7 +28,7 @@ test('/projects/[id] renders the project detail cards', async ({ page }) => {
 	await expect(page.getByRole('heading', { name: projectName })).toBeVisible();
 	await expect(page.getByText('Connect')).toBeVisible();
 	await expect(page.getByText('Signals')).toBeVisible();
-	await expect(page.getByText('Cost')).toBeVisible();
+	await expect(page.getByText('Plan', { exact: true })).toBeVisible();
 	await expect(page.getByText('Disk')).toBeVisible();
 	await expect(page.getByText('Events')).toBeVisible();
 	await expect(page.getByText('Snapshots', { exact: true })).toBeVisible();
@@ -49,7 +49,8 @@ test('/projects/[id]/secrets renders the secrets page', async ({ page }) => {
 test('/billing renders', async ({ page }) => {
 	await page.goto('/billing');
 	await expect(page.getByRole('heading', { name: 'Billing' })).toBeVisible();
-	await expect(page.getByText('Usage this month')).toBeVisible();
+	// The suite runs the fake with billing off unless a spec turns it on.
+	await expect(page.getByText('Billing is not switched on yet.')).toBeVisible();
 });
 
 test('/settings renders', async ({ page }) => {
@@ -64,16 +65,26 @@ test('/account renders', async ({ page }) => {
 	await expect(page.getByRole('heading', { name: 'Delete account' })).toBeVisible();
 });
 
-test('/terms and /privacy render', async ({ page }) => {
+test('/terms, /privacy and /refunds render', async ({ page }) => {
 	await page.goto('/terms');
 	await expect(page.locator('article')).toBeVisible();
 	// The acceptable-use rules the platform enforces (DECISIONS I-238..I-240).
 	await expect(page.getByRole('heading', { name: 'Acceptable use' })).toBeVisible();
 	await expect(page.getByText('mine cryptocurrency, or run anything that does')).toBeVisible();
 	await expect(page.getByText(/cannot connect out to\s+port 25/)).toBeVisible();
+	// Billing: plans through Paddle (DECISIONS I-289).
+	await expect(page.getByRole('heading', { name: 'Billing' })).toBeVisible();
+	await expect(page.getByText(/Paddle, which is\s+the merchant of record/)).toBeVisible();
+	await expect(page.getByText(/seven days free/)).toBeVisible();
 	await page.goto('/privacy');
 	await expect(page.locator('article')).toBeVisible();
 	await expect(page.getByText('Draft:')).toBeVisible();
+	await expect(page.getByText(/Payments are handled by Paddle/)).toBeVisible();
+	await expect(page.getByRole('link', { name: "Paddle's privacy policy" })).toBeVisible();
+	await page.goto('/refunds');
+	await expect(page.getByRole('heading', { name: 'Refund policy' })).toBeVisible();
+	await expect(page.getByText(/within 14\s+days of that first charge/)).toBeVisible();
+	await expect(page.getByText(/A renewal is not refunded for a part of a month/)).toBeVisible();
 });
 
 test('/healthz answers 200', async ({ request }) => {
