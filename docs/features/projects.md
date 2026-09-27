@@ -71,23 +71,10 @@ Limits:
 - `repose fork` makes N projects at once and is refused whole, before any
   is created, when N more would pass the limit (snapshots.md, "Forking";
   DECISIONS I-254).
-- The capacity waitlist (DECISIONS I-269). A user's first project waits
-  when the fleet is near full: if the memory reserved on ready hosts, plus
-  8 GB for each user admitted in the last 72 hours who has not created a
-  project yet, plus the new project's class, would pass `WAITLIST_PERCENT`
-  (default 80, the HostMemory80 line) of the hosts' usable memory, or when
-  anyone is already waiting, `POST /projects` returns 503 `waitlisted` with
-  `{position, joined_at, email}` and the user joins the queue; a retry
-  keeps the place. The CLI prints `repose is at capacity. You're number N
-  on the waitlist; we'll email you@example.com when there's room.` and
-  exits 8. `GET /me` carries the place and the dashboard's empty projects
-  page shows it. Every minute the api admits the queue oldest first while
-  that projection, with each admission counted as a large, stays under the
-  line, and sends one email per admission (transactional: it goes out even
-  with notify email off). Users who have ever had a project, users once
-  admitted and `exempt` accounts are never waitlisted; they can still meet
-  plain `capacity`. `repose-admin waitlist list | admit HANDLE | admit
-  --next N` lets an operator see and move the queue.
+- No seats gate on `POST /projects` since DECISIONS I-290: creating a
+  project needs a plan (`payment_required`, `detail.reason =
+  subscription_required`), and the seats question is answered at checkout.
+  See "Seats and the waitlist" below.
 - A user without a card on file cannot start a guest at all
   (`payment_required`, exit 7). Creating the project row is allowed so the
   dashboard can show it, but nothing boots.
@@ -110,6 +97,31 @@ Ownership:
   team in the first release.
 - Destroying a project keeps its row for usage history and keeps the last
   snapshot 30 days (see stop-start-destroy.md).
+
+## Seats and the waitlist
+
+A seat is 8 GB of memory that may run at once on the fleet; Solo holds one,
+Pro two (`docs/PRICING.md`, DECISIONS I-290). The fleet has as many seats
+as its `ready`, undrained hosts have usable 8 GB blocks, or `SEATS_TOTAL`
+when the operator set it. Seats are held by every subscription that is
+`trialing`, `active` or `past_due` and by every waitlist invitation whose
+72-hour hold has not run out. `POST /billing/checkout` needs the plan's
+seats free; otherwise, and on `POST /billing/waitlist`, the user joins the
+waitlist and gets `503 waitlisted` with `{position, joined_at, email}`. The
+CLI prints the api's sentence as it is, `repose is full right now. You're
+number N on the waitlist; we'll email you@example.com when there's a
+seat.`, and exits 8. `GET /me` and `GET /billing` carry `waitlist:
+{position, joined_at, invited_at, hold_until}` while the user holds a
+place; `GET /public/seats` gives the landing page `{total, free,
+waiting}`. Every minute the api invites the oldest waiting user while a
+seat is free, one seat each and strictly in order; an invited user has 72
+hours to choose a plan, after which the seat goes to the next person and
+the user is back on the list, at the back, told by email. Every waitlist
+email is transactional: sent whatever notify email says
+(`features/notifications.md`, "Account emails"). Suspended, cancelled and
+deleted accounts hold no place. `repose-admin waitlist list | admit HANDLE
+| admit --next N` and `repose-admin seats` let an operator see and move
+the queue (`ops/RUNBOOK.md`, "Waitlist growing").
 
 ## Depends on
 

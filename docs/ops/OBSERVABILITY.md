@@ -49,11 +49,14 @@ Grafana "Host capacity", variable `host_id`. Then on the host itself:
 `systemctl list-units 'guest@*'`, `lvs vg-guests`, `nft list counters`,
 `journalctl -u hostd -f`.
 
-The fleet as a whole: `repose_api_waitlist_waiting` is the users held on
-the capacity waitlist (DECISIONS I-269), `repose_api_waitlist_joined_total`
-and `repose_api_waitlist_admitted_total` the traffic through it; the api
-logs `waitlist_join` (user_id, position, class) and `waitlist_admit`
-(count), never an email address. `repose-admin waitlist list` names them.
+The fleet as a whole: `repose_api_seats_total` and `repose_api_seats_held`
+are the seats (8 GB running at once each, DECISIONS I-290) and those held
+by live subscriptions and unexpired invitations; `repose_api_waitlist_waiting`
+is the users waiting for one, `repose_api_waitlist_joined_total`,
+`_invited_total`, `_converted_total` and `_expired_total` the traffic
+through the list. The api logs `waitlist_join` (user_id, position),
+`waitlist_invite` (count) and `waitlist_expire` (count), never an email
+address. `repose-admin seats` and `repose-admin waitlist list` name them.
 
 ## Looking for abuse
 
