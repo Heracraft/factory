@@ -9,9 +9,12 @@
   mark, orange; Claude Code's own pink "⏵⏵ bypass permissions on" footer at
   the machine's bottom left) does good work: three files gain their diff
   stat on the rows themselves, and snapshots are taken along the way (a
-  miniature of the machine shrinks onto the rail; the older one steps behind
-  it as an icon and a time). Only then does it reach the internet, where a
-  "malicious skill" comes in; the agent turns red and does damage git can't
+  miniature of the machine shrinks into the snapshots panel on the right;
+  the older one steps behind it as an icon and a time). Only then does it
+  reach the internet, the panel above the snapshots, where a "malicious
+  skill" comes in. The picture is three panels in one grammar: your laptop,
+  your cloud machine, and on the right the internet over the snapshots, so
+  nothing hangs off an edge. Then the agent turns red and does damage git can't
   undo (docs/LANDING.md, "Snapshots are about the machine"): its uncommitted
   edits are discarded (the diff stats struck), the app's database is emptied
   (3,532 rows to 0) and node is gone from the machine ("not found"). The skill
@@ -116,15 +119,22 @@
 		const win = pic.querySelector('.mwin .win')!;
 		const W = r(win);
 		const wide = window.matchMedia('(min-width: 768px)').matches;
-		mini = { w: W.w, h: W.h, s: (wide ? 104 : 88) / W.w };
+		mini = { w: W.w, h: W.h, s: (wide ? 84 : 72) / W.w };
 
 		const globe = r(pic.querySelector('.net .globe')!);
-		const reach = wide
-			? `M${W.r} ${globe.cy}H${globe.l - 4}`
-			: `M${globe.cx} ${W.b}V${globe.t - 4}`;
+		const net = r(pic.querySelector('.net')!);
+		const rail = r(pic.querySelector('.rail')!);
 		const th = r(pic.querySelector('.rail .slot')!);
-		const back = `M${th.cx} ${th.t - 2}V${W.b + 2}`;
-		const backHead = `M${th.cx - 4} ${W.b + 7}L${th.cx} ${W.b + 2}L${th.cx + 4} ${W.b + 7}`;
+		// The agent's path out to the internet: across the gap into the
+		// internet's panel at the globe's height; down into it on a phone.
+		const reach = wide
+			? `M${W.r + 1} ${globe.cy}H${net.l - 2}`
+			: `M${globe.cx} ${W.b + 1}V${net.t - 2}`;
+		// The snapshot's way back: out of its panel into the machine.
+		const back = wide ? `M${rail.l - 2} ${th.cy}H${W.r + 3}` : `M${th.cx} ${rail.t - 2}V${W.b + 3}`;
+		const backHead = wide
+			? `M${W.r + 8} ${th.cy - 4}L${W.r + 3} ${th.cy}L${W.r + 8} ${th.cy + 4}`
+			: `M${th.cx - 4} ${W.b + 8}L${th.cx} ${W.b + 3}L${th.cx + 4} ${W.b + 8}`;
 		geo = { reach, back, backHead, w: box.width, h: box.height };
 	}
 
@@ -567,8 +577,8 @@
 	</svg>
 {/snippet}
 
-{#snippet globeMark()}
-	<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" class="globe">
+{#snippet globeMark(size: number, cls: string)}
+	<svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" class={cls}>
 		<g fill="none" stroke="currentColor" stroke-width="1.4">
 			<circle cx="12" cy="12" r="9" />
 			<ellipse cx="12" cy="12" rx="4" ry="9" />
@@ -695,32 +705,39 @@
 	<div class="machine" aria-hidden="true">
 		<div class="mwin">{@render machineWin(true)}</div>
 
-		<div class="net">
-			{@render globeMark()}
-			{@render skillChip('')}
-		</div>
+		<div class="side right">
+			<div class="net win">
+				<div class="title">
+					{@render globeMark(18, 'mark')}<span class="who">the internet</span>
+				</div>
+				<div class="netbody">
+					{@render globeMark(48, 'globe')}
+					{@render skillChip('')}
+				</div>
+			</div>
 
-		<div class="rail">
-			{@render camIcon(16, 'cam')}
-			<span class="rule"></span>
-			<span class="slot" style:width="{mini.w * mini.s}px" style:height="{mini.h * mini.s}px">
-				<span class="older">
-					{@render camIcon(12, 'o-cam')}<span class="o-time">{times[0]}</span>
-				</span>
-				{#each ['thumb', 'back'] as cls (cls)}
-					<span class={cls}>
-						<span
-							class="mini"
-							style:width="{mini.w}px"
-							style:height="{mini.h}px"
-							style:transform="scale({mini.s})">{@render machineWin(false)}</span
-						>
+			<div class="rail win">
+				<div class="title">{@render camIcon(16, 'cam')}<span class="who">snapshots</span></div>
+				<div class="railbody">
+					<span class="slot" style:width="{mini.w * mini.s}px" style:height="{mini.h * mini.s}px">
+						<span class="older">
+							{@render camIcon(12, 'o-cam')}<span class="o-time">{times[0]}</span>
+						</span>
+						{#each ['thumb', 'back'] as cls (cls)}
+							<span class={cls}>
+								<span
+									class="mini"
+									style:width="{mini.w}px"
+									style:height="{mini.h}px"
+									style:transform="scale({mini.s})">{@render machineWin(false)}</span
+								>
+							</span>
+						{/each}
+						<span class="t-time n0">{times[0]}</span>
+						<span class="t-time n1">{times[1]}</span>
 					</span>
-				{/each}
-				<span class="t-time n0">{times[0]}</span>
-				<span class="t-time n1">{times[1]}</span>
-			</span>
-			<span class="rule grow"></span>
+				</div>
+			</div>
 		</div>
 	</div>
 
@@ -748,7 +765,6 @@
 		   paper so it reads. */
 		--mode: #c2416f;
 		--rogue: #c0271c;
-		--peek: 64px;
 		position: relative;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
@@ -1072,45 +1088,42 @@
 		pointer-events: none;
 	}
 
-	/* The internet */
-	.net {
+	/* The right-hand stack: the internet above, the snapshots below, two
+	   panels in the same grammar as the laptop and the machine. */
+	.side.right {
+		flex-direction: column;
+		gap: 14px;
+	}
+	.rail.win {
+		flex: none;
+	}
+	/* The internet: a globe, and the place the skill comes out of it. */
+	.netbody {
+		position: relative;
+		flex: 1;
 		display: flex;
+		flex-direction: column;
 		align-items: center;
+		justify-content: center;
 		gap: 10px;
-		color: var(--dim);
+		padding: 18px 14px;
+		color: var(--ink);
 	}
 	.globe {
 		flex: none;
 	}
-	/* Only holds the place the skill comes out of the internet at. */
 	.net .skill {
 		visibility: hidden;
 	}
-
-	/* The snapshot rail */
-	.rail {
-		display: flex;
-		align-items: flex-start;
-		gap: 8px;
-		padding-top: 16px;
-		color: var(--dim);
-	}
-	.rail :global(.cam) {
-		flex: none;
-		margin-top: 2px;
-	}
-	.rule {
-		flex: none;
-		width: 14px;
-		margin-top: 10px;
-		border-top: 1px solid var(--rule-strong);
-	}
-	.rule.grow {
-		display: none;
+	/* The snapshots: the newest as a miniature with its time under it,
+	   the older stepped back behind it as an icon and a time. */
+	.railbody {
+		position: relative;
+		padding: 14px 14px 30px;
 	}
 	.slot {
 		position: relative;
-		flex: none;
+		display: block;
 		margin-left: var(--peek);
 	}
 	.thumb,
@@ -1271,11 +1284,12 @@
 		display: none;
 	}
 
-	/* Phone: stacked; the internet sits beside the rail. */
+	/* Phone: stacked; the internet and the snapshots share a row under
+	   the machine, with room above them for the two connectors. */
 	.hero-pic {
-		grid-template-columns: minmax(0, 1fr) auto;
-		grid-template-areas: 'lap lap' 'hop hop' 'win win' 'rail net';
-		column-gap: 16px;
+		--peek: 56px;
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas: 'lap' 'hop' 'win' 'side';
 	}
 	.machine {
 		display: contents;
@@ -1289,25 +1303,28 @@
 	.mwin {
 		grid-area: win;
 	}
-	.rail {
-		grid-area: rail;
-		min-width: 0;
-		padding-bottom: 20px;
+	.side.right {
+		grid-area: side;
+		flex-direction: row;
+		gap: 12px;
+		margin-top: 28px;
 	}
-	.net {
-		grid-area: net;
-		flex-direction: column;
-		align-items: center;
-		gap: 6px;
-		padding-top: 14px;
-		align-self: start;
+	.side.right .rail.win {
+		flex: 1;
 	}
-
 	@media (min-width: 768px) {
 		.hero-pic {
-			grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.45fr) auto;
-			grid-template-areas: 'lap hop win net' '. . rail .';
+			--peek: 64px;
+			grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.45fr) 56px minmax(0, 0.95fr);
+			grid-template-areas: 'lap hop win . side';
 			column-gap: 0;
+		}
+		.side.right {
+			flex-direction: column;
+			margin-top: 0;
+		}
+		.side.right .rail.win {
+			flex: none;
 		}
 		.hop {
 			flex-direction: row;
@@ -1329,24 +1346,6 @@
 			border: 5px solid transparent;
 			border-left: 6px solid var(--accent);
 			border-right: 0;
-		}
-		.rail {
-			padding-bottom: 0;
-		}
-		.t-time {
-			left: calc(100% + 8px);
-			top: 2px;
-		}
-		.rule.grow {
-			display: block;
-			flex: 1;
-			min-width: 10px;
-			margin-left: 50px;
-		}
-		.net {
-			align-self: end;
-			gap: 8px;
-			padding: 0 0 13px 40px;
 		}
 	}
 	@media (max-width: 480px) {

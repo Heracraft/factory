@@ -258,21 +258,25 @@ by `+page.svelte` alone; the house tokens stay in `layout.css`):
   marks where it meets each rail, as a drawing marks an intersection. The
   top bar's rule is ticked the same way.
 - **A section is a head, then a stage.** The head (`SectionHead.svelte`)
-  is a number and a one-word label in mono small caps (`01 Run`, `02
-  Machine`, `03 Toolchain`, `04 Start`, `05 Pricing`), the bold serif title
-  and one sentence, inset from the rails by `--land-x`. The stage
-  (`.landing-stage`) is sunken and fills the width between the rails, so a
-  picture reads as a bay inside the walls. The hero's picture sits on a
-  stage the same way; only the hero has no number.
+  is the bold serif title and one sentence, inset from the rails by
+  `--land-x`; no number and no running label (a "01 Run" label was tried
+  and dropped, owner, 2026-09-27: generic). The stage (`.landing-stage`)
+  is sunken and fills the width between the rails, so a picture reads as
+  a bay inside the walls. The hero's picture sits on a stage the same way.
 - **Cells, not cards.** The features (`.cells`/`.cell`), the steps
   (`.step`) and the sizes (`.tier`) are cut by the same hairlines, and the
   dividers cross the full width. Each feature picture is cropped to one
   `.shot` frame; the title and sentence under it belong to the page, not to
   the picture's component.
-- **The hero.** The headline spans the width; under it, on one row, the
-  lead on the left and the two ways in on the right (the button over the
-  install command, as one block). The blue bar under "full permissions"
-  and on the prices is unchanged.
+- **The hero.** One stack on the left edge: the headline, the lead under
+  it, then the button and the install command on one row. Nothing is
+  pushed to the right; the picture fills the width. The blue bar under
+  "full permissions" and on the prices is unchanged. The picture is three
+  panels in one grammar (owner, 2026-09-27): your laptop, your cloud
+  machine, and on the right the internet (a titled panel with a large
+  globe) over the snapshots (a titled panel the miniatures shrink into),
+  so the globe no longer floats at the edge and no snapshot hangs below.
+  The connectors cross the gap between the machine and that stack.
 - **Commands are rows.** The install command and each step's command are
   one `.cmd`: a mono row on a sunken ground with a hairline, the way a
   picture shows a row of a terminal.
@@ -282,7 +286,7 @@ by `+page.svelte` alone; the house tokens stay in `layout.css`):
 - **Type.** Display `clamp(2.75rem, 6.6vw, 5.25rem)`; section titles
   `clamp(1.9rem, 3.4vw, 2.5rem)`; cell and step titles 1.125rem serif
   600; lead `clamp(1rem, 1.3vw, 1.125rem)`; labels 11px mono, 0.14em
-  tracking, uppercase. Ink in three steps (`--ink`, `--ink-muted`,
+  tracking, uppercase (the price's "per hour"). Ink in three steps (`--ink`, `--ink-muted`,
   `--ink-faint`), redefined for the dark scheme.
 
 Everything in "Shape language" still holds: shapes encode or are absent,

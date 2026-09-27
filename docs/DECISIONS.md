@@ -7518,8 +7518,8 @@ pictures.** (owner asked for a design language built on what the landing
 already had, 2026-09-27) The pictures draw the machine as a hairline panel
 whose edge is the wall an attack stops at; the page now takes that
 drawing as its grammar: two rails the content stands between, rules that
-run wall to wall and are ticked at each rail, numbered section heads on
-paper, pictures on stages that fill the width between the rails, and
+run wall to wall and are ticked at each rail, section heads on paper,
+pictures on stages that fill the width between the rails, and
 features, steps and sizes as cells cut by the same hairlines. It lives in
 `apps/web/src/routes/landing.css`, imported by `+page.svelte` alone, over
 the house tokens in `layout.css`; `docs/LANDING.md` "The page's grammar"
@@ -7531,6 +7531,9 @@ language" are unchanged. *Rejected:* a second colour or a new typeface
 for the system (the pairing is the identity, `DESIGN-LANGUAGE.md`); cards
 with gaps for the features and sizes (a floating box is not how the
 pictures draw anything); a section label inside a picture (LANDING.md
-forbids chapter labels; the number and label are the page's running head,
-outside every stage).
+forbids chapter labels); a numbered running label on each head ("01 Run"),
+tried and sent back as generic (owner, 2026-09-27). Amended the same day:
+the hero picture's internet and snapshots stand as two titled panels
+stacked on the machine's right, so the picture is three panels of one
+grammar with nothing hanging off an edge.
 

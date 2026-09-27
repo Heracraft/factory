@@ -140,27 +140,25 @@
 					<span class="line">Let your agents run</span>
 					<span class="line">with <span class="bar">full permissions</span></span>
 				</h1>
-				<div class="hero-row">
-					<p class="lead">
-						One command puts your work on a machine of its own. The agent can wreck it, and a
-						snapshot puts it back.
-					</p>
-					<div class="hero-ctas">
-						<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
-							Sign in with GitHub
+				<p class="lead">
+					One command puts your work on a machine of its own. The agent can wreck it, and a snapshot
+					puts it back.
+				</p>
+				<div class="hero-ctas">
+					<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
+						Sign in with GitHub
+					</button>
+					<div class="cmd">
+						<span class="text">{INSTALL_COMMAND}</span>
+						<button
+							type="button"
+							class="copy"
+							onclick={copyInstall}
+							aria-label="Copy the install command"
+						>
+							{@render copyIcon()}
+							{copied ? 'Copied' : 'Copy'}
 						</button>
-						<div class="cmd">
-							<span class="text">{INSTALL_COMMAND}</span>
-							<button
-								type="button"
-								class="copy"
-								onclick={copyInstall}
-								aria-label="Copy the install command"
-							>
-								{@render copyIcon()}
-								{copied ? 'Copied' : 'Copy'}
-							</button>
-						</div>
 					</div>
 				</div>
 			</div>
@@ -170,7 +168,7 @@
 		</section>
 
 		<section class="sec">
-			<SectionHead index="01" label="Run" title="Your working state, in one command">
+			<SectionHead title="Your working state, in one command">
 				Run <code>repose run</code> in any checkout and your cloud machine picks up where your laptop
 				is, down to the uncommitted edits.
 			</SectionHead>
@@ -180,7 +178,7 @@
 		</section>
 
 		<section class="sec">
-			<SectionHead index="02" label="Machine" id="features" title="On every machine" />
+			<SectionHead id="features" title="On every machine" />
 			<ul class="cells">
 				<li class="cell">
 					<ComesBack />
@@ -219,11 +217,7 @@
 		</section>
 
 		<section class="sec">
-			<SectionHead
-				index="03"
-				label="Toolchain"
-				title="Five agents and a full toolchain on first boot"
-			>
+			<SectionHead title="Five agents and a full toolchain on first boot">
 				The agent has sudo to install anything else, and <code>repose config add</code> keeps it on every
 				rebuild.
 			</SectionHead>
@@ -233,7 +227,7 @@
 		</section>
 
 		<section class="sec">
-			<SectionHead index="04" label="Start" title="Start in three commands" />
+			<SectionHead title="Start in three commands" />
 			<ol class="steps" use:landOnView>
 				{#each steps as step, i (step.title)}
 					<li class="step">
@@ -255,7 +249,7 @@
 		</section>
 
 		<section class="sec">
-			<SectionHead index="05" label="Pricing" id="pricing" title="Pricing">
+			<SectionHead id="pricing" title="Pricing">
 				Per hour while a machine runs, capped each month.
 			</SectionHead>
 			<ul class="tiers" use:landOnView>

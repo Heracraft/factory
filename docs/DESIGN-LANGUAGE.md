@@ -74,8 +74,8 @@ palette, not chips or segmented groups:
 The landing page adds a shape set in the colours its pictures already
 used (the `--sh-*` tokens: zinc greys and ink and the blue accent), a
 blue bar under its headline and prices, a sphere drawn with SVG noise and
-a gradient, and its own page grammar (rails, ticked rules, numbered
-heads, stages, cells) in `apps/web/src/routes/landing.css`. Those exist
+a gradient, and its own page grammar (rails, ticked rules, stages,
+cells) in `apps/web/src/routes/landing.css`. Those exist
 only on `/` and are described in `LANDING.md`, "Shape language" and "The
 page's grammar". Every other page follows the rules above with no
 exception.

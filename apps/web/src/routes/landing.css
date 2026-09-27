@@ -151,30 +151,9 @@
 	}
 }
 
-/* A section's head: its number and label, the serif title, one sentence. */
+/* A section's head: the serif title and one sentence. */
 .sec-head {
 	padding-block: var(--land-y);
-}
-.sec-index {
-	display: flex;
-	align-items: center;
-	gap: 0.75rem;
-	margin-bottom: 1.5rem;
-	font-family: var(--font-mono);
-	font-size: 0.6875rem;
-	letter-spacing: 0.14em;
-	text-transform: uppercase;
-	color: var(--ink-faint);
-}
-.sec-index b {
-	font-weight: 600;
-	color: var(--ink);
-}
-.sec-index::after {
-	content: '';
-	width: 2rem;
-	height: 1px;
-	background: var(--rule-strong);
 }
 .landing-h {
 	font-family: var(--font-display);
@@ -210,23 +189,11 @@
 	padding: clamp(1rem, 3vw, 2.5rem) var(--land-x);
 }
 
-/* The hero: the headline across the width, then the lead beside the two
-   ways in, on one baseline row. */
+/* The hero: one stack on the left edge. The headline, the lead under it,
+   then the button and the install command on one row. Nothing is pushed
+   to the right; the picture below is what fills the width. */
 .hero-grid {
-	padding-block: var(--land-y);
-}
-.hero-row {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr);
-	gap: 1.75rem;
-	margin-top: 2.25rem;
-}
-@media (min-width: 1024px) {
-	.hero-row {
-		grid-template-columns: minmax(0, 6fr) minmax(0, 6fr);
-		align-items: start;
-		gap: 3.5rem;
-	}
+	padding-block: clamp(2.75rem, 5.5vw, 4.5rem) clamp(2.5rem, 5vw, 4rem);
 }
 .hero-h {
 	font-family: var(--font-display);
@@ -259,9 +226,9 @@
 		background-size: 0% 0.12em;
 	}
 }
-.hero-row .lead {
-	margin-top: 0;
-	max-width: 30rem;
+.hero-grid .lead {
+	max-width: 34rem;
+	margin-top: 1.75rem;
 }
 .hero-ctas {
 	display: flex;
@@ -269,16 +236,7 @@
 	align-items: center;
 	gap: 0.75rem;
 	min-width: 0;
-}
-@media (min-width: 1024px) {
-	/* Beside the lead: the button over the command, as one block. */
-	.hero-ctas {
-		flex-direction: column;
-		align-items: flex-start;
-	}
-	.hero-ctas .cmd {
-		max-width: 100%;
-	}
+	margin-top: 1.75rem;
 }
 
 /* A command to copy: the way a picture shows a row of a terminal. */
