@@ -293,6 +293,8 @@ def main():
     ap.add_argument("--port", type=int, default=5900)
     ap.add_argument("--password", required=True)
     ap.add_argument("--resize", help="WxH to ask the server for with SetDesktopSize")
+    ap.add_argument("--hold", type=float, default=0,
+                    help="stay connected this many seconds, asking for updates, like a viewer that is open")
     a = ap.parse_args()
 
     c = Client(a.host, a.port, a.password)
@@ -308,7 +310,17 @@ def main():
             rects, raw = c.full_update()
             c.result["resize"]["update_raw_bytes"] = raw
     c.result["final"] = {"width": c.width, "height": c.height}
-    print(json.dumps(c.result))
+    print(json.dumps(c.result), flush=True)
+    if a.hold:
+        import time
+        end = time.time() + a.hold
+        c.sock.settimeout(1)
+        while time.time() < end:
+            c.request_update(True)
+            try:
+                c.read_message()
+            except (TimeoutError, socket.timeout):
+                pass
 
 
 if __name__ == "__main__":
