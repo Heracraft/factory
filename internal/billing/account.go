@@ -68,8 +68,8 @@ func LoadAccount(ctx context.Context, pool *db.Pool, userID uuid.UUID, at time.T
 	}
 	a := Account{Handle: u.Handle, UserID: u.ID, Status: u.BillingStatus, HasCard: u.HasCard, Anchor: u.BillingAnchor,
 		PastDueSince: u.PastDueSince, SuspendedAt: u.SuspendedAt, ProjectLimit: u.ProjectLimit, XLLimit: u.XLLimit}
-	if u.StripeCustomerID != nil {
-		a.Customer = *u.StripeCustomerID
+	if u.PaddleCustomerID != nil {
+		a.Customer = *u.PaddleCustomerID
 	}
 	if u.StripeSubscriptionID != nil {
 		a.Subscription = *u.StripeSubscriptionID

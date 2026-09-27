@@ -74,8 +74,8 @@ func (s *Stripe) EnsureCustomer(ctx context.Context, userID uuid.UUID) (string, 
 		// An exempt account is never pushed to Stripe (DECISIONS I-16).
 		return "", ErrDisabled
 	}
-	if u.StripeCustomerID != nil && *u.StripeCustomerID != "" {
-		return *u.StripeCustomerID, nil
+	if u.PaddleCustomerID != nil && *u.PaddleCustomerID != "" {
+		return *u.PaddleCustomerID, nil
 	}
 	params := &stripe.CustomerCreateParams{
 		Metadata: map[string]string{"user_id": u.ID.String(), "handle": u.Handle},
@@ -360,10 +360,10 @@ func (s *Stripe) Invoices(ctx context.Context, userID string) ([]map[string]any,
 		return nil, err
 	}
 	out := []map[string]any{}
-	if u.StripeCustomerID == nil || *u.StripeCustomerID == "" {
+	if u.PaddleCustomerID == nil || *u.PaddleCustomerID == "" {
 		return out, nil
 	}
-	params := &stripe.InvoiceListParams{Customer: u.StripeCustomerID}
+	params := &stripe.InvoiceListParams{Customer: u.PaddleCustomerID}
 	params.Limit = stripe.Int64(24)
 	for inv, err := range s.c.V1Invoices.List(ctx, params) {
 		if err != nil {

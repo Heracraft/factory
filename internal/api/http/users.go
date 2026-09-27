@@ -29,7 +29,7 @@ func (s *Server) getMe(w http.ResponseWriter, r *http.Request) error {
 	// A Stripe outage must not make the user's own profile unreadable, so a
 	// failure is logged and the next /me tries again; nothing downstream
 	// needs the customer until a card is added.
-	if s.d.Customers != nil && (u.StripeCustomerID == nil || *u.StripeCustomerID == "") && u.BillingStatus != "exempt" {
+	if s.d.Customers != nil && (u.PaddleCustomerID == nil || *u.PaddleCustomerID == "") && u.BillingStatus != "exempt" {
 		if _, err := s.d.Customers.EnsureCustomer(r.Context(), u.ID); err != nil {
 			obs.Logger(r.Context(), s.d.Log).Warn("could not create the Stripe customer", "event", obs.EventStripeWebhook, "action", "customer_create", "err", err.Error())
 		} else if fresh, err := store.GetUser(r.Context(), s.d.Pool, u.ID); err == nil {
@@ -37,12 +37,15 @@ func (s *Server) getMe(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 	j := userJSON(u)
-	// The user's place on the capacity waitlist while they hold one
-	// (DECISIONS I-269); null otherwise.
+	// The user's place on the seats waitlist while they hold one: waiting,
+	// or invited with the hold still running (DECISIONS I-269, I-290);
+	// null otherwise.
 	j["waitlist"] = nil
-	if e, err := store.GetWaitlistEntry(r.Context(), s.d.Pool, u.ID); err == nil && e.AdmittedAt == nil && e.Position > 0 {
-		j["waitlist"] = map[string]any{"position": e.Position, "joined_at": e.JoinedAt}
-	} else if err != nil && !errors.Is(err, db.ErrNotFound) {
+	if e, err := store.GetWaitlistEntry(r.Context(), s.d.Pool, u.ID); err == nil {
+		if e.Position > 0 || e.Holding(time.Now()) {
+			j["waitlist"] = waitlistJSON(e)
+		}
+	} else if !errors.Is(err, db.ErrNotFound) {
 		return err
 	}
 	writeJSON(w, http.StatusOK, j)
