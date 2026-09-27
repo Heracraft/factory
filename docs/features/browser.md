@@ -3,7 +3,8 @@
 Every guest has one Chromium that agents drive, headed on a virtual
 display, and a desktop viewer that can be switched on when a human needs to
 look at or take over that same browser (DECISIONS I-246). Claude in Chrome
-is not available in a guest, and the doc says why.
+is not available in a guest, and the doc says why; `repose browser bridge`
+(I-296) lends the guest's browser tools the laptop's own Chrome instead.
 
 ## What the user sees
 
@@ -25,6 +26,20 @@ Stopped the desktop on todo-app.
 ```
 
 The desktop also stops itself after 30 minutes with no client.
+
+Lending the agents the laptop's Chrome:
+
+```
+$ repose browser bridge
+Chrome 144 → todo-app: the agents there browse in your Chrome now, with your logins. Ctrl-C hands them back the machine's browser.
+Chrome asks you to allow each new connection.
+An agent on todo-app is in your Chrome.
+^C
+Bridge closed. The agents on todo-app are back on the machine's browser.
+```
+
+`repose run --bridge` and `repose attach --bridge` keep the same bridge
+up beside the attach, reporting through tmux messages.
 
 ## What is in the guest
 
@@ -100,33 +115,87 @@ subscription login, and connects through Anthropic's relay from that
 browser. The guest has no such Chrome and the extension cannot be bridged
 from the laptop today. Agents that need browsing use Playwright MCP or
 chrome-devtools-mcp instead, which cover navigation, forms, screenshots,
-console and network capture.
+console and network capture; `repose browser bridge` points those two at
+the laptop's Chrome when a job needs the user's own logins.
 
-## Not built: `repose browser bridge`
+## `repose browser bridge` (DECISIONS I-296)
 
-The command is reserved: it prints that it is not available yet and exits 0.
+The laptop's Chrome, driven by the agents on a guest, for as long as the
+command runs. Three parts, none of which the agent sees:
 
-For the "open Chrome and go to my thing" case while the laptop is open:
+1. **The laptop's Chrome.** Chrome 144 and later has its own switch,
+   `chrome://inspect/#remote-debugging`: on, Chrome starts a DevTools
+   server on a random port and writes the port and the browser's
+   websocket path (an unguessable id) to `DevToolsActivePort` in the
+   profile directory (`~/Library/Application Support/Google/Chrome` on
+   macOS, `~/.config/google-chrome` on Linux, `%LOCALAPPDATA%\Google\Chrome\User
+   Data` on Windows; `--user-data-dir` names another). That server speaks
+   websocket only (every HTTP request gets 404) and Chrome asks the user
+   to allow each connection. The CLI reads the file and checks the port
+   answers; when the switch is off it opens the page in Chrome and polls
+   for five minutes. `--cdp URL` bridges any DevTools server as is (a
+   browser started with `--remote-debugging-port`), read through its
+   `/json/version`.
+2. **The front**, a listener on the laptop's loopback that the tunnel
+   reaches. It answers `/json/version` itself with the websocket URL at
+   the address the request came to (the guest's `127.0.0.1:9224`),
+   because that is how Playwright MCP (`--cdp-endpoint`) and
+   chrome-devtools-mcp (`--browserUrl`) discover the websocket and
+   Chrome's own server does not answer it; every other request goes to
+   Chrome byte for byte, the websocket upgrade included. It counts the
+   upgrades: each is an MCP server attaching, and the CLI says so.
+3. **The tunnel**: `ssh -o ExitOnForwardFailure=yes -R
+   127.0.0.1:9226:127.0.0.1:<front> <slug>.repose repose-guest-profile
+   browser bridge hold`, on its own connection (not the ControlMaster,
+   whose forwards outlive the command). The hold runs
+   `repose-browser-bridge on`, which stops `repose-browser.socket` and its
+   proxy and starts `repose-browser-bridge.socket` on the same 9224, whose
+   proxy goes to 9226; prints `on`; then waits for its stdin to close
+   (the CLI's pipe, closed on Ctrl-C; or the session sshd gives up on, two
+   minutes after a laptop sleeps) or for the 9226 listener to vanish,
+   checked every five seconds; and switches back on exit. Stopping a proxy
+   ends the connections the MCP servers hold through it, so their next
+   call reconnects through 9224 to whichever browser is there now (I-246's
+   reconnect). The CLI runs `bridge release` first (kills the sshd session
+   holding 9226 from an earlier bridge, so a new bridge takes over from a
+   sleeping laptop's) and `bridge stop` after, belt and braces.
 
-1. The CLI starts or finds the laptop's Chrome with a DevTools port
-   (`--remote-debugging-port`) on localhost.
-2. It opens an SSH reverse tunnel from a guest port to that port.
-3. It rewrites the guest's `playwright` and `chrome-devtools` MCP entries to
-   attach to `http://127.0.0.1:<port>` (`--cdp-endpoint`, `--browserUrl`)
-   for the life of the CLI process, restoring the guest-browser entries on
-   exit.
+The guest side is `repose-browser-bridge on|off|status|tunnel|release`
+(browser.nix), and `repose-guest-profile browser bridge
+start|stop|status|release|hold` for the CLI. The desktop idle check also
+switches back a bridge whose tunnel listener is gone, so a guest is never
+left with an endpoint that refuses every connection. 9226 is a platform
+port, never auto-forwarded.
 
-The agent then drives the laptop's real browser, with the user's sessions
-and extensions. It works only while the laptop is open and the tunnel is
-up; the doc says so and the CLI says so.
+What it is not: the guest's browser profile is untouched, nothing from the
+laptop's Chrome is stored on the guest or the api, and the tunnel is
+loopback to loopback at both ends. What the user lends: while the bridge
+is up, any process on the guest can drive that Chrome; Chrome's own
+per-connection dialog is the check on that, and the docs say so.
+
+Behaviour that must hold (guest-desktop VM test, `TestBridgeEndToEnd`):
+
+- `bridge start` makes both MCP servers' next call land in the browser
+  at 9226 without a restart; `bridge stop` brings the next call back to
+  the guest's browser, which kept its tabs.
+- A running MCP server follows the switch on its next call, both ways.
+- `hold` lasts exactly as long as its stdin, or until the 9226 listener
+  is gone, and switches back either way.
+- The idle check switches back a bridge with no listener.
+- Through a real ssh with `-R` against a fake guest, a client on the
+  guest's side sees `/json/version` name `ws://127.0.0.1:9224/...` and
+  its upgrade reach the laptop's server; ending the command ends the hold
+  and the listener. A held port is reported as another bridge, not as an
+  ssh warning.
 
 ## Depends on
 
 Workstreams 02 (packages, MCP registration, units, slice limits), 07 (`open
---desktop`, port forward), 04 (start/stop units, DISPLAY export via guestd
-Exec).
+--desktop`, port forward, `browser bridge`), 04 (start/stop units, DISPLAY
+export via guestd Exec).
 
 ## Deferred
 
-`repose browser bridge`. Browserbase or another hosted browser as an
-option. GPU-accelerated rendering (no GPU guests).
+Browserbase or another hosted browser as an option. GPU-accelerated
+rendering (no GPU guests). Bridging Claude in Chrome itself (the extension
+speaks to Anthropic's relay, not to a port).

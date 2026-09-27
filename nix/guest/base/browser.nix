@@ -5,7 +5,11 @@
 # DevTools connection, and both MCP servers attach to it there, so
 # `repose open --desktop` shows what the agent is doing and the user can
 # take over in the same window. Its profile persists in
-# ~/.local/share/repose/browser. That browser runs in the system slice
+# ~/.local/share/repose/browser. While `repose browser bridge` is on
+# (DECISIONS I-296), the same endpoint is served by
+# repose-browser-bridge.socket instead, whose proxy reaches the laptop's
+# own Chrome through the CLI's reverse tunnel on 127.0.0.1:9226; the MCP
+# servers notice nothing but a reconnect. That browser runs in the system slice
 # repose-browser.slice; the MCP servers and any chromium a user starts run
 # in the per-user slice of the same name, so a runaway page cannot take the
 # agent down with it. The ceiling is a share of the guest's memory, which
@@ -25,8 +29,64 @@ let
   # (internal/cli/forward.go).
   cdpPort = 9224;
   backendPort = 9225;
+  # The laptop's end of `repose browser bridge` (DECISIONS I-296): the CLI
+  # reverse-tunnels its Chrome to this port, and while the bridge is on,
+  # 9224 is served by repose-browser-bridge.socket, which proxies here
+  # instead of to the machine's own Chromium. The MCP servers keep their
+  # one endpoint; the switch is which proxy answers it.
+  bridgePort = 9226;
   cdpUrl = "http://127.0.0.1:${toString cdpPort}";
   profileDir = "/home/dev/.local/share/repose/browser";
+
+  # repose-browser-bridge on|off|status|tunnel: which proxy answers 9224.
+  # `on` and `off` need root (repose-guest-profile runs them with sudo);
+  # `status` and `tunnel` do not. Stopping a proxy ends the connections
+  # the MCP servers hold through it, so their next call reconnects
+  # through 9224 to whichever browser is there now (both servers
+  # reconnect when their browser is gone, I-246).
+  bridge = pkgs.writeShellApplication {
+    name = "repose-browser-bridge";
+    runtimeInputs = [ pkgs.systemd pkgs.iproute2 pkgs.coreutils pkgs.gnugrep ];
+    text = ''
+      case "''${1:-}" in
+        on)
+          systemctl stop repose-browser-proxy.service repose-browser.socket
+          systemctl start repose-browser-bridge.socket
+          ;;
+        off)
+          systemctl stop repose-browser-bridge-proxy.service repose-browser-bridge.socket
+          systemctl start repose-browser.socket
+          ;;
+        status)
+          if systemctl is-active --quiet repose-browser-bridge.socket; then echo on; else echo off; fi
+          ;;
+        tunnel)
+          # Is a laptop's end listening: sshd's listener for the
+          # reverse forward, gone when the ssh that carried it ended.
+          ss -Hltn "sport = :${toString bridgePort}" | grep -q LISTEN
+          ;;
+        release)
+          # Make room for a new bridge: end the ssh session that holds
+          # the port from before (a laptop that slept keeps its listener
+          # until sshd's ClientAlive gives up on it, two minutes). The
+          # session process runs as dev, so dev sees and may kill it.
+          for pid in $(ss -Hltnp "sport = :${toString bridgePort}" | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u); do
+            kill "$pid" 2>/dev/null || true
+          done
+          for _ in $(seq 1 20); do
+            ss -Hltn "sport = :${toString bridgePort}" | grep -q LISTEN || exit 0
+            sleep 0.1
+          done
+          echo "port ${toString bridgePort} is still held" >&2
+          exit 1
+          ;;
+        *)
+          echo "usage: repose-browser-bridge on|off|status|tunnel|release" >&2
+          exit 64
+          ;;
+      esac
+    '';
+  };
 
   # Run a program inside the user's browser slice when a user manager is
   # reachable, else run it directly. `--scope` keeps stdio, which the MCP
@@ -123,6 +183,7 @@ in
     playwrightMcp
     chromeDevtoolsMcp
     scope
+    bridge
   ];
 
   environment.variables = {
@@ -190,9 +251,34 @@ in
   systemd.sockets.repose-browser = {
     description = "repose: the agents' browser DevTools endpoint on 127.0.0.1:${toString cdpPort}";
     wantedBy = [ "sockets.target" ];
+    conflicts = [ "repose-browser-bridge.socket" ];
     socketConfig = {
       ListenStream = "127.0.0.1:${toString cdpPort}";
       Service = "repose-browser-proxy.service";
+    };
+  };
+
+  # The same endpoint while `repose browser bridge` is on (I-296): started
+  # by repose-browser-bridge on, never at boot. Its proxy reaches the
+  # laptop's Chrome through sshd's reverse-forward listener on
+  # 127.0.0.1:9226; when the tunnel is gone, a connection is refused at
+  # once and the MCP server reports it, until the desktop idle check (or
+  # the bridge's own exit) switches the endpoint back.
+  systemd.sockets.repose-browser-bridge = {
+    description = "repose: the DevTools endpoint on 127.0.0.1:${toString cdpPort}, bridged to the laptop's Chrome";
+    conflicts = [ "repose-browser.socket" ];
+    socketConfig = {
+      ListenStream = "127.0.0.1:${toString cdpPort}";
+      Service = "repose-browser-bridge-proxy.service";
+    };
+  };
+
+  systemd.services.repose-browser-bridge-proxy = {
+    description = "repose: proxy ${toString cdpPort} to the laptop's Chrome on 127.0.0.1:${toString bridgePort}";
+    serviceConfig = {
+      ExecStart = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd 127.0.0.1:${toString bridgePort}";
+      PrivateTmp = true;
+      DynamicUser = true;
     };
   };
 

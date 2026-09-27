@@ -39,11 +39,13 @@ You are `dev`, with passwordless `sudo`. The checkout is under `/home/dev`, and 
 - The user's secrets are environment variables in your shell and files in `/run/repose/secrets/`. <!-- /docs/secrets#store-an-api-key -->
 - Never print, log or commit a secret's value, and never write one into the repository. Refer to it by name, as `$NAME`. <!-- /docs/secrets#store-an-api-key -->
 - If you need a secret that isn't set, ask the user to run `repose secrets set NAME` on their laptop, or `repose secrets import` to set every line of a `.env` file there. New values reach new shells; restart a running server to pick one up. <!-- /docs/secrets#store-an-api-key -->
+- The user's Vercel login is not copied here. If the Vercel CLI says it isn't logged in, ask the user to log in to Vercel on this machine, or to store a team-scoped token with `repose secrets set VERCEL_TOKEN` on their laptop. <!-- /docs/secrets#logins-copied-from-your-laptop -->
 
 ## Browser
 
 - Drive a browser with the `playwright` or `chrome-devtools` MCP tools when you have them (Claude Code does), or with Playwright from code. Its browsers are installed; skip `npx playwright install`. <!-- /docs/machine#browser -->
 - The `playwright` and `chrome-devtools` tools share one browser, which the user sees live when they run `repose open --desktop` on their laptop. For a step only a person can do (a captcha, a passkey, a login), ask them to open the desktop and do it in that browser; its logins are kept. <!-- /docs/machine#browser -->
+- While the user runs `repose browser bridge` on their laptop, those same two tools drive the user's own Chrome there instead, with their logins and extensions; the switch happens on your next call, nothing restarts. `repose-guest-profile browser bridge status` prints on while it does, off otherwise. A site the user is logged in to on their laptop needs that; ask them for the bridge rather than for their password. <!-- /docs/machine#use-your-own-chrome --> <!-- needs: repose-guest-profile -->
 
 ## Memory and disk
 

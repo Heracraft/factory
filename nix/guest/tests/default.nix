@@ -1139,6 +1139,72 @@ in
           prof = guest.succeed("sudo -u dev repose-guest-profile desktop status").strip()
           assert prof == "stopped", prof
 
+      # `repose browser bridge` (DECISIONS I-296): the laptop's Chrome at
+      # the tunnel's end is a headless Chromium on 9226, where sshd's
+      # reverse-forward listener would be. The MCP servers keep their one
+      # endpoint; what changes is which browser answers it.
+      def bridge(op):
+          return guest.succeed(f"sudo -u dev repose-guest-profile browser bridge {op}").strip()
+
+      def tabs(port):
+          return guest.succeed(f"curl -sf http://127.0.0.1:{port}/json/list")
+
+      with subtest("browser bridge: the endpoint switches to the laptop's Chrome, and back"):
+          guest.succeed("systemd-run --unit laptop-chrome -p User=dev -p Environment=HOME=/home/dev ${pkgs.chromium}/bin/chromium --headless --user-data-dir=/tmp/laptop-chrome --remote-debugging-port=9226 --no-first-run about:blank")
+          guest.wait_for_open_port(9226)
+          assert bridge("status") == "off"
+          bridge("start")
+          assert bridge("status") == "on"
+          guest.succeed("systemctl is-active repose-browser-bridge.socket")
+          guest.fail("systemctl is-active repose-browser.socket")
+          out = mcp("playwright", ("browser_navigate", {"url": page + "?bridged"}))
+          assert "?bridged" in out, out
+          out = mcp("chrome-devtools", ("list_pages", {}))
+          assert "?bridged" in out and "?after" not in out, out
+          # The laptop's browser has the new tab; the machine's still has its own.
+          assert "?bridged" in tabs(9226) and "?bridged" not in tabs(9225), (tabs(9226), tabs(9225))
+          bridge("stop")
+          assert bridge("status") == "off"
+          guest.succeed("systemctl is-active repose-browser.socket")
+          guest.fail("systemctl is-active repose-browser-bridge.socket")
+          out = mcp("playwright", ("browser_tabs", {"action": "list"}))
+          assert "?after" in out and "?bridged" not in out, out
+
+      with subtest("browser bridge: a running MCP server follows the switch on its next call"):
+          out = mcp("playwright",
+                    ("browser_tabs", {"action": "list"}),
+                    ("!sh", {"cmd": "sudo -u dev repose-guest-profile browser bridge start"}),
+                    ("browser_tabs", {"action": "list"}),
+                    ("!sh", {"cmd": "sudo -u dev repose-guest-profile browser bridge stop"}),
+                    ("browser_tabs", {"action": "list"}))
+          blocks = out.split("=== browser_tabs")[1:]
+          assert len(blocks) == 3, out
+          assert "?after" in blocks[0] and "?bridged" not in blocks[0], blocks[0]
+          assert "?bridged" in blocks[1] and "?after" not in blocks[1], blocks[1]
+          assert "?after" in blocks[2] and "?bridged" not in blocks[2], blocks[2]
+
+      with subtest("browser bridge: hold lasts as long as its stdin, then switches back"):
+          guest.succeed("systemd-run --unit hold1 -p User=dev -p Environment=HOME=/home/dev bash -lc 'sleep 4 | repose-guest-profile browser bridge hold > /tmp/hold.out'")
+          guest.wait_until_succeeds("grep -q on /tmp/hold.out", timeout=20)
+          assert bridge("status") == "on"
+          guest.wait_until_succeeds("test \"$(sudo -u dev repose-guest-profile browser bridge status)\" = off", timeout=30)
+
+      with subtest("browser bridge: hold ends when the tunnel's listener is gone"):
+          guest.succeed("systemd-run --unit hold2 -p User=dev -p Environment=HOME=/home/dev bash -lc 'sleep 60 | repose-guest-profile browser bridge hold > /tmp/hold2.out'")
+          guest.wait_until_succeeds("grep -q on /tmp/hold2.out", timeout=20)
+          guest.succeed("systemctl stop laptop-chrome.service")
+          guest.wait_until_succeeds("test \"$(sudo -u dev repose-guest-profile browser bridge status)\" = off", timeout=30)
+          guest.succeed("systemctl stop hold2.service 2>/dev/null || true")
+
+      with subtest("browser bridge: the idle check switches back a bridge whose tunnel is gone"):
+          bridge("start")
+          assert bridge("status") == "on"
+          guest.succeed("systemctl start repose-desktop-idle-check.service")
+          assert bridge("status") == "off"
+          guest.succeed("systemctl is-active repose-browser.socket")
+          out = mcp("chrome-devtools", ("list_pages", {}))
+          assert "?after" in out, out
+
       with subtest("the idle check stops the unused browser, and the display follows"):
           guest.succeed("touch -d '-31 minutes' /run/repose/desktop/last-client /run/repose/desktop/last-cdp")
           guest.succeed("systemctl start repose-desktop-idle-check.service")

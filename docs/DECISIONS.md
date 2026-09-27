@@ -7872,3 +7872,121 @@ dynamically inserted meta tag on the billing page alone (a meta CSP
 cannot be withdrawn on the next client-side navigation, so it would apply
 to the rest of the session anyway, unstated); keeping the Cost card with
 three zeros.
+**I-296. `repose browser bridge` lends the guest's browser tools the
+laptop's own Chrome, through Chrome's DevTools switch, a front that
+answers `/json/version`, and a reverse tunnel whose remote command holds
+the guest's endpoint switched.** (worktree session, owner asked for "the
+Chrome reverse bridge" as a launch feature, 2026-09-27) The reserved
+command is built, and not the way features/browser.md sketched it. That
+sketch rewrote the guest's `playwright` and `chrome-devtools` MCP entries
+to a tunnelled port for the life of the CLI; an MCP entry is read when
+the agent starts, so the agent would have had to be restarted twice, and
+a CLI that died mid-way left the entries pointing at nothing. Now the
+entries never change: the guest's endpoint 127.0.0.1:9224 is a socket
+unit, and the bridge swaps which socket unit holds it.
+`repose-browser-bridge on` stops `repose-browser.socket` and its proxy
+and starts `repose-browser-bridge.socket`, whose `systemd-socket-proxyd`
+goes to 127.0.0.1:9226, where the guest's sshd listens for the CLI's `-R`;
+`off` is the reverse. Stopping a proxy ends the connections the MCP
+servers hold through it, and both reconnect on their next call (I-246),
+so a running agent switches browsers with nothing restarted, both ways.
+The guest side lives exactly as long as the tunnel: the ssh's remote
+command is `repose-guest-profile browser bridge hold`, which switches on,
+prints `on`, waits for its stdin to close or for the 9226 listener to go,
+and switches off in its EXIT trap; the desktop idle check switches off
+any bridge without a listener, for the case where nothing else did.
+The laptop side: Chrome 144's `chrome://inspect/#remote-debugging`
+writes `DevToolsActivePort` (port, and a websocket path with an
+unguessable id) in the profile directory, the same file puppeteer's
+`channel` connect and chrome-devtools-mcp's `--autoConnect` read; the CLI
+reads it, checks the port answers, and when the switch is off opens the
+page in Chrome and polls for five minutes. That server is websocket only
+(every HTTP request is 404), and Playwright MCP's `--cdp-endpoint` and
+chrome-devtools-mcp's `--browserUrl` both discover the websocket through
+`GET /json/version`; so the CLI's front, the port the tunnel reaches,
+answers that one request itself with `ws://<Host>/devtools/browser/<id>`
+(the Host being the guest's 127.0.0.1:9224, which leads back through the
+tunnel) and passes every other request to Chrome byte for byte. `--cdp
+URL` bridges any DevTools server through its own `/json/version`;
+`--user-data-dir` names another profile. Chrome asks the user to allow
+each connection in switch mode and shows its "controlled by automated
+test software" bar; the docs say what the user lends (any process on the
+guest, every site the Chrome is logged in to) and that it only lasts
+while the laptop is awake. `--bridge` on `run` and `attach` runs the same
+bridge in the session helper. 9226 joins the platform ports never
+auto-forwarded. *Rejected:* rewriting the MCP entries (above); the CLI
+launching a Chrome of its own with a repose profile (a second profile has
+none of the logins that are the point; `--cdp` covers whoever wants
+that); a Unix-socket reverse forward, which sshd's
+`StreamLocalBindUnlink` would have made take over from a stale bridge
+for free (the gateway relays `forwarded-tcpip` channels only, and an edge
+change for this was not worth a launch dependency; `bridge release`
+kills the earlier session's sshd process instead, which runs as dev);
+bridging Claude in Chrome itself (the extension talks to Anthropic's
+relay, not to a port); waiting for a chrome-devtools-mcp `--autoConnect`
+in the guest (it reads a file on the machine it runs on). Evidence:
+`TestBridgeEndToEnd` runs a real ssh `-R` against the fake guest
+(internal/testguest now answers `tcpip-forward`), `TestCDPFront...`
+covers the front, and the guest-desktop VM test's five bridge subtests
+cover the swap, a running server following it, `hold`'s two ends and
+the idle guard.
+
+**I-297. The user docs have a Tutorials section: one job per page, in
+the order a new user meets them.** (owner, 2026-09-27: "a tutorial
+section with three things", and the git workflow, and the conductor)
+The reference pages say what each command does; nobody arriving from the
+landing page reads them in order. Tutorials are pages that each get a
+user through one thing they came for, with real commands and real
+output, and link to the reference for the rest: git with repose (what
+travels, what comes back, the `repose` remote), watching the agent's
+browser, lending it your Chrome (I-296), a git workflow for several
+agents, and running a swarm with a conductor session (`ops/ORCHESTRATION.md`
+in user terms). The section sits between "Using repose" and "Account" in
+`apps/web/src/lib/docs.ts`'s `SECTIONS`; the quickstart's "Next" list
+points at it. A tutorial states only behaviour the reference already
+documents, so `docs_test.go`'s rule (a command exists only if `cli.md`
+names it) keeps holding: the tutorials add no names. *Rejected:* one
+long "guide" page (the landing sends a visitor to one job, and a page
+per job is what search and the sidebar can point at); moving the how-to
+paragraphs out of the reference pages (they answer the reader who is
+already there).
+
+**I-298. The Vercel CLI's login stays on the laptop.** (owner request,
+2026-09-27) This amends the I-195..I-205 list, which added the Vercel
+CLI's `auth.json` to the logins `repose run` copies (proposal item 3; it
+never had an entry of its own, and `creds.go` cited I-205, the trial
+decision). That file holds a token for the whole Vercel account: every
+team and every project the user has, not just this one. An agent running
+with full permissions on the machine can deploy, delete projects or read
+the env vars of unrelated projects with it, and with open egress it can
+take the token off the machine. The PocketOS incident (April 2026) is this
+class: an agent found a root-scoped Railway token in an unrelated file and
+deleted a production database and its backups in one API call. A snapshot
+undoes none of that. The research is in `reports/Repose credentials
+without a firewall.md` §4 (it ranks deploy tokens second, after GitHub,
+and calls this the easiest fix) and `reports/Repose credential proxy
+research.md` (a proxy would inject the same token, so only scope helps).
+So the row leaves the copied list. A user who wants Vercel on the machine
+has two existing paths, and no new flag or config key: `vercel login` in
+the guest (the file lands on the volume like any file the user writes,
+and the copy rule never touches it since the laptop no longer sends one),
+or a token scoped to one team with an expiry, stored as `repose secrets
+set VERCEL_TOKEN`, which the Vercel CLI reads from the environment.
+Guests that already hold a copy: `run` sends the SHA-256 of the laptop's
+file (never its bytes) and the guest removes
+`~/.local/share/com.vercel.cli/auth.json` only while its SHA-256 is the
+same, printing one notice; a login made in the guest, or a copy the
+guest's CLI has since rewritten, differs and is left, and the public docs
+say how to delete it by hand. The creds marker version moves to `creds-2`
+so every guest takes the logins' part once more; after that the removal
+is a no-op. Snapshots taken before keep the copy; the docs say to revoke
+that token to be sure. gh's login is unchanged here; scoping it is a
+separate decision. `TestSyncCredentialsLeavesVercelsLoginHome`.
+*Rejected:* an opt-in knob (`carry_vercel` or a flag; the two paths above
+already exist, and a knob would keep the full-account token one line
+away); leaving old copies in place (the risk is the same whether the copy
+is new or old); removing any file at that path (it would delete a login
+the user made in the guest); comparing mtimes (a rotated laptop token
+makes them ambiguous); minting a project-scoped Vercel token per machine
+(needs a full-account parent token in repose's database, a bigger change
+the research puts after the user study).

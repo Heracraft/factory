@@ -127,9 +127,12 @@ func TestSessionHelperCarriesTheZone(t *testing.T) {
 	}
 }
 
-// vercel's login travels like gh's: from macOS's Application Support or
-// Linux's XDG data directory to the guest's XDG data directory, 0600.
-func TestSyncCredentialsCarriesVercelsLogin(t *testing.T) {
+// I-298: the Vercel CLI's login is a token for the whole account and stays
+// on the laptop. A copy an earlier run made (the guest's file is the
+// laptop's, byte for byte) is removed once, with a notice; a login made in
+// the guest is kept; the token itself never enters the stream.
+func TestSyncCredentialsLeavesVercelsLoginHome(t *testing.T) {
+	const token = `{"token":"NEVER-VERCEL-TOKEN"}`
 	for _, tc := range []struct{ goos, laptop string }{
 		{"darwin", "Library/Application Support/com.vercel.cli/auth.json"},
 		{"linux", ".local/share/com.vercel.cli/auth.json"},
@@ -142,23 +145,61 @@ func TestSyncCredentialsCarriesVercelsLogin(t *testing.T) {
 			if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(p, []byte(`{"token":"vercel-token"}`), 0o600); err != nil {
+			if err := os.WriteFile(p, []byte(token), 0o600); err != nil {
 				t.Fatal(err)
-			}
-			copied, err := syncCredentials(context.Background(), f.target, home, f.local, credSyncOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if strings.Join(copied, ",") != "vercel,git" {
-				t.Fatalf("copied = %v", copied)
 			}
 			g := filepath.Join(f.guestHome, ".local", "share", "com.vercel.cli", "auth.json")
-			b, err := os.ReadFile(g)
-			if err != nil || string(b) != `{"token":"vercel-token"}` {
-				t.Fatalf("guest file = %q %v", b, err)
+			var stream strings.Builder
+			observePayload = func(script string, tarball []byte) { stream.WriteString(script); stream.Write(tarball) }
+			t.Cleanup(func() { observePayload = nil })
+			sync := func() ([]string, *carryOutcome) {
+				t.Helper()
+				copied, o, err := syncCredentialsAndCarry(context.Background(), f.target, home, f.local, credSyncOptions{}, carryOptions{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return copied, o
 			}
-			if info, _ := os.Stat(g); info.Mode().Perm() != 0o600 {
-				t.Errorf("mode %v", info.Mode().Perm())
+
+			// A fresh guest gets no Vercel login.
+			copied, o := sync()
+			if strings.Join(copied, ",") != "git" || len(o.Warnings) != 0 {
+				t.Fatalf("copied = %v, warnings = %v", copied, o.Warnings)
+			}
+			if fileExists(g) {
+				t.Fatal("the Vercel login reached the guest")
+			}
+
+			// The copy an earlier CLI made is removed, and said so once.
+			if err := os.MkdirAll(filepath.Dir(g), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(g, []byte(token), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, o = sync()
+			if fileExists(g) {
+				t.Fatal("the old copy is still in the guest")
+			}
+			if len(o.Warnings) != 1 || o.Warnings[0] != retiredCredNotice {
+				t.Fatalf("warnings = %q", o.Warnings)
+			}
+			if _, o = sync(); len(o.Warnings) != 0 {
+				t.Fatalf("second run warnings = %q", o.Warnings)
+			}
+
+			// A login made in the guest is the user's, and stays.
+			if err := os.WriteFile(g, []byte(`{"token":"made-in-the-guest"}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, o = sync(); len(o.Warnings) != 0 {
+				t.Fatalf("warnings = %q", o.Warnings)
+			}
+			if b, err := os.ReadFile(g); err != nil || string(b) != `{"token":"made-in-the-guest"}` {
+				t.Fatalf("guest login = %q %v", b, err)
+			}
+			if strings.Contains(stream.String(), "NEVER-VERCEL-TOKEN") {
+				t.Fatal("the laptop's Vercel token is in the stream")
 			}
 		})
 	}

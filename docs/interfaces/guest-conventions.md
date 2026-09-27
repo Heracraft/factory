@@ -197,7 +197,6 @@ repose-ask [--options A,B,C] [--timeout 30m] [--agent NAME] QUESTION...
 | `~/.config/gh/hosts.yml` | `/home/dev/.config/gh/hosts.yml` | dev 0600 |
 | `~/.codex/auth.json` | `/home/dev/.codex/auth.json` | dev 0600 |
 | `~/.local/share/opencode/auth.json` | `/home/dev/.local/share/opencode/auth.json` | dev 0600 |
-| `~/Library/Application Support/com.vercel.cli/auth.json` (macOS), `~/.local/share/com.vercel.cli/auth.json` (Linux) | `/home/dev/.local/share/com.vercel.cli/auth.json` (the Vercel CLI's login, proposal item 3; new in this release) | dev 0600 |
 | `git config user.name/email` | inside the carried git config below (DECISIONS I-195). The old shape, the two keys written straight into `/home/dev/.gitconfig` with `git config --global`, is what a CLI before I-195 still does, and stays accepted: the first carry removes them from `~/.gitconfig` when they equal the carried values, so they cannot shadow later changes | dev 0644 |
 | (when gh travelled, whatever the project's remote) | `/home/dev/.gitconfig`: `url.https://github.com/.insteadOf` with the values `git@github.com:` and `ssh://git@github.com/` (each set by value with `--replace-all`, so other values under the key stay), and `credential.https://github.com.helper = !gh auth git-credential`, so the SSH `origin` guestd sets, and any other github SSH URL, is pushed and fetched over HTTPS with gh's login: the laptop's agent is not forwarded (DECISIONS I-150, I-247). The old shape, only `git@github.com:` and only for a github.com remote, is what a CLI before I-247 writes and stays valid | dev 0644 |
 
@@ -205,6 +204,16 @@ When the laptop's gh keeps its token in the system keyring (gh 2.40+),
 the `hosts.yml` that travels carries that token as `oauth_token` under
 `github.com:`; the laptop's own file is not changed. All of this is one
 ssh, before the git steps of the sync.
+
+The Vercel CLI's login is not copied (DECISIONS I-298; a CLI before it
+copied `~/Library/Application Support/com.vercel.cli/auth.json` on macOS,
+`~/.local/share/com.vercel.cli/auth.json` on Linux, to
+`/home/dev/.local/share/com.vercel.cli/auth.json`). When the laptop has
+that file, the same ssh sends its SHA-256, never its bytes, and the guest
+removes `/home/dev/.local/share/com.vercel.cli/auth.json` only if its
+SHA-256 is the same, printing `#warn` once; any other file there (a
+`vercel login` made in the guest) is left alone. The creds marker's
+version moved to `creds-2` so every guest takes this part once.
 
 Never `~/.claude/.credentials.json` (it is the login share's, below),
 never `~/.gemini/oauth_creds.json`
@@ -364,13 +373,16 @@ Anything the user binds on `0.0.0.0` or `127.0.0.1` (or `::`, `::1`)
 inside the guest is reachable through `repose open <port>` (SSH `-L`), and
 is forwarded automatically while a CLI is attached (DECISIONS I-199), read
 with `ss -Hltn` (iproute2, in the base). Platform-owned ports, never
-auto-forwarded: 6080, 6081, 5900, 9224, 9225 (I-246). Each attached CLI records its forwarded
+auto-forwarded: 6080, 6081, 5900, 9224, 9225 (I-246), 9226 (I-296). Each attached CLI records its forwarded
 ports in `/home/dev/.repose/forwards/<id>`; the project session's
 `status-right` is set from their union and unset when none is left.
 Nothing is exposed otherwise. The desktop listens only on `127.0.0.1`: noVNC on 6080 (the
 socket-activated entry point), websockify on 6081, VNC on 5900; the agents'
 browser's DevTools on 9224 (`repose-browser.socket`, the entry point) and
-9225 (Chromium behind it).
+9225 (Chromium behind it); 9226 is where the guest's sshd listens for the
+reverse forward of `repose browser bridge` (I-296), and while that bridge
+is on, 9224 is `repose-browser-bridge.socket`, whose proxy goes to 9226
+instead of 9225.
 `repose-prisma-engines.socket` listens on `127.0.0.1:850` (under 1024, so
 never forwarded) and answers every GET with a redirect to
 binaries.prisma.sh, a `linux-nixos` engine path rewritten to

@@ -46,6 +46,9 @@ type sessionOptions struct {
 	// Forward keeps the guest's listeners forwarded to the laptop for as
 	// long as the attach lasts (I-199); off with REPOSE_NO_FORWARD=1.
 	Forward bool `json:"forward"`
+	// Bridge keeps the laptop's Chrome bridged to the guest for as long as
+	// the attach lasts (`--bridge`, I-296).
+	Bridge bool `json:"bridge,omitempty"`
 }
 
 // startSessionHelper starts the helper for the attach that follows, and
@@ -53,7 +56,7 @@ type sessionOptions struct {
 // Windows has no multiplexing and no exec, and tests (TargetFor set) drive
 // runSession themselves.
 func startSessionHelper(e *Env, opts sessionOptions) {
-	if e.TargetFor != nil || goos() == "windows" || (!opts.Carry && !opts.Forward) {
+	if e.TargetFor != nil || goos() == "windows" || (!opts.Carry && !opts.Forward && !opts.Bridge) {
 		return
 	}
 	b, err := json.Marshal(opts)
@@ -123,9 +126,17 @@ func runSession(ctx context.Context, opts sessionOptions, alive func() bool) err
 			say(m)
 		}
 	}()
+	bridged := make(chan struct{})
+	go func() {
+		defer close(bridged)
+		if opts.Bridge {
+			runSessionBridge(ctx, t, opts.Slug, say, alive)
+		}
+	}()
 	if opts.Forward {
 		runForwards(ctx, newForwarder(t, opts.Slug, say), alive)
 	}
+	<-bridged
 	<-carried
 	close(msgs)
 	<-shown

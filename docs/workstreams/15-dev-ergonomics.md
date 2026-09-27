@@ -30,7 +30,7 @@ In the order to build them (each part is mergeable on its own):
 10. **Trial credit of one day** (I-205).
 11. Catalog menu entries for vercel, wrangler, supabase, flyctl, portless
     (proposal item 3), and vercel's login file added to the carried
-    tool-login list.
+    tool-login list (reversed by DECISIONS I-298).
 
 ## 3. Scope: does not build
 
