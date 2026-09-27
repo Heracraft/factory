@@ -7550,7 +7550,11 @@ editor's door in, the asterisk the toolchain, the star the agents; the
 footer's row is those eight in page order and nothing else, so it reads
 as the page's symbols. Sun, moon and leaf name nothing and are not
 shown. The logo is a lowercase r in the same language, a stem in ink and
-a quarter disc in blue; `static/favicon.png` is rendered from it.
+a quarter disc in blue; `static/favicon.png` is rendered from it. Same
+day: the ring is redrawn as a lens (disc, paper ring, ink pupil), since
+its four tones did not work at a title's size; and the snapshot mark
+moves with its meaning, a quarter turn when a snapshot is taken and a
+full turn back when one is restored.
 `docs/LANDING.md` "Shape language" carries the mapping. *Rejected:* the
 moon as the logo (rest fits the name, but a crescent in a header reads as
 a dark-mode toggle); keeping the unassigned shapes in the footer for

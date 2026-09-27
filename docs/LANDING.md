@@ -203,8 +203,10 @@ and underlined every heading. The page is one system:
   - *pill* is the sync, before "Your working state, in one command".
   - *halves* (the same thing above and below) is the localhost forward,
     before "Your dev server on your localhost".
-  - *ring* (an eye) is watching the agent's browser, before "Watch the
-    agent use the browser".
+  - *ring* (a lens: one disc, a paper ring, an ink pupil; the quartered
+    ring was redrawn 2026-09-27, its four tones did not work small) is
+    watching the agent's browser, before "Watch the agent use the
+    browser".
   - *arch* (a door in) is the editor over SSH, before "Open it in your
     editor".
   - *asterisk* (a wildcard) is the toolchain and anything installable,
@@ -224,7 +226,10 @@ and underlined every heading. The page is one system:
 - **The blue bar marks "full permissions" and the prices, nothing else.**
   Section headings are bold serif with no bar.
 - **One motion**: a group rises into place when it comes into view.
-  Nothing else moves. No labels on any of it. Under `prefers-reduced-motion` every shape is
+  Nothing else moves, with one exception that carries meaning (owner,
+  2026-09-27): the snapshot mark clicks a quarter turn when a snapshot is
+  taken and rewinds a full turn when one is restored, in the hero and in
+  the "Let it break" card. No labels on any of it. Under `prefers-reduced-motion` every shape is
   still and whole.
 - **The palette the landing had before the shapes, and nothing else, and
   no agent's brand colour.** The shapes, the bar and the price rules use

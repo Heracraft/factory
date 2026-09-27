@@ -72,10 +72,8 @@
 		</g>
 	{:else if kind === 'ring'}
 		<circle cx="50" cy="50" r="50" fill="var(--main)" />
-		<path d="M50 50 V16 A34 34 0 0 0 16 50 Z" fill="var(--sh-paper)" />
-		<path d="M50 50 H84 A34 34 0 0 0 50 16 Z" fill="var(--sh-light)" />
-		<path d="M50 50 H16 A34 34 0 0 0 50 84 Z" fill="var(--sh-ink)" />
-		<path d="M50 50 V84 A34 34 0 0 0 84 50 Z" fill="var(--sh-grey)" />
+		<circle cx="50" cy="50" r="30" fill="var(--sh-paper)" />
+		<circle cx="50" cy="50" r="14" fill="var(--sh-ink)" />
 	{:else if kind === 'star'}
 		<path d={SPARKLE} transform="translate(-2 -2) scale(4.3333)" fill="var(--main)" />
 	{:else if kind === 'arch'}

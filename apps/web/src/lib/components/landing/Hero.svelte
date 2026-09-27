@@ -193,6 +193,7 @@
 					utils.set(q('.skill-in'), { opacity: 0, x: 0, y: 0 });
 					utils.set(q('.priv .tg'), { opacity: 0 });
 					utils.set(q('.lines path'), { strokeDashoffset: 1, opacity: 1 });
+					utils.set(q('.rail .cam'), { rotate: 0 });
 					fire = false;
 					pic.classList.remove('wrecked');
 				}
@@ -288,7 +289,8 @@
 					};
 					const snap = (t: ReturnType<typeof createTimeline>, at: number) =>
 						t
-							.add(q('.rail .cam'), { scale: [1, 1.25, 1], duration: 420, ease: 'outQuad' }, at)
+							// The snapshot mark clicks a quarter turn: one more state kept.
+							.add(q('.rail .cam'), { rotate: '+=90', duration: 420, ease: 'outQuad' }, at)
 							.add(
 								q('.mwin .shutter'),
 								{ opacity: [0, 0.9, 0], duration: 460, ease: 'outQuad' },
@@ -434,8 +436,14 @@
 						)
 						.add(q('.skill-in'), { x: [0, 7, 0], duration: 380, ease: 'outQuad' }, T.hit)
 						.add(q('.priv .tg'), { opacity: 0, duration: 500 }, T.hit + 700)
-						// The newest snapshot comes back over the machine, work included.
+						// The newest snapshot comes back over the machine, work included;
+						// the snapshot mark rewinds a full turn as it does.
 						.add(q('.lines .ret'), { strokeDashoffset: [1, 0], duration: 300 }, T.restore)
+						.add(
+							q('.rail .cam'),
+							{ rotate: '-=360', duration: 1000, ease: 'inOutCubic' },
+							T.restore + 150
+						)
 						.set(q('.back'), { opacity: 1 }, T.restore + 250)
 						.add(q('.back'), { ...cover, duration: 800, ease: 'inOutCubic' }, T.restore + 280)
 						.add(q('.lines .ret'), { opacity: [1, 0], duration: 250 }, T.back)

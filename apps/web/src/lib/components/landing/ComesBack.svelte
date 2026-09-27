@@ -683,6 +683,22 @@
 	.tile:global(.lit) .cam {
 		color: var(--accent);
 	}
+	/* The mark clicks a quarter turn when the snapshot is taken, and
+	   rewinds a full turn when it is restored. */
+	.cam svg {
+		transition: transform 0.4s cubic-bezier(0.65, 0, 0.35, 1);
+	}
+	.cam:global(.fire) svg {
+		transform: rotate(90deg);
+	}
+	.tile:global(.lit) .cam svg {
+		animation: rewind 1s cubic-bezier(0.65, 0, 0.35, 1) both;
+	}
+	@keyframes rewind {
+		to {
+			transform: rotate(-360deg);
+		}
+	}
 	.t-time {
 		font-family: var(--font-mono);
 		font-size: 12px;
