@@ -24,12 +24,17 @@
 	let {
 		shapes,
 		beat,
-		large = false
+		large = false,
+		column = false
 	}: {
 		// A shape, or "shape:tone" to pick its tone (Shape.svelte).
 		shapes: (Kind | 'agent' | `${Kind}:${Tone}`)[];
 		beat?: { kind: Beat; n: number };
 		large?: boolean;
+		// From 768px up, a column standing on the panel's top edge instead
+		// of a row: the hero's, rising beside the headline, opposite it.
+		// Narrower, where the headline takes the full width, it stays a row.
+		column?: boolean;
 	} = $props();
 
 	const split = (s: string) => s.split(':') as [Kind | 'agent', Tone | undefined];
@@ -87,7 +92,7 @@
 	}
 </script>
 
-<div class="perch" class:large class:down aria-hidden="true" use:landOnView>
+<div class="perch" class:large class:column class:down aria-hidden="true" use:landOnView>
 	{#each shapes.map(split) as [k, tone], i (i)}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<span
@@ -147,6 +152,20 @@
 		}
 		.perch {
 			gap: 0.5rem;
+		}
+	}
+	@media (min-width: 768px) {
+		/* A column standing on the panel's top edge, rising beside the
+		   headline, opposite it. */
+		.perch.column {
+			right: 0;
+			flex-direction: column;
+			gap: 0.75rem;
+		}
+		/* Knocked over, the column's shapes fall to the right, away from
+		   the headline. */
+		.column.down .tile:not(.agent) .fall {
+			transform: rotate(64deg) translateX(6%);
 		}
 	}
 	.fall,
