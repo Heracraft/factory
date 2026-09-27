@@ -11,7 +11,7 @@
   stat on the rows themselves, and snapshots are taken along the way (a
   miniature of the machine shrinks into the snapshots panel on the right;
   the older one steps behind it as an icon and a time). Only then does it
-  reach the internet, the bare globe under the snapshots, where a
+  reach the internet, the bare sphere under the snapshots, where a
   "malicious skill" comes in. The picture is your laptop, your cloud
   machine, and on the right the snapshots panel over the globe, so nothing
   hangs off an edge. Then the agent turns red and does damage git can't
@@ -50,6 +50,7 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { agentMarks } from '$lib/components/illustrations/marks';
+	import Shape from '$lib/components/landing/Shape.svelte';
 
 	const agent = agentMarks[0];
 
@@ -546,12 +547,13 @@
 	</svg>
 {/snippet}
 
+<!-- The snapshot mark: the pinwheel of the shape set, two quarters of a
+     circle, the state before and the state after (docs/LANDING.md, "Shape
+     language"). -->
 {#snippet camIcon(size: number, cls: string)}
 	<svg viewBox="0 0 16 16" width={size} height={size} aria-hidden="true" class={cls}>
-		<g fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round">
-			<path d="M1.8 5h3l1.2-1.8h4L11.2 5h3v8h-12.4z" />
-			<circle cx="8" cy="8.8" r="2.4" />
-		</g>
+		<path d="M8 8V0A8 8 0 0 0 0 8Z" fill="currentColor" />
+		<path d="M8 8V16A8 8 0 0 0 16 8Z" fill="currentColor" opacity="0.45" />
 	</svg>
 {/snippet}
 
@@ -573,16 +575,6 @@
 			stroke-width="1.5"
 			stroke-linejoin="round"
 		/>
-	</svg>
-{/snippet}
-
-{#snippet globeMark(size: number, cls: string)}
-	<svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" class={cls}>
-		<g fill="none" stroke="currentColor" stroke-width="1.4">
-			<circle cx="12" cy="12" r="9" />
-			<ellipse cx="12" cy="12" rx="4" ry="9" />
-			<path d="M3.5 9h17M3.5 15h17" />
-		</g>
 	</svg>
 {/snippet}
 
@@ -705,7 +697,7 @@
 
 		<div class="side right">
 			<div class="rail win">
-				<div class="title">{@render camIcon(16, 'cam')}<span class="who">snapshots</span></div>
+				<div class="title">{@render camIcon(18, 'cam')}<span class="who">snapshots</span></div>
 				<div class="railbody">
 					<span class="slot" style:width="{mini.w * mini.s}px" style:height="{mini.h * mini.s}px">
 						<span class="older">
@@ -728,7 +720,13 @@
 			</div>
 
 			<div class="net">
-				{@render globeMark(52, 'globe')}
+				<span class="globe"
+					><Shape kind="sphere" /><svg viewBox="0 0 24 24" class="meridians" aria-hidden="true"
+						><g fill="none" stroke="currentColor" stroke-width="0.9"
+							><ellipse cx="12" cy="12" rx="4.2" ry="11.6" /><path d="M0.4 8h23.2M0.4 16h23.2" /></g
+						></svg
+					></span
+				>
 				{@render skillChip('')}
 			</div>
 		</div>
@@ -1096,8 +1094,21 @@
 		padding: 14px;
 		color: var(--ink);
 	}
+	/* The internet is the sphere of the shape set, with a globe's meridians
+	   drawn over it in paper so it reads as the world and not a stone. */
 	.globe {
+		position: relative;
 		flex: none;
+		width: 52px;
+		height: 52px;
+		border-radius: 50%;
+		overflow: hidden;
+	}
+	.meridians {
+		position: absolute;
+		inset: 0;
+		color: var(--sh-paper);
+		opacity: 0.8;
 	}
 	.net .skill {
 		visibility: hidden;

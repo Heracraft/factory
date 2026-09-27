@@ -7538,4 +7538,21 @@ machine's right (the snapshots titled, the internet a bare globe below
 them, no window, as it is nobody's machine), so nothing hangs off an
 edge; the rogue agent is the red mark alone, no halo; and the five
 agents' row shows the marks alone.
+**I-288. Every landing shape names a feature and appears where the
+feature is; the footer collects them; the logo is an r-mark.** (owner,
+2026-09-27: the footer's shapes "feel like they're just spawning" and the
+ring logo was sent back) Each shape stands for one thing on the page and
+is shown there first: the pinwheel is a snapshot (the hero's snapshots
+panel and miniatures, the "Let it break" card and its title), the sphere
+is the internet (the hero, with meridians over it), the pill the sync,
+halves the localhost forward, the ring the watched browser, the arch the
+editor's door in, the asterisk the toolchain, the star the agents; the
+footer's row is those eight in page order and nothing else, so it reads
+as the page's symbols. Sun, moon and leaf name nothing and are not
+shown. The logo is a lowercase r in the same language, a stem in ink and
+a quarter disc in blue; `static/favicon.png` is rendered from it.
+`docs/LANDING.md` "Shape language" carries the mapping. *Rejected:* the
+moon as the logo (rest fits the name, but a crescent in a header reads as
+a dark-mode toggle); keeping the unassigned shapes in the footer for
+completeness (that is the spawning the owner named).
 

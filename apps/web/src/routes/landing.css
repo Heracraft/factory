@@ -155,6 +155,22 @@
 .sec-head {
 	padding-block: var(--land-y);
 }
+/* A feature's shape before its title, sized to the type. */
+.head-mark,
+.cell-mark {
+	display: inline-block;
+	vertical-align: -0.06em;
+	margin-right: 0.4em;
+	line-height: 0;
+}
+.head-mark {
+	width: 0.7em;
+	height: 0.7em;
+}
+.cell-mark {
+	width: 0.85em;
+	height: 0.85em;
+}
 .landing-h {
 	font-family: var(--font-display);
 	font-size: clamp(1.9rem, 3.4vw, 2.5rem);
@@ -464,10 +480,10 @@
 	border-top: 1px solid var(--rule);
 }
 
-/* The sign-off: the whole shape set, one to a cell between the rails. */
+/* The sign-off: the page's shapes, one to a cell between the rails. */
 .frieze {
 	display: grid;
-	grid-template-columns: repeat(11, minmax(0, 1fr));
+	grid-template-columns: repeat(8, minmax(0, 1fr));
 	list-style: none;
 	margin: 0;
 	padding: 0;
@@ -479,14 +495,6 @@
 }
 .frieze li:first-child {
 	border-left: 0;
-}
-@media (max-width: 767px) {
-	.frieze {
-		grid-template-columns: repeat(6, minmax(0, 1fr));
-	}
-	.frieze li:nth-child(n + 7) {
-		display: none;
-	}
 }
 .foot {
 	display: flex;

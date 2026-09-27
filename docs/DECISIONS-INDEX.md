@@ -365,4 +365,5 @@ pointer, not a summary.
 - **I-283** No auto-mode offer on a machine in bypass mode — 2026-09-27; L7443
 - **I-284** The nothing-new check trusts the commits the last sync recorded, not the guest's ref tips — 2026-09-27; L7471
 - **I-286** The repository is `Heracraft/repose`; the old name redirects — 2026-09-27; L7503
+- **I-288** Every landing shape names a feature and appears where the feature is; the footer collects them; the logo is an r-mark — 2026-09-27; L7541
 - **I-287** The landing has a design system drawn from its pictures: rails, ticked rules, heads, stages, cells; the hero picture stacks snapshots over the internet on the right (`routes/landing.css`) — 2026-09-27; L7516

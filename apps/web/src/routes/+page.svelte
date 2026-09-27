@@ -83,20 +83,18 @@
 		{ name: 'large', vcpu: 4, ram: '8 GB', disk: '40 GB', hour: '$0.14', cap: '$99' },
 		{ name: 'xl', vcpu: 8, ram: '16 GB', disk: '80 GB', hour: '$0.28', cap: '$199' }
 	];
-	// Mostly grey, with a spot of blue every few shapes, the way the
-	// pictures use colour.
+	// The footer's row: every shape the page used, in the order it used
+	// them, so the row reads as the page's own symbols and none appears
+	// from nowhere. Mostly grey, a spot of blue, as the pictures are.
 	const frieze: [Kind, Tone][] = [
-		['sun', 'neutral'],
-		['moon', 'neutral'],
-		['asterisk', 'neutral'],
 		['pinwheel', 'accent'],
-		['arch', 'neutral'],
-		['ring', 'accent'],
-		['star', 'accent'],
-		['halves', 'neutral'],
-		['leaf', 'neutral'],
 		['sphere', 'neutral'],
-		['pill', 'neutral']
+		['pill', 'neutral'],
+		['halves', 'neutral'],
+		['ring', 'neutral'],
+		['arch', 'neutral'],
+		['asterisk', 'neutral'],
+		['star', 'accent']
 	];
 </script>
 
@@ -107,6 +105,10 @@
 		content="A disposable dev machine per project with your code, tools and secrets on it in 15 seconds, so coding agents can run with full permissions and your laptop stays out of reach."
 	/>
 </svelte:head>
+
+{#snippet cellMark(kind: Kind)}
+	<span class="cell-mark" aria-hidden="true"><Shape {kind} /></span>
+{/snippet}
 
 {#snippet copyIcon()}
 	<svg
@@ -168,7 +170,7 @@
 		</section>
 
 		<section class="sec">
-			<SectionHead title="Your working state, in one command">
+			<SectionHead shape="pill" title="Your working state, in one command">
 				Run <code>repose run</code> in any checkout and your cloud machine picks up where your laptop
 				is, down to the uncommitted edits.
 			</SectionHead>
@@ -182,7 +184,7 @@
 			<ul class="cells">
 				<li class="cell">
 					<ComesBack />
-					<h3>Let it break the whole machine</h3>
+					<h3>{@render cellMark('pinwheel')}Let it break the whole machine</h3>
 					<p>
 						Snapshots hold the whole disk: databases, installed tools, logins and uncommitted work.
 						Restore one and the machine is back in minutes.
@@ -190,7 +192,7 @@
 				</li>
 				<li class="cell">
 					<Localhost />
-					<h3>Your dev server on your localhost</h3>
+					<h3>{@render cellMark('halves')}Your dev server on your localhost</h3>
 					<p>
 						While you're attached, every port the machine listens on is on your laptop's localhost,
 						so cookies and OAuth redirects work as they do locally.
@@ -198,7 +200,7 @@
 				</li>
 				<li class="cell">
 					<Browser />
-					<h3>Watch the agent use the browser</h3>
+					<h3>{@render cellMark('ring')}Watch the agent use the browser</h3>
 					<p>
 						The agent drives Chromium on the machine and reads the console. <code
 							>repose open --desktop</code
@@ -207,7 +209,7 @@
 				</li>
 				<li class="cell">
 					<Editor />
-					<h3>Open it in your editor</h3>
+					<h3>{@render cellMark('arch')}Open it in your editor</h3>
 					<p>
 						Each machine is an SSH host named after your repo, so Neovim runs right on it and VS
 						Code, Cursor or Zed connect over SSH.
@@ -217,7 +219,7 @@
 		</section>
 
 		<section class="sec">
-			<SectionHead title="Five agents and a full toolchain on first boot">
+			<SectionHead shape="asterisk" title="Five agents and a full toolchain on first boot">
 				The agent has sudo to install anything else, and <code>repose config add</code> keeps it on every
 				rebuild.
 			</SectionHead>

@@ -183,19 +183,42 @@ and underlined every heading. The page is one system:
 - **A shape encodes something, or it isn't there.** Owner, 2026-09-27:
   shapes placed "just to have shapes" read as gimmicks, however well they
   are coloured or anchored. The model is Isotype: a shape stands for a
-  thing, and its fill or count carries a quantity. The landing has two:
+  thing, and its fill or count carries a quantity. Two shapes are
+  measures:
   - *Progress* (`Gauge.svelte`): each of the three steps is a circle
     filled a third, two thirds, then whole; grey, and the blue accent for
     the last, "done".
   - *Capacity* (`Units.svelte`): each pricing card counts its vCPUs in
     small squares (2, 4, 8), Isotype's own form for a quantity, so the
     sizes compare at a glance.
-  The hero and the section headers carry no shapes: there is nothing
-  there for one to say. A column of agent logos beside the headline was
-  tried and dropped (owner, 2026-09-27): a list of logos is a gimmick, and
-  repose is a machine for any work, not only AI.
-  The footer's row is the one place the whole set appears, as a sign-off;
-  it fits the width, and has no pie (it would read as a gauge).
+  The rest each name one feature and appear where that feature is, so
+  the footer's row is the page's own symbols and none "spawns from
+  heaven" (owner, 2026-09-27). The mapping, in page order:
+  - *pinwheel* (two quarters of a circle: the state before and after) is
+    a snapshot. It is the snapshot mark in the hero's snapshots panel and
+    on each miniature, in the "Let it break" card, and before that card's
+    title.
+  - *sphere* is the internet, in the hero, with a globe's meridians drawn
+    over it in paper.
+  - *pill* is the sync, before "Your working state, in one command".
+  - *halves* (the same thing above and below) is the localhost forward,
+    before "Your dev server on your localhost".
+  - *ring* (an eye) is watching the agent's browser, before "Watch the
+    agent use the browser".
+  - *arch* (a door in) is the editor over SSH, before "Open it in your
+    editor".
+  - *asterisk* (a wildcard) is the toolchain and anything installable,
+    before "Five agents and a full toolchain on first boot".
+  - *star* is Gemini's sparkle (`SPARKLE` in `marks.ts`) and stands for
+    the agents; it is in the toolchain box as Gemini CLI's mark.
+  Sun, moon and leaf name nothing on the page and are not shown. A shape
+  on a head or a card title sits inline before the words, sized to the
+  type (`.head-mark`, `.cell-mark`). The hero's headline carries none.
+  A column of agent logos beside the headline was tried and dropped
+  (owner, 2026-09-27): a list of logos is a gimmick, and repose is a
+  machine for any work, not only AI.
+  The footer's row is these eight, in the order the page used them, one
+  to a cell between the rails, no pie (it would read as a gauge).
 - **Anchored, never floating.** The gauges and counts sit in their line
   or card, the footer's shapes stand on its rule.
 - **The blue bar marks "full permissions" and the prices, nothing else.**
@@ -222,6 +245,10 @@ and underlined every heading. The page is one system:
 - **Where a shape and a mark are the same form, they are one.** The star
   is Gemini's sparkle (`SPARKLE` in `marks.ts`); Gemini CLI's mark in the
   toolchain box is that sparkle.
+- **The logo** (`Logo.svelte`, and `static/favicon.png` from the same
+  drawing) is a lowercase r built the way the shapes are: a stem in the
+  text's ink and a quarter disc in the blue as its shoulder. The quartered
+  ring it replaced was sent back (owner, 2026-09-27).
 - The shapes live in `landing/Shape.svelte` and draw only from the `--sh-*`
   tokens. The app's own pages never use them.
 

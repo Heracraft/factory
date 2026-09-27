@@ -1,8 +1,8 @@
 <!--
   One tile of the landing's shape language: flat geometric forms in a
   100 x 100 box, and a sphere textured with SVG noise so no image is
-  fetched. They appear together once, in the footer's row, and the ring
-  alone is the logo's mark. Colours are the pictures' own, by role
+  fetched. Each names a feature and appears where that feature is on the
+  page; the footer's row collects them in the page's order. Colours are the pictures' own, by role
   (the --sh-* tokens in routes/layout.css): two greys, ink and the blue
   accent, nothing else. Each shape has one main tone (neutral or accent); its other parts stay grey or ink, so a
   group is mostly grey with a spot of colour, the way the pictures are

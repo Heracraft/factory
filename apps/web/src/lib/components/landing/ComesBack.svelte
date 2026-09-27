@@ -343,16 +343,11 @@
 	</svg>
 {/snippet}
 
+<!-- The snapshot mark: the pinwheel of the shape set, as in the hero. -->
 {#snippet camera()}
-	<svg viewBox="0 0 20 16" width="15" height="12" aria-hidden="true">
-		<path
-			d="M1.5 4.5h4l1.6-2.5h5.8l1.6 2.5h4v9.5h-17z"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.5"
-			stroke-linejoin="round"
-		/>
-		<circle cx="10" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="1.5" />
+	<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+		<path d="M8 8V0A8 8 0 0 0 0 8Z" fill="currentColor" />
+		<path d="M8 8V16A8 8 0 0 0 16 8Z" fill="currentColor" opacity="0.45" />
 	</svg>
 {/snippet}
 
