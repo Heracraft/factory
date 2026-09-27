@@ -11,7 +11,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/heracraft/repose/internal/ca/testca"
@@ -22,8 +21,9 @@ type Options struct {
 	// Users maps bearer tokens to users. Nil accepts any non-empty token
 	// as the canned user (CannedUser); non-nil rejects every other token.
 	Users map[string]User
-	// Billing makes the billing routes answer canned values instead of
-	// 503 billing_disabled, and reports the user as active with a card.
+	// Billing starts the fake with billing on and the account active on
+	// Solo (BillingActive) instead of off (BillingOff, 503
+	// billing_disabled and an exempt account). SetBilling changes it later.
 	Billing bool
 	// RateLimit enforces the api's per-user limits with 429: 60 writes and
 	// 600 GETs per minute per token (I-187).
@@ -106,36 +106,10 @@ type Fake struct {
 	gatewayCerts int    // POST /internal/gateway-certs calls, for cache tests
 	sessions     []SessionReport
 	questions    []*Question // newest last (DECISIONS I-245)
-	// billing is BillingOff, BillingCard or BillingNoCard; Options.Billing
-	// starts it at BillingCard and SetBilling changes it at run time.
-	// It is atomic rather than under mu, because handlers run under mu.
-	billing atomic.Int32
-	// waitlist is the place SetWaitlisted gave; 0 is no waitlist.
-	waitlist int
+	// bill is the billing mode, plan, seats and waitlist (billing.go); the
+	// one account the fake has is the one they describe.
+	bill billingState
 }
-
-// SetWaitlisted makes POST /projects of a user with no project answer
-// `waitlisted` at the given place, as the api does while the fleet is
-// near full (DECISIONS I-269); GET /me then shows the place. 0 turns it
-// off.
-func (f *Fake) SetWaitlisted(position int) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.waitlist = position
-}
-
-// Billing modes for SetBilling.
-const (
-	BillingOff    = 0 // the billing routes answer 503 billing_disabled
-	BillingCard   = 1 // active, a card on file
-	BillingNoCard = 2 // trial with credit and no card; a checkout adds one
-)
-
-// SetBilling switches the billing routes at run time, so one fake serves a
-// browser test of every state of the billing page.
-func (f *Fake) SetBilling(mode int) { f.billing.Store(int32(mode)) }
-
-func (f *Fake) billingMode() int { return int(f.billing.Load()) }
 
 type failRule struct {
 	key  string
@@ -161,8 +135,9 @@ func New(opts Options) *Fake {
 		f.addUser(u)
 		f.tokens[tok] = u.ID
 	}
+	f.initBilling()
 	if opts.Billing {
-		f.SetBilling(BillingCard)
+		f.setMode(BillingActive)
 	}
 	f.register()
 	f.Server = httptest.NewServer(f)
@@ -396,8 +371,9 @@ func (f *Fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, errf(code, "forced by the test's error switch"))
 		return
 	}
-	// The unsubscribe and reply links carry their own signed token.
-	if !strings.HasPrefix(r.URL.Path, "/v1/internal/") && r.URL.Path != "/v1/notify/unsubscribe" && r.URL.Path != "/v1/questions/reply" {
+	// The unsubscribe and reply links carry their own signed token; the
+	// public seats count (I-290) has none.
+	if !strings.HasPrefix(r.URL.Path, "/v1/internal/") && !strings.HasPrefix(r.URL.Path, "/v1/public/") && r.URL.Path != "/v1/notify/unsubscribe" && r.URL.Path != "/v1/questions/reply" {
 		u, tok, ok := f.authenticate(r, pattern)
 		if !ok {
 			f.mu.Unlock()
@@ -527,10 +503,16 @@ func (f *Fake) register() {
 	f.handle("POST /v1/questions/reply", f.replyQuestion)
 	// Usage and billing.
 	f.handle("GET /v1/usage", f.getUsage)
+	f.handle("GET /v1/billing", f.getBilling)
+	f.handle("POST /v1/billing/checkout", f.billingCheckout)
+	f.handle("POST /v1/billing/waitlist", f.billingWaitlist)
+	f.handle("POST /v1/billing/plan", f.billingPlan)
+	f.handle("POST /v1/billing/cancel", f.billingCancel)
+	f.handle("POST /v1/billing/resume", f.billingResume)
 	f.handle("POST /v1/billing/portal", f.billingPortal)
-	f.handle("POST /v1/billing/setup", f.billingSetup)
 	f.handle("GET /v1/billing/invoices", f.billingInvoices)
 	f.handle("POST /v1/billing/webhook", f.billingWebhook)
+	f.handle("GET /v1/public/seats", f.publicSeats)
 	// Internal (gateway).
 	f.handle("GET /v1/internal/route", f.internalRoute)
 	f.handle("GET /v1/internal/revoked", f.internalRevoked)
