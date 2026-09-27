@@ -7735,8 +7735,9 @@ lifetime) instead of at every start, so the link in an open tab survives
 the idle stop and a `--stop`; a reboot changes it and the page says so.
 (3) The guest serves its own page (`nix/guest/base/desktop/viewer/`:
 `index.html`, `viewer.js`, `viewer.css`, `healthz`) on noVNC 1.7's ES
-module core (`core/` and `vendor/` linked from `pkgs.novnc`, nothing else
-of it), no framework, no build step: it connects at once with the
+module core (`core/` and `vendor/` copied out of `pkgs.novnc`, nothing
+else of it: a store link would carry its Python and numpy, 260 MB), no
+framework, no build step: it connects at once with the
 fragment's password, `resizeSession` and `scaleViewport` on,
 `clipViewport` off, quality 9 and compression 1 (`?q=`, `?c=` adjust),
 a slim bar (project name from `project.json` written at viewer start,
@@ -7755,11 +7756,14 @@ fontconfig gets grayscale antialiasing with slight hinting (subpixel
 fringes do not survive the trip as an image) and Noto defaults. The
 viewer is now `repose-novnc.service` (the display, `repose-xvnc`, is up
 for the browser alone); Xvnc's VNC port is therefore up whenever the
-display is, on loopback with the password, never auto-forwarded. A Retina
+display is, on loopback with the password, never auto-forwarded. Closure:
+Xvfb, x11vnc and libvncserver out (5 MB), tigervnc in with fltk, ffmpeg's
+libraries and GLU for the vncviewer nobody runs (about 55 MB); the next
+cut, if the 6 GiB cap bites, is a tigervnc built with `BUILD_VIEWER` off.
+A Retina
 tab is shown at 1x pixels: Chromium reads its scale factor at start, so
 following `devicePixelRatio` would need a browser restart; still sharper
-than the stretched 1440x900, and the bar says "at 1x". Closure: Xvfb and
-x11vnc out, tigervnc in. Tests: `TestBrowserURLCarriesThePasswordInTheFragment`,
+than the stretched 1440x900, and the bar says "at 1x". Tests: `TestBrowserURLCarriesThePasswordInTheFragment`,
 `TestBrowserForwardArgs`, `TestViewerHealthyKnowsOurViewer`,
 `TestBrowserCmdWatchesReusesAndStops` (fake api, real sshd, a stand-in
 viewer; the printed line, no password on stderr, the reuse, `--stop`),

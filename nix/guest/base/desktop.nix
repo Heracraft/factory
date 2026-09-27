@@ -42,15 +42,16 @@ let
     doCheck = false;
   });
   # The viewer page: repose's own index.html, viewer.js and viewer.css on
-  # noVNC's ES module core (core/ and vendor/ from the package, nothing
-  # else of it: `${pkgs.novnc}` itself carries a novnc_proxy wrapper that
-  # pulls in a second Python and websockify). No build step: the files are
-  # copied as they are in the repository.
+  # noVNC's ES module core (core/ and vendor/ copied out of the package,
+  # nothing else of it: a link into `${pkgs.novnc}` would drag its
+  # novnc_proxy wrapper, a second Python and websockify with numpy, blas
+  # and lapack into the closure, 260 MB, I-218). No build step: the files
+  # are copied as they are in the repository.
   viewer = pkgs.runCommand "repose-desktop-viewer" { } ''
     mkdir -p $out
     cp ${./desktop/viewer}/* $out/
-    ln -s ${pkgs.novnc}/share/webapps/novnc/core $out/core
-    ln -s ${pkgs.novnc}/share/webapps/novnc/vendor $out/vendor
+    cp -r ${pkgs.novnc}/share/webapps/novnc/core $out/core
+    cp -r ${pkgs.novnc}/share/webapps/novnc/vendor $out/vendor
   '';
   idleSeconds = 1800;
 

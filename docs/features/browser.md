@@ -67,8 +67,8 @@ old name and still works; it says so once and does the same thing.
 - The viewer, `repose-novnc.service`: websockify on 127.0.0.1:6081
   bridging the page's WebSocket to Xvnc and serving the viewer page
   repose ships (`nix/guest/base/desktop/viewer/`: `index.html`,
-  `viewer.js`, `viewer.css`, `healthz`, on noVNC 1.7's `core/` and
-  `vendor/` modules, no build step), behind the socket-activated entry
+  `viewer.js`, `viewer.css`, `healthz`, with noVNC 1.7's `core/` and
+  `vendor/` modules copied beside them, no build step), behind the socket-activated entry
   point 127.0.0.1:6080. Off until asked; it costs nothing idle.
   `repose-vncconfig.service` runs with it and carries the X selections to
   the VNC clipboard and back.
