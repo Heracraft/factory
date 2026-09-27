@@ -444,6 +444,8 @@
 .doc pre {
 	@apply rounded-sm border text-[13px] leading-6 text-zinc-800 dark:text-zinc-200;
 	tab-size: 2;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 	background-color: var(--sunken);
 	border-color: var(--rule);
 }
@@ -464,6 +466,15 @@
 }
 .doc .note p {
 	@apply my-0;
+}
+
+/* A line of a docs code block (blockLines in lib/docs.ts): a long one wraps
+   with a hanging indent, so its continuation never reads as a new line. */
+.doc pre .line {
+	display: block;
+	min-height: 1lh;
+	padding-left: var(--hang);
+	text-indent: calc(-1 * var(--hang));
 }
 
 /* A docs code block and its copy button (codeBlock in lib/docs.ts). */

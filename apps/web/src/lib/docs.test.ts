@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { DOCS, SECTIONS, docBySlug, highlightNix, renderShell, search, slugify } from './docs';
+import {
+	DOCS,
+	SECTIONS,
+	blockLines,
+	docBySlug,
+	highlightNix,
+	renderShell,
+	search,
+	slugify
+} from './docs';
 
 // Every /docs link in the docs names a page that exists and, when it has a
 // #fragment, a heading on that page: a renamed heading otherwise breaks
@@ -99,5 +108,17 @@ describe('user docs', () => {
 		expect(html).toContain('<span class="prompt">$ </span>');
 		expect(html).toContain('<span class="output">Stopped a.</span>');
 		expect(renderShell('repose run # go').copy).toBe('repose run # go');
+	});
+
+	it('puts each line of a block in its own box, hung past its indent', () => {
+		expect(blockLines('a\n  b\n\nc\n')).toBe(
+			'<span class="line" style="--hang:4ch">a</span>' +
+				'<span class="line" style="--hang:6ch">  b</span>' +
+				'<span class="line" style="--hang:4ch"></span>' +
+				'<span class="line" style="--hang:4ch">c</span>'
+		);
+		const git = docBySlug('tutorial-git')!.html;
+		expect(git).toContain('<code class="language-text"><span class="line"');
+		expect(git).not.toMatch(/<code class="language-\w+">(?!<span class="line")/);
 	});
 });

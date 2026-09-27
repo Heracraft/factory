@@ -135,11 +135,32 @@ export function renderShell(code: string): { html: string; copy: string } {
 	return { html, copy };
 }
 
-/** A code block with a copy button over its top right corner. */
+/**
+ * Each source line as its own block, so a line too long for the column wraps
+ * with a hanging indent (layout.css) instead of scrolling out of sight. The
+ * hang is four columns past the line's own indent, clear of the two-column
+ * indents the output itself uses. Highlighting never carries a span over a line
+ * break, so splitting the HTML on newlines is safe.
+ */
+export function blockLines(html: string): string {
+	return html
+		.replace(/\n$/, '')
+		.split('\n')
+		.map((l) => {
+			const indent = (/^ */.exec(l)?.[0].length ?? 0) + 4;
+			return `<span class="line" style="--hang:${indent}ch">${l}</span>`;
+		})
+		.join('');
+}
+
+/** A code block with a copy button over its top right corner; ```text has none. */
 function codeBlock(lang: string, code: string): string {
+	if (lang === 'text') {
+		return `<pre><code class="language-text">${blockLines(escapeHTML(code))}</code></pre>\n`;
+	}
 	const { html, copy } =
 		lang === 'shell' ? renderShell(code) : { html: highlight(code, lang), copy: code };
-	return `<div class="code"><pre><code class="language-${lang}">${html}</code></pre><button type="button" class="copy" data-copy="${escapeHTML(copy).replace(/"/g, '&quot;')}">Copy</button></div>\n`;
+	return `<div class="code"><pre><code class="language-${lang}">${blockLines(html)}</code></pre><button type="button" class="copy" data-copy="${escapeHTML(copy).replace(/"/g, '&quot;')}">Copy</button></div>\n`;
 }
 
 /** Heading text for the page's own list: tags dropped, entities decoded. */
@@ -174,7 +195,7 @@ function render(body: string): { html: string; headings: DocHeading[] } {
 			},
 			code(token: Tokens.Code) {
 				const lang = token.lang || 'shell';
-				if (!(lang in PARSERS)) return false;
+				if (!(lang in PARSERS) && lang !== 'text') return false;
 				return codeBlock(lang, token.text);
 			},
 			blockquote(
