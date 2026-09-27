@@ -286,7 +286,7 @@ For a test or self-hosted repose server rather than the hosted one: `--api-url U
 | 5    | The machine isn't running.                                                                                                          |
 | 6    | The machine has uncommitted changes; the sync stopped.                                                                              |
 | 7    | Account or payment problem.                                                                                                         |
-| 8    | No capacity right now; try again in a few minutes. For a first project, you're on the [waitlist](/docs/limits#when-repose-is-full). |
+| 8    | No capacity right now; try again in a few minutes. Choosing a plan while every seat is taken answers with your place on the [waitlist](/docs/limits#when-repose-is-full) and this code too. |
 | 10   | The configuration build failed.                                                                                                     |
 | 130  | Interrupted with `Ctrl-C`.                                                                                                          |
 
