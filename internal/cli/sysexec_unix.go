@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"syscall"
@@ -36,4 +37,20 @@ func spawnDetached(name string, args []string, extraEnv ...string) error {
 		return err
 	}
 	return cmd.Process.Release()
+}
+
+// startDetached starts cmd in its own session with stdin and stdout on
+// /dev/null and stderr captured, so it outlives the CLI and never sees
+// the terminal's signals: the background forward of `repose browser`. The
+// caller waits on cmd itself.
+func startDetached(cmd *exec.Cmd) (*bytes.Buffer, error) {
+	devnull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = devnull.Close() }()
+	var stderr bytes.Buffer
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = devnull, devnull, &stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	return &stderr, cmd.Start()
 }

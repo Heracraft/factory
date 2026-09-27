@@ -42,8 +42,13 @@ var hiddenCommands = map[string]string{
 }
 
 // undocumentedFlags is "<command path> --<flag>" for any flag that is
-// intentionally left out of the docs, with why. Keep it empty.
-var undocumentedFlags = map[string]string{}
+// intentionally left out of the docs, with why. Keep it to old names.
+var undocumentedFlags = map[string]string{
+	// The old name of `repose browser` (I-292): kept working, hidden from
+	// help; cli.md names it once as the old name under repose browser.
+	"repose open --desktop": "old name of repose browser",
+	"repose open --stop":    "old name of repose browser --stop",
+}
 
 // internalEnvVars are REPOSE_* names the package reads that no user sets.
 var internalEnvVars = map[string]string{
