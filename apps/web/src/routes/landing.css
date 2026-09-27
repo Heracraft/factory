@@ -155,21 +155,15 @@
 .sec-head {
 	padding-block: var(--land-y);
 }
-/* A feature's shape before its title, sized to the type. */
+/* A feature's shape before its title, as tall as the title's letters. */
 .head-mark,
 .cell-mark {
 	display: inline-block;
-	vertical-align: -0.06em;
-	margin-right: 0.4em;
+	width: 1em;
+	height: 1em;
+	vertical-align: -0.14em;
+	margin-right: 0.45em;
 	line-height: 0;
-}
-.head-mark {
-	width: 0.7em;
-	height: 0.7em;
-}
-.cell-mark {
-	width: 0.85em;
-	height: 0.85em;
 }
 .landing-h {
 	font-family: var(--font-display);

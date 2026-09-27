@@ -214,8 +214,9 @@ and underlined every heading. The page is one system:
   - *star* is Gemini's sparkle (`SPARKLE` in `marks.ts`) and stands for
     the agents; it is in the toolchain box as Gemini CLI's mark.
   Sun, moon and leaf name nothing on the page and are not shown. A shape
-  on a head or a card title sits inline before the words, sized to the
-  type (`.head-mark`, `.cell-mark`). The hero's headline carries none.
+  on a head or a card title sits inline before the words, one em tall, so
+  it matches the title's letters (`.head-mark`, `.cell-mark`; owner,
+  2026-09-27). The hero's headline carries none.
   A column of agent logos beside the headline was tried and dropped
   (owner, 2026-09-27): a list of logos is a gimmick, and repose is a
   machine for any work, not only AI.
