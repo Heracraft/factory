@@ -1,22 +1,13 @@
 <!--
   Ready: what is on a machine the moment it boots. The five agents are the
-  hero (mark, name as the docs spell it, and the command that starts it);
+  hero, as their marks alone (owner, 2026-09-27: no names or commands
+  under them; the aria-label names them);
   below them the toolchain, and a shell on the machine where a missing
   command prints the real command-not-found hint (nix/guest/base/devtools.nix,
   captured for real on the recruiting machine).
 -->
 <script lang="ts">
 	import { agentMarks, toolMarks, type Mark } from '$lib/components/illustrations/marks';
-
-	// Names as apps/web/src/content/docs/agents.md spells them, and the
-	// command each one starts with (its `--agent` value there).
-	const agentInfo: Record<string, { name: string; cmd: string }> = {
-		'Claude Code': { name: 'Claude Code', cmd: 'claude' },
-		Codex: { name: 'Codex CLI', cmd: 'codex' },
-		opencode: { name: 'opencode', cmd: 'opencode' },
-		'Gemini CLI': { name: 'Gemini CLI', cmd: 'gemini' },
-		pi: { name: 'pi', cmd: 'pi' }
-	};
 
 	// Labels from docs/machine.md "What's installed".
 	const toolLabel: Record<string, string> = {
@@ -96,9 +87,7 @@
 	<ul class="agents" aria-hidden="true">
 		{#each agentMarks as m (m.name)}
 			<li>
-				<span class="am">{@render mark(m, 40)}</span>
-				<span class="an">{agentInfo[m.name].name}</span>
-				<span class="ac">{agentInfo[m.name].cmd}</span>
+				<span class="am">{@render mark(m, 44)}</span>
 			</li>
 		{/each}
 	</ul>
@@ -159,18 +148,6 @@
 	.am {
 		color: var(--color-zinc-900);
 	}
-	.an {
-		margin-top: 12px;
-		font-size: 14px;
-		font-weight: 500;
-		color: var(--color-zinc-800);
-	}
-	.ac {
-		margin-top: 2px;
-		font-family: var(--font-mono);
-		font-size: 12px;
-		color: var(--color-zinc-500);
-	}
 	.below {
 		display: grid;
 		gap: 24px;
@@ -216,10 +193,6 @@
 		.am {
 			color: var(--color-zinc-100);
 		}
-		.an {
-			color: var(--color-zinc-200);
-		}
-		.ac,
 		.more {
 			color: var(--color-zinc-400);
 		}

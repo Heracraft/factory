@@ -6,15 +6,15 @@
   Left, your laptop: your repo and a few private things (SSH keys, a cat
   photo, a tax return). `repose run`: the repo row travels into your cloud
   machine and opens there; the private things stay. The agent (Claude Code's
-  mark, orange; Claude Code's own pink "⏵⏵ bypass permissions on" footer at
+  mark, orange, red when rogue with no halo around it; Claude Code's own pink "⏵⏵ bypass permissions on" footer at
   the machine's bottom left) does good work: three files gain their diff
   stat on the rows themselves, and snapshots are taken along the way (a
   miniature of the machine shrinks into the snapshots panel on the right;
   the older one steps behind it as an icon and a time). Only then does it
-  reach the internet, the panel above the snapshots, where a "malicious
-  skill" comes in. The picture is three panels in one grammar: your laptop,
-  your cloud machine, and on the right the internet over the snapshots, so
-  nothing hangs off an edge. Then the agent turns red and does damage git can't
+  reach the internet, the bare globe under the snapshots, where a
+  "malicious skill" comes in. The picture is your laptop, your cloud
+  machine, and on the right the snapshots panel over the globe, so nothing
+  hangs off an edge. Then the agent turns red and does damage git can't
   undo (docs/LANDING.md, "Snapshots are about the machine"): its uncommitted
   edits are discarded (the diff stats struck), the app's database is emptied
   (3,532 rows to 0) and node is gone from the machine ("not found"). The skill
@@ -122,14 +122,13 @@
 		mini = { w: W.w, h: W.h, s: (wide ? 84 : 72) / W.w };
 
 		const globe = r(pic.querySelector('.net .globe')!);
-		const net = r(pic.querySelector('.net')!);
 		const rail = r(pic.querySelector('.rail')!);
 		const th = r(pic.querySelector('.rail .slot')!);
-		// The agent's path out to the internet: across the gap into the
-		// internet's panel at the globe's height; down into it on a phone.
+		// The agent's path out to the internet: across the gap to the globe
+		// at its height; down to it on a phone.
 		const reach = wide
-			? `M${W.r + 1} ${globe.cy}H${net.l - 2}`
-			: `M${globe.cx} ${W.b + 1}V${net.t - 2}`;
+			? `M${W.r + 1} ${globe.cy}H${globe.l - 6}`
+			: `M${globe.cx} ${W.b + 1}V${globe.t - 6}`;
 		// The snapshot's way back: out of its panel into the machine.
 		const back = wide ? `M${rail.l - 2} ${th.cy}H${W.r + 3}` : `M${th.cx} ${rail.t - 2}V${W.b + 3}`;
 		const backHead = wide
@@ -656,7 +655,6 @@
 			{/if}
 			<span class="crew">
 				<span class="agent">
-					<i class="halo red"></i>
 					<svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
 						{#each agent.paths as d (d)}
 							<path {d} fill-rule="evenodd" class="orange" />
@@ -706,16 +704,6 @@
 		<div class="mwin">{@render machineWin(true)}</div>
 
 		<div class="side right">
-			<div class="net win">
-				<div class="title">
-					{@render globeMark(18, 'mark')}<span class="who">the internet</span>
-				</div>
-				<div class="netbody">
-					{@render globeMark(48, 'globe')}
-					{@render skillChip('')}
-				</div>
-			</div>
-
 			<div class="rail win">
 				<div class="title">{@render camIcon(16, 'cam')}<span class="who">snapshots</span></div>
 				<div class="railbody">
@@ -737,6 +725,11 @@
 						<span class="t-time n1">{times[1]}</span>
 					</span>
 				</div>
+			</div>
+
+			<div class="net">
+				{@render globeMark(52, 'globe')}
+				{@render skillChip('')}
 			</div>
 		</div>
 	</div>
@@ -1036,13 +1029,6 @@
 	.agent .red {
 		color: var(--rogue);
 	}
-	.halo {
-		grid-area: 1 / 1;
-		margin: -4px;
-		border: 1px solid var(--rogue);
-		border-radius: 3px;
-		background: color-mix(in oklab, var(--rogue) 10%, var(--surface));
-	}
 	.skill {
 		display: inline-flex;
 		align-items: center;
@@ -1088,8 +1074,9 @@
 		pointer-events: none;
 	}
 
-	/* The right-hand stack: the internet above, the snapshots below, two
-	   panels in the same grammar as the laptop and the machine. */
+	/* The right-hand stack: the snapshots panel above, in the grammar of
+	   the laptop and the machine, and the internet below it as a bare
+	   globe: it is not a machine of anyone's, so it gets no window. */
 	.side.right {
 		flex-direction: column;
 		gap: 14px;
@@ -1097,8 +1084,8 @@
 	.rail.win {
 		flex: none;
 	}
-	/* The internet: a globe, and the place the skill comes out of it. */
-	.netbody {
+	/* The internet: the globe, and the place the skill comes out of it. */
+	.net {
 		position: relative;
 		flex: 1;
 		display: flex;
@@ -1106,7 +1093,7 @@
 		align-items: center;
 		justify-content: center;
 		gap: 10px;
-		padding: 18px 14px;
+		padding: 14px;
 		color: var(--ink);
 	}
 	.globe {

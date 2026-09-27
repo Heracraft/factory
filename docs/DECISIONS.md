@@ -7533,7 +7533,9 @@ with gaps for the features and sizes (a floating box is not how the
 pictures draw anything); a section label inside a picture (LANDING.md
 forbids chapter labels); a numbered running label on each head ("01 Run"),
 tried and sent back as generic (owner, 2026-09-27). Amended the same day:
-the hero picture's internet and snapshots stand as two titled panels
-stacked on the machine's right, so the picture is three panels of one
-grammar with nothing hanging off an edge.
+the hero picture's snapshots panel and the internet stack on the
+machine's right (the snapshots titled, the internet a bare globe below
+them, no window, as it is nobody's machine), so nothing hangs off an
+edge; the rogue agent is the red mark alone, no halo; and the five
+agents' row shows the marks alone.
 

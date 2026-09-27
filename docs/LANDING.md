@@ -165,6 +165,8 @@ fires; `node_modules/` stays behind, struck. Keep it animated.
   happen, a second is taken and stacks on top, shown only as an icon and a
   timestamp with its contents hidden.
 - "Five agents and a full toolchain on first boot" is super clean; leave it.
+  2026-09-27: the agents' row shows the marks alone, no name or command
+  under them.
 
 ## Shape language (owner's direction, 2026-09-27)
 
@@ -239,6 +241,11 @@ paragraphs.
 
 - Judge the assembled page, not a component in isolation: screenshot it at
   1440×900 and 390px, light and dark, and look before calling anything done.
+- Look at captures at their real size. A full-page capture read after
+  being scaled to a fifth hides what a visitor sees at once (a lopsided
+  hero got through that way, 2026-09-27). Capture the viewport, or crop
+  the region, at 1x and judge that; use a full-page capture only for the
+  page's rhythm, never for a section's layout.
 - When motion could help, it's fine to offer an animated and a static
   version for the owner to choose (anime.js is allowed).
 
@@ -271,12 +278,14 @@ by `+page.svelte` alone; the house tokens stay in `layout.css`):
 - **The hero.** One stack on the left edge: the headline, the lead under
   it, then the button and the install command on one row. Nothing is
   pushed to the right; the picture fills the width. The blue bar under
-  "full permissions" and on the prices is unchanged. The picture is three
-  panels in one grammar (owner, 2026-09-27): your laptop, your cloud
-  machine, and on the right the internet (a titled panel with a large
-  globe) over the snapshots (a titled panel the miniatures shrink into),
-  so the globe no longer floats at the edge and no snapshot hangs below.
-  The connectors cross the gap between the machine and that stack.
+  "full permissions" and on the prices is unchanged. The picture (owner,
+  2026-09-27) is your laptop, your cloud machine, and on the right a
+  stack: the snapshots panel (titled, the miniatures shrink into it) over
+  the internet as a bare 52px globe, no window, since the internet is not
+  a machine of anyone's. No snapshot hangs below the machine and the
+  globe does not float at the edge. The connectors cross the gap between
+  the machine and that stack. The rogue agent is the red mark alone, no
+  halo, background or border around it.
 - **Commands are rows.** The install command and each step's command are
   one `.cmd`: a mono row on a sunken ground with a hairline, the way a
   picture shows a row of a terminal.

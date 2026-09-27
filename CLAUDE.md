@@ -46,6 +46,16 @@ systemd unit present but not enabled, the error path that panics, the
 command that exists but prints "not implemented". `docs/CHECKLIST.md` lists
 the greps that catch these; run them before saying done.
 
+## Judge visuals at real size
+
+A screenshot is evidence only at the size a visitor sees it. A full-page
+capture of a long page, read after being scaled to a fifth, hides what is
+wrong with a hero or a section (a lopsided landing hero got past a review
+that way, 2026-09-27). Capture the viewport, or crop the region, at 1x, at
+1440 wide and at 390, in both colour schemes, and look at that before
+calling a visual change done. Use a full-page capture only to judge the
+page's rhythm, never a section's layout. `docs/LANDING.md`, "Process".
+
 ## A feature without user docs is not done
 
 Anything a user can see or do (a command, flag, config key, environment
