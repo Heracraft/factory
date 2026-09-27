@@ -166,16 +166,31 @@ see the dashboard" message is sent.
 
 - **email** (Resend, `internal/api/notify/notify.go`'s `Email`): from
   `repose <notify@repose.herakraft.co>`, subject `[repose] todo-app:
-  claude finished`, body: title, summary, `repose attach` hint, dashboard
-  link, and (when an `Unsubscriber` is configured) an unsubscribe line
-  pointing at `GET /v1/notify/unsubscribe?token=` — a non-expiring,
-  HMAC-signed user id, checked with no database round trip and no
-  `Authorization` header, keyed by a secret auto-provisioned into the
-  platform pseudo-project the first time the api starts (DECISIONS I-49;
-  same home as the CA material, `internal/api/ca`, never a fourth one).
-  Enabled by default at signup. Platform events use their own subjects
-  (`internal/api/notify.Subject`; today only `billing_stopped`: "Your
-  guests were stopped for non-payment").
+  claude finished`. The body is rendered by `notify.Render` (DECISIONS
+  I-291): one HTML layout (`templates/layout.html`, Go `html/template`, a
+  600 px table, inline styles, system fonts, the landing's paper and ink
+  in light mode only, the word `repose` as the header, no images, no
+  tracking) and one text layout (`templates/layout.txt`), filled from a
+  per-kind partial in `templates/kinds/` that defines `heading`, `body`
+  (paragraphs), `link_label`/`link_url` (the button), `command`, `lines`
+  and `steps`; kinds without a partial share `agent`. Both renderings go
+  as `html` and `text` in one Resend call. Agent emails carry the title,
+  the summary, the `repose attach` row, the project button and (when an
+  `Unsubscriber` is configured) an unsubscribe line pointing at `GET
+  /v1/notify/unsubscribe?token=` — a non-expiring, HMAC-signed user id,
+  checked with no database round trip and no `Authorization` header, keyed
+  by a secret auto-provisioned into the platform pseudo-project the first
+  time the api starts (DECISIONS I-49; same home as the CA material,
+  `internal/api/ca`, never a fourth one). An `agent_question` renders its
+  options as buttons with the signed reply links. Account kinds
+  (`events.AccountKinds`: welcome, the waitlist kinds, the plan kinds) are
+  transactional: no unsubscribe line, sent whatever `notify_email` says,
+  their payload a JSON object in `events.summary`
+  (`features/notifications.md`, "Account emails"). Enabled by default at
+  signup. Platform and account events use their own subjects
+  (`internal/api/notify.Subject`, `platformSubjects`). Golden files under
+  `testdata/<kind>.html|.txt` pin every kind; `go test ./internal/api/notify
+  -run TestGoldenEmails -update` rewrites them after a template change.
 - **ntfy** (`internal/api/notify/notify.go`'s `Ntfy`): `POST <ntfy_url>`
   with headers `Title`, `Priority` (5 for `needs_input`, 4 for `error` and
   the platform failure kinds, 3 otherwise), `Tags` (`white_check_mark`,
@@ -232,7 +247,10 @@ added by this workstream).
 
 - Unit: payload mapping fixtures for each agent's native hook JSON, the
   idle state machine with a fake clock, dedupe, outbox scheduling, rate
-  limit, templates (golden).
+  limit, templates (golden: `internal/api/notify/testdata/<kind>.html|.txt`
+  for every kind, `TestGoldenEmails`; `TestRenderEscapesTenantText` for a
+  summary containing `<script>`; `TestEmailSendsHTMLAndText` for the one
+  Resend call carrying both).
 - Integration: real Postgres, outbox worker with a fake Resend and a local
   ntfy container, retries with a fake clock, `notify-test` route.
 - Guest-level: on a real guest, run each agent, trigger a completion and a
@@ -314,9 +332,10 @@ not-yet-built convenience for later.
       one `notifications_paused` row and stop growing the outbox past the
       cap, while every event still lands in `events`.
 - [x] Email template renders with unsubscribe link that works. Evidence:
-      `internal/api/notify/notify_test.go` `TestEmailTemplate` (golden:
-      title, summary, attach hint, dashboard link, unsubscribe URL all
-      present in the body Resend receives) and
+      `internal/api/notify/notify_test.go` `TestEmailTemplate` (title,
+      summary, attach hint, dashboard link, unsubscribe URL all present in
+      the text and HTML Resend receives), `render_test.go`
+      `TestGoldenEmails` (every kind pinned under `testdata/`, I-291) and
       `internal/api/http/http_test.go` `TestNotifyUnsubscribe` (the link's
       target route, end to end against a real Postgres: valid token flips
       `notify_email` off with no `Authorization` header, forged and

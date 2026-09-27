@@ -213,9 +213,13 @@ func TestEmailTemplate(t *testing.T) {
 		var payload struct {
 			Subject string `json:"subject"`
 			Text    string `json:"text"`
+			HTML    string `json:"html"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&payload)
 		gotSubject, gotBody = payload.Subject, payload.Text
+		if !strings.Contains(payload.HTML, "ran tests, 3 failures fixed") || !strings.Contains(payload.HTML, "https://api.repose.herakraft.co/v1/notify/unsubscribe?token=abc.def") {
+			t.Errorf("html lacks the summary or the unsubscribe link:\n%s", payload.HTML)
+		}
 		w.WriteHeader(200)
 	}))
 	defer srv.Close()
@@ -286,12 +290,14 @@ func TestSubjectUsesPlatformWording(t *testing.T) {
 	}
 }
 
-// DECISIONS I-269: the waitlist admission names no project, so its email
-// has its own subject and no attach line.
-func TestWaitlistAdmissionEmail(t *testing.T) {
+// DECISIONS I-269, I-290, I-291: an account email names no project, so
+// it has its own subject, no attach line and no unsubscribe line, and
+// carries the payload's fields.
+func TestAccountEmail(t *testing.T) {
 	var got struct {
 		Subject string   `json:"subject"`
 		Text    string   `json:"text"`
+		HTML    string   `json:"html"`
 		To      []string `json:"to"`
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -300,15 +306,19 @@ func TestWaitlistAdmissionEmail(t *testing.T) {
 	}))
 	defer srv.Close()
 	e := &notify.Email{APIKey: "re_test", URL: srv.URL}
-	m := notify.Message{Kind: "waitlist_admitted", Summary: "repose has room for your first machine now.", Email: "new@example.com", Dashboard: "https://dash.test"}
+	m := notify.Message{Kind: "waitlist_invited", Summary: `{"hold_until":"2026-09-30T14:00:00Z"}`, Email: "new@example.com", Dashboard: "https://dash.test",
+		Unsubscribe: "https://api.test/v1/notify/unsubscribe?token=x"} // the outbox never sets it for account mail; the template ignores it anyway
 	if err := e.Send(context.Background(), m); err != nil {
 		t.Fatal(err)
 	}
-	if got.Subject != "[repose] There is room for you on repose" || len(got.To) != 1 || got.To[0] != "new@example.com" {
+	if got.Subject != "[repose] A seat is yours for 72 hours" || len(got.To) != 1 || got.To[0] != "new@example.com" {
 		t.Fatalf("subject %q to %v", got.Subject, got.To)
 	}
-	if !strings.Contains(got.Text, "room for your first machine") || strings.Contains(got.Text, "repose attach") || strings.Contains(got.Text, "unsubscribe") {
+	if !strings.Contains(got.Text, "30 September 2026 at 14:00 UTC") || !strings.Contains(got.Text, "https://dash.test/billing") || strings.Contains(got.Text, "repose attach") || strings.Contains(got.Text, "unsubscribe") {
 		t.Fatalf("body: %s", got.Text)
+	}
+	if strings.Contains(got.HTML, "unsubscribe") {
+		t.Fatalf("html carries an unsubscribe link for account mail")
 	}
 }
 
