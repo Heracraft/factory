@@ -1,10 +1,10 @@
 # Chromium, Playwright's browsers, and the two MCP servers every guest has
 # (docs/features/browser.md). The agents' browser is one headed Chromium on
 # the desktop's X display :99 (DECISIONS I-246): repose-browser.socket on
-# 127.0.0.1:9224 starts it, with Xvfb and the window manager, on the first
+# 127.0.0.1:9224 starts it, with Xvnc (the display) and the window manager, on the first
 # DevTools connection, and both MCP servers attach to it there, so
-# `repose open --desktop` shows what the agent is doing and the user can
-# take over in the same window. Its profile persists in
+# `repose browser` shows what the agent is doing and the user can take
+# over in the same window. Its profile persists in
 # ~/.local/share/repose/browser. That browser runs in the system slice
 # repose-browser.slice; the MCP servers and any chromium a user starts run
 # in the per-user slice of the same name, so a runaway page cannot take the
@@ -84,8 +84,10 @@ let
   };
 
   # The agents' browser. No --headless: it draws on :99 whether or not
-  # anyone watches. The window is the screen's size and the window manager
-  # maximises it (desktop.nix). No GPU in a guest: --disable-gpu composites
+  # anyone watches. No --window-size: the window manager maximises every
+  # window (desktop.nix), so the browser is the screen's size and follows
+  # it when the viewer resizes the screen to the user's tab (I-292). No
+  # GPU in a guest: --disable-gpu composites
   # in software instead of relaunching a GPU process that fails to find
   # EGL, and WebGL still works through SwiftShader, as in Playwright's own
   # launches (which pass --enable-unsafe-swiftshader too).
@@ -103,7 +105,7 @@ let
       --password-store=basic \
       --hide-crash-restore-bubble \
       --disable-gpu --enable-unsafe-swiftshader \
-      --start-maximized --window-position=0,0 --window-size=1440,900 \
+      --start-maximized --window-position=0,0 \
       about:blank
   '';
 
@@ -138,8 +140,25 @@ in
 
   environment.etc."repose/mcp.json".text = builtins.toJSON mcpConfig;
 
+  # Fonts the pages render with (Noto Sans, Noto Sans Mono, Noto Serif;
+  # Liberation for the metric-compatible Arial, Times and Courier names
+  # pages ask for; colour emoji), so no page renders as boxes. Grayscale
+  # antialiasing with slight hinting: the screen travels as an image to
+  # the viewer, and subpixel colour fringes survive that trip as noise
+  # while grayscale stays crisp (I-292).
   fonts = {
-    fontconfig.enable = true;
+    fontconfig = {
+      enable = true;
+      antialias = true;
+      hinting = { enable = true; style = "slight"; };
+      subpixel = { rgba = "none"; lcdfilter = "none"; };
+      defaultFonts = {
+        sansSerif = [ "Noto Sans" ];
+        serif = [ "Noto Serif" ];
+        monospace = [ "Noto Sans Mono" ];
+        emoji = [ "Noto Color Emoji" ];
+      };
+    };
     enableDefaultPackages = false;
     packages = with pkgs; [ noto-fonts noto-fonts-color-emoji liberation_ttf ];
   };
@@ -160,10 +179,10 @@ in
   # on their next call.
   systemd.services.repose-browser = {
     description = "repose: the agents' Chromium on ${display}, DevTools on 127.0.0.1:${toString backendPort}";
-    requires = [ "repose-xvfb.service" ];
-    bindsTo = [ "repose-xvfb.service" ];
+    requires = [ "repose-xvnc.service" ];
+    bindsTo = [ "repose-xvnc.service" ];
     wants = [ "repose-openbox.service" ];
-    after = [ "repose-xvfb.service" "repose-openbox.service" ];
+    after = [ "repose-xvnc.service" "repose-openbox.service" ];
     environment = {
       DISPLAY = display;
       HOME = "/home/dev";

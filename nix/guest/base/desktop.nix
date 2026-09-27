@@ -1,26 +1,37 @@
-# The on-demand desktop: Xvfb :99 (1440x900), openbox, x11vnc on
-# 127.0.0.1:5900, noVNC on 127.0.0.1:6080, socket-activated. The display
-# has two users (DECISIONS I-246): the agents' browser (browser.nix), which
-# draws on it whether or not anyone watches, and the viewer (x11vnc and
-# noVNC), which a connection to 6080 starts through systemd-socket-proxyd.
-# Starting the viewer starts the browser too, so the desktop is never
-# empty. Xvfb and openbox stop by themselves once neither needs them
-# (StopWhenUnneeded); nothing runs and nothing is paid for until one of
-# them is asked for.
+# The on-demand desktop: TigerVNC's Xvnc as the X display :99 and the VNC
+# server in one process on 127.0.0.1:5900, openbox, websockify serving the
+# viewer page repose ships (desktop/viewer/) on 127.0.0.1:6081 behind the
+# socket-activated entry point on 127.0.0.1:6080 (DECISIONS I-33, I-246,
+# I-292). The display has two users: the agents' browser (browser.nix),
+# which draws on it whether or not anyone watches, and the viewer
+# (websockify and the page), which a connection to 6080 starts through
+# systemd-socket-proxyd. Starting the viewer starts the browser too, so the
+# desktop is never empty. Xvnc and openbox stop by themselves once neither
+# needs them (StopWhenUnneeded); nothing runs and nothing is paid for until
+# one of them is asked for.
+#
+# Xvnc implements the client's SetDesktopSize, so the screen takes the
+# size of the user's browser tab (the viewer page asks for it) instead of
+# being a 1440x900 picture scaled to fit; 1440x900 is only the size before
+# the first viewer connects. Xvfb has one fixed mode and x11vnc cannot
+# resize it, which is why they went (I-292).
 #
 # A per-minute check stops the viewer after 30 minutes without a client
 # (`systemctl start repose-desktop-idle` stops it now), and the browser
 # after 30 minutes with neither a DevTools client (an MCP server holds its
 # connection for the agent's whole session) nor a viewer.
 #
-# The password is generated at every x11vnc start into
-# /run/repose/desktop/vnc-password (0600 dev) for the CLI to print
-# (docs/features/browser.md); noVNC is only reachable through the SSH
-# forward, so the password is defence in depth, not the boundary.
+# The password is generated once per boot into
+# /run/repose/desktop/vnc-password (0600 dev), the first time the display
+# starts, so a viewer that idled out reconnects with the link it has; the
+# CLI puts it in the viewer URL's fragment (docs/features/browser.md). The
+# desktop is only reachable through the SSH forward, so the password is
+# defence in depth, not the boundary.
 { config, lib, pkgs, ... }:
 let
   display = ":99";
   dir = "/run/repose/desktop";
+  webDir = "${dir}/web";
   # python312 is in the closure already (tools.nix); no second interpreter.
   # numpy is optional in websockify (it only speeds up unmasking what the
   # browser sends: keys and pointer moves) and costs about 480 MB of
@@ -30,18 +41,22 @@ let
     dontCheckRuntimeDeps = true;
     doCheck = false;
   });
-  # Only the web client's static files: `${pkgs.novnc}` itself carries a
-  # novnc_proxy wrapper that pulls in a second Python (3.14) and websockify.
-  # defaults.json scales the remote screen to the browser tab; a setting
-  # the user changes in noVNC's panel still wins.
-  novncWeb = "${pkgs.runCommand "novnc-web" { } ''
+  # The viewer page: repose's own index.html, viewer.js and viewer.css on
+  # noVNC's ES module core (core/ and vendor/ from the package, nothing
+  # else of it: `${pkgs.novnc}` itself carries a novnc_proxy wrapper that
+  # pulls in a second Python and websockify). No build step: the files are
+  # copied as they are in the repository.
+  viewer = pkgs.runCommand "repose-desktop-viewer" { } ''
     mkdir -p $out
-    cp -r ${pkgs.novnc}/share/webapps/novnc/. $out/
-    echo '{"resize": "scale"}' > $out/defaults.json
-  ''}";
+    cp ${./desktop/viewer}/* $out/
+    ln -s ${pkgs.novnc}/share/webapps/novnc/core $out/core
+    ln -s ${pkgs.novnc}/share/webapps/novnc/vendor $out/vendor
+  '';
   idleSeconds = 1800;
 
-  # Every window maximised: the browser fills the screen the user watches.
+  # Every window maximised: the browser fills the screen the user watches,
+  # and follows it when the viewer resizes the screen (openbox reapplies
+  # the maximised geometry on a RandR change).
   openboxConfig = pkgs.writeText "repose-openbox-rc.xml" ''
     <?xml version="1.0" encoding="UTF-8"?>
     <openbox_config xmlns="http://openbox.org/3.4/rc">
@@ -49,19 +64,48 @@ let
       <applications>
         <application class="*">
           <maximized>yes</maximized>
+          <decor>no</decor>
         </application>
       </applications>
     </openbox_config>
   '';
 
+  # One password per boot: /run is a tmpfs, so the file is gone at the
+  # next boot and made again then. vnc-password is the plain text the CLI
+  # reads; vnc-passwd is TigerVNC's obfuscated form Xvnc reads.
   genPassword = pkgs.writeShellApplication {
     name = "repose-vnc-password";
-    runtimeInputs = [ pkgs.coreutils pkgs.x11vnc ];
+    runtimeInputs = [ pkgs.coreutils pkgs.tigervnc ];
     text = ''
+      if [ -s ${dir}/vnc-password ] && [ -s ${dir}/vnc-passwd ]; then
+        exit 0
+      fi
       pw=$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 8)
       umask 077
       printf '%s\n' "$pw" > ${dir}/vnc-password
-      x11vnc -storepasswd "$pw" ${dir}/vnc-passwd >/dev/null 2>&1
+      printf '%s\n' "$pw" | vncpasswd -f > ${dir}/vnc-passwd
+    '';
+  };
+
+  # The web root websockify serves: the viewer's files, plus project.json
+  # with the project's name for the page's top bar, written at every
+  # viewer start (the name can change with the laptop's, I-198).
+  webRoot = pkgs.writeShellApplication {
+    name = "repose-desktop-web";
+    runtimeInputs = [ pkgs.coreutils pkgs.jq ];
+    text = ''
+      rm -rf ${webDir}
+      mkdir -p ${webDir}
+      for f in ${viewer}/*; do
+        ln -s "$f" ${webDir}/
+      done
+      project=/home/dev/.repose/project.json
+      if [ -s "$project" ]; then
+        name=$(jq -r '.name // .slug // empty' "$project" 2>/dev/null || true)
+      fi
+      [ -n "''${name:-}" ] || name=$(cat /proc/sys/kernel/hostname)
+      jq -n --arg name "$name" --argjson idle ${toString (idleSeconds / 60)} \
+        '{name: $name, idle_minutes: $idle}' > ${webDir}/project.json
     '';
   };
 
@@ -70,7 +114,7 @@ let
     runtimeInputs = [ pkgs.coreutils pkgs.iproute2 pkgs.systemd ];
     text = ''
       viewer=false; browser=false
-      systemctl is-active --quiet repose-x11vnc.service && viewer=true
+      systemctl is-active --quiet repose-novnc.service && viewer=true
       systemctl is-active --quiet repose-browser.service && browser=true
       [ "$viewer" = true ] || [ "$browser" = true ] || exit 0
       now=$(date +%s)
@@ -96,13 +140,23 @@ let
   };
 
   # Wait until a listener is bound, so a unit only counts as started when a
-  # dependent can connect (websockify and x11vnc have no sd_notify).
+  # dependent can connect (websockify and Xvnc have no sd_notify).
   waitPort = port: pkgs.writeShellScript "repose-wait-${toString port}" ''
     for _ in $(seq 1 100); do
       if ${pkgs.iproute2}/bin/ss -Hltn "sport = :${toString port}" | grep -q LISTEN; then exit 0; fi
       sleep 0.1
     done
     echo "port ${toString port} not listening after 10 s" >&2
+    exit 1
+  '';
+
+  # Xvnc needs a moment to open its X socket.
+  waitDisplay = pkgs.writeShellScript "repose-wait-display" ''
+    for _ in $(seq 1 100); do
+      [ -S /tmp/.X11-unix/X99 ] && exit 0
+      sleep 0.1
+    done
+    echo "display ${display} not up after 10 s" >&2
     exit 1
   '';
 
@@ -116,63 +170,68 @@ let
   };
 in
 {
-  environment.systemPackages = [ pkgs.xvfb pkgs.openbox pkgs.x11vnc websockify ];
+  environment.systemPackages = [ pkgs.tigervnc pkgs.openbox websockify ];
 
-  systemd.services.repose-xvfb = lib.recursiveUpdate common {
-    description = "repose desktop: Xvfb ${display}";
+  # The X display and the VNC server. -ac: the browser, the MCP servers and
+  # a root `import` in the VM test all draw on or read the display.
+  # -noreset keeps the server up between X clients, as Xvfb did.
+  systemd.services.repose-xvnc = lib.recursiveUpdate common {
+    description = "repose desktop: Xvnc ${display}, VNC on 127.0.0.1:5900";
     unitConfig.StopWhenUnneeded = true;
     serviceConfig = {
-      ExecStart = "${pkgs.xvfb}/bin/Xvfb ${display} -screen 0 1440x900x24 -nolisten tcp -ac -noreset";
-      ExecStartPost = "${pkgs.coreutils}/bin/touch ${dir}/last-client";
+      ExecStartPre = "${genPassword}/bin/repose-vnc-password";
+      ExecStart = lib.concatStringsSep " " [
+        "${pkgs.tigervnc}/bin/Xvnc ${display}"
+        "-geometry 1440x900 -depth 24 -ac -nolisten tcp -noreset"
+        "-localhost -rfbport 5900 -SecurityTypes VncAuth -PasswordFile ${dir}/vnc-passwd"
+        "-AlwaysShared -AcceptSetDesktopSize -FrameRate 60 -desktop repose"
+      ];
+      # A display started for the browser alone starts the viewer's idle
+      # clock, so the stamp is never older than the display.
+      ExecStartPost = [ waitDisplay (waitPort 5900) "${pkgs.coreutils}/bin/touch ${dir}/last-client" ];
     };
   };
 
   systemd.services.repose-openbox = lib.recursiveUpdate common {
     description = "repose desktop: window manager";
-    requires = [ "repose-xvfb.service" ];
-    after = [ "repose-xvfb.service" ];
-    bindsTo = [ "repose-xvfb.service" ];
+    requires = [ "repose-xvnc.service" ];
+    after = [ "repose-xvnc.service" ];
+    bindsTo = [ "repose-xvnc.service" ];
     unitConfig.StopWhenUnneeded = true;
     serviceConfig.ExecStart = "${pkgs.openbox}/bin/openbox --config-file ${openboxConfig}";
-    # Xvfb needs a moment to open its socket.
-    preStart = ''
-      for _ in $(seq 1 50); do
-        [ -S /tmp/.X11-unix/X99 ] && exit 0
-        sleep 0.1
-      done
-    '';
   };
 
-  systemd.services.repose-x11vnc = lib.recursiveUpdate common {
-    description = "repose desktop: x11vnc on 127.0.0.1:5900";
-    requires = [ "repose-xvfb.service" ];
-    wants = [ "repose-openbox.service" "repose-browser.service" ];
-    after = [ "repose-xvfb.service" "repose-openbox.service" ];
-    bindsTo = [ "repose-xvfb.service" ];
+  # Xvnc's clipboard helper: an X client that carries the X selections to
+  # the VNC clipboard and back, so the viewer page's clipboard bridge has
+  # something to bridge. Runs only while the viewer does.
+  systemd.services.repose-vncconfig = lib.recursiveUpdate common {
+    description = "repose desktop: clipboard between the display and the viewer";
+    requires = [ "repose-xvnc.service" ];
+    after = [ "repose-xvnc.service" ];
+    bindsTo = [ "repose-xvnc.service" ];
+    unitConfig.StopWhenUnneeded = true;
+    serviceConfig.ExecStart = "${pkgs.tigervnc}/bin/vncconfig -nowin";
+  };
+
+  # The viewer: websockify bridges the page's WebSocket to Xvnc and serves
+  # the page. It wants the browser, so the desktop always shows it.
+  systemd.services.repose-novnc = lib.recursiveUpdate common {
+    description = "repose desktop: the viewer (websockify) on 127.0.0.1:6081";
+    requires = [ "repose-xvnc.service" ];
+    wants = [ "repose-openbox.service" "repose-vncconfig.service" "repose-browser.service" ];
+    after = [ "repose-xvnc.service" "repose-openbox.service" ];
+    bindsTo = [ "repose-xvnc.service" ];
     serviceConfig = {
-      ExecStartPre = "${genPassword}/bin/repose-vnc-password";
-      ExecStart = "${pkgs.x11vnc}/bin/x11vnc -display ${display} -localhost -rfbport 5900 -rfbauth ${dir}/vnc-passwd -forever -shared -noxdamage -quiet";
+      ExecStartPre = "${webRoot}/bin/repose-desktop-web";
+      ExecStart = "${websockify}/bin/websockify --file-only --web ${webDir} 127.0.0.1:6081 127.0.0.1:5900";
       # A viewer started while the browser had the display up for hours
       # starts its own idle clock.
-      ExecStartPost = [ (waitPort 5900) "${pkgs.coreutils}/bin/touch ${dir}/last-client" ];
-      # x11vnc exits 2 when told to stop; that is its normal shutdown.
-      SuccessExitStatus = "2";
-    };
-  };
-
-  systemd.services.repose-novnc = lib.recursiveUpdate common {
-    description = "repose desktop: noVNC (websockify) on 127.0.0.1:6081";
-    requires = [ "repose-x11vnc.service" ];
-    after = [ "repose-x11vnc.service" ];
-    bindsTo = [ "repose-x11vnc.service" ];
-    serviceConfig = {
-      ExecStart = "${websockify}/bin/websockify --web ${novncWeb} 127.0.0.1:6081 127.0.0.1:5900";
-      ExecStartPost = waitPort 6081;
+      ExecStartPost = [ (waitPort 6081) "${pkgs.coreutils}/bin/touch ${dir}/last-client" ];
     };
   };
 
   systemd.sockets.repose-novnc = {
-    description = "repose desktop: noVNC entry point on 127.0.0.1:6080";
+    description = "repose desktop: viewer entry point on 127.0.0.1:6080";
     wantedBy = [ "sockets.target" ];
     socketConfig = {
       ListenStream = "127.0.0.1:6080";
@@ -181,7 +240,7 @@ in
   };
 
   systemd.services.repose-novnc-proxy = {
-    description = "repose desktop: proxy 6080 to noVNC, starting the chain";
+    description = "repose desktop: proxy 6080 to the viewer, starting the chain";
     requires = [ "repose-novnc.service" ];
     after = [ "repose-novnc.service" ];
     serviceConfig = {
@@ -191,13 +250,13 @@ in
     };
   };
 
-  # Stops the viewer. Xvfb and openbox follow unless the agents' browser
+  # Stops the viewer. Xvnc and openbox follow unless the agents' browser
   # still draws on them; the browser has its own idle stop above.
   systemd.services.repose-desktop-idle = {
     description = "repose desktop: stop the viewer";
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = "${pkgs.systemd}/bin/systemctl stop repose-novnc-proxy.service repose-novnc.service repose-x11vnc.service";
+      ExecStart = "${pkgs.systemd}/bin/systemctl stop repose-novnc-proxy.service repose-novnc.service";
     };
   };
 

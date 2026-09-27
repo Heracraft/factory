@@ -983,14 +983,17 @@ in
     '';
   };
 
-  # The agents' browser on the desktop (DECISIONS I-33, I-246): an MCP
-  # server driven over stdio JSON-RPC navigates the shared headed browser,
-  # the X display shows the page, the other MCP server sees the same tab,
-  # and the browser comes back after a crash.
+  # The agents' browser on the desktop (DECISIONS I-33, I-246, I-292): an
+  # MCP server driven over stdio JSON-RPC navigates the shared headed
+  # browser, the X display shows the page, the other MCP server sees the
+  # same tab, the browser comes back after a crash; the viewer page is
+  # served, a real RFB client authenticates with the boot's password and
+  # gets the framebuffer, and its SetDesktopSize resizes the screen with
+  # the browser's window following.
   guest-desktop = mkTest "guest-desktop" {
     nodes.guest = { pkgs, ... }: {
       imports = [ node ];
-      environment.systemPackages = [ pkgs.imagemagick pkgs.python3 ];
+      environment.systemPackages = [ pkgs.imagemagick pkgs.python3 pkgs.xdotool pkgs.xorg.xdpyinfo pkgs.xorg.xrandr ];
     };
     testScript = ''
       import json, shlex
@@ -1034,8 +1037,25 @@ in
           stat = guest.succeed(f"cat /sys/fs/cgroup{cg}/cpu.stat")
           return int(stat.split("usage_usec ")[1].split()[0])
 
+      def rfb(*args):
+          """The RFB client (rfb-client.py) against the guest's Xvnc."""
+          out = guest.succeed("python3 ${./rfb-client.py} " + " ".join(shlex.quote(a) for a in args))
+          return json.loads(out)
+
+      def screen_size():
+          out = guest.succeed("xdpyinfo -display :99 | sed -n 's/.*dimensions: *\\([0-9]*x[0-9]*\\) pixels.*/\\1/p'").strip()
+          return out
+
+      def browser_window():
+          """Geometry of the agents' browser's visible top-level window, WxH."""
+          wid = guest.succeed("DISPLAY=:99 xdotool search --onlyvisible --classname '^[Cc]hromium' | head -1").strip()
+          assert wid, "no chromium window"
+          out = guest.succeed(f"DISPLAY=:99 xdotool getwindowgeometry --shell {wid}")
+          g = dict(l.split("=") for l in out.split())
+          return f"{g['WIDTH']}x{g['HEIGHT']}"
+
       with subtest("nothing runs until asked for"):
-          for u in ["repose-xvfb", "repose-openbox", "repose-browser", "repose-x11vnc"]:
+          for u in ["repose-xvnc", "repose-openbox", "repose-browser", "repose-novnc"]:
               guest.fail(f"systemctl is-active {u}.service")
           assert reg["playwright"]["args"] == ["--cdp-endpoint", "http://127.0.0.1:9224"], reg
           assert reg["chrome-devtools"]["args"] == ["--browserUrl", "http://127.0.0.1:9224"], reg
@@ -1051,12 +1071,13 @@ in
       with subtest("playwright MCP starts the browser, headed on :99, and the page shows there"):
           out = mcp("playwright", ("browser_navigate", {"url": page}))
           assert "magenta.html" in out, out
-          for u in ["repose-xvfb", "repose-openbox", "repose-browser"]:
+          for u in ["repose-xvnc", "repose-openbox", "repose-browser"]:
               guest.succeed(f"systemctl is-active {u}.service")
           # The viewer is not needed for the browser to draw.
-          guest.fail("systemctl is-active repose-x11vnc.service")
+          guest.fail("systemctl is-active repose-novnc.service")
           assert "repose-browser.slice" in guest.succeed("systemctl show -P Slice repose-browser.service")
           assert guest.succeed("systemctl show -P MemoryMax repose-browser.slice").strip() != "infinity"
+          assert screen_size() == "1440x900", screen_size()
           guest.succeed("DISPLAY=:99 import -window root /tmp/screen.png")
           guest.copy_from_machine("/tmp/screen.png", "")
           share = magenta_share("/tmp/screen.png")
@@ -1085,14 +1106,14 @@ in
           disp = guest.succeed("sudo -u dev bash -lc 'echo $DISPLAY'").strip()
           assert disp == ":99", disp
 
-      with subtest("memory and CPU, headed on Xvfb against headless"):
+      with subtest("memory and CPU, headed on Xvnc against headless"):
           guest.sleep(5)
           headed = memory("repose-browser.service")
-          xvfb = memory("repose-xvfb.service")
+          xvnc = memory("repose-xvnc.service")
           openbox = memory("repose-openbox.service")
-          c0 = cpu_usec("repose-browser.service") + cpu_usec("repose-xvfb.service")
+          c0 = cpu_usec("repose-browser.service") + cpu_usec("repose-xvnc.service")
           guest.sleep(30)
-          c1 = cpu_usec("repose-browser.service") + cpu_usec("repose-xvfb.service")
+          c1 = cpu_usec("repose-browser.service") + cpu_usec("repose-xvnc.service")
           guest.succeed("systemd-run --unit headless-measure -p User=dev -p Environment=HOME=/home/dev ${pkgs.chromium}/bin/chromium --headless --user-data-dir=/tmp/headless-measure --remote-debugging-port=9333 --no-first-run " + page)
           guest.wait_for_open_port(9333)
           guest.sleep(5)
@@ -1101,8 +1122,8 @@ in
           guest.sleep(30)
           h1 = cpu_usec("headless-measure.service")
           guest.succeed("systemctl stop headless-measure.service")
-          print(f"MEASURE headed chromium {headed}; Xvfb {xvfb}; openbox {openbox}; headless chromium {headless}")
-          print(f"MEASURE idle CPU over 30 s: headed+Xvfb {(c1 - c0) / 1e6:.2f} s, headless {(h1 - h0) / 1e6:.2f} s")
+          print(f"MEASURE headed chromium {headed}; Xvnc {xvnc}; openbox {openbox}; headless chromium {headless}")
+          print(f"MEASURE idle CPU over 30 s: headed+Xvnc {(c1 - c0) / 1e6:.2f} s, headless {(h1 - h0) / 1e6:.2f} s")
 
       with subtest("the browser comes back after a crash, and a running MCP server reconnects"):
           out = mcp("playwright",
@@ -1117,24 +1138,72 @@ in
           out = mcp("chrome-devtools", ("list_pages", {}))
           assert "?after" in out, out
 
-      with subtest("opening the desktop shows the same browser"):
-          out = guest.succeed("curl -s -m 20 -o /dev/null -w '%{http_code}' http://127.0.0.1:6080/vnc.html")
+      with subtest("a connection to 6080 starts the viewer and serves repose's page"):
+          out = guest.succeed("curl -s -m 20 -o /tmp/index.html -w '%{http_code}' http://127.0.0.1:6080/")
           assert out.strip() == "200", out
-          guest.wait_for_unit("repose-x11vnc.service")
           guest.wait_for_unit("repose-novnc.service")
-          guest.succeed("curl -sf http://127.0.0.1:6080/defaults.json | grep -q scale")
+          index = guest.succeed("cat /tmp/index.html")
+          assert "the agent's browser" in index and "viewer.js" in index, index
+          assert guest.succeed("curl -sf http://127.0.0.1:6080/healthz").strip() == "repose desktop viewer ok"
+          ctype = guest.succeed("curl -sf -o /dev/null -w '%{content_type}' http://127.0.0.1:6080/viewer.js").strip()
+          assert "javascript" in ctype, ctype
+          guest.succeed("curl -sf http://127.0.0.1:6080/core/rfb.js | grep -q 'export default class RFB'")
+          guest.succeed("curl -sf http://127.0.0.1:6080/vendor/pako/lib/zlib/inflate.js -o /dev/null")
+          proj = json.loads(guest.succeed("curl -sf http://127.0.0.1:6080/project.json"))
+          assert proj["name"] and proj["idle_minutes"] == 30, proj
+          # Stock noVNC's page is not shipped; ours is the index.
+          assert guest.succeed("curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:6080/vnc.html").strip() == "404"
           pw = guest.succeed("cat /run/repose/desktop/vnc-password").strip()
           assert len(pw) == 8, pw
+          assert guest.succeed("stat -c '%U %a' /run/repose/desktop/vnc-password").strip() == "dev 600"
           prof = guest.succeed("sudo -u dev repose-guest-profile desktop status").strip()
           assert prof == "running", prof
+          prof = json.loads(guest.succeed("sudo -u dev repose-guest-profile"))
+          assert prof["desktop"]["running"] is True and prof["desktop"]["novnc_port"] == 6080, prof
           out = mcp("chrome-devtools", ("list_pages", {}))
           assert "?after" in out, out
 
-      with subtest("stopping the desktop stops the viewer, not the agents' browser"):
+      with subtest("a real RFB client authenticates with the password and receives the framebuffer"):
+          guest.fail(f"python3 ${./rfb-client.py} --password wrong{pw[:3]}")
+          r = rfb("--password", pw)
+          print("RFB:", json.dumps({k: r[k] for k in ("server_version", "security_types", "auth", "width", "height", "bpp", "name", "first_update")}))
+          assert r["auth"] == "ok" and r["security_types"] == [2], r
+          assert (r["width"], r["height"]) == (1440, 900), r
+          assert r["first_update"]["raw_bytes"] == 1440 * 900 * 4, r["first_update"]
+          assert len(r["screens"]) == 1, r["screens"]
+
+      with subtest("SetDesktopSize resizes the screen, and the browser's window follows"):
+          # A large tab and a small one (Chromium's own minimum window
+          # width is around 500 px, so a phone-width screen gets a window
+          # wider than the screen, which the viewer scales).
+          for size in ["2560x1440", "800x600"]:
+              w, h = (int(v) for v in size.split("x"))
+              r = rfb("--password", pw, "--resize", size)
+              print(f"RFB resize to {size}:", json.dumps(r["resize"]))
+              assert r["resize"]["result"] == 0 and (r["resize"]["w"], r["resize"]["h"]) == (w, h), r["resize"]
+              assert r["resize"]["update_raw_bytes"] == w * h * 4, r["resize"]
+              assert screen_size() == size, screen_size()
+              assert size in guest.succeed("xrandr -display :99 | head -1"), guest.succeed("xrandr -display :99 | head -1")
+              # openbox re-maximises the browser to the new screen.
+              guest.wait_until_succeeds(f"export DISPLAY=:99; xdotool search --onlyvisible --classname '^[Cc]hromium' | head -1 | xargs -I W xdotool getwindowgeometry --shell W | grep -q 'WIDTH={w}'", timeout=30)
+              geo = browser_window()
+              print(f"MEASURE browser window after resize to {size}: {geo}")
+              assert geo == size, geo
+              guest.sleep(2)
+              guest.succeed(f"DISPLAY=:99 import -window root /tmp/screen-{size}.png")
+              guest.copy_from_machine(f"/tmp/screen-{size}.png", "")
+              share = magenta_share(f"/tmp/screen-{size}.png")
+              corner = magenta_share(f"/tmp/screen-{size}.png", f"-crop 20x20+{w - 20}+{h - 20} +repage")
+              print(f"magenta share of the {size} screen: {share:.3f}, bottom-right corner {corner:.3f}")
+              assert share > 0.7 and corner > 0.95, (share, corner)
+          rfb("--password", pw, "--resize", "1440x900")
+          assert screen_size() == "1440x900", screen_size()
+
+      with subtest("stopping the desktop stops the viewer, not the agents' browser or the display"):
           guest.succeed("sudo -u dev repose-guest-profile desktop stop")
-          for u in ["repose-x11vnc", "repose-novnc"]:
-              guest.fail(f"systemctl is-active {u}.service")
-          for u in ["repose-browser", "repose-xvfb"]:
+          for u in ["repose-novnc", "repose-novnc-proxy", "repose-vncconfig"]:
+              guest.wait_until_fails(f"systemctl is-active {u}.service")
+          for u in ["repose-browser", "repose-xvnc"]:
               guest.succeed(f"systemctl is-active {u}.service")
           prof = guest.succeed("sudo -u dev repose-guest-profile desktop status").strip()
           assert prof == "stopped", prof
@@ -1142,22 +1211,26 @@ in
       with subtest("the idle check stops the unused browser, and the display follows"):
           guest.succeed("touch -d '-31 minutes' /run/repose/desktop/last-client /run/repose/desktop/last-cdp")
           guest.succeed("systemctl start repose-desktop-idle-check.service")
-          for u in ["repose-browser", "repose-xvfb", "repose-openbox"]:
+          for u in ["repose-browser", "repose-xvnc", "repose-openbox"]:
               guest.wait_until_fails(f"systemctl is-active {u}.service")
           guest.succeed("systemctl is-active repose-browser.socket repose-novnc.socket")
           disp = guest.succeed("sudo -u dev bash -lc 'echo -n $DISPLAY'")
           assert disp == "", disp
 
-      with subtest("desktop start starts the browser; the viewer's idle stop leaves a used browser"):
-          pw = guest.succeed("sudo -u dev repose-guest-profile desktop start").strip().splitlines()[-1]
-          assert len(pw) == 8, pw
-          guest.succeed("systemctl is-active repose-browser.service repose-x11vnc.service")
+      with subtest("desktop start starts the browser with the boot's password; the viewer's idle stop leaves a used browser"):
+          pw2 = guest.succeed("sudo -u dev repose-guest-profile desktop start").strip().splitlines()[-1]
+          assert pw2 == pw, (pw, pw2)
+          guest.succeed("systemctl is-active repose-browser.service repose-novnc.service repose-xvnc.service")
+          # The same link still opens the desktop after the display was
+          # stopped and started again.
+          r = rfb("--password", pw)
+          assert r["auth"] == "ok" and r["first_update"]["raw_bytes"] == 1440 * 900 * 4, r
           guest.succeed("touch -d '-31 minutes' /run/repose/desktop/last-client")
           guest.succeed("systemctl start repose-desktop-idle-check.service")
-          guest.fail("systemctl is-active repose-x11vnc.service")
-          guest.succeed("systemctl is-active repose-browser.service repose-xvfb.service")
+          guest.fail("systemctl is-active repose-novnc.service")
+          guest.succeed("systemctl is-active repose-browser.service repose-xvnc.service")
           guest.succeed("systemctl stop repose-browser.service")
-          guest.wait_until_fails("systemctl is-active repose-xvfb.service")
+          guest.wait_until_fails("systemctl is-active repose-xvnc.service")
 
       with subtest("a guest's old headless registration gives way; the user's own entries stay"):
           guest.succeed("""cat > /home/dev/.claude.json <<'EOF'
