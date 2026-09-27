@@ -118,9 +118,10 @@ as such.
 hours: $49, $99, $199. Hourly rate is the cap divided by 720, so running
 all month costs the cap and never more.
 
-**meter**, one of the three billed quantities: guest-hours by class,
-volume GB-months by allocated size, egress GB. Recorded in `usage_hours`,
-pushed to Stripe hourly.
+**meter**, one of the three measured quantities: guest-hours by class,
+disk allocated, egress GB. Recorded in `usage_hours` hourly; since I-289
+none is priced per hour (a plan buys memory, disk and egress, and only
+egress past the allowance becomes an invoice line).
 
 **held**, a project whose base updates are paused by the dashboard's
 **Hold base updates** checkbox (`hold_base_updates`). It keeps its base

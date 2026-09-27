@@ -618,7 +618,7 @@ def billing() -> dict:
     return dashboard(
         "repose-billing",
         "repose / Billing",
-        desc="What will be invoiced, and whether the meters are keeping up. Invoices are built from usage_hours, so the rollup is the thing to watch (DECISIONS R4-7).",
+        desc="Plans through Paddle (DECISIONS I-289): the subscription mix, the webhook, the gate's refusals, the egress overage line, and the hours and egress usage_hours records. Paddle holds the money; usage_hours holds what was used.",
         time_from="now-2d",
         panels=[
             panel(
@@ -629,77 +629,74 @@ def billing() -> dict:
                 desc="Now minus the last hour rolled into usage_hours. Past two hours is RollupLag.",
             ),
             panel(
-                "stat", "Stripe push failures in the last hour",
-                [q('sum(increase(repose_api_stripe_usage_push_total{result="error"}[1h]))', "failures", instant=True)],
+                "stat", "Webhooks rejected in 10 minutes",
+                [q('sum(increase(repose_api_billing_webhook_total{result="bad_signature"}[10m]))', "rejected", instant=True)],
+                w=6, h=6, thresholds=[("green", None), ("red", 5)],
+                desc="Paddle-Signature failures. Five in ten minutes is PaddleWebhookRejected: the secret and the destination have drifted, and no subscription event is applied.",
+            ),
+            panel(
+                "stat", "Overage charges failed in the last hour",
+                [q('sum(increase(repose_api_billing_overage_charges_total{result="error"}[1h]))', "failed", instant=True)],
                 w=6, h=6, thresholds=[("green", None), ("red", 1)],
-                desc="A failed usage record is money that will not appear on an invoice unless the reconciliation job repairs it.",
+                desc="An egress line Paddle refused. The row waits for `repose-admin billing overage-now`; the invoice locks 30 minutes before charging (OverageChargeFailed).",
             ),
             panel(
-                "stat", "Oldest unbilled hour",
-                [q("max(repose_api_billing_stripe_push_backlog_seconds)", "backlog", instant=True)],
-                unit="s", w=6, h=6,
-                thresholds=[("green", None), ("yellow", 3600), ("red", 21600)],
-                desc="The age of the oldest usage_hours row with no Stripe record. Past six hours is StripePushBacklog; `repose-admin billing resync` re-pushes them (09-billing.md §6).",
-            ),
-            panel(
-                "stat", "Reconciliation difference",
-                [q("max(repose_api_billing_mismatch_cents)", "cents", instant=True)],
-                w=6, h=6, thresholds=[("green", None), ("red", 1)],
-                desc="The largest usage_hours minus Stripe difference the nightly reconciliation found. It reports and never fixes; `repose-admin billing explain` shows one row (09-billing.md §5.7).",
-            ),
-            panel(
-                "stat", "Cost today",
-                [sql("""select coalesce(sum(cost_cents), 0) / 100.0 as usd from usage_hours
-                        where hour >= date_trunc('day', now())""", fmt="table")],
-                unit="currencyUSD", w=6, h=6,
-                desc="Across every project, from usage_hours. A project's own figure is capped at its monthly price (small 49, large 99, xl 199).",
-            ),
-            panel(
-                "stat", "Projects billing today",
-                [sql("""select count(distinct project_id) as projects from usage_hours
-                        where hour >= date_trunc('day', now()) and running_seconds > 0""", fmt="table")],
-                desc="Projects that have run for part of today. A stopped project still bills its volume, and does not appear here.",
+                "stat", "Live subscriptions",
+                [sql("""select count(*) as live from subscriptions where status in ('trialing','active','past_due')""", fmt="table")],
                 w=6, h=6,
+                desc="Subscriptions that hold a seat and buy compute (trialing, active, past_due). The seats the fleet sells are SEATS_TOTAL (I-290).",
             ),
             panel(
-                "timeseries", "Trial credit consumed per hour",
-                [sql("""select hour as time, sum(credit_cents) / 100.0 as credit_usd, sum(cost_cents - credit_cents) / 100.0 as billed_usd
-                        from usage_hours where $__timeFilter(hour) group by 1 order by 1""", fmt="time_series")],
-                desc="The trial is consumed at the same rates as paid usage, so it is also the first test of the meters (DECISIONS R4-8). Only the billed half reaches Stripe.",
-                unit="currencyUSD",
+                "timeseries", "Subscription webhooks by plan and status",
+                [q("sum by (plan, status) (increase(repose_api_billing_subscriptions_total[1h]))", "{{plan}} {{status}}")],
+                desc="Every subscription.* event applied, by the plan it names and Paddle's status. A rising past_due series is the dunning job's next three days.",
+                unit="none", stack=True,
+            ),
+            panel(
+                "timeseries", "Gate refusals by reason",
+                [q("sum by (reason) (increase(repose_api_billing_gate_refused_total[1h]))", "{{reason}}")],
+                desc="payment_required answers: subscription_required (no plan), plan_limit (memory), disk_limit, egress_limit, past_due, suspended. plan_limit is the upgrade signal.",
+                unit="none", stack=True,
+            ),
+            panel(
+                "table", "Accounts by plan and status",
+                [sql("""select plan, status, count(*) as accounts, sum(seats) as seats
+                        from subscriptions group by 1, 2 order by 1, 2""", fmt="table")],
+                desc="The subscriptions table as it stands: what Paddle told the webhook last.",
+                w=12, h=8,
+            ),
+            panel(
+                "table", "Egress this period per account",
+                [sql("""select u.handle as owner, s.plan, sum(h.egress_bytes) as egress,
+                        (case s.plan when 'pro' then 500 else 250 end) as included_gb,
+                        greatest(0, ceil(sum(h.egress_bytes) / 1073741824.0 - (case s.plan when 'pro' then 500 else 250 end))) * 5 / 100.0 as overage_usd
+                        from subscriptions s join users u on u.id = s.user_id
+                        join projects p on p.user_id = s.user_id join usage_hours h on h.project_id = p.id
+                        where s.status in ('trialing','active','past_due') and h.hour >= s.period_start and h.hour < s.period_end
+                        group by 1, 2 order by egress desc limit 50""", fmt="table")],
+                desc="What the overage line will say (PRICING.md: $0.05 a GB past the plan's allowance), and who is near the hard stop at four times it.",
+                w=12, h=8,
+                overrides=[{"matcher": {"id": "byName", "options": "egress"}, "properties": [{"id": "unit", "value": "bytes"}]},
+                           {"matcher": {"id": "byName", "options": "overage_usd"}, "properties": [{"id": "unit", "value": "currencyUSD"}]}],
             ),
             panel(
                 "timeseries", "Guest hours per hour by class",
                 [sql("""select hour as time, class, sum(running_seconds) / 3600.0 as guest_hours
                         from usage_hours where $__timeFilter(hour) group by 1, 2 order by 1""", fmt="time_series")],
-                desc="The meter §14 bills by: a running guest accrues, a stopped one does not. One guest running the whole hour is 1.0.",
+                desc="A running machine accrues, a stopped one does not. One machine running the whole hour is 1.0. Not a price since plan-v1; `repose status` shows the same hours.",
                 unit="none", stack=True,
             ),
             panel(
-                "timeseries", "Stripe usage pushes",
-                [q("sum by (result) (rate(repose_api_stripe_usage_push_total[15m]) * 900)", "{{result}} / 15m")],
-                desc="Pushed hourly. While STRIPE_* is unset the routes return 503 billing_disabled and this stays flat (DECISIONS I-16).",
+                "timeseries", "Machines stopped for billing",
+                [q("sum by (reason) (increase(repose_api_billing_stops_total[1h]))", "{{reason}}")],
+                desc="Stops the api made itself: past_due (day 3), ended (a cancelled subscription reached its end), egress (four times the allowance). BillingStopped alerts on any.",
                 unit="none",
-            ),
-            panel(
-                "table", "Cost per project today",
-                [sql("""select p.slug as project, u.handle as owner, p.class,
-                        sum(h.running_seconds) / 3600.0 as guest_hours,
-                        max(h.gb_alloc) as gb_allocated,
-                        sum(h.egress_bytes) as egress,
-                        sum(h.cost_cents) / 100.0 as usd
-                        from usage_hours h join projects p on p.id = h.project_id join users u on u.id = p.user_id
-                        where h.hour >= date_trunc('day', now()) group by 1,2,3 order by usd desc limit 50""", fmt="table")],
-                desc="What `repose status` shows a user, for every project at once.",
-                w=24, h=9,
-                overrides=[{"matcher": {"id": "byName", "options": "egress"}, "properties": [{"id": "unit", "value": "bytes"}]},
-                           {"matcher": {"id": "byName", "options": "usd"}, "properties": [{"id": "unit", "value": "currencyUSD"}]}],
             ),
             panel(
                 "timeseries", "Egress per hour",
                 [sql("""select hour as time, sum(egress_bytes) as egress from usage_hours
                         where $__timeFilter(hour) group by 1 order by 1""")],
-                desc="500 GB a month is included per project, then $0.05 a GB. The per-project view is on the Abuse dashboard.",
+                desc="250 GB a month is included on Solo, 500 on Pro, then $0.05 a GB; machines stop at four times the allowance. The per-project view is on the Abuse dashboard.",
                 unit="bytes", w=24,
             ),
         ],

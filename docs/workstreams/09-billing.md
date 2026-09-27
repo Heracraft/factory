@@ -1,5 +1,11 @@
 # 09 · billing
 
+> **Superseded in part (2026-09-27, DECISIONS I-289).** §1 to §4 and
+> §5.1 to §5.10 describe the hourly design on Stripe as it was built and
+> merged; they are kept as history. What runs is §5.11, "Plans on
+> Paddle", and the §9 checklist is that design's. `docs/PRICING.md` is
+> what is sold.
+
 ## 1. Goal
 
 Turn the meter samples hostd already sends into money, correctly, from the
@@ -57,6 +63,12 @@ Consumes: `interfaces/grpc-hostd.md` (`GuestSample` fields: `state`,
 (`meter_samples`, `projects`, `users`).
 
 ## 5. Design detail
+
+> §5.1 to §5.10 are the superseded hourly design (Stripe meters, the cap,
+> the trial credit, reconciliation), kept as history: the tables and
+> columns they name still exist (`usage_hours`, `credit_ledger`,
+> `invoices`, db-schema.md marks the unused ones). §5.11 is the design in
+> the code since I-289.
 
 ### 5.1 Prices
 
@@ -253,6 +265,214 @@ are manual in the Stripe dashboard plus a `credit` row for the record.
 user's local day and the current billing period, so the CLI, dashboard and
 invoice never disagree.
 
+### 5.11 Plans on Paddle (I-289)
+
+What runs since 2026-09-27, with the exact names.
+
+**The plan table.** `internal/billing/plans.go`: `Plan{ID, Name,
+PriceCents, Currency, TrialDays, Seats, MemoryGB, DiskGB, EgressGB,
+ProjectLimit}`, `Solo` (solo, 2900, 7, 1, 8, 100, 250, 10) and `Pro` (pro,
+5900, 7, 2, 16, 250, 500, 25), `Plans`, `PlanByID`,
+`EgressHardStopMultiplier = 4`, `OveragePerGBCents = 5`, `SeatGB = 8`,
+`ClassMemoryGB` (small 4, large 8, xl 16), `OverageCents(plan, bytes)`
+(whole GB over, rounded up, at 5 cents), `PriceVersion = "plan-v1"`.
+`Price(Inputs)` normalises an hour and prices nothing: every cents column
+of `usage_hours` is 0 from plan-v1. `TestPlansMatchPricingDoc` parses the
+table in `PRICING.md`.
+
+**Configuration.** `config.go`: `PADDLE_API_KEY` (the prefix `pdl_sdbx_`
+means the sandbox, anything else live: `Environment()`),
+`PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_PRICE_SOLO`,
+`PADDLE_PRICE_PRO`, `PADDLE_PRODUCT_OVERAGE`, `PADDLE_PORTAL_RETURN_URL`
+(default `DASHBOARD_URL/billing`), `BILLING_ENFORCE`, `SEATS_TOTAL`.
+`Validate` refuses a key without the secret, both prices and the overage
+product. No key: the routes answer `503 billing_disabled` and the gate
+refuses every non-exempt account with `subscription_required`.
+
+**The Paddle client.** `paddle.go`: `Paddle` over `net/http`, base URL from
+the environment (`Config.BaseURL` overrides it for tests), headers
+`Authorization: Bearer`, `Paddle-Version: 1`; three tries on 429 and 5xx
+honouring `Retry-After`; `PaddleError{Status, Type, Code, Detail}` never
+carries the key. Calls: `FindCustomerByEmail`, `CreateCustomer`,
+`EnsureCustomer` (stores `users.paddle_customer_id`; called at checkout,
+not at first sign-in), `CreateCheckoutTransaction` (items
+`[{price_id, quantity 1}]`, `customer_id`, `custom_data.user_id`,
+`collection_mode automatic`), `GetSubscription`,
+`UpdateSubscriptionItems` (`prorated_immediately` up,
+`prorated_next_billing_period` down), `CancelSubscription`
+(`next_billing_period` | `immediately`), `ResumeScheduledChange`
+(`scheduled_change: null`), `CreateOneTimeCharge` (`POST
+/subscriptions/{id}/charge`, a non-catalog price under
+`PADDLE_PRODUCT_OVERAGE`, `unit_price.amount` in cents as a string),
+`PortalSession` (`urls.general.overview`,
+`urls.subscriptions[].update_subscription_payment_method`),
+`ListTransactions` (billed, completed, past_due; 24), `InvoicePDF`, and
+the bootstrap's `ListProducts`, `CreateProduct`, `ListPrices`,
+`CreatePlanPrice` (`billing_cycle {month, 1}`, `trial_period {day, 7}`,
+`custom_data.repose = <plan>`), `ListNotificationSettings`,
+`CreateNotificationSetting`.
+
+**The record.** `subscriptions.go`: `Sub` mirrors the table; `IsLive` is
+`trialing|active|past_due`; `LiveSubscription(user)`,
+`GetSubscription(id)`, `LatestSubscription(user)`; `Sub.Period(at)` is the
+current billing period (a calendar month when Paddle has not set one).
+`projectStatus` writes `users.billing_status`: trialing → `trial`, active
+→ `active`, past_due → `past_due` with `past_due_since` kept from the
+first failure, canceled and paused → `none`; `exempt` and `suspended` are
+never touched by it.
+
+**The webhook.** `webhook.go`: `Webhooks.Handle(body, header)` verifies
+`Paddle-Signature` (`ts=…;h1=…`, HMAC-SHA256 of `ts:body` with every
+accepted secret, constant time, `SignatureSkew` five minutes, several
+`h1` during a rotation), inserts `paddle_events (id, type, occurred_at)`
+first (`ErrDuplicate` on conflict, answered 200), applies, then writes
+`processed_at` or `error`. `subscription.*` upserts the row from `data`
+(plan from `items[0].price.id` against the configured price ids,
+`current_billing_period`, `next_billed_at`, `items[0].trial_dates.ends_at`,
+`scheduled_change {action cancel}` → `cancel_at`; the user from
+`custom_data.user_id`, else `paddle_customer_id`), projects the status,
+sets `has_card`, calls `Seats.Converted` on the first live row, stops the
+machines on `canceled` (reason `ended`), and emits `subscription_cancelled`,
+`subscription_ended`, `plan_changed`. `transaction.completed` returns a
+past-due account to `active`, clears `past_due_since` and a
+`suspended_reason = billing` suspension (an operator's stays), leaves a
+trialing subscription's $0 checkout alone, and stamps an overage line's
+`paddle_transaction_id`. `transaction.payment_failed` on a live
+subscription makes the account `past_due` and emits `payment_failed`
+(day 0); a checkout that fails has no subscription and changes nothing.
+Unknown types are recorded and ignored. `Sign(secret, ts, body)` is the
+scheme the fake and the tests use.
+
+**The gate.** `gate.go`: `Gate.Check(user, Request{Class, AddDiskBytes,
+Project})` returns a `*Refusal{Reason, Message, Detail}`: `suspended`,
+`subscription_required` (`detail.waitlist` from the waitlist row),
+`past_due`, `egress_limit` (the period's `usage_hours.egress_bytes` over
+the account at or past `EgressHardStopBytes`, `detail.until`),
+`plan_limit` (`RunningMemory` over `running|starting|restoring|creating|
+building` except `Project`, plus the class, against `MemoryGB`;
+`detail.projects` the slugs), `disk_limit` (`AllocatedDisk` of every live
+project plus `AddDiskBytes`). `message` is the whole sentence ("Your Solo
+plan runs 8 GB at once and todo-app is using it. Stop it, or upgrade at
+https://repose.herakraft.co/billing."). Exempt passes everything;
+`Enforce = false` passes everything. Call sites: `POST /projects` (class
+and the default volume), `/projects/:id/start` (class, excluding itself),
+`/projects/restore` and `/snapshots/:sid/restore` (class when starting,
+the volume when new), `/fork` (class when starting, the volumes of all
+N), `PATCH /projects/:id {class}` to a bigger class, `/resize` (the
+growth). `LimitsFor(user, sub)` is `/me`'s `limits`: the plan's project
+count, `xl` 1 when the plan has 16 GB, memory, disk, egress; an exempt or
+plan-less account has `users.project_limit` and `xl_limit`. The project
+count check stays a `400 invalid` with `{limit, projects, requested}` and
+now reads the plan's limit; the xl count limit is gone (memory decides).
+`WaitlistPlace` reads the 0008 waitlist row for `/me`, `/billing` and the
+gate's detail.
+
+**Overage and the hard stop.** `overage.go`: `Overage.Run` hourly. For
+each live subscription with `next_billed_at` within `ChargeWindow` (3 h)
+and `overage_charged_for <> period_start`: `OverageCents` of the period's
+egress; when over, insert `overage_charges (subscription_id, period_start,
+egress_gb, cents)` (the primary key makes a retry safe: an existing row is
+not sent again), `CreateOneTimeCharge(..., next_billing_period)`, store
+`paddle_transaction_id` when Paddle bills at once; always set
+`overage_charged_for`. A refused charge leaves the row without an id and
+the period unmarked, logs `overage_charged result=error`, and counts
+`repose_api_billing_overage_charges_total{result="error"}`
+(`OverageChargeFailed`); nothing sends it twice. Then the hard stop: any
+live subscription whose period egress passed four times the allowance
+gets `stopUserMachines` (reason `egress`) and one `egress_stopped` event
+per period (guarded by the events table). `ChargePeriod(sub,
+effectiveFrom)` is the same for one account, used by `repose-admin
+billing overage-now` and by account deletion (`immediately`).
+
+**Dunning.** `dunning.go`: `Dunning.Run` hourly: day 2 emits a second
+`payment_failed` once (no second event since `past_due_since`); day 3
+(`Grace`) stops the machines (reason `past_due`), emits `billing_stopped`
+per project, sets `suspended` with `suspended_reason = billing` and an
+audit row; `trial_ending` goes out once when `trial_end` is within 48 h.
+`Enforce = false` sends the emails and stops nothing.
+
+**Machines stopped for billing.** `stop.go`: `stopUserMachines` enqueues
+a stop with `snapshot: true`, `reason: billing` for every running or
+starting project (an op in progress is left for the next run), counts
+`repose_api_billing_stops_total{reason}` (`past_due|ended|egress`) and
+logs `billing_stopped`.
+
+**Account events.** `events.go`: `AccountEvent(q, user, at, kind,
+summary)` inserts an `events` row with `user_id` and no project plus an
+email outbox row, in the caller's transaction, the way `waitlist.Admit`
+does. Kinds: `trial_ending`, `payment_failed`, `subscription_cancelled`,
+`subscription_ended`, `plan_changed`, `egress_stopped` (`AccountKinds`);
+`billing_stopped` stays per project through `events.Ingest.Platform`.
+The notifier's templates for the kinds are I-291's.
+
+**The routes.** `service.go` behind `internal/api/http/billing.go`:
+`Overview` (`GET /billing`: `subscription`, `usage`, `plans[].available`
+from `Seats.Reserve`, `seats` from `Seats.Count`, `waitlist`, `paddle
+{environment, client_token}`), `Checkout` (`Seats.Reserve` first:
+`WaitlistedError` → `503 waitlisted` with `{position, joined_at, email}`
+and the sentence; a live subscription → `409 conflict subscribed`; then
+`EnsureCustomer` and the transaction), `ChangePlan` (upgrade at once with
+a free seat else `409 no_seat`; downgrade scheduled at `period_end`, kept
+in `scheduled_plan`, refused `409 over_plan {running_gb,
+disk_allocated_gb}` while the account does not fit), `Cancel`
+(`next_billing_period`, `cancel_at`, `subscription_cancelled`; `409
+already_cancelled`), `Resume` (`409 not_cancelled`), `Portal` (`{"for":
+"payment_method"}` for the deep link), `Invoices` (Paddle's transactions
+in the documented shape, `pdf_url` from `InvoicePDF`), `CloseAccount`
+(`DELETE /me`: `ChargePeriod(immediately)` then
+`CancelSubscription(immediately)`, in that order). `/me`'s `billing` and
+`limits` come from the live subscription; new accounts are inserted
+`none` with no credit; a suspended account may call `GET /me`, `GET
+/billing`, `POST /billing/portal`. `Project` carries
+`running_seconds_today` and `running_seconds_month`; `cost_*_cents` and
+`idle.hourly_cents` are 0 for one release.
+
+**Seats.** `seats.go`: `SubscriptionSeats{Pool, Total}` implements
+`waitlist.Seats` from `subscriptions` alone (held = seats of live rows,
+free = `SEATS_TOTAL` minus held, never waitlists) until the seats
+workstream's implementation replaces it in `internal/api/app`.
+
+**Admin.** `repose-admin billing show HANDLE` (`LoadAccount`: the
+subscription, plan, period, running memory, disk, hours, egress, the
+overage arithmetic and lines), `rollup [--hour]`, `explain PROJECT HOUR`
+(the row's inputs and the period's overage arithmetic), `suspend`,
+`unsuspend`, `overage-now HANDLE`, `paddle-bootstrap [--webhook-url]
+[--no-webhook] [--live]` (`bootstrap.go`: products and prices found by
+`custom_data.repose`, the destination by URL; prints the `PADDLE_*`
+block; refuses a live key without `--live`; `ops/paddle/bootstrap.sh`).
+`credit`, `reconcile`, `resync`, `cycle-now` and `stripe-bootstrap` are
+gone.
+
+**Observability.** Metrics `repose_api_billing_webhook_total{kind,result}`,
+`repose_api_billing_overage_charges_total{result}`,
+`repose_api_billing_gate_refused_total{reason}`,
+`repose_api_billing_subscriptions_total{plan,status}`,
+`repose_api_billing_stops_total{reason}`; log events `webhook_received`,
+`overage_charged`, `gate_refused` (user_id, reason, plan); alerts
+`PaddleWebhookRejected`, `OverageChargeFailed`, `BillingStopped`; the
+Billing dashboard from `ops/dashboards/gen.py`.
+
+**Tests.** `internal/billing`: `fakepaddle_test.go` (an `httptest` Paddle
+that signs webhooks), `TestPlansMatchPricingDoc`,
+`TestPaddleClientRetriesAndErrors`, `TestEnsureCustomer`,
+`TestWebhookSignatureSkewAndDedupe`, `TestWebhookSubscriptionLifecycle`,
+`TestWebhookRefusesForeignPrices`, `TestWebhookTransactions`,
+`TestWebhookResolvesByCustomer`, `TestGateEveryReason`, `TestLimitsFor`,
+`TestOverageChargeOnce`, `TestEgressHardStop`, `TestDunningDays`,
+`TestDunningEnforceFalse`, `TestTrialEnding`,
+`TestRollupWritesUsageWithoutPrices`, `TestAccountAndExplain`,
+`TestBootstrapIsIdempotent`, `TestCheckout`,
+`TestPlanChangesCancelResume`, `TestPortalAndInvoices`,
+`TestCloseAccountChargesThenCancels`, `TestSubscriptionSeatsStub`;
+`TestPaddleSandbox` runs against the real sandbox with
+`REPOSE_PADDLE_SANDBOX_KEY` and skips without it. `internal/api/http`:
+`TestBillingGateBlocksCompute`, `TestPlanProjectLimit`,
+`TestBillingEnforceFalseLetsStartsThrough`, `TestBillingDisabledRoutes`,
+`TestBillingRoutes`, `TestProjectCarriesRunningSeconds`.
+`internal/admin`: `TestBillingSubcommands`. `internal/cli`:
+`TestPaymentRequiredMessage`, `TestStatusShowsHours`,
+`TestClassSpecsMatchBillingAndHost`.
+
 ## 6. Failure modes
 
 | Situation | Outcome |
@@ -300,118 +520,118 @@ logged as an audit event when flipped.
 
 ## 9. Checklist
 
-Audited row by row by the M4 bring-up (2026-09-23, m4-billing). Rows whose
-evidence is the real Stripe account wait for the test key only; the exact
-commands that close them are `docs/ops/M4-GATE.md`, and the section is
-named on each row. Test evidence below is from
-`TMPDIR=/tmp/rt go test -count=1 -v ./internal/billing/ ./internal/admin/ ./internal/api/http/`.
+Re-done for I-289 (2026-09-27, ws/paddle). Test evidence is from
+`go test -race ./internal/billing/ ./internal/api/... ./internal/admin/
+./internal/cli/` against Postgres; rows whose evidence is Paddle's
+sandbox wait for the key and name the `docs/ops/M4-GATE.md` step.
 
-- [x] `prices.go` constants equal the `PRICING.md` table; the parity test
-      exists and passes. Evidence: `--- PASS: TestPricesMatchPricingDoc`
-      (parses the table in `PRICING.md`) and `TestPriceHour`.
-- [ ] Customer created at first `GET /me`; SetupIntent flow attaches a card;
-      `has_card` flips on webhook. Evidence: Stripe test-mode transcript.
-      **Waits for the test key: M4-GATE.md §3.1-3.2.** Offline: `TestCustomerSetupIntentAndSubscription`,
-      `TestSetupCheckoutCollectsTheAddress` (the dashboard's hosted form,
-      I-182), `TestSubscriptionAnchorsThePeriodAndEventsLandInIt`,
-      `TestSubscriptionIsAdoptedNotDoubled`, `TestSubscriptionFallsBackWhenStripeRefusesTax`;
-      the browser half `apps/web/tests/billing.spec.ts` 5/5. — waits on: owner
-      (Stripe test key; M4-GATE.md §3.1-3.2).
-- [x] Start and create blocked without a card, with `payment_required`.
-      Evidence: `--- PASS: TestBillingGateBlocksCompute` (start and create,
-      every reason: `card_required`, `past_due`, `suspended`, `trial_depleted`;
-      exempt passes).
-- [x] Trial credit inserted at signup, debited before Stripe, balance
-      computed from the ledger. Evidence: `TestTrialCreditIsDebitedBeforeStripe`,
-      `TestCreditLedgerUnderConcurrency` (two runners), and
-      `TestTrialCreditDepletesThroughTheRollup` (sign-in inserts 1000; the
-      real rollup spends the last 5 cents: `depleting hour …: cost 7 cents,
-      credit 5, 2 billed to Stripe; account active, balance 0`).
-- [x] Hourly rollup produces the golden `usage_hours` rows for every case in
-      §7, including exact storage sums and the egress threshold hour.
-      Evidence: `TestRollupGoldenHours`, `TestStorageSumsExactlyOverAnyPeriod`,
-      `TestEgressThresholdHour`, `TestPartialHourRoundsHalfUp` (the golden
-      values are the tables in those tests).
-- [x] Rollup is idempotent: run twice, zero diff. Evidence:
-      `TestRollupIsIdempotent`.
-- [x] Cap: a guest running 720 hours in a period is charged exactly the cap;
-      360 hours exactly half. Evidence: `TestRollupCapOverAPeriod`,
-      `TestCapOverAWholePeriod`.
-- [x] Class change mid-period follows 5.1 and `explain` shows it. Evidence:
-      `TestClassChangeMidPeriodCap`, `TestExplainShowsTheArithmetic`.
-- [ ] Usage records pushed with idempotency keys, ids stored, never
-      re-pushed. Evidence: Stripe test-mode log with one record per row.
-      **Waits for the test key: M4-GATE.md §2** (`TestStripeTestModeM4Gate`
-      pushes through the real rollup and reconciles against Stripe's meter
-      summaries). Offline: `TestChecklistUsageFixtureInvoicesTo800Cents`
-      (a second push sends nothing; a replay with the same identifiers
-      changes no total), `TestPushRetriesAfterAStripeFailure`. — waits on:
-      owner (Stripe test key; M4-GATE.md §2).
-- [ ] Stripe fixture in §7 yields an invoice of 800 cents after credit.
-      Evidence: CI job output with the invoice id. **Waits for the test key:
-      M4-GATE.md §2**, whose `M4 paid:` lines carry the invoice id and its
-      lines against `usage_hours` (DECISIONS I-185). Offline:
-      `TestChecklistUsageFixtureInvoicesTo800Cents` (1400 + 400 + 0 = 1800,
-      less 1000 = 800 pushed). — waits on: owner (Stripe test key; M4-GATE.md
-      §2, the `M4 paid:` lines).
-- [x] All six webhooks handled idempotently; replay test passes; signature
-      failures rejected. Evidence: `TestAllSixWebhooks`,
-      `TestWebhookReplayIsANoOp`, `TestWebhookSignatureFailuresAreRejected`,
-      `TestBillingWebhookRoute` (the route: no bearer, 400 on a bad
-      signature with only the type logged, 200 on a duplicate),
-      `TestZeroInvoicePaidRaisesNothing` (I-184). Real Stripe payloads for
-      `invoice.paid` and `invoice.payment_failed` go through the same
-      handler in M4-GATE.md §2.
-- [ ] Past-due 3-day stop with snapshot and notification; `invoice.paid`
-      reactivates without starting guests. Evidence: test with test clock.
-      **Waits for the test key: M4-GATE.md §2, `M4 failed:` lines.**
-      Offline: `TestPastDueThreeDayStop` (day 2 nothing, day 4 stop with
-      `snapshot: true` and reason `billing`, `billing_stopped` event,
-      suspended, audit row; `invoice.paid` leaves the guest stopped). — waits
-      on: owner (Stripe test key; M4-GATE.md §2, the `M4 failed:` lines).
-- [x] Reconciliation job and `explain` exist; a deliberate mismatch raises
-      the alert and fixes nothing. Evidence: `TestReconcileReportsAndFixesNothing`,
-      `TestReconcileWithoutAReaderSaysSo`, `TestExplainShowsTheArithmetic`.
-- [x] Limits 3/1 before first paid invoice, 10/10 after. Evidence:
-      `TestAllSixWebhooks` (3/1 before `invoice.paid`, 10/10 after) and
-      `TestZeroInvoicePaidRaisesNothing` (a $0 invoice raises nothing).
-- [x] `repose-admin billing credit|suspend|unsuspend|reconcile|explain`
-      exist and write `audit_log`. Evidence: `TestBillingSubcommands`
-      (each command run and its `audit_log` row read back), plus `show`,
-      `cycle-now` (`TestAccountTotalsAndCycleNow`) and `stripe-bootstrap`
-      (`TestStripeBootstrapCommandGuards`, I-180).
-- [x] `BILLING_ENFORCE=false` behaves as §8 and logs an audit event.
-      Evidence: `TestBillingEnforceFalseStopsNothing`,
-      `TestBillingEnforceFalseLetsStartsThrough`, `TestEnforcementFlipIsAudited`.
-- [ ] Stripe Tax enabled and address collected. Evidence: screenshot of a
-      test invoice with tax line. **Waits for the owner to activate Stripe
-      Tax, then M4-GATE.md §4.** The address is collected by the hosted
-      card form (`billing_address_collection=required`,
-      `TestSetupCheckoutCollectsTheAddress`) and copied to the customer
-      (`TestSubscriptionAnchorsThePeriodAndEventsLandInIt`). — waits on: owner
-      (activate Stripe Tax, then M4-GATE.md §4).
-- [ ] Live-mode charge of the owner's card matches `explain`. Evidence:
-      invoice id and the arithmetic pasted. **Waits for the owner's live
-      key and card: M4-GATE.md §5** (`billing cycle-now` makes the invoice
-      the same day). — waits on: owner (live key and card; M4-GATE.md §5).
-- [x] Metrics for the rollup duration, the sample gap, the Stripe push
-      backlog and the reconciliation difference exist. They carry the
-      `repose_api_*` prefix every api family uses (DECISIONS I-49, I-60,
-      I-78), not the `repose_billing_*` names this list was written with:
-      `repose_api_rollup_duration_seconds`,
-      `repose_api_billing_gap_minutes_total`,
-      `repose_api_billing_stripe_push_backlog_seconds`,
-      `repose_api_billing_mismatch_cents`. Evidence:
-      `TestBillingMetricsAreExported` (scrapes the registry for the four
-      names); m3-web recorded 4 of the 6 billing panels with real data from
-      the production scrape (STATUS 2026-09-20).
-- [x] `PRICING.md` and `features/pricing.md` match the implementation.
-      Evidence: re-read 2026-09-23 by m4-billing; `features/pricing.md`
-      updated for the hosted card form and the `trial_depleted` row
-      (I-182, I-184); `PRICING.md` needed no change.
-- [x] `ops/RUNBOOK.md` has: push backlog, mismatch alert, user says they
-      were overcharged (use `explain`). Evidence: headings
-      `## StripePushBacklog`, `## BillingMismatch`,
-      `## A user says they were overcharged` (now starting from
-      `billing show`), and `## StripeWebhookRejected` (now pointing at
-      `bootstrap.sh --rotate-webhook`).
+- [x] `plans.go` equals the `PRICING.md` table; the parity test parses the
+      doc. Evidence: `--- PASS: TestPlansMatchPricingDoc`,
+      `TestOverageAndClassMemory`.
+- [x] The Paddle client retries 429 and 5xx three times honouring
+      Retry-After, never retries a 4xx, and its errors carry Paddle's code
+      and never the key. Evidence: `TestPaddleClientRetriesAndErrors`.
+- [x] The customer is created at checkout, found by email when Paddle
+      already has one, and stored once. Evidence: `TestEnsureCustomer`,
+      `TestCheckout` (the transaction's `custom_data.user_id`, `items`,
+      `collection_mode`).
+- [x] The webhook verifies `Paddle-Signature` (wrong secret, missing
+      header, tampered body, five-minute skew both ways refused; a second
+      `h1` and a rotation secret accepted), dedupes on `event_id` with a
+      200 duplicate, records unknown types and foreign customers.
+      Evidence: `TestWebhookSignatureSkewAndDedupe`,
+      `TestBillingRoutes` (the route: no bearer, 400 on a bad signature
+      logging the type only, 200 on a duplicate).
+- [x] Every subscription event projects the account and emits its email:
+      created → trial + `Seats.Converted` once, activated → active,
+      updated with the other price → `plan_changed`, a scheduled cancel →
+      `subscription_cancelled`, canceled → `subscription_ended` and the
+      machines stopped with a snapshot, past_due/paused/resumed as
+      documented. Evidence: `TestWebhookSubscriptionLifecycle`,
+      `TestWebhookResolvesByCustomer`, `TestWebhookRefusesForeignPrices`.
+- [x] `transaction.completed` reactivates a past-due account, lifts a
+      billing suspension and not an operator's, leaves a trial's $0
+      checkout alone and stamps the overage line's transaction id;
+      `transaction.payment_failed` moves a live subscription to past_due
+      with one `payment_failed` email and ignores a failed checkout.
+      Evidence: `TestWebhookTransactions`.
+- [x] The gate refuses with every reason of api.md's table, the message
+      is the whole sentence, exempt and `BILLING_ENFORCE=false` pass, and
+      a deploy without Paddle refuses `subscription_required`. Evidence:
+      `TestGateEveryReason` (unit) and `TestBillingGateBlocksCompute`
+      (create, start, class change, resize, restore; suspended allow-list),
+      `TestPlanProjectLimit`, `TestBillingEnforceFalseLetsStartsThrough`,
+      `TestBillingDisabledRoutes`, `TestSignInAndProjectsLifecycle`
+      (`/me` defaults `none`, Pro's `limits`, `plan_limit` naming the
+      machines), `TestFork` (the plan's project count).
+- [x] The overage line: 50 GB over on Solo is one charge of 250 cents
+      with `effective_from next_billing_period` under the overage
+      product; a retry sends none; under the allowance nothing is sent
+      and the period is marked; a refused charge leaves the row for the
+      operator and is not sent twice; an immediate charge stores the
+      transaction id. Evidence: `TestOverageChargeOnce`.
+- [x] The hard stop at four times the allowance stops the running
+      machines once per period with `egress_stopped`, the gate refuses
+      `egress_limit` until `period_end`, and `BILLING_ENFORCE=false`
+      stops nothing. Evidence: `TestEgressHardStop`.
+- [x] Dunning: day 0 from the webhook, day 2 once however often the tick
+      runs, day 3 the stop with `snapshot: true`, `billing_stopped`,
+      `suspended` with reason billing and an audit row; a payment
+      reactivates without starting the machine; `trial_ending` once at 48
+      hours. Evidence: `TestDunningDays`, `TestDunningEnforceFalse`,
+      `TestTrialEnding`.
+- [x] The rollup writes hours, disk and egress with every cents column 0,
+      stamps the subscription's period, records a gap, and is idempotent.
+      Evidence: `TestRollupWritesUsageWithoutPrices`,
+      `internal/api/meter` `TestIngestAndSyntheticDayRollup`.
+- [x] Account deletion charges the pending overage immediately and then
+      cancels immediately. Evidence: `TestCloseAccountChargesThenCancels`
+      (the request order on the fake), `TestBillingRoutes` (`DELETE /me`
+      leaves the row canceled).
+- [x] Plan changes: upgrade at once prorated, refused without a seat;
+      downgrade scheduled at period_end, refused `over_plan` while the
+      account does not fit, kept through a webhook, undone by choosing the
+      plan again; cancel and resume with their 409s. Evidence:
+      `TestPlanChangesCancelResume`, `TestBillingRoutes`.
+- [x] `GET /billing`, `/me`, `Project` and `GET /billing/invoices` have
+      api.md's shapes. Evidence: `TestBillingRoutes`, `TestCheckout`
+      (plans, seats, paddle block), `TestPortalAndInvoices` (every
+      invoice key), `TestProjectCarriesRunningSeconds`.
+- [x] The bootstrap creates six objects once, finds them on a rerun,
+      prints the block without the key, refuses a live key without
+      `--live`. Evidence: `TestBootstrapIsIdempotent`,
+      `TestBillingSubcommands` (the command).
+- [x] `repose-admin billing show|rollup|explain|suspend|unsuspend|
+      overage-now|paddle-bootstrap` exist, print the arithmetic and write
+      audit_log; the removed commands are usage errors. Evidence:
+      `TestBillingSubcommands`, `TestAccountAndExplain`.
+- [x] The CLI prints the api's `payment_required` sentence verbatim and
+      exits 7, falls back to the plan sentence for an old api, shows hours
+      in `status` and `ls`, names the plan a class needs, drops the idle
+      rate. Evidence: `TestPaymentRequiredMessage`, `TestStatusShowsHours`,
+      `TestClassSpecsMatchBillingAndHost`, `TestResizeClass`,
+      `TestIdleLineOnStatusAndProjects`; `go test ./internal/cli -run
+      TestDocs` green.
+- [x] Metrics, log events, alerts and the dashboard exist under the
+      names of §5.11. Evidence: `internal/obs/metrics`
+      `TestAPIFamily` (the five families and their labels),
+      `ops/alerts_test.yaml` (six cases; `promtool` is not installed on
+      the dev box, so the file is written to its format and unrun),
+      `python3 ops/dashboards/gen.py --check`.
+- [x] `PRICING.md`, `features/pricing.md`, `apps/web` `billing.md` and
+      `limits.md`, `ops/RUNBOOK.md` ("PaddleWebhookRejected",
+      "OverageChargeFailed", "BillingStopped", "Customer disputes a
+      charge", "Move a user between plans by hand"), `OBSERVABILITY.md`,
+      `M4-GATE.md` describe the plans. Evidence: re-read 2026-09-27.
+- [ ] Sandbox gate: a checkout with the test card makes a `trialing`
+      subscription and the account `trial`; a simulated
+      `transaction.completed` makes it `active`; a simulated
+      `transaction.payment_failed` makes it `past_due` and the tick stops
+      the machine on day 3; an overage for a known egress appears on the
+      next transaction to the cent. Evidence: `docs/ops/M4-GATE.md` §2 to
+      §4 with the ids pasted. Offline: `TestPaddleSandbox` (skipped
+      without `REPOSE_PADDLE_SANDBOX_KEY`). — waits on: owner (the sandbox
+      key).
+- [ ] Live: one charge of the owner's own card, refunded or not at their
+      choice. Evidence: the transaction id and `billing show`. — waits on:
+      owner (live account, domain review).

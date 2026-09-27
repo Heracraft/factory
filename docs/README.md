@@ -35,7 +35,7 @@ wrong only if a `DECISIONS.md` entry says so.
 | [PRICING.md](PRICING.md) | Tiers, meters, the cost floor per guest, and the trial. What a user sees is [features/pricing.md](features/pricing.md). |
 | [DESIGN-LANGUAGE.md](DESIGN-LANGUAGE.md) | You are building any screen. What to copy from the recruiting app and what not to. |
 | [ops/DEV-BOX.md](ops/DEV-BOX.md) | You are on the dev VM and something about disks, Nix or az is odd. |
-| [ops/AZURE-SETUP.md](ops/AZURE-SETUP.md) | The one-time human steps in Azure, Cloudflare, Logto, Stripe and Resend before agents start. |
+| [ops/AZURE-SETUP.md](ops/AZURE-SETUP.md) | The one-time human steps in Azure, Cloudflare, Logto, Paddle and Resend before agents start. |
 | [workstreams/PROMPTS.md](workstreams/PROMPTS.md) | The prompt for launching an agent on a workstream with `/ws` (every worker runs on the current Opus model). |
 
 ## How parallel work is organised

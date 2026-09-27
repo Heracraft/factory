@@ -5,7 +5,7 @@ package cli
 // DECISIONS I-289 it is the whole sentence for every reason
 // (subscription_required, plan_limit, disk_limit, egress_limit, past_due,
 // suspended), naming the machines using the memory or the date the period
-// ends. An older api sends a fragment and Stripe-era reasons; those get
+// ends. An older api sends a fragment and the card-era reasons; those get
 // the plan sentence.
 func paymentRequiredMessage(e *APIError) string {
 	reason, _ := e.Detail["reason"].(string)

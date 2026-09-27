@@ -60,7 +60,7 @@ func newEnvLimits(t *testing.T, limits *httpapi.RateLimits) *env {
 }
 
 // newEnvWith lets a test change the dependencies before the server is
-// built (workstream 09 turns billing enforcement off and plugs the Stripe
+// built (workstream 09 turns billing enforcement off and plugs the Paddle
 // webhook handler in this way).
 func newEnvWith(t *testing.T, limits *httpapi.RateLimits, tweak func(*httpapi.Deps)) *env {
 	t.Helper()
@@ -162,7 +162,7 @@ func (e *env) do(t *testing.T, token, method, path string, body any) resp {
 }
 
 // doRaw posts a body verbatim with the given headers and no bearer token:
-// the Stripe webhook route authenticates with its own header, so it cannot
+// the Paddle webhook route authenticates with its own header, so it cannot
 // be exercised through do().
 func (e *env) doRaw(t *testing.T, method, path string, body []byte, headers map[string]string) resp {
 	t.Helper()

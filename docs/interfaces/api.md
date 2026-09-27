@@ -53,9 +53,10 @@ Project { id, name, slug, remote_url, class, state, host_id?, guest_ip?,
           volume_bytes, disk_used_bytes?, created_at, started_at?,
           signals?: {ssh_sessions, tmux_clients, agents: [{agent, window, state}],
                      guestd_ok},
-          cost_today_cents, cost_month_cents, last_snapshot_at?,
-          last_error?, host_unreachable, tz,
-          idle?: {since, hourly_cents} }
+          cost_today_cents, cost_month_cents,          -- 0 since I-289, kept one release
+          running_seconds_today, running_seconds_month, -- what `repose status` shows (I-289)
+          last_snapshot_at?, last_error?, host_unreachable, tz,
+          idle?: {since, hourly_cents, memory_gb} }     -- hourly_cents 0 since I-289, kept one release
 
 DestroyedProject { id, name, slug, class, remote_url?, volume_bytes,
           destroyed_at, name_free, restorable_until?,
@@ -77,9 +78,13 @@ gone 24 hours with no sample showing an SSH session, a tmux client, a
 working agent (an agent in `idle` or `needs_input` is not working) or
 guestd not answering, counted from `started_at`, and whose newest sample
 is at most 10 minutes old; `since` is when that stretch began (looking
-back at most 14 days, so on a longer stretch it is 14 days ago) and
-`hourly_cents` the class's hourly price. Older clients ignore it; an api
-without it means "not idle".
+back at most 14 days, so on a longer stretch it is 14 days ago);
+`hourly_cents` is 0 since I-289 (a plan buys memory, not hours) and
+`memory_gb` the class's share of it. `running_seconds_today` (the user's
+local day) and `running_seconds_month` (the subscription's current period,
+else the calendar month) replace the cost fields, which answer 0 for one
+release. Older clients ignore them; an api without them means "not idle"
+and no hours.
 
 A `DestroyedProject`'s `snapshot` is its newest restorable snapshot and
 `restorable_until` that snapshot's `expires_at` (30 days after the

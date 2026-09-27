@@ -96,7 +96,9 @@ func TestFirstSignInCreatesUserAndCollisionsSuffix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Handle != "octo-cat" || *a.Email != "a@example.com" || a.TrialCreditCents != 336 || a.ProjectLimit != 3 || a.XLLimit != 1 || a.BillingStatus != "trial" {
+	// A new account has no plan and no credit (I-289); the row's limits are
+	// Solo's project count and no xl, for the exempt path.
+	if a.Handle != "octo-cat" || *a.Email != "a@example.com" || a.TrialCreditCents != 0 || a.ProjectLimit != 10 || a.XLLimit != 0 || a.BillingStatus != "none" || a.HasCard {
 		t.Fatalf("%+v", a)
 	}
 	again, err := p.EnsureUser(ctx, "sub-a")

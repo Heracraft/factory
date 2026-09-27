@@ -1,7 +1,7 @@
 {
   "uid": "repose-billing",
   "title": "repose / Billing",
-  "description": "What will be invoiced, and whether the meters are keeping up. Invoices are built from usage_hours, so the rollup is the thing to watch (DECISIONS R4-7).",
+  "description": "Plans through Paddle (DECISIONS I-289): the subscription mix, the webhook, the gate's refusals, the egress overage line, and the hours and egress usage_hours records. Paddle holds the money; usage_hours holds what was used.",
   "tags": [
     "repose"
   ],
@@ -86,8 +86,8 @@
     },
     {
       "type": "stat",
-      "title": "Stripe push failures in the last hour",
-      "description": "A failed usage record is money that will not appear on an invoice unless the reconciliation job repairs it.",
+      "title": "Webhooks rejected in 10 minutes",
+      "description": "Paddle-Signature failures. Five in ten minutes is PaddleWebhookRejected: the secret and the destination have drifted, and no subscription event is applied.",
       "datasource": {
         "type": "prometheus",
         "uid": "repose-prometheus"
@@ -99,8 +99,8 @@
             "uid": "repose-prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(increase(repose_api_stripe_usage_push_total{result=\"error\"}[1h]))",
-          "legendFormat": "failures",
+          "expr": "sum(increase(repose_api_billing_webhook_total{result=\"bad_signature\"}[10m]))",
+          "legendFormat": "rejected",
           "range": false,
           "instant": true,
           "refId": "A"
@@ -118,7 +118,7 @@
               },
               {
                 "color": "red",
-                "value": 1
+                "value": 5
               }
             ]
           }
@@ -147,8 +147,8 @@
     },
     {
       "type": "stat",
-      "title": "Oldest unbilled hour",
-      "description": "The age of the oldest usage_hours row with no Stripe record. Past six hours is StripePushBacklog; `repose-admin billing resync` re-pushes them (09-billing.md \u00a76).",
+      "title": "Overage charges failed in the last hour",
+      "description": "An egress line Paddle refused. The row waits for `repose-admin billing overage-now`; the invoice locks 30 minutes before charging (OverageChargeFailed).",
       "datasource": {
         "type": "prometheus",
         "uid": "repose-prometheus"
@@ -160,74 +160,8 @@
             "uid": "repose-prometheus"
           },
           "editorMode": "code",
-          "expr": "max(repose_api_billing_stripe_push_backlog_seconds)",
-          "legendFormat": "backlog",
-          "range": false,
-          "instant": true,
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {},
-          "unit": "s",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 3600
-              },
-              {
-                "color": "red",
-                "value": 21600
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 6,
-        "x": 12,
-        "y": 0
-      },
-      "id": 3
-    },
-    {
-      "type": "stat",
-      "title": "Reconciliation difference",
-      "description": "The largest usage_hours minus Stripe difference the nightly reconciliation found. It reports and never fixes; `repose-admin billing explain` shows one row (09-billing.md \u00a75.7).",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "repose-prometheus"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "repose-prometheus"
-          },
-          "editorMode": "code",
-          "expr": "max(repose_api_billing_mismatch_cents)",
-          "legendFormat": "cents",
+          "expr": "sum(increase(repose_api_billing_overage_charges_total{result=\"error\"}[1h]))",
+          "legendFormat": "failed",
           "range": false,
           "instant": true,
           "refId": "A"
@@ -267,142 +201,86 @@
       "gridPos": {
         "h": 6,
         "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "Live subscriptions",
+      "description": "Subscriptions that hold a seat and buy compute (trialing, active, past_due). The seats the fleet sells are SEATS_TOTAL (I-290).",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "repose-postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "repose-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select count(*) as live from subscriptions where status in ('trialing','active','past_due')",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
         "x": 18,
         "y": 0
       },
       "id": 4
     },
     {
-      "type": "stat",
-      "title": "Cost today",
-      "description": "Across every project, from usage_hours. A project's own figure is capped at its monthly price (small 49, large 99, xl 199).",
-      "datasource": {
-        "type": "grafana-postgresql-datasource",
-        "uid": "repose-postgres"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "repose-postgres"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "select coalesce(sum(cost_cents), 0) / 100.0 as usd from usage_hours where hour >= date_trunc('day', now())",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {},
-          "unit": "currencyUSD",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 6,
-        "x": 0,
-        "y": 6
-      },
-      "id": 5
-    },
-    {
-      "type": "stat",
-      "title": "Projects billing today",
-      "description": "Projects that have run for part of today. A stopped project still bills its volume, and does not appear here.",
-      "datasource": {
-        "type": "grafana-postgresql-datasource",
-        "uid": "repose-postgres"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "repose-postgres"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "select count(distinct project_id) as projects from usage_hours where hour >= date_trunc('day', now()) and running_seconds > 0",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {},
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 6,
-        "x": 6,
-        "y": 6
-      },
-      "id": 6
-    },
-    {
       "type": "timeseries",
-      "title": "Trial credit consumed per hour",
-      "description": "The trial is consumed at the same rates as paid usage, so it is also the first test of the meters (DECISIONS R4-8). Only the billed half reaches Stripe.",
+      "title": "Subscription webhooks by plan and status",
+      "description": "Every subscription.* event applied, by the plan it names and Paddle's status. A rising past_due series is the dunning job's next three days.",
       "datasource": {
-        "type": "grafana-postgresql-datasource",
-        "uid": "repose-postgres"
+        "type": "prometheus",
+        "uid": "repose-prometheus"
       },
       "targets": [
         {
           "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "repose-postgres"
+            "type": "prometheus",
+            "uid": "repose-prometheus"
           },
           "editorMode": "code",
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "select hour as time, sum(credit_cents) / 100.0 as credit_usd, sum(cost_cents - credit_cents) / 100.0 as billed_usd from usage_hours where $__timeFilter(hour) group by 1 order by 1",
+          "expr": "sum by (plan, status) (increase(repose_api_billing_subscriptions_total[1h]))",
+          "legendFormat": "{{plan}} {{status}}",
+          "range": true,
+          "instant": false,
           "refId": "A"
         }
       ],
@@ -411,15 +289,86 @@
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
-            "fillOpacity": 10,
+            "fillOpacity": 40,
             "showPoints": "never",
             "stacking": {
-              "mode": "none",
+              "mode": "normal",
               "group": "A"
             },
             "axisSoftMin": 0
           },
-          "unit": "currencyUSD",
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "id": 5
+    },
+    {
+      "type": "timeseries",
+      "title": "Gate refusals by reason",
+      "description": "payment_required answers: subscription_required (no plan), plan_limit (memory), disk_limit, egress_limit, past_due, suspended. plan_limit is the upgrade signal.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "repose-prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "repose-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (reason) (increase(repose_api_billing_gate_refused_total[1h]))",
+          "legendFormat": "{{reason}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 40,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "axisSoftMin": 0
+          },
+          "unit": "none",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -453,12 +402,139 @@
         "x": 12,
         "y": 6
       },
+      "id": 6
+    },
+    {
+      "type": "table",
+      "title": "Accounts by plan and status",
+      "description": "The subscriptions table as it stands: what Paddle told the webhook last.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "repose-postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "repose-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select plan, status, count(*) as accounts, sum(seats) as seats from subscriptions group by 1, 2 order by 1, 2",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
       "id": 7
+    },
+    {
+      "type": "table",
+      "title": "Egress this period per account",
+      "description": "What the overage line will say (PRICING.md: $0.05 a GB past the plan's allowance), and who is near the hard stop at four times it.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "repose-postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "repose-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select u.handle as owner, s.plan, sum(h.egress_bytes) as egress, (case s.plan when 'pro' then 500 else 250 end) as included_gb, greatest(0, ceil(sum(h.egress_bytes) / 1073741824.0 - (case s.plan when 'pro' then 500 else 250 end))) * 5 / 100.0 as overage_usd from subscriptions s join users u on u.id = s.user_id join projects p on p.user_id = s.user_id join usage_hours h on h.project_id = p.id where s.status in ('trialing','active','past_due') and h.hour >= s.period_start and h.hour < s.period_end group by 1, 2 order by egress desc limit 50",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "egress"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "overage_usd"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "id": 8
     },
     {
       "type": "timeseries",
       "title": "Guest hours per hour by class",
-      "description": "The meter \u00a714 bills by: a running guest accrues, a stopped one does not. One guest running the whole hour is 1.0.",
+      "description": "A running machine accrues, a stopped one does not. One machine running the whole hour is 1.0. Not a price since plan-v1; `repose status` shows the same hours.",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "repose-postgres"
@@ -521,14 +597,14 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 14
+        "y": 22
       },
-      "id": 8
+      "id": 9
     },
     {
       "type": "timeseries",
-      "title": "Stripe usage pushes",
-      "description": "Pushed hourly. While STRIPE_* is unset the routes return 503 billing_disabled and this stays flat (DECISIONS I-16).",
+      "title": "Machines stopped for billing",
+      "description": "Stops the api made itself: past_due (day 3), ended (a cancelled subscription reached its end), egress (four times the allowance). BillingStopped alerts on any.",
       "datasource": {
         "type": "prometheus",
         "uid": "repose-prometheus"
@@ -540,8 +616,8 @@
             "uid": "repose-prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (result) (rate(repose_api_stripe_usage_push_total[15m]) * 900)",
-          "legendFormat": "{{result}} / 15m",
+          "expr": "sum by (reason) (increase(repose_api_billing_stops_total[1h]))",
+          "legendFormat": "{{reason}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -592,82 +668,6 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 14
-      },
-      "id": 9
-    },
-    {
-      "type": "table",
-      "title": "Cost per project today",
-      "description": "What `repose status` shows a user, for every project at once.",
-      "datasource": {
-        "type": "grafana-postgresql-datasource",
-        "uid": "repose-postgres"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "repose-postgres"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "select p.slug as project, u.handle as owner, p.class, sum(h.running_seconds) / 3600.0 as guest_hours, max(h.gb_alloc) as gb_allocated, sum(h.egress_bytes) as egress, sum(h.cost_cents) / 100.0 as usd from usage_hours h join projects p on p.id = h.project_id join users u on u.id = p.user_id where h.hour >= date_trunc('day', now()) group by 1,2,3 order by usd desc limit 50",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {},
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "egress"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "bytes"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "usd"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "currencyUSD"
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true,
-        "cellHeight": "sm",
-        "footer": {
-          "show": false
-        }
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 24,
-        "x": 0,
         "y": 22
       },
       "id": 10
@@ -675,7 +675,7 @@
     {
       "type": "timeseries",
       "title": "Egress per hour",
-      "description": "500 GB a month is included per project, then $0.05 a GB. The per-project view is on the Abuse dashboard.",
+      "description": "250 GB a month is included on Solo, 500 on Pro, then $0.05 a GB; machines stop at four times the allowance. The per-project view is on the Abuse dashboard.",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "repose-postgres"
@@ -738,7 +738,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 31
+        "y": 30
       },
       "id": 11
     }

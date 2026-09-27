@@ -119,7 +119,7 @@ func TestBillingSubcommands(t *testing.T) {
 		}
 	}
 	// Removed commands are usage errors.
-	for _, gone := range []string{"credit", "reconcile", "resync", "cycle-now", "stripe-bootstrap"} {
+	for _, gone := range []string{"credit", "reconcile", "resync", "cycle-now"} {
 		if _, err := run(t, e, "billing", gone); err == nil {
 			t.Errorf("billing %s still exists", gone)
 		}

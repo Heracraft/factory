@@ -270,7 +270,7 @@ guest ──vsock──▶ hostd
 Go binaries in one module (`cmd/`), one Postgres.
 
 - **`api`**: HTTP JSON for the CLI and dashboard, gRPC server for hosts,
-  scheduler, SSH CA, secrets, metering aggregation, Stripe webhooks, hook
+  scheduler, SSH CA, secrets, metering aggregation, Paddle webhooks, hook
   ingest, notification fan-out. Stateless; scale by replicas behind Coolify.
 - **`hostd`**: on each host. Holds the gRPC stream, executes guest lifecycle
   (create, start, stop, destroy, resize, snapshot, restore, apply-config),
@@ -404,24 +404,24 @@ to them.
 
 ## 14. Billing and metering
 
-Stripe from day one. Card required before the first guest starts. The trial
-is the first day of compute, a credit of one day on large consumed at hourly
-rates (DECISIONS I-205).
+A monthly plan through Paddle, chosen before the first machine starts,
+with a card at checkout and a week free (DECISIONS I-289, superseding the
+hourly meter this section first described). Solo, $29 a month, buys 8 GB
+of memory that may run at once (one `large`, or two `small`), 100 GB of
+disk and 250 GB of egress; Pro, $59, buys 16 GB, 250 GB and 500 GB.
+Projects are unlimited while stopped (10 and 25 in all); egress past the
+allowance is $0.05 a GB as one line on the next invoice, and at four times
+the allowance the machines stop for the period. Paddle is the merchant of
+record, so tax is its problem. `PRICING.md` has the rules, the cost floor
+and the reasoning.
 
-Meters, sampled by hostd every 60 seconds and aggregated hourly by the API:
+Meters, sampled by hostd every 60 seconds and aggregated hourly by the API
+into `usage_hours`, are the record of what ran: guest-hours by size class
+(what `repose status` shows), disk allocated, egress bytes (what the
+overage line and the hard stop read). Nothing is priced per hour.
 
-- guest-hours by size class (a running guest; stopped guests accrue none)
-- volume GB-months by allocated size (accrues while the project exists)
-- egress GB per project (from the per-guest nftables counters)
-
-Prices: hourly rate per class with a monthly cap per project equal to the flat
-price (small $49, large $99, xl $199), storage $0.10 per GB-month, 500 GB
-egress included per project then $0.05 per GB. Hourly rates are the cap divided
-by 720 rounded up, so a guest that never stops pays the cap and one stopped
-half the time pays half. `PRICING.md` has the cost floor and the reasoning.
-
-Invoices are monthly through Stripe Billing with usage records pushed hourly.
-A failed payment stops guests after 3 days and destroys nothing for 30.
+A failed payment refuses new starts from day 0, stops the running machines
+on day 3, and destroys nothing for 30 days.
 
 ## 15. Observability and anti-abuse
 

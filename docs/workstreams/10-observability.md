@@ -92,7 +92,8 @@ component must emit:
 - api: `request` (method, route, status, duration_ms), `cert_issue`,
   `cert_revoke`, `schedule` (host chosen, free memory), `schedule_fail`,
   `command_send`, `command_result`, `build_reused` (a create whose closure
-  was already on the host, DECISIONS I-160), `rollup_done`, `stripe_webhook`,
+  was already on the host, DECISIONS I-160), `rollup_done`, `webhook_received`,
+  `overage_charged`, `gate_refused` (I-289),
   `notify_send`, `notify_fail`, `admin_action`, `abuse_stop` (I-239),
   `waitlist_join`, `waitlist_admit`, `waitlist_admit_fail` (I-269).
 - gateway: `session_open`, `session_close`, `auth_fail` (reason enum:
@@ -132,7 +133,11 @@ Families:
   `repose_api_schedule_total{result}`, `repose_api_certs_issued_total`,
   `repose_api_certs_revoked_total`, `repose_api_rollup_lag_seconds`,
   `repose_api_notify_total{channel,result}`,
-  `repose_api_stripe_usage_push_total{result}`,
+  `repose_api_billing_webhook_total{kind,result}`,
+  `repose_api_billing_overage_charges_total{result}`,
+  `repose_api_billing_gate_refused_total{reason}`,
+  `repose_api_billing_subscriptions_total{plan,status}`,
+  `repose_api_billing_stops_total{reason}` (I-289),
   `repose_api_snapshot_age_seconds` (max over running projects; the alert
   input), `repose_api_abuse_stops_total{kind}`,
   `repose_api_abuse_held_projects`,
@@ -171,7 +176,7 @@ beyond their project id.
 | Builds | duration histogram, failures by error code, queue depth, eval vs build time |
 | Gateway | sessions, auth failures by reason, dial failures, route latency |
 | Snapshots | age per running project (table), bytes per day, failures |
-| Billing | usage per hour by class, rollup lag, Stripe push results, cost per project today |
+| Billing | subscriptions by plan and status, webhook results, gate refusals by reason, overage lines, hours per class, egress per account and per hour |
 | Abuse | top 20 `comm` by CPU fleet-wide (24h), top projects by egress, guests with 100 percent CPU and zero sessions for over 24h |
 
 ### Alerts
@@ -190,7 +195,9 @@ Each maps to a `../ops/RUNBOOK.md` entry of the same name.
 | `StoreFull` | host root fs > 85 percent | warn |
 | `GuestdLost` | `repose_host_guestd_lost > 0` for 5m | warn |
 | `RollupLag` | `repose_api_rollup_lag_seconds > 2*3600` | warn |
-| `StripePushFail` | `increase(repose_api_stripe_usage_push_total{result="error"}[1h]) > 0` | warn |
+| `PaddleWebhookRejected` | `sum(increase(repose_api_billing_webhook_total{result="bad_signature"}[10m])) >= 5` | warn |
+| `OverageChargeFailed` | `increase(repose_api_billing_overage_charges_total{result="error"}[1h]) > 0` | warn |
+| `BillingStopped` | `sum by (reason) (increase(repose_api_billing_stops_total[1h])) > 0` | info |
 | `EgressBlocked` | `repose_host_egress_blocked_guests > 0` for 2m (I-238..I-240) | warn |
 | `MinerStopped` | `sum by (kind) (increase(repose_api_abuse_stops_total[15m])) > 0` (I-239) | warn |
 | `BusyUnattended` | `max(repose_api_abuse_busy_unattended_projects) > 0` for 15m (I-239) | warn |
@@ -245,7 +252,7 @@ two open rows are the two that need a machine of the owner's.
       `go test ./internal/obs -run TestEventsEmitted`, which lists each
       event's call site and fails on one a built component does not
       emit; `obs.PendingEvents` carries the ones owed by unbuilt
-      workstreams (`stripe_webhook`, 09) so the test does not pass by
+      workstreams (`webhook_received`, 09) so the test does not pass by
       silence.
 - [x] Every metric family in §5 exists with exactly those labels.
       Evidence: `families_host_test.go` and `families_api_test.go` hold
@@ -295,9 +302,9 @@ two open rows are the two that need a machine of the owner's.
       panels, per-guest 8, builds 8, gateway 8, snapshots 6, billing 11,
       abuse 6), and against production series **41 of 43 Prometheus panel
       queries return data** (`ops/dashboards/validate.py --query`,
-      host-01, 2026-09-21 04:15Z). The two that do not are Stripe's, off
-      by I-16 — there is no panel left that is empty for a reason of its
-      own.
+      host-01, 2026-09-21 04:15Z). The two that did not were Stripe's,
+      off by I-16, and are gone with I-289 — there is no panel left that
+      is empty for a reason of its own.
 - [x] All eleven alerts exist, have a `promtool` test, and have a RUNBOOK
       entry. Evidence: 18 rules now (the eleven plus I-56's two,
       billing's three, and `FluentBitLogShipperDown`, below); `ops/check.sh` runs `promtool check rules`,
