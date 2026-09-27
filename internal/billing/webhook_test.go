@@ -225,6 +225,15 @@ func TestWebhookSubscriptionLifecycle(t *testing.T) {
 	if outboxEmails(t, pool, a) != 3 {
 		t.Fatalf("%d emails queued, want 3", outboxEmails(t, pool, a))
 	}
+	if p := accountEmail(t, pool, a, "plan_changed", "from Solo to Pro", "3 October 2026 at 12:00 UTC"); p["from_plan"] != "solo" || p["to_plan"] != "pro" {
+		t.Fatalf("plan_changed payload %v", p)
+	}
+	if p := accountEmail(t, pool, a, "subscription_cancelled", "Pro", "1 November 2026 at 00:00 UTC"); p["plan"] != "pro" || p["ends_at"] != "2026-11-01T00:00:00Z" {
+		t.Fatalf("subscription_cancelled payload %v", p)
+	}
+	if p := accountEmail(t, pool, a, "subscription_ended", "Pro", "3 October 2026 at 12:00 UTC", "2 November 2026 at 12:00 UTC"); p["plan"] != "pro" || p["retention_until"] != "2026-11-02T12:00:00Z" {
+		t.Fatalf("subscription_ended payload %v", p)
+	}
 	var live *billing.Sub
 	if live, err = billing.LiveSubscription(ctx, pool, a.UserID); err != nil || live != nil {
 		t.Fatalf("no live subscription after cancel: %+v %v", live, err)

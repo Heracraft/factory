@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/heracraft/repose/internal/api/waitlist"
 )
 
 // Plans, seats and the waitlist as docs/interfaces/api.md "Usage and
@@ -478,10 +480,13 @@ func (f *Fake) gate(u *userRec, class string, addDiskBytes int64, exclude *proje
 		return nil
 	case BillingNone:
 		detail := map[string]any{"reason": "subscription_required", "waitlist": nil}
+		msg := "Choose a plan at https://repose.herakraft.co/billing before a machine can start."
 		if w := f.bill.waitlist; w != nil {
 			detail["waitlist"] = map[string]any{"position": w.Position, "joined_at": w.JoinedAt}
+			// The api's gate says the same while the user waits (billing/gate.go).
+			msg = waitlist.Message(w.Position, u.Email)
 		}
-		return errf("payment_required", "Choose a plan at https://repose.herakraft.co/billing before a machine can start.").withDetail(detail)
+		return errf("payment_required", "%s", msg).withDetail(detail)
 	case BillingPastDue:
 		return errf("payment_required", "Your last payment failed. Update your card at https://repose.herakraft.co/billing; machines already running keep running.").
 			withDetail(map[string]any{"reason": "past_due"})
@@ -712,7 +717,7 @@ func (f *Fake) billingCheckout(w http.ResponseWriter, r *http.Request) *apiError
 	u := userFrom(r)
 	if f.seatsFor() < plan.Seats {
 		place := f.joinWaitlist()
-		return errf("waitlisted", "repose is full right now. You're number %d on the waitlist; we'll email %s when a seat frees, and you'll have 72 hours to choose a plan.", place.Position, u.Email).
+		return errf("waitlisted", "%s", waitlist.Message(place.Position, u.Email)).
 			withDetail(map[string]any{"position": place.Position, "joined_at": place.JoinedAt, "email": u.Email})
 	}
 	f.bill.txnSeq++

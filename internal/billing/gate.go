@@ -12,6 +12,7 @@ import (
 
 	"github.com/heracraft/repose/internal/api/metrics"
 	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/api/waitlist"
 	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/obs"
 )
@@ -110,7 +111,11 @@ func (g *Gate) check(ctx context.Context, u *store.User, req Request) (*Refusal,
 			return nil, err
 		} else if place != nil && place.Position > 0 {
 			r.Detail["waitlist"] = map[string]any{"position": place.Position, "joined_at": place.JoinedAt}
-			r.Message = fmt.Sprintf("repose is full right now. You're number %d on the waitlist; we'll email you when there's a seat. %s", place.Position, url)
+			email := ""
+			if u.Email != nil {
+				email = *u.Email
+			}
+			r.Message = waitlist.Message(place.Position, email)
 		}
 		return r, nil
 	}

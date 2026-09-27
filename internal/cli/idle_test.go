@@ -110,7 +110,7 @@ func TestRunMentionsOtherIdleProject(t *testing.T) {
 	if err := runRun(context.Background(), f.env, RunOptions{Name: testSlug, NoAttach: true}, false); err != nil {
 		t.Fatalf("runRun: %v", err)
 	}
-	if got := f.env.ErrOut.(*discardWriter).buf.String(); !strings.Contains(got, "Still running and billing with nobody on it: forgotten (idle 27h, ~$0.14/h).") {
+	if got := f.env.ErrOut.(*discardWriter).buf.String(); !strings.Contains(got, "Still running with nobody on it: forgotten (idle 27h). `repose stop <project>` stops one.") {
 		t.Fatalf("stderr: %s", got)
 	}
 }

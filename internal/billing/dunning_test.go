@@ -2,7 +2,6 @@ package billing_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -58,9 +57,11 @@ func TestDunningDays(t *testing.T) {
 	if k := eventKinds(t, pool, a); len(k) != 2 || k[1] != "payment_failed" {
 		t.Fatalf("events %v", k)
 	}
-	var summary string
-	if err := pool.QueryRow(ctx, "select summary from events where user_id = $1 order by ts desc limit 1", a.UserID).Scan(&summary); err != nil || !strings.Contains(summary, "Tomorrow your running machines") {
-		t.Fatalf("day 2 summary %q", summary)
+	if p := accountEmail(t, pool, a, "payment_failed", "Solo", "$29.00", "https://repose.herakraft.co/billing"); p["plan"] != "solo" || p["amount_cents"] != float64(2900) {
+		t.Fatalf("day 2 payload %v", p)
+	}
+	if outboxEmails(t, pool, a) != 2 {
+		t.Fatalf("%d emails queued, want one per payment_failed", outboxEmails(t, pool, a))
 	}
 	if len(stop.calls) != 0 || userField(t, pool, a, "billing_status") != "past_due" {
 		t.Fatal("day 2 stopped something")
@@ -157,9 +158,8 @@ func TestTrialEnding(t *testing.T) {
 	if k := eventKinds(t, pool, a); len(k) != 1 || k[0] != "trial_ending" {
 		t.Fatalf("events %v", k)
 	}
-	var summary string
-	if err := pool.QueryRow(ctx, "select summary from events where user_id = $1", a.UserID).Scan(&summary); err != nil || !strings.Contains(summary, "ends on 8 October") || !strings.Contains(summary, "Pro plan is $59.00 a month") {
-		t.Fatalf("summary %q", summary)
+	if p := accountEmail(t, pool, a, "trial_ending", "Pro", "$59.00", "8 October 2026 at 00:00 UTC"); p["plan"] != "pro" || p["amount_cents"] != float64(5900) || p["charge_at"] != "2026-10-08T00:00:00Z" {
+		t.Fatalf("payload %v", p)
 	}
 	if outboxEmails(t, pool, a) != 1 {
 		t.Fatal("no email queued")

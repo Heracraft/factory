@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/heracraft/repose/internal/api/events"
 	"github.com/heracraft/repose/internal/api/metrics"
 	"github.com/heracraft/repose/internal/api/store"
 	"github.com/heracraft/repose/internal/db"
@@ -106,7 +107,11 @@ func (d *Dunning) Run(ctx context.Context) (DunningResult, error) {
 		if n >= 2 {
 			continue
 		}
-		if _, err := AccountEvent(ctx, d.pool, a.id, now, KindPaymentFailed, PaymentFailedSummary(d.cfg.BillingURL(), 2)); err != nil {
+		sub, err := LiveSubscription(ctx, d.pool, a.id)
+		if err != nil {
+			return res, err
+		}
+		if _, err := events.InsertAccount(ctx, d.pool, a.id, now, KindPaymentFailed, paymentFailed(sub.PlanOrSolo())); err != nil {
 			return res, err
 		}
 		res.SecondNotices = append(res.SecondNotices, a.id)
@@ -158,10 +163,7 @@ func (d *Dunning) Run(ctx context.Context) (DunningResult, error) {
 		if n > 0 {
 			continue
 		}
-		plan := sub.PlanOrSolo()
-		summary := fmt.Sprintf("Your free week ends on %s. From then your %s plan is $%d.%02d a month on the card you gave at checkout; nothing stops. Cancel before then at %s if you do not want it.",
-			sub.TrialEnd.UTC().Format("2 January"), plan.Name, plan.PriceCents/100, plan.PriceCents%100, d.cfg.BillingURL())
-		if _, err := AccountEvent(ctx, d.pool, sub.UserID, now, KindTrialEnding, summary); err != nil {
+		if _, err := events.InsertAccount(ctx, d.pool, sub.UserID, now, KindTrialEnding, trialEnding(sub)); err != nil {
 			return res, err
 		}
 		res.TrialEnding = append(res.TrialEnding, sub.UserID)

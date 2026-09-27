@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/heracraft/repose/internal/api/events"
 	"github.com/heracraft/repose/internal/api/metrics"
 	"github.com/heracraft/repose/internal/api/store"
 	"github.com/heracraft/repose/internal/api/waitlist"
@@ -299,21 +300,17 @@ func (w *Webhooks) subscription(ctx context.Context, ev *Event) error {
 // subscription_ended when the status becomes canceled, plan_changed when
 // the plan changes.
 func (w *Webhooks) subscriptionEvents(ctx context.Context, tx db.Tx, u *store.User, prev, cur *Sub, plan Plan, now time.Time) error {
-	url := w.cfg.BillingURL()
 	if cur.Status == StatusCanceled && (prev == nil || prev.Status != StatusCanceled) {
-		_, err := AccountEvent(ctx, tx, u.ID, now, KindSubscriptionEnded,
-			fmt.Sprintf("Your %s plan has ended. Your machines have been stopped; their snapshots are kept for 30 days. Choose a plan at %s to start them again.", plan.Name, url))
+		_, err := events.InsertAccount(ctx, tx, u.ID, now, KindSubscriptionEnded, subscriptionEnded(plan, now))
 		return err
 	}
 	if cur.CancelAt != nil && (prev == nil || prev.CancelAt == nil) {
-		if _, err := AccountEvent(ctx, tx, u.ID, now, KindSubscriptionCancelled,
-			fmt.Sprintf("Your %s plan is cancelled and ends on %s. Your machines run until then and stop at it; snapshots are kept for 30 days. Undo it at %s.", plan.Name, cur.CancelAt.UTC().Format("2 January 2006"), url)); err != nil {
+		if _, err := events.InsertAccount(ctx, tx, u.ID, now, KindSubscriptionCancelled, SubscriptionCancelledPayload{Plan: plan.ID, EndsAt: cur.CancelAt.UTC()}); err != nil {
 			return err
 		}
 	}
 	if prev != nil && prev.Plan != cur.Plan {
-		_, err := AccountEvent(ctx, tx, u.ID, now, KindPlanChanged,
-			fmt.Sprintf("Your plan is now %s: %d GB running at once, %d GB of disk, %d GB of egress a month. %s", plan.Name, plan.MemoryGB, plan.DiskGB, plan.EgressGB, url))
+		_, err := events.InsertAccount(ctx, tx, u.ID, now, KindPlanChanged, PlanChangedPayload{FromPlan: prev.PlanOrSolo().ID, ToPlan: plan.ID, EffectiveAt: now})
 		return err
 	}
 	return nil
@@ -433,16 +430,7 @@ func (w *Webhooks) transactionFailed(ctx context.Context, ev *Event) error {
 		if tag.RowsAffected() == 0 {
 			return nil
 		}
-		_, err = AccountEvent(ctx, tx, u.ID, now, KindPaymentFailed, PaymentFailedSummary(w.cfg.BillingURL(), 0))
+		_, err = events.InsertAccount(ctx, tx, u.ID, now, KindPaymentFailed, paymentFailed(cur.PlanOrSolo()))
 		return err
 	})
-}
-
-// PaymentFailedSummary is the payment_failed email's sentence on day 0 and
-// day 2 (PRICING.md "Failed payments").
-func PaymentFailedSummary(billingURL string, day int) string {
-	if day >= 2 {
-		return fmt.Sprintf("Your payment still has not gone through. Tomorrow your running machines are snapshotted and stopped; update your card at %s to keep them running.", billingURL)
-	}
-	return fmt.Sprintf("Your payment failed. Your machines keep running, but starting one is refused until the card is updated at %s. In three days the running ones are stopped.", billingURL)
 }

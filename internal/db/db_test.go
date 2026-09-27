@@ -29,12 +29,14 @@ func TestMigrateUpDownUp(t *testing.T) {
 	if len(down) != 1 || down[0] != st.Applied[len(st.Applied)-1] {
 		t.Fatalf("down 1 reverted %v", down)
 	}
+	// 0008 (plans) is the newest: its subscriptions table goes and 0007's
+	// waitlist stays.
 	var n int
-	if err := pool.QueryRow(ctx, "select count(*) from information_schema.tables where table_name = 'waitlist'").Scan(&n); err != nil {
+	if err := pool.QueryRow(ctx, "select count(*) from information_schema.tables where table_name in ('subscriptions', 'waitlist')").Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != 0 {
-		t.Fatal("waitlist still exists after down (0007)")
+	if n != 1 {
+		t.Fatalf("after down 1: %d of subscriptions and waitlist exist, want waitlist alone (0008 reverted, 0007 kept)", n)
 	}
 	up, err := db.MigrateUp(ctx, pool)
 	if err != nil {

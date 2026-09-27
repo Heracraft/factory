@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/heracraft/repose/internal/api/events"
 	"github.com/heracraft/repose/internal/api/metrics"
 	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/obs"
@@ -210,9 +211,7 @@ func (o *Overage) hardStops(ctx context.Context) ([]uuid.UUID, error) {
 				return stopped, err
 			}
 		}
-		summary := fmt.Sprintf("Your machines were stopped: this period's egress passed %d GB, four times the %s plan's %d GB allowance. They stay stopped until %s; upgrading at %s lifts it sooner. Nothing is deleted.",
-			plan.EgressHardStopBytes()>>30, plan.Name, plan.EgressGB, period.End.Format("2 January"), o.cfg.BillingURL())
-		if _, err := AccountEvent(ctx, o.pool, sub.UserID, now, KindEgressStopped, summary); err != nil {
+		if _, err := events.InsertAccount(ctx, o.pool, sub.UserID, now, KindEgressStopped, egressStopped(plan, egress, period)); err != nil {
 			return stopped, err
 		}
 		stopped = append(stopped, sub.UserID)

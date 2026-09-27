@@ -41,8 +41,12 @@ const (
 	KindExpired = "waitlist_expired"
 )
 
-// Message is the `waitlisted` error's message, the whole sentence a CLI
-// that does not know the code prints as it is.
+// Message is the waitlisted sentence, the one builder of it (I-294 (2)):
+// the `waitlisted` checkout refusal, the compute gate's
+// subscription_required refusal while the user waits, and the fake api all
+// call it, and the CLI prints it as it is. The email is the address the
+// invitation goes to; without one, the dashboard's plan page is where the
+// place shows.
 func Message(position int, email string) string {
 	if email == "" {
 		return fmt.Sprintf("repose is full right now. You're number %d on the waitlist. The dashboard's plan page shows your place.", position)

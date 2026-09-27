@@ -163,9 +163,11 @@ func TestEgressHardStop(t *testing.T) {
 	if k := eventKinds(t, pool, a); len(k) != 1 || k[0] != "egress_stopped" {
 		t.Fatalf("events %v", k)
 	}
-	var summary string
-	if err := pool.QueryRow(ctx, "select summary from events where user_id = $1", a.UserID).Scan(&summary); err != nil || !strings.Contains(summary, "passed 1000 GB, four times the Solo plan's 250 GB") || !strings.Contains(summary, "until 1 November") {
-		t.Fatalf("summary %q", summary)
+	if p := accountEmail(t, pool, a, "egress_stopped", "Solo", "1000 GB", "250 GB", "1 November 2026 at 00:00 UTC"); p["plan"] != "solo" || p["limit_gb"] != float64(250) || p["egress_gb"] != float64(1000) {
+		t.Fatalf("payload %v", p)
+	}
+	if outboxEmails(t, pool, a) != 1 {
+		t.Fatalf("%d emails queued, want 1", outboxEmails(t, pool, a))
 	}
 	// Once per period: a second run stops nothing and sends no second email.
 	if _, err := pool.Exec(ctx, "update projects set state = 'running' where id = $1", a.ProjectID); err != nil {

@@ -137,6 +137,9 @@ func TestPlanChangesCancelResume(t *testing.T) {
 	if k := eventKinds(t, pool, a); len(k) != 1 || k[0] != "plan_changed" {
 		t.Fatalf("events %v", k)
 	}
+	if p := accountEmail(t, pool, a, "plan_changed", "from Solo to Pro"); p["from_plan"] != "solo" || p["to_plan"] != "pro" || p["effective_at"] == nil {
+		t.Fatalf("plan_changed payload %v", p)
+	}
 	// Downgrade refused while two large run (16 GB > 8).
 	addProject(t, pool, a, "second", "large", "running", 40<<30)
 	_, err = s.ChangePlan(ctx, user(t, pool, a), "solo")
@@ -192,6 +195,9 @@ func TestPlanChangesCancelResume(t *testing.T) {
 	}
 	if k := eventKinds(t, pool, a); len(k) != 2 || k[1] != "subscription_cancelled" {
 		t.Fatalf("events %v", k)
+	}
+	if p := accountEmail(t, pool, a, "subscription_cancelled", "Pro", "1 November 2026 at 00:00 UTC"); p["plan"] != "pro" {
+		t.Fatalf("subscription_cancelled payload %v", p)
 	}
 	resumed, err := s.Resume(ctx, user(t, pool, a))
 	if err != nil || resumed.CancelAt != nil {

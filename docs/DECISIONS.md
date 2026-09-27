@@ -7747,6 +7747,19 @@ for what the events table already records); `repose_billing_*` names
 labels); resending a refused overage charge automatically (a doubled line
 is worse than a late one); making a trialing account `active` on the
 checkout transaction (it is $0 and the trial has a week to run).
+
+*Amended 2026-09-27 (merge):* the http test harness gives every signed-in
+test user a Pro subscription so the compute gate lets its projects
+through; a test about seats strips it with `subscribe(t, sub, "")`, which
+is why `TestSeatsWaitlistAndInvitations` invited nobody at the merge (the
+waiting users' own seats filled the fleet). The same test asserts what
+I-290 says of `POST /projects`: a plan-less user is refused with 402
+`subscription_required` and the place in `detail.waitlist`, not `503
+waitlisted`. On (2): the fork's project count refusal names whose limit
+it is (`You have 10 of 10 projects (Solo's limit), ...`; an exempt account
+reads `your account's limit`), and `TestFork` reaches it by filling Solo's
+ten through the fake's `SetBilling`/`SetPlan` knobs, since the fake's
+default account is exempt (I-295) and reads Pro's 25.
 **I-294. Seats and emails, the choices the spec left open: one account-event
 helper, the sentence, a re-queue on a new checkout, no `!` in an email.**
 (seats-email worker, 2026-09-27, building I-290 and I-291) Where I-290
@@ -7788,6 +7801,33 @@ sentence (it told the user to run `repose run` again, which does nothing
 for a seat); dropping a converted row on re-checkout (loses the converted
 count); refusing `admit` on a full fleet (the operator has no other way to
 let a tester in).
+
+*Amended 2026-09-27 (merge of ws/paddle, ws/seats-email and ws/web):* (1)
+holds for the billing producers too: `billing.AccountEvent` and its
+English summaries are gone, and dunning, the webhooks, the service and the
+overage job write typed payloads (`billing.TrialEndingPayload`,
+`PaymentFailedPayload`, `SubscriptionCancelledPayload`,
+`SubscriptionEndedPayload`, `PlanChangedPayload`, `EgressStoppedPayload`,
+the fields of the notifications.md table) through `events.InsertAccount`,
+so the row and its one outbox row are written once, by one helper.
+`payment_failed` carries no `portal_url` (the webhook has no portal
+session for the user; the template links the plan page, where the portal
+button is), `subscription_ended.retention_until` is `ended_at` plus 30
+days (`billing.RetentionDays`), and `plan_changed.effective_at` is the
+moment of the change for an upgrade and the webhook alike.
+`TestAccountPayloadsRender` and the producer tests render each event
+through `notify.Render` and check the plan's name, the amount and the
+date in the HTML and the text. On (2): the one builder is
+`waitlist.Message`, in the waitlist package rather than billing, because
+billing imports waitlist for the seats (a builder in billing would be a
+cycle); `billing.WaitlistedError.Message`, the compute gate's
+`subscription_required` refusal while the user waits (which no longer
+appends the plan page's URL, so the three sentences are one) and the fake
+api's checkout and gate all call it. The CLI keeps its own fallback for an
+api that sent no message and prints the api's sentence as it is: a
+plan-less user's `POST /projects` prints it and exits 7, a `waitlisted`
+checkout refusal or an older api's first-project gate prints it and exits
+8 (`TestRunWaitlistedPrintsPlaceAndExits8`).
 **I-295. The dashboard under plans: the fake's default is exempt, the
 Paddle stub, one site-wide CSP, and what the pages stop showing.**
 (web workstream, 2026-09-27, building I-289 and I-290 into `apps/web` and

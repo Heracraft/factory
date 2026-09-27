@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/heracraft/repose/internal/api/events"
 	"github.com/heracraft/repose/internal/api/store"
 	"github.com/heracraft/repose/internal/api/waitlist"
 	"github.com/heracraft/repose/internal/db"
@@ -60,12 +61,10 @@ type WaitlistedError struct {
 
 func (e *WaitlistedError) Error() string { return "waitlisted" }
 
-// Message is the whole sentence the CLI and the dashboard show.
+// Message is the whole sentence the CLI and the dashboard show: the one
+// builder every producer of it uses (waitlist.Message; I-294 (2)).
 func (e *WaitlistedError) Message() string {
-	if e.Place.Email == "" {
-		return fmt.Sprintf("repose is full right now. You're number %d on the waitlist; we'll email you when there's a seat.", e.Place.Position)
-	}
-	return fmt.Sprintf("repose is full right now. You're number %d on the waitlist; we'll email %s when there's a seat.", e.Place.Position, e.Place.Email)
+	return waitlist.Message(e.Place.Position, e.Place.Email)
 }
 
 // OverPlanError refuses a downgrade the account would not fit in.
@@ -230,8 +229,7 @@ func (s *Service) ChangePlan(ctx context.Context, u *store.User, planID string) 
 			if _, err := tx.Exec(ctx, "update subscriptions set plan = $2, seats = $3, scheduled_plan = null where id = $1", sub.ID, target.ID, target.Seats); err != nil {
 				return err
 			}
-			_, err := AccountEvent(ctx, tx, u.ID, now, KindPlanChanged,
-				fmt.Sprintf("Your plan is now %s: %d GB running at once, %d GB of disk, %d GB of egress a month. Paddle prorated the change on your next invoice. %s", target.Name, target.MemoryGB, target.DiskGB, target.EgressGB, s.cfg.BillingURL()))
+			_, err := events.InsertAccount(ctx, tx, u.ID, now, KindPlanChanged, PlanChangedPayload{FromPlan: current.ID, ToPlan: target.ID, EffectiveAt: now})
 			return err
 		})
 		if err != nil {
@@ -306,8 +304,7 @@ func (s *Service) Cancel(ctx context.Context, u *store.User) (cancelAt time.Time
 		if _, err := tx.Exec(ctx, "update subscriptions set cancel_at = $2 where id = $1", sub.ID, cancelAt); err != nil {
 			return err
 		}
-		_, err := AccountEvent(ctx, tx, u.ID, s.Now(), KindSubscriptionCancelled,
-			fmt.Sprintf("Your %s plan is cancelled and ends on %s. Your machines run until then and stop at it; snapshots are kept for 30 days. Undo it at %s.", plan.Name, cancelAt.Format("2 January 2006"), s.cfg.BillingURL()))
+		_, err := events.InsertAccount(ctx, tx, u.ID, s.Now().UTC(), KindSubscriptionCancelled, SubscriptionCancelledPayload{Plan: plan.ID, EndsAt: cancelAt})
 		return err
 	})
 	return cancelAt, err

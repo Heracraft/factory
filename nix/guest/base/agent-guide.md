@@ -74,6 +74,8 @@ You are `dev`, with passwordless `sudo`. The checkout is under `/home/dev`, and 
 
 ## Limits
 
+- The user's plan buys memory that may run at once (Solo 8 GB, Pro 16 GB), disk that may be allocated and egress for the month. A start refused with exit code 7 and a message naming the machine using the memory is the user's call: they stop one or upgrade. Don't work around it. <!-- /docs/limits#your-plan -->
+- Data this machine sends to the internet counts against the user's monthly egress allowance (250 GB on Solo, 500 GB on Pro); every GB past it costs them $0.05, and at four times the allowance their machines stop until the month turns. Incoming data is free, disk is a hard limit: don't download, serve or upload large files needlessly. <!-- /docs/limits#egress -->
 - Nothing on the internet can connect to this machine. Outbound traffic is allowed, up to 200 Mbit/s. <!-- /docs/limits#network --> <!-- /docs/machine#network -->
 - Outbound port 25 is blocked. Send mail through a provider's API or its submission port (587 or 465). <!-- /docs/limits#network -->
 - New outbound connections are limited to 200 a second, in bursts of up to 2000. <!-- /docs/limits#network -->

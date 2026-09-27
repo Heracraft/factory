@@ -56,7 +56,10 @@ func TestSeatsWaitlistAndInvitations(t *testing.T) {
 	}
 
 	// B signs in (the welcome email is queued with the row) and joins.
+	// signIn gives every test user a Pro plan so compute works; B and C
+	// are here for a seat, so theirs go.
 	tokB := e.signIn(t, "sub-wl-b", "wlb")
+	e.subscribe(t, "sub-wl-b", "")
 	idB := uuid.MustParse(e.do(t, tokB, "GET", "/me", nil).body["id"].(string))
 	if n := count("select count(*) from events ev join events_outbox o on o.event_id = ev.id where ev.user_id = $1 and ev.kind = 'welcome' and o.channel = 'email'", idB); n != 1 {
 		t.Fatalf("welcome events queued: %d", n)
@@ -85,6 +88,7 @@ func TestSeatsWaitlistAndInvitations(t *testing.T) {
 
 	// C's checkout asks Reserve: no seat, so C is on the list behind B.
 	tokC := e.signIn(t, "sub-wl-c", "wlc")
+	e.subscribe(t, "sub-wl-c", "")
 	idC := uuid.MustParse(e.do(t, tokC, "GET", "/me", nil).body["id"].(string))
 	ok, place, err := svc.Reserve(ctx, idC.String(), 1)
 	if err != nil || ok || place == nil || place.Position != 2 || place.Email != "wlc@example.com" {
@@ -100,10 +104,14 @@ func TestSeatsWaitlistAndInvitations(t *testing.T) {
 		t.Fatalf("public seats: %d %s", r.status, r.raw)
 	}
 
-	// POST /projects does not gate any more: B, with no seat, creates.
+	// POST /projects is not the waitlist's gate any more: B, with no plan,
+	// is refused compute with subscription_required (not 503 waitlisted),
+	// and the detail carries B's place for the CLI's sentence.
 	r = e.do(t, tokB, "POST", "/projects", map[string]any{"name": "first", "class": "small"})
-	if r.status != 201 {
-		t.Fatalf("create while the fleet is full: %d %s", r.status, r.raw)
+	detail, _ := r.body["error"].(map[string]any)["detail"].(map[string]any)
+	wlDetail, _ := detail["waitlist"].(map[string]any)
+	if r.status != 402 || r.body["error"].(map[string]any)["code"] != "payment_required" || detail["reason"] != "subscription_required" || wlDetail["position"] != float64(1) {
+		t.Fatalf("create without a plan while the fleet is full: %d %s", r.status, r.raw)
 	}
 
 	// Full: the tick invites nobody.
@@ -220,6 +228,7 @@ func TestSeatsWaitlistAndInvitations(t *testing.T) {
 	invitedC := clock
 	clock = clock.Add(time.Hour)
 	tokD := e.signIn(t, "sub-wl-d", "wld")
+	e.subscribe(t, "sub-wl-d", "")
 	idD := uuid.MustParse(e.do(t, tokD, "GET", "/me", nil).body["id"].(string))
 	if r := e.do(t, tokD, "POST", "/billing/waitlist", nil); r.status != 200 || r.body["position"] != float64(1) {
 		t.Fatalf("D joins: %d %s", r.status, r.raw)

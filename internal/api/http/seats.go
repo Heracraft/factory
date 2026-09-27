@@ -6,14 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/heracraft/repose/internal/api/store"
 	"github.com/heracraft/repose/internal/api/waitlist"
 )
-
-// waitlistJSON is the `waitlist` object of GET /me and GET /billing.
-func waitlistJSON(e *store.WaitlistEntry) map[string]any {
-	return map[string]any{"position": e.Position, "joined_at": e.JoinedAt, "invited_at": e.InvitedAt, "hold_until": e.HoldUntil}
-}
 
 // billingWaitlist is POST /billing/waitlist: join the seats waitlist
 // without a checkout (DECISIONS I-290). Idempotent: a second call answers
