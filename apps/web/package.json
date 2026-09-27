@@ -28,6 +28,7 @@
 	"devDependencies": {
 		"@codemirror/commands": "^6.9.1",
 		"@codemirror/language": "^6.11.4",
+		"@codemirror/legacy-modes": "^6.5.4",
 		"@codemirror/state": "^6.5.2",
 		"@codemirror/view": "^6.38.6",
 		"@lezer/highlight": "1.2.3",

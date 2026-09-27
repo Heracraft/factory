@@ -48,7 +48,7 @@ func TestBaseRevGate(t *testing.T) {
 	if err != nil || got != onMain {
 		t.Fatalf("on main: %q %v", got, err)
 	}
-	if len(paths) != 1 || paths[0] != "/repos/Heracraft/factory/compare/main..."+onMain {
+	if len(paths) != 1 || paths[0] != "/repos/Heracraft/repose/compare/main..."+onMain {
 		t.Fatalf("asked %v", paths)
 	}
 	for rev, want := range map[string]string{
@@ -69,7 +69,7 @@ func TestBaseRevGate(t *testing.T) {
 	if err := githubRevCheck(ctx, "https://gitlab.com/a/b.git", "main", onMain); err == nil {
 		t.Fatal("a non-GitHub repository was 'checked'")
 	}
-	for _, repo := range []string{"git@github.com:Heracraft/factory.git", "https://github.com/Heracraft/factory", "ssh://git@github.com/Heracraft/factory.git"} {
+	for _, repo := range []string{"git@github.com:Heracraft/repose.git", "https://github.com/Heracraft/repose", "ssh://git@github.com/Heracraft/repose.git"} {
 		if err := githubRevCheck(ctx, repo, "main", onMain); err != nil {
 			t.Errorf("%s: %v", repo, err)
 		}

@@ -2,7 +2,11 @@
 // (title, description, section, order). Bundled at build time with
 // import.meta.glob, so /docs needs no server and no fetch.
 import { Marked, type Tokens } from 'marked';
-import { classHighlighter, highlightCode } from '@lezer/highlight';
+import { StreamLanguage, type Language } from '@codemirror/language';
+import { json } from '@codemirror/legacy-modes/mode/javascript';
+import { shell } from '@codemirror/legacy-modes/mode/shell';
+import { toml } from '@codemirror/legacy-modes/mode/toml';
+import { classHighlighter, highlightCode, tags } from '@lezer/highlight';
 import { nixLanguage } from '@replit/codemirror-lang-nix';
 
 export interface DocHeading {
@@ -74,14 +78,27 @@ function escapeHTML(text: string): string {
 }
 
 /**
- * A ```nix block, highlighted with the same grammar as the dashboard's Nix
- * editor. Tokens get lezer's `tok-*` classes; layout.css colours them.
+ * Grammars for fenced blocks. A block with no language is shell; ```text is
+ * program output and stays plain, with no copy button.
  */
-export function highlightNix(code: string): string {
+const PARSERS: Record<string, Language['parser']> = {
+	nix: nixLanguage.parser,
+	shell: StreamLanguage.define(shell).parser,
+	toml: StreamLanguage.define(toml).parser,
+	json: StreamLanguage.define({ ...json, tokenTable: { property: tags.propertyName } }).parser
+};
+
+/**
+ * Code highlighted with the given grammar. Tokens get lezer's `tok-*`
+ * classes; layout.css colours them.
+ */
+export function highlight(code: string, lang: string): string {
+	const parser = PARSERS[lang];
+	if (!parser) return escapeHTML(code);
 	let out = '';
 	highlightCode(
 		code,
-		nixLanguage.parser.parse(code),
+		parser.parse(code),
 		classHighlighter,
 		(text, classes) => {
 			out += classes ? `<span class="${classes}">${escapeHTML(text)}</span>` : escapeHTML(text);
@@ -89,6 +106,40 @@ export function highlightNix(code: string): string {
 		() => (out += '\n')
 	);
 	return out;
+}
+
+/** A ```nix block, highlighted with the same grammar as the dashboard's Nix editor. */
+export function highlightNix(code: string): string {
+	return highlight(code, 'nix');
+}
+
+/**
+ * A shell block. When some lines start with `$ `, those are commands and the
+ * rest is their output: the prompt and the output are dimmed and left out of
+ * the copy. Otherwise every line is a command.
+ */
+export function renderShell(code: string): { html: string; copy: string } {
+	const lines = code.split('\n');
+	if (!lines.some((l) => l.startsWith('$ '))) return { html: highlight(code, 'shell'), copy: code };
+	const html = lines
+		.map((l) =>
+			l.startsWith('$ ')
+				? `<span class="prompt">$ </span>${highlight(l.slice(2), 'shell')}`
+				: l && `<span class="output">${escapeHTML(l)}</span>`
+		)
+		.join('\n');
+	const copy = lines
+		.filter((l) => l.startsWith('$ '))
+		.map((l) => l.slice(2))
+		.join('\n');
+	return { html, copy };
+}
+
+/** A code block with a copy button over its top right corner. */
+function codeBlock(lang: string, code: string): string {
+	const { html, copy } =
+		lang === 'shell' ? renderShell(code) : { html: highlight(code, lang), copy: code };
+	return `<div class="code"><pre><code class="language-${lang}">${html}</code></pre><button type="button" class="copy" data-copy="${escapeHTML(copy).replace(/"/g, '&quot;')}">Copy</button></div>\n`;
 }
 
 /** Heading text for the page's own list: tags dropped, entities decoded. */
@@ -122,8 +173,9 @@ function render(body: string): { html: string; headings: DocHeading[] } {
 				return `<h${token.depth} id="${id}"><a class="anchor" href="#${id}" aria-hidden="true" tabindex="-1">#</a>${inner}</h${token.depth}>\n`;
 			},
 			code(token: Tokens.Code) {
-				if (token.lang !== 'nix') return false;
-				return `<pre><code class="language-nix">${highlightNix(token.text)}</code></pre>\n`;
+				const lang = token.lang || 'shell';
+				if (!(lang in PARSERS)) return false;
+				return codeBlock(lang, token.text);
 			},
 			blockquote(
 				this: { parser: { parse(t: Tokens.Generic[]): string } },

@@ -110,7 +110,7 @@ Like `attach`, these start no machine: a stopped one gets you exit code 5 and th
 
 While you're attached, drag a file onto the terminal, or press `Ctrl+V` with a screenshot on your laptop's clipboard. The file is copied to `/tmp/repose-paste/` on the machine and its path there is pasted where your cursor is:
 
-```
+```text
 ❯ [Image #1] the button overlaps the footer on this screen
 ```
 

@@ -29,7 +29,7 @@
 
     # hostd clones the base checkout it builds fragments from (I-28); the
     # repository is public.
-    baseRepo.url = "https://github.com/Heracraft/factory.git";
+    baseRepo.url = "https://github.com/Heracraft/repose.git";
 
     # Operator SSH on the provider NIC with a plain key until the host is
     # registered: the installer's checks and the join-token delivery reach

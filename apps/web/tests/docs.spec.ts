@@ -23,3 +23,16 @@ test('an unknown docs page says so', async ({ page }) => {
 	await page.goto('/docs/no-such-page');
 	await expect(page.getByRole('heading', { name: 'No such page' })).toBeVisible();
 });
+
+// A block with prompts copies its commands only, without the `$ ` or the
+// output under them.
+test('a code block copies its commands', async ({ page, context }) => {
+	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+	await page.goto('/docs/lifecycle');
+	const block = page.locator('.doc .code').filter({ hasText: '$ repose stop todo-app' });
+	await block.getByRole('button', { name: 'Copy' }).click();
+	await expect(block.getByRole('button', { name: 'Copied' })).toBeVisible();
+	expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+		'repose stop todo-app\nrepose start todo-app'
+	);
+});

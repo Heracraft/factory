@@ -7,10 +7,8 @@
 #   curl -fsSL https://repose.herakraft.co/install.sh | sh -s -- --version v1.2.3
 set -eu
 
-# The GitHub repository the releases live in. It is still named `factory`
-# (DECISIONS I-98); renaming it to `repose` is the owner's pending step, and
-# GitHub redirects the old name afterwards, so this keeps working either way.
-REPO="heracraft/factory"
+# The GitHub repository the releases live in (DECISIONS I-98, I-286).
+REPO="heracraft/repose"
 BIN_NAME="repose"
 INSTALL_DIR="$HOME/.local/bin"
 VERSION="latest"

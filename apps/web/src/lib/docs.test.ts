@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DOCS, SECTIONS, docBySlug, highlightNix, search, slugify } from './docs';
+import { DOCS, SECTIONS, docBySlug, highlightNix, renderShell, search, slugify } from './docs';
 
 // Every /docs link in the docs names a page that exists and, when it has a
 // #fragment, a heading on that page: a renamed heading otherwise breaks
@@ -75,5 +75,29 @@ describe('user docs', () => {
 		expect(highlightNix('x = "<b>";')).toContain('&lt;b&gt;');
 		const config = docBySlug('config')!;
 		expect(config.html).toContain('<code class="language-nix"><span');
+	});
+
+	it('highlights shell, toml and json blocks and gives each a copy button', () => {
+		const cli = docBySlug('cli')!.html;
+		expect(cli).toContain('<code class="language-shell">');
+		expect(cli).toContain('<code class="language-toml"><span');
+		expect(docBySlug('agents')!.html).toContain('<code class="language-json">');
+		expect(cli).toContain('<button type="button" class="copy"');
+		// Program output is ```text: plain, nothing to copy.
+		const index = docBySlug('index')!.html;
+		expect(index).toContain('<code class="language-text">');
+		expect(index.match(/class="copy"/g)?.length).toBe(
+			index.match(/<code class="language-(?!text)/g)?.length
+		);
+	});
+
+	it('copies only the commands of a block with prompts', () => {
+		const { html, copy } = renderShell(
+			'$ repose ls\nPROJECT  STATE\n\n$ repose stop "a"\nStopped a.'
+		);
+		expect(copy).toBe('repose ls\nrepose stop "a"');
+		expect(html).toContain('<span class="prompt">$ </span>');
+		expect(html).toContain('<span class="output">Stopped a.</span>');
+		expect(renderShell('repose run # go').copy).toBe('repose run # go');
 	});
 });

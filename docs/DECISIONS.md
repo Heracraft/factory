@@ -7500,3 +7500,16 @@ superproject half alone (refused as new laptop work) and passes. *Rejected:* sen
 the laptop's SHAs in the probe (the probe runs before `syncGuest` knows
 them, I-225's startup overlap); trusting the key alone (a guest that lost
 the commits, a gc after a reset, would be told nothing is missing).
+**I-286. The repository is `Heracraft/repose`.** (owner, 2026-09-27) The
+rename I-98 left as the owner's step is done: GitHub answers the old
+`Heracraft/factory` URLs with a redirect (web 301, git fetch and clone,
+release downloads), so a CLI, `install.sh` or host still naming it keeps
+working. `install.sh`, `DefaultBaseRepo` (`repose-admin base publish`),
+`nix/hosts/host-01.nix` `baseRepo.url` and the source links on the landing
+page and /docs now name `repose`; host-01 picks its URL up on its next
+switch, and hostd clones only a missing base checkout, so no existing
+checkout changes. Evidence links in workstream docs and STATUS keep the old
+URLs, which redirect. The checkout on the dev box stays at
+`~/projects/factory`. *Rejected:* keeping the old name (the product, module
+path and binary are `repose`, and a second name is how a grep misses half
+the uses).

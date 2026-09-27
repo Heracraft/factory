@@ -9,6 +9,27 @@
 	let next = $derived(index < DOCS.length - 1 ? DOCS[index + 1] : undefined);
 	let toc = $derived(doc.headings.filter((h) => h.depth === 2));
 
+	// The copy buttons come in doc.html, so one listener on the article
+	// handles them all.
+	let article: HTMLElement | undefined = $state();
+	$effect(() => {
+		if (!article) return;
+		const el = article;
+		const onClick = async (e: MouseEvent) => {
+			const button = (e.target as Element).closest<HTMLButtonElement>('button.copy');
+			if (!button) return;
+			try {
+				await navigator.clipboard.writeText(button.dataset.copy ?? '');
+				button.textContent = 'Copied';
+			} catch {
+				button.textContent = 'Copy failed';
+			}
+			setTimeout(() => (button.textContent = 'Copy'), 1500);
+		};
+		el.addEventListener('click', onClick);
+		return () => el.removeEventListener('click', onClick);
+	});
+
 	function href(slug: string): string {
 		return slug === 'index' ? resolve('/docs') : resolve('/docs/[slug]', { slug });
 	}
@@ -29,6 +50,7 @@
 		{/if}
 
 		<article
+			bind:this={article}
 			class="doc prose prose-zinc dark:prose-invert prose-code:before:content-none prose-code:after:content-none mt-8 max-w-none"
 		>
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -- doc.html is rendered from this repo's own src/content/docs/*.md at build time, never from a user or the api -->

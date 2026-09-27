@@ -21,7 +21,7 @@ import (
 // DefaultBaseRepo is the platform repository hosts clone bases from
 // (nix/hosts/host-01.nix `repose.host.baseRepo.url`). REPOSE_BASE_REPO
 // or `--repo` overrides it.
-const DefaultBaseRepo = "https://github.com/Heracraft/factory.git"
+const DefaultBaseRepo = "https://github.com/Heracraft/repose.git"
 
 // githubAPI is GitHub's API root; tests point it at a fake.
 var githubAPI = "https://api.github.com"

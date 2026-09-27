@@ -18,7 +18,7 @@ Each `repose run` copies the current state of your checkout to the machine, once
 
 Everything goes over your SSH connection. None of it is stored by repose.
 
-```
+```text
 Synced: 4 modified, 2 untracked, 2 env files (3 new commits)
 ```
 
@@ -49,13 +49,13 @@ Git LFS files arrive as their small pointer files, not their contents. Run `repo
 
 If the machine changed since your last sync (usually an agent's edits or commits) and your laptop has nothing new since then, there is nothing to copy. The checkout is left as it is and you're attached:
 
-```
+```text
 The machine has changes your laptop doesn't have (27 files); attaching without syncing. `repose run --stash-remote` puts them in git stash and syncs your laptop's work.
 ```
 
 If your laptop does have new work, copying it would write over the machine's changes, so the sync stops, changes nothing and exits with code 6:
 
-```
+```text
 `repose run` copies your laptop's work onto the machine. It doesn't restart or rebuild anything.
 The machine has uncommitted changes your laptop doesn't have (27 files), probably an agent's:
   src/auth.ts

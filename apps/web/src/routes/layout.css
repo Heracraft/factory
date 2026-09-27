@@ -494,7 +494,30 @@
 	@apply my-0;
 }
 
-/* Nix code in the docs (highlightNix in lib/docs.ts): lezer's tok-* classes,
+/* A docs code block and its copy button (codeBlock in lib/docs.ts). */
+.doc .code {
+	@apply relative;
+}
+.doc .code pre {
+	@apply pr-16;
+}
+.doc .code .copy {
+	@apply absolute top-2 right-2 rounded-xs border px-2 py-0.5 text-xs text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50;
+	background-color: var(--page);
+	border-color: var(--rule);
+}
+.doc .code .copy:hover {
+	border-color: var(--rule-strong);
+}
+.doc pre .prompt,
+.doc pre .output {
+	@apply text-zinc-500 dark:text-zinc-400;
+}
+.doc pre .prompt {
+	@apply select-none;
+}
+
+/* Code in the docs (highlight in lib/docs.ts): lezer's tok-* classes,
    in muted tones that hold up on both the light and the dark code ground. */
 .doc pre .tok-keyword {
 	@apply text-purple-700 dark:text-purple-300;
