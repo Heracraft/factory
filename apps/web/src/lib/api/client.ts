@@ -7,15 +7,19 @@ import { ApiError, NetworkError } from './errors';
 import { reachability } from './reachability.svelte';
 import type {
 	ApiErrorBody,
+	Billing,
 	CatalogItem,
+	Checkout,
 	Config,
 	DestroyedProject,
 	Invoice,
 	Me,
 	MenuSelection,
 	OpStatus,
+	PlanId,
 	Project,
 	ProjectEvent,
+	PublicSeats,
 	Question,
 	RestoreResult,
 	Revision,
@@ -187,11 +191,35 @@ export const getUsage = (from: string, to: string) =>
 	request<Array<{ project_id: string; day: string } & UsageRow>>(
 		`/usage?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
 	);
-export const billingPortal = () => request<{ url: string }>('/billing/portal', { method: 'POST' });
-/** The hosted Stripe Checkout page that adds a card (DECISIONS I-182). */
-export const billingSetupCheckout = () =>
-	request<{ url: string }>('/billing/setup', { method: 'POST', body: { flow: 'checkout' } });
+export const getBilling = () => request<Billing>('/billing');
+/** Opens a Paddle transaction for the plan (I-289); `waitlisted` when its seats are not free. */
+export const billingCheckout = (plan: PlanId) =>
+	request<Checkout>('/billing/checkout', { method: 'POST', body: { plan } });
+export const billingJoinWaitlist = () =>
+	request<{ position: number; joined_at: string }>('/billing/waitlist', { method: 'POST' });
+export const billingChangePlan = (plan: PlanId) =>
+	request<{ plan: PlanId; scheduled_plan: PlanId | null; effective_at: string }>('/billing/plan', {
+		method: 'POST',
+		body: { plan }
+	});
+export const billingCancel = () =>
+	request<{ cancel_at: string }>('/billing/cancel', { method: 'POST' });
+export const billingResume = () =>
+	request<{ plan: PlanId; period_end: string }>('/billing/resume', { method: 'POST' });
+/** Paddle's customer portal; `payment_method` deep-links to the card. */
+export const billingPortal = (what?: 'payment_method') =>
+	request<{ url: string }>('/billing/portal', {
+		method: 'POST',
+		body: what ? { for: what } : undefined
+	});
 export const billingInvoices = () => request<Invoice[]>('/billing/invoices');
+
+/** GET /public/seats, without a token: the landing page's count (I-290). */
+export async function publicSeats(): Promise<PublicSeats> {
+	const res = await fetch(`${baseUrl()}/public/seats`);
+	if (!res.ok) throw new Error(`public/seats: ${res.status}`);
+	return (await res.json()) as PublicSeats;
+}
 
 /** The build/apply log SSE URL, browser-usable with EventSource (5.3). */
 export async function opLogUrl(
