@@ -6,7 +6,7 @@
 	import Logo from '$lib/components/Logo.svelte';
 	import Hero from '$lib/components/landing/Hero.svelte';
 	import Perch, { type Beat } from '$lib/components/landing/Perch.svelte';
-	import Shape, { type Kind } from '$lib/components/landing/Shape.svelte';
+	import Shape, { type Kind, type Tone } from '$lib/components/landing/Shape.svelte';
 	import SectionHead from '$lib/components/landing/SectionHead.svelte';
 	import { landOnView } from '$lib/components/landing/inview';
 	import OneCommand from '$lib/components/landing/OneCommand.svelte';
@@ -72,7 +72,11 @@
 		}
 	];
 	// The steps' marks: one shape each, the last the repose ring itself.
-	const stepShapes: Kind[] = ['sphere', 'pinwheel', 'ring'];
+	const stepShapes: [Kind, Tone][] = [
+		['sphere', 'neutral'],
+		['pinwheel', 'accent'],
+		['ring', 'warm']
+	];
 	const tiers: {
 		name: string;
 		vcpu: number;
@@ -94,19 +98,21 @@
 		},
 		{ name: 'xl', vcpu: 8, ram: '16 GB', disk: '80 GB', hour: '$0.28', cap: '$199', shape: 'burst' }
 	];
-	const frieze: Kind[] = [
-		'sun',
-		'moon',
-		'asterisk',
-		'pinwheel',
-		'arch',
-		'ring',
-		'pie',
-		'star',
-		'halves',
-		'leaf',
-		'sphere',
-		'pill'
+	// Mostly grey, with a spot of orange or blue every few shapes, the
+	// way the pictures use colour.
+	const frieze: [Kind, Tone][] = [
+		['sun', 'warm'],
+		['moon', 'neutral'],
+		['asterisk', 'neutral'],
+		['pinwheel', 'accent'],
+		['arch', 'neutral'],
+		['ring', 'warm'],
+		['pie', 'neutral'],
+		['star', 'accent'],
+		['halves', 'neutral'],
+		['leaf', 'neutral'],
+		['sphere', 'neutral'],
+		['pill', 'neutral']
 	];
 	let friezeTurn = $state(frieze.map(() => 0));
 </script>
@@ -222,7 +228,7 @@
 		<div class="mx-auto max-w-5xl px-5 py-16">
 			<SectionHead id="features" title="On every machine" />
 			<div class="relative mt-14 grid gap-x-10 gap-y-12 md:grid-cols-2">
-				<Perch shapes={['arch', 'moon', 'asterisk']} />
+				<Perch shapes={['arch', 'moon:accent', 'asterisk']} />
 				<ComesBack />
 				<Localhost />
 				<Browser />
@@ -258,7 +264,8 @@
 						<div>
 							<h3 class="flex items-center gap-3 text-lg font-semibold">
 								<span class="step-mark land" style="--d: {i * 110}ms" aria-hidden="true"
-									><span class="turn block h-full w-full"><Shape kind={stepShapes[i]} /></span
+									><span class="turn block h-full w-full"
+										><Shape kind={stepShapes[i][0]} tone={stepShapes[i][1]} /></span
 									></span
 								>{step.title}
 							</h3>
@@ -315,14 +322,14 @@
 <footer>
 	<div class="border-b border-[var(--rule)]">
 		<div class="frieze" aria-hidden="true" use:landOnView>
-			{#each frieze as k, i (i)}
+			{#each frieze as [k, tone], i (i)}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<span
 					class="frieze-tile land"
 					style="--d: {i * 60}ms"
 					onpointerenter={() => (friezeTurn[i] += 90)}
 					><span class="turn block h-full w-full" style="--a: {friezeTurn[i]}deg"
-						><Shape kind={k} /></span
+						><Shape kind={k} {tone} /></span
 					></span
 				>
 			{/each}

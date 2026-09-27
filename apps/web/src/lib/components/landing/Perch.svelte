@@ -18,14 +18,21 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { agentMarks } from '$lib/components/illustrations/marks';
-	import Shape, { type Kind } from './Shape.svelte';
+	import Shape, { type Kind, type Tone } from './Shape.svelte';
 	import { landOnView, reducedMotion } from './inview';
 
 	let {
 		shapes,
 		beat,
 		large = false
-	}: { shapes: (Kind | 'agent')[]; beat?: { kind: Beat; n: number }; large?: boolean } = $props();
+	}: {
+		// A shape, or "shape:tone" to pick its tone (Shape.svelte).
+		shapes: (Kind | 'agent' | `${Kind}:${Tone}`)[];
+		beat?: { kind: Beat; n: number };
+		large?: boolean;
+	} = $props();
+
+	const split = (s: string) => s.split(':') as [Kind | 'agent', Tone | undefined];
 
 	const TURN: Partial<Record<Kind, number>> = {
 		pie: 90,
@@ -43,7 +50,7 @@
 	let who = $state(0);
 
 	function turn(i: number) {
-		const k = shapes[i];
+		const k = split(shapes[i])[0];
 		if (k !== 'agent') angle[i] = (angle[i] ?? 0) + (TURN[k] ?? 90);
 	}
 
@@ -81,7 +88,7 @@
 </script>
 
 <div class="perch" class:large class:down aria-hidden="true" use:landOnView>
-	{#each shapes as k, i (i)}
+	{#each shapes.map(split) as [k, tone], i (i)}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<span
 			class="tile land"
@@ -105,7 +112,7 @@
 								{/key}
 							</svg>
 						{:else}
-							<Shape kind={k} />
+							<Shape kind={k} {tone} />
 						{/if}
 					</span>{/key}
 			</span>

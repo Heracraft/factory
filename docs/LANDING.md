@@ -208,6 +208,15 @@ and underlined every heading. The page is one system:
   shape reads as quietly as their icons. No green, amber, pink or purple:
   the slide template's own hues were tried and dropped (owner,
   2026-09-27), and a new colour needs a reason recorded here.
+- **Mostly grey, a spot of colour, even weight.** Each shape has one
+  main tone (`tone`: neutral, accent or warm; Shape.svelte); a group
+  carries at most one blue and one orange and the rest grey, as the
+  pictures are mostly grey with a blue chip and an orange agent. Fills sit
+  at mid values so nothing vanishes or shouts: zinc-400 and zinc-300 on
+  paper, zinc-500 and zinc-600 in the dark; the blue fill is blue-500
+  (a step lighter than the pictures' blue-600 lines) so it weighs what the
+  orange does; ink only for small details (a hole, a diamond's top),
+  never a whole shape. Judge it on a full-page screenshot in both themes.
 - **Where a shape and a mark are the same form, they are one.** The star
   is Gemini's sparkle (`SPARKLE` in `marks.ts`), and Gemini CLI's mark in
   the toolchain box and the hero's agent tile is that sparkle, so the

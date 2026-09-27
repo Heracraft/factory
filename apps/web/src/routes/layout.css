@@ -101,20 +101,25 @@
 		   language"): the neutrals, the one blue accent, Claude Code's
 		   orange, and the red a wreck turns things, each at the value the
 		   pictures use (Hero.svelte's --accent, --claude, --faint, --stop). */
-		--sh-accent: var(--color-blue-600);
+		/* The accent a step lighter than the pictures' blue-600 lines, so a
+		   filled blue weighs what the orange does. */
+		--sh-accent: var(--color-blue-500);
 		--sh-warm: #d97757;
+		/* Mid values only: a grey that holds its own on paper, a light one
+		   that still reads, and ink kept to small details (a hole, a
+		   diamond's top), never a whole shape. */
 		--sh-grey: var(--color-zinc-400);
-		--sh-light: var(--color-zinc-200);
-		--sh-ink: var(--color-zinc-800);
+		--sh-light: var(--color-zinc-300);
+		--sh-ink: var(--color-zinc-700);
 		--sh-paper: var(--surface);
 		--sh-stop: var(--color-red-600);
 	}
 	@media (prefers-color-scheme: dark) {
 		:root {
 			--sh-accent: var(--color-blue-400);
-			--sh-grey: var(--color-zinc-600);
-			--sh-light: var(--color-zinc-800);
-			--sh-ink: var(--color-zinc-400);
+			--sh-grey: var(--color-zinc-500);
+			--sh-light: var(--color-zinc-600);
+			--sh-ink: var(--color-zinc-900);
 			--sh-stop: var(--color-red-400);
 			--page: #111110;
 			--surface: #161615;
