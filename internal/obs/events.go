@@ -58,18 +58,19 @@ const (
 	EventCommandSend   = "command_send"
 	EventCommandResult = "command_result"
 	EventRollupDone    = "rollup_done"
-	EventStripeWebhook = "stripe_webhook"
-	// Billing (workstream 09). billing_gap is the §6 failure mode "sample
-	// gap for a running guest": the minutes are under-billed, never
-	// estimated, and the gap is visible rather than silent.
-	EventBillingGap      = "billing_gap"
-	EventStripePushFail  = "stripe_push_fail"
-	EventBillingStopped  = "billing_stopped"
-	EventBillingMismatch = "billing_mismatch"
-	EventBillingEnforce  = "billing_enforce"
-	EventNotifySend      = "notify_send"
-	EventNotifyFail      = "notify_fail"
-	EventAdminAction     = "admin_action"
+	// Billing (workstream 09, DECISIONS I-289). billing_gap is the failure
+	// mode "sample gap for a running guest": the minutes are under-billed,
+	// never estimated, and the gap is visible rather than silent. The
+	// Paddle lines carry user_id, kind, reason, plan and result only.
+	EventBillingGap         = "billing_gap"
+	EventBillingWebhook     = "webhook_received"
+	EventOverageCharged     = "overage_charged"
+	EventBillingGateRefused = "gate_refused"
+	EventBillingStopped     = "billing_stopped"
+	EventBillingEnforce     = "billing_enforce"
+	EventNotifySend         = "notify_send"
+	EventNotifyFail         = "notify_fail"
+	EventAdminAction        = "admin_action"
 	// EventPartitionDropFail is the §6 failure mode: the meter_samples or
 	// proc_samples partition drop did not run, so disk grows and nothing
 	// else breaks.
@@ -103,7 +104,7 @@ var RequiredEvents = map[Component][]string{
 	ComponentAPI: {
 		EventRequest, EventCertIssue, EventCertRevoke, EventSchedule,
 		EventScheduleFail, EventCommandSend, EventCommandResult, EventRollupDone,
-		EventStripeWebhook, EventNotifySend, EventNotifyFail, EventPartitionDropFail,
+		EventBillingWebhook, EventNotifySend, EventNotifyFail, EventPartitionDropFail,
 	},
 	ComponentGateway: {
 		EventSessionOpen, EventSessionClose, EventAuthFail, EventRouteFail,

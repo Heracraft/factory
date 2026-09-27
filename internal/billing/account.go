@@ -2,7 +2,6 @@ package billing
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -10,123 +9,88 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	stripe "github.com/stripe/stripe-go/v83"
 
 	"github.com/heracraft/repose/internal/api/store"
 	"github.com/heracraft/repose/internal/db"
 )
 
 // Account is one user's billing state in one place: what `repose-admin
-// billing show` prints, and what the M4 gate runbook reads its evidence
-// from (docs/ops/M4-GATE.md). The period totals are what the invoice for
-// that period must come to: usage_hours cost less the credit, split the
-// way PushUsage splits it.
+// billing show` prints and what the sandbox runbook reads its evidence
+// from (docs/ops/M4-GATE.md): the subscription, the plan, the period, the
+// period's hours, disk and egress, and the overage arithmetic.
 type Account struct {
 	Handle       string
 	UserID       uuid.UUID
 	Status       string
 	HasCard      bool
-	Balance      int64
 	Customer     string
-	Subscription string
-	Anchor       *time.Time
+	Sub          *Sub
+	Plan         Plan
 	Period       Period
 	PastDueSince *time.Time
 	SuspendedAt  *time.Time
-	ProjectLimit int
-	XLLimit      int
-
-	Hours          int
-	CostCents      int64
-	CreditCents    int64
-	ComputeBilled  int64
-	StorageBilled  int64
-	EgressBilled   int64
-	UnpushedRows   int
-	Invoices       []AccountInvoice
-	FirstBilledHrs *time.Time
+	Limits       Limits
+	Usage        Usage
+	Hours        map[string]int64
+	Overage      []OverageRow
+	Place        *Place
 }
 
-// AccountInvoice is one invoices row.
-type AccountInvoice struct {
-	StripeID    string
-	Status      string
-	TotalCents  int64
-	PeriodStart *time.Time
-	PeriodEnd   *time.Time
+// OverageRow is one overage_charges row.
+type OverageRow struct {
+	PeriodStart   time.Time
+	EgressGB      int64
+	Cents         int64
+	TransactionID string
+	CreatedAt     time.Time
 }
 
-// Billed is what the period's invoice must total before tax.
-func (a Account) Billed() int64 { return a.ComputeBilled + a.StorageBilled + a.EgressBilled }
-
-// LoadAccount reads the account and its current period (the one containing
-// at) from the database alone.
+// LoadAccount reads the account from the database alone.
 func LoadAccount(ctx context.Context, pool *db.Pool, userID uuid.UUID, at time.Time) (Account, error) {
 	u, err := store.GetUser(ctx, pool, userID)
 	if err != nil {
 		return Account{}, err
 	}
-	a := Account{Handle: u.Handle, UserID: u.ID, Status: u.BillingStatus, HasCard: u.HasCard, Anchor: u.BillingAnchor,
-		PastDueSince: u.PastDueSince, SuspendedAt: u.SuspendedAt, ProjectLimit: u.ProjectLimit, XLLimit: u.XLLimit}
-	if u.StripeCustomerID != nil {
-		a.Customer = *u.StripeCustomerID
+	a := Account{Handle: u.Handle, UserID: u.ID, Status: u.BillingStatus, HasCard: u.HasCard, PastDueSince: u.PastDueSince, SuspendedAt: u.SuspendedAt}
+	if u.PaddleCustomerID != nil {
+		a.Customer = *u.PaddleCustomerID
 	}
-	if u.StripeSubscriptionID != nil {
-		a.Subscription = *u.StripeSubscriptionID
-	}
-	anchor := u.CreatedAt
-	if u.BillingAnchor != nil {
-		anchor = *u.BillingAnchor
-	}
-	a.Period = PeriodFor(anchor, at)
-	if a.Balance, err = Balance(ctx, pool, u.ID); err != nil {
+	if a.Sub, err = LiveSubscription(ctx, pool, u.ID); err != nil {
 		return a, err
 	}
-	rows, err := pool.Query(ctx, `select u.guest_cents, u.storage_cents, u.egress_cents, u.cost_cents, u.credit_cents,
-		u.stripe_usage_record_id is null and u.cost_cents > u.credit_cents, u.hour
-		from usage_hours u join projects p on p.id = u.project_id
-		where p.user_id = $1 and u.period_start = $2 order by u.hour`, u.ID, a.Period.Start)
-	if err != nil {
-		return a, err
-	}
-	for rows.Next() {
-		var g, s, e, cost, credit int64
-		var unpushed bool
-		var hour time.Time
-		if err := rows.Scan(&g, &s, &e, &cost, &credit, &unpushed, &hour); err != nil {
-			rows.Close()
+	if a.Sub == nil {
+		if a.Sub, err = LatestSubscription(ctx, pool, u.ID); err != nil {
 			return a, err
 		}
-		a.Hours++
-		a.CostCents += cost
-		a.CreditCents += credit
-		g, s, e = applyCredit(g, s, e, credit)
-		a.ComputeBilled += g
-		a.StorageBilled += s
-		a.EgressBilled += e
-		if unpushed {
-			a.UnpushedRows++
-		}
-		if cost > credit && a.FirstBilledHrs == nil {
-			h := hour.UTC()
-			a.FirstBilledHrs = &h
-		}
 	}
-	rows.Close()
-	irows, err := pool.Query(ctx, `select stripe_invoice_id, status, total_cents, period_start, period_end from invoices
-		where user_id = $1 order by coalesce(period_end, created_at) desc limit 6`, u.ID)
-	if err != nil {
+	a.Plan = a.Sub.PlanOrSolo()
+	a.Period = a.Sub.Period(at)
+	a.Limits = LimitsFor(u, a.Sub)
+	if a.Usage, err = LoadUsage(ctx, pool, u.ID, a.Plan, a.Period); err != nil {
 		return a, err
 	}
-	defer irows.Close()
-	for irows.Next() {
-		var inv AccountInvoice
-		if err := irows.Scan(&inv.StripeID, &inv.Status, &inv.TotalCents, &inv.PeriodStart, &inv.PeriodEnd); err != nil {
+	if a.Hours, err = PeriodHours(ctx, pool, u.ID, a.Period); err != nil {
+		return a, err
+	}
+	if a.Place, err = WaitlistPlace(ctx, pool, u.ID); err != nil {
+		return a, err
+	}
+	if a.Sub != nil {
+		rows, err := pool.Query(ctx, "select period_start, egress_gb::bigint, cents, coalesce(paddle_transaction_id, ''), created_at from overage_charges where subscription_id = $1 order by period_start desc limit 6", a.Sub.ID)
+		if err != nil {
 			return a, err
 		}
-		a.Invoices = append(a.Invoices, inv)
+		defer rows.Close()
+		for rows.Next() {
+			var o OverageRow
+			if err := rows.Scan(&o.PeriodStart, &o.EgressGB, &o.Cents, &o.TransactionID, &o.CreatedAt); err != nil {
+				return a, err
+			}
+			a.Overage = append(a.Overage, o)
+		}
+		return a, rows.Err()
 	}
-	return a, irows.Err()
+	return a, nil
 }
 
 func fmtT(t *time.Time) string {
@@ -136,37 +100,6 @@ func fmtT(t *time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// WriteTo prints the account as a two-column table.
-func (a Account) WriteTo(w io.Writer) (int64, error) {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	row := func(k, v string) { _, _ = fmt.Fprintf(tw, "%s\t%s\n", k, v) }
-	row("handle", a.Handle)
-	row("billing", a.Status)
-	row("has_card", fmt.Sprint(a.HasCard))
-	row("credit balance", fmt.Sprintf("%d cents (from credit_ledger)", a.Balance))
-	row("limits", fmt.Sprintf("%d projects, %d xl", a.ProjectLimit, a.XLLimit))
-	row("stripe customer", orDash(a.Customer))
-	row("stripe subscription", orDash(a.Subscription))
-	row("billing anchor", fmtT(a.Anchor))
-	row("past due since", fmtT(a.PastDueSince))
-	row("suspended", fmtT(a.SuspendedAt))
-	row("period", a.Period.Start.Format(time.RFC3339)+" to "+a.Period.End.Format(time.RFC3339))
-	row("  usage_hours rows", fmt.Sprint(a.Hours))
-	row("  cost", fmt.Sprintf("%d cents", a.CostCents))
-	row("  trial credit applied", fmt.Sprintf("%d cents", a.CreditCents))
-	row("  billed", fmt.Sprintf("compute %d + storage %d + egress %d = %d cents (the invoice before tax)", a.ComputeBilled, a.StorageBilled, a.EgressBilled, a.Billed()))
-	row("  first billed hour", fmtT(a.FirstBilledHrs))
-	row("  rows not yet pushed", fmt.Sprint(a.UnpushedRows))
-	for i, inv := range a.Invoices {
-		k := ""
-		if i == 0 {
-			k = "invoices"
-		}
-		row(k, fmt.Sprintf("%s %s %d cents %s to %s", inv.StripeID, inv.Status, inv.TotalCents, fmtT(inv.PeriodStart), fmtT(inv.PeriodEnd)))
-	}
-	return 0, tw.Flush()
-}
-
 func orDash(s string) string {
 	if strings.TrimSpace(s) == "" {
 		return "-"
@@ -174,42 +107,52 @@ func orDash(s string) string {
 	return s
 }
 
-// ErrNoSubscription means the account has no Stripe subscription yet.
-var ErrNoSubscription = errors.New("the account has no Stripe subscription (no card was ever attached)")
-
-// CycleNow ends the account's current billing period now: Stripe resets
-// the subscription's billing cycle anchor, which invoices the usage so far
-// immediately, and the rollup's anchor moves with it so the next hour
-// starts a new period on both sides. It is the operator's way to get a
-// real invoice for a short known pattern without waiting a month
-// (DECISIONS I-185, docs/ops/M4-GATE.md). The caller pushes every finished
-// hour first and waits for Stripe to have them. The hour holding the reset
-// goes to the new period on both sides: the rollup's anchor is that hour,
-// and its events are stamped at its last second, after the reset.
-func (s *Stripe) CycleNow(ctx context.Context, userID uuid.UUID) (invoiceID string, anchor time.Time, err error) {
-	u, err := store.GetUser(ctx, s.pool, userID)
-	if err != nil {
-		return "", anchor, err
+// WriteTo prints the account as a two-column table.
+func (a Account) WriteTo(w io.Writer) (int64, error) {
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	row := func(k, v string) { _, _ = fmt.Fprintf(tw, "%s\t%s\n", k, v) }
+	row("handle", a.Handle)
+	row("billing", a.Status)
+	row("has_card", fmt.Sprint(a.HasCard))
+	row("paddle customer", orDash(a.Customer))
+	if a.Sub == nil {
+		row("subscription", "- (no plan chosen)")
+	} else {
+		row("subscription", fmt.Sprintf("%s %s %s (%d seat(s))", a.Sub.ID, a.Sub.Plan, a.Sub.Status, a.Sub.Seats))
+		row("  next billed", fmtT(a.Sub.NextBilledAt))
+		row("  trial ends", fmtT(a.Sub.TrialEnd))
+		row("  cancels at", fmtT(a.Sub.CancelAt))
+		if a.Sub.ScheduledPlan != nil {
+			row("  scheduled plan", *a.Sub.ScheduledPlan)
+		}
+		row("  overage charged for", fmtT(a.Sub.OverageChargedFor))
 	}
-	if u.StripeSubscriptionID == nil || *u.StripeSubscriptionID == "" {
-		return "", anchor, ErrNoSubscription
+	row("past due since", fmtT(a.PastDueSince))
+	row("suspended", fmtT(a.SuspendedAt))
+	row("limits", fmt.Sprintf("%d projects, xl %d, %d GB running, %d GB disk, %d GB egress", a.Limits.Projects, a.Limits.XL, a.Limits.MemoryGB, a.Limits.DiskGB, a.Limits.EgressGB))
+	if a.Place != nil {
+		row("waitlist", fmt.Sprintf("position %d, joined %s, invited %s, hold until %s", a.Place.Position, a.Place.JoinedAt.UTC().Format(time.RFC3339), fmtT(a.Place.InvitedAt), fmtT(a.Place.HoldUntil)))
 	}
-	params := &stripe.SubscriptionUpdateParams{BillingCycleAnchorNow: stripe.Bool(true), ProrationBehavior: str("none")}
-	params.AddExpand("latest_invoice")
-	sub, err := s.c.V1Subscriptions.Update(ctx, *u.StripeSubscriptionID, params)
-	if err != nil {
-		return "", anchor, fmt.Errorf("reset the billing cycle: %w", err)
+	row("period", a.Period.Start.Format(time.RFC3339)+" to "+a.Period.End.Format(time.RFC3339))
+	slugs := make([]string, 0, len(a.Usage.Running))
+	for _, p := range a.Usage.Running {
+		slugs = append(slugs, p.Slug+" ("+p.Class+")")
 	}
-	anchor = s.Now().UTC()
-	if sub.BillingCycleAnchor > 0 {
-		anchor = time.Unix(sub.BillingCycleAnchor, 0).UTC()
+	row("  running memory", fmt.Sprintf("%d of %d GB: %s", a.Usage.RunningGB, a.Plan.MemoryGB, orDash(strings.Join(slugs, ", "))))
+	row("  allocated disk", fmt.Sprintf("%d of %d GB over %d project(s)", a.Usage.DiskAllocatedGB, a.Plan.DiskGB, a.Usage.Projects))
+	for _, c := range []string{"small", "large", "xl"} {
+		if secs := a.Hours[c]; secs > 0 {
+			row("  hours "+c, fmt.Sprintf("%.1f", float64(secs)/3600))
+		}
 	}
-	anchor = anchor.Truncate(time.Hour)
-	if _, err := s.pool.Exec(ctx, "update users set billing_anchor = $2 where id = $1", u.ID, anchor); err != nil {
-		return "", anchor, err
+	row("  egress", fmt.Sprintf("%.2f GB of %d GB included; hard stop at %d GB", float64(a.Usage.EgressBytes)/(1<<30), a.Plan.EgressGB, a.Plan.EgressHardStopBytes()>>30))
+	row("  overage", fmt.Sprintf("ceil(%.2f - %d) = %d GB x %d cents = %d cents", float64(a.Usage.EgressBytes)/(1<<30), a.Plan.EgressGB, a.Usage.OverageGB, OveragePerGBCents, a.Usage.OverageCents))
+	for i, o := range a.Overage {
+		k := ""
+		if i == 0 {
+			k = "overage lines"
+		}
+		row(k, fmt.Sprintf("%s: %d GB, %d cents, transaction %s", o.PeriodStart.UTC().Format("2006-01-02"), o.EgressGB, o.Cents, orDash(o.TransactionID)))
 	}
-	if sub.LatestInvoice != nil {
-		invoiceID = sub.LatestInvoice.ID
-	}
-	return invoiceID, anchor, nil
+	return 0, tw.Flush()
 }

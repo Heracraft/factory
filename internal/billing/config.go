@@ -3,53 +3,88 @@ package billing
 import (
 	"errors"
 	"os"
+	"sort"
 	"strings"
 )
 
-// Config is the STRIPE_* environment the api reads (09-billing.md §5.5,
-// DECISIONS I-16: with none of it set the api starts normally and the
-// billing routes answer 503 billing_disabled).
+// Config is the PADDLE_* environment the api reads (09-billing.md §5.11,
+// DECISIONS I-289). With no PADDLE_API_KEY the api starts normally, the
+// billing routes answer 503 billing_disabled and the gate refuses every
+// non-exempt start with subscription_required: a deploy without keys is
+// safe and useless rather than free.
 type Config struct {
-	SecretKey     string
+	APIKey        string
 	WebhookSecret string
-	// PortalReturnURL is where Stripe's customer portal sends the user back.
+	// ClientToken is the public Paddle.js token GET /billing hands the
+	// dashboard.
+	ClientToken string
+	// PriceSolo and PricePro are the pri_... ids of the two plans;
+	// ProductOverage the pro_... id the egress line is charged under.
+	PriceSolo      string
+	PricePro       string
+	ProductOverage string
+	// PortalReturnURL is where Paddle's customer portal sends the user back.
 	PortalReturnURL string
-	// PortalConfiguration is the bpc_... customer portal configuration
-	// `repose-admin billing stripe-bootstrap` creates; empty uses the
-	// account's default configuration.
-	PortalConfiguration string
-
-	// The four Stripe objects of §5.5: one product, three metered prices,
-	// each attached to a billing meter whose event name is pushed per
-	// usage_hours row. Cents are the unit, so the invoice carries the
-	// amounts this code computed and Stripe adds nothing of its own.
-	PriceCompute string
-	PriceStorage string
-	PriceEgress  string
-	MeterCompute string
-	MeterStorage string
-	MeterEgress  string
-	// MeterIDCompute and friends are the `mtr_...` ids reconciliation reads
-	// summaries from; the event names above are what a push writes.
-	MeterIDCompute string
-	MeterIDStorage string
-	MeterIDEgress  string
-
-	// Enforce is BILLING_ENFORCE (§8). False keeps rolling up and pushing
-	// but stops blocking starts and stopping guests.
+	// DashboardURL is the dashboard's origin, which every refusal names.
+	DashboardURL string
+	// BaseURL overrides the API origin (tests); empty derives it from the
+	// key's environment.
+	BaseURL string
+	// Enforce is BILLING_ENFORCE (§8). False keeps rolling up but stops
+	// blocking starts and stopping machines.
 	Enforce bool
-	// AutomaticTax switches Stripe Tax on for the subscription (§5.9).
-	AutomaticTax bool
+	// SeatsTotal is SEATS_TOTAL for the stub seat count (0 = unlimited);
+	// the real count derives it from the hosts (I-290).
+	SeatsTotal int
 }
 
-// Default meter event names. They are configurable because a Stripe account
-// that already has meters under other names should not need a code change,
-// but these are what `ops/coolify/api.env.example` documents.
+// Environments.
 const (
-	DefaultMeterCompute = "repose_compute_cents"
-	DefaultMeterStorage = "repose_storage_cents"
-	DefaultMeterEgress  = "repose_egress_cents"
+	EnvSandbox = "sandbox"
+	EnvLive    = "live"
+
+	sandboxKeyPrefix = "pdl_sdbx_"
+	sandboxBaseURL   = "https://sandbox-api.paddle.com"
+	liveBaseURL      = "https://api.paddle.com"
 )
+
+// Environment tells a sandbox key from a live one by its prefix.
+func Environment(key string) string {
+	if strings.HasPrefix(key, sandboxKeyPrefix) {
+		return EnvSandbox
+	}
+	return EnvLive
+}
+
+// Environment is the configured key's environment.
+func (c Config) Environment() string { return Environment(c.APIKey) }
+
+// Enabled reports whether Paddle is configured at all.
+func (c Config) Enabled() bool { return c.APIKey != "" }
+
+// PlanPrice is the Paddle price id for a plan.
+func (c Config) PlanPrice(plan string) string {
+	switch plan {
+	case Solo.ID:
+		return c.PriceSolo
+	case Pro.ID:
+		return c.PricePro
+	}
+	return ""
+}
+
+// PlanForPrice is the plan a Paddle price id sells; "" for an unknown one.
+func (c Config) PlanForPrice(priceID string) string {
+	switch {
+	case priceID == "":
+		return ""
+	case priceID == c.PriceSolo:
+		return Solo.ID
+	case priceID == c.PricePro:
+		return Pro.ID
+	}
+	return ""
+}
 
 func env(name, def string) string {
 	if v := strings.TrimSpace(os.Getenv(name)); v != "" {
@@ -58,55 +93,68 @@ func env(name, def string) string {
 	return def
 }
 
-// ConfigFromEnv reads the billing configuration. Enabled reports whether
-// Stripe is configured at all.
+// ConfigFromEnv reads the billing configuration; enabled is Enabled().
 func ConfigFromEnv() (cfg Config, enabled bool) {
+	dash := env("DASHBOARD_URL", "https://repose.herakraft.co")
 	cfg = Config{
-		SecretKey:           strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")),
-		WebhookSecret:       strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")),
-		PortalReturnURL:     env("STRIPE_PORTAL_RETURN_URL", env("DASHBOARD_URL", "https://repose.herakraft.co")+"/billing"),
-		PortalConfiguration: strings.TrimSpace(os.Getenv("STRIPE_PORTAL_CONFIGURATION")),
-		PriceCompute:        strings.TrimSpace(os.Getenv("STRIPE_PRICE_COMPUTE")),
-		PriceStorage:        strings.TrimSpace(os.Getenv("STRIPE_PRICE_STORAGE")),
-		PriceEgress:         strings.TrimSpace(os.Getenv("STRIPE_PRICE_EGRESS")),
-		MeterCompute:        env("STRIPE_METER_COMPUTE", DefaultMeterCompute),
-		MeterStorage:        env("STRIPE_METER_STORAGE", DefaultMeterStorage),
-		MeterEgress:         env("STRIPE_METER_EGRESS", DefaultMeterEgress),
-		MeterIDCompute:      strings.TrimSpace(os.Getenv("STRIPE_METER_ID_COMPUTE")),
-		MeterIDStorage:      strings.TrimSpace(os.Getenv("STRIPE_METER_ID_STORAGE")),
-		MeterIDEgress:       strings.TrimSpace(os.Getenv("STRIPE_METER_ID_EGRESS")),
-		Enforce:             os.Getenv("BILLING_ENFORCE") != "false",
-		AutomaticTax:        os.Getenv("STRIPE_AUTOMATIC_TAX") != "false",
+		APIKey:          strings.TrimSpace(os.Getenv("PADDLE_API_KEY")),
+		WebhookSecret:   strings.TrimSpace(os.Getenv("PADDLE_WEBHOOK_SECRET")),
+		ClientToken:     strings.TrimSpace(os.Getenv("PADDLE_CLIENT_TOKEN")),
+		PriceSolo:       strings.TrimSpace(os.Getenv("PADDLE_PRICE_SOLO")),
+		PricePro:        strings.TrimSpace(os.Getenv("PADDLE_PRICE_PRO")),
+		ProductOverage:  strings.TrimSpace(os.Getenv("PADDLE_PRODUCT_OVERAGE")),
+		PortalReturnURL: env("PADDLE_PORTAL_RETURN_URL", dash+"/billing"),
+		DashboardURL:    dash,
+		Enforce:         os.Getenv("BILLING_ENFORCE") != "false",
 	}
-	return cfg, cfg.SecretKey != ""
+	if v := strings.TrimSpace(os.Getenv("SEATS_TOTAL")); v != "" {
+		n := 0
+		for _, r := range v {
+			if r < '0' || r > '9' {
+				n = 0
+				break
+			}
+			n = n*10 + int(r-'0')
+		}
+		cfg.SeatsTotal = n
+	}
+	return cfg, cfg.Enabled()
 }
 
-// Validate refuses a half-configured Stripe: a secret key with no prices
-// would create subscriptions that bill nothing, and no webhook secret
-// would leave every invoice event unverified and dropped.
+// Validate refuses a half-configured Paddle: a key with no price ids
+// would sell nothing, no webhook secret would leave every subscription
+// event unverified and dropped, and no overage product would silently
+// give egress away.
 func (c Config) Validate() error {
+	if !c.Enabled() {
+		return nil
+	}
 	var missing []string
 	for name, v := range map[string]string{
-		"STRIPE_WEBHOOK_SECRET": c.WebhookSecret,
-		"STRIPE_PRICE_COMPUTE":  c.PriceCompute,
-		"STRIPE_PRICE_STORAGE":  c.PriceStorage,
-		"STRIPE_PRICE_EGRESS":   c.PriceEgress,
+		"PADDLE_WEBHOOK_SECRET":  c.WebhookSecret,
+		"PADDLE_PRICE_SOLO":      c.PriceSolo,
+		"PADDLE_PRICE_PRO":       c.PricePro,
+		"PADDLE_PRODUCT_OVERAGE": c.ProductOverage,
 	} {
 		if v == "" {
 			missing = append(missing, name)
 		}
 	}
 	if len(missing) > 0 {
-		sortStrings(missing)
-		return errors.New("STRIPE_SECRET_KEY is set but " + strings.Join(missing, ", ") + " is not")
+		sort.Strings(missing)
+		return errors.New("PADDLE_API_KEY is set but " + strings.Join(missing, ", ") + " is not")
+	}
+	if c.PriceSolo == c.PricePro {
+		return errors.New("PADDLE_PRICE_SOLO and PADDLE_PRICE_PRO are the same price")
 	}
 	return nil
 }
 
-func sortStrings(s []string) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j] < s[j-1]; j-- {
-			s[j], s[j-1] = s[j-1], s[j]
-		}
+// BillingURL is the dashboard page every refusal points at.
+func (c Config) BillingURL() string {
+	dash := c.DashboardURL
+	if dash == "" {
+		dash = "https://repose.herakraft.co"
 	}
+	return strings.TrimRight(dash, "/") + "/billing"
 }
