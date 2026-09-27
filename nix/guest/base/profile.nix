@@ -6,6 +6,20 @@
 #                                           viewer's password (one per boot)
 #   repose-guest-profile desktop stop
 #   repose-guest-profile desktop status  -> running|stopped
+#   repose-guest-profile browser bridge start|stop|status|release
+#                                        -> the DevTools endpoint agents use
+#                                           points at the laptop's Chrome
+#                                           (start) or the machine's (stop);
+#                                           status prints on|off; release
+#                                           ends a previous bridge's ssh
+#   repose-guest-profile browser bridge hold
+#                                        -> start, then keep the bridge on
+#                                           until stdin closes or the tunnel
+#                                           is gone, then stop (the CLI runs
+#                                           this as the remote command of the
+#                                           ssh that carries the tunnel, so
+#                                           the bridge lives exactly as long
+#                                           as that ssh, DECISIONS I-296)
 { config, lib, pkgs, ... }:
 let
   script = pkgs.writeShellApplication {
@@ -62,8 +76,36 @@ let
               ;;
           esac
           ;;
+        browser)
+          case "''${2:-} ''${3:-}" in
+            "bridge start") sudo -n repose-browser-bridge on ;;
+            "bridge stop") sudo -n repose-browser-bridge off ;;
+            "bridge status") repose-browser-bridge status ;;
+            "bridge release") repose-browser-bridge release ;;
+            "bridge hold")
+              sudo -n repose-browser-bridge on
+              # Whatever ends this (Ctrl-C on the laptop, a connection
+              # sshd gave up on, the tunnel listener gone), the endpoint
+              # goes back to the machine's browser.
+              trap 'sudo -n repose-browser-bridge off' EXIT
+              echo on
+              while :; do
+                # read: 0 for a line, over 128 on the timeout, 1 at EOF,
+                # which is the ssh session ending.
+                read -r -t 5 _ && continue
+                rc=$?
+                [ "$rc" -gt 128 ] || break
+                repose-browser-bridge tunnel || break
+              done
+              ;;
+            *)
+              echo "usage: repose-guest-profile browser bridge start|stop|status|release|hold" >&2
+              exit 64
+              ;;
+          esac
+          ;;
         *)
-          echo "usage: repose-guest-profile [desktop start|stop|status]" >&2
+          echo "usage: repose-guest-profile [desktop start|stop|status] [browser bridge start|stop|status|release|hold]" >&2
           exit 64
           ;;
       esac

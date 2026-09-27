@@ -769,6 +769,24 @@ is restarted from the Azure portal.
    an unplanned reboot with tenants on the host is an incident line in
    `docs/incidents/`.
 
+## Browser tools on a machine refuse every connection
+
+A tenant reports that `playwright` and `chrome-devtools` fail with a
+connection error on every call, while `repose open --desktop` shows the
+browser fine or an empty desktop.
+
+1. The machine's DevTools endpoint may be left bridged to a laptop that is
+   gone (`repose browser bridge`, I-296): on the guest,
+   `repose-guest-profile browser bridge status` prints `on` and `ss -ltn
+   sport = :9226` shows no listener. The desktop idle check switches it
+   back within a minute on its own; `repose-browser-bridge off` does it
+   now. Both are logged in `journalctl -u repose-desktop-idle-check`.
+2. If it prints `off` and 9224 still refuses, `systemctl status
+   repose-browser.socket repose-browser-proxy.service repose-browser.service`:
+   the socket must be listening; the browser's own failures are in
+   `journalctl -u repose-browser.service` (an OOM kill of the whole
+   browser rather than a renderer means the slice limit, I-246).
+
 ## Guest unresponsive
 
 A tenant reports `repose attach` hangs, or `Freeze` times out.

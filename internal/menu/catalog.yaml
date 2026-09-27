@@ -245,9 +245,8 @@
     programs.git.delta.enable = true;
 
 # Deploy CLIs (DECISIONS I-195..I-205, proposal item 3). Their logins are
-# the user's own: vercel's travels from the laptop like gh's
-# (guest-conventions.md "Credentials the CLI syncs"); the others log in in
-# the guest. vercel and portless are npm packages nixpkgs does not carry,
+# the user's own, and each logs in in the guest (vercel's laptop login
+# stopped travelling in I-298: it reaches the whole account). vercel and portless are npm packages nixpkgs does not carry,
 # so their entries install them once into the guest's own npm prefix
 # (~/.npm-global, on the volume, through the host's npm cache) from a user
 # unit that runs after the network is up and never blocks a boot.

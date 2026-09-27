@@ -28,20 +28,21 @@ Create or start this checkout's machine, sync, and attach. With a prompt, start 
 
 On your laptop, `run` changes one thing in the checkout: it adds a git remote named `repose` for the machine's checkout, so `git fetch repose` brings the agent's commits back. See [Getting work back](/docs/sync#getting-work-back).
 
-| Flag                      |                                                                   |
-| ------------------------- | ----------------------------------------------------------------- |
-| `--agent NAME`            | `claude`, `codex`, `opencode`, `gemini` or `pi`.                  |
-| `--no-attach`             | Don't attach afterwards.                                          |
-| `--worktree`              | Start the agent in its own git worktree. Needs a prompt.          |
-| `--no-sync`               | Skip the git sync and the copied logins.                          |
-| `--stash-remote`          | Stash the machine's uncommitted changes before syncing.           |
-| `--discard-remote`        | Discard the machine's uncommitted changes before syncing.         |
-| `--size small\|large\|xl` | Size of a new project.                                            |
-| `--name NAME`             | Project name, for a directory with no remote or a second project. |
+| Flag                      |                                                                                                                       |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `--agent NAME`            | `claude`, `codex`, `opencode`, `gemini` or `pi`.                                                                      |
+| `--no-attach`             | Don't attach afterwards.                                                                                              |
+| `--worktree`              | Start the agent in its own git worktree. Needs a prompt.                                                              |
+| `--no-sync`               | Skip the git sync and the copied logins.                                                                              |
+| `--stash-remote`          | Stash the machine's uncommitted changes before syncing.                                                               |
+| `--discard-remote`        | Discard the machine's uncommitted changes before syncing.                                                             |
+| `--size small\|large\|xl` | Size of a new project.                                                                                                |
+| `--name NAME`             | Project name, for a directory with no remote or a second project.                                                     |
+| `--bridge`                | Also bridge your Chrome to the machine while attached, see [`repose browser bridge`](#repose-browser-bridge-project). |
 
 ### `repose attach [PROJECT]`
 
-Attach to the project's tmux session without syncing. In the project's checkout, it adds the `repose` git remote too if it's missing.
+Attach to the project's tmux session without syncing. In the project's checkout, it adds the `repose` git remote too if it's missing. `--bridge` also bridges your Chrome to the machine for as long as you're attached, see [`repose browser bridge`](#repose-browser-bridge-project).
 
 `run` and `attach` print one line when another of your projects is running idle, once per idle stretch. An `attach` that reuses an open connection makes no api call and skips it.
 
@@ -110,6 +111,27 @@ Watch the agent's browser on the machine and take it over: starts the machine's 
 | `--stop`    | Stop the view on the machine and the forward here. |
 
 `repose open --desktop`, with `--stop` and `--no-browser`, is the old name and still works.
+
+### `repose browser bridge [PROJECT]`
+
+Let the agents on the machine browse in your laptop's Chrome, with your logins and extensions, until `Ctrl-C`. The machine's browser tools (`playwright` and `chrome-devtools`) reach your Chrome through the SSH connection; nothing on the machine changes, and the next call an agent makes lands in your Chrome. See [Use your own Chrome](/docs/machine#use-your-own-chrome).
+
+```
+$ repose browser bridge
+Chrome 144 → todo-app: the agents there browse in your Chrome now, with your logins. Ctrl-C hands them back the machine's browser.
+Chrome asks you to allow each new connection.
+An agent on todo-app is in your Chrome.
+```
+
+Needs Chrome 144 or newer with remote debugging turned on at `chrome://inspect/#remote-debugging`. When it's off, the command opens that page and waits up to 5 minutes for you to turn it on.
+
+| Flag                  |                                                                                                                               |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `--cdp URL`           | Bridge a browser started with a remote debugging port instead (`http://127.0.0.1:9222`): any Chromium, no switch, no dialogs. |
+| `--user-data-dir DIR` | The profile directory of a Chrome that isn't Google Chrome's default one (Chromium, Brave, Edge, a second profile).           |
+| `--no-browser`        | Don't open `chrome://inspect` when remote debugging is off; print what to do and wait.                                        |
+
+Only one bridge to a machine at a time. A laptop that goes to sleep keeps its bridge for up to two minutes; a new bridge takes over from it.
 
 ### `repose cp [-r] SRC DST`
 
@@ -225,7 +247,6 @@ Answer a waiting question: `repose reply todo-app yes`. The first word is the pr
 | `repose completion bash\|zsh\|fish` | Print a shell completion script.                                                                                 |
 | `repose help [COMMAND]`             | Print help for a command.                                                                                        |
 | `repose mcp forward`                | Reserved, not available yet. Prints what works today.                                                            |
-| `repose browser bridge`             | Reserved, not available yet. Prints what works today.                                                            |
 
 ## config.toml
 

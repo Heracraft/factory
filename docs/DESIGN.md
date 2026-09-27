@@ -363,10 +363,11 @@ All of it is idempotent; running `repose run` twice attaches twice.
   MCP and chrome-devtools-mcp, in every guest (I-246). `repose browser`
   starts the viewer and forwards its port in the background so the user
   can watch or take over the browser the agent is using, in one command
-  (I-292). Claude in Chrome cannot work from a guest; a later CLI
-  feature (`repose browser bridge`) reverse-tunnels the laptop's Chrome
-  DevTools port so agents in the guest can drive the laptop's browser while
-  the laptop is open.
+  (I-292). Claude in Chrome cannot work from a guest; `repose browser
+  bridge` (I-296) reverse-tunnels the laptop's own Chrome (its DevTools
+  switch, Chrome 144+) to the guest's endpoint so the same two MCP
+  servers drive the laptop's browser, logins included, while the laptop
+  is open.
 - MCP: HTTP and API-backed servers work as on a laptop. Laptop-bound stdio
   servers are unsupported in the first release; `repose mcp forward` (wrap
   with mcp-proxy, reverse-tunnel, register in the guest) is the planned path
@@ -498,7 +499,7 @@ Turborepo keeps running only the TypeScript side. The old
 
 Teams and shared projects. Preview URLs. Idle auto-stop. Per-project LUKS.
 Central build farm. Automatic host provisioning. GPU guests. `repose mcp
-forward` and `repose browser bridge`. Telegram and Discord delivery. Any
+forward` (`repose browser bridge` shipped, I-296). Telegram and Discord delivery. Any
 provider other than Azure hosts. Each has a section in `DECISIONS.md` saying
 when it becomes in scope.
 

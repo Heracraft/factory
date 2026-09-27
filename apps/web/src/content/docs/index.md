@@ -90,4 +90,5 @@ A stopped machine costs only its disk. The next `repose run` starts it again in 
 - [SSH and editors](/docs/ssh-and-editors): `ssh your-project.repose`, scp, rsync, and `repose code` for VS Code, Cursor or Zed.
 - [Sync](/docs/sync): what travels to the machine, and `git fetch repose` for what comes back.
 - [The machine](/docs/machine): what's installed, ports, the browser.
+- Tutorials: [git with repose](/docs/tutorial-git), [watching the agent's browser](/docs/tutorial-watch-browser), [letting it use your Chrome](/docs/tutorial-your-chrome), [a git workflow for several agents](/docs/tutorial-git-workflow) and [running a swarm](/docs/tutorial-conductor).
 - [Pricing](/docs/billing).

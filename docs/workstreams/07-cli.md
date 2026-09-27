@@ -63,9 +63,10 @@ file after install, the installer prints `another repose is on your PATH at
   files (02-guest-base, 04-guestd). The CLI sends `tmux` commands over SSH
   and relies on `interfaces/guest-conventions.md`.
 - The dashboard (08-dashboard).
-- `repose mcp forward` and `repose browser bridge` (deferred, see
-  `DECISIONS.md` R2-11 and `DESIGN.md` §18). The command tree reserves the
-  names and prints "not available yet" with a link.
+- `repose mcp forward` (deferred, see `DECISIONS.md` R2-11 and
+  `DESIGN.md` §18). The command tree reserves the name and prints "not
+  available yet" with a link. `repose browser bridge` was reserved the
+  same way until I-296 built it (features/browser.md).
 - `repose-admin` (operator tool, lives with 05).
 
 ## 4. Interfaces
@@ -125,7 +126,7 @@ repose notify test
 repose version
 repose completion bash|zsh|fish
 repose mcp forward ...           # reserved, prints not-available message
-repose browser bridge            # reserved, prints not-available message
+repose browser bridge [PROJECT] [--cdp URL] [--user-data-dir DIR] [--no-browser]   # I-296
 ```
 
 Global flags: `--project ID|SLUG` (or `REPOSE_PROJECT`), `--api-url` (or

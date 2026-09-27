@@ -136,6 +136,23 @@ An agent session started before September 25, 2026 has a headless browser of its
 
 Playwright test suites (`pnpm exec playwright test` and the like) still run headless unless your config asks for headed browsers. While the agent's browser is up, new shells have `DISPLAY=:99`, so a headed browser you start yourself also appears on the desktop.
 
+### Use your own Chrome
+
+For a job that needs your logged-in browser (an internal tool behind SSO, an account with a hardware key, an extension), lend the agents your laptop's Chrome instead:
+
+```
+$ repose browser bridge
+Chrome 144 → todo-app: the agents there browse in your Chrome now, with your logins. Ctrl-C hands them back the machine's browser.
+Chrome asks you to allow each new connection.
+An agent on todo-app is in your Chrome.
+```
+
+While it runs, the machine's two browser tools drive your Chrome through the SSH connection: same tabs you see, same logins, same extensions. An agent that was already using the machine's browser switches on its next call, with nothing to restart, and switches back the same way when you press `Ctrl-C`. `repose run --bridge` and `repose attach --bridge` do the same for as long as you're attached.
+
+It needs Chrome 144 or newer with remote debugging turned on: open `chrome://inspect/#remote-debugging` in Chrome and turn it on once. If it's off, the command opens that page and waits. Chrome then asks you to allow each connection an agent makes, and shows "Chrome is being controlled by automated test software" while one is open. Any other Chromium browser works too, started with `--remote-debugging-port=9222` and bridged with `repose browser bridge --cdp http://127.0.0.1:9222`; that way there is no switch and no dialog.
+
+What you're lending: everything on the machine can drive that Chrome while the bridge is open, not only the agent you're watching, and it can open any site you're logged in to. Press `Ctrl-C` when the job is done. If your laptop sleeps or the connection drops, the machine notices within two minutes and its tools go back to its own browser. The bridge only works while your laptop is awake and connected; for work that should carry on after you close it, the machine's own browser is the one to log in to, with `repose browser`.
+
 ## Network
 
 The machine can reach the internet. Nothing on the internet can reach the machine; the only way in is SSH through repose, with your certificate. Outbound traffic is limited to 200 Mbit/s. npm, pnpm, yarn v1 and Docker Hub downloads go through a cache on the server. For npm, repose adds two lines to `~/.npmrc`; delete them to go direct. An `~/.npmrc` that already names a registry or holds an npmjs token is left alone. [Limits](/docs/limits) has what's blocked.

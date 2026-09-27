@@ -31,7 +31,7 @@ export interface Doc {
 }
 
 /** The sections in the order the sidebar shows them. */
-export const SECTIONS = ['Start here', 'Using repose', 'Account', 'Reference'];
+export const SECTIONS = ['Start here', 'Using repose', 'Tutorials', 'Account', 'Reference'];
 
 const files = import.meta.glob('../content/docs/*.md', {
 	query: '?raw',

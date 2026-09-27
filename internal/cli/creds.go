@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"os/exec"
@@ -23,10 +24,22 @@ var credRows = []credRow{
 	{Label: "gh", Rel: filepath.Join(".config", "gh", "hosts.yml"), Mode: 0o600},
 	{Label: "codex", Rel: filepath.Join(".codex", "auth.json"), Mode: 0o600},
 	{Label: "opencode", Rel: filepath.Join(".local", "share", "opencode", "auth.json"), Mode: 0o600},
-	// The Vercel CLI keeps its login in the platform's data directory
-	// (DECISIONS I-205's list, proposal item 3).
-	{Label: "vercel", Rel: filepath.Join(".local", "share", "com.vercel.cli", "auth.json"), Darwin: filepath.Join("Library", "Application Support", "com.vercel.cli", "auth.json"), Mode: 0o600},
 }
+
+// retiredCredRows were copied by an earlier CLI and no longer are. The
+// Vercel CLI's login is a token for the whole Vercel account, every team
+// and project, not just this one (DECISIONS I-298, amending the
+// I-195..I-205 list). `run` removes the guest's copy only while it is
+// byte for byte the laptop's file, so it is the one an earlier run copied
+// (or the same token): a login made in the guest, or a copy the guest's
+// CLI has since rewritten, is left alone.
+var retiredCredRows = []credRow{
+	{Label: "vercel", Rel: filepath.Join(".local", "share", "com.vercel.cli", "auth.json"), Darwin: filepath.Join("Library", "Application Support", "com.vercel.cli", "auth.json")},
+}
+
+// retiredCredNotice is what `run` prints, once, when it removed a copy.
+// It goes inside single quotes in the guest's shell: no apostrophes.
+const retiredCredNotice = "Removed the Vercel login an earlier repose run copied to the machine: repose no longer copies it. Run vercel login on the machine, or store a scoped token with repose secrets set VERCEL_TOKEN."
 
 // laptopRel is where the row's file is on this laptop.
 func (r credRow) laptopRel() string {
@@ -116,7 +129,9 @@ func buildCredentialsAndCarry(homeDir, repoDir string, opts credSyncOptions, co 
 	var files []credFile
 	var lines, paths []string
 	var labels []string
-	hashParts := [][]byte{[]byte("creds-1")}
+	// creds-2: I-298 added the retired rows, so every guest takes the
+	// logins' part once more and loses an old Vercel copy.
+	hashParts := [][]byte{[]byte("creds-2")}
 
 	ghCopied := false
 	for i, row := range credRows {
@@ -148,6 +163,22 @@ func buildCredentialsAndCarry(homeDir, repoDir string, opts credSyncOptions, co 
 		paths = append(paths, "$HOME/"+filepath.ToSlash(row.Rel))
 		labels = append(labels, row.Label)
 		hashParts = append(hashParts, []byte(row.Label), b, []byte(fmt.Sprint(mtime)))
+	}
+	for _, row := range retiredCredRows {
+		// Only the laptop file's hash goes, never its bytes: the guest
+		// compares, and the token stays on the laptop.
+		local := filepath.Join(homeDir, row.laptopRel())
+		b, err := os.ReadFile(local)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("reading %s: %w", local, err)
+		}
+		sum := fmt.Sprintf("%x", sha256.Sum256(b))
+		lines = append(lines, fmt.Sprintf("d=~/%s\nif [ -f \"$d\" ] && [ \"$(sha256sum \"$d\" | cut -c1-64)\" = %s ]; then rm -f \"$d\" && echo '#warn %s'; fi",
+			filepath.ToSlash(row.Rel), sum, retiredCredNotice))
+		hashParts = append(hashParts, []byte("retired "+row.Label), []byte(sum))
 	}
 
 	name, _ := gitCmd(repoDir, "config", "user.name")
@@ -196,7 +227,14 @@ func buildCredentialsAndCarry(homeDir, repoDir string, opts credSyncOptions, co 
 			}
 			// The paths the probe checks, then the marker, last: a login
 			// part that stopped half way leaves the old marker, or none.
-			p.line(fmt.Sprintf("mkdir -p ~/.repose && printf '%%s\\n' %s > %s", strings.Join(quoteAll(paths), " "), credsPathsFile))
+			// With no path (only a retired row's check went) the file is
+			// empty: printf with no argument would write one empty line,
+			// which the probe reads as a missing file on every run.
+			if len(paths) > 0 {
+				p.line(fmt.Sprintf("mkdir -p ~/.repose && printf '%%s\\n' %s > %s", strings.Join(quoteAll(paths), " "), credsPathsFile))
+			} else {
+				p.line(fmt.Sprintf("mkdir -p ~/.repose && : > %s", credsPathsFile))
+			}
 			p.line(strings.TrimSuffix(setMarker(credsMarker, hash), "\n"))
 			copied = append(copied, labels...)
 		}
