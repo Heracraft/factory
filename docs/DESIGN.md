@@ -120,11 +120,11 @@ result.
 
 **Size classes.**
 
-| Class | vCPU | RAM | Default volume | Monthly cap (see PRICING) |
+| Class | vCPU | RAM | Default volume | Plan memory it takes (see PRICING) |
 |---|---|---|---|---|
-| small | 2 | 4 GB | 20 GB | $49 |
-| large | 4 | 8 GB | 40 GB | $99 |
-| xl | 8 | 16 GB | 80 GB | $199 |
+| small | 2 | 4 GB | 20 GB | 4 GB of the plan's 8 or 16 |
+| large | 4 | 8 GB | 40 GB | 8 GB (all of Solo) |
+| xl | 8 | 16 GB | 80 GB | 16 GB (all of Pro) |
 
 Volumes are thin-provisioned, resizable upward from the CLI, billed on
 allocated size. Resize is one `lvextend` on the host plus an online filesystem
@@ -270,7 +270,7 @@ guest ──vsock──▶ hostd
 Go binaries in one module (`cmd/`), one Postgres.
 
 - **`api`**: HTTP JSON for the CLI and dashboard, gRPC server for hosts,
-  scheduler, SSH CA, secrets, metering aggregation, Stripe webhooks, hook
+  scheduler, SSH CA, secrets, metering aggregation, Paddle webhooks, hook
   ingest, notification fan-out. Stateless; scale by replicas behind Coolify.
 - **`hostd`**: on each host. Holds the gRPC stream, executes guest lifecycle
   (create, start, stop, destroy, resize, snapshot, restore, apply-config),
@@ -404,24 +404,27 @@ to them.
 
 ## 14. Billing and metering
 
-Stripe from day one. Card required before the first guest starts. The trial
-is the first day of compute, a credit of one day on large consumed at hourly
-rates (DECISIONS I-205).
+A monthly plan through Paddle from day one (DECISIONS I-289, superseding
+the hourly Stripe design). A plan is chosen, with a card, before the first
+guest starts; the first seven days are free. Solo ($29) buys 8 GB of memory
+that may run at once, 100 GB of allocated disk and 250 GB of egress a
+month; Pro ($59) buys 16 GB, 250 GB and 500 GB. Paddle is the merchant of
+record and handles tax. `PRICING.md` has the numbers, the cost floor and
+the reasoning.
 
-Meters, sampled by hostd every 60 seconds and aggregated hourly by the API:
+Meters, sampled by hostd every 60 seconds and aggregated hourly by the API,
+stay as the internal record:
 
 - guest-hours by size class (a running guest; stopped guests accrue none)
 - volume GB-months by allocated size (accrues while the project exists)
 - egress GB per project (from the per-guest nftables counters)
 
-Prices: hourly rate per class with a monthly cap per project equal to the flat
-price (small $49, large $99, xl $199), storage $0.10 per GB-month, 500 GB
-egress included per project then $0.05 per GB. Hourly rates are the cap divided
-by 720 rounded up, so a guest that never stops pays the cap and one stopped
-half the time pays half. `PRICING.md` has the cost floor and the reasoning.
-
-Invoices are monthly through Stripe Billing with usage records pushed hourly.
-A failed payment stops guests after 3 days and destroys nothing for 30.
+The plan's memory and disk are hard limits checked at every start and
+create; egress past the allowance is one overage line ($0.05 a GB) on the
+next Paddle invoice, and at four times the allowance the user's guests
+stop for the period. Seats (8 GB each) bound how many plans the fleet
+sells; past them a user waits on the waitlist (I-290). A failed payment
+stops guests after 3 days and destroys nothing for 30.
 
 ## 15. Observability and anti-abuse
 

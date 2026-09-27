@@ -197,8 +197,9 @@ Timing that must hold on a healthy host:
 Failure output:
 
 - Not logged in: exit 3, `Not logged in. Run \`repose login\`.`
-- No card: exit 7, `Add a card at https://repose.herakraft.co/billing
-  first.`
+- No plan, or the plan's memory or disk is used up: exit 7 and the api's
+  sentence, e.g. `Choose a plan at https://repose.herakraft.co/billing
+  first.` (the reasons are api.md's `payment_required` table, I-289)
 - Host capacity exhausted: exit 8, `No capacity right now; try again in a
   few minutes. (We have been alerted.)` The API also raises a capacity
   alert.
