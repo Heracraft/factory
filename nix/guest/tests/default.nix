@@ -1068,11 +1068,18 @@ in
       guest.wait_for_open_port(8123)
       page = "http://127.0.0.1:8123/magenta.html"
 
-      with subtest("playwright MCP starts the browser, headed on :99, and the page shows there"):
-          out = mcp("playwright", ("browser_navigate", {"url": page}))
-          assert "magenta.html" in out, out
+      with subtest("the first connection to 9224 starts the display, the window manager and the browser"):
+          # A plain connection first, with time to spare: the MCP
+          # server's own connect timeout is 30 s, and a cold Chromium on
+          # a loaded 2-vCPU test VM has taken over a minute (2026-09-27),
+          # which is the test box, not the guest.
+          guest.succeed("curl -s -m 300 -o /dev/null http://127.0.0.1:9224/json/version")
           for u in ["repose-xvnc", "repose-openbox", "repose-browser"]:
               guest.succeed(f"systemctl is-active {u}.service")
+
+      with subtest("playwright MCP drives the browser, headed on :99, and the page shows there"):
+          out = mcp("playwright", ("browser_navigate", {"url": page}))
+          assert "magenta.html" in out, out
           # The viewer is not needed for the browser to draw.
           guest.fail("systemctl is-active repose-novnc.service")
           assert "repose-browser.slice" in guest.succeed("systemctl show -P Slice repose-browser.service")
@@ -1126,9 +1133,12 @@ in
           print(f"MEASURE idle CPU over 30 s: headed+Xvnc {(c1 - c0) / 1e6:.2f} s, headless {(h1 - h0) / 1e6:.2f} s")
 
       with subtest("the browser comes back after a crash, and a running MCP server reconnects"):
+          # The MCP server keeps running across the kill; the socket
+          # restarts the browser on the next connection (the curl gives
+          # a cold start on a slow test VM the time it needs, as above).
           out = mcp("playwright",
                     ("browser_navigate", {"url": page + "?before"}),
-                    ("!sh", {"cmd": "pkill -KILL -o -f user-data-dir=/home/dev/.local/share/repos[e]/browser; sleep 3"}),
+                    ("!sh", {"cmd": "pkill -KILL -o -f user-data-dir=/home/dev/.local/share/repos[e]/browser; sleep 3; curl -s -m 300 -o /dev/null http://127.0.0.1:9224/json/version"}),
                     ("browser_navigate", {"url": page + "?after"}))
           assert "?after" in out, out
           guest.succeed("systemctl is-active repose-browser.service")
