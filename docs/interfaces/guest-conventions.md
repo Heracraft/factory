@@ -364,13 +364,16 @@ Anything the user binds on `0.0.0.0` or `127.0.0.1` (or `::`, `::1`)
 inside the guest is reachable through `repose open <port>` (SSH `-L`), and
 is forwarded automatically while a CLI is attached (DECISIONS I-199), read
 with `ss -Hltn` (iproute2, in the base). Platform-owned ports, never
-auto-forwarded: 6080, 6081, 5900, 9224, 9225 (I-246). Each attached CLI records its forwarded
+auto-forwarded: 6080, 6081, 5900, 9224, 9225 (I-246), 9226 (I-296). Each attached CLI records its forwarded
 ports in `/home/dev/.repose/forwards/<id>`; the project session's
 `status-right` is set from their union and unset when none is left.
 Nothing is exposed otherwise. The desktop listens only on `127.0.0.1`: noVNC on 6080 (the
 socket-activated entry point), websockify on 6081, VNC on 5900; the agents'
 browser's DevTools on 9224 (`repose-browser.socket`, the entry point) and
-9225 (Chromium behind it).
+9225 (Chromium behind it); 9226 is where the guest's sshd listens for the
+reverse forward of `repose browser bridge` (I-296), and while that bridge
+is on, 9224 is `repose-browser-bridge.socket`, whose proxy goes to 9226
+instead of 9225.
 `repose-prisma-engines.socket` listens on `127.0.0.1:850` (under 1024, so
 never forwarded) and answers every GET with a redirect to
 binaries.prisma.sh, a `linux-nixos` engine path rewritten to

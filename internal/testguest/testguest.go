@@ -143,7 +143,7 @@ func (g *Guest) handleConn(nc net.Conn) {
 	}
 	g.conns.Add(1)
 	defer func() { _ = sc.Close() }()
-	go ssh.DiscardRequests(reqs)
+	go g.handleGlobal(sc, reqs)
 	for ch := range chans {
 		if ch.ChannelType() == "direct-tcpip" {
 			go g.handleDirectTCPIP(ch)
@@ -159,6 +159,77 @@ func (g *Guest) handleConn(nc net.Conn) {
 		}
 		go g.handleSession(channel, requests)
 	}
+}
+
+// handleGlobal answers the connection's global requests. tcpip-forward is
+// what `ssh -R` asks for: listen on the guest's side and hand each
+// connection back to the client as a forwarded-tcpip channel, so the
+// CLI's reverse tunnel (`repose browser bridge`, DECISIONS I-296) can be
+// tested end to end; the listener closes with the connection, as sshd's
+// does. Everything else is refused, as sshd refuses what it does not know.
+func (g *Guest) handleGlobal(sc *ssh.ServerConn, reqs <-chan *ssh.Request) {
+	var listeners []net.Listener
+	defer func() {
+		for _, l := range listeners {
+			_ = l.Close()
+		}
+	}()
+	for req := range reqs {
+		if req.Type != "tcpip-forward" {
+			if req.WantReply {
+				_ = req.Reply(false, nil)
+			}
+			continue
+		}
+		var fwd struct {
+			Addr string
+			Port uint32
+		}
+		if err := ssh.Unmarshal(req.Payload, &fwd); err != nil {
+			_ = req.Reply(false, nil)
+			continue
+		}
+		l, err := net.Listen("tcp", net.JoinHostPort(fwd.Addr, fmt.Sprint(fwd.Port)))
+		if err != nil {
+			_ = req.Reply(false, nil)
+			continue
+		}
+		listeners = append(listeners, l)
+		port := uint32(l.Addr().(*net.TCPAddr).Port)
+		_ = req.Reply(true, ssh.Marshal(struct{ Port uint32 }{port}))
+		go func() {
+			for {
+				conn, err := l.Accept()
+				if err != nil {
+					return
+				}
+				go g.forwardBack(sc, conn, fwd.Addr, port)
+			}
+		}()
+	}
+}
+
+// forwardBack opens the forwarded-tcpip channel for one accepted
+// connection and splices the two.
+func (g *Guest) forwardBack(sc *ssh.ServerConn, conn net.Conn, addr string, port uint32) {
+	defer func() { _ = conn.Close() }()
+	origin := conn.RemoteAddr().(*net.TCPAddr)
+	payload := ssh.Marshal(struct {
+		Addr       string
+		Port       uint32
+		OriginAddr string
+		OriginPort uint32
+	}{addr, port, origin.IP.String(), uint32(origin.Port)})
+	ch, reqs, err := sc.OpenChannel("forwarded-tcpip", payload)
+	if err != nil {
+		return
+	}
+	go ssh.DiscardRequests(reqs)
+	done := make(chan struct{}, 2)
+	go func() { _, _ = io.Copy(ch, conn); _ = ch.CloseWrite(); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(conn, ch); done <- struct{}{} }()
+	<-done
+	_ = ch.Close()
 }
 
 // handleDirectTCPIP is what `ssh -L` (and `ssh -O forward -L`) asks for:

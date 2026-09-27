@@ -69,6 +69,14 @@ let
     name = "repose-desktop-idle-check";
     runtimeInputs = [ pkgs.coreutils pkgs.iproute2 pkgs.systemd ];
     text = ''
+      # A bridge whose tunnel is gone (the laptop's ssh ended without its
+      # hold script running, or sshd gave up on a sleeping laptop) goes
+      # back to the machine's browser here, so agents are never left
+      # with an endpoint that refuses every connection (I-296).
+      if systemctl is-active --quiet repose-browser-bridge.socket \
+         && ! ss -Hltn "sport = :9226" | grep -q LISTEN; then
+        repose-browser-bridge off
+      fi
       viewer=false; browser=false
       systemctl is-active --quiet repose-x11vnc.service && viewer=true
       systemctl is-active --quiet repose-browser.service && browser=true
@@ -203,6 +211,8 @@ in
 
   systemd.services.repose-desktop-idle-check = {
     description = "repose desktop: stop the viewer and the browser after ${toString (idleSeconds / 60)} minutes unused";
+    # repose-browser-bridge (browser.nix) for the bridge guard above.
+    path = [ "/run/current-system/sw" ];
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${idleCheck}/bin/repose-desktop-idle-check";

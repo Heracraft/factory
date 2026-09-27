@@ -1,0 +1,133 @@
+---
+title: Git with repose
+description: Where your code goes when you run repose, how the agent's commits come back, and what to do when both sides changed.
+section: Tutorials
+order: 20
+---
+
+You have a checkout on your laptop. The agent works in a copy of it on the machine. Git is the only thing that moves work between the two, and it moves it in two different ways: your side goes up with `repose run`, the agent's side comes back with `git fetch`. Twenty minutes with a scratch repository makes the whole thing obvious.
+
+## Start with something small
+
+Any repository with a commit will do. A throwaway one is best for a first run:
+
+```
+mkdir hello && cd hello && git init -q
+echo '# hello' > README.md && git add -A && git commit -qm init
+repose run --name hello
+```
+
+`--name` is only needed because this repository has no remote yet. The machine is created, your commit goes up, and you land in a tmux session in `~/hello` on the machine. Look around, then detach with `Ctrl-b` `d`.
+
+## What went up
+
+`repose run` copies the state of your checkout, once, at the start:
+
+- your current branch, including commits you haven't pushed;
+- uncommitted changes to tracked files;
+- untracked files that aren't gitignored;
+- gitignored `.env` files.
+
+It doesn't copy build output, `node_modules` or anything else gitignored, and it never watches your files afterwards. Change something on your laptop and it stays on your laptop until the next `repose run`. [Sync](/docs/sync) has the full list and the size limits.
+
+Try it. On your laptop:
+
+```
+echo 'hello from the laptop' > note.txt
+repose run
+```
+
+```text
+Synced: 1 untracked
+```
+
+On the machine, `note.txt` is there, untracked, exactly as on your laptop. `repose run` is safe to repeat: it only copies, it never restarts or rebuilds the machine.
+
+## What comes back
+
+Nothing comes back on its own. The agent commits, and you fetch. The first `repose run` added a git remote called `repose` to your checkout, pointing at the machine's copy over the same SSH connection everything else uses:
+
+```
+$ git remote -v
+repose  hello.repose:~/hello (fetch)
+repose  'this remote is fetch-only; repose run sends your work to the machine' (push)
+```
+
+Give the agent something to commit:
+
+```
+repose run "add a LICENSE file with the MIT license and commit it"
+```
+
+When it's done (you get a notification, or watch it in tmux), fetch:
+
+```
+$ git fetch repose
+From hello.repose:~/hello
+ * [new branch]      main       -> repose/main
+$ git log --oneline main..repose/main
+3f1c2a0 Add the MIT license
+```
+
+`repose/main` is the machine's `main`. Use it like any remote branch:
+
+```
+git diff main repose/main      # what changed
+git merge repose/main          # take it
+git cherry-pick 3f1c2a0        # or take one commit
+```
+
+Only commits travel this way. Files the agent changed but didn't commit stay on the machine; ask the agent to commit, or `repose attach` and commit yourself. For a single file that shouldn't go through git, `repose cp :path/on/machine .` copies it.
+
+## When both sides changed
+
+You edited `README.md` on your laptop while the agent was editing it on the machine. Now `repose run`:
+
+```text
+`repose run` copies your laptop's work onto the machine. It doesn't restart or rebuild anything.
+The machine has uncommitted changes your laptop doesn't have (1 file), probably an agent's:
+  README.md
+Your laptop has new work as well, so syncing now would write over them. Nothing was changed. Pick one:
+  repose attach                  look at the machine first
+  repose run --stash-remote      put the machine's changes in git stash, then sync
+  repose run --discard-remote    throw the machine's changes away, then sync
+```
+
+Nothing happened, and the exit code is 6, so a script notices. The three options are the whole story: look first, keep the machine's changes in a stash there, or drop them. If the agent had committed instead of leaving the file dirty, there would be no conflict at all: the sync checks your laptop's commit out detached on the machine and leaves the agent's branch where it is, and `git fetch repose` brings that branch to you to merge like any other.
+
+The lesson for prompts: ask agents to commit. A committed change is never in the way.
+
+## Agents on their own branches
+
+`--worktree` gives an agent its own git worktree and branch, next to the checkout on the machine:
+
+```
+$ repose run --worktree "try the other approach to the parser"
+Worktree: ~/hello-claude-2 on branch repose/claude-2
+```
+
+Two agents in two worktrees never edit each other's files. On your laptop the branch arrives as `repose/repose/claude-2`:
+
+```
+git fetch repose
+git log --oneline main..repose/repose/claude-2
+git merge repose/repose/claude-2
+```
+
+[A git workflow for several agents](/docs/tutorial-git-workflow) builds on this.
+
+## Pushing from the machine
+
+The machine's checkout has the same `origin` as yours. If you're logged in to the GitHub CLI on your laptop, that login is copied, and `git push` on the machine works over HTTPS. So "open a pull request when the tests pass" is a reasonable thing to put in a prompt, and the agent can do it with `gh pr create`. Your SSH keys never go to the machine; [Secrets and security](/docs/secrets#other-git-hosts) covers other hosts.
+
+## Git and snapshots
+
+Git protects tracked source. A [snapshot](/docs/lifecycle#snapshots) protects the whole machine: the database, installed tools, uncommitted work, logins. Take one before letting an agent loose on something destructive, and you can put everything back in a minute, git included.
+
+## Clean up
+
+```
+repose rm hello
+```
+
+That removes the machine and the `repose` remote from your checkout. Branches you fetched stay until `git branch -rd repose/main`.

@@ -7560,3 +7560,81 @@ moon as the logo (rest fits the name, but a crescent in a header reads as
 a dark-mode toggle); keeping the unassigned shapes in the footer for
 completeness (that is the spawning the owner named).
 
+**I-296. `repose browser bridge` lends the guest's browser tools the
+laptop's own Chrome, through Chrome's DevTools switch, a front that
+answers `/json/version`, and a reverse tunnel whose remote command holds
+the guest's endpoint switched.** (worktree session, owner asked for "the
+Chrome reverse bridge" as a launch feature, 2026-09-27) The reserved
+command is built, and not the way features/browser.md sketched it. That
+sketch rewrote the guest's `playwright` and `chrome-devtools` MCP entries
+to a tunnelled port for the life of the CLI; an MCP entry is read when
+the agent starts, so the agent would have had to be restarted twice, and
+a CLI that died mid-way left the entries pointing at nothing. Now the
+entries never change: the guest's endpoint 127.0.0.1:9224 is a socket
+unit, and the bridge swaps which socket unit holds it.
+`repose-browser-bridge on` stops `repose-browser.socket` and its proxy
+and starts `repose-browser-bridge.socket`, whose `systemd-socket-proxyd`
+goes to 127.0.0.1:9226, where the guest's sshd listens for the CLI's `-R`;
+`off` is the reverse. Stopping a proxy ends the connections the MCP
+servers hold through it, and both reconnect on their next call (I-246),
+so a running agent switches browsers with nothing restarted, both ways.
+The guest side lives exactly as long as the tunnel: the ssh's remote
+command is `repose-guest-profile browser bridge hold`, which switches on,
+prints `on`, waits for its stdin to close or for the 9226 listener to go,
+and switches off in its EXIT trap; the desktop idle check switches off
+any bridge without a listener, for the case where nothing else did.
+The laptop side: Chrome 144's `chrome://inspect/#remote-debugging`
+writes `DevToolsActivePort` (port, and a websocket path with an
+unguessable id) in the profile directory, the same file puppeteer's
+`channel` connect and chrome-devtools-mcp's `--autoConnect` read; the CLI
+reads it, checks the port answers, and when the switch is off opens the
+page in Chrome and polls for five minutes. That server is websocket only
+(every HTTP request is 404), and Playwright MCP's `--cdp-endpoint` and
+chrome-devtools-mcp's `--browserUrl` both discover the websocket through
+`GET /json/version`; so the CLI's front, the port the tunnel reaches,
+answers that one request itself with `ws://<Host>/devtools/browser/<id>`
+(the Host being the guest's 127.0.0.1:9224, which leads back through the
+tunnel) and passes every other request to Chrome byte for byte. `--cdp
+URL` bridges any DevTools server through its own `/json/version`;
+`--user-data-dir` names another profile. Chrome asks the user to allow
+each connection in switch mode and shows its "controlled by automated
+test software" bar; the docs say what the user lends (any process on the
+guest, every site the Chrome is logged in to) and that it only lasts
+while the laptop is awake. `--bridge` on `run` and `attach` runs the same
+bridge in the session helper. 9226 joins the platform ports never
+auto-forwarded. *Rejected:* rewriting the MCP entries (above); the CLI
+launching a Chrome of its own with a repose profile (a second profile has
+none of the logins that are the point; `--cdp` covers whoever wants
+that); a Unix-socket reverse forward, which sshd's
+`StreamLocalBindUnlink` would have made take over from a stale bridge
+for free (the gateway relays `forwarded-tcpip` channels only, and an edge
+change for this was not worth a launch dependency; `bridge release`
+kills the earlier session's sshd process instead, which runs as dev);
+bridging Claude in Chrome itself (the extension talks to Anthropic's
+relay, not to a port); waiting for a chrome-devtools-mcp `--autoConnect`
+in the guest (it reads a file on the machine it runs on). Evidence:
+`TestBridgeEndToEnd` runs a real ssh `-R` against the fake guest
+(internal/testguest now answers `tcpip-forward`), `TestCDPFront...`
+covers the front, and the guest-desktop VM test's five bridge subtests
+cover the swap, a running server following it, `hold`'s two ends and
+the idle guard.
+
+**I-297. The user docs have a Tutorials section: one job per page, in
+the order a new user meets them.** (owner, 2026-09-27: "a tutorial
+section with three things", and the git workflow, and the conductor)
+The reference pages say what each command does; nobody arriving from the
+landing page reads them in order. Tutorials are pages that each get a
+user through one thing they came for, with real commands and real
+output, and link to the reference for the rest: git with repose (what
+travels, what comes back, the `repose` remote), watching the agent's
+browser, lending it your Chrome (I-296), a git workflow for several
+agents, and running a swarm with a conductor session (`ops/ORCHESTRATION.md`
+in user terms). The section sits between "Using repose" and "Account" in
+`apps/web/src/lib/docs.ts`'s `SECTIONS`; the quickstart's "Next" list
+points at it. A tutorial states only behaviour the reference already
+documents, so `docs_test.go`'s rule (a command exists only if `cli.md`
+names it) keeps holding: the tutorials add no names. *Rejected:* one
+long "guide" page (the landing sends a visitor to one job, and a page
+per job is what search and the sidebar can point at); moving the how-to
+paragraphs out of the reference pages (they answer the reader who is
+already there).

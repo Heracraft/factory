@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-331 entries.
+337 entries.
 
 ## Scope
 
@@ -184,7 +184,7 @@ pointer, not a summary.
 - **I-95** `RegisterResponse` carries `loki_url`, from a setting an operator records with `repose-admin edge loki`; Fluent Bit refuses to start without one — 2026-09-20; L2160
 - **I-96** Where `features/` promised a dashboard that was never specified, the feature doc is corrected, not the dashboard — 2026-09-20; L2208
 - **I-100** A first sign-in without a GitHub identity gets a `user-<sub>` handle; `repose-admin users rename` and `projects destroy` exist for the operator to put that right — 2026-09-20; L2246
-- **I-98** CLI releases are GitHub releases of the `Heracraft/factory` repository (renamed `Heracraft/repose`, I-286), cut from `v*` tags; the dashboard serves `install.sh` — 2026-09-20; L2270
+- **I-98** CLI releases are GitHub releases of the `Heracraft/factory` repository, cut from `v*` tags; the dashboard serves `install.sh` — 2026-09-20; L2270
 - **I-99** The CLI's OAuth client id is Logto's App ID for `repose-cli`, a config value with that default, recorded in the credentials file — 2026-09-20; L2286
 - **I-101** `repose login` uses the device-code flow by default; the loopback PKCE flow is `--browser` — 2026-09-20; L2301
 - **I-102** Every Logto token request from the CLI carries `resource=https://api.repose.herakraft.co` — 2026-09-20; L2318
@@ -364,6 +364,8 @@ pointer, not a summary.
 - **I-278** One Claude login per user: the login share — 2026-09-26; L7358
 - **I-283** No auto-mode offer on a machine in bypass mode — 2026-09-27; L7443
 - **I-284** The nothing-new check trusts the commits the last sync recorded, not the guest's ref tips — 2026-09-27; L7471
-- **I-286** The repository is `Heracraft/repose`; the old name redirects — 2026-09-27; L7503
+- **I-286** The repository is `Heracraft/repose` — 2026-09-27; L7503
+- **I-287** The landing has a design system of its own, drawn from its pictures — 2026-09-27; L7516
 - **I-288** Every landing shape names a feature and appears where the feature is; the footer collects them; the logo is an r-mark — 2026-09-27; L7541
-- **I-287** The landing has a design system drawn from its pictures: rails, ticked rules, heads, stages, cells; the hero picture stacks snapshots over the internet on the right (`routes/landing.css`) — 2026-09-27; L7516
+- **I-296** `repose browser bridge` lends the guest's browser tools the laptop's own Chrome, through Chrome's DevTools switch, a front that answers `/json/version`, and a reverse tunnel whose remote command holds the guest's endpoint switched — 2026-09-27; L7563
+- **I-297** The user docs have a Tutorials section: one job per page, in the order a new user meets them — 2026-09-27; L7622
