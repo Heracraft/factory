@@ -29,8 +29,8 @@ http://localhost:3000 → todo-app:3000 (Ctrl-C to stop)
 ```
 
 ```
-$ repose open --desktop
-http://localhost:6080/vnc.html?autoconnect=1 (Ctrl-C stops the forward; the desktop keeps running)
+$ repose browser
+Watching todo-app's browser at http://localhost:6080/#p=5m2k8Q1p (the view sleeps after 30 idle minutes; repose browser --stop ends it).
 ```
 
 (browser.md covers the desktop.)
@@ -79,22 +79,26 @@ Auto-forward (I-199), run by the session helper (run-and-attach.md):
   anything the CLI can reach, a plain `ssh -L` can reach too, and opens
   the URL in the default browser unless `--no-browser`. One port per
   invocation; there is no multi-port, `--background` or `--list` form
-  (that needs a forwards registry nobody built). `--stop` exists only with
-  `--desktop`.
+  (that needs a forwards registry nobody built). `--desktop` and its
+  `--stop` are the hidden old name of `repose browser` (I-292).
 - The local port defaults to the port number. If it is taken (on the
   laptop's 127.0.0.1, ::1 or wildcard, as auto-forward checks), the CLI
   picks a free one and forwards to that instead, with a message saying
-  so, rather than failing. `open --desktop` does the same for 6080
+  so, rather than failing. `repose browser` does the same for 6080
   (I-261).
-- Forwards run in the foreground and die with the CLI (Ctrl-C, or the
-  parent process exiting); nothing survives the CLI process to reattach
-  to later.
+- `open PORT`'s forward runs in the foreground and dies with the CLI
+  (Ctrl-C, or the parent process exiting). `repose browser`'s is the one
+  exception: an `ssh -N` child in its own session, recorded under
+  `~/.config/repose/browser-forwards/`, reused by the next `repose
+  browser` and ended by `repose browser --stop` (I-292).
 - Anything bound on `0.0.0.0`, `::`, `127.0.0.1` or `::1` in the guest is
   reachable this way. Nothing in the guest is reachable any other way; the guest has no
   inbound path except through the gateway.
-- `repose open --desktop` starts the guest's desktop chain over SSH
-  (`systemctl --user start repose-desktop`) and forwards 6080; Ctrl-C
-  stops only the forward, not the desktop.
+- `repose browser` starts the guest's desktop chain over SSH
+  (`repose-guest-profile desktop start`, which starts the socket-activated
+  system units; there is no user unit, I-241) and forwards 6080 in the
+  background, then opens the viewer page with the password in the URL
+  fragment (browser.md).
 
 ## Outbound connections
 

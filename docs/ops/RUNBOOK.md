@@ -854,23 +854,37 @@ directory` for store paths, or guestd sends `Warning{store_path_missing}`.
 
 ## Desktop not starting
 
-`repose open --desktop` hangs, or the browser shows a connection error on
-6080.
+`repose browser` fails at "start the desktop in the guest" or "reach the
+desktop through the forward", or the viewer page says the machine's
+desktop is off.
 
-1. In the guest: `systemctl status repose-novnc.socket repose-xvfb
-   repose-x11vnc repose-novnc`. The socket must be `listening`; a
+1. In the guest: `systemctl status repose-novnc.socket repose-xvnc
+   repose-openbox repose-novnc`. The socket must be `listening`; a
    connection to 127.0.0.1:6080 starts the proxy, which requires the whole
-   chain. `journalctl -u repose-x11vnc` failing at `ExecStartPre` means the
+   chain. `journalctl -u repose-xvnc` failing at `ExecStartPre` means the
    password step could not write `/run/repose/desktop` (must be 0700 dev;
-   tmpfiles recreates it at boot).
-2. `Xvfb` failing with `Cannot establish any listening sockets` means a
+   tmpfiles recreates it at boot). `journalctl -u repose-novnc` failing at
+   `ExecStartPre` means the web root under `/run/repose/desktop/web`
+   could not be built (same directory).
+2. `Xvnc` failing with `Cannot establish any listening sockets` means a
    stale `/tmp/.X11-unix/X99` lock from a killed server: remove
-   `/tmp/.X99-lock` and `/tmp/.X11-unix/X99`, then reconnect.
+   `/tmp/.X99-lock` and `/tmp/.X11-unix/X99`, then reconnect. `Xvnc`
+   failing to read `vnc-passwd`: remove both password files in
+   `/run/repose/desktop` and start again; the next start writes a new
+   pair (the user's link then needs `repose browser` again).
 3. The chain stopped by itself: that is the 30-minute idle stop
-   (`journalctl -u repose-desktop-idle`); reconnecting starts it again with
-   a new password (`repose-guest-profile desktop start` prints it).
-4. A headed browser shows nothing on the desktop: the shell that launched
-   it had no `DISPLAY` because it started before Xvfb. New shells export
+   (`journalctl -u repose-desktop-idle`); the page reconnects by itself
+   and the link keeps working, since the password is the boot's.
+4. The page connects but the screen stays 1440x900 or the browser window
+   does not fill it: `xrandr -display :99` in the guest shows the screen
+   Xvnc has; `xdotool getwindowgeometry` on the Chromium window shows
+   whether openbox re-maximised it. A window that did not follow is an
+   openbox restart away (`systemctl restart repose-openbox`).
+5. The laptop side: `repose browser` reuses a recorded forward only while
+   its port answers `/healthz`; `~/.config/repose/browser-forwards/` holds
+   the record, and `repose browser --stop` clears it.
+6. A headed browser shows nothing on the desktop: the shell that launched
+   it had no `DISPLAY` because it started before Xvnc. New shells export
    `DISPLAY=:99` while the X socket exists; open a new tmux window.
 
 ## Prisma, Playwright or a Python wheel fails in a guest

@@ -146,11 +146,12 @@ of user config:
 - The agents from the platform overlay: `claude-code`, `opencode`, `codex`,
   `gemini-cli`, `pi-coding-agent`. Each has a `repose` wrapper that installs
   the notification hooks and names its tmux window.
-- One headed Chromium for the agents on the X display `:99` (Xvfb,
-  openbox), shared by Playwright MCP and chrome-devtools-mcp over CDP, plus
-  `playwright-driver.browsers` (DECISIONS I-246). x11vnc and noVNC stay off
-  until `repose open --desktop` or the dashboard asks, and only view that
-  same browser (`features/browser.md`).
+- One headed Chromium for the agents on the X display `:99` (TigerVNC's
+  Xvnc, openbox), shared by Playwright MCP and chrome-devtools-mcp over
+  CDP, plus `playwright-driver.browsers` (DECISIONS I-246). The viewer
+  (websockify and repose's page) stays off until `repose browser` asks,
+  and only views that same browser, at the size of the user's tab
+  (`features/browser.md`, I-292).
 - Toolchain from `nix/guest/base/tool-list.nix`: node 24, pnpm, python
   3.12, uv, go, rustup, just, ripgrep, jq, gh, git, direnv with nix-direnv,
   starship, zoxide, eza, a C toolchain and everyday CLIs (I-218).
@@ -359,9 +360,10 @@ All of it is idempotent; running `repose run` twice attaches twice.
   platform never reads, copies or proxies Claude auth; the login share is
   storage the user's own guests share, which hostd creates but never opens.
 - Browser: one headed Chromium on a virtual display, shared by Playwright
-  MCP and chrome-devtools-mcp, in every guest (I-246). `repose open
-  --desktop` starts x11vnc and noVNC and forwards the noVNC port so the
-  user can watch or take over the browser the agent is using. Claude in Chrome cannot work from a guest; a later CLI
+  MCP and chrome-devtools-mcp, in every guest (I-246). `repose browser`
+  starts the viewer and forwards its port in the background so the user
+  can watch or take over the browser the agent is using, in one command
+  (I-292). Claude in Chrome cannot work from a guest; a later CLI
   feature (`repose browser bridge`) reverse-tunnels the laptop's Chrome
   DevTools port so agents in the guest can drive the laptop's browser while
   the laptop is open.

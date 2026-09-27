@@ -181,7 +181,7 @@
 				<li class="cell">
 					<Browser />
 					<h3>{@render cellMark('ring')}Watch the agent use the browser</h3>
-					<p><code>repose open --desktop</code> puts you in the same window. Take over any time.</p>
+					<p><code>repose browser</code> puts you in the same window. Take over any time.</p>
 				</li>
 				<li class="cell">
 					<Editor />

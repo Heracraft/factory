@@ -24,8 +24,9 @@ the gateway.
 - The `run` sequence: create if new, start if stopped, stream the build,
   certificate, git-based sync with dirty-tree refusal, credential file sync,
   tmux attach or prompt send.
-- `open <port>` (SSH `-L`) and `open --desktop` (noVNC on 6080 through the
-  same forward, opens the browser).
+- `open <port>` (SSH `-L`) and `browser` (the machine's desktop viewer on
+  6080 through a background forward, opens the browser on the viewer page
+  with the password in the URL fragment, I-292).
 - `status` table and `--json` for every read command.
 - SSE build log rendering with the Nix error and fragment line highlighted.
 - `install.sh` and release builds for darwin/arm64, darwin/amd64,
@@ -91,7 +92,7 @@ repose start [PROJECT]
 repose stop [PROJECT] [--no-snapshot]
 repose status [PROJECT] [--json] [--watch]
 repose open PORT [--local-port N] [--no-browser]
-repose open --desktop [--no-browser]
+repose browser [PROJECT] [--stop] [--no-open]   # I-292; `open --desktop [--stop] [--no-browser]` is the hidden old name
 repose cp [-r] SRC DST        # PROJECT:PATH, or :PATH for this checkout's (I-201)
 repose paste [PROJECT] [--window NAME] [--print]   # clipboard image to the guest (I-252)
 repose ps [PROJECT] [-q|--quiet] [--json]      # the tmux windows (I-274)
@@ -524,11 +525,22 @@ Ctrl-C rather than living on in the master, I-149), print
 browser unless `--no-browser`. `--local-port` defaults to the same port,
 falling back to a free port with a message if taken.
 
-`repose open --desktop`: over SSH `systemctl --user start repose-desktop`
-(starts Xvfb, the window manager, x11vnc, noVNC on 6080 per
-02-guest-base), then forward 6080 and open
-`http://localhost:6080/vnc.html?autoconnect=1`. On Ctrl-C, stop the forward
-but leave the desktop running; print how to stop it.
+`repose browser [PROJECT] [--stop] [--no-open]` (I-292): over SSH
+`repose-guest-profile desktop start` (starts Xvnc, the window manager,
+the viewer and the agents' browser per 02-guest-base, prints the boot's
+password), then a background forward of 6080 (laptop 6080 or a free port,
+I-261): `ssh -o ControlPath=none -N -o ExitOnForwardFailure=yes -o
+ServerAliveInterval=15 -o ServerAliveCountMax=3 -L
+127.0.0.1:<local>:127.0.0.1:6080 <slug>.repose` started in its own session,
+its port and pid in `~/.config/repose/browser-forwards/<slug>.json`; a
+recorded forward whose port answers `GET /healthz` with `repose desktop
+viewer ok` is reused. Print `Watching <slug>'s browser at
+http://localhost:<local>/#p=<password> (the view sleeps after 30 idle
+minutes; repose browser --stop ends it).` and open the URL unless
+`--no-open`. `--stop`: `desktop stop` in the guest when it runs, kill the
+recorded forward (only while its port still answers as our viewer), forget
+it. `repose open --desktop [--stop] [--no-browser]` is the same command
+under its old name, hidden from help, with one stderr line saying so.
 
 ### 5.10 secrets, config, snapshots, logs
 
@@ -761,8 +773,10 @@ removes all of them including the `Include` line.
       `TestRenderBuildErrorGolden` (fake `nodejs_25` eval error, marked line
       with caret) and `TestStreamBuildLogRendersLinesAndDoneState` in
       internal/cli/buildlog_test.go
-- [ ] `open PORT` and `open --desktop` work, browser opens, Ctrl-C leaves
-      the desktop running. Evidence: transcript on a real guest. — waits on:
+- [ ] `open PORT` and `repose browser` work, browser opens, Ctrl-C leaves
+      the desktop running (`open`), the forward outlives the CLI and
+      `repose browser --stop` ends it. Evidence: transcript on a real guest;
+      `TestBrowserCmdWatchesReusesAndStops` covers the fake guest. — waits on:
       owner (a real laptop with a browser; STATUS 2026-09-21 m2 gate-done
       line and archive/HANDOFF-2026-09.md list both as untested;
       CHECKLIST-AUDIT.md "Waits on the owner")

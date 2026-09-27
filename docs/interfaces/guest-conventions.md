@@ -28,7 +28,8 @@ here exists in that module under exactly this name.
 | `/run/repose/guestd.sock` | dev-only stand-in for vsock (absent in real guests) |
 | `/run/repose/paths-registered` | written by guestd after the first `RegisterPaths`; `repose-paths.service` waits for it (up to 180 s) and `home-manager-dev.service` runs after that (DECISIONS I-67) |
 | `/var/lib/repose/paths-loaded` | sha256 of the last registration `nix-store --load-db` took, on the volume; a `RegisterPaths` with the same bytes and `/nix/var/nix/db/db.sqlite` present only writes the stamp above (DECISIONS I-225) |
-| `/run/repose/desktop/vnc-password` | the noVNC/VNC password for the current desktop start, 0600 dev (DECISIONS I-33) |
+| `/run/repose/desktop/vnc-password` | the viewer's VNC password, generated once per boot the first time the display starts, 0600 dev (DECISIONS I-33, I-292); `vnc-passwd` beside it is TigerVNC's obfuscated form Xvnc reads |
+| `/run/repose/desktop/web` | the viewer's web root, rebuilt at every viewer start: links to the shipped page (`index.html`, `viewer.js`, `viewer.css`, `healthz`, noVNC's `core/` and `vendor/`) and `project.json` (`{name, idle_minutes}`) for the page's bar (I-292) |
 | `/run/repose/desktop/last-client` | mtime of the last observed desktop client; the idle stop reads it |
 | `/run/repose/desktop/last-cdp` | mtime of the last observed DevTools client of the agents' browser (I-246); the idle stop reads it |
 | `/home/dev/.local/share/repose/browser` | the agents' browser's Chromium profile (I-246) |
@@ -367,20 +368,27 @@ with `ss -Hltn` (iproute2, in the base). Platform-owned ports, never
 auto-forwarded: 6080, 6081, 5900, 9224, 9225 (I-246). Each attached CLI records its forwarded
 ports in `/home/dev/.repose/forwards/<id>`; the project session's
 `status-right` is set from their union and unset when none is left.
-Nothing is exposed otherwise. The desktop listens only on `127.0.0.1`: noVNC on 6080 (the
-socket-activated entry point), websockify on 6081, VNC on 5900; the agents'
-browser's DevTools on 9224 (`repose-browser.socket`, the entry point) and
-9225 (Chromium behind it).
+Nothing is exposed otherwise. The desktop listens only on `127.0.0.1`: the viewer on 6080 (the
+socket-activated entry point), websockify on 6081, Xvnc's VNC on 5900 (up
+whenever the display is); the agents' browser's DevTools on 9224
+(`repose-browser.socket`, the entry point) and 9225 (Chromium behind it).
 `repose-prisma-engines.socket` listens on `127.0.0.1:850` (under 1024, so
 never forwarded) and answers every GET with a redirect to
 binaries.prisma.sh, a `linux-nixos` engine path rewritten to
 `debian-openssl-3.0.x` (I-228).
 
-## Desktop (DECISIONS I-33, I-246)
+## Desktop (DECISIONS I-33, I-246, I-292)
 
-The display: `repose-xvfb.service` (`Xvfb :99`, 1440x900) and
-`repose-openbox.service` (every window maximised), both `StopWhenUnneeded`,
-so they run exactly while one of their two users does.
+The display: `repose-xvnc.service`, TigerVNC's Xvnc as X display `:99`
+and the VNC server on 127.0.0.1:5900 in one process (`-geometry 1440x900`
+until a viewer asks for another size, `-AcceptSetDesktopSize`,
+`-SecurityTypes VncAuth -PasswordFile /run/repose/desktop/vnc-passwd`,
+`-AlwaysShared`, `-FrameRate 60`, `-ac -nolisten tcp -noreset`), and
+`repose-openbox.service` (every window maximised, undecorated, so the
+browser follows the screen's size), both `StopWhenUnneeded`, so they run
+exactly while one of their two users does. Xvnc's `ExecStartPre` writes
+the password once per boot (`vnc-password`, `vnc-passwd`) when the files
+are missing; a later start keeps them.
 
 The agents' browser: `repose-browser.service`, headed Chromium on `:99` as
 dev, profile `/home/dev/.local/share/repose/browser`, DevTools on
@@ -391,12 +399,15 @@ on the first connection. Both platform MCP servers attach there. A browser
 that exits or is killed takes the proxy with it (`BindsTo`); the socket
 starts both again on the next connection.
 
-The viewer: `repose-x11vnc.service` (127.0.0.1:5900, password from
-`/run/repose/desktop/vnc-password`, regenerated at every start; it also
-wants the browser, so the desktop always shows it), `repose-novnc.service`
-(websockify + noVNC on 127.0.0.1:6081, `defaults.json` scales to the tab),
-and `repose-novnc.socket` on 127.0.0.1:6080 whose proxy service pulls the
-chain in on the first connection.
+The viewer: `repose-novnc.service` (websockify on 127.0.0.1:6081 to 5900,
+`--web /run/repose/desktop/web --file-only`, serving the page repose ships
+from `nix/guest/base/desktop/viewer/`; it wants the browser, so the
+desktop always shows it, and `repose-vncconfig.service`, `vncconfig
+-nowin`, the clipboard helper), and `repose-novnc.socket` on
+127.0.0.1:6080 whose proxy service pulls the chain in on the first
+connection. `GET /healthz` on 6080 answers `repose desktop viewer ok`;
+the CLI probes it to tell a live forward from a dead one. `GET /` is the
+viewer page; stock noVNC's `vnc.html` is not served.
 
 `repose-desktop-idle-check.timer` runs every minute. After 30 minutes
 without a client on 6081 or 5900 it starts `repose-desktop-idle.service`,
@@ -412,11 +423,12 @@ The script the CLI's `open`, `sync` and the hooks rely on:
 
 - `repose-guest-profile` prints `{project_id, slug, name, dir, tz, class,
   base_version, desktop: {running, display, novnc_port, password_file}}`;
-  `desktop.running` is the viewer (`repose-x11vnc.service`), not the
+  `desktop.running` is the viewer (`repose-novnc.service`), not the
   display, which may be up for the agents' browser alone (I-246).
 - `repose-guest-profile desktop start` starts the viewer and the agents'
-  browser and prints the password; `desktop stop` stops the viewer; `desktop status` prints `running` or
-  `stopped`.
+  browser and prints the boot's password (the same at every start until
+  a reboot, I-292); `desktop stop` stops the viewer; `desktop status`
+  prints `running` or `stopped`.
 
 ## Runner contract (hostd ⇄ `mkGuestRunner`, DECISIONS I-34)
 
