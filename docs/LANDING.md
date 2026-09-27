@@ -135,6 +135,13 @@ fires; `node_modules/` stays behind, struck. Keep it animated.
 
 ## Copy
 
+- No hand-holding (owner, 2026-09-27): a section head is its title, with
+  a sentence only where the picture cannot carry a fact (pricing's rule).
+  A feature card gets one line of facts the picture does not show, no
+  explanation of the picture. A step is its title and its command. The
+  hero's lead is three short sentences: the machine, the wreck, the
+  snapshot.
+
 - Never write as if the product were Claude-only: "the agent" drives the
   browser, reads the console; not "Claude Code does X".
 - No empty phrasing that sounds generated ("tests in a real browser": as

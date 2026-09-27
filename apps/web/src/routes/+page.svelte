@@ -55,21 +55,9 @@
 	}
 
 	const steps = [
-		{
-			title: 'Install the CLI',
-			text: 'One binary for macOS and Linux.',
-			command: INSTALL_COMMAND
-		},
-		{
-			title: 'Sign in',
-			text: 'GitHub sign-in opens in your browser.',
-			command: 'repose login'
-		},
-		{
-			title: 'Run in any checkout',
-			text: 'The first run creates the machine, syncs your work and attaches you to it.',
-			command: 'cd ~/code/recruiting && repose run'
-		}
+		{ title: 'Install the CLI', command: INSTALL_COMMAND },
+		{ title: 'Sign in', command: 'repose login' },
+		{ title: 'Run in any checkout', command: 'cd ~/code/recruiting && repose run' }
 	];
 	const tiers: {
 		name: string;
@@ -143,8 +131,7 @@
 					<span class="line">with <span class="bar">full permissions</span></span>
 				</h1>
 				<p class="lead">
-					One command puts your work on a machine of its own. The agent can wreck it, and a snapshot
-					puts it back.
+					Your work on a machine of its own. The agent can wreck it. A snapshot puts it back.
 				</p>
 				<div class="hero-ctas">
 					<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
@@ -170,10 +157,7 @@
 		</section>
 
 		<section class="sec">
-			<SectionHead shape="pill" title="Your working state, in one command">
-				Run <code>repose run</code> in any checkout and your cloud machine picks up where your laptop
-				is, down to the uncommitted edits.
-			</SectionHead>
+			<SectionHead shape="pill" title="Your working state, in one command" />
 			<div class="landing-stage">
 				<OneCommand animated />
 			</div>
@@ -185,44 +169,30 @@
 				<li class="cell">
 					<ComesBack />
 					<h3>{@render cellMark('pinwheel')}Let it break the whole machine</h3>
-					<p>
-						Snapshots hold the whole disk: databases, installed tools, logins and uncommitted work.
-						Restore one and the machine is back in minutes.
-					</p>
+					<p>Databases, tools, logins, uncommitted work. Back in minutes.</p>
 				</li>
 				<li class="cell">
 					<Localhost />
 					<h3>{@render cellMark('halves')}Your dev server on your localhost</h3>
 					<p>
-						While you're attached, every port the machine listens on is on your laptop's localhost,
-						so cookies and OAuth redirects work as they do locally.
+						Every port the machine listens on, on your laptop. Cookies and OAuth redirects included.
 					</p>
 				</li>
 				<li class="cell">
 					<Browser />
 					<h3>{@render cellMark('ring')}Watch the agent use the browser</h3>
-					<p>
-						The agent drives Chromium on the machine and reads the console. <code
-							>repose open --desktop</code
-						> shows you the same window, and you can take over.
-					</p>
+					<p><code>repose open --desktop</code> puts you in the same window. Take over any time.</p>
 				</li>
 				<li class="cell">
 					<Editor />
 					<h3>{@render cellMark('arch')}Open it in your editor</h3>
-					<p>
-						Each machine is an SSH host named after your repo, so Neovim runs right on it and VS
-						Code, Cursor or Zed connect over SSH.
-					</p>
+					<p>Every machine is an SSH host. Neovim on it, VS Code, Cursor or Zed over SSH.</p>
 				</li>
 			</ul>
 		</section>
 
 		<section class="sec">
-			<SectionHead shape="asterisk" title="Five agents and a full toolchain on first boot">
-				The agent has sudo to install anything else, and <code>repose config add</code> keeps it on every
-				rebuild.
-			</SectionHead>
+			<SectionHead shape="asterisk" title="Five agents and a full toolchain on first boot" />
 			<div class="landing-stage">
 				<Ready />
 			</div>
@@ -242,7 +212,6 @@
 									/></span
 								>{step.title}
 							</h3>
-							<p>{step.text}</p>
 						</div>
 						<div class="cmd"><span class="text">$ {step.command}</span></div>
 					</li>
