@@ -257,7 +257,8 @@
 							>
 						</div>
 						<p class="tier-spec">
-							{t.memory} GB running at once · {t.disk} disk · {t.egress} egress
+							<span>{t.memory} GB running at once</span> · <span>{t.disk} disk</span> ·
+							<span>{t.egress} egress</span>
 						</p>
 						<p class="tier-price">
 							<span class="n">{t.price}</span>

@@ -26,9 +26,9 @@ machines stop then, and their snapshots are kept for 30 days.
 
 ## Egress overage
 
-Egress past your plan's allowance is added to the next invoice at the
-published rate. It is a record of traffic your machines sent and is not
-refunded, unless a fault on our side caused the traffic.
+Egress past your plan's allowance is added to the next invoice at $0.05 a
+GB. It is a record of traffic your machines sent and is not refunded,
+unless a fault on our side caused the traffic.
 
 ## Charges in error
 

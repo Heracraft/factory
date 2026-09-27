@@ -35,8 +35,8 @@ its size class, CPU time, memory in use, bytes sent and received, disk
 allocated and used, the number of open SSH sessions and attached tmux
 clients, the number of Docker containers running, and which agents are
 running in which tmux windows and whether they are working, idle, or
-waiting for input. These numbers become your bill and the signals we watch
-for abuse.
+waiting for input. Bytes sent count against your plan's egress allowance;
+all of these numbers are the signals we watch for abuse.
 
 **Process samples.** **We sample the processes running in your
 environment once a minute and record their names, CPU time, memory use and

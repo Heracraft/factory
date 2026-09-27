@@ -226,7 +226,7 @@
 				<dl class="mt-4 space-y-1.5 text-sm">
 					<div class="flex justify-between gap-4">
 						<dt class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">Running at once</dt>
-						<dd class="text-right">{p.memory_gb} GB: {runsAtOnce(p)}</dd>
+						<dd class="text-right text-balance">{p.memory_gb} GB: {runsAtOnce(p)}</dd>
 					</div>
 					<div class="flex justify-between gap-4">
 						<dt class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">Disk</dt>
@@ -338,7 +338,7 @@
 		{#if accountStatus === 'suspended'}
 			<div class="banner banner--error" data-testid="status-suspended">
 				Your account is suspended: the payment failed three days ago and your machines were stopped.
-				Pay the invoice to start them again; snapshots are kept 30 days.
+				Once the invoice is paid you can start them again; snapshots are kept 30 days.
 				<button
 					type="button"
 					class="link mt-2 block"

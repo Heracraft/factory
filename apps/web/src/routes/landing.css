@@ -437,6 +437,10 @@
 	font-size: 0.875rem;
 	color: var(--ink-muted);
 }
+/* A fact stays on one line; the line breaks between facts, at a dot. */
+.tier-spec span {
+	white-space: nowrap;
+}
 .tier-price {
 	display: flex;
 	align-items: baseline;

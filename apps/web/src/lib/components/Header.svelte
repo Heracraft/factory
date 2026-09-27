@@ -16,10 +16,20 @@
 	}
 </script>
 
+<!-- Below sm the five links and the wordmark share 350px: the wordmark
+     drops a size and the links close up, so the page never scrolls sideways
+     on a phone (judged at 390 and 360; CLAUDE.md "Judge visuals at real size"). -->
 <header class="border-b border-[var(--rule)]">
-	<div class="mx-auto flex h-14 max-w-5xl items-center justify-between gap-6 px-5">
-		<a href={resolve('/projects')} aria-label="repose, projects"><Logo /></a>
-		<nav class="flex h-full items-stretch gap-6 text-sm" aria-label="Main">
+	<div class="mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 px-5 sm:gap-6">
+		<a href={resolve('/projects')} aria-label="repose, projects" class="shrink-0"
+			><span class="sm:hidden"><Logo size="sm" /></span><span class="hidden sm:inline"
+				><Logo /></span
+			></a
+		>
+		<nav
+			class="flex h-full items-stretch gap-2.5 text-[13px] whitespace-nowrap sm:gap-6 sm:text-sm"
+			aria-label="Main"
+		>
 			{#each links as link (link.href)}
 				<!-- eslint-disable svelte/no-navigation-without-resolve -- link.href is built with resolve() in the links array above -->
 				<a
