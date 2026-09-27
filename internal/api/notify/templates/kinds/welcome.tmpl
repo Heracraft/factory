@@ -1,0 +1,12 @@
+{{define "heading"}}Your account is ready{{end}}
+{{define "body"}}repose gives a project a machine that keeps working after your laptop closes. Three steps from here.{{end}}
+{{define "steps"}}Install the CLI
+curl -fsSL https://repose.herakraft.co/install.sh | sh
+Run it in a project
+repose run
+Choose a plan on the dashboard
+{{end}}
+{{define "lines"}}Seven days are free on any plan, with a card at checkout. The first charge is on day eight unless you cancel before then.
+The docs: {{.Dashboard}}/docs{{end}}
+{{define "link_label"}}Choose a plan{{end}}
+{{define "link_url"}}{{.Billing}}{{end}}

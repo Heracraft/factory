@@ -69,7 +69,8 @@ const Usage = `repose-admin <command> [args]
   edge      init --endpoint HOST:PORT --pubkey WGPUB [--out DIR] | loki [URL]
   audit     [--user HANDLE] [--since 24h] [--action A]
   abuse     list [--all] | clear ID|SLUG   (automatic miner stops, I-239; suspending the user is users suspend)
-  waitlist  list | admit HANDLE | admit --next N   (capacity waitlist, I-269; the api admits by itself as room appears)
+  waitlist  list | admit HANDLE | admit --next N   (seats waitlist, I-269/I-290; admit invites: a 72 h seat hold and the email; the api invites by itself as seats free up)
+  seats     (total, held, free, waiting, and whether the total is SEATS_TOTAL or the hosts', I-290)
   ops       list [--project ID] [--host N] [--state S] | log OPID
   version
 `
@@ -126,6 +127,8 @@ func Run(ctx context.Context, e *Env, args []string) error {
 		return e.abuseCmd(ctx, rest)
 	case "waitlist":
 		return e.waitlistCmd(ctx, rest)
+	case "seats":
+		return e.seatsCmd(ctx, rest)
 	case "ops":
 		return e.opsCmd(ctx, rest)
 	}

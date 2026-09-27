@@ -138,8 +138,8 @@ copy-paste version):
 | Rotate a host's mTLS cert | `repose-admin hosts rotate-cert host-NN` |
 | Rotate the Key Vault wrapping key | `az keyvault key rotate` then `repose-admin secrets rewrap` |
 | Query audit log | `repose-admin audit --user <handle> --since 24h` |
-| See the capacity waitlist | `repose-admin waitlist list` (position, handle, joined, admitted, by) |
-| Let someone in ahead of the queue | `repose-admin waitlist admit <handle>`, or `repose-admin waitlist admit --next N` for the next N; audited, one email each (I-269) |
+| See the seats and the waitlist | `repose-admin seats` (total, held, free, waiting, source), `repose-admin waitlist list` (position, handle, joined, invited, hold, converted, expired, by) |
+| Invite someone ahead of the queue | `repose-admin waitlist admit <handle>`, or `repose-admin waitlist admit --next N` for the next N; a 72-hour seat hold and one email each, audited `waitlist_admit` (I-269, I-290) |
 | Publish a base version | `repose-admin base publish --rev <full 40-hex sha on main> --changelog "..." [--security]`; a short, unknown or off-main sha is refused (I-173); `--unverified-rev` skips only the GitHub check, for when GitHub is down |
 | Smoke-test a host | `repose-admin hosts smoke host-NN` (create, snapshot, stop, start, destroy a throwaway guest) |
 | Initialise the CAs (once) | `repose-admin ca init`; then `repose-admin ca sign-client --name gateway --out <dir>` for the edge |
@@ -157,32 +157,38 @@ Reserved memory on a host is above 80 percent.
    drift").
 2. Add a host (workstream 11 §5). Until it is `ready`, the scheduler still
    places on the full host; drain it if placements must stop now.
-3. New users are already being held: past the same 80 percent line across
-   the fleet, a first project goes on the waitlist ("Waitlist growing").
+3. Checkouts are already being held once every 8 GB seat of the fleet is
+   taken ("Waitlist growing"); memory at 80 percent on one host says
+   nothing about seats, which count the whole fleet.
 
 ## Waitlist growing
 
 `repose_api_waitlist_waiting` above zero, or `repose-admin waitlist list`
-shows people waiting (DECISIONS I-269). A user's first project waits while
-the memory reserved on ready, undrained hosts, plus 8 GB per admission of
-the last 72 hours not yet taken up, plus the new project, would pass
-`WAITLIST_PERCENT` (default 80) of their usable memory.
+shows people waiting (DECISIONS I-269, I-290). A checkout needs the plan's
+seats free; a seat is 8 GB running at once, the fleet has as many as its
+`ready`, undrained hosts have usable 8 GB blocks (or `SEATS_TOTAL`), and
+live subscriptions and unexpired invitations hold them. `repose-admin
+seats` prints total, held, free, waiting and where the total came from.
 
-1. Add a host (workstream 11 §5), as for HostMemory80. Nothing else: once
-   it is `ready`, the api's minute tick admits the queue oldest first
-   while the projection stays under the line, and each admitted user gets
-   one email telling them to run `repose run` again. `waitlist_admit` in
-   the api log (grpc app) carries the count.
-2. To let one person in now (a tester, someone who wrote in):
-   `repose-admin waitlist admit <handle>`. They are counted against
-   capacity like any admission.
-3. To turn the waitlist off (a demo, a launch with hosts to spare), set
-   `WAITLIST_PERCENT=0` on both api apps and redeploy: nobody new is
-   held, and the tick admits, and emails, everyone still waiting. Users
-   then meet plain `capacity` if no host fits.
-4. Nobody is admitted with no ready host at all: with every host
-   unreachable or draining there is no usable memory, and the gate stops
-   holding new users (they meet `capacity`) until one is back.
+1. Add a host (workstream 11 §5), or raise `SEATS_TOTAL` on both api apps
+   and redeploy if the number was the limit rather than the hosts. Nothing
+   else: once a seat is free, the api's minute tick invites the oldest
+   waiting user, holds the seat 72 hours for them and emails them to
+   choose a plan; `waitlist_invite` in the api log (grpc app) carries the
+   count. A hold that runs out moves the user to the back
+   (`waitlist_expire`) and the seat goes to the next one.
+2. To see the queue: `repose-admin waitlist list` (position, handle,
+   joined, invited, hold, converted, expired invites, by). `GET
+   /public/seats` is the same count the landing page shows.
+3. To let one person in now (a tester, someone who wrote in):
+   `repose-admin waitlist admit <handle>` (or `admit --next N`). They get
+   the invitation email and a 72-hour hold like an automatic invitation,
+   which holds a seat even when none is free; the next automatic
+   invitation waits for it.
+4. There is no off switch. A launch with hosts to spare sets `SEATS_TOTAL`
+   high enough that nobody is refused; `0` derives the count from the
+   hosts. With no ready host at all the count is zero and every checkout
+   waitlists: that is an outage, fix the hosts.
 
 ## HostUnreachable
 

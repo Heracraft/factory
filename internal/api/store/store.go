@@ -506,29 +506,43 @@ func SetSetting(ctx context.Context, q Querier, key, value string) error {
 	return err
 }
 
-// --- waitlist (DECISIONS I-269) -----------------------------------------
+// --- waitlist (DECISIONS I-269, I-290) --------------------------------
 
 // WaitlistEntry is a waitlist row with the user's handle and, while the
 // user waits, their place in the queue (1 is next).
 type WaitlistEntry struct {
-	UserID     uuid.UUID  `db:"user_id"`
-	Handle     string     `db:"handle"`
-	JoinedAt   time.Time  `db:"joined_at"`
-	AdmittedAt *time.Time `db:"admitted_at"`
-	AdmittedBy *string    `db:"admitted_by"`
-	// Position is 0 once admitted, and for a waiting user whose account
-	// is suspended, cancelled or deleted: such a user holds no place.
+	UserID    uuid.UUID  `db:"user_id"`
+	Handle    string     `db:"handle"`
+	JoinedAt  time.Time  `db:"joined_at"`
+	InvitedAt *time.Time `db:"invited_at"`
+	InvitedBy *string    `db:"invited_by"`
+	// HoldUntil is when the invitation's seat hold runs out; set with
+	// InvitedAt.
+	HoldUntil *time.Time `db:"hold_until"`
+	// ConvertedAt is when the invited user's subscription arrived.
+	ConvertedAt *time.Time `db:"converted_at"`
+	// ExpiredInvites counts holds that ran out; each moved the user to
+	// the back.
+	ExpiredInvites int `db:"expired_invites"`
+	// Position is 0 once invited, and for a waiting user whose account is
+	// suspended, cancelled or deleted: such a user holds no place.
 	Position int `db:"position"`
+}
+
+// Holding reports whether the entry holds a seat: invited, not
+// converted, and the hold has not run out at now.
+func (e *WaitlistEntry) Holding(now time.Time) bool {
+	return e.InvitedAt != nil && e.ConvertedAt == nil && e.HoldUntil != nil && e.HoldUntil.After(now)
 }
 
 // waitlistSQL numbers the waiting users of live accounts oldest first;
 // everyone else gets position 0.
-const waitlistSQL = `select w.user_id, u.handle, w.joined_at, w.admitted_at, w.admitted_by,
+const waitlistSQL = `select w.user_id, u.handle, w.joined_at, w.invited_at, w.invited_by, w.hold_until, w.converted_at, w.expired_invites,
 	coalesce(q.position, 0)::integer as position
 	from waitlist w join users u on u.id = w.user_id
 	left join (select w2.user_id, row_number() over (order by w2.joined_at, w2.user_id) as position
 	             from waitlist w2 join users u2 on u2.id = w2.user_id
-	            where w2.admitted_at is null and u2.suspended_at is null and u2.cancelled_at is null and u2.deleted_at is null) q
+	            where w2.invited_at is null and u2.suspended_at is null and u2.cancelled_at is null and u2.deleted_at is null) q
 	  on q.user_id = w.user_id`
 
 // GetWaitlistEntry returns the user's row, or db.ErrNotFound.
@@ -542,7 +556,7 @@ func ListWaiting(ctx context.Context, q Querier) ([]WaitlistEntry, error) {
 }
 
 // ListWaitlist returns every row: the waiting in order, then the rest,
-// newest admission first.
+// newest invitation first.
 func ListWaitlist(ctx context.Context, q Querier) ([]WaitlistEntry, error) {
-	return many[WaitlistEntry](ctx, q, waitlistSQL+" order by q.position nulls last, w.admitted_at desc nulls last, w.joined_at")
+	return many[WaitlistEntry](ctx, q, waitlistSQL+" order by q.position nulls last, w.invited_at desc nulls last, w.joined_at")
 }

@@ -7747,3 +7747,44 @@ for what the events table already records); `repose_billing_*` names
 labels); resending a refused overage charge automatically (a doubled line
 is worse than a late one); making a trialing account `active` on the
 checkout transaction (it is $0 and the trial has a week to run).
+**I-294. Seats and emails, the choices the spec left open: one account-event
+helper, the sentence, a re-queue on a new checkout, no `!` in an email.**
+(seats-email worker, 2026-09-27, building I-290 and I-291) Where I-290
+and I-291 were silent: (1) Every user-only event goes through
+`events.InsertAccount(ctx, q, userID, ts, kind, payload)`, which writes
+the event and its email outbox row on the caller's `Querier` (a pool or
+the transaction that also sets `invited_at` or inserts the user), refuses
+a kind outside `events.AccountKinds`, and marshals the payload into
+`events.summary` as JSON; `notify.transactional` reads the same map, so a
+producer cannot add an account kind the outbox would treat as project
+mail. The welcome email is written by `auth/users.go` in the user's insert
+transaction. (2) The `waitlisted` sentence is `repose is full right now.
+You're number N on the waitlist; we'll email <address> when there's a
+seat.` (`waitlist.Message`), and the CLI prints the api's message as it
+is, building one from `detail` only when the message is empty; the old
+"at capacity ... when there's room" wording went with the first-project
+gate. (3) A checkout by a user whose row is converted (a plan that has
+since ended) or whose hold ran out re-queues the row (`joined_at = now`,
+`converted_at` cleared, `expired_invites + 1` for the expired case) when
+no seat is free, so a returning user waits like a newcomer and the count
+stays honest; a waiting or holding row is left alone. (4) Expiries run
+before invitations in the same tick, each expiry in its own transaction
+under the waitlist lock and guarded by `hold_until < now and converted_at
+is null`, so a webhook that converts the user in the same minute wins.
+(5) `repose-admin waitlist admit` invites without checking for a free
+seat: an operator letting someone in ahead means it, and the hold then
+counts against the next automatic invitation. (6) `repose-admin seats`
+reads `SEATS_TOTAL` from its own environment; with none it reports the
+hosts' count and says so. (7) The email copy has no exclamation mark and
+no dash, checked by `TestGoldenEmails`; the per-kind partials are
+`text/template` files producing strings that the `html/template` layout
+escapes on placement, so tenant text is escaped once, where it is placed.
+(8) `store.User` follows migration 0008 now (`paddle_customer_id`, no
+subscription column; the `StripeSubscriptionID` field stays with `db:"-"`
+until the Stripe client goes), because no test could run against the
+committed schema otherwise. *Rejected:* a second event helper per
+producer (each would re-implement the outbox rule); keeping the old
+sentence (it told the user to run `repose run` again, which does nothing
+for a seat); dropping a converted row on re-checkout (loses the converted
+count); refusing `admit` on a full fleet (the operator has no other way to
+let a tester in).

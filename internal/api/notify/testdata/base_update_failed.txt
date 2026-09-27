@@ -1,0 +1,12 @@
+todo-app: base update failed
+
+Platform base 2026.09.27.1 did not build with your configuration; the machine stays on 2026.09.20.3. See the build log on the dashboard.
+
+Attach from your laptop
+  repose attach --project todo-app
+
+Open todo-app: https://repose.herakraft.co/projects/01a0c14a-f7e3-7926-be1c-75e7728878a1
+
+--
+repose. Open the dashboard: https://repose.herakraft.co
+You get these because an agent on your machine reported something. Stop these emails: https://api.repose.herakraft.co/v1/notify/unsubscribe?token=abc.def

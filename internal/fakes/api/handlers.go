@@ -71,8 +71,10 @@ type meView struct {
 }
 
 type waitlistView struct {
-	Position int       `json:"position"`
-	JoinedAt time.Time `json:"joined_at"`
+	Position  int        `json:"position"`
+	JoinedAt  time.Time  `json:"joined_at"`
+	InvitedAt *time.Time `json:"invited_at"`
+	HoldUntil *time.Time `json:"hold_until"`
 }
 
 type billingView struct {
@@ -362,7 +364,7 @@ func (f *Fake) createProject(w http.ResponseWriter, r *http.Request) *apiError {
 	}
 	u := userFrom(r)
 	if f.waitlist > 0 && len(f.userProjects(u)) == 0 {
-		return errf("waitlisted", "repose is at capacity. You're number %d on the waitlist; we'll email %s when there's room.", f.waitlist, u.Email).
+		return errf("waitlisted", "repose is full right now. You're number %d on the waitlist; we'll email %s when there's a seat.", f.waitlist, u.Email).
 			withDetail(map[string]any{"position": f.waitlist, "joined_at": u.CreatedAt, "email": u.Email})
 	}
 	p, e := f.create(u, body.Name, body.RemoteURL, body.Class)
@@ -1446,6 +1448,29 @@ func (f *Fake) billingDisabled() *apiError {
 		return nil
 	}
 	return errf("billing_disabled", "billing is not configured")
+}
+
+// billingWaitlist is POST /billing/waitlist (DECISIONS I-290): the place
+// SetWaitlisted set, or 1 when none was, always the same on a retry.
+func (f *Fake) billingWaitlist(w http.ResponseWriter, r *http.Request) *apiError {
+	u := userFrom(r)
+	pos := f.waitlist
+	if pos < 1 {
+		pos = 1
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"position": pos, "joined_at": u.CreatedAt})
+	return nil
+}
+
+// publicSeats is GET /public/seats (no auth): a fixed fleet of 30 seats
+// with the waitlist position as the number waiting.
+func (f *Fake) publicSeats(w http.ResponseWriter, r *http.Request) *apiError {
+	free := 0
+	if f.waitlist == 0 {
+		free = 12
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"total": 30, "free": free, "waiting": f.waitlist})
+	return nil
 }
 
 func (f *Fake) billingPortal(w http.ResponseWriter, r *http.Request) *apiError {

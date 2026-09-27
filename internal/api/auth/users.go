@@ -15,6 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/heracraft/repose/internal/api/events"
 	"github.com/heracraft/repose/internal/api/store"
 	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/db"
@@ -229,9 +230,16 @@ func (p *Provisioner) EnsureUser(ctx context.Context, sub string) (*store.User, 
 		// project count and no xl, which `repose-admin users limits`
 		// raises.
 		err := db.InTx(ctx, p.pool, func(tx db.Tx) error {
-			_, err := tx.Exec(ctx, `insert into users (id, logto_sub, handle, email, github_login, billing_status, trial_credit_cents, project_limit, xl_limit, billing_anchor)
+			if _, err := tx.Exec(ctx, `insert into users (id, logto_sub, handle, email, github_login, billing_status, trial_credit_cents, project_limit, xl_limit, billing_anchor)
 				values ($1, $2, $3, $4, $5, 'none', 0, $6, 0, now())`,
-				uid, sub, handle, email, gh, billing.Solo.ProjectLimit)
+				uid, sub, handle, email, gh, billing.Solo.ProjectLimit); err != nil {
+				return err
+			}
+			// The welcome email (DECISIONS I-291): install, run, choose a
+			// plan. An account event with no project, in the same commit
+			// as the row, so a user exists with the email queued or not at
+			// all.
+			_, err := events.InsertAccount(ctx, tx, uid, time.Now(), "welcome", nil)
 			return err
 		})
 		if err == nil {

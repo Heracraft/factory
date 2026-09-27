@@ -142,8 +142,10 @@ Families:
   input), `repose_api_abuse_stops_total{kind}`,
   `repose_api_abuse_held_projects`,
   `repose_api_abuse_busy_unattended_projects` (I-239),
+  `repose_api_seats_total`, `repose_api_seats_held`,
   `repose_api_waitlist_waiting`, `repose_api_waitlist_joined_total`,
-  `repose_api_waitlist_admitted_total` (I-269).
+  `repose_api_waitlist_invited_total`, `repose_api_waitlist_converted_total`,
+  `repose_api_waitlist_expired_total` (I-269, I-290).
 - Gateway: `repose_gateway_sessions` (gauge), `repose_gateway_sessions_total`,
   `repose_gateway_auth_fail_total{reason}`, `repose_gateway_dial_fail_total`,
   `repose_gateway_route_duration_seconds`.

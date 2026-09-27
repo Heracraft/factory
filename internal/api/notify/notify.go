@@ -19,9 +19,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/heracraft/repose/internal/api/events"
 	"github.com/heracraft/repose/internal/api/metrics"
 	"github.com/heracraft/repose/internal/api/store"
-	"github.com/heracraft/repose/internal/api/waitlist"
 	"github.com/heracraft/repose/internal/db"
 )
 
@@ -197,9 +197,9 @@ func (o *Outbox) Once(ctx context.Context) (int, error) {
 }
 
 func (o *Outbox) deliver(ctx context.Context, r row) {
-	// A channel disabled since the row was queued is dropped. The waitlist
-	// admission is transactional mail and ignores notify_email (I-269).
-	if (r.channel == "email" && ((!r.notifyEmail && !transactional[r.kind]) || r.email == nil || *r.email == "")) || (r.channel == "ntfy" && (r.ntfy == nil || *r.ntfy == "")) {
+	// A channel disabled since the row was queued is dropped. Account
+	// mail is transactional and ignores notify_email (I-269, I-291).
+	if (r.channel == "email" && ((!r.notifyEmail && !transactional(r.kind)) || r.email == nil || *r.email == "")) || (r.channel == "ntfy" && (r.ntfy == nil || *r.ntfy == "")) {
 		_, _ = o.pool.Exec(ctx, "delete from events_outbox where event_id = $1 and channel = $2", r.eventID, r.channel) // best effort; it is re-picked and dropped again otherwise
 		return
 	}
@@ -227,7 +227,7 @@ func (o *Outbox) deliver(ctx context.Context, r row) {
 	if r.ntfy != nil {
 		m.NtfyURL = *r.ntfy
 	}
-	if r.channel == "email" && o.Unsub != nil && !transactional[r.kind] {
+	if r.channel == "email" && o.Unsub != nil && !transactional(r.kind) {
 		m.Unsubscribe = o.Unsub.URL(o.APIBase, r.userID)
 	}
 	sctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -290,10 +290,11 @@ func (o *Outbox) gauges(ctx context.Context) {
 	}
 }
 
-// transactional kinds are account mail the user asked for: sent whatever
-// notify_email says and without an unsubscribe link, since there is
-// nothing to unsubscribe from (DECISIONS I-269).
-var transactional = map[string]bool{waitlist.Kind: true}
+// transactional kinds are account mail: sent whatever notify_email says
+// and without an unsubscribe link, since each answers something the user
+// did or is about to be charged for (DECISIONS I-269, I-291). The list is
+// events.AccountKinds, so a producer and the outbox cannot disagree.
+func transactional(kind string) bool { return events.AccountKinds[kind] }
 
 // Title renders the one-line title of a message: what the ntfy Title
 // header and ordinary email subjects use.
@@ -310,12 +311,21 @@ func Title(m Message) string {
 
 // platformSubjects are the dedicated subject lines DESIGN.md §13 and
 // 13-notifications.md §5.6 give platform-originated events: the user, not
-// an agent, is what changed state, so "<project>: <verb>" reads wrong.
+// an agent, is what changed state, so "<project>: <verb>" reads wrong. The
+// account kinds (I-291) name no project at all.
 var platformSubjects = map[string]string{
-	"billing_stopped": "Your guests were stopped for non-payment",
-	"abuse_stopped":   "Your guest was stopped: a cryptocurrency miner was running",
-	// The event has no project to name (I-269).
-	waitlist.Kind: waitlist.Subject,
+	"billing_stopped":        "Your guests were stopped for non-payment",
+	"abuse_stopped":          "Your machine was stopped: a cryptocurrency miner was running",
+	"welcome":                "Welcome to repose",
+	"waitlist_joined":        "You're on the waitlist",
+	"waitlist_invited":       "A seat is yours for 72 hours",
+	"waitlist_expired":       "Your seat hold ran out",
+	"trial_ending":           "Your free week ends soon",
+	"payment_failed":         "Your payment failed",
+	"subscription_cancelled": "Your plan is ending",
+	"subscription_ended":     "Your plan has ended",
+	"plan_changed":           "Your plan changed",
+	"egress_stopped":         "Your machines were stopped: egress limit",
 }
 
 // Subject is the email subject line: Title for agent events, the
@@ -351,28 +361,13 @@ func (e *Email) Send(ctx context.Context, m Message) error {
 	if url == "" {
 		url = "https://api.resend.com/emails"
 	}
-	subject := Subject(m)
-	body := fmt.Sprintf("%s\n\n%s\n\nAttach with `repose attach --project %s` or open %s/projects.\n", subject, m.Summary, m.Project, m.Dashboard)
-	if m.Project == "" {
-		// An account event (the waitlist admission): no project to attach.
-		body = fmt.Sprintf("%s\n\n%s\n\nThe docs: %s/docs\n", subject, m.Summary, m.Dashboard)
+	// One HTML and one text rendering of the same content, in one call
+	// (DECISIONS I-291); a client that shows neither still has the subject.
+	r, err := Render(m)
+	if err != nil {
+		return Permanent{fmt.Errorf("email: render %s: %w", m.Kind, err)}
 	}
-	if q := m.Question; q != nil {
-		body = fmt.Sprintf("%s\n\n%s\n\n", subject, m.Summary)
-		if len(q.Replies) == len(q.Options) && len(q.Options) > 0 {
-			body += "Answer with one click:\n"
-			for i, o := range q.Options {
-				body += fmt.Sprintf("  %s: %s\n", o, q.Replies[i])
-			}
-			body += "\n"
-		}
-		body += fmt.Sprintf("Answer on the dashboard: %s\nor from your laptop: repose reply %s\n\nThe question expires at %s.\n",
-			m.ProjectURL(), m.Project, q.Expires.UTC().Format("2006-01-02 15:04 UTC"))
-	}
-	if m.Unsubscribe != "" {
-		body += fmt.Sprintf("\nStop these emails: %s\n", m.Unsubscribe)
-	}
-	payload, err := json.Marshal(map[string]any{"from": from, "to": []string{m.Email}, "subject": "[repose] " + subject, "text": body})
+	payload, err := json.Marshal(map[string]any{"from": from, "to": []string{m.Email}, "subject": "[repose] " + r.Subject, "html": r.HTML, "text": r.Text})
 	if err != nil {
 		return err
 	}
