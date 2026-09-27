@@ -166,6 +166,31 @@ fires; `node_modules/` stays behind, struck. Keep it animated.
   timestamp with its contents hidden.
 - "Five agents and a full toolchain on first boot" is super clean; leave it.
 
+## Shape language (owner's direction, 2026-09-27)
+
+The owner brought in a slide template's look (flat geometric shapes in
+saturated colours, heavy headings over a thick bar) and asked for it on top
+of the house style, not in place of it. An earlier merge that let the
+shapes take over the page, animations included, was sent back. The rules:
+
+- The house style stays the base: serif headings, neutral paper, hairline
+  panels, the anime.js pictures untouched. The shapes are an accent.
+- The shapes live in `landing/Shape.svelte` and draw only from the `--sh-*`
+  tokens in `layout.css`. The app's own pages never use them.
+- Landing headings are bold serif over an amber bar (`.landing-h`); the
+  hero's two lines each get their own bar, drawn in on load.
+- The shape grid beside the headline is not decoration alone: it follows
+  the hero picture (`Hero.svelte`'s `onbeat`). It clicks at each snapshot,
+  tumbles and loses its colour at the wreck (the agent tile turns red), and
+  springs back at the restore. One tile cycles through the five agents'
+  marks. No labels on any of it.
+- Pricing is a card per size with its shape bleeding off the corner, the
+  bar, the hourly price large and the monthly cap under it.
+- The footer carries a row of shapes on its rule.
+- Motion is calm: tiles land in sequence, turn a quarter at a time, and
+  settle with a small overshoot. Nothing drifts or fades to half-opacity at
+  rest. Under `prefers-reduced-motion` every shape is still and whole.
+
 ## Where terminals are allowed
 
 Terminal UIs appear only in the "On every machine" grid and in "Five agents

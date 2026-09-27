@@ -5,6 +5,8 @@
 	import { signIn } from '$lib/auth.svelte';
 	import Logo from '$lib/components/Logo.svelte';
 	import Hero from '$lib/components/landing/Hero.svelte';
+	import HeroGrid, { type Beat } from '$lib/components/landing/HeroGrid.svelte';
+	import Shape, { type Kind } from '$lib/components/landing/Shape.svelte';
 	import OneCommand from '$lib/components/landing/OneCommand.svelte';
 	import ComesBack from '$lib/components/landing/ComesBack.svelte';
 	import Browser from '$lib/components/landing/Browser.svelte';
@@ -16,6 +18,8 @@
 	const SOURCE_URL = 'https://github.com/Heracraft/factory';
 
 	let signingIn = $state(false);
+	let beat: { kind: Beat; n: number } | undefined = $state();
+	let beats = 0;
 	let copied = $state(false);
 
 	onMount(() => {
@@ -65,11 +69,44 @@
 			command: 'cd ~/code/recruiting && repose run'
 		}
 	];
-	const tiers = [
-		{ name: 'small', vcpu: 2, ram: '4 GB', disk: '20 GB', hour: '$0.07', cap: '$49' },
-		{ name: 'large', vcpu: 4, ram: '8 GB', disk: '40 GB', hour: '$0.14', cap: '$99' },
-		{ name: 'xl', vcpu: 8, ram: '16 GB', disk: '80 GB', hour: '$0.28', cap: '$199' }
+	// The steps' marks: one shape each, the last the repose ring itself.
+	const stepShapes: Kind[] = ['sun', 'pie', 'ring'];
+	const tiers: {
+		name: string;
+		vcpu: number;
+		ram: string;
+		disk: string;
+		hour: string;
+		cap: string;
+		shape: Kind;
+	}[] = [
+		{ name: 'small', vcpu: 2, ram: '4 GB', disk: '20 GB', hour: '$0.07', cap: '$49', shape: 'sun' },
+		{
+			name: 'large',
+			vcpu: 4,
+			ram: '8 GB',
+			disk: '40 GB',
+			hour: '$0.14',
+			cap: '$99',
+			shape: 'halves'
+		},
+		{ name: 'xl', vcpu: 8, ram: '16 GB', disk: '80 GB', hour: '$0.28', cap: '$199', shape: 'burst' }
 	];
+	const frieze: Kind[] = [
+		'sun',
+		'moon',
+		'asterisk',
+		'pinwheel',
+		'arch',
+		'ring',
+		'pie',
+		'star',
+		'halves',
+		'leaf',
+		'sphere',
+		'pill'
+	];
+	let friezeTurn = $state(frieze.map(() => 0));
 </script>
 
 <svelte:head>
@@ -92,7 +129,7 @@
 
 <header class="border-b border-[var(--rule)]">
 	<div class="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-5">
-		<a href={resolve('/')} aria-label="repose, home"><Logo /></a>
+		<a href={resolve('/')} aria-label="repose, home"><Logo mark /></a>
 		<nav class="flex items-center gap-6 text-sm" aria-label="Main">
 			<a
 				href={resolve('/docs')}
@@ -118,15 +155,23 @@
 
 <main>
 	<section class="mx-auto max-w-5xl px-5 pt-12 pb-16">
-		<h1 class="max-w-3xl text-4xl leading-tight font-semibold sm:text-5xl sm:leading-[1.12]">
-			Let your agents run with full permissions
-		</h1>
-		<p class="mt-5 max-w-2xl text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
-			One command puts your work on a machine of its own. The agent can wreck it, and a snapshot
-			puts it back.
-		</p>
+		<div class="grid items-end gap-10 md:grid-cols-[minmax(0,1fr)_12.5rem] lg:gap-14">
+			<div class="min-w-0">
+				<h1 class="hero-h">
+					<span class="line"><span class="bar">Let your agents run</span></span>
+					<span class="line"><span class="bar">with full permissions</span></span>
+				</h1>
+				<p class="mt-6 max-w-xl text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
+					One command puts your work on a machine of its own. The agent can wreck it, and a snapshot
+					puts it back.
+				</p>
+			</div>
+			<div class="md:self-end">
+				<HeroGrid {beat} />
+			</div>
+		</div>
 
-		<div class="mt-7 flex flex-wrap items-center gap-3">
+		<div class="mt-8 flex flex-wrap items-center gap-3">
 			<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
 				Sign in with GitHub
 			</button>
@@ -156,8 +201,8 @@
 			</div>
 		</div>
 
-		<div class="mt-8">
-			<Hero />
+		<div class="mt-10">
+			<Hero onbeat={(kind) => (beat = { kind, n: ++beats })} />
 		</div>
 	</section>
 
@@ -167,7 +212,7 @@
 
 	<section id="features" class="scroll-mt-6 border-t border-[var(--rule)]">
 		<div class="mx-auto max-w-5xl px-5 py-16">
-			<h2 class="text-2xl font-semibold">On every machine</h2>
+			<h2 class="landing-h text-3xl sm:text-4xl">On every machine</h2>
 			<div class="mt-8 grid gap-x-10 gap-y-12 md:grid-cols-2">
 				<ComesBack />
 				<Localhost />
@@ -183,15 +228,15 @@
 
 	<section class="border-t border-[var(--rule)]">
 		<div class="mx-auto max-w-5xl px-5 py-16">
-			<h2 class="text-2xl font-semibold">Start in three commands</h2>
+			<h2 class="landing-h text-3xl sm:text-4xl">Start in three commands</h2>
 			<ol class="mt-8 border-b border-[var(--rule)]">
 				{#each steps as step, i (step.title)}
 					<li
 						class="grid gap-3 border-t border-[var(--rule)] py-6 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:gap-10"
 					>
 						<div>
-							<h3 class="font-semibold">
-								<span class="mr-2 font-mono text-sm text-zinc-600 dark:text-zinc-400">{i + 1}</span
+							<h3 class="flex items-center gap-3 text-lg font-semibold">
+								<span class="step-mark" style="--i: {i}"><Shape kind={stepShapes[i]} /></span
 								>{step.title}
 							</h3>
 							<p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{step.text}</p>
@@ -207,50 +252,31 @@
 
 	<section id="pricing" class="scroll-mt-6 border-t border-[var(--rule)]">
 		<div class="mx-auto max-w-5xl px-5 py-16">
-			<h2 class="text-2xl font-semibold">Pricing</h2>
-			<p class="mt-2 text-zinc-600 dark:text-zinc-400">
-				Per hour while a machine runs, capped each month.
-			</p>
-
-			<div class="mt-6 hidden sm:block">
-				<table class="table">
-					<thead>
-						<tr>
-							<th>Size</th>
-							<th>vCPU</th>
-							<th>Memory</th>
-							<th>Disk</th>
-							<th class="text-right">Per hour</th>
-							<th class="text-right">Monthly cap</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each tiers as t (t.name)}
-							<tr>
-								<td class="font-mono">{t.name}</td>
-								<td>{t.vcpu}</td>
-								<td>{t.ram}</td>
-								<td>{t.disk}</td>
-								<td class="text-right font-mono">{t.hour}</td>
-								<td class="text-right font-mono">{t.cap}</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
+			<div class="flex flex-wrap items-end justify-between gap-x-10 gap-y-3">
+				<h2 class="landing-h text-3xl sm:text-4xl">Pricing</h2>
+				<p class="pb-2 text-zinc-600 dark:text-zinc-400">
+					Per hour while a machine runs, capped each month.
+				</p>
 			</div>
-			<ul class="mt-6 sm:hidden">
+
+			<ul class="mt-8 grid gap-5 md:grid-cols-3">
 				{#each tiers as t (t.name)}
-					<li class="row flex items-baseline justify-between gap-4">
-						<div>
-							<p class="font-mono">{t.name}</p>
-							<p class="mt-0.5 text-sm text-zinc-600 dark:text-zinc-400">
-								{t.vcpu} vCPU · {t.ram} · {t.disk} disk
-							</p>
-						</div>
-						<div class="text-right">
-							<p class="font-mono">{t.hour}<span class="text-sm text-zinc-600"> /h</span></p>
-							<p class="mt-0.5 text-sm text-zinc-600 dark:text-zinc-400">cap {t.cap}/mo</p>
-						</div>
+					<li class="tier">
+						<span class="tier-shape"><Shape kind={t.shape} /></span>
+						<h3 class="tier-name">{t.name}</h3>
+						<p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+							{t.vcpu} vCPU · {t.ram} memory · {t.disk} disk
+						</p>
+						<p class="tier-price">
+							<span class="font-display text-5xl font-bold tracking-tight">{t.hour}</span>
+							<span
+								class="text-xs font-semibold tracking-wider text-zinc-600 uppercase dark:text-zinc-400"
+								>per hour</span
+							>
+						</p>
+						<p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+							Capped at <b class="font-semibold text-zinc-900 dark:text-zinc-100">{t.cap}</b> a month
+						</p>
 					</li>
 				{/each}
 			</ul>
@@ -264,11 +290,21 @@
 	</section>
 </main>
 
-<footer class="border-t border-[var(--rule)]">
+<footer>
+	<div class="frieze" aria-hidden="true">
+		{#each frieze as k, i (i)}
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<span
+				class="frieze-tile"
+				style="--a: {friezeTurn[i]}deg; --d: {i * 40}ms"
+				onpointerenter={() => (friezeTurn[i] += 90)}><Shape kind={k} /></span
+			>
+		{/each}
+	</div>
 	<div
 		class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-5 py-8 text-sm text-zinc-600 dark:text-zinc-400"
 	>
-		<Logo size="sm" />
+		<Logo size="sm" mark />
 		<nav class="flex gap-6" aria-label="Footer">
 			<a href={resolve('/docs')} class="hover:text-zinc-900 dark:hover:text-zinc-100">Docs</a>
 			<a href={SOURCE_URL} class="hover:text-zinc-900 dark:hover:text-zinc-100">GitHub</a>
@@ -277,3 +313,102 @@
 		</nav>
 	</div>
 </footer>
+
+<style>
+	/* The headline: bold serif, a thick amber bar under each line, drawn
+	   one after the other on load. */
+	.hero-h {
+		font-size: clamp(2.5rem, 5.2vw, 3.9rem);
+		font-weight: 700;
+		line-height: 1.02;
+		letter-spacing: -0.02em;
+		text-wrap: balance;
+	}
+	.hero-h .line {
+		display: block;
+	}
+	.hero-h .line + .line {
+		margin-top: 0.12em;
+	}
+	/* Inline, so a line that wraps on a phone gets a bar under each part. */
+	.hero-h .bar {
+		padding-bottom: 0.1em;
+		line-height: 1.22;
+		-webkit-box-decoration-break: clone;
+		box-decoration-break: clone;
+		background: linear-gradient(var(--sh-amber), var(--sh-amber)) no-repeat 0 100% / 100% 0.13em;
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		.hero-h .bar {
+			animation: bar 0.7s cubic-bezier(0.65, 0, 0.35, 1) 0.25s both;
+		}
+		.hero-h .line + .line .bar {
+			animation-delay: 0.55s;
+		}
+	}
+	@keyframes bar {
+		from {
+			background-size: 0% 0.13em;
+		}
+	}
+
+	/* Pricing: a card per size, its shape bleeding off the corner. */
+	.tier {
+		position: relative;
+		overflow: hidden;
+		padding: 1.75rem;
+		border: 1px solid var(--rule);
+		border-radius: 3px;
+		background: var(--surface);
+	}
+	.tier-shape {
+		position: absolute;
+		top: -3rem;
+		right: -3rem;
+		width: 7.5rem;
+		height: 7.5rem;
+		transition: transform 0.9s cubic-bezier(0.65, 0, 0.35, 1);
+	}
+	.tier:hover .tier-shape {
+		transform: rotate(90deg);
+	}
+	.tier-name {
+		position: relative;
+		font-size: 2.5rem;
+		line-height: 1;
+		font-weight: 700;
+		letter-spacing: -0.01em;
+		text-transform: uppercase;
+	}
+	.tier-price {
+		display: flex;
+		align-items: baseline;
+		gap: 0.6rem;
+		margin-top: 1.5rem;
+		padding-top: 1.25rem;
+		background: linear-gradient(var(--sh-amber), var(--sh-amber)) no-repeat 0 0 / 100% 4px;
+	}
+
+	.step-mark {
+		width: 1.5rem;
+		height: 1.5rem;
+		flex: none;
+	}
+
+	/* The footer's row of shapes, sitting on the footer's rule. */
+	.frieze {
+		display: flex;
+		align-items: flex-end;
+		gap: clamp(6px, 1.2vw, 18px);
+		overflow: hidden;
+		padding: 0 clamp(8px, 1.5vw, 24px);
+		border-bottom: 1px solid var(--rule);
+	}
+	.frieze-tile {
+		flex: 1 0 clamp(44px, 7vw, 112px);
+		max-width: 112px;
+		aspect-ratio: 1;
+		transform: rotate(var(--a));
+		transition: transform 0.9s cubic-bezier(0.65, 0, 0.35, 1);
+	}
+</style>

@@ -69,6 +69,14 @@ palette, not chips or segmented groups:
   native checkbox per row and the row's description in muted text, not a
   wall of pills.
 
+## The landing's exception
+
+The landing page adds a shape set with its own saturated palette (the
+`--sh-*` tokens), an amber bar under its headings, and two textured shapes
+drawn with SVG noise and a gradient. Those exist only on `/` and are
+described in `LANDING.md`, "Shape language". Every other page follows the
+rules above with no exception.
+
 ## Where it goes
 
 `apps/web/src/routes/layout.css` and `apps/web/src/app.html` (font link).

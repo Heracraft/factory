@@ -88,7 +88,7 @@
 	>
 {/snippet}
 
-<h2 class="text-2xl font-semibold">Five agents and a full toolchain on first boot</h2>
+<h2 class="landing-h text-3xl sm:text-4xl">Five agents and a full toolchain on first boot</h2>
 <p class="mt-2 max-w-2xl text-zinc-600 dark:text-zinc-400">
 	The agent has sudo to install anything else, and
 	<code

@@ -94,9 +94,24 @@
 		--sunken: #f4f4f2;
 		--rule: #e6e6e3;
 		--rule-strong: #cfcfcb;
+
+		/* The landing's shape set (Shape.svelte): flat, saturated colours
+		   for illustration and the amber bar under a landing heading. The
+		   app's own pages keep to the neutral palette and the one blue. */
+		--sh-pink: #f6a5aa;
+		--sh-blue: #0a6cc2;
+		--sh-sky: #4f8ff0;
+		--sh-red: #f03d14;
+		--sh-amber: #f5970f;
+		--sh-purple: #9383cb;
+		--sh-green: #3b6c40;
+		--sh-coral: #f4643c;
+		--sh-ink: #151514;
+		--sh-paper: #f4f3ef;
 	}
 	@media (prefers-color-scheme: dark) {
 		:root {
+			--sh-ink: #0b0b0a;
 			--page: #111110;
 			--surface: #161615;
 			--sunken: #1b1b1a;
@@ -139,6 +154,32 @@
 }
 
 @layer components {
+	/* A landing heading: bold serif over a thick amber bar, the one loud
+	   accent the landing borrows from its shape set. The bar draws in as
+	   the heading scrolls into view where the browser supports
+	   scroll-driven animation, and is simply there elsewhere. */
+	.landing-h {
+		@apply font-bold tracking-[-0.015em] text-balance;
+		width: fit-content;
+		max-width: 100%;
+		padding-bottom: 0.32em;
+		background: linear-gradient(var(--sh-amber), var(--sh-amber)) no-repeat 0 100% / 100% 0.14em;
+	}
+	@supports (animation-timeline: view()) {
+		@media (prefers-reduced-motion: no-preference) {
+			.landing-h {
+				animation: landing-bar linear both;
+				animation-timeline: view();
+				animation-range: entry 40% entry 100%;
+			}
+		}
+	}
+	@keyframes landing-bar {
+		from {
+			background-size: 0% 0.14em;
+		}
+	}
+
 	/* Inputs */
 	.field {
 		@apply rounded-sm border px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-300;

@@ -50,6 +50,11 @@
 
 	const agent = agentMarks[0];
 
+	// The story's beats, for the headline's shape grid (HeroGrid.svelte) to
+	// follow: the snapshots, the wreck and the restore.
+	let { onbeat }: { onbeat?: (b: 'run' | 'shot' | 'wreck' | 'restore' | 'out') => void } = $props();
+	const beat = (b: Parameters<NonNullable<typeof onbeat>>[0]) => () => onbeat?.(b);
+
 	const repo = 'job-alerts';
 	// The fetch-timeout change: w = worked on (and later struck), add/del its
 	// diff stat, nu = a new file the agent writes.
@@ -308,6 +313,7 @@
 
 					const t = createTimeline({ autoplay: false, onComplete: () => cycle() })
 						// repose run: the repo row travels, the machine opens it.
+						.call(beat('run'), T.run)
 						.call(() => (fire = true), T.run)
 						.call(() => (fire = false), T.run + 520)
 						.set(c, { opacity: 1 }, T.fly)
@@ -340,6 +346,7 @@
 					work(t, '.mwin .kid.k0', T.work);
 					work(t, '.mwin .kid.k1', T.work + 650);
 					// First snapshot, 21:22.
+					t.call(beat('shot'), T.shot1);
 					snap(t, T.shot1)
 						.set(q('.t-time.n0'), { opacity: 0 }, T.shot1)
 						.add(q('.t-time.n0'), { opacity: [0, 1], duration: 300 }, T.shot1 + 1000)
@@ -361,6 +368,7 @@
 						.set(q('.thumb, .t-time.n0'), { opacity: 0 }, T.shot2)
 						.add(q('.older'), { x: peek, duration: 520, ease: 'inOutCubic' }, T.shot2 + 60)
 						.set(q('.thumb .kid.nu'), { opacity: 1, height: 28 }, T.shot2);
+					t.call(beat('shot'), T.shot2 + 300);
 					snap(t, T.shot2 + 300)
 						.add(q('.t-time.n1'), { opacity: [0, 1], duration: 300 }, T.shot2 + 1300)
 						// Only now: it reaches the internet, and the malicious skill comes in.
@@ -386,6 +394,7 @@
 							T.rogue + 200
 						)
 						.call(() => pic.classList.add('wrecked'), T.strike)
+						.call(beat('wreck'), T.strike)
 						.add(
 							q('.mwin .kid.x .xbg'),
 							{ opacity: [0, 1], duration: 250, delay: stagger(120) },
@@ -430,6 +439,7 @@
 						.add(q('.back'), { ...cover, duration: 800, ease: 'inOutCubic' }, T.restore + 280)
 						.add(q('.lines .ret'), { opacity: [1, 0], duration: 250 }, T.back)
 						.call(() => pic.classList.remove('wrecked'), T.back + 100)
+						.call(beat('restore'), T.back + 100)
 						.set(q('.mwin .strike'), { scaleX: 0 }, T.back + 100)
 						.set(
 							q('.mwin .xbg, .mwin .agent .red, .mwin .sys .bad, .wallhit, .stopper, .skill-in'),
@@ -439,6 +449,7 @@
 						.set(q('.mwin .kid.x .dim, .mwin .sys .ok'), { opacity: 1 }, T.back + 100)
 						.add(q('.back'), { opacity: [1, 0], duration: 500, ease: 'inQuad' }, T.back + 150)
 						// Rest on the restored machine, then clear it and go again.
+						.call(beat('out'), T.out)
 						.add(
 							q(
 								'.m-in, .m-kid, .m-sys, .mwin .kid.nu, .m-late, .mwin .crew, .mwin .mode, .thumb, .older, .t-time'

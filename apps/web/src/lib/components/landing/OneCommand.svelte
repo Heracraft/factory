@@ -340,7 +340,7 @@
 {/snippet}
 
 <div class="oc">
-	<h2 class="text-2xl font-semibold">Your working state, in one command</h2>
+	<h2 class="landing-h text-3xl sm:text-4xl">Your working state, in one command</h2>
 	<p class="mt-3 max-w-2xl leading-relaxed text-zinc-600 dark:text-zinc-400">
 		Run <code
 			class="rounded-xs bg-[var(--sunken)] px-1 py-px text-[0.88em] whitespace-nowrap text-zinc-800 dark:text-zinc-200"
