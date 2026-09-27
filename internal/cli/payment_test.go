@@ -6,7 +6,7 @@ import (
 )
 
 // payment_required prints the api's sentence verbatim and exits 7; an
-// older api's fragment (or a Stripe-era reason) gets the plan sentence
+// older api's fragment (or a card-era reason) gets the plan sentence
 // (DECISIONS I-289).
 func TestPaymentRequiredMessage(t *testing.T) {
 	const fallback = "Choose a plan at https://repose.herakraft.co/billing first."
