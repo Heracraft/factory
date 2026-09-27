@@ -47,6 +47,17 @@
 	let angle = $state(tiles.map(() => 0));
 	let who = $state(0);
 
+	// The marks don't fill their 24px box the same way (Claude Code's is
+	// short and wide), so each is centred on its own drawn bounds and
+	// scaled to fit a 44px square in the middle of the tile.
+	function centre(g: SVGGElement) {
+		const b = (g.firstElementChild as SVGGElement).getBBox();
+		const k = 44 / Math.max(b.width, b.height);
+		const x = 50 - (b.x + b.width / 2) * k;
+		const y = 50 - (b.y + b.height / 2) * k;
+		g.setAttribute('transform', `translate(${x} ${y}) scale(${k})`);
+	}
+
 	function turn(i: number) {
 		const t = tiles[i];
 		if (t !== 'agent' && TURN[t]) angle[i] += TURN[t]!;
@@ -100,10 +111,12 @@
 							<svg viewBox="0 0 100 100" class="block h-full w-full">
 								<circle cx="50" cy="50" r="50" class="agent-bg" />
 								{#key who}
-									<g class="agent-mark" transform="translate(26 26) scale(2)">
-										{#each agentMarks[who].paths as d (d)}
-											<path {d} fill-rule={agentMarks[who].evenodd ? 'evenodd' : 'nonzero'} />
-										{/each}
+									<g class="agent-mark" use:centre>
+										<g class="agent-pop">
+											{#each agentMarks[who].paths as d (d)}
+												<path {d} fill-rule={agentMarks[who].evenodd ? 'evenodd' : 'nonzero'} />
+											{/each}
+										</g>
 									</g>
 								{/key}
 							</svg>
@@ -178,6 +191,10 @@
 	}
 	.agent-mark {
 		fill: var(--sh-ink);
+	}
+	/* The pop is on the inner group: a transform-origin on the outer one
+	   would also move the transform that centres the mark. */
+	.agent-pop {
 		animation: mark-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
 		transform-box: fill-box;
 		transform-origin: center;
@@ -203,7 +220,7 @@
 			transition: none;
 		}
 		.clicked,
-		.agent-mark {
+		.agent-pop {
 			animation: none;
 		}
 	}

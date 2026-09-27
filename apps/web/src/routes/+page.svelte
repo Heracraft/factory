@@ -94,7 +94,20 @@
 		},
 		{ name: 'xl', vcpu: 8, ram: '16 GB', disk: '80 GB', hour: '$0.28', cap: '$199', shape: 'burst' }
 	];
-	const frieze: Kind[] = ['sun', 'arch', 'ring', 'star', 'leaf'];
+	const frieze: Kind[] = [
+		'sun',
+		'moon',
+		'asterisk',
+		'pinwheel',
+		'arch',
+		'ring',
+		'pie',
+		'star',
+		'halves',
+		'leaf',
+		'sphere',
+		'pill'
+	];
 	let friezeTurn = $state(frieze.map(() => 0));
 </script>
 
@@ -302,7 +315,7 @@
 
 <footer>
 	<div class="border-b border-[var(--rule)]">
-		<div class="frieze mx-auto max-w-5xl px-5" aria-hidden="true" use:landOnView>
+		<div class="frieze" aria-hidden="true" use:landOnView>
 			{#each frieze as k, i (i)}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<span
@@ -404,14 +417,26 @@
 		flex: none;
 	}
 
-	/* The footer's few shapes, standing on the footer's rule. */
+	/* The footer's row of shapes across the page, standing on its rule,
+	   with room between them and above them. */
 	.frieze {
 		display: flex;
 		align-items: flex-end;
-		gap: clamp(8px, 1.5vw, 16px);
+		justify-content: center;
+		gap: clamp(14px, 2.6vw, 44px);
+		overflow: hidden;
+		margin-top: clamp(1rem, 4vw, 3rem);
+		padding: 0 clamp(14px, 2.6vw, 44px);
+	}
+	/* Where the row is wider than the screen it starts at the left edge,
+	   rather than losing shapes off both ends. */
+	@media (max-width: 1023px) {
+		.frieze {
+			justify-content: flex-start;
+		}
 	}
 	.frieze-tile {
-		width: clamp(36px, 6vw, 56px);
+		flex: 0 0 clamp(40px, 5.6vw, 88px);
 		aspect-ratio: 1;
 	}
 </style>
