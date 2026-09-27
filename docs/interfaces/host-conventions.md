@@ -9,7 +9,8 @@ change to either happens in the same commit.
 | Path | What |
 |---|---|
 | `/var/lib/repose/hostd/` | `cert.pem`, `key.pem` (mTLS to api), `host.json` (see below), `state.db` (bbolt: guest table for reconciliation). Mode 0700, written by `hostd register`. |
-| `/var/lib/repose/guests/<guest_id>/` | `ch.args` (the rendered cloud-hypervisor argv, one argument per line; DECISIONS I-27), `guest.json` (non-secret copy of the guest record for `hostd reconcile --rebuild`), `ch.sock` (Cloud Hypervisor API), `vsock.sock` (host side of the guest's vsock, `CONNECT 5000` reaches guestd), `console.sock` (serial; hostd copies it into `console.log`, rotated at 64 MB keeping 3), `virtiofsd/virtiofsd.sock`. The parent is `0711 root`; the directory is `1770 root:hostd` so the unprivileged `guest@<id>` (I-51) can create its sockets but not remove hostd's files; `virtiofsd/` is `0750 virtiofsd:hostd` and the socket in it is group `hostd` (`--socket-group`). Secrets are never written here: they are delivered to the guest's tmpfs over vsock. |
+| `/var/lib/repose/guests/<guest_id>/` | `ch.args` (the rendered cloud-hypervisor argv, one argument per line; DECISIONS I-27), `guest.json` (non-secret copy of the guest record for `hostd reconcile --rebuild`), `ch.sock` (Cloud Hypervisor API), `vsock.sock` (host side of the guest's vsock, `CONNECT 5000` reaches guestd), `console.sock` (serial; hostd copies it into `console.log`, rotated at 64 MB keeping 3), `virtiofsd/virtiofsd.sock`, `virtiofsd-auth/virtiofsd.sock` (the login share, I-278). The parent is `0711 root`; the directory is `1770 root:hostd` so the unprivileged `guest@<id>` (I-51) can create its sockets but not remove hostd's files; `virtiofsd/` is `0750 virtiofsd:hostd` and the socket in it is group `hostd` (`--socket-group`); `virtiofsd-auth/` is the same with owner `repose-auth`. Secrets are never written here: they are delivered to the guest's tmpfs over vsock. |
+| `/var/lib/repose/users/<user_id>/` | The Claude login share (DECISIONS I-278). `0711 root` like its parent; `claude-auth/` is `0700 repose-auth` and holds only the `.credentials.json` Claude Code writes from inside the user's guests. hostd creates both, never opens anything inside `claude-auth/`, and stamps `last-guest` (root) when a guest of that user boots and at each sweep while one exists; the sweep (hostd start, daily) removes the whole directory 30 days after the stamp. Not on any guest volume, so in no snapshot. |
 | `/var/lib/repose/builds/<revision_id>/` | `fragment.nix` for a `Build`; see `nix-build-contract.md` |
 | `/var/lib/repose/base/<base_ref>/` | checkout of the platform repository at that revision (its `nix/` is the flake hostd evaluates) |
 | `/run/repose/hostd.sock` | hostd's operator control socket (`hostd status`, `guests`, `snapshot-all`, `drain`, `reconcile`) |
@@ -172,7 +173,9 @@ rotates keys does the same restart itself.
 ## Services
 
 `hostd.service` (Restart=always, RestartSec=2, KillMode=process,
-RestartPreventExitStatus=3), `virtiofsd@<guest>.service` and
+RestartPreventExitStatus=3), `virtiofsd@<guest>.service`,
+`virtiofsd-auth@<guest>.service` (the login share; absent for a guest with
+no user id) and
 `guest@<guest>.service` are **transient** units created by hostd with
 `systemd-run` inside `guests.slice`, named so `systemctl list-units
 'guest@*'` shows every guest. Host units, in start order:
@@ -258,7 +261,17 @@ user and mount namespace with the export pivot_rooted in; `chroot` is
 root-only and virtiofsd refuses it for an unprivileged user, DECISIONS
 I-48) sharing `/run/repose/store-export` (never `/nix/store` directly),
 binding `virtiofsd/virtiofsd.sock` with `--socket-group hostd` so the
-hypervisor can connect.
+hypervisor can connect. A guest with a user id also gets `--fs
+tag=claude-auth,socket=virtiofsd-auth/virtiofsd.sock`, served by
+`virtiofsd-auth@<guest>` as `repose-auth:repose-auth` (in group `hostd`
+for the same two reasons as `virtiofsd`, I-69) with `--sandbox namespace
+--cache never --translate-uid map:1000:<repose-auth uid>:1
+--translate-gid map:1000:<repose-auth gid>:1` sharing
+`/var/lib/repose/users/<user_id>/claude-auth`, MemoryMax=64M (DECISIONS
+I-278). hostd adds the second `--fs` only once that socket exists; a share
+that fails to start is logged (`auth_share`) and the guest boots without
+it. `repose.host.claudeLoginShare = false` (hostd
+`--claude-login-share=false`) starts no share at all.
 
 ## Operator access
 

@@ -39,7 +39,7 @@ You're now in a shell on the machine, in `/home/dev/your-project`, with your unc
 
 ## 3. Log in to Claude Code on the machine
 
-Claude Code's login is never copied from your laptop, so you log in once per machine. Type `claude`, open the URL it prints, approve, and paste the code back. The login stays on the machine's disk.
+Claude Code's login is never copied from your laptop, so you log in once, on the first machine. Type `claude`, open the URL it prints, approve, and paste the code back. Your other machines are then logged in too.
 
 Codex, opencode and GitHub CLI logins were copied from your laptop in step 2. [Agents](/docs/agents) covers the rest.
 

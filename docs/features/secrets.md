@@ -140,9 +140,30 @@ is simply kept.
 
 ## Kind 2: Claude Code
 
-Never copied, never stored. The user logs in inside the guest; the fallback
-is a setup token stored as a named secret. agents.md carries the reasoning
-and the Anthropic policy behind it.
+Never copied, never read by repose. The user logs in inside any one of
+their guests, with Claude Code's own `/login`; the file Claude Code writes
+is on the user's login share, one directory per user on the host that
+every guest of that user mounts (DECISIONS I-278), so every other project
+of that user is signed in too. It is the same kind of secret in the same
+treatment, the user's own login in the user's own machines; the share is
+where those machines keep it, not a place repose puts it:
+
+- Where: `/var/lib/repose/users/<user_id>/claude-auth/.credentials.json`
+  on the host, bind-mounted over `~/.claude/.credentials.json` in each
+  guest. Only that file: `settings.json` and hooks stay per guest, so an
+  agent in one project cannot run commands in another.
+- Why not in the guest, as before: users open many projects and should
+  log in once. Why not copied between guests: copying a Claude credential
+  is what Anthropic's terms forbid a platform, and a copy does not follow
+  the original's refresh.
+- Who can read it: the user's guests, root and `repose-auth` on the host
+  (SECURITY.md). Not in snapshots, not in any log, never sent to the api.
+- How long: until 30 days after the user's last machine on that host is
+  gone. `/logout` in any machine is Claude Code's own.
+- One per host: machines of one user on two hosts need one login each.
+
+The fallback is a setup token stored as a named secret. agents.md carries
+the reasoning and the Anthropic policy behind it.
 
 ## Kind 3: named secrets
 

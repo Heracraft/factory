@@ -140,15 +140,22 @@ Anthropic's terms for hosted use of Claude Code require the binary to be
 unmodified and every user to authenticate with their own credentials; third
 party reuse of subscription OAuth is forbidden. So:
 
-- The platform never stores, proxies, or copies Claude credentials.
+- The platform never reads, proxies, or copies Claude credentials.
   `~/.claude/.credentials.json` is not in the synced-files list and a test
   asserts it never appears in a tar stream. Copied refresh tokens also do
   not refresh, so copying would break within hours anyway.
-- The default path is logging in inside the guest. The first `run` with
-  agent `claude` and no credentials starts `claude` in the agent window; it
+- The default path is logging in inside a guest, once per user. The first
+  `run` with agent `claude` and no credentials (an empty or missing
+  `~/.claude/.credentials.json`) starts `claude` in the agent window; it
   prints a URL and expects a code pasted back. That keeps every feature,
   including Remote Control, which is the "check on it from my phone"
   feature this product wants.
+- The file Claude Code writes is the user's login share: one file per user
+  on the host, bind-mounted into every guest of that user, so one `/login`
+  signs in every project, and a refresh in one guest is seen by the others
+  (DECISIONS I-278; how Claude Code writes it, and why a bind mount of the
+  one file rather than a symlink or the whole `~/.claude`, is in the
+  decision). repose creates and mounts the file and never opens it.
 - The fallback is `claude setup-token` on the laptop, stored as the named
   secret `CLAUDE_CODE_OAUTH_TOKEN`. It works headless and survives guest
   restarts, but loses Remote Control, connectors and Claude in Chrome. The

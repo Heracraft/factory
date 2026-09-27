@@ -256,8 +256,17 @@ func (m *Manager) boot(ctx context.Context, g *state.Guest, firstStep int) *Erro
 	if err := virtiofs.Start(ctx, m.d.Systemd, vcfg, g.GuestID, ch.VirtiofsSocket(dir)); err != nil {
 		return m.fail(g, stepVirtiofsd, err)
 	}
-	if err := m.waitVirtiofsSocket(ctx, g.GuestID, ch.VirtiofsSocket(dir)); err != nil {
+	if err := m.waitSocket(ctx, virtiofs.Unit(g.GuestID), ch.VirtiofsSocket(dir)); err != nil {
 		return m.fail(g, stepVirtiofsd, err)
+	}
+	// The user's Claude login share (DECISIONS I-278), attached only when
+	// its virtiofsd is up; the hypervisor would otherwise wait on its socket.
+	if m.startAuthShare(ctx, g, dir) {
+		spec.AuthTag = m.cfg.AuthTag
+		argv = spec.Args()
+		if err := os.WriteFile(filepath.Join(dir, "ch.args"), []byte(strings.Join(argv, "\n")+"\n"), 0o640); err != nil {
+			return m.fail(g, stepVirtiofsd, err)
+		}
 	}
 
 	// Step 9: Cloud Hypervisor.
@@ -358,24 +367,24 @@ func (m *Manager) teardown(ctx context.Context, g *state.Guest) {
 	}
 	_ = m.d.Systemd.Stop(ctx, GuestUnit(g.GuestID))               // best effort in reverse order; each step's absence is fine
 	_ = virtiofs.Stop(ctx, m.d.Systemd, g.GuestID)                // same
+	_ = virtiofs.StopAuth(ctx, m.d.Systemd, g.GuestID)            // same
 	_ = m.d.Net.Unshape(ctx, g.Tap)                               // same
 	_ = m.d.Net.DelGuestRules(ctx, g.GuestID, g.IP, g.MAC, g.Tap) // same
 	_ = m.d.Net.DelTap(ctx, g.Tap)                                // same
-	for _, s := range []string{"ch.sock", "vsock.sock", "console.sock", filepath.Join("virtiofsd", "virtiofsd.sock")} {
+	for _, s := range []string{"ch.sock", "vsock.sock", "console.sock", filepath.Join("virtiofsd", "virtiofsd.sock"), filepath.Join("virtiofsd-auth", "virtiofsd.sock")} {
 		_ = os.Remove(filepath.Join(m.guestDir(g.GuestID), s)) // stale sockets confuse the next boot only if left behind
 	}
 }
 
-// waitVirtiofsSocket waits for virtiofsd to bind its socket, failing early
-// when its unit has already exited. Cloud Hypervisor would otherwise retry
+// waitSocket waits for a virtiofsd unit to bind its socket, failing early
+// when the unit has already exited. Cloud Hypervisor would otherwise retry
 // the connection for a full minute and the create would fail at step 10
 // with "guest did not become ready", which names the wrong step.
-func (m *Manager) waitVirtiofsSocket(ctx context.Context, guestID, socket string) error {
+func (m *Manager) waitSocket(ctx context.Context, unit, socket string) error {
 	if m.cfg.VirtiofsSocketWait <= 0 {
 		return nil
 	}
 	deadline := time.Now().Add(m.cfg.VirtiofsSocketWait)
-	unit := virtiofs.Unit(guestID)
 	for {
 		if _, err := os.Stat(socket); err == nil {
 			return nil

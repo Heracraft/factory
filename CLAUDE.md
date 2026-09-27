@@ -82,7 +82,9 @@ breaks it is a broken promise, not a style issue.
 Named secrets live as ciphertext in Postgres and as files on a tmpfs in the
 guest. Tool logins the laptop already has are copied into the guest over SSH
 and never touch the API. Claude Code credentials are never copied anywhere;
-the user logs in inside the guest. `docs/features/secrets.md` explains why
+the user logs in inside a guest, and the file Claude Code writes lives on
+that user's login share, which repose mounts but never opens (DECISIONS
+I-278). `docs/features/secrets.md` explains why
 each of these is where it is. Do not add a fourth place.
 
 ## Every host and guest operation is idempotent and reconciles

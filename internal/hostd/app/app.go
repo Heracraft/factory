@@ -66,14 +66,16 @@ type Options struct {
 	StoreExport   string
 	VirtiofsUser  string
 	GuestUser     string
-	VG            string
-	Pool          string
-	MaxOps        int
-	MaxBuilds     int
-	FailAtStep    int
-	NoWG          bool
-	Substituters  string
-	LogLevel      string
+	// ClaudeLoginShare off starts no login share at guest start (I-278).
+	ClaudeLoginShare bool
+	VG               string
+	Pool             string
+	MaxOps           int
+	MaxBuilds        int
+	FailAtStep       int
+	NoWG             bool
+	Substituters     string
+	LogLevel         string
 }
 
 // Logger builds hostd's logger from internal/obs, which puts ts, level,
@@ -245,6 +247,7 @@ func Run(ctx context.Context, o Options, log *slog.Logger) error {
 		MaxOps: o.MaxOps, MaxBuilds: o.MaxBuilds, StoreExport: o.StoreExport, VirtiofsUser: o.VirtiofsUser,
 		VirtiofsSocketWait: 10 * time.Second,
 		GuestUser:          o.GuestUser,
+		NoAuthShare:        !o.ClaudeLoginShare,
 	}
 	if os.Getenv("REPOSE_HOSTD_TESTING") == "1" {
 		cfg.FailAtStep = o.FailAtStep
@@ -355,6 +358,7 @@ func (d *Daemon) pruneLoop(ctx context.Context) {
 		if n, err := d.st.PruneCommands(time.Now().Add(-7 * 24 * time.Hour)); err == nil && n > 0 {
 			d.log.Info("pruned command results", "event", "prune", "count", n)
 		}
+		d.mgr.SweepAuthShares(ctx) // login shares of users gone from this host (I-278)
 		select {
 		case <-ctx.Done():
 			return

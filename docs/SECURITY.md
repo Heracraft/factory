@@ -97,9 +97,28 @@ Rules that hold regardless of convenience. Each names its failure.
   managed-identity tokens; a guest that can reach it can act as the host.
 - **Guests never share a bridge without the drop rules.** A shortcut that
   puts two taps on a plain bridge is a shared L2 between tenants.
-- **Claude credentials are never copied or stored by the platform.**
+- **Claude credentials are never copied, read or proxied by the platform.**
   Anthropic's terms require users to authenticate with their own
-  credentials; the copied file also does not refresh.
+  credentials; the copied file also does not refresh. The one place a
+  Claude login rests outside a guest is the login share (DECISIONS I-278):
+  `/var/lib/repose/users/<user_id>/claude-auth/.credentials.json` on the
+  host, written only by Claude Code inside that user's guests.
+  - Who can read it: root on the host; the `repose-auth` account (every
+    user's share; only its virtiofsd runs as it, each pivot_rooted into one
+    user's directory); and every guest of that user. No other user's guest
+    has the tag, and hostd never opens the file.
+  - What an agent can do with it: read the token, which it already could in
+    its own guest, or corrupt it, which signs the user out of every guest
+    until the next `/login`. It cannot reach `settings.json` or hooks of
+    another project: only the one file is shared.
+  - Attack surface added: one writable virtio-fs share per guest, served by
+    an unprivileged virtiofsd with `--cache never` and uid translation; a
+    virtiofsd escape lands as `repose-auth` (group `hostd`, like the store's
+    `virtiofsd`), which can read other users' shares, so it is the same
+    class of bug as a store-virtiofsd escape, which already reads guest
+    volumes through group `hostd`.
+  - Lifetime: 30 days after the user's last guest on the host, then removed
+    by hostd's sweep; not in snapshots.
 - **Secret values never leave `secrets.ciphertext` and the guest tmpfs.**
   Not in logs, not in `audit_log`, not in api responses, not in build logs.
 - **Process samples carry names, CPU, memory, bytes. Nothing else.** The

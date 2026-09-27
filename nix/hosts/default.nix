@@ -176,6 +176,17 @@ in
       };
     };
 
+    claudeLoginShare = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Share each user's Claude Code login file into all of that user's
+        guests (DECISIONS I-278). false starts no `virtiofsd-auth@` at the
+        next guest start: guests boot without the share and keep a login of
+        their own; existing share directories stay until hostd's sweep.
+      '';
+    };
+
     buildUser = lib.mkOption {
       type = lib.types.str;
       default = "nixbuild";

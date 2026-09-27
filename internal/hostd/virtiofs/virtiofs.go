@@ -13,6 +13,7 @@ package virtiofs
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/heracraft/repose/internal/hostd/systemd"
 )
@@ -54,4 +55,47 @@ func Start(ctx context.Context, sd systemd.Systemd, cfg Config, guestID, socket 
 // Stop ends a guest's virtiofsd.
 func Stop(ctx context.Context, sd systemd.Systemd, guestID string) error {
 	return sd.Stop(ctx, Unit(guestID))
+}
+
+// AuthConfig is the share of one user's Claude Code login into a guest
+// (DECISIONS I-278): a directory holding only .credentials.json, served
+// read-write by an unprivileged virtiofsd running as its own account, so
+// the store's virtiofsd user can write no credential and this one can read
+// no store. Guest uid and gid 1000 (dev) map to that account both ways;
+// every other guest id is created as it too, since an unprivileged
+// virtiofsd can create files as nobody else.
+type AuthConfig struct {
+	SharedDir   string // /var/lib/repose/users/<user_id>/claude-auth
+	User        string // repose-auth
+	Group       string // repose-auth
+	UID, GID    int    // the account's numeric ids, for the translation
+	Binary      string
+	SocketGroup string // hostd, as for the store share
+}
+
+// AuthUnit is the transient unit serving a guest's login share.
+func AuthUnit(guestID string) string { return "virtiofsd-auth@" + guestID }
+
+// StartAuth launches the login share for a guest; running already is not an
+// error. --cache never: another guest's refresh rewrites the file in place,
+// and a guest must never answer a read from a page it cached before that
+// (experiment B in docs/proposals/2026-09-24-claude-login-shared-folder.md
+// ran this way).
+func StartAuth(ctx context.Context, sd systemd.Systemd, cfg AuthConfig, guestID, socket string) error {
+	bin := cfg.Binary
+	if bin == "" {
+		bin = "virtiofsd"
+	}
+	props := []string{"User=" + cfg.User, "Group=" + cfg.Group, "MemoryMax=64M", "Slice=guests.slice"}
+	argv := []string{bin, "--socket-path", socket, "--shared-dir", cfg.SharedDir, "--sandbox", "namespace", "--cache", "never",
+		"--translate-uid", fmt.Sprintf("map:1000:%d:1", cfg.UID), "--translate-gid", fmt.Sprintf("map:1000:%d:1", cfg.GID)}
+	if cfg.SocketGroup != "" {
+		argv = append(argv, "--socket-group", cfg.SocketGroup)
+	}
+	return sd.Run(ctx, AuthUnit(guestID), props, argv)
+}
+
+// StopAuth ends a guest's login share.
+func StopAuth(ctx context.Context, sd systemd.Systemd, guestID string) error {
+	return sd.Stop(ctx, AuthUnit(guestID))
 }

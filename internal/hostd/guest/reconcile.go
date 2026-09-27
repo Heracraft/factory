@@ -50,6 +50,7 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 		}
 	}
 	m.sweepStaleSnapshots(ctx)
+	m.SweepAuthShares(ctx)
 	m.refreshGuestGauge()
 	return nil
 }
@@ -110,6 +111,9 @@ func (m *Manager) reconcileGuest(ctx context.Context, g *state.Guest, unitActive
 		}
 		if v, _ := m.d.Systemd.IsActive(ctx, virtiofs.Unit(g.GuestID)); v {
 			_ = virtiofs.Stop(ctx, m.d.Systemd, g.GuestID) // a stray virtiofsd; nothing depends on it
+		}
+		if v, _ := m.d.Systemd.IsActive(ctx, virtiofs.AuthUnit(g.GuestID)); v {
+			_ = virtiofs.StopAuth(ctx, m.d.Systemd, g.GuestID) // the same for the login share
 		}
 	}
 }

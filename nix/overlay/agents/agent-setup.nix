@@ -11,7 +11,11 @@
 #          ~/.claude.json mcpServers gains the platform servers from
 #          /etc/repose/mcp.json, user entries winning on name clash
 #          except an entry the platform registered itself in an earlier
-#          base (mcp.json's repose_retired), which is replaced.
+#          base (mcp.json's repose_retired), which is replaced;
+#          ~/.claude.json hasCompletedOnboarding is set to true when the
+#          Claude login share is bind-mounted over .credentials.json and
+#          the key is absent, since first-run onboarding asks for a login
+#          method even when the shared file already holds one (I-278).
 # codex    ~/.codex/config.toml gains `notify = ["repose-hook"]` unless a
 #          `notify` key already exists.
 # opencode ~/.config/opencode/plugins/repose.js is installed if absent.
@@ -20,10 +24,10 @@
 #          ~/.gemini/extensions/repose-machine-guide -> /etc/repose/gemini-extension,
 #          ~/.pi/agent/extensions/repose-machine-guide.js -> /etc/repose/pi-extension.js.
 #          A file or directory the user put at either path is left alone.
-{ lib, writeShellApplication, jq, coreutils, reposeOpencodePlugin }:
+{ lib, writeShellApplication, jq, coreutils, util-linux, reposeOpencodePlugin }:
 writeShellApplication {
   name = "repose-agent-setup";
-  runtimeInputs = [ jq coreutils ];
+  runtimeInputs = [ jq coreutils util-linux ];
   text = ''
     agent="''${1:-}"
     platform_claude=/etc/repose/claude-settings.json
@@ -80,6 +84,16 @@ writeShellApplication {
             "$userjson" "$platform_mcp" | write_atomic "$userjson" 0600
         else
           echo "repose-agent-setup: $userjson is not valid JSON; leaving it alone" >&2
+        fi
+      fi
+      # The shared login (I-278) is signed in already; without this, the
+      # first interactive start still shows the theme and login-method
+      # screens. /login stays available.
+      if findmnt -n --mountpoint "$HOME/.claude/.credentials.json" >/dev/null 2>&1; then
+        if [ ! -s "$userjson" ]; then
+          echo '{"hasCompletedOnboarding":true}' | write_atomic "$userjson" 0600
+        elif jq -e 'has("hasCompletedOnboarding") | not' "$userjson" >/dev/null 2>&1; then
+          jq '.hasCompletedOnboarding = true' "$userjson" | write_atomic "$userjson" 0600
         fi
       fi
     }

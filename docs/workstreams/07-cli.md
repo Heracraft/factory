@@ -363,7 +363,9 @@ $ repose run
    idle 1 second (`tmux display -p '#{pane_current_command}'` is the agent
    and no output for 1 s), then `tmux send-keys -t <slug>:<window> -l
    '<prompt>'` and `send-keys Enter`. If the agent is `claude` and
-   `~/.claude/.credentials.json` is missing in the guest and no
+   `~/.claude/.credentials.json` is missing or empty in the guest (`test -s`;
+   the login share keeps an empty file there until the first login,
+   DECISIONS I-278) and no
    `CLAUDE_CODE_OAUTH_TOKEN` secret is set, attach instead of sending so the
    user can complete the login, and print
 

@@ -69,7 +69,7 @@ repose snapshots create
 repose snapshots list
 ```
 
-Snapshots from the last 7 days are kept, free, and the newest one is always kept. A snapshot holds the whole disk (checkout, home directory, logins made on the machine, installed tools) but not [secrets](/docs/secrets), which live only in memory.
+Snapshots from the last 7 days are kept, free, and the newest one is always kept. A snapshot holds the whole disk (checkout, home directory, logins made on the machine, installed tools) but not [secrets](/docs/secrets), which live only in memory, or your Claude Code login, which is kept outside the machines ([Agents](/docs/agents#log-in)).
 
 To put a project back to a snapshot, stop it first. Stopping takes its own snapshot, so this can be undone:
 
