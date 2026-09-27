@@ -94,20 +94,7 @@
 		},
 		{ name: 'xl', vcpu: 8, ram: '16 GB', disk: '80 GB', hour: '$0.28', cap: '$199', shape: 'burst' }
 	];
-	const frieze: Kind[] = [
-		'sun',
-		'moon',
-		'asterisk',
-		'pinwheel',
-		'arch',
-		'ring',
-		'pie',
-		'star',
-		'halves',
-		'leaf',
-		'sphere',
-		'pill'
-	];
+	const frieze: Kind[] = ['sun', 'arch', 'ring', 'star', 'leaf'];
 	let friezeTurn = $state(frieze.map(() => 0));
 </script>
 
@@ -160,8 +147,8 @@
 		<div class="grid items-center gap-10 md:grid-cols-[minmax(0,1fr)_12rem] lg:gap-16">
 			<div class="min-w-0">
 				<h1 class="hero-h">
-					<span class="line"><span class="bar">Let your agents run</span></span>
-					<span class="line"><span class="bar">with full permissions</span></span>
+					<span class="line">Let your agents run</span>
+					<span class="line">with <span class="bar">full permissions</span></span>
 				</h1>
 				<p class="mt-6 max-w-xl text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
 					One command puts your work on a machine of its own. The agent can wreck it, and a snapshot
@@ -314,18 +301,20 @@
 </main>
 
 <footer>
-	<div class="frieze" aria-hidden="true" use:landOnView>
-		{#each frieze as k, i (i)}
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<span
-				class="frieze-tile land"
-				style="--d: {i * 60}ms"
-				onpointerenter={() => (friezeTurn[i] += 90)}
-				><span class="turn block h-full w-full" style="--a: {friezeTurn[i]}deg"
-					><Shape kind={k} /></span
-				></span
-			>
-		{/each}
+	<div class="border-b border-[var(--rule)]">
+		<div class="frieze mx-auto max-w-5xl px-5" aria-hidden="true" use:landOnView>
+			{#each frieze as k, i (i)}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<span
+					class="frieze-tile land"
+					style="--d: {i * 60}ms"
+					onpointerenter={() => (friezeTurn[i] += 90)}
+					><span class="turn block h-full w-full" style="--a: {friezeTurn[i]}deg"
+						><Shape kind={k} /></span
+					></span
+				>
+			{/each}
+		</div>
 	</div>
 	<div
 		class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-5 py-8 text-sm text-zinc-600 dark:text-zinc-400"
@@ -341,8 +330,8 @@
 </footer>
 
 <style>
-	/* The headline: bold serif, a thick amber bar under each line, drawn
-	   one after the other on load. */
+	/* The headline: bold serif, one thick amber bar under "full
+	   permissions", drawn in on load. */
 	.hero-h {
 		font-size: clamp(2.4rem, 5vw, 3.5rem);
 		font-weight: 700;
@@ -353,10 +342,7 @@
 	.hero-h .line {
 		display: block;
 	}
-	.hero-h .line + .line {
-		margin-top: 0.12em;
-	}
-	/* Inline, so a line that wraps on a phone gets a bar under each part. */
+	/* Inline, so if it wraps on a phone each part gets its bar. */
 	.hero-h .bar {
 		padding-bottom: 0.1em;
 		line-height: 1.22;
@@ -366,10 +352,7 @@
 	}
 	@media (prefers-reduced-motion: no-preference) {
 		.hero-h .bar {
-			animation: bar 0.7s cubic-bezier(0.65, 0, 0.35, 1) 0.25s both;
-		}
-		.hero-h .line + .line .bar {
-			animation-delay: 0.55s;
+			animation: bar 0.8s cubic-bezier(0.65, 0, 0.35, 1) 0.35s both;
 		}
 	}
 	@keyframes bar {
@@ -421,18 +404,14 @@
 		flex: none;
 	}
 
-	/* The footer's row of shapes, sitting on the footer's rule. */
+	/* The footer's few shapes, standing on the footer's rule. */
 	.frieze {
 		display: flex;
 		align-items: flex-end;
-		gap: clamp(6px, 1.2vw, 18px);
-		overflow: hidden;
-		padding: 0 clamp(8px, 1.5vw, 24px);
-		border-bottom: 1px solid var(--rule);
+		gap: clamp(8px, 1.5vw, 16px);
 	}
 	.frieze-tile {
-		flex: 1 0 clamp(44px, 7vw, 112px);
-		max-width: 112px;
+		width: clamp(36px, 6vw, 56px);
 		aspect-ratio: 1;
 	}
 </style>

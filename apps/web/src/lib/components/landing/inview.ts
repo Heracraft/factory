@@ -19,7 +19,7 @@ export function landOnView(node: HTMLElement) {
 			node.dataset.land = 'in';
 			io.disconnect();
 		},
-		{ threshold: 0.4 }
+		{ threshold: 0.15 }
 	);
 	io.observe(node);
 	return { destroy: () => io.disconnect() };
