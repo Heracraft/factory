@@ -75,12 +75,12 @@ func (c Config) PlanPrice(plan string) string {
 
 // PlanForPrice is the plan a Paddle price id sells; "" for an unknown one.
 func (c Config) PlanForPrice(priceID string) string {
-	switch {
-	case priceID == "":
+	switch priceID {
+	case "":
 		return ""
-	case priceID == c.PriceSolo:
+	case c.PriceSolo:
 		return Solo.ID
-	case priceID == c.PricePro:
+	case c.PricePro:
 		return Pro.ID
 	}
 	return ""

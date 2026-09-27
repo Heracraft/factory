@@ -134,7 +134,7 @@ func (p *Paddle) do(ctx context.Context, method, path string, body any, out any)
 			continue
 		}
 		raw, err := io.ReadAll(io.LimitReader(res.Body, 4<<20))
-		res.Body.Close()
+		_ = res.Body.Close()
 		if err != nil {
 			return fmt.Errorf("paddle: read %s %s: %w", method, path, err)
 		}

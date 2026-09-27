@@ -44,7 +44,7 @@ func event(kind string, data map[string]any) []byte {
 func subData(id string, a account, priceID, status string, extra map[string]any) map[string]any {
 	d := map[string]any{"id": id, "status": status, "customer_id": "ctm_" + a.Handle, "currency_code": "USD", "next_billed_at": "2026-11-01T00:00:00Z",
 		"current_billing_period": map[string]any{"starts_at": "2026-10-01T00:00:00Z", "ends_at": "2026-11-01T00:00:00Z"},
-		"custom_data": map[string]any{"user_id": a.UserID.String()},
+		"custom_data":            map[string]any{"user_id": a.UserID.String()},
 		"items": []any{map[string]any{"status": "active", "quantity": 1, "price": map[string]any{"id": priceID, "product_id": "pro_x"},
 			"trial_dates": map[string]any{"starts_at": "2026-10-01T00:00:00Z", "ends_at": "2026-10-08T00:00:00Z"}}}}
 	for k, v := range extra {

@@ -53,13 +53,18 @@ func (s *Server) registerUserRoutes() {
 	s.route(m, "GET /v1/projects/{id}/questions", a(s.listProjectQuestions))
 	s.route(m, "POST /v1/projects/{id}/questions/{qid}/answer", a(s.answerQuestion))
 	s.route(m, "POST /v1/projects/{id}/questions/{qid}/cancel", a(s.cancelQuestion))
-	// Usage and billing
+	// Usage and billing (DECISIONS I-289). POST /v1/billing/waitlist and
+	// GET /v1/public/seats are the seats workstream's (I-290).
 	s.route(m, "GET /v1/usage", a(s.usage))
+	s.route(m, "GET /v1/billing", a(s.billingOverview))
+	s.route(m, "POST /v1/billing/checkout", a(s.billingCheckout))
+	s.route(m, "POST /v1/billing/plan", a(s.billingPlan))
+	s.route(m, "POST /v1/billing/cancel", a(s.billingCancel))
+	s.route(m, "POST /v1/billing/resume", a(s.billingResume))
 	s.route(m, "POST /v1/billing/portal", a(s.billingPortal))
-	s.route(m, "POST /v1/billing/setup", a(s.billingSetup))
 	s.route(m, "GET /v1/billing/invoices", a(s.billingInvoices))
-	// Stripe authenticates itself with the Stripe-Signature header, so the
-	// webhook carries no bearer token (09-billing.md §5.6).
+	// Paddle authenticates itself with the Paddle-Signature header, so the
+	// webhook carries no bearer token.
 	s.route(m, "POST /v1/billing/webhook", s.billingWebhook)
 }
 

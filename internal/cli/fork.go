@@ -101,7 +101,7 @@ func ForkCmd(ctx context.Context, e *Env, opts ForkOptions) error {
 	// only spares a snapshot that nothing would use.
 	if me, err := e.Client.GetMe(ctx); err == nil && me.Limits.Projects > 0 {
 		if projects, err := e.Client.ListProjects(ctx); err == nil && len(projects)+opts.Count > me.Limits.Projects {
-			return exitf(ExitGeneric, "You have %d of %d projects, and %d more would make %d. Destroy some (`repose ls` lists them), or add a card and pay your first invoice to raise the limit.",
+			return exitf(ExitGeneric, "You have %d of %d projects, and %d more would make %d. Destroy some (`repose ls` lists them), or upgrade your plan at https://repose.herakraft.co/billing.",
 				len(projects), me.Limits.Projects, opts.Count, len(projects)+opts.Count)
 		}
 	}

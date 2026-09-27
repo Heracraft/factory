@@ -43,9 +43,9 @@ func (r *Refusal) Error() string { return "payment_required: " + r.Message }
 
 // Request is what the caller is about to do: start a machine of Class
 // (empty when no memory is asked for), allocate AddDiskBytes more disk
-// (0 when none), on behalf of Project (uuid.Nil for a new one), which is
-// excluded from the running memory and allocated disk it is checked
-// against.
+// (0 when none; a new volume's size, or the growth of an existing one),
+// on behalf of Project (uuid.Nil for a new one), which is excluded from
+// the running memory it is checked against.
 type Request struct {
 	Class        string
 	AddDiskBytes int64
@@ -144,7 +144,9 @@ func (g *Gate) check(ctx context.Context, u *store.User, req Request) (*Refusal,
 		}
 	}
 	if req.AddDiskBytes > 0 {
-		allocated, _, err := AllocatedDisk(ctx, g.pool, u.ID, req.Project)
+		// Every live project counts, the one being grown included at its
+		// current size: AddDiskBytes is the growth.
+		allocated, _, err := AllocatedDisk(ctx, g.pool, u.ID, uuid.Nil)
 		if err != nil {
 			return nil, err
 		}

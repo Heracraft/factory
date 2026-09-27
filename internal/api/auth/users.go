@@ -222,20 +222,16 @@ func (p *Provisioner) EnsureUser(ctx context.Context, sub string) (*store.User, 
 		if id.GithubLogin != "" {
 			gh = &id.GithubLogin
 		}
-		// The trial credit is a credit_ledger row, not a column the row is
-		// born with: sum(credit_ledger.cents) is the balance of record and
-		// users.trial_credit_cents is the trigger-maintained projection of
-		// it (09-billing.md §5.3, DECISIONS I-78). The two go in one
-		// transaction so a signup cannot leave a balance that disagrees
-		// with its ledger. billing_anchor is the signup instant the billing
-		// period is counted from (§5.1).
+		// A new account has no plan and no credit (DECISIONS I-289):
+		// billing_status none until a checkout's webhook arrives. The
+		// project and xl limits on the row matter only for an exempt
+		// account (a subscribed one has its plan's); they start at Solo's
+		// project count and no xl, which `repose-admin users limits`
+		// raises.
 		err := db.InTx(ctx, p.pool, func(tx db.Tx) error {
-			if _, err := tx.Exec(ctx, `insert into users (id, logto_sub, handle, email, github_login, billing_status, trial_credit_cents, project_limit, xl_limit, billing_anchor)
-				values ($1, $2, $3, $4, $5, 'trial', 0, $6, $7, now())`,
-				uid, sub, handle, email, gh, billing.ProjectLimitTrial, billing.XLLimitTrial); err != nil {
-				return err
-			}
-			_, err := billing.Credit(ctx, tx, uid, billing.TrialCreditCents, billing.ReasonTrial, "signup:"+uid.String())
+			_, err := tx.Exec(ctx, `insert into users (id, logto_sub, handle, email, github_login, billing_status, trial_credit_cents, project_limit, xl_limit, billing_anchor)
+				values ($1, $2, $3, $4, $5, 'none', 0, $6, 0, now())`,
+				uid, sub, handle, email, gh, billing.Solo.ProjectLimit)
 			return err
 		})
 		if err == nil {

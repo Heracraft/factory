@@ -7,6 +7,7 @@ import (
 
 	"github.com/heracraft/repose/internal/api/ops"
 	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/db"
 )
 
@@ -69,7 +70,17 @@ func (s *Server) restoreSnapshot(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 	start := body.Start == nil || *body.Start
-	if err := s.billingGate(u); err != nil {
+	// Restoring in place needs the memory to start; as a new project it
+	// allocates a volume too.
+	req := billing.Request{Project: src.ID}
+	if start {
+		req.Class = src.Class
+	}
+	if body.AsNewProject != nil {
+		req.AddDiskBytes = src.VolumeBytes
+		req.Project = uuid.Nil
+	}
+	if err := s.gate(r, u, req); err != nil {
 		return err
 	}
 	// A held project's snapshot does not start anywhere, as itself or as a

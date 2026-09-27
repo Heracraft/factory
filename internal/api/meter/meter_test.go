@@ -35,16 +35,9 @@ func seed(t *testing.T, pool *db.Pool, class string, created time.Time) (uuid.UU
 	return pid, gid
 }
 
-type pusher struct{ pushed []billing.UsageRow }
-
-func (p *pusher) PushUsage(ctx context.Context, r billing.UsageRow) (string, error) {
-	p.pushed = append(p.pushed, r)
-	return "ur_" + r.Hour.Format(time.RFC3339), nil
-}
-
 // One large guest running 10 hours of a day with 40 GB and 3 GB egress:
-// guest 10 x 14 = 140 cents, storage 40 GB x 10 cents / 720 h over 24 h =
-// 13.33 cents (13 whole cents by the remainder rule), egress 0.
+// 36000 running seconds, 3 GB of egress, and no cents anywhere (plan-v1,
+// DECISIONS I-289: the plan is charged by Paddle, not the hour).
 func TestIngestAndSyntheticDayRollup(t *testing.T) {
 	pool := testdb.Open(t)
 	ctx := context.Background()
@@ -86,8 +79,7 @@ func TestIngestAndSyntheticDayRollup(t *testing.T) {
 		t.Fatalf("latest: %v %v", ok, err)
 	}
 	_ = latest
-	p := &pusher{}
-	r := billing.NewRollup(pool, p, m, log)
+	r := billing.NewRollup(pool, m, log)
 	r.Now = func() time.Time { return day.Add(25 * time.Hour) }
 	var rows []billing.Row
 	for h := 0; h < 24; h++ {
@@ -107,26 +99,20 @@ func TestIngestAndSyntheticDayRollup(t *testing.T) {
 	if running != 10*3600 {
 		t.Fatalf("running seconds %d", running)
 	}
-	if guestCents != 140 || storageCents != 13 || egressCents != 0 || cost != 153 {
-		t.Fatalf("guest=%d storage=%d egress=%d cost=%d", guestCents, storageCents, egressCents, cost)
+	if guestCents != 0 || storageCents != 0 || egressCents != 0 || cost != 0 {
+		t.Fatalf("plan-v1 rows carry no price: guest=%d storage=%d egress=%d cost=%d", guestCents, storageCents, egressCents, cost)
 	}
 	if egress < 3<<30-1000 || egress > 3<<30 {
 		t.Fatalf("egress bytes %d", egress)
-	}
-	// Stripe push records the id per row (rows with cost).
-	var pushed int
-	_ = pool.QueryRow(ctx, "select count(*) from usage_hours where project_id = $1 and stripe_usage_record_id is not null", pid).Scan(&pushed)
-	if pushed == 0 || len(p.pushed) != pushed {
-		t.Fatalf("pushed %d rows, pusher saw %d", pushed, len(p.pushed))
 	}
 	// Re-running an hour changes nothing.
 	if _, err := r.Hour(ctx, day.Add(9*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	var cost2 int64
-	_ = pool.QueryRow(ctx, "select sum(cost_cents) from usage_hours where project_id = $1", pid).Scan(&cost2)
-	if cost2 != cost {
-		t.Fatalf("rollup not idempotent: %d then %d", cost, cost2)
+	var running2 int64
+	_ = pool.QueryRow(ctx, "select sum(running_seconds) from usage_hours where project_id = $1", pid).Scan(&running2)
+	if running2 != running {
+		t.Fatalf("rollup not idempotent: %d then %d", running, running2)
 	}
 	// A running project with no samples for an hour is a gap with zeros.
 	pid2, _ := seed(t, pool, "small", day)
@@ -151,7 +137,7 @@ func TestIngestAndSyntheticDayRollup(t *testing.T) {
 	ing2 := meter.New(pool2, m, log)
 	_, gid2 := seed(t, pool2, "xl", day)
 	ing2.OnSamples(ctx, hostID, &hostdv1.Samples{Ts: day.Add(30 * time.Minute).Unix(), Guests: []*hostdv1.GuestSample{{GuestId: gid2.String(), State: "running", Class: "xl"}}})
-	r2 := billing.NewRollup(pool2, billing.Disabled{}, m, log)
+	r2 := billing.NewRollup(pool2, m, log)
 	r2.Now = func() time.Time { return day.Add(3*time.Hour + 5*time.Minute) }
 	n, err := r2.Due(ctx)
 	if err != nil || n != 3 {

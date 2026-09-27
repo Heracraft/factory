@@ -110,7 +110,7 @@ func (f *fakePaddle) AddTransaction(customerID, subID, status string, total, tax
 	f.txns[id] = map[string]any{"id": id, "status": status, "customer_id": customerID, "subscription_id": subID, "currency_code": "USD", "origin": "subscription_recurring",
 		"invoice_id": "inv_" + id, "invoice_number": "1234-" + id[len(id)-4:], "created_at": "2026-10-01T00:00:00Z", "billed_at": "2026-10-01T00:00:00Z",
 		"billing_period": map[string]any{"starts_at": "2026-10-01T00:00:00Z", "ends_at": "2026-11-01T00:00:00Z"},
-		"details": map[string]any{"totals": map[string]any{"subtotal": fmt.Sprint(total - tax), "tax": fmt.Sprint(tax), "total": fmt.Sprint(total), "grand_total": fmt.Sprint(total)}}}
+		"details":        map[string]any{"totals": map[string]any{"subtotal": fmt.Sprint(total - tax), "tax": fmt.Sprint(tax), "total": fmt.Sprint(total), "grand_total": fmt.Sprint(total)}}}
 	return id
 }
 
