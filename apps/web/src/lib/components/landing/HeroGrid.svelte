@@ -60,7 +60,9 @@
 				click++;
 				turn(tiles.indexOf('ring'));
 			} else if (b.kind === 'wreck') wrecked = true;
-			else if (b.kind === 'restore') wrecked = false;
+			// A picture that restarts (a resize, a scroll back) begins with
+			// 'run', so the grid is whole again even if it missed 'restore'.
+			else wrecked = false;
 		});
 	});
 
@@ -70,20 +72,11 @@
 			return;
 		}
 		const raf = requestAnimationFrame(() => (landed = true));
-		const turnable = tiles.flatMap((t, i) => (t !== 'agent' && TURN[t] ? [i] : []));
-		let last = -1;
-		let n = 0;
+		// At rest only the agent tile moves: the next agent's mark, every
+		// few seconds. Turns come from a hover or a snapshot.
 		const iv = setInterval(() => {
-			if (wrecked) return;
-			n++;
-			if (n % 2) who = (who + 1) % agentMarks.length;
-			else {
-				let i = last;
-				while (i === last) i = turnable[Math.floor(Math.random() * turnable.length)];
-				last = i;
-				turn(i);
-			}
-		}, 1600);
+			if (!wrecked) who = (who + 1) % agentMarks.length;
+		}, 3200);
 		return () => {
 			cancelAnimationFrame(raf);
 			clearInterval(iv);

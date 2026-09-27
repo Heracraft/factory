@@ -88,17 +88,8 @@
 	>
 {/snippet}
 
-<h2 class="landing-h text-3xl sm:text-4xl">Five agents and a full toolchain on first boot</h2>
-<p class="mt-2 max-w-2xl text-zinc-600 dark:text-zinc-400">
-	The agent has sudo to install anything else, and
-	<code
-		class="rounded-xs bg-[var(--sunken)] px-1 py-px text-[0.88em] whitespace-nowrap text-zinc-800 dark:text-zinc-200"
-		>repose config add</code
-	> keeps it on every rebuild.
-</p>
-
 <div
-	class="ready mt-8 rounded-xs border border-[var(--rule)] bg-[var(--sunken)]"
+	class="ready mt-8 rounded-sm border border-[var(--rule)] bg-[var(--sunken)]"
 	role="img"
 	aria-label="A new machine has five coding agents installed: Claude Code, Codex CLI, opencode, Gemini CLI and pi. Also Node.js 24, pnpm, Python 3.12, Go, rustup, Docker, Nix, Chromium and everyday tools. A shell on the machine: typing pgcli, which is not installed, prints how to install it with nix profile add nixpkgs#pgcli or keep it on every rebuild with repose config add pgcli; after the install, pgcli --version prints 4.6.0."
 >

@@ -340,14 +340,6 @@
 {/snippet}
 
 <div class="oc">
-	<h2 class="landing-h text-3xl sm:text-4xl">Your working state, in one command</h2>
-	<p class="mt-3 max-w-2xl leading-relaxed text-zinc-600 dark:text-zinc-400">
-		Run <code
-			class="rounded-xs bg-[var(--sunken)] px-1 py-px text-[0.88em] whitespace-nowrap text-zinc-800 dark:text-zinc-200"
-			>repose run</code
-		> in any checkout and your cloud machine picks up where your laptop is, down to the uncommitted edits.
-	</p>
-
 	<div class="pic" role="img" aria-label={label} bind:this={pic}>
 		<div class="side" aria-hidden="true">{@render panel('laptop')}</div>
 
@@ -365,9 +357,6 @@
 </div>
 
 <style>
-	.oc h2 {
-		text-wrap: balance;
-	}
 	.pic {
 		--accent: var(--color-blue-600);
 		--ink: var(--color-zinc-800);
@@ -377,7 +366,6 @@
 		position: relative;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
-		margin-top: 36px;
 		min-width: 0;
 	}
 	.side {

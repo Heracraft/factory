@@ -170,26 +170,30 @@ fires; `node_modules/` stays behind, struck. Keep it animated.
 
 The owner brought in a slide template's look (flat geometric shapes in
 saturated colours, heavy headings over a thick bar) and asked for it on top
-of the house style, not in place of it. An earlier merge that let the
-shapes take over the page, animations included, was sent back. The rules:
+of the house style, not in place of it. Two attempts were sent back: one let
+the shapes take over the page, the next added them at the top and bottom
+and underlined every heading. The page is one system:
 
-- The house style stays the base: serif headings, neutral paper, hairline
-  panels, the anime.js pictures untouched. The shapes are an accent.
+- **Every section is built the same way**: a header (bold serif heading,
+  one sentence) and then its picture on a stage, the sunken hairline panel
+  the grid cards already use. The hero picture and "Your working state"
+  sit on a stage too, which keeps the headline apart from the picture.
+- **Shapes appear once per section, in one role.** The hero has the shape
+  grid; a picture section has a trio of shapes at the right of its header
+  (`SectionHead.svelte`); the steps and the pricing cards carry theirs in
+  the content, so their headers have none; the footer has the frieze. No
+  two neighbouring sections use the same shape.
+- **The amber bar marks the headline and the prices, nothing else.** Section
+  headings are bold serif with no bar.
+- **One motion vocabulary**: shapes land in sequence when they come into
+  view, and turn a quarter on hover. The hero grid also follows the hero
+  picture (`Hero.svelte`'s `onbeat`): it clicks at each snapshot, tumbles
+  and greys at the wreck (the agent tile turns red), and springs back at
+  the restore; its agent tile cycles the five agents' marks. It does not
+  move on its own otherwise. No labels on any of it. Under
+  `prefers-reduced-motion` every shape is still and whole.
 - The shapes live in `landing/Shape.svelte` and draw only from the `--sh-*`
   tokens in `layout.css`. The app's own pages never use them.
-- Landing headings are bold serif over an amber bar (`.landing-h`); the
-  hero's two lines each get their own bar, drawn in on load.
-- The shape grid beside the headline is not decoration alone: it follows
-  the hero picture (`Hero.svelte`'s `onbeat`). It clicks at each snapshot,
-  tumbles and loses its colour at the wreck (the agent tile turns red), and
-  springs back at the restore. One tile cycles through the five agents'
-  marks. No labels on any of it.
-- Pricing is a card per size with its shape bleeding off the corner, the
-  bar, the hourly price large and the monthly cap under it.
-- The footer carries a row of shapes on its rule.
-- Motion is calm: tiles land in sequence, turn a quarter at a time, and
-  settle with a small overshoot. Nothing drifts or fades to half-opacity at
-  rest. Under `prefers-reduced-motion` every shape is still and whole.
 
 ## Where terminals are allowed
 

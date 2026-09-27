@@ -154,29 +154,42 @@
 }
 
 @layer components {
-	/* A landing heading: bold serif over a thick amber bar, the one loud
-	   accent the landing borrows from its shape set. The bar draws in as
-	   the heading scrolls into view where the browser supports
-	   scroll-driven animation, and is simply there elsewhere. */
+	/* A landing section heading: bold serif, a size up from the app's.
+	   The amber bar is kept for the hero's headline and the prices
+	   (docs/LANDING.md, "Shape language"). */
 	.landing-h {
-		@apply font-bold tracking-[-0.015em] text-balance;
-		width: fit-content;
-		max-width: 100%;
-		padding-bottom: 0.32em;
-		background: linear-gradient(var(--sh-amber), var(--sh-amber)) no-repeat 0 100% / 100% 0.14em;
+		@apply text-3xl font-bold tracking-[-0.015em] text-balance sm:text-4xl;
 	}
-	@supports (animation-timeline: view()) {
-		@media (prefers-reduced-motion: no-preference) {
-			.landing-h {
-				animation: landing-bar linear both;
-				animation-timeline: view();
-				animation-range: entry 40% entry 100%;
-			}
-		}
+	/* The panel a landing picture sits on: sunken, hairline, as the grid
+	   cards' pictures already do, so a picture reads apart from its
+	   header. */
+	.landing-stage {
+		@apply rounded-sm border;
+		border-color: var(--rule);
+		background-color: var(--sunken);
+		padding: clamp(1rem, 3vw, 2rem);
 	}
-	@keyframes landing-bar {
-		from {
-			background-size: 0% 0.14em;
+
+	/* The landing's one motion for shapes: a group lands, one shape after
+	   another (landOnView in landing/inview.ts sets data-land), and a
+	   shape turns a quarter on hover (.turn, with --a set by the page). */
+	[data-land] .land {
+		transition:
+			opacity 0.3s ease-out var(--d, 0ms),
+			transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) var(--d, 0ms);
+	}
+	[data-land='out'] .land {
+		opacity: 0;
+		transform: translateY(30%) scale(0.5);
+	}
+	.turn {
+		transform: rotate(var(--a, 0deg));
+		transition: transform 0.9s cubic-bezier(0.65, 0, 0.35, 1);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		[data-land] .land,
+		.turn {
+			transition: none;
 		}
 	}
 
