@@ -72,8 +72,8 @@ palette, not chips or segmented groups:
 ## The landing's exception
 
 The landing page adds a shape set in the colours its pictures already
-used (the `--sh-*` tokens: zinc greys and ink, the blue accent, Claude
-Code's orange `#d97757`, and red for a wreck), an orange bar under its
+used (the `--sh-*` tokens: zinc greys and ink and the blue accent), a
+blue bar under its
 headline and prices, and a sphere drawn with SVG noise and a gradient.
 Those exist only on `/` and are
 described in `LANDING.md`, "Shape language". Every other page follows the

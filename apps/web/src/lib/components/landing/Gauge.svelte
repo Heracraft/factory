@@ -2,16 +2,15 @@
   A circle filled to a fraction, clockwise from twelve o'clock: the pie of
   the shape set used as a measure, the way Isotype lets a shape's fill carry
   a quantity: the steps count up with it (a third, two thirds, done). Grey
-  by default; the page gives orange only to the one that says "done". A
+  by default; the page gives the blue accent only to the one that says
+  "done". A
   hairline ring marks the whole, so a third reads as a third. Always
   decorative: the number it shows is also in the text beside it.
 -->
 <script lang="ts">
-	let { fraction, tone = 'neutral' }: { fraction: number; tone?: 'warm' | 'accent' | 'neutral' } =
-		$props();
+	let { fraction, tone = 'neutral' }: { fraction: number; tone?: 'accent' | 'neutral' } = $props();
 
 	const FILL = {
-		warm: 'var(--sh-warm)',
 		accent: 'var(--sh-accent)',
 		neutral: 'var(--sh-grey)'
 	};

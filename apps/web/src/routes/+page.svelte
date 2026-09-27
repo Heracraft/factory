@@ -5,7 +5,6 @@
 	import { signIn } from '$lib/auth.svelte';
 	import Logo from '$lib/components/Logo.svelte';
 	import Hero from '$lib/components/landing/Hero.svelte';
-	import AgentColumn, { type Beat } from '$lib/components/landing/AgentColumn.svelte';
 	import Gauge from '$lib/components/landing/Gauge.svelte';
 	import Units from '$lib/components/landing/Units.svelte';
 	import Shape, { type Kind, type Tone } from '$lib/components/landing/Shape.svelte';
@@ -22,8 +21,6 @@
 	const SOURCE_URL = 'https://github.com/Heracraft/repose';
 
 	let signingIn = $state(false);
-	let beat: { kind: Beat; n: number } | undefined = $state();
-	let beats = 0;
 	let copied = $state(false);
 
 	onMount(() => {
@@ -95,12 +92,12 @@
 	// Mostly grey, with a spot of orange or blue every few shapes, the
 	// way the pictures use colour.
 	const frieze: [Kind, Tone][] = [
-		['sun', 'warm'],
+		['sun', 'neutral'],
 		['moon', 'neutral'],
 		['asterisk', 'neutral'],
 		['pinwheel', 'accent'],
 		['arch', 'neutral'],
-		['ring', 'warm'],
+		['ring', 'accent'],
 		['star', 'accent'],
 		['halves', 'neutral'],
 		['leaf', 'neutral'],
@@ -194,9 +191,8 @@
 				</div>
 			</div>
 		</div>
-		<div class="landing-stage mt-20 md:mt-12">
-			<AgentColumn {beat} />
-			<Hero onbeat={(kind) => (beat = { kind, n: ++beats })} />
+		<div class="landing-stage mt-10 md:mt-12">
+			<Hero />
 		</div>
 	</section>
 
@@ -253,7 +249,7 @@
 								<span class="step-mark land" style="--d: {i * 110}ms" aria-hidden="true"
 									><Gauge
 										fraction={(i + 1) / steps.length}
-										tone={i === steps.length - 1 ? 'warm' : 'neutral'}
+										tone={i === steps.length - 1 ? 'accent' : 'neutral'}
 									/></span
 								>{step.title}
 							</h3>
@@ -329,7 +325,7 @@
 </footer>
 
 <style>
-	/* The headline: bold serif, one thick orange bar under "full
+	/* The headline: bold serif, one thick blue bar under "full
 	   permissions", drawn in on load. */
 	.hero-h {
 		font-size: clamp(2.4rem, 5vw, 3.5rem);
@@ -347,7 +343,7 @@
 		line-height: 1.22;
 		-webkit-box-decoration-break: clone;
 		box-decoration-break: clone;
-		background: linear-gradient(var(--sh-warm), var(--sh-warm)) no-repeat 0 100% / 100% 0.13em;
+		background: linear-gradient(var(--sh-accent), var(--sh-accent)) no-repeat 0 100% / 100% 0.13em;
 	}
 	@media (prefers-reduced-motion: no-preference) {
 		.hero-h .bar {
@@ -388,7 +384,7 @@
 		gap: 0.6rem;
 		margin-top: 1.5rem;
 		padding-top: 1.25rem;
-		background: linear-gradient(var(--sh-warm), var(--sh-warm)) no-repeat 0 0 / 100% 4px;
+		background: linear-gradient(var(--sh-accent), var(--sh-accent)) no-repeat 0 0 / 100% 4px;
 	}
 
 	.step-mark {

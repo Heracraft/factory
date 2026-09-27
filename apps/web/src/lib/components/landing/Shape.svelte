@@ -3,9 +3,8 @@
   100 x 100 box, and a sphere textured with SVG noise so no image is
   fetched. They appear together once, in the footer's row, and the ring
   alone is the logo's mark. Colours are the pictures' own, by role
-  (the --sh-* tokens in routes/layout.css): two greys, ink, the blue
-  accent and Claude Code's orange, nothing else. Each shape has one main
-  tone (neutral, accent or warm); its other parts stay grey or ink, so a
+  (the --sh-* tokens in routes/layout.css): two greys, ink and the blue
+  accent, nothing else. Each shape has one main tone (neutral or accent); its other parts stay grey or ink, so a
   group is mostly grey with a spot of colour, the way the pictures are
   (docs/LANDING.md, "Shape language"). The star is Gemini's
   sparkle (marks.ts), so the one form is both a shape and an agent's
@@ -25,26 +24,25 @@
 		| 'sun'
 		| 'moon'
 		| 'pinwheel';
-	export type Tone = 'neutral' | 'accent' | 'warm';
+	export type Tone = 'neutral' | 'accent';
 
 	// A shape's tone when the page doesn't pick one.
 	const TONE: Record<Kind, Tone> = {
 		pill: 'neutral',
 		halves: 'neutral',
 		asterisk: 'neutral',
-		ring: 'warm',
+		ring: 'accent',
 		star: 'accent',
 		arch: 'neutral',
-		sphere: 'warm',
+		sphere: 'neutral',
 		leaf: 'neutral',
-		sun: 'warm',
+		sun: 'neutral',
 		moon: 'neutral',
 		pinwheel: 'neutral'
 	};
 	const MAIN: Record<Tone, string> = {
 		neutral: 'var(--sh-grey)',
-		accent: 'var(--sh-accent)',
-		warm: 'var(--sh-warm)'
+		accent: 'var(--sh-accent)'
 	};
 </script>
 
@@ -77,7 +75,7 @@
 		<path d="M50 50 V16 A34 34 0 0 0 16 50 Z" fill="var(--sh-paper)" />
 		<path d="M50 50 H84 A34 34 0 0 0 50 16 Z" fill="var(--sh-light)" />
 		<path d="M50 50 H16 A34 34 0 0 0 50 84 Z" fill="var(--sh-ink)" />
-		<path d="M50 50 V84 A34 34 0 0 0 84 50 Z" fill="var(--sh-accent)" />
+		<path d="M50 50 V84 A34 34 0 0 0 84 50 Z" fill="var(--sh-grey)" />
 	{:else if kind === 'star'}
 		<path d={SPARKLE} transform="translate(-2 -2) scale(4.3333)" fill="var(--main)" />
 	{:else if kind === 'arch'}

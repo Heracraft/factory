@@ -95,16 +95,12 @@
 		--rule: #e6e6e3;
 		--rule-strong: #cfcfcb;
 
-		/* The landing's shapes (Shape.svelte, Gauge, Units, the agents)
-		   and its bar use the palette the landing's pictures were drawn in before the
-		   shapes came, and nothing else (docs/LANDING.md, "Shape
-		   language"): the neutrals, the one blue accent, Claude Code's
-		   orange, and the red a wreck turns things, each at the value the
-		   pictures use (Hero.svelte's --accent, --claude, --faint, --stop). */
-		/* The accent a step lighter than the pictures' blue-600 lines, so a
-		   filled blue weighs what the orange does. */
+		/* The landing's shapes (Shape.svelte, Gauge, Units) and its bar use
+		   the palette the landing's pictures were drawn in, and nothing
+		   else (docs/LANDING.md, "Shape language"): the neutrals and the
+		   one blue accent. No brand colour of any agent: the product is a
+		   machine, not an AI vendor's accessory. */
 		--sh-accent: var(--color-blue-500);
-		--sh-warm: #d97757;
 		/* Mid values only: a grey that holds its own on paper, a light one
 		   that still reads, and ink kept to small details (a hole, a
 		   diamond's top), never a whole shape. */
@@ -173,8 +169,7 @@
 	}
 	/* The panel a landing picture sits on: sunken, hairline, as the grid
 	   cards' pictures already do, so a picture reads apart from its
-	   header. A stage is also what the hero's agents stand on
-	   (AgentColumn.svelte). */
+	   header. */
 	.landing-stage {
 		@apply relative rounded-sm border;
 		border-color: var(--rule);

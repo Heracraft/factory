@@ -181,55 +181,45 @@ and underlined every heading. The page is one system:
 - **A shape encodes something, or it isn't there.** Owner, 2026-09-27:
   shapes placed "just to have shapes" read as gimmicks, however well they
   are coloured or anchored. The model is Isotype: a shape stands for a
-  thing, and its fill or count carries a quantity. The landing has three:
-  - *The agents* (`AgentColumn.svelte`): "Let your agents run", beside
-    the headline, as the five agents on every machine, each a circle tile
-    with its mark, standing in a column on the hero stage's top edge (a
-    row on a phone), the one the picture shows (Claude Code) at the foot.
-    That tile fills with its orange when the picture's agent appears,
-    turns red the moment it turns rogue and goes back at the restore; all
-    hop at a snapshot. Before the timeline runs, and under reduced motion,
-    it matches the picture's still frame (rogue). Nothing else moves.
+  thing, and its fill or count carries a quantity. The landing has two:
   - *Progress* (`Gauge.svelte`): each of the three steps is a circle
-    filled a third, two thirds, then whole; grey, and orange for the last,
-    "done", so the bottom half is not all orange.
+    filled a third, two thirds, then whole; grey, and the blue accent for
+    the last, "done".
   - *Capacity* (`Units.svelte`): each pricing card counts its vCPUs in
     small squares (2, 4, 8), Isotype's own form for a quantity, so the
     sizes compare at a glance.
-  Section headers carry no shapes: there is nothing there for one to say.
+  The hero and the section headers carry no shapes: there is nothing
+  there for one to say. A column of agent logos beside the headline was
+  tried and dropped (owner, 2026-09-27): a list of logos is a gimmick, and
+  repose is a machine for any work, not only AI.
   The footer's row is the one place the whole set appears, as a sign-off;
   it fits the width, and has no pie (it would read as a gauge).
-- **Anchored, never floating.** The agents stand on the hero stage's
-  edge, the gauges sit in their line or card, the footer's shapes stand on
-  its rule.
-- **The orange bar marks "full permissions" and the prices, nothing else.**
+- **Anchored, never floating.** The gauges and counts sit in their line
+  or card, the footer's shapes stand on its rule.
+- **The blue bar marks "full permissions" and the prices, nothing else.**
   Section headings are bold serif with no bar.
-- **One motion vocabulary**: a group rises into place when it comes into
-  view. The only other motion is the agents following the picture, above.
-  No labels on any of it. Under `prefers-reduced-motion` every shape is
+- **One motion**: a group rises into place when it comes into view.
+  Nothing else moves. No labels on any of it. Under `prefers-reduced-motion` every shape is
   still and whole.
-- **The palette the landing had before the shapes, and nothing else.**
-  The pictures were drawn in neutrals, one blue accent and Claude Code's
-  orange, with red for what a wreck breaks. The shapes use exactly those,
-  at the pictures' own values (`--sh-*` in `layout.css`): two greys and an
-  ink from zinc, the blue accent (blue-600, blue-400 in the dark), the
-  orange `#d97757`, and the red of `--stop` only for the knocked-over
-  agent. The bar under "full permissions" and the price rules are the
-  orange. No green, amber, pink or purple:
-  the slide template's own hues were tried and dropped (owner,
-  2026-09-27), and a new colour needs a reason recorded here.
+- **The palette the landing had before the shapes, and nothing else, and
+  no agent's brand colour.** The shapes, the bar and the price rules use
+  the neutrals and the one blue accent (`--sh-*` in `layout.css`; blue-500
+  for fills, blue-400 in the dark). No Claude Code orange (owner,
+  2026-09-27): the landing's own design is not any AI vendor's. No green,
+  amber, pink or purple either; the slide template's hues were tried and
+  dropped, and a new colour needs a reason recorded here.
 - **Mostly grey, a spot of colour, even weight.** Each shape has one
-  main tone (`tone`: neutral, accent or warm; Shape.svelte); a group
-  carries at most one blue and one orange and the rest grey, as the
-  pictures are mostly grey with a blue chip and an orange agent. Fills sit
+  main tone (`tone`: neutral or accent; Shape.svelte); a group carries a
+  spot of blue and the rest grey, as the pictures are mostly grey with a
+  blue chip. Fills sit
   at mid values so nothing vanishes or shouts: zinc-400 and zinc-300 on
   paper, zinc-500 and zinc-600 in the dark; the blue fill is blue-500
-  (a step lighter than the pictures' blue-600 lines) so it weighs what the
-  orange does; ink only for small details (a hole, a diamond's top),
+  (a step lighter than the pictures' blue-600 lines) so it doesn't
+  outweigh the greys; ink only for small details (a hole, a diamond's top),
   never a whole shape. Judge it on a full-page screenshot in both themes.
 - **Where a shape and a mark are the same form, they are one.** The star
   is Gemini's sparkle (`SPARKLE` in `marks.ts`); Gemini CLI's mark in the
-  toolchain box and the hero's agents is that sparkle.
+  toolchain box is that sparkle.
 - The shapes live in `landing/Shape.svelte` and draw only from the `--sh-*`
   tokens. The app's own pages never use them.
 
