@@ -171,6 +171,11 @@ type guestProbe struct {
 	// ("ref: refs/heads/main", or a commit when detached), and syncKey
 	// the key the last sync that completed recorded (I-224).
 	head, headRef, syncKey string
+	// syncHas: the guest still has every commit the last completed sync
+	// recorded under its key (the laptop's HEAD and origin/<branch> of
+	// that sync), so a laptop with the same key has none to send, even
+	// when no guest ref points at a commit the laptop knows (I-284).
+	syncHas bool
 }
 
 // syncedFP holds the shell functions every dirtiness judgement of the
@@ -261,6 +266,7 @@ echo '#head'
 git rev-parse -q --verify HEAD || true
 [ -f .git/HEAD ] && IFS= read -r repose_h < .git/HEAD && printf '#headref %%s\n' "$repose_h"
 [ -f "$repose_synced-key" ] && IFS= read -r repose_k < "$repose_synced-key" && printf '#synckey %%s\n' "$repose_k"
+[ -f "$repose_synced-key" ] && tail -n +2 "$repose_synced-key" | { repose_n=0; while IFS= read -r c; do repose_n=1; git cat-file -e "$c^{commit}" 2>/dev/null || exit 1; done; [ "$repose_n" = 1 ]; } && echo '#synchas'
 echo '#origin'
 git remote get-url origin >/dev/null 2>&1 && echo yes || true
 if [ -f %s ]; then while IFS= read -r p; do [ -e "$p" ] || { echo '#credsmissing'; break; }; done < %s; fi
@@ -285,6 +291,10 @@ func parseProbe(out string) guestProbe {
 		}
 		if rest, ok := strings.CutPrefix(l, "#synckey "); ok {
 			p.syncKey = strings.TrimSpace(rest)
+			continue
+		}
+		if l == "#synchas" {
+			p.syncHas = true
 			continue
 		}
 		if rest, ok := strings.CutPrefix(l, "#sub "); ok {
@@ -442,9 +452,17 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	}
 	nothingNew := false
 	if !opts.StashRemote && !opts.DiscardRemote && probe.syncKey != "" && probe.syncKey == syncKey {
-		n, err := countCommitsToSend(localRepoDir, wantRefs, probe.tips)
-		if err != nil {
-			return nil, err
+		// The same key means the same HEAD and origin/<branch> as the
+		// last completed sync, whose commits the guest recorded and still
+		// has (syncHas). The count over the guest's tips is the fallback
+		// for a guest whose key file predates that record; on its own it
+		// cannot see a guest that pulled past every commit the laptop
+		// knows (I-284).
+		n := 0
+		if !probe.syncHas {
+			if n, err = countCommitsToSend(localRepoDir, wantRefs, probe.tips); err != nil {
+				return nil, err
+			}
 		}
 		nothingNew = n == 0 && subCommits == 0
 	}
@@ -634,8 +652,14 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		// The key is cleared before the checkout is touched and written
 		// once the apply has finished, so a sync that stopped half way
 		// never matches.
+		// Under the key, the commits this sync delivers, for the next
+		// probe to check are still there (I-284).
+		synced := []string{syncKey, head}
+		if track != "" {
+			synced = append(synced, track)
+		}
 		script = applyScript(slug, head, branch, track, bundleRefs, len(bundleRefs) > 0, opts, probe, subScript+superOps) + envScript + recordSyncedScript +
-			fmt.Sprintf("printf '%%s\\n' %s > \"$repose_synced-key\"\n", syncKey)
+			fmt.Sprintf("printf '%%s\\n' %s > \"$repose_synced-key\"\n", strings.Join(synced, " "))
 		// Right after the unpack, before anything touches the checkout:
 		// the stash below needs the identity the git part carries.
 		script = strings.Replace(script, applyUnpack, applyUnpack+carryScript+": > \"$repose_synced-key\"\n", 1)

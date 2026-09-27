@@ -363,3 +363,4 @@ pointer, not a summary.
 - **I-280** `run` and `attach` proxy the terminal, so a dropped file or a Ctrl+V image reaches the agent in the guest — 2026-09-26; L7259
 - **I-278** One Claude login per user: the login share — 2026-09-26; L7358
 - **I-283** No auto-mode offer on a machine in bypass mode — 2026-09-27; L7443
+- **I-284** The nothing-new check trusts the commits the last sync recorded, not the guest's ref tips — 2026-09-27; L7471

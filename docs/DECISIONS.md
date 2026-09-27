@@ -7467,3 +7467,31 @@ counts the file as a login and sends the prompt instead of attaching.
 screen it cannot see); waiting for the dialog in `startAgentWindow` (a
 Claude Code UI string to match, per release).
 
+
+**I-284. The nothing-new check trusts the commits the last sync recorded,
+not the guest's ref tips.** (landing-page session, owner, 2026-09-27;
+fixes I-248) The owner's `repose run` from a laptop at 75991e4 checked
+that commit out detached over the guest's `main`, where an agent had
+pulled origin (114 newer commits, new tags and branches) and committed on
+top; the dev server in that checkout then served a days-old page. The
+laptop had nothing new: its sync key matched the guest's. But I-248 also
+asked the laptop to show that the guest has every commit it would send,
+and the laptop did that with `rev-list HEAD origin/<branch> --not <guest
+tips it knows>`. After the pull no guest ref pointed at a commit the
+laptop had, so the count was the laptop's whole history, `nothingNew` was
+false, and the full apply's checkout rule (laptop commit detached when the
+guest's branch is ahead) ran. I-248's tests passed only because their
+guest's `origin/main` still sat on the laptop's commit. Now the apply
+writes, under the key in `.git/repose-synced-key`, the commits that sync
+delivered (the laptop's HEAD and origin/<branch>), one per line, and the
+probe answers `#synchas` when `git cat-file -e` finds them all. The key
+covers those same two commits, so an equal key with `#synchas` means
+nothing to send; the tip count stays as the fallback for a key file
+written before this. No extra round trip, no probe input from the laptop
+(the probe starts before the laptop computes its side). The submodule
+tips have the same gap and are not changed here.
+`TestSyncLeavesTheGuestAloneWhenItPulledPastTheLaptop` failed before
+(guest HEAD moved to the laptop's commit) and passes. *Rejected:* sending
+the laptop's SHAs in the probe (the probe runs before `syncGuest` knows
+them, I-225's startup overlap); trusting the key alone (a guest that lost
+the commits, a gc after a reset, would be told nothing is missing).

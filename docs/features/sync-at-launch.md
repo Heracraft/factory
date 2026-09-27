@@ -72,7 +72,9 @@ Your laptop has new work as well, so syncing now would write over them. Nothing 
   happens depends on the laptop (DECISIONS I-248). When the laptop has
   nothing new since the sync the guest last took (its sync key equals the
   guest's `.git/repose-synced-key` and the guest has every commit it
-  would send), there is nothing to write over: the checkout is left
+  would send, which the guest shows by still having the commits that
+sync recorded under its key, DECISIONS I-284, even after it pulled past
+every commit the laptop knows), there is nothing to write over: the checkout is left
   alone, only the logins and carry go, and the run attaches with the
   one-line notice above. The same holds when the guest's tree is clean
   but it moved on (an agent's commits, another branch): no detached

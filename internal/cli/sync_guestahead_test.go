@@ -182,3 +182,39 @@ func TestRunAttachesWhenOnlyTheMachineChanged(t *testing.T) {
 		t.Fatalf("README.md = %q", b)
 	}
 }
+
+// The guest moved past every commit the laptop knows: the agent pulled
+// newer work from origin and committed on top, and the laptop never
+// fetched. No guest ref points at a commit the laptop has, yet the guest
+// has all of the laptop's history, so there is still nothing new to send
+// and the agent's branch is left where it is (I-248). Seen live on
+// 2026-09-27: the run checked the laptop's older commit out detached over
+// an agent's branch.
+func TestSyncLeavesTheGuestAloneWhenItPulledPastTheLaptop(t *testing.T) {
+	f := newSyncFixture(t)
+	if _, err := syncGuest(context.Background(), f.target, f.local, testSlug, SyncOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	// Someone else pushes; the agent pulls it and commits on top.
+	mate := t.TempDir()
+	mustRun(t, mate, "git", "clone", "-q", f.bare, ".")
+	mustRun(t, mate, "git", "-c", "user.email=m@x", "-c", "user.name=mate", "commit", "-q", "--allow-empty", "-m", "a teammate's commit")
+	mustRun(t, mate, "git", "push", "-q", "origin", "main")
+	mustRun(t, f.guestRepo(), "git", "pull", "-q", "--ff-only")
+	mustRun(t, f.guestRepo(), "git", "-c", "user.email=a@x", "-c", "user.name=agent", "commit", "-q", "--allow-empty", "-m", "agent's commit")
+	agentHead := mustRun(t, f.guestRepo(), "git", "rev-parse", "HEAD")
+
+	s, err := syncGuest(context.Background(), f.target, f.local, testSlug, SyncOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mustRun(t, f.guestRepo(), "git", "rev-parse", "HEAD"); got != agentHead {
+		t.Fatalf("guest HEAD moved from the agent's %s to %s", agentHead, got)
+	}
+	if ref := mustRun(t, f.guestRepo(), "git", "symbolic-ref", "-q", "HEAD"); ref != "refs/heads/main" {
+		t.Fatalf("guest left main: %q", ref)
+	}
+	if !s.GuestAhead || s.Detached {
+		t.Fatalf("summary %+v %q", s, s.String())
+	}
+}
