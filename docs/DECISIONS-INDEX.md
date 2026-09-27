@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-331 entries.
+338 entries.
 
 ## Scope
 
@@ -77,7 +77,7 @@ pointer, not a summary.
 - **R3-1** Provisioning is OpenTofu for Azure resources with nixos-anywhere as a provisioner; hostd self-registers — L234
 - **R3-5** Capacity is added manually at an 80 percent memory alert — L238
 - **R2-9** Observability reuses the existing Loki, Grafana and Fluent Bit; add Prometheus there; OpenTelemetry in the control plane with no traces backend yet. Record everything non-invasive — L240
-- **R2-12 + R3-16 + R4-7 + R4-8** Stripe from day one, card required before the first guest, $10 credit trial. Meters: guest-hours by class, volume GB-months, egress GB. Hourly rate with a monthly cap per project equal to the flat price (49/99/199) — partly amended by I-205; L244
+- **R2-12 + R3-16 + R4-7 + R4-8** Stripe from day one, card required before the first guest, $10 credit trial. Meters: guest-hours by class, volume GB-months, egress GB. Hourly rate with a monthly cap per project equal to the flat price (49/99/199) — partly amended by I-205; partly superseded by I-289; L244
 - **R4-11** Retention: destroy deletes the volume and keeps the last snapshot 30 days; cancellation stops guests, keeps snapshots 30 days — L252
 - **R4-12** + R4 domain note. The name is `repose` everywhere. Hosted under `herakraft.co` (`repose.herakraft.co`, `api.repose.herakraft.co`, `ssh.repose.herakraft.co`) until it graduates to its own domain — partly superseded by I-15; L255
 - **R5-6** No teams in the first release — L261
@@ -184,7 +184,7 @@ pointer, not a summary.
 - **I-95** `RegisterResponse` carries `loki_url`, from a setting an operator records with `repose-admin edge loki`; Fluent Bit refuses to start without one — 2026-09-20; L2160
 - **I-96** Where `features/` promised a dashboard that was never specified, the feature doc is corrected, not the dashboard — 2026-09-20; L2208
 - **I-100** A first sign-in without a GitHub identity gets a `user-<sub>` handle; `repose-admin users rename` and `projects destroy` exist for the operator to put that right — 2026-09-20; L2246
-- **I-98** CLI releases are GitHub releases of the `Heracraft/factory` repository (renamed `Heracraft/repose`, I-286), cut from `v*` tags; the dashboard serves `install.sh` — 2026-09-20; L2270
+- **I-98** CLI releases are GitHub releases of the `Heracraft/factory` repository, cut from `v*` tags; the dashboard serves `install.sh` — 2026-09-20; L2270
 - **I-99** The CLI's OAuth client id is Logto's App ID for `repose-cli`, a config value with that default, recorded in the credentials file — 2026-09-20; L2286
 - **I-101** `repose login` uses the device-code flow by default; the loopback PKCE flow is `--browser` — 2026-09-20; L2301
 - **I-102** Every Logto token request from the CLI carries `resource=https://api.repose.herakraft.co` — 2026-09-20; L2318
@@ -352,7 +352,7 @@ pointer, not a summary.
 - **I-266** mosh is not offered — 2026-09-26; L6867
 - **I-268** `repose resize` takes the project as its first argument — 2026-09-26; L6895
 - **I-272** The laptop checkout gets a fetch-only `repose` git remote for the machine's checkout — 2026-09-26; L6911
-- **I-269** A capacity waitlist holds a new user's first project when the fleet is near full — 2026-09-26; L6982
+- **I-269** A capacity waitlist holds a new user's first project when the fleet is near full — 2026-09-26; amended by I-290; L6982
 - **I-273** `repose ls` and `repose rm` are the names; `projects` and `destroy` are aliases — 2026-09-26; L7037
 - **I-274** `repose ps` lists the tmux windows — 2026-09-26; L7064
 - **I-275** `repose exec` runs one command in the checkout; `repose ssh` opens a shell there — 2026-09-26; L7082
@@ -364,6 +364,9 @@ pointer, not a summary.
 - **I-278** One Claude login per user: the login share — 2026-09-26; L7358
 - **I-283** No auto-mode offer on a machine in bypass mode — 2026-09-27; L7443
 - **I-284** The nothing-new check trusts the commits the last sync recorded, not the guest's ref tips — 2026-09-27; L7471
-- **I-286** The repository is `Heracraft/repose`; the old name redirects — 2026-09-27; L7503
+- **I-286** The repository is `Heracraft/repose` — 2026-09-27; L7503
+- **I-287** The landing has a design system of its own, drawn from its pictures — 2026-09-27; L7516
 - **I-288** Every landing shape names a feature and appears where the feature is; the footer collects them; the logo is an r-mark — 2026-09-27; L7541
-- **I-287** The landing has a design system drawn from its pictures: rails, ticked rules, heads, stages, cells; the hero picture stacks snapshots over the internet on the right (`routes/landing.css`) — 2026-09-27; L7516
+- **I-289** Monthly plans through Paddle: Solo and Pro buy memory that may run at once, disk and egress; a week free with a card; no hourly meter — 2026-09-27; L7563
+- **I-290** Seats: the waitlist gates checkout, not the first project; a seat is 8 GB running at once; invitations hold a seat 72 hours — 2026-09-27; L7641
+- **I-291** Every email is HTML with a plain-text twin, from one template, and the account emails exist — 2026-09-27; L7680

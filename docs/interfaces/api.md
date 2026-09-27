@@ -8,9 +8,11 @@ shared mTLS client certificate. Errors: `{ "error": { "code": "...",
 "message": "...", "detail": {...} } }` with codes `unauthenticated`,
 `forbidden`, `not_found`, `invalid`, `conflict`, `payment_required`,
 `capacity`, `waitlisted`, `rate_limited`, `billing_disabled`, `internal`.
-`waitlisted` (503) refuses a user's first project while the fleet is near
-full and puts them on the capacity waitlist; `detail` is `{position,
-joined_at, email}` and `message` is the whole sentence (DECISIONS I-269).
+`waitlisted` (503) refuses a plan's checkout while the fleet has no free
+seat and puts the user on the waitlist; `detail` is `{position, joined_at,
+email}` and `message` is the whole sentence (DECISIONS I-269, I-290).
+`payment_required` (402) carries `detail.reason`, listed under "Usage and
+billing".
 Every response
 carries `X-Request-Id`.
 
@@ -18,7 +20,7 @@ carries `X-Request-Id`.
 
 | Method | Path | Body / result |
 |---|---|---|
-| GET | `/me` | `{id, handle, email, github_login, tz, created_at, billing: {status: trial\|active\|past_due\|suspended\|exempt, trial_credit_cents, has_card}, limits: {projects, xl}, waitlist: {position, joined_at}\|null}` (`waitlist` is set while the user holds a place on the capacity waitlist, I-269) |
+| GET | `/me` | `{id, handle, email, github_login, tz, created_at, billing: {status: none\|trial\|active\|past_due\|suspended\|exempt, plan: solo\|pro\|null, seats, period_end, trial_end, cancel_at, has_card, trial_credit_cents}, limits: {projects, xl, memory_gb, disk_gb, egress_gb}, waitlist: {position, joined_at, invited_at, hold_until}\|null}` (`status` is a projection of the subscription, I-289: `none` is an account with no plan yet, `trial` a `trialing` subscription; `trial_credit_cents` is always 0 and `xl` is 1 on Pro, 0 otherwise, both kept one release; `waitlist` is set while the user holds a place, I-290) |
 | PATCH | `/me` | `{tz?, notify: {email?: bool, ntfy_url?: string\|null}}` |
 | DELETE | `/me` | begins cancellation (stops guests, 30-day retention) |
 | POST | `/me/notify-test` | sends a test event to every configured channel → `{email: ok\|error, ntfy: ok\|error}` |
@@ -32,7 +34,7 @@ unique; it is the second half of the SSH login name.
 | Method | Path | Body / result |
 |---|---|---|
 | GET | `/projects` | `[Project]` |
-| POST | `/projects` | `{name, remote_url?, class, tz?, agent_default?}` → `Project` (`agent_default` defaults to `claude`; the CLI sends `config.toml`'s `default_agent`, I-241) (409 if `(user, remote_url)` or `(user, name)` exists). A user who has never had a project, was never admitted from the waitlist and is not `exempt` gets 503 `waitlisted` when the reserved memory of ready hosts, plus 8 GB per admission of the last 72 h not yet taken up, plus this class, would pass `WAITLIST_PERCENT` (default 80) of their usable memory, or when anyone is already waiting; a retry keeps the place (I-269) |
+| POST | `/projects` | `{name, remote_url?, class, tz?, agent_default?}` → `Project` (`agent_default` defaults to `claude`; the CLI sends `config.toml`'s `default_agent`, I-241) (409 if `(user, remote_url)` or `(user, name)` exists). No waitlist gate here since I-290: the billing gate runs as on start, so a user without a plan gets `402 payment_required` `detail.reason = subscription_required`, and one whose allocated disk would pass the plan gets `disk_limit` |
 | GET | `/projects/destroyed` | `[DestroyedProject]`: the user's destroyed projects that still have a restorable snapshot, newest destroy first (I-167). Added with I-167 |
 | POST | `/projects/restore` | `{slug \| project_id \| snapshot_id, name?, start?: bool=true}` → `202 {op_id, project_id, name, slug, snapshot_id, snapshot_created_at, from_project_id}`. Restores as a new project called `name` (default: the source's name). `slug` means the live project with that slug if there is one, else the user's destroyed projects with it; the newest restorable snapshot among them is used unless `snapshot_id` names one. `404 not_found` when nothing can be restored (`detail.reason: "no_snapshot"` when the project exists); `409 conflict` with `detail: {reason: "name_taken", name}` when a live project holds the name, and with `detail.reason: "destroying"` when `slug` names a live project whose destroy has not taken its final snapshot yet (retry in a few seconds; I-190). The new project gets the source's class, volume size, configuration and, when no live project has it, its `remote_url` (I-167). Added with I-167 |
 | GET | `/projects/:id` | `Project` |
@@ -175,13 +177,40 @@ tenant content (at most 1 KB each): shown to the owner, never logged.
 
 ## Usage and billing
 
+Plans, seats and the waitlist are DECISIONS I-289 and I-290; the numbers are
+`docs/PRICING.md`. `billing_disabled` (503) is every route below when the
+api has no `PADDLE_API_KEY`.
+
 | Method | Path | Body / result |
 |---|---|---|
-| GET | `/usage?from=&to=` | per project per day: `{guest_hours: {small,large,xl}, gb_months, egress_gb, cost_cents, credit_cents}` |
-| POST | `/billing/portal` | → `{url}` (Stripe customer portal) |
-| POST | `/billing/setup` | no body → `{client_secret}` for a SetupIntent (card on file); `{"flow": "checkout"}` → `{url}` of a Stripe Checkout page in setup mode that collects the card and the billing address and returns to `<dashboard>/billing?card=saved\|cancelled` (DECISIONS I-182); any other `flow` → `400 invalid` |
-| GET | `/billing/invoices` | from Stripe, newest first, up to 24: `[{id, number, status, currency, amount_cents, subtotal_cents, tax_cents, created_at, period_start, period_end, hosted_url, pdf_url}]` (DECISIONS I-183; `total_cents`, `created`, `hosted_invoice_url`, `pdf` are also sent until the next release) |
-| POST | `/billing/webhook` | Stripe's endpoint. No bearer token: the `Stripe-Signature` header is the authentication, verified against `STRIPE_WEBHOOK_SECRET`. Handles the six events of `09-billing.md` §5.6, idempotent on `event.id` (the `stripe_events` primary key); a duplicate answers `200 {received, duplicate}`, a bad signature `400 invalid` with the event type logged and nothing else. With no `STRIPE_SECRET_KEY` the route, like the three above, answers `503 billing_disabled` (DECISIONS I-16) |
+| GET | `/usage?from=&to=` | per project per day: `{guest_hours: {small,large,xl}, gb_months, egress_gb, cost_cents, credit_cents}` (`cost_cents` is the egress overage share and `credit_cents` is 0 from `price_version = plan-v1`; both stay for one release) |
+| GET | `/billing` | `{subscription: {plan: solo\|pro, status: trialing\|active\|past_due\|paused\|canceled, seats, period_start, period_end, next_billed_at, trial_end, cancel_at, scheduled_plan}\|null, usage: {running_gb, memory_gb, disk_allocated_gb, disk_gb, egress_gb, egress_included_gb, overage_cents, projects, project_limit}, plans: [{id: solo\|pro, name, price_cents, currency: "USD", trial_days, seats, memory_gb, disk_gb, egress_gb, project_limit, available: bool}], seats: {total, held, free, waiting}, waitlist: {position, joined_at, invited_at, hold_until}\|null, paddle: {environment: sandbox\|live, client_token}}`. `usage` is for the current period (or the last 30 days without a subscription); `plans[].available` is whether that plan's seats are free for this user right now |
+| POST | `/billing/checkout` | `{plan}` → `{transaction_id, client_token, environment}`; the dashboard opens Paddle.js with the transaction. The api creates the Paddle customer if needed and a transaction for the plan's price with its seven-day trial and `custom_data.user_id`. `503 waitlisted` with `{position, joined_at, email}` when the plan's seats are not free (the user is on the waitlist from then on; an invited user's hold counts toward their own checkout); `409 conflict` `detail.reason = subscribed` when a subscription exists (change it with `/billing/plan`); `400 invalid` for an unknown plan |
+| POST | `/billing/waitlist` | no body → `{position, joined_at}`; joins the waitlist without trying a checkout, idempotent (a second call answers the same place) |
+| POST | `/billing/plan` | `{plan}` → `{plan, scheduled_plan, effective_at}`. Solo to Pro takes effect at once (Paddle prorates, `proration_billing_mode = prorated_immediately`) and needs one more free seat, else `409 conflict` `detail.reason = no_seat` (a subscriber is never put on the waitlist). Pro to Solo is scheduled for `period_end` and refused with `409 conflict` `detail.reason = over_plan` and `detail: {running_gb, disk_allocated_gb}` while the running memory or allocated disk would not fit |
+| POST | `/billing/cancel` | no body → `{cancel_at}`: the subscription ends at `period_end` (during the trial, at `trial_end`); machines run until then. `409 conflict` `detail.reason = already_cancelled` |
+| POST | `/billing/resume` | no body → `{plan, period_end}`: undoes a scheduled cancellation before it takes effect. `409 conflict` `detail.reason = not_cancelled` |
+| POST | `/billing/portal` | no body → `{url}` of Paddle's customer portal (card, receipts, address); `{"for": "payment_method"}` → the portal deep link that updates the payment method |
+| GET | `/billing/invoices` | from Paddle's transactions for the customer, newest first, up to 24: `[{id, number, status, currency, amount_cents, subtotal_cents, tax_cents, created_at, period_start, period_end, hosted_url, pdf_url}]` (`pdf_url` from Paddle's invoice PDF; `hosted_url` is the same link or null) |
+| POST | `/billing/webhook` | Paddle's notification endpoint. No bearer token: the `Paddle-Signature` header (`ts=...;h1=...`) is the authentication, an HMAC-SHA256 of `ts:body` with `PADDLE_WEBHOOK_SECRET`, refused when `ts` is more than five minutes off. Handles `subscription.created|activated|trialing|updated|past_due|paused|resumed|canceled`, `transaction.completed|payment_failed`; idempotent on `event_id` (the `paddle_events` primary key); a duplicate answers `200 {received, duplicate}`, a bad signature `400 invalid` with the event type logged and nothing else |
+| GET | `/public/seats` | no auth → `{total, free, waiting}`; the landing page's count. Cached for a minute |
+
+`payment_required` (402) is every compute gate (`POST /projects` with a
+start, `/projects/:id/start`, restore, fork, resize while running, growing
+a volume) and carries `detail.reason`:
+
+| `detail.reason` | When | `detail` also carries |
+|---|---|---|
+| `subscription_required` | no subscription in `trialing\|active\|past_due` (a new account, an ended one) | `waitlist: {position, joined_at}\|null` |
+| `plan_limit` | the running memory plus this machine's class would pass the plan's memory | `plan, limit_gb, used_gb, projects: [slug]` (the machines using it) |
+| `disk_limit` | the allocated disk plus this project's volume would pass the plan's disk | `plan, limit_gb, used_gb` |
+| `egress_limit` | this period's egress passed four times the allowance; machines are stopped until `period_end` | `plan, limit_gb, used_gb, until` |
+| `past_due` | the last payment failed (day 0 to 3) | |
+| `suspended` | three days past due, or an operator suspension | |
+
+`message` is the whole sentence in every case, so an older CLI that prints
+it is right. A `suspended` account may only call `GET /me`, `GET /billing`
+and `POST /billing/portal`.
 
 ## Internal (gateway)
 

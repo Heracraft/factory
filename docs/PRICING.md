@@ -1,116 +1,148 @@
 # Pricing
 
-Billed from the first hour through Stripe. Card on file before the first
-guest starts. The shape is hourly with a monthly cap per project, so a
-person who never stops their guest pays a flat fee and a person who stops it
-at night pays less, from one rule (DECISIONS R4-7).
+A monthly plan through Paddle, chosen before the first machine starts, with
+a card at checkout and a week free. A plan buys memory that may run at once,
+disk that may be allocated, and egress for the month; projects are
+unlimited while stopped. The shape is flat because the pitch is "the agent
+keeps working after the laptop closes", and an hourly meter told people to
+stop machines at night (DECISIONS I-289, superseding R2-12, R4-7, R4-8,
+I-77, I-179 to I-185 and I-205; the hourly design is kept in
+`workstreams/09-billing.md` §5 as history).
 
-## Tiers
+## Plans
 
-| Class | vCPU | RAM | Default volume | Hourly | Monthly cap |
+| Plan | Price | Running at once | Disk | Egress a month | Seats |
 |---|---|---|---|---|---|
-| small | 2 | 4 GB | 20 GB | $0.07 | $49 |
-| large | 4 | 8 GB | 40 GB | $0.14 | $99 |
-| xl | 8 | 16 GB | 80 GB | $0.28 | $199 |
+| Solo | $29 a month | 8 GB: one `large`, or two `small` | 100 GB | 250 GB | 1 |
+| Pro | $59 a month | 16 GB: one `xl`, two `large`, any mix | 250 GB | 500 GB | 2 |
 
-Hourly is the cap divided by 720 rounded up to the cent, so 720 running
-hours in a month cost exactly the cap and never more. Guest-hours accrue per
-minute of `running`, rounded up to the minute. A stopped project accrues no
-guest-hours.
+Prices are in USD and exclude tax; Paddle adds and remits the tax for the
+buyer's country as merchant of record, which is the whole reason for Paddle
+(DECISIONS I-289). Size classes keep their shapes (`small` 2 vCPU 4 GB,
+`large` 4 vCPU 8 GB, `xl` 8 vCPU 16 GB, `docs/interfaces/README.md`); a
+plan says how much of them may run at the same time.
 
-On top, for every project in any state until destroyed:
+What a plan means, in rules:
 
-- Storage: $0.10 per GB-month of *allocated* volume size, prorated hourly.
-  A 40 GB large volume is $4.00 a month whether it holds 2 GB or 39 GB.
-  Allocated rather than used because thin provisioning means the platform
-  has reserved that space and the user chose the size.
-- Egress: 500 GB a month included per project, then $0.05 per GB. Ingress
-  is free. Egress counts bytes leaving the guest to the internet, measured
-  by the per-guest nftables counter; traffic to the gateway (SSH, noVNC,
-  hooks) is not counted.
+- **Memory.** The sum of the classes of a user's `running` (and starting,
+  restoring) machines never exceeds the plan's memory. Starting one more is
+  refused with `payment_required`, `detail.reason = plan_limit`, and the
+  message names the machines using the memory: stop one or upgrade. An
+  `xl` needs Pro.
+- **Disk.** The sum of the allocated volume sizes of a user's live projects
+  never exceeds the plan's disk. Creating a project or growing a volume past
+  it is refused with `detail.reason = disk_limit`. Allocated, not used,
+  because thin provisioning reserves it and the user chose the size.
+  Snapshots are included and not counted.
+- **Egress.** Bytes leaving the user's machines for the internet, summed
+  over the billing period. Traffic to the gateway (SSH, the browser view,
+  hooks) is not counted; ingress is free. Past the allowance, $0.05 a GB is
+  added to the next invoice as one overage line (a Paddle one-time charge on
+  the subscription, sent before the period locks). At four times the
+  allowance (1 TB on Solo, 2 TB on Pro) the user's machines are stopped
+  for the rest of the period with `detail.reason = egress_limit` and an
+  `egress_stopped` email; that is the stolen-card ceiling, not a price.
+- **Projects.** 10 on Solo, 25 on Pro, live or stopped; disk bounds it
+  anyway. Destroyed projects and their 30-day snapshots are free.
 
-Example: one large guest running all month with the default volume and
-10 GB egress is $99 + $4 + $0 = $103. The same guest stopped every night
-for 10 hours is about $59 + $4 = $63 (14 hours × 30 days × $0.14 = $58.80).
+Example: a Solo user with a `large` running all month, a 40 GB disk, and
+20 GB of egress pays $29. The same user with 300 GB of egress pays $29 plus
+$2.50. Two `large` machines at once need Pro.
 
-## Trial
+## The trial
 
-A new account's first day of compute is on us (DECISIONS I-205, amending
-R4-8): a credit of one day on large, 24 guest-hours at the large rate,
-which is also 48 hours on small, consumed at the rates above. A card is
-still required to start the first guest. When the credit reaches zero, the
-next hour is charged to the card; nothing stops. It stays a credit rather
-than free hours of one class, so there is one meter, and the trial is also
-the first test of the meters. Everything a user reads calls it "your first
-day of compute" and never names an amount: the dashboard shows the time
-left ("24 hours left on large (48 on small)").
+Seven days free on any plan, card at checkout, first charge on day eight
+unless cancelled. Paddle's `trial_period` on the price does this; the
+account is `trial` until the first payment and `active` after. Nothing
+stops on day eight; the card is charged and the plan continues. There is no
+credit balance and no per-hour arithmetic any more; the trial is the same
+plan, with the first charge a week out. Cancelling during the trial ends
+the plan at the trial's end: machines stop then, snapshots stay 30 days.
 
-## Limits
+The trial is the only free thing. No launch account gets a free plan
+(owner, 2026-09-27: "I actually don't have enough money"); a discount code
+made in Paddle's dashboard is how a promotion works, and none is required
+by the code.
 
-Until the first paid invoice: 3 projects, at most 1 xl. After: 10 projects.
-More on request, manually, because a stranger with free compute is the
-abuse vector and a paying customer with a history is not.
+## Seats and the waitlist
 
-## Invoicing
+A seat is 8 GB of memory that may run at once on the fleet: Solo holds one,
+Pro two. Memory is never oversubscribed, so the fleet has exactly as many
+seats as its `ready`, undrained hosts have usable 8 GB blocks (RAM minus the
+host reserve), or `SEATS_TOTAL` when the operator sets it (the launch host,
+a `D64s_v7`, is 30 seats). Seats are held by every subscription that is
+`trialing`, `active` or `past_due`, and by every waitlist invitation that
+has not expired. Checkout for a plan needs that many free seats; without
+them the user joins the waitlist, and the waitlist invites the oldest
+waiting user whenever a seat is free, holding it 72 hours for them
+(DECISIONS I-290, amending I-269). The landing page and the dashboard show
+the seats left and the number waiting, because the launch is a gauge of
+interest and the count is the reading.
 
-Monthly through Stripe Billing. Usage records are pushed hourly from the
-`usage_hours` rollup, so the Stripe invoice and the platform's own numbers
-agree to the cent, and the release checklist proves it with a fixed usage
-pattern. A failed payment: reminders on days 1 and 2; on day 3 guests are
-snapshotted and stopped and the account is suspended; the snapshots are
-deleted on day 33, 30 days after suspension (DECISIONS R4-11,
-`docs/features/pricing.md` "A failed payment").
+## Failed payments
+
+Paddle retries on its own schedule and the subscription is `past_due`.
+Day 0: an email, starting a new machine is refused (`detail.reason =
+past_due`), running ones keep running. Day 2: a second email. Day 3: every
+running machine is snapshotted and stopped, a `billing_stopped` email goes
+out and the account is `suspended`. Day 33: the 30-day retention that
+started at suspension runs out and the snapshots go. A payment at any point
+returns the account to `active` and unblocks starts; it does not start the
+machines again (DECISIONS R4-11 stands).
+
+## Cancelling and changing plans
+
+A plan is cancelled from the dashboard or Paddle's portal and ends at the
+period's end; machines run until then and stop at it, with the 30-day
+retention from that day. Upgrading (Solo to Pro) takes effect at once,
+prorated by Paddle. Downgrading takes effect at the next renewal and is
+refused while the user's running memory or allocated disk would not fit the
+smaller plan. Deleting the account cancels the subscription at once, after
+any pending egress overage is charged, because Paddle drops one-time charges
+on a cancelled subscription.
+
+## Refunds
+
+The first charge after the trial is refunded on request within 14 days of
+it. Renewals are not refunded for a part period; cancelling stops the next
+one. Refunds are made through Paddle and appear on the same card. The
+public statement is `apps/web/src/content/legal/refunds.md`, which Paddle's
+domain review requires.
 
 ## The cost floor
 
-The prices above have to cover an always-on guest on the chosen host.
-Memory is the binding constraint at 30 large guests per host (256 GB minus
-16 GB reserve, no memory oversubscription; CPU is oversubscribed 2:1). Hosts
-are `D64s_v7` (DECISIONS I-39): this subscription cannot create v5 or v6
-sizes. No `D64s_v7` price has been looked up; the v7 column below is four
-times the `D16s_v7` retail price in `docs/RESEARCH.md` §2a ($1.058 an hour),
-so about $4.23 an hour, or $3,090 a month. The v5 columns are the list
-prices this table was first written with ($3.07 an hour on demand, about
-$2,240 a month), kept because I-39 treats them as the economics of a v5
-reservation or Hetzner. The floor per always-on guest, compute only:
+The plans have to cover an always-on seat on the chosen host. Memory is the
+binding constraint at 30 seats per host (256 GB minus 16 GB reserve, no
+memory oversubscription; CPU is oversubscribed 2:1). The launch host is a
+`D64s_v7` (DECISIONS I-39) at about $3,000 a month on demand, so a seat
+that runs around the clock costs about $100 in compute before storage, the
+control plane and the edge, and Solo at $29 loses about $70 a month on such
+a user. That is accepted for the launch (owner, 2026-09-27: "use Azure as a
+cash sink for now"): the Azure credit pays for it while the product is
+learned, the seat count caps the loss at the size of one host, and the
+prices are set for the host the business ends up on. On a Hetzner AX162-R
+(about €242 a month for 256 GB, `proposals/2026-09-26-subscription-paddle-hetzner.md`
+§3) a seat costs about €8 and both plans clear their floor several times
+over. Nothing in the plan prices is tied to Azure; if hosts move, prices
+stay and margin changes.
 
-| Class | D64s_v7 on demand (derived) | D64s_v5 on demand | D64s_v5 1-year reserved ($1.89/h) | Hetzner AX162-R (about €230/mo, 256 GB) |
-|---|---|---|---|---|
-| small | ~$51 | ~$37 | ~$23 | ~€4 |
-| large | ~$103 | ~$75 | ~$46 | ~€8 |
-| xl | ~$206 | ~$150 | ~$92 | ~€15 |
-
-Storage on Premium SSD v2 adds roughly $0.08 per GB-month at the disk
-level, so the $0.10 storage price is close to cost. Egress on Azure is about
-$0.087 per GB after the free allowance, so the included 500 GB is a real
-cost the tier absorbs, and $0.05 per GB beyond it is below cost; the
-expectation is that almost nobody exceeds it and the ones who do are worth
-watching for other reasons.
-
-Read across the table: on the v7 hosts actually running, on demand, a
-full host of large guests at $99 does not cover its $103 floor, and a small
-at $49 does not cover $51, before storage, support, the control plane, and
-the edge. On v5 on demand, a large clears $75 by a third; with a v5
-reservation it is comfortable. A v7 reservation price has not been looked
-up. On Hetzner metal it is a different business, which is
-why the host module is written so a second provider is a module and not a
-rewrite (DECISIONS R3-20), and why credits are being spent on Azure while
-the product is learned rather than on margin.
-
-Nothing in the tier prices is tied to Azure. If hosts move, prices stay and
-margin changes.
+Paddle takes 5% plus 50¢ a transaction (Stripe would take about 2.9% plus
+30¢ and leave the tax filing to us): $1.95 of a Solo month, $3.45 of a Pro
+one.
 
 ## What is deliberately not priced
 
 - Snapshots: included. They are small (used blocks, compressed) and the
   retention is fixed.
 - Builds: included, capped by time and cores instead.
-- Notifications, the gateway, the dashboard: included.
-- Support: none promised in the first release beyond email.
+- Notifications, the gateway, the browser view, the dashboard: included.
+- Support: email only.
+- Teams, seats for other people, annual plans, currencies other than USD:
+  deferred (R5-6).
 
 ## Changing prices
 
-Prices live in one place in the API's configuration and in this doc. A
-change is a `DECISIONS.md` entry, a 30-day notice to users by email, and a
-new `price_version` on `usage_hours` rows from the effective hour so
-historical usage keeps its historical price.
+Prices live in one place in the API's configuration (`internal/billing/plans.go`,
+the Paddle price ids in the environment) and in this doc. A change is a
+`DECISIONS.md` entry, a 30-day notice to users by email, and a new Paddle
+price; existing subscriptions keep their price until moved.

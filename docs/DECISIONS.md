@@ -7560,3 +7560,146 @@ moon as the logo (rest fits the name, but a crescent in a header reads as
 a dark-mode toggle); keeping the unassigned shapes in the footer for
 completeness (that is the spawning the owner named).
 
+**I-289. Monthly plans through Paddle: Solo and Pro buy memory that may run
+at once, disk and egress; a week free with a card; no hourly meter.**
+(owner, 2026-09-27: "We're going to launch with the new pricing ... I'm
+definitely going to do Paddle ... We'll still require a card ... use Azure
+as a cash sink for now") Supersedes R2-12 (hourly through Stripe), R4-7
+(the monthly cap per project), R4-8 and I-205 (the trial credit), I-77 and
+I-179 (meter events), I-180 to I-185 (the Stripe subscription, the card
+saved on a SetupIntent, invoices from Stripe, the test-clock gate). What is
+sold is in `docs/PRICING.md`: Solo, $29 a month, 8 GB running at once,
+100 GB disk, 250 GB egress; Pro, $59, 16 GB, 250 GB, 500 GB; egress past
+the allowance $0.05 a GB as one overage line, and at four times the
+allowance the user's machines stop for the period; disk is a hard limit;
+projects 10 and 25; seven days free on the card taken at checkout. Why a
+plan: the product's promise is a machine left working, and an hourly
+meter argued with it; money is taken before compute runs, so a stolen card
+buys a week and one seat instead of a month of arbitrary usage; and the
+plan is an ordinary Paddle subscription, where hourly meters were a
+workaround. Why Paddle: it is the merchant of record, so tax in every
+buyer's country is its problem and the M4 "tax" row closes; the price is
+5% + 50¢ against 2.9% + 30¢, about $2 a Solo month. Why these prices: set
+for the host repose ends up on (a seat is about €8 on Hetzner metal,
+`proposals/2026-09-26-subscription-paddle-hetzner.md` §3); on the launch
+`D64s_v7` a seat that never stops costs about $100, which the Azure credit
+absorbs and the seat count bounds at one host's worth. Why no free launch
+accounts: cash; Paddle discount codes exist for a promotion and need no
+code. Mechanics: `internal/billing` keeps `plans.go` (the table above, one
+place), the `usage_hours` rollup as the internal record of hours, disk and
+egress (its compute cents are 0 from `price_version = "plan-v1"`), the
+3-day stop and the gates; the Stripe client, meters, SetupIntent, credit
+ledger arithmetic, cap and test-clock proof are removed. A `subscriptions`
+table (id = Paddle's subscription id, user_id, plan, status
+`trialing|active|past_due|paused|canceled`, seats, paddle_customer_id,
+period_start, period_end, next_billed_at, trial_end, cancel_at,
+scheduled_plan, overage_charged_for, created_at, updated_at) is the record;
+`users.billing_status` keeps its enum plus `none` (no subscription yet) and
+is a projection of it; `users.stripe_customer_id` becomes
+`paddle_customer_id`; `stripe_events` becomes `paddle_events`;
+`overage_charges` records each period's egress line once
+(unique on subscription and period). Checkout: `POST /billing/checkout
+{plan}` creates a Paddle transaction server-side (customer, price, seven
+day trial, `custom_data.user_id`) and the dashboard opens it with
+Paddle.js and the public client token from `GET /billing`; the subscription
+arrives by webhook (`Paddle-Signature`, HMAC of `ts:body` with the endpoint
+secret, five-minute skew, deduped on event id). Plan changes and
+cancellation go through the api (`POST /billing/plan`, `/billing/cancel`,
+`/billing/resume`), the card and receipts through Paddle's customer portal
+(`POST /billing/portal`), invoices from Paddle's transactions
+(`GET /billing/invoices`, same shape as before). The overage line is sent
+in the hourly tick when `next_billed_at` is within three hours and the
+period has none yet, because Paddle locks the invoice about thirty minutes
+before charging; account deletion charges it first and then cancels,
+because a cancelled subscription drops one-time charges. `payment_required`
+carries `detail.reason` in `subscription_required | plan_limit |
+disk_limit | egress_limit | past_due | suspended` with `detail.plan`,
+`detail.limit_gb`, `detail.used_gb` and `detail.projects` (the slugs using
+the memory) so the CLI can print the whole sentence. Environment:
+`PADDLE_API_KEY` (sandbox or live, told apart by the key prefix, and a test
+refuses live), `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`,
+`PADDLE_PRICE_SOLO`, `PADDLE_PRICE_PRO`, `PADDLE_PRODUCT_OVERAGE`;
+`repose-admin billing paddle-bootstrap` creates the products, prices and
+the notification destination idempotently and prints the block. With no
+`PADDLE_API_KEY` the billing routes answer `503 billing_disabled` and the
+gate refuses non-exempt starts with `subscription_required`, so a deploy
+without keys is safe and useless rather than free. The M4 gate becomes: in
+Paddle's sandbox, a checkout with a test card creates a `trialing`
+subscription and a seat, the webhook makes the account `trial`, a
+simulated `transaction.completed` makes it `active`, a simulated
+`transaction.payment_failed` makes it `past_due` and the 3-day tick stops
+the machine, and an overage charge for a known egress appears on the next
+transaction to the cent (`docs/ops/M4-GATE.md`). *Rejected:* staying on
+Stripe (tax filing per country for a solo operator); hourly on Paddle
+(one-time charges per hour, fighting the invoice lock); a shared CPU and
+memory pool like exe.dev's (guests are sized per project, so "running at
+once" is the honest unit); Paddle.js checkout opened with a price id from
+the browser (the server has to hold the seat and stamp the user id first);
+a hard stop at the egress allowance (an agent mid-task loses its network
+for $0.05 a GB); free plans for the first five (cash); keeping the credit
+ledger for goodwill (Paddle adjustments and discounts are that).
+**I-290. Seats: the waitlist gates checkout, not the first project; a
+seat is 8 GB running at once; invitations hold a seat 72 hours.** (owner,
+2026-09-27: "assume I have the big host ... build a waitlist that allows
+that many amount of users in, and then put them in a waitlist") Amends
+I-269. With plans (I-289) the fleet's unit is the seat: `floor((RAM -
+reserve) / 8 GB)` over `ready`, undrained hosts, or `SEATS_TOTAL` when set
+(`0` derives it; the launch `D64s_v7` is 30), replacing `WAITLIST_PERCENT`
+(memory is never oversubscribed and a seat is exactly what a running
+`large` takes, so a percentage of it was the placement alert's number, not
+a sales limit). Held seats are the seats of every subscription
+`trialing|active|past_due` plus one for each waitlist invitation whose
+`hold_until` has not passed. `POST /billing/checkout` needs the plan's
+seats free (an invited user's hold counts toward their own checkout);
+otherwise, and on `POST /billing/waitlist`, the user joins the waitlist
+and gets `503 waitlisted` with `{position, joined_at, email}` as before.
+`POST /projects` no longer gates: a user without a subscription is refused
+compute with `subscription_required`, and the dashboard's plan page is
+where the seats question is answered. Every minute, under lock 1011, the
+api invites waiting users oldest first while a seat is free, strictly in
+order: `invited_at`, `hold_until = now + 72 h` and the `waitlist_invited`
+email in one transaction guarded by `invited_at is null`. A hold that
+expires unconverted moves the user to the back (`joined_at = now`,
+`expired_invites + 1`) so a ghost cannot block the queue, and the email
+says so; a subscription created for an invited user sets `converted_at`
+and the row stays for the count. Suspended, cancelled and deleted
+accounts hold no place. `GET /public/seats` (no auth) answers `{total,
+free, waiting}` for the landing page, and `GET /billing` carries the same
+plus the user's own place, because the launch is a gauge of interest and
+the count is the reading. `repose-admin waitlist list | admit HANDLE |
+admit --next N` keep their names (admit now means invite; the audit kind
+stays `waitlist_admit`) and `repose-admin seats` prints total, held, free
+and the source. Metrics `repose_api_seats_total`, `_held`,
+`repose_api_waitlist_waiting`, `_joined_total`, `_invited_total`,
+`_converted_total`. *Rejected:* a card to join the waitlist (Paddle has no
+save-a-card step without a subscription, and a $0 subscription per
+waiting user is a mess of ghosts); inviting in batches (strict order is
+what "first come" means on a launch tweet); holding a seat forever
+(blocks the queue); dropping an expired user (three days is enough to
+read one email, but a launch weekend is not a reason to lose them).
+**I-291. Every email is HTML with a plain-text twin, from one template,
+and the account emails exist.** (owner, 2026-09-27: "another thing you
+got to design is emails") Notifications were plain `fmt.Sprintf` text
+and the only account emails were `billing_stopped` and
+`waitlist_admitted`. Now `internal/api/notify` renders every kind through
+one HTML template (`templates/`, Go `html/template`, table layout, inline
+styles, system fonts, the landing's paper and ink colours, the r-mark as
+text, no images, no tracking) and a text template beside it, sent as
+`html` and `text` in one Resend call; golden files under `testdata/` pin
+both. The kinds added: `welcome` (first sign-in: install, run, the plan
+page), `waitlist_joined` (place and what happens next), `waitlist_invited`
+(replaces `waitlist_admitted`: 72 hours, the checkout link, what an
+expired hold means), `trial_ending` (two days before `trial_end`, the
+amount and the date), `payment_failed` (day 0 and day 2 of `past_due`, the
+portal link), `subscription_cancelled` (the end date, what stops then),
+`subscription_ended` (machines stopped, 30-day retention), `plan_changed`,
+`egress_stopped`. Account emails are transactional: sent whatever
+`notify_email` says and without an unsubscribe link, since each answers
+something the user did or is about to be charged for; agent notifications
+keep their unsubscribe line. Subjects stay `[repose] <subject>`. Paddle's
+own receipts and payment-failure emails stay on in Paddle's dashboard, so
+a failed payment produces Paddle's email about the card and ours about
+the machines. *Rejected:* a third-party template service (one more
+account and a tracking pixel); React Email or MJML (a build step for
+eleven emails); images or the logo as an attachment (blocked by default
+in most clients, and the r-mark reads fine as a letter).
