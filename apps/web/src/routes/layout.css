@@ -95,25 +95,39 @@
 		--rule: #e6e6e3;
 		--rule-strong: #cfcfcb;
 
-		/* The landing's shape set (Shape.svelte) and its heading bar. No new
-		   colours: each is a colour of the scales above, so the shapes sit
-		   in the same palette as the pictures (docs/LANDING.md, "Shape
-		   language"). The names say the shape's role in the set, not a
-		   hue of their own. */
-		--sh-pink: var(--color-red-200);
-		--sh-blue: var(--color-blue-600);
-		--sh-sky: var(--color-blue-400);
+		/* The landing's shape set (Shape.svelte) and its heading bar take
+		   the colours the landing's pictures already use, role for role,
+		   light and dark alike (Hero.svelte's --accent, --stop, --add, --ink,
+		   --faint; OneCommand's amber M): blue what moves, red what stops,
+		   green what's added. A filled shape takes the scale's 500 on
+		   paper and 400 in the dark (the pictures' text takes the darker
+		   600, which turns muddy as a fill). The pale ones are tints of
+		   those, the way the
+		   pictures tint a row they light up. The names say the shape's role
+		   in the set, not a hue of their own (docs/LANDING.md). */
+		--sh-blue: var(--color-blue-500);
 		--sh-red: var(--color-red-500);
-		--sh-amber: var(--color-amber-400);
-		--sh-purple: var(--color-blue-300);
-		--sh-green: var(--color-emerald-600);
-		--sh-coral: var(--color-red-400);
-		--sh-ink: var(--color-zinc-900);
-		--sh-paper: var(--color-zinc-100);
+		--sh-green: var(--color-emerald-500);
+		--sh-amber: var(--color-amber-500);
+		--sh-coral: #d97757; /* Claude Code's orange, as the hero's agent */
+		--sh-ink: var(--color-zinc-800);
+		--sh-purple: var(--color-zinc-400);
+		--sh-paper: var(--sunken);
+		--sh-sky: color-mix(in oklab, var(--sh-blue) 45%, var(--surface));
+		--sh-pink: color-mix(in oklab, var(--sh-red) 30%, var(--surface));
 	}
 	@media (prefers-color-scheme: dark) {
 		:root {
+			--sh-blue: var(--color-blue-400);
+			--sh-red: var(--color-red-400);
+			--sh-green: var(--color-emerald-400);
+			--sh-amber: var(--color-amber-400);
 			--sh-ink: var(--color-zinc-950);
+			--sh-purple: var(--color-zinc-600);
+			/* On a dark page a tint toward the surface only darkens, so the
+			   pale shapes mix toward a light grey instead. */
+			--sh-sky: color-mix(in oklab, var(--sh-blue) 55%, var(--color-zinc-200));
+			--sh-pink: color-mix(in oklab, var(--sh-red) 40%, var(--color-zinc-200));
 			--page: #111110;
 			--surface: #161615;
 			--sunken: #1b1b1a;
@@ -164,9 +178,10 @@
 	}
 	/* The panel a landing picture sits on: sunken, hairline, as the grid
 	   cards' pictures already do, so a picture reads apart from its
-	   header. */
+	   header. A stage is also what the landing's shapes stand on
+	   (Perch.svelte). */
 	.landing-stage {
-		@apply rounded-sm border;
+		@apply relative rounded-sm border;
 		border-color: var(--rule);
 		background-color: var(--sunken);
 		padding: clamp(1rem, 3vw, 2rem);

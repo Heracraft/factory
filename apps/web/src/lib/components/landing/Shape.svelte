@@ -77,9 +77,9 @@
 	{:else if kind === 'sphere'}
 		<defs>
 			<radialGradient id="{id}g" cx="0.34" cy="0.3" r="0.8">
-				<stop offset="0" stop-color="var(--color-red-200)" />
-				<stop offset="0.45" stop-color="var(--sh-coral)" />
-				<stop offset="1" stop-color="var(--color-red-600)" />
+				<stop offset="0" style="stop-color: color-mix(in oklab, var(--sh-coral) 50%, white)" />
+				<stop offset="0.45" style="stop-color: var(--sh-coral)" />
+				<stop offset="1" style="stop-color: color-mix(in oklab, var(--sh-coral) 75%, black)" />
 			</radialGradient>
 			<filter id="{id}n" x="0" y="0" width="100%" height="100%">
 				<feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="3" />

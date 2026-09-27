@@ -5,7 +5,7 @@
 	import { signIn } from '$lib/auth.svelte';
 	import Logo from '$lib/components/Logo.svelte';
 	import Hero from '$lib/components/landing/Hero.svelte';
-	import HeroGrid, { type Beat } from '$lib/components/landing/HeroGrid.svelte';
+	import Perch, { type Beat } from '$lib/components/landing/Perch.svelte';
 	import Shape, { type Kind } from '$lib/components/landing/Shape.svelte';
 	import SectionHead from '$lib/components/landing/SectionHead.svelte';
 	import { landOnView } from '$lib/components/landing/inview';
@@ -157,73 +157,72 @@
 
 <main>
 	<section class="mx-auto max-w-5xl px-5 pt-14 pb-16">
-		<div class="grid items-center gap-10 md:grid-cols-[minmax(0,1fr)_12rem] lg:gap-16">
-			<div class="min-w-0">
-				<h1 class="hero-h">
-					<span class="line">Let your agents run</span>
-					<span class="line">with <span class="bar">full permissions</span></span>
-				</h1>
-				<p class="mt-6 max-w-xl text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
-					One command puts your work on a machine of its own. The agent can wreck it, and a snapshot
-					puts it back.
-				</p>
-				<div class="mt-8 flex flex-wrap items-center gap-3">
-					<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
-						Sign in with GitHub
-					</button>
-					<div
-						class="flex max-w-full min-w-0 items-center gap-2 rounded-sm border border-[var(--rule-strong)] bg-[var(--sunken)] py-1.5 pr-1.5 pl-3.5 font-mono text-[13px]"
+		<div class="min-w-0">
+			<h1 class="hero-h">
+				<span class="line">Let your agents run</span>
+				<span class="line">with <span class="bar">full permissions</span></span>
+			</h1>
+			<p class="mt-6 max-w-xl text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
+				One command puts your work on a machine of its own. The agent can wreck it, and a snapshot
+				puts it back.
+			</p>
+			<div class="mt-8 flex flex-wrap items-center gap-3">
+				<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
+					Sign in with GitHub
+				</button>
+				<div
+					class="flex max-w-full min-w-0 items-center gap-2 rounded-sm border border-[var(--rule-strong)] bg-[var(--sunken)] py-1.5 pr-1.5 pl-3.5 font-mono text-[13px]"
+				>
+					<span class="truncate select-all">{INSTALL_COMMAND}</span>
+					<button
+						type="button"
+						onclick={copyInstall}
+						class="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-sm border border-[var(--rule-strong)] bg-[var(--surface)] px-2 py-1 font-sans text-xs text-zinc-700 hover:border-zinc-500 dark:text-zinc-300"
+						aria-label="Copy the install command"
 					>
-						<span class="truncate select-all">{INSTALL_COMMAND}</span>
-						<button
-							type="button"
-							onclick={copyInstall}
-							class="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-sm border border-[var(--rule-strong)] bg-[var(--surface)] px-2 py-1 font-sans text-xs text-zinc-700 hover:border-zinc-500 dark:text-zinc-300"
-							aria-label="Copy the install command"
+						<svg
+							viewBox="0 0 16 16"
+							class="h-3.5 w-3.5"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.4"
+							aria-hidden="true"
+							><rect x="5.5" y="5.5" width="8" height="8" rx="1" /><path
+								d="M10.5 3.5v-1h-8v8h1"
+							/></svg
 						>
-							<svg
-								viewBox="0 0 16 16"
-								class="h-3.5 w-3.5"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="1.4"
-								aria-hidden="true"
-								><rect x="5.5" y="5.5" width="8" height="8" rx="1" /><path
-									d="M10.5 3.5v-1h-8v8h1"
-								/></svg
-							>
-							{copied ? 'Copied' : 'Copy'}
-						</button>
-					</div>
+						{copied ? 'Copied' : 'Copy'}
+					</button>
 				</div>
 			</div>
-			<div class="order-first md:order-none">
-				<HeroGrid {beat} />
-			</div>
 		</div>
-
-		<div class="landing-stage mt-12">
+		<div class="landing-stage mt-20">
+			<Perch large shapes={['diamond', 'pie', 'agent', 'halves', 'ring', 'leaf']} {beat} />
 			<Hero onbeat={(kind) => (beat = { kind, n: ++beats })} />
 		</div>
 	</section>
 
 	<section class="border-t border-[var(--rule)]">
 		<div class="mx-auto max-w-5xl px-5 py-16">
-			<SectionHead title="Your working state, in one command" shapes={['pill', 'pie', 'sun']}>
+			<SectionHead title="Your working state, in one command">
 				Run <code
 					class="rounded-xs bg-[var(--sunken)] px-1 py-px text-[0.88em] whitespace-nowrap text-zinc-800 dark:text-zinc-200"
 					>repose run</code
 				> in any checkout and your cloud machine picks up where your laptop is, down to the uncommitted
 				edits.
 			</SectionHead>
-			<div class="landing-stage mt-8"><OneCommand animated /></div>
+			<div class="landing-stage mt-14">
+				<Perch shapes={['pill', 'star', 'sun']} />
+				<OneCommand animated />
+			</div>
 		</div>
 	</section>
 
 	<section class="border-t border-[var(--rule)]">
 		<div class="mx-auto max-w-5xl px-5 py-16">
-			<SectionHead id="features" title="On every machine" shapes={['diamond', 'leaf', 'moon']} />
-			<div class="mt-8 grid gap-x-10 gap-y-12 md:grid-cols-2">
+			<SectionHead id="features" title="On every machine" />
+			<div class="relative mt-14 grid gap-x-10 gap-y-12 md:grid-cols-2">
+				<Perch shapes={['arch', 'moon', 'asterisk']} />
 				<ComesBack />
 				<Localhost />
 				<Browser />
@@ -234,17 +233,17 @@
 
 	<section class="border-t border-[var(--rule)]">
 		<div class="mx-auto max-w-5xl px-5 py-16">
-			<SectionHead
-				title="Five agents and a full toolchain on first boot"
-				shapes={['asterisk', 'star', 'arch']}
-			>
+			<SectionHead title="Five agents and a full toolchain on first boot">
 				The agent has sudo to install anything else, and
 				<code
 					class="rounded-xs bg-[var(--sunken)] px-1 py-px text-[0.88em] whitespace-nowrap text-zinc-800 dark:text-zinc-200"
 					>repose config add</code
 				> keeps it on every rebuild.
 			</SectionHead>
-			<Ready />
+			<div class="relative mt-14">
+				<Perch shapes={['halves', 'diamond', 'leaf']} />
+				<Ready />
+			</div>
 		</div>
 	</section>
 

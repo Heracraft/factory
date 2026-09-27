@@ -178,26 +178,32 @@ and underlined every heading. The page is one system:
   one sentence) and then its picture on a stage, the sunken hairline panel
   the grid cards already use. The hero picture and "Your working state"
   sit on a stage too, which keeps the headline apart from the picture.
-- **Shapes appear once per section, in one role.** The hero has the shape
-  grid; a picture section has a trio of shapes at the right of its header
-  (`SectionHead.svelte`); the steps and the pricing cards carry theirs in
-  the content, so their headers have none; the footer has the frieze. No
-  two neighbouring sections use the same shape.
-- **The amber bar marks the headline and the prices, nothing else.** Section
-  headings are bold serif with no bar.
-- **One motion vocabulary**: shapes land in sequence when they come into
-  view, and turn a quarter on hover. The hero grid also follows the hero
-  picture (`Hero.svelte`'s `onbeat`): it clicks at each snapshot, tumbles
-  and greys at the wreck (the agent tile turns red), and springs back at
-  the restore; its agent tile cycles the five agents' marks. It does not
-  move on its own otherwise. No labels on any of it. Under
+- **Shapes are anchored, never floating.** Every shape stands on an edge
+  or is cut by one: a picture section's shapes stand on the top edge of its
+  stage (`Perch.svelte`), the pricing shapes sit in their card's corner,
+  the footer's stand on its rule, the step marks sit in their line. The
+  owner's words for shapes left beside the words: "bolted in".
+- **Shapes appear once per section.** The hero's row stands on the hero
+  stage; "Your working state", "On every machine" (on the top edge of the
+  grid) and the toolchain each have three on their stage; the steps and
+  the pricing cards carry theirs in the content; the footer has the full
+  row. No two neighbouring sections use the same shape.
+- **The amber bar marks "full permissions" and the prices, nothing else.**
+  Section headings are bold serif with no bar.
+- **One motion vocabulary**: a group rises into place when it comes into
+  view, and a shape turns a quarter on hover. The hero row also follows
+  the hero picture (`Hero.svelte`'s `onbeat`): it hops at each snapshot,
+  is knocked over at the wreck (the agent tile turns red), and stands
+  back up at the restore; its agent tile cycles the five agents' marks.
+  It does not move on its own otherwise. No labels on any of it. Under
   `prefers-reduced-motion` every shape is still and whole.
-- **No new colours.** The shapes and the bar use the palette the page
-  already had: each `--sh-*` token in `layout.css` is an alias of a house
-  scale (blue-600 and its lighter steps, emerald-600, red-500 and its tints,
-  amber-400, zinc for ink and paper). A new colour needs a reason the house
-  palette can't meet, recorded here. The slide template's own brighter hues
-  were tried and dropped (owner, 2026-09-27).
+- **The pictures' colours, role for role.** Blue is the accent (what
+  moves), red what stops, green what's added, amber the M of a changed
+  file, the agent's orange; fills take each scale's 500 on paper and 400
+  in the dark, pale shapes are tints of those, ink and greys are zinc.
+  No colour the page didn't already use. A new one needs a reason the
+  house palette can't meet, recorded here. The slide template's own
+  brighter hues were tried and dropped (owner, 2026-09-27).
 - The shapes live in `landing/Shape.svelte` and draw only from the `--sh-*`
   tokens. The app's own pages never use them.
 
