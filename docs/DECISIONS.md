@@ -7439,3 +7439,31 @@ refresh); `CLAUDE_CONFIG_DIR` on the share (shares hooks); the CLI or
 hostd copying the file between guests (copies a credential, and the
 terms name that); a new hostd command at account deletion (the sweep
 already bounds it by the snapshot window).
+
+**I-283. No auto-mode offer on a machine in bypass mode.** (live check of
+I-278, 2026-09-27) On a signed-in machine whose `~/.claude.json` lacks
+`hasSeenAutoDefaultNudge`, Claude Code 2.1.281 opens its first
+interactive session with "Make auto mode your default permission mode?",
+"Yes" preselected. Before I-278 a new machine had no login, so `repose
+run "prompt"` attached the user for `/login` and they met the dialog
+themselves; with the login share the CLI sends the prompt at once, and the
+dialog takes it: on e2e-ls-a the prompt was lost once, and a typed prompt
+plus Enter answered "Yes", which wrote `permissions.defaultMode: "auto"`
+into settings.json (and `hasSeenAutoDefaultNudge: true`), silently
+undoing I-250's bypass default. Setting only that key skips the dialog;
+removing it brings it back (checked both ways on e2e-ls-b). So
+`repose-agent-setup claude` sets `hasSeenAutoDefaultNudge: true` when
+settings.json's `permissions.defaultMode` is `bypassPermissions` and the
+key is absent; a user's value, including false, is kept, and a machine in
+any other mode keeps Claude Code's own behaviour. Auto mode stays one
+`Shift-Tab` or `defaultMode` away, as /docs `agents.md` now says instead
+of "answer no to keep bypass". VM check `guest-base` (agent-setup
+subtest). Also seen in the same check, not changed: after `/logout`,
+Claude Code's unlink of the bind-mounted file fails with EBUSY, so the
+share keeps a revoked token; every machine then says "Not logged in · Run
+/login" and one `/login` fixes all of them, but the CLI's `test -s`
+counts the file as a login and sends the prompt instead of attaching.
+*Rejected:* answering the dialog from the CLI (it would press keys into a
+screen it cannot see); waiting for the dialog in `startAgentWindow` (a
+Claude Code UI string to match, per release).
+

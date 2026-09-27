@@ -37,7 +37,7 @@ To start in another mode, set `defaultMode` in `~/.claude/settings.json`, on you
 }
 ```
 
-`default` asks before edits and commands, `acceptEdits` asks before most commands but not edits, `plan` plans first. `Shift-Tab` switches modes inside a session. On a Pro, Max or Team plan, Claude Code may ask once whether to switch to auto mode; answer no to keep bypass.
+`default` asks before edits and commands, `acceptEdits` asks before most commands but not edits, `plan` plans first. `Shift-Tab` switches modes inside a session. Machines in bypass mode don't show Claude Code's one-time offer to switch to auto mode; to use auto mode, press `Shift-Tab` or set `defaultMode` to `auto`.
 
 The other agents ask as they normally do unless you configure them. An agent waiting on a permission prompt sends a "needs input" notification (Claude Code and opencode) or waits until you attach.
 

@@ -384,6 +384,12 @@ in
           assert plan["permissions"] == {"defaultMode": "plan"} and "skipDangerousModePermissionPrompt" not in plan and "repose-hook" in json.dumps(plan["hooks"]), plan
           mcp = json.loads(guest.succeed("cat /home/dev/.claude.json"))
           assert set(mcp["mcpServers"]) >= {"playwright", "chrome-devtools"}, mcp
+          # I-283: no auto-mode offer to catch a sent prompt under bypass;
+          # a machine in another mode keeps Claude Code's own behaviour.
+          assert mcp["hasSeenAutoDefaultNudge"] is True, mcp
+          assert "hasSeenAutoDefaultNudge" not in guest.succeed("cat /tmp/plan/.claude.json 2>/dev/null || true")
+          guest.succeed("sudo -u dev sh -c 'jq \".hasSeenAutoDefaultNudge=false\" ~/.claude.json > /tmp/cj && cat /tmp/cj > ~/.claude.json' && sudo -u dev repose-agent-setup claude")
+          assert json.loads(guest.succeed("cat /home/dev/.claude.json"))["hasSeenAutoDefaultNudge"] is False
           guest.succeed("sudo -u dev repose-agent-setup codex && grep -q 'notify = \\[\"repose-hook\"\\]' /home/dev/.codex/config.toml")
           guest.succeed("sudo -u dev repose-agent-setup opencode && test -s /home/dev/.config/opencode/plugins/repose.js")
 

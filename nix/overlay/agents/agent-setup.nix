@@ -15,7 +15,13 @@
 #          ~/.claude.json hasCompletedOnboarding is set to true when the
 #          Claude login share is bind-mounted over .credentials.json and
 #          the key is absent, since first-run onboarding asks for a login
-#          method even when the shared file already holds one (I-278).
+#          method even when the shared file already holds one (I-278);
+#          ~/.claude.json hasSeenAutoDefaultNudge is set to true when
+#          settings.json's permissions.defaultMode is bypassPermissions and
+#          the key is absent: Claude Code's one-time "Make auto mode your
+#          default?" dialog otherwise takes the first prompt `repose run`
+#          sends, and its Enter answers "Yes", rewriting defaultMode to auto
+#          (I-283).
 # codex    ~/.codex/config.toml gains `notify = ["repose-hook"]` unless a
 #          `notify` key already exists.
 # opencode ~/.config/opencode/plugins/repose.js is installed if absent.
@@ -90,11 +96,24 @@ writeShellApplication {
       # first interactive start still shows the theme and login-method
       # screens. /login stays available.
       if findmnt -n --mountpoint "$HOME/.claude/.credentials.json" >/dev/null 2>&1; then
-        if [ ! -s "$userjson" ]; then
-          echo '{"hasCompletedOnboarding":true}' | write_atomic "$userjson" 0600
-        elif jq -e 'has("hasCompletedOnboarding") | not' "$userjson" >/dev/null 2>&1; then
-          jq '.hasCompletedOnboarding = true' "$userjson" | write_atomic "$userjson" 0600
-        fi
+        userjson_default hasCompletedOnboarding
+      fi
+      # The auto-mode offer (I-283) only where the mode is the bypass the
+      # platform or the user chose; answering it is Shift-Tab or
+      # defaultMode, not a dialog a sent prompt can hit.
+      if [ "$(jq -r '.permissions.defaultMode? // empty' "$settings" 2>/dev/null)" = bypassPermissions ]; then
+        userjson_default hasSeenAutoDefaultNudge
+      fi
+    }
+
+    # userjson_default <key>: set ~/.claude.json's <key> to true unless the
+    # key is there already (any value, the user's false included).
+    userjson_default() {
+      local userjson="$HOME/.claude.json" key="$1"
+      if [ ! -s "$userjson" ]; then
+        jq -n --arg k "$key" '{($k): true}' | write_atomic "$userjson" 0600
+      elif jq -e --arg k "$key" 'has($k) | not' "$userjson" >/dev/null 2>&1; then
+        jq --arg k "$key" '.[$k] = true' "$userjson" | write_atomic "$userjson" 0600
       fi
     }
 
