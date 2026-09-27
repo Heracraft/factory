@@ -60,9 +60,9 @@ func writeProjectsTable(w io.Writer, projects []Project) {
 	_, _ = fmt.Fprintln(tw, "PROJECT\tCLASS\tSTATE\tUP\tAGENTS\tTODAY\tMONTH")
 	for i := range projects {
 		p := &projects[i]
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t$%.2f\t$%.2f\n",
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			p.Slug, p.Class, p.State, orDash(uptime(p)), orDash(agentState(p)),
-			centsToDollars(p.CostTodayCents), centsToDollars(p.CostMonthCents))
+			runHours(p.RunningSecondsToday), runHours(p.RunningSecondsMonth))
 	}
 	_ = tw.Flush()
 	for i := range projects {
@@ -138,8 +138,23 @@ func writeStatusLines(w io.Writer, p *Project, route *Route, snaps []Snapshot, e
 }
 
 func statusFirstLine(p *Project) string {
-	return fmt.Sprintf("%-10s %-6s %-9s %-7s %-20s today $%.2f   month $%.2f",
-		p.Slug, p.Class, p.State, uptime(p), agentState(p), centsToDollars(p.CostTodayCents), centsToDollars(p.CostMonthCents))
+	return fmt.Sprintf("%-10s %-6s %-9s %-7s %-20s today %s  month %s",
+		p.Slug, p.Class, p.State, uptime(p), agentState(p), runHours(p.RunningSecondsToday), runHours(p.RunningSecondsMonth))
+}
+
+// runHours renders running seconds as `2h14m` under a day and whole hours
+// from there (`41h`): what `repose status` and `repose ls` show since
+// I-289, in place of a price.
+func runHours(secs int64) string {
+	if secs <= 0 {
+		return "0h"
+	}
+	h := secs / 3600
+	m := (secs % 3600) / 60
+	if h >= 24 || m == 0 {
+		return fmt.Sprintf("%dh", h)
+	}
+	return fmt.Sprintf("%dh%02dm", h, m)
 }
 
 // uptime is only meaningful while running: v0.1.4 printed "47h30m" for a
@@ -160,8 +175,6 @@ func agentState(p *Project) string {
 	}
 	return ""
 }
-
-func centsToDollars(c int64) float64 { return float64(c) / 100 }
 
 func humanDuration(d time.Duration) string {
 	d = d.Round(time.Minute)

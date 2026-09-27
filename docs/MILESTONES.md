@@ -81,18 +81,16 @@ backup schedule, and the Traefik drain for rolling deploys
 
 Workstreams: `09-billing`.
 
-Gate (I-289, replacing the hourly gate of I-185): in Paddle's sandbox, a
-checkout with a test card creates a `trialing` subscription that holds a
-seat; the webhook makes the account `trial`; a simulated
-`transaction.completed` makes it `active`; a simulated
-`transaction.payment_failed` makes it `past_due` and the 3-day tick stops
-the machine; an overage line for a known egress appears on the next
-transaction to the cent. `ops/M4-GATE.md` is the runbook.
+Gate (DECISIONS I-289): in Paddle's sandbox, a checkout with a test card
+creates a `trialing` subscription and a seat and the webhook makes the
+account `trial`; a simulated `transaction.completed` makes it `active`; a
+simulated `transaction.payment_failed` makes it `past_due` and the 3-day
+tick stops the machine; an egress overage for a known number of GB appears
+on the next transaction to the cent.
 
-*Where it stands, 2026-09-27: the hourly Stripe design was built and merged
-(I-179..I-185) but its gate never ran (no Stripe key). Superseded by plans
-on Paddle (I-289); the gate waits on the owner's Paddle sandbox key,
-`ops/LAUNCH.md` §1.*
+*Where it stands, 2026-09-27: rebuilt on Paddle (I-289, ws/paddle); the
+gate waits on the owner's sandbox key, after which `ops/M4-GATE.md` is the
+runbook.*
 
 ## M5. Public
 
@@ -107,7 +105,7 @@ alerts, runbook and the published privacy policy are closed. Open in
 `CHECKLIST.md` "Release (M5)": a second human on their own laptop, the
 installer on real macOS and Linux arm64 machines, the Postgres backup
 schedule, restore onto a different host and host loss (both need a second
-host), and the Stripe invoice (M4). The b1a5915 row is settled by I-193
+host), and the Paddle sandbox gate (M4). The b1a5915 row is settled by I-193
 (key rotated, history kept) but not yet ticked.*
 
 ## Later, in order of likely demand

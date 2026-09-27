@@ -1,0 +1,175 @@
+package billing
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/db"
+)
+
+// Sub is a subscriptions row: the record of a Paddle subscription
+// (db-schema.md). users.billing_status is a projection of Status.
+type Sub struct {
+	ID                string     `db:"id"`
+	UserID            uuid.UUID  `db:"user_id"`
+	CustomerID        string     `db:"paddle_customer_id"`
+	Plan              string     `db:"plan"`
+	Status            string     `db:"status"`
+	Seats             int        `db:"seats"`
+	PeriodStart       *time.Time `db:"period_start"`
+	PeriodEnd         *time.Time `db:"period_end"`
+	NextBilledAt      *time.Time `db:"next_billed_at"`
+	TrialEnd          *time.Time `db:"trial_end"`
+	CancelAt          *time.Time `db:"cancel_at"`
+	ScheduledPlan     *string    `db:"scheduled_plan"`
+	OverageChargedFor *time.Time `db:"overage_charged_for"`
+	CreatedAt         time.Time  `db:"created_at"`
+	UpdatedAt         time.Time  `db:"updated_at"`
+}
+
+const subCols = `id, user_id, paddle_customer_id, plan, status, seats, period_start, period_end, next_billed_at, trial_end, cancel_at, scheduled_plan, overage_charged_for, created_at, updated_at`
+
+// Subscription statuses, Paddle's words.
+const (
+	StatusTrialing = "trialing"
+	StatusActive   = "active"
+	StatusPastDue  = "past_due"
+	StatusPaused   = "paused"
+	StatusCanceled = "canceled"
+)
+
+// LiveStatuses are the statuses that hold a seat and buy compute
+// (DECISIONS I-290).
+var LiveStatuses = []string{StatusTrialing, StatusActive, StatusPastDue}
+
+// IsLive reports whether a status buys compute.
+func IsLive(status string) bool {
+	return status == StatusTrialing || status == StatusActive || status == StatusPastDue
+}
+
+// Live is the subscription in the live set.
+func (s *Sub) Live() bool { return s != nil && IsLive(s.Status) }
+
+// PlanOrSolo is the plan, defaulting so arithmetic never divides by an
+// unknown plan.
+func (s *Sub) PlanOrSolo() Plan {
+	if s != nil {
+		if p, ok := PlanByID(s.Plan); ok {
+			return p
+		}
+	}
+	return Solo
+}
+
+// Period is the subscription's current billing period, or the calendar
+// month around at when Paddle has not set one (a subscription just
+// created has period_start; a test row may not).
+func (s *Sub) Period(at time.Time) Period {
+	if s != nil && s.PeriodStart != nil && s.PeriodEnd != nil && s.PeriodEnd.After(*s.PeriodStart) {
+		return Period{Start: s.PeriodStart.UTC(), End: s.PeriodEnd.UTC()}
+	}
+	if s != nil && s.PeriodStart != nil {
+		return PeriodFor(*s.PeriodStart, at)
+	}
+	return PeriodFor(time.Time{}, at)
+}
+
+// LiveSubscription returns the user's live subscription, or nil.
+func LiveSubscription(ctx context.Context, q store.Querier, userID uuid.UUID) (*Sub, error) {
+	rows, err := q.Query(ctx, "select "+subCols+" from subscriptions where user_id = $1 and status in ('trialing','active','past_due') order by created_at desc limit 1", userID)
+	if err != nil {
+		return nil, err
+	}
+	subs, err := pgx.CollectRows(rows, pgx.RowToStructByName[Sub])
+	if err != nil {
+		return nil, err
+	}
+	if len(subs) == 0 {
+		return nil, nil
+	}
+	return &subs[0], nil
+}
+
+// GetSubscription reads one row by Paddle id; db.ErrNotFound when absent.
+func GetSubscription(ctx context.Context, q store.Querier, id string) (*Sub, error) {
+	rows, err := q.Query(ctx, "select "+subCols+" from subscriptions where id = $1", id)
+	if err != nil {
+		return nil, err
+	}
+	subs, err := pgx.CollectRows(rows, pgx.RowToStructByName[Sub])
+	if err != nil {
+		return nil, err
+	}
+	if len(subs) == 0 {
+		return nil, db.ErrNotFound
+	}
+	return &subs[0], nil
+}
+
+// LatestSubscription is the user's newest row of any status, or nil.
+func LatestSubscription(ctx context.Context, q store.Querier, userID uuid.UUID) (*Sub, error) {
+	rows, err := q.Query(ctx, "select "+subCols+" from subscriptions where user_id = $1 order by created_at desc limit 1", userID)
+	if err != nil {
+		return nil, err
+	}
+	subs, err := pgx.CollectRows(rows, pgx.RowToStructByName[Sub])
+	if err != nil {
+		return nil, err
+	}
+	if len(subs) == 0 {
+		return nil, nil
+	}
+	return &subs[0], nil
+}
+
+// upsertSubscription writes a row from Paddle's view of it and returns the
+// row as it was before (nil when new), so the caller can tell what changed.
+func upsertSubscription(ctx context.Context, q store.Querier, s Sub) (*Sub, error) {
+	prev, err := GetSubscription(ctx, q, s.ID)
+	if err != nil && !errors.Is(err, db.ErrNotFound) {
+		return nil, err
+	}
+	if errors.Is(err, db.ErrNotFound) {
+		prev = nil
+	}
+	_, err = q.Exec(ctx, `insert into subscriptions (id, user_id, paddle_customer_id, plan, status, seats, period_start, period_end, next_billed_at, trial_end, cancel_at, scheduled_plan)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		on conflict (id) do update set paddle_customer_id = excluded.paddle_customer_id, plan = excluded.plan, status = excluded.status,
+		seats = excluded.seats, period_start = excluded.period_start, period_end = excluded.period_end, next_billed_at = excluded.next_billed_at,
+		trial_end = excluded.trial_end, cancel_at = excluded.cancel_at, scheduled_plan = excluded.scheduled_plan`,
+		s.ID, s.UserID, s.CustomerID, s.Plan, s.Status, s.Seats, s.PeriodStart, s.PeriodEnd, s.NextBilledAt, s.TrialEnd, s.CancelAt, s.ScheduledPlan)
+	if err != nil {
+		return prev, err
+	}
+	return prev, nil
+}
+
+// projectStatus writes users.billing_status from a subscription status:
+// trialing -> trial, active -> active, past_due -> past_due (with
+// past_due_since kept from the first failure), canceled and paused ->
+// none. A suspended account stays suspended until a payment clears it;
+// an exempt one is never touched.
+func projectStatus(ctx context.Context, q store.Querier, userID uuid.UUID, status string, now time.Time) error {
+	var set string
+	switch status {
+	case StatusTrialing:
+		set = "billing_status = 'trial', past_due_since = null"
+	case StatusActive:
+		set = "billing_status = 'active', past_due_since = null"
+	case StatusPastDue:
+		set = "billing_status = 'past_due', past_due_since = coalesce(past_due_since, $2::timestamptz)"
+	case StatusCanceled, StatusPaused:
+		set = "billing_status = 'none', past_due_since = null"
+	default:
+		return nil
+	}
+	// $2 is referenced by the past_due branch alone; the cast keeps the
+	// parameter in every statement so the argument count matches.
+	_, err := q.Exec(ctx, "update users set "+set+", has_card = true where id = $1 and billing_status not in ('exempt', 'suspended') and $2::timestamptz is not null", userID, now.UTC())
+	return err
+}

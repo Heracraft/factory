@@ -1,44 +1,65 @@
 ---
 title: Pricing
-description: What a project costs running and stopped, and where to see what you've used.
+description: The two plans, what each one buys, the free week, and where to see your hours.
 section: Account
 order: 30
 ---
 
-You pay per project, for three things.
+repose is a monthly plan. You choose one before your first machine starts, with a card, and the first week is free.
 
-**Compute**, by the minute while the machine is running, up to a monthly cap. A machine left running all month costs the cap.
+| Plan | A month | Running at once | Disk | Egress a month | Projects |
+| ---- | ------- | --------------- | ---- | -------------- | -------- |
+| Solo | $29     | 8 GB: one `large`, or two `small` | 100 GB | 250 GB | 10 |
+| Pro  | $59     | 16 GB: one `xl`, two `large`, any mix | 250 GB | 500 GB | 25 |
 
-| Size    | vCPU | Memory | Per hour | Monthly cap |
-| ------- | ---- | ------ | -------- | ----------- |
-| `small` | 2    | 4 GB   | $0.07    | $49         |
-| `large` | 4    | 8 GB   | $0.14    | $99         |
-| `xl`    | 8    | 16 GB  | $0.28    | $199        |
+Prices are in USD and exclude tax, which Paddle adds at checkout for your country. A machine's size is its memory: `small` is 2 vCPU and 4 GB, `large` 4 vCPU and 8 GB, `xl` 8 vCPU and 16 GB. A plan says how much of that may run at the same time; projects cost nothing while stopped, and the month costs the same however many hours run.
 
-A project that [changes size](/docs/machine#changing-the-size) during the month is billed each hour at the size it ran at, up to the cap of the largest size it ran at that month.
+## The free week
 
-**Disk**, $0.10 per GB per month on the disk's full size, running or stopped, until you destroy the project. A `large` project's 40 GB disk is $4 a month. Snapshots are free.
+Seven days on either plan. Your card is taken at checkout and first charged on day eight, unless you cancel before then; nothing stops on day eight. Cancelling during the week ends the plan at the week's end.
 
-**Egress**, data the machine sends to the internet: 500 GB per project per month included, then $0.05 per GB. Incoming data and your own SSH traffic, port forwards included, don't count.
+## What a plan means
 
-Your first day of compute is free.
+- **Memory.** Starting a machine that would put your running machines past the plan is refused, and the message names the machine using the memory: `Your Solo plan runs 8 GB at once and todo-app is using it. Stop it, or upgrade at https://repose.herakraft.co/billing.` An `xl` needs Pro.
+- **Disk.** Creating a project or growing a disk past the plan's total is refused. Disk counts by the size you chose, running or stopped; snapshots are free.
+- **Egress.** Data your machines send to the internet, over the month. Incoming data and your own SSH traffic, port forwards included, don't count. Past the allowance, $0.05 per GB is added to your next invoice as one line. At four times the allowance (1 TB on Solo, 2 TB on Pro) your machines stop until the month turns, and you get an email.
+- **Projects.** 10 on Solo, 25 on Pro, running or stopped. Destroyed projects and their 30-day snapshots don't count.
 
-## Examples
+Example: a Solo user with a `large` running all month, a 40 GB disk and 20 GB of egress pays $29. The same user with 300 GB of egress pays $29 plus $2.50.
 
-- `large`, running all month: $99 + $4 disk = $103.
-- `large`, stopped 10 hours every night: about $59 + $4 = $63.
-- `small`, used for a day and then left stopped: the day is free, then $2 a month for the disk until you destroy it.
+## Seeing your hours
 
-## Seeing what you've used
+`repose ls` and `repose status` show each project's running time today and this month:
 
-`repose ls` and `repose status` show each project's cost today and this month. The dashboard adds the month projected at the current rate, and its **Billing** page has your hours per day this month by size, your invoices, and your payment card. Usage is totalled a few minutes past each hour, so figures can trail by up to an hour.
+```
+todo-app   large  running   2h14m   claude: working      today 2h14m  month 41h
+```
 
-## Stopping the charges
+The dashboard's **Billing** page shows the same against your plan: memory running, disk allocated, egress this month and the overage so far, plus your invoices. Hours are totalled a few minutes past each hour, so figures can trail by up to an hour.
 
-- `repose stop` ends compute. Disk continues.
-- A running machine nobody has used for 24 hours keeps billing. repose tells you, in the CLI and the dashboard and once by email, but doesn't stop it ([Idle machines](/docs/lifecycle#idle-machines)).
-- `repose rm` ends everything for that project. Its final snapshot is kept free for 30 days.
+## Changing and cancelling
+
+Upgrading Solo to Pro takes effect at once; Paddle prorates the difference on your next invoice. Downgrading takes effect at your next renewal, and is refused while your running machines or allocated disk would not fit Solo; stop or destroy some first. Cancelling ends the plan at the end of the month you have paid for: machines run until then, stop then, and their snapshots stay 30 days. You can undo a cancellation until it takes effect.
+
+The card, the billing address and your receipts are in Paddle's portal, reached from the Billing page.
+
+## If a payment fails
+
+Paddle retries on its own schedule. Meanwhile:
+
+| When   | What happens |
+| ------ | ------------ |
+| day 0  | your machines keep running; starting one is refused; you get an email |
+| day 2  | a second email |
+| day 3  | every running machine is snapshotted and stopped, and you get an email |
+| day 33 | the snapshots are deleted |
+
+Paying at any point before day 33 unblocks starts. It does not start your machines again; that is yours to do with `repose start`.
+
+## Refunds
+
+The first charge after the free week is refunded on request within 14 days of it. Renewals are not refunded for a part month; cancelling stops the next one. Refunds go back to the same card. [The full statement](/refunds).
 
 ## Deleting your account
 
-The dashboard's **Account** page shows your handle, email and GitHub login, and has **Delete account**. Type your handle to confirm. Every machine stops at once, and everything, snapshots included, is deleted 30 days later.
+The dashboard's **Account** page shows your handle, email and GitHub login, and has **Delete account**. Type your handle to confirm. Any egress overage for the current month is charged, the plan is cancelled at once, every machine stops, and everything, snapshots included, is deleted 30 days later.

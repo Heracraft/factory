@@ -1,209 +1,232 @@
-# M4 gate runbook
+# M4 gate runbook: the Paddle sandbox
 
-The gate (`docs/MILESTONES.md` M4): a real card is charged the right amount
-for a known usage pattern (one large guest, 100 hours, 40 GB, 10 GB egress)
-and the Stripe invoice matches the `usage` rows to the cent; trial credit
-depletes and blocks a start at zero; a failed payment stops guests after 3
-days. This page is the whole path from "here is `sk_test_…`" to the evidence
-for every open row of `docs/workstreams/09-billing.md` §9, in one sitting.
+The gate (`docs/MILESTONES.md` M4, DECISIONS I-289): in Paddle's sandbox, a
+checkout with a test card creates a `trialing` subscription and a seat and
+the webhook makes the account `trial`; a simulated `transaction.completed`
+makes it `active`; a simulated `transaction.payment_failed` makes it
+`past_due` and the 3-day tick stops the machine; an egress overage for a
+known number of GB appears on the next transaction to the cent. This page
+is the whole path from "here is a sandbox key" to the evidence for the
+open rows of `docs/workstreams/09-billing.md` §9, in one sitting.
 
 What the owner provides, exactly:
 
-1. **The test-mode secret key** (`sk_test_…`, Stripe dashboard > Developers
-   > API keys). Nothing else for test mode: no publishable key (I-182), no
-   webhook secret, no price or meter ids (I-180).
-2. For the tax-line row only: **Stripe Tax activated** (Settings > Tax, the
-   business address). Optional for everything else; without it the
-   invoices carry no tax line and the bootstrap prints
-   `STRIPE_AUTOMATIC_TAX=false`.
-3. For step 5 only: **the live key and their own card**, on a day they
-   choose. Anything that costs money is announced to the conductor first.
+1. **A Paddle sandbox account** (sandbox-vendors.paddle.com) with an **API
+   key** (Developer tools > Authentication > API keys; `pdl_sdbx_…`, with
+   read and write on customers, transactions, subscriptions, products,
+   prices and notification settings) and a **client-side token**
+   (`test_…`, same page). Nothing else: the price ids and the webhook
+   secret come out of the bootstrap.
+2. For step 5 only: **the live account** (Paddle's domain review, which
+   asks for `/terms`, `/privacy` and `/refunds` on the site), its key and
+   token, and the owner's own card, on a day they choose. Anything that
+   costs money is announced to the conductor first.
 
-Conventions: `ra` below is `docker exec <api container> repose-admin` on the
-control VM (the container has `DATABASE_URL` and, after step 1, every
-`STRIPE_*` variable). Commands under "dev box" run from a checkout of
-`main`, outside or inside `nix develop ./nix`. Read the key into the shell
-without echoing it, never on a command line:
+Conventions: `ra` below is `docker exec <api container> repose-admin` on
+the control VM (the container has `DATABASE_URL` and, after step 1, every
+`PADDLE_*` variable). Commands under "dev box" run from a checkout of
+`main`. `psql` is `docker exec -it <postgres container> psql -U repose`.
+Read the key into the shell without echoing it, never on a command line:
 
 ```
-read -rs STRIPE_SECRET_KEY && export STRIPE_SECRET_KEY    # paste sk_test_..., Enter
+read -rs PADDLE_API_KEY && export PADDLE_API_KEY    # paste pdl_sdbx_..., Enter
 ```
 
 ## 0. Before: `main` is deployed
 
-The api and web must run the code that has `stripe-bootstrap`,
-`billing show`, `billing cycle-now`, the Checkout card flow and I-179's
-anchor. `curl -s https://api.repose.herakraft.co/v1/billing/webhook -X POST`
-answers `503 billing_disabled` until step 1 is done.
+The api and web must run the code that has `billing paddle-bootstrap`,
+`billing show`, `billing overage-now`, the plan page and the Paddle.js
+checkout. `curl -s -o /dev/null -w '%{http_code}\n' -X POST
+https://api.repose.herakraft.co/v1/billing/webhook` answers `503` until
+step 1 is done.
 
-## 1. Stripe objects and the api's environment (5 minutes)
+## 1. Paddle objects and the api's environment (5 minutes)
 
 Dev box:
 
 ```
-ops/stripe/bootstrap.sh > /tmp/stripe.env
+ops/paddle/bootstrap.sh > /tmp/paddle.env
 ```
 
-Stderr lists each object as `created` (first run) or `found` (any rerun);
-stdout, in `/tmp/stripe.env`, is the block. Paste it into the Coolify
-environment of **both** `api` and `api-grpc` (both read billing: the
-webhook is served by `api`, the rollup and dunning run under the leader
-lock in whichever holds it), save, and let Coolify restart them
-(`docs/ops/coolify.md` fact 16). Then `shred -u /tmp/stripe.env`.
+Stderr lists each object as `created` (first run) or `found` (any rerun):
+`product solo`, `price solo`, `product pro`, `price pro`, `product
+overage`, `webhook`. Stdout, in `/tmp/paddle.env`, is the block:
+`PADDLE_PRICE_SOLO`, `PADDLE_PRICE_PRO`, `PADDLE_PRODUCT_OVERAGE`,
+`PADDLE_WEBHOOK_SECRET`. Paste it into the Coolify environment of **both**
+`api` and `api-grpc` with `PADDLE_API_KEY` and `PADDLE_CLIENT_TOKEN` beside
+it (both read billing: the webhook is served by `api`, the hourly jobs run
+under the leader lock in whichever holds it), save, and let Coolify
+restart them (`docs/ops/coolify.md` fact 16). Then `shred -u
+/tmp/paddle.env`.
 
 Check:
 
 ```
 curl -s -o /dev/null -w '%{http_code}\n' -X POST https://api.repose.herakraft.co/v1/billing/webhook   # 400: signature required, billing is on
-ra billing reconcile        # "no differences" (no customers yet), not "billing is not configured"
+ra billing show <your handle>     # "subscription  - (no plan chosen)", not "billing is not configured"
 ```
+
+In Paddle's dashboard, Developer tools > Notifications, the destination
+`https://api.repose.herakraft.co/v1/billing/webhook` is listed with the
+ten events; its page has "Send test event", which step 3 uses.
 
 Evidence for AZURE-SETUP step 17: the stderr of the bootstrap (object ids,
-no secrets).
+no secrets). Offline, the same code path is `TestBootstrapIsIdempotent`;
+`REPOSE_PADDLE_SANDBOX_KEY=$PADDLE_API_KEY go test -run TestPaddleSandbox
+-v ./internal/billing/` runs it against the real sandbox and creates a
+customer and a checkout transaction as a smoke test.
 
-## 2. The fixed pattern against Stripe itself, to the cent (20-30 minutes)
+## 2. Checkout to `trial` (10 minutes)
 
-This is the gate's invoice sentence and the failed-payment sentence,
-proved on Stripe test clocks with the production rollup and webhook code
-(DECISIONS I-185). Nothing waits 100 real hours: the guest's minutes are
-written as `meter_samples`, the one input the rollup reads; everything
-from there on is the real code and the real Stripe. Dev box:
+Use a non-exempt account (a second GitHub login, or an operator-created
+one; exempt accounts pass the gate and never reach checkout, I-16).
 
-```
-mkdir -p /tmp/rt
-REPOSE_STRIPE_TEST_KEY=$STRIPE_SECRET_KEY TMPDIR=/tmp/rt \
-  go test -count=1 -v -timeout 60m -run TestStripeTestModeM4Gate ./internal/billing/ 2>&1 | tee /tmp/m4-gate.log
-grep -E 'M4 |--- (PASS|FAIL)' /tmp/m4-gate.log
-```
-
-It runs the bootstrap itself (without a webhook endpoint, so it is safe
-before or after step 1), then two scenarios in parallel, each on its own
-test clock frozen 33 days back and its own throwaway database:
-
-- **paid** (`pm_card_visa`): 100 running hours of a large guest, 40 GB for
-  the whole period, 10 GB egress. Expect
-  `usage_hours compute 1400 + storage 400 + egress 0 = 1800 less trial credit 1000 = 800`
-  and `invoice in_… lines compute C + storage S + egress 0 = subtotal 800 … status paid`,
-  where C and S are the per-line amounts after the credit and equal
-  `usage_hours`' own split; `meter summaries … reconcile: no differences`;
-  `trial credit ran out at …; status active, balance 0`;
-  `invoice.paid evt_… applied` and `limits after invoice.paid 10/10`.
-- **failed** (`pm_card_chargeCustomerFail`, the 4000 0000 0000 0341 card):
-  the same invoice, unpaid; the real `invoice.payment_failed` event moves
-  the account to `past_due`; the dunning job does nothing on day 2 and on
-  day 3 plus an hour enqueues a stop with `snapshot: true`, reason
-  `billing`, records `billing_stopped` and suspends the account; paying
-  the invoice with a good card and applying the real `invoice.paid` makes
-  it `active` with the guest left stopped.
-
-`REPOSE_STRIPE_KEEP=1` keeps the clocks (and their customers and invoices)
-for screenshots; otherwise they are deleted at the end. The invoice's
-hosted URL is in the log. Paste the `M4 ` lines as the evidence.
-
-If it fails at "meter summaries did not reach" but the invoice check
-passes, Stripe's aggregation was slow; the invoice is the authority. If an
-invoice is not found after the period end, the clock's advance is still
-running on Stripe's side; rerun.
-
-## 3. The live api, a real guest, test mode (about 3 hours, mostly waiting)
-
-What step 2 cannot show: the customer made at first sign-in, the hosted
-card form, webhooks arriving at the real endpoint, samples from a real
-guest on host-01, and an invoice cut from them. Use a non-exempt account
-(a second GitHub login, or an operator-created one; exempt accounts are
-never pushed, I-16).
-
-1. **Customer at first `GET /me`.** Sign in at
-   `https://repose.herakraft.co`; then `ra billing show <handle>` prints a
-   `stripe customer cus_…`, and the Stripe dashboard shows it with
-   `metadata.user_id`.
-2. **Card.** `/billing` > "Add a card" opens Stripe Checkout. Test card
-   `4242 4242 4242 4242`, any future expiry, any CVC, and a real-looking
-   address. It returns to `/billing` with "Card saved." and, within a few
-   seconds, "A card is on file." `ra billing show <handle>`:
-   `has_card true`, a `stripe subscription sub_…`, and `billing anchor`
-   equal to the subscription's start truncated to the hour (I-179). In the
-   Stripe dashboard the endpoint's deliveries show `setup_intent.succeeded`
-   answered 200.
-3. **Trial depletion on the real account.** Leave ten cents:
-   `ra billing credit <handle> -990 "M4 gate: leave 10 cents"`. Start a
-   large guest (`repose run` or the dashboard) and leave it running past
-   the next `:05`. `ra billing show <handle>`: `billing active`,
-   `credit balance 0 cents`, `first billed hour` set. Then in the Stripe
-   portal ("Manage card, address and invoices in Stripe") remove the card;
-   after `payment_method.detached` arrives, `repose start <project>` is
-   refused `payment_required` with `card_required` (the guest that was
-   running keeps running, §6). Add the card again (step 2) and the start
-   goes through. That is the gate's "blocks a start at zero" as I-185
-   reads it; the `trial_depleted` refusal itself is proven in
-   `TestTrialCreditDepletesThroughTheRollup` (`go test -run
-   TestTrialCreditDepletesThroughTheRollup -v ./internal/api/http/`).
-4. **A short known pattern, invoiced now.** Keep a large guest running for
-   two whole hours, then stop it. After the next `:05`:
+1. Sign in at `https://repose.herakraft.co`. `ra billing show <handle>`:
+   `billing none`, `subscription - (no plan chosen)`. `repose run` in any
+   checkout prints `Choose a plan at https://repose.herakraft.co/billing
+   first.` and exits 7.
+2. `/billing` shows Solo and Pro with the seats left. Choose **Solo**.
+   Paddle's checkout opens in the page; the test card is `4242 4242 4242
+   4242`, any future expiry, any CVC, a real-looking address (Paddle's
+   sandbox cards are listed under Developer tools > Test cards). It
+   completes with a $0 first transaction (the trial).
+3. Within a few seconds the webhook delivers `subscription.created` and
+   `transaction.completed`. `ra billing show <handle>`: `billing trial`,
+   `subscription sub_… solo trialing (1 seat(s))`, `trial ends` seven days
+   out, `next billed` the same instant. In psql:
 
    ```
-   ra billing show <handle>                    # "billed compute C + storage S + egress E = N cents"
-   ra billing explain <project> <YYYY-MM-DDTHH> # for each hour, if anyone asks
-   ra billing reconcile                        # no differences (give Stripe a few minutes)
-   ra billing cycle-now <handle>               # dry run: waits for Stripe to hold N, says what it would do
-   ra billing cycle-now <handle> --yes         # ends the period; prints the invoice id and N
+   select id, type, processed_at, error from paddle_events order by received_at desc limit 5;
+   select id, plan, status, seats, period_start, period_end, next_billed_at, trial_end from subscriptions;
+   select handle, billing_status, has_card, paddle_customer_id from users where handle = '<handle>';
    ```
 
-   `cycle-now` resets the subscription's billing cycle, which makes Stripe
-   invoice the usage so far immediately, and moves the rollup's anchor to
-   the same hour so the next period agrees on both sides (I-185). About an
-   hour later Stripe finalises and charges the test card;
-   `ra billing show <handle>` then lists the invoice as `paid` with
-   `total_cents` equal to N plus any tax, and `/billing` shows it with its
-   PDF. Evidence: the `show` output before, the `cycle-now` line, the
-   `show` output after, and the invoice id.
-5. **Webhooks at the real endpoint.** By now the endpoint's delivery list
-   in the Stripe dashboard has `setup_intent.succeeded`,
-   `payment_method.detached` and `invoice.paid` answered 200. The other
-   three (`invoice.payment_failed`, `customer.subscription.deleted`,
-   `charge.refunded`) have been applied from real Stripe payloads in
-   step 2 and replayed from recordings in `TestAllSixWebhooks` /
-   `TestWebhookReplayIsANoOp`; to see them hit the live endpoint too, use
-   the dashboard's "Send test event" on the endpoint: an unknown customer
-   is recorded and ignored with 200.
-6. **Clean up.** Destroy the project; `ra billing credit <handle> 990
-   "M4 gate: restore"` if the account is to be used again.
+   Every event has `processed_at` and no `error`; the user row is `trial`,
+   `has_card true`, with a `ctm_…` id.
+4. `repose run` now creates and starts a `large`. A second `repose run
+   --name other` in another checkout is refused: `Your Solo plan runs 8 GB
+   at once and <slug> is using it. Stop it, or upgrade at …`, exit 7.
+   `ra billing show` prints `running memory 8 of 8 GB: <slug> (large)`.
 
-## 4. Tax line (when the owner has activated Stripe Tax)
+Evidence: the `show` output, the three psql results, the two CLI lines.
 
-Rerun `ops/stripe/bootstrap.sh`, which now prints
-`STRIPE_AUTOMATIC_TAX=true` and otherwise the same ids; set that one
-variable in Coolify. New subscriptions carry automatic tax; an existing
-test account gets it by removing and re-adding its card after deleting its
-subscription in the Stripe dashboard (the `customer.subscription.deleted`
-webhook clears it and the next card makes a new one). Repeat step 3.4 and
-screenshot the invoice: its tax line is the evidence.
+## 3. Payment events: `active`, `past_due`, the 3-day stop (15 minutes)
 
-## 5. Live mode, one charge of the owner's card (the owner's call)
+Paddle's sandbox does not advance time, so the payment events are
+simulated from the destination's page (Developer tools > Notifications >
+the destination > Simulate / "Send test event"). A simulated event carries
+Paddle's example ids, so the api must be able to find the account: edit
+the payload's `data.customer_id` to the account's `ctm_…` and
+`data.subscription_id` to its `sub_…` (both in `ra billing show`), or add
+`"custom_data": {"user_id": "<uuid>"}` from `select id from users where
+handle = …`. An event for an unknown customer is recorded with an `error`
+and changes nothing, which is itself a check.
+
+1. **`transaction.completed`** with `status: completed`, the
+   `subscription_id` and `origin: subscription_recurring`: the account
+   moves `trial` → `active` (`ra billing show`: `billing active`), the
+   subscription row stays `trialing` until Paddle's own
+   `subscription.activated` arrives at the trial's end (or simulate that
+   too: `status: active`, the same items). Evidence: `show` and
+   `paddle_events`.
+2. **`transaction.payment_failed`** with the `subscription_id`: `billing
+   past_due`, `past_due since` set, and the `payment_failed` email in the
+   inbox (the `events` table: `select kind, ts, summary from events where
+   user_id = … order by ts`). `repose start <slug>` is refused `Your last
+   payment failed. Update your card at …`, exit 7; the running machine
+   keeps running. A second simulated failure adds no second email.
+3. **The 3-day stop.** The tick reads `past_due_since`; move it back
+   rather than waiting: `update users set past_due_since = now() -
+   interval '49 hours' where handle = '…'`, then the next hourly tick (or
+   restart `api-grpc` to run it now) sends day 2's `payment_failed`; then
+   `… - interval '73 hours'` and the next tick snapshots and stops the
+   machine (an `ops` row of kind `stop` with `params.reason = billing` and
+   `snapshot: true`), writes the `billing_stopped` event, and `ra billing
+   show` says `billing suspended`. `repose status` shows the project
+   stopped; `repose start` is refused `Your account is suspended…`.
+4. **Paying.** Simulate `transaction.completed` again: `billing active`,
+   `suspended -`, the machine still stopped (`repose status`), and
+   `repose start <slug>` goes through. That is R4-11: a payment unblocks,
+   the user restarts.
+
+Evidence: the `show` outputs after each event, the `events` rows, the
+`ops` row of the stop.
+
+## 4. The overage line to the cent (15 minutes)
+
+The line is computed from `usage_hours.egress_bytes` over the period. Give
+the account a known egress rather than moving a terabyte: with the machine
+running, insert an hour of 260 GB (10 over Solo's 250) for its project,
+
+```
+insert into usage_hours (project_id, hour, class, running_seconds, gb_alloc, egress_bytes, cost_cents, period_start, period_end, price_version)
+select p.id, date_trunc('hour', now()) - interval '2 hours', p.class, 3600, 40, 260 * 1073741824, 0, s.period_start, s.period_end, 'plan-v1'
+from projects p join subscriptions s on s.user_id = p.user_id where p.slug = '<slug>' and s.status in ('trialing','active','past_due');
+```
+
+then `ra billing show <handle>`: `egress 260.00 GB of 250 GB included`,
+`overage ceil(260.00 - 250) = 10 GB x 5 cents = 50 cents`. `ra billing
+explain <slug> <that hour>` prints the same arithmetic for the hour. The
+tick sends the line within three hours of `next_billed_at`; send it now:
+
+```
+ra billing overage-now <handle>     # "sent 10 GB over = 50 cents to Paddle for the period from …"
+ra billing overage-now <handle>     # "already has its line …; nothing sent"
+```
+
+In Paddle's dashboard, Subscriptions > the subscription: the next
+transaction preview carries one line `Egress overage: 10 GB over the Solo
+plan's 250 GB (…) at $0.05/GB`, $0.50. `select * from overage_charges;`
+has one row, 10 GB, 50 cents, `paddle_transaction_id` null until the
+transaction is billed (the `transaction.completed` for it stamps the id).
+To see the charge on a billed transaction in the sandbox, cancel the
+account's trial in Paddle's dashboard with "bill immediately", or wait for
+the trial to end: the invoice's total is $29.00 plus $0.50 plus the
+sandbox's tax for the address.
+
+The hard stop: `insert` another hour of 740 GB (1000 in all), run the tick
+(or restart `api-grpc`): the machine stops with reason `billing`, the
+`egress_stopped` email goes out, `repose start` is refused `Your machines
+are stopped until <period end>: this period's egress passed 1000 GB…`, and
+a second tick does nothing more. Delete the two `usage_hours` rows
+afterwards.
+
+Evidence: the `show` and `explain` outputs, the `overage-now` lines, the
+`overage_charges` row, a screenshot of the transaction preview with the
+line, the `ops` row of the egress stop.
+
+## 5. Live: one charge of the owner's own card (the owner's call)
 
 Announce it to the conductor first. Dev box, with the live key read the
 same way:
 
 ```
-ops/stripe/bootstrap.sh --live > /tmp/stripe-live.env
+ops/paddle/bootstrap.sh --live > /tmp/paddle-live.env
 ```
 
-Replace the test block in both `api` and `api-grpc` with it. The live
-customer is new (test and live objects are separate): the owner signs in,
-adds their card at `/billing`, runs a small guest for a known hour or two,
-stops it, and then step 3.4's `billing show`, `cycle-now` and `show`
-again. The charge lands about an hour after `cycle-now --yes`. The invoice
-id, `billing show`'s billed line and `explain` for each hour are the
-evidence, pasted with the arithmetic. A refund is the owner's decision:
-refund in the Stripe dashboard; `charge.refunded` writes the matching
-credit row by itself.
+Replace the sandbox block in both `api` and `api-grpc` with it (the live
+`PADDLE_API_KEY` and `PADDLE_CLIENT_TOKEN` beside it). Live and sandbox
+objects are separate: the owner signs in, chooses Solo at `/billing` with
+their own card, and `ra billing show` says `trialing`. The first charge is
+seven days later, or at once if the owner cancels the trial in Paddle's
+dashboard with "bill immediately". The transaction id, `billing show`'s
+line and the receipt Paddle emails are the evidence. A refund is the
+owner's decision, made in Paddle's dashboard; nothing in the api changes
+for it.
 
 ## If something is off
 
 - The api will not start after the paste: the log names the missing
-  variable; the block was cut short. Rerun the bootstrap and paste again.
-- Webhooks rejected (`StripeWebhookRejected`): the endpoint's API version
-  or secret, `ops/stripe/bootstrap.sh --rotate-webhook` (RUNBOOK).
-- `reconcile` shows a difference with `UNPUSHED` > 0: `ra billing resync`.
-- `cycle-now` waits and gives up: Stripe has not aggregated the events
-  yet, or a meter id is wrong; nothing was changed, run it again later.
+  variable (`PADDLE_API_KEY is set but PADDLE_PRICE_PRO … is not`); the
+  block was cut short. Rerun the bootstrap and paste again.
+- Webhooks rejected (`PaddleWebhookRejected`, `webhook_received
+  result=bad_signature`): the secret in the environment is not the
+  destination's (RUNBOOK). During a rotation both are accepted.
+- A `paddle_events` row with an `error` naming `ctm_…`: the event was for
+  a customer the api does not know; a simulated event whose ids were not
+  edited (step 3), or another product on the same Paddle account.
+- `overage-now` says `no billing period yet`: Paddle has not sent
+  `current_billing_period` (a subscription made by hand in the dashboard
+  before its first bill); the next `subscription.updated` fills it.
+- A refused charge (`OverageChargeFailed`): RUNBOOK "OverageChargeFailed";
+  the row waits, nothing is sent twice.

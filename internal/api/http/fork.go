@@ -13,6 +13,7 @@ import (
 
 	"github.com/heracraft/repose/internal/api/scheduler"
 	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/obs"
 )
@@ -83,13 +84,23 @@ func (s *Server) forkProject(w http.ResponseWriter, r *http.Request) error {
 	if !nameRe.MatchString(base) || Slug(base) == "" {
 		return errf("invalid", "name must match [A-Za-z0-9._-]{1,64}")
 	}
-	if err := s.billingGate(u); err != nil {
+	start := body.Start == nil || *body.Start
+	// The gate sees one machine of the class and the volumes of all N; the
+	// memory of the rest is checked as each fork's restore starts it.
+	gateClass := ""
+	if start {
+		gateClass = class
+	}
+	if err := s.gate(r, u, billing.Request{Class: gateClass, AddDiskBytes: src.VolumeBytes * int64(count)}); err != nil {
 		return err
 	}
 	if u.CancelledAt != nil {
 		return errf("forbidden", "account is cancelled")
 	}
-	start := body.Start == nil || *body.Start
+	limits, err := s.limits(r, u)
+	if err != nil {
+		return err
+	}
 	if start {
 		if err := s.abuseGate(ctx, src); err != nil {
 			return err
@@ -101,8 +112,8 @@ func (s *Server) forkProject(w http.ResponseWriter, r *http.Request) error {
 		// The user's row lock serialises this with every create and
 		// restore, so the limit holds for all N and a resend waits for
 		// the first request's commit.
-		var n, xl int
-		if err := tx.QueryRow(ctx, "select count(*), count(*) filter (where class = 'xl') from projects where user_id = (select id from users where id = $1 for update) and destroyed_at is null", u.ID).Scan(&n, &xl); err != nil {
+		var n int
+		if err := tx.QueryRow(ctx, "select count(*) from projects where user_id = (select id from users where id = $1 for update) and destroyed_at is null", u.ID).Scan(&n); err != nil {
 			return err
 		}
 		if body.RequestID != nil {
@@ -115,13 +126,8 @@ func (s *Server) forkProject(w http.ResponseWriter, r *http.Request) error {
 				return nil
 			}
 		}
-		if n+count > u.ProjectLimit {
-			return withDetail(errf("invalid", "you have %d of %d projects, and %d more would make %d; destroy some or add a card and pay your first invoice to raise the limit", n, u.ProjectLimit, count, n+count),
-				map[string]any{"limit": u.ProjectLimit, "projects": n, "requested": count})
-		}
-		if class == "xl" && xl+count > u.XLLimit {
-			return withDetail(errf("invalid", "you have %d of %d xl projects, and %d more would make %d; fork with a smaller class", xl, u.XLLimit, count, xl+count),
-				map[string]any{"xl_limit": u.XLLimit, "xl": xl, "requested": count})
+		if n+count > limits.Projects {
+			return projectLimitError(n, limits.Projects, count)
 		}
 		names, err := forkNames(ctx, tx, u.ID, Slug(base), count)
 		if err != nil {

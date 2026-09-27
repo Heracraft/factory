@@ -7703,3 +7703,47 @@ the machines. *Rejected:* a third-party template service (one more
 account and a tracking pixel); React Email or MJML (a build step for
 eleven emails); images or the logo as an attachment (blocked by default
 in most clients, and the r-mark reads fine as a letter).
+**I-293. How the plans landed in the code: repose_api_ metric names, the
+limits an exempt account keeps, stops counted, once-only emails derived
+from the events table, and a subscriptions-only seat count until I-290
+merges.** (ws/paddle, 2026-09-27) Implementing I-289 settled six things
+the spec left open. (1) Metrics keep the `repose_api_` prefix every api
+family has (I-49, I-60, I-78) and the checked registry's label list:
+`repose_api_billing_webhook_total{kind,result}` (`kind`, not `type`, is
+the allowed label), `repose_api_billing_overage_charges_total{result}`,
+`repose_api_billing_gate_refused_total{reason}`,
+`repose_api_billing_subscriptions_total{plan,status}` (`plan` is added to
+the allowed labels: a two-value enum) and, beyond the spec's list,
+`repose_api_billing_stops_total{reason}` so the `BillingStopped` alert has
+a series to read. (2) `users.project_limit` and `xl_limit` stay and are
+what an exempt or plan-less account works within (`repose-admin users
+limits` still sets them); a subscribed account has its plan's numbers and
+the xl count limit is gone, memory decides. New rows start at Solo's 10
+projects and no xl. (3) "Once" (day 2's `payment_failed`, `trial_ending`,
+`egress_stopped` per period) is derived from the `events` table (no second
+row of the kind since the moment it counts from) rather than new columns:
+no migration, and the email that went out is the guard. (4) A refused
+overage charge leaves its `overage_charges` row without a transaction id
+and the period unmarked, and is never resent by the job: a second attempt
+after Paddle accepted-then-errored would double a line, so the operator
+sends it (`billing overage-now`) after reading Paddle's error;
+`transaction.completed` stamps the id when the line appears on a
+transaction. (5) A trialing subscription's `transaction.completed` (the $0
+checkout) does not make the account `active`, and
+`transaction.payment_failed` without a subscription (a card declined at
+checkout) changes nothing. (6) `billing.SubscriptionSeats` counts held
+seats from `subscriptions` against `SEATS_TOTAL` and never waitlists,
+standing in for I-290's implementation, which replaces it in
+`internal/api/app` at merge; `billing.WaitlistPlace` reads the 0008
+waitlist row for `/me`, `/billing` and the gate's detail because the
+`store.WaitlistEntry` query still names the renamed columns until that
+workstream lands. Also: `idle.hourly_cents` answers 0 and gains
+`memory_gb`; the idle notification names the class's share of the plan's
+memory instead of a rate; growing a volume is gated on the growth with
+every live project's current size counted. *Rejected:* a `settings` key or
+a `dunning` migration for the once-only guards (a second source of truth
+for what the events table already records); `repose_billing_*` names
+(every api family is `repose_api_*` and the registry refuses other
+labels); resending a refused overage charge automatically (a doubled line
+is worse than a late one); making a trialing account `active` on the
+checkout transaction (it is $0 and the trial has a week to run).

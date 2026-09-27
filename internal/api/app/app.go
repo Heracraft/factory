@@ -61,8 +61,11 @@ type App struct {
 	abuse     *abuse.Guard
 	questions *questions.Service
 	outbox    *notify.Outbox
-	stripe    *billing.Stripe
+	paddle    *billing.Paddle
+	billing   *billing.Service
+	overage   *billing.Overage
 	hooks     *billing.Webhooks
+	gate      *billing.Gate
 	bcfg      billing.Config
 	server    *httpapi.Server
 	version   string
@@ -176,29 +179,32 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	} else {
 		a.outbox.Unsub = unsub
 	}
-	// Billing (workstream 09). With no STRIPE_SECRET_KEY the api starts
-	// normally and the billing routes answer 503 billing_disabled
-	// (DECISIONS I-16); with one, a half-configured Stripe is refused
-	// rather than silently billing nothing.
-	bcfg, stripeOn := billing.ConfigFromEnv()
-	a.bcfg = bcfg
-	var portal billing.Portal = billing.DisabledPortal{}
-	var customers interface {
-		EnsureCustomer(ctx context.Context, userID uuid.UUID) (string, error)
+	// Billing (workstream 09, DECISIONS I-289). With no PADDLE_API_KEY the
+	// api starts normally, the billing routes answer 503 billing_disabled
+	// and the gate refuses every non-exempt start with
+	// subscription_required; with one, a half-configured Paddle is refused
+	// rather than silently selling nothing.
+	bcfg, paddleOn := billing.ConfigFromEnv()
+	bcfg.DashboardURL = cfg.DashboardURL
+	if err := bcfg.Validate(); err != nil {
+		return nil, fmt.Errorf("billing: %w", err)
 	}
-	if stripeOn {
-		st, err := billing.NewStripe(bcfg, a.pool, log)
-		if err != nil {
-			return nil, fmt.Errorf("billing: %w", err)
-		}
-		a.stripe = st
-		portal = st
-		a.hooks = billing.NewWebhooks(a.pool, bcfg.WebhookSecret, log)
-		a.hooks.OnCardAttached = st.OnCardAttached
-		customers = st
-		log.Info("billing enabled", "event", "billing_enabled", "enforced", bcfg.Enforce, "automatic_tax", bcfg.AutomaticTax)
+	a.bcfg = bcfg
+	a.gate = billing.NewGate(a.pool, bcfg, a.m, log)
+	// The seat count: the subscriptions-only stand-in until the seats
+	// workstream's implementation (I-290) takes its place here.
+	seats := &billing.SubscriptionSeats{Pool: a.pool, Total: bcfg.SeatsTotal}
+	if paddleOn {
+		a.paddle = billing.NewPaddle(bcfg, log)
+		a.overage = billing.NewOverage(a.pool, a.paddle, bcfg, a.engine, a.m, log)
+		a.billing = billing.NewService(a.pool, a.paddle, bcfg, seats, a.overage, log)
+		a.hooks = billing.NewWebhooks(a.pool, bcfg, a.m, log)
+		a.hooks.Stop = a.engine
+		a.hooks.Seats = seats
+		log.Info("billing enabled", "event", "billing_enabled", "enforced", bcfg.Enforce, "environment", bcfg.Environment())
 	} else {
-		log.Info("billing disabled until STRIPE_SECRET_KEY is set (DECISIONS I-16)", "event", "billing_disabled")
+		a.overage = billing.NewOverage(a.pool, nil, bcfg, a.engine, a.m, log)
+		log.Info("billing disabled until PADDLE_API_KEY is set (DECISIONS I-16, I-289)", "event", "billing_disabled")
 	}
 	if _, err := billing.RecordEnforcement(ctx, a.pool, bcfg.Enforce, "api", log); err != nil {
 		return nil, err
@@ -217,7 +223,7 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	}
 	a.server = httpapi.New(httpapi.Deps{
 		Pool: a.pool, Verifier: verifier, Users: users, CA: a.ca, Secrets: a.sec, Engine: a.engine, Logs: a.logs, Events: a.events, Outbox: a.outbox, Unsub: unsub, Questions: a.questions,
-		Parser: parser, Metrics: a.m, Registry: a.reg, Log: log, Billing: portal, Webhooks: a.hooks, BillingEnforce: bcfg.Enforce, Customers: customers,
+		Parser: parser, Metrics: a.m, Registry: a.reg, Log: log, Billing: a.billing, Webhooks: a.hooks, Gate: a.gate, BillingEnforce: bcfg.Enforce,
 		Gateway:  httpapi.Gateway{Host: cfg.GatewayHost, Port: cfg.GatewayPort},
 		Waitlist: &waitlist.Gate{Pool: a.pool, Percent: cfg.WaitlistPercent, M: a.m},
 		Migrations: func(ctx context.Context) (int, error) {
@@ -405,15 +411,8 @@ func (a *App) loops(ctx context.Context) {
 	}
 	expiry := snapshots.New(a.pool, blob, a.m, a.log)
 	go expiry.Run(ctx, 24*time.Hour)
-	var pusher billing.UsagePusher = billing.Disabled{}
-	var reader billing.Reader
-	if a.stripe != nil {
-		pusher = a.stripe
-		reader = a.stripe
-	}
-	rollup := billing.NewRollup(a.pool, pusher, a.m, a.log)
-	dunning := billing.NewDunning(a.pool, a.engine, a.events, a.log, a.bcfg.Enforce)
-	reconciler := billing.NewReconciler(a.pool, reader, a.m, a.log)
+	rollup := billing.NewRollup(a.pool, a.m, a.log)
+	dunning := billing.NewDunning(a.pool, a.engine, a.events, a.bcfg, a.m, a.log)
 	bump := basebump.New(a.pool, a.engine, a.events, a.log)
 	idleWarn := &idle.Warner{Pool: a.pool, Events: a.events}
 	admitter := &waitlist.Admitter{Pool: a.pool, Percent: a.cfg.WaitlistPercent, M: a.m}
@@ -473,9 +472,13 @@ func (a *App) loops(ctx context.Context) {
 				a.log.Error("rollup", "event", "rollup_fail", "err", err.Error())
 			}
 			// Past-due accounts are stopped from the same hourly tick and
-			// under the same lock, so only one replica acts (§5.6).
+			// under the same lock, so only one replica acts (§5.6); the
+			// egress overage line and hard stop run beside it (I-289).
 			if _, err := dunning.Run(ctx); err != nil && ctx.Err() == nil {
 				a.log.Error("dunning", "event", "dunning_fail", "err", err.Error())
+			}
+			if _, _, err := a.overage.Run(ctx); err != nil && ctx.Err() == nil {
+				a.log.Error("overage", "event", "overage_fail", "err", err.Error())
 			}
 			// The idle-cost warning: one notification per idle stretch,
 			// never a stop (DECISIONS I-262, R1-5).
@@ -506,16 +509,6 @@ func (a *App) loops(ctx context.Context) {
 			}
 			if n, err := a.logs.Trim(ctx, 20); err == nil && n > 0 {
 				a.log.Info("build logs trimmed", "event", "buildlog_trim", "rows", n)
-			}
-			// The nightly reconciliation for the current period (§5.7). It
-			// reports and never fixes; `repose-admin billing reconcile
-			// --month` is the same comparison for a closed period.
-			if ms, err := reconciler.Reconcile(ctx, time.Now()); errors.Is(err, billing.ErrNoReader) {
-				a.log.Info("reconciliation skipped: Stripe is not readable", "event", "reconcile_skip")
-			} else if err != nil {
-				a.log.Error("reconciliation", "event", "reconcile_fail", "err", err.Error())
-			} else if len(ms) > 0 {
-				a.log.Error("reconciliation found differences", "event", "reconcile_mismatch", "users", len(ms))
 			}
 			release()
 		case <-limiters.C:

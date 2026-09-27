@@ -17,13 +17,21 @@ type Me struct {
 	TZ          string    `json:"tz"`
 	CreatedAt   time.Time `json:"created_at"`
 	Billing     struct {
-		Status           string `json:"status"`
-		TrialCreditCents int64  `json:"trial_credit_cents"`
-		HasCard          bool   `json:"has_card"`
+		Status           string     `json:"status"`
+		Plan             *string    `json:"plan"`
+		Seats            int        `json:"seats"`
+		PeriodEnd        *time.Time `json:"period_end"`
+		TrialEnd         *time.Time `json:"trial_end"`
+		CancelAt         *time.Time `json:"cancel_at"`
+		TrialCreditCents int64      `json:"trial_credit_cents"`
+		HasCard          bool       `json:"has_card"`
 	} `json:"billing"`
 	Limits struct {
 		Projects int `json:"projects"`
 		XL       int `json:"xl"`
+		MemoryGB int `json:"memory_gb"`
+		DiskGB   int `json:"disk_gb"`
+		EgressGB int `json:"egress_gb"`
 	} `json:"limits"`
 	Notify struct {
 		Email   bool    `json:"email"`
@@ -50,9 +58,14 @@ type Project struct {
 	CreatedAt        time.Time  `json:"created_at"`
 	StartedAt        *time.Time `json:"started_at,omitempty"`
 	Signals          *Signals   `json:"signals,omitempty"`
-	CostTodayCents   int64      `json:"cost_today_cents"`
-	CostMonthCents   int64      `json:"cost_month_cents"`
-	LastSnapshotAt   *time.Time `json:"last_snapshot_at,omitempty"`
+	// CostTodayCents and CostMonthCents are 0 since I-289 and go after one
+	// release; RunningSecondsToday and RunningSecondsMonth are what
+	// `repose status` shows (absent from an older api, so 0).
+	CostTodayCents      int64      `json:"cost_today_cents"`
+	CostMonthCents      int64      `json:"cost_month_cents"`
+	RunningSecondsToday int64      `json:"running_seconds_today,omitempty"`
+	RunningSecondsMonth int64      `json:"running_seconds_month,omitempty"`
+	LastSnapshotAt      *time.Time `json:"last_snapshot_at,omitempty"`
 	// LastError is the api's "code: message" for the op that last failed
 	// (the ops engine writes it; cleared by a successful start), and
 	// HostUnreachable its flag for a host that stopped answering. Both are

@@ -11,11 +11,13 @@ import (
 	"time"
 )
 
-// The idle-cost warning (DECISIONS I-262). The api marks a running project
+// The idle warning (DECISIONS I-262). The api marks a running project
 // `idle` once it has gone a day with no SSH session and no agent working;
-// repose never stops it (R1-5), so the CLI says what it costs and how to
-// stop it: on every `projects` and `status`, and once per idle stretch on
-// `run` and `attach` of some other project.
+// repose never stops it (R1-5), so the CLI says it is running with nobody
+// attached and how to stop it: on every `projects` and `status`, and once
+// per idle stretch on `run` and `attach` of some other project. Since
+// I-289 a plan buys memory that may run at once, so there is no rate to
+// print; the idle machine holds part of the plan.
 
 // idleFor renders how long a project has been idle: hours up to two days,
 // then days.
@@ -27,13 +29,13 @@ func idleFor(d time.Duration) string {
 	return fmt.Sprintf("%dd", h/24)
 }
 
-// idleLine is "idle 26h, billing ~$0.14/h; `repose stop todo-app` stops it",
-// or "" for a project that is not idle.
+// idleLine is "running for 26h with nobody attached; `repose stop todo-app`
+// stops it", or "" for a project that is not idle.
 func idleLine(p *Project, now time.Time) string {
 	if p.Idle == nil || p.State != "running" {
 		return ""
 	}
-	return fmt.Sprintf("idle %s, billing ~$%.2f/h; `repose stop %s` stops it", idleFor(now.Sub(p.Idle.Since)), centsToDollars(p.Idle.HourlyCents), p.Slug)
+	return fmt.Sprintf("running for %s with nobody attached; `repose stop %s` stops it", idleFor(now.Sub(p.Idle.Since)), p.Slug)
 }
 
 // idleNotedName is the laptop file that remembers which idle stretches
@@ -67,7 +69,7 @@ func idleOthersNote(dir string, projects []Project, current string, now time.Tim
 		if t, ok := noted[p.ID]; ok && t.Equal(p.Idle.Since) {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("%s (idle %s, ~$%.2f/h)", p.Slug, idleFor(now.Sub(p.Idle.Since)), centsToDollars(p.Idle.HourlyCents)))
+		parts = append(parts, fmt.Sprintf("%s (idle %s)", p.Slug, idleFor(now.Sub(p.Idle.Since))))
 	}
 	if dir != "" && !sameNoted(noted, keep) {
 		if b, err := json.Marshal(keep); err == nil {
@@ -78,7 +80,7 @@ func idleOthersNote(dir string, projects []Project, current string, now time.Tim
 		return ""
 	}
 	sort.Strings(parts)
-	return fmt.Sprintf("Still running and billing with nobody on it: %s. `repose stop <project>` stops one.", strings.Join(parts, ", "))
+	return fmt.Sprintf("Still running with nobody on it: %s. `repose stop <project>` stops one.", strings.Join(parts, ", "))
 }
 
 func sameNoted(a, b map[string]time.Time) bool {

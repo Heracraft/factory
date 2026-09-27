@@ -49,6 +49,17 @@ Grafana "Host capacity", variable `host_id`. Then on the host itself:
 `systemctl list-units 'guest@*'`, `lvs vg-guests`, `nft list counters`,
 `journalctl -u hostd -f`.
 
+Billing (DECISIONS I-289): `repose_api_billing_webhook_total{kind,result}`
+counts Paddle webhook deliveries (`ok`, `duplicate`, `bad_signature`,
+`error`), `repose_api_billing_overage_charges_total{result}` the egress
+overage lines sent, `repose_api_billing_gate_refused_total{reason}` the
+`payment_required` refusals, `repose_api_billing_subscriptions_total{plan,status}`
+the subscription events applied and `repose_api_billing_stops_total{reason}`
+the machines the api stopped for billing. The log lines are
+`webhook_received` (kind, result), `overage_charged` (user_id, result,
+cents, gb) and `gate_refused` (user_id, reason, plan): never the body of a
+webhook, an email, a card or an amount a tenant typed.
+
 The fleet as a whole: `repose_api_waitlist_waiting` is the users held on
 the capacity waitlist (DECISIONS I-269), `repose_api_waitlist_joined_total`
 and `repose_api_waitlist_admitted_total` the traffic through it; the api
@@ -98,7 +109,7 @@ line stored by us:**
 - git remote URLs (they can carry embedded tokens); log `project_id`
 - user IP addresses and user agents (the gateway may keep a per-IP
   counter in memory for rate limiting; it does not log the address)
-- Stripe card details of any kind, including last four
+- card details of any kind, including last four (Paddle holds the card; the api never sees it)
 
 `internal/obs` is where the rules live rather than where they are written
 down (in three packages, so that guestd links a logger and not an exporter:

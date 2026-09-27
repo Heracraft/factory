@@ -39,9 +39,9 @@ API does not do for it.
 - Web terminal to the guest (DECISIONS R4-18, not built).
 - Preview URLs (DESIGN §7, later).
 - Teams, org switching (R5-6).
-- Any embedded Stripe form (09-billing owns the Stripe side; the dashboard
-  sends the user to Stripe's hosted Checkout page to add a card and links
-  to the portal, DECISIONS I-182).
+- Any card form of its own (09-billing owns the Paddle side; the dashboard
+  opens Paddle.js with the transaction `POST /billing/checkout` returns and
+  links to Paddle's portal, DECISIONS I-289).
 - Admin or operator views (`repose-admin`, 05).
 
 ## 4. Interfaces
@@ -68,8 +68,8 @@ the API's audience check is the control.
 The dashboard has no `+server.ts` routes except `/healthz`. Nothing in
 `apps/web` reads an environment secret; the only build-time env values are
 `PUBLIC_API_URL`, `PUBLIC_LOGTO_ENDPOINT`, `PUBLIC_LOGTO_APP_ID`
-(`PUBLIC_STRIPE_PUBLISHABLE_KEY` was retired with the embedded card form,
-DECISIONS I-182).
+(the Paddle client token comes from `GET /billing`, not the build,
+DECISIONS I-289).
 
 ### 5.2 Routes
 
@@ -81,7 +81,7 @@ DECISIONS I-182).
 | `/projects/[id]` | header with state and actions (Start, Stop, Destroy with confirm typing the slug); cards: connect (`repose run` and `ssh <slug>.repose`), signals (ssh sessions, tmux clients, agents and their state, docker containers, updated N s ago), cost (today, month, projected month at current run rate, using `GET /usage`), disk (used / allocated, Resize with a size picker), events (list from `GET /events`, newest first, agent icon, summary), snapshots (list, Create, Restore with confirm, restore-as-new with a name field), last build (status, link to config) |
 | `/projects/[id]/config` | two tabs: **Menu** and **Nix**. Menu: groups from `GET /catalog` rendered as checkbox lists with descriptions and a search box, plus a "Services" group for things like Postgres and Redis if the catalog has them; Apply sends `{menu}`. Nix: CodeMirror 6 editor with Nix syntax, Apply sends `{fragment}`. Both then open the build log panel (SSE from `/ops/:op/log`), auto-scrolled, and on failure show the error block with the fragment line highlighted in the editor. Revisions list with Re-apply. A `Hold base updates` toggle (PATCH `hold_base_updates`) with the current base version and its changelog. |
 | `/projects/[id]/secrets` | list of names with dates; Add (name, value textarea or file upload, client validates the name regex); Delete with confirm. Values are never displayed after save. |
-| `/billing` | status banner (trial credit left, past due, suspended); card on file ("Add a card" sends the user to Stripe's hosted Checkout page in setup mode from `POST /billing/setup {"flow":"checkout"}`, which comes back to `/billing?card=saved|cancelled`; DECISIONS I-182); "Manage in Stripe" (`POST /billing/portal` → redirect); invoices table; usage chart for the month by project (bar per day, stacked by class) from `GET /usage`. |
+| `/billing` | the plan page (DECISIONS I-289, I-290): status banner (no plan, trial ending, past due, suspended, egress stopped); the two plans with the seats left, "Choose" opening Paddle.js with `POST /billing/checkout`'s transaction (or the waitlist place on `503 waitlisted`); the current plan with usage against it (memory running, disk, egress and the overage so far from `GET /billing`), upgrade/downgrade (`POST /billing/plan`), cancel and resume; "Manage card and receipts" (`POST /billing/portal`); invoices table from `GET /billing/invoices`; hours per day by class from `GET /usage`. |
 | `/settings` | timezone (auto-detected default, select), email notifications toggle, ntfy URL field with a "Send test" button (calls `POST /me/notify-test`, added to `interfaces/api.md` by this workstream if missing: see §6), install command, SSH config hint. |
 | `/account` | handle, email, GitHub login, Delete account (types handle, calls `DELETE /me`, explains 30-day retention). |
 | `/healthz` | `200 ok` |
@@ -227,17 +227,14 @@ suites back most of it: `apps/web/tests/` against `internal/fakes/api`
       The file path is its own: it stores a deliberately non-UTF-8 byte
       sequence, asserts the base64 never reaches the DOM, reads the name
       back from the api, and refuses a file over 64 KB.
-- [ ] Billing: SetupIntent card form saves a Stripe test card; portal link
-      redirects; invoices and usage render from fixtures. Evidence: test
-      plus a screenshot against Stripe test mode. The card form is now
-      Stripe's hosted Checkout (DECISIONS I-182). Fixture half done:
-      `tests/billing.spec.ts` 5/5 (add a card through Checkout and come
-      back to it on file, a cancelled Checkout, invoices with amount,
-      number and Stripe links, the portal redirect, billing off).
-      **Open: the screenshot against Stripe test mode, `docs/ops/M4-GATE.md`
-      §3.2, waiting for the test key.** — waits on: owner (the Stripe test key
-      in the api's Coolify env; then docs/ops/M4-GATE.md §3.2 gives the
-      screenshot).
+- [ ] Billing: the plan page chooses a plan through Paddle.js, shows usage
+      against the plan, changes and cancels it, links to the portal, and
+      renders invoices and hours from fixtures (DECISIONS I-289). Evidence:
+      `tests/billing.spec.ts` against `internal/fakes/api`, plus a
+      screenshot against Paddle's sandbox (`docs/ops/M4-GATE.md` §2). The
+      Stripe fixture this row had went with I-289; the web workstream
+      rebuilds it. — waits on: the web worker (fixture) and the owner (the
+      sandbox key for the screenshot).
 - [x] Settings: timezone, email toggle, ntfy URL, test button. Evidence:
       `tests/settings-account.spec.ts`.
 - [x] Account deletion flow requires typing the handle and explains

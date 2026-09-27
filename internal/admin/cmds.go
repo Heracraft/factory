@@ -1087,9 +1087,9 @@ func (e *Env) billing(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return ErrUsage
 	}
-	if args[0] == "stripe-bootstrap" {
-		// Talks to Stripe only; no database (DECISIONS I-180).
-		return e.billingStripeBootstrap(ctx, args[1:])
+	if args[0] == "paddle-bootstrap" {
+		// Talks to Paddle only; no database (DECISIONS I-289).
+		return e.billingPaddleBootstrap(ctx, args[1:])
 	}
 	if err := e.connect(ctx); err != nil {
 		return err
@@ -1097,12 +1097,8 @@ func (e *Env) billing(ctx context.Context, args []string) error {
 	switch args[0] {
 	case "rollup":
 		return e.billingRollup(ctx, args[1:])
-	case "credit":
-		return e.billingCredit(ctx, args[1:])
 	case "explain":
 		return e.billingExplain(ctx, args[1:])
-	case "reconcile":
-		return e.billingReconcile(ctx, args[1:])
 	case "suspend":
 		// The billing-reason suspension is the same action as `users
 		// suspend --reason billing`; one implementation, two spellings, so
@@ -1116,12 +1112,10 @@ func (e *Env) billing(ctx context.Context, args []string) error {
 			return ErrUsage
 		}
 		return e.users(ctx, []string{"unsuspend", args[1]})
-	case "resync":
-		return e.billingResync(ctx, args[1:])
 	case "show":
 		return e.billingShow(ctx, args[1:])
-	case "cycle-now":
-		return e.billingCycleNow(ctx, args[1:])
+	case "overage-now":
+		return e.billingOverageNow(ctx, args[1:])
 	}
 	return fmt.Errorf("%w: billing %s", ErrUsage, args[0])
 }
@@ -1132,7 +1126,7 @@ func (e *Env) billingRollup(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	r := e.rollup()
+	r := billing.NewRollup(e.pool, metrics.NewNop(), e.logger())
 	if hs := fs.Lookup("hour").Value.String(); hs != "" {
 		h, err := time.Parse("2006-01-02T15", hs)
 		if err != nil {
@@ -1142,11 +1136,10 @@ func (e *Env) billingRollup(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		out := [][]string{{"PROJECT", "CLASS", "RUNNING S", "GB", "EGRESS", "GUEST", "STORAGE", "EGRESS C", "COST", "CREDIT", "GAP"}}
+		out := [][]string{{"PROJECT", "CLASS", "RUNNING S", "GB", "EGRESS", "PERIOD", "GAP"}}
 		for _, row := range rows {
 			out = append(out, []string{row.ProjectID.String(), row.Class, strconv.Itoa(row.RunningSeconds), strconv.FormatInt(row.GBAlloc, 10), gb(row.EgressBytes),
-				strconv.FormatInt(row.GuestCents, 10), strconv.FormatInt(row.StorageCents, 10), strconv.FormatInt(row.EgressCents, 10),
-				strconv.FormatInt(row.CostCents, 10), strconv.FormatInt(row.CreditCents, 10), strconv.FormatBool(row.Gap)})
+				row.Period.Start.Format("2006-01-02"), strconv.FormatBool(row.Gap)})
 		}
 		e.table(out)
 		_, err = e.audited(ctx, "billing_rollup", hs, map[string]any{"rows": len(rows)})
@@ -1161,36 +1154,8 @@ func (e *Env) billingRollup(ctx context.Context, args []string) error {
 	return err
 }
 
-// billingCredit adds a credit_ledger row for goodwill or a refund (§5.3).
-func (e *Env) billingCredit(ctx context.Context, args []string) error {
-	if len(args) < 3 {
-		return fmt.Errorf("%w: billing credit HANDLE CENTS REASON", ErrUsage)
-	}
-	u, err := e.findUser(ctx, args[0])
-	if err != nil {
-		return err
-	}
-	cents, err := strconv.ParseInt(args[1], 10, 64)
-	if err != nil {
-		return fmt.Errorf("%w: CENTS must be a whole number of cents", ErrUsage)
-	}
-	reason := strings.Join(args[2:], " ")
-	id, err := e.audited(ctx, "billing_credit", u.Handle, map[string]any{"cents": cents, "reason": reason})
-	if err != nil {
-		return err
-	}
-	if _, err := billing.Credit(ctx, e.pool, u.ID, cents, billing.ReasonGoodwill, "audit:"+id.String()); err != nil {
-		return err
-	}
-	balance, err := billing.Balance(ctx, e.pool, u.ID)
-	if err != nil {
-		return err
-	}
-	_, _ = fmt.Fprintf(e.Stdout, "%s: %+d cents (%s); balance is now %d cents\n", u.Handle, cents, reason, balance)
-	return nil
-}
-
-// billingExplain prints every input and step of §5.4 for one hour.
+// billingExplain prints every input of one usage_hours row and the
+// period's overage arithmetic around it.
 func (e *Env) billingExplain(ctx context.Context, args []string) error {
 	if len(args) < 2 {
 		return fmt.Errorf("%w: billing explain PROJECT 2026-09-17T14", ErrUsage)
@@ -1209,96 +1174,6 @@ func (e *Env) billingExplain(ctx context.Context, args []string) error {
 	}
 	_, err = ex.WriteTo(e.Stdout)
 	return err
-}
-
-// billingReconcile compares usage_hours with Stripe and reports; it never
-// fixes a difference (§5.7).
-func (e *Env) billingReconcile(ctx context.Context, args []string) error {
-	fs, err := flagsFor("reconcile", args, func(fs *flag.FlagSet) { fs.String("month", "", "2026-10; omit for the current period") })
-	if err != nil {
-		return err
-	}
-	at := time.Now().UTC()
-	if ms := fs.Lookup("month").Value.String(); ms != "" {
-		t, err := time.Parse("2006-01", ms)
-		if err != nil {
-			return fmt.Errorf("%w: --month is 2026-10", ErrUsage)
-		}
-		// The middle of the month names the period unambiguously whatever
-		// day of the month the account is anchored on.
-		at = t.AddDate(0, 0, 14)
-	}
-	st, err := e.stripe()
-	if err != nil {
-		return err
-	}
-	rec := billing.NewReconciler(e.pool, st, metrics.NewNop(), e.logger())
-	ms, err := rec.Reconcile(ctx, at)
-	if err != nil {
-		return err
-	}
-	if len(ms) == 0 {
-		_, _ = fmt.Fprintf(e.Stdout, "no differences\n")
-	} else {
-		out := [][]string{{"HANDLE", "PERIOD", "USAGE_HOURS", "STRIPE", "DIFF", "UNPUSHED", "FIRST HOUR"}}
-		for _, m := range ms {
-			out = append(out, []string{m.Handle, m.Period.Start.Format("2006-01-02"), strconv.FormatInt(m.OursCents, 10),
-				strconv.FormatInt(m.TheirCents, 10), strconv.FormatInt(m.Diff(), 10), strconv.Itoa(m.Unpushed), fmtTime(&m.FirstHour)})
-		}
-		e.table(out)
-		_, _ = fmt.Fprintf(e.Stdout, "\n%d account(s) differ; nothing was changed. `repose-admin billing explain <project> <hour>` shows one row.\n", len(ms))
-	}
-	_, err = e.audited(ctx, "billing_reconcile", at.Format("2006-01"), map[string]any{"mismatches": len(ms)})
-	return err
-}
-
-// billingResync re-pushes the rows that owe Stripe a usage record (§6,
-// "Stripe unreachable during the hourly push").
-func (e *Env) billingResync(ctx context.Context, args []string) error {
-	fs, err := flagsFor("resync", args, func(fs *flag.FlagSet) { fs.String("user", "", "handle; omit for every account") })
-	if err != nil {
-		return err
-	}
-	if h := fs.Lookup("user").Value.String(); h != "" {
-		u, err := e.findUser(ctx, h)
-		if err != nil {
-			return err
-		}
-		_, _ = fmt.Fprintf(e.Stdout, "re-pushing %s's pending rows\n", u.Handle)
-	}
-	var pending int
-	if err := e.pool.QueryRow(ctx, "select count(*) from usage_hours where stripe_usage_record_id is null and cost_cents > credit_cents").Scan(&pending); err != nil {
-		return err
-	}
-	if err := e.rollup().Push(ctx); err != nil {
-		return err
-	}
-	var left int
-	if err := e.pool.QueryRow(ctx, "select count(*) from usage_hours where stripe_usage_record_id is null and cost_cents > credit_cents").Scan(&left); err != nil {
-		return err
-	}
-	_, _ = fmt.Fprintf(e.Stdout, "%d row(s) pending, %d pushed, %d still pending\n", pending, pending-left, left)
-	_, err = e.audited(ctx, "billing_resync", "", map[string]any{"pending": pending, "pushed": pending - left})
-	return err
-}
-
-// rollup builds the rollup with the Stripe pusher when one is configured.
-func (e *Env) rollup() *billing.Rollup {
-	var pusher billing.UsagePusher = billing.Disabled{}
-	if st, err := e.stripe(); err == nil {
-		pusher = st
-	}
-	return billing.NewRollup(e.pool, pusher, metrics.NewNop(), e.logger())
-}
-
-// stripe builds the Stripe client from the environment, or returns
-// ErrDisabled so a command can say billing is not configured.
-func (e *Env) stripe() (*billing.Stripe, error) {
-	cfg, on := billing.ConfigFromEnv()
-	if !on {
-		return nil, billing.ErrDisabled
-	}
-	return billing.NewStripe(cfg, e.pool, e.logger())
 }
 
 // parseHour accepts the two spellings an operator types.

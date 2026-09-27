@@ -1,0 +1,83 @@
+package billing_test
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/heracraft/repose/internal/billing"
+)
+
+// The bootstrap creates every object once and finds it on every rerun;
+// a live key needs --live; the block names every id and never the key.
+func TestBootstrapIsIdempotent(t *testing.T) {
+	f := newFakePaddle()
+	defer f.Close()
+	cfg := testConfig(f)
+	p := billing.NewPaddle(cfg, quiet())
+	ctx := context.Background()
+	var progress bytes.Buffer
+	res, err := billing.Bootstrap(ctx, p, billing.BootstrapOptions{WebhookURL: "https://api.repose.test/v1/billing/webhook", Progress: &progress})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Created) != 6 || len(res.Found) != 0 {
+		t.Fatalf("first run: created %v found %v", res.Created, res.Found)
+	}
+	if res.PriceSolo == "" || res.PricePro == "" || res.ProductOverage == "" || res.WebhookSecret != f.Secret() || res.Environment != "sandbox" {
+		t.Fatalf("result: %+v", res)
+	}
+	prices := f.Bodies["POST /prices"]
+	if len(prices) != 2 {
+		t.Fatalf("%d prices created", len(prices))
+	}
+	for _, pr := range prices {
+		tp := pr["trial_period"].(map[string]any)
+		bc := pr["billing_cycle"].(map[string]any)
+		up := pr["unit_price"].(map[string]any)
+		if tp["interval"] != "day" || tp["frequency"] != float64(7) || bc["interval"] != "month" || bc["frequency"] != float64(1) || up["currency_code"] != "USD" {
+			t.Fatalf("price body: %v", pr)
+		}
+		if up["amount"] != "2900" && up["amount"] != "5900" {
+			t.Fatalf("price amount %v", up["amount"])
+		}
+	}
+	ns := f.Bodies["POST /notification-settings"][0]
+	if ns["destination"] != "https://api.repose.test/v1/billing/webhook" || len(ns["subscribed_events"].([]any)) != len(billing.WebhookEvents) {
+		t.Fatalf("notification setting: %v", ns)
+	}
+	block := res.EnvBlock()
+	for _, want := range []string{"PADDLE_PRICE_SOLO=" + res.PriceSolo, "PADDLE_PRICE_PRO=" + res.PricePro, "PADDLE_PRODUCT_OVERAGE=" + res.ProductOverage, "PADDLE_WEBHOOK_SECRET=" + f.Secret()} {
+		if !strings.Contains(block, want) {
+			t.Errorf("block lacks %q:\n%s", want, block)
+		}
+	}
+	if strings.Contains(block, cfg.APIKey) || strings.Contains(progress.String(), cfg.APIKey) {
+		t.Fatal("the key was printed")
+	}
+	// Rerun: everything found, nothing created.
+	before := len(f.Requests)
+	again, err := billing.Bootstrap(ctx, p, billing.BootstrapOptions{WebhookURL: "https://api.repose.test/v1/billing/webhook"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again.Created) != 0 || len(again.Found) != 6 || again.PriceSolo != res.PriceSolo || again.PricePro != res.PricePro || again.WebhookSecret != f.Secret() {
+		t.Fatalf("rerun: created %v found %v", again.Created, again.Found)
+	}
+	for _, r := range f.Requests[before:] {
+		if strings.HasPrefix(r, "POST ") {
+			t.Fatalf("rerun made %s", r)
+		}
+	}
+	// A live key is refused without --live, before any call.
+	live := billing.NewPaddle(billing.Config{APIKey: "pdl_live_apikey_test", BaseURL: f.URL()}, quiet())
+	calls := len(f.Requests)
+	if _, err := billing.Bootstrap(ctx, live, billing.BootstrapOptions{}); !errors.Is(err, billing.ErrLiveKey) || len(f.Requests) != calls {
+		t.Fatalf("live without --live: %v (%d calls)", err, len(f.Requests)-calls)
+	}
+	if _, err := billing.Bootstrap(ctx, live, billing.BootstrapOptions{Live: true}); err != nil {
+		t.Fatalf("live with --live: %v", err)
+	}
+}

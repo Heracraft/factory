@@ -64,8 +64,8 @@ func runLogin(ctx context.Context, dir string, cfg Config, httpClient *http.Clie
 		return exitf(ExitGeneric, "Logged in, but could not fetch your account: %v", err)
 	}
 	fmt.Printf("Logged in as %s (%s)\n", me.Handle, me.Email)
-	if !me.Billing.HasCard {
-		fmt.Printf("No card on file. Add one at https://repose.herakraft.co/billing before the first `repose run`.\n")
+	if me.Billing.Status == "none" || (me.Billing.Status == "" && !me.Billing.HasCard) {
+		fmt.Printf("No plan yet. Choose one at https://repose.herakraft.co/billing before the first `repose run`; the first week is free.\n")
 	}
 	if !opts.GuestEnv {
 		setUpPlainSSH()

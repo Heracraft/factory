@@ -39,7 +39,7 @@ func TestSince(t *testing.T) {
 
 func TestSummaryCarriesNoGuestContent(t *testing.T) {
 	s := Summary("todo-app", "xl", 26*time.Hour+40*time.Minute)
-	for _, want := range []string{"todo-app", "26h", "$0.28 an hour (xl)", "`repose stop todo-app`", "never stops"} {
+	for _, want := range []string{"todo-app", "26h", "holding 16 GB of your plan's memory (xl)", "`repose stop todo-app`", "never stops"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("summary %q lacks %q", s, want)
 		}

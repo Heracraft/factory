@@ -130,9 +130,10 @@ written so they cannot happen quietly.
 - [ ] Snapshot restore of a guest onto a *different* host rehearsed.
 - [ ] Host loss rehearsed: deallocate a host, restore its projects elsewhere
       from Blob, users notified.
-- [ ] Paddle: the sandbox gate of I-289 passed (`ops/M4-GATE.md`);
-      live-mode charge of the owner's own card succeeded; failed payment
-      path exercised with a Paddle test card.
+- [ ] Paddle: the sandbox gate of `docs/ops/M4-GATE.md` passes (checkout to
+      `trial`, `transaction.completed` to `active`, `payment_failed` to
+      `past_due` and the 3-day stop, an egress overage line to the cent);
+      one live charge of the owner's own card succeeded.
 - [x] Grafana dashboards exist for: host capacity, per-guest resources,
       builds (duration, failures), gateway (sessions, auth failures),
       snapshots (age per project), billing (usage per hour), abuse (top
@@ -141,8 +142,8 @@ written so they cannot happen quietly.
       (`ops/check.sh --grafana`), and **41 of their 43** Prometheus panel
       queries return real production data against host-01
       (`ops/dashboards/validate.py --query`, 2026-09-21). The two that do
-      not were Stripe's, off by I-16 (superseded by I-289); no panel is empty for a reason of
-      its own.
+      not were Stripe's, off by I-16, and are gone with I-289; no panel
+      is empty for a reason of its own.
 - [x] Alerts wired: host memory 80 percent, host unreachable, snapshot older
       than 36 hours for a running project, build queue stuck, gateway auth
       failure spike, egress over 1 TB per project per day. Evidence: 17

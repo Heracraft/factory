@@ -5,350 +5,374 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
-	stripe "github.com/stripe/stripe-go/v83"
-	"github.com/stripe/stripe-go/v83/webhook"
+	"github.com/google/uuid"
 
+	"github.com/heracraft/repose/internal/api/waitlist"
 	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/db/testdb"
 )
 
-const testWebhookSecret = "whsec_fake"
+// seatsRecorder records Seats.Converted calls.
+type seatsRecorder struct {
+	converted []string
+}
 
-// stripeEvent builds the JSON body Stripe posts.
-func stripeEvent(id, kind string, object map[string]any) []byte {
-	b, err := json.Marshal(map[string]any{
-		// The endpoint must be created with the SDK's API version, or every
-		// delivery is refused as a version mismatch; ops/AZURE-SETUP.md
-		// step 17 says so and this is the same version.
-		"id": id, "object": "event", "type": kind, "api_version": stripe.APIVersion,
-		"created": time.Now().Unix(),
-		"data":    map[string]any{"object": object},
-	})
-	if err != nil {
-		panic(err) // test fixture on a literal map; a marshal failure is a bug in the test
-	}
+func (s *seatsRecorder) Reserve(context.Context, string, int) (bool, *waitlist.Place, error) {
+	return true, nil, nil
+}
+func (s *seatsRecorder) Converted(_ context.Context, userID string) error {
+	s.converted = append(s.converted, userID)
+	return nil
+}
+func (s *seatsRecorder) Count(context.Context) (waitlist.Count, error) { return waitlist.Count{}, nil }
+
+var evSeq int
+
+// event builds a Paddle notification body.
+func event(kind string, data map[string]any) []byte {
+	evSeq++
+	b, _ := json.Marshal(map[string]any{"event_id": fmt.Sprintf("evt_%06d", evSeq), "event_type": kind, "occurred_at": "2026-10-03T12:00:00Z", "notification_id": "ntf_x", "data": data})
 	return b
 }
 
-// signPayload produces the Stripe-Signature header the endpoint verifies.
-func signPayload(t *testing.T, payload []byte, secret string) string {
-	t.Helper()
-	now := time.Now()
-	sig := webhook.ComputeSignature(now, payload, secret)
-	return fmt.Sprintf("t=%d,v1=%x", now.Unix(), sig)
+// subData is a Paddle subscription object for a user on a plan.
+func subData(id string, a account, priceID, status string, extra map[string]any) map[string]any {
+	d := map[string]any{"id": id, "status": status, "customer_id": "ctm_" + a.Handle, "currency_code": "USD", "next_billed_at": "2026-11-01T00:00:00Z",
+		"current_billing_period": map[string]any{"starts_at": "2026-10-01T00:00:00Z", "ends_at": "2026-11-01T00:00:00Z"},
+		"custom_data":            map[string]any{"user_id": a.UserID.String()},
+		"items": []any{map[string]any{"status": "active", "quantity": 1, "price": map[string]any{"id": priceID, "product_id": "pro_x"},
+			"trial_dates": map[string]any{"starts_at": "2026-10-01T00:00:00Z", "ends_at": "2026-10-08T00:00:00Z"}}}}
+	for k, v := range extra {
+		d[k] = v
+	}
+	return d
 }
 
-func newHooks(t *testing.T, pool *db.Pool) *billing.Webhooks {
+func newHooks(t *testing.T, pool *db.Pool, f *fakePaddle, stop *stopRecorder, seats *seatsRecorder) *billing.Webhooks {
 	t.Helper()
-	return billing.NewWebhooks(pool, testWebhookSecret, quiet())
+	w := billing.NewWebhooks(pool, testConfig(f), nop(), quiet())
+	w.Now = at(time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC))
+	if stop != nil {
+		w.Stop = stop
+	}
+	if seats != nil {
+		w.Seats = seats
+	}
+	return w
 }
 
-// deliver posts one event and returns the handler's error.
-func deliver(t *testing.T, w *billing.Webhooks, id, kind string, object map[string]any) error {
+func post(t *testing.T, w *billing.Webhooks, f *fakePaddle, body []byte) error {
 	t.Helper()
-	payload := stripeEvent(id, kind, object)
-	_, err := w.Handle(context.Background(), payload, signPayload(t, payload, testWebhookSecret))
+	_, err := w.Handle(context.Background(), body, f.Sign(body, w.Now()))
 	return err
 }
 
-// §9: "All six webhooks handled idempotently; replay test passes; signature
-// failures rejected."
-func TestAllSixWebhooks(t *testing.T) {
+func TestWebhookSignatureSkewAndDedupe(t *testing.T) {
 	pool := testdb.Open(t)
-	ctx := context.Background()
-	w := newHooks(t, pool)
-	a := seedAccount(t, pool, "large", base(), billing.TrialCreditCents)
-	customer := "cus_" + a.Handle
-	if _, err := pool.Exec(ctx, "update users set stripe_subscription_id = 'sub_1', has_card = false where id = $1", a.UserID); err != nil {
-		t.Fatal(err)
-	}
+	f := newFakePaddle()
+	defer f.Close()
+	w := newHooks(t, pool, f, nil, nil)
+	a := seedAccount(t, pool, "", "none", "", "")
+	body := event("subscription.created", subData("sub_sig", a, "pri_solo_test", "trialing", nil))
 
-	// §9: "Limits 3/1 before first paid invoice, 10/10 after." A new
-	// account starts on the trial limits.
-	var projects0, xl0 int
-	if err := pool.QueryRow(ctx, "select project_limit, xl_limit from users where id = $1", a.UserID).Scan(&projects0, &xl0); err != nil {
-		t.Fatal(err)
-	}
-	if projects0 != billing.ProjectLimitTrial || xl0 != billing.XLLimitTrial {
-		t.Fatalf("limits before the first paid invoice: %d/%d, want %d/%d", projects0, xl0, billing.ProjectLimitTrial, billing.XLLimitTrial)
-	}
-
-	// setup_intent.succeeded: has_card flips (§5.2).
-	if err := deliver(t, w, "evt_1", billing.TypeSetupIntentSucceeded, map[string]any{"id": "seti_1", "customer": customer, "payment_method": "pm_1"}); err != nil {
-		t.Fatal(err)
-	}
-	if !userBool(t, pool, a, "has_card") {
-		t.Fatal("setup_intent.succeeded did not set has_card")
-	}
-
-	// invoice.payment_failed: past_due with the clock started (§5.6).
-	if err := deliver(t, w, "evt_2", billing.TypeInvoicePaymentFailed, map[string]any{
-		"id": "in_1", "customer": customer, "total": 1234, "status": "open",
-		"period_start": base().Unix(), "period_end": base().AddDate(0, 1, 0).Unix(),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if s := userString(t, pool, a, "billing_status"); s != "past_due" {
-		t.Fatalf("billing_status after a failed payment: %s", s)
-	}
-	if userTime(t, pool, a, "past_due_since") == nil {
-		t.Fatal("past_due_since was not set")
-	}
-	if n := invoiceCount(t, pool, "in_1"); n != 1 {
-		t.Fatalf("%d invoices rows for in_1", n)
-	}
-
-	// invoice.paid: active again, limits raised, past_due_since cleared,
-	// and guests are NOT started (§5.6).
-	if err := deliver(t, w, "evt_3", billing.TypeInvoicePaid, map[string]any{
-		"id": "in_1", "customer": customer, "total": 1234, "status": "paid",
-		"period_start": base().Unix(), "period_end": base().AddDate(0, 1, 0).Unix(),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if s := userString(t, pool, a, "billing_status"); s != "active" {
-		t.Fatalf("billing_status after payment: %s", s)
-	}
-	if userTime(t, pool, a, "past_due_since") != nil {
-		t.Fatal("past_due_since survived the payment")
-	}
-	var projects, xl int
-	if err := pool.QueryRow(ctx, "select project_limit, xl_limit from users where id = $1", a.UserID).Scan(&projects, &xl); err != nil {
-		t.Fatal(err)
-	}
-	if projects != billing.ProjectLimitPaid || xl != billing.XLLimitPaid {
-		t.Fatalf("limits after the first paid invoice: %d/%d, want %d/%d", projects, xl, billing.ProjectLimitPaid, billing.XLLimitPaid)
-	}
-	if s := projectState(t, pool, a); s != "running" {
-		t.Fatalf("invoice.paid changed the project state to %s", s)
-	}
-	if n := invoiceCount(t, pool, "in_1"); n != 1 {
-		t.Fatalf("the paid event inserted a second invoices row: %d", n)
-	}
-
-	// payment_method.detached: has_card false, guests keep running (§6).
-	if err := deliver(t, w, "evt_4", billing.TypePaymentMethodDetached, map[string]any{"id": "pm_1", "customer": customer}); err != nil {
-		t.Fatal(err)
-	}
-	if userBool(t, pool, a, "has_card") {
-		t.Fatal("has_card survived the detach")
-	}
-	if s := projectState(t, pool, a); s != "running" {
-		t.Fatalf("a detached card stopped a guest: %s", s)
-	}
-
-	// charge.refunded: a credit row for the record (§5.9).
-	if err := deliver(t, w, "evt_5", billing.TypeChargeRefunded, map[string]any{"id": "ch_1", "customer": customer, "amount_refunded": 500}); err != nil {
-		t.Fatal(err)
-	}
-	balance, err := billing.Balance(ctx, pool, a.UserID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if balance != billing.TrialCreditCents+500 {
-		t.Fatalf("balance after a 500 cent refund: %d", balance)
-	}
-
-	// customer.subscription.deleted: the stored id is dropped.
-	if err := deliver(t, w, "evt_6", billing.TypeSubscriptionDeleted, map[string]any{"id": "sub_1", "customer": customer}); err != nil {
-		t.Fatal(err)
-	}
-	var sub *string
-	if err := pool.QueryRow(ctx, "select stripe_subscription_id from users where id = $1", a.UserID).Scan(&sub); err != nil {
-		t.Fatal(err)
-	}
-	if sub != nil {
-		t.Fatalf("subscription id survived the delete: %s", *sub)
-	}
-
-	// All six are recorded and processed.
-	var processed int
-	if err := pool.QueryRow(ctx, "select count(*) from stripe_events where processed_at is not null and error is null").Scan(&processed); err != nil {
-		t.Fatal(err)
-	}
-	if processed != 6 {
-		t.Fatalf("%d of 6 events processed", processed)
-	}
-}
-
-// §6: "duplicate webhook delivery: ignored by the stripe_events primary
-// key." The replay test: every event delivered twice changes nothing.
-func TestWebhookReplayIsANoOp(t *testing.T) {
-	pool := testdb.Open(t)
-	ctx := context.Background()
-	w := newHooks(t, pool)
-	a := seedAccount(t, pool, "large", base(), billing.TrialCreditCents)
-	customer := "cus_" + a.Handle
-	events := []struct {
-		id, kind string
-		object   map[string]any
-	}{
-		{"evt_r1", billing.TypeSetupIntentSucceeded, map[string]any{"id": "seti_1", "customer": customer}},
-		{"evt_r2", billing.TypeChargeRefunded, map[string]any{"id": "ch_1", "customer": customer, "amount_refunded": 250}},
-		{"evt_r3", billing.TypeInvoicePaid, map[string]any{"id": "in_9", "customer": customer, "total": 900, "status": "paid"}},
-	}
-	for _, e := range events {
-		if err := deliver(t, w, e.id, e.kind, e.object); err != nil {
-			t.Fatalf("%s: %v", e.kind, err)
-		}
-	}
-	before := accountSnapshot(t, pool, a)
-	for _, e := range events {
-		err := deliver(t, w, e.id, e.kind, e.object)
-		if !errors.Is(err, billing.ErrDuplicate) {
-			t.Fatalf("replay of %s returned %v, want ErrDuplicate", e.kind, err)
-		}
-	}
-	if after := accountSnapshot(t, pool, a); after != before {
-		t.Fatalf("a replay changed the account:\n%s\nwant\n%s", after, before)
-	}
-	// Specifically: the refund was credited once.
-	balance, err := billing.Balance(ctx, pool, a.UserID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if balance != billing.TrialCreditCents+250 {
-		t.Fatalf("the replayed refund credited twice: balance %d", balance)
-	}
-}
-
-// §6: "webhook signature invalid: 400, logged with the event type only".
-func TestWebhookSignatureFailuresAreRejected(t *testing.T) {
-	pool := testdb.Open(t)
-	ctx := context.Background()
-	w := newHooks(t, pool)
-	payload := stripeEvent("evt_bad", billing.TypeInvoicePaid, map[string]any{"id": "in_x", "customer": "cus_x"})
-	for _, c := range []struct{ name, header string }{
-		{"empty", ""},
-		{"garbage", "t=1,v1=deadbeef"},
-		{"signed with another secret", signPayload(t, payload, "whsec_someone_else")},
+	// Bad secret, missing header, tampered body, stale ts: refused.
+	for name, hdr := range map[string]string{
+		"wrong secret": billing.Sign("other", w.Now(), body),
+		"no header":    "",
+		"garbage":      "ts=abc;h1=00",
+		"stale":        billing.Sign(f.Secret(), w.Now().Add(-6*time.Minute), body),
+		"future":       billing.Sign(f.Secret(), w.Now().Add(6*time.Minute), body),
 	} {
-		if _, err := w.Handle(ctx, payload, c.header); !errors.Is(err, billing.ErrBadSignature) {
-			t.Errorf("%s: %v, want ErrBadSignature", c.name, err)
+		if _, err := w.Handle(context.Background(), body, hdr); !errors.Is(err, billing.ErrBadSignature) {
+			t.Errorf("%s: %v", name, err)
 		}
 	}
-	// A rejected event is not recorded, so a correctly signed delivery of
-	// the same id still applies.
+	tampered := append([]byte{}, body...)
+	tampered[len(tampered)-2] = ' '
+	if _, err := w.Handle(context.Background(), tampered, f.Sign(body, w.Now())); !errors.Is(err, billing.ErrBadSignature) {
+		t.Errorf("tampered body: %v", err)
+	}
 	var n int
-	if err := pool.QueryRow(ctx, "select count(*) from stripe_events").Scan(&n); err != nil {
-		t.Fatal(err)
+	if err := pool.QueryRow(context.Background(), "select count(*) from paddle_events").Scan(&n); err != nil || n != 0 {
+		t.Fatalf("a refused event was recorded: %d %v", n, err)
 	}
-	if n != 0 {
-		t.Fatalf("%d unverified events were recorded", n)
+	// Within the skew, and with a second h1 during a rotation: accepted.
+	rotated := billing.NewWebhooks(pool, testConfig(f), nop(), quiet(), "old_secret")
+	rotated.Now = w.Now
+	hdr := billing.Sign("old_secret", w.Now().Add(4*time.Minute), body)
+	hdr += ";h1=" + strings.TrimPrefix(strings.SplitN(billing.Sign("unrelated", w.Now().Add(4*time.Minute), body), ";h1=", 2)[1], "")
+	if kind, err := rotated.Handle(context.Background(), body, hdr); err != nil || kind != "subscription.created" {
+		t.Fatalf("rotation secret within skew: %s %v", kind, err)
 	}
-	// A tampered body fails too: the signature covers the payload.
-	sig := signPayload(t, payload, testWebhookSecret)
-	tampered := append(append([]byte{}, payload[:len(payload)-1]...), []byte(`,"x":1}`)...)
-	if _, err := w.Handle(ctx, tampered, sig); !errors.Is(err, billing.ErrBadSignature) {
-		t.Errorf("tampered body: %v, want ErrBadSignature", err)
+	// A duplicate is ErrDuplicate and changes nothing.
+	if err := post(t, w, f, body); !errors.Is(err, billing.ErrDuplicate) {
+		t.Fatalf("duplicate: %v", err)
+	}
+	if err := pool.QueryRow(context.Background(), "select count(*) from paddle_events where processed_at is not null").Scan(&n); err != nil || n != 1 {
+		t.Fatalf("processed rows %d %v", n, err)
+	}
+	// An unknown type is recorded and ignored.
+	if err := post(t, w, f, event("address.created", map[string]any{"id": "add_1"})); err != nil {
+		t.Fatalf("unknown type: %v", err)
+	}
+	var typ string
+	if err := pool.QueryRow(context.Background(), "select type from paddle_events where type = 'address.created'").Scan(&typ); err != nil {
+		t.Fatal("the unknown event was not recorded")
+	}
+	// An event for a customer that is not ours records the error.
+	if err := post(t, w, f, event("subscription.created", map[string]any{"id": "sub_alien", "status": "active", "customer_id": "ctm_alien",
+		"items": []any{map[string]any{"price": map[string]any{"id": "pri_solo_test"}}}})); err == nil {
+		t.Fatal("an unknown customer's subscription was applied")
+	}
+	var errText string
+	if err := pool.QueryRow(context.Background(), "select error from paddle_events where type = 'subscription.created' and error is not null").Scan(&errText); err != nil || !strings.Contains(errText, "ctm_alien") {
+		t.Fatalf("error recorded: %q %v", errText, err)
 	}
 }
 
-// With no secret configured the handler refuses rather than accepting
-// unverified events (DECISIONS I-16).
-func TestWebhookWithoutASecretIsDisabled(t *testing.T) {
+// Every subscription event, in the order a life runs: created (trialing)
+// makes the account trial and converts the seat; activated makes it
+// active; updated with the other price is plan_changed; a scheduled
+// cancel is subscription_cancelled; canceled is subscription_ended and
+// stops the machines; past_due, paused and resumed project their status.
+func TestWebhookSubscriptionLifecycle(t *testing.T) {
 	pool := testdb.Open(t)
-	w := billing.NewWebhooks(pool, "", quiet())
-	payload := stripeEvent("evt_0", billing.TypeInvoicePaid, map[string]any{"id": "in_0"})
-	if _, err := w.Handle(context.Background(), payload, "t=1,v1=00"); !errors.Is(err, billing.ErrDisabled) {
-		t.Fatalf("%v, want ErrDisabled", err)
+	f := newFakePaddle()
+	defer f.Close()
+	stop, seats := &stopRecorder{}, &seatsRecorder{}
+	w := newHooks(t, pool, f, stop, seats)
+	a := seedAccount(t, pool, "", "none", "large", "running")
+	ctx := context.Background()
+
+	must := func(kind string, data map[string]any) {
+		t.Helper()
+		if err := post(t, w, f, event(kind, data)); err != nil {
+			t.Fatalf("%s: %v", kind, err)
+		}
+	}
+	must("subscription.created", subData("sub_life", a, "pri_solo_test", "trialing", nil))
+	sub, err := billing.GetSubscription(ctx, pool, "sub_life")
+	if err != nil || sub.Plan != "solo" || sub.Status != "trialing" || sub.Seats != 1 || sub.UserID != a.UserID || sub.TrialEnd == nil || sub.PeriodEnd == nil || sub.NextBilledAt == nil {
+		t.Fatalf("row after created: %+v %v", sub, err)
+	}
+	if userField(t, pool, a, "billing_status") != "trial" || userField(t, pool, a, "has_card") != "true" {
+		t.Fatal("created did not project trial + has_card")
+	}
+	if len(seats.converted) != 1 || seats.converted[0] != a.UserID.String() {
+		t.Fatalf("Seats.Converted once on the first live subscription: %v", seats.converted)
+	}
+	must("subscription.trialing", subData("sub_life", a, "pri_solo_test", "trialing", nil))
+	must("subscription.activated", subData("sub_life", a, "pri_solo_test", "active", map[string]any{"items": []any{map[string]any{"status": "active", "quantity": 1, "price": map[string]any{"id": "pri_solo_test"}}}}))
+	if userField(t, pool, a, "billing_status") != "active" || len(seats.converted) != 1 {
+		t.Fatal("activated: active, and no second conversion")
+	}
+	sub, _ = billing.GetSubscription(ctx, pool, "sub_life")
+	if sub.TrialEnd != nil {
+		t.Fatal("trial_end cleared once the item has no trial dates")
+	}
+	// Plan change.
+	must("subscription.updated", subData("sub_life", a, "pri_pro_test", "active", nil))
+	sub, _ = billing.GetSubscription(ctx, pool, "sub_life")
+	if sub.Plan != "pro" || sub.Seats != 2 {
+		t.Fatalf("updated to pro: %+v", sub)
+	}
+	// Cancellation scheduled.
+	must("subscription.updated", subData("sub_life", a, "pri_pro_test", "active", map[string]any{"scheduled_change": map[string]any{"action": "cancel", "effective_at": "2026-11-01T00:00:00Z"}}))
+	sub, _ = billing.GetSubscription(ctx, pool, "sub_life")
+	if sub.CancelAt == nil || !sub.CancelAt.Equal(time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("cancel_at: %+v", sub.CancelAt)
+	}
+	// Resumed: the scheduled change is gone.
+	must("subscription.resumed", subData("sub_life", a, "pri_pro_test", "active", nil))
+	sub, _ = billing.GetSubscription(ctx, pool, "sub_life")
+	if sub.CancelAt != nil {
+		t.Fatal("resume clears cancel_at")
+	}
+	// Past due, paused, then canceled.
+	must("subscription.past_due", subData("sub_life", a, "pri_pro_test", "past_due", nil))
+	if userField(t, pool, a, "billing_status") != "past_due" || userField(t, pool, a, "past_due_since") == "" {
+		t.Fatal("past_due projected with past_due_since")
+	}
+	must("subscription.paused", subData("sub_life", a, "pri_pro_test", "paused", nil))
+	if userField(t, pool, a, "billing_status") != "none" {
+		t.Fatal("paused -> none")
+	}
+	if len(stop.calls) != 0 {
+		t.Fatal("paused stops nothing itself")
+	}
+	must("subscription.canceled", subData("sub_life", a, "pri_pro_test", "canceled", nil))
+	if userField(t, pool, a, "billing_status") != "none" {
+		t.Fatal("canceled -> none")
+	}
+	if len(stop.calls) != 1 || *stop.calls[0].ProjectID != a.ProjectID || stop.calls[0].Params["reason"] != "billing" || stop.calls[0].Params["snapshot"] != true {
+		t.Fatalf("canceled stops the running machine with a snapshot: %+v", stop.calls)
+	}
+	// A second canceled (replayed by Paddle with a new id) stops nothing more.
+	must("subscription.canceled", subData("sub_life", a, "pri_pro_test", "canceled", nil))
+	if len(stop.calls) != 1 {
+		t.Fatal("canceled twice stopped twice")
+	}
+	kinds := eventKinds(t, pool, a)
+	want := []string{"plan_changed", "subscription_cancelled", "subscription_ended"}
+	if strings.Join(kinds, ",") != strings.Join(want, ",") {
+		t.Fatalf("account events %v, want %v", kinds, want)
+	}
+	if outboxEmails(t, pool, a) != 3 {
+		t.Fatalf("%d emails queued, want 3", outboxEmails(t, pool, a))
+	}
+	var live *billing.Sub
+	if live, err = billing.LiveSubscription(ctx, pool, a.UserID); err != nil || live != nil {
+		t.Fatalf("no live subscription after cancel: %+v %v", live, err)
 	}
 }
 
-// DECISIONS I-184: the $0 invoice Stripe issues when the subscription is
-// created (and every month the credit covers) is recorded but raises no
-// limit and settles no failed payment.
-func TestZeroInvoicePaidRaisesNothing(t *testing.T) {
+// A subscription whose price is not one of ours is an error the
+// paddle_events row keeps; an unknown status too.
+func TestWebhookRefusesForeignPrices(t *testing.T) {
 	pool := testdb.Open(t)
-	a := seedAccount(t, pool, "large", base(), billing.TrialCreditCents)
-	w := newHooks(t, pool)
-	customer := "cus_" + a.Handle
-	if err := deliver(t, w, "evt_zero", billing.TypeInvoicePaid, map[string]any{"id": "in_zero", "customer": customer, "total": 0, "status": "paid"}); err != nil {
-		t.Fatal(err)
+	f := newFakePaddle()
+	defer f.Close()
+	w := newHooks(t, pool, f, nil, nil)
+	a := seedAccount(t, pool, "", "none", "", "")
+	if err := post(t, w, f, event("subscription.created", subData("sub_f", a, "pri_other", "active", nil))); err == nil || !strings.Contains(err.Error(), "pri_other") {
+		t.Fatalf("foreign price: %v", err)
 	}
-	if invoiceCount(t, pool, "in_zero") != 1 {
-		t.Fatal("the zero invoice was not recorded")
-	}
-	var pl, xl int
-	if err := pool.QueryRow(context.Background(), "select project_limit, xl_limit from users where id = $1", a.UserID).Scan(&pl, &xl); err != nil {
-		t.Fatal(err)
-	}
-	if pl == billing.ProjectLimitPaid || userString(t, pool, a, "billing_status") != "trial" {
-		t.Fatalf("a $0 invoice raised the limits to %d/%d or moved the account to %s", pl, xl, userString(t, pool, a, "billing_status"))
-	}
-	// A past-due account stays past due on a $0 invoice.
-	if _, err := pool.Exec(context.Background(), "update users set billing_status = 'past_due', past_due_since = now() where id = $1", a.UserID); err != nil {
-		t.Fatal(err)
-	}
-	if err := deliver(t, w, "evt_zero2", billing.TypeInvoicePaid, map[string]any{"id": "in_zero2", "customer": customer, "total": 0, "status": "paid"}); err != nil {
-		t.Fatal(err)
-	}
-	if s := userString(t, pool, a, "billing_status"); s != "past_due" {
-		t.Fatalf("a $0 invoice cleared a failed payment: %s", s)
+	if userField(t, pool, a, "billing_status") != "none" {
+		t.Fatal("a foreign subscription changed the account")
 	}
 }
 
-// --- small readers ----------------------------------------------------
+// transaction.completed and transaction.payment_failed.
+func TestWebhookTransactions(t *testing.T) {
+	pool := testdb.Open(t)
+	f := newFakePaddle()
+	defer f.Close()
+	w := newHooks(t, pool, f, nil, nil)
+	ctx := context.Background()
 
-func userBool(t *testing.T, pool *db.Pool, a account, col string) bool {
-	t.Helper()
-	var v bool
-	if err := pool.QueryRow(context.Background(), "select "+col+" from users where id = $1", a.UserID).Scan(&v); err != nil {
+	// The checkout's $0 transaction on a trialing subscription leaves the
+	// account on trial.
+	a := seedAccount(t, pool, "solo", "trial", "", "")
+	txn := func(sub string, a account, items ...string) map[string]any {
+		d := map[string]any{"id": "txn_" + uuid.NewString()[:8], "status": "completed", "customer_id": "ctm_" + a.Handle, "subscription_id": sub, "origin": "web", "custom_data": map[string]any{"user_id": a.UserID.String()}}
+		var its []any
+		for _, p := range items {
+			its = append(its, map[string]any{"price": map[string]any{"id": "pri_x", "product_id": p}})
+		}
+		d["items"] = its
+		return d
+	}
+	if err := post(t, w, f, event("transaction.completed", txn(a.SubID, a))); err != nil {
 		t.Fatal(err)
 	}
-	return v
+	if userField(t, pool, a, "billing_status") != "trial" {
+		t.Fatal("the trial's $0 transaction made the account active")
+	}
+
+	// A checkout payment that fails has no subscription: nothing happens.
+	if err := post(t, w, f, event("transaction.payment_failed", txn("", a))); err != nil {
+		t.Fatal(err)
+	}
+	if userField(t, pool, a, "billing_status") != "trial" || len(eventKinds(t, pool, a)) != 0 {
+		t.Fatal("a failed checkout marked the account past due")
+	}
+
+	// A renewal that fails: past_due, past_due_since, one payment_failed
+	// email; a second failure (Paddle's retry) sends no second email.
+	b := seedAccount(t, pool, "pro", "active", "", "")
+	if err := post(t, w, f, event("transaction.payment_failed", txn(b.SubID, b))); err != nil {
+		t.Fatal(err)
+	}
+	if userField(t, pool, b, "billing_status") != "past_due" || userField(t, pool, b, "past_due_since") == "" {
+		t.Fatal("payment_failed -> past_due")
+	}
+	sub, _ := billing.GetSubscription(ctx, pool, b.SubID)
+	if sub.Status != "past_due" {
+		t.Fatal("subscription row past_due")
+	}
+	if err := post(t, w, f, event("transaction.payment_failed", txn(b.SubID, b))); err != nil {
+		t.Fatal(err)
+	}
+	if k := eventKinds(t, pool, b); len(k) != 1 || k[0] != "payment_failed" {
+		t.Fatalf("payment_failed events %v, want one", k)
+	}
+	// The payment goes through: active again, past_due_since cleared, and
+	// an overage line the transaction carried gets its id.
+	if _, err := pool.Exec(ctx, "insert into overage_charges (subscription_id, period_start, egress_gb, cents) values ($1, $2, 10, 50)", b.SubID, b.Period.Start); err != nil {
+		t.Fatal(err)
+	}
+	paid := txn(b.SubID, b, "pro_plan", "pro_overage_test")
+	if err := post(t, w, f, event("transaction.completed", paid)); err != nil {
+		t.Fatal(err)
+	}
+	if userField(t, pool, b, "billing_status") != "active" || userField(t, pool, b, "past_due_since") != "" {
+		t.Fatal("completed -> active with past_due_since cleared")
+	}
+	sub, _ = billing.GetSubscription(ctx, pool, b.SubID)
+	if sub.Status != "active" {
+		t.Fatal("subscription row active")
+	}
+	var txnID string
+	if err := pool.QueryRow(ctx, "select paddle_transaction_id from overage_charges where subscription_id = $1", b.SubID).Scan(&txnID); err != nil || txnID != paid["id"] {
+		t.Fatalf("overage line transaction id %q %v", txnID, err)
+	}
+
+	// A billing suspension is lifted by a payment; an operator's is not.
+	c := seedAccount(t, pool, "solo", "past_due", "", "")
+	if _, err := pool.Exec(ctx, "update users set billing_status = 'suspended', suspended_at = now(), suspended_reason = 'billing' where id = $1", c.UserID); err != nil {
+		t.Fatal(err)
+	}
+	if err := post(t, w, f, event("transaction.completed", txn(c.SubID, c))); err != nil {
+		t.Fatal(err)
+	}
+	if userField(t, pool, c, "billing_status") != "active" || userField(t, pool, c, "suspended_at") != "" {
+		t.Fatal("a billing suspension is cleared by a payment")
+	}
+	d := seedAccount(t, pool, "solo", "active", "", "")
+	if _, err := pool.Exec(ctx, "update users set billing_status = 'suspended', suspended_at = now(), suspended_reason = 'abuse' where id = $1", d.UserID); err != nil {
+		t.Fatal(err)
+	}
+	if err := post(t, w, f, event("transaction.completed", txn(d.SubID, d))); err != nil {
+		t.Fatal(err)
+	}
+	if userField(t, pool, d, "billing_status") != "suspended" {
+		t.Fatal("an operator's suspension survives a payment")
+	}
+	// Likewise a subscription event never un-suspends.
+	if err := post(t, w, f, event("subscription.updated", subData(d.SubID, d, "pri_solo_test", "active", nil))); err != nil {
+		t.Fatal(err)
+	}
+	if userField(t, pool, d, "billing_status") != "suspended" {
+		t.Fatal("subscription.updated un-suspended the account")
+	}
 }
 
-func userString(t *testing.T, pool *db.Pool, a account, col string) string {
-	t.Helper()
-	var v string
-	if err := pool.QueryRow(context.Background(), "select "+col+" from users where id = $1", a.UserID).Scan(&v); err != nil {
+// A subscription found by customer id alone (no custom_data) still lands
+// on the right account.
+func TestWebhookResolvesByCustomer(t *testing.T) {
+	pool := testdb.Open(t)
+	f := newFakePaddle()
+	defer f.Close()
+	w := newHooks(t, pool, f, nil, nil)
+	a := seedAccount(t, pool, "", "none", "", "")
+	if _, err := pool.Exec(context.Background(), "update users set paddle_customer_id = $2 where id = $1", a.UserID, "ctm_"+a.Handle); err != nil {
 		t.Fatal(err)
 	}
-	return v
-}
-
-func userTime(t *testing.T, pool *db.Pool, a account, col string) *time.Time {
-	t.Helper()
-	var v *time.Time
-	if err := pool.QueryRow(context.Background(), "select "+col+" from users where id = $1", a.UserID).Scan(&v); err != nil {
+	d := subData("sub_byc", a, "pri_pro_test", "active", nil)
+	delete(d, "custom_data")
+	if err := post(t, w, f, event("subscription.activated", d)); err != nil {
 		t.Fatal(err)
 	}
-	return v
-}
-
-func projectState(t *testing.T, pool *db.Pool, a account) string {
-	t.Helper()
-	var v string
-	if err := pool.QueryRow(context.Background(), "select state from projects where id = $1", a.ProjectID).Scan(&v); err != nil {
-		t.Fatal(err)
+	sub, err := billing.LiveSubscription(context.Background(), pool, a.UserID)
+	if err != nil || sub == nil || sub.Plan != "pro" {
+		t.Fatalf("resolved by customer: %+v %v", sub, err)
 	}
-	return v
-}
-
-func invoiceCount(t *testing.T, pool *db.Pool, stripeID string) int {
-	t.Helper()
-	var n int
-	if err := pool.QueryRow(context.Background(), "select count(*) from invoices where stripe_invoice_id = $1", stripeID).Scan(&n); err != nil {
-		t.Fatal(err)
+	if userField(t, pool, a, "billing_status") != "active" {
+		t.Fatal("status")
 	}
-	return n
-}
-
-func accountSnapshot(t *testing.T, pool *db.Pool, a account) string {
-	t.Helper()
-	var s string
-	err := pool.QueryRow(context.Background(), `select concat_ws(' ', billing_status, has_card::text, trial_credit_cents::text,
-		project_limit::text, xl_limit::text, coalesce(stripe_subscription_id, '-'), coalesce(past_due_since::text, '-'),
-		(select count(*)::text from credit_ledger where user_id = users.id),
-		(select count(*)::text from invoices where user_id = users.id))
-		from users where id = $1`, a.UserID).Scan(&s)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return s
 }

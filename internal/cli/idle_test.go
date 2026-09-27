@@ -9,13 +9,14 @@ import (
 	fakeapi "github.com/heracraft/repose/internal/fakes/api"
 )
 
-// DECISIONS I-262: an idle project says so, with its rate and the stop
-// command, on `repose status` and under `repose ls`; a project that
-// is not idle, or not running, says nothing.
+// DECISIONS I-262: an idle project says so, with how long and the stop
+// command (no rate since I-289: a plan buys memory, not hours), on
+// `repose status` and under `repose ls`; a project that is not idle, or
+// not running, says nothing.
 func TestIdleLineOnStatusAndProjects(t *testing.T) {
 	since := time.Now().Add(-26*time.Hour - 10*time.Minute)
 	p := &Project{Slug: "todo-app", Class: "large", State: "running", Idle: &ProjectIdle{Since: since, HourlyCents: 14}}
-	want := "idle 26h, billing ~$0.14/h; `repose stop todo-app` stops it"
+	want := "running for 26h with nobody attached; `repose stop todo-app` stops it"
 	var b strings.Builder
 	writeStatusLines(&b, p, nil, nil, nil)
 	if !strings.Contains(b.String(), "\n  "+want+"\n") {
@@ -49,7 +50,7 @@ func TestIdleOthersNoteOncePerStretch(t *testing.T) {
 		{ID: "c", Slug: "busy", State: "running"},
 	}
 	got := idleOthersNote(dir, ps, "b", now)
-	if got != "Still running and billing with nobody on it: api-v2 (idle 30h, ~$0.28/h). `repose stop <project>` stops one." {
+	if got != "Still running with nobody on it: api-v2 (idle 30h). `repose stop <project>` stops one." {
 		t.Fatalf("first note: %q", got)
 	}
 	if got := idleOthersNote(dir, ps, "b", now); got != "" {
@@ -89,7 +90,7 @@ func TestStartIdleNoteReadsTheAPI(t *testing.T) {
 	note := startIdleNote(context.Background(), e)
 	time.Sleep(50 * time.Millisecond) // the list is asked for at the start of the command
 	note(here.ID)
-	if got := errOut.buf.String(); got != "Still running and billing with nobody on it: api-v2 (idle 2d, ~$0.28/h). `repose stop <project>` stops one.\n" {
+	if got := errOut.buf.String(); got != "Still running with nobody on it: api-v2 (idle 2d). `repose stop <project>` stops one.\n" {
 		t.Fatalf("note: %q", got)
 	}
 }

@@ -13,7 +13,7 @@ mitigate. `workstreams/14-security.md` is the work that verifies this doc.
 - The platform CAs (user and host), hostd client certificates, the Key
   Vault wrapping key, Paddle and Logto credentials.
 - The host itself: root on a host is every guest on it.
-- Billing integrity: usage rows, subscriptions and the Paddle customer mapping.
+- Billing integrity: usage rows, the subscriptions table and the Paddle customer mapping.
 
 ## Actors
 

@@ -26,10 +26,20 @@ type M struct {
 	NotifyDeliveryLatencySeconds prometheus.Histogram
 	OutboxDepth                  prometheus.Gauge
 	OutboxLagSeconds             prometheus.Gauge
-	StripeUsagePushTotal         *prometheus.CounterVec
-	// StripeWebhookTotal counts webhook deliveries by result; the §6 alert
-	// on five bad signatures in ten minutes reads it.
-	StripeWebhookTotal  *prometheus.CounterVec
+	// BillingWebhookTotal counts Paddle webhook deliveries by event kind and
+	// result; PaddleWebhookRejected reads the bad_signature series.
+	BillingWebhookTotal *prometheus.CounterVec
+	// BillingOverageChargesTotal counts egress overage lines sent to Paddle
+	// by result; OverageChargeFailed reads the error series.
+	BillingOverageChargesTotal *prometheus.CounterVec
+	// BillingGateRefusedTotal counts payment_required refusals by reason.
+	BillingGateRefusedTotal *prometheus.CounterVec
+	// BillingSubscriptions counts subscription webhooks by plan and status,
+	// which is the dashboard's view of the plan mix.
+	BillingSubscriptions *prometheus.CounterVec
+	// BillingStopsTotal counts machines the api stopped for billing, by
+	// reason (past_due, ended, egress); BillingStopped alerts on it.
+	BillingStopsTotal   *prometheus.CounterVec
 	SnapshotAgeSeconds  prometheus.Gauge
 	GRPCStreams         prometheus.Gauge
 	OpsTotal            *prometheus.CounterVec
@@ -46,15 +56,7 @@ type M struct {
 	// Postgres grows and nothing else breaks.
 	PartitionDropFailTotal prometheus.Counter
 	BillingGapMinutes      prometheus.Counter
-	// StripePushBacklogSeconds is the age of the oldest usage_hours row
-	// that still owes Stripe a usage record; the stripe_push_backlog alert
-	// of 09-billing.md §6 fires when it passes six hours.
-	StripePushBacklogSeconds prometheus.Gauge
-	// BillingMismatchCents is the largest difference the last
-	// reconciliation found between usage_hours and Stripe (§5.7). The job
-	// never fixes a difference silently; this is what alerts on one.
-	BillingMismatchCents prometheus.Gauge
-	KeyVaultErrorsTotal  prometheus.Counter
+	KeyVaultErrorsTotal    prometheus.Counter
 	// AbuseStopsTotal counts guests the api stopped by itself, by kind
 	// (miner: DECISIONS I-239); MinerStopped alerts on any increase.
 	AbuseStopsTotal *prometheus.CounterVec
@@ -91,8 +93,11 @@ func New(reg prometheus.Registerer) *M {
 		NotifyDeliveryLatencySeconds: prometheus.NewHistogram(prometheus.HistogramOpts{Name: "repose_api_notify_delivery_latency_seconds", Help: "Event timestamp to delivered timestamp, successful deliveries only.", Buckets: prometheus.ExponentialBuckets(1, 2, 12)}),
 		OutboxDepth:                  prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_outbox_depth", Help: "Undelivered outbox rows."}),
 		OutboxLagSeconds:             prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_outbox_lag_seconds", Help: "Age of the oldest undelivered outbox row."}),
-		StripeUsagePushTotal:         prometheus.NewCounterVec(prometheus.CounterOpts{Name: "repose_api_stripe_usage_push_total", Help: "Usage record pushes by result."}, []string{"result"}),
-		StripeWebhookTotal:           prometheus.NewCounterVec(prometheus.CounterOpts{Name: "repose_api_stripe_webhook_total", Help: "Stripe webhook deliveries by result."}, []string{"result"}),
+		BillingWebhookTotal:          prometheus.NewCounterVec(prometheus.CounterOpts{Name: "repose_api_billing_webhook_total", Help: "Paddle webhook deliveries by event kind and result."}, []string{"kind", "result"}),
+		BillingOverageChargesTotal:   prometheus.NewCounterVec(prometheus.CounterOpts{Name: "repose_api_billing_overage_charges_total", Help: "Egress overage lines sent to Paddle by result."}, []string{"result"}),
+		BillingGateRefusedTotal:      prometheus.NewCounterVec(prometheus.CounterOpts{Name: "repose_api_billing_gate_refused_total", Help: "Compute refused with payment_required, by reason."}, []string{"reason"}),
+		BillingSubscriptions:         prometheus.NewCounterVec(prometheus.CounterOpts{Name: "repose_api_billing_subscriptions_total", Help: "Subscription webhooks applied, by plan and status."}, []string{"plan", "status"}),
+		BillingStopsTotal:            prometheus.NewCounterVec(prometheus.CounterOpts{Name: "repose_api_billing_stops_total", Help: "Machines the api stopped for billing, by reason."}, []string{"reason"}),
 		SnapshotAgeSeconds:           prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_snapshot_age_seconds", Help: "Oldest newest-snapshot age over running projects."}),
 		GRPCStreams:                  prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_grpc_streams", Help: "Connected host streams."}),
 		OpsTotal:                     prometheus.NewCounterVec(prometheus.CounterOpts{Name: "repose_api_ops_total", Help: "Ops finished by kind and state."}, []string{"kind", "state"}),
@@ -106,8 +111,6 @@ func New(reg prometheus.Registerer) *M {
 		PartitionDropFailTotal:       prometheus.NewCounter(prometheus.CounterOpts{Name: "repose_api_partition_drop_fail_total", Help: "Partition maintenance runs that failed (docs/workstreams/10-observability.md §6)."}),
 		EgressAlertProjects:          prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_egress_alert_projects", Help: "Projects over 1 TB egress in 24 h."}),
 		BillingGapMinutes:            prometheus.NewCounter(prometheus.CounterOpts{Name: "repose_api_billing_gap_minutes_total", Help: "Minutes a running project had no sample."}),
-		StripePushBacklogSeconds:     prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_billing_stripe_push_backlog_seconds", Help: "Age of the oldest usage_hours row with no Stripe usage record."}),
-		BillingMismatchCents:         prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_billing_mismatch_cents", Help: "Largest usage_hours minus Stripe difference found by the last reconciliation."}),
 		KeyVaultErrorsTotal:          prometheus.NewCounter(prometheus.CounterOpts{Name: "repose_api_keyvault_errors_total", Help: "Key Vault failures."}),
 		AbuseStopsTotal:              prometheus.NewCounterVec(prometheus.CounterOpts{Name: "repose_api_abuse_stops_total", Help: "Guests the api stopped for abuse, by kind."}, []string{"kind"}),
 		AbuseHeldProjects:            prometheus.NewGauge(prometheus.GaugeOpts{Name: "repose_api_abuse_held_projects", Help: "Projects whose start is refused until repose-admin abuse clear."}),
@@ -119,10 +122,16 @@ func New(reg prometheus.Registerer) *M {
 	// The alert on stops reads increase(); a series that exists from start
 	// is what lets the first stop register as one.
 	m.AbuseStopsTotal.WithLabelValues("miner")
+	for _, r := range []string{"past_due", "ended", "egress"} {
+		m.BillingStopsTotal.WithLabelValues(r)
+	}
+	m.BillingWebhookTotal.WithLabelValues("none", "bad_signature")
+	m.BillingOverageChargesTotal.WithLabelValues("ok")
+	m.BillingOverageChargesTotal.WithLabelValues("error")
 	reg.MustRegister(m.RequestsTotal, m.RequestDuration, m.Hosts, m.Projects, m.ScheduleTotal, m.CertsIssuedTotal, m.CertsRevokedTotal,
-		m.RollupLagSeconds, m.RollupDuration, m.NotifyTotal, m.NotifyDeliveryLatencySeconds, m.OutboxDepth, m.OutboxLagSeconds, m.StripeUsagePushTotal, m.StripeWebhookTotal, m.SnapshotAgeSeconds,
+		m.RollupLagSeconds, m.RollupDuration, m.NotifyTotal, m.NotifyDeliveryLatencySeconds, m.OutboxDepth, m.OutboxLagSeconds, m.BillingWebhookTotal, m.BillingOverageChargesTotal, m.BillingGateRefusedTotal, m.BillingSubscriptions, m.BillingStopsTotal, m.SnapshotAgeSeconds,
 		m.GRPCStreams, m.OpsTotal, m.OpsOpen, m.BuildDuration, m.SecretsOpsTotal, m.CommandsTotal, m.SamplesTotal, m.EventsTotal,
-		m.HostWarningsTotal, m.EgressAlertProjects, m.BillingGapMinutes, m.StripePushBacklogSeconds, m.BillingMismatchCents, m.KeyVaultErrorsTotal,
+		m.HostWarningsTotal, m.EgressAlertProjects, m.BillingGapMinutes, m.KeyVaultErrorsTotal,
 		m.PartitionDropFailTotal, m.AbuseStopsTotal, m.AbuseHeldProjects, m.AbuseBusyUnattendedProjects,
 		m.WaitlistWaiting, m.WaitlistJoinedTotal, m.WaitlistAdmittedTotal)
 	return m

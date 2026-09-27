@@ -5,35 +5,42 @@ import (
 	"fmt"
 )
 
-// classSpec is what a size class gives and costs, as docs/PRICING.md and
-// apps/web/src/content/docs/billing.md list it. The CLI keeps its own copy
-// rather than importing internal/billing (which pulls in Stripe);
-// TestClassSpecsMatchBillingAndHost pins it to both sources.
+// classSpec is what a size class gives and which plan runs it, as
+// docs/PRICING.md and apps/web/src/content/docs/billing.md list it. The
+// CLI keeps its own copy rather than importing internal/billing (which
+// pulls in the api's database code); TestClassSpecsMatchBillingAndHost
+// pins it to both sources.
 type classSpec struct {
-	VCPUs     int
-	MemGB     int
-	HourCents int64
-	CapCents  int64
+	VCPUs int
+	MemGB int
+	// Plan is the smallest plan the class fits: a plan buys memory that
+	// may run at once (DECISIONS I-289).
+	Plan string
 }
 
 var classSpecs = map[string]classSpec{
-	"small": {VCPUs: 2, MemGB: 4, HourCents: 7, CapCents: 4900},
-	"large": {VCPUs: 4, MemGB: 8, HourCents: 14, CapCents: 9900},
-	"xl":    {VCPUs: 8, MemGB: 16, HourCents: 28, CapCents: 19900},
+	"small": {VCPUs: 2, MemGB: 4, Plan: "Solo"},
+	"large": {VCPUs: 4, MemGB: 8, Plan: "Solo"},
+	"xl":    {VCPUs: 8, MemGB: 16, Plan: "Pro"},
 }
 
-// classSummary is "4 vCPU, 8 GB memory, $0.14 an hour up to $99 a month".
+// classSummary is "4 vCPU, 8 GB memory; fits the Solo plan" or "8 vCPU,
+// 16 GB memory; needs the Pro plan".
 func classSummary(class string) string {
 	c, ok := classSpecs[class]
 	if !ok {
 		return class
 	}
-	return fmt.Sprintf("%d vCPU, %d GB memory, $%.2f an hour up to $%d a month", c.VCPUs, c.MemGB, float64(c.HourCents)/100, c.CapCents/100)
+	verb := "fits the"
+	if c.Plan == "Pro" {
+		verb = "needs the"
+	}
+	return fmt.Sprintf("%d vCPU, %d GB memory; %s %s plan", c.VCPUs, c.MemGB, verb, c.Plan)
 }
 
 // classChangePrompt is asked before a running project is stopped to change
 // its size: the stop ends every process on the machine, agents included,
-// and the new size changes what the hours cost.
+// and the new size takes a different share of the plan's memory.
 func classChangePrompt(slug, from, to string) string {
 	return fmt.Sprintf("%s is running. Changing it from %s to %s stops it (taking a snapshot first), which ends every process on it, agents included, then starts it again. Go ahead? [y/N] ", slug, from, to)
 }

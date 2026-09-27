@@ -1,148 +1,140 @@
-# Billing and the trial
+# Billing: the plan
 
-What a user sees about money: the card they add before the first guest
-starts, the first day of compute that runs out, the number in `repose status`, the invoice at
-the end of the month, and what happens when a payment fails. The prices
-themselves are in [`../PRICING.md`](../PRICING.md); the implementation is
-[`../workstreams/09-billing.md`](../workstreams/09-billing.md).
+What a user sees about money: the plan they choose before the first
+machine starts, the week that is free, the number in `repose status`, the
+invoice each month, and what happens when a payment fails. The prices and
+rules are in [`../PRICING.md`](../PRICING.md); the implementation is
+[`../workstreams/09-billing.md`](../workstreams/09-billing.md) §5.11
+(DECISIONS I-289, I-290, I-291).
 
-## Adding a card
+## Choosing a plan
 
 ```
 $ repose run
-Add a card at https://repose.herakraft.co/billing first.
+Choose a plan at https://repose.herakraft.co/billing first.
 ```
 
-The CLI prints that line for every `payment_required`, whatever the
-reason, and exits 7 (`internal/cli/env.go`).
+The CLI prints the api's sentence for every `payment_required` and exits
+7 (`internal/cli/payment.go`). A new account has no plan
+(`billing.status = none`): `repose run`, `repose start`, creating,
+restoring and forking a project all answer `payment_required` with
+`detail.reason = subscription_required` until one is chosen.
 
-"Add a card" on the dashboard's billing page opens Stripe's own card page,
-which also asks for the billing address tax is worked out from, and comes
-back to the billing page when the card is saved (DECISIONS I-182); the
-platform never sees the number. Until the card is on file, `repose run`, `repose start` and
-creating a project all answer `payment_required` with
-`detail.reason = card_required`. The trial credit does not change this: a
-card comes before compute (DECISIONS R2-10), because a stranger with free
-compute is the abuse vector.
+The dashboard's billing page shows the two plans, Solo at $29 and Pro at
+$59 a month, and how many seats are left. "Choose" opens Paddle's checkout
+in the page (Paddle.js with a transaction the api made, so the seat is
+held and the account is stamped before the card form appears); the card
+and the billing address go to Paddle, never to the platform, and Paddle
+adds the tax for the buyer's country as merchant of record. The first
+week is free: the card is taken at checkout and first charged on day
+eight. When the webhook arrives the account is `trial`, and from the first
+real charge `active`.
 
-The other reasons the same error carries:
+When the fleet has no free seat, "Choose" answers `503 waitlisted`:
+`repose is full right now. You're number 3 on the waitlist; we'll email
+you@example.com when there's a seat.` The user is on the waitlist from
+then on and gets one email when a seat is theirs, held for 72 hours
+(DECISIONS I-290).
 
-| `detail.reason` | What the user did | What fixes it |
+## What the plan buys
+
+| Plan | Running at once | Disk | Egress a month | Projects |
+|---|---|---|---|---|
+| Solo | 8 GB: one `large`, or two `small` | 100 GB | 250 GB | 10 |
+| Pro | 16 GB: one `xl`, two `large`, any mix | 250 GB | 500 GB | 25 |
+
+Projects cost nothing while stopped, the month costs the same however
+much runs, and nothing is metered by the hour. The other reasons
+`payment_required` carries, each with the whole sentence as `message`:
+
+| `detail.reason` | When | What the user reads |
 |---|---|---|
-| `card_required` | no card on file | add one |
-| `trial_depleted` | an account still marked `trial` with no credit left | the hour that exhausts the credit moves an account with a card to `active`, so this only follows a card removed before the credit ran out: adding a card ends the trial and the next start goes through (DECISIONS I-184). Anything else: `repose-admin billing show` and the runbook |
-| `past_due` | an invoice failed | update the card in the billing portal |
-| `suspended` | three days past due, or an operator suspension | pay, or email |
+| `plan_limit` | the running memory plus this machine's class would pass the plan's | `Your Solo plan runs 8 GB at once and todo-app is using it. Stop it, or upgrade at https://repose.herakraft.co/billing.` (an `xl` on Solo: `an xl machine needs 16 GB. Upgrade to Pro`) |
+| `disk_limit` | the allocated disk plus this volume would pass the plan's | `Your Solo plan allocates up to 100 GB of disk and your projects use 70 GB; this needs 40 GB more. Destroy a project, or upgrade at …` |
+| `egress_limit` | this period's egress passed four times the allowance | `Your machines are stopped until 1 November: this period's egress passed 1000 GB, four times the Solo plan's 250 GB allowance. Upgrade at …, or wait for the period to end.` |
+| `past_due` | the last payment failed | `Your last payment failed. Update your card at … to start machines again.` |
+| `suspended` | three days past due, or an operator suspension | `Your account is suspended. Pay at … to lift it, or email support.` |
 
-An account an operator has marked billing-exempt (`repose-admin users exempt`)
-passes all of these; it still meters, so the numbers below are still real for
-it (DECISIONS I-16).
+`detail` also carries `plan`, `limit_gb`, `used_gb` and, for
+`plan_limit`, `projects` (the slugs using the memory), so a dashboard can
+draw the sentence itself.
 
-## Your first day of compute
+Egress past the allowance is not a refusal: $0.05 a GB is added to the
+next invoice as one line, `Egress overage: 50 GB over the Solo plan's 250
+GB (1 Oct to 1 Nov 2026) at $0.05/GB`. The billing page shows the period's
+egress and the overage so far; `repose-admin billing show` prints the
+arithmetic to the cent.
 
-A new account's first day of compute is on us (DECISIONS I-205): a credit
-of one day on a large guest, which is two days on small. It is consumed at
-exactly the rates a paid account pays (a large guest takes one hour of it
-per hour, a small one half an hour, a 40 GB volume a sliver), so the trial
-is also the first test of the meters. The words a user reads never name
-an amount: the dashboard says `Your first day of compute: 17 hours left on
-large (34 on small).`, and the landing page `Your first day of compute is
-on us.` The api's `GET /me` still carries `trial_credit_cents` (336 for a
-new account). When the last
-of it is spent, the account moves from `trial` to `active` in the same
-transaction that spends it: nothing stops, and the next hour goes on the
-card.
+An account an operator has marked billing-exempt (`repose-admin users
+exempt`) passes all of these; it still records hours and egress, so the
+numbers below are still real for it (DECISIONS I-16).
 
-A credit is never refunded as money and never expires. An operator can add
-more with `repose-admin billing credit`, which is also how a goodwill
-correction or a refund is recorded.
-
-## What a user is charged for
-
-Three things, per project:
-
-- **Guest-hours**, by size class, for every minute the guest is `running`.
-  A stopped guest accrues none. The total for a project in one billing
-  period never exceeds that class's monthly price, so a guest left running
-  all month costs exactly the flat price and one stopped every night costs
-  less.
-- **Storage**, on the *allocated* volume size, for as long as the project
-  exists — running, stopped, whatever. This is the line that surprises
-  people: a stopped project is not a free project. `repose rm` is what
-  stops it.
-- **Egress**, 500 GB included per project per billing period, then $0.05 a
-  GB. Traffic to the gateway (SSH, noVNC, hooks) is not counted; only what
-  leaves the guest for the internet.
-
-The billing period is a month from the day the account added its card, not
-the calendar month. An account anchored on the 31st bills on the 28th in
-February and returns to the 31st in March, which is how Stripe does it.
-
-### Changing size mid-period
-
-The cap follows the largest class the project ran in during the period. A
-project that spends a month at XL and is downgraded to small on the last day
-is still held to the XL cap, not the small one; a project that runs one hour
-at XL and the rest at small pays for that one hour and is nowhere near any
-cap. Both fall out of the same rule, and `repose-admin billing explain`
-prints it for the hour in question.
-
-## Seeing the number
+## Seeing the hours
 
 ```
 $ repose status
-todo-app   large  running   2h14m   claude: working      today $0.31   month $6.20
+todo-app   large  running   2h14m   claude: working      today 2h14m  month 41h
 ```
 
-`cost_today_cents` and `cost_month_cents` on a project, and `GET /usage` for
-a range, all come from the same `usage_hours` rows the invoice is built
-from, so the CLI, the dashboard and the Stripe invoice cannot disagree.
-Usage is rolled up once an hour, at five past, so the figure lags by up to
-an hour and a bit.
+`running_seconds_today` and `running_seconds_month` on a project come from
+the same `usage_hours` rows the overage line is computed from. Usage is
+rolled up once an hour, at five past, so the figure lags by up to an hour
+and a bit. Hours are information, not a bill: the plan is what is charged.
 
-A gap in the host's samples under-bills that hour: the minutes it did not
-hear about are not charged and are never estimated. This is deliberate — it
-makes a host outage visible as a short bill rather than an invented one.
+A gap in the host's samples under-counts that hour: the minutes it did not
+hear about are not counted and are never estimated. That makes a host
+outage visible as a short figure rather than an invented one, and the
+egress it did not see is egress the user is not charged for.
 
 ## The invoice
 
-Monthly, through Stripe, charged to the card on file, with three lines:
-compute, storage and egress, each in cents. Trial credit is consumed before
-anything reaches Stripe, so it appears as a smaller invoice rather than a
-negative line. Tax is added by Stripe from the address on the card.
+Monthly, through Paddle, charged to the card given at checkout: the plan's
+price, tax for the buyer's country, and at most one egress overage line.
+`GET /billing/invoices` and the dashboard list them with the PDF; the
+portal (`POST /billing/portal`) is where a user changes the card or the
+address and downloads receipts. Paddle sends its own receipt emails.
 
-`GET /billing/invoices` and the dashboard list them; the billing portal
-(`POST /billing/portal`) is where a user changes the card, downloads an
-invoice, or updates their address.
+## Changing and cancelling
+
+Upgrading Solo to Pro takes effect at once, prorated by Paddle on the next
+invoice, and needs one more free seat. Downgrading takes effect at the
+next renewal and is refused (`409 conflict`, `detail.reason = over_plan`)
+while the running memory or allocated disk would not fit Solo; stop or
+destroy first. Cancelling ends the plan at the period's end (during the
+trial, at the trial's end): machines run until then, stop at it, and the
+snapshots stay 30 days. A cancellation can be undone until it takes
+effect. Every change sends one email (`plan_changed`,
+`subscription_cancelled`, `subscription_ended`).
 
 ## A failed payment
 
-Stripe retries on its own schedule. Meanwhile:
+Paddle retries on its own schedule. Meanwhile:
 
 | When | What happens |
 |---|---|
-| day 0 | the invoice fails; the account is `past_due`; guests keep running; starting a new one is refused |
-| days 1–2 | Stripe's reminder emails; the user can pay from the portal at any point |
-| day 3 | every running guest is snapshotted and stopped, a `billing_stopped` notification goes out, the account becomes `suspended` |
+| day 0 | the payment fails; the account is `past_due`; machines keep running; starting one is refused; one `payment_failed` email |
+| day 2 | a second `payment_failed` email |
+| day 3 | every running machine is snapshotted and stopped, a `billing_stopped` notification goes out, the account becomes `suspended` |
 | day 33 | the 30-day retention that started at suspension runs out and the snapshots go |
 
 Nothing is deleted before day 33 (DECISIONS R4-11). Paying at any point
-before then returns the account to `active` and unblocks starts —
-but it does **not** start the guests again. That is the user's call, made
-with `repose start`, so nobody is surprised by a bill for compute that
-restarted itself.
+before then returns the account to `active` and unblocks starts; it does
+not start the machines again. That is the user's call, made with `repose
+start`, so nobody is surprised by machines that restarted themselves.
 
-## "I think I was overcharged"
+## "I dispute this charge"
 
-`repose-admin billing explain <project> <hour>` prints every input and every
-step for one hour: how many samples the hour had, the period totals before
-it, which cap applied, the storage remainder, the credit taken and what
-reached Stripe. A correction is a credit row, never an edit to the usage
-history — `ops/RUNBOOK.md` has the procedure.
+`repose-admin billing show <handle>` prints the subscription, the period,
+what ran, the egress and the overage arithmetic; `repose-admin billing
+explain <project> <hour>` prints one hour's inputs and the period's line.
+A refund is made in Paddle's dashboard and lands on the same card
+(PRICING.md "Refunds"); nothing in `usage_hours` or `overage_charges` is
+edited. `ops/RUNBOOK.md` "Customer disputes a charge" has the procedure.
 
 ## Deferred
 
 - Per-seat or team pricing (no teams in the first release, DECISIONS R5-6).
-- Currencies other than USD, and VAT ids beyond what Stripe Tax collects.
-- Idle auto-stop, which would change what a guest-hour means (R1-5).
-- Annual or committed-use discounts.
+- Currencies other than USD, annual plans, promotions beyond Paddle's own
+  discount codes.
+- Idle auto-stop (R1-5); an idle machine holds its share of the plan's
+  memory and the CLI says so.

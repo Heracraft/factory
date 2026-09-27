@@ -1,0 +1,193 @@
+package billing_test
+
+import (
+	"context"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/heracraft/repose/internal/billing"
+	"github.com/heracraft/repose/internal/db/testdb"
+)
+
+// The overage line: egress over the allowance within three hours of the
+// next bill is one charge, to the cent; a retry sends none; a period under
+// the allowance sends none but is marked; a failure leaves the row for the
+// operator and sends nothing twice.
+func TestOverageChargeOnce(t *testing.T) {
+	pool := testdb.Open(t)
+	f := newFakePaddle()
+	defer f.Close()
+	cfg := testConfig(f)
+	p := billing.NewPaddle(cfg, quiet())
+	stop := &stopRecorder{}
+	o := billing.NewOverage(pool, p, cfg, stop, nop(), quiet())
+	ctx := context.Background()
+
+	// Solo, 300 GB this period (50 over), billed in two hours.
+	a := seedAccount(t, pool, "solo", "active", "large", "stopped")
+	f.subs[a.SubID] = map[string]any{"id": a.SubID, "status": "active", "customer_id": "ctm_" + a.Handle, "current_billing_period": map[string]any{"starts_at": "2026-10-01T00:00:00Z", "ends_at": "2026-11-01T00:00:00Z"}}
+	for h := 0; h < 30; h++ {
+		usageHour(t, pool, a.ProjectID, a.Period.Start.Add(time.Duration(h)*time.Hour), "large", 3600, 10<<30, a.Period)
+	}
+	o.Now = at(a.Period.End.Add(-2 * time.Hour))
+	charges, stopped, err := o.Run(ctx)
+	if err != nil || len(stopped) != 0 {
+		t.Fatalf("run: %v %v", err, stopped)
+	}
+	if len(charges) != 1 || !charges[0].Sent || charges[0].Cents != 250 || charges[0].EgressGB != 50 {
+		t.Fatalf("charges: %+v", charges)
+	}
+	body := f.Bodies["POST /subscriptions/"+a.SubID+"/charge"][0]
+	item := body["items"].([]any)[0].(map[string]any)
+	price := item["price"].(map[string]any)
+	if body["effective_from"] != "next_billing_period" || price["unit_price"].(map[string]any)["amount"] != "250" || price["product_id"] != cfg.ProductOverage || !strings.Contains(price["description"].(string), "50 GB over the Solo plan's 250 GB") {
+		t.Fatalf("charge body: %v", body)
+	}
+	var n int
+	if err := pool.QueryRow(ctx, "select count(*) from overage_charges where subscription_id = $1 and cents = 250", a.SubID).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("overage_charges rows: %d %v", n, err)
+	}
+	sub, _ := billing.GetSubscription(ctx, pool, a.SubID)
+	if sub.OverageChargedFor == nil || !sub.OverageChargedFor.Equal(a.Period.Start) {
+		t.Fatalf("overage_charged_for: %v", sub.OverageChargedFor)
+	}
+	// A retry sends nothing.
+	charges, _, err = o.Run(ctx)
+	if err != nil || len(charges) != 0 || f.Count("POST /subscriptions/"+a.SubID+"/charge") != 1 {
+		t.Fatalf("retry: %+v %v (%d charges)", charges, err, f.Count("POST /subscriptions/"+a.SubID+"/charge"))
+	}
+	// Even the direct call (overage-now, account deletion) finds the line
+	// and does not send it again.
+	c, err := o.ChargePeriod(ctx, sub, billing.EffectiveImmediately)
+	if err != nil || c.Sent || f.Count("POST /subscriptions/"+a.SubID+"/charge") != 1 {
+		t.Fatalf("ChargePeriod on a charged period: %+v %v", c, err)
+	}
+
+	// Under the allowance: marked, nothing sent, no row.
+	b := seedAccount(t, pool, "pro", "active", "large", "stopped")
+	f.subs[b.SubID] = map[string]any{"id": b.SubID, "status": "active"}
+	usageHour(t, pool, b.ProjectID, b.Period.Start, "large", 3600, 100<<30, b.Period)
+	charges, _, err = o.Run(ctx)
+	if err != nil || len(charges) != 1 || charges[0].Cents != 0 || charges[0].Sent {
+		t.Fatalf("under allowance: %+v %v", charges, err)
+	}
+	if err := pool.QueryRow(ctx, "select count(*) from overage_charges where subscription_id = $1", b.SubID).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("a zero line was recorded: %d", n)
+	}
+	sub, _ = billing.GetSubscription(ctx, pool, b.SubID)
+	if sub.OverageChargedFor == nil {
+		t.Fatal("period not marked")
+	}
+
+	// Not yet within the window: nothing.
+	c2 := seedAccount(t, pool, "solo", "active", "large", "stopped")
+	usageHour(t, pool, c2.ProjectID, c2.Period.Start, "large", 3600, 400<<30, c2.Period)
+	o.Now = at(c2.Period.End.Add(-5 * time.Hour))
+	if charges, _, err = o.Run(ctx); err != nil || len(charges) != 0 {
+		t.Fatalf("outside the window: %+v %v", charges, err)
+	}
+
+	// Paddle refuses: the row stays without a transaction id, the period is
+	// not marked, and the next run does not send a second charge.
+	o.Now = at(c2.Period.End.Add(-2 * time.Hour))
+	f.subs[c2.SubID] = map[string]any{"id": c2.SubID, "status": "active"}
+	f.Fail["POST /subscriptions/"+c2.SubID+"/charge"] = 10
+	f.FailCode = 500
+	charges, _, err = o.Run(ctx)
+	if err != nil || len(charges) != 0 {
+		t.Fatalf("a failed charge is logged, not returned: %+v %v", charges, err)
+	}
+	var txn *string
+	if err := pool.QueryRow(ctx, "select paddle_transaction_id from overage_charges where subscription_id = $1", c2.SubID).Scan(&txn); err != nil || txn != nil {
+		t.Fatalf("row after failure: %v %v", txn, err)
+	}
+	sub, _ = billing.GetSubscription(ctx, pool, c2.SubID)
+	if sub.OverageChargedFor != nil {
+		t.Fatal("a failed period was marked charged")
+	}
+	f.Fail["POST /subscriptions/"+c2.SubID+"/charge"] = 0
+	before := f.Count("POST /subscriptions/" + c2.SubID + "/charge")
+	charges, _, err = o.Run(ctx)
+	if err != nil || f.Count("POST /subscriptions/"+c2.SubID+"/charge") != before {
+		t.Fatalf("the recorded line was sent again: %+v %v", charges, err)
+	}
+	if len(charges) != 1 || charges[0].Sent {
+		t.Fatalf("the recorded line is returned as found: %+v", charges)
+	}
+	sub, _ = billing.GetSubscription(ctx, pool, c2.SubID)
+	if sub.OverageChargedFor == nil {
+		t.Fatal("the period is marked once the line is on record")
+	}
+	// An immediate charge (account deletion) returns the transaction id.
+	d := seedAccount(t, pool, "solo", "active", "large", "stopped")
+	f.subs[d.SubID] = map[string]any{"id": d.SubID, "status": "active"}
+	usageHour(t, pool, d.ProjectID, d.Period.Start, "large", 3600, 260<<30, d.Period)
+	dsub, _ := billing.GetSubscription(ctx, pool, d.SubID)
+	c, err = o.ChargePeriod(ctx, dsub, billing.EffectiveImmediately)
+	if err != nil || !c.Sent || c.Cents != 50 || !strings.HasPrefix(c.TransactionID, "txn_") {
+		t.Fatalf("immediate: %+v %v", c, err)
+	}
+	if err := pool.QueryRow(ctx, "select paddle_transaction_id from overage_charges where subscription_id = $1", d.SubID).Scan(&txn); err != nil || txn == nil || *txn != c.TransactionID {
+		t.Fatalf("transaction id stored: %v", txn)
+	}
+}
+
+// The hard stop: four times the allowance stops the running machines once
+// per period with an egress_stopped email; the gate then refuses.
+func TestEgressHardStop(t *testing.T) {
+	pool := testdb.Open(t)
+	f := newFakePaddle()
+	defer f.Close()
+	cfg := testConfig(f)
+	stop := &stopRecorder{}
+	o := billing.NewOverage(pool, nil, cfg, stop, nop(), quiet())
+	ctx := context.Background()
+	a := seedAccount(t, pool, "solo", "active", "large", "running")
+	other := addProject(t, pool, a, "sleeping", "small", "stopped", 20<<30)
+	o.Now = at(a.Period.Start.Add(10 * 24 * time.Hour))
+
+	usageHour(t, pool, a.ProjectID, a.Period.Start.Add(time.Hour), "large", 3600, 999<<30, a.Period)
+	_, stopped, err := o.Run(ctx)
+	if err != nil || len(stopped) != 0 || len(stop.calls) != 0 {
+		t.Fatalf("under the ceiling: %v %v", stopped, err)
+	}
+	usageHour(t, pool, a.ProjectID, a.Period.Start.Add(2*time.Hour), "large", 3600, 1<<30, a.Period)
+	_, stopped, err = o.Run(ctx)
+	if err != nil || len(stopped) != 1 || stopped[0] != a.UserID {
+		t.Fatalf("at the ceiling: %v %v", stopped, err)
+	}
+	if len(stop.calls) != 1 || *stop.calls[0].ProjectID != a.ProjectID || stop.calls[0].Params["reason"] != "billing" || stop.calls[0].Params["snapshot"] != true || stop.kicks != 1 {
+		t.Fatalf("stop calls: %+v", stop.calls)
+	}
+	if k := eventKinds(t, pool, a); len(k) != 1 || k[0] != "egress_stopped" {
+		t.Fatalf("events %v", k)
+	}
+	var summary string
+	if err := pool.QueryRow(ctx, "select summary from events where user_id = $1", a.UserID).Scan(&summary); err != nil || !strings.Contains(summary, "passed 1000 GB, four times the Solo plan's 250 GB") || !strings.Contains(summary, "until 1 November") {
+		t.Fatalf("summary %q", summary)
+	}
+	// Once per period: a second run stops nothing and sends no second email.
+	if _, err := pool.Exec(ctx, "update projects set state = 'running' where id = $1", a.ProjectID); err != nil {
+		t.Fatal(err)
+	}
+	_, stopped, err = o.Run(ctx)
+	if err != nil || len(stopped) != 0 || len(stop.calls) != 1 || len(eventKinds(t, pool, a)) != 1 {
+		t.Fatalf("second run: %v %v %d", stopped, err, len(stop.calls))
+	}
+	// The gate refuses until period_end.
+	g := billing.NewGate(pool, cfg, nop(), quiet())
+	g.Now = o.Now
+	r := refusal(t, g.Check(ctx, user(t, pool, a), billing.Request{Class: "small", Project: other}))
+	if r.Reason != "egress_limit" {
+		t.Fatalf("gate after the stop: %+v", r)
+	}
+	// BILLING_ENFORCE=false: the ceiling is logged, nothing stops.
+	b := seedAccount(t, pool, "pro", "active", "large", "running")
+	usageHour(t, pool, b.ProjectID, b.Period.Start.Add(time.Hour), "large", 3600, 2000<<30, b.Period)
+	o.Enforce = false
+	_, stopped, err = o.Run(ctx)
+	if err != nil || len(stopped) != 0 || len(stop.calls) != 1 || len(eventKinds(t, pool, b)) != 0 {
+		t.Fatalf("enforce off: %v %v", stopped, err)
+	}
+}

@@ -648,7 +648,7 @@ func ensureRunningFrom(ctx context.Context, e *Env, project *Project, pr *progre
 	if err != nil {
 		var apiErr *APIError
 		if errors.As(err, &apiErr) && apiErr.Code == "payment_required" {
-			return exitf(ExitPaymentRequired, "Add a card at https://repose.herakraft.co/billing first.")
+			return exitf(ExitPaymentRequired, "%s", paymentRequiredMessage(apiErr))
 		}
 		if errors.As(err, &apiErr) && apiErr.Code == "capacity" {
 			return exitf(ExitCapacity, "No capacity right now; try again in a few minutes. (We have been alerted.)")
@@ -959,7 +959,7 @@ func createProjectForRun(ctx context.Context, e *Env, remote string, opts RunOpt
 		}
 		var apiErr *APIError
 		if errors.As(err, &apiErr) && apiErr.Code == "payment_required" {
-			return nil, exitf(ExitPaymentRequired, "Add a card at https://repose.herakraft.co/billing first.")
+			return nil, exitf(ExitPaymentRequired, "%s", paymentRequiredMessage(apiErr))
 		}
 		if errors.As(err, &apiErr) && apiErr.Code == "conflict" {
 			req.Name = fmt.Sprintf("%s-%d", name, attempt+1)

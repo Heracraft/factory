@@ -86,10 +86,12 @@ a day.
     Confirm the GitHub connector is enabled. Copy the app ids and the
     issuer URL; agents need them as environment variables, never in git.
 
-13. **Stripe.** An account in test mode is enough to start. Copy the test
-    secret key. The objects the api needs are step 17, once there is a
-    hostname to point a webhook at. Live mode is a milestone M4 gate, not a
-    prerequisite.
+13. **Paddle.** A sandbox account is enough to start (DECISIONS I-289).
+    Create an API key (Developer tools > Authentication; `pdl_sdbx_...`)
+    and a client-side token (`test_...`). The objects the api needs are
+    step 17, once there is a hostname to point the webhook at. The live
+    account, its domain review and the `/refunds` page it asks for are a
+    milestone M4 gate, not a prerequisite.
 
 14. **Resend.** Verify the sending domain (`herakraft.co` or
     `repose.herakraft.co`) and copy an API key.
@@ -107,39 +109,40 @@ a day.
     upstream (DECISIONS I-46). Until then builds fetch the release
     binaries themselves, which is slower, not wrong.
 
-17. **Stripe objects and the webhook** (after the api has a hostname; do it
-    in test mode first and repeat in live mode before launch). Nothing is
-    clicked together by hand any more (DECISIONS I-180). With the secret key
-    from the Stripe dashboard (Developers > API keys), from a checkout of
-    this repository:
+17. **Paddle objects and the webhook** (after the api has a hostname; do it
+    in the sandbox first and repeat in live before launch). Nothing is
+    clicked together by hand (DECISIONS I-289). With the API key from
+    Paddle's dashboard (Developer tools > Authentication), from a checkout
+    of this repository:
 
     ```
-    ops/stripe/bootstrap.sh > /tmp/stripe.env     # prompts for sk_test_...
+    ops/paddle/bootstrap.sh > /tmp/paddle.env     # prompts for pdl_sdbx_...
     ```
 
-    It creates, or finds on a rerun: the product `repose`; three billing
-    meters `repose_compute_cents`, `repose_storage_cents`,
-    `repose_egress_cents` (sum of `value` per `stripe_customer_id`); three
-    monthly metered prices at $0.01 per unit, one per meter (the unit is one
-    cent, DECISIONS I-77); a customer portal configuration (card, address,
-    invoices; no cancelling); and the webhook endpoint at
-    `https://api.repose.herakraft.co/v1/billing/webhook`, subscribed to the
-    six events of 09-billing.md §5.6 and pinned to the API version the
-    deployed `stripe-go` speaks. It refuses a live key unless given
-    `--live`. `/tmp/stripe.env` is the block to paste into the api's Coolify
-    environment (both `api` and `api-grpc`); Coolify restarts the app itself.
-    Delete the file afterwards: it holds the secret key.
+    It creates, or finds on a rerun: the products `repose Solo` and
+    `repose Pro` with one monthly price each ($29 and $59, seven-day trial,
+    `custom_data.repose = solo|pro`); the product `repose egress overage`
+    the $0.05/GB line is charged under; and the notification destination
+    `https://api.repose.herakraft.co/v1/billing/webhook` subscribed to the
+    ten events of 09-billing.md §5.11 (`subscription.*`,
+    `transaction.completed`, `transaction.payment_failed`). It refuses a
+    live key unless given `--live`. `/tmp/paddle.env` is the block to paste
+    into the api's Coolify environment (both `api` and `api-grpc`):
+    `PADDLE_PRICE_SOLO`, `PADDLE_PRICE_PRO`, `PADDLE_PRODUCT_OVERAGE`,
+    `PADDLE_WEBHOOK_SECRET`; add `PADDLE_API_KEY` and `PADDLE_CLIENT_TOKEN`
+    from the dashboard beside them. Coolify restarts the app itself. Delete
+    the file afterwards: it holds the webhook secret.
 
-    The one thing left in the Stripe dashboard is **Stripe Tax** (Settings >
-    Tax: the business address and registrations), which is the owner's to
-    fill in. Until it is active the block says `STRIPE_AUTOMATIC_TAX=false`;
-    rerun the bootstrap after activating it and paste the new value.
+    Tax needs nothing here: Paddle is the merchant of record and adds it
+    at checkout for the buyer's country.
 
-    Until `STRIPE_SECRET_KEY` is set the api runs normally and the billing
-    routes answer `503 billing_disabled` (DECISIONS I-16); with it set but
-    the webhook secret or the prices missing, the api refuses to start
-    rather than billing nothing quietly. The web application needs no
-    Stripe key (I-182).
+    Until `PADDLE_API_KEY` is set the api runs normally, the billing routes
+    answer `503 billing_disabled` and every start of a non-exempt account is
+    refused with `subscription_required` (DECISIONS I-16, I-289); with it
+    set but the webhook secret, a price or the overage product missing, the
+    api refuses to start rather than selling nothing quietly. The web
+    application needs no secret: the checkout opens with the public client
+    token `GET /billing` hands it.
 
 ## What you do not need to do
 

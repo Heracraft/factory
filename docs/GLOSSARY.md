@@ -114,17 +114,14 @@ as such.
 **class**, a guest size: `small` (2 vCPU, 4 GB), `large` (4, 8), `xl`
 (8, 16). Fixed per project while running; changeable when stopped.
 
-**plan**, what a user pays for monthly through Paddle (I-289): Solo
-($29) or Pro ($59), each a ceiling on memory running at once (8 or 16 GB),
-allocated disk and egress a month. Projects are unlimited while stopped.
-
-**seat**, 8 GB of memory the fleet can run at once; Solo holds one, Pro
-two. The fleet's seats bound how many plans are sold; past them users
-wait on the waitlist (I-290).
+**cap**, the monthly maximum a project of a class is billed for guest-
+hours: $49, $99, $199. Hourly rate is the cap divided by 720, so running
+all month costs the cap and never more.
 
 **meter**, one of the three measured quantities: guest-hours by class,
-volume GB-months by allocated size, egress GB. Recorded in `usage_hours`;
-egress past the plan's allowance becomes the overage line.
+disk allocated, egress GB. Recorded in `usage_hours` hourly; since I-289
+none is priced per hour (a plan buys memory, disk and egress, and only
+egress past the allowance becomes an invoice line).
 
 **held**, a project whose base updates are paused by the dashboard's
 **Hold base updates** checkbox (`hold_base_updates`). It keeps its base

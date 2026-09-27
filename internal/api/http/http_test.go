@@ -28,6 +28,7 @@ import (
 	httpapi "github.com/heracraft/repose/internal/api/http"
 	"github.com/heracraft/repose/internal/api/notify"
 	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/ca/sshca"
 	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/db/testdb"
@@ -59,7 +60,7 @@ func newEnvLimits(t *testing.T, limits *httpapi.RateLimits) *env {
 }
 
 // newEnvWith lets a test change the dependencies before the server is
-// built (workstream 09 turns billing enforcement off and plugs the Stripe
+// built (workstream 09 turns billing enforcement off and plugs the Paddle
 // webhook handler in this way).
 func newEnvWith(t *testing.T, limits *httpapi.RateLimits, tweak func(*httpapi.Deps)) *env {
 	t.Helper()
@@ -95,6 +96,13 @@ func newEnvWith(t *testing.T, limits *httpapi.RateLimits, tweak func(*httpapi.De
 	}
 	if tweak != nil {
 		tweak(&deps)
+	}
+	if deps.Gate == nil {
+		// The gate as a configured deploy has it (Paddle on), so the row
+		// logic is what the tests exercise; without a key every start is
+		// subscription_required (TestBillingDisabledRoutes covers the
+		// routes' 503). BillingEnforce=false still lets everything through.
+		deps.Gate = billing.NewGate(h.Pool, billing.Config{APIKey: "pdl_sdbx_apikey_test", DashboardURL: "https://repose.herakraft.co", Enforce: deps.BillingEnforce}, h.Metrics, log)
 	}
 	e.srv = httpapi.New(deps)
 	e.srv.SetReady(true)
@@ -154,7 +162,7 @@ func (e *env) do(t *testing.T, token, method, path string, body any) resp {
 }
 
 // doRaw posts a body verbatim with the given headers and no bearer token:
-// the Stripe webhook route authenticates with its own header, so it cannot
+// the Paddle webhook route authenticates with its own header, so it cannot
 // be exercised through do().
 func (e *env) doRaw(t *testing.T, method, path string, body []byte, headers map[string]string) resp {
 	t.Helper()
@@ -226,10 +234,41 @@ func (e *env) signIn(t *testing.T, sub, login string) string {
 	if r.status != 200 {
 		t.Fatalf("first sign-in: %d %s", r.status, r.raw)
 	}
-	if _, err := e.h.Pool.Exec(e.h.Ctx, "update users set has_card = true where logto_sub = $1", sub); err != nil {
+	e.subscribe(t, sub, "pro")
+	return tok
+}
+
+// subscribe gives the signed-in user a live subscription on plan, the
+// way the Paddle webhook would (I-289), so the compute gate lets the
+// test's projects through; "" removes it.
+func (e *env) subscribe(t *testing.T, sub, plan string) {
+	t.Helper()
+	ctx := e.h.Ctx
+	var uid string
+	if err := e.h.Pool.QueryRow(ctx, "select id from users where logto_sub = $1", sub).Scan(&uid); err != nil {
 		t.Fatal(err)
 	}
-	return tok
+	if _, err := e.h.Pool.Exec(ctx, "delete from subscriptions where user_id = $1", uid); err != nil {
+		t.Fatal(err)
+	}
+	if plan == "" {
+		if _, err := e.h.Pool.Exec(ctx, "update users set billing_status = 'none', has_card = false where id = $1", uid); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	seats := 1
+	if plan == "pro" {
+		seats = 2
+	}
+	if _, err := e.h.Pool.Exec(ctx, `insert into subscriptions (id, user_id, paddle_customer_id, plan, status, seats, period_start, period_end, next_billed_at)
+		values ('sub_' || $1, $2, 'ctm_' || $1, $3, 'active', $4, date_trunc('month', now()), date_trunc('month', now()) + interval '1 month', date_trunc('month', now()) + interval '1 month')`,
+		sub, uid, plan, seats); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.h.Pool.Exec(ctx, "update users set billing_status = 'active', has_card = true, paddle_customer_id = 'ctm_' || $2 where id = $1", uid, sub); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestNotifyUnsubscribe covers docs/workstreams/13-notifications.md §5.6
@@ -375,9 +414,11 @@ func TestSignInAndProjectsLifecycle(t *testing.T) {
 	if r.status != 200 || r.body["handle"] != "alice-dev" {
 		t.Fatalf("me: %d %s", r.status, r.raw)
 	}
+	// A new account has no plan: status none, no credit, Solo's project
+	// count and no xl until a plan is chosen (I-289).
 	b := r.body["billing"].(map[string]any)
 	l := r.body["limits"].(map[string]any)
-	if b["status"] != "trial" || b["trial_credit_cents"].(float64) != 336 || l["projects"].(float64) != 3 || l["xl"].(float64) != 1 {
+	if b["status"] != "none" || b["trial_credit_cents"].(float64) != 0 || b["plan"] != nil || b["has_card"] != false || l["projects"].(float64) != 10 || l["xl"].(float64) != 0 || l["memory_gb"].(float64) != 8 {
 		t.Fatalf("defaults: %s", r.raw)
 	}
 	var row map[string]any
@@ -391,13 +432,20 @@ func TestSignInAndProjectsLifecycle(t *testing.T) {
 	}
 	rows.Close()
 	t.Logf("user row after first sign-in: %v", row)
-	// No card: payment_required with the reason.
+	// No plan: payment_required with the reason and the whole sentence.
 	r = e.do(t, tok, "POST", "/projects", map[string]any{"name": "todo-app", "class": "large", "remote_url": "github.com/alice/todo"})
-	if r.status != 402 || errCode(r) != "payment_required" {
-		t.Fatalf("no card: %d %s", r.status, r.raw)
+	if r.status != 402 || errCode(r) != "payment_required" || errDetail(r, "reason") != "subscription_required" {
+		t.Fatalf("no plan: %d %s", r.status, r.raw)
 	}
-	if _, err := e.h.Pool.Exec(ctx, "update users set has_card = true where logto_sub = 'sub-alice'"); err != nil {
-		t.Fatal(err)
+	if msg, _ := r.body["error"].(map[string]any)["message"].(string); msg != "Choose a plan at https://repose.herakraft.co/billing first." {
+		t.Fatalf("message %q", msg)
+	}
+	e.subscribe(t, "sub-alice", "pro")
+	r = e.do(t, tok, "GET", "/me", nil)
+	b = r.body["billing"].(map[string]any)
+	l = r.body["limits"].(map[string]any)
+	if b["status"] != "active" || b["plan"] != "pro" || b["seats"].(float64) != 2 || b["period_end"] == nil || l["projects"].(float64) != 25 || l["xl"].(float64) != 1 || l["memory_gb"].(float64) != 16 {
+		t.Fatalf("subscribed /me: %s", r.raw)
 	}
 	// Validation.
 	if r := e.do(t, tok, "POST", "/projects", map[string]any{"name": "bad name!", "class": "large"}); r.status != 400 || errCode(r) != "invalid" {
@@ -430,32 +478,34 @@ func TestSignInAndProjectsLifecycle(t *testing.T) {
 	if r := e.do(t, tok, "POST", "/projects", map[string]any{"name": "other", "class": "small", "remote_url": "github.com/alice/todo"}); r.status != 409 {
 		t.Fatalf("dup remote: %d %s", r.status, r.raw)
 	}
-	// Limits: 3 projects, 1 xl.
+	// The plan's memory (Pro, 16 GB): the large running takes 8; an xl
+	// (16) does not fit beside it, two smalls do, a third does not.
 	r = e.do(t, tok, "POST", "/projects", map[string]any{"name": "big", "class": "xl"})
-	if r.status != 201 {
-		t.Fatalf("xl: %d %s", r.status, r.raw)
+	if r.status != 402 || errDetail(r, "reason") != "plan_limit" {
+		t.Fatalf("xl beside a large on Pro: %d %s", r.status, r.raw)
 	}
-	e.waitOp(t, r)
-	if r := e.do(t, tok, "POST", "/projects", map[string]any{"name": "big2", "class": "xl"}); r.status != 400 || r.body["error"].(map[string]any)["detail"].(map[string]any)["xl_limit"].(float64) != 1 {
-		t.Fatalf("xl limit: %d %s", r.status, r.raw)
+	if projects, _ := r.body["error"].(map[string]any)["detail"].(map[string]any)["projects"].([]any); len(projects) != 1 || projects[0] != "todo-app" {
+		t.Fatalf("plan_limit names the machines: %s", r.raw)
 	}
-	r = e.do(t, tok, "POST", "/projects", map[string]any{"name": "third", "class": "small"})
-	if r.status != 201 {
-		t.Fatalf("third: %d %s", r.status, r.raw)
+	for _, name := range []string{"second", "third"} {
+		r = e.do(t, tok, "POST", "/projects", map[string]any{"name": name, "class": "small"})
+		if r.status != 201 {
+			t.Fatalf("%s: %d %s", name, r.status, r.raw)
+		}
+		e.waitOp(t, r)
 	}
-	e.waitOp(t, r)
 	r = e.do(t, tok, "POST", "/projects", map[string]any{"name": "fourth", "class": "small"})
-	if r.status != 400 || r.body["error"].(map[string]any)["detail"].(map[string]any)["limit"].(float64) != 3 {
-		t.Fatalf("project limit: %d %s", r.status, r.raw)
+	if r.status != 402 || errDetail(r, "reason") != "plan_limit" {
+		t.Fatalf("memory full: %d %s", r.status, r.raw)
 	}
 	// past_due is payment_required on start.
 	if _, err := e.h.Pool.Exec(ctx, "update users set billing_status = 'past_due' where logto_sub = 'sub-alice'"); err != nil {
 		t.Fatal(err)
 	}
-	if r := e.do(t, tok, "POST", "/projects/"+pid+"/start", nil); r.status != 402 || errCode(r) != "payment_required" {
+	if r := e.do(t, tok, "POST", "/projects/"+pid+"/start", nil); r.status != 402 || errCode(r) != "payment_required" || errDetail(r, "reason") != "past_due" {
 		t.Fatalf("past due start: %d %s", r.status, r.raw)
 	}
-	if _, err := e.h.Pool.Exec(ctx, "update users set billing_status = 'trial' where logto_sub = 'sub-alice'"); err != nil {
+	if _, err := e.h.Pool.Exec(ctx, "update users set billing_status = 'active' where logto_sub = 'sub-alice'"); err != nil {
 		t.Fatal(err)
 	}
 	// List shows three; cross-user is 404.
