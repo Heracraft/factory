@@ -132,6 +132,8 @@ The command returns at once and leaves the forward running in the background. Ru
 
 Text on the page is drawn at your tab's size in the machine's pixels; on a Retina display that is 1x, so it is sharp but not as sharp as a native page. `repose open --desktop` is the old name of the command and still works.
 
+A machine on base 2026.09.27.2 or older still has the old page, which asks for the password the command printed; it gets the new one at its next base update. A CLI at v0.1.20 or older has no `repose browser`; `repose open --desktop` there prints the password to type.
+
 An agent session started before September 25, 2026 has a headless browser of its own that the desktop can't show; restart the agent to switch it over.
 
 Playwright test suites (`pnpm exec playwright test` and the like) still run headless unless your config asks for headed browsers. While the agent's browser is up, new shells have `DISPLAY=:99`, so a headed browser you start yourself also appears on the desktop.

@@ -132,6 +132,14 @@ up beside the attach, reporting through tmux messages.
 - A refused password (the machine rebooted since the link was made) stops
   the retries and shows the field.
 
+Shipping: the viewer page, Xvnc and the per-boot password need the base
+after 2026.09.27.2; `repose browser`, the background forward and the
+fragment need the CLI after v0.1.20. An older CLI against a new base
+prints the password with `repose open --desktop` and the new page shows
+its password field; a new CLI against an older base opens stock noVNC's
+`vnc.html`, which asks for the password the CLI did not print (run
+`repose open --desktop` on that base, or wait for its update).
+
 ## Behaviour that must hold
 
 - A fresh guest can run a Playwright script that opens a page and takes a
