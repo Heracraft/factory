@@ -203,7 +203,7 @@
 			</div>
 		</div>
 		<div class="landing-stage mt-20 md:mt-12">
-			<Perch large column shapes={['diamond', 'pie', 'agent', 'halves', 'ring', 'leaf']} {beat} />
+			<Perch large column shapes={['diamond', 'pie', 'agent', 'halves']} {beat} />
 			<Hero onbeat={(kind) => (beat = { kind, n: ++beats })} />
 		</div>
 	</section>

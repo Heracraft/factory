@@ -183,7 +183,8 @@ and underlined every heading. The page is one system:
   stage (`Perch.svelte`), the pricing shapes sit in their card's corner,
   the footer's stand on its rule, the step marks sit in their line. The
   owner's words for shapes left beside the words: "bolted in".
-- **Shapes appear once per section.** The hero's shapes are a column
+- **Shapes appear once per section.** The hero's four shapes (diamond,
+  pie, the agent tile, halves) are a column
   standing on the hero stage's top edge, flush with the page's right edge,
   rising beside the headline opposite it (a row on the edge on a phone); "Your working state", "On every machine" (on the top edge of the
   grid) and the toolchain each have three on their stage; the steps and
