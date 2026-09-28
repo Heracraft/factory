@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -790,8 +791,11 @@ func TestDestroyDelay(t *testing.T) {
 	f := New(Options{DestroyDelay: 300 * time.Millisecond})
 	defer f.Close()
 	a := mkProject(t, f, tok, "a", "")
-	mkProject(t, f, tok, "b", "")
 	c := mkProject(t, f, tok, "c", "")
+	// Fill the account to its limit (billing off: Pro's, I-289).
+	for i := 2; i < planByID("pro").ProjectLimit; i++ {
+		mkProject(t, f, tok, "p"+strconv.Itoa(i), "")
+	}
 	opID(t, call(t, f, "POST", "/v1/projects/"+a.ID+"/snapshots", tok, nil))
 	r := call(t, f, "GET", "/v1/projects/"+a.ID+"/snapshots", tok, nil)
 	var snaps []Snapshot

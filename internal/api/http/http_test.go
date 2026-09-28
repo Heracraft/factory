@@ -406,6 +406,12 @@ func TestDestroyingFreesTheSlot(t *testing.T) {
 	e := newEnv(t)
 	ctx := e.h.Ctx
 	tok := e.signIn(t, "sub-cleo", "cleo")
+	// An exempt account without a plan works within users.project_limit
+	// (I-289); 3 keeps the test short.
+	e.subscribe(t, "sub-cleo", "")
+	if _, err := e.h.Pool.Exec(ctx, "update users set billing_status = 'exempt', project_limit = 3 where logto_sub = 'sub-cleo'"); err != nil {
+		t.Fatal(err)
+	}
 	ids := map[string]string{}
 	for _, n := range []string{"one", "two", "three"} {
 		r := e.do(t, tok, "POST", "/projects", map[string]any{"name": n, "class": "small"})
