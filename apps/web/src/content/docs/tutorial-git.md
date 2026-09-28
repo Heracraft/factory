@@ -50,13 +50,14 @@ Nothing comes back on its own. The agent commits, and you fetch. The first `repo
 ```
 $ git remote -v
 repose  hello.repose:~/hello (fetch)
-repose  'this remote is fetch-only; repose run sends your work to the machine' (push)
+repose  'this remote is fetch-only; repose run sends your work to
+the machine' (push)
 ```
 
 Give the agent something to commit:
 
 ```
-repose run "add a LICENSE file with the MIT license and commit it"
+repose run "add an MIT LICENSE file and commit it"
 ```
 
 When it's done (you get a notification, or watch it in tmux), fetch:
@@ -84,13 +85,18 @@ Only commits travel this way. Files the agent changed but didn't commit stay on 
 You edited `README.md` on your laptop while the agent was editing it on the machine. Now `repose run`:
 
 ```text
-`repose run` copies your laptop's work onto the machine. It doesn't restart or rebuild anything.
-The machine has uncommitted changes your laptop doesn't have (1 file), probably an agent's:
+`repose run` copies your laptop's work onto the machine.
+It doesn't restart or rebuild anything.
+The machine has uncommitted changes your laptop doesn't have
+(1 file), probably an agent's:
   README.md
-Your laptop has new work as well, so syncing now would write over them. Nothing was changed. Pick one:
+Your laptop has new work as well, so syncing now would write over
+them. Nothing was changed. Pick one:
   repose attach                  look at the machine first
-  repose run --stash-remote      put the machine's changes in git stash, then sync
-  repose run --discard-remote    throw the machine's changes away, then sync
+  repose run --stash-remote      put the machine's changes in git
+                                 stash, then sync
+  repose run --discard-remote    throw the machine's changes away,
+                                 then sync
 ```
 
 Nothing happened, and the exit code is 6, so a script notices. The three options are the whole story: look first, keep the machine's changes in a stash there, or drop them. If the agent had committed instead of leaving the file dirty, there would be no conflict at all: the sync checks your laptop's commit out detached on the machine and leaves the agent's branch where it is, and `git fetch repose` brings that branch to you to merge like any other.

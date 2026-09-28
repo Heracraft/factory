@@ -54,14 +54,18 @@ Git LFS files arrive as their small pointer files, not their contents. Run `repo
 If the machine changed since your last sync (usually an agent's edits or commits) and your laptop has nothing new since then, there is nothing to copy. The checkout is left as it is and you're attached:
 
 ```text
-The machine has changes your laptop doesn't have (27 files); attaching without syncing. `repose run --stash-remote` puts them in git stash and syncs your laptop's work.
+The machine has changes your laptop doesn't have (27 files);
+attaching without syncing. `repose run --stash-remote` puts them
+in git stash and syncs your laptop's work.
 ```
 
 If your laptop does have new work, copying it would write over the machine's changes, so the sync stops, changes nothing and exits with code 6:
 
 ```text
-`repose run` copies your laptop's work onto the machine. It doesn't restart or rebuild anything.
-The machine has uncommitted changes your laptop doesn't have (27 files), probably an agent's:
+`repose run` copies your laptop's work onto the machine.
+It doesn't restart or rebuild anything.
+The machine has uncommitted changes your laptop doesn't have
+(27 files), probably an agent's:
   src/auth.ts
   src/routes/login.ts
   src/routes/logout.ts
@@ -71,10 +75,13 @@ The machine has uncommitted changes your laptop doesn't have (27 files), probabl
   pnpm-lock.yaml
   notes.md
   and 19 more
-Your laptop has new work as well, so syncing now would write over them. Nothing was changed. Pick one:
+Your laptop has new work as well, so syncing now would write over
+them. Nothing was changed. Pick one:
   repose attach                  look at the machine first
-  repose run --stash-remote      put the machine's changes in git stash, then sync
-  repose run --discard-remote    throw the machine's changes away, then sync
+  repose run --stash-remote      put the machine's changes in git
+                                 stash, then sync
+  repose run --discard-remote    throw the machine's changes away,
+                                 then sync
 ```
 
 `--stash-remote` keeps the machine's changes in `git stash` there, named `repose run`. `--discard-remote` throws them away.

@@ -24,7 +24,7 @@ repose notify set --email on
 4. Tell repose, and send a test:
 
 ```
-repose notify set --ntfy https://ntfy.sh/repose-4f9c2a7e1b3d5c8a0f6e
+repose notify set --ntfy https://ntfy.sh/repose-4f9c2a7e1b
 repose notify test
 ```
 

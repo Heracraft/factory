@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
 	DOCS,
 	SECTIONS,
-	blockLines,
 	docBySlug,
 	highlightNix,
 	movedDoc,
@@ -125,15 +124,36 @@ describe('user docs', () => {
 		expect(renderShell('repose run # go').copy).toBe('repose run # go');
 	});
 
-	it('puts each line of a block in its own box, hung past its indent', () => {
-		expect(blockLines('a\n  b\n\nc\n')).toBe(
-			'<span class="line" style="--hang:4ch">a</span>' +
-				'<span class="line" style="--hang:6ch">  b</span>' +
-				'<span class="line" style="--hang:4ch"></span>' +
-				'<span class="line" style="--hang:4ch">c</span>'
-		);
-		const git = docBySlug('tutorial-git')!.html;
-		expect(git).toContain('<code class="language-text"><span class="line"');
-		expect(git).not.toMatch(/<code class="language-\w+">(?!<span class="line")/);
+	it('fits every code block in the reading column, clear of its Copy button', () => {
+		// Code blocks scroll sideways rather than wrap (DECISIONS I-345), so the
+		// docs are written to fit. From 1280 wide up, where the column is the
+		// narrowest above a phone, a block holds 70 columns of 13px monospace,
+		// and the Copy button covers the last 8 of the first line. On a phone a
+		// long line scrolls, as it would in a terminal.
+		const COLUMNS = 70;
+		const UNDER_COPY = 8;
+		const long: string[] = [];
+		let blocks = 0;
+		for (const d of DOCS) {
+			for (const [, lang, code] of d.body.matchAll(/^```(\w*)\n([\s\S]*?)^```$/gm)) {
+				blocks++;
+				code
+					.replace(/\n$/, '')
+					.split('\n')
+					.forEach((line, i) => {
+						const limit = i === 0 && lang !== 'text' ? COLUMNS - UNDER_COPY : COLUMNS;
+						const width = [...line.replace(/\t/g, '  ')].length;
+						if (width > limit) long.push(`${d.slug}: ${width} > ${limit}: ${line}`);
+					});
+			}
+		}
+		expect(blocks).toBeGreaterThan(100);
+		expect(long).toEqual([]);
+	});
+
+	it('scrolls a code block instead of wrapping it', () => {
+		const html = docBySlug('tutorial-git')!.html;
+		expect(html).toContain('<code class="language-text">');
+		expect(html).not.toContain('class="line"');
 	});
 });

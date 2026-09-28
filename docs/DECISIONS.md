@@ -8632,3 +8632,68 @@ database for a difference that application settings cover); product names
 typed into the templates (the recruiting app would have read "repose");
 Logto's per-language email templates (they have no per-app variant
 either); hiding the badge through CSS tricks against Logto's pinning.
+
+**I-344. The docs sidebar is a drawer below `lg` that keeps its state,
+and the docs are prerendered; the docs stay in-house.** (docs site,
+2026-09-28; owner note: no side menu on phones, the docs don't keep
+state, and perhaps a docs framework styled like the site would do)
+On a phone the sidebar was a full-screen sheet behind a text "Menu"
+button, shown and hidden with `display: none`, so every opening started
+at the top of the list with the search cleared, and it covered the page
+it was opened from. Now, below `lg`:
+- A hamburger at the left of the header opens a drawer from the left,
+  `min(20rem, 85vw)` wide, over a dimmed backdrop. A tap on the
+  backdrop, Escape or the button closes it; the page behind doesn't
+  scroll while it is open; focus goes into the drawer and back to the
+  button.
+- The drawer is always mounted and moved off screen when closed
+  (`invisible -translate-x-full`), so its scroll position and the
+  search query survive opening, closing and navigating. Opening it
+  scrolls the current page's link into view only when it isn't.
+- A navigation closes it, a search hit's `#heading` on the same page
+  included.
+At every width the sidebar's scroll is kept in `sessionStorage` per tab
+and restored on a reload, and a page opened directly scrolls its own
+link into view. Pages with more than one section get a folding "On this
+page" under the description below `xl`, where the right rail is absent.
+`/docs` and every `/docs/<slug>` (and the old slugs that redirect) are
+prerendered with SSR on, as the legal pages already were: a reload
+paints the page before scripts run, so the browser restores the reading
+position, and curl or a crawler reads the text. An unknown slug is still
+rendered on request (`prerender = 'auto'`) and says there's no such
+page. The header's sign-in state fills in once the page runs.
+*Rejected:* Sveltepress, Starlight or another docs framework. The docs
+share the app's header, sign-in state, tokens (`--page`, `--rule`,
+`--sunken`), fonts and search, and are ordinary routes of the one
+SvelteKit app. A framework would own the routes and the theme, and
+keeping the design would mean restyling its theme to match. The two
+missing behaviours, a drawer and kept state, were each a small change
+to one layout.
+
+**I-345. Docs code blocks scroll; the docs are written to fit the
+column.** (docs site, 2026-09-28; owner note: the install command was
+wrapped onto a second line, "I think the fix should have been to just
+rewrite the commands properly ... Just update the content itself")
+Supersedes the wrapping of e94f36e (pre-wrap with a hanging indent per
+line). A wrapped command reads as two commands. A `pre` scrolls sideways again (`white-space: pre`), as in a
+terminal. The column from 1280 wide up, the narrowest above a phone
+(582 px, beside the right rail), holds 70 columns of the 13 px
+monospace, and the Copy button covers the last 8 of a block's first
+line, so every line of every block is at most 70 columns and the first
+line of a block with a Copy button at most 62. `docs.test.ts` fails on
+a longer line. Below `sm` the Copy button gets a strip of its own above
+the code, since most lines are wider than a phone. To fit, the examples
+were rewritten: shorter prompts and names, flags split with a trailing
+backslash (a long prompt continues inside its quotes with `\`, which the
+shell joins), comments aligned tighter. Output the CLI prints on one
+long line (the sync refusal, the bridge banner, `repose stop`) is broken
+at a phrase with its words unchanged; the one table row that can't be
+(`repose ls`, 79 columns) shows its agent column cut as `…`. The
+install one-liner stays one line and scrolls on a phone. The
+conductor tutorial's prompt also lost the backticks around `npm test`,
+which the shell would have run inside the double quotes.
+*Rejected:* wrapping with a hanging indent (e94f36e, above); a smaller
+font for code (below 13 px it is hard to read); widening the column
+(the reading measure of the prose would suffer); shortening the CLI's
+own messages to fit (a CLI change with its own spec in the design doc,
+not a docs fix).

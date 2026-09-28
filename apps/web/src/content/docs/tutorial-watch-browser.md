@@ -12,7 +12,9 @@ Every machine has one browser for its agents: a real Chromium on a virtual scree
 Start with something that has a UI. In a project with a dev server:
 
 ```
-repose run "start the dev server, open the signup page with playwright, fill the form with a test address and screenshot the result"
+repose run "start the dev server, open the signup page \
+with playwright, fill the form with a test address and \
+screenshot the result"
 ```
 
 In tmux you'll see the agent start the server, call the browser tool and describe what it saw. The screenshot lands in the checkout on the machine.
@@ -23,7 +25,9 @@ From another terminal on your laptop, or the same one after the agent has starte
 
 ```
 $ repose browser
-Watching todo-app's browser at http://localhost:6080/#p=5m2k8Q1p (the view sleeps after 30 idle minutes; repose browser --stop ends it).
+Watching todo-app's browser at http://localhost:6080/#p=5m2k8Q1p
+(the view sleeps after 30 idle minutes;
+repose browser --stop ends it).
 ```
 
 A tab opens with the machine's screen and you're looking at the agent's Chromium, the same window it's driving, with the page it's on. Nothing to type: the password is the part of the link after `#`, and your browser never sends it anywhere. The screen takes the size of your tab. It updates live: when the agent navigates, you see the navigation. The command returns at once and keeps its forward running in the background; run it again for the same link.

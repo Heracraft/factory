@@ -130,7 +130,8 @@ Let the agents on the machine browse in your laptop's Chrome, with your logins a
 
 ```
 $ repose browser bridge
-Chrome 144 → todo-app: the agents there browse in your Chrome now, with your logins. Ctrl-C hands them back the machine's browser.
+Chrome 144 → todo-app: the agents there browse in your Chrome now,
+with your logins. Ctrl-C hands them back the machine's browser.
 Chrome asks you to allow each new connection.
 Pages the agents open are listed below (host and path only).
 An agent on todo-app is in your Chrome.

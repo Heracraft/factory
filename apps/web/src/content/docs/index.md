@@ -52,7 +52,7 @@ Claude Code on the machine starts in `bypassPermissions` mode, so it doesn't sto
 Detach from tmux with `Ctrl-b` then `d`. Back on your laptop:
 
 ```
-repose run "write tests for src/billing.ts, run them and commit when they pass"
+repose run "write tests for src/billing.ts and commit them"
 ```
 
 The CLI starts Claude Code in a new tmux window on the machine, types your prompt and attaches you. Watch, or detach and close the laptop. The agent keeps working.
@@ -72,7 +72,7 @@ On macOS, press `Ctrl+V`, not `Cmd+V`. [Drop a file or paste an image](/docs/run
 Email is on by default. For your phone, pick a long random [ntfy](https://ntfy.sh) topic, subscribe to it in the ntfy app, then:
 
 ```
-repose notify set --ntfy https://ntfy.sh/repose-4f9c2a7e1b3d5c8a0f6e
+repose notify set --ntfy https://ntfy.sh/repose-4f9c2a7e1b
 repose notify test
 ```
 

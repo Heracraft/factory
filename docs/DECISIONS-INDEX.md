@@ -406,3 +406,5 @@ pointer, not a summary.
 - **I-328** The build log stream reads the table on its tick, so lines another process stored arrive while the op runs — 2026-09-28; L8549
 - **I-299** A first sign-in with no GitHub identity takes its handle from the email address, the part before the `@` and before any `+tag`; `user-<sub>` is left for an address with nothing usable there — 2026-09-28; L8567
 - **I-340** repose and the recruiting app (Job Alerts) share the Logto tenant at `accounts.herakraft.co`; everything a person sees there names the app they came from, and the setup lives in `ops/logto/` — 2026-09-28; L8590
+- **I-344** The docs sidebar is a drawer below `lg` that keeps its scroll and search, the docs are prerendered, and they stay in-house rather than on a docs framework — 2026-09-28; L8636
+- **I-345** Docs code blocks scroll instead of wrapping, and every block is written to fit 70 columns (62 on a first line, under the Copy button) — 2026-09-28; L8673

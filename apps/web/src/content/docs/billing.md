@@ -29,10 +29,10 @@ Example: a Solo user with a `large` running all month, a 40 GB disk and 20 GB of
 
 ## Seeing your hours
 
-`repose ls` and `repose status` show each project's running time today and this month:
+`repose ls` and `repose status` end each project's line with its running time today and this month (the agent column is cut here):
 
-```
-todo-app   large  running   2h14m   claude: working      today 2h14m  month 41h
+```text
+todo-app   large  running   2h14m   …   today 2h14m  month 41h
 ```
 
 The dashboard's **Billing** page shows the same against your plan: memory running, disk allocated, egress this month and the overage so far, plus your invoices. Hours are totalled a few minutes past each hour, so figures can trail by up to an hour.

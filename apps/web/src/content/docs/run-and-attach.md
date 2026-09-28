@@ -8,7 +8,7 @@ order: 10
 ## Start an agent with a prompt
 
 ```
-repose run "migrate the date handling to Temporal and fix the tests that break"
+repose run "move the date handling to Temporal, fix the tests"
 ```
 
 Quotes are optional; everything after the flags is the prompt. A one-word prompt that is the name of one of your projects is refused as a likely slip (exit code 2); to send it anyway, name the agent: `repose run --agent claude todo-app`. `run` creates or starts the machine, [syncs](/docs/sync) your checkout, opens a new tmux window, starts the agent there, types your prompt and attaches you to it.
@@ -144,12 +144,12 @@ repose paste
 ## Useful flags
 
 ```
-repose run --no-attach "..."     # start the agent and return to your shell
-repose sync                      # sync only, no agent, no attach
-repose run --no-sync             # skip the sync
-repose run --size xl             # size of a new project
-repose run --name scratch        # a directory with no git remote
-repose run --project todo-app    # a project other than this checkout's
+repose run --no-attach "..."  # start it, keep your shell
+repose sync                   # sync only, no agent, no attach
+repose run --no-sync          # skip the sync
+repose run --size xl          # size of a new project
+repose run --name scratch     # a directory with no git remote
+repose run --project todo-app # a project other than this checkout's
 ```
 
 The full list is in the [CLI reference](/docs/cli#repose-run-prompt).

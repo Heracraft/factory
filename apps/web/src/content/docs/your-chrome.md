@@ -24,13 +24,14 @@ With the switch on, Chrome asks you to allow each connection to it: a dialog in 
 The simplest way is one terminal. Add `--bridge` to `run` or `attach`:
 
 ```
-repose run --bridge "check the staging site's checkout flow in my browser and fix what breaks"
+repose run --bridge "test the staging checkout in my Chrome"
 ```
 
 You're attached as usual. When the bridge is up, a message at the bottom of tmux says:
 
 ```text
-Your laptop's Chrome is bridged in: the browser tools on this machine drive it now.
+Your laptop's Chrome is bridged in:
+the browser tools on this machine drive it now.
 ```
 
 The bridge lasts exactly as long as you're attached. Detach, or close the terminal, and it closes with the attach; the agent keeps working on the machine's own browser. `repose attach --bridge` bridges into a session that's already running.
@@ -41,7 +42,8 @@ To keep the bridge open while you attach and detach, or to watch which pages the
 
 ```
 $ repose browser bridge
-Chrome 144 → todo-app: the agents there browse in your Chrome now, with your logins. Ctrl-C hands them back the machine's browser.
+Chrome 144 → todo-app: the agents there browse in your Chrome now,
+with your logins. Ctrl-C hands them back the machine's browser.
 Chrome asks you to allow each new connection.
 Pages the agents open are listed below (host and path only).
 An agent on todo-app is in your Chrome.
@@ -52,7 +54,8 @@ An agent on todo-app is in your Chrome.
 Run it in the project's checkout, or name the project: `repose browser bridge todo-app`. Leave that terminal open and give the agent its job in another one. `Ctrl-C` closes the bridge:
 
 ```text
-Bridge closed. The agents on todo-app are back on the machine's browser.
+Bridge closed.
+The agents on todo-app are back on the machine's browser.
 ```
 
 The tabs the agents opened stay in your Chrome for you to close.
@@ -66,9 +69,11 @@ The bridge needs the machine running; it doesn't start it. On a stopped machine 
 `--allow` names the sites the agents may use. Everything else fails:
 
 ```
-$ repose browser bridge --allow github.com --allow '*.vercel.app'
-Chrome asks you to allow the bridge's own connection first: it is what holds the agents to --allow.
-Chrome 144 → todo-app: the agents there browse in your Chrome now, with your logins. Ctrl-C hands them back the machine's browser.
+$ repose browser bridge --allow github.com,'*.vercel.app'
+Chrome asks you to allow the bridge's own connection first:
+it is what holds the agents to --allow.
+Chrome 144 → todo-app: the agents there browse in your Chrome now,
+with your logins. Ctrl-C hands them back the machine's browser.
 Chrome asks you to allow each new connection.
 Only github.com, *.vercel.app: other sites fail in the agents' tabs.
 Pages the agents open are listed below (host and path only).
@@ -80,7 +85,8 @@ An agent on todo-app is in your Chrome.
 `github.com` is that host only. `*.vercel.app` is `vercel.app` and every name under it. Give `--allow` once per host, or several separated by commas. With `--bridge`, the same list is `--bridge-allow`, which also turns the bridge on:
 
 ```
-repose run --bridge-allow github.com "review the open pull requests and reply to the review comments"
+repose run --bridge-allow github.com \
+  "review the open pull requests and reply to the comments"
 ```
 
 With an allowlist:
@@ -136,7 +142,8 @@ Only one bridge to a machine at a time. A new one takes over from one left by a 
 Any Chromium browser started with a remote debugging port can be bridged as is, with no switch and no dialogs:
 
 ```
-chromium --remote-debugging-port=9222 --user-data-dir=$HOME/agent-chrome
+chromium --remote-debugging-port=9222 \
+  --user-data-dir=$HOME/agent-chrome
 repose browser bridge --cdp http://127.0.0.1:9222
 ```
 

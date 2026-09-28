@@ -460,8 +460,10 @@
 .doc pre {
 	@apply rounded-sm border text-[13px] leading-6 text-zinc-800 dark:text-zinc-200;
 	tab-size: 2;
-	white-space: pre-wrap;
-	overflow-wrap: anywhere;
+	/* A long line scrolls, as in a terminal; the docs are written to fit the
+	   column (DECISIONS I-345, docs.test.ts). */
+	white-space: pre;
+	overflow-x: auto;
 	background-color: var(--sunken);
 	border-color: var(--rule);
 }
@@ -484,21 +486,17 @@
 	@apply my-0;
 }
 
-/* A line of a docs code block (blockLines in lib/docs.ts): a long one wraps
-   with a hanging indent, so its continuation never reads as a new line. */
-.doc pre .line {
-	display: block;
-	min-height: 1lh;
-	padding-left: var(--hang);
-	text-indent: calc(-1 * var(--hang));
-}
-
-/* A docs code block and its copy button (codeBlock in lib/docs.ts). */
+/* A docs code block and its copy button (codeBlock in lib/docs.ts). From sm
+   up the first line of a block is written short enough to end before the
+   button; on a phone the column is narrower than most lines, so the button
+   gets a strip of its own above the code. */
 .doc .code {
 	@apply relative;
 }
-.doc .code pre {
-	@apply pr-16;
+@media (width < 40rem) {
+	.doc .code pre {
+		@apply pt-10;
+	}
 }
 .doc .code .copy {
 	@apply absolute top-2 right-2 rounded-xs border px-2 py-0.5 text-xs text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50;

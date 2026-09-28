@@ -16,15 +16,16 @@ Set STRIPE_SECRET_KEY (pushed to running guest)
 Or read the value from a file or from your laptop's environment:
 
 ```
-repose secrets set GOOGLE_CREDENTIALS --from-file ./service-account.json
+repose secrets set GOOGLE_CREDENTIALS --from-file ./sa.json
 repose secrets set OPENAI_API_KEY --from-env
 ```
 
 To set several at once from a `.env` file, import it:
 
 ```
-$ repose secrets import .env.production
-Set 3 on todo-app from .env.production (pushed to the running machine): DATABASE_URL (replaced), STRIPE_SECRET_KEY, OPENAI_API_KEY
+$ repose secrets import .env.local
+Set 3 on todo-app from .env.local (pushed to the running machine):
+DATABASE_URL (replaced), STRIPE_SECRET_KEY, OPENAI_API_KEY
 ```
 
 Without a file name it reads `./.env`; `-` reads stdin, so a secrets manager can pipe into it without the values touching your disk. Each `NAME=VALUE` becomes a secret, replacing one of the same name, as `secrets set` does. `--dry-run` lists the names it would set and sends nothing. Only names are printed, never values.
@@ -83,7 +84,8 @@ repose secrets set GITLAB_TOKEN
 On the machine, tell git to use it for that host, and to send the host's SSH URLs over HTTPS:
 
 ```
-git config --global credential.https://gitlab.com.helper '!f() { echo username=oauth2; echo "password=$GITLAB_TOKEN"; }; f'
+git config --global credential.https://gitlab.com.helper \
+  '!f() { echo username=oauth2; echo "password=$GITLAB_TOKEN"; }; f'
 git config --global url.https://gitlab.com/.insteadOf git@gitlab.com:
 ```
 
@@ -92,7 +94,8 @@ Bitbucket takes your username and an app password or access token in the same pl
 **A deploy key made on the machine.** On the machine:
 
 ```
-ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519 -C todo-app.repose
+ssh-keygen -t ed25519 -N '' -C todo-app.repose \
+  -f ~/.ssh/id_ed25519
 cat ~/.ssh/id_ed25519.pub
 ```
 

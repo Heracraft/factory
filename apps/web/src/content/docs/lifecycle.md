@@ -33,10 +33,12 @@ The dashboard's project page shows the state, agents, SSH sessions and cost, plu
 
 ```
 $ repose stop todo-app
-Stopped todo-app in 38s. Snapshot 0192… (2.1 GB). Disk is still billed; `repose rm todo-app` to stop that.
+Stopped todo-app in 38s. Snapshot 0192… (2.1 GB).
+Disk is still billed; `repose rm todo-app` to stop that.
 
 $ repose start todo-app
-todo-app is running (large), ready in 9s. `repose attach todo-app` to get in.
+todo-app is running (large), ready in 9s.
+`repose attach todo-app` to get in.
 ```
 
 Stopping ends every process and snapshots the disk (`--no-snapshot`, or unticking **Snapshot on stop** in the dashboard, skips that). The disk stays, with everything in `/home/dev`. A stopped machine costs only its disk. `repose run` in the checkout starts a stopped machine too.
@@ -81,7 +83,7 @@ repose snapshots restore SNAPSHOT_ID --project todo-app
 Or restore into a new project and leave the original alone:
 
 ```
-repose snapshots restore SNAPSHOT_ID --as-new todo-app-yesterday
+repose snapshots restore SNAPSHOT_ID --as-new todo-app-old
 ```
 
 The dashboard's snapshot list has **Create**, **Restore** and **Restore as new…** too.
@@ -91,7 +93,8 @@ The dashboard's snapshot list has **Create**, **Restore** and **Restore as new�
 ```
 $ repose rm todo-app
 Destroy todo-app? A final snapshot is kept for 30 days. [y/N] y
-Destroying todo-app. Bring it back within 30 days with: repose restore todo-app
+Destroying todo-app.
+Bring it back within 30 days with: repose restore todo-app
 ```
 
 This deletes the machine and its disk and stops all charges for the project. It stops counting toward your [project limit](/docs/limits#projects) at once, while it's still `destroying`. `--yes` skips the question; `--wait` waits until it's done. `repose rm` was called `repose destroy`, and `repose ls` was `repose projects`; the old names still work. In the dashboard, **Destroy** asks you to type the project's name.
@@ -113,7 +116,8 @@ To throw a machine away and start again from your checkout, destroy it and run a
 
 ```
 $ repose rm -y
-Destroying todo-app. Bring it back within 30 days with: repose restore todo-app
+Destroying todo-app.
+Bring it back within 30 days with: repose restore todo-app
 $ repose run
 ✓ Destroyed the old todo-app  14s
 ✓ Created todo-app (large)  0.4s
@@ -138,7 +142,8 @@ To have several agents try different approaches from the same starting point, ea
 
 ```
 $ repose fork todo-app -n 3
-Forked todo-app into 3 projects from its snapshot of 2026-09-25 14:02 in 48s:
+Forked todo-app into 3 projects
+from its snapshot of 2026-09-25 14:02 in 48s:
   todo-app-fork-1  running (large)
   todo-app-fork-2  running (large)
   todo-app-fork-3  running (large)
@@ -163,10 +168,10 @@ Each copy is a project: it counts toward your [project limit](/docs/limits) and 
 ## Logs and events
 
 ```
-repose logs                  # the machine's boot and kernel output
-repose logs --kind build     # the last configuration build
-repose logs --kind ops       # create, start, stop and snapshot history
-repose events                # agent and project events, last 24 hours
+repose logs               # boot and kernel output
+repose logs --kind build  # the last configuration build
+repose logs --kind ops    # create, start, stop, snapshot history
+repose events             # agent and project events, last 24 hours
 ```
 
 Your applications' output isn't collected; it stays on the machine.

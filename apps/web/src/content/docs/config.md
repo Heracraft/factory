@@ -13,8 +13,8 @@ There are two ways to install software on a project's machine:
 ## Add a package
 
 ```
-$ repose config add postgresql air nodejs_22
-Added postgresql, air and nodejs_22 to todo-app. Building revision 4f1c2a9e ...
+$ repose config add postgresql air
+Added postgresql and air to todo-app. Building revision 4f1c2a9e ...
 ✓ Evaluated your config  7.9s
 ✓ Fetched 38 paths (112.4 MiB)  21s
 ✓ Built 14 derivations  12s
@@ -31,7 +31,8 @@ The build usually takes under a minute. It's switched into the running machine w
 ```
 $ repose config add gcc-typo
 Added gcc-typo to todo-app. Building revision 7d03b1c5 ...
-config error: nixpkgs has no package "gcc-typo"; search https://search.nixos.org/packages
+config error: nixpkgs has no package "gcc-typo";
+search https://search.nixos.org/packages
 Nothing changed in todo-app; the previous revision is still active.
 ```
 
@@ -66,7 +67,7 @@ Under the menu is a Nix file, a [home-manager](https://nix-community.github.io/h
 repose config show            # print it
 repose config edit            # edit in $EDITOR, apply on save
 repose config apply ./repose.nix
-repose config apply           # ./repose.nix, or with no such file, apply the current configuration again
+repose config apply           # ./repose.nix, or else apply it again
 ```
 
 `repose config apply` with no file and no `./repose.nix` switches the running machine to the project's configuration again: the active revision, or a newer one that built but wasn't applied because its switch failed. Use it when the machine seems to be missing something the configuration has.

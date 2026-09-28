@@ -49,6 +49,34 @@
 			<p class="mt-3 text-lg text-zinc-600 dark:text-zinc-400">{doc.description}</p>
 		{/if}
 
+		{#if toc.length > 1}
+			<!-- Below xl there's no right rail, so the page's own list folds in here. -->
+			<details class="group mt-6 rounded-sm border border-[var(--rule)] xl:hidden">
+				<summary
+					class="flex cursor-pointer list-none items-center justify-between px-4 py-2 text-sm font-medium [&::-webkit-details-marker]:hidden"
+				>
+					On this page
+					<svg
+						viewBox="0 0 20 20"
+						class="h-4 w-4 text-zinc-500 transition-transform group-open:rotate-180"
+						aria-hidden="true"
+						fill="none"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="1.5" /></svg
+					>
+				</summary>
+				<ul class="space-y-1.5 border-t border-[var(--rule)] px-4 py-3 text-sm">
+					{#each toc as h (h.id)}
+						<li>
+							<a
+								href={`#${h.id}`}
+								class="text-zinc-700 hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
+								>{h.text}</a
+							>
+						</li>
+					{/each}
+				</ul>
+			</details>
+		{/if}
+
 		<article
 			bind:this={article}
 			class="doc prose prose-zinc dark:prose-invert prose-code:before:content-none prose-code:after:content-none mt-8 max-w-none"

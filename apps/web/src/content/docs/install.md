@@ -22,7 +22,8 @@ Other options:
 curl -fsSL https://repose.herakraft.co/install.sh | sh -s -- --system
 
 # a particular release
-curl -fsSL https://repose.herakraft.co/install.sh | sh -s -- --version v0.1.11
+curl -fsSL https://repose.herakraft.co/install.sh \
+  | sh -s -- --version v0.1.11
 ```
 
 Arch Linux has an unrelated package that also installs a `repose` command. If the script finds another `repose` earlier on your `PATH`, it prints both locations.

@@ -20,9 +20,9 @@ Your `main` goes up. From here on the machine's `main` is a base for branches, n
 ## 2. One agent per task, each in a worktree
 
 ```
-repose run --worktree "add rate limiting to the public API; tests in test/ratelimit"
-repose run --worktree "replace the hand-rolled date parsing with date-fns; keep the tests green"
-repose run --worktree --agent codex "write the migration for the audit_log table and wire it into the model"
+repose run --worktree "add rate limiting to the public API"
+repose run --worktree "parse dates with date-fns, keep tests green"
+repose run --worktree --agent codex "write the audit_log migration"
 ```
 
 Each command prints where the agent works:

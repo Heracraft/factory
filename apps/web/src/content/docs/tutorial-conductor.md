@@ -18,7 +18,15 @@ Past a handful of agents, the human doing the merging is the slow part. The fix 
 Attach and start Claude Code in the checkout, with a prompt that sets the role:
 
 ```
-repose run "You are the conductor for this repository. Read docs/PLAN.md. Split the open items into tasks that touch different files. For each task, launch a worker agent in its own worktree with a prompt naming the files it may touch and what to report. As workers finish, merge their branches onto main one at a time, run `npm test` after each merge, and fix or reassign anything red. Commit on main. Keep a line per task in docs/STATUS.md: claimed, done, blocked, with what is done and what is not. Don't push. Ask me only when a decision needs me."
+repose run "You are the conductor for this repository. \
+Read docs/PLAN.md. Split the open items into tasks that touch \
+different files. For each task, launch a worker agent in its own \
+worktree with a prompt naming the files it may touch and what to \
+report. As workers finish, merge their branches onto main one at \
+a time, run npm test after each merge, and fix or reassign \
+anything red. Commit on main. Keep a line per task in \
+docs/STATUS.md: claimed, done, blocked, with what is done and \
+what is not. Don't push. Ask me only when a decision needs me."
 ```
 
 Claude Code's own Agent tool launches workers in isolated worktrees (under `.claude/worktrees/`, each on a `worktree-` branch) and tells the conductor when each finishes. The conductor waits on those notices rather than polling, and merges in dependency order: a task that defines an interface before the tasks that use it.
@@ -37,8 +45,8 @@ From your laptop, everything is a fetch away:
 
 ```
 git fetch repose
-git log --oneline main..repose/main            # what the conductor merged
-git branch -r | grep repose/worktree-          # the workers' branches
+git log --oneline main..repose/main   # what the conductor merged
+git branch -r | grep repose/worktree- # the workers' branches
 ```
 
 ## The rules that came out of doing it
