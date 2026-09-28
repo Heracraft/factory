@@ -444,25 +444,25 @@ func newOpenCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var desktop, stop, noBrowser bool
 	var localPort int
 	cmd := &cobra.Command{
-		Use:   "open [PORT]",
-		Short: "Forward a port on the machine, or its desktop, to the laptop",
+		Use:   "open PORT",
+		Short: "Forward a port on the machine to the laptop",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if stop && !desktop {
-				return cobraUsageError{fmt.Errorf("--stop goes with --desktop: repose open --desktop --stop")}
+				return cobraUsageError{fmt.Errorf("--stop goes with --desktop: repose open --desktop --stop (or repose browser --stop)")}
 			}
 			e, err := env()
 			if err != nil {
 				return err
 			}
-			if desktop && stop {
-				return StopDesktopCmd(cmd.Context(), e, g.project)
-			}
 			if desktop {
-				return OpenDesktopCmd(cmd.Context(), e, g.project, noBrowser)
+				// The old name of `repose browser` (I-292): same
+				// behaviour, one line saying where it went.
+				_, _ = fmt.Fprintln(e.ErrOut, "repose open --desktop is now repose browser; this still works.")
+				return BrowserCmd(cmd.Context(), e, g.project, BrowserOptions{Stop: stop, NoOpen: noBrowser})
 			}
 			if len(args) != 1 {
-				return cobraUsageError{fmt.Errorf("repose open PORT (or --desktop)")}
+				return cobraUsageError{fmt.Errorf("repose open PORT (the machine's desktop is repose browser)")}
 			}
 			port, err := strconv.Atoi(args[0])
 			if err != nil || port < 1 || port > 65535 {
@@ -471,11 +471,78 @@ func newOpenCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 			return OpenPortCmd(cmd.Context(), e, g.project, port, localPort, noBrowser)
 		},
 	}
-	cmd.Flags().BoolVar(&desktop, "desktop", false, "open the on-demand desktop instead of a port")
-	cmd.Flags().BoolVar(&stop, "stop", false, "with --desktop: stop the desktop in the guest")
+	cmd.Flags().BoolVar(&desktop, "desktop", false, "the old name of repose browser")
+	cmd.Flags().BoolVar(&stop, "stop", false, "with --desktop: the old name of repose browser --stop")
+	_ = cmd.Flags().MarkHidden("desktop")
+	_ = cmd.Flags().MarkHidden("stop")
 	cmd.Flags().IntVar(&localPort, "local-port", 0, "local port to bind (defaults to PORT)")
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "print the URL instead of opening a browser")
 	return cmd
+}
+
+// newBrowserCmd is `repose browser [PROJECT]` (DECISIONS I-292): watch the
+// agent's browser and take it over, in one command; `repose browser
+// bridge` (I-296) is the other direction, the laptop's Chrome for the
+// agents.
+func newBrowserCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
+	var stop, noOpen bool
+	root := &cobra.Command{
+		Use:   "browser [PROJECT]",
+		Short: "Watch the agent's browser on the machine and take it over; bridge: your Chrome for the agents",
+		Long: `Starts the machine's desktop viewer if needed, forwards it to the laptop
+in the background (port 6080, or the next free one) and opens the viewer
+page. The page shows the browser the agent drives, sized to your tab; click
+and type in it to log in, solve a captcha or approve a passkey. The
+password rides in the link after the #, so there is nothing to type. The
+view sleeps after 30 idle minutes; opening the page wakes it.`,
+		Args:              projectArgs,
+		ValidArgsFunction: completeProject(env),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := projectFrom(args, g)
+			if err != nil {
+				return err
+			}
+			e, err := env()
+			if err != nil {
+				return err
+			}
+			return BrowserCmd(cmd.Context(), e, project, BrowserOptions{Stop: stop, NoOpen: noOpen})
+		},
+	}
+	root.Flags().BoolVar(&stop, "stop", false, "stop the viewer on the machine and the forward on the laptop")
+	root.Flags().BoolVar(&noOpen, "no-open", false, "print the link instead of opening a browser")
+	// `repose browser bridge` (DECISIONS I-296): the agents on the machine
+	// browse in this laptop's Chrome for as long as the command runs.
+	var opts BridgeOptions
+	bridge := &cobra.Command{
+		Use:   "bridge [PROJECT]",
+		Short: "Let the agents on a machine browse in this laptop's Chrome, until Ctrl-C",
+		Long: "Let the agents on a machine browse in this laptop's Chrome, with your logins and extensions, until Ctrl-C.\n\n" +
+			"Chrome 144 or newer with remote debugging turned on at chrome://inspect/#remote-debugging; the command\n" +
+			"opens that page and waits when it is off. Chrome asks you to allow each connection. Nothing on the\n" +
+			"machine changes: its browser tools reach your Chrome through the SSH connection for as long as this runs.",
+		Args:              projectArgs,
+		ValidArgsFunction: completeProject(env),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := projectFrom(args, g)
+			if err != nil {
+				return err
+			}
+			if opts.CDP != "" && opts.UserDataDir != "" {
+				return cobraUsageError{fmt.Errorf("--cdp names the browser; --user-data-dir is not needed with it")}
+			}
+			e, err := env()
+			if err != nil {
+				return err
+			}
+			return BrowserBridgeCmd(cmd.Context(), e, project, opts)
+		},
+	}
+	bridge.Flags().StringVar(&opts.CDP, "cdp", "", "bridge this DevTools server instead (a browser started with --remote-debugging-port), e.g. http://127.0.0.1:9222")
+	bridge.Flags().StringVar(&opts.UserDataDir, "user-data-dir", "", "the profile directory of a Chrome that is not Google Chrome's default one")
+	bridge.Flags().BoolVar(&opts.NoBrowser, "no-browser", false, "don't open chrome://inspect when remote debugging is off")
+	root.AddCommand(bridge)
+	return root
 }
 
 func newSecretsCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
@@ -1112,40 +1179,6 @@ func newMCPCmd() *cobra.Command {
 			return nil
 		},
 	})
-	return root
-}
-
-func newBrowserCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
-	root := &cobra.Command{Use: "browser", Short: "Your laptop's Chrome, for the agents on a machine"}
-	var opts BridgeOptions
-	bridge := &cobra.Command{
-		Use:   "bridge [PROJECT]",
-		Short: "Let the agents on a machine browse in this laptop's Chrome, until Ctrl-C",
-		Long: "Let the agents on a machine browse in this laptop's Chrome, with your logins and extensions, until Ctrl-C.\n\n" +
-			"Chrome 144 or newer with remote debugging turned on at chrome://inspect/#remote-debugging; the command\n" +
-			"opens that page and waits when it is off. Chrome asks you to allow each connection. Nothing on the\n" +
-			"machine changes: its browser tools reach your Chrome through the SSH connection for as long as this runs.",
-		Args:              projectArgs,
-		ValidArgsFunction: completeProject(env),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			project, err := projectFrom(args, g)
-			if err != nil {
-				return err
-			}
-			if opts.CDP != "" && opts.UserDataDir != "" {
-				return cobraUsageError{fmt.Errorf("--cdp names the browser; --user-data-dir is not needed with it")}
-			}
-			e, err := env()
-			if err != nil {
-				return err
-			}
-			return BrowserBridgeCmd(cmd.Context(), e, project, opts)
-		},
-	}
-	bridge.Flags().StringVar(&opts.CDP, "cdp", "", "bridge this DevTools server instead (a browser started with --remote-debugging-port), e.g. http://127.0.0.1:9222")
-	bridge.Flags().StringVar(&opts.UserDataDir, "user-data-dir", "", "the profile directory of a Chrome that is not Google Chrome's default one")
-	bridge.Flags().BoolVar(&opts.NoBrowser, "no-browser", false, "don't open chrome://inspect when remote debugging is off")
-	root.AddCommand(bridge)
 	return root
 }
 

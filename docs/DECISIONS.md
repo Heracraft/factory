@@ -7872,6 +7872,99 @@ dynamically inserted meta tag on the billing page alone (a meta CSP
 cannot be withdrawn on the next client-side navigation, so it would apply
 to the rest of the session anyway, unstated); keeping the Cost card with
 three zeros.
+
+**I-292. Watching the agent's browser is one command: `repose browser`
+opens a viewer page repose ships, sized to the tab, on TigerVNC's Xvnc,
+with the password in the URL fragment and the forward in the
+background.** (launch round, 2026-09-27; the owner: "let's streamline
+the process of having a VNC and whatever because it's all cumbersome
+right now ... make it more crisp") `repose open --desktop` took a second
+terminal (the forward ran in the foreground until Ctrl-C), printed a
+password the user had to type into stock noVNC's dialog, and showed a
+fixed 1440x900 Xvfb screen scaled to whatever the tab was, blurry on
+anything else, with a new password at every start so a tab left open
+never reconnected. Four changes. (1) `repose browser [PROJECT] [--stop]
+[--no-open]` runs `repose-guest-profile desktop start`, starts `ssh -N`
+as a detached child in its own session (`ExitOnForwardFailure`,
+`ServerAliveInterval 15`, `ServerAliveCountMax 3`, off the
+ControlMaster as before, I-149) to laptop port 6080 or a free one
+(I-261), waits until the viewer's `GET /healthz` answers through it,
+records port and pid in `~/.config/repose/browser-forwards/<slug>.json`,
+prints one line with the URL and opens it. A second run finds the record,
+probes the port for our `healthz` and reuses the forward; `--stop` stops
+the guest's viewer and kills the recorded pid, but only while the port
+still answers as our viewer, so a recycled pid is never killed. `repose
+open --desktop [--stop] [--no-browser]` stays as the hidden old name,
+with one stderr line pointing at the new one. (2) The password travels
+in the URL fragment (`#p=`): a browser never sends the fragment with a
+request, so the forward, websockify and any log see only the path, the
+user types nothing, and I-33's password stays as defence in depth. The
+guest generates it once per boot (`/run` is a tmpfs, so a boot is its
+lifetime) instead of at every start, so the link in an open tab survives
+the idle stop and a `--stop`; a reboot changes it and the page says so.
+(3) The guest serves its own page (`nix/guest/base/desktop/viewer/`:
+`index.html`, `viewer.js`, `viewer.css`, `healthz`) on noVNC 1.7's ES
+module core (`core/` and `vendor/` copied out of `pkgs.novnc`, nothing
+else of it: a store link would carry its Python and numpy, 260 MB), no
+framework, no build step: it connects at once with the
+fragment's password, `resizeSession` and `scaleViewport` on,
+`clipViewport` off, quality 9 and compression 1 (`?q=`, `?c=` adjust),
+a slim bar (project name from `project.json` written at viewer start,
+state, remote size, full screen, copy link with the fragment), reconnect
+with backoff so the socket activation wakes an idled viewer, the
+clipboard bridged both ways where the browser allows, and a plain "the
+machine's desktop is off; start it with repose browser" state after three
+failed connections. (4) TigerVNC's Xvnc replaces Xvfb plus x11vnc: it is
+the X server and the VNC server in one process and implements the
+client's SetDesktopSize, so the screen takes the tab's size (a 2560x1440
+tab gets a 2560x1440 desktop) instead of a scaled 1440x900; openbox
+re-maximises the browser to the new screen (checked in the VM test with
+xdotool after resizes to 2560x1440 and 800x600), Chromium's
+`--window-size` is dropped, `repose-vncconfig` carries the clipboard,
+fontconfig gets grayscale antialiasing with slight hinting (subpixel
+fringes do not survive the trip as an image) and Noto defaults. The
+viewer is now `repose-novnc.service` (the display, `repose-xvnc`, is up
+for the browser alone); Xvnc's VNC port is therefore up whenever the
+display is, on loopback with the password, never auto-forwarded. Closure:
+Xvfb, x11vnc and libvncserver out (5 MB), tigervnc in with fltk, ffmpeg's
+libraries and GLU for the vncviewer nobody runs (about 55 MB); the next
+cut, if the 6 GiB cap bites, is a tigervnc built with `BUILD_VIEWER` off.
+A Retina
+tab is shown at 1x pixels: Chromium reads its scale factor at start, so
+following `devicePixelRatio` would need a browser restart; still sharper
+than the stretched 1440x900, and the bar says "at 1x". Tests: `TestBrowserURLCarriesThePasswordInTheFragment`,
+`TestBrowserForwardArgs`, `TestViewerHealthyKnowsOurViewer`,
+`TestBrowserCmdWatchesReusesAndStops` (fake api, real sshd, a stand-in
+viewer; the printed line, no password on stderr, the reuse, `--stop`),
+`TestBrowserCmdReportsAForwardThatCannotStart`,
+`TestOpenDesktopIsTheOldNameOfBrowser`; guest-desktop gains a plain RFB
+3.8 client (`nix/guest/tests/rfb-client.py`, VncAuth with its own DES)
+that authenticates, receives the framebuffer, and sends SetDesktopSize,
+with `xdpyinfo`, `xrandr` and the Chromium window geometry checked after.
+Measured while landing this, in one test guest back to back: a cold
+Chromium answered DevTools after 333 s and 153 s on Xvfb, 124 s and 145 s
+on Xvnc (the guest's load at 5 on 2 vCPUs; four workers on the four-core
+dev box), and a warm `/json/version` took 1 to 3 s on both, so the display
+server is not what the MCP servers' fixed 30 s connect timeout trips
+over; the test's `mcp()` helper tries a connect timeout again, up to
+four times, and a quiet box never retries. Ships with the base after
+2026.09.27.2 and the CLI after v0.1.20; the docs say what an older half
+does against a newer one. *Rejected:* `ssh -f` for the forward (the forked child's pid is unknown
+to the parent, so `--stop` could not end it; a detached `ssh -N` whose pid
+the CLI keeps does the same and can be stopped); keeping stock `vnc.html`
+with `defaults.json` (its dialog asks for the password, its resize mode is
+a setting the user finds, and it cannot read the fragment); a relay on
+the edge (`:6081` in 06-gateway-edge) or a public URL (a desktop reachable
+without the SSH forward is a new attack surface for a feature the forward
+already serves); a dashboard embed (the page would need the forward to
+exist before the click; the command is the forward); dropping the
+password now that it is invisible (a stray forward on a shared laptop
+would still expose the desktop, I-33); Xorg with the dummy driver plus
+x11vnc (RandR modes would have to be added on the fly and x11vnc still
+does not implement SetDesktopSize); `--force-device-scale-factor` from
+the viewer's `devicePixelRatio` (needs a Chromium restart, which loses
+the agent's page); `<decor>yes</decor>` in openbox (a title bar above
+Chromium's own tab strip, wasted rows in a window nobody moves).
 **I-296. `repose browser bridge` lends the guest's browser tools the
 laptop's own Chrome, through Chrome's DevTools switch, a front that
 answers `/json/version`, and a reverse tunnel whose remote command holds

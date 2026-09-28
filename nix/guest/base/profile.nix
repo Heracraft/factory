@@ -3,7 +3,7 @@
 # drives the on-demand desktop, so the CLI never has to know unit names.
 #   repose-guest-profile                 -> JSON (see guest-conventions.md)
 #   repose-guest-profile desktop start   -> starts the chain, prints the
-#                                           noVNC password
+#                                           viewer's password (one per boot)
 #   repose-guest-profile desktop stop
 #   repose-guest-profile desktop status  -> running|stopped
 #   repose-guest-profile browser bridge start|stop|status|release
@@ -27,10 +27,11 @@ let
     runtimeInputs = [ pkgs.jq pkgs.coreutils pkgs.systemd ];
     text = ''
       project=/home/dev/.repose/project.json
-      # The desktop is the viewer; the display alone may be up for the
-      # agents' browser (DECISIONS I-246).
+      # The desktop is the viewer (websockify and the page); the display,
+      # Xvnc, may be up for the agents' browser alone (DECISIONS I-246,
+      # I-292).
       desktop_running() {
-        systemctl is-active --quiet repose-x11vnc.service
+        systemctl is-active --quiet repose-novnc.service
       }
       case "''${1:-}" in
         "")
@@ -58,7 +59,8 @@ let
           case "''${2:-}" in
             start)
               # Starting the socket's service pulls the whole chain in,
-              # the agents' browser included.
+              # the agents' browser included. The password is the boot's
+              # (desktop.nix), the same at every start until a reboot.
               sudo -n systemctl start repose-novnc.service
               cat /run/repose/desktop/vnc-password
               ;;

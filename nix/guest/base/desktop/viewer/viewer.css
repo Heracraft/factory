@@ -1,0 +1,110 @@
+/* The viewer page: a slim bar, then the desktop, nothing else. Colours
+   follow the system scheme; the desktop itself is whatever the machine
+   draws. */
+:root {
+  --paper: #fafafa;
+  --ink: #18181b;
+  --ink-muted: #52525b;
+  --rule: #e4e4e7;
+  --bar: 32px;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #09090b;
+    --ink: #f4f4f5;
+    --ink-muted: #a1a1aa;
+    --rule: #27272a;
+  }
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font: 13px/1 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, "Noto Sans", sans-serif;
+}
+#bar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--bar);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  white-space: nowrap;
+  user-select: none;
+  z-index: 2;
+}
+#bar .name { font-weight: 600; }
+#bar .sep, #bar .what, #bar .size { color: var(--ink-muted); }
+#bar .state { color: var(--ink-muted); }
+#bar .state::before {
+  content: "";
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  margin: 0 5px 0 4px;
+  background: currentColor;
+  vertical-align: 1px;
+}
+#bar .state[data-state="connected"] { color: #15803d; }
+#bar .state[data-state="connecting"] { color: #b45309; }
+#bar .state[data-state="off"] { color: #b91c1c; }
+#bar .grow { flex: 1; }
+#bar button, #notice button {
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+#bar button:hover, #notice button:hover { border-color: var(--ink-muted); }
+#bar button.done { color: #15803d; }
+#screen {
+  position: fixed;
+  inset: var(--bar) 0 0 0;
+  overflow: hidden;
+  background: #000;
+}
+/* noVNC wants its container to be the size the screen should take; the
+   canvas it makes inside is scaled by noVNC itself. */
+#screen canvas { display: block; outline: none; }
+body.full #bar { display: none; }
+body.full #screen { inset: 0; }
+#notice {
+  position: fixed;
+  inset: var(--bar) 0 0 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--paper);
+  z-index: 1;
+}
+#notice[hidden] { display: none; }
+#notice .card {
+  max-width: 34rem;
+  line-height: 1.5;
+}
+#notice h1 { font-size: 17px; font-weight: 600; margin: 0 0 8px; }
+#notice p { margin: 0 0 8px; color: var(--ink-muted); }
+#notice .hint { font-size: 12px; }
+#notice code { font: 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, "Noto Sans Mono", monospace; }
+#password-form { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+#password-form input {
+  font: inherit;
+  padding: 4px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+}
+@media (max-width: 600px) {
+  #bar .what, #bar .size, #bar #full { display: none; }
+}

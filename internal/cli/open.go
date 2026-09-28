@@ -9,25 +9,6 @@ import (
 	"time"
 )
 
-// StopDesktopCmd implements `repose open --desktop --stop`: the guest's
-// helper stops the whole chain. The desktop also stops by itself after 30
-// minutes with no client (nix/guest/base/desktop.nix).
-func StopDesktopCmd(ctx context.Context, e *Env, projectArg string) error {
-	project, err := requireRunningProject(ctx, e, projectArg)
-	if err != nil {
-		return err
-	}
-	target, err := connect(ctx, e, project)
-	if err != nil {
-		return err
-	}
-	if _, err := runSSH(ctx, target, "repose-guest-profile desktop stop", nil); err != nil {
-		return stepFailed("stop the desktop in the guest", err, "")
-	}
-	_, _ = fmt.Fprintf(e.Out, "Stopped the desktop on %s.\n", project.Slug)
-	return nil
-}
-
 // desktopPassword is the last non-empty line `repose-guest-profile desktop
 // start` printed: the password file's contents, after anything systemctl
 // may have said.
@@ -116,47 +97,9 @@ func pickLocalPort(e *Env, want int, free func(int) bool, pick func() (int, erro
 	return got, nil
 }
 
-// desktopPort is noVNC's port in the guest (guest-conventions.md
-// "Desktop"), and the laptop port the desktop is forwarded to when free.
+// desktopPort is the viewer's entry point in the guest (guest-conventions.md
+// "Desktop"), and the laptop port `repose browser` forwards it to when free.
 const desktopPort = 6080
-
-// OpenDesktopCmd implements `repose open --desktop`.
-func OpenDesktopCmd(ctx context.Context, e *Env, projectArg string, noBrowser bool) error {
-	project, err := requireRunningProject(ctx, e, projectArg)
-	if err != nil {
-		return err
-	}
-	// The certificate and config first: a forward from a laptop whose
-	// certificate expired overnight must refresh it like run does.
-	target, err := connect(ctx, e, project)
-	if err != nil {
-		return err
-	}
-	// The guest's own helper starts the socket-activated chain (Xvfb,
-	// x11vnc, noVNC) and prints the VNC password generated for this start
-	// (DECISIONS I-33); there is no user unit to start (I-241). noVNC asks
-	// for that password, so it has to reach the user.
-	out, err := runSSH(ctx, target, "repose-guest-profile desktop start", nil)
-	if err != nil {
-		return stepFailed("start the desktop in the guest", err, "")
-	}
-	// 6080 on the laptop when it is free, else another port (I-261): a
-	// second project's desktop, or anything else on 6080, used to make
-	// ssh fail to bind after the desktop had started.
-	localPort, err := pickLocalPort(e, desktopPort, laptopPortFree, freePort)
-	if err != nil {
-		return err
-	}
-	url := fmt.Sprintf("http://localhost:%d/vnc.html?autoconnect=1", localPort)
-	_, _ = fmt.Fprintf(e.Out, "%s (Ctrl-C stops the forward; the desktop keeps running)\n", url)
-	if pw := desktopPassword(out); pw != "" {
-		_, _ = fmt.Fprintf(e.Out, "VNC password: %s\n", pw)
-	}
-	if !noBrowser {
-		_ = openBrowser(url)
-	}
-	return execReplaceSSH(target, append(ownConnection(), "-N", "-L", openForwardSpec(localPort, guestListener{Port: desktopPort, Host: "127.0.0.1"})), "")
-}
 
 // ownConnection keeps a forward off the shared ControlMaster (I-149):
 // through a master, `ssh -N -L` hands the forward to the master and exits

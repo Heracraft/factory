@@ -92,16 +92,25 @@ Opening todo-app.repose:/home/dev/todo-app in VS Code
 
 Other editors: see [SSH and editors](/docs/ssh-and-editors).
 
-### `repose open [PORT]`
+### `repose open PORT`
 
 Forward one port to your laptop and open it in the browser, until `Ctrl-C`. Works for servers on `127.0.0.1`, `0.0.0.0` or `::1`.
 
-| Flag               |                                                                                |
-| ------------------ | ------------------------------------------------------------------------------ |
-| `--local-port N`   | Port on the laptop. Default: the same, or a free one if it's taken.            |
-| `--no-browser`     | Print the URL only.                                                            |
-| `--desktop`        | Start the machine's desktop and forward it to laptop port 6080, or a free one. |
-| `--desktop --stop` | Stop the desktop.                                                              |
+| Flag             |                                                                     |
+| ---------------- | ------------------------------------------------------------------- |
+| `--local-port N` | Port on the laptop. Default: the same, or a free one if it's taken. |
+| `--no-browser`   | Print the URL only.                                                 |
+
+### `repose browser [PROJECT]`
+
+Watch the agent's browser on the machine and take it over: starts the machine's desktop view if needed, forwards it to laptop port 6080 (or a free one) in the background, and opens the link in your browser. The password is in the link after `#`; nothing to type. The view is the size of your tab and sleeps after 30 idle minutes; opening the page again wakes it. [Browser](/docs/machine#browser) has the details.
+
+| Flag        |                                                    |
+| ----------- | -------------------------------------------------- |
+| `--no-open` | Print the link only.                               |
+| `--stop`    | Stop the view on the machine and the forward here. |
+
+`repose open --desktop`, with `--stop` and `--no-browser`, is the old name and still works.
 
 ### `repose browser bridge [PROJECT]`
 

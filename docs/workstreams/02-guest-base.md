@@ -76,13 +76,15 @@ runner using the host's shared store. Everything in
   user-scope MCP config on first run with `--headless` flags. Fonts:
   `noto-fonts`, `noto-fonts-color-emoji`, `liberation_ttf`, fontconfig
   enabled so screenshots render text.
-- `nix/guest/base/desktop.nix`: `xorg.xorgserver` with Xvfb, `openbox`,
-  `x11vnc`, `novnc`, `websockify`, as three socket-activated systemd
-  services (`repose-xvfb.service` on `:99`, `repose-x11vnc.service` on
-  `127.0.0.1:5900`, `repose-novnc.socket` on `127.0.0.1:6080`); connecting
-  to 6080 starts the chain; a `repose-desktop-idle.timer` stops them after
-  30 minutes with no websockify client. `DISPLAY=:99` is exported to
-  shells only when Xvfb is running (a profile snippet checks the socket).
+- `nix/guest/base/desktop.nix`: TigerVNC's Xvnc (the X display and the
+  VNC server in one, `repose-xvnc.service` on `:99` and `127.0.0.1:5900`),
+  `openbox`, `websockify` serving the viewer page repose ships
+  (`desktop/viewer/` on noVNC's `core/` and `vendor/`) as
+  `repose-novnc.service` on 6081 behind `repose-novnc.socket` on
+  `127.0.0.1:6080`; connecting to 6080 starts the chain; a
+  `repose-desktop-idle-check.timer` stops the viewer after 30 minutes
+  with no client. `DISPLAY=:99` is exported to shells only when the
+  display is running (a profile snippet checks the socket). I-33, I-292.
 - `nix/guest/base/sysctl.nix`: `fs.inotify.max_user_watches = 1048576`,
   `fs.inotify.max_user_instances = 1024`, `fs.file-max = 2097152`,
   `net.core.somaxconn = 4096`, `vm.swappiness = 10`, and a 2 GB zram swap
@@ -146,7 +148,7 @@ runner using the host's shared store. Everything in
   created from a fixture `project.json`, `repose-hook` posts to a fake
   socket, hooks are merged into a fixture `~/.claude/settings.json` without
   clobbering an existing hook, inotify sysctls applied, noVNC socket
-  activation starts Xvfb, `repose-desktop-idle` stops it.
+  activation starts Xvnc, `repose-desktop-idle` stops the viewer.
 
 ## 3. Scope: does not build
 
@@ -228,12 +230,12 @@ documents per-agent accuracy.
 ### noVNC chain
 
 Socket activation keeps the desktop's memory cost at zero until asked.
-`repose open --desktop` forwards 6080; the browser connects; systemd
-starts a `systemd-socket-proxyd` service that requires websockify, which
-pulls in x11vnc, which pulls in Xvfb and openbox (DECISIONS I-33).
+`repose browser` forwards 6080; the page connects; systemd starts a
+`systemd-socket-proxyd` service that requires websockify, which pulls in
+Xvnc, openbox and the agents' browser (DECISIONS I-33, I-246, I-292).
 Chromium launched by the agent with `DISPLAY=:99` (the profile snippet
-exports it when Xvfb is up) appears on that desktop. When the agent runs
-headless Chromium, nothing is displayed and nothing is started.
+exports it when the display is up) appears on that desktop. When the
+agent runs headless Chromium, nothing is displayed and nothing is started.
 
 ### Hook mechanism per agent, as verified at overlay build
 
@@ -268,7 +270,7 @@ dev box, the flake stays.
 | `/nix/store` union missing paths | virtiofs share not mounted or wrong tag. Guest journal: `mount: /nix/.ro-store: wrong fs type`. hostd reports `guest_unresponsive` after Ping fails; console log has the mount error. |
 | Docker fails with `overlay2 not supported` | Kernel module list wrong or the volume is not ext4. VM test catches it; in production it is a base bug, guests are not affected until they are switched to the new base, and `hold_base_updates` exists for this. |
 | Agent wrapper clobbers a user hook | Forbidden by the merge rule; VM test asserts an existing hook survives. |
-| Xvfb starts but Chromium shows nothing | `DISPLAY` not exported because the profile snippet ran before Xvfb. The snippet checks the X socket each shell start; the user opens a new shell. Documented in `features/browser.md`. |
+| Xvnc starts but Chromium shows nothing | `DISPLAY` not exported because the profile snippet ran before Xvnc. The snippet checks the X socket each shell start; the user opens a new shell. Documented in `features/browser.md`. |
 | A user profile references a host path that gets collected | `repose-pin-profile` copies profile closures into the overlay; if it did not run (activation failed), the error is `nix: path /nix/store/... does not exist` in the guest; the fix is `nix profile install` again, and the base bug is filed. |
 | Guest OOM | zram absorbs bursts; the kernel OOM killer picks the largest process, which is usually a build, not the agent. guestd sends `Warning{kind: "oom"}` from `dmesg`, and the user sees it in `repose status`. |
 
@@ -355,9 +357,9 @@ A bad base version is rolled back by re-applying the previous
       `--offline`). Evidence: pasted. — open: `nix/guest/tests/default.nix` subtest "MCP
       servers run from the packaged versions, offline" checks it in a QEMU
       VM; no output pasted from a real guest.
-- [ ] Connecting to `127.0.0.1:6080` starts Xvfb, x11vnc, websockify;
-      `systemctl status repose-xvfb` active; after 30 idle minutes (or
-      `systemctl start repose-desktop-idle` to force) all three stop.
+- [ ] Connecting to `127.0.0.1:6080` starts Xvnc, openbox, websockify;
+      `systemctl status repose-xvnc` active; after 30 idle minutes (or
+      `systemctl start repose-desktop-idle` to force) the viewer stops.
       Evidence: pasted. — open: "noVNC chain" is listed in the STATUS 2026-09-20 m1-integration done line;
       the start, `systemctl status` and idle stop are not pasted.
 - [ ] `sysctl fs.inotify.max_user_watches` is 1048576. Evidence: pasted.

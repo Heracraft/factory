@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="robots" content="noindex">
+  <title>The agent's browser</title>
+  <link rel="stylesheet" href="viewer.css">
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <header id="bar">
+    <span id="project" class="name">the machine</span>
+    <span class="sep">/</span>
+    <span class="what">the agent's browser</span>
+    <span id="state" class="state" data-state="connecting">connecting</span>
+    <span id="size" class="size"></span>
+    <span class="grow"></span>
+    <button id="copy" type="button" title="Copy this page's link, password included">copy link</button>
+    <button id="full" type="button" title="Full screen">full screen</button>
+  </header>
+  <main id="screen"></main>
+  <section id="notice" hidden>
+    <div class="card">
+      <h1 id="notice-title"></h1>
+      <p id="notice-text"></p>
+      <form id="password-form" hidden>
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="off" spellcheck="false">
+        <button type="submit">connect</button>
+      </form>
+      <p id="notice-hint" class="hint"></p>
+    </div>
+  </section>
+  <script type="module" src="viewer.js"></script>
+</body>
+</html>

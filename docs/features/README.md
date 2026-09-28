@@ -12,7 +12,7 @@ feature doc wins; on internals, the workstream doc wins.
 | [run-and-attach.md](run-and-attach.md) | `repose run`, `repose attach`, tmux sessions and windows, the agent picker | built |
 | [sync-at-launch.md](sync-at-launch.md) | Git plus the one-shot diff of uncommitted work, refuse-on-dirty | built |
 | [agents.md](agents.md) | The five agents, wrappers, hooks, Claude login, MCP support | built; `mcp forward` not built |
-| [browser.md](browser.md) | The shared headed Chromium, Playwright MCP, chrome-devtools-mcp, `open --desktop`, `browser bridge` | built |
+| [browser.md](browser.md) | The shared headed Chromium, Playwright MCP, chrome-devtools-mcp, `repose browser` (the viewer), `browser bridge` | built |
 | [secrets.md](secrets.md) | Synced tool logins, `.env` files and named secrets | built |
 | [config.md](config.md) | The menu, the Nix fragment, apply, base bumps, hold | built |
 | [snapshots.md](snapshots.md) | Nightly and on-stop snapshots, list, restore, fork | built |

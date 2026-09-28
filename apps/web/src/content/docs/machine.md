@@ -119,17 +119,20 @@ repose run "start the dev server, open the signup page with playwright and scree
 
 Playwright test suites run without `npx playwright install`.
 
-To watch the browser or use it yourself (a captcha, a passkey), open the machine's desktop:
+To watch the browser or use it yourself (a captcha, a passkey), one command:
 
 ```
-$ repose open --desktop
-http://localhost:6080/vnc.html?autoconnect=1 (Ctrl-C stops the forward; the desktop keeps running)
-VNC password: 5m2k8Q1p
+$ repose browser
+Watching todo-app's browser at http://localhost:6080/#p=5m2k8Q1p (the view sleeps after 30 idle minutes; repose browser --stop ends it).
 ```
 
-If port 6080 is taken on your laptop (another project's desktop, say), a free port is used instead and the URL shows it. Enter the password in the page that opens. You see the agent's browser as it works, in the same window the agent uses, so you can click and type in it: solve a captcha, log in, approve a passkey. Whatever you log into there, the agent's browser tools can use afterwards. If no agent has used the browser yet, opening the desktop starts it.
+Your browser opens on that link and shows the agent's browser, live, at the size of your tab (make the tab bigger and the machine's screen grows with it). Nothing to type: the password is the part of the link after `#`, which your browser reads and never sends anywhere. Click and type in the page to solve a captcha, log in or approve a passkey; the agent's browser tools use whatever you logged into. Copy and paste work both ways (your browser asks once before the page may read your clipboard; Firefox only lets text travel from the machine to you). If no agent has used the browser yet, the command starts it.
 
-`repose open --desktop --stop` stops the viewer, and so does 30 minutes with nobody connected. The agent's browser keeps running while an agent uses it, and stops after 30 minutes with neither an agent nor you on it.
+The command returns at once and leaves the forward running in the background. Run it again for the same link, `repose browser --no-open` to print the link without opening a browser, and `repose browser --stop` to close the view and the forward. If port 6080 is taken on your laptop (another project's view, say), a free port is used and the link shows it. The view sleeps after 30 minutes with nobody watching; opening the page again wakes it. After the machine reboots the link's password changes: the page says so, and `repose browser` prints the new link. The agent's browser keeps running while an agent uses it, and stops after 30 minutes with neither an agent nor you on it.
+
+Text on the page is drawn at your tab's size in the machine's pixels; on a Retina display that is 1x, so it is sharp but not as sharp as a native page. `repose open --desktop` is the old name of the command and still works.
+
+A machine on base 2026.09.27.2 or older still has the old page, which asks for the password the command printed; it gets the new one at its next base update. A CLI at v0.1.20 or older has no `repose browser`; `repose open --desktop` there prints the password to type.
 
 An agent session started before September 25, 2026 has a headless browser of its own that the desktop can't show; restart the agent to switch it over.
 
@@ -150,7 +153,7 @@ While it runs, the machine's two browser tools drive your Chrome through the SSH
 
 It needs Chrome 144 or newer with remote debugging turned on: open `chrome://inspect/#remote-debugging` in Chrome and turn it on once. If it's off, the command opens that page and waits. Chrome then asks you to allow each connection an agent makes, and shows "Chrome is being controlled by automated test software" while one is open. Any other Chromium browser works too, started with `--remote-debugging-port=9222` and bridged with `repose browser bridge --cdp http://127.0.0.1:9222`; that way there is no switch and no dialog.
 
-What you're lending: everything on the machine can drive that Chrome while the bridge is open, not only the agent you're watching, and it can open any site you're logged in to. Press `Ctrl-C` when the job is done. If your laptop sleeps or the connection drops, the machine notices within two minutes and its tools go back to its own browser. The bridge only works while your laptop is awake and connected; for work that should carry on after you close it, the machine's own browser is the one to log in to, with `repose open --desktop`.
+What you're lending: everything on the machine can drive that Chrome while the bridge is open, not only the agent you're watching, and it can open any site you're logged in to. Press `Ctrl-C` when the job is done. If your laptop sleeps or the connection drops, the machine notices within two minutes and its tools go back to its own browser. The bridge only works while your laptop is awake and connected; for work that should carry on after you close it, the machine's own browser is the one to log in to, with `repose browser`.
 
 ## Network
 

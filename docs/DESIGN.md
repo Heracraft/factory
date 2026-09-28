@@ -146,11 +146,12 @@ of user config:
 - The agents from the platform overlay: `claude-code`, `opencode`, `codex`,
   `gemini-cli`, `pi-coding-agent`. Each has a `repose` wrapper that installs
   the notification hooks and names its tmux window.
-- One headed Chromium for the agents on the X display `:99` (Xvfb,
-  openbox), shared by Playwright MCP and chrome-devtools-mcp over CDP, plus
-  `playwright-driver.browsers` (DECISIONS I-246). x11vnc and noVNC stay off
-  until `repose open --desktop` or the dashboard asks, and only view that
-  same browser (`features/browser.md`).
+- One headed Chromium for the agents on the X display `:99` (TigerVNC's
+  Xvnc, openbox), shared by Playwright MCP and chrome-devtools-mcp over
+  CDP, plus `playwright-driver.browsers` (DECISIONS I-246). The viewer
+  (websockify and repose's page) stays off until `repose browser` asks,
+  and only views that same browser, at the size of the user's tab
+  (`features/browser.md`, I-292).
 - Toolchain from `nix/guest/base/tool-list.nix`: node 24, pnpm, python
   3.12, uv, go, rustup, just, ripgrep, jq, gh, git, direnv with nix-direnv,
   starship, zoxide, eza, a C toolchain and everyday CLIs (I-218).
@@ -359,13 +360,14 @@ All of it is idempotent; running `repose run` twice attaches twice.
   platform never reads, copies or proxies Claude auth; the login share is
   storage the user's own guests share, which hostd creates but never opens.
 - Browser: one headed Chromium on a virtual display, shared by Playwright
-  MCP and chrome-devtools-mcp, in every guest (I-246). `repose open
-  --desktop` starts x11vnc and noVNC and forwards the noVNC port so the
-  user can watch or take over the browser the agent is using. Claude in Chrome cannot work from a guest; `repose
-  browser bridge` (I-296) reverse-tunnels the laptop's own Chrome (its
-  DevTools switch, Chrome 144+) to the guest's endpoint so the same two
-  MCP servers drive the laptop's browser, logins included, while the
-  laptop is open.
+  MCP and chrome-devtools-mcp, in every guest (I-246). `repose browser`
+  starts the viewer and forwards its port in the background so the user
+  can watch or take over the browser the agent is using, in one command
+  (I-292). Claude in Chrome cannot work from a guest; `repose browser
+  bridge` (I-296) reverse-tunnels the laptop's own Chrome (its DevTools
+  switch, Chrome 144+) to the guest's endpoint so the same two MCP
+  servers drive the laptop's browser, logins included, while the laptop
+  is open.
 - MCP: HTTP and API-backed servers work as on a laptop. Laptop-bound stdio
   servers are unsupported in the first release; `repose mcp forward` (wrap
   with mcp-proxy, reverse-tunnel, register in the guest) is the planned path
