@@ -74,7 +74,11 @@ func (s *Server) opLog(w http.ResponseWriter, r *http.Request) error {
 		finish(op)
 		return nil
 	}
-	tick := time.NewTicker(time.Second)
+	// The ticker also reads the table: hostd's lines reach api-grpc, a
+	// separate process, so this process's subscription only hears lines
+	// it appended itself; without the read, a production stream went
+	// silent until the op ended (dogfood 2026-09-28, DECISIONS I-328).
+	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
 	for {
 		select {
@@ -101,6 +105,9 @@ func (s *Server) opLog(w http.ResponseWriter, r *http.Request) error {
 			}
 			if cur.State == "done" || cur.State == "error" {
 				finish(cur)
+				return nil
+			}
+			if err := catchUp(); err != nil {
 				return nil
 			}
 			_, _ = fmt.Fprint(w, ": keepalive\n\n") // same

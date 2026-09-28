@@ -1,12 +1,18 @@
 package httpapi_test
 
 import (
+	"bufio"
+	"io"
+	"log/slog"
+	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/heracraft/repose/internal/api/buildlog"
 	httpapi "github.com/heracraft/repose/internal/api/http"
 )
 
@@ -190,5 +196,49 @@ func TestOpWaitAnswersWhenDraining(t *testing.T) {
 	r := e.do(t, tok, "GET", "/projects/"+pid+"/ops/"+opID+"?wait=10s", nil)
 	if r.status != 200 || r.body["state"] != "running" || time.Since(start) > 2*time.Second {
 		t.Fatalf("drain: %d %s after %s", r.status, r.raw, time.Since(start))
+	}
+}
+
+// TestSSEDeliversLinesAnotherProcessWrote: in production hostd's build
+// lines reach api-grpc, which stores them; the SSE stream is served by the
+// separate api process, whose in-process subscription never hears of
+// them. The stream must still deliver each line while the op runs, not
+// all of them at the end (the dogfood report: `repose config add` sat
+// silent for 12 s, then printed every line at once).
+func TestSSEDeliversLinesAnotherProcessWrote(t *testing.T) {
+	e, tok, pid, opID := opWaitEnv(t)
+	other := buildlog.New(e.h.Pool, slog.New(slog.NewTextHandler(io.Discard, nil))) // another process's store
+	req, _ := http.NewRequest("GET", e.api.URL+"/v1/projects/"+pid+"/ops/"+opID+"/log", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	got := make(chan string, 8)
+	go func() {
+		sc := bufio.NewScanner(res.Body)
+		for sc.Scan() {
+			if strings.HasPrefix(sc.Text(), "data: ") {
+				got <- sc.Text()
+			}
+		}
+		close(got)
+	}()
+	// Past the handler's first catch-up read (its headers go out before
+	// it), so the line can only come from the live part of the stream.
+	time.Sleep(1500 * time.Millisecond)
+	oid := uuid.MustParse(opID)
+	other.Append(oid, 1, "evaluating configuration")
+	other.Flush(e.h.Ctx)
+	start := time.Now()
+	select {
+	case l := <-got:
+		if !strings.Contains(l, "evaluating configuration") {
+			t.Fatalf("first data line: %s", l)
+		}
+		t.Logf("line delivered %s after it was stored, op still running", time.Since(start).Round(time.Millisecond))
+	case <-time.After(5 * time.Second):
+		t.Fatal("a line stored by another process was not delivered while the op ran")
 	}
 }

@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-371 entries.
+372 entries.
 
 ## Scope
 
@@ -403,3 +403,4 @@ pointer, not a summary.
 - **I-314** The bridge prints a navigation log on the user's own terminal: time, host and path, `blocked` or not, never a query or fragment, and nothing is stored — 2026-09-28; L8503
 - **I-315** `--bridge-allow HOST` on `run` and `attach` is the allowlist for `--bridge`, and implies it — 2026-09-28; L8519
 - **I-316** The user's Chrome has one page, "Lend the agents your Chrome" (`/docs/your-chrome`), under Using repose; the tutorial page it replaces is removed — 2026-09-28; L8530
+- **I-328** The build log stream reads the table on its tick, so lines another process stored arrive while the op runs — 2026-09-28; L8549

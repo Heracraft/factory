@@ -8542,5 +8542,25 @@ machine.md keeps a short "Use your own Chrome" section pointing at it
 `--allow`, `--bridge-allow`, and the agent guide tells agents that a site
 off the allowlist fails with a named error and to ask the user rather than
 work around it. Links to `/docs/tutorial-your-chrome` in the docs now go
-to `/docs/your-chrome`; the old URL is a 404 (the site has no redirects,
-and it was live for one day).
+to `/docs/your-chrome`; the old URL goes on to the new one (a
+client-side redirect the conductor added at merge, `movedDoc` in
+`apps/web/src/lib/docs.ts`, because the link had been shared).
+
+**I-328. The build log stream reads the table on its tick, so lines
+another process stored arrive while the op runs.** (conductor, dogfood
+round live check, 2026-09-28) Live, `repose config add sl -v` printed
+nothing for 12 s and then every line, "evaluating configuration" included,
+within 60 ms at the end; I-320's steps therefore all read 0.0s. hostd's
+lines go to `api-grpc`, which stores them and tells its own subscribers;
+`GET …/ops/{id}/log` is served by `api`, a separate process, whose
+subscription only hears lines appended there, and whose one-second tick
+checked the op's state and sent a keepalive without reading the table. The
+lines reached the client only in the final catch-up at `done`. The tick now
+reads new lines (the same `catchUp` as at connect, seq-ordered, from the
+last id sent) before the keepalive, every 500 ms instead of every second,
+so a line waits at most half a second. One indexed query per open stream
+per tick, and a stream is open only while its build runs. Postgres
+LISTEN/NOTIFY across the two processes would be exact, and was left for
+when the tick's cost shows. Test: `TestSSEDeliversLinesAnotherProcessWrote`
+(a second `buildlog.Store` writes after the stream's first catch-up; fails
+before the change, the line arrives 1 ms after it is stored after it).
