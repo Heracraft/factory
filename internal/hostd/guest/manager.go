@@ -320,6 +320,11 @@ type Manager struct {
 	ops      chan struct{}
 	buildCh  chan job
 	buildRun int
+	// buildBusy is the build workers holding a job (running it or waiting
+	// for an op slot); buildSeq is the last BuildLog seq sent per build
+	// command, so the queue's line and the build's own share one sequence.
+	buildBusy int
+	buildSeq  map[string]uint64
 
 	cidr        *net.IPNet
 	base        net.IP
@@ -350,10 +355,11 @@ func New(cfg Config, d Deps) (*Manager, error) {
 		cfg: cfg, d: d,
 		workers: map[string]*worker{}, inflight: map[string]bool{},
 		secrets: map[string][]*guestdv1.Secret{}, monitors: map[string]*monitor{},
-		last:    map[string]sampleCursor{},
-		ops:     make(chan struct{}, cfg.MaxOps),
-		buildCh: make(chan job, cfg.MaxBuildQueue),
-		cidr:    ipn, base: ipn.IP.To4(), maxIndex: size - 4,
+		last:     map[string]sampleCursor{},
+		buildSeq: map[string]uint64{},
+		ops:      make(chan struct{}, cfg.MaxOps),
+		buildCh:  make(chan job, cfg.MaxBuildQueue),
+		cidr:     ipn, base: ipn.IP.To4(), maxIndex: size - 4,
 	}
 	m.ctx, m.stop = context.WithCancel(context.Background())
 	return m, nil
@@ -769,6 +775,14 @@ func (m *Manager) Dispatch(cmd *hostdv1.Command) {
 	}
 	kind := Kind(cmd)
 	if kind == "Build" {
+		m.mu.Lock()
+		queued := m.buildBusy+len(m.buildCh) >= m.cfg.MaxBuilds
+		m.mu.Unlock()
+		if queued {
+			// The client shows this as its own step rather than an
+			// evaluation that seems to take minutes (DECISIONS I-320).
+			m.buildLog(cmd.CommandId, "waiting for a build slot")
+		}
 		select {
 		case m.buildCh <- job{cmd: cmd}:
 			m.setQueueDepth()
@@ -870,9 +884,25 @@ func (m *Manager) buildWorker() {
 			return
 		case j := <-m.buildCh:
 			m.setQueueDepth()
+			m.mu.Lock()
+			m.buildBusy++
+			m.mu.Unlock()
 			m.runJob(j)
+			m.mu.Lock()
+			m.buildBusy--
+			m.mu.Unlock()
 		}
 	}
+}
+
+// buildLog sends one BuildLog line for a build command, numbered after
+// the last one sent for it.
+func (m *Manager) buildLog(commandID, line string) {
+	m.mu.Lock()
+	m.buildSeq[commandID]++
+	seq := m.buildSeq[commandID]
+	m.mu.Unlock()
+	m.d.Emit.BuildLog(commandID, seq, line)
 }
 
 func (m *Manager) setQueueDepth() {

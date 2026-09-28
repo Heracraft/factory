@@ -1,21 +1,30 @@
 ---
-title: Config
-description: Add packages and services to a project so they're there on every rebuild, from the CLI, the dashboard or Nix.
+title: Installing software
+description: Add packages and services to a project with repose config, so they're there on every rebuild, from the CLI, the dashboard or Nix.
 section: Using repose
 order: 13
 ---
 
-A project's configuration is the list of extra packages and services its machine is built with. Unlike an install you make on the machine, it's kept with the project, so it survives rebuilds, platform updates and a restore onto another server.
+There are two ways to install software on a project's machine:
+
+- **On the machine**, with `nix profile add`, `npm i -g`, `go install` and the like. It takes seconds and lasts as long as the machine's disk. See [The machine](/docs/machine#installing-more).
+- **In the project's configuration**, with `repose config`. This page. The machine is rebuilt with it, so it's there after rebuilds, platform updates and a restore onto another server, and services such as PostgreSQL are set up and started.
 
 ## Add a package
 
 ```
 $ repose config add postgresql air nodejs_22
 Added postgresql, air and nodejs_22 to todo-app. Building revision 4f1c2a9e ...
-Applied revision 4f1c2a9e.
+✓ Evaluated your config  7.9s
+✓ Fetched 38 paths (112.4 MiB)  21s
+✓ Built 14 derivations  12s
+✓ Switched the machine  3.1s
+Applied revision 4f1c2a9e in 45s.
 ```
 
 Any package from nixpkgs works; search names at [search.nixos.org](https://search.nixos.org/packages). Nested names work too, such as `python312Packages.black`. A few names are menu entries that set up more than a package: `postgresql`, `redis` and the other databases also start the service.
+
+Each step shows a spinner and its time while it runs. The steps are: waiting for a build slot (only when the server is busy with other builds), evaluating your configuration, fetching what's already built from the package cache, building the rest, and switching the running machine to the result. `-v` also prints Nix's own output. Without a terminal, each step is one line and Nix's output follows it.
 
 The build usually takes under a minute. It's switched into the running machine without a restart, so your agents keep running and new shells see the new packages. If the build fails, nothing changes:
 
@@ -31,6 +40,10 @@ Remove with:
 ```
 repose config remove air
 ```
+
+If you press Ctrl-C while it builds, only the CLI stops. The build carries on and is applied when it finishes; `repose config show --revisions` shows when it has.
+
+A change to the kernel is built but not switched in, because that needs a restart. The CLI says so; the machine starts on it the next time it starts: `repose stop && repose start`.
 
 ## The menu
 
@@ -53,7 +66,10 @@ Under the menu is a Nix file, a [home-manager](https://nix-community.github.io/h
 repose config show            # print it
 repose config edit            # edit in $EDITOR, apply on save
 repose config apply ./repose.nix
+repose config apply           # ./repose.nix, or with no such file, apply the current configuration again
 ```
+
+`repose config apply` with no file and no `./repose.nix` switches the running machine to the project's configuration again: the active revision, or a newer one that built but wasn't applied because its switch failed. Use it when the machine seems to be missing something the configuration has.
 
 Or use the **Nix** tab on the dashboard's Config page (**Edit as Nix** from the menu).
 

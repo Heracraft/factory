@@ -88,6 +88,10 @@ in
       # it started with, while a #() job runs with the global environment,
       # whose TZ the carry moves (I-198, DECISIONS I-215). One fork per
       # status-interval.
+      # Messages (the CLI's port forwards and carry notes, I-324) in the
+      # status bar's own colours rather than tmux's yellow, which read as
+      # a warning each time a dev server started.
+      set -g message-style "bg=green,fg=black"
       set -g status-right '#{?window_bigger,[#{window_offset_x}#,#{window_offset_y}] ,}"#{=21:pane_title}" #(date "+%%H:%%M %%d-%%b-%%y")'
     '';
   };

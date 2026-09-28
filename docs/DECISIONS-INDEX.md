@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-349 entries.
+357 entries.
 
 ## Scope
 
@@ -381,3 +381,11 @@ pointer, not a summary.
 - **I-304** The attach after `repose run PROMPT` falls back to the session — 2026-09-28; L7793
 - **I-305** `repose attach --bridge` keeps `--bridge` on the fast path — 2026-09-28; L7805
 - **I-306** A guest in bypass mode always skips Claude Code's bypass warning — 2026-09-28; L7810
+- **I-320** Config commands show run's ✓ steps, read off the build log — 2026-09-28; L7826
+- **I-321** `repose config apply` with no file applies the configuration again — 2026-09-28; L7863
+- **I-322** Build log lines carry the time they reached the api — 2026-09-28; L7875
+- **I-323** `config add` and `config remove` honour `reboot_required` — L7891
+- **I-324** Port forwards that appear together get one message, in the status bar's colours — 2026-09-28; L7901
+- **I-325** hostd refuses an apply whose record says "not running" while the hypervisor runs — 2026-09-28; L7916
+- **I-326** Config builds: two derivations at a time, and two reads in parallel — L7937
+- **I-327** The "Config" docs page is "Installing software" — L7956

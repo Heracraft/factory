@@ -50,7 +50,7 @@ air: command not found
 Other packages with air: air-formatter
 ```
 
-The last line only appears when other packages have a command by that name. Installs made on the machine are not part of the project's configuration. To have a package on every rebuild, add it with [`repose config add`](/docs/config).
+The last line only appears when other packages have a command by that name. Installs made on the machine are not part of the project's configuration. To have a package on every rebuild, or a database set up as a service, add it with `repose config add`; see [Installing software](/docs/config).
 
 ## Your laptop's tools come along
 
@@ -88,6 +88,8 @@ While you're attached with `repose run` or `repose attach`, every port a program
 ```text
 ⇄ localhost:5173 → :5173
 ```
+
+Ports that open together, such as the servers a test suite starts, get one message between them, like `⇄ 6 ports on localhost: 3000, 3001, 3002, 3003, 3004, 3005`, and the status bar lists every forwarded port.
 
 Because it's `localhost`, cookies and OAuth redirects behave as they do locally. If the port is taken on your laptop, the next free one (up to 20 higher) is used and the message says which.
 

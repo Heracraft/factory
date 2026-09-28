@@ -13,9 +13,11 @@ The menu, from the dashboard or the CLI:
 ```
 $ repose config add bun postgresql gcc air
 Added bun, postgresql, gcc and air to todo-app. Building revision 4f1c2a9e ...
-  copying path '/nix/store/...-bun-1.2.4' from 'https://cache.nixos.org' ...
-  ...
-Applied revision 4f1c2a9e.
+✓ Evaluated your config  7.9s
+✓ Fetched 38 paths (112.4 MiB)  21s
+✓ Built 14 derivations  12s
+✓ Switched the machine  3.1s
+Applied revision 4f1c2a9e in 45s.
 
 $ repose config add gcc-typo
 Added gcc-typo to todo-app. Building revision 7d03b1c5 ...
@@ -36,7 +38,11 @@ The fragment:
 $ repose config show              # print it; --revisions lists revisions
 $ repose config edit              # opens $EDITOR on the fragment, applies on save
 $ repose config apply ./repose.nix
+$ repose config apply              # no ./repose.nix: apply the current configuration again (I-321)
 ```
+
+The steps are read off the build log (DECISIONS I-320); `-v` adds Nix's
+own lines. Ctrl-C stops only the CLI; the build goes on.
 
 A failed apply prints the error's first line, then the fragment line it
 points at (`internal/cli/buildlog.go` `RenderBuildError`), and exits 10;

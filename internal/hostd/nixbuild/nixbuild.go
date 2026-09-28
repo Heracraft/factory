@@ -225,7 +225,7 @@ func validRef(s string) bool {
 
 // ensureBase returns the checkout directory for ref, cloning it when the
 // repository URL is configured and the checkout is missing.
-func (b *Real) ensureBase(ctx context.Context, ref string) (string, error) {
+func (b *Real) ensureBase(ctx context.Context, ref string, log func(string)) (string, error) {
 	if !validRef(ref) {
 		return "", &Error{Code: "invalid_argument", Message: "base_ref must be a git revision"}
 	}
@@ -240,6 +240,9 @@ func (b *Real) ensureBase(ctx context.Context, ref string) (string, error) {
 	}
 	if err := os.MkdirAll(b.BaseDir, 0o755); err != nil {
 		return "", fmt.Errorf("base dir: %w", err)
+	}
+	if log != nil {
+		log("fetching the base") // a step of its own for the client (DECISIONS I-320)
 	}
 	tmp := dir + ".tmp"
 	_ = os.RemoveAll(tmp) // leftover from an interrupted clone
@@ -368,7 +371,7 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 	if err := b.chownTree(dir); err != nil {
 		return nil, err
 	}
-	checkout, err := b.ensureBase(ctx, req.BaseRef)
+	checkout, err := b.ensureBase(ctx, req.BaseRef, log)
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +416,12 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 	buildArgv := b.wrap(unit, req.Limits.BuildS, req.Limits.Cores, []string{
 		"nix", "build", "--no-link", "--print-out-paths", "--print-build-logs",
 		"--option", "sandbox", "true",
-		"--max-jobs", "1",
+		// Two at once, the daemon's own max-jobs (nix/hosts/gc.nix): a
+		// system closure ends in a chain of small local derivations
+		// (home-manager files, system-path, etc, units), several of them
+		// independent, which one job at a time built one after another
+		// (DECISIONS I-326). The client's value reaches the daemon.
+		"--max-jobs", "2",
 		"--cores", strconv.FormatUint(uint64(req.Limits.Cores), 10),
 		"--option", "substituters", b.Substituters,
 		drv + "^*",

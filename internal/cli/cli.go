@@ -620,7 +620,7 @@ func newConfigCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	}
 	apply := &cobra.Command{
 		Use:   "apply [PATH]",
-		Short: "Apply a fragment file (default ./repose.nix)",
+		Short: "Apply a fragment file (default ./repose.nix; with neither, apply the current configuration again)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := env()

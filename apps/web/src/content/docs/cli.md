@@ -196,7 +196,7 @@ Grow the project's disk, for example `repose resize 80G`, or `repose resize todo
 
 ### `repose logs [PROJECT]`
 
-`--kind console|build|ops` (default `console`), `--since 1h`, `-f`/`--follow` to follow, `--json`.
+`--kind console|build|ops` (default `console`), `--since 1h` (a duration, or a time such as `2026-09-28T10:00:00Z`), `-f`/`--follow` to follow, `--json`. Each line starts with its time.
 
 ### `repose events [PROJECT]`
 
@@ -229,13 +229,13 @@ Answer a waiting question: `repose reply todo-app yes`. The first word is the pr
 
 ## Configuration
 
-| Command                           |                                                        |
-| --------------------------------- | ------------------------------------------------------ |
-| `repose config add PACKAGE...`    | Add menu entries or nixpkgs packages, build and apply. |
-| `repose config remove PACKAGE...` | Remove them again. Alias `rm`.                         |
-| `repose config show`              | Print the Nix file. `--revisions` lists revisions.     |
-| `repose config edit`              | Edit in `$EDITOR`, apply on save.                      |
-| `repose config apply [PATH]`      | Apply a file. Default `./repose.nix`.                  |
+| Command                           |                                                                                            |
+| --------------------------------- | ------------------------------------------------------------------------------------------ |
+| `repose config add PACKAGE...`    | Add menu entries or nixpkgs packages, build and apply.                                     |
+| `repose config remove PACKAGE...` | Remove them again. Alias `rm`.                                                             |
+| `repose config show`              | Print the Nix file. `--revisions` lists revisions.                                         |
+| `repose config edit`              | Edit in `$EDITOR`, apply on save.                                                          |
+| `repose config apply [PATH]`      | Apply a file. Default `./repose.nix`; with neither, apply the current configuration again. |
 
 ## Account
 

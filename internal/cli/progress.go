@@ -99,6 +99,24 @@ func (p *progress) Phase(label, done string) {
 	}()
 }
 
+// Relabel changes the running phase's label and done text without
+// ending it: a count that moves ("Fetching 17/42 paths"). Without a
+// terminal it prints nothing; the phase's line was printed once.
+func (p *progress) Relabel(label, done string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.label == "" {
+		return
+	}
+	p.label, p.done = label, done
+	if p.tty {
+		p.drawLocked()
+	}
+}
+
 // End finishes the current phase: on a terminal the spinner line becomes
 // the ✓ line (or disappears when the phase has no done text).
 func (p *progress) End() {

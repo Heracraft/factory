@@ -17,10 +17,12 @@ import (
 	"github.com/heracraft/repose/internal/db"
 )
 
-// Line is one stored line.
+// Line is one stored line. TS is when it reached the api (DECISIONS
+// I-322); a line stored before 0008 carries the migration's time.
 type Line struct {
-	Seq  int64  `json:"seq"`
-	Line string `json:"line"`
+	Seq  int64     `json:"seq"`
+	Line string    `json:"line"`
+	TS   time.Time `json:"ts"`
 }
 
 // Store batches, persists and broadcasts.
@@ -98,7 +100,7 @@ func (s *Store) Append(opID uuid.UUID, seq int64, line string) {
 	for _, v := range s.redact[opID] {
 		line = strings.ReplaceAll(line, v, "[redacted]")
 	}
-	s.pending[opID] = append(s.pending[opID], Line{Seq: seq, Line: line})
+	s.pending[opID] = append(s.pending[opID], Line{Seq: seq, Line: line, TS: time.Now().UTC()})
 	full := len(s.pending[opID]) >= s.batch
 	s.mu.Unlock()
 	if full {
@@ -107,6 +109,28 @@ func (s *Store) Append(opID uuid.UUID, seq int64, line string) {
 		default:
 		}
 	}
+}
+
+// Note appends a line of the api's own to an op's log after every line
+// already there: the phase lines hostd cannot send, such as "switching
+// the machine" when a build's apply starts (DECISIONS I-320). hostd's
+// lines for the op must all have arrived; they have once its result has.
+func (s *Store) Note(ctx context.Context, opID uuid.UUID, line string) error {
+	s.flushMu.Lock()
+	defer s.flushMu.Unlock()
+	var last int64
+	if err := s.pool.QueryRow(ctx, "select coalesce(max(seq), 0) from build_logs where op_id = $1", opID).Scan(&last); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	for _, l := range s.pending[opID] {
+		if l.Seq > last {
+			last = l.Seq
+		}
+	}
+	s.mu.Unlock()
+	s.Append(opID, last+1, line)
+	return nil
 }
 
 // Run flushes on the interval or when a batch fills, until ctx ends.
@@ -138,11 +162,11 @@ func (s *Store) Flush(ctx context.Context) {
 	for opID, lines := range batch {
 		rows := make([][]any, 0, len(lines))
 		for _, l := range lines {
-			rows = append(rows, []any{opID, l.Seq, l.Line})
+			rows = append(rows, []any{opID, l.Seq, l.Line, l.TS})
 		}
 		if err := db.InTx(ctx, s.pool, func(tx db.Tx) error {
 			for _, r := range rows {
-				if _, err := tx.Exec(ctx, "insert into build_logs (op_id, seq, line) values ($1, $2, $3) on conflict do nothing", r...); err != nil {
+				if _, err := tx.Exec(ctx, "insert into build_logs (op_id, seq, line, ts) values ($1, $2, $3, $4) on conflict do nothing", r...); err != nil {
 					return err
 				}
 			}
@@ -200,7 +224,7 @@ func (s *Store) Read(ctx context.Context, opID uuid.UUID, since int64, limit int
 	// Unconditional: a flush in flight has already emptied pending, and the
 	// reader must not query the table until that batch is inserted.
 	s.Flush(ctx)
-	rows, err := s.pool.Query(ctx, "select seq, line from build_logs where op_id = $1 and seq > $2 order by seq limit $3", opID, since, limit)
+	rows, err := s.pool.Query(ctx, "select seq, line, ts from build_logs where op_id = $1 and seq > $2 order by seq limit $3", opID, since, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +232,7 @@ func (s *Store) Read(ctx context.Context, opID uuid.UUID, since int64, limit int
 	out := []Line{}
 	for rows.Next() {
 		var l Line
-		if err := rows.Scan(&l.Seq, &l.Line); err != nil {
+		if err := rows.Scan(&l.Seq, &l.Line, &l.TS); err != nil {
 			return nil, err
 		}
 		out = append(out, l)

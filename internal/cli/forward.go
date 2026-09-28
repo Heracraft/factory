@@ -38,6 +38,17 @@ const (
 // before it is tried again.
 const forwardRetry = 30 * time.Second
 
+// Forwards that appear together (a test suite's servers, a compose file)
+// are announced in one message, not one four-second message each
+// (DECISIONS I-324): a forward waits until a poll finds no new one after
+// it, forwardQuiet, or at most forwardCoalesceMax since the first.
+const (
+	forwardQuiet       = 900 * time.Millisecond
+	forwardCoalesceMax = 5 * time.Second
+	// forwardListMax is how many ports one message names.
+	forwardListMax = 8
+)
+
 // forwardPortless is portless's proxy port: never remapped silently,
 // because the URLs portless prints name it.
 const forwardPortless = 1355
@@ -129,6 +140,10 @@ type forwarder struct {
 	localFree func(port int) bool
 	// say shows one line in tmux.
 	say func(msg string)
+	// pending is the same-number forwards not announced yet, and when the
+	// first and the newest of them were made.
+	pending                 []int
+	pendingFirst, pendingAt time.Time
 	// listeners and ctl are ss over the mux and `ssh -O`; variables so a
 	// test on a machine full of its own listeners can say which exist.
 	listeners func(ctx context.Context) (string, error)
@@ -210,7 +225,11 @@ func (f *forwarder) sync(ctx context.Context) (bool, error) {
 		changed = true
 		switch {
 		case lp == gp:
-			f.say(fmt.Sprintf("⇄ localhost:%d → :%d", lp, gp))
+			if len(f.pending) == 0 {
+				f.pendingFirst = time.Now()
+			}
+			f.pending = append(f.pending, gp)
+			f.pendingAt = time.Now()
 		case gp == forwardPortless:
 			f.say(fmt.Sprintf("%d is taken on your laptop (portless?); %s's portless is on localhost:%d", gp, f.slug, lp))
 		default:
@@ -218,6 +237,39 @@ func (f *forwarder) sync(ctx context.Context) (bool, error) {
 		}
 	}
 	return changed, nil
+}
+
+// announce says the pending forwards once no new one came for
+// forwardQuiet (or the first has waited forwardCoalesceMax): one port as
+// before, several as one line. A port whose listener went before the
+// message is not named.
+func (f *forwarder) announce(now time.Time) {
+	if len(f.pending) == 0 || now.Sub(f.pendingAt) < forwardQuiet && now.Sub(f.pendingFirst) < forwardCoalesceMax {
+		return
+	}
+	var ports []int
+	for _, gp := range f.pending {
+		if fe, ok := f.fwd[gp]; ok && fe.Local == gp {
+			ports = append(ports, gp)
+		}
+	}
+	f.pending = nil
+	sort.Ints(ports)
+	switch len(ports) {
+	case 0:
+	case 1:
+		f.say(fmt.Sprintf("⇄ localhost:%d → :%d", ports[0], ports[0]))
+	default:
+		names := make([]string, 0, forwardListMax+1)
+		for i, p := range ports {
+			if i == forwardListMax {
+				names = append(names, "…")
+				break
+			}
+			names = append(names, strconv.Itoa(p))
+		}
+		f.say(fmt.Sprintf("⇄ %d ports on localhost: %s", len(ports), strings.Join(names, ", ")))
+	}
 }
 
 // add forwards a free laptop port, the guest's own number first, to the
@@ -337,6 +389,7 @@ func runForwards(ctx context.Context, f *forwarder, alive func() bool) {
 	lastPublish := time.Time{}
 	for alive() && ctx.Err() == nil {
 		changed, err := f.sync(ctx)
+		f.announce(time.Now())
 		if err == nil && (changed || (len(f.fwd) > 0 && time.Since(lastPublish) > forwardHeartbeat)) {
 			if f.publish(ctx) == nil {
 				lastPublish = time.Now()

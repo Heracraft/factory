@@ -82,17 +82,27 @@ func ConfigAddCmd(ctx context.Context, e *Env, projectArg string, args []string)
 	if err != nil {
 		return err
 	}
-	catalog, err := e.Client.Catalog(ctx)
+	// The two reads are independent: one round trip, not two (I-326).
+	type catalogRead struct {
+		items []CatalogItem
+		err   error
+	}
+	catCh := make(chan catalogRead, 1)
+	go func() {
+		items, err := e.Client.Catalog(ctx)
+		catCh <- catalogRead{items, err}
+	}()
+	cfg, err := e.Client.GetConfig(ctx, project.ID)
+	cat := <-catCh
 	if err != nil {
 		return err
+	}
+	if cat.err != nil {
+		return cat.err
 	}
 	inCatalog := map[string]bool{}
-	for _, c := range catalog {
+	for _, c := range cat.items {
 		inCatalog[c.ID] = true
-	}
-	cfg, err := e.Client.GetConfig(ctx, project.ID)
-	if err != nil {
-		return err
 	}
 	sel, err := currentMenu(cfg)
 	if err != nil {
@@ -207,7 +217,7 @@ func putMenuAndRender(ctx context.Context, e *Env, project *Project, sel []MenuI
 		return nil
 	}
 	_, _ = fmt.Fprintf(e.Out, "%s Building revision %s ...\n", done, shortRev(revisionID))
-	op, err := waitOp(ctx, e.Client, project.ID, opID, e.Out)
+	op, pr, err := waitConfigOp(ctx, e, project, opID)
 	if err != nil {
 		return err
 	}
@@ -220,7 +230,7 @@ func putMenuAndRender(ctx context.Context, e *Env, project *Project, sel []MenuI
 		_, _ = fmt.Fprintf(e.Out, "Nothing changed in %s; the previous revision is still active.\n", project.Name)
 		return silent(ExitBuildFailed)
 	}
-	_, _ = fmt.Fprintf(e.Out, "Applied revision %s.\n", shortRev(revisionID))
+	printApplied(e, project, op, revisionID, pr)
 	return nil
 }
 

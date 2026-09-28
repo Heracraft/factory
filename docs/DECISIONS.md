@@ -7823,3 +7823,141 @@ absent, whoever set the mode, in the same place as I-283's
 kept, and the mode itself is never changed. It runs at every agent start,
 after the carry. A guest change: it reaches machines with the next base.
 guest-base VM test asserts both cases.
+**I-320. Config commands show run's ✓ steps, read off the build log.**
+(owner request, dogfood 2026-09-28) `repose config add/remove/apply/edit`
+waited with a bare op poll and streamed `nix › ` lines; the owner saw no
+progress, pressed Ctrl-C, and could not tell what had happened. They now
+use run's step renderer (`progress.go`, I-154): "Waiting for a build
+slot", "Fetching the base", "Evaluating your config", "Fetching 17/42
+paths (123.4 MiB)", "Building 3/12 derivations", "Switching the
+machine", each ending as a ✓ line with its time; Nix's lines show under
+`-v` or without a terminal (on stderr, where `--json` also sends them).
+The op's `phase` cannot drive this alone: the CLI holds the log stream
+until the op ends and does not read the op meanwhile, and a config build
+never changes `project_state`. So the steps come from named lines in the
+log, now a contract (`docs/interfaces/api.md` "Build log lines"): hostd's
+existing `evaluating configuration`, `building <name>` and `built <path>`,
+two new hostd lines, `waiting for a build slot` (sent at dispatch when the
+host's build workers are all busy; the build's own lines continue its
+sequence) and `fetching the base` (only when the base is cloned), and one
+line the api appends itself, `switching the machine`, when it sends a
+build op's apply phase (`buildlog.Store.Note`, numbered after the last
+line; hostd's apply command has its own command id and is not bound to the
+log). An apply-only op (`config apply` with no file) has no log and uses
+the op's `phase` (`apply_config`). The counts are parsed from Nix's own
+`these N derivations will be built:` / `these N paths will be fetched (X
+MiB download` lines and the `copying path` / `building '…'` lines that
+follow, checked against Nix 2.35's non-terminal output. I-57 rejected
+parsing phases out of build logs for metrics, where a changed Nix wording
+would silently corrupt a dashboard; for a display the failure mode is a
+step that stays "Working out what to fetch" until the build ends, and
+the parse is not part of the contract. Ctrl-C prints "Interrupted. The
+build keeps going on the machine; `repose config show --revisions` shows
+when it lands." and exits 130. `TestConfigOpShowsSteps`,
+`TestConfigOpInterrupted`, `TestBuildQueueFull`,
+`TestSSELiveStreamAndConcurrentLoad`. *Rejected:* an SSE `event: phase`
+frame (an older CLI reads any non-`done` frame as a line and resets its
+resume cursor to 0); reading the op beside the stream (a second request
+per second for every build watcher).
+
+**I-321. `repose config apply` with no file applies the configuration
+again.** (owner request, dogfood 2026-09-28) With no PATH and no
+`./repose.nix`, it used to fail reading the file. It now takes the
+project's newest revision that built (`status` `built` or `applied`,
+newest first) and applies it with `POST …/config/revisions/{rev}/apply`,
+which the CLI never called: the active one again, or a newer one whose
+switch failed. It says which before it starts. A stopped project is told
+that it starts on its newest built revision; a revision that changes the
+kernel of a running machine (the api's `conflict`) is told to restart.
+With a PATH, or with `./repose.nix` present, nothing changed.
+`TestConfigApplyWithoutFileReapplies`.
+
+**I-322. Build log lines carry the time they reached the api.** (owner
+request, dogfood 2026-09-28) `build_logs` had no time, so `repose logs
+--kind build` printed `0001-01-01T00:00:00Z` on every line and `--follow`
+had no cursor (it re-printed the whole log every 2 s). Migration
+`0008_build_log_ts` adds `ts timestamptz not null default now()` (old rows
+get the migration's time; an older api inserting without the column gets
+now()); the buildlog store stamps each line when it is appended; the SSE
+data and `GET /logs?kind=build` lines carry `ts` (and `kind: build`), and
+`since` on build lines keeps those after it. The CLI prints no time for a
+line without one (an older api), follows with a nanosecond cursor and
+skips a line the previous poll printed, and turns a `--since` duration
+(`1h`) into a time: the api reads only RFC 3339, so `--since 1h` had been
+ignored for every kind, and for `repose events` too. `TestLogLinesAndSince`
+and the build-log assertions in `TestSignInAndProjectsLifecycle`'s events-and-logs
+block.
+
+**I-323. `config add` and `config remove` honour `reboot_required`.**
+`putMenuAndRender` printed "Applied revision X." whatever the result,
+while `applyFragmentAndRender` looked the flag up on the revision. When
+a running machine's revision changes the kernel, the api builds it and
+does not switch (the project's revision pointer does not move), so
+"Applied" was false. Both now read `reboot_required` from the op (which
+the api has always sent; the CLI's `Op` did not decode it), falling back
+to the revision for `apply`/`edit`, and print "Built revision X. It
+changes the kernel, so it applies when P restarts: …". `TestConfigOpRebootRequired`.
+
+**I-324. Port forwards that appear together get one message, in the
+status bar's colours.** (owner request, dogfood 2026-09-28) Each new
+same-number forward showed its own 4 s `display-message` in tmux's
+default yellow; a CLI test suite starting a dozen servers flashed the
+status line for most of a minute. A same-number forward is now held until
+a poll finds nothing new after it (900 ms quiet, at most 5 s), then the
+held ones still forwarded are said together: one as before, several as
+`⇄ 10 ports on localhost: 3000, 3001, …` (eight named). A remapped port
+(taken on the laptop) and portless's are still said at once, since each
+needs its own explanation. The forward itself is never delayed. The
+guest's tmux sets `message-style "bg=green,fg=black"`, the default status
+bar's colours, for every message rather than restyling the CLI's alone
+(a per-session option would be the same thing with more ssh). Guests pick
+the style up with the next base. `TestForwarderCoalescesMessages`.
+
+**I-325. hostd refuses an apply whose record says "not running" while the
+hypervisor runs.** (dogfood 2026-09-28: `config add cloudflared`
+interrupted, the rerun said "already in", cloudflared was not on PATH.)
+"Already in" means the api recorded `apply_config` successful: the
+revision pointer moves only in that result handler, and not when
+`reboot_required`. hostd's `apply` returned success without switching
+whenever its own record said the guest was not running (it moves the GC
+root for the next boot). Reading the code, the record can differ from the
+hypervisor only briefly: every path that sets `error` or `stopped` tears
+the hypervisor down first, start and apply share the guest's queue, and a
+hostd restart reconciles `stopped`/`error` with an active unit back to
+`running`. So this path is not a likely cause of the owner's case, and
+the live guest was recreated before it could be checked; guestd's
+`Switch` returns an error on a failed `switch-to-configuration`, so a
+recorded success means the activation exited 0. The path is still made
+loud: when the record says not running, hostd asks systemd whether
+`guest@<id>` is active and, if it is, fails the apply (`internal`, "the
+machine is running but the host's record says …; nothing was applied")
+instead of moving the root, so the revision stays unapplied and `repose
+config apply` (I-321) can be run again. `TestBuildAndApply`.
+
+**I-326. Config builds: two derivations at a time, and two reads in
+parallel.** Cheap wins only (owner's brief). hostd ran `nix build
+--max-jobs 1`; a non-trusted client's `max-jobs` does reach its daemon
+worker (it is a fixed field of the daemon's set-options), so the chain of
+small local derivations at the end of every system build
+(home-manager files and generation, system-path, etc, units, the
+toplevel), several of them independent, was built one after another.
+It is now 2, the host daemon's own `max-jobs` (`nix/hosts/gc.nix`) and
+workstream 12's number; substitution was never limited by it. `repose
+config add` reads the catalog and the config at the same time (one round
+trip instead of two). Nothing was measured: this box is not a host.
+Bigger ideas, not done: clone each new base on every host when it is
+published rather than at its first build (the clone is on the first
+build's path); evaluate with the eval cache or a persistent evaluator
+(every build evaluates the whole NixOS system from scratch); send only
+the paths the guest lacks in `Switch`'s registration (`nix-store
+--dump-db` of the whole closure on every apply); stream the closure-size
+check and GC-root work after the result instead of before.
+
+**I-327. The "Config" docs page is "Installing software".** (owner
+request) The page keeps its file and URL (`/docs/config`; the docs routes
+are the file names, so no link breaks and no redirect is needed) and the
+command stays `repose config`. Its opening now sets it against
+installing on the machine (The machine, "Installing more"), which links
+back, so the two pages no longer read as two answers to the same
+question. It describes the new step output, Ctrl-C, the kernel-change
+case and `config apply` with no file.

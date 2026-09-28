@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -651,8 +652,20 @@ func TestSignInAndProjectsLifecycle(t *testing.T) {
 	if r := e.do(t, tok, "GET", "/projects/"+pid+"/logs?kind=ops", nil); r.status != 200 || !strings.Contains(string(r.raw), `"kind":"create"`) {
 		t.Fatalf("ops log: %d %s", r.status, r.raw)
 	}
-	if r := e.do(t, tok, "GET", "/projects/"+pid+"/logs?kind=build", nil); r.status != 200 || !strings.Contains(string(r.raw), "evaluating") {
+	r = e.do(t, tok, "GET", "/projects/"+pid+"/logs?kind=build", nil)
+	if r.status != 200 || !strings.Contains(string(r.raw), "evaluating") || !strings.Contains(string(r.raw), `"kind":"build"`) {
 		t.Fatalf("build log: %d %s", r.status, r.raw)
+	}
+	// Each build line has its time (I-322), and since= is a cursor.
+	var first struct {
+		TS time.Time `json:"ts"`
+	}
+	lines := strings.Split(strings.TrimSpace(string(r.raw)), "\n")
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &first); err != nil || first.TS.IsZero() {
+		t.Fatalf("build line without ts: %s", lines[len(lines)-1])
+	}
+	if r := e.do(t, tok, "GET", "/projects/"+pid+"/logs?kind=build&since="+url.QueryEscape(first.TS.Format(time.RFC3339Nano)), nil); r.status != 200 || strings.TrimSpace(string(r.raw)) != "" {
+		t.Fatalf("build log after its last line: %d %s", r.status, r.raw)
 	}
 	if r := e.do(t, tok, "GET", "/usage", nil); r.status != 200 {
 		t.Fatalf("usage: %d %s", r.status, r.raw)
@@ -1045,11 +1058,18 @@ func TestSSELiveStreamAndConcurrentLoad(t *testing.T) {
 			}
 			defer func() { _ = res.Body.Close() }()
 			n := 0
+			switching := false
 			sc := bufio.NewScanner(res.Body)
 			for sc.Scan() {
 				if strings.HasPrefix(sc.Text(), "id: ") {
 					n++
 				}
+				if strings.Contains(sc.Text(), `"line":"switching the machine"`) && strings.Contains(sc.Text(), `"ts":`) {
+					switching = true
+				}
+			}
+			if !switching {
+				n = -n // the api's own apply line (I-320) is missing
 			}
 			mu.Lock()
 			counts[i] = n
@@ -1058,8 +1078,10 @@ func TestSSELiveStreamAndConcurrentLoad(t *testing.T) {
 	}
 	wg.Wait()
 	for i, n := range counts {
-		if n != 3 {
-			t.Fatalf("stream %d saw %d lines", i, n)
+		// hostd's three, then the api's "switching the machine" as the
+		// running project's build moves to its apply (I-320).
+		if n != 4 {
+			t.Fatalf("stream %d saw %d lines (negative: no switching line)", i, n)
 		}
 	}
 	if len(counts) != 20 {

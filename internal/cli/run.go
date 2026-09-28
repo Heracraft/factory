@@ -820,6 +820,11 @@ func waitOp(ctx context.Context, c *Client, projectID, opID string, out io.Write
 type opWatch struct {
 	show func(state string)
 	read func() string
+	// line, when set, gets each build log line instead of out's
+	// "nix › " print, and phase each read's op phase (a config op's
+	// steps, I-320).
+	line  func(line string)
+	phase func(phase string)
 }
 
 // opWaitHold is how long one op read asks the api to hold (I-236; the api
@@ -905,9 +910,18 @@ func waitOpWith(ctx context.Context, c *Client, projectID, opID string, out io.W
 		if w != nil && w.show != nil {
 			w.show(op.ProjectState)
 		}
+		if w != nil && w.phase != nil && op.State != "done" && op.State != "error" {
+			w.phase(op.Phase)
+		}
 		if op.LogURL != "" && !streamDone && streamTries < 5 && op.State != "done" && op.State != "error" {
 			streamTries++
-			state, lastSeq, err := StreamBuildLog(ctx, c, projectID, opID, out, seq)
+			var state string
+			var lastSeq int
+			if w != nil && w.line != nil {
+				state, lastSeq, err = streamBuildLines(ctx, c, projectID, opID, seq, w.line)
+			} else {
+				state, lastSeq, err = StreamBuildLog(ctx, c, projectID, opID, out, seq)
+			}
 			seq = lastSeq
 			if err == nil && (state == "done" || state == "error") {
 				streamDone = true

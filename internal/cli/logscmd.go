@@ -14,26 +14,33 @@ func LogsCmd(ctx context.Context, e *Env, projectArg, kind, since string, follow
 	if err != nil {
 		return err
 	}
-	cur := since
+	cur := sinceArg(since, time.Now())
+	var last time.Time
 	for {
 		lines, err := e.Client.ProjectLogs(ctx, project.ID, kind, cur)
 		if err != nil {
 			return err
 		}
 		for _, l := range lines {
+			// A line at or before the cursor was printed by the previous
+			// poll (the api's since is inclusive for ops).
+			if !last.IsZero() && !l.TS.IsZero() && !l.TS.After(last) {
+				continue
+			}
 			if e.JSON {
 				if err := writeJSONOut(e.Out, l); err != nil {
 					return err
 				}
 				continue
 			}
-			_, _ = fmt.Fprintf(e.Out, "%s %s %s\n", l.TS.Format(time.RFC3339), l.Kind, l.Line)
+			_, _ = fmt.Fprintln(e.Out, logLineText(l, kind))
 		}
 		if !follow {
 			return nil
 		}
-		if len(lines) > 0 {
-			cur = lines[len(lines)-1].TS.Format(time.RFC3339)
+		if n := len(lines); n > 0 && !lines[n-1].TS.IsZero() {
+			last = lines[n-1].TS
+			cur = last.Format(time.RFC3339Nano)
 		}
 		if poll != nil {
 			poll()
@@ -41,6 +48,31 @@ func LogsCmd(ctx context.Context, e *Env, projectArg, kind, since string, follow
 			return err
 		}
 	}
+}
+
+// logLineText is one line of `repose logs`: time, kind, text. An api
+// before I-322 sends build lines without a time or kind; they print
+// without the time rather than as 0001-01-01.
+func logLineText(l LogLine, kind string) string {
+	k := l.Kind
+	if k == "" {
+		k = kind
+	}
+	if l.TS.IsZero() {
+		return k + " " + l.Line
+	}
+	return l.TS.Local().Format(time.RFC3339) + " " + k + " " + l.Line
+}
+
+// sinceArg turns --since into what the api reads: a duration such as
+// "1h" or "90m" becomes the time that long before now; anything else
+// (an RFC 3339 time, or empty) goes as it is. The api reads only times,
+// so a duration used to be ignored.
+func sinceArg(since string, now time.Time) string {
+	if d, err := time.ParseDuration(since); err == nil && d > 0 {
+		return now.Add(-d).UTC().Format(time.RFC3339)
+	}
+	return since
 }
 
 func sleepOrDone(ctx context.Context, d time.Duration) error {
@@ -59,7 +91,7 @@ func EventsCmd(ctx context.Context, e *Env, projectArg, since string, follow boo
 	if err != nil {
 		return err
 	}
-	cur := since
+	cur := sinceArg(since, time.Now())
 	for {
 		events, err := e.Client.ListEvents(ctx, project.ID, cur)
 		if err != nil {

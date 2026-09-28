@@ -434,6 +434,13 @@ func (e *Engine) advance(ctx context.Context, op *store.Op) {
 		if ph == "build" {
 			e.logs.Bind(cmd.CommandId, op.ID)
 		}
+		if ph == PhaseApplyConfig && op.Kind == KindBuild {
+			// The build's log goes on into its apply, so a client
+			// streaming it learns the phase changed (DECISIONS I-320).
+			if err := e.logs.Note(ctx, op.ID, ApplyLogLine); err != nil {
+				log.Warn("build log note failed", "event", "buildlog_note_fail", "err", err.Error())
+			}
+		}
 		if err := e.send.Send(ctx, hostID, cmd); err != nil {
 			log.Warn("host not connected; command queued for the next Hello", "event", "command_queued", "host_id", hostID.String(), "phase", ph)
 		}

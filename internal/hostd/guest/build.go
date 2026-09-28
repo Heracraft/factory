@@ -52,13 +52,16 @@ func (m *Manager) build(ctx context.Context, commandID string, c *hostdv1.Build)
 		m.buildRun--
 		m.mu.Unlock()
 	}()
-	var seq uint64
+	defer func() {
+		m.mu.Lock()
+		delete(m.buildSeq, commandID)
+		m.mu.Unlock()
+	}()
 	res, err := m.d.Nix.Build(ctx, nixbuild.Request{
 		ProjectID: c.ProjectId, RevisionID: c.RevisionId, Fragment: c.Fragment, BaseRef: c.BaseRef, BaseVersion: c.BaseVersion,
 		Limits: nixbuild.Limits{EvalS: lim.EvalS, BuildS: lim.BuildS, Cores: lim.Cores, ClosureBytes: lim.ClosureBytes},
 	}, func(line string) {
-		seq++
-		m.d.Emit.BuildLog(commandID, seq, line)
+		m.buildLog(commandID, line)
 	})
 	dur := m.d.Now().Sub(start)
 	if err != nil {
@@ -120,6 +123,16 @@ func (m *Manager) apply(ctx context.Context, c *hostdv1.ApplyConfig) (*hostdv1.A
 		return nil, errf(CodeNotFound, "system closure %s is not in the host store", c.SystemClosure)
 	}
 	if g.State != StateRunning {
+		// A record that says not running while the hypervisor runs
+		// (a drift reconcile has not corrected yet) must not pass for a
+		// stopped guest: moving the root alone would report success while
+		// the running system never switched, and the api would record the
+		// revision applied (DECISIONS I-325). Fail, so the revision stays
+		// unapplied and the user sees it.
+		if active, err := m.d.Systemd.IsActive(ctx, GuestUnit(g.GuestID)); err == nil && active {
+			m.log(g).Warn("apply refused: record says not running but the hypervisor is", "event", "apply_state_drift", "state", g.State)
+			return nil, errf(CodeInternal, "the machine is running but the host's record says %s; nothing was applied, try again in a minute", g.State)
+		}
 		// A stopped guest only needs the root moved; the next start boots it.
 		if err := m.adoptClosure(g, c.SystemClosure); err != nil {
 			return nil, err
