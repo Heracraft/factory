@@ -124,14 +124,14 @@ Playwright test suites run without `npx playwright install`.
 To watch the browser or use it yourself (a captcha, a passkey), open the machine's desktop:
 
 ```
-$ repose open --desktop
+$ repose browser
 http://localhost:6080/vnc.html?autoconnect=1 (Ctrl-C stops the forward; the desktop keeps running)
 VNC password: 5m2k8Q1p
 ```
 
-If port 6080 is taken on your laptop (another project's desktop, say), a free port is used instead and the URL shows it. Enter the password in the page that opens. You see the agent's browser as it works, in the same window the agent uses, so you can click and type in it: solve a captcha, log in, approve a passkey. Whatever you log into there, the agent's browser tools can use afterwards. If no agent has used the browser yet, opening the desktop starts it.
+`repose open --desktop` is the same command under its older name. If port 6080 is taken on your laptop (another project's desktop, say), a free port is used instead and the URL shows it. Enter the password in the page that opens. You see the agent's browser as it works, in the same window the agent uses, so you can click and type in it: solve a captcha, log in, approve a passkey. Whatever you log into there, the agent's browser tools can use afterwards. If no agent has used the browser yet, opening the desktop starts it.
 
-`repose open --desktop --stop` stops the viewer, and so does 30 minutes with nobody connected. The agent's browser keeps running while an agent uses it, and stops after 30 minutes with neither an agent nor you on it.
+`repose browser --stop` stops the viewer, and so does 30 minutes with nobody connected. The agent's browser keeps running while an agent uses it, and stops after 30 minutes with neither an agent nor you on it.
 
 An agent session started before September 25, 2026 has a headless browser of its own that the desktop can't show; restart the agent to switch it over.
 
@@ -139,20 +139,7 @@ Playwright test suites (`pnpm exec playwright test` and the like) still run head
 
 ### Use your own Chrome
 
-For a job that needs your logged-in browser (an internal tool behind SSO, an account with a hardware key, an extension), lend the agents your laptop's Chrome instead:
-
-```
-$ repose browser bridge
-Chrome 144 → todo-app: the agents there browse in your Chrome now, with your logins. Ctrl-C hands them back the machine's browser.
-Chrome asks you to allow each new connection.
-An agent on todo-app is in your Chrome.
-```
-
-While it runs, the machine's two browser tools drive your Chrome through the SSH connection: same tabs you see, same logins, same extensions. An agent that was already using the machine's browser switches on its next call, with nothing to restart, and switches back the same way when you press `Ctrl-C`. `repose run --bridge` and `repose attach --bridge` do the same for as long as you're attached.
-
-It needs Chrome 144 or newer with remote debugging turned on: open `chrome://inspect/#remote-debugging` in Chrome and turn it on once. If it's off, the command opens that page and waits. Chrome then asks you to allow each connection an agent makes, and shows "Chrome is being controlled by automated test software" while one is open. Any other Chromium browser works too, started with `--remote-debugging-port=9222` and bridged with `repose browser bridge --cdp http://127.0.0.1:9222`; that way there is no switch and no dialog.
-
-What you're lending: everything on the machine can drive that Chrome while the bridge is open, not only the agent you're watching, and it can open any site you're logged in to. Press `Ctrl-C` when the job is done. If your laptop sleeps or the connection drops, the machine notices within two minutes and its tools go back to its own browser. The bridge only works while your laptop is awake and connected; for work that should carry on after you close it, the machine's own browser is the one to log in to, with `repose open --desktop`.
+For a job that needs your logged-in browser (an internal tool behind SSO, an account with a hardware key, an extension), lend the agents your laptop's Chrome instead: `repose run --bridge`, or `repose browser bridge` in a second terminal. While the bridge is open, the machine's two browser tools drive your Chrome, with your logins, and switch back when it closes; nothing on the machine restarts. `--allow` keeps them to the sites you name. It needs Chrome 144 or newer and a running machine. [Lend the agents your Chrome](/docs/your-chrome) has the whole of it: setup, what the agents can and can't do there, and troubleshooting.
 
 ## Network
 

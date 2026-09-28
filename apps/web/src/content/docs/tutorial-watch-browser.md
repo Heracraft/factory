@@ -22,7 +22,7 @@ In tmux you'll see the agent start the server, call the browser tool and describ
 From another terminal on your laptop:
 
 ```
-$ repose open --desktop
+$ repose browser
 http://localhost:6080/vnc.html?autoconnect=1 (Ctrl-C stops the forward; the desktop keeps running)
 VNC password: 5m2k8Q1p
 ```
@@ -39,17 +39,17 @@ The screen is not a recording. Click in it and you're using the agent's browser.
 - **A captcha, a passkey, a 2FA prompt.** Do it, then tell the agent to carry on.
 - **A quick check.** Scroll to the part of the page the agent described and see it for yourself.
 
-Agents know this too. Their guide to the machine tells them to ask you to open the desktop when a page needs a human, so a prompt like "log in to the staging site and check the dashboard" ends with the agent asking rather than guessing at credentials. When you get that message, `repose open --desktop`, log in, and reply.
+Agents know this too. Their guide to the machine tells them to ask you to open the desktop when a page needs a human, so a prompt like "log in to the staging site and check the dashboard" ends with the agent asking rather than guessing at credentials. When you get that message, `repose browser`, log in, and reply.
 
 ## Close it
 
-`Ctrl-C` in the terminal that opened the desktop stops the forward; the desktop itself stays up for 30 minutes without a viewer, then stops. `repose open --desktop --stop` stops it now. The agent's browser is separate: it keeps running while an agent uses it and stops after 30 minutes with neither an agent nor you on it. Stopping the desktop never interrupts an agent.
+`Ctrl-C` in the terminal that opened the desktop stops the forward; the desktop itself stays up for 30 minutes without a viewer, then stops. `repose browser --stop` stops it now. The agent's browser is separate: it keeps running while an agent uses it and stops after 30 minutes with neither an agent nor you on it. Stopping the desktop never interrupts an agent.
 
 ## Things worth knowing
 
 - **One browser, one profile.** Both browser tools see the same tabs, and anything you log in to is there for every agent on that machine. Treat it like a browser on a shared computer: don't log in to more than the job needs.
 - **Test suites are unaffected.** `playwright test`, Cypress and Puppeteer scripts run headless as always, unless their config asks for a headed browser. When it does, they appear on the desktop too.
 - **Memory.** The browser is capped (1.5 GB on a small machine, more on larger ones), so a runaway page kills a tab, not the agent.
-- **Your own Chrome instead.** When the job needs your laptop's logins or extensions, [lend the agent your Chrome](/docs/tutorial-your-chrome) rather than logging in on the machine.
+- **Your own Chrome instead.** When the job needs your laptop's logins or extensions, [lend the agent your Chrome](/docs/your-chrome) rather than logging in on the machine.
 
 [The machine](/docs/machine#browser) has the reference for all of this.

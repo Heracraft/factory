@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-357 entries.
+364 entries.
 
 ## Scope
 
@@ -368,7 +368,7 @@ pointer, not a summary.
 - **I-287** The landing has a design system of its own, drawn from its pictures — 2026-09-27; L7516
 - **I-288** Every landing shape names a feature and appears where the feature is; the footer collects them; the logo is an r-mark — 2026-09-27; L7541
 - **I-296** `repose browser bridge` lends the guest's browser tools the laptop's own Chrome, through Chrome's DevTools switch, a front that answers `/json/version`, and a reverse tunnel whose remote command holds the guest's endpoint switched — 2026-09-27; L7563
-- **I-297** The user docs have a Tutorials section: one job per page, in the order a new user meets them — 2026-09-27; L7622
+- **I-297** The user docs have a Tutorials section: one job per page, in the order a new user meets them — 2026-09-27; partly amended by I-316; L7622
 - **I-298** The Vercel CLI's login stays on the laptop — 2026-09-27; L7642
 - **I-330** A signed-in visitor can read the landing page — 2026-09-28; L7682
 - **I-331** Sign-out leaves the page alone until the browser goes, and no page paints before its stylesheet — 2026-09-28; L7696
@@ -389,3 +389,10 @@ pointer, not a summary.
 - **I-325** hostd refuses an apply whose record says "not running" while the hypervisor runs — 2026-09-28; L7916
 - **I-326** Config builds: two derivations at a time, and two reads in parallel — L7937
 - **I-327** The "Config" docs page is "Installing software" — L7956
+- **I-310** `repose browser [PROJECT]` is the machine's own browser, on its desktop; `repose browser bridge` stays the laptop's Chrome; `repose open --desktop` stays as the same command — 2026-09-28; L7964
+- **I-311** The bridge enforces what the agents may do in the laptop's Chrome itself, at the CDP layer: always-on refusals, and `--allow HOST` enforced by a CDP connection of the bridge's own — 2026-09-28; L7984
+- **I-312** The bridge needs a running machine and does not start one; there is no detached bridge — 2026-09-28; L8068
+- **I-313** Closing a bridge is one ssh, bounded at 4 s, and never waits for a tmux client — 2026-09-28; L8080
+- **I-314** The bridge prints a navigation log on the user's own terminal: time, host and path, `blocked` or not, never a query or fragment, and nothing is stored — 2026-09-28; L8096
+- **I-315** `--bridge-allow HOST` on `run` and `attach` is the allowlist for `--bridge`, and implies it — 2026-09-28; L8112
+- **I-316** The user's Chrome has one page, "Lend the agents your Chrome" (`/docs/your-chrome`), under Using repose; the tutorial page it replaces is removed — 2026-09-28; L8123

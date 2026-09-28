@@ -49,6 +49,8 @@ type sessionOptions struct {
 	// Bridge keeps the laptop's Chrome bridged to the guest for as long as
 	// the attach lasts (`--bridge`, I-296).
 	Bridge bool `json:"bridge,omitempty"`
+	// BridgeAllow is `--bridge-allow`: the bridge's allowlist (I-311).
+	BridgeAllow []string `json:"bridge_allow,omitempty"`
 }
 
 // startSessionHelper starts the helper for the attach that follows, and
@@ -130,7 +132,7 @@ func runSession(ctx context.Context, opts sessionOptions, alive func() bool) err
 	go func() {
 		defer close(bridged)
 		if opts.Bridge {
-			runSessionBridge(ctx, t, opts.Slug, say, alive)
+			runSessionBridge(ctx, t, opts.Slug, opts.BridgeAllow, say, alive)
 		}
 	}()
 	if opts.Forward {

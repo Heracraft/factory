@@ -28,21 +28,22 @@ Create or start this checkout's machine, sync, and attach. With a prompt, start 
 
 On your laptop, `run` changes one thing in the checkout: it adds a git remote named `repose` for the machine's checkout, so `git fetch repose` brings the agent's commits back. See [Getting work back](/docs/sync#getting-work-back).
 
-| Flag                      |                                                                                                                       |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `--agent NAME`            | `claude`, `codex`, `opencode`, `gemini` or `pi`.                                                                      |
-| `--no-attach`             | Don't attach afterwards.                                                                                              |
-| `--worktree`              | Start the agent in its own git worktree. Needs a prompt.                                                              |
-| `--no-sync`               | Skip the git sync and the copied logins.                                                                              |
-| `--stash-remote`          | Stash the machine's uncommitted changes before syncing.                                                               |
-| `--discard-remote`        | Discard the machine's uncommitted changes before syncing.                                                             |
-| `--size small\|large\|xl` | Size of a new project.                                                                                                |
-| `--name NAME`             | Project name, for a directory with no remote or a second project.                                                     |
-| `--bridge`                | Also bridge your Chrome to the machine while attached, see [`repose browser bridge`](#repose-browser-bridge-project). |
+| Flag                      |                                                                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `--agent NAME`            | `claude`, `codex`, `opencode`, `gemini` or `pi`.                                                                               |
+| `--no-attach`             | Don't attach afterwards.                                                                                                       |
+| `--worktree`              | Start the agent in its own git worktree. Needs a prompt.                                                                       |
+| `--no-sync`               | Skip the git sync and the copied logins.                                                                                       |
+| `--stash-remote`          | Stash the machine's uncommitted changes before syncing.                                                                        |
+| `--discard-remote`        | Discard the machine's uncommitted changes before syncing.                                                                      |
+| `--size small\|large\|xl` | Size of a new project.                                                                                                         |
+| `--name NAME`             | Project name, for a directory with no remote or a second project.                                                              |
+| `--bridge`                | Also bridge your Chrome to the machine while attached, see [`repose browser bridge`](#repose-browser-bridge-project).          |
+| `--bridge-allow HOST`     | Bridge, and let the agents use only this site in your Chrome. Repeatable; `*.example.com` is `example.com` and its subdomains. |
 
 ### `repose attach [PROJECT]`
 
-Attach to the project's tmux session without syncing. In the project's checkout, it adds the `repose` git remote too if it's missing. `--bridge` also bridges your Chrome to the machine for as long as you're attached, see [`repose browser bridge`](#repose-browser-bridge-project).
+Attach to the project's tmux session without syncing. In the project's checkout, it adds the `repose` git remote too if it's missing. `--bridge` also bridges your Chrome to the machine for as long as you're attached, and `--bridge-allow HOST` does that with an allowlist, see [`repose browser bridge`](#repose-browser-bridge-project).
 
 `run` and `attach` print one line when another of your projects is running idle, once per idle stretch. An `attach` that reuses an open connection makes no api call and skips it.
 
@@ -107,33 +108,53 @@ Other editors: see [SSH and editors](/docs/ssh-and-editors).
 
 Forward one port to your laptop and open it in the browser, until `Ctrl-C`. Works for servers on `127.0.0.1`, `0.0.0.0` or `::1`.
 
-| Flag               |                                                                                |
-| ------------------ | ------------------------------------------------------------------------------ |
-| `--local-port N`   | Port on the laptop. Default: the same, or a free one if it's taken.            |
-| `--no-browser`     | Print the URL only.                                                            |
-| `--desktop`        | Start the machine's desktop and forward it to laptop port 6080, or a free one. |
-| `--desktop --stop` | Stop the desktop.                                                              |
+| Flag               |                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------- |
+| `--local-port N`   | Port on the laptop. Default: the same, or a free one if it's taken.             |
+| `--no-browser`     | Print the URL only.                                                             |
+| `--desktop`        | The machine's desktop: the same as [`repose browser`](#repose-browser-project). |
+| `--desktop --stop` | Stop the desktop: the same as `repose browser --stop`.                          |
+
+### `repose browser [PROJECT]`
+
+Open the machine's desktop in your browser, showing the browser the agents use, until `Ctrl-C`. Watch it work, or click and type in it: a login, a captcha, a passkey. It's forwarded to laptop port 6080, or a free port if that's taken, and prints the VNC password the page asks for. `repose open --desktop` is the same command. See [Browser](/docs/machine#browser).
+
+```
+$ repose browser
+http://localhost:6080/vnc.html?autoconnect=1 (Ctrl-C stops the forward; the desktop keeps running)
+VNC password: 5m2k8Q1p
+```
+
+| Flag           |                                                             |
+| -------------- | ----------------------------------------------------------- |
+| `--no-browser` | Print the URL only.                                         |
+| `--stop`       | Stop the desktop. It also stops after 30 minutes unwatched. |
+
+A project named `bridge` is `repose browser --project bridge`.
 
 ### `repose browser bridge [PROJECT]`
 
-Let the agents on the machine browse in your laptop's Chrome, with your logins and extensions, until `Ctrl-C`. The machine's browser tools (`playwright` and `chrome-devtools`) reach your Chrome through the SSH connection; nothing on the machine changes, and the next call an agent makes lands in your Chrome. See [Use your own Chrome](/docs/machine#use-your-own-chrome).
+Let the agents on the machine browse in your laptop's Chrome, with your logins and extensions, until `Ctrl-C`. The machine's browser tools (`playwright` and `chrome-devtools`) reach your Chrome through the SSH connection; nothing on the machine changes, and the next call an agent makes lands in your Chrome. Each page they load is listed in the terminal, by site and path. See [Lend the agents your Chrome](/docs/your-chrome).
 
 ```
 $ repose browser bridge
 Chrome 144 → todo-app: the agents there browse in your Chrome now, with your logins. Ctrl-C hands them back the machine's browser.
 Chrome asks you to allow each new connection.
+Pages the agents open are listed below (host and path only).
 An agent on todo-app is in your Chrome.
+14:03:21  admin.internal.example/signups
 ```
 
-Needs Chrome 144 or newer with remote debugging turned on at `chrome://inspect/#remote-debugging`. When it's off, the command opens that page and waits up to 5 minutes for you to turn it on.
+Needs the machine running (it doesn't start it) and Chrome 144 or newer with remote debugging turned on at `chrome://inspect/#remote-debugging`. When it's off, the command opens that page and waits up to 5 minutes for you to turn it on.
 
-| Flag                  |                                                                                                                               |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `--cdp URL`           | Bridge a browser started with a remote debugging port instead (`http://127.0.0.1:9222`): any Chromium, no switch, no dialogs. |
-| `--user-data-dir DIR` | The profile directory of a Chrome that isn't Google Chrome's default one (Chromium, Brave, Edge, a second profile).           |
-| `--no-browser`        | Don't open `chrome://inspect` when remote debugging is off; print what to do and wait.                                        |
+| Flag                  |                                                                                                                                                                               |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--allow HOST`        | Let the agents use only this site: other tabs are hidden from them and other sites fail. Repeatable, or comma-separated; `*.example.com` is `example.com` and its subdomains. |
+| `--cdp URL`           | Bridge a browser started with a remote debugging port instead (`http://127.0.0.1:9222`): any Chromium, no switch, no dialogs.                                                 |
+| `--user-data-dir DIR` | The profile directory of a Chrome that isn't Google Chrome's default one (Chromium, Brave, Edge, a second profile).                                                           |
+| `--no-browser`        | Don't open `chrome://inspect` when remote debugging is off; print what to do and wait.                                                                                        |
 
-Only one bridge to a machine at a time. A laptop that goes to sleep keeps its bridge for up to two minutes; a new bridge takes over from it.
+Only one bridge to a machine at a time. A laptop that goes to sleep keeps its bridge for up to two minutes; a new bridge takes over from it. With `--allow`, the bridge also closes if its own connection to Chrome ends.
 
 ### `repose cp [-r] SRC DST`
 

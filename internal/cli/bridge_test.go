@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -136,113 +135,6 @@ func TestDevToolsVersionAndChromeAtSwitch(t *testing.T) {
 	}
 }
 
-// fakeDevTools is a DevTools server as the front sees it: it answers
-// every request with 101 and echoes the request line, and records what
-// it was sent.
-func fakeDevTools(t *testing.T) (addr string, got chan string) {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = l.Close() })
-	got = make(chan string, 8)
-	go func() {
-		for {
-			c, err := l.Accept()
-			if err != nil {
-				return
-			}
-			go func() {
-				defer func() { _ = c.Close() }()
-				br := bufio.NewReader(c)
-				head, target, host, err := readRequestHead(br)
-				if err != nil {
-					return
-				}
-				got <- string(head)
-				_, _ = fmt.Fprintf(c, "HTTP/1.1 101 Switching Protocols\r\n\r\nECHO %s %s\n", target, host)
-				line, _ := br.ReadString('\n')
-				_, _ = fmt.Fprintf(c, "BACK %s", line)
-			}()
-		}
-	}()
-	return l.Addr().String(), got
-}
-
-func TestCDPFrontAnswersVersionAndPassesTheRestThrough(t *testing.T) {
-	addr, got := fakeDevTools(t)
-	attached := make(chan struct{}, 4)
-	front, err := startCDPFront(laptopChrome{Addr: addr, Path: "/devtools/browser/abc", Switch: true}, func() { attached <- struct{}{} })
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer front.Close()
-	frontAddr := net.JoinHostPort("127.0.0.1", strconv.Itoa(front.Port()))
-
-	// Discovery, as the guest's MCP servers do it, through the tunnel:
-	// the Host is the guest's endpoint, and the websocket URL leads back
-	// through it.
-	for _, target := range []string{"/json/version", "/json/version/"} {
-		c, err := net.Dial("tcp", frontAddr)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, _ = fmt.Fprintf(c, "GET %s HTTP/1.1\r\nHost: 127.0.0.1:9224\r\nAccept: */*\r\n\r\n", target)
-		res, err := http.ReadResponse(bufio.NewReader(c), nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		body, _ := io.ReadAll(res.Body)
-		_ = c.Close()
-		var v map[string]string
-		if err := json.Unmarshal(body, &v); err != nil || res.StatusCode != 200 {
-			t.Fatalf("%s: %d %s %v", target, res.StatusCode, body, err)
-		}
-		if v["webSocketDebuggerUrl"] != "ws://127.0.0.1:9224/devtools/browser/abc" || v["Browser"] != "Chrome" {
-			t.Errorf("%s: %v", target, v)
-		}
-	}
-	select {
-	case <-attached:
-		t.Error("/json/version counted as an attach")
-	default:
-	}
-
-	// The websocket upgrade goes through byte for byte, both ways.
-	c, err := net.Dial("tcp", frontAddr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = c.Close() }()
-	head := "GET /devtools/browser/abc HTTP/1.1\r\nHost: 127.0.0.1:9224\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"
-	_, _ = io.WriteString(c, head)
-	select {
-	case sent := <-got:
-		if sent != head {
-			t.Errorf("upstream got %q", sent)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("nothing reached the fake DevTools server")
-	}
-	br := bufio.NewReader(c)
-	for _, want := range []string{"HTTP/1.1 101 Switching Protocols\r\n", "\r\n", "ECHO /devtools/browser/abc 127.0.0.1:9224\n"} {
-		line, err := br.ReadString('\n')
-		if err != nil || line != want {
-			t.Fatalf("got %q %v, want %q", line, err, want)
-		}
-	}
-	_, _ = io.WriteString(c, "frame\n")
-	if line, _ := br.ReadString('\n'); line != "BACK frame\n" {
-		t.Errorf("got %q", line)
-	}
-	select {
-	case <-attached:
-	case <-time.After(5 * time.Second):
-		t.Error("the upgrade did not count as an attach")
-	}
-}
-
 func TestBridgeSSHArgs(t *testing.T) {
 	args := bridgeSSHArgs(sshTarget{Args: []string{"todo-app.repose"}}, 51234)
 	s := strings.Join(args, " ")
@@ -314,7 +206,7 @@ func TestBridgeEndToEnd(t *testing.T) {
 	}
 	target, log := bridgeGuest(t)
 	addr, got := fakeDevTools(t)
-	front, err := startCDPFront(laptopChrome{Addr: addr, Path: "/devtools/browser/e2e", Browser: "Chrome/144.0.1"}, nil)
+	front, err := startCDPFront(laptopChrome{Addr: addr, Path: "/devtools/browser/e2e", Browser: "Chrome/144.0.1"}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,7 +269,7 @@ func TestBridgeEndToEnd(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the hold did not end with the context")
 	}
-	bridgeStop(target)
+	bridgeStop(target, "todo-app", "")
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		l := readLog(t, log)

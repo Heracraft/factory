@@ -17,15 +17,17 @@ $ repose run "log into the staging site and screenshot the dashboard"
 Watching or taking over:
 
 ```
-$ repose open --desktop
+$ repose browser
 http://localhost:6080/vnc.html?autoconnect=1 (Ctrl-C stops the forward; the desktop keeps running)
 VNC password: 5m2k8Q1p
 
-$ repose open --desktop --stop
+$ repose browser --stop
 Stopped the desktop on todo-app.
 ```
 
 The desktop also stops itself after 30 minutes with no client.
+`repose open --desktop [--stop]` is the same command under its older name
+(I-310).
 
 Lending the agents the laptop's Chrome:
 
@@ -33,13 +35,18 @@ Lending the agents the laptop's Chrome:
 $ repose browser bridge
 Chrome 144 → todo-app: the agents there browse in your Chrome now, with your logins. Ctrl-C hands them back the machine's browser.
 Chrome asks you to allow each new connection.
+Pages the agents open are listed below (host and path only).
 An agent on todo-app is in your Chrome.
+14:03:21  admin.internal.example/signups
 ^C
 Bridge closed. The agents on todo-app are back on the machine's browser.
 ```
 
 `repose run --bridge` and `repose attach --bridge` keep the same bridge
-up beside the attach, reporting through tmux messages.
+up beside the attach, reporting through tmux messages. `--allow HOST`
+(`--bridge-allow HOST` on run and attach) keeps the agents to those sites
+(I-311). The bridge needs a running machine and never starts one (I-312).
+User docs: `apps/web/src/content/docs/your-chrome.md`.
 
 ## What is in the guest
 
@@ -75,7 +82,7 @@ up beside the attach, reporting through tmux messages.
   that.
 - Claude Code in a fresh guest lists `playwright` and `chrome-devtools` in
   `claude mcp list`.
-- `repose open --desktop` starts x11vnc bound to localhost and noVNC on
+- `repose browser` (and `repose open --desktop`) starts x11vnc bound to localhost and noVNC on
   6080, and with them the agents' browser if it is not running, then
   forwards 6080 over SSH (to laptop port 6080, or a free port with a
   message when 6080 is taken, I-261) and prints the URL. The user sees the page the
@@ -89,7 +96,7 @@ up beside the attach, reporting through tmux messages.
   or the user starts appears on the desktop too. Playwright, Puppeteer and
   Cypress default to headless whatever `DISPLAY` says, so a project's test
   suite stays headless unless its config asks otherwise (I-246).
-- `repose open --desktop --stop` stops the viewer. The agents' browser
+- `repose browser --stop` stops the viewer. The agents' browser
   keeps running for the agent; with it gone, Xvfb stops and `DISPLAY` is
   no longer exported.
 - The viewer stops after 30 minutes with no client. The agents' browser
@@ -141,9 +148,14 @@ command runs. Three parts, none of which the agent sees:
    the address the request came to (the guest's `127.0.0.1:9224`),
    because that is how Playwright MCP (`--cdp-endpoint`) and
    chrome-devtools-mcp (`--browserUrl`) discover the websocket and
-   Chrome's own server does not answer it; every other request goes to
-   Chrome byte for byte, the websocket upgrade included. It counts the
-   upgrades: each is an MCP server attaching, and the CLI says so.
+   Chrome's own server does not answer it. The browser's websocket goes
+   to Chrome message by message through the bridge's policy (I-311:
+   refusals, hidden targets, no cookies, the navigation log); every
+   other request, the other `/json` endpoints and per-page websockets
+   included, is 404. It counts the upgrades: each is an MCP server
+   attaching, and the CLI says so. With `--allow`, a second CDP
+   connection of the CLI's own (the warden) intercepts document requests
+   in the agents' tabs and fails those off the list.
 3. **The tunnel**: `ssh -o ExitOnForwardFailure=yes -R
    127.0.0.1:9226:127.0.0.1:<front> <slug>.repose repose-guest-profile
    browser bridge hold`, on its own connection (not the ControlMaster,
@@ -158,7 +170,9 @@ command runs. Three parts, none of which the agent sees:
    call reconnects through 9224 to whichever browser is there now (I-246's
    reconnect). The CLI runs `bridge release` first (kills the sshd session
    holding 9226 from an earlier bridge, so a new bridge takes over from a
-   sleeping laptop's) and `bridge stop` after, belt and braces.
+   sleeping laptop's) and `bridge stop` after, belt and braces, in one
+   ssh bounded at 4 s that also shows the closing tmux line only if a
+   client is attached (I-313).
 
 The guest side is `repose-browser-bridge on|off|status|tunnel|release`
 (browser.nix), and `repose-guest-profile browser bridge
@@ -171,7 +185,9 @@ What it is not: the guest's browser profile is untouched, nothing from the
 laptop's Chrome is stored on the guest or the api, and the tunnel is
 loopback to loopback at both ends. What the user lends: while the bridge
 is up, any process on the guest can drive that Chrome; Chrome's own
-per-connection dialog is the check on that, and the docs say so.
+per-connection dialog is the check on that, `--allow` narrows it to the
+sites named, and the docs say both. What never passes, and the gaps
+`--allow` leaves, are in I-311 and the user page.
 
 Behaviour that must hold (guest-desktop VM test, `TestBridgeEndToEnd`):
 
@@ -187,6 +203,12 @@ Behaviour that must hold (guest-desktop VM test, `TestBridgeEndToEnd`):
   its upgrade reach the laptop's server; ending the command ends the hold
   and the listener. A held port is reported as another bridge, not as an
   ssh warning.
+- With `--allow`, against a real Chromium (`TestBridgeAgainstChromium`,
+  `TestBridgeWithPlaywright`, `TestBridgeWithChromeDevtoolsMCP`, run when
+  `BRIDGE_TEST_CHROMIUM` and friends are set): no document off the list
+  loads in the agents' tab, whether by navigate, script, redirect, popup,
+  form or frame; the user's tab stays hidden and free; both MCP servers
+  work through the front.
 
 ## Depends on
 
