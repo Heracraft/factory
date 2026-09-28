@@ -28,12 +28,12 @@ repose run --worktree --agent codex "write the audit_log migration"
 Each command prints where the agent works:
 
 ```text
-Worktree: ~/todo-app-claude on branch repose/claude
-Worktree: ~/todo-app-claude-2 on branch repose/claude-2
-Worktree: ~/todo-app-codex on branch repose/codex
+Worktree: ~/todo-app-worktree-1 on branch worktree-1
+Worktree: ~/todo-app-worktree-2 on branch worktree-2
+Worktree: ~/todo-app-worktree-3 on branch worktree-3
 ```
 
-Three agents, three directories, three branches, no shared files. The names follow the tmux windows: the first Claude gets `claude`, the next `claude-2`, and a name whose worktree or branch already exists is skipped. Detach and let them run. `repose ps` shows who's still busy:
+Three agents, three directories, three branches, no shared files. Worktrees are numbered from 1, skipping any number whose folder or branch is still there. The tmux windows keep the agents' names (`claude`, `claude-2`, `codex`), in the same order as the worktrees here. Detach and let them run. `repose ps` shows who's still busy:
 
 ```
 $ repose ps
@@ -50,23 +50,23 @@ You get a [notification](/docs/notifications) as each one finishes or asks a que
 
 ```
 $ git fetch repose
- * [new branch]  repose/claude   -> repose/repose/claude
- * [new branch]  repose/claude-2 -> repose/repose/claude-2
- * [new branch]  repose/codex    -> repose/repose/codex
+ * [new branch]  worktree-1  -> repose/worktree-1
+ * [new branch]  worktree-2  -> repose/worktree-2
+ * [new branch]  worktree-3  -> repose/worktree-3
 ```
 
 Review each branch the way you'd review a colleague's:
 
 ```
-git log --oneline main..repose/repose/claude
-git diff main...repose/repose/claude
-git diff main...repose/repose/claude -- test/
+git log --oneline main..repose/worktree-1
+git diff main...repose/worktree-1
+git diff main...repose/worktree-1 -- test/
 ```
 
 Run the tests on the machine without attaching, with the dev shell and secrets the agent had:
 
 ```
-repose exec -- sh -c 'cd ~/todo-app-claude && npm test'
+repose exec -- sh -c 'cd ~/todo-app-worktree-1 && npm test'
 ```
 
 Or open the worktree in your editor over SSH with `repose code` and read it there.
@@ -74,8 +74,8 @@ Or open the worktree in your editor over SSH with `repose code` and read it ther
 ## 4. Merge what's good
 
 ```
-git merge repose/repose/claude
-git merge repose/repose/codex
+git merge repose/worktree-1
+git merge repose/worktree-3
 ```
 
 A branch that isn't good enough gets a second round: `repose attach`, switch to that agent's window, and tell it what to change. It commits on the same branch; you fetch again. Or ask for a pull request instead and review on GitHub: the machine has your `gh` login, so "push the branch and open a PR" works in a prompt.
@@ -95,11 +95,11 @@ The machine's `main` catches up. The worktrees still have their branches, based 
 On the machine, or through `repose exec`:
 
 ```
-repose exec -- git worktree remove ~/todo-app-claude
-repose exec -- git branch -D repose/claude
+repose exec -- git worktree remove ~/todo-app-worktree-1
+repose exec -- git branch -D worktree-1
 ```
 
-On your laptop, `git branch -rd repose/repose/claude` drops the fetched copy. Worktrees you leave in place cost only disk.
+On your laptop, `git branch -rd repose/worktree-1` drops the fetched copy. Worktrees you leave in place cost only disk.
 
 ## The rules that make this work
 

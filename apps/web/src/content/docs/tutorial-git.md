@@ -109,15 +109,15 @@ The lesson for prompts: ask agents to commit. A committed change is never in the
 
 ```
 $ repose run --worktree "try the other approach to the parser"
-Worktree: ~/hello-claude-2 on branch repose/claude-2
+Worktree: ~/hello-worktree-1 on branch worktree-1
 ```
 
-Two agents in two worktrees never edit each other's files. On your laptop the branch arrives as `repose/repose/claude-2`:
+Two agents in two worktrees never edit each other's files. On your laptop the branch arrives as `repose/worktree-1`:
 
 ```
 git fetch repose
-git log --oneline main..repose/repose/claude-2
-git merge repose/repose/claude-2
+git log --oneline main..repose/worktree-1
+git merge repose/worktree-1
 ```
 
 [A git workflow for several agents](/docs/tutorial-git-workflow) builds on this.

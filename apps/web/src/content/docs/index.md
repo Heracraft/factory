@@ -59,13 +59,13 @@ The CLI starts Claude Code in a new tmux window on the machine, types your promp
 
 ## 6. Show it a screenshot
 
-With a screenshot on your laptop's clipboard, press `Ctrl+V` in the agent's window. Or drag a file onto the terminal. The file is copied to the machine and its path lands in the prompt, where Claude Code shows it as an image:
+With a screenshot on your laptop's clipboard, press `Cmd+V` or `Ctrl+V` in the agent's window. Or drag a file onto the terminal. The file is copied to the machine and its path lands in the prompt, where Claude Code shows it as an image:
 
 ```text
 ❯ [Image #1] the button overlaps the footer on this screen
 ```
 
-On macOS, press `Ctrl+V`, not `Cmd+V`. [Drop a file or paste an image](/docs/run-and-attach#drop-a-file-or-paste-an-image) has the limits.
+[Drop a file or paste an image](/docs/run-and-attach#drop-a-file-or-paste-an-image) has the limits.
 
 ## 7. Get a notification when it's done
 

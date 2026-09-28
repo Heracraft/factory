@@ -283,6 +283,9 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			name, dir = wt.Window, wt.Dir
 			pr.End()
 			_, _ = fmt.Fprintf(e.Out, "Worktree: %s on branch %s\n", wt.Dir, wt.Branch)
+			if wt.Env > 0 {
+				_, _ = fmt.Fprintf(e.Out, "Copied %d .env %s from ~/%s\n", wt.Env, plural(wt.Env, "file", "files"), project.Slug)
+			}
 			if wt.Dirty {
 				_, _ = fmt.Fprintf(e.ErrOut, "The worktree starts at the last commit; the uncommitted changes in ~/%s are not in it.\n", project.Slug)
 			}

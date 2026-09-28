@@ -69,7 +69,7 @@ For more detail on any command, add `-v`. `REPOSE_TIMING=1` shows where the time
 
 **An image you dropped or pasted didn't attach.** See [Drop a file or paste an image](/docs/run-and-attach#drop-a-file-or-paste-an-image).
 
-- Nothing happened on a Mac: with only an image on the clipboard, Cmd+V sends the terminal nothing. Press Ctrl+V.
+- Cmd+V did nothing on a Mac: you started with `REPOSE_CLIPBOARD_PATH=0`, or a CLI older than v0.1.22, and a terminal sends nothing for Cmd+V when the clipboard holds only an image. Press Ctrl+V, which reads the clipboard itself.
 - Your laptop's path appeared, not the machine's: the file was over 20 MB, you dropped more than 20 files, or the copy failed, and the tmux status line said which. `REPOSE_INPUT_PROXY=0` and Windows paste the laptop's path too.
 - Ctrl+V did nothing on Linux: the status line names the tool to install, `wl-clipboard` or `xclip`. When `repose` itself runs on a computer you reached over SSH, it has no clipboard to read.
 - The machine's path appeared as text: Claude Code attaches images only; for another file it gets the path, which it can open.

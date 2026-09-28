@@ -35,19 +35,24 @@ If the agent exits before you're attached, its window closes with it. `run` then
 
 ```
 $ repose run --worktree "try the other approach"
-Worktree: ~/todo-app-claude-2 on branch repose/claude-2
+Worktree: ~/todo-app-worktree-1 on branch worktree-1
+Copied 1 .env file from ~/todo-app
 ```
 
-The worktree is a folder next to your checkout on the machine, on a new branch from the checkout's last commit. Uncommitted changes in the checkout aren't in it. `repose run` never syncs it, and what the agent does there doesn't count as changes on the machine. Commit on the branch and merge or push it like any other. On your laptop, `git fetch repose` brings it as `repose/repose/claude-2` ([Getting work back](/docs/sync#getting-work-back)).
+The worktree is a folder next to your checkout on the machine, numbered from 1: `~/todo-app-worktree-1`, then `~/todo-app-worktree-2`. Its branch has the same name, `worktree-1`, and starts at the checkout's last commit. Uncommitted changes in the checkout aren't in it. The agent's window is named like any other, `claude` or `claude-2`; the `Worktree:` line says which folder it works in.
 
-Each `--worktree` run makes a new one. They stay until you remove them, from the checkout on the machine:
+In the worktree the agent has the whole repository at that commit, plus the checkout's gitignored `.env` and `.env.*` files as they are on the machine. `repose run` never syncs a worktree, and what the agent does there doesn't count as changes on the machine. Commit on the branch and merge or push it like any other. On your laptop, `git fetch repose` brings it as `repose/worktree-1` ([Getting work back](/docs/sync#getting-work-back)).
+
+Each `--worktree` run makes a new one with the lowest free number. They stay until you remove them, from the checkout on the machine:
 
 ```
-git worktree remove ~/todo-app-claude-2
-git branch -D repose/claude-2
+git worktree remove ~/todo-app-worktree-1
+git branch -D worktree-1
 ```
 
-The machine's checkout needs at least one commit; otherwise `--worktree` is refused with exit code 2. Dependencies aren't shared, so the agent installs them again in the worktree, and gitignored files such as `.env` aren't copied.
+The machine's checkout needs at least one commit; otherwise `--worktree` is refused with exit code 2. Dependencies aren't shared, so the agent installs them again in the worktree. Other gitignored files, such as build output and local databases, aren't copied.
+
+Worktrees made before CLI v0.1.22 keep their old names, `~/todo-app-claude-2` on branch `repose/claude-2`, which your laptop fetches as `repose/repose/claude-2`.
 
 ## Detach and come back
 
@@ -110,7 +115,7 @@ Like `attach`, these start no machine: a stopped one gets you exit code 5 and th
 
 ## Drop a file or paste an image
 
-While you're attached, drag a file onto the terminal, or press `Ctrl+V` with a screenshot on your laptop's clipboard. The file is copied to `/tmp/repose-paste/` on the machine and its path there is pasted where your cursor is:
+While you're attached, drag a file onto the terminal, or press `Cmd+V` or `Ctrl+V` with a screenshot on your laptop's clipboard. The file is copied to `/tmp/repose-paste/` on the machine and its path there is pasted where your cursor is:
 
 ```text
 ❯ [Image #1] the button overlaps the footer on this screen
@@ -126,7 +131,9 @@ Claude Code shows an image as `[Image #1]`; add your words and press Enter. Othe
 
 Any terminal that types a dropped file's path works: plain, quoted, with backslashes before spaces, or as a `file://` address.
 
-On macOS, press Ctrl+V, not Cmd+V: with only an image on the clipboard, Cmd+V sends the terminal nothing. Ctrl+V reads the clipboard with `pngpaste` if you have it, otherwise `osascript`. On Linux it uses `wl-paste` (from wl-clipboard) under Wayland and `xclip` under X11. With no image on the clipboard, Ctrl+V is an ordinary Ctrl+V, so vim and the shell behave as usual. With one, Ctrl+V pastes the image in every window.
+On macOS, Cmd+V and Ctrl+V both paste the image. A terminal sends nothing for Cmd+V when the clipboard holds only an image, so while you're attached repose adds a text version to such a clipboard: the path of a PNG copy in `~/Library/Caches/repose/clipboard/`. Cmd+V pastes that path, and it's copied to the machine like a dropped file. The image stays on the clipboard as well, so apps that take images still get it; a plain text field gets the path. When you detach, the text is taken off again unless you've copied something since. The last 20 copies are kept for a day. `REPOSE_CLIPBOARD_PATH=0` leaves your clipboard alone, and then only Ctrl+V pastes an image.
+
+Ctrl+V reads the clipboard with `pngpaste` if you have it, otherwise `osascript`. On Linux it uses `wl-paste` (from wl-clipboard) under Wayland and `xclip` under X11. With no image on the clipboard, Ctrl+V is an ordinary Ctrl+V, so vim and the shell behave as usual. With one, Ctrl+V pastes the image in every window.
 
 `REPOSE_INPUT_PROXY=0` turns this off: `run` and `attach` then hand your terminal straight to `ssh`, and a drop pastes your laptop's path. On Windows it's always off; copy the file with `repose cp FILE :/tmp/` and type its path.
 

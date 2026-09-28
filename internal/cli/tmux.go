@@ -216,42 +216,65 @@ func shQuote(s string) string {
 }
 
 // agentWorktree is where a `repose run --worktree` agent works (DECISIONS
-// I-253): a git worktree of the guest's checkout beside it, outside the
-// synced tree, on its own branch.
+// I-253, I-342): a git worktree of the guest's checkout beside it, outside
+// the synced tree, on its own branch.
 type agentWorktree struct {
 	Window string // tmux window name, "<agent>" or "<agent>-N"
-	Dir    string // "~/<slug>-<window>", as the guest's shell spells it
-	Branch string // "repose/<window>"
+	N      int    // the worktree's number, 1 and up
+	Dir    string // "~/<slug>-worktree-<N>", as the guest's shell spells it
+	Branch string // "worktree-<N>"
 	Base   string // the checkout's HEAD the branch starts from
 	Dirty  bool   // the checkout had uncommitted changes, which the worktree lacks
+	Env    int    // .env files copied from the checkout (I-343)
 }
 
 // worktreeDir and worktreeBranch are the only places the worktree layout
-// is spelled (DECISIONS I-253, interfaces/guest-conventions.md).
-func worktreeDir(slug, window string) string { return "~/" + slug + "-" + window }
-func worktreeBranch(window string) string    { return "repose/" + window }
+// is spelled (DECISIONS I-342, interfaces/guest-conventions.md). The
+// branch has no "repose/" of its own: the laptop's `git fetch repose`
+// already files it under repose/, as repose/worktree-<N>.
+func worktreeDir(slug string, n int) string { return fmt.Sprintf("~/%s-worktree-%d", slug, n) }
+func worktreeBranch(n int) string           { return fmt.Sprintf("worktree-%d", n) }
 
 // worktreeProbeScript reports, in one ssh, the session's windows, the
 // checkout's HEAD and whether it is dirty, and which worktree directories
-// and repose/ branches already exist, so the window name skips all three.
-func worktreeProbeScript(slug, agent string) string {
+// and worktree-N branches already exist, so the number skips both.
+func worktreeProbeScript(slug string) string {
 	return fmt.Sprintf(`set -e
 tmux list-windows -t %[1]s -F '#window #{window_name}'
 cd ~/%[1]s 2>/dev/null && [ -e .git ] || { echo '#nogit'; exit 0; }
 h=$(git rev-parse -q --verify HEAD) || { echo '#nohead'; exit 0; }
 echo "#head $h"
 [ -z "$(git status --porcelain 2>/dev/null)" ] || echo '#dirty'
-git for-each-ref --format='#branch %%(refname:strip=3)' refs/heads/repose/
-for p in ~/%[1]s-%[2]s ~/%[1]s-%[2]s-*; do [ -e "$p" ] && echo "#dir ${p##*/}"; done
-true`, slug, agent)
+git for-each-ref --format='#branch %%(refname:strip=2)' 'refs/heads/worktree-*'
+for p in ~/%[1]s-worktree-*; do [ -e "$p" ] && echo "#dir ${p##*/}"; done
+true`, slug)
 }
 
-// prepareWorktree picks the window name for a worktree run and creates the
-// worktree: `git worktree add -b repose/<window> ~/<slug>-<window> HEAD`.
-// It never reuses a worktree: a name whose window, directory or branch
-// exists is skipped, so each --worktree run starts fresh from HEAD.
+// worktreeAddScript makes the worktree and copies into it the checkout's
+// gitignored .env files (I-343), the ones a sync carries (I-197), which
+// `git worktree add` leaves behind. It prints "#env" once per file copied.
+// Ignored directories come out of ls-files collapsed (node_modules/), so
+// a dependency tree costs one line and is never looked into.
+func worktreeAddScript(slug string, wt *agentWorktree) string {
+	return fmt.Sprintf(`set -e
+cd ~/%[1]s
+git worktree add -q -b %[2]s %[3]s %[4]s
+w=%[3]s
+git ls-files -z --others --ignored --exclude-standard --directory | tr '\0' '\n' | while IFS= read -r f; do
+  case "${f##*/}" in .env|.env.*) ;; *) continue ;; esac
+  [ -f "$f" ] && [ ! -L "$f" ] && [ ! -e "$w/$f" ] || continue
+  mkdir -p "$w/$(dirname "$f")" && cp -p "$f" "$w/$f" && echo '#env'
+done
+true`, slug, shQuote(wt.Branch), wt.Dir, wt.Base)
+}
+
+// prepareWorktree picks the window name and the worktree number for a
+// worktree run and creates the worktree: `git worktree add -b worktree-<N>
+// ~/<slug>-worktree-<N> HEAD`, plus the checkout's .env files. It never
+// reuses a worktree: a number whose directory or branch exists is skipped,
+// so each --worktree run starts fresh from HEAD.
 func prepareWorktree(ctx context.Context, t sshTarget, slug, agent string) (*agentWorktree, error) {
-	out, err := runSSH(ctx, t, worktreeProbeScript(slug, agent), nil)
+	out, err := runSSH(ctx, t, worktreeProbeScript(slug), nil)
 	if err != nil {
 		return nil, stepFailed("list the guest's tmux windows", err, "")
 	}
@@ -272,20 +295,36 @@ func prepareWorktree(ctx context.Context, t sshTarget, slug, agent string) (*age
 			} else if h, ok := strings.CutPrefix(l, "#head "); ok {
 				wt.Base = h
 			} else if b, ok := strings.CutPrefix(l, "#branch "); ok {
-				taken["branch "+b] = true
+				taken[b] = true
 			} else if d, ok := strings.CutPrefix(l, "#dir "); ok {
-				taken["dir "+d] = true
+				if n, ok := strings.CutPrefix(d, slug+"-"); ok {
+					taken[n] = true
+				}
 			}
 		}
 	}
-	wt.Window, _ = pickWindow(agent, windows, func(n string) bool {
-		return taken["branch "+n] || taken["dir "+slug+"-"+n]
-	})
-	wt.Dir = worktreeDir(slug, wt.Window)
-	wt.Branch = worktreeBranch(wt.Window)
-	cmd := fmt.Sprintf("git -C ~/%s worktree add -q -b %s %s %s", slug, shQuote(wt.Branch), wt.Dir, wt.Base)
-	if _, err := runSSH(ctx, t, cmd, nil); err != nil {
+	wt.Window, _ = pickWindow(agent, windows, nil)
+	wt.N = nextWorktree(taken)
+	wt.Dir = worktreeDir(slug, wt.N)
+	wt.Branch = worktreeBranch(wt.N)
+	out, err = runSSH(ctx, t, worktreeAddScript(slug, wt), nil)
+	if err != nil {
 		return nil, stepFailed("create the worktree "+wt.Dir+" in the guest", err, "")
 	}
+	for _, l := range nonEmptyLines(string(out)) {
+		if l == "#env" {
+			wt.Env++
+		}
+	}
 	return wt, nil
+}
+
+// nextWorktree is the lowest N >= 1 whose worktree-<N> is not taken, as a
+// directory name or a branch.
+func nextWorktree(taken map[string]bool) int {
+	n := 1
+	for taken[worktreeBranch(n)] {
+		n++
+	}
+	return n
 }

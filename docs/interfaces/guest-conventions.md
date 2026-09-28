@@ -9,7 +9,7 @@ here exists in that module under exactly this name.
 | Path | What |
 |---|---|
 | `/home/dev/<slug>` | the project checkout; the tmux session's default directory. On a volume restored under another slug (a fork, a restore `--as-new`), a relative symlink to the checkout of the slug `/home/dev/.repose/project.json` named before, made by `SetupProject` when `/home/dev/<slug>` does not exist (DECISIONS I-255) |
-| `/home/dev/<slug>-<window>` | a git worktree of the checkout on branch `repose/<window>`, made by `repose run --worktree` (DECISIONS I-253); see "tmux" |
+| `/home/dev/<slug>-worktree-<N>` | a git worktree of the checkout on branch `worktree-<N>`, made by `repose run --worktree` (DECISIONS I-253, I-342); see "tmux". Worktrees made before I-342 are `/home/dev/<slug>-<window>` on `repose/<window>` and stay as they are |
 | `/home/dev/.repose/project.json` | `{project_id, slug, name, remote_url, user_handle, class, tz}` written by guestd at SetupProject |
 | `/etc/repose/env` | `TZ=` and `REPOSE_PROJECT=` lines written by guestd at SetupProject, sourced by every shell; the CLI replaces the `TZ=` line (through `sudo`, root 0644, by rename) on `run` and `attach` when the laptop's zone differs (I-198) |
 | `/etc/repose/base-version` | the platform base version string (same as `nixos-version`'s label) |
@@ -50,12 +50,16 @@ here exists in that module under exactly this name.
   `gemini`, `pi`. Further instances get the lowest free `claude-N`, N >= 2,
   with no upper limit (DECISIONS I-253); anything reading window names
   accepts any number of digits (guestd's `sample.AgentOf` always did).
-- `repose run --worktree "prompt"` (I-253) first runs `git -C
-  /home/dev/<slug> worktree add -b repose/<window> /home/dev/<slug>-<window>
-  <HEAD>` and opens the agent's window there (`-c
-  /home/dev/<slug>-<window>`). The window name skips any N whose window,
-  `/home/dev/<slug>-<window>` path or `repose/<window>` branch exists, so a
-  worktree is never reused. Worktrees live beside the checkout, never in
+- `repose run --worktree "prompt"` (I-253, I-342) first runs `git -C
+  /home/dev/<slug> worktree add -b worktree-<N> /home/dev/<slug>-worktree-<N>
+  <HEAD>`, copies the checkout's gitignored `.env` and `.env.*` files into
+  it (I-343), and opens the agent's window there (`-c
+  /home/dev/<slug>-worktree-<N>`). N is the lowest number, from 1, whose
+  `/home/dev/<slug>-worktree-<N>` path and `worktree-<N>` branch are both
+  free, so a worktree is never reused. The window is named as any other
+  (`<agent>` or `<agent>-N`), apart from the worktree's number. The branch
+  has no `repose/` prefix: the laptop's `git fetch repose` files it as
+  `repose/worktree-<N>`. Worktrees live beside the checkout, never in
   it, so the sync's status, stash, fingerprint and tar never see them;
   nothing removes them but the user (`git worktree remove`).
 - `repose attach` = `tmux attach -t <slug>`; `repose run "prompt"` =

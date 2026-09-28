@@ -408,3 +408,6 @@ pointer, not a summary.
 - **I-340** repose and the recruiting app (Job Alerts) share the Logto tenant at `accounts.herakraft.co`; everything a person sees there names the app they came from, and the setup lives in `ops/logto/` — 2026-09-28; L8590
 - **I-344** The docs sidebar is a drawer below `lg` that keeps its scroll and search, the docs are prerendered, and they stay in-house rather than on a docs framework — 2026-09-28; L8636
 - **I-345** Docs code blocks scroll instead of wrapping, and every block is written to fit 70 columns (62 on a first line, under the Copy button) — 2026-09-28; L8673
+- **I-341** On macOS, Cmd+V with an image on the clipboard pastes it: while attached, a watcher gives an image-only clipboard the path of a PNG copy, taken off again at detach; `REPOSE_CLIPBOARD_PATH=0` turns it off — 2026-09-28; L8701
+- **I-342** `--worktree` makes `~/<slug>-worktree-<N>` on branch `worktree-<N>` (the laptop sees `repose/worktree-<N>`), numbered apart from the window name; supersedes the naming of I-253 — 2026-09-28; L8743
+- **I-343** A `--worktree` gets the checkout's gitignored `.env` and `.env.*` files — 2026-09-28; L8768

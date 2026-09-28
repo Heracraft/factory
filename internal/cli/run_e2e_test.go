@@ -220,7 +220,7 @@ func TestRunWorktreeThenPlainRun(t *testing.T) {
 	if err := runRun(ctx, f.env, RunOptions{Name: testSlug, Agent: "claude", Prompt: "try it one way", NoAttach: true, Worktree: true}, false); err != nil {
 		t.Fatalf("runRun --worktree: %v", err)
 	}
-	if !strings.Contains(out.String(), "Worktree: ~/proj-claude on branch repose/claude\n") {
+	if !strings.Contains(out.String(), "Worktree: ~/proj-worktree-1 on branch worktree-1\n") {
 		t.Fatalf("stdout lacks the worktree line: %s", out.String())
 	}
 	if strings.Contains(errOut.String(), "share one working tree") {
@@ -230,8 +230,8 @@ func TestRunWorktreeThenPlainRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := filepath.EvalSymlinks(strings.TrimSpace(string(pwd))); got != mustEval(t, filepath.Join(f.guestHome, "proj-claude")) {
-		t.Fatalf("claude's pane is in %q, want ~/proj-claude", got)
+	if got, _ := filepath.EvalSymlinks(strings.TrimSpace(string(pwd))); got != mustEval(t, filepath.Join(f.guestHome, "proj-worktree-1")) {
+		t.Fatalf("claude's pane is in %q, want ~/proj-worktree-1", got)
 	}
 
 	errOut.Reset()

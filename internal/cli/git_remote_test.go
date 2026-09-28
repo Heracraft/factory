@@ -212,14 +212,14 @@ func TestFetchReposeBringsTheMachinesCommits(t *testing.T) {
 	mustRun(t, guest, "git", "commit", "-q", "-m", "agent: add agent.txt")
 	agentHead := mustRun(t, guest, "git", "rev-parse", "HEAD")
 
-	// A --worktree window's branch, next to the checkout (I-253).
-	wt := filepath.Join(f.guestHome, testSlug+"-claude-2")
-	mustRun(t, guest, "git", "worktree", "add", "-q", "-b", "repose/claude-2", wt, "HEAD")
+	// A --worktree branch, next to the checkout (I-253, I-342).
+	wt := filepath.Join(f.guestHome, testSlug+"-worktree-1")
+	mustRun(t, guest, "git", "worktree", "add", "-q", "-b", "worktree-1", wt, "HEAD")
 	if err := os.WriteFile(filepath.Join(wt, "other.txt"), []byte("the other approach\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	mustRun(t, wt, "git", "add", "other.txt")
-	mustRun(t, wt, "git", "commit", "-q", "-m", "claude-2: the other approach")
+	mustRun(t, wt, "git", "commit", "-q", "-m", "worktree-1: the other approach")
 	wtHead := mustRun(t, wt, "git", "rev-parse", "HEAD")
 
 	if _, err := ensureReposeRemote(f.local, testSlug); err != nil {
@@ -229,10 +229,10 @@ func TestFetchReposeBringsTheMachinesCommits(t *testing.T) {
 	if got := mustRun(t, f.local, "git", "rev-parse", "repose/main"); got != agentHead {
 		t.Fatalf("repose/main = %s, want the agent's %s", got, agentHead)
 	}
-	// The machine's branch repose/claude-2 is repose/repose/claude-2
+	// The machine's branch worktree-1 is repose/worktree-1
 	// here: the remote's name, then the branch's (git's default refspec).
-	if got := mustRun(t, f.local, "git", "rev-parse", "repose/repose/claude-2"); got != wtHead {
-		t.Fatalf("repose/repose/claude-2 = %s, want %s", got, wtHead)
+	if got := mustRun(t, f.local, "git", "rev-parse", "repose/worktree-1"); got != wtHead {
+		t.Fatalf("repose/worktree-1 = %s, want %s", got, wtHead)
 	}
 	if got := mustRun(t, f.local, "git", "log", "-1", "--format=%s", "repose/main"); got != "agent: add agent.txt" {
 		t.Fatalf("git log repose/main = %q", got)
@@ -245,7 +245,7 @@ func TestFetchReposeBringsTheMachinesCommits(t *testing.T) {
 	if b, err := os.ReadFile(filepath.Join(f.local, "agent.txt")); err != nil || string(b) != "from the agent\n" {
 		t.Fatalf("agent.txt after the merge = %q, %v", b, err)
 	}
-	mustRun(t, f.local, "git", "cherry-pick", "repose/repose/claude-2")
+	mustRun(t, f.local, "git", "cherry-pick", "repose/worktree-1")
 	if _, err := os.Stat(filepath.Join(f.local, "other.txt")); err != nil {
 		t.Fatalf("cherry-pick did not bring other.txt: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestFetchReposeBringsTheMachinesCommits(t *testing.T) {
 	if got := mustRun(t, f.local, "git", "remote"); got != "origin" {
 		t.Fatalf("remotes after forget = %q", got)
 	}
-	if got := mustRun(t, f.local, "git", "rev-parse", "repose/repose/claude-2"); got != wtHead {
+	if got := mustRun(t, f.local, "git", "rev-parse", "repose/worktree-1"); got != wtHead {
 		t.Fatalf("fetched branch lost with the remote: %s", got)
 	}
 }

@@ -98,7 +98,7 @@ If the agent committed on the branch and your laptop has new commits of its own,
 $ git fetch repose
 From todo-app.repose:~/todo-app
  * [new branch]      main            -> repose/main
- * [new branch]      repose/claude-2 -> repose/repose/claude-2
+ * [new branch]      worktree-1      -> repose/worktree-1
 $ git log --oneline main..repose/main
 16df520 Show errors under each field
 da9c3c3 Validate the email field
@@ -115,7 +115,7 @@ git pull repose main               # fetch and merge in one step
 
 Nothing goes through GitHub, and the agent doesn't need to push. Only commits travel: files the agent changed but didn't commit stay on the machine. Ask the agent to commit, or `repose attach` and commit yourself.
 
-A branch on the machine appears under `repose/` followed by its name there. The branch of a [`--worktree` agent](/docs/run-and-attach#several-agents-separate-trees), `repose/claude-2` on the machine, is `repose/repose/claude-2` on your laptop, and `git pull repose repose/claude-2` names it as the machine does.
+A branch on the machine appears under `repose/` followed by its name there. The branch of a [`--worktree` agent](/docs/run-and-attach#several-agents-separate-trees), `worktree-1` on the machine, is `repose/worktree-1` on your laptop, and `git pull repose worktree-1` names it as the machine does.
 
 The remote is for fetching. `git push repose` fails with `'this remote is fetch-only; repose run sends your work to the machine' does not appear to be a git repository`: the machine's checkout has a branch checked out, and pushing would move it under the agent. To send your work, run `repose run`. `git fetch --all` skips the remote, so it doesn't try a machine that's stopped.
 

@@ -41,6 +41,8 @@ func runInputProxy(args []string, h *dropHandler) (handled bool, err error) {
 		return false, nil
 	}
 	timingf("attach through the input proxy")
+	stopWatch := startClipboardWatch() // Cmd+V with an image on macOS (I-341)
+	defer stopWatch()
 	return true, proxySession(cmd, ptmx, os.Stdin, os.Stdout, h, restore)
 }
 

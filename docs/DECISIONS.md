@@ -8697,3 +8697,87 @@ font for code (below 13 px it is hard to read); widening the column
 (the reading measure of the prose would suffer); shortening the CLI's
 own messages to fit (a CLI change with its own spec in the design doc,
 not a docs fix).
+
+**I-341. On macOS, Cmd+V with an image on the clipboard pastes it, by a
+watcher that gives an image-only clipboard the path of a copy.** (paste,
+07, 2026-09-28; owner note on "press Ctrl+V, not Cmd+V": "this is a
+downgrade. can we fix it?") With only an image on the clipboard,
+Terminal, iTerm2, Ghostty, kitty and WezTerm send the terminal nothing
+for Cmd+V, so the input proxy (I-280) has no byte to act on. While the
+proxy runs on macOS, one `osascript -l JavaScript` process polls
+`NSPasteboard.changeCount` every 250 ms. When the clipboard has
+`public.png` or `public.tiff` and neither `public.utf8-plain-text` nor
+`public.file-url`, it writes a PNG copy to
+`~/Library/Caches/repose/clipboard/clipboard-<time>.png` (0700
+directory; TIFF converted) and writes the clipboard back with every type
+it had plus plain text, that path. Cmd+V then pastes the path as a
+bracketed paste, which the proxy already treats as a drop: the copy
+goes to `/tmp/repose-paste/` on the machine and its path there is typed
+in its place, so Claude Code shows `[Image #1]`. The image types stay,
+so an app that takes an image still gets one; a plain text field gets
+the path, which /docs says. The write-back is skipped when the change
+count moved while the copy was being made. At the end of the session the
+CLI kills the watcher and runs a second osascript (bounded at 2 s) that
+takes the text type off again, only when the change count and the text
+are still the watcher's; a clipboard copied since is left alone. The
+watcher prints a heartbeat line every 2 s, so when the CLI dies without
+stopping it, the write fails and osascript exits. Copies older than a
+day and all but the newest 20 are deleted when a watcher starts.
+`REPOSE_CLIPBOARD_PATH=0` turns the watcher off (Ctrl+V still works);
+`REPOSE_INPUT_PROXY=0` turns off the proxy and the watcher with it.
+Two attached terminals converge: a clipboard that already has text is
+skipped, and a restore by one lets the other add the path again. Tests:
+`TestClipWatchStopRestoresTheLastSet` (stand-in scripts for both
+osascript runs), `TestParseClipSet`, `TestPruneClipboardDir`,
+`TestClipboardPathIsADrop`, `TestClipboardWatchEnabled`; both scripts
+pass `node --check`. Not run on a Mac from this machine: the JXA bridge
+calls (`dataForType`, `NSPasteboardItem`, `writeObjects`) are to be
+checked live before release notes claim the feature.
+*Rejected:* a key handler for Cmd+V (the terminal sends nothing);
+reading the clipboard on every bracketed paste (Cmd+V with an image
+sends no paste at all); a token in place of the path (a plain text field
+elsewhere would get a meaningless string, where a path names the file);
+`pngpaste` for the watcher (not installed by default, and one process
+per poll).
+
+**I-342. `--worktree` names are `<slug>-worktree-<N>` on branch
+`worktree-<N>`, numbered apart from the window.** (worktrees, 07,
+2026-09-28; owner note: "name a worktree something standard. Maybe
+project name-worktree-number", and "repose/repose/claude-2 ???")
+Supersedes I-253's `~/<slug>-<window>` on `repose/<window>`. The branch
+`repose/claude-2` arrived on the laptop as `repose/repose/claude-2`,
+since `git fetch repose` files every branch of the machine under
+`repose/` (I-272). Now the directory is `~/<slug>-worktree-<N>` and the
+branch `worktree-<N>`, which the laptop sees as `repose/worktree-<N>`. N
+is the lowest number from 1 whose directory and branch are both free
+(a branch left after its directory was removed still holds its number),
+so a worktree is still never reused. The tmux window keeps the agent's
+name, `<agent>` or `<agent>-N`, picked like any other window; guestd's
+`sample.AgentOf`, hooks and questions read the agent from the window
+name, so the window can't be named after the worktree. `run` prints
+`Worktree: ~/todo-app-worktree-1 on branch worktree-1`. Worktrees made
+before stay as they are; nothing reads their names. Tests:
+`TestRunWorktree` (numbering, window names apart, a left branch holding
+its number, cleanup freeing it), `TestRunWorktreeThenPlainRun`,
+`TestReposeRemote*` (the laptop's `repose/worktree-1`).
+*Rejected:* `<slug>-<agent>-worktree-<N>` (long, and the agent is on the
+window already); keeping `repose/` in the branch (the double prefix is
+what the owner asked about); naming the window `worktree-N` (breaks the
+agent-from-window rule above).
+
+**I-343. A `--worktree` gets the checkout's gitignored `.env` files.**
+(worktrees, 07, 2026-09-28; owner question: is "gitignored files such as
+.env aren't copied" true? It was.) `git worktree add` checks out tracked
+files only, so an agent in a worktree had no `.env`, and a dev server or
+test that reads one failed there while it worked in the checkout. The
+worktree command now copies, in the same ssh, every gitignored `.env`
+and `.env.*` file of the machine's checkout (the set a sync carries,
+I-197), keeping mode and time, never following a symlink or overwriting.
+Ignored directories are listed collapsed (`node_modules/`), so no
+dependency tree is walked and a `.env` inside one isn't copied.
+Submodules aren't checked out in a worktree and get none. `run` prints
+`Copied N .env files from ~/<slug>` when there were any; the contents
+never reach a log. Other gitignored files (build output, databases,
+`node_modules`) are still not copied. Test: `TestRunWorktree` (a root and
+a nested `.env.local` copied with 0600 kept, `build.log` and
+`node_modules/pkg/.env` not, the worktree's status clean).

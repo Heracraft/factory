@@ -29,6 +29,9 @@ import (
 //     pastes its path, as `repose paste` does (I-252). Without an image the
 //     key goes through, so vim and friends are unaffected.
 //
+// On macOS a clipboard watcher (clipwatch.go, I-341) makes Cmd+V with an
+// image a drop too, by giving the clipboard the path of a copy.
+//
 // Claude Code attaches an image whose absolute path arrives as a bracketed
 // paste, plain or quoted or backslash-escaped, several separated by spaces
 // (checked against Claude Code 2.1.280, I-280). Everything here is pure

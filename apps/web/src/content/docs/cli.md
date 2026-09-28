@@ -47,18 +47,18 @@ Attach to the project's tmux session without syncing. In the project's checkout,
 
 `run` and `attach` print one line when another of your projects is running idle, once per idle stretch. An `attach` that reuses an open connection makes no api call and skips it.
 
-While you're attached, a file you drop on the terminal, or an image you paste with `Ctrl+V`, is copied to the machine and its path there is pasted. See [Drop a file or paste an image](/docs/run-and-attach#drop-a-file-or-paste-an-image).
+While you're attached, a file you drop on the terminal, or an image you paste with `Cmd+V` or `Ctrl+V`, is copied to the machine and its path there is pasted. See [Drop a file or paste an image](/docs/run-and-attach#drop-a-file-or-paste-an-image).
 
 ### `repose sync [PROJECT]`
 
 Sync this checkout to its machine and don't attach: `repose run --no-attach` under its own name. It creates or starts the machine if needed. See [Sync](/docs/sync).
 
-| Flag                      |                                                            |
-| ------------------------- | ---------------------------------------------------------- |
-| `--stash-remote`          | Stash the machine's uncommitted changes before syncing.    |
-| `--discard-remote`        | Discard the machine's uncommitted changes before syncing.  |
-| `--size small\|large\|xl` | Size of a new project.                                     |
-| `--name NAME`             | Project name, for a directory with no remote.              |
+| Flag                      |                                                           |
+| ------------------------- | --------------------------------------------------------- |
+| `--stash-remote`          | Stash the machine's uncommitted changes before syncing.   |
+| `--discard-remote`        | Discard the machine's uncommitted changes before syncing. |
+| `--size small\|large\|xl` | Size of a new project.                                    |
+| `--name NAME`             | Project name, for a directory with no remote.             |
 
 ### `repose ps [PROJECT]`
 
@@ -287,23 +287,24 @@ exclude = ["dist", "*.mp4"]
 
 ## Environment variables
 
-| Variable               |                                                                                                                             |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `REPOSE_PROJECT`       | The project to act on, like `--project`.                                                                                    |
-| `REPOSE_NO_FORWARD=1`  | Don't forward ports automatically while attached.                                                                           |
-| `REPOSE_TIMING=1`      | Print how long each step of `run` and `attach` took.                                                                        |
-| `REPOSE_NO_SPINNER=1`  | One line per step instead of a progress line. `TERM=dumb` does the same.                                                    |
-| `REPOSE_NO_FASTPATH=1` | Check with the server before every connection instead of reusing the last one. Slower; for when a connection keeps failing. |
-| `REPOSE_NO_BROWSER=1`  | Never open a browser, even with `repose login --browser`.                                                                   |
-| `REPOSE_INPUT_PROXY=0` | Don't copy dropped files or `Ctrl+V` images to the machine; `run` and `attach` hand the terminal straight to `ssh`.         |
-| `REPOSE_API_URL`       | Like `--api-url`.                                                                                                           |
-| `REPOSE=1`             | Set on every repose machine, so scripts can tell where they run.                                                            |
-| `XDG_CONFIG_HOME`      | If set, the CLI's files are in `$XDG_CONFIG_HOME/repose/`.                                                                  |
-| `CLAUDE_CONFIG_DIR`    | Where your laptop's Claude Code setup is copied from, instead of `~/.claude`.                                               |
-| `VISUAL`, `EDITOR`     | The editor for `repose config edit`. Default `vi`.                                                                          |
-| `WAYLAND_DISPLAY`      | On Linux, `repose paste` reads the Wayland clipboard with `wl-paste` when this is set.                                      |
-| `DISPLAY`              | Otherwise it reads the X11 clipboard with `xclip`.                                                                          |
-| `REPOSE_EDITOR`        | The editor `repose code` opens: `code`, `cursor` or `zed`.                                                                  |
+| Variable                  |                                                                                                                                                  |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `REPOSE_PROJECT`          | The project to act on, like `--project`.                                                                                                         |
+| `REPOSE_NO_FORWARD=1`     | Don't forward ports automatically while attached.                                                                                                |
+| `REPOSE_TIMING=1`         | Print how long each step of `run` and `attach` took.                                                                                             |
+| `REPOSE_NO_SPINNER=1`     | One line per step instead of a progress line. `TERM=dumb` does the same.                                                                         |
+| `REPOSE_NO_FASTPATH=1`    | Check with the server before every connection instead of reusing the last one. Slower; for when a connection keeps failing.                      |
+| `REPOSE_NO_BROWSER=1`     | Never open a browser, even with `repose login --browser`.                                                                                        |
+| `REPOSE_INPUT_PROXY=0`    | Don't copy dropped files or pasted images to the machine; `run` and `attach` hand the terminal straight to `ssh`.                                |
+| `REPOSE_CLIPBOARD_PATH=0` | On macOS, leave the clipboard alone while you are attached, so `Cmd+V` with only an image on it pastes nothing; `Ctrl+V` still pastes the image. |
+| `REPOSE_API_URL`          | Like `--api-url`.                                                                                                                                |
+| `REPOSE=1`                | Set on every repose machine, so scripts can tell where they run.                                                                                 |
+| `XDG_CONFIG_HOME`         | If set, the CLI's files are in `$XDG_CONFIG_HOME/repose/`.                                                                                       |
+| `CLAUDE_CONFIG_DIR`       | Where your laptop's Claude Code setup is copied from, instead of `~/.claude`.                                                                    |
+| `VISUAL`, `EDITOR`        | The editor for `repose config edit`. Default `vi`.                                                                                               |
+| `WAYLAND_DISPLAY`         | On Linux, `repose paste` reads the Wayland clipboard with `wl-paste` when this is set.                                                           |
+| `DISPLAY`                 | Otherwise it reads the X11 clipboard with `xclip`.                                                                                               |
+| `REPOSE_EDITOR`           | The editor `repose code` opens: `code`, `cursor` or `zed`.                                                                                       |
 
 ## Other servers
 
@@ -322,18 +323,18 @@ For a test or self-hosted repose server rather than the hosted one: `--api-url U
 
 ## Exit codes
 
-| Code | Meaning                                                                                                                             |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | Worked.                                                                                                                             |
-| 1    | Failed; the message says why.                                                                                                       |
-| 2    | Wrong usage.                                                                                                                        |
-| 3    | Not logged in.                                                                                                                      |
-| 4    | No such project.                                                                                                                    |
-| 5    | The machine isn't running.                                                                                                          |
-| 6    | The machine has uncommitted changes; the sync stopped.                                                                              |
-| 7    | Account or payment problem.                                                                                                         |
+| Code | Meaning                                                                                                                                                                                     |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Worked.                                                                                                                                                                                     |
+| 1    | Failed; the message says why.                                                                                                                                                               |
+| 2    | Wrong usage.                                                                                                                                                                                |
+| 3    | Not logged in.                                                                                                                                                                              |
+| 4    | No such project.                                                                                                                                                                            |
+| 5    | The machine isn't running.                                                                                                                                                                  |
+| 6    | The machine has uncommitted changes; the sync stopped.                                                                                                                                      |
+| 7    | Account or payment problem.                                                                                                                                                                 |
 | 8    | No capacity right now; try again in a few minutes. Choosing a plan while every seat is taken answers with your place on the [waitlist](/docs/limits#when-repose-is-full) and this code too. |
-| 10   | The configuration build failed.                                                                                                     |
-| 130  | Interrupted with `Ctrl-C`.                                                                                                          |
+| 10   | The configuration build failed.                                                                                                                                                             |
+| 130  | Interrupted with `Ctrl-C`.                                                                                                                                                                  |
 
 Once `run`, `attach` or `ssh` has connected you, the exit code is `ssh`'s. Once `repose exec` has started the command, the exit code is the command's, whatever it is (a `4` from your test runner is the test runner's); the codes above come only from failures before it starts, which print a message first. `255` means `ssh` lost the connection. `repose cp` returns `scp`'s. `repose paste` exits 1 when there is no image on the clipboard or no tool to read it, and says which tool to install.

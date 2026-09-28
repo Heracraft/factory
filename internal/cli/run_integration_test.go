@@ -483,17 +483,58 @@ func TestRunWorktree(t *testing.T) {
 	}
 	head := mustRun(t, f.guestRepo(), "git", "rev-parse", "HEAD")
 
-	// The first window may be a worktree too.
+	// The checkout's gitignored .env files, as a sync leaves them (I-197),
+	// go into the worktree too (I-343); other ignored files and anything
+	// under an ignored directory don't.
+	exclude := ".env\n.env.*\nnode_modules/\nbuild.log\n"
+	if err := os.WriteFile(filepath.Join(f.guestRepo(), ".git", "info", "exclude"), []byte(exclude), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for rel, body := range map[string]string{
+		".env":                  "A=1\n",
+		"api/.env.local":        "B=2\n",
+		"build.log":             "x\n",
+		"node_modules/pkg/.env": "C=3\n",
+	} {
+		p := filepath.Join(f.guestRepo(), filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The first window may be a worktree too; worktrees are numbered on
+	// their own, apart from the window names (I-342).
 	wt, err := prepareWorktree(ctx, f.target, testSlug, "cat")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if wt.Window != "cat" || wt.Dir != "~/proj-cat" || wt.Branch != "repose/cat" || wt.Base != head || wt.Dirty {
+	if wt.Window != "cat" || wt.Dir != "~/proj-worktree-1" || wt.Branch != "worktree-1" || wt.Base != head || wt.Dirty || wt.Env != 2 {
 		t.Fatalf("worktree = %+v", wt)
 	}
-	dir := filepath.Join(f.guestHome, "proj-cat")
-	if got := mustRun(t, dir, "git", "rev-parse", "--abbrev-ref", "HEAD"); got != "repose/cat" {
+	dir := filepath.Join(f.guestHome, "proj-worktree-1")
+	if got := mustRun(t, dir, "git", "rev-parse", "--abbrev-ref", "HEAD"); got != "worktree-1" {
 		t.Fatalf("worktree branch = %q", got)
+	}
+	for rel, want := range map[string]string{".env": "A=1\n", "api/.env.local": "B=2\n"} {
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		b, err := os.ReadFile(p)
+		if err != nil || string(b) != want {
+			t.Fatalf("%s in the worktree = %q, %v", rel, b, err)
+		}
+		if fi, _ := os.Stat(p); fi.Mode().Perm() != 0o600 {
+			t.Fatalf("%s mode = %v, want 0600 kept", rel, fi.Mode().Perm())
+		}
+	}
+	for _, rel := range []string{"build.log", "node_modules"} {
+		if _, err := os.Stat(filepath.Join(dir, rel)); err == nil {
+			t.Fatalf("%s was copied into the worktree", rel)
+		}
+	}
+	if st := mustRun(t, dir, "git", "status", "--porcelain"); st != "" {
+		t.Fatalf("the copied .env files show in the worktree's status: %q", st)
 	}
 	if err := startAgentWindow(ctx, f.target, testSlug, wt.Window, wt.Dir, "cat", "in the worktree", false, nil); err != nil {
 		t.Fatal(err)
@@ -538,20 +579,22 @@ func TestRunWorktree(t *testing.T) {
 	}
 
 	// Now the checkout is dirty (the synced untracked file): a second
-	// worktree says its start lacks those changes, and is cat-2.
+	// worktree says its start lacks those changes, and is worktree-2 in
+	// window cat-2.
 	wt2, err := prepareWorktree(ctx, f.target, testSlug, "cat")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if wt2.Window != "cat-2" || wt2.Branch != "repose/cat-2" || !wt2.Dirty {
+	if wt2.Window != "cat-2" || wt2.Dir != "~/proj-worktree-2" || wt2.Branch != "worktree-2" || !wt2.Dirty {
 		t.Fatalf("second worktree = %+v", wt2)
 	}
-	if _, err := os.Stat(filepath.Join(f.guestHome, "proj-cat-2", "laptop.txt")); err == nil {
+	if _, err := os.Stat(filepath.Join(f.guestHome, "proj-worktree-2", "laptop.txt")); err == nil {
 		t.Fatal("the uncommitted laptop.txt is in the new worktree")
 	}
 
 	// A later --worktree never reuses one: with window cat closed but
-	// ~/proj-cat and repose/cat still there, the next is cat-3.
+	// ~/proj-worktree-1 and worktree-1 still there, the window is cat
+	// again and the worktree is 3.
 	if _, err := runSSH(ctx, f.target, "tmux kill-window -t "+testSlug+":cat", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -559,18 +602,27 @@ func TestRunWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if wt3.Window != "cat-3" {
-		t.Fatalf("third worktree = %+v, want cat-3", wt3)
+	if wt3.Window != "cat" || wt3.N != 3 {
+		t.Fatalf("third worktree = %+v, want cat in worktree-3", wt3)
 	}
-	// The documented cleanup works.
-	mustRun(t, f.guestRepo(), "git", "worktree", "remove", "--force", dir)
-	mustRun(t, f.guestRepo(), "git", "branch", "-D", "repose/cat")
+	// A branch left behind without its directory still holds its number.
+	mustRun(t, f.guestRepo(), "git", "worktree", "remove", "--force", filepath.Join(f.guestHome, "proj-worktree-2"))
 	wt4, err := prepareWorktree(ctx, f.target, testSlug, "cat")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if wt4.Window != "cat" {
-		t.Fatalf("after cleanup = %+v, want cat again", wt4)
+	if wt4.N != 4 {
+		t.Fatalf("with branch worktree-2 left = %+v, want worktree-4", wt4)
+	}
+	// The documented cleanup frees the number.
+	mustRun(t, f.guestRepo(), "git", "worktree", "remove", "--force", dir)
+	mustRun(t, f.guestRepo(), "git", "branch", "-D", "worktree-1")
+	wt5, err := prepareWorktree(ctx, f.target, testSlug, "cat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wt5.N != 1 {
+		t.Fatalf("after cleanup = %+v, want worktree-1 again", wt5)
 	}
 }
 
