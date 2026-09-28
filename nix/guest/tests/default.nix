@@ -1174,7 +1174,7 @@ in
           assert guest.succeed("curl -sf http://127.0.0.1:6080/healthz").strip() == "repose desktop viewer ok"
           ctype = guest.succeed("curl -sf -o /dev/null -w '%{content_type}' http://127.0.0.1:6080/viewer.js").strip()
           assert "javascript" in ctype, ctype
-          guest.succeed("curl -sf http://127.0.0.1:6080/core/rfb.js | grep -q 'export default class RFB'")
+          guest.succeed("curl -sf http://127.0.0.1:6080/core/rfb.js -o /tmp/rfb.js && grep -q 'export default class RFB' /tmp/rfb.js")  # not piped: grep -q closes the pipe early and curl exits 23
           guest.succeed("curl -sf http://127.0.0.1:6080/vendor/pako/lib/zlib/inflate.js -o /dev/null")
           proj = json.loads(guest.succeed("curl -sf http://127.0.0.1:6080/project.json"))
           assert proj["name"] and proj["idle_minutes"] == 30, proj
@@ -1210,7 +1210,8 @@ in
               assert r["resize"]["result"] == 0 and (r["resize"]["w"], r["resize"]["h"]) == (w, h), r["resize"]
               assert r["resize"]["update_raw_bytes"] == w * h * 4, r["resize"]
               assert screen_size() == size, screen_size()
-              assert size in guest.succeed("xrandr -display :99 | head -1"), guest.succeed("xrandr -display :99 | head -1")
+              xr = guest.succeed("xrandr -display :99 | head -1")
+              assert f"current {w} x {h}," in xr, xr  # xrandr spaces it: "current 2560 x 1440,"
               # openbox re-maximises the browser to the new screen.
               guest.wait_until_succeeds(f"export DISPLAY=:99; xdotool search --onlyvisible --classname '^[Cc]hromium' | head -1 | xargs -I W xdotool getwindowgeometry --shell W | grep -q 'WIDTH={w}'", timeout=30)
               geo = browser_window()
