@@ -7772,7 +7772,15 @@ viewer; the printed line, no password on stderr, the reuse, `--stop`),
 3.8 client (`nix/guest/tests/rfb-client.py`, VncAuth with its own DES)
 that authenticates, receives the framebuffer, and sends SetDesktopSize,
 with `xdpyinfo`, `xrandr` and the Chromium window geometry checked after.
-*Rejected:* `ssh -f` for the forward (the forked child's pid is unknown
+Measured while landing this, in one test guest back to back: a cold
+Chromium answered DevTools after 333 s and 153 s on Xvfb, 124 s and 145 s
+on Xvnc (the guest's load at 5 on 2 vCPUs; four workers on the four-core
+dev box), and a warm `/json/version` took 1 to 3 s on both, so the display
+server is not what the MCP servers' fixed 30 s connect timeout trips
+over; the test's `mcp()` helper tries a connect timeout again, up to
+four times, and a quiet box never retries. Ships with the base after
+2026.09.27.2 and the CLI after v0.1.20; the docs say what an older half
+does against a newer one. *Rejected:* `ssh -f` for the forward (the forked child's pid is unknown
 to the parent, so `--stop` could not end it; a detached `ssh -N` whose pid
 the CLI keeps does the same and can be stopped); keeping stock `vnc.html`
 with `defaults.json` (its dialog asks for the password, its resize mode is

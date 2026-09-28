@@ -371,6 +371,6 @@ pointer, not a summary.
 - **I-290** Seats: the waitlist gates checkout, not the first project; a seat is 8 GB running at once; invitations hold a seat 72 hours — 2026-09-27; L7641
 - **I-291** Every email is HTML with a plain-text twin, from one template, and the account emails exist — 2026-09-27; L7680
 - **I-292** Watching the agent's browser is one command: `repose browser` opens a viewer page repose ships, sized to the tab, on TigerVNC's Xvnc, with the password in the URL fragment and the forward in the background — 2026-09-27; L7707
-- **I-296** `repose browser bridge` lends the guest's browser tools the laptop's own Chrome, through Chrome's DevTools switch, a front that answers `/json/version`, and a reverse tunnel whose remote command holds the guest's endpoint switched — 2026-09-27; L7791
-- **I-297** The user docs have a Tutorials section: one job per page, in the order a new user meets them — 2026-09-27; L7850
-- **I-298** The Vercel CLI's login stays on the laptop — 2026-09-27; L7870
+- **I-296** `repose browser bridge` lends the guest's browser tools the laptop's own Chrome, through Chrome's DevTools switch, a front that answers `/json/version`, and a reverse tunnel whose remote command holds the guest's endpoint switched — 2026-09-27; L7799
+- **I-297** The user docs have a Tutorials section: one job per page, in the order a new user meets them — 2026-09-27; L7858
+- **I-298** The Vercel CLI's login stays on the laptop — 2026-09-27; L7878
