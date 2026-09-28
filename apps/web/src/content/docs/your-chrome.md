@@ -2,7 +2,7 @@
 title: Lend the agents your Chrome
 description: Let the agents on a machine use your laptop's Chrome, with your logins and extensions, for as long as you keep the bridge open, and keep them to the sites you name.
 section: Using repose
-order: 12.5
+order: 14.5
 ---
 
 Some jobs need the browser you already have: the admin tool behind your company's SSO, an account protected by a hardware key, a site where an extension does half the work. Logging in to all of that on the machine is the wrong answer. The bridge is the right one. While it's open, the machine's two browser tools (`playwright` and `chrome-devtools`) drive your laptop's Chrome instead of the machine's own browser. Nothing on the machine changes and no agent restarts: the next browser call an agent makes lands in your Chrome, and the one after you close the bridge lands back on the machine.

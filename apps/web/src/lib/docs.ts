@@ -245,6 +245,15 @@ export function docBySlug(slug: string): Doc | undefined {
 	return DOCS.find((d) => d.slug === slug);
 }
 
+/** Pages that moved, old slug to new, so links already shared keep working. */
+const MOVED: Record<string, string> = {
+	'tutorial-your-chrome': 'your-chrome' // DECISIONS I-316
+};
+
+export function movedDoc(slug: string): string | undefined {
+	return MOVED[slug];
+}
+
 /** The docs grouped by section, in sidebar order. */
 export function docsBySection(): { section: string; docs: Doc[] }[] {
 	return SECTIONS.map((section) => ({

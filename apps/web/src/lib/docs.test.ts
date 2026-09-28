@@ -5,6 +5,7 @@ import {
 	blockLines,
 	docBySlug,
 	highlightNix,
+	movedDoc,
 	renderShell,
 	search,
 	slugify
@@ -74,6 +75,12 @@ describe('user docs', () => {
 		expect(search('zzzz-not-a-word')).toEqual([]);
 		// A line commented out in a page is not searchable.
 		expect(search('live product for other people')).toEqual([]);
+	});
+
+	it('sends a moved page on to its new slug', () => {
+		expect(movedDoc('tutorial-your-chrome')).toBe('your-chrome');
+		expect(docBySlug(movedDoc('tutorial-your-chrome') ?? '')).toBeDefined();
+		expect(movedDoc('your-chrome')).toBeUndefined();
 	});
 
 	// The grammar's bare `parser` export has no highlight tags (they live on

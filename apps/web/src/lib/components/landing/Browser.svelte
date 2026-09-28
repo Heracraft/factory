@@ -106,7 +106,7 @@
 	const label =
 		"The agent's browser on a cloud machine, next to the agent's log. The agent opens the app's feedback page, " +
 		'types a bug report into the text box, reads the console (0 errors, 0 warnings) and clicks Bug; each Playwright ' +
-		'call in the log changes the page above it. Then repose open --desktop shows the same browser on your laptop, ' +
+		'call in the log changes the page above it. Then repose browser shows the same browser on your laptop, ' +
 		'and your pointer clicks into the text box and adds a sentence.';
 
 	let pic: HTMLDivElement;
@@ -348,7 +348,7 @@
 				</div>
 			</div>
 			<i class="ring"></i>
-			<span class="chip">repose open --desktop</span>
+			<span class="chip">repose browser</span>
 			<svg class="pointer" viewBox="0 0 12 18" aria-hidden="true">
 				<path
 					d="M1 1v13.2l3.3-3.1 2.2 5.1 2.1-.9-2.2-5h4.6z"
