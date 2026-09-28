@@ -112,6 +112,12 @@ func PlanBuild(running bool) []string {
 	return []string{PhaseBuild}
 }
 
+// ApplyLogLine is the line a build op's log gets when its apply phase is
+// sent (DECISIONS I-320); the CLI reads it as the start of "Switching the
+// machine". Its wording is part of the build log's contract
+// (docs/interfaces/api.md "Build log lines").
+const ApplyLogLine = "switching the machine"
+
 // PlanApply re-applies a built revision.
 func PlanApply() []string { return []string{PhaseApplyConfig} }
 

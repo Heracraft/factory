@@ -622,6 +622,20 @@ func TestBuildAndApply(t *testing.T) {
 	if tgt, _ := h.roots.Get(gid1); tgt != closure2 {
 		t.Fatal("stopped apply did not move the root")
 	}
+	// A record that says stopped while the hypervisor runs is not a
+	// stopped guest: the apply fails instead of moving the root and
+	// reporting success with nothing switched (I-325).
+	h.mustOK(cmd(&hostdv1.StartGuest{GuestId: gid1}))
+	g := h.guest(gid1)
+	g.State = StateStopped
+	if err := h.st.PutGuest(g); err != nil {
+		t.Fatal(err)
+	}
+	closure4 := fakeClosure(t, "nixos-system-v4")
+	h.mustFail(cmd(&hostdv1.ApplyConfig{GuestId: gid1, SystemClosure: closure4}), CodeInternal)
+	if tgt, _ := h.roots.Get(gid1); tgt == closure4 {
+		t.Fatal("drifted apply moved the root")
+	}
 	h.mustFail(cmd(&hostdv1.ApplyConfig{GuestId: gid2, SystemClosure: closure2}), CodeNotFound)
 }
 
@@ -651,6 +665,21 @@ func TestBuildQueueFull(t *testing.T) {
 	}
 	if full < 1 || len(h.rec.results) != 4 {
 		t.Fatalf("results: %d total, %d queue-full", len(h.rec.results), full)
+	}
+	// A build that waited behind another says so first, and its own lines
+	// follow in the same sequence (I-320).
+	queued := 0
+	for id, ls := range h.rec.logSeq {
+		if ls[0] != "1 waiting for a build slot" {
+			continue
+		}
+		queued++
+		if len(ls) > 1 && ls[1][:2] != "2 " {
+			t.Fatalf("%s: lines after the queue line %q", id, ls)
+		}
+	}
+	if queued < 1 {
+		t.Fatalf("no build said it was waiting: %v", h.rec.logSeq)
 	}
 }
 

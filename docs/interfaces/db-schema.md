@@ -52,7 +52,8 @@ ops          (id pk, project_id fk null, kind text, state text,  -- pending|runn
               result jsonb, error jsonb null, revision_id uuid, snapshot_id uuid, audit_id uuid,
               reboot_required bool, sent_at, started_at, finished_at)
 
-build_logs   (op_id fk, seq bigint, line text, primary key (op_id, seq))
+build_logs   (op_id fk, seq bigint, line text, ts timestamptz default now(),  -- ts: 0008, I-322
+              primary key (op_id, seq))
 
 secrets      (id pk, project_id fk, name text, ciphertext bytea,
               dek_wrapped bytea, kv_key_version text, unique (project_id, name))
@@ -157,7 +158,7 @@ user_id) where admitted_at is null`, `waitlist(admitted_at) where
 admitted_at is not null`.
 
 Migrations `0001_init`, `0002_outbox_sessions_settings`, `0003_billing`,
-`0004_gateway_session_id`, `0005_abuse_events`, `0006_questions` and `0007_waitlist` create all of this; `repose-admin db migrate --down 1` reverts one. Partitions of the
+`0004_gateway_session_id`, `0005_abuse_events`, `0006_questions`, `0007_waitlist` and `0008_build_log_ts` create all of this; `repose-admin db migrate --down 1` reverts one. Partitions of the
 sample tables are created for the current and next month at start and by
 the daily job, which also drops partitions past retention.
 

@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // ConfigShowCmd implements `repose config show [--revisions]`.
@@ -56,7 +58,8 @@ func applyFragmentAndRender(ctx context.Context, e *Env, project *Project, fragm
 		_, _ = fmt.Fprintf(e.Out, "configuration unchanged; %s is still active\n", revisionID)
 		return nil
 	}
-	op, err := waitOp(ctx, e.Client, project.ID, opID, e.Out)
+	_, _ = fmt.Fprintf(e.Out, "Building revision %s ...\n", shortRev(revisionID))
+	op, pr, err := waitConfigOp(ctx, e, project, opID)
 	if err != nil {
 		return err
 	}
@@ -64,14 +67,18 @@ func applyFragmentAndRender(ctx context.Context, e *Env, project *Project, fragm
 		RenderBuildError(e.Out, op.Error.Code, op.Error.Message, localFragmentPath, mustReadFragment(localFragmentPath))
 		return silent(ExitBuildFailed)
 	}
-	_, _ = fmt.Fprintf(e.Out, "Applied revision %s\n", revisionID)
-	if revs, err := e.Client.ListRevisions(ctx, project.ID); err == nil {
-		for _, r := range revs {
-			if r.ID == revisionID && r.RebootRequired {
-				_, _ = fmt.Fprintln(e.Out, "This change needs a reboot; run `repose stop && repose start` when the agent is idle.")
+	if !op.RebootRequired {
+		// An api before the op carried reboot_required said it on the
+		// revision only.
+		if revs, err := e.Client.ListRevisions(ctx, project.ID); err == nil {
+			for _, r := range revs {
+				if r.ID == revisionID && r.RebootRequired {
+					op.RebootRequired = true
+				}
 			}
 		}
 	}
+	printApplied(e, project, op, revisionID, pr)
 	return nil
 }
 
@@ -95,6 +102,9 @@ func ConfigApplyCmd(ctx context.Context, e *Env, projectArg, path string) error 
 		return err
 	}
 	if path == "" {
+		if _, err := os.Stat("./repose.nix"); errors.Is(err, os.ErrNotExist) {
+			return reapplyRevision(ctx, e, project)
+		}
 		path = "./repose.nix"
 	}
 	b, err := os.ReadFile(path)
@@ -102,6 +112,57 @@ func ConfigApplyCmd(ctx context.Context, e *Env, projectArg, path string) error 
 		return exitf(ExitUsage, "reading %s: %v", path, err)
 	}
 	return applyFragmentAndRender(ctx, e, project, string(b), path)
+}
+
+// reapplyRevision is `repose config apply` with no file to apply (I-321):
+// switch the machine to the project's newest revision that built, again.
+// That is the active one after an apply that went through, or a newer
+// one whose switch failed or was never sent; either way the machine ends
+// up on the configuration the project says it has.
+func reapplyRevision(ctx context.Context, e *Env, project *Project) error {
+	if project.State != "running" {
+		return exitf(ExitUsage, "No ./repose.nix here, and %s is %s. A stopped machine starts on its newest built revision: `repose start %s`.", project.Slug, project.State, project.Slug)
+	}
+	revs, err := e.Client.ListRevisions(ctx, project.ID)
+	if err != nil {
+		return err
+	}
+	var rev *Revision
+	for i := range revs { // newest first
+		if revs[i].Status == "built" || revs[i].Status == "applied" {
+			rev = &revs[i]
+			break
+		}
+	}
+	if rev == nil {
+		return exitf(ExitUsage, "No ./repose.nix here, and %s has no revision that built to apply again. `repose config show --revisions` lists them.", project.Slug)
+	}
+	if rev.Status == "applied" {
+		_, _ = fmt.Fprintf(e.Out, "No ./repose.nix here; applying the active revision %s again.\n", shortRev(rev.ID))
+	} else {
+		_, _ = fmt.Fprintf(e.Out, "No ./repose.nix here; applying revision %s, which built but is not applied yet.\n", shortRev(rev.ID))
+	}
+	opID, err := e.Client.ApplyRevision(ctx, project.ID, rev.ID)
+	if err != nil {
+		var apiErr *APIError
+		if asAPIError(err, &apiErr) && apiErr.Code == "conflict" && strings.Contains(apiErr.Message, "kernel") {
+			return exitf(ExitUsage, "Revision %s changes the kernel, so it applies when %s restarts: `repose stop %s && repose start %s` when the agents are idle.", shortRev(rev.ID), project.Slug, project.Slug, project.Slug)
+		}
+		return err
+	}
+	op, pr, err := waitConfigOp(ctx, e, project, opID)
+	if err != nil {
+		return err
+	}
+	if op.State == "error" {
+		_, _ = fmt.Fprintf(e.Out, "error: %s\n", firstLine(op.Error.Message))
+		if rest := strings.Trim(restAfterFirstLine(op.Error.Message), "\n"); rest != "" {
+			_, _ = fmt.Fprintf(e.Out, "\n%s\n", rest)
+		}
+		return silent(ExitGeneric)
+	}
+	printApplied(e, project, op, rev.ID, pr)
+	return nil
 }
 
 // ConfigEditCmd implements `repose config edit`: fetch, open $EDITOR on a

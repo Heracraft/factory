@@ -257,7 +257,7 @@ func TestEnsureBaseClonesWithKey(t *testing.T) {
 		}},
 	}}
 	b := (&Real{R: r, BaseDir: base, BaseRepoURL: "git@github.com:heracraft/repose.git", BaseSSHKey: "/var/lib/repose/hostd/base-deploy-key", User: "nixbuild"}).Defaults()
-	dir, err := b.ensureBase(context.Background(), "deadbeef")
+	dir, err := b.ensureBase(context.Background(), "deadbeef", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestEnsureBaseClonesWithKey(t *testing.T) {
 		t.Fatalf("chown calls: %v", got)
 	}
 	// An existing checkout (placed by hand) is handed over the same way.
-	if _, err := b.ensureBase(context.Background(), "deadbeef"); err != nil {
+	if _, err := b.ensureBase(context.Background(), "deadbeef", nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := r.CallsWithPrefix("chown"); len(got) != 2 {
@@ -339,7 +339,7 @@ func TestEnsureBaseClonesOnceUnderConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_, errs[i] = b.ensureBase(context.Background(), "cafebabe")
+			_, errs[i] = b.ensureBase(context.Background(), "cafebabe", nil)
 		}(i)
 	}
 	wg.Wait()

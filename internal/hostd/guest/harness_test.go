@@ -34,6 +34,7 @@ type recorder struct {
 	events  []*hostdv1.Event
 	samples []*hostdv1.Samples
 	logs    []string
+	logSeq  map[string][]string // command id -> "seq line"
 }
 
 func (r *recorder) Result(res *hostdv1.Result) {
@@ -51,10 +52,14 @@ func (r *recorder) Samples(s *hostdv1.Samples) {
 	defer r.mu.Unlock()
 	r.samples = append(r.samples, s)
 }
-func (r *recorder) BuildLog(_ string, _ uint64, line string) {
+func (r *recorder) BuildLog(commandID string, seq uint64, line string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.logs = append(r.logs, line)
+	if r.logSeq == nil {
+		r.logSeq = map[string][]string{}
+	}
+	r.logSeq[commandID] = append(r.logSeq[commandID], fmt.Sprintf("%d %s", seq, line))
 }
 func (r *recorder) states(guestID string) []string {
 	r.mu.Lock()

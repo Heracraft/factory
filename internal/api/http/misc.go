@@ -71,8 +71,13 @@ func (s *Server) projectLogs(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
+		// ts and kind since DECISIONS I-322; since= is then a cursor, as
+		// for ops: only lines that arrived after it.
 		for _, l := range lines {
-			if err := enc.Encode(map[string]any{"op_id": opID.ID, "seq": l.Seq, "line": l.Line}); err != nil {
+			if !since.IsZero() && !l.TS.After(since) {
+				continue
+			}
+			if err := enc.Encode(map[string]any{"ts": l.TS, "kind": "build", "op_id": opID.ID, "seq": l.Seq, "line": l.Line}); err != nil {
 				return nil
 			}
 		}

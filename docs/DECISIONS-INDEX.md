@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-338 entries.
+346 entries.
 
 ## Scope
 
@@ -370,3 +370,11 @@ pointer, not a summary.
 - **I-296** `repose browser bridge` lends the guest's browser tools the laptop's own Chrome, through Chrome's DevTools switch, a front that answers `/json/version`, and a reverse tunnel whose remote command holds the guest's endpoint switched — 2026-09-27; L7563
 - **I-297** The user docs have a Tutorials section: one job per page, in the order a new user meets them — 2026-09-27; L7622
 - **I-298** The Vercel CLI's login stays on the laptop — 2026-09-27; L7642
+- **I-320** Config commands show run's ✓ steps, read off the build log — 2026-09-28; L7682
+- **I-321** `repose config apply` with no file applies the configuration again — 2026-09-28; L7719
+- **I-322** Build log lines carry the time they reached the api — 2026-09-28; L7731
+- **I-323** `config add` and `config remove` honour `reboot_required` — L7747
+- **I-324** Port forwards that appear together get one message, in the status bar's colours — 2026-09-28; L7757
+- **I-325** hostd refuses an apply whose record says "not running" while the hypervisor runs — 2026-09-28; L7772
+- **I-326** Config builds: two derivations at a time, and two reads in parallel — L7793
+- **I-327** The "Config" docs page is "Installing software" — L7812

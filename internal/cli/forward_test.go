@@ -101,6 +101,10 @@ func TestForwarderFollowsTheGuest(t *testing.T) {
 	if strings.Join(*ctl, "|") != strings.Join(wantCtl, "|") {
 		t.Errorf("ssh -O = %v, want %v", *ctl, wantCtl)
 	}
+	// A remap is said at once; a same-number forward once a poll finds
+	// nothing new after it (I-324).
+	f.announce(time.Now())
+	f.announce(time.Now().Add(forwardQuiet))
 	wantSaid := []string{
 		"1355 is taken on your laptop (portless?); izma's portless is on localhost:1356",
 		"⇄ localhost:3001 → :3000 (3000 is taken on your laptop)",
@@ -324,5 +328,45 @@ func TestSessionHelperEndsWithItsParent(t *testing.T) {
 	t.Logf("helper %s exited %s after its parent", pid, took.Round(100*time.Millisecond))
 	if took > 4*time.Second {
 		t.Errorf("helper took %s to notice its parent was gone", took)
+	}
+}
+
+// Many ports at once (a test suite's servers) are one message, not a
+// four-second message each; one that went before the message is not
+// named (I-324).
+func TestForwarderCoalescesMessages(t *testing.T) {
+	ctx := context.Background()
+	f, _, said, ss := fakeForwarder(nil)
+	listen := func(ports ...int) {
+		var b strings.Builder
+		for _, p := range ports {
+			fmt.Fprintf(&b, "LISTEN 0 511 127.0.0.1:%d 0.0.0.0:*\n", p)
+		}
+		*ss = b.String()
+	}
+	listen(3000, 3001, 3002)
+	_, _ = f.sync(ctx)
+	f.announce(time.Now())
+	listen(3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010)
+	_, _ = f.sync(ctx)
+	f.announce(time.Now()) // still coming: nothing yet
+	if len(*said) != 0 {
+		t.Fatalf("said before the burst ended: %q", *said)
+	}
+	listen(3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3010) // 3009 went
+	_, _ = f.sync(ctx)
+	f.announce(time.Now().Add(forwardQuiet))
+	want := "⇄ 10 ports on localhost: 3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, …"
+	if len(*said) != 1 || (*said)[0] != want {
+		t.Fatalf("messages %q, want %q", *said, want)
+	}
+	// A burst that never pauses is still said after forwardCoalesceMax.
+	*said = nil
+	listen(4000)
+	_, _ = f.sync(ctx)
+	f.pendingFirst = time.Now().Add(-forwardCoalesceMax)
+	f.announce(time.Now())
+	if len(*said) != 1 || (*said)[0] != "⇄ localhost:4000 → :4000" {
+		t.Fatalf("capped wait: %q", *said)
 	}
 }

@@ -88,12 +88,13 @@ L, in order:
 
    ```
    timeout -k 5 <L.build_s> nix build --no-link --print-out-paths --print-build-logs \
-     --option sandbox true --max-jobs 1 --cores <L.cores> \
+     --option sandbox true --max-jobs 2 --cores <L.cores> \
      --option substituters "https://cache.nixos.org <overlay cache>" \
      <drvPath>^*
    ```
 
-   Every stderr line is streamed as `BuildLog`. A timeout is
+   `--max-jobs 2` since DECISIONS I-326 (it was 1). Every stderr line is streamed as `BuildLog`, with the step lines of
+   `docs/interfaces/api.md` "Build log lines" (I-320). A timeout is
    `build_timeout` "build timed out after 30 minutes while building
    <derivation>" (the cap printed in minutes when it is whole minutes,
    else seconds). Any other failure is `build_failed` "build of <derivation>

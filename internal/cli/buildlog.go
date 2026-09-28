@@ -58,6 +58,13 @@ func parseSSE(r io.Reader, emit func(SSEFrame)) error {
 // line with a dim "nix › " prefix, and return the terminal state from the
 // "done" event.
 func StreamBuildLog(ctx context.Context, c *Client, projectID, opID string, w io.Writer, sinceSeq int) (state string, lastSeq int, err error) {
+	return streamBuildLines(ctx, c, projectID, opID, sinceSeq, func(line string) {
+		_, _ = fmt.Fprintf(w, "nix › %s\n", line) // a gone client is noticed by ctx
+	})
+}
+
+// streamBuildLines is StreamBuildLog handing each line to emit.
+func streamBuildLines(ctx context.Context, c *Client, projectID, opID string, sinceSeq int, emit func(line string)) (state string, lastSeq int, err error) {
 	path := fmt.Sprintf("%s/projects/%s/ops/%s/log", c.BaseURL, urlEscape(projectID), urlEscape(opID))
 	if sinceSeq > 0 {
 		path += fmt.Sprintf("?since=%d", sinceSeq)
@@ -109,7 +116,7 @@ func StreamBuildLog(ctx context.Context, c *Client, projectID, opID string, w io
 			Line string `json:"line"`
 		}
 		if err := json.Unmarshal([]byte(f.Data), &line); err == nil {
-			_, _ = fmt.Fprintf(w, "nix › %s\n", line.Line) // a gone client is noticed by ctx
+			emit(line.Line)
 			lastSeq = line.Seq
 		}
 	})

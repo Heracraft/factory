@@ -109,6 +109,9 @@ type Op struct {
 	Version      string `json:"version,omitempty"`
 	Phase        string `json:"phase,omitempty"`
 	ProjectState string `json:"project_state,omitempty"`
+	// RebootRequired is set on a config op whose revision changes the
+	// kernel of a running machine: built, not switched to.
+	RebootRequired bool `json:"reboot_required,omitempty"`
 	// Result is a finished op's result; a snapshot's is {snapshot_id}.
 	Result map[string]any `json:"result,omitempty"`
 }

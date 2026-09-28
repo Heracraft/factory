@@ -41,7 +41,7 @@ unique; it is the second half of the SSH login name.
 | POST | `/projects/:id/start` | → `{op_id, restart}`; `restart: true` when the project was in `error` or running with its guestd not answering, and the op stops and reboots it on its newest built revision (I-157). `restart` was added with I-157. `403 forbidden` with `detail.reason: "abuse_hold"` when the api stopped the project three times within 24 hours because a cryptocurrency miner was running, until an operator runs `repose-admin abuse clear` (added with I-239); the message names the process and the terms. A restore with `start` from a held project's snapshots (`POST /projects/restore`, `.../snapshots/:sid/restore`) is refused the same way |
 | POST | `/projects/:id/stop` | `{snapshot: bool=true}` → `{op_id}` |
 | GET | `/projects/:id/ops/:op_id` | `{state: pending\|running\|done\|error, error?: {code, message, detail?, fragment_line?}, log_url?, version, project_state, phase?}`; `message` is the sentence to show the user, `detail` the host's own wording for operators (I-159). Answers for a destroyed project's ops too. `?wait=<duration>` (`20s`, `1500ms`, or whole seconds; capped at 20 s) makes it a long-poll (I-236): the answer comes when the op's `version` differs from `?seen=<version>` (from the op as the request found it, without `seen`), when the op is `done` or `error`, when the wait runs out, or when the api begins a drain; a held (or already changed) answer carries the header `Repose-Long-Poll: 1`. Past 4 held reads per user the request is answered at once without the header, and the client pauses before its next read. `version` is opaque and changes with the op's state or phase or the project's state; `project_state` is the project's `state`; `phase` names the phase a `running` op is in (`build`, `start_guest`, ...). `version`, `project_state`, `phase` and `wait` were added with I-236; a client that ignores them polls as before |
-| GET | `/projects/:id/ops/:op_id/log` | SSE stream of `BuildLog` lines (`id:` = seq, `data:` = `{seq, line}`), then a `done` event whose data is `{state}`; `?since=<seq>` or `Last-Event-ID` resumes after a line. Browsers cannot set headers on EventSource, so this route also accepts `?access_token=<jwt>`; the token is never logged and the route is the only one that accepts it. |
+| GET | `/projects/:id/ops/:op_id/log` | SSE stream of `BuildLog` lines (`id:` = seq, `data:` = `{seq, line, ts}`; `ts`, when the line reached the api, since I-322, and a client must accept a line without it), then a `done` event whose data is `{state}`; `?since=<seq>` or `Last-Event-ID` resumes after a line. Browsers cannot set headers on EventSource, so this route also accepts `?access_token=<jwt>`; the token is never logged and the route is the only one that accepts it. |
 | POST | `/projects/:id/resize` | `{volume_bytes}` (grow only) |
 | GET | `/projects/:id/route` | `{host_id, host_name?, host_state?, guest_ip, state, host_unreachable}` (used by CLI for `status` detail; `host_name` is what it shows, I-192) |
 
@@ -146,7 +146,7 @@ sshd material (delivered by hostd into the same tmpfs from the explicit
 | Method | Path | Body / result |
 |---|---|---|
 | GET | `/projects/:id/events?since=` | `[{id, ts, kind, agent?, summary}]` |
-| GET | `/projects/:id/logs?since=&kind=console\|build\|ops` | last 10k lines, JSON lines |
+| GET | `/projects/:id/logs?since=&kind=console\|build\|ops` | last 10k lines, JSON lines. Every line has `ts` and `kind`; a `build` line also has `op_id`, `seq` and `line` (`ts` and `kind` on build lines since I-322; a client must accept a build line without them, which an older api sends). `since` (RFC 3339, fractional seconds allowed) keeps the lines after it: for `build`, lines that reached the api after it (since I-322; before, `since` was ignored for `build`), for `ops`, ops created at or after it |
 
 Event kinds are those of `features/notifications.md`; `agent_message`
 (from `repose-notify`) and `agent_question` (from `repose-ask`, whose
@@ -154,6 +154,26 @@ Event kinds are those of `features/notifications.md`; `agent_message`
 that does not know a kind shows it by name. `idle_running` (source
 `api`, once per idle stretch; the summary names the class, the hourly
 rate and `repose stop <slug>`) was added by DECISIONS I-262.
+
+### Build log lines (DECISIONS I-320)
+
+A build op's log is Nix's stderr as hostd streams it, plus a few lines of
+hostd's and the api's own that name a step. Clients may read these to show
+progress; a client must treat any other line as plain output and must not
+fail on a line it does not know. Each is the whole line:
+
+| Line | From | Means |
+|---|---|---|
+| `waiting for a build slot` | hostd | the host is running as many builds as it allows; this one is queued |
+| `fetching the base` | hostd | the host is cloning the platform base this build needs, once per base per host |
+| `evaluating configuration` | hostd | `nix eval` of the fragment has started |
+| `building <name>` | hostd | `nix build` of the evaluated system has started |
+| `built <store path>` | hostd | the build finished and passed the closure check |
+| `switching the machine` | api | the build's apply phase was sent to the running guest |
+
+Nix's own `these N derivations will be built:` and `these N paths will be
+fetched (X MiB download, Y MiB unpacked):` lines (and their singular
+forms) are Nix's, not part of this contract, and may change with Nix.
 
 ## Questions (DECISIONS I-244, I-245)
 
