@@ -21,8 +21,9 @@ type RunOptions struct {
 	DiscardRemote bool
 	NoSync        bool
 	NoAttach      bool
-	Worktree      bool // the agent works in its own git worktree (I-253)
-	Bridge        bool // the laptop's Chrome is bridged in beside the attach (I-296)
+	Worktree      bool     // the agent works in its own git worktree (I-253)
+	Bridge        bool     // the laptop's Chrome is bridged in beside the attach (I-296)
+	BridgeAllow   []string // --bridge-allow: the bridge's allowlist (I-311)
 	ProjectArg    string
 }
 
@@ -143,7 +144,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	_, _ = fmt.Fprintf(e.Out, "Connected to %s (%s)\n", project.Slug, project.Class)
 	idleNote(project.ID)
 
-	helper := sessionOptions{Slug: project.Slug, Target: target.Args, TZ: tz, HomeDir: e.HomeDir, Forward: os.Getenv(forwardEnvOff) != "1", Bridge: opts.Bridge}
+	helper := sessionOptions{Slug: project.Slug, Target: target.Args, TZ: tz, HomeDir: e.HomeDir, Forward: os.Getenv(forwardEnvOff) != "1", Bridge: opts.Bridge || len(opts.BridgeAllow) > 0, BridgeAllow: opts.BridgeAllow}
 	if root := gitRepoRoot(e.Cwd); root != "" && res.Remote != "" && res.Remote == project.RemoteURL {
 		// The git carry needs the project's own checkout: its includeIf
 		// rules and identity are what the guest should get, and a run

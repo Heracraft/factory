@@ -7678,3 +7678,180 @@ the user made in the guest); comparing mtimes (a rotated laptop token
 makes them ambiguous); minting a project-scoped Vercel token per machine
 (needs a full-account parent token in repose's database, a bigger change
 the research puts after the user study).
+
+**I-310. `repose browser [PROJECT]` is the machine's own browser, on its
+desktop; `repose browser bridge` stays the laptop's Chrome; `repose open
+--desktop` stays as the same command.** (dogfood round, owner approved the
+tree, 2026-09-28) The owner looked for the agents' browser under `repose
+browser` and found only the bridge; the desktop was a flag on `open`,
+which is about ports. Now `repose browser` (with `--stop` and
+`--no-browser`) runs what `open --desktop` ran (OpenDesktopCmd,
+StopDesktopCmd, unchanged), and `open --desktop [--stop]` keeps working
+with its cli.md rows saying it is the same as `repose browser`. Cobra
+routes `repose browser bridge ...` to the subcommand and `repose browser
+anything-else` to the parent with that word as PROJECT, since the parent
+has its own `Args`; a project literally named `bridge` is `repose browser
+--project bridge`, which cli.md says. `TestBrowserCommandTreeParses`
+covers both shapes, flags before the project, and two arguments as a
+usage error. The user docs now say `repose browser` wherever they said
+`open --desktop`; the landing page (W4's lane) still shows `repose open
+--desktop`, which keeps working. *Rejected:* `repose browser desktop` (a
+third word for the common case); removing `open --desktop` (it is in
+released docs, the landing, and people's history).
+
+**I-311. The bridge enforces what the agents may do in the laptop's
+Chrome itself, at the CDP layer: always-on refusals, and `--allow HOST`
+enforced by a CDP connection of the bridge's own.** (dogfood round, owner
+approved "enforcement in the bridge, not an MCP flag", 2026-09-28) An
+agent on the machine has a shell and can speak CDP to 127.0.0.1:9224
+itself, so Playwright MCP's `--allowed-origins` or anything else the MCP
+servers are told is advice. The front (I-296) already sat between every
+tool and Chrome; it now reads the browser websocket message by message
+(its own RFC 6455 framing, `bridgews.go`; the upgrade's
+`Sec-WebSocket-Extensions` is removed so nothing is compressed, and a
+frame with a reserved bit ends the connection). A tool's message is
+decoded, checked, and re-encoded from what was decoded, so Chrome gets
+exactly what was checked (two spellings of one key cannot mean one thing
+to the check and another to Chrome). Only the browser websocket and
+`/json/version` are served; the other `/json` endpoints (`/json/new?url`
+went round any check) and per-page websockets are 404, which both MCP
+servers never use (I-296's live check used `PUT /json/new`; it now 404s).
+
+Always, with or without `--allow`: refused are closing or crashing Chrome,
+file inputs and file drags (laptop paths), `DOM.getFileInfo`, permission
+grants (laptop clipboard, camera, microphone), turning off certificate
+checks, `Target.exposeDevToolsProtocol`, the `Extensions` and `Tethering`
+domains, unflattened sessions (`Target.sendMessageToTarget`, and
+`attachToTarget`/`setAutoAttach` without `flatten: true`, whose traffic
+the front could not read), and navigations or new tabs to anything but a
+web page (`file:`, `chrome:`, `chrome-extension:`, `view-source:`,
+`devtools:`, `about:` other than blank). Targets showing such pages
+(Chrome's settings, extensions' pages and background workers) are hidden
+from target lists and events, and one a tool's auto-attach picks up is
+detached by the front with a command of its own whose answer is dropped.
+Cookies do not leave Chrome: `Network.getCookies`, `getAllCookies`,
+`Storage.getCookies` and the two cookie clears are refused, and Cookie,
+Set-Cookie, `headersText` lines and the cookie lists are removed from
+network and fetch events; the bridge lends logins while it is open, and a
+copied cookie would outlive it. `Browser.setDownloadBehavior` (and
+`Page.`) is answered as done and dropped: Playwright sends it on every
+connect with a folder on the machine (refusing it failed
+`connectOverCDP`, found by `TestBridgeWithPlaywright`), and passing it
+would let a tool pick where on the laptop a file is written.
+
+With `--allow` (repeatable or comma-separated; `example.com` is that host,
+`*.example.com` is it and every subdomain; no scheme, port or path): a
+tool's `Page.navigate` and `Target.createTarget` off the list get a CDP
+error naming the host and saying to ask the user; targets are visible to
+the tools only when on the list, or a blank tab they or a visible page
+opened, and a visible tab stays theirs ("lent") whatever it shows next;
+cookie writes and storage clears for other hosts are refused. The
+boundary is the warden (`bridgewarden.go`): a second CDP connection the
+CLI makes before the tunnel opens, which auto-attaches to every tab and
+frame with `waitForDebuggerOnStart`, enables `Fetch` for Document
+requests there, and fails with `BlockedByClient` every document off the
+list in a lent tab, whatever started it (script `location=`, click,
+redirect, form post, popup with or without opener, frame); a lent tab
+that shows a page off the list without a request the warden saw (a
+back-forward cache restore, a `chrome://` page typed into it) is sent to
+about:blank. Your other tabs are continued untouched. If the warden's
+connection ends, the bridge ends (`errWardenLost`) rather than run
+without the list. Through Chrome's switch this is one more "Allow"
+dialog, at the start, which the CLI announces.
+
+Evidence against a real Chromium 154 (`TestBridgeAgainstChromium`,
+opt-in with `BRIDGE_TEST_CHROMIUM`): none of navigate, script, redirect,
+popup, noopener popup, form post and iframe reached other.test; the
+user's pre-existing tab on other.test was hidden and not attachable, and
+still navigated freely. Playwright 1.63 (the guest's playwright-core,
+`TestBridgeWithPlaywright`) and chrome-devtools-mcp 1.10.1 over MCP stdio
+(`TestBridgeWithChromeDevtoolsMCP`) work through the front with and
+without `--allow`. Fake-peer unit tests cover every refusal, the
+scrubbing, hiding and the injected detach.
+
+Gaps, stated in the user docs: requests a page on an allowed site makes
+for images, scripts or fetch to other hosts are not blocked, and carry
+whatever cookies those sites allow cross-site (the tool cannot open or
+read those sites' pages); a page's own JavaScript can read what the page
+can (non-HttpOnly cookies, local storage); a tab the user opens on an
+allowed site while the bridge runs becomes visible to the tools; frames
+already loaded in a page open before the bridge are not re-checked.
+*Rejected:* an MCP flag (not a boundary, above); blocking every
+subresource off the list (breaks nearly every site's CDN and fonts, and
+the user would have to list hosts they never see); holding every tab to
+the list (the user's own browsing would break while a bridge runs);
+refusing `setDownloadBehavior` (breaks Playwright); an HTTP proxy for
+Chrome (the laptop's Chrome is the user's, and its proxy is theirs).
+
+**I-312. The bridge needs a running machine and does not start one; there
+is no detached bridge.** (dogfood round, 2026-09-28) `code`, `exec` and
+`ssh` all refuse a stopped machine (`connectRunning`: "none of them starts
+a machine", exit 5 with `repose start` named), so the bridge, which is for
+an agent that is working, does the same rather than be the one command
+that starts a machine as a side effect. The docs say it needs a running
+machine and what to run. A background bridge is not offered, on purpose:
+a bridge nobody can see is one the user forgets is open; the two shapes
+are `--bridge` (lives as long as the attach) and a terminal running
+`repose browser bridge`. The user page leads with `--bridge`, one
+terminal, and puts the two-terminal flow second.
+
+**I-313. Closing a bridge is one ssh, bounded at 4 s, and never waits for
+a tmux client.** (dogfood round, owner saw Ctrl-C hang, 2026-09-28)
+`BrowserBridgeCmd` printed "Bridge closed" and then ran `bridge stop` (up
+to 10 s) and `tmuxMessage`, which polls `list-clients` for 8 s when
+nobody is attached, with an always-true alive callback. Now `bridgeStop`
+runs `repose-guest-profile browser bridge stop` and, in the same ssh,
+`if tmux list-clients ... | grep -q .; then tmux display-message ...; fi`,
+bounded by `bridgeStopWait` (4 s; over the ControlMaster it is a fraction
+of a second, and a guest that does not answer has switched back by
+itself through the hold's EXIT trap or the idle guard). The "on" message
+at the start uses the same one-shot check. Measured with the fake guest
+(testguest, real ssh), cancel to return: 8.191 s before (old
+`bridgeStop` + `tmuxMessage`), 54 ms after
+(`TestBridgeCloseReturnsPromptly`). session.go's `tmuxMessage` is
+unchanged (W3's lane); only the bridge stopped using it.
+
+**I-314. The bridge prints a navigation log on the user's own terminal:
+time, host and path, `blocked` or not, never a query or fragment, and
+nothing is stored.** (dogfood round, 2026-09-28) One line per top-level
+page load the tools see (`Page.frameNavigated` without a parent, deduped
+by loader id across both MCP servers' connections) and one per page the
+allowlist stopped (deduped for 2 s per place, so a refused navigate and
+the warden's failed request are one line). Queries and fragments carry
+sign-in and reset tokens, so `logPlace` keeps host and escaped path only,
+path cut at 80 characters. CLAUDE.md's "never log what a tenant typed"
+is about repose's logs; this is printed to the user's own terminal about
+the user's own browser, goes to no file, no api and no log, and the docs
+say so. With `--bridge` there is no terminal of its own, so only the
+`blocked` lines appear, as tmux messages. Without `--allow`, the tools
+usually attach to every tab, so the user's own page loads are listed too;
+the docs say so.
+
+**I-315. `--bridge-allow HOST` on `run` and `attach` is the allowlist for
+`--bridge`, and implies it.** (dogfood round, 2026-09-28) The one-terminal
+flow is the one the docs lead with, so the allowlist belongs there too.
+It is cheap: a `RunOptions.BridgeAllow` and a `sessionOptions.BridgeAllow`
+(JSON `bridge_allow`) carried to the session helper, which runs the same
+`runBridge` with the same policy; the values are checked as a usage error
+before anything connects. A separate name, not `--allow`, because on
+`run` a bare `--allow` reads as a permission for the agent. This touches
+W1's `run.go` (one field, one line) and session.go's options (not
+`tmuxMessage`).
+
+**I-316. The user's Chrome has one page, "Lend the agents your Chrome"
+(`/docs/your-chrome`), under Using repose; the tutorial page it replaces
+is removed.** (dogfood round, owner asked for the feature "documented very
+well", 2026-09-28) This amends I-297's tutorial list: the Chrome tutorial
+had become half a reference, duplicated in machine.md. The page covers
+what the bridge is, Chrome's switch and per-connection dialog, `--bridge`
+first and the second terminal next, `--allow`, the page list, what the
+agents can and cannot do (and I-311's gaps), how to stop it, and
+troubleshooting (a stopped machine, no Chrome dialog, the tools can't
+connect, a bridge still held, `Ctrl-b` inside the user's own tmux).
+machine.md keeps a short "Use your own Chrome" section pointing at it
+(the agent guide's anchor), cli.md has rows for `repose browser`,
+`--allow`, `--bridge-allow`, and the agent guide tells agents that a site
+off the allowlist fails with a named error and to ask the user rather than
+work around it. Links to `/docs/tutorial-your-chrome` in the docs now go
+to `/docs/your-chrome`; the old URL is a 404 (the site has no redirects,
+and it was live for one day).

@@ -283,6 +283,9 @@ func newRunCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 			if opts.Worktree && opts.Prompt == "" {
 				return cobraUsageError{fmt.Errorf("--worktree starts an agent in its own worktree and needs a PROMPT")}
 			}
+			if _, err := parseBridgeAllow(opts.BridgeAllow); err != nil {
+				return cobraUsageError{fmt.Errorf("--bridge-allow %w", err)}
+			}
 			e, err := env()
 			if err != nil {
 				return err
@@ -299,6 +302,7 @@ func newRunCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	cmd.Flags().BoolVar(&opts.NoAttach, "no-attach", false, "do not attach after starting/sending the prompt")
 	cmd.Flags().BoolVar(&opts.Worktree, "worktree", false, "start the agent in its own git worktree, ~/<slug>-<window> on branch repose/<window>")
 	cmd.Flags().BoolVar(&opts.Bridge, "bridge", false, "also bridge this laptop's Chrome to the machine while attached (repose browser bridge)")
+	cmd.Flags().StringArrayVar(&opts.BridgeAllow, "bridge-allow", nil, "with --bridge: the agents may open only this host in your Chrome (repeatable; *.example.com for subdomains); implies --bridge")
 	_ = cmd.RegisterFlagCompletionFunc("agent", cobra.FixedCompletions(agentNames, cobra.ShellCompDirectiveNoFileComp))
 	_ = cmd.RegisterFlagCompletionFunc("size", cobra.FixedCompletions([]string{"small", "large", "xl"}, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
@@ -306,6 +310,7 @@ func newRunCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 
 func newAttachCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var bridge bool
+	var bridgeAllow []string
 	cmd := &cobra.Command{
 		Use:               "attach [PROJECT]",
 		Short:             "Attach to a project's tmux session (this checkout's, or PROJECT)",
@@ -316,14 +321,18 @@ func newAttachCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if _, err := parseBridgeAllow(bridgeAllow); err != nil {
+				return cobraUsageError{fmt.Errorf("--bridge-allow %w", err)}
+			}
 			e, err := env()
 			if err != nil {
 				return err
 			}
-			return runRun(cmd.Context(), e, RunOptions{ProjectArg: project, Bridge: bridge}, true)
+			return runRun(cmd.Context(), e, RunOptions{ProjectArg: project, Bridge: bridge, BridgeAllow: bridgeAllow}, true)
 		},
 	}
 	cmd.Flags().BoolVar(&bridge, "bridge", false, "also bridge this laptop's Chrome to the machine while attached (repose browser bridge)")
+	cmd.Flags().StringArrayVar(&bridgeAllow, "bridge-allow", nil, "with --bridge: the agents may open only this host in your Chrome (repeatable; *.example.com for subdomains); implies --bridge")
 	return cmd
 }
 
@@ -1116,7 +1125,36 @@ func newMCPCmd() *cobra.Command {
 }
 
 func newBrowserCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
-	root := &cobra.Command{Use: "browser", Short: "Your laptop's Chrome, for the agents on a machine"}
+	// `repose browser [PROJECT]` is the machine's own browser, on its
+	// desktop (what `repose open --desktop` does, which stays as the same
+	// command); `repose browser bridge` is the laptop's Chrome (I-310). A
+	// project called "bridge" is reached with --project.
+	var stop, noBrowser bool
+	root := &cobra.Command{
+		Use:   "browser [PROJECT]",
+		Short: "Watch and use the agents' browser on the machine's desktop",
+		Long: "Open the machine's desktop in your browser, showing the browser the agents use: watch it work, log in,\n" +
+			"solve a captcha. The same as repose open --desktop. `repose browser bridge` lends the agents your\n" +
+			"laptop's Chrome instead.",
+		Args:              projectArgs,
+		ValidArgsFunction: completeProject(env),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := projectFrom(args, g)
+			if err != nil {
+				return err
+			}
+			e, err := env()
+			if err != nil {
+				return err
+			}
+			if stop {
+				return StopDesktopCmd(cmd.Context(), e, project)
+			}
+			return OpenDesktopCmd(cmd.Context(), e, project, noBrowser)
+		},
+	}
+	root.Flags().BoolVar(&stop, "stop", false, "stop the desktop on the machine")
+	root.Flags().BoolVar(&noBrowser, "no-browser", false, "print the URL instead of opening a browser")
 	var opts BridgeOptions
 	bridge := &cobra.Command{
 		Use:   "bridge [PROJECT]",
@@ -1124,7 +1162,8 @@ func newBrowserCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 		Long: "Let the agents on a machine browse in this laptop's Chrome, with your logins and extensions, until Ctrl-C.\n\n" +
 			"Chrome 144 or newer with remote debugging turned on at chrome://inspect/#remote-debugging; the command\n" +
 			"opens that page and waits when it is off. Chrome asks you to allow each connection. Nothing on the\n" +
-			"machine changes: its browser tools reach your Chrome through the SSH connection for as long as this runs.",
+			"machine changes: its browser tools reach your Chrome through the SSH connection for as long as this runs.\n" +
+			"Needs the machine running. --allow HOST keeps the agents to those hosts; each page they open is listed here.",
 		Args:              projectArgs,
 		ValidArgsFunction: completeProject(env),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1134,6 +1173,9 @@ func newBrowserCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 			}
 			if opts.CDP != "" && opts.UserDataDir != "" {
 				return cobraUsageError{fmt.Errorf("--cdp names the browser; --user-data-dir is not needed with it")}
+			}
+			if _, err := parseBridgeAllow(opts.Allow); err != nil {
+				return cobraUsageError{fmt.Errorf("--allow %w", err)}
 			}
 			e, err := env()
 			if err != nil {
@@ -1145,6 +1187,7 @@ func newBrowserCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	bridge.Flags().StringVar(&opts.CDP, "cdp", "", "bridge this DevTools server instead (a browser started with --remote-debugging-port), e.g. http://127.0.0.1:9222")
 	bridge.Flags().StringVar(&opts.UserDataDir, "user-data-dir", "", "the profile directory of a Chrome that is not Google Chrome's default one")
 	bridge.Flags().BoolVar(&opts.NoBrowser, "no-browser", false, "don't open chrome://inspect when remote debugging is off")
+	bridge.Flags().StringArrayVar(&opts.Allow, "allow", nil, "the agents may open only this host in your Chrome (repeatable; *.example.com is example.com and its subdomains)")
 	root.AddCommand(bridge)
 	return root
 }

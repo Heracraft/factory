@@ -36,7 +36,10 @@ import (
 //     websocket at the address the request came to (the guest's
 //     127.0.0.1:9224), because that is how Playwright MCP and
 //     chrome-devtools-mcp discover the websocket and Chrome's own server
-//     does not answer it; everything else goes to Chrome byte for byte.
+//     does not answer it. The browser's websocket goes to Chrome message
+//     by message through the bridge's policy (bridgecdp.go, I-311), and
+//     with --allow a CDP connection of its own holds the agents' tabs to
+//     the list (bridgewarden.go); anything else is 404.
 //  3. The tunnel: an ssh with a reverse forward from the guest's 9226 to
 //     the front, whose remote command is `repose-guest-profile browser
 //     bridge hold`. The hold switches the guest's 9224 endpoint from the
@@ -75,6 +78,9 @@ type BridgeOptions struct {
 	UserDataDir string
 	// NoBrowser leaves chrome://inspect for the user to open.
 	NoBrowser bool
+	// Allow is --allow: the hosts the agents may open (I-311). Empty is
+	// no allowlist.
+	Allow []string
 }
 
 // laptopChrome is a DevTools server on the laptop the bridge can reach.
@@ -291,11 +297,13 @@ func findLaptopChrome(ctx context.Context, e *Env, opts BridgeOptions, say func(
 }
 
 // cdpFront is the laptop's end of the tunnel: what the guest's 9224
-// reaches. It answers /json/version and passes everything else to the
-// browser's DevTools server.
+// reaches. It answers /json/version, carries the browser's websocket to
+// the DevTools server message by message through the policy
+// (bridgecdp.go), and answers 404 to anything else.
 type cdpFront struct {
 	ln     net.Listener
 	chrome laptopChrome
+	policy *bridgePolicy
 	// onAttach is called for every connection passed to the browser: an
 	// MCP server attaching (each holds one for its whole life).
 	onAttach func()
@@ -305,12 +313,15 @@ type cdpFront struct {
 }
 
 // startCDPFront listens on a free loopback port and serves until Close.
-func startCDPFront(chrome laptopChrome, onAttach func()) (*cdpFront, error) {
+func startCDPFront(chrome laptopChrome, policy *bridgePolicy, onAttach func()) (*cdpFront, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, err
 	}
-	f := &cdpFront{ln: ln, chrome: chrome, onAttach: onAttach}
+	if policy == nil {
+		policy = newBridgePolicy(nil, nil)
+	}
+	f := &cdpFront{ln: ln, chrome: chrome, policy: policy, onAttach: onAttach}
 	go f.serve()
 	return f, nil
 }
@@ -408,22 +419,42 @@ func (f *cdpFront) handle(c net.Conn) {
 		_, _ = c.Write(body)
 		return
 	}
+	// Only the browser's websocket, which is what both MCP servers use:
+	// the other /json endpoints (/json/new?url among them) and a page's
+	// own websocket would go round the policy.
+	path, _, _ := strings.Cut(target, "?")
+	if !strings.EqualFold(headerValue(head, "Upgrade"), "websocket") || path != f.chrome.Path {
+		_, _ = io.WriteString(c, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+		return
+	}
 	up, err := net.DialTimeout("tcp", f.chrome.Addr, 5*time.Second)
 	if err != nil {
 		_, _ = io.WriteString(c, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 		return
 	}
 	defer func() { _ = up.Close() }()
-	if _, err := up.Write(head); err != nil {
+	if _, err := up.Write(withoutWSExtensions(head)); err != nil {
+		return
+	}
+	ubr := bufio.NewReader(up)
+	rhead, status, err := readResponseHead(ubr)
+	if err != nil {
+		return
+	}
+	if _, err := c.Write(rhead); err != nil {
+		return
+	}
+	if status != http.StatusSwitchingProtocols {
+		_, _ = io.Copy(c, ubr)
 		return
 	}
 	if f.onAttach != nil {
 		f.onAttach()
 	}
-	done := make(chan struct{}, 2)
-	go func() { _, _ = io.Copy(up, br); done <- struct{}{} }()
-	go func() { _, _ = io.Copy(c, up); done <- struct{}{} }()
-	<-done
+	conn := newCDPConn(f.policy, &lockedWriter{w: c}, &lockedWriter{w: up})
+	conn.proxy(
+		func(on func(wsFrame) error) (byte, []byte, []byte, error) { return readWSMessage(br, on) },
+		func(on func(wsFrame) error) (byte, []byte, []byte, error) { return readWSMessage(ubr, on) })
 }
 
 // bridgeSSHArgs is the tunnel's ssh: its own connection (a reverse
@@ -505,117 +536,29 @@ func bridgeRelease(ctx context.Context, t sshTarget) {
 	_ = runSSHOK(ctx, t, "repose-guest-profile browser bridge release")
 }
 
+// bridgeStopWait bounds the closing ssh: over the ControlMaster it takes
+// a fraction of a second, and a machine that doesn't answer in this long
+// has switched back by itself anyway (the hold's EXIT trap, or the idle
+// guard within two minutes).
+const bridgeStopWait = 4 * time.Second
+
 // bridgeStop switches the guest's endpoint back, after the hold has done
-// so itself: belt and braces, so the closing line is true when printed.
-func bridgeStop(t sshTarget) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+// so itself: belt and braces, so the closing line is true. With a tmux
+// line, the same ssh shows it to whoever is attached, and to nobody when
+// nobody is: one round trip, never a wait for a client to turn up.
+func bridgeStop(t sshTarget, slug, tmuxLine string) {
+	ctx, cancel := context.WithTimeout(context.Background(), bridgeStopWait)
 	defer cancel()
-	_ = runSSHOK(ctx, t, "repose-guest-profile browser bridge stop")
+	cmd := "repose-guest-profile browser bridge stop"
+	if tmuxLine != "" {
+		cmd += "; " + tmuxIfAttached(slug, tmuxLine)
+	}
+	_ = runSSHOK(ctx, t, cmd)
 }
 
-// bridgeUpLine is the line that says the bridge is on.
-func bridgeUpLine(c laptopChrome, slug string) string {
-	s := fmt.Sprintf("%s → %s: the agents there browse in your Chrome now, with your logins. Ctrl-C hands them back the machine's browser.", c.Name(), slug)
-	if c.Switch {
-		s += "\nChrome asks you to allow each new connection."
-	}
-	return s
-}
-
-// bridgeTmuxLine is shown in the project's tmux session, for whoever is
-// attached.
-func bridgeTmuxLine(on bool) string {
-	if on {
-		return "Your laptop's Chrome is bridged in: the browser tools on this machine drive it now."
-	}
-	return "The bridge to your laptop's Chrome closed; the browser tools are back on this machine's browser."
-}
-
-// BrowserBridgeCmd implements `repose browser bridge [PROJECT]`.
-func BrowserBridgeCmd(ctx context.Context, e *Env, projectArg string, opts BridgeOptions) error {
-	project, target, err := connectRunning(ctx, e, projectArg)
-	if err != nil {
-		return err
-	}
-	chrome, err := findLaptopChrome(ctx, e, opts, func(m string) { _, _ = fmt.Fprintln(e.ErrOut, m) })
-	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			return nil
-		}
-		return err
-	}
-	front, err := startCDPFront(chrome, func() {
-		_, _ = fmt.Fprintf(e.Out, "An agent on %s is in your Chrome.\n", project.Slug)
-	})
-	if err != nil {
-		return stepFailed("listen on this laptop for the machine", err, "")
-	}
-	defer front.Close()
-	bridgeRelease(ctx, target)
-	up := make(chan struct{})
-	go func() {
-		<-up
-		_, _ = fmt.Fprintln(e.Out, bridgeUpLine(chrome, project.Slug))
-		mctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		tmuxMessage(mctx, target, project.Slug, bridgeTmuxLine(true), func() bool { return true })
-	}()
-	err = holdBridge(ctx, target, front.Port(), func() { close(up) })
-	if ctx.Err() != nil {
-		// Ctrl-C is how a bridge ends: not an interruption.
-		bridgeStop(target)
-		_, _ = fmt.Fprintf(e.Out, "\nBridge closed. The agents on %s are back on the machine's browser.\n", project.Slug)
-		mctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		tmuxMessage(mctx, target, project.Slug, bridgeTmuxLine(false), func() bool { return true })
-		return nil
-	}
-	bridgeStop(target)
-	if errors.Is(err, errBridgeHeld) {
-		return exitf(ExitGeneric, "Another bridge to %s is still open (a laptop that went to sleep keeps its bridge for up to two minutes). Try again in a moment.", project.Slug)
-	}
-	if err != nil {
-		return stepFailed("keep the bridge to "+project.Slug+" open", err, "")
-	}
-	// The guest ended the hold on its own: the tunnel listener vanished.
-	return exitf(ExitGeneric, "The bridge to %s closed from the machine's side. The agents there are back on the machine's browser; run repose browser bridge again to reopen it.", project.Slug)
-}
-
-// runSessionBridge is --bridge on `run` and `attach`: the same bridge,
-// beside the attach, for as long as it lasts, reporting through tmux.
-func runSessionBridge(ctx context.Context, t sshTarget, slug string, say func(string), alive func() bool) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	go func() {
-		for alive() && ctx.Err() == nil {
-			if sleepOrDone(ctx, time.Second) != nil {
-				return
-			}
-		}
-		cancel()
-	}()
-	home, _ := os.UserHomeDir()
-	chrome, err := findLaptopChrome(ctx, &Env{HomeDir: home}, BridgeOptions{}, say)
-	if err != nil {
-		if ctx.Err() == nil {
-			say("repose could not bridge your Chrome: " + oneLine(err.Error()))
-		}
-		return
-	}
-	front, err := startCDPFront(chrome, nil)
-	if err != nil {
-		say("repose could not bridge your Chrome: " + oneLine(err.Error()))
-		return
-	}
-	defer front.Close()
-	bridgeRelease(ctx, t)
-	err = holdBridge(ctx, t, front.Port(), func() { say(bridgeTmuxLine(true)) })
-	bridgeStop(t)
-	switch {
-	case ctx.Err() != nil:
-	case errors.Is(err, errBridgeHeld):
-		say("repose could not bridge your Chrome: another bridge to " + slug + " is still open.")
-	case err != nil:
-		say("repose could not keep the bridge to your Chrome open: " + oneLine(err.Error()))
-	}
+// tmuxIfAttached is a shell command that shows msg on the session's
+// clients if it has any, and does nothing otherwise.
+func tmuxIfAttached(slug, msg string) string {
+	return fmt.Sprintf("if tmux list-clients -t %s -F x 2>/dev/null | grep -q .; then tmux display-message -d 4000 -t %s %s; fi",
+		shQuote("="+slug), shQuote("="+slug+":"), shQuote(strings.ReplaceAll(msg, "#", "##")))
 }

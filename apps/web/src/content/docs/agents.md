@@ -87,7 +87,7 @@ Never copied: your login, conversation history, `~/.claude.json`, and anything n
 
 HTTP servers (Linear, Sentry, Notion, GitHub and the like) and stdio servers that only need `npx` and a token work on the machine. Store the token as a secret and refer to it as `${VAR}`. MCP servers you added on your laptop with `claude mcp add` at user scope live in `~/.claude.json`, which isn't copied, so they aren't on the machine until you add them there. Add servers there with `claude mcp add`, or commit them in the repository's `.mcp.json`.
 
-Servers that need your laptop (Apple Notes, Xcode, desktop automation, Claude in Chrome) don't work on the machine. The browser tools are covered in [The machine](/docs/machine#browser); `repose browser bridge` lends the machine's browser tools your laptop's Chrome, logins included, which covers most of what Claude in Chrome would.
+Servers that need your laptop (Apple Notes, Xcode, desktop automation, Claude in Chrome) don't work on the machine. The browser tools are covered in [The machine](/docs/machine#browser); `repose browser bridge` lends the machine's browser tools your laptop's Chrome, logins included, which covers most of what Claude in Chrome would; see [Lend the agents your Chrome](/docs/your-chrome).
 
 ## What agents are told about the machine
 
