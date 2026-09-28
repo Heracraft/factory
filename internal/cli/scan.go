@@ -1027,7 +1027,7 @@ closest nixpkgs has when it lacks the pinned one). Nothing is installed and
 nothing leaves the laptop. DIR defaults to the current checkout.`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 1 {
-				return cobraUsageError{fmt.Errorf("repose scan takes at most one DIR, got %d arguments", len(args))}
+				return cobraUsageError{fmt.Errorf("repose scan takes at most one DIR, got %s", gotArgs(args))}
 			}
 			return nil
 		},

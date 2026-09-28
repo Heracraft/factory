@@ -8781,3 +8781,30 @@ never reach a log. Other gitignored files (build output, databases,
 `node_modules`) are still not copied. Test: `TestRunWorktree` (a root and
 a nested `.env.local` copied with 0600 kept, `build.log` and
 `node_modules/pkg/.env` not, the worktree's status clean).
+
+**I-346. `repose cp` takes several sources, and an argument refusal
+names what it got.** (07, 2026-09-28; the owner's `repose cp ./Fwd_*
+partition-poster:/tmp` failed six times with "takes a source and a
+destination".) The glob expanded to more than two words, `cp` accepted
+exactly two, and its message was the same for every count, so it read as
+a syntax problem when the syntax was right. `repose cp [-r] SRC... DST`
+now works as scp does: the sources are all on one side and, when on the
+guest, name one project; they go into the directory DST. Mixed sides, two
+projects, and no guest side are usage errors that print the arguments.
+`:izma:/tmp` (a leading colon before a project name) is refused with
+"write izma:/tmp", since it otherwise means the relative path `izma:/tmp`
+in this checkout's project. To keep the class from coming back:
+`gotArgs` spells out a refused argument list ("got 4 arguments: …"),
+`repose scan` uses it too, and `TestArgErrorsSayWhatTheyGot` walks every
+visible command, gives it nine words and none, and fails when a refusal
+is not a usage error or does not name the count (`repose exec` is exempt:
+its refusal is the missing `--`). The walk found that cobra's
+MinimumNArgs refusal ("requires at least 1 arg(s)", `repose config add`
+with no package) exited 1 instead of 2; it now exits 2 like the rest.
+`docs/CHECKLIST.md` asks for the test and one run with a glob for every
+command that takes paths. Tests: `TestCpBothWays` (two files each way,
+one name with a space, the four refusals), `TestCpArgs`.
+*Rejected:* expanding a glob inside repose (the shell already did, and a
+quoted remote glob already goes to the guest as scp's); a clearer message
+alone without the multi-source form (the user's intent was plain and scp
+supports it).

@@ -138,6 +138,7 @@ For a file that shouldn't go through git, use `repose cp`. A path after `:` is o
 ```
 repose cp :logs/app.log .
 repose cp todo-app:/tmp/trace.json .
+repose cp ./report-*.pdf todo-app:/tmp/
 repose cp -r ./fixtures :test/fixtures
 ```
 

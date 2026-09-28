@@ -411,3 +411,4 @@ pointer, not a summary.
 - **I-341** On macOS, Cmd+V with an image on the clipboard pastes it: while attached, a watcher gives an image-only clipboard the path of a PNG copy, taken off again at detach; `REPOSE_CLIPBOARD_PATH=0` turns it off — 2026-09-28; L8701
 - **I-342** `--worktree` makes `~/<slug>-worktree-<N>` on branch `worktree-<N>` (the laptop sees `repose/worktree-<N>`), numbered apart from the window name; supersedes the naming of I-253 — 2026-09-28; L8743
 - **I-343** A `--worktree` gets the checkout's gitignored `.env` and `.env.*` files — 2026-09-28; L8768
+- **I-346** `repose cp` takes several sources like scp; every argument refusal names what it got, held by `TestArgErrorsSayWhatTheyGot` — 2026-09-28; L8785

@@ -51,11 +51,19 @@ func Execute(version string) int {
 	}
 	// cobra's own refusals (an unknown command, a wrong argument count)
 	// are usage mistakes too, not command failures.
-	if msg := err.Error(); strings.HasPrefix(msg, "unknown command") || strings.HasPrefix(msg, "accepts ") || strings.HasPrefix(msg, "invalid argument") {
-		_, _ = fmt.Fprintf(os.Stderr, "%s\nRun `repose --help` for the commands.\n", msg)
+	if isCobraRefusal(err) {
+		_, _ = fmt.Fprintf(os.Stderr, "%s\nRun `repose --help` for the commands.\n", err)
 		return ExitUsage
 	}
 	return exitCodeFor(err, os.Stderr)
+}
+
+// isCobraRefusal reports cobra's own usage errors, which it returns as
+// plain errors: an unknown command, and ExactArgs, MaximumNArgs ("accepts
+// …") and MinimumNArgs ("requires …").
+func isCobraRefusal(err error) bool {
+	msg := err.Error()
+	return strings.HasPrefix(msg, "unknown command") || strings.HasPrefix(msg, "accepts ") || strings.HasPrefix(msg, "requires ") || strings.HasPrefix(msg, "invalid argument")
 }
 
 // cobraUsageError marks an error as a plain usage mistake (bad flags,
@@ -159,6 +167,19 @@ func projectArgs(cmd *cobra.Command, args []string) error {
 		return cobraUsageError{fmt.Errorf("%s takes at most one PROJECT, got %d arguments: %s", cmd.CommandPath(), len(args), strings.Join(args, " "))}
 	}
 	return nil
+}
+
+// gotArgs says what a usage error received, so a shell glob that expanded
+// to many words, or a word that went missing, shows in the message
+// (I-346; TestArgErrorsSayWhatTheyGot holds every command to it).
+func gotArgs(args []string) string {
+	switch len(args) {
+	case 0:
+		return "no arguments"
+	case 1:
+		return "1 argument: " + args[0]
+	}
+	return fmt.Sprintf("%d arguments: %s", len(args), strings.Join(args, " "))
 }
 
 // noArgs is cobra.NoArgs as a usage error: v0.1.4 silently ignored a

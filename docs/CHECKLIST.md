@@ -49,6 +49,12 @@ written so they cannot happen quietly.
       page, and `go test ./internal/cli -run TestDocs` passes (it fails on a
       CLI command, flag, config.toml key, environment variable or exit code
       missing from, or left behind in, `cli.md`).
+- [ ] A CLI command that takes paths or several words behaves as the Unix
+      tool it wraps or resembles would with what a shell hands it (a glob
+      expands to many words; `cp`, `scp`, `rm` take several sources), and
+      every argument refusal names what it received (DECISIONS I-346).
+      Evidence: `go test ./internal/cli -run TestArgErrorsSayWhatTheyGot`
+      passes, and the new command was run once with a glob.
 - [ ] A new or changed guest capability (something installed, a port or
       network rule, a limit, a command agents can run, how secrets, the
       browser or notifications work) updates the agent guide,

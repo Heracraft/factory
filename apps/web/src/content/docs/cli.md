@@ -149,9 +149,9 @@ Needs the machine running (it doesn't start it) and Chrome 144 or newer with rem
 
 Only one bridge to a machine at a time. A laptop that goes to sleep keeps its bridge for up to two minutes; a new bridge takes over from it. With `--allow`, the bridge also closes if its own connection to Chrome ends.
 
-### `repose cp [-r] SRC DST`
+### `repose cp [-r] SRC... DST`
 
-Copy files with `scp`. One side is `PROJECT:PATH`, or `:PATH` for this checkout's project. Relative machine paths start at the checkout. `-r`/`--recursive` copies directories.
+Copy files with `scp`. One side is `PROJECT:PATH`, or `:PATH` for this checkout's project. Relative machine paths start at the checkout. `-r`/`--recursive` copies directories. With several sources, all on the same side, the files go into the directory `DST`, so a glob works: `repose cp ./Fwd_* todo-app:/tmp/`.
 
 ### `repose paste [PROJECT]`
 

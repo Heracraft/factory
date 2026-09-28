@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	fakeapi "github.com/heracraft/repose/internal/fakes/api"
@@ -65,7 +66,7 @@ func TestCpBothWays(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := t.TempDir()
-	if err := CpCmd(ctx, f.env, ":logs/x.log", out, false, ""); err != nil {
+	if err := CpCmd(ctx, f.env, []string{":logs/x.log"}, out, false, ""); err != nil {
 		t.Fatalf("cp from the guest: %v %s", err, f.env.ErrOut.(*discardWriter).buf.String())
 	}
 	if b, err := os.ReadFile(filepath.Join(out, "x.log")); err != nil || string(b) != "line from the guest\n" {
@@ -75,10 +76,10 @@ func TestCpBothWays(t *testing.T) {
 	if err := os.WriteFile(local, []byte(`{"from":"laptop"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := CpCmd(ctx, f.env, local, testSlug+":tmp/trace.json", false, ""); err == nil {
+	if err := CpCmd(ctx, f.env, []string{local}, testSlug+":tmp/trace.json", false, ""); err == nil {
 		t.Fatal("copy into a directory that does not exist should fail like scp")
 	}
-	if err := CpCmd(ctx, f.env, local, testSlug+":logs/", false, ""); err != nil {
+	if err := CpCmd(ctx, f.env, []string{local}, testSlug+":logs/", false, ""); err != nil {
 		t.Fatalf("cp to the guest: %v", err)
 	}
 	if b, err := os.ReadFile(filepath.Join(logs, "trace.json")); err != nil || string(b) != `{"from":"laptop"}` {
@@ -90,13 +91,51 @@ func TestCpBothWays(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(logs, odd), []byte("odd name\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := CpCmd(ctx, f.env, ":logs/"+odd, out, false, ""); err != nil {
+	if err := CpCmd(ctx, f.env, []string{":logs/" + odd}, out, false, ""); err != nil {
 		t.Fatalf("cp of %q from the guest: %v", odd, err)
 	}
 	if b, err := os.ReadFile(filepath.Join(out, odd)); err != nil || string(b) != "odd name\n" {
 		t.Fatalf("copied %q = %q %v", odd, b, err)
 	}
-	if err := CpCmd(ctx, f.env, "a", "b", false, ""); err == nil || err.(*exitError).code != ExitUsage {
+	if err := CpCmd(ctx, f.env, []string{"a"}, "b", false, ""); err == nil || err.(*exitError).code != ExitUsage {
 		t.Errorf("two local sides: %v", err)
+	}
+
+	// I-346: what a shell glob hands over, several sources into one
+	// directory, both ways.
+	var fwd []string
+	for _, n := range []string{"Fwd_a.pdf", "Fwd_b c.pdf"} {
+		p := filepath.Join(out, n)
+		if err := os.WriteFile(p, []byte(n), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		fwd = append(fwd, p)
+	}
+	if err := CpCmd(ctx, f.env, fwd, testSlug+":logs/", false, ""); err != nil {
+		t.Fatalf("cp of two files to the guest: %v", err)
+	}
+	back := t.TempDir()
+	if err := CpCmd(ctx, f.env, []string{":logs/Fwd_a.pdf", ":logs/Fwd_b c.pdf"}, back, false, ""); err != nil {
+		t.Fatalf("cp of two files from the guest: %v", err)
+	}
+	for _, n := range []string{"Fwd_a.pdf", "Fwd_b c.pdf"} {
+		if b, err := os.ReadFile(filepath.Join(back, n)); err != nil || string(b) != n {
+			t.Errorf("%s round trip = %q %v", n, b, err)
+		}
+	}
+	for _, c := range []struct {
+		srcs []string
+		dst  string
+		want string
+	}{
+		{[]string{"a", ":b"}, ".", "different sides"},
+		{[]string{"izma:a", "other:b"}, ".", "two projects"},
+		{[]string{"./Fwd_a.pdf", "./Fwd_b.pdf"}, "/tmp", "Every argument"},
+		{[]string{"./Fwd_a.pdf"}, ":" + testSlug + ":/tmp/", "write " + testSlug + ":/tmp/"},
+	} {
+		err := CpCmd(ctx, f.env, c.srcs, c.dst, false, "")
+		if ee, ok := err.(*exitError); !ok || ee.code != ExitUsage || !strings.Contains(ee.Error(), c.want) {
+			t.Errorf("cp %v %s: %v, want a usage error with %q", c.srcs, c.dst, err, c.want)
+		}
 	}
 }

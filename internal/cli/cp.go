@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
@@ -16,9 +17,12 @@ import (
 // resolved the way every other command resolves it. `<project>:<path>`
 // names a file in that project's guest, `:<path>` one in the current
 // project's; a relative guest path is taken from ~/<slug>, the checkout.
+// Several sources go into one destination, as with scp, so a shell glob
+// works (I-346).
 //
 //	repose cp :logs/x.log .
 //	repose cp izma:/tmp/trace.json ./trace.json
+//	repose cp ./report-*.pdf izma:/tmp/
 //	repose cp -r ./fixtures :test/fixtures
 
 // scpExtraArgs is added to every scp; tests set -O (the classic protocol)
@@ -64,18 +68,20 @@ func (s cpSide) guestPath(slug string) string {
 func newCpCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var recursive bool
 	cmd := &cobra.Command{
-		Use:   "cp [-r] SRC DST",
+		Use:   "cp [-r] SRC... DST",
 		Short: "Copy files to or from a project's machine (PROJECT:PATH, or :PATH for this checkout's)",
 		Long: `Copy files between the laptop and a guest with scp. One side names the
 guest: PROJECT:PATH for a project, :PATH for this checkout's. A relative
-guest path starts at the project's checkout (~/<slug>).
+guest path starts at the project's checkout (~/<slug>). Several sources
+copy into the destination directory, so a glob such as ./logs/* works.
 
   repose cp :logs/x.log .
   repose cp izma:/tmp/trace.json .
+  repose cp ./report-*.pdf izma:/tmp/
   repose cp -r ./fixtures :test/fixtures`,
 		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 2 {
-				return cobraUsageError{errors.New("repose cp takes a source and a destination, one of them PROJECT:PATH or :PATH")}
+			if len(args) < 2 {
+				return cobraUsageError{fmt.Errorf("repose cp takes SRC... DST, one side PROJECT:PATH or :PATH; got %s", gotArgs(args))}
 			}
 			return nil
 		},
@@ -84,7 +90,7 @@ guest path starts at the project's checkout (~/<slug>).
 			if err != nil {
 				return err
 			}
-			return CpCmd(cmd.Context(), e, args[0], args[1], recursive, g.project)
+			return CpCmd(cmd.Context(), e, args[:len(args)-1], args[len(args)-1], recursive, g.project)
 		},
 	}
 	cmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "copy directories")
@@ -92,15 +98,41 @@ guest path starts at the project's checkout (~/<slug>).
 }
 
 // CpCmd resolves the one guest side, refreshes the certificate the way
-// run does, and runs scp over the project's multiplexed connection.
-func CpCmd(ctx context.Context, e *Env, srcArg, dstArg string, recursive bool, projectFlag string) error {
-	src, dst := parseCpSide(srcArg), parseCpSide(dstArg)
-	if src.Remote == dst.Remote {
-		return exitf(ExitUsage, "One side of `repose cp` names the guest (PROJECT:PATH, or :PATH for this checkout's project) and the other the laptop.")
+// run does, and runs scp over the project's multiplexed connection. The
+// sources are all on one side and the destination on the other.
+func CpCmd(ctx context.Context, e *Env, srcArgs []string, dstArg string, recursive bool, projectFlag string) error {
+	if len(srcArgs) == 0 {
+		return exitf(ExitUsage, "repose cp takes SRC... DST; got no source.")
 	}
-	remote := &src
-	if dst.Remote {
-		remote = &dst
+	dst := parseCpSide(dstArg)
+	srcs := make([]cpSide, len(srcArgs))
+	for i, a := range srcArgs {
+		srcs[i] = parseCpSide(a)
+		if srcs[i].Remote != srcs[0].Remote {
+			return exitf(ExitUsage, "%s and %s are on different sides; the sources of `repose cp` are all on the laptop or all on the guest.", srcArgs[0], a)
+		}
+		if srcs[i].Project != srcs[0].Project {
+			return exitf(ExitUsage, "%s and %s name two projects; copy from one at a time.", srcArgs[0], a)
+		}
+	}
+	if srcs[0].Remote == dst.Remote {
+		side := "the laptop"
+		if dst.Remote {
+			side = "the guest"
+		}
+		all := strings.Join(append(append([]string{}, srcArgs...), dstArg), " ")
+		return exitf(ExitUsage, "Every argument of `repose cp` is on %s: %s. One side names the guest (PROJECT:PATH, or :PATH for this checkout's project) and the other the laptop.", side, all)
+	}
+	remote := &dst
+	if srcs[0].Remote {
+		remote = &srcs[0]
+	}
+	// `:izma:/tmp` is this checkout's project and the relative path
+	// izma:/tmp, which nobody means.
+	if p := remote.Path; remote.Project == "" {
+		if i := strings.Index(p, ":"); i > 0 && !strings.Contains(p[:i], "/") && (strings.HasPrefix(p[i+1:], "/") || strings.HasPrefix(p[i+1:], "~")) {
+			return exitf(ExitUsage, "A leading : names this checkout's project. For the project %s, write %s.", p[:i], p)
+		}
 	}
 	name := remote.Project
 	if name != "" && projectFlag != "" && name != projectFlag {
@@ -136,7 +168,7 @@ func CpCmd(ctx context.Context, e *Env, srcArg, dstArg string, recursive bool, p
 	if recursive {
 		args = append(args, "-r")
 	}
-	for _, s := range []cpSide{src, dst} {
+	for _, s := range append(srcs, dst) {
 		if s.Remote {
 			p := s.guestPath(project.Slug)
 			if legacy {
