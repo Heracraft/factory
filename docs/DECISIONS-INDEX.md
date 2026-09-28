@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-342 entries.
+349 entries.
 
 ## Scope
 
@@ -374,3 +374,10 @@ pointer, not a summary.
 - **I-331** Sign-out leaves the page alone until the browser goes, and no page paints before its stylesheet — 2026-09-28; L7696
 - **I-332** Settings save as they change; the ntfy URL keeps a Save — 2026-09-28; L7716
 - **I-333** "Recently destroyed" shows ten rows, then more on request — 2026-09-28; L7735
+- **I-300** A project being destroyed does not count toward the project limit; one left in error by a failed destroy does — 2026-09-28; L7742
+- **I-301** `repose run` on a project being destroyed waits and starts over — 2026-09-28; L7760
+- **I-302** `repose sync [PROJECT]` — 2026-09-28; L7777
+- **I-303** A run with nothing new prints no sync line — 2026-09-28; L7784
+- **I-304** The attach after `repose run PROMPT` falls back to the session — 2026-09-28; L7793
+- **I-305** `repose attach --bridge` keeps `--bridge` on the fast path — 2026-09-28; L7805
+- **I-306** A guest in bypass mode always skips Claude Code's bypass warning — 2026-09-28; L7810

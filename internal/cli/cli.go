@@ -114,6 +114,7 @@ func newRootCmd(version string) *cobra.Command {
 		newLogoutCmd(env),
 		newRunCmd(env, g),
 		newAttachCmd(env, g),
+		newSyncCmd(env, g),
 		newStartCmd(env, g),
 		newStopCmd(env, g),
 		newStatusCmd(envJSON, env, g),
@@ -324,6 +325,37 @@ func newAttachCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&bridge, "bridge", false, "also bridge this laptop's Chrome to the machine while attached (repose browser bridge)")
+	return cmd
+}
+
+// newSyncCmd is `repose sync` (DECISIONS I-302): `repose run --no-attach`
+// under its own name, for putting the checkout on the machine without
+// attaching.
+func newSyncCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
+	var opts RunOptions
+	cmd := &cobra.Command{
+		Use:               "sync [PROJECT]",
+		Short:             "Sync this checkout to its machine, creating or starting it if needed, without attaching",
+		Args:              projectArgs,
+		ValidArgsFunction: completeProject(env),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := projectFrom(args, g)
+			if err != nil {
+				return err
+			}
+			e, err := env()
+			if err != nil {
+				return err
+			}
+			opts.ProjectArg, opts.NoAttach = project, true
+			return runRun(cmd.Context(), e, opts, false)
+		},
+	}
+	cmd.Flags().StringVar(&opts.Size, "size", "", "small|large|xl, for a machine this creates")
+	cmd.Flags().StringVar(&opts.Name, "name", "", "project name, for a directory with no git remote")
+	cmd.Flags().BoolVar(&opts.StashRemote, "stash-remote", false, "stash the guest's uncommitted changes before syncing")
+	cmd.Flags().BoolVar(&opts.DiscardRemote, "discard-remote", false, "discard the guest's uncommitted changes before syncing")
+	_ = cmd.RegisterFlagCompletionFunc("size", cobra.FixedCompletions([]string{"small", "large", "xl"}, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
 }
 

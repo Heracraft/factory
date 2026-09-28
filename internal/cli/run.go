@@ -60,7 +60,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	// answer instead of after it (DECISIONS I-223).
 	var early *earlyProbe
 	if attachOnly {
-		if done, err := attachFast(ctx, e, e.resolveArg(opts.ProjectArg)); done {
+		if done, err := attachFast(ctx, e, e.resolveArg(opts.ProjectArg), opts.Bridge); done {
 			return err
 		}
 	} else {
@@ -89,6 +89,11 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	}
 
 	endResolve()
+	if !attachOnly && res.Project != nil && res.Project.State == "destroying" {
+		if err := startOver(ctx, e, res, &opts, pr); err != nil {
+			return err
+		}
+	}
 	project := res.Project
 	if project == nil {
 		if attachOnly {
@@ -237,7 +242,9 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		}
 		endSync()
 		pr.End()
-		_, _ = fmt.Fprintln(e.Out, summary.String())
+		if l := syncResultLine(summary, opts.NoAttach); l != "" {
+			_, _ = fmt.Fprintln(e.Out, l)
+		}
 		for _, w := range summary.Warnings() {
 			_, _ = fmt.Fprintln(e.ErrOut, w)
 		}
@@ -321,6 +328,20 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	}
 	startSessionHelper(e, helper)
 	return attachTmux(target, project.Slug, window, tz, helper.RepoDir)
+}
+
+// syncResultLine is what a run prints about its sync. With nothing new on
+// the laptop (the apply skipped, I-224, I-248) a run that attaches says
+// nothing (I-303); `repose sync` and --no-attach have nothing else to
+// say, so they say that.
+func syncResultLine(s *SyncSummary, noAttach bool) string {
+	switch {
+	case !s.Unchanged:
+		return s.String()
+	case noAttach:
+		return "Nothing new to sync: the machine already has this checkout."
+	}
+	return ""
 }
 
 // saveProjectTZ moves the project's stored zone to the laptop's when they
@@ -515,17 +536,13 @@ func hasOAuthSecret(ctx context.Context, c *Client, projectID string) (bool, err
 // gateway pass it), so a base whose tmux takes TZ from the attaching
 // client (update-environment) gets the laptop's zone rather than none.
 func attachTmux(t sshTarget, slug, window, tz, repoDir string) error {
-	target := slug
-	if window != "" {
-		target = slug + ":" + window
-	}
 	extra := []string{"-t"}
 	if tz != "" {
 		if err := os.Setenv("TZ", tz); err == nil {
 			extra = append(extra, "-o", "SendEnv=TZ")
 		}
 	}
-	remote := fmt.Sprintf("tmux attach -t %s", shQuote(target))
+	remote := attachCommand(slug, window)
 	if inputProxyEnabled() {
 		args := append(append(append([]string{}, extra...), t.Args...), remote)
 		if handled, err := runInputProxy(args, newDropHandler(t, slug, repoDir)); handled {
@@ -533,6 +550,23 @@ func attachTmux(t sshTarget, slug, window, tz, repoDir string) error {
 		}
 	}
 	return execReplaceSSH(t, extra, remote)
+}
+
+// attachCommand is the guest-side command of the attach. With a window
+// (the agent `repose run PROMPT` just started), an agent that exited in
+// the moment between its prompt and the attach has taken its window with
+// it, and `tmux attach -t <slug>:<window>` failed with "can't find window"
+// (I-304). The window is checked on the guest, in the same ssh, and when
+// it is gone the attach goes to the session with one line saying why: on
+// the terminal (seen after a detach) and in tmux's status line.
+func attachCommand(slug, window string) string {
+	if window == "" {
+		return fmt.Sprintf("tmux attach -t %s", shQuote(slug))
+	}
+	target := shQuote(slug + ":" + window)
+	msg := fmt.Sprintf("The %s window closed before the attach: the agent in it exited. Attached to the session instead; start the agent again there.", window)
+	return fmt.Sprintf("if tmux has-session -t %[1]s 2>/dev/null; then exec tmux attach -t %[1]s; fi; printf '%%s\\n' %[3]s >&2; exec tmux attach -t %[2]s \\; display-message -d 10000 %[3]s",
+		target, shQuote(slug), shQuote(msg))
 }
 
 // waitForSSH is step 4: `ssh <target> true` until it answers, for up to
@@ -971,6 +1005,75 @@ func createProjectForRun(ctx context.Context, e *Env, remote string, opts RunOpt
 		return nil, err
 	}
 	return nil, exitf(ExitGeneric, "Could not find a free project name after 10 attempts; pass --name NAME.")
+}
+
+// runDestroyWait bounds how long `repose run` waits for the destroy of
+// the project it resolved to before it creates a fresh one (I-301).
+var runDestroyWait = 10 * time.Minute
+
+// startOver is `repose run` on a project being destroyed (DECISIONS I-301):
+// wait for the destroy to end, forget the old project, and leave res and
+// opts so the run creates a fresh project under the same name, which is
+// what `repose rm` then `repose run` is for. The name and remote stay
+// taken until the destroy ends, so the create cannot go first.
+func startOver(ctx context.Context, e *Env, res *ResolveResult, opts *RunOptions, pr *progress) error {
+	old := *res.Project
+	remote := res.Remote
+	if remote == "" && old.RemoteURL != "" {
+		// Named as PROJECT: only its own checkout can start it over,
+		// since the fresh project takes this directory's remote.
+		if remote = defaultResolveDeps().RemoteFor(e.Cwd); remote != old.RemoteURL {
+			return exitf(ExitUsage, "%s is being destroyed. `repose run` in its checkout waits for that and creates a fresh %s; `repose restore %s` brings the old one back once it is gone.", old.Slug, old.Slug, old.Slug)
+		}
+	}
+	pr.Phase(fmt.Sprintf("Waiting for the old %s to finish destroying", old.Slug), "Destroyed the old "+old.Slug)
+	started := time.Now()
+	for {
+		p, err := e.Client.GetProject(ctx, old.ID)
+		if isNotFound(err) || (err == nil && p.State == "destroyed") {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if p.State != "destroying" {
+			// A failed destroy (error) or a project brought back: say
+			// what it is instead of creating a second one beside it.
+			pr.Fail()
+			return notRunningError(p)
+		}
+		if time.Since(started) > runDestroyWait {
+			pr.Fail()
+			return exitf(ExitGeneric, "%s is still being destroyed after %s. `repose status %s` shows it; `repose run` again once it is gone.", old.Slug, fmtElapsed(runDestroyWait), old.Slug)
+		}
+		if err := sleepOrDone(ctx, pollDelay(started)); err != nil {
+			return err
+		}
+	}
+	pr.End()
+	forgetProject(&e.Cache, old.ID)
+	if err := e.saveCache(); err != nil {
+		return err
+	}
+	if opts.Name == "" {
+		opts.Name = old.Name
+	}
+	res.Project, res.Remote = nil, remote
+	return nil
+}
+
+// forgetProject drops every cache entry that names the project id.
+func forgetProject(cache *ProjectsCache, id string) {
+	for k, c := range cache.ByRemote {
+		if c.ProjectID == id {
+			delete(cache.ByRemote, k)
+		}
+	}
+	for k, v := range cache.ByDir {
+		if v == id {
+			delete(cache.ByDir, k)
+		}
+	}
 }
 
 func basenameFromRemote(remote, cwd string) string {

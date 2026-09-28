@@ -382,6 +382,15 @@ in
           guest.succeed("sudo -u dev sh -c 'mkdir -p /tmp/plan/.claude && echo {\\\"permissions\\\":{\\\"defaultMode\\\":\\\"plan\\\"}} > /tmp/plan/.claude/settings.json && HOME=/tmp/plan repose-agent-setup claude && HOME=/tmp/plan repose-agent-setup claude'")
           plan = json.loads(guest.succeed("cat /tmp/plan/.claude/settings.json"))
           assert plan["permissions"] == {"defaultMode": "plan"} and "skipDangerousModePermissionPrompt" not in plan and "repose-hook" in json.dumps(plan["hooks"]), plan
+          # I-306: a bypass mode the user set (carried from the laptop)
+          # gets the skip flag too, so the warning cannot take a sent
+          # prompt; the user's own false is kept.
+          guest.succeed("sudo -u dev sh -c 'mkdir -p /tmp/byp/.claude && echo {\\\"permissions\\\":{\\\"defaultMode\\\":\\\"bypassPermissions\\\"}} > /tmp/byp/.claude/settings.json && HOME=/tmp/byp repose-agent-setup claude && HOME=/tmp/byp repose-agent-setup claude'")
+          byp = json.loads(guest.succeed("cat /tmp/byp/.claude/settings.json"))
+          assert byp["permissions"] == {"defaultMode": "bypassPermissions"} and byp["skipDangerousModePermissionPrompt"] is True, byp
+          guest.succeed("sudo -u dev sh -c 'mkdir -p /tmp/bypf/.claude && echo {\\\"permissions\\\":{\\\"defaultMode\\\":\\\"bypassPermissions\\\"}\\,\\\"skipDangerousModePermissionPrompt\\\":false} > /tmp/bypf/.claude/settings.json && HOME=/tmp/bypf repose-agent-setup claude'")
+          bypf = json.loads(guest.succeed("cat /tmp/bypf/.claude/settings.json"))
+          assert bypf["skipDangerousModePermissionPrompt"] is False, bypf
           mcp = json.loads(guest.succeed("cat /home/dev/.claude.json"))
           assert set(mcp["mcpServers"]) >= {"playwright", "chrome-devtools"}, mcp
           # I-283: no auto-mode offer to catch a sent prompt under bypass;

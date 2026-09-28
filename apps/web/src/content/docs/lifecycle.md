@@ -94,7 +94,7 @@ Destroy todo-app? A final snapshot is kept for 30 days. [y/N] y
 Destroying todo-app. Bring it back within 30 days with: repose restore todo-app
 ```
 
-This deletes the machine and its disk and stops all charges for the project. `--yes` skips the question; `--wait` waits until it's done. `repose rm` was called `repose destroy`, and `repose ls` was `repose projects`; the old names still work. In the dashboard, **Destroy** asks you to type the project's name.
+This deletes the machine and its disk and stops all charges for the project. It stops counting toward your [project limit](/docs/limits#projects) at once, while it's still `destroying`. `--yes` skips the question; `--wait` waits until it's done. `repose rm` was called `repose destroy`, and `repose ls` was `repose projects`; the old names still work. In the dashboard, **Destroy** asks you to type the project's name.
 
 Within 30 days, bring it back, running, with its size, configuration and git remote:
 
@@ -106,6 +106,21 @@ repose restore todo-app
 `--as NEW-NAME` restores under another name, and `--snapshot ID` picks an older snapshot. A restore started while the destroy is still running waits for it. After 30 days the snapshot is deleted.
 
 The dashboard's project list has the same under **Recently destroyed**, with the date each can be restored until. It shows the 10 destroyed most recently; **Show more** lists the rest.
+
+### Start over with a fresh machine
+
+To throw a machine away and start again from your checkout, destroy it and run again:
+
+```
+$ repose rm -y
+Destroying todo-app. Bring it back within 30 days with: repose restore todo-app
+$ repose run
+✓ Destroyed the old todo-app  14s
+✓ Created todo-app (large)  0.4s
+...
+```
+
+The name stays taken until the destroy finishes, so a `repose run` started meanwhile waits for it (`Waiting for the old todo-app to finish destroying`), then creates a new project with the same name and syncs your checkout into it. `repose rm --wait && repose run` does the same in one line. The old machine's final snapshot is kept, and `repose ls --destroyed` still lists it. If the destroy fails, `repose run` says so and creates nothing.
 
 ## A second machine for the same repository
 

@@ -358,6 +358,45 @@ func TestRouteContract(t *testing.T) {
 	}
 }
 
+// TestDestroyingFreesTheSlot: a project being destroyed no longer counts
+// toward the project limit, so `repose rm` then `repose run` works at the
+// limit, but its name stays taken until the destroy ends; a project left in
+// error by a failed destroy still counts (DECISIONS I-300).
+func TestDestroyingFreesTheSlot(t *testing.T) {
+	e := newEnv(t)
+	ctx := e.h.Ctx
+	tok := e.signIn(t, "sub-cleo", "cleo")
+	ids := map[string]string{}
+	for _, n := range []string{"one", "two", "three"} {
+		r := e.do(t, tok, "POST", "/projects", map[string]any{"name": n, "class": "small"})
+		if r.status != 201 {
+			t.Fatalf("create %s: %d %s", n, r.status, r.raw)
+		}
+		ids[n] = r.body["id"].(string)
+		e.waitOp(t, r)
+	}
+	if r := e.do(t, tok, "POST", "/projects", map[string]any{"name": "four", "class": "small"}); r.status != 400 || r.body["error"].(map[string]any)["detail"].(map[string]any)["limit"].(float64) != 3 {
+		t.Fatalf("at the limit: %d %s", r.status, r.raw)
+	}
+	if _, err := e.h.Pool.Exec(ctx, "update projects set state = 'destroying' where id = $1", ids["three"]); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.do(t, tok, "POST", "/projects", map[string]any{"name": "three", "class": "small"}); r.status != 409 || errCode(r) != "conflict" {
+		t.Fatalf("name of a destroying project: %d %s", r.status, r.raw)
+	}
+	r := e.do(t, tok, "POST", "/projects", map[string]any{"name": "four", "class": "small"})
+	if r.status != 201 {
+		t.Fatalf("slot of a destroying project: %d %s", r.status, r.raw)
+	}
+	e.waitOp(t, r)
+	if _, err := e.h.Pool.Exec(ctx, "update projects set state = 'error' where id = $1", ids["three"]); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.do(t, tok, "POST", "/projects", map[string]any{"name": "five", "class": "small"}); r.status != 400 || r.body["error"].(map[string]any)["detail"].(map[string]any)["projects"].(float64) != 4 {
+		t.Fatalf("a failed destroy still counts: %d %s", r.status, r.raw)
+	}
+}
+
 func TestSignInAndProjectsLifecycle(t *testing.T) {
 	e := newEnv(t)
 	ctx := e.h.Ctx

@@ -25,7 +25,9 @@ The agent is the normal interactive program, the same as running `claude` yourse
 
 If that agent already has a window, the new one is named `claude-2`, then `claude-3`, and so on, and the CLI warns that the agents share one working tree.
 
-Running `repose run` twice in a row is safe. The second one finds nothing new to copy.
+Running `repose run` twice in a row is safe. The second one finds nothing new to copy and doesn't print a `Synced:` line.
+
+If the agent exits before you're attached, its window closes with it. `run` then attaches you to the session and says `The claude window closed before the attach`; start the agent again there.
 
 ## Several agents, separate trees
 
@@ -143,6 +145,7 @@ repose paste
 
 ```
 repose run --no-attach "..."     # start the agent and return to your shell
+repose sync                      # sync only, no agent, no attach
 repose run --no-sync             # skip the sync
 repose run --size xl             # size of a new project
 repose run --name scratch        # a directory with no git remote

@@ -7739,3 +7739,87 @@ list ran for screens. The section shows the newest 10 and a "Show N more"
 button with "10 of 35 shown", adding 20 a click; the count survives the
 list's polling. No api change: a cursor would be new contract for a list
 capped at 100 that the page already holds. Public docs: `lifecycle.md`.
+**I-300. A project being destroyed does not count toward the project
+limit; one left in error by a failed destroy does.** (owner dogfood,
+2026-09-28) stop-start-destroy.md already promised "Frees the project
+slot immediately", but the create, restore-as-new, fork and xl-resize
+checks counted every row with `destroyed_at is null`, so `repose rm` then
+`repose run` at the limit was refused for the length of the destroy. All
+four now share `countsTowardLimit` (`destroyed_at is null and state <>
+'destroying'`), xl included; the fake's fork check does the same. A
+project in `error` after a failed destroy still counts: its volume is
+still on the host and `repose rm` again resumes the destroy. The unique
+indexes on live rows keep the name and remote taken until
+`markDestroyed`, which I-301 handles. For the length of a destroy an
+account can hold one volume more than its limit; the destroy always
+finishes (I-156), so that is bounded. `TestDestroyingFreesTheSlot`.
+*Rejected:* counting `error` out too (it holds a volume, and a user could
+stack failed destroys); freeing the name early (a restore of the old
+project and the new one would fight over it).
+
+**I-301. `repose run` on a project being destroyed waits and starts
+over.** (owner dogfood, 2026-09-28) It stopped at "is destroying". Now,
+when resolve finds the project `destroying`, run shows "Waiting for the
+old <slug> to finish destroying", polls the project until it is gone
+(404 or `destroyed`, up to 10 minutes), drops every cache entry naming
+it, and goes on as if no project were found, with the old project's name
+as `--name` when none was given, so the fresh project keeps the name and
+the checkout's remote. A destroy that ends in `error` stops the run with
+the project's own message and creates nothing. Named with `--project`
+from another checkout, it refuses before waiting (the new project would
+take this directory's remote). `repose rm` then `repose run`, and `repose
+rm --wait && repose run`, are the documented way to get a fresh machine
+(lifecycle.md "Start over with a fresh machine"). attach and the rest
+keep refusing, with a message that points at this. The fake gains
+`DestroyDelay`. `TestRunStartsOverAfterADestroy`,
+`TestRunStopsWhenTheDestroyFails`.
+
+**I-302. `repose sync [PROJECT]`.** (owner dogfood, 2026-09-28) A
+command of its own for `repose run --no-attach` without a prompt: sync
+the checkout, creating or starting the machine if needed, and return.
+Flags: `--stash-remote`, `--discard-remote`, `--size`, `--name`, as on
+run. `run --no-attach` keeps working. *Rejected:* a sync that never
+creates (it would need its own resolve path and error, for no gain).
+
+**I-303. A run with nothing new prints no sync line.** (owner dogfood,
+2026-09-28) With the apply skipped (I-224, I-248), run printed
+"Synced: 3 modified, 0 untracked; the guest already had them", which
+reads as if something happened. An attaching run now prints nothing
+about the sync; `repose sync` and `run --no-attach`, which have nothing
+else to say, print "Nothing new to sync: the machine already has this
+checkout." Any sync that sent something prints the line as before.
+`TestSecondRunIsQuietAboutAnUnchangedSync`.
+
+**I-304. The attach after `repose run PROMPT` falls back to the
+session.** (owner dogfood, 2026-09-28) "Ready in 6.0s" then tmux's "can't
+find window: claude": the agent exited between the prompt and the
+attach, and its window went with it. The attach's remote command now
+checks the window with `tmux has-session -t <slug>:<window>` (tmux's
+`display-message -t` falls back to the current window, so it cannot
+check) and, when it is gone, prints "The <window> window closed before
+the attach: the agent in it exited. Attached to the session instead;
+start the agent again there." to the terminal and in tmux's status line,
+and attaches to the session. One ssh, no extra round trip.
+`TestAttachFallsBackToTheSessionWhenTheWindowIsGone` (real tmux, pty).
+
+**I-305. `repose attach --bridge` keeps `--bridge` on the fast path.**
+(owner dogfood, 2026-09-28) The no-api attach (I-223) built the session
+helper's options without the flag. `fastAttachHelper` builds them with
+it. `TestFastAttachKeepsBridge`.
+
+**I-306. A guest in bypass mode always skips Claude Code's bypass
+warning.** (owner dogfood, 2026-09-28) The likely cause of I-304's exit:
+I-250 added `skipDangerousModePermissionPrompt` only together with the
+platform's `defaultMode`, so a `defaultMode: bypassPermissions` the
+laptop's settings.json carried in (I-196's merge, guest file as base)
+came without it. Claude Code then opens its bypass-mode warning on
+start, and the prompt and Enter `repose run` types answer that dialog
+instead of reaching the agent; declining exits Claude Code and closes
+the window. This is inferred from the code and the symptom, not
+reproduced on a guest. repose-agent-setup now sets the flag to true
+whenever the effective mode is `bypassPermissions` and the key is
+absent, whoever set the mode, in the same place as I-283's
+`hasSeenAutoDefaultNudge`; the user's own value, false included, is
+kept, and the mode itself is never changed. It runs at every agent start,
+after the carry. A guest change: it reaches machines with the next base.
+guest-base VM test asserts both cases.

@@ -87,8 +87,10 @@ every commit the laptop knows), there is nothing to write over: the checkout is 
 - A run with nothing new applies nothing (DECISIONS I-224): when the
   laptop would send exactly what the last completed sync sent (the same
   commit, branch, diff and untracked files) and the guest's tree is still
-  what that sync left, the apply is skipped, nothing is stashed, and the
-  summary line ends "the guest already had them".
+  what that sync left, the apply is skipped, nothing is stashed, and a
+  run that attaches prints no summary line; `repose sync` and
+  `run --no-attach` print "Nothing new to sync: the machine already has
+  this checkout." (DECISIONS I-303).
 - The laptop's own changes are not an agent's (DECISIONS I-210). A sync
   that carried a modified or untracked file leaves the guest's tree dirty
   by construction, so the apply records a fingerprint of the tree it left
@@ -194,8 +196,8 @@ every commit the laptop knows), there is nothing to write over: the checkout is 
   --others --ignored --exclude-standard --directory`), so a `.env`
   inside a wholly ignored directory does not travel. Contents never reach
   a log line.
-- The summary line always prints, `Synced: <n> modified, <m> untracked`,
-  even when both are zero, followed by `, <e> env files` when .env files
+- The summary line prints whenever the apply ran (I-303),
+  `Synced: <n> modified, <m> untracked`, even when both are zero, followed by `, <e> env files` when .env files
   were written and `(<k> new commits)` when commits travelled.
 - The guest's checkout is at `/home/dev/<slug>`, which guestd's
   `SetupProject` creates with an `origin` (02/04's contract). If it is

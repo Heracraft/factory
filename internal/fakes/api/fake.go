@@ -45,6 +45,11 @@ type Options struct {
 	// the project "starting" and its op "running" (phase start_guest) for
 	// the delay, then running and done. Zero keeps the instant start.
 	StartDelay time.Duration
+	// DestroyDelay makes DELETE /projects/:id leave the project
+	// "destroying" and its op "running" for the delay, then destroyed and
+	// done, the way the real destroy op does. Zero keeps the instant
+	// destroy.
+	DestroyDelay time.Duration
 	// NoLongPoll makes GET /projects/:id/ops/:op_id ignore ?wait and
 	// answer without version, phase or project_state, as the api before
 	// I-236 did.

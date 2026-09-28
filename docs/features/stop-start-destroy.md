@@ -137,7 +137,12 @@ Destroy:
   its tap and nftables entries, and the tmpfs secrets. Keeps the project row
   (`destroyed_at` set), its events, its usage, and its newest snapshot with
   `expires_at` 30 days out.
-- Frees the project slot immediately for the account's limit.
+- Frees the project slot immediately for the account's limit: a
+  `destroying` project does not count, one left in `error` by a failed
+  destroy does (I-300). The name and remote stay taken until the destroy
+  ends, so `repose run` on a `destroying` project waits for it ("Waiting
+  for the old <slug> to finish destroying"), forgets the cached project
+  and creates a fresh one with the same name (I-301).
 - Always finishes once asked (I-156). If guestd is dead the guest cannot
   be frozen, so the unit is stopped (the hypervisor's shutdown, then a
   kill) and the final snapshot is taken of the stopped volume, which is
