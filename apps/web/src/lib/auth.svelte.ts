@@ -55,9 +55,20 @@ export async function handleSignInCallback(url: string): Promise<void> {
 	authState.authenticated = true;
 }
 
+/**
+ * Sends the browser to Logto's end-session page, which comes back to /.
+ * authState stays as it is until the browser leaves (DECISIONS I-331):
+ * flipping it first re-renders the page signed out and sends it to / for a
+ * moment before the navigation, a visible flash on every sign-out. Only if
+ * the redirect cannot start does the page sign out locally.
+ */
 export async function signOut(): Promise<void> {
-	authState.authenticated = false;
-	await getClient().signOut(`${location.origin}/`);
+	try {
+		await getClient().signOut(`${location.origin}/`);
+	} catch {
+		authState.authenticated = false;
+		await goto(resolve('/'));
+	}
 }
 
 /**

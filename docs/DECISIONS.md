@@ -7678,3 +7678,64 @@ the user made in the guest); comparing mtimes (a rotated laptop token
 makes them ambiguous); minting a project-scoped Vercel token per machine
 (needs a full-account parent token in repose's database, a bigger change
 the research puts after the user study).
+
+**I-330. A signed-in visitor can read the landing page.** (owner request,
+dogfood 2026-09-28) The root layout used to send a signed-in visitor from
+`/` to `/projects`, so the owner could not see the landing page without
+signing out. The redirect is gone; signed-out visitors on a private route
+still go to `/`. On the landing, a signed-in visitor's header shows
+**Dashboard** (the word the docs header already uses) in place of **Sign
+in**, and the hero and pricing buttons read **Open the dashboard** in place
+of **Sign in with GitHub** / **Start with GitHub**. Sign-in itself still
+ends on `/projects` (`routes/callback`). Changes `08-dashboard.md` §5.2,
+RUNBOOK's sign-in loop step 3 and `tests/auth.spec.ts`. *Rejected:* a
+`?home` escape hatch on the redirect (nobody would know it), keeping the
+sign-in buttons for signed-in visitors (they would restart a login for
+someone already in).
+
+**I-331. Sign-out leaves the page alone until the browser goes, and no
+page paints before its stylesheet.** (owner report, dogfood 2026-09-28)
+`signOut()` set `authState.authenticated = false` before Logto's
+end-session redirect, so for a moment the signed-in page re-rendered as
+signed out and the layout sent it to `/` (the landing flashed) before the
+browser left for Logto's page. Now it only calls Logto; the local flip
+and `goto('/')` happen only if that call throws. Logto's own end-session
+page is hosted by Logto and keeps its own theme; that part is not ours.
+Measured separately: the SPA renders a route as soon as its script runs,
+and the route's CSS is not guaranteed to be in by then (a probe with CSS
+held back 1.5 s painted the unstyled page, a full-screen logo); on a
+normal load both stylesheets were in at 159 ms. So `app.html` hides the
+body until `layout.css` makes it visible (the inline `html` background
+already has the right colour for either scheme), the landing's `.rails`
+stays hidden until `landing.css` applies, and `--ink`, `--ink-muted` and
+`--ink-faint` move from `landing.css` to `layout.css`. Test: `auth.spec.ts`
+"sign-out does not flash the landing page" fails with the old `signOut`.
+*Rejected:* linking the hashed CSS files from `app.html` (names are only
+known after the build), a loading overlay (more to paint, same effect).
+
+**I-332. Settings save as they change; the ntfy URL keeps a Save.** (owner
+request, dogfood 2026-09-28) One Save at the bottom of `/settings` saved
+the timezone, the email checkbox and the ntfy URL together, and the owner
+toggled email and left without saving. Now **Email notifications** sends
+`PATCH /me {notify:{email}}` on change, toasts "Email notifications
+on." / "…off." and reverts the box when the call fails; the timezone
+select sends `PATCH /me {tz}` on change ("Timezone set to X.", reverts on
+failure). The ntfy URL is typed, so saving per keystroke would store half
+URLs: it has its own **Save** next to the field, disabled until the value
+differs, a "Not saved yet." line while it does, and a confirm when leaving
+the page (a browser prompt on reload or close) while it is unsaved. With no
+page-wide Save, an account whose `tz` is null now gets the browser's
+detected zone stored on first visit, quietly, so the page never shows a
+zone the account does not have. The account's own zone is always an option
+in the select: Chromium's `Intl.supportedValuesOf('timeZone')` leaves out
+`UTC`, and the select showed blank for such accounts. No api change
+(`PATCH /me` already treats absent keys as unchanged). Public docs:
+`notifications.md`.
+
+**I-333. "Recently destroyed" shows ten rows, then more on request.**
+(owner request, dogfood 2026-09-28) `GET /projects/destroyed` returns up to
+100 rows with no cursor (`internal/api/http/restore.go`), and the owner's
+list ran for screens. The section shows the newest 10 and a "Show N more"
+button with "10 of 35 shown", adding 20 a click; the count survives the
+list's polling. No api change: a cursor would be new contract for a list
+capped at 100 that the page already holds. Public docs: `lifecycle.md`.

@@ -84,3 +84,38 @@ test('a destroyed project can be restored from the projects list', async ({ page
 	await expect(page).not.toHaveURL(`/projects/${p.id}`);
 	await expect(page.getByRole('heading', { name: p.name })).toBeVisible();
 });
+
+// DECISIONS I-333: the api sends up to 100 destroyed rows at once; the page
+// shows the newest 10 and reveals the rest 20 at a time.
+test('recently destroyed shows ten rows and reveals the rest on request', async ({ page }) => {
+	const now = Date.now();
+	const rows = Array.from({ length: 35 }, (_, i) => ({
+		id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+		name: `gone-${String(i + 1).padStart(2, '0')}`,
+		slug: `gone-${String(i + 1).padStart(2, '0')}`,
+		class: 'small',
+		volume_bytes: 20 * 2 ** 30,
+		destroyed_at: new Date(now - (i + 1) * 3_600_000).toISOString(),
+		name_free: true,
+		restorable_until: new Date(now + 29 * 86_400_000).toISOString(),
+		snapshot: {
+			id: `s${i}`,
+			created_at: new Date(now - (i + 1) * 3_600_000).toISOString(),
+			bytes: 300 * 2 ** 20,
+			reason: 'destroy'
+		}
+	}));
+	await page.route('**/v1/projects/destroyed', (route) => route.fulfill({ json: rows }));
+	await page.goto('/projects');
+
+	const section = page.getByRole('region', { name: 'Recently destroyed' });
+	await expect(section.getByTestId('destroyed-row')).toHaveCount(10);
+	await expect(section.getByTestId('destroyed-row').first()).toContainText('gone-01');
+	await expect(section.getByText('10 of 35 shown')).toBeVisible();
+
+	await section.getByRole('button', { name: 'Show 20 more' }).click();
+	await expect(section.getByTestId('destroyed-row')).toHaveCount(30);
+	await section.getByRole('button', { name: 'Show 5 more' }).click();
+	await expect(section.getByTestId('destroyed-row')).toHaveCount(35);
+	await expect(section.getByRole('button', { name: /Show \d+ more/ })).toHaveCount(0);
+});

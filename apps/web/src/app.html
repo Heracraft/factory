@@ -23,6 +23,12 @@
 					color: #f3f3f1;
 				}
 			}
+			/* The route renders as soon as its script runs, which can be
+			   before its stylesheet has loaded. Hidden until routes/layout.css
+			   sets visibility back, so nothing paints unstyled. */
+			body {
+				visibility: hidden;
+			}
 		</style>
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
