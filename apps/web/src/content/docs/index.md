@@ -57,9 +57,17 @@ repose run "write tests for src/billing.ts, run them and commit when they pass"
 
 The CLI starts Claude Code in a new tmux window on the machine, types your prompt and attaches you. Watch, or detach and close the laptop. The agent keeps working.
 
-To show the agent a screenshot, press `Ctrl+V` in its window, or drag a file onto the terminal. The file is copied to the machine and its path lands in the prompt.
+## 6. Show it a screenshot
 
-## 6. Get a notification when it's done
+With a screenshot on your laptop's clipboard, press `Ctrl+V` in the agent's window. Or drag a file onto the terminal. The file is copied to the machine and its path lands in the prompt, where Claude Code shows it as an image:
+
+```text
+❯ [Image #1] the button overlaps the footer on this screen
+```
+
+On macOS, press `Ctrl+V`, not `Cmd+V`. [Drop a file or paste an image](/docs/run-and-attach#drop-a-file-or-paste-an-image) has the limits.
+
+## 7. Get a notification when it's done
 
 Email is on by default. For your phone, pick a long random [ntfy](https://ntfy.sh) topic, subscribe to it in the ntfy app, then:
 
@@ -68,7 +76,7 @@ repose notify set --ntfy https://ntfy.sh/repose-4f9c2a7e1b3d5c8a0f6e
 repose notify test
 ```
 
-## 7. Come back and stop
+## 8. Come back and stop
 
 From any computer you're logged in on (`repose ls` lists your projects):
 
