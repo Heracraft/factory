@@ -7,6 +7,16 @@ that need an account, a key or money, and so cannot be done by an agent.
 Each step names the check that proves it. Dated 2026-09-27; the round is
 DECISIONS I-289 to I-292.
 
+## 0. Right after this push (five minutes)
+
+The api on `main` has no `PADDLE_API_KEY`, so billing is disabled: the
+plan page says so, and the compute gate refuses every account that is not
+`exempt` with `subscription_required`. Until Paddle is configured, either
+set `BILLING_ENFORCE=false` on both api apps (starts go through, nothing
+is charged) or mark the accounts that must keep working exempt:
+`repose-admin users exempt <handle>`. Remove `WAITLIST_PERCENT` from both
+apps at the same time; the api ignores it and logs a warning (I-290).
+
 ## 1. Paddle (about an hour, plus Paddle's review)
 
 1. Create a Paddle Billing account at https://vendors.paddle.com (a
