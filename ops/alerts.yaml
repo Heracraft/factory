@@ -216,7 +216,7 @@ groups:
         # Paddle-Signature check. Either someone is posting at the endpoint,
         # or PADDLE_WEBHOOK_SECRET and the notification destination have
         # drifted apart, in which case no subscription event is applied.
-        expr: sum(increase(repose_api_billing_webhook_total{result="bad_signature"}[10m])) >= 5
+        expr: sum(round(increase(repose_api_billing_webhook_total{result="bad_signature"}[10m]))) >= 5
         for: 0m
         labels:
           severity: warn
