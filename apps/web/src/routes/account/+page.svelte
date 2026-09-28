@@ -55,6 +55,12 @@
 			</div>
 		</dl>
 
+		<button
+			type="button"
+			class="mt-4 cursor-pointer text-sm text-zinc-500 underline-offset-4 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
+			onclick={() => signOut()}>Sign out</button
+		>
+
 		<div class="form-section">
 			<h2 class="text-xl font-semibold text-red-700 dark:text-red-400">Delete account</h2>
 			<p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
