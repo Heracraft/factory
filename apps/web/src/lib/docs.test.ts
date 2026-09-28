@@ -72,6 +72,8 @@ describe('user docs', () => {
 		expect(search('ntfy topic')[0]?.doc.slug).toBe('notifications');
 		expect(search('')).toEqual([]);
 		expect(search('zzzz-not-a-word')).toEqual([]);
+		// A line commented out in a page is not searchable.
+		expect(search('live product for other people')).toEqual([]);
 	});
 
 	// The grammar's bare `parser` export has no highlight tags (they live on

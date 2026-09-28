@@ -64,6 +64,7 @@ export function slugify(text: string): string {
 
 function plain(markdown: string): string {
 	return markdown
+		.replace(/<!--[\s\S]*?-->/g, ' ')
 		.replace(/```[\s\S]*?```/g, ' ')
 		.replace(/`([^`]*)`/g, '$1')
 		.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
