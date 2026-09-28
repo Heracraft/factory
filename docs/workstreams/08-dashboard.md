@@ -136,7 +136,7 @@ One screen: the one-idea sentence, the four-line terminal example from
 memory that runs at once with the Units squares counting its GB, disk,
 egress; head "Two plans. Seven days free, card at checkout."), and beside
 the "Start with GitHub" button one line from `GET /public/seats`
-("12 of 30 seats left" while `free > 0`; "Full for now. 41 waiting; join
+("12 seats left" while `free > 0`; "Full for now. 41 waiting; join
 the list and you're emailed when a seat frees." at 0; nothing when the
 fetch fails), install command, "Sign in with GitHub". Links to terms,
 privacy and refunds (static markdown from `src/content/legal/`,
@@ -153,9 +153,9 @@ names the tests use (`data-testid`):
 |---|---|---|
 | billing off | `503 billing_disabled` | one line, `billing-disabled`: "Billing is not switched on yet." |
 | exempt | `me.billing.status = exempt`, no subscription | an ok banner "This account is billing-exempt. No plan is needed." over the plan cards |
-| plan cards | no subscription, some `plans[].available` | `seats-line` ("18 of 30 seats left."), then `plan-solo` and `plan-pro` from `plans`: name, `price_cents` a month, "Running at once" (`memory_gb`: one large, or two small / one xl, two large, or any mix), disk, egress a month, projects, "7 days free, card at checkout, cancel any time.", a "Choose Solo/Pro" button; an unavailable plan's button is disabled with "Needs N seats; M free." |
+| plan cards | no subscription, some `plans[].available` | `seats-line` ("18 seats left."), then `plan-solo` and `plan-pro` from `plans`: name, `price_cents` a month, "Running at once" (`memory_gb`: one large, or two small / one xl, two large, or any mix), disk, egress a month, projects, "7 days free, card at checkout, cancel any time.", a "Choose Solo/Pro" button; an unavailable plan's button is disabled with "Needs N seats; M free." |
 | held seat | `waitlist.hold_until` in the future | `seat-held` ("Your seat is held until <time> (<n> left). Choose a plan before then.") over the plan cards |
-| full | no subscription, no plan available, no hold | `full`: "repose is full", "All T seats are taken and W people are waiting.", `join-waitlist` (`POST /billing/waitlist`); with a place, `waitlist-place`: "You're number N on the waitlist. We'll email <email> when a seat frees; you'll have 72 hours to choose a plan." |
+| full | no subscription, no plan available, no hold | `full`: "repose is full", "Every seat is taken and W people are waiting.", `join-waitlist` (`POST /billing/waitlist`); with a place, `waitlist-place`: "You're number N on the waitlist. We'll email <email> when a seat frees; you'll have 72 hours to choose a plan." |
 | checkout | "Choose" pressed | `POST /billing/checkout {plan}`; Paddle.js (`https://cdn.paddle.com/paddle/v2/paddle.js`, loaded here only) `Environment.set('sandbox')` when sandbox, `Initialize({token, eventCallback})`, `Checkout.open({transactionId, settings: {displayMode: overlay, theme: the page's scheme, successUrl: /billing?checkout=done}})`; `environment: fake` calls `window.__reposePaddleStub.open` instead (`src/lib/paddle.ts`); `503 waitlisted` reloads into the full state with the place |
 | setting up | `checkout.completed`, or `?checkout=done` with no subscription | `setting-up` ("Setting up your plan"), `GET /billing` every 2 s up to 60 s until `subscription` is set, then the plan; after 60 s a warn banner and the cards again |
 | plan | `subscription` set | `plan`: name, price a month, `plan-status` ("Trial. First charge of $29 on <date>." / "Active. Renews <date>." / "Payment past due since <date>." / "Cancelled. Ends <date>; machines stop then and snapshots stay 30 days." plus "Changes to Solo on <date>." with `scheduled_plan`); three `Meter` bars `meter-running-now` (`running_gb` of `memory_gb`), `meter-disk-allocated`, `meter-egress-this-period` (with "Over by N GB: $x on the next invoice at $0.05 a GB." when `overage_cents > 0`); `projects-count`; buttons Change plan, Cancel plan, "Manage card and receipts" (`POST /billing/portal`); Resume plan instead of the first two while `cancel_at` is set |

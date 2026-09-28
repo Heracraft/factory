@@ -301,14 +301,15 @@
 			{@render planCards(billing.plans)}
 		{:else if anyAvailable}
 			<p class="mb-5 text-sm text-zinc-500 dark:text-zinc-400" data-testid="seats-line">
-				{billing.seats.free} of {billing.seats.total} seats left.
+				{billing.seats.free}
+				{billing.seats.free === 1 ? 'seat' : 'seats'} left.
 			</p>
 			{@render planCards(billing.plans)}
 		{:else}
 			<div class="card" data-testid="full">
 				<h2 class="text-lg font-semibold">repose is full</h2>
 				<p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-					All {billing.seats.total} seats are taken and {billing.seats.waiting}
+					Every seat is taken and {billing.seats.waiting}
 					{billing.seats.waiting === 1 ? 'person is' : 'people are'} waiting. A seat frees when a plan
 					ends.
 				</p>

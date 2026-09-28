@@ -275,7 +275,7 @@
 				{#if seats}
 					<p class="seats" data-testid="seats-line">
 						{#if seats.free > 0}
-							{seats.free} of {seats.total} seats left
+							{seats.free} {seats.free === 1 ? 'seat' : 'seats'} left
 						{:else}
 							Full for now. {seats.waiting} waiting; join the list and you're emailed when a seat frees.
 						{/if}

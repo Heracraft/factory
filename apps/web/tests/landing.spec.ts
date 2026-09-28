@@ -23,7 +23,7 @@ test('the pricing section shows the two plans and the seats left', async ({ page
 		pricing.getByText('16 GB running at once · 250 GB disk · 500 GB egress')
 	).toBeVisible();
 	await expect(pricing.getByText('per hour')).toHaveCount(0);
-	await expect(page.getByTestId('seats-line')).toHaveText('18 of 30 seats left');
+	await expect(page.getByTestId('seats-line')).toHaveText('18 seats left');
 	await expect(pricing.getByRole('button', { name: 'Start with GitHub' })).toBeVisible();
 });
 

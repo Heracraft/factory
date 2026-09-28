@@ -31,7 +31,7 @@ test('with no plan and seats free, both plan cards are shown from GET /billing',
 }) => {
 	await setBilling({ mode: 'none' });
 	await page.goto('/billing');
-	await expect(page.getByTestId('seats-line')).toHaveText('18 of 30 seats left.');
+	await expect(page.getByTestId('seats-line')).toHaveText('18 seats left.');
 	const solo = page.getByTestId('plan-solo');
 	await expect(solo.getByRole('heading', { name: 'Solo' })).toBeVisible();
 	await expect(solo.getByText('$29')).toBeVisible();
@@ -94,7 +94,7 @@ test('when repose is full the page offers the waitlist and then shows the place'
 	await page.goto('/billing');
 	const full = page.getByTestId('full');
 	await expect(full.getByRole('heading', { name: 'repose is full' })).toBeVisible();
-	await expect(full).toContainText('All 30 seats are taken and 40 people are waiting.');
+	await expect(full).toContainText('Every seat is taken and 40 people are waiting.');
 	await expect(page.getByRole('button', { name: /Choose/ })).toHaveCount(0);
 	await page.getByTestId('join-waitlist').click();
 	const place = page.getByTestId('waitlist-place');
