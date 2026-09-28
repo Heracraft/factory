@@ -83,7 +83,7 @@ the code in the tweet; the checkout has a discount field.
    move`.
 2. Until the host is up, or if you want to sell fewer seats than the fleet
    has, set `SEATS_TOTAL` on both api apps (30 for one `D64s_v7`; `0`
-   derives it from the ready hosts, which is 7 on the `D16s_v7`). Check:
+   derives it from the ready hosts, which is 6 on the `D16s_v7` today: its usable memory is a little under 64 GB minus the reserve). Check:
    `repose-admin seats` prints total, held, free and the source; the
    landing page's pricing section shows "N of 30 seats left".
 3. Your own account and any tester's: `repose-admin users exempt <handle>`
