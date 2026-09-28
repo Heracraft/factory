@@ -1012,11 +1012,19 @@ in
           for name, args in calls:
               argv += [name, json.dumps(args)]
           cmd = "cd /home/dev && python3 ${./mcp-client.py} " + " ".join(shlex.quote(a) for a in argv)
-          status, out = guest.execute(f"sudo -u dev bash -lc {shlex.quote(cmd)} 2>/tmp/mcp-{server}.err")
-          if status != 0:
+          # The MCP servers give the browser 30 s to answer their first
+          # connection, a limit of theirs. On a loaded test box (2026-09-27:
+          # four workers on four cores, the guest's load at 5 on 2 vCPUs)
+          # a cold Chromium took over two minutes on Xvfb and Xvnc alike,
+          # so a connect timeout is tried again; a fast box never retries.
+          for attempt in range(4):
+              status, out = guest.execute(f"sudo -u dev bash -lc {shlex.quote(cmd)} 2>/tmp/mcp-{server}.err")
+              if status == 0:
+                  return out
               err = guest.execute(f"tail -20 /tmp/mcp-{server}.err")[1]
-              raise Exception(f"{server} failed ({status}):\n{out}\n{err}")
-          return out
+              if "initializeServer: Timeout" not in out + err or attempt == 3:
+                  raise Exception(f"{server} failed ({status}):\n{out}\n{err}")
+              print(f"{server}: the browser did not answer within the server's 30 s; trying again ({attempt + 2}/4)")
 
       def magenta_share(path, crop=""):
           """Share of the screen (or of a crop of it) that is the page's magenta."""
