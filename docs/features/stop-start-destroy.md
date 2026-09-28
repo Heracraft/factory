@@ -204,6 +204,145 @@ Failure handling:
   miner (xmrig) was running ..." until an operator runs `repose-admin
   abuse clear`. The account itself is never suspended by this.
 
+## Temporary machines (designed, not built)
+
+A machine for a test or a spike that nobody will want the next day
+(DECISIONS I-347). It lives 24 hours from creation and is destroyed with
+no snapshot. Nothing here is built yet; the public docs come with the
+code (I-242).
+
+```
+$ cd ~/code/todo-app
+$ repose run --temp                          # this checkout, on a throwaway machine
+✓ Created tmp-k3f9 (large, temporary: destroyed Sep 29 14:02)  4s
+✓ Synced main (full history)
+[tmux]
+
+$ cd ~/Downloads
+$ repose run --temp --name spike             # no git here: an empty machine
+✓ Created spike (large, temporary: destroyed Sep 29 14:05)  4s
+Not a git repository, so nothing was synced.
+
+$ repose run --temp 3h --no-sync             # a shorter life
+✓ Created tmp-q7wd (large, temporary: destroyed Sep 28 17:10)  4s
+
+$ repose ls
+PROJECT   CLASS  STATE    UP  AGENTS  TODAY  MONTH
+todo-app  large  running  3d  1       ...
+spike     large  running  2h  0       ...
+tmp-k3f9  large  running  1h  1       ...
+spike is temporary: destroyed in 22h. `repose keep spike` keeps it.
+tmp-k3f9 is temporary: destroyed in 23h. `repose keep tmp-k3f9` keeps it.
+
+$ repose keep spike
+spike is no longer temporary.
+
+$ repose rm tmp-q7wd
+Destroy tmp-q7wd? It is temporary: no snapshot is kept and it cannot be restored. [y/N] y
+Destroying tmp-q7wd.
+```
+
+On `exit` from the last tmux window (a detach does not count):
+
+```
+tmp-q7wd is temporary and its session has ended; destroying it.
+```
+
+### Behaviour that must hold
+
+Create:
+
+- `--temp` takes an optional duration (`--temp 3h`, `--temp 90m`); bare
+  `--temp` is 24h. Less than 10m or more than 24h exits 2. It is a flag
+  of `run` and `sync`.
+- `--temp` always creates a new project. It never resolves the
+  directory's project, `--project` with it exits 2, and it never writes
+  `projects.json` (`by_dir` or a remote key).
+- The name is `--name`, or `tmp-` plus four lowercase base32 characters.
+  A taken name goes through run's usual `name-2` retry.
+- `POST /projects` carries `expires_in_s` and no `remote_url`; the api
+  sets `expires_at = now() + expires_in_s` and refuses `expires_in_s`
+  outside 600..86400, or with `remote_url`, with `400 invalid`.
+- The billing gate and the project limit apply as to any create
+  (`countsTowardLimit` unchanged). A refusal says what it says today.
+
+Sync:
+
+- `--temp` does not change the sync. In a checkout the whole checkout
+  goes up, uncommitted work included, as for any first sync of a project
+  with no remote: the CLI sends the full history itself (no GitHub
+  clone). In a directory that is not a git repository, `--temp` skips the
+  sync and prints `Not a git repository, so nothing was synced.` after
+  the create line; `--no-sync` there prints nothing.
+- A git repository with no commit, or a shallow clone, refuses with the
+  usual sentence (`git init && git add -A && git commit -m init`, `git
+  fetch --unshallow`, or `--no-sync`), exit 2, before anything is
+  created. The same check moves before the create for every `run` and
+  `sync`, temporary or not: today it runs after the machine has booted.
+  Without `--temp`, a directory that is not a git repository refuses
+  before the create too.
+- The checkout gets no `repose` git remote; that name stays with the
+  checkout's own project. `git fetch tmp-k3f9.repose:~/tmp-k3f9 BRANCH`
+  brings back what an agent did.
+
+Lifetime:
+
+- The project JSON carries `expires_at` while it is temporary. `run` and
+  `attach` print `tmp-k3f9 is temporary: destroyed in 5h.` before they
+  attach; `ls` prints the line under the table as the idle line
+  does; `status` shows it; the dashboard shows a `temporary` badge after
+  the name and "destroyed in 5h" under the state.
+- `repose keep NAME` sends `PATCH /projects/:id {expires_at: null}`. The
+  project is a normal one from then on, still with no remote. `keep` on a
+  project that is not temporary prints `NAME is not temporary.` and
+  exits 0. Setting `expires_at` to anything but null answers `400
+  invalid`.
+- An hour before `expires_at` a `temp_expiring` notification goes out,
+  once per project (read from the events table). A machine made with
+  less than an hour gets none.
+
+Expiry:
+
+- The api's per-minute tick, under `LockSweeper`, looks at projects with
+  `expires_at <= now()`, not `destroying` or `destroyed`, one per
+  transaction with `for update skip locked`, checks the rule again
+  inside, and enqueues the destroy with `allowQueue=true`.
+- The destroy waits while the latest meter sample (under 10 minutes old)
+  shows an ssh session, a tmux client, or an agent that is not `idle` or
+  `needs_input`, and is looked at again the next minute. From
+  `expires_at + 24h` it goes ahead regardless.
+- A stopped or errored temporary project expires the same way.
+- The plan is `[destroy_guest]` from any state with a guest, `[]` with
+  none. No snapshot is taken. `markDestroyed` sets every snapshot of the
+  project to `expires_at = now()`, so the nightly one, if the machine
+  lived through 03:00, goes on the next expiry run.
+- A failed destroy is `error` and `destroy_failed` as for any destroy,
+  and the reaper tries again each minute.
+- When the destroy finishes, a `temp_destroyed` event records it (it
+  notifies). The project does not appear in `repose ls --destroyed`, the
+  dashboard's "Recently destroyed" or `repose restore`, since it has no
+  restorable snapshot.
+- `repose rm` on a temporary project uses the same no-snapshot plan and
+  says so in its question.
+
+Ending the session:
+
+- After the attach returns, on the input-proxy path only, the CLI runs
+  `tmux has-session -t =<slug>` over the still-open ControlMaster. When
+  the session is gone and the project is temporary, it prints the line
+  above and sends the DELETE without asking. A detach leaves the session,
+  so it never destroys. An agent window still open keeps the session, so
+  an agent working never loses its machine this way.
+- On Windows, without a TTY or with `REPOSE_INPUT_PROXY=0` the CLI has
+  exec'd ssh and cannot look; the machine waits for its expiry.
+
+Built when: `TestRunTempCreatesWithoutRemote`,
+`TestTempExpiryWaitsWhileAttached`, `TestTempExpiryDestroysWithoutSnapshot`,
+`TestKeepClearsExpiry`, `TestTempSessionEndDestroys`,
+`TestTempWithoutRepoSkipsSync`, `TestSyncRefusalComesBeforeCreate`, the `docs_test.go`
+rows for `--temp` and `repose keep`, and a live run on an `e2e-*` project
+that reaches expiry with a short `--temp`.
+
 ## Depends on
 
 Workstreams 03 (StopGuest, StartGuest, DestroyGuest, cleanup, replay), 04

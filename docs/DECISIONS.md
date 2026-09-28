@@ -8808,3 +8808,88 @@ one name with a space, the four refusals), `TestCpArgs`.
 quoted remote glob already goes to the guest as scp's); a clearer message
 alone without the multi-source form (the user's intent was plain and scp
 supports it).
+**I-347. `repose run --temp` makes a temporary machine: it lives 24
+hours from creation, is destroyed with no snapshot, and `repose keep`
+makes it a normal project.** (owner, 2026-09-28; designed, not built)
+The owner wants a machine with no project, no git and no checkout, which
+nobody expects to find the next day. Today that takes `run --name X
+--no-sync` and a `repose rm` you have to remember, and the destroy keeps a
+snapshot for 30 days that nobody wants. The spec is in
+`features/stop-start-destroy.md` "Temporary machines". The choices:
+- The lifetime is wall-clock time from creation: 24 hours by default,
+  `--temp DURATION` for less, 10 minutes at least and 24 hours at most.
+  An idle timer (Codespaces, Coder, Daytona) exists to free storage, and
+  its users report agents stopped while they still worked.
+- While an ssh session or tmux client is open, or an agent is working, the
+  destroy waits and the api looks again each minute, up to 24 hours past
+  the expiry. Nothing is stored for the delay: the reaper decides from
+  `expires_at` and the latest meter sample.
+- At expiry the plan is `[destroy_guest]`. DestroyGuest stops a running
+  guest itself, so hostd does not change. `markDestroyed` sets the
+  project's snapshots to expire at once, and `snapshots.Expiry` deletes
+  any the nightly 03:00 run took. A temporary project cannot be restored,
+  and `repose rm` on one says so.
+- `--temp` changes where the machine comes from, and the sync works as
+  it does on any run: in a checkout it sends the checkout, so the owner
+  can try a branch on a throwaway machine, and in a directory that is not
+  a git repository it skips the sync and prints `Not a git repository,
+  so nothing was synced.`, since an empty machine is the only thing it
+  could mean there. A repository with no commit or a shallow clone still
+  refuses (the owner meant to send code), and every refusal of that kind,
+  temporary or not, now comes before the create instead of after the
+  machine has booted. The
+  CLI writes no `by_dir` entry and adds no `repose` git remote (that name
+  belongs to the checkout's own project; the agent's commits are fetched
+  by URL, `git fetch <name>.repose:~/<name>`). The project's `remote_url`
+  is null, as a fork's is (I-254), so a temporary machine made in a
+  checkout never collides with that checkout's project, and the first
+  sync sends the whole history itself instead of having the guest clone
+  from GitHub (I-203). The name is `--name` or `tmp-` plus four base32
+  characters. The prefix shows in `ls`, the SSH hosts file and logs;
+  there is no word list to keep.
+- Ending the tmux session (exiting its last window, as against detaching)
+  destroys the machine right away, as `docker run --rm` does. The CLI
+  checks `tmux has-session` over the open ControlMaster after the attach
+  returns, which works only on the input-proxy path. Elsewhere (Windows,
+  no TTY, `REPOSE_INPUT_PROXY=0`) the machine waits for its expiry.
+- `repose keep NAME` sends `PATCH /projects/:id {expires_at: null}` and
+  the project becomes a normal one, with no remote.
+- A temporary machine counts toward the project limit and the plan's
+  memory and disk while it lives, like any project. The gate does not
+  change; a Solo account at 10 projects cannot open one.
+- One `temp_expiring` notification goes out an hour before the expiry,
+  and `temp_destroyed` when the destroy finishes. "Once" is read from the
+  events table (I-293(3)). `run`, `attach` and `ls` print the time left.
+- `projects.expires_at timestamptz null` (migration 0010). I-262 kept the
+  idle state out of `projects` because every row would pay for a rare
+  state; this one is set at create and is what makes the project
+  temporary, and the reaper's query needs it indexed.
+- The reaper runs on the api's per-minute tick under `LockSweeper`
+  (1007, declared and unused until now), a row per transaction with `for
+  update skip locked` and the rule checked again inside, as
+  `snapshots/expiry.go` does. It enqueues with `allowQueue=true`, so an
+  op already open delays the destroy instead of failing it. The `daily`
+  ticker would not do: a redeploy restarts it (I-112).
+R1-5, I-200 and I-262 say the platform never stops or reaps a machine
+because it looks unused. That stands. A temporary machine's end is a
+lifetime its owner chose when creating it, and `repose keep` takes it
+back. The interface changes (`POST /projects` `expires_in_s`, `Project`
+`expires_at`, `PATCH` `expires_at: null`, the two event kinds, the
+`--temp` flag and `repose keep`) ship with the code, in `api.md`,
+`db-schema.md` and `cli.md`.
+*Rejected:*
+- An idle timer, which stops agents that work with nobody attached.
+- Keeping the final snapshot, which costs Blob storage for a machine the
+  owner said nobody would want back.
+- Asking before the destroy when the tmux session ends, which adds a
+  prompt to the one path where the owner has already said they are done.
+- A temporary machine outside the project limit, which would need a
+  second gate for a rare case.
+- A generated word pair for the name: `tmp-` shows what the machine is.
+- `--temp` implying `--no-sync` (the owner, same day): trying a
+  checkout on a machine that will not outlive the test is half of what
+  the flag is for.
+- Skipping the sync in a directory with no repository for every run, not
+  only `--temp`: a project meant to last, made in the wrong directory,
+  would come up empty and the owner would find out when they looked for
+  the code.

@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-374 entries.
+381 entries.
 
 ## Scope
 
@@ -337,7 +337,7 @@ pointer, not a summary.
 - **I-252** `repose paste` sends the laptop's clipboard image to the guest and pastes its path; one direction, no socket — 2026-09-25; partly superseded by I-280; L6234
 - **I-250** Claude Code in a guest starts in `bypassPermissions` unless the user set another default — 2026-09-25; L6283
 - **I-251** cloudflared is a menu entry in group `deploy` — 2026-09-25; L6335
-- **I-253** Any number of agent windows in one guest, and `repose run --worktree` puts one in its own git worktree beside the checkout — 2026-09-25; L6350
+- **I-253** Any number of agent windows in one guest, and `repose run --worktree` puts one in its own git worktree beside the checkout — 2026-09-25; partly superseded by I-342; L6350
 - **I-254** `repose fork`: one snapshot, N new projects created in one api transaction, each its own machine — 2026-09-25; L6400
 - **I-255** A volume set up under another slug links its old checkout to the new name — 2026-09-25; L6492
 - **I-258** The sync keeps the laptop's split between staged and unstaged work — 2026-09-26; L6523
@@ -406,9 +406,10 @@ pointer, not a summary.
 - **I-328** The build log stream reads the table on its tick, so lines another process stored arrive while the op runs — 2026-09-28; L8549
 - **I-299** A first sign-in with no GitHub identity takes its handle from the email address, the part before the `@` and before any `+tag`; `user-<sub>` is left for an address with nothing usable there — 2026-09-28; L8567
 - **I-340** repose and the recruiting app (Job Alerts) share the Logto tenant at `accounts.herakraft.co`; everything a person sees there names the app they came from, and the setup lives in `ops/logto/` — 2026-09-28; L8590
-- **I-344** The docs sidebar is a drawer below `lg` that keeps its scroll and search, the docs are prerendered, and they stay in-house rather than on a docs framework — 2026-09-28; L8636
-- **I-345** Docs code blocks scroll instead of wrapping, and every block is written to fit 70 columns (62 on a first line, under the Copy button) — 2026-09-28; L8673
-- **I-341** On macOS, Cmd+V with an image on the clipboard pastes it: while attached, a watcher gives an image-only clipboard the path of a PNG copy, taken off again at detach; `REPOSE_CLIPBOARD_PATH=0` turns it off — 2026-09-28; L8701
-- **I-342** `--worktree` makes `~/<slug>-worktree-<N>` on branch `worktree-<N>` (the laptop sees `repose/worktree-<N>`), numbered apart from the window name; supersedes the naming of I-253 — 2026-09-28; L8743
-- **I-343** A `--worktree` gets the checkout's gitignored `.env` and `.env.*` files — 2026-09-28; L8768
-- **I-346** `repose cp` takes several sources like scp; every argument refusal names what it got, held by `TestArgErrorsSayWhatTheyGot` — 2026-09-28; L8785
+- **I-344** The docs sidebar is a drawer below `lg` that keeps its state, and the docs are prerendered; the docs stay in-house — 2026-09-28; L8636
+- **I-345** Docs code blocks scroll; the docs are written to fit the column — 2026-09-28; L8673
+- **I-341** On macOS, Cmd+V with an image on the clipboard pastes it, by a watcher that gives an image-only clipboard the path of a copy — 2026-09-28; L8701
+- **I-342** `--worktree` names are `<slug>-worktree-<N>` on branch `worktree-<N>`, numbered apart from the window — 2026-09-28; L8743
+- **I-343** A `--worktree` gets the checkout's gitignored `.env` files — 2026-09-28; L8768
+- **I-346** `repose cp` takes several sources, and an argument refusal names what it got — 2026-09-28; L8785
+- **I-347** `repose run --temp` makes a temporary machine: it lives 24 hours from creation, is destroyed with no snapshot, and `repose keep` makes it a normal project — 2026-09-28; L8811
