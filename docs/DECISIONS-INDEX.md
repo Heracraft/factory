@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-338 entries.
+342 entries.
 
 ## Scope
 
@@ -370,3 +370,7 @@ pointer, not a summary.
 - **I-296** `repose browser bridge` lends the guest's browser tools the laptop's own Chrome, through Chrome's DevTools switch, a front that answers `/json/version`, and a reverse tunnel whose remote command holds the guest's endpoint switched — 2026-09-27; L7563
 - **I-297** The user docs have a Tutorials section: one job per page, in the order a new user meets them — 2026-09-27; L7622
 - **I-298** The Vercel CLI's login stays on the laptop — 2026-09-27; L7642
+- **I-330** A signed-in visitor can read the landing page — 2026-09-28; L7682
+- **I-331** Sign-out leaves the page alone until the browser goes, and no page paints before its stylesheet — 2026-09-28; L7696
+- **I-332** Settings save as they change; the ntfy URL keeps a Save — 2026-09-28; L7716
+- **I-333** "Recently destroyed" shows ten rows, then more on request — 2026-09-28; L7735

@@ -14,6 +14,46 @@ test('sign-in, callback and sign-out round trip', async ({ page }) => {
 	await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeVisible();
 });
 
+// DECISIONS I-330: a signed-in visitor can read the landing page; it offers
+// the dashboard where a signed-out one sees sign-in.
+test('a signed-in visitor stays on the landing page, which links to the dashboard', async ({
+	page
+}) => {
+	await signIn(page);
+	await page.goto('/');
+	const nav = page.getByRole('navigation', { name: 'Main' });
+	await expect(nav.getByRole('link', { name: 'Dashboard' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Sign in' })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toHaveCount(0);
+	// Give a stray redirect time to fire before asserting it did not.
+	await page.waitForTimeout(500);
+	await expect(page).toHaveURL('/');
+
+	await page.getByRole('link', { name: 'Open the dashboard' }).first().click();
+	await expect(page).toHaveURL('/projects');
+});
+
+// DECISIONS I-331: sign-out leaves the signed-in page as it is until the
+// browser goes to Logto's end-session page; it never renders the landing
+// page in between.
+test('sign-out does not flash the landing page before leaving for Logto', async ({ page }) => {
+	await signIn(page);
+	const seen: string[] = [];
+	await page.exposeFunction('reposeSawLanding', () => seen.push('landing-rendered'));
+	await page.evaluate(() => {
+		new MutationObserver(() => {
+			if (document.querySelector('.hero-h')) {
+				(window as unknown as { reposeSawLanding: () => void }).reposeSawLanding();
+			}
+		}).observe(document.body, { childList: true, subtree: true });
+	});
+	await page.getByRole('button', { name: 'Sign out' }).click();
+	await expect(page).toHaveURL('/');
+	await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeVisible();
+	// The observer lived only in the signed-in document; it saw no landing.
+	expect(seen).not.toContain('landing-rendered');
+});
+
 test('visiting a protected route while signed out redirects to the landing page', async ({
 	page
 }) => {

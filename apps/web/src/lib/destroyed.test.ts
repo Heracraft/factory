@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { defaultRestoreName, timeLeft } from './destroyed';
+import {
+	DESTROYED_FIRST,
+	DESTROYED_STEP,
+	defaultRestoreName,
+	moreToShow,
+	timeLeft
+} from './destroyed';
 import type { DestroyedProject } from './api/types';
 
 function destroyed(over: Partial<DestroyedProject> = {}): DestroyedProject {
@@ -45,5 +51,18 @@ describe('timeLeft', () => {
 		expect(timeLeft('2026-09-23T20:00:00Z', now)).toBe('less than a day left');
 		expect(timeLeft('2026-09-22T00:00:00Z', now)).toBe('expired');
 		expect(timeLeft(null, now)).toBe('');
+	});
+});
+
+describe('moreToShow', () => {
+	it('steps by DESTROYED_STEP', () => {
+		expect(moreToShow(DESTROYED_FIRST, 100)).toBe(DESTROYED_STEP);
+	});
+	it('reveals only what is left', () => {
+		expect(moreToShow(10, 25)).toBe(15);
+	});
+	it('is zero when every row is shown', () => {
+		expect(moreToShow(10, 10)).toBe(0);
+		expect(moreToShow(10, 3)).toBe(0);
 	});
 });

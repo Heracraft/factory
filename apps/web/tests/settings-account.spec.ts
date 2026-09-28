@@ -2,7 +2,7 @@
 // "Account deletion flow requires typing the handle and explains
 // retention."
 import { test, expect } from '@playwright/test';
-import { signIn } from './helpers';
+import { failNext, signIn } from './helpers';
 
 test.beforeEach(async ({ page }) => {
 	await signIn(page);
@@ -13,18 +13,63 @@ test('settings round-trips timezone, email toggle and ntfy URL, and the test but
 }) => {
 	await page.goto('/settings');
 
-	await page.getByLabel('ntfy URL').fill('https://ntfy.sh/repose-test');
+	// DECISIONS I-332: the checkbox and the timezone save on change, with a
+	// toast; the ntfy URL has its own Save.
+	// The account's own zone shows even when the browser's list lacks it (UTC).
+	await expect(page.getByLabel('Timezone')).not.toHaveValue('');
+
 	const emailToggle = page.getByRole('checkbox', { name: 'Email notifications' });
 	await emailToggle.uncheck();
-	await page.getByRole('button', { name: 'Save' }).click();
-	await expect(page.getByText('Settings saved.')).toBeVisible();
+	await expect(page.getByText('Email notifications off.')).toBeVisible();
+
+	await page.getByLabel('Timezone').selectOption('Europe/Berlin');
+	await expect(page.getByText('Timezone set to Europe/Berlin.')).toBeVisible();
+
+	const save = page.getByRole('button', { name: 'Save', exact: true });
+	await expect(save).toBeDisabled();
+	await page.getByLabel('ntfy URL').fill('https://ntfy.sh/repose-test');
+	await expect(page.getByText('Not saved yet.')).toBeVisible();
+	await save.click();
+	await expect(page.getByText('ntfy URL saved.')).toBeVisible();
+	await expect(save).toBeDisabled();
 
 	await page.reload();
 	await expect(page.getByLabel('ntfy URL')).toHaveValue('https://ntfy.sh/repose-test');
 	await expect(page.getByRole('checkbox', { name: 'Email notifications' })).not.toBeChecked();
+	await expect(page.getByLabel('Timezone')).toHaveValue('Europe/Berlin');
+
+	await page.getByRole('checkbox', { name: 'Email notifications' }).check();
+	await expect(page.getByText('Email notifications on.')).toBeVisible();
 
 	await page.getByRole('button', { name: 'Send test' }).click();
 	await expect(page.getByText(/Test notification/)).toBeVisible();
+});
+
+test('a failed email toggle reverts the checkbox', async ({ page }) => {
+	await page.goto('/settings');
+	const emailToggle = page.getByRole('checkbox', { name: 'Email notifications' });
+	const was = await emailToggle.isChecked();
+	await failNext('PATCH', '/me', 'internal');
+	await emailToggle.click();
+	await expect(page.locator('[data-sonner-toast][data-type="error"]')).toBeVisible();
+	await expect(emailToggle).toBeChecked({ checked: was });
+});
+
+test('leaving settings with an unsaved ntfy URL asks first', async ({ page }) => {
+	await page.goto('/settings');
+	await page.getByLabel('ntfy URL').fill('https://ntfy.sh/repose-unsaved');
+
+	const projects = page.getByRole('link', { name: 'Projects', exact: true });
+	let dialog = page.waitForEvent('dialog');
+	await projects.click();
+	await (await dialog).dismiss();
+	await expect(page.getByLabel('ntfy URL')).toHaveValue('https://ntfy.sh/repose-unsaved');
+	await expect(page).toHaveURL('/settings');
+
+	dialog = page.waitForEvent('dialog');
+	await projects.click();
+	await (await dialog).accept();
+	await expect(page).toHaveURL('/projects');
 });
 
 test('account deletion requires typing the exact handle', async ({ page }) => {

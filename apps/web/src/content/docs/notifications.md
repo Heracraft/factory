@@ -35,7 +35,7 @@ ntfy: ok
 
 A self-hosted ntfy server works the same way. For one that needs a login, put it in the URL (`https://user:password@ntfy.example.com/topic`). Turn ntfy off with `repose notify set --ntfy none`.
 
-Settings apply to every project. The dashboard's **Settings** page has the same controls, plus **Send test**; changes there take effect when you press **Save**.
+Settings apply to every project. The dashboard's **Settings** page has the same controls, plus **Send test**. **Email notifications** and the timezone save as soon as you change them; the ntfy URL saves with the **Save** button next to it.
 
 ## What you'll get
 

@@ -109,6 +109,13 @@
 		--sh-ink: var(--color-zinc-700);
 		--sh-paper: var(--surface);
 		--sh-stop: var(--color-red-600);
+
+		/* The landing's text colours (landing.css). Here rather than there so
+		   they are set before the landing's own stylesheet arrives
+		   (DECISIONS I-331). */
+		--ink: var(--color-zinc-900);
+		--ink-muted: var(--color-zinc-600);
+		--ink-faint: var(--color-zinc-500);
 	}
 	@media (prefers-color-scheme: dark) {
 		:root {
@@ -119,6 +126,9 @@
 			/* red-400 sits too close to the orange in the dark for a tile
 			   turning rogue to show; red-500 does not. */
 			--sh-stop: var(--color-red-500);
+			--ink: var(--color-zinc-100);
+			--ink-muted: var(--color-zinc-400);
+			--ink-faint: var(--color-zinc-500);
 			--page: #111110;
 			--surface: #161615;
 			--sunken: #1b1b1a;
@@ -129,6 +139,12 @@
 	body {
 		@apply min-h-dvh text-zinc-900 antialiased dark:text-zinc-100;
 		background-color: var(--page);
+	}
+	/* The landing page (routes/landing.css sets it visible) stays hidden
+	   until its own stylesheet applies, for the same reason as the body
+	   rule at the end of this file. In a layer, so landing.css wins. */
+	.rails {
+		visibility: hidden;
 	}
 	::selection {
 		@apply bg-blue-200 dark:bg-blue-800;
@@ -528,4 +544,12 @@
 }
 .doc pre .tok-punctuation {
 	@apply text-zinc-500 dark:text-zinc-400;
+}
+
+/* app.html hides the body until this file applies, so a page rendered
+   before its stylesheet arrives never paints unstyled; the inline html
+   background already shows the right colour meanwhile (DECISIONS I-331).
+   Outside any layer, to beat app.html's unlayered rule. */
+body {
+	visibility: visible;
 }

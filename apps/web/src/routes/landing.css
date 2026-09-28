@@ -23,20 +23,13 @@
 	--land-x: clamp(1.25rem, 4.2vw, 3.5rem);
 	--land-y: clamp(3rem, 6.5vw, 5.25rem);
 	--land-ease: cubic-bezier(0.65, 0, 0.35, 1);
-	--ink: var(--color-zinc-900);
-	--ink-muted: var(--color-zinc-600);
-	--ink-faint: var(--color-zinc-500);
-}
-@media (prefers-color-scheme: dark) {
-	:root {
-		--ink: var(--color-zinc-100);
-		--ink-muted: var(--color-zinc-400);
-		--ink-faint: var(--color-zinc-500);
-	}
+	/* --ink, --ink-muted and --ink-faint live in layout.css, which is on
+	   the page before this file is (DECISIONS I-331). */
 }
 
 /* The walls. A pseudo-element each, so they can be drawn in on load. */
 .rails {
+	visibility: visible;
 	position: relative;
 	max-width: var(--land-w);
 	margin-inline: auto;

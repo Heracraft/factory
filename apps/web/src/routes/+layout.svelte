@@ -21,13 +21,14 @@
 		void initAuth();
 	});
 
+	// Signed-out visitors on a private route go to the landing page. A
+	// signed-in visitor may read the landing page too (DECISIONS I-330); its
+	// header offers the dashboard instead of sign-in, and signing in itself
+	// still lands on /projects (routes/callback).
 	$effect(() => {
 		if (authState.authenticated === undefined) return;
-		const path = page.url.pathname;
-		if (!authState.authenticated && !isPublic(path)) {
+		if (!authState.authenticated && !isPublic(page.url.pathname)) {
 			void goto(resolve('/'));
-		} else if (authState.authenticated && path === '/') {
-			void goto(resolve('/projects'));
 		}
 	});
 

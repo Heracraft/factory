@@ -1621,10 +1621,11 @@ signed in.
    threw — almost always `PUBLIC_LOGTO_ENDPOINT` unset or unreachable from
    the browser (check it the same way as the api origin above; Logto needs
    the same cross-origin discovery fetch the api does).
-3. A user stuck signed in on `/` (authenticated but not redirected to
-   `/projects`) points at the root `+layout.svelte` effect instead: confirm
-   `authState.authenticated` actually resolves (it stays `undefined`
-   forever if `initAuth()` threw), not a Logto problem.
+3. A signed-in user may stay on `/`: the landing page no longer redirects
+   (DECISIONS I-330) and shows **Dashboard** instead of **Sign in**. If a
+   signed-in user still sees **Sign in** there, or a private page never
+   renders, confirm `authState.authenticated` actually resolves (it stays
+   `undefined` forever if `initAuth()` threw), not a Logto problem.
 
 ## api: op stuck waiting for host
 

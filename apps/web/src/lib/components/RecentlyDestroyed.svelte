@@ -11,7 +11,7 @@
 	import { ApiError } from '$lib/api/errors';
 	import { toastApiError } from '$lib/api/toast';
 	import { dateTime, relativeTime } from '$lib/format';
-	import { defaultRestoreName, timeLeft } from '$lib/destroyed';
+	import { DESTROYED_FIRST, defaultRestoreName, moreToShow, timeLeft } from '$lib/destroyed';
 	import type { DestroyedProject } from '$lib/api/types';
 
 	let {
@@ -30,6 +30,12 @@
 	let name = $state('');
 	let nameError = $state<string | undefined>(undefined);
 	let busy = $state(false);
+
+	// The newest first, then more on request (DECISIONS I-333). The count
+	// survives the list's refreshes, so a poll never folds it back.
+	let shown = $state(DESTROYED_FIRST);
+	let visible = $derived(destroyed.slice(0, shown));
+	let more = $derived(moreToShow(shown, destroyed.length));
 
 	function open(d: DestroyedProject) {
 		openFor = d.id;
@@ -80,7 +86,7 @@
 			<code>repose restore NAME</code>.
 		</p>
 		<ul class="mt-4 border-t border-[var(--rule-strong)]">
-			{#each destroyed as d (d.id)}
+			{#each visible as d (d.id)}
 				<li class="row" data-testid="destroyed-row">
 					<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
 						<div class="min-w-0">
@@ -137,5 +143,15 @@
 				</li>
 			{/each}
 		</ul>
+		{#if more > 0}
+			<div class="mt-3 flex items-baseline gap-3">
+				<button type="button" class="btn-ghost px-0" onclick={() => (shown += more)}
+					>Show {more} more</button
+				>
+				<span class="text-sm text-zinc-500 dark:text-zinc-400"
+					>{shown} of {destroyed.length} shown</span
+				>
+			</div>
+		{/if}
 	</section>
 {/if}

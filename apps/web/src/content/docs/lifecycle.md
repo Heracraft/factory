@@ -105,7 +105,7 @@ repose restore todo-app
 
 `--as NEW-NAME` restores under another name, and `--snapshot ID` picks an older snapshot. A restore started while the destroy is still running waits for it. After 30 days the snapshot is deleted.
 
-The dashboard's project list has the same under **Recently destroyed**, with the date each can be restored until.
+The dashboard's project list has the same under **Recently destroyed**, with the date each can be restored until. It shows the 10 destroyed most recently; **Show more** lists the rest.
 
 ## A second machine for the same repository
 

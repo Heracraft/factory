@@ -27,3 +27,16 @@ export function timeLeft(until: string | null | undefined, now = new Date()): st
 	if (days === 0) return 'less than a day left';
 	return days === 1 ? '1 day left' : `${days} days left`;
 }
+
+/**
+ * "Recently destroyed" shows the newest DESTROYED_FIRST rows and a "Show
+ * more" that adds DESTROYED_STEP at a time (DECISIONS I-333). The api sends
+ * at most 100 rows, all at once, so this is paging in the page only.
+ */
+export const DESTROYED_FIRST = 10;
+export const DESTROYED_STEP = 20;
+
+/** How many more rows the next "Show more" reveals: 0 when all are shown. */
+export function moreToShow(shown: number, total: number): number {
+	return Math.max(0, Math.min(DESTROYED_STEP, total - shown));
+}

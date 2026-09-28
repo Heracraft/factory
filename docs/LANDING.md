@@ -336,7 +336,7 @@ by `+page.svelte` alone; the house tokens stay in `layout.css`):
   `clamp(1.9rem, 3.4vw, 2.5rem)`; cell and step titles 1.125rem serif
   600; lead `clamp(1rem, 1.3vw, 1.125rem)`; labels 11px mono, 0.14em
   tracking, uppercase (the price's "per hour"). Ink in three steps (`--ink`, `--ink-muted`,
-  `--ink-faint`), redefined for the dark scheme.
+  `--ink-faint`), redefined for the dark scheme; defined in `layout.css` so they are set before `landing.css` arrives (I-331).
 
 Everything in "Shape language" still holds: shapes encode or are absent,
 the palette is the neutrals and the one blue, the pictures are untouched.

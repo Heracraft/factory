@@ -3,7 +3,7 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { toast } from 'svelte-sonner';
-	import { signIn } from '$lib/auth.svelte';
+	import { authState, signIn } from '$lib/auth.svelte';
 	import Logo from '$lib/components/Logo.svelte';
 	import Hero from '$lib/components/landing/Hero.svelte';
 	import Gauge from '$lib/components/landing/Gauge.svelte';
@@ -117,9 +117,13 @@
 			<a href={resolve('/docs')} class="hidden sm:inline">Docs</a>
 			<a href="#pricing" class="hidden sm:inline">Pricing</a>
 			<a href={SOURCE_URL} class="hidden sm:inline">GitHub</a>
-			<button type="button" class="btn-quiet !py-1.5" disabled={signingIn} onclick={onSignIn}
-				>Sign in</button
-			>
+			{#if authState.authenticated}
+				<a href={resolve('/projects')} class="btn-quiet !py-1.5">Dashboard</a>
+			{:else}
+				<button type="button" class="btn-quiet !py-1.5" disabled={signingIn} onclick={onSignIn}
+					>Sign in</button
+				>
+			{/if}
 		</nav>
 	</header>
 
@@ -134,9 +138,13 @@
 					Your work on a machine of its own. The agent can wreck it. A snapshot puts it back.
 				</p>
 				<div class="hero-ctas">
-					<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
-						Sign in with GitHub
-					</button>
+					{#if authState.authenticated}
+						<a href={resolve('/projects')} class="btn !px-5 !py-2.5">Open the dashboard</a>
+					{:else}
+						<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
+							Sign in with GitHub
+						</button>
+					{/if}
 					<div class="cmd">
 						<span class="text">{INSTALL_COMMAND}</span>
 						<button
@@ -240,9 +248,13 @@
 				{/each}
 			</ul>
 			<div class="cta-row">
-				<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
-					Start with GitHub
-				</button>
+				{#if authState.authenticated}
+					<a href={resolve('/projects')} class="btn !px-5 !py-2.5">Open the dashboard</a>
+				{:else}
+					<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
+						Start with GitHub
+					</button>
+				{/if}
 			</div>
 		</section>
 	</main>
