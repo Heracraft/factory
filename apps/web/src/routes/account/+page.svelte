@@ -51,7 +51,9 @@
 			</div>
 			<div class="flex justify-between">
 				<dt class="text-zinc-500 dark:text-zinc-400">GitHub</dt>
-				<dd>{me.github_login}</dd>
+				<dd class={me.github_login ? '' : 'text-zinc-500 dark:text-zinc-400'}>
+					{me.github_login ?? 'Not linked'}
+				</dd>
 			</div>
 		</dl>
 

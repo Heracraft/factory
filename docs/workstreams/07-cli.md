@@ -163,7 +163,8 @@ account's slugs for PROJECT and `--project`.
 3. Otherwise, and by default, device code: `POST /oidc/device/auth`, print
 
    ```
-   Open https://auth.herakraft.co/device and enter code ABCD-EFGH
+   Open https://accounts.herakraft.co/device?user_code=ABCD-EFGH
+   The page shows code ABCD-EFGH; check it matches, then sign in.
    Waiting...
    ```
 

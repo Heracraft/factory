@@ -166,7 +166,7 @@
 						<a href={resolve('/projects')} class="btn !px-5 !py-2.5">Open the dashboard</a>
 					{:else}
 						<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
-							Sign in with GitHub
+							Get started
 						</button>
 					{/if}
 					<div class="cmd">
@@ -281,7 +281,7 @@
 					<a href={resolve('/projects')} class="btn !px-5 !py-2.5">Open the dashboard</a>
 				{:else}
 					<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
-						Start with GitHub
+						Start a free week
 					</button>
 					{#if seats}
 						<p class="seats" data-testid="seats-line">

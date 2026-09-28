@@ -89,7 +89,9 @@ func TestFirstSignInCreatesUserAndCollisionsSuffix(t *testing.T) {
 	f.AddUser("sub-b", logto.User{Email: "b@example.com", GithubLogin: "octo-cat"})
 	f.AddUser("sub-c", logto.User{Email: "c@example.com", GithubLogin: "OCTO.CAT"})
 	f.AddUser("sub-legacy", logto.User{Email: "legacy@example.com", GithubLogin: "legacy-cat", LegacyShape: true})
-	f.AddUser("sub-mail", logto.User{Email: "mail@example.com"})
+	f.AddUser("sub-mail", logto.User{Email: "First.Last+repose@example.com"})
+	f.AddUser("sub-mail-2", logto.User{Email: "first-last@example.org"})
+	f.AddUser("sub-kanji", logto.User{Email: "日本@example.com"})
 	p := auth.NewProvisioner(pool, auth.NewLogtoManagement(f.Issuer(), "m2m", "secret", nil))
 	ctx := context.Background()
 	a, err := p.EnsureUser(ctx, "sub-a")
@@ -109,13 +111,21 @@ func TestFirstSignInCreatesUserAndCollisionsSuffix(t *testing.T) {
 	if err != nil || b.Handle != "octo-cat-2" {
 		t.Fatalf("collision: %+v %v", b, err)
 	}
-	// An older connector's flat details.login still works, and an email
-	// sign-in with no GitHub identity gets the user-<sub> fallback (I-105).
+	// An older connector's flat details.login still works. An email sign-in
+	// with no GitHub identity takes the address's name before any +tag
+	// (I-299), collides like a login, and an address with nothing usable
+	// before the @ still gets the user-<sub> fallback (I-100).
 	if d, err := p.EnsureUser(ctx, "sub-legacy"); err != nil || d.Handle != "legacy-cat" {
 		t.Fatalf("legacy shape: %+v %v", d, err)
 	}
-	if e, err := p.EnsureUser(ctx, "sub-mail"); err != nil || e.Handle != "user-sub-mail" || e.GithubLogin != nil {
+	if e, err := p.EnsureUser(ctx, "sub-mail"); err != nil || e.Handle != "first-last" || e.GithubLogin != nil {
 		t.Fatalf("no github identity: %+v %v", e, err)
+	}
+	if e, err := p.EnsureUser(ctx, "sub-mail-2"); err != nil || e.Handle != "first-last-2" {
+		t.Fatalf("email collision: %+v %v", e, err)
+	}
+	if e, err := p.EnsureUser(ctx, "sub-kanji"); err != nil || e.Handle != "user-sub-kanji" {
+		t.Fatalf("nothing usable before the @: %+v %v", e, err)
 	}
 	c, err := p.EnsureUser(ctx, "sub-c")
 	if err != nil || c.Handle != "octo-cat-3" {

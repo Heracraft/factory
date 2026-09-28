@@ -27,4 +27,4 @@ export function haveAuthState(): boolean {
 /** The reason an account test is skipped, phrased as the way to fix it. */
 export const NO_AUTH_REASON =
 	`no saved sign-in at ${AUTH_STATE}: run \`pnpm --filter web run live:auth\` once ` +
-	`(it opens a browser, you sign in with GitHub, it saves the session).`;
+	`(it opens a browser, you sign in, it saves the session).`;

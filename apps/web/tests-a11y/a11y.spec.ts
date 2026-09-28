@@ -70,7 +70,7 @@ async function accessibilityScore(name: string, url: string): Promise<number> {
 // and it costs one audit to keep honest.
 test('accessibility of the landing page is at least 90', async ({ page }) => {
 	await page.goto('/');
-	await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Get started' })).toBeVisible();
 	const score = await accessibilityScore('landing', `${BASE_URL}/`);
 	console.log(`/ accessibility: ${score}`);
 	expect(score).toBeGreaterThanOrEqual(MINIMUM);

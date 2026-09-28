@@ -58,8 +58,9 @@ Consumes: `interfaces/api.md` (all user routes), `interfaces/cli-config.md`
 `@logto/browser` `LogtoClient` with `appId` for the dashboard's SPA app,
 `resources: ["https://api.repose.herakraft.co"]`, `scopes: ["openid",
 "profile", "email", "offline_access"]`. `+layout.ts` checks
-`isAuthenticated()`; unauthenticated users see the landing page and a "Sign
-in with GitHub" button that calls `signIn(callbackUrl)`. `/callback` handles
+`isAuthenticated()`; unauthenticated users see the landing page, whose "Get
+started", "Start a free week" and header "Sign in" buttons all call
+`signIn(callbackUrl)`; Logto's page offers email or GitHub (I-340). `/callback` handles
 `handleSignInCallback`. Every API call does `getAccessToken(resource)` and
 sends it as a bearer. Tokens live in memory plus Logto's default storage
 (localStorage) for the refresh token; this is the accepted SPA pattern and
@@ -138,7 +139,7 @@ egress; head "Two plans. Seven days free, card at checkout."), and beside
 the "Start with GitHub" button one line from `GET /public/seats`
 ("12 seats left" while `free > 0`; "Full for now. 41 waiting; join
 the list and you're emailed when a seat frees." at 0; nothing when the
-fetch fails), install command, "Sign in with GitHub". Links to terms,
+fetch fails), install command, "Get started" (I-340). Links to terms,
 privacy and refunds (static markdown from `src/content/legal/`,
 prerendered; the frontmatter's `status` marks a draft). The rules are
 `../LANDING.md`.

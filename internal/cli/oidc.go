@@ -221,8 +221,11 @@ type deviceAuthResponse struct {
 	DeviceCode      string `json:"device_code"`
 	UserCode        string `json:"user_code"`
 	VerificationURI string `json:"verification_uri"`
-	Interval        int    `json:"interval"`
-	ExpiresIn       int    `json:"expires_in"`
+	// VerificationURIComplete carries the code in the URL (RFC 8628 §3.3.1),
+	// so the page opens with it filled in; optional in the RFC.
+	VerificationURIComplete string `json:"verification_uri_complete"`
+	Interval                int    `json:"interval"`
+	ExpiresIn               int    `json:"expires_in"`
 }
 
 // loginDeviceCode runs RFC 8628 device authorization (07-cli.md §5.2 step
@@ -247,7 +250,7 @@ func loginDeviceCode(ctx context.Context, httpClient *http.Client, doc *discover
 	if err := json.NewDecoder(resp.Body).Decode(&da); err != nil {
 		return nil, err
 	}
-	print(fmt.Sprintf("Open %s and enter code %s\nWaiting...", da.VerificationURI, da.UserCode))
+	print(deviceInstructions(da))
 
 	interval := time.Duration(da.Interval) * time.Second
 	if interval <= 0 {
@@ -282,6 +285,15 @@ func loginDeviceCode(ctx context.Context, httpClient *http.Client, doc *discover
 		}
 		return nil, err
 	}
+}
+
+// deviceInstructions prefers the link with the code already in it; the code
+// is still printed so the user can check the page shows the same one.
+func deviceInstructions(da deviceAuthResponse) string {
+	if da.VerificationURIComplete != "" {
+		return fmt.Sprintf("Open %s\nThe page shows code %s; check it matches, then sign in.\nWaiting...", da.VerificationURIComplete, da.UserCode)
+	}
+	return fmt.Sprintf("Open %s and enter code %s, then sign in.\nWaiting...", da.VerificationURI, da.UserCode)
 }
 
 func refreshToken(ctx context.Context, httpClient *http.Client, doc *discoveryDoc, clientID, refresh string) (*tokenResponse, error) {

@@ -1,0 +1,63 @@
+/*
+ * Custom CSS for the sign-in pages at accounts.herakraft.co (Logto Console,
+ * Sign-in experience, Branding, Custom CSS). The tenant is shared by repose
+ * and Job Alerts, and both follow one house style (docs/DESIGN-LANGUAGE.md):
+ * paper and ink, hairline rules, corners of 2 to 4px, no shadows, serif
+ * titles over a plain sans page. So this sheet names neither product; each
+ * app's logo comes from its own application sign-in experience.
+ *
+ * Logto's class names are hashed per build except the logto_* hooks, so
+ * colours go through Logto's own CSS variables and the only other selectors
+ * are the hooks and [class*="_headline"] / [class*="_title"], which match the
+ * readable part of the hashed name. A Logto upgrade can rename those; the
+ * page then falls back to Logto's defaults in the same colours.
+ */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif:wght@600&display=swap');
+
+/* Logto sets its variables on a hashed class on body, so this selector has
+   to outrank a class on body. */
+html body[class] {
+	--color-bg-body-base: #fbfbfa;
+	--color-bg-float-base: #fbfbfa;
+	--color-bg-body: #ffffff;
+	--color-bg-float: #ffffff;
+	--color-bg-layer-1: #ffffff;
+	--color-bg-layer-2: #f4f4f2;
+	--color-bg-light: #f4f4f2;
+	--color-type-primary: #181817;
+	--color-type-secondary: #767671;
+	/* The one accent: links only, as on the sites. */
+	--color-type-link: #2f4b86;
+	--color-line-border: #cfcfcb;
+	--color-line-divider: #e6e6e3;
+	--color-brand-default: #181817;
+	--color-brand-hover: #2c2c2a;
+	--color-brand-pressed: #000000;
+	--color-overlay-brand-focused: rgba(47, 75, 134, 0.2);
+	--color-shadow-1: none;
+	--color-shadow-2: none;
+	--radius: 3px;
+}
+
+/* A hairline frame on the paper instead of a floating card. */
+.logto_main-content {
+	border: 1px solid #e6e6e3 !important;
+	border-radius: 4px !important;
+	box-shadow: none !important;
+}
+
+/* repose's logo is its r-mark alone, the favicon's drawing, at 36px. */
+.logto_branding-header img {
+	height: 36px !important;
+	width: auto !important;
+	max-width: 100% !important;
+}
+
+.logto_main-content [class*='_headline'],
+.logto_main-content [class*='_title'] {
+	font-family: 'Noto Serif', Georgia, 'Times New Roman', serif !important;
+	font-weight: 600 !important;
+	font-size: 22px !important;
+	line-height: 30px !important;
+	letter-spacing: -0.01em !important;
+}

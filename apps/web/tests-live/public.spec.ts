@@ -28,7 +28,7 @@ test('landing renders with the install command and the sign-in button', async ({
 			name: /A developer's laptop is the wrong place for a coding agent/
 		})
 	).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Get started' })).toBeVisible();
 	await expect(
 		page.getByText('curl -fsSL https://repose.herakraft.co/install.sh | sh').first()
 	).toBeVisible();
@@ -118,9 +118,9 @@ test('the published terms carry the hosted-use statement', async ({ page }) => {
 	}
 });
 
-test('Sign in with GitHub hands over to the real Logto', async ({ page }) => {
+test('Get started hands over to the real Logto', async ({ page }) => {
 	await page.goto('/');
-	await page.getByRole('button', { name: 'Sign in with GitHub' }).click();
+	await page.getByRole('button', { name: 'Get started' }).click();
 	// Logto's /oidc/auth 303s to its own sign-in experience with the app id.
 	await page.waitForURL(/\/sign-in/, { timeout: 30_000 });
 	const url = new URL(page.url());
@@ -146,13 +146,13 @@ test('a refused sign-in returns to the landing page with a toast', async ({ page
 test('a bad callback fails closed to the landing page', async ({ page }) => {
 	await page.goto('/callback?code=not-a-real-code&state=nonsense');
 	await expect(page).toHaveURL(`${LIVE_URL}/`, { timeout: 30_000 });
-	await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Get started' })).toBeVisible();
 });
 
 test('a signed-out visitor is sent away from a signed-in route', async ({ page }) => {
 	await page.goto('/projects');
 	await expect(page).toHaveURL(`${LIVE_URL}/`, { timeout: 30_000 });
-	await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Get started' })).toBeVisible();
 });
 
 // 08 §5.1: "The dashboard has no +server.ts routes except /healthz." The

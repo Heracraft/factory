@@ -8564,3 +8564,71 @@ LISTEN/NOTIFY across the two processes would be exact, and was left for
 when the tick's cost shows. Test: `TestSSEDeliversLinesAnotherProcessWrote`
 (a second `buildlog.Store` writes after the stream's first catch-up; fails
 before the change, the line arrives 1 ms after it is stored after it).
+**I-299. A first sign-in with no GitHub identity takes its handle from the
+email address, the part before the `@` and before any `+tag`; `user-<sub>`
+is left for an address with nothing usable there.** (owner, 2026-09-28:
+"login process is shit ... log in with email and not github to see the full
+mess") Amends I-100. Email sign-in is a real path now (I-340), and I-100's
+fallback gave every such user a handle like `user-c7fh26yzrl93`, which is
+the SSH login suffix, the certificate `key_id` and the tail of every
+preview hostname (I-6). `auth.Provisioner` now tries the GitHub login,
+then Logto's username, then the address's local part, then `user-<sub>`;
+the local part goes through `DeriveHandle` and collides the way a login
+does (`first-last`, `first-last-2`). An address whose local part has no
+character in `[a-z0-9]` (`日本@example.com`) keeps `user-<sub>`, so those
+users don't all share `user`, `user-2`. The handle is still fixed at first
+sign-in (I-100): existing rows keep theirs, and linking GitHub later
+changes nothing; `repose-admin users rename` is the repair while a user
+has no projects. `TestFirstSignInCreatesUserAndCollisionsSuffix`.
+*Rejected:* asking for a handle at first sign-in (a form between Logto and
+the dashboard, and the CLI's device flow has no page to show it on);
+Logto's username as a required sign-up field (the tenant is shared with
+the recruiting app, whose users would be asked too); rederiving at each
+sign-in (I-100's reason: a login name that changes under a user's SSH
+config).
+
+**I-340. repose and the recruiting app (Job Alerts) share the Logto tenant
+at `accounts.herakraft.co`; everything a person sees there names the app
+they came from, and the setup lives in `ops/logto/`.** (owner, 2026-09-28)
+I-84 put repose on the owner's existing Logto, which had been set up for
+Job Alerts: the sign-in page showed the recruiting logo, every
+verification email was titled "Your Job Alerts sign-in code" from
+`login@`, threaded with every earlier code in Gmail, and the dashboard's
+buttons said "Sign in with GitHub" over a page that leads with email. One
+tenant stays (open-source Logto has one tenant per instance, and a second
+instance is a second thing to run); what differs per app now comes from
+the application:
+- Application names are what the emails say: `repose` for the dashboard
+  and the CLI, `Job Alerts` for the recruiting app. The SMTP connector's
+  templates use `{{application.name}}` in the subject, the sender name
+  (`sendFrom`) and the body; Logto fills it for every usage type except
+  Generic and OrganizationInvitation, which say "Herakraft". Logto's
+  substitution is a regex with no conditionals, and a variable whose root
+  is missing stays in the email as typed, so no other variable is used
+  but the logo below.
+- The code is in the subject (`278278 is your repose sign-in code`), so
+  each email is its own thread and the code reads from the notification.
+- Each application has its own sign-in experience: the logo (repose's
+  r-mark, the recruiting app's icon, both PNG over https because the
+  sign-in emails show it through `{{application.branding.logoUrl}}` and
+  Gmail shows neither SVG nor `data:` images; only the four sign-in usage
+  types carry it, since account-center emails have no logo), and for
+  repose the terms and privacy links. The tenant's custom CSS puts both products'
+  shared house style on every page (paper, hairlines, 3px corners, Noto
+  Serif titles). Logto's "Powered by" badge stays: the open-source build
+  refuses `hideLogtoBranding` and pins the badge with inline styles.
+- The fallback for an unknown session is `https://repose.herakraft.co`.
+- Automatic account linking is on (a social sign-in whose verified email
+  matches an account joins it). The owner's GitHub identity, which had
+  made a second empty account on 2026-09-28, was moved onto the email
+  account that holds the projects, and the empty one deleted.
+- The dashboard's buttons are "Get started" and "Start a free week"; the
+  header keeps "Sign in". `repose login` prints Logto's
+  `verification_uri_complete`, so the page opens with the code filled in.
+`ops/logto/README.md` has each setting, where it lives in the console,
+and how to rebuild the templates (`ops/logto/emails/build.py`).
+*Rejected:* a second Logto instance for repose (one more service and
+database for a difference that application settings cover); product names
+typed into the templates (the recruiting app would have read "repose");
+Logto's per-language email templates (they have no per-app variant
+either); hiding the badge through CSS tricks against Logto's pinning.

@@ -16,7 +16,7 @@ curl -fsSL https://repose.herakraft.co/install.sh | sh
 repose login
 ```
 
-`repose login` prints a URL and a code. Open the URL on any device, sign in with GitHub and enter the code. [Install](/docs/install) has the other ways to install.
+`repose login` prints a link and a code. Open the link on any device, check the code matches and sign in with your email or with GitHub. [Install](/docs/install) has the other ways to install.
 
 ## 2. Start a machine for your checkout
 

@@ -3,7 +3,7 @@ import { signIn } from './helpers';
 
 test('sign-in, callback and sign-out round trip', async ({ page }) => {
 	await page.goto('/');
-	await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Get started' })).toBeVisible();
 
 	await signIn(page);
 	await expect(page).toHaveURL(/\/projects/);
@@ -11,7 +11,7 @@ test('sign-in, callback and sign-out round trip', async ({ page }) => {
 
 	await page.getByRole('button', { name: 'Sign out' }).click();
 	await expect(page).toHaveURL('/');
-	await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Get started' })).toBeVisible();
 });
 
 // DECISIONS I-330: a signed-in visitor can read the landing page; it offers
@@ -24,7 +24,7 @@ test('a signed-in visitor stays on the landing page, which links to the dashboar
 	const nav = page.getByRole('navigation', { name: 'Main' });
 	await expect(nav.getByRole('link', { name: 'Dashboard' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Sign in' })).toHaveCount(0);
-	await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Get started' })).toHaveCount(0);
 	// Give a stray redirect time to fire before asserting it did not.
 	await page.waitForTimeout(500);
 	await expect(page).toHaveURL('/');
@@ -49,7 +49,7 @@ test('sign-out does not flash the landing page before leaving for Logto', async 
 	});
 	await page.getByRole('button', { name: 'Sign out' }).click();
 	await expect(page).toHaveURL('/');
-	await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Get started' })).toBeVisible();
 	// The observer lived only in the signed-in document; it saw no landing.
 	expect(seen).not.toContain('landing-rendered');
 });

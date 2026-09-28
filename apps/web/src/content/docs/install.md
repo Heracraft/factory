@@ -33,7 +33,7 @@ Arch Linux has an unrelated package that also installs a `repose` command. If th
 repose login
 ```
 
-The CLI prints a URL and a short code. Open the URL in any browser, on any device, sign in with GitHub and enter the code. Because the browser doesn't have to be on the same computer, this also works over SSH.
+The CLI prints a link and a short code. Open the link in any browser, on any device: the page already has the code in it, so check it matches the one in your terminal, then sign in with your email or with GitHub. Because the browser doesn't have to be on the same computer, this also works over SSH.
 
 You stay logged in until you run `repose logout`.
 

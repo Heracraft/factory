@@ -172,6 +172,22 @@ func DeriveHandle(login string) string {
 	return h
 }
 
+// emailLocal is the part of an address before '@' and before any '+tag',
+// or "" when none of it survives DeriveHandle's alphabet, so an address
+// like 日本@example.com falls through to the user-<sub> handle rather than
+// to a shared "user".
+func emailLocal(email string) string {
+	local, _, ok := strings.Cut(email, "@")
+	if !ok {
+		return ""
+	}
+	local, _, _ = strings.Cut(local, "+")
+	if strings.Trim(handleClean.ReplaceAllString(strings.ToLower(local), "-"), "-") == "" {
+		return ""
+	}
+	return local
+}
+
 // Provisioner creates users on first sign-in.
 type Provisioner struct {
 	pool *db.Pool
@@ -200,6 +216,10 @@ func (p *Provisioner) EnsureUser(ctx context.Context, sub string) (*store.User, 
 	login := id.GithubLogin
 	if login == "" {
 		login = id.Username
+	}
+	if login == "" {
+		// An email sign-in: the address's name before any +tag (I-299).
+		login = emailLocal(id.Email)
 	}
 	if login == "" {
 		login = "user-" + sub

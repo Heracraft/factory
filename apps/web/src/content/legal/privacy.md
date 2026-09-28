@@ -16,10 +16,12 @@ the product.
 
 ## What we record
 
-**Your account.** When you sign in with GitHub through our identity
-provider we store your GitHub login, the email address on that account, a
-handle derived from your login, your time zone, and your notification
-settings (an email address and, if you set one, an ntfy endpoint).
+**Your account.** You sign in through our identity provider with your
+email address or with GitHub. We store your email address, your GitHub
+login if you use GitHub, a handle derived from your GitHub login or, without
+one, from the part of your email address before the @, your time zone, and
+your notification settings (an email address and, if you set one, an ntfy
+endpoint).
 
 **Your projects.** For each project: its name, the git remote URL you
 created it from, its size class, its state, which server it runs on, its

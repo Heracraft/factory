@@ -57,7 +57,8 @@ export interface Me {
 	id: string;
 	handle: string;
 	email: string;
-	github_login: string;
+	/** null for an account that signed up with email and never linked GitHub. */
+	github_login: string | null;
 	tz: string;
 	created_at: string;
 	billing: {

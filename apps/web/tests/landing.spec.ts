@@ -24,7 +24,7 @@ test('the pricing section shows the two plans and the seats left', async ({ page
 	).toBeVisible();
 	await expect(pricing.getByText('per hour')).toHaveCount(0);
 	await expect(page.getByTestId('seats-line')).toHaveText('18 seats left');
-	await expect(pricing.getByRole('button', { name: 'Start with GitHub' })).toBeVisible();
+	await expect(pricing.getByRole('button', { name: 'Start a free week' })).toBeVisible();
 });
 
 test('when full, the line says so with the number waiting', async ({ page }) => {
