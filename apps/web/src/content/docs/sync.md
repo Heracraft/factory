@@ -22,6 +22,10 @@ Everything goes over your SSH connection. None of it is stored by repose.
 Synced: 4 modified, 2 untracked, 2 env files (3 new commits)
 ```
 
+When your laptop has nothing new since the last sync, nothing is sent and `repose run` doesn't print that line.
+
+To sync without attaching, run `repose sync` (or `repose sync PROJECT`). It does what `repose run --no-attach` does: it creates or starts the machine if needed, copies the checkout, and returns. With nothing new it says `Nothing new to sync: the machine already has this checkout.`
+
 ## What doesn't
 
 - Other gitignored files: build output, caches, local databases.

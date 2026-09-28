@@ -7,7 +7,7 @@ order: 31
 
 ## Projects
 
-A new account can have 3 projects, at most 1 of them `xl`. After your first paid invoice, the limit is 10 projects of any size. Destroyed projects don't count. Each copy [`repose fork`](/docs/lifecycle#fork-a-project) makes is a project.
+A new account can have 3 projects, at most 1 of them `xl`. After your first paid invoice, the limit is 10 projects of any size. Destroyed projects don't count, and neither does one still being destroyed. A project whose destroy failed still counts until `repose rm` succeeds. Each copy [`repose fork`](/docs/lifecycle#fork-a-project) makes is a project.
 
 ## When repose is full
 

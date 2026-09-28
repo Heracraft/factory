@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-338 entries.
+345 entries.
 
 ## Scope
 
@@ -370,3 +370,10 @@ pointer, not a summary.
 - **I-296** `repose browser bridge` lends the guest's browser tools the laptop's own Chrome, through Chrome's DevTools switch, a front that answers `/json/version`, and a reverse tunnel whose remote command holds the guest's endpoint switched — 2026-09-27; L7563
 - **I-297** The user docs have a Tutorials section: one job per page, in the order a new user meets them — 2026-09-27; L7622
 - **I-298** The Vercel CLI's login stays on the laptop — 2026-09-27; L7642
+- **I-300** A project being destroyed does not count toward the project limit; one left in error by a failed destroy does — 2026-09-28; L7682
+- **I-301** `repose run` on a project being destroyed waits and starts over — 2026-09-28; L7700
+- **I-302** `repose sync [PROJECT]` — 2026-09-28; L7717
+- **I-303** A run with nothing new prints no sync line — 2026-09-28; L7724
+- **I-304** The attach after `repose run PROMPT` falls back to the session — 2026-09-28; L7733
+- **I-305** `repose attach --bridge` keeps `--bridge` on the fast path — 2026-09-28; L7745
+- **I-306** A guest in bypass mode always skips Claude Code's bypass warning — 2026-09-28; L7750

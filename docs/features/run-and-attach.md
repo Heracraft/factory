@@ -34,7 +34,6 @@ Run with a prompt:
 ```
 $ repose run "finish the auth flow, run the tests, commit when green"
 Connected to todo-app (large)
-Synced: 0 modified, 0 untracked
 ```
 
 Run with another agent and an explicit size for a new project:

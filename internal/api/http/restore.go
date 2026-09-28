@@ -219,7 +219,7 @@ func (s *Server) restoreAsNew(ctx context.Context, u *store.User, src *store.Pro
 	var opID uuid.UUID
 	err := db.InTx(ctx, s.d.Pool, func(tx db.Tx) error {
 		var count int
-		if err := tx.QueryRow(ctx, "select count(*) from projects where user_id = (select id from users where id = $1 for update) and destroyed_at is null", u.ID).Scan(&count); err != nil {
+		if err := tx.QueryRow(ctx, "select count(*) from projects where user_id = (select id from users where id = $1 for update) and "+countsTowardLimit, u.ID).Scan(&count); err != nil {
 			return err
 		}
 		if count >= u.ProjectLimit {

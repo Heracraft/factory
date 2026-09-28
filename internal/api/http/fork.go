@@ -102,7 +102,7 @@ func (s *Server) forkProject(w http.ResponseWriter, r *http.Request) error {
 		// restore, so the limit holds for all N and a resend waits for
 		// the first request's commit.
 		var n, xl int
-		if err := tx.QueryRow(ctx, "select count(*), count(*) filter (where class = 'xl') from projects where user_id = (select id from users where id = $1 for update) and destroyed_at is null", u.ID).Scan(&n, &xl); err != nil {
+		if err := tx.QueryRow(ctx, "select count(*), count(*) filter (where class = 'xl') from projects where user_id = (select id from users where id = $1 for update) and "+countsTowardLimit, u.ID).Scan(&n, &xl); err != nil {
 			return err
 		}
 		if body.RequestID != nil {

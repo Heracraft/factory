@@ -145,6 +145,14 @@ func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// countsTowardLimit is the SQL condition for a project that counts toward
+// the user's project and xl limits: not destroyed, and not being
+// destroyed either, so `repose rm` frees the slot at once (DECISIONS
+// I-300). A project in error after a failed destroy still counts: its
+// volume is still on the host. The name and remote stay taken until the
+// destroy finishes (the unique indexes on live rows).
+const countsTowardLimit = "destroyed_at is null and state <> 'destroying'"
+
 func (s *Server) userProject(r *http.Request) (*store.Project, error) {
 	id, err := pathID(r, "id")
 	if err != nil {
@@ -253,7 +261,7 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) error {
 		// Limits are checked under a row lock on the user so two creates
 		// cannot both pass.
 		var count, xl int
-		if err := tx.QueryRow(ctx, "select count(*), count(*) filter (where class = 'xl') from projects where user_id = (select id from users where id = $1 for update) and destroyed_at is null", u.ID).Scan(&count, &xl); err != nil {
+		if err := tx.QueryRow(ctx, "select count(*), count(*) filter (where class = 'xl') from projects where user_id = (select id from users where id = $1 for update) and "+countsTowardLimit, u.ID).Scan(&count, &xl); err != nil {
 			return err
 		}
 		if count >= u.ProjectLimit {
@@ -347,7 +355,7 @@ func (s *Server) patchProject(w http.ResponseWriter, r *http.Request) error {
 		if *body.Class == "xl" && p.Class != "xl" {
 			u := userFrom(ctx)
 			var xl int
-			if err := s.d.Pool.QueryRow(ctx, "select count(*) from projects where user_id = $1 and destroyed_at is null and class = 'xl'", u.ID).Scan(&xl); err != nil {
+			if err := s.d.Pool.QueryRow(ctx, "select count(*) from projects where user_id = $1 and class = 'xl' and "+countsTowardLimit, u.ID).Scan(&xl); err != nil {
 				return err
 			}
 			if xl >= u.XLLimit {

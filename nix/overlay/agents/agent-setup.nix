@@ -21,8 +21,11 @@
 #          the key is absent: Claude Code's one-time "Make auto mode your
 #          default?" dialog otherwise takes the first prompt `repose run`
 #          sends, and its Enter answers "Yes", rewriting defaultMode to auto
-#          (I-283).
-# codex    ~/.codex/config.toml gains `notify = ["repose-hook"]` unless a
+#          (I-283); in that mode settings.json's
+#          skipDangerousModePermissionPrompt is set to true when absent,
+#          whoever set the mode, since the bypass warning dialog otherwise
+#          takes that prompt the same way (I-306).
+# codex   ~/.codex/config.toml gains `notify = ["repose-hook"]` unless a
 #          `notify` key already exists.
 # opencode ~/.config/opencode/plugins/repose.js is installed if absent.
 # gemini, pi: no hooks (guestd's pane-idle heuristic reports for them); the
@@ -103,6 +106,14 @@ writeShellApplication {
       # defaultMode, not a dialog a sent prompt can hit.
       if [ "$(jq -r '.permissions.defaultMode? // empty' "$settings" 2>/dev/null)" = bypassPermissions ]; then
         userjson_default hasSeenAutoDefaultNudge
+        # A bypass mode the user set (their laptop's settings, carried
+        # in) came without the platform's skip flag, and Claude Code's
+        # bypass warning then takes the prompt `repose run` sends, and
+        # declining it exits Claude Code (I-306).
+        # The user's own value, false included, is kept.
+        if jq -e 'has("skipDangerousModePermissionPrompt") | not' "$settings" >/dev/null 2>&1; then
+          jq '.skipDangerousModePermissionPrompt = true' "$settings" | write_atomic "$settings" 0600
+        fi
       fi
     }
 

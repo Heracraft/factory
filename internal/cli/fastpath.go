@@ -204,7 +204,7 @@ func warmTarget(ctx context.Context, e *Env, guess *Project) (t sshTarget, cover
 // the project and a live master proves its guest is running, which is
 // everything the attach needs. done is false when the full path must
 // run; it then has done nothing.
-func attachFast(ctx context.Context, e *Env, explicit string) (done bool, err error) {
+func attachFast(ctx context.Context, e *Env, explicit string, bridge bool) (done bool, err error) {
 	deps := defaultResolveDeps()
 	guess := cachedGuess(e, explicit, deps)
 	target, _, master := warmTarget(ctx, e, guess)
@@ -214,15 +214,24 @@ func attachFast(ctx context.Context, e *Env, explicit string) (done bool, err er
 	timingf("attach: cached project, ssh master up; no api call")
 	_, _ = fmt.Fprintf(e.Out, "Connected to %s\n", guess.Slug)
 	tz := laptopTZ()
-	helper := sessionOptions{Slug: guess.Slug, Target: target.Args, TZ: tz, HomeDir: e.HomeDir, Forward: os.Getenv(forwardEnvOff) != "1", Carry: true}
-	if root := gitRepoRoot(e.Cwd); root != "" && explicit == "" {
-		// Guessed from this checkout's remote: the checkout is the
-		// project's own, whose git config the carry takes.
-		helper.RepoDir = root
+	helper := fastAttachHelper(e, guess, target, tz, explicit, bridge)
+	if helper.RepoDir != "" {
 		e.addReposeRemote(guess) // I-272
 	}
 	startSessionHelper(e, helper)
 	return true, attachTmux(target, guess.Slug, "", tz, helper.RepoDir)
+}
+
+// fastAttachHelper is the session helper's options for attachFast: the
+// same as the full path's, --bridge included (I-305).
+func fastAttachHelper(e *Env, guess *Project, target sshTarget, tz, explicit string, bridge bool) sessionOptions {
+	helper := sessionOptions{Slug: guess.Slug, Target: target.Args, TZ: tz, HomeDir: e.HomeDir, Forward: os.Getenv(forwardEnvOff) != "1", Carry: true, Bridge: bridge}
+	if root := gitRepoRoot(e.Cwd); root != "" && explicit == "" {
+		// Guessed from this checkout's remote: the checkout is the
+		// project's own, whose git config the carry takes.
+		helper.RepoDir = root
+	}
+	return helper
 }
 
 // earlyProbe is the sync's probe, started before the api has answered

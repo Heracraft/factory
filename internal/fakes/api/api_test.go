@@ -770,3 +770,33 @@ func TestRateLimit(t *testing.T) {
 		want(t, call(t, g, "GET", "/v1/me", tok, nil), 200)
 	}
 }
+
+// TestDestroyDelay: with DestroyDelay the project reads "destroying" until
+// the op ends, keeps its name meanwhile, and no longer counts toward the
+// project limit (I-300); then it is gone.
+func TestDestroyDelay(t *testing.T) {
+	f := New(Options{DestroyDelay: 300 * time.Millisecond})
+	defer f.Close()
+	a := mkProject(t, f, tok, "a", "")
+	mkProject(t, f, tok, "b", "")
+	c := mkProject(t, f, tok, "c", "")
+	opID(t, call(t, f, "POST", "/v1/projects/"+a.ID+"/snapshots", tok, nil))
+	r := call(t, f, "GET", "/v1/projects/"+a.ID+"/snapshots", tok, nil)
+	var snaps []Snapshot
+	r.json(t, &snaps)
+	fork := map[string]any{"snapshot_id": snaps[0].ID, "name": "a-fork"}
+	wantErr(t, call(t, f, "POST", "/v1/projects/"+a.ID+"/fork", tok, fork), 400, "invalid")
+	opID(t, call(t, f, "DELETE", "/v1/projects/"+c.ID, tok, nil))
+	if p := getProject(t, f, tok, c.ID); p.State != "destroying" || p.OpID == "" {
+		t.Fatalf("while destroying: %+v", p)
+	}
+	wantErr(t, call(t, f, "POST", "/v1/projects", tok, map[string]any{"name": "c", "class": "large"}), 409, "conflict")
+	want(t, call(t, f, "POST", "/v1/projects/"+a.ID+"/fork", tok, fork), http.StatusAccepted)
+	deadline := time.Now().Add(5 * time.Second)
+	for call(t, f, "GET", "/v1/projects/"+c.ID, tok, nil).status != 404 {
+		if time.Now().After(deadline) {
+			t.Fatal("still not destroyed")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}

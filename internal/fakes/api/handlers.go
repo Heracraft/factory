@@ -460,6 +460,35 @@ func (f *Fake) destroyProject(w http.ResponseWriter, r *http.Request) *apiError 
 		return e
 	}
 	o := f.newOp(p, "destroy")
+	if f.opts.DestroyDelay > 0 {
+		// Under f.mu already (ServeHTTP); only the goroutine takes it.
+		if p.State == "running" {
+			f.stop(p, false)
+		}
+		o.State = "running"
+		p.State = "destroying"
+		p.OpID = o.id
+		p.GuestIP = ""
+		go func() {
+			time.Sleep(f.opts.DestroyDelay)
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			p.OpID = ""
+			f.finishDestroy(p)
+			o.State = "done"
+		}()
+		writeJSON(w, http.StatusAccepted, map[string]string{"op_id": o.id, "state": o.State})
+		return nil
+	}
+	f.finishDestroy(p)
+	// api.md: 202 {op_id, state} (I-156); the fake's ops finish at once.
+	writeJSON(w, http.StatusAccepted, map[string]string{"op_id": o.id, "state": o.State})
+	return nil
+}
+
+// finishDestroy is the end of a destroy: the final snapshot, the volume
+// gone, the project destroyed.
+func (f *Fake) finishDestroy(p *project) {
 	if p.State == "running" {
 		f.stop(p, false)
 	}
@@ -477,9 +506,6 @@ func (f *Fake) destroyProject(w http.ResponseWriter, r *http.Request) *apiError 
 		}
 	}
 	f.event(p, "project.destroyed", "", "volume deleted, last snapshot kept 30 days")
-	// api.md: 202 {op_id, state} (I-156); the fake's ops finish at once.
-	writeJSON(w, http.StatusAccepted, map[string]string{"op_id": o.id, "state": o.State})
-	return nil
 }
 
 func (f *Fake) startProject(w http.ResponseWriter, r *http.Request) *apiError {
@@ -1134,17 +1160,23 @@ func (f *Fake) forkProject(w http.ResponseWriter, r *http.Request) *apiError {
 	}
 	live := f.userProjects(u)
 	limits := f.meOf(u).Limits
-	if len(live)+count > limits.Projects {
-		return invalid("you have %d of %d projects, and %d more would make %d; destroy some or add a card and pay your first invoice to raise the limit", len(live), limits.Projects, count, len(live)+count).
-			withDetail(map[string]any{"limit": limits.Projects, "projects": len(live), "requested": count})
-	}
-	xl := 0
+	counted, xl := 0, 0
 	taken := map[string]bool{}
 	for _, q := range live {
 		taken[q.Slug] = true
+		// A project being destroyed no longer counts (I-300); its name
+		// stays taken until the destroy ends.
+		if q.State == "destroying" {
+			continue
+		}
+		counted++
 		if q.Class == "xl" {
 			xl++
 		}
+	}
+	if counted+count > limits.Projects {
+		return invalid("you have %d of %d projects, and %d more would make %d; destroy some or add a card and pay your first invoice to raise the limit", counted, limits.Projects, count, counted+count).
+			withDetail(map[string]any{"limit": limits.Projects, "projects": counted, "requested": count})
 	}
 	if class == "xl" && xl+count > limits.XL {
 		return invalid("you have %d of %d xl projects, and %d more would make %d; fork with a smaller class", xl, limits.XL, count, xl+count).

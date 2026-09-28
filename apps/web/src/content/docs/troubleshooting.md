@@ -29,6 +29,10 @@ For more detail on any command, add `-v`. `REPOSE_TIMING=1` shows where the time
 
 **`todo-app is in an error state`** or **`guestd stopped answering`.** `repose start todo-app` restarts it. If that fails, `repose logs todo-app --kind console` shows what happened during boot.
 
+**`todo-app is being destroyed`.** `attach` and the other commands can't reach a machine that's going away. `repose run` in the checkout waits for the destroy, then creates a fresh `todo-app`; see [Start over with a fresh machine](/docs/lifecycle#start-over-with-a-fresh-machine).
+
+**`The claude window closed before the attach`.** The agent `repose run "..."` started exited before you were attached, so you're in the machine's session instead. Start the agent again there, for example by typing `claude`. If it exits right away again, running it by hand shows why.
+
 **`No capacity right now`.** The servers are full. Nothing was changed. Try again in a few minutes.
 
 **`repose is at capacity. You're number 3 on the waitlist`.** Your first project waits until there's room. You'll get an email when it's your turn; then run `repose run` again. See [When repose is full](/docs/limits#when-repose-is-full).

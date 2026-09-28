@@ -48,6 +48,17 @@ Attach to the project's tmux session without syncing. In the project's checkout,
 
 While you're attached, a file you drop on the terminal, or an image you paste with `Ctrl+V`, is copied to the machine and its path there is pasted. See [Drop a file or paste an image](/docs/run-and-attach#drop-a-file-or-paste-an-image).
 
+### `repose sync [PROJECT]`
+
+Sync this checkout to its machine and don't attach: `repose run --no-attach` under its own name. It creates or starts the machine if needed. See [Sync](/docs/sync).
+
+| Flag                      |                                                            |
+| ------------------------- | ---------------------------------------------------------- |
+| `--stash-remote`          | Stash the machine's uncommitted changes before syncing.    |
+| `--discard-remote`        | Discard the machine's uncommitted changes before syncing.  |
+| `--size small\|large\|xl` | Size of a new project.                                     |
+| `--name NAME`             | Project name, for a directory with no remote.              |
+
 ### `repose ps [PROJECT]`
 
 The project's tmux windows: number and name, the program running in each (its name, not its arguments), and when it last printed something. `*` marks the current window, the one `attach` opens on. `-q`/`--quiet` prints only the names; `--json` for JSON.
