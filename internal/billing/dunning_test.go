@@ -5,247 +5,169 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/heracraft/repose/internal/api/events"
-	"github.com/heracraft/repose/internal/api/metrics"
-	"github.com/heracraft/repose/internal/api/ops"
-	"github.com/heracraft/repose/internal/api/store"
 	"github.com/heracraft/repose/internal/billing"
-	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/db/testdb"
 )
 
-// stopRecorder stands in for the ops engine: it writes the same pending op
-// row Enqueue would, so the test can read back the kind, the phases and
-// the snapshot parameter.
-type stopRecorder struct {
-	calls []ops.NewOp
-	kicks int
-}
-
-func (s *stopRecorder) Enqueue(ctx context.Context, q store.Querier, n ops.NewOp, allowQueue bool) (uuid.UUID, error) {
-	s.calls = append(s.calls, n)
-	id := store.NewID()
-	params := map[string]any{"phases": n.Phases}
-	for k, v := range n.Params {
-		params[k] = v
-	}
-	_, err := q.Exec(ctx, "insert into ops (id, project_id, kind, state, params) values ($1, $2, $3, 'pending', $4)", id, n.ProjectID, n.Kind, params)
-	return id, err
-}
-
-func (s *stopRecorder) Kick() { s.kicks++ }
-
-// §9: "Past-due 3-day stop with snapshot and notification; invoice.paid
-// reactivates without starting guests." The test clock is the Dunning job's
-// Now, which is what the Stripe test clock stands in for in test mode.
-func TestPastDueThreeDayStop(t *testing.T) {
+// PRICING.md "Failed payments": day 0 is the webhook's email; day 2 a
+// second, once; day 3 the stop with a snapshot, billing_stopped, suspended;
+// a payment returns the account to active with the machine left stopped.
+func TestDunningDays(t *testing.T) {
 	pool := testdb.Open(t)
-	ctx := context.Background()
-	a := seedAccount(t, pool, "large", base(), 0)
-	ev := events.New(pool, metrics.NewNop(), quiet())
+	f := newFakePaddle()
+	defer f.Close()
+	cfg := testConfig(f)
+	ev := events.New(pool, nop(), quiet())
 	stop := &stopRecorder{}
-	d := billing.NewDunning(pool, stop, ev, quiet(), true)
+	d := billing.NewDunning(pool, stop, ev, cfg, nop(), quiet())
+	ctx := context.Background()
+	a := seedAccount(t, pool, "solo", "active", "large", "running")
+	t0 := time.Date(2026, 10, 10, 9, 0, 0, 0, time.UTC)
 
-	// A failed payment two days ago: nothing happens yet.
-	if _, err := pool.Exec(ctx, "update users set billing_status = 'past_due', past_due_since = now() - interval '2 days' where id = $1", a.UserID); err != nil {
+	// Day 0 from the webhook.
+	w := newHooks(t, pool, f, nil, nil)
+	w.Now = at(t0)
+	if err := post(t, w, f, event("transaction.payment_failed", map[string]any{"id": "txn_f0", "status": "past_due", "customer_id": "ctm_" + a.Handle, "subscription_id": a.SubID, "custom_data": map[string]any{"user_id": a.UserID.String()}})); err != nil {
 		t.Fatal(err)
 	}
-	done, err := d.Run(ctx)
-	if err != nil {
-		t.Fatal(err)
+	if userField(t, pool, a, "billing_status") != "past_due" || len(eventKinds(t, pool, a)) != 1 {
+		t.Fatal("day 0")
 	}
-	if len(done) != 0 || len(stop.calls) != 0 {
-		t.Fatalf("day 2 stopped %d account(s)", len(done))
+	// Day 1: nothing.
+	d.Now = at(t0.Add(24 * time.Hour))
+	res, err := d.Run(ctx)
+	if err != nil || len(res.SecondNotices) != 0 || len(res.Suspended) != 0 {
+		t.Fatalf("day 1: %+v %v", res, err)
 	}
-	if s := userString(t, pool, a, "billing_status"); s != "past_due" {
-		t.Fatalf("status on day 2: %s", s)
+	// Day 2: the second email, once however often the tick runs.
+	d.Now = at(t0.Add(49 * time.Hour))
+	for i := 0; i < 3; i++ {
+		res, err = d.Run(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 && (len(res.SecondNotices) != 1 || res.SecondNotices[0] != a.UserID) {
+			t.Fatalf("day 2 first run: %+v", res)
+		}
+		if i > 0 && len(res.SecondNotices) != 0 {
+			t.Fatalf("day 2 run %d sent again", i)
+		}
 	}
-
-	// Day 4: the guests stop, with a snapshot, and the account is suspended.
-	if _, err := pool.Exec(ctx, "update users set past_due_since = now() - interval '4 days' where id = $1", a.UserID); err != nil {
-		t.Fatal(err)
+	if k := eventKinds(t, pool, a); len(k) != 2 || k[1] != "payment_failed" {
+		t.Fatalf("events %v", k)
 	}
-	done, err = d.Run(ctx)
-	if err != nil {
-		t.Fatal(err)
+	if p := accountEmail(t, pool, a, "payment_failed", "Solo", "$29.00", "https://repose.herakraft.co/billing"); p["plan"] != "solo" || p["amount_cents"] != float64(2900) {
+		t.Fatalf("day 2 payload %v", p)
 	}
-	if len(done) != 1 || len(done[0].Projects) != 1 || done[0].Projects[0] != a.ProjectID {
-		t.Fatalf("day 4: %+v", done)
+	if outboxEmails(t, pool, a) != 2 {
+		t.Fatalf("%d emails queued, want one per payment_failed", outboxEmails(t, pool, a))
 	}
-	if len(stop.calls) != 1 {
-		t.Fatalf("%d stop commands", len(stop.calls))
+	if len(stop.calls) != 0 || userField(t, pool, a, "billing_status") != "past_due" {
+		t.Fatal("day 2 stopped something")
 	}
-	call := stop.calls[0]
-	if call.Kind != ops.KindStop {
-		t.Fatalf("op kind %s", call.Kind)
+	// Day 3 plus an hour: stop with snapshot, billing_stopped, suspended.
+	d.Now = at(t0.Add(73 * time.Hour))
+	res, err = d.Run(ctx)
+	if err != nil || len(res.Suspended) != 1 || len(res.Suspended[0].Projects) != 1 || res.Suspended[0].Projects[0] != a.ProjectID {
+		t.Fatalf("day 3: %+v %v", res, err)
 	}
-	if call.Params["snapshot"] != true {
-		t.Fatalf("the stop did not ask for a snapshot: %+v", call.Params)
+	if len(stop.calls) != 1 || stop.calls[0].Params["snapshot"] != true || stop.calls[0].Params["reason"] != "billing" || stop.kicks != 1 {
+		t.Fatalf("stop: %+v", stop.calls)
 	}
-	if call.Params["reason"] != "billing" {
-		t.Fatalf("the stop reason is %v, want billing", call.Params["reason"])
+	if userField(t, pool, a, "billing_status") != "suspended" || userField(t, pool, a, "suspended_reason") != "billing" {
+		t.Fatal("not suspended for billing")
 	}
-	if s := userString(t, pool, a, "billing_status"); s != "suspended" {
-		t.Fatalf("status on day 4: %s", s)
+	var n int
+	if err := pool.QueryRow(ctx, "select count(*) from events where project_id = $1 and kind = 'billing_stopped'", a.ProjectID).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("billing_stopped events: %d %v", n, err)
 	}
-	if userTime(t, pool, a, "suspended_at") == nil {
-		t.Fatal("suspended_at was not set; the 30-day retention starts there")
+	if err := pool.QueryRow(ctx, "select count(*) from audit_log where action = 'billing_suspend' and target = $1", a.Handle).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("audit rows: %d %v", n, err)
 	}
-	// Nothing is destroyed.
-	if s := projectState(t, pool, a); s == "destroyed" {
-		t.Fatal("the project was destroyed")
+	// Idempotent: nothing more.
+	res, err = d.Run(ctx)
+	if err != nil || len(res.Suspended) != 0 || len(stop.calls) != 1 {
+		t.Fatalf("second day-3 run: %+v %v", res, err)
 	}
-	var destroyed *time.Time
-	if err := pool.QueryRow(ctx, "select destroyed_at from projects where id = $1", a.ProjectID).Scan(&destroyed); err != nil {
-		t.Fatal(err)
-	}
-	if destroyed != nil {
-		t.Fatal("destroyed_at was set by the dunning job")
-	}
-
-	// The billing_stopped notification reached events and the outbox.
-	var kind, summary string
-	if err := pool.QueryRow(ctx, "select kind, summary from events where project_id = $1 order by ts desc limit 1", a.ProjectID).Scan(&kind, &summary); err != nil {
-		t.Fatalf("no event was recorded: %v", err)
-	}
-	if kind != "billing_stopped" {
-		t.Fatalf("event kind %s", kind)
-	}
-	t.Logf("event: kind=%s summary=%q", kind, summary)
-	// The audit trail has the suspension.
-	var actions int
-	if err := pool.QueryRow(ctx, "select count(*) from audit_log where action = 'billing_suspend' and target = $1", a.Handle).Scan(&actions); err != nil {
-		t.Fatal(err)
-	}
-	if actions != 1 {
-		t.Fatalf("%d audit rows for the suspension", actions)
-	}
-
-	// Running again is a no-op: the account is suspended, not past due.
-	before := len(stop.calls)
-	if _, err := d.Run(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if len(stop.calls) != before {
-		t.Fatalf("a second run stopped the guests again")
-	}
-
-	// invoice.paid brings the account back to active and does NOT start the
-	// guests (§5.6: "guests stay stopped until the user starts them").
+	// A payment: active, unsuspended, the machine stays as it is.
 	if _, err := pool.Exec(ctx, "update projects set state = 'stopped' where id = $1", a.ProjectID); err != nil {
 		t.Fatal(err)
 	}
-	w := newHooks(t, pool)
-	if err := deliver(t, w, "evt_paid", billing.TypeInvoicePaid, map[string]any{
-		"id": "in_late", "customer": "cus_" + a.Handle, "total": 800, "status": "paid",
-	}); err != nil {
+	if err := post(t, w, f, event("transaction.completed", map[string]any{"id": "txn_ok", "status": "completed", "customer_id": "ctm_" + a.Handle, "subscription_id": a.SubID, "custom_data": map[string]any{"user_id": a.UserID.String()}})); err != nil {
 		t.Fatal(err)
 	}
-	if s := userString(t, pool, a, "billing_status"); s != "active" {
-		t.Fatalf("status after payment: %s", s)
+	if userField(t, pool, a, "billing_status") != "active" || userField(t, pool, a, "suspended_at") != "" || userField(t, pool, a, "past_due_since") != "" {
+		t.Fatal("payment did not reactivate")
 	}
-	if userTime(t, pool, a, "suspended_at") != nil {
-		t.Fatal("suspended_at survived the payment")
-	}
-	if s := projectState(t, pool, a); s != "stopped" {
-		t.Fatalf("invoice.paid started a guest: %s", s)
-	}
-	if len(stop.calls) != before {
-		t.Fatal("invoice.paid enqueued an op")
+	var state string
+	if err := pool.QueryRow(ctx, "select state from projects where id = $1", a.ProjectID).Scan(&state); err != nil || state != "stopped" {
+		t.Fatalf("the machine started itself: %s", state)
 	}
 }
 
-// §8: BILLING_ENFORCE=false keeps rolling up and pushing but stops nothing.
-func TestBillingEnforceFalseStopsNothing(t *testing.T) {
+// BILLING_ENFORCE=false: day 3 stops nothing and suspends nobody, but the
+// day-2 email still goes out.
+func TestDunningEnforceFalse(t *testing.T) {
 	pool := testdb.Open(t)
-	ctx := context.Background()
-	a := seedAccount(t, pool, "large", base(), 0)
-	if _, err := pool.Exec(ctx, "update users set billing_status = 'past_due', past_due_since = now() - interval '9 days' where id = $1", a.UserID); err != nil {
-		t.Fatal(err)
-	}
+	f := newFakePaddle()
+	defer f.Close()
+	cfg := testConfig(f)
+	cfg.Enforce = false
 	stop := &stopRecorder{}
-	d := billing.NewDunning(pool, stop, events.New(pool, metrics.NewNop(), quiet()), quiet(), false)
-	done, err := d.Run(ctx)
-	if err != nil {
+	d := billing.NewDunning(pool, stop, events.New(pool, nop(), quiet()), cfg, nop(), quiet())
+	a := seedAccount(t, pool, "solo", "past_due", "large", "running")
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, "update users set past_due_since = now() - interval '4 days' where id = $1", a.UserID); err != nil {
 		t.Fatal(err)
 	}
-	if len(stop.calls) != 0 {
-		t.Fatalf("BILLING_ENFORCE=false stopped %d guest(s)", len(stop.calls))
+	res, err := d.Run(ctx)
+	if err != nil || len(stop.calls) != 0 || userField(t, pool, a, "billing_status") != "past_due" {
+		t.Fatalf("enforce off stopped something: %+v %v", res, err)
 	}
-	if len(done) != 1 || len(done[0].Projects) != 0 {
-		t.Fatalf("the run should report the account and stop nothing: %+v", done)
+	if len(res.Suspended) != 1 || len(res.Suspended[0].Projects) != 0 {
+		t.Fatalf("the account is reported, with no projects stopped: %+v", res)
 	}
-	if s := userString(t, pool, a, "billing_status"); s != "past_due" {
-		t.Fatalf("status with enforcement off: %s", s)
+}
+
+// trial_ending goes out once when a trial has 48 hours left.
+func TestTrialEnding(t *testing.T) {
+	pool := testdb.Open(t)
+	f := newFakePaddle()
+	defer f.Close()
+	d := billing.NewDunning(pool, &stopRecorder{}, nil, testConfig(f), nop(), quiet())
+	ctx := context.Background()
+	a := seedAccount(t, pool, "pro", "trial", "", "") // trial_end = period start + 7 days
+	trialEnd := a.Period.Start.Add(7 * 24 * time.Hour)
+
+	d.Now = at(trialEnd.Add(-3 * 24 * time.Hour))
+	res, err := d.Run(ctx)
+	if err != nil || len(res.TrialEnding) != 0 {
+		t.Fatalf("three days out: %+v %v", res, err)
 	}
-	// And metering carries on regardless.
-	start := base()
-	ensurePartitions(t, pool, start, start.AddDate(0, 1, 0))
-	fillRunning(t, pool, a, start, 2, "large", 40<<30, 0)
-	p := &recorder{}
-	r := newRollup(pool, p)
-	for h := 0; h < 2; h++ {
-		if _, err := r.Hour(ctx, start.Add(time.Duration(h)*time.Hour)); err != nil {
+	d.Now = at(trialEnd.Add(-47 * time.Hour))
+	for i := 0; i < 3; i++ {
+		res, err = d.Run(ctx)
+		if err != nil {
 			t.Fatal(err)
 		}
+		if (i == 0) != (len(res.TrialEnding) == 1) {
+			t.Fatalf("run %d: %+v", i, res.TrialEnding)
+		}
 	}
-	guest, _, _, _, _ := sums(t, pool, a.ProjectID)
-	if guest != 2*billing.HourLarge {
-		t.Fatalf("metering stopped with enforcement off: %d cents", guest)
+	if k := eventKinds(t, pool, a); len(k) != 1 || k[0] != "trial_ending" {
+		t.Fatalf("events %v", k)
 	}
-	if len(p.rows) == 0 {
-		t.Fatal("nothing was pushed to Stripe with enforcement off")
+	if p := accountEmail(t, pool, a, "trial_ending", "Pro", "$59.00", "8 October 2026 at 00:00 UTC"); p["plan"] != "pro" || p["amount_cents"] != float64(5900) || p["charge_at"] != "2026-10-08T00:00:00Z" {
+		t.Fatalf("payload %v", p)
 	}
-}
-
-// §8: flipping BILLING_ENFORCE is logged as an audit event, once per change
-// rather than once per start.
-func TestEnforcementFlipIsAudited(t *testing.T) {
-	pool := testdb.Open(t)
-	ctx := context.Background()
-	// The first observation records the value without an audit row: there
-	// was nothing to change from.
-	changed, err := billing.RecordEnforcement(ctx, pool, true, "api", quiet())
-	if err != nil {
-		t.Fatal(err)
+	if outboxEmails(t, pool, a) != 1 {
+		t.Fatal("no email queued")
 	}
-	if !changed {
-		t.Fatal("the first observation should record the value")
+	// After the trial ended: nothing (and still once).
+	d.Now = at(trialEnd.Add(time.Hour))
+	res, err = d.Run(ctx)
+	if err != nil || len(res.TrialEnding) != 0 {
+		t.Fatalf("after the end: %+v %v", res, err)
 	}
-	if n := auditCount(t, pool, "billing_enforce"); n != 1 {
-		t.Fatalf("%d audit rows after the first observation", n)
-	}
-	// Restarting with the same value writes nothing.
-	if changed, err := billing.RecordEnforcement(ctx, pool, true, "api", quiet()); err != nil || changed {
-		t.Fatalf("an unchanged value reported %v %v", changed, err)
-	}
-	if n := auditCount(t, pool, "billing_enforce"); n != 1 {
-		t.Fatalf("%d audit rows after a restart with the same value", n)
-	}
-	// Flipping it writes one.
-	if changed, err := billing.RecordEnforcement(ctx, pool, false, "api", quiet()); err != nil || !changed {
-		t.Fatalf("the flip reported %v %v", changed, err)
-	}
-	if n := auditCount(t, pool, "billing_enforce"); n != 2 {
-		t.Fatalf("%d audit rows after the flip", n)
-	}
-	var detail map[string]any
-	if err := pool.QueryRow(ctx, "select detail from audit_log where action = 'billing_enforce' order by ts desc limit 1").Scan(&detail); err != nil {
-		t.Fatal(err)
-	}
-	if detail["from"] != "true" || detail["to"] != "false" {
-		t.Fatalf("audit detail %v", detail)
-	}
-	t.Logf("audit_log: billing_enforce %v -> %v", detail["from"], detail["to"])
-}
-
-func auditCount(t *testing.T, pool *db.Pool, action string) int {
-	t.Helper()
-	var n int
-	if err := pool.QueryRow(context.Background(), "select count(*) from audit_log where action = $1", action).Scan(&n); err != nil {
-		t.Fatal(err)
-	}
-	return n
 }

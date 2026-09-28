@@ -35,7 +35,7 @@ func TestPeriodForAnchoredAtSignup(t *testing.T) {
 	}
 }
 
-// Stripe's anchor rule for short months: the 31st bills on the last day of
+// The anchor rule for short months: the 31st bills on the last day of
 // a shorter month and comes back to the 31st afterwards. Go's AddDate turns
 // 31 January plus a month into 3 March, which would bill two days of
 // February twice.

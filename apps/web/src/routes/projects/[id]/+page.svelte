@@ -5,7 +5,9 @@
 	import { resolve } from '$app/paths';
 	import { toast } from 'svelte-sonner';
 	import {
+		getMe,
 		getProject,
+		listProjects,
 		startProject,
 		stopProject,
 		destroyProject,
@@ -15,27 +17,25 @@
 		listSnapshots,
 		createSnapshot,
 		restoreSnapshot,
-		getUsage,
 		listRevisions
 	} from '$lib/api/client';
 	import { ApiError } from '$lib/api/errors';
 	import { toastApiError } from '$lib/api/toast';
 	import { pollWhileVisible, pollUntilDone } from '$lib/poll';
-	import {
-		money,
-		uptime,
-		gb,
-		relativeTime,
-		dateTime,
-		projectedMonthCents,
-		normalizeRemoteDisplay
-	} from '$lib/format';
+	import { uptime, gb, relativeTime, dateTime, normalizeRemoteDisplay } from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import StateDot from '$lib/components/StateDot.svelte';
 	import { abuseStopReason } from '$lib/abuse';
 	import ConfirmType from '$lib/components/ConfirmType.svelte';
 	import QuestionsCard from '$lib/components/QuestionsCard.svelte';
-	import type { Project, ProjectEvent, Snapshot, Revision } from '$lib/api/types';
+	import type {
+		Me,
+		PaymentRequiredReason,
+		Project,
+		ProjectEvent,
+		Snapshot,
+		Revision
+	} from '$lib/api/types';
 
 	const id = page.params.id as string;
 
@@ -45,13 +45,18 @@
 	let events = $state<ProjectEvent[]>([]);
 	let snapshots = $state<Snapshot[]>([]);
 	let revisions = $state<Revision[]>([]);
-	let projectedMonth = $state<number | undefined>(undefined);
+	let me = $state<Me | undefined>(undefined);
 
 	// Start/stop/destroy.
 	let opBusy = $state<'start' | 'stop' | 'destroy' | 'resize' | 'snapshot' | 'restore' | undefined>(
 		undefined
 	);
 	let startBanner = $state<'payment_required' | 'capacity' | undefined>(undefined);
+	/** The refusal behind a payment_required banner: its sentence and reason (api.md). */
+	let refusal = $state<
+		| { message: string; reason?: PaymentRequiredReason; projects: { slug: string; id: string }[] }
+		| undefined
+	>(undefined);
 	let stopSnapshotFirst = $state(true);
 
 	// Resize.
@@ -102,22 +107,11 @@
 		}
 	}
 
-	async function refreshUsage() {
-		if (!project) return;
-		const now = new Date();
-		const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-		const to = now.toISOString().slice(0, 10);
+	async function refreshMe() {
 		try {
-			const rows = await getUsage(from, to);
-			const mine = rows.filter((r) => r.project_id === id);
-			const monthCents = mine.reduce((sum, r) => sum + r.cost_cents, 0);
-			const today = mine.find((r) => r.day === to);
-			projectedMonth = projectedMonthCents(
-				monthCents || project.cost_month_cents,
-				today?.cost_cents ?? project.cost_today_cents
-			);
+			me = await getMe();
 		} catch {
-			// The cost card still shows today/month from the project object.
+			// The plan card degrades to the class alone.
 		}
 	}
 
@@ -126,6 +120,7 @@
 		const stop2 = pollWhileVisible(refreshEvents);
 		const stop3 = pollWhileVisible(refreshSnapshots);
 		void refreshRevisions();
+		void refreshMe();
 		return () => {
 			stop1();
 			stop2();
@@ -133,14 +128,57 @@
 		};
 	});
 
-	$effect(() => {
-		if (project) void refreshUsage();
-	});
+	/**
+	 * A payment_required refusal, kept whole: api.md's sentence, its
+	 * reason, and for plan_limit the machines using the memory, resolved to
+	 * this user's projects so each can be stopped from here.
+	 */
+	async function explainRefusal(err: ApiError) {
+		const detail = err.detail ?? {};
+		const reason =
+			typeof detail.reason === 'string' ? (detail.reason as PaymentRequiredReason) : undefined;
+		const slugs = Array.isArray(detail.projects)
+			? detail.projects.filter((s): s is string => typeof s === 'string')
+			: [];
+		let named: { slug: string; id: string }[] = [];
+		if (slugs.length > 0) {
+			try {
+				const mine = await listProjects();
+				named = slugs.flatMap((slug) => {
+					const p = mine.find((q) => q.slug === slug);
+					return p ? [{ slug, id: p.id }] : [];
+				});
+			} catch {
+				// The sentence still names them.
+			}
+		}
+		refusal = { message: err.message, reason, projects: named };
+	}
 
-	function waitForOp(opId: string, onDone: () => void) {
+	async function stopNamed(target: { slug: string; id: string }) {
+		opBusy = 'stop';
+		try {
+			const { op_id } = await stopProject(target.id, true);
+			waitForOp(
+				op_id,
+				() => {
+					opBusy = undefined;
+					if (refusal)
+						refusal = { ...refusal, projects: refusal.projects.filter((p) => p.id !== target.id) };
+					toast.success(`Stopped ${target.slug}. Start this one again now.`);
+				},
+				target.id
+			);
+		} catch (err) {
+			opBusy = undefined;
+			toastApiError(err, `Could not stop ${target.slug}.`);
+		}
+	}
+
+	function waitForOp(opId: string, onDone: () => void, projectId = id) {
 		pollUntilDone(async () => {
 			try {
-				const op = await getOp(id, opId);
+				const op = await getOp(projectId, opId);
 				if (op.state === 'done') {
 					onDone();
 					return true;
@@ -170,7 +208,12 @@
 			});
 		} catch (err) {
 			opBusy = undefined;
-			if (err instanceof ApiError && (err.code === 'payment_required' || err.code === 'capacity')) {
+			if (err instanceof ApiError && err.code === 'payment_required') {
+				startBanner = err.code;
+				await explainRefusal(err);
+				return;
+			}
+			if (err instanceof ApiError && err.code === 'capacity') {
 				startBanner = err.code;
 				return;
 			}
@@ -219,6 +262,13 @@
 			});
 		} catch (err) {
 			opBusy = undefined;
+			// disk_limit is a plan's refusal, told like a start's (api.md).
+			if (err instanceof ApiError && err.code === 'payment_required') {
+				startBanner = err.code;
+				showResize = false;
+				await explainRefusal(err);
+				return;
+			}
 			toastApiError(err, 'Could not resize the volume.');
 		}
 	}
@@ -258,6 +308,36 @@
 
 	function currentRevisionStatus(): Revision | undefined {
 		return revisions.find((r) => r.revision_id === project?.config_revision_id);
+	}
+
+	const CLASS_GB: Record<string, number> = { small: 4, large: 8, xl: 16 };
+
+	/** "8 GB of 8 GB": the class's memory, of what the plan runs at once. */
+	let memoryLine = $derived.by(() => {
+		if (!project) return '—';
+		const own = CLASS_GB[project.class];
+		if (own === undefined) return '—';
+		return me && me.limits.memory_gb > 0 ? `${own} GB of ${me.limits.memory_gb} GB` : `${own} GB`;
+	});
+
+	/** The link a payment_required reason wants, on the billing page. */
+	function refusalLink(reason?: PaymentRequiredReason): string {
+		switch (reason) {
+			case 'subscription_required':
+				return 'Choose a plan';
+			case 'plan_limit':
+				return 'Upgrade';
+			case 'disk_limit':
+				return 'Change plan';
+			case 'egress_limit':
+				return 'See usage';
+			case 'past_due':
+				return 'Update card';
+			case 'suspended':
+				return 'Pay the invoice';
+			default:
+				return 'Billing';
+		}
 	}
 </script>
 
@@ -313,10 +393,27 @@
 		{/if}
 
 		{#if startBanner === 'payment_required'}
-			<div class="banner banner--warn mt-4">
-				A card on file is required to start a project. <a href={resolve('/billing')} class="link"
-					>Add one in Billing</a
-				>.
+			<div
+				class="banner banner--warn mt-4"
+				data-testid="refusal"
+				data-reason={refusal?.reason ?? 'unknown'}
+			>
+				<p>
+					{refusal?.message ?? 'A plan is needed before a machine can start.'}
+					<a href={resolve('/billing')} class="link">{refusalLink(refusal?.reason)}</a>
+				</p>
+				{#if refusal && refusal.projects.length > 0}
+					<div class="mt-2 flex flex-wrap gap-2">
+						{#each refusal.projects as named (named.id)}
+							<button
+								type="button"
+								class="btn-quiet !py-1"
+								disabled={!!opBusy}
+								onclick={() => stopNamed(named)}>Stop {named.slug}</button
+							>
+						{/each}
+					</div>
+				{/if}
 			</div>
 		{:else if startBanner === 'capacity'}
 			<div class="banner banner--warn mt-4">No capacity right now, try again in a few minutes.</div>
@@ -371,21 +468,20 @@
 			</div>
 
 			<div class="card">
-				<h2 class="font-semibold">Cost</h2>
+				<h2 class="font-semibold">Plan</h2>
 				<dl class="mt-3 space-y-1 text-sm">
 					<div class="flex justify-between">
-						<dt class="text-zinc-500 dark:text-zinc-400">Today</dt>
-						<dd>{money(project.cost_today_cents)}</dd>
+						<dt class="text-zinc-500 dark:text-zinc-400">Memory while running</dt>
+						<dd>{memoryLine}</dd>
 					</div>
-					<div class="flex justify-between">
-						<dt class="text-zinc-500 dark:text-zinc-400">This month</dt>
-						<dd>{money(project.cost_month_cents)}</dd>
-					</div>
-					<div class="flex justify-between">
-						<dt class="text-zinc-500 dark:text-zinc-400">Projected month</dt>
-						<dd>{projectedMonth !== undefined ? money(projectedMonth) : '—'}</dd>
-					</div>
+					{#if me?.billing.plan}
+						<div class="flex justify-between">
+							<dt class="text-zinc-500 dark:text-zinc-400">Plan</dt>
+							<dd class="capitalize">{me.billing.plan}</dd>
+						</div>
+					{/if}
 				</dl>
+				<a href={resolve('/billing')} class="link mt-2 inline-block text-sm">Billing</a>
 			</div>
 
 			<div class="card">

@@ -12,11 +12,18 @@ import (
 )
 
 // TestClassSpecsMatchBillingAndHost pins the CLI's copy of the class table
-// to the prices billing charges and the vCPUs and memory hostd boots.
+// to the memory billing's plans count and the vCPUs and memory hostd boots.
 func TestClassSpecsMatchBillingAndHost(t *testing.T) {
 	for class, c := range classSpecs {
-		if c.CapCents != billing.Cap(class) || c.HourCents != billing.Hourly(class) {
-			t.Errorf("%s: cli %d/%d cents, billing %d/%d", class, c.HourCents, c.CapCents, billing.Hourly(class), billing.Cap(class))
+		if c.MemGB != billing.ClassMemoryGB(class) {
+			t.Errorf("%s: cli %d GB, billing %d GB", class, c.MemGB, billing.ClassMemoryGB(class))
+		}
+		wantPlan := billing.Solo
+		if c.MemGB > billing.Solo.MemoryGB {
+			wantPlan = billing.Pro
+		}
+		if c.Plan != wantPlan.Name {
+			t.Errorf("%s: cli says %s, the smallest plan with %d GB is %s", class, c.Plan, c.MemGB, wantPlan.Name)
 		}
 		h, ok := guest.Classes[class]
 		if !ok || uint64(c.VCPUs) != uint64(h.VCPUs) || uint64(c.MemGB)*1024 != uint64(h.MemMiB) {
@@ -26,7 +33,7 @@ func TestClassSpecsMatchBillingAndHost(t *testing.T) {
 	if len(classSpecs) != len(guest.Classes) {
 		t.Errorf("cli has %d classes, hostd %d", len(classSpecs), len(guest.Classes))
 	}
-	if got := classSummary("large"); got != "4 vCPU, 8 GB memory, $0.14 an hour up to $99 a month" {
+	if got := classSummary("large"); got != "4 vCPU, 8 GB memory; fits the Solo plan" {
 		t.Errorf("summary %q", got)
 	}
 }
@@ -67,7 +74,7 @@ func TestResizeClass(t *testing.T) {
 		if got := get(t, e, p.ID); got.Class != "xl" || got.State != "stopped" {
 			t.Fatalf("after: %s %s", got.Class, got.State)
 		}
-		if !strings.Contains(out.String(), "from large to xl: 8 vCPU, 16 GB memory, $0.28 an hour up to $199 a month") || !strings.Contains(out.String(), "`repose start todo-app`") {
+		if !strings.Contains(out.String(), "from large to xl: 8 vCPU, 16 GB memory; needs the Pro plan") || !strings.Contains(out.String(), "`repose start todo-app`") {
 			t.Fatalf("output %q", out.String())
 		}
 	})
@@ -110,7 +117,7 @@ func TestResizeClass(t *testing.T) {
 		if got := get(t, e, p.ID); got.Class != "small" || got.State != "running" {
 			t.Fatalf("after: %s %s", got.Class, got.State)
 		}
-		if !strings.Contains(out.String(), "Changed todo-app from large to small: 2 vCPU, 4 GB memory, $0.07 an hour up to $49 a month. Running again") {
+		if !strings.Contains(out.String(), "Changed todo-app from large to small: 2 vCPU, 4 GB memory; fits the Solo plan. Running again") {
 			t.Fatalf("output %q", out.String())
 		}
 	})

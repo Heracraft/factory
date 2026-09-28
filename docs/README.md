@@ -29,13 +29,14 @@ wrong only if a `DECISIONS.md` entry says so.
 | [interfaces/](interfaces/README.md) | Two workstreams meet here. gRPC between API and hostd, vsock between hostd and guestd, the HTTP API, the database schema, the SSH gateway login contract, the CLI config file. |
 | [features/](features/README.md) | User-facing behaviour, one feature per file, written as the behaviour a user sees and the edge cases that must hold. |
 | [ops/ORCHESTRATION.md](ops/ORCHESTRATION.md) | You are running the waves: conductor and worker roles, the wave cycle, merge rules learned by doing, how applies and stalls are handled. |
+| [ops/LAUNCH.md](ops/LAUNCH.md) | You are the owner and the round is merged: the Paddle account, the Resend key, the seat count, the host, the deploy order and the tweet. |
 | [ops/RUNBOOK.md](ops/RUNBOOK.md) | Something is broken in production and you need the symptom-to-fix list. |
 | [ops/coolify.md](ops/coolify.md) | You are setting up, backing up, restoring or upgrading the control plane. The click path OpenTofu cannot own, because Coolify keeps it in its own database. |
 | [ops/OBSERVABILITY.md](ops/OBSERVABILITY.md) | You are adding a log line, a metric, or a signal that the idle and pricing policies will later depend on. |
 | [PRICING.md](PRICING.md) | Tiers, meters, the cost floor per guest, and the trial. What a user sees is [features/pricing.md](features/pricing.md). |
 | [DESIGN-LANGUAGE.md](DESIGN-LANGUAGE.md) | You are building any screen. What to copy from the recruiting app and what not to. |
 | [ops/DEV-BOX.md](ops/DEV-BOX.md) | You are on the dev VM and something about disks, Nix or az is odd. |
-| [ops/AZURE-SETUP.md](ops/AZURE-SETUP.md) | The one-time human steps in Azure, Cloudflare, Logto, Stripe and Resend before agents start. |
+| [ops/AZURE-SETUP.md](ops/AZURE-SETUP.md) | The one-time human steps in Azure, Cloudflare, Logto, Paddle and Resend before agents start. |
 | [workstreams/PROMPTS.md](workstreams/PROMPTS.md) | The prompt for launching an agent on a workstream with `/ws` (every worker runs on the current Opus model). |
 
 ## How parallel work is organised

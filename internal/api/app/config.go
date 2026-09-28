@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/heracraft/repose/internal/api/secrets"
-	"github.com/heracraft/repose/internal/api/waitlist"
 	"os"
 	"strconv"
 	"strings"
@@ -45,10 +44,13 @@ type Config struct {
 	DashboardURL    string
 	BaseRef         string
 	ReplicaID       string
-	// WaitlistPercent is WAITLIST_PERCENT: the share of usable fleet
-	// memory, reserved, past which a first project waits (DECISIONS
-	// I-269). 0 turns the waitlist off.
-	WaitlistPercent int
+	// SeatsTotal is SEATS_TOTAL: the fleet's seats when the operator sets
+	// it (DECISIONS I-290); 0 derives the count from the ready hosts. There
+	// is no off switch: a fleet that must never waitlist sets it very high.
+	SeatsTotal int
+	// WaitlistPercentSet says WAITLIST_PERCENT was in the environment; it
+	// is ignored since I-290 and logged once so the operator removes it.
+	WaitlistPercentSet bool
 	// Dev enables the in-memory Key Vault and self-issued certificates;
 	// it is refused unless REPOSE_DEV=1 and never in a container with a
 	// KEYVAULT_URL.
@@ -103,11 +105,12 @@ func FromEnv() (Config, error) {
 		return c, errors.New("GATEWAY_PORT is not a number")
 	}
 	c.GatewayPort = port
-	pct, err := strconv.Atoi(env("WAITLIST_PERCENT", strconv.Itoa(waitlist.DefaultPercent)))
-	if err != nil || pct < 0 || pct > 100 {
-		return c, errors.New("WAITLIST_PERCENT must be a whole number from 0 to 100")
+	seats, err := strconv.Atoi(env("SEATS_TOTAL", "0"))
+	if err != nil || seats < 0 {
+		return c, errors.New("SEATS_TOTAL must be a whole number, 0 to derive the seats from the hosts")
 	}
-	c.WaitlistPercent = pct
+	c.SeatsTotal = seats
+	c.WaitlistPercentSet = os.Getenv("WAITLIST_PERCENT") != ""
 	if c.ReplicaID == "" {
 		h, err := os.Hostname()
 		if err != nil || h == "" {

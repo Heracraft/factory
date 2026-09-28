@@ -61,8 +61,12 @@ type App struct {
 	abuse     *abuse.Guard
 	questions *questions.Service
 	outbox    *notify.Outbox
-	stripe    *billing.Stripe
+	paddle    *billing.Paddle
+	billing   *billing.Service
+	overage   *billing.Overage
 	hooks     *billing.Webhooks
+	gate      *billing.Gate
+	seats     *waitlist.Service
 	bcfg      billing.Config
 	server    *httpapi.Server
 	version   string
@@ -89,6 +93,9 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	a.otelOff = off
 	enabled := instrument.TracingEnabled()
 	log.Info("starting", "event", "start", "mode", cfg.Mode, "version", version, "otel", enabled, "dev", cfg.Dev)
+	if cfg.WaitlistPercentSet {
+		log.Warn("WAITLIST_PERCENT is ignored since DECISIONS I-290; the seats waitlist uses SEATS_TOTAL (0 derives it from the hosts). Remove the variable.", "event", "config_deprecated", "name", "WAITLIST_PERCENT")
+	}
 	a.pool, err = db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return nil, err
@@ -176,29 +183,34 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	} else {
 		a.outbox.Unsub = unsub
 	}
-	// Billing (workstream 09). With no STRIPE_SECRET_KEY the api starts
-	// normally and the billing routes answer 503 billing_disabled
-	// (DECISIONS I-16); with one, a half-configured Stripe is refused
-	// rather than silently billing nothing.
-	bcfg, stripeOn := billing.ConfigFromEnv()
-	a.bcfg = bcfg
-	var portal billing.Portal = billing.DisabledPortal{}
-	var customers interface {
-		EnsureCustomer(ctx context.Context, userID uuid.UUID) (string, error)
+	// Billing (workstream 09, DECISIONS I-289). With no PADDLE_API_KEY the
+	// api starts normally, the billing routes answer 503 billing_disabled
+	// and the gate refuses every non-exempt start with
+	// subscription_required; with one, a half-configured Paddle is refused
+	// rather than silently selling nothing.
+	bcfg, paddleOn := billing.ConfigFromEnv()
+	bcfg.DashboardURL = cfg.DashboardURL
+	if err := bcfg.Validate(); err != nil {
+		return nil, fmt.Errorf("billing: %w", err)
 	}
-	if stripeOn {
-		st, err := billing.NewStripe(bcfg, a.pool, log)
-		if err != nil {
-			return nil, fmt.Errorf("billing: %w", err)
-		}
-		a.stripe = st
-		portal = st
-		a.hooks = billing.NewWebhooks(a.pool, bcfg.WebhookSecret, log)
-		a.hooks.OnCardAttached = st.OnCardAttached
-		customers = st
-		log.Info("billing enabled", "event", "billing_enabled", "enforced", bcfg.Enforce, "automatic_tax", bcfg.AutomaticTax)
+	a.bcfg = bcfg
+	a.gate = billing.NewGate(a.pool, bcfg, a.m, log)
+	// The seat count (I-290): live subscriptions and unexpired invitations
+	// against the hosts' 8 GB blocks or SEATS_TOTAL; checkout asks it, the
+	// webhook tells it, /public/seats reads it.
+	a.seats = &waitlist.Service{Pool: a.pool, Total: cfg.SeatsTotal, M: a.m, Log: log}
+	seats := a.seats
+	if paddleOn {
+		a.paddle = billing.NewPaddle(bcfg, log)
+		a.overage = billing.NewOverage(a.pool, a.paddle, bcfg, a.engine, a.m, log)
+		a.billing = billing.NewService(a.pool, a.paddle, bcfg, seats, a.overage, log)
+		a.hooks = billing.NewWebhooks(a.pool, bcfg, a.m, log)
+		a.hooks.Stop = a.engine
+		a.hooks.Seats = seats
+		log.Info("billing enabled", "event", "billing_enabled", "enforced", bcfg.Enforce, "environment", bcfg.Environment())
 	} else {
-		log.Info("billing disabled until STRIPE_SECRET_KEY is set (DECISIONS I-16)", "event", "billing_disabled")
+		a.overage = billing.NewOverage(a.pool, nil, bcfg, a.engine, a.m, log)
+		log.Info("billing disabled until PADDLE_API_KEY is set (DECISIONS I-16, I-289)", "event", "billing_disabled")
 	}
 	if _, err := billing.RecordEnforcement(ctx, a.pool, bcfg.Enforce, "api", log); err != nil {
 		return nil, err
@@ -217,9 +229,9 @@ func New(ctx context.Context, cfg Config, version string) (*App, error) {
 	}
 	a.server = httpapi.New(httpapi.Deps{
 		Pool: a.pool, Verifier: verifier, Users: users, CA: a.ca, Secrets: a.sec, Engine: a.engine, Logs: a.logs, Events: a.events, Outbox: a.outbox, Unsub: unsub, Questions: a.questions,
-		Parser: parser, Metrics: a.m, Registry: a.reg, Log: log, Billing: portal, Webhooks: a.hooks, BillingEnforce: bcfg.Enforce, Customers: customers,
-		Gateway:  httpapi.Gateway{Host: cfg.GatewayHost, Port: cfg.GatewayPort},
-		Waitlist: &waitlist.Gate{Pool: a.pool, Percent: cfg.WaitlistPercent, M: a.m},
+		Parser: parser, Metrics: a.m, Registry: a.reg, Log: log, Billing: a.billing, Webhooks: a.hooks, Gate: a.gate, BillingEnforce: bcfg.Enforce,
+		Gateway: httpapi.Gateway{Host: cfg.GatewayHost, Port: cfg.GatewayPort},
+		Seats:   a.seats,
 		Migrations: func(ctx context.Context) (int, error) {
 			st, err := db.MigrateStatus(ctx, a.pool)
 			return len(st.Pending), err
@@ -405,18 +417,11 @@ func (a *App) loops(ctx context.Context) {
 	}
 	expiry := snapshots.New(a.pool, blob, a.m, a.log)
 	go expiry.Run(ctx, 24*time.Hour)
-	var pusher billing.UsagePusher = billing.Disabled{}
-	var reader billing.Reader
-	if a.stripe != nil {
-		pusher = a.stripe
-		reader = a.stripe
-	}
-	rollup := billing.NewRollup(a.pool, pusher, a.m, a.log)
-	dunning := billing.NewDunning(a.pool, a.engine, a.events, a.log, a.bcfg.Enforce)
-	reconciler := billing.NewReconciler(a.pool, reader, a.m, a.log)
+	rollup := billing.NewRollup(a.pool, a.m, a.log)
+	dunning := billing.NewDunning(a.pool, a.engine, a.events, a.bcfg, a.m, a.log)
 	bump := basebump.New(a.pool, a.engine, a.events, a.log)
 	idleWarn := &idle.Warner{Pool: a.pool, Events: a.events}
-	admitter := &waitlist.Admitter{Pool: a.pool, Percent: a.cfg.WaitlistPercent, M: a.m}
+	inviter := &waitlist.Inviter{Pool: a.pool, Total: a.cfg.SeatsTotal, M: a.m, Log: a.log}
 	a.engine.SetOnFinished(bump.OnOpFinished)
 	go bump.Run(ctx)
 	// The abuse gauges (BusyUnattended, EgressHigh, held projects) are
@@ -448,13 +453,19 @@ func (a *App) loops(ctx context.Context) {
 				a.log.Error("host sweep", "event", "sweep_fail", "err", err.Error())
 			}
 		case now := <-hourly.C:
-			// The capacity waitlist lets users in every minute as room
-			// appears, one replica at a time (DECISIONS I-269).
+			// The seats waitlist expires holds that ran out and invites
+			// the oldest waiting users while a seat is free, every minute,
+			// one replica at a time (DECISIONS I-269, I-290).
 			if release, ok, err := db.TryLock(ctx, a.pool, db.LockWaitlist); err == nil && ok {
-				if n, err := admitter.Run(ctx, now); err != nil && ctx.Err() == nil {
-					a.log.Error("waitlist admission", "event", "waitlist_admit_fail", "err", err.Error())
-				} else if n > 0 {
-					a.log.Info("waitlisted users admitted", "event", "waitlist_admit", "count", n)
+				invited, expired, err := inviter.Run(ctx, now)
+				if err != nil && ctx.Err() == nil {
+					a.log.Error("waitlist tick", "event", "waitlist_invite_fail", "err", err.Error())
+				}
+				if invited > 0 {
+					a.log.Info("waitlisted users invited", "event", "waitlist_invite", "count", invited)
+				}
+				if expired > 0 {
+					a.log.Info("waitlist holds expired", "event", "waitlist_expire", "count", expired)
 				}
 				release()
 			}
@@ -473,9 +484,13 @@ func (a *App) loops(ctx context.Context) {
 				a.log.Error("rollup", "event", "rollup_fail", "err", err.Error())
 			}
 			// Past-due accounts are stopped from the same hourly tick and
-			// under the same lock, so only one replica acts (§5.6).
+			// under the same lock, so only one replica acts (§5.6); the
+			// egress overage line and hard stop run beside it (I-289).
 			if _, err := dunning.Run(ctx); err != nil && ctx.Err() == nil {
 				a.log.Error("dunning", "event", "dunning_fail", "err", err.Error())
+			}
+			if _, _, err := a.overage.Run(ctx); err != nil && ctx.Err() == nil {
+				a.log.Error("overage", "event", "overage_fail", "err", err.Error())
 			}
 			// The idle-cost warning: one notification per idle stretch,
 			// never a stop (DECISIONS I-262, R1-5).
@@ -506,16 +521,6 @@ func (a *App) loops(ctx context.Context) {
 			}
 			if n, err := a.logs.Trim(ctx, 20); err == nil && n > 0 {
 				a.log.Info("build logs trimmed", "event", "buildlog_trim", "rows", n)
-			}
-			// The nightly reconciliation for the current period (§5.7). It
-			// reports and never fixes; `repose-admin billing reconcile
-			// --month` is the same comparison for a closed period.
-			if ms, err := reconciler.Reconcile(ctx, time.Now()); errors.Is(err, billing.ErrNoReader) {
-				a.log.Info("reconciliation skipped: Stripe is not readable", "event", "reconcile_skip")
-			} else if err != nil {
-				a.log.Error("reconciliation", "event", "reconcile_fail", "err", err.Error())
-			} else if len(ms) > 0 {
-				a.log.Error("reconciliation found differences", "event", "reconcile_mismatch", "users", len(ms))
 			}
 			release()
 		case <-limiters.C:

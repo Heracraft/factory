@@ -146,11 +146,12 @@ of user config:
 - The agents from the platform overlay: `claude-code`, `opencode`, `codex`,
   `gemini-cli`, `pi-coding-agent`. Each has a `repose` wrapper that installs
   the notification hooks and names its tmux window.
-- One headed Chromium for the agents on the X display `:99` (Xvfb,
-  openbox), shared by Playwright MCP and chrome-devtools-mcp over CDP, plus
-  `playwright-driver.browsers` (DECISIONS I-246). x11vnc and noVNC stay off
-  until `repose open --desktop` or the dashboard asks, and only view that
-  same browser (`features/browser.md`).
+- One headed Chromium for the agents on the X display `:99` (TigerVNC's
+  Xvnc, openbox), shared by Playwright MCP and chrome-devtools-mcp over
+  CDP, plus `playwright-driver.browsers` (DECISIONS I-246). The viewer
+  (websockify and repose's page) stays off until `repose browser` asks,
+  and only views that same browser, at the size of the user's tab
+  (`features/browser.md`, I-292).
 - Toolchain from `nix/guest/base/tool-list.nix`: node 24, pnpm, python
   3.12, uv, go, rustup, just, ripgrep, jq, gh, git, direnv with nix-direnv,
   starship, zoxide, eza, a C toolchain and everyday CLIs (I-218).
@@ -270,7 +271,7 @@ guest ──vsock──▶ hostd
 Go binaries in one module (`cmd/`), one Postgres.
 
 - **`api`**: HTTP JSON for the CLI and dashboard, gRPC server for hosts,
-  scheduler, SSH CA, secrets, metering aggregation, Stripe webhooks, hook
+  scheduler, SSH CA, secrets, metering aggregation, Paddle webhooks, hook
   ingest, notification fan-out. Stateless; scale by replicas behind Coolify.
 - **`hostd`**: on each host. Holds the gRPC stream, executes guest lifecycle
   (create, start, stop, destroy, resize, snapshot, restore, apply-config),
@@ -359,13 +360,14 @@ All of it is idempotent; running `repose run` twice attaches twice.
   platform never reads, copies or proxies Claude auth; the login share is
   storage the user's own guests share, which hostd creates but never opens.
 - Browser: one headed Chromium on a virtual display, shared by Playwright
-  MCP and chrome-devtools-mcp, in every guest (I-246). `repose open
-  --desktop` starts x11vnc and noVNC and forwards the noVNC port so the
-  user can watch or take over the browser the agent is using. Claude in Chrome cannot work from a guest; `repose
-  browser bridge` (I-296) reverse-tunnels the laptop's own Chrome (its
-  DevTools switch, Chrome 144+) to the guest's endpoint so the same two
-  MCP servers drive the laptop's browser, logins included, while the
-  laptop is open.
+  MCP and chrome-devtools-mcp, in every guest (I-246). `repose browser`
+  starts the viewer and forwards its port in the background so the user
+  can watch or take over the browser the agent is using, in one command
+  (I-292). Claude in Chrome cannot work from a guest; `repose browser
+  bridge` (I-296) reverse-tunnels the laptop's own Chrome (its DevTools
+  switch, Chrome 144+) to the guest's endpoint so the same two MCP
+  servers drive the laptop's browser, logins included, while the laptop
+  is open.
 - MCP: HTTP and API-backed servers work as on a laptop. Laptop-bound stdio
   servers are unsupported in the first release; `repose mcp forward` (wrap
   with mcp-proxy, reverse-tunnel, register in the guest) is the planned path
@@ -405,24 +407,24 @@ to them.
 
 ## 14. Billing and metering
 
-Stripe from day one. Card required before the first guest starts. The trial
-is the first day of compute, a credit of one day on large consumed at hourly
-rates (DECISIONS I-205).
+A monthly plan through Paddle, chosen before the first machine starts,
+with a card at checkout and a week free (DECISIONS I-289, superseding the
+hourly meter this section first described). Solo, $29 a month, buys 8 GB
+of memory that may run at once (one `large`, or two `small`), 100 GB of
+disk and 250 GB of egress; Pro, $59, buys 16 GB, 250 GB and 500 GB.
+Projects are unlimited while stopped (10 and 25 in all); egress past the
+allowance is $0.05 a GB as one line on the next invoice, and at four times
+the allowance the machines stop for the period. Paddle is the merchant of
+record, so tax is its problem. `PRICING.md` has the rules, the cost floor
+and the reasoning.
 
-Meters, sampled by hostd every 60 seconds and aggregated hourly by the API:
+Meters, sampled by hostd every 60 seconds and aggregated hourly by the API
+into `usage_hours`, are the record of what ran: guest-hours by size class
+(what `repose status` shows), disk allocated, egress bytes (what the
+overage line and the hard stop read). Nothing is priced per hour.
 
-- guest-hours by size class (a running guest; stopped guests accrue none)
-- volume GB-months by allocated size (accrues while the project exists)
-- egress GB per project (from the per-guest nftables counters)
-
-Prices: hourly rate per class with a monthly cap per project equal to the flat
-price (small $49, large $99, xl $199), storage $0.10 per GB-month, 500 GB
-egress included per project then $0.05 per GB. Hourly rates are the cap divided
-by 720 rounded up, so a guest that never stops pays the cap and one stopped
-half the time pays half. `PRICING.md` has the cost floor and the reasoning.
-
-Invoices are monthly through Stripe Billing with usage records pushed hourly.
-A failed payment stops guests after 3 days and destroys nothing for 30.
+A failed payment refuses new starts from day 0, stops the running machines
+on day 3, and destroys nothing for 30 days.
 
 ## 15. Observability and anti-abuse
 

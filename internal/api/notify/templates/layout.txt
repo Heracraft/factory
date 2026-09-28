@@ -1,0 +1,21 @@
+{{.Heading}}
+{{range .Paragraphs}}
+{{.}}
+{{end}}{{range .Steps}}
+{{.N}}. {{.Title}}{{if .Command}}
+   {{.Command}}{{end}}
+{{end}}{{if .Command}}
+{{.CommandLabel}}
+  {{.Command}}
+{{end}}{{if .Buttons}}
+{{.ButtonsLabel}}
+{{range .Buttons}}  {{.Label}}: {{.URL}}
+{{end}}{{end}}{{if .Primary}}
+{{.Primary.Label}}: {{.Primary.URL}}
+{{end}}{{range .Lines}}
+{{.}}
+{{end}}
+--
+repose. Open the dashboard: {{.Dashboard}}
+{{if .Unsubscribe}}You get these because an agent on your machine reported something. Stop these emails: {{.Unsubscribe}}
+{{end}}

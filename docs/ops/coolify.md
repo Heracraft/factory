@@ -85,7 +85,7 @@ Tailscale is missing, or the instance's key is not in `authorized_keys`.
    `https://api.repose.herakraft.co:8080` and
    `https://repose.herakraft.co:3000`; port mappings and health-check
    settings are in `ops/coolify/README.md`. Secrets — Logto M2M, the Entra
-   client, later Stripe and Resend — go in each app's Environment tab,
+   client, later Paddle and Resend — go in each app's Environment tab,
    nowhere else. No pre-deploy command on either: the api applies its own
    migrations at start and generates the platform CA the first time it
    finds none, both idempotent (fact 12, I-90). `api-grpc` deploys after

@@ -9,10 +9,11 @@ trigger. Ids are `uuid` (UUIDv7 generated in Go). Money is `bigint` cents.
 ```sql
 users        (id pk, logto_sub text unique, handle text unique, email text,
               github_login text, tz text, notify_email bool, ntfy_url text,
-              stripe_customer_id text unique, stripe_subscription_id text unique,
-              billing_anchor timestamptz,   -- signup; the billing period is counted from it (09 §5.1)
-              past_due_since timestamptz,   -- first failed invoice; the 3-day stop reads it
-              billing_status text,  -- trial|active|past_due|suspended|exempt (I-16)
+              paddle_customer_id text unique,  -- was stripe_customer_id (0008, I-289)
+              billing_anchor timestamptz,   -- signup; unused since I-289, the period is the subscription's
+              past_due_since timestamptz,   -- first failed payment; the 3-day stop reads it
+              billing_status text,  -- none|trial|active|past_due|suspended|exempt (I-16, I-289): a
+                                    -- projection of subscriptions.status; 'none' is no plan yet
               has_card bool, trial_credit_cents bigint, project_limit int, xl_limit int,
               suspended_at, suspended_reason text, cancelled_at, deleted_at)
               -- trial_credit_cents is a projection of credit_ledger maintained by a
@@ -52,7 +53,7 @@ ops          (id pk, project_id fk null, kind text, state text,  -- pending|runn
               result jsonb, error jsonb null, revision_id uuid, snapshot_id uuid, audit_id uuid,
               reboot_required bool, sent_at, started_at, finished_at)
 
-build_logs   (op_id fk, seq bigint, line text, ts timestamptz default now(),  -- ts: 0008, I-322
+build_logs   (op_id fk, seq bigint, line text, ts timestamptz default now(),  -- ts: 0009, I-322
               primary key (op_id, seq))
 
 secrets      (id pk, project_id fk, name text, ciphertext bytea,
@@ -69,7 +70,7 @@ snapshots    (id pk, project_id fk, host_id fk, blob_path text unique, bytes big
               taken_at, expires_at, deleted_at, restoring_op_id uuid null)  -- set while a restore reads it; expiry skips it
 
 events       (id pk, project_id fk null, user_id fk null,  -- one of them is set (0007, I-269):
-              -- user_id alone for an account event (waitlist_admitted)
+              -- user_id alone for an account event (waitlist_invited, the plan emails of I-291)
               ts timestamptz, ts_second bigint, kind text, agent text null,
               tmux_window text null, summary text, source text,  -- host|http|api
               skew_seconds int null, host_event_id text unique,
@@ -101,11 +102,24 @@ credit_ledger (id pk, user_id fk, cents bigint, reason text, ref text, created_a
               -- reason: trial|usage|goodwill|refund|adjustment; ref is
               -- '<project_id>:<hour>' for a usage debit, unique among reason='usage'
 
-stripe_events (id text pk, type text, received_at, processed_at, error text)
-              -- Stripe's event.id is the dedupe key for webhook replays (09 §5.6)
+subscriptions (id text pk,  -- Paddle's subscription id (0008, I-289)
+              user_id fk, paddle_customer_id text, plan text,  -- solo|pro
+              status text,  -- trialing|active|past_due|paused|canceled; at most one live per user
+              seats int, period_start, period_end, next_billed_at, trial_end,
+              cancel_at null,          -- a scheduled cancellation takes effect here
+              scheduled_plan text null, -- a downgrade waiting for period_end
+              overage_charged_for timestamptz null,  -- period_start of the last period whose egress line was sent
+              created_at, updated_at)
+
+paddle_events (id text pk, type text, occurred_at, received_at, processed_at, error text)
+              -- Paddle's event_id is the dedupe key for webhook replays (I-289)
+
+overage_charges (subscription_id fk, period_start, egress_gb numeric, cents bigint,
+              paddle_transaction_id text null, created_at, primary key (subscription_id, period_start))
+              -- one egress line per period, written before the charge is sent (I-289)
 
 invoices     (id pk, user_id fk, stripe_invoice_id text unique, period_start,
-              period_end, total_cents, status text)
+              period_end, total_cents, status text)  -- unused since I-289; invoices are read from Paddle
 
 audit_log    (id pk, ts, actor text, action text, target text, detail jsonb)
               -- every Exec, every admin action, every cert issue and revoke
@@ -129,10 +143,13 @@ questions    (id pk,               -- chosen by guestd (UUIDv7); a re-announceme
               -- repose-ask (0006, I-244/I-245); text and answer are tenant content stored
               -- like events.summary: plain, shown to the owner, never logged
 
-waitlist     (user_id pk fk, joined_at, admitted_at null,
-              admitted_by text null)   -- auto | the operator's audit actor
-              -- the capacity waitlist (0007, I-269); a row is kept after
-              -- admission, which is what lets the user past the gate
+waitlist     (user_id pk fk, joined_at, invited_at null, hold_until null,
+              invited_by text null,    -- auto | the operator's audit actor
+              converted_at null,       -- the invited user's subscription arrived
+              expired_invites int)     -- holds that ran out; each moves joined_at to now
+              -- the seats waitlist (0007 I-269, 0008 I-290): a row is kept after
+              -- conversion for the count; invited_at with hold_until in the
+              -- future holds one seat
 
 base_versions (version text pk, nix_rev text, changelog text, released_at,
               security bool)
@@ -151,14 +168,17 @@ desc)`, `certificates(user_id) where revoked_at is null`, `usage_hours(hour)`,
 `questions(project_id, created_at desc)`, `questions(expires_at) where state
 = 'pending'`, `questions(deliver_next_at) where state <> 'pending' and
 delivered_at is null`, `questions(deliver_command_id)`, `usage_hours(hour) where
-stripe_usage_record_id is null`, `credit_ledger(user_id, created_at)`,
+stripe_usage_record_id is null` (unused since I-289), `credit_ledger(user_id, created_at)`,
+`subscriptions(user_id) where status in (live) unique`, `subscriptions(user_id,
+created_at desc)`, `subscriptions(next_billed_at) where status in (live)`,
+`paddle_events(received_at desc)`,
 `ops(state) where state in ('pending','running')`, `events_outbox(next_at)`,
 `events(user_id, ts desc) where user_id is not null`, `waitlist(joined_at,
-user_id) where admitted_at is null`, `waitlist(admitted_at) where
-admitted_at is not null`.
+user_id) where invited_at is null`, `waitlist(hold_until) where invited_at
+is not null and converted_at is null`.
 
 Migrations `0001_init`, `0002_outbox_sessions_settings`, `0003_billing`,
-`0004_gateway_session_id`, `0005_abuse_events`, `0006_questions`, `0007_waitlist` and `0008_build_log_ts` create all of this; `repose-admin db migrate --down 1` reverts one. Partitions of the
+`0004_gateway_session_id`, `0005_abuse_events`, `0006_questions`, `0007_waitlist`, `0008_plans` and `0009_build_log_ts` create all of this; `repose-admin db migrate --down 1` reverts one. Partitions of the
 sample tables are created for the current and next month at start and by
 the daily job, which also drops partitions past retention.
 

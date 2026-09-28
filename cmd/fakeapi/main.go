@@ -23,7 +23,7 @@ import (
 )
 
 func main() {
-	billing := flag.Bool("billing", false, "enable the billing routes instead of 503 billing_disabled")
+	billing := flag.Bool("billing", false, "start with billing on and the account active on Solo, instead of billing off (503 billing_disabled, an exempt account)")
 	flag.Parse()
 
 	f := api.New(api.Options{Billing: *billing})
@@ -58,8 +58,15 @@ func (a *adminServer) Close() error { return a.Server.Close() }
 //	POST /fail       {"method","path","code"} -> f.Fail
 //	POST /fail-next  {"method","path","code"} -> f.FailNext
 //	POST /unfail     {"method","path"}        -> f.Unfail
-//	POST /billing    {"mode": off|card|nocard} -> f.SetBilling
+//	POST /billing    api.BillingState as JSON -> f.SetBillingState: {"mode": off|none|trial|active|past_due|suspended|exempt,
+//	                 "plan", "scheduled_plan", "cancelled", "seats": {total, held, waiting},
+//	                 "waitlist": {position, invited, hold_hours}, "egress_gb", "invoices"}; every field optional
+//	POST /paddle/complete {"transaction_id"} -> f.CompleteCheckout (Paddle's webhook after a paid checkout)
 //	POST /question   {"project_id","agent","text","options","timeout_s"} -> f.AddQuestion
+//
+// Every answer carries permissive CORS headers: the dashboard's Paddle stub
+// (window.__reposePaddleStub, set by a Playwright test) calls
+// /paddle/complete from the page itself.
 func newAdminServer(f *api.Fake) (*adminServer, error) {
 	type req struct{ Method, Path, Code string }
 	decode := func(w http.ResponseWriter, r *http.Request) (req, bool) {
@@ -77,20 +84,25 @@ func newAdminServer(f *api.Fake) (*adminServer, error) {
 		}
 	})
 	mux.HandleFunc("POST /billing", func(w http.ResponseWriter, r *http.Request) {
-		var body struct{ Mode string }
+		var body api.BillingState
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		switch body.Mode {
-		case "off":
-			f.SetBilling(api.BillingOff)
-		case "card":
-			f.SetBilling(api.BillingCard)
-		case "nocard":
-			f.SetBilling(api.BillingNoCard)
-		default:
-			http.Error(w, "mode is off, card or nocard", http.StatusBadRequest)
+		if err := f.SetBillingState(body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+	})
+	mux.HandleFunc("POST /paddle/complete", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			TransactionID string `json:"transaction_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := f.CompleteCheckout(body.TransactionID); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
 		}
 	})
 	mux.HandleFunc("POST /question", func(w http.ResponseWriter, r *http.Request) {
@@ -127,7 +139,17 @@ func newAdminServer(f *api.Fake) (*adminServer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fakeapi: admin listener: %w", err)
 	}
-	srv := &http.Server{Handler: mux}
+	cors := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+	srv := &http.Server{Handler: cors, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
 	return &adminServer{Server: srv, URL: "http://" + ln.Addr().String()}, nil
 }

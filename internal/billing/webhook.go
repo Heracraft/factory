@@ -2,79 +2,161 @@ package billing
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	stripe "github.com/stripe/stripe-go/v83"
-	"github.com/stripe/stripe-go/v83/webhook"
 
+	"github.com/heracraft/repose/internal/api/events"
+	"github.com/heracraft/repose/internal/api/metrics"
 	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/api/waitlist"
 	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/obs"
 )
 
-// The webhook side of 09-billing.md §5.6. Every handler is idempotent on
-// event.id, which is the primary key of stripe_events, so a duplicate
-// delivery is a no-op and a replay of a recorded fixture reproduces the
-// same rows.
+// The Paddle webhook (09-billing.md §5.11, api.md POST /billing/webhook).
+// Paddle-Signature is the authentication: `ts=...;h1=...`, an HMAC-SHA256
+// of `ts:body` with the endpoint secret, refused past five minutes of
+// skew. Every event is deduped on event_id, the primary key of
+// paddle_events: a duplicate delivery is a no-op and a replay reproduces
+// the same rows.
 
-// ErrBadSignature is returned when the Stripe-Signature header does not
-// verify. The route answers 400 and logs the event type only; the body is
-// never logged (it carries customer data).
-var ErrBadSignature = errors.New("stripe webhook signature is invalid")
+// ErrBadSignature is returned when Paddle-Signature does not verify. The
+// route answers 400 and logs the event type only; the body is never
+// logged (it carries the customer's details).
+var ErrBadSignature = errors.New("paddle webhook signature is invalid")
 
-// ErrDuplicate means the event id was already processed.
-var ErrDuplicate = errors.New("stripe event already processed")
+// ErrDuplicate means the event id was already recorded.
+var ErrDuplicate = errors.New("paddle event already processed")
 
-// The six webhook types §5.6 handles.
-const (
-	TypeInvoicePaid            = "invoice.paid"
-	TypeInvoicePaymentFailed   = "invoice.payment_failed"
-	TypeSubscriptionDeleted    = "customer.subscription.deleted"
-	TypeSetupIntentSucceeded   = "setup_intent.succeeded"
-	TypePaymentMethodDetached  = "payment_method.detached"
-	TypeChargeRefunded         = "charge.refunded"
-	pastDueGraceDays           = 3
-	subscriptionDeletedComment = "subscription deleted at Stripe"
-)
-
-// Webhooks applies Stripe events to the database.
-type Webhooks struct {
-	pool   *db.Pool
-	secret string
-	log    *slog.Logger
-	Now    func() time.Time
-	// OnCardAttached runs after a setup_intent.succeeded event so the api
-	// can make the payment method the customer's default and create the
-	// subscription. It is a hook rather than a direct call so the handler
-	// holds no Stripe client of its own and stays testable offline.
-	OnCardAttached func(ctx context.Context, userID uuid.UUID, paymentMethod string) error
+// The event types the endpoint subscribes to and handles.
+var WebhookEvents = []string{
+	"subscription.created", "subscription.activated", "subscription.trialing", "subscription.updated",
+	"subscription.past_due", "subscription.paused", "subscription.resumed", "subscription.canceled",
+	"transaction.completed", "transaction.payment_failed",
 }
 
-// NewWebhooks builds the handler. secret is STRIPE_WEBHOOK_SECRET.
-func NewWebhooks(pool *db.Pool, secret string, log *slog.Logger) *Webhooks {
-	return &Webhooks{pool: pool, secret: secret, log: log.With("component", obs.ComponentAPI), Now: time.Now}
+// SignatureSkew is how far a webhook's ts may be from now.
+const SignatureSkew = 5 * time.Minute
+
+// Webhooks applies Paddle events to the database.
+type Webhooks struct {
+	pool *db.Pool
+	cfg  Config
+	// secrets are the endpoint secrets accepted: the current one and, during
+	// a rotation, the previous one.
+	secrets []string
+	log     *slog.Logger
+	m       *metrics.M
+	Now     func() time.Time
+	// Stop stops a user's machines when the subscription ends; nil skips
+	// the stop (tests of the row logic alone).
+	Stop Stopper
+	// Seats is told when a subscription arrives (waitlist.Seats.Converted);
+	// nil skips it.
+	Seats waitlist.Seats
+}
+
+// NewWebhooks builds the handler. Extra secrets are accepted alongside
+// cfg.WebhookSecret while an endpoint is rotated.
+func NewWebhooks(pool *db.Pool, cfg Config, m *metrics.M, log *slog.Logger, extraSecrets ...string) *Webhooks {
+	secrets := append([]string{cfg.WebhookSecret}, extraSecrets...)
+	return &Webhooks{pool: pool, cfg: cfg, secrets: secrets, log: log.With("component", obs.ComponentAPI), m: m, Now: time.Now}
+}
+
+// Sign produces a Paddle-Signature header for a body, which is what the
+// fake Paddle and the tests use to post events.
+func Sign(secret string, ts time.Time, body []byte) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(strconv.FormatInt(ts.Unix(), 10) + ":"))
+	mac.Write(body)
+	return "ts=" + strconv.FormatInt(ts.Unix(), 10) + ";h1=" + hex.EncodeToString(mac.Sum(nil))
+}
+
+// Verify checks a Paddle-Signature header against the body: any h1 with
+// any accepted secret, constant-time, within the skew.
+func (w *Webhooks) Verify(header string, body []byte) error {
+	var ts string
+	var h1s []string
+	for _, part := range strings.Split(header, ";") {
+		k, v, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "ts":
+			ts = v
+		case "h1":
+			h1s = append(h1s, v)
+		}
+	}
+	if ts == "" || len(h1s) == 0 {
+		return fmt.Errorf("%w: header has no ts or h1", ErrBadSignature)
+	}
+	unix, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil {
+		return fmt.Errorf("%w: ts is not a number", ErrBadSignature)
+	}
+	if skew := w.Now().Sub(time.Unix(unix, 0)); skew > SignatureSkew || skew < -SignatureSkew {
+		return fmt.Errorf("%w: ts is %s from now", ErrBadSignature, skew.Round(time.Second))
+	}
+	for _, secret := range w.secrets {
+		if secret == "" {
+			continue
+		}
+		mac := hmac.New(sha256.New, []byte(secret))
+		mac.Write([]byte(ts + ":"))
+		mac.Write(body)
+		want := hex.EncodeToString(mac.Sum(nil))
+		for _, got := range h1s {
+			if subtle.ConstantTimeCompare([]byte(want), []byte(strings.ToLower(got))) == 1 {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("%w: no h1 matched", ErrBadSignature)
+}
+
+// Event is Paddle's notification envelope.
+type Event struct {
+	EventID    string          `json:"event_id"`
+	EventType  string          `json:"event_type"`
+	OccurredAt string          `json:"occurred_at"`
+	Data       json.RawMessage `json:"data"`
 }
 
 // Handle verifies the signature, records the event and applies it. A
 // duplicate returns ErrDuplicate, which the route answers 200 to, because
-// Stripe retries anything else.
+// Paddle retries anything else.
 func (w *Webhooks) Handle(ctx context.Context, payload []byte, sigHeader string) (kind string, err error) {
-	if w.secret == "" {
+	if len(w.secrets) == 0 || w.secrets[0] == "" {
 		return "", ErrDisabled
 	}
-	ev, err := webhook.ConstructEvent(payload, sigHeader, w.secret)
-	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrBadSignature, err)
+	var ev Event
+	if err := json.Unmarshal(payload, &ev); err == nil {
+		kind = ev.EventType
 	}
-	// The primary key is the dedupe (§6, "duplicate webhook delivery:
-	// ignored by the stripe_events primary key").
-	kind = string(ev.Type)
-	tag, err := w.pool.Exec(ctx, "insert into stripe_events (id, type) values ($1, $2) on conflict (id) do nothing", ev.ID, kind)
+	if err := w.Verify(sigHeader, payload); err != nil {
+		return kind, err
+	}
+	if kind == "" || ev.EventID == "" {
+		return kind, fmt.Errorf("%w: body has no event_id or event_type", ErrBadSignature)
+	}
+	occurred := w.Now().UTC()
+	if t := paddleTime(ev.OccurredAt); t != nil {
+		occurred = *t
+	}
+	tag, err := w.pool.Exec(ctx, "insert into paddle_events (id, type, occurred_at) values ($1, $2, $3) on conflict (id) do nothing", ev.EventID, kind, occurred)
 	if err != nil {
 		return kind, err
 	}
@@ -83,268 +165,272 @@ func (w *Webhooks) Handle(ctx context.Context, payload []byte, sigHeader string)
 	}
 	applyErr := w.apply(ctx, &ev)
 	if applyErr != nil {
-		if _, err := w.pool.Exec(ctx, "update stripe_events set error = $2 where id = $1", ev.ID, applyErr.Error()); err != nil {
+		if _, err := w.pool.Exec(ctx, "update paddle_events set error = $2 where id = $1", ev.EventID, applyErr.Error()); err != nil {
 			return kind, err
 		}
 		return kind, applyErr
 	}
-	if _, err := w.pool.Exec(ctx, "update stripe_events set processed_at = now() where id = $1", ev.ID); err != nil {
+	if _, err := w.pool.Exec(ctx, "update paddle_events set processed_at = now() where id = $1", ev.EventID); err != nil {
 		return kind, err
 	}
-	w.log.Info("stripe webhook applied", "event", obs.EventStripeWebhook, "kind", kind, "stripe_event_id", ev.ID)
+	w.log.Info("paddle webhook applied", "event", obs.EventBillingWebhook, "kind", kind, "result", "ok")
 	return kind, nil
 }
 
-func (w *Webhooks) apply(ctx context.Context, ev *stripe.Event) error {
-	switch string(ev.Type) {
-	case TypeInvoicePaid:
-		return w.invoicePaid(ctx, ev)
-	case TypeInvoicePaymentFailed:
-		return w.invoiceFailed(ctx, ev)
-	case TypeSubscriptionDeleted:
-		return w.subscriptionDeleted(ctx, ev)
-	case TypeSetupIntentSucceeded:
-		return w.setupIntentSucceeded(ctx, ev)
-	case TypePaymentMethodDetached:
-		return w.paymentMethodDetached(ctx, ev)
-	case TypeChargeRefunded:
-		return w.chargeRefunded(ctx, ev)
+func (w *Webhooks) apply(ctx context.Context, ev *Event) error {
+	switch {
+	case strings.HasPrefix(ev.EventType, "subscription."):
+		return w.subscription(ctx, ev)
+	case ev.EventType == "transaction.completed":
+		return w.transactionCompleted(ctx, ev)
+	case ev.EventType == "transaction.payment_failed":
+		return w.transactionFailed(ctx, ev)
 	}
-	// An event type we do not handle is recorded and ignored; Stripe sends
-	// whatever the endpoint is subscribed to.
+	// Anything else the endpoint is subscribed to is recorded and ignored.
 	return nil
 }
 
-// invoiceObject is the subset of an invoice the handlers read. The full
-// object is not unmarshalled into stripe.Invoice because the shape of the
-// parent and line items changes between API versions and nothing here
-// needs them.
-type invoiceObject struct {
-	ID           string `json:"id"`
-	Customer     string `json:"customer"`
-	Total        int64  `json:"total"`
-	Status       string `json:"status"`
-	PeriodStart  int64  `json:"period_start"`
-	PeriodEnd    int64  `json:"period_end"`
-	Subscription string `json:"subscription"`
-}
-
-func decodeObject[T any](ev *stripe.Event) (T, error) {
-	var out T
-	if err := json.Unmarshal(ev.Data.Raw, &out); err != nil {
-		return out, fmt.Errorf("decode the %s object: %w", string(ev.Type), err)
+// resolveUser finds the account a Paddle object belongs to: custom_data's
+// user_id first, then the customer id. An unknown one is an error the
+// paddle_events row keeps.
+func (w *Webhooks) resolveUser(ctx context.Context, custom map[string]any, customerID string) (*store.User, error) {
+	if custom != nil {
+		if v, _ := custom["user_id"].(string); v != "" {
+			if id, err := uuid.Parse(v); err == nil {
+				u, err := store.GetUser(ctx, w.pool, id)
+				if err == nil {
+					return u, nil
+				}
+				if !errors.Is(err, db.ErrNotFound) {
+					return nil, err
+				}
+			}
+		}
 	}
-	return out, nil
-}
-
-// userByCustomer resolves the Stripe customer to a user; an unknown
-// customer is not an error the endpoint should retry forever, so it is
-// reported and the event is marked processed.
-func (w *Webhooks) userByCustomer(ctx context.Context, customer string) (*store.User, error) {
-	if customer == "" {
-		return nil, nil
+	if customerID == "" {
+		return nil, errors.New("event names no user and no customer")
 	}
-	rows, err := w.pool.Query(ctx, "select id from users where stripe_customer_id = $1", customer)
+	var id uuid.UUID
+	err := w.pool.QueryRow(ctx, "select id from users where paddle_customer_id = $1", customerID).Scan(&id)
+	if db.IsNoRows(err) {
+		// Not ours: a customer made in Paddle's dashboard, or another
+		// product on the same account.
+		return nil, fmt.Errorf("no user for Paddle customer %s", customerID)
+	}
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	if !rows.Next() {
-		w.log.Warn("stripe event for an unknown customer", "event", obs.EventStripeWebhook, "stripe_customer_id", customer)
-		return nil, nil
-	}
-	var id uuid.UUID
-	if err := rows.Scan(&id); err != nil {
-		return nil, err
-	}
-	rows.Close()
 	return store.GetUser(ctx, w.pool, id)
 }
 
-// invoicePaid records the invoice and returns the account to active. Guests
-// stay stopped until the user starts them (§5.6).
-func (w *Webhooks) invoicePaid(ctx context.Context, ev *stripe.Event) error {
-	inv, err := decodeObject[invoiceObject](ev)
+// subscription upserts the row from Paddle's view and projects it onto the
+// account: status, has_card, the seat conversion and the account events.
+func (w *Webhooks) subscription(ctx context.Context, ev *Event) error {
+	var ps Subscription
+	if err := json.Unmarshal(ev.Data, &ps); err != nil {
+		return fmt.Errorf("decode the %s subscription: %w", ev.EventType, err)
+	}
+	if ps.ID == "" {
+		return errors.New("subscription event without an id")
+	}
+	u, err := w.resolveUser(ctx, ps.CustomData, ps.CustomerID)
 	if err != nil {
 		return err
 	}
-	u, err := w.userByCustomer(ctx, inv.Customer)
-	if err != nil || u == nil {
+	planID := w.cfg.PlanForPrice(ps.PriceID())
+	if planID == "" {
+		return fmt.Errorf("subscription %s has no repose plan price (price %q)", ps.ID, ps.PriceID())
+	}
+	plan, _ := PlanByID(planID)
+	now := w.Now().UTC()
+	row := Sub{ID: ps.ID, UserID: u.ID, CustomerID: ps.CustomerID, Plan: plan.ID, Status: ps.Status, Seats: plan.Seats,
+		NextBilledAt: paddleTime(ps.NextBilledAt), TrialEnd: ps.TrialEnd()}
+	if ps.CurrentBillingPeriod != nil {
+		row.PeriodStart = paddleTime(ps.CurrentBillingPeriod.StartsAt)
+		row.PeriodEnd = paddleTime(ps.CurrentBillingPeriod.EndsAt)
+	}
+	if ps.ScheduledChange != nil && ps.ScheduledChange.Action == "cancel" {
+		row.CancelAt = paddleTime(ps.ScheduledChange.EffectiveAt)
+	}
+	if !IsLive(ps.Status) && ps.Status != StatusCanceled && ps.Status != StatusPaused {
+		return fmt.Errorf("subscription %s has unknown status %q", ps.ID, ps.Status)
+	}
+	var prev *Sub
+	err = db.InTx(ctx, w.pool, func(tx db.Tx) error {
+		// The downgrade a scheduled plan change is waiting for is ours to
+		// keep: Paddle reports the current price until it takes effect.
+		if cur, err := GetSubscription(ctx, tx, ps.ID); err == nil && cur.ScheduledPlan != nil && *cur.ScheduledPlan != plan.ID && ps.Status != StatusCanceled {
+			row.ScheduledPlan = cur.ScheduledPlan
+		}
+		prev, err = upsertSubscription(ctx, tx, row)
+		if err != nil {
+			return err
+		}
+		if ps.CustomerID != "" {
+			if _, err := tx.Exec(ctx, "update users set paddle_customer_id = $2 where id = $1 and paddle_customer_id is null", u.ID, ps.CustomerID); err != nil {
+				return err
+			}
+		}
+		if err := projectStatus(ctx, tx, u.ID, ps.Status, now); err != nil {
+			return err
+		}
+		return w.subscriptionEvents(ctx, tx, u, prev, &row, plan, now)
+	})
+	if err != nil {
+		return err
+	}
+	if w.m != nil {
+		w.m.BillingSubscriptions.WithLabelValues(plan.ID, ps.Status).Inc()
+	}
+	if prev == nil && IsLive(ps.Status) && w.Seats != nil {
+		if err := w.Seats.Converted(ctx, u.ID.String()); err != nil {
+			return fmt.Errorf("record the seat conversion: %w", err)
+		}
+	}
+	if ps.Status == StatusCanceled && (prev == nil || prev.Status != StatusCanceled) && w.Stop != nil {
+		if _, err := stopUserMachines(ctx, w.pool, w.Stop, w.m, w.log, u.ID, StopReasonEnded); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// subscriptionEvents emits the account events a change calls for
+// (I-291): subscription_cancelled when a cancellation is scheduled,
+// subscription_ended when the status becomes canceled, plan_changed when
+// the plan changes.
+func (w *Webhooks) subscriptionEvents(ctx context.Context, tx db.Tx, u *store.User, prev, cur *Sub, plan Plan, now time.Time) error {
+	if cur.Status == StatusCanceled && (prev == nil || prev.Status != StatusCanceled) {
+		_, err := events.InsertAccount(ctx, tx, u.ID, now, KindSubscriptionEnded, subscriptionEnded(plan, now))
+		return err
+	}
+	if cur.CancelAt != nil && (prev == nil || prev.CancelAt == nil) {
+		if _, err := events.InsertAccount(ctx, tx, u.ID, now, KindSubscriptionCancelled, SubscriptionCancelledPayload{Plan: plan.ID, EndsAt: cur.CancelAt.UTC()}); err != nil {
+			return err
+		}
+	}
+	if prev != nil && prev.Plan != cur.Plan {
+		_, err := events.InsertAccount(ctx, tx, u.ID, now, KindPlanChanged, PlanChangedPayload{FromPlan: prev.PlanOrSolo().ID, ToPlan: plan.ID, EffectiveAt: now})
+		return err
+	}
+	return nil
+}
+
+// transactionObject is the subset of a transaction the two handlers read.
+type transactionObject struct {
+	ID             string         `json:"id"`
+	Status         string         `json:"status"`
+	CustomerID     string         `json:"customer_id"`
+	SubscriptionID string         `json:"subscription_id"`
+	Origin         string         `json:"origin"`
+	CustomData     map[string]any `json:"custom_data"`
+	Items          []struct {
+		Price struct {
+			ID        string `json:"id"`
+			ProductID string `json:"product_id"`
+		} `json:"price"`
+	} `json:"items"`
+}
+
+// transactionCompleted: a payment went through. The account is active,
+// past_due_since is cleared, a billing suspension is lifted (an operator's
+// is not), and an overage line the transaction carried gets its id.
+func (w *Webhooks) transactionCompleted(ctx context.Context, ev *Event) error {
+	var t transactionObject
+	if err := json.Unmarshal(ev.Data, &t); err != nil {
+		return fmt.Errorf("decode the transaction: %w", err)
+	}
+	u, err := w.resolveUser(ctx, t.CustomData, t.CustomerID)
+	if err != nil {
 		return err
 	}
 	return db.InTx(ctx, w.pool, func(tx db.Tx) error {
-		if err := upsertInvoice(ctx, tx, u.ID, inv, "paid"); err != nil {
-			return err
+		subStatus := ""
+		if t.SubscriptionID != "" {
+			if cur, err := GetSubscription(ctx, tx, t.SubscriptionID); err == nil {
+				subStatus = cur.Status
+			} else if !errors.Is(err, db.ErrNotFound) {
+				return err
+			}
+			if _, err := tx.Exec(ctx, "update subscriptions set status = 'active' where id = $1 and status = 'past_due'", t.SubscriptionID); err != nil {
+				return err
+			}
+			for _, it := range t.Items {
+				if w.cfg.ProductOverage != "" && it.Price.ProductID == w.cfg.ProductOverage {
+					if _, err := tx.Exec(ctx, `update overage_charges set paddle_transaction_id = $2 where subscription_id = $1 and paddle_transaction_id is null
+						and period_start = (select max(period_start) from overage_charges where subscription_id = $1 and paddle_transaction_id is null)`, t.SubscriptionID, t.ID); err != nil {
+						return err
+					}
+					break
+				}
+			}
 		}
-		if inv.Total <= 0 {
-			// A zero invoice is "paid" without money moving: the one Stripe
-			// issues when the subscription is created at card attach, and
-			// every month the trial credit covers. It settles nothing and
-			// proves no card, so it neither raises the limits nor clears a
-			// failed payment (DECISIONS I-184).
+		// A trialing subscription's completed transaction is the checkout's
+		// $0 one: the account stays trial until the first real charge.
+		if subStatus == StatusTrialing {
 			return nil
 		}
-		// The first paid invoice raises the limits (§5.8).
-		_, err := tx.Exec(ctx, `update users set billing_status = 'active', past_due_since = null,
+		// A payment returns the account to active: from past_due, and from a
+		// suspension the 3-day stop made (suspended_reason billing). An
+		// operator's suspension stays. A trial or plan-less account moves
+		// only when the transaction's subscription is known to be past its
+		// trial; otherwise the subscription event projects the status.
+		fromTrial := subStatus == StatusActive || subStatus == StatusPastDue
+		_, err := tx.Exec(ctx, `update users set billing_status = 'active', past_due_since = null, has_card = true,
 			suspended_at = case when suspended_reason = 'billing' then null else suspended_at end,
-			suspended_reason = case when suspended_reason = 'billing' then null else suspended_reason end,
-			project_limit = greatest(project_limit, $2), xl_limit = greatest(xl_limit, $3)
-			where id = $1 and billing_status <> 'exempt'`, u.ID, ProjectLimitPaid, XLLimitPaid)
+			suspended_reason = case when suspended_reason = 'billing' then null else suspended_reason end
+			where id = $1 and (billing_status in ('past_due', 'active')
+			or (billing_status = 'suspended' and suspended_reason = 'billing')
+			or ($2 and billing_status in ('trial', 'none')))`, u.ID, fromTrial)
 		return err
 	})
 }
 
-// invoiceFailed marks the account past due and starts the 3-day clock.
-func (w *Webhooks) invoiceFailed(ctx context.Context, ev *stripe.Event) error {
-	inv, err := decodeObject[invoiceObject](ev)
+// transactionFailed: a payment failed. The account is past_due from now
+// (day 0 of PRICING.md "Failed payments") and the payment_failed email
+// goes out.
+func (w *Webhooks) transactionFailed(ctx context.Context, ev *Event) error {
+	var t transactionObject
+	if err := json.Unmarshal(ev.Data, &t); err != nil {
+		return fmt.Errorf("decode the transaction: %w", err)
+	}
+	u, err := w.resolveUser(ctx, t.CustomData, t.CustomerID)
 	if err != nil {
 		return err
 	}
-	u, err := w.userByCustomer(ctx, inv.Customer)
-	if err != nil || u == nil {
-		return err
-	}
+	now := w.Now().UTC()
 	return db.InTx(ctx, w.pool, func(tx db.Tx) error {
-		if err := upsertInvoice(ctx, tx, u.ID, inv, "payment_failed"); err != nil {
+		// Only a subscription's payment puts the account past due. A card
+		// declined at checkout fails a transaction with no subscription;
+		// the user simply has no plan yet.
+		if t.SubscriptionID == "" {
+			return nil
+		}
+		cur, err := GetSubscription(ctx, tx, t.SubscriptionID)
+		if errors.Is(err, db.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `update users set billing_status = 'past_due', past_due_since = coalesce(past_due_since, now())
-			where id = $1 and billing_status not in ('exempt','suspended')`, u.ID)
+		if !cur.Live() {
+			return nil
+		}
+		if _, err := tx.Exec(ctx, "update subscriptions set status = 'past_due' where id = $1 and status in ('trialing','active')", t.SubscriptionID); err != nil {
+			return err
+		}
+		// The first failure moves the account and sends day 0's email;
+		// Paddle's retries that fail again change nothing (day 2's email is
+		// the dunning tick's).
+		tag, err := tx.Exec(ctx, `update users set billing_status = 'past_due', past_due_since = coalesce(past_due_since, $2)
+			where id = $1 and billing_status in ('trial', 'active', 'none')`, u.ID, now)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return nil
+		}
+		_, err = events.InsertAccount(ctx, tx, u.ID, now, KindPaymentFailed, paymentFailed(cur.PlanOrSolo()))
 		return err
 	})
-}
-
-func upsertInvoice(ctx context.Context, q store.Querier, userID uuid.UUID, inv invoiceObject, status string) error {
-	var start, end *time.Time
-	if inv.PeriodStart > 0 {
-		t := time.Unix(inv.PeriodStart, 0).UTC()
-		start = &t
-	}
-	if inv.PeriodEnd > 0 {
-		t := time.Unix(inv.PeriodEnd, 0).UTC()
-		end = &t
-	}
-	if inv.Status != "" {
-		status = inv.Status
-	}
-	_, err := q.Exec(ctx, `insert into invoices (id, user_id, stripe_invoice_id, period_start, period_end, total_cents, status)
-		values ($1,$2,$3,$4,$5,$6,$7)
-		on conflict (stripe_invoice_id) do update set period_start = excluded.period_start, period_end = excluded.period_end,
-		total_cents = excluded.total_cents, status = excluded.status`,
-		store.NewID(), userID, inv.ID, start, end, inv.Total, status)
-	if err != nil {
-		return fmt.Errorf("record invoice %s: %w", inv.ID, err)
-	}
-	return nil
-}
-
-// subscriptionDeleted drops the stored subscription id; a later card
-// attach creates a new one.
-func (w *Webhooks) subscriptionDeleted(ctx context.Context, ev *stripe.Event) error {
-	sub, err := decodeObject[struct {
-		ID       string `json:"id"`
-		Customer string `json:"customer"`
-	}](ev)
-	if err != nil {
-		return err
-	}
-	u, err := w.userByCustomer(ctx, sub.Customer)
-	if err != nil || u == nil {
-		return err
-	}
-	if _, err := w.pool.Exec(ctx, "update users set stripe_subscription_id = null where id = $1 and stripe_subscription_id = $2", u.ID, sub.ID); err != nil {
-		return err
-	}
-	_, err = store.Audit(ctx, w.pool, "stripe", "subscription_deleted", u.Handle, map[string]any{"detail": subscriptionDeletedComment})
-	return err
-}
-
-// setupIntentSucceeded attaches the payment method as the customer's
-// default and flips has_card (§5.2). Attaching is the caller's job when a
-// Stripe client is available; here the database side is applied so the
-// webhook is meaningful in tests and with a portal-collected card.
-func (w *Webhooks) setupIntentSucceeded(ctx context.Context, ev *stripe.Event) error {
-	si, err := decodeObject[struct {
-		ID            string `json:"id"`
-		Customer      string `json:"customer"`
-		PaymentMethod string `json:"payment_method"`
-	}](ev)
-	if err != nil {
-		return err
-	}
-	u, err := w.userByCustomer(ctx, si.Customer)
-	if err != nil || u == nil {
-		return err
-	}
-	// A trial account whose credit ran out while it had no card (removed
-	// while its guests kept running, §6) stayed `trial` at zero, because
-	// the end of the trial needs a card. The card arriving ends it here, or
-	// the gate would refuse its next start as trial_depleted with a card on
-	// file (DECISIONS I-184).
-	if _, err := w.pool.Exec(ctx, `update users set has_card = true, billing_anchor = coalesce(billing_anchor, now()),
-		billing_status = case when billing_status = 'trial'
-			and coalesce((select sum(cents) from credit_ledger where user_id = $1), 0) <= 0 then 'active' else billing_status end
-		where id = $1`, u.ID); err != nil {
-		return err
-	}
-	if w.OnCardAttached != nil {
-		return w.OnCardAttached(ctx, u.ID, si.PaymentMethod)
-	}
-	return nil
-}
-
-func (w *Webhooks) paymentMethodDetached(ctx context.Context, ev *stripe.Event) error {
-	pm, err := decodeObject[struct {
-		ID       string `json:"id"`
-		Customer string `json:"customer"`
-	}](ev)
-	if err != nil {
-		return err
-	}
-	// A detached payment method carries a null customer, so the previous
-	// attributes are where the owner is named.
-	customer := pm.Customer
-	if customer == "" && ev.Data != nil {
-		if prev, ok := ev.Data.PreviousAttributes["customer"].(string); ok {
-			customer = prev
-		}
-	}
-	u, err := w.userByCustomer(ctx, customer)
-	if err != nil || u == nil {
-		return err
-	}
-	// Guests keep running until the invoice fails (§6, "card removed while
-	// guests run"); only starts are blocked.
-	_, err = w.pool.Exec(ctx, "update users set has_card = false where id = $1", u.ID)
-	return err
-}
-
-// chargeRefunded records the refund as a credit row, which is the ledger
-// the reconciliation reads (§5.9, "refunds are manual in the Stripe
-// dashboard plus a credit row for the record").
-func (w *Webhooks) chargeRefunded(ctx context.Context, ev *stripe.Event) error {
-	ch, err := decodeObject[struct {
-		ID             string `json:"id"`
-		Customer       string `json:"customer"`
-		AmountRefunded int64  `json:"amount_refunded"`
-	}](ev)
-	if err != nil {
-		return err
-	}
-	u, err := w.userByCustomer(ctx, ch.Customer)
-	if err != nil || u == nil {
-		return err
-	}
-	if ch.AmountRefunded <= 0 {
-		return nil
-	}
-	var exists bool
-	if err := w.pool.QueryRow(ctx, "select exists (select 1 from credit_ledger where ref = $1 and reason = $2)", "refund:"+ch.ID, ReasonRefund).Scan(&exists); err != nil {
-		return err
-	}
-	if exists {
-		return nil
-	}
-	_, err = Credit(ctx, w.pool, u.ID, ch.AmountRefunded, ReasonRefund, "refund:"+ch.ID)
-	return err
 }

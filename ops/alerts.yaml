@@ -211,57 +211,45 @@ groups:
           description: "{{ $value }} failed runs in six hours. meter_samples and proc_samples keep their old partitions; check the disk before it matters."
           runbook: "docs/ops/RUNBOOK.md#partitiondropfail"
 
-      - alert: StripePushFail
-        # A failed usage push is money that will not appear on an invoice.
-        expr: increase(repose_api_stripe_usage_push_total{result="error"}[1h]) > 0
-        for: 5m
-        labels:
-          severity: warn
-        annotations:
-          summary: "Stripe usage records are failing"
-          description: "{{ $value }} failed pushes in the last hour. The reconciliation job repairs it; if it does not, the invoice undercharges."
-          runbook: "docs/ops/RUNBOOK.md#stripepushfail"
-
-      - alert: StripePushBacklog
-        # 09-billing.md §6: a usage_hours row older than six hours with no
-        # Stripe record. StripePushFail catches an erroring push; this
-        # catches the quiet cases (Stripe not configured after a deploy, the
-        # rollup leader not running) where nothing errors and nothing ships.
-        expr: repose_api_billing_stripe_push_backlog_seconds > 6 * 3600
-        for: 15m
-        labels:
-          severity: warn
-        annotations:
-          summary: "the oldest unbilled hour is {{ $value | humanizeDuration }} old"
-          description: "usage_hours rows are not reaching Stripe. `repose-admin billing resync` re-pushes them; until they land the invoice undercharges."
-          runbook: "docs/ops/RUNBOOK.md#stripepushbacklog"
-
-      - alert: BillingMismatch
-        # 09-billing.md §5.7: the nightly reconciliation found usage_hours
-        # and Stripe disagreeing. The job never fixes a difference, so this
-        # stays lit until a human decides.
-        expr: repose_api_billing_mismatch_cents > 0
-        for: 30m
-        labels:
-          severity: warn
-        annotations:
-          summary: "usage_hours and Stripe differ by {{ $value }} cents"
-          description: "The reconciliation reported and fixed nothing. `repose-admin billing reconcile` names the accounts and `billing explain <project> <hour>` shows one row."
-          runbook: "docs/ops/RUNBOOK.md#billingmismatch"
-
-      - alert: StripeWebhookRejected
-        # 09-billing.md §6: "webhook signature invalid: 400, logged with the
-        # event type only, alert after 5 in 10 minutes." Either someone is
-        # posting at the endpoint, or the signing secret and the endpoint
-        # have drifted apart, in which case no invoice event is being applied.
-        expr: increase(repose_api_stripe_webhook_total{result="bad_signature"}[10m]) >= 5
+      - alert: PaddleWebhookRejected
+        # 09-billing.md §5.11: five deliveries in ten minutes failed the
+        # Paddle-Signature check. Either someone is posting at the endpoint,
+        # or PADDLE_WEBHOOK_SECRET and the notification destination have
+        # drifted apart, in which case no subscription event is applied.
+        expr: sum(round(increase(repose_api_billing_webhook_total{result="bad_signature"}[10m]))) >= 5
         for: 0m
         labels:
           severity: warn
         annotations:
-          summary: "{{ $value }} Stripe webhook deliveries rejected in ten minutes"
-          description: "Check STRIPE_WEBHOOK_SECRET against the endpoint's signing secret, and that the endpoint's API version matches the deployed SDK (ops/AZURE-SETUP.md step 17). While this fires, invoice events are not being applied."
-          runbook: "docs/ops/RUNBOOK.md#stripewebhookrejected"
+          summary: "{{ $value }} Paddle webhook deliveries rejected in ten minutes"
+          description: "Check PADDLE_WEBHOOK_SECRET against the notification destination's endpoint secret in Paddle's dashboard. While this fires, subscription and payment events are not being applied."
+          runbook: "docs/ops/RUNBOOK.md#paddlewebhookrejected"
+
+      - alert: OverageChargeFailed
+        # An egress overage line was recorded but Paddle refused the one-time
+        # charge. The row stays without a transaction id and is not sent
+        # again by itself; an operator sends it before the period locks.
+        expr: increase(repose_api_billing_overage_charges_total{result="error"}[1h]) > 0
+        for: 0m
+        labels:
+          severity: warn
+        annotations:
+          summary: "{{ $value }} egress overage charge(s) failed in the last hour"
+          description: "`repose-admin billing show <handle>` names the line; `billing overage-now <handle>` retries it once the cause is fixed. Paddle locks the invoice about 30 minutes before charging."
+          runbook: "docs/ops/RUNBOOK.md#overagechargefailed"
+
+      - alert: BillingStopped
+        # The api stopped a tenant's machines by itself for billing: three
+        # days past due, a subscription that ended, or the egress ceiling.
+        # Nothing to fix; a human should know it happened.
+        expr: sum by (reason) (increase(repose_api_billing_stops_total[1h])) > 0
+        for: 0m
+        labels:
+          severity: info
+        annotations:
+          summary: "machines stopped for billing ({{ $labels.reason }})"
+          description: "{{ $value }} machine(s) stopped in the last hour, reason {{ $labels.reason }}. `repose-admin billing show <handle>` shows the account; nothing is deleted for 30 days."
+          runbook: "docs/ops/RUNBOOK.md#billingstopped"
 
   # Anti-abuse (DECISIONS I-238..I-240). Nothing here pages: the guest is
   # already blocked or stopped when these fire, and what remains is a

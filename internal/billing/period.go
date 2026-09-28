@@ -2,14 +2,16 @@ package billing
 
 import "time"
 
-// A billing period is the user's Stripe billing cycle, anchored at signup
-// (09-billing.md §5.1), not the calendar month. The cap, the egress
-// allowance and the storage remainder are all carried per period, so every
-// usage_hours row records the period it belongs to.
+// A billing period is the subscription's current billing period as Paddle
+// reports it (subscriptions.period_start and period_end, I-289); PeriodFor
+// is the fallback that walks whole months from an anchor when Paddle has
+// not set one yet, or for an account without a plan (the calendar month).
+// Every usage_hours row records the period it belongs to, so the egress
+// allowance is summed over the same hours the invoice covers.
 //
-// Stripe's own anchor rule is followed for short months: an anchor on the
-// 31st bills on the 30th in November and the 28th in February, and returns
-// to the 31st in March.
+// The anchor rule for short months: an anchor on the 31st bills on the
+// 30th in November and the 28th in February, and returns to the 31st in
+// March.
 
 // Period is one billing cycle, half-open: [Start, End).
 type Period struct {

@@ -113,7 +113,7 @@ func TestOpenForwardsToAnIPv6OnlyServer(t *testing.T) {
 	}
 }
 
-// TestPickLocalPortRemapsABusyPort is I-261 for `open --desktop` (and
+// TestPickLocalPortRemapsABusyPort is I-261 for `repose browser` (and
 // `open PORT`): a taken laptop port is swapped for a free one, and said.
 func TestPickLocalPortRemapsABusyPort(t *testing.T) {
 	var errOut strings.Builder

@@ -1,0 +1,332 @@
+package billing_test
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/heracraft/repose/internal/api/waitlist"
+	"github.com/heracraft/repose/internal/billing"
+	"github.com/heracraft/repose/internal/db"
+	"github.com/heracraft/repose/internal/db/testdb"
+)
+
+// fullSeats refuses every reservation with a place, the way the real
+// Seats does when the fleet is full.
+type fullSeats struct{}
+
+func (fullSeats) Reserve(_ context.Context, _ string, _ int) (bool, *waitlist.Place, error) {
+	return false, &waitlist.Place{Position: 3, JoinedAt: time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC), Email: "who@example.test"}, nil
+}
+func (fullSeats) Converted(context.Context, string) error { return nil }
+func (fullSeats) Count(context.Context) (waitlist.Count, error) {
+	return waitlist.Count{Total: 30, Held: 30, Free: 0, Waiting: 3}, nil
+}
+
+func newService(t *testing.T, pool *db.Pool, f *fakePaddle, seats waitlist.Seats) (*billing.Service, *billing.Overage) {
+	t.Helper()
+	cfg := testConfig(f)
+	p := billing.NewPaddle(cfg, quiet())
+	if seats == nil {
+		seats = &billing.SubscriptionSeats{Pool: pool, Total: 30}
+	}
+	o := billing.NewOverage(pool, p, cfg, &stopRecorder{}, nop(), quiet())
+	o.Now = at(time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC))
+	s := billing.NewService(pool, p, cfg, seats, o, quiet())
+	s.Now = o.Now
+	return s, o
+}
+
+func TestCheckout(t *testing.T) {
+	pool := testdb.Open(t)
+	f := newFakePaddle()
+	defer f.Close()
+	s, _ := newService(t, pool, f, nil)
+	ctx := context.Background()
+	a := seedAccount(t, pool, "", "none", "", "")
+
+	if _, err := s.Checkout(ctx, user(t, pool, a), "gold"); !errors.Is(err, billing.ErrUnknownPlan) {
+		t.Fatalf("unknown plan: %v", err)
+	}
+	txn, err := s.Checkout(ctx, user(t, pool, a), "solo")
+	if err != nil || !strings.HasPrefix(txn, "txn_") {
+		t.Fatalf("checkout: %s %v", txn, err)
+	}
+	body := f.Bodies["POST /transactions"][0]
+	items := body["items"].([]any)
+	if items[0].(map[string]any)["price_id"] != "pri_solo_test" || body["collection_mode"] != "automatic" || body["custom_data"].(map[string]any)["user_id"] != a.UserID.String() || body["customer_id"] == "" {
+		t.Fatalf("transaction body: %v", body)
+	}
+	if userField(t, pool, a, "paddle_customer_id") == "" {
+		t.Fatal("the customer was not stored")
+	}
+	// A subscriber is refused with subscribed.
+	b := seedAccount(t, pool, "solo", "active", "", "")
+	if _, err := s.Checkout(ctx, user(t, pool, b), "pro"); !errors.Is(err, billing.ErrSubscribed) {
+		t.Fatalf("subscribed: %v", err)
+	}
+	// No seat: waitlisted with the place, no transaction.
+	full, _ := newService(t, pool, f, fullSeats{})
+	before := f.Count("POST /transactions")
+	_, err = full.Checkout(ctx, user(t, pool, a), "solo")
+	var wl *billing.WaitlistedError
+	if !errors.As(err, &wl) || wl.Place.Position != 3 || wl.Message() != "repose is full right now. You're number 3 on the waitlist; we'll email who@example.test when there's a seat." {
+		t.Fatalf("waitlisted: %v", err)
+	}
+	if f.Count("POST /transactions") != before {
+		t.Fatal("a transaction was created for a waitlisted user")
+	}
+	// Overview marks plans unavailable when full and lists the seats.
+	ov, err := full.Overview(ctx, user(t, pool, a))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans := ov["plans"].([]map[string]any)
+	if len(plans) != 2 || plans[0]["available"] != false || plans[0]["price_cents"] != int64(2900) || plans[1]["id"] != "pro" {
+		t.Fatalf("plans: %v", plans)
+	}
+	seats := ov["seats"].(map[string]any)
+	if seats["total"] != 30 || seats["free"] != 0 || seats["waiting"] != 3 {
+		t.Fatalf("seats: %v", seats)
+	}
+	if ov["subscription"] != nil || ov["paddle"].(map[string]any)["environment"] != "sandbox" || ov["paddle"].(map[string]any)["client_token"] != "test_client_token" {
+		t.Fatalf("overview: %v", ov)
+	}
+	usage := ov["usage"].(map[string]any)
+	if usage["memory_gb"] != 8 || usage["project_limit"] != 10 {
+		t.Fatalf("usage without a plan shows Solo's limits: %v", usage)
+	}
+}
+
+func TestPlanChangesCancelResume(t *testing.T) {
+	pool := testdb.Open(t)
+	f := newFakePaddle()
+	defer f.Close()
+	s, _ := newService(t, pool, f, nil)
+	ctx := context.Background()
+	a := seedAccount(t, pool, "solo", "active", "large", "running")
+	f.AddSubscription("ctm_"+a.Handle, "pri_solo_test", "active")
+	// The fake's id differs from the seeded row's; point the row at it.
+	var fakeID string
+	for id := range f.subs {
+		fakeID = id
+	}
+	if _, err := pool.Exec(ctx, "update subscriptions set id = $2 where id = $1", a.SubID, fakeID); err != nil {
+		t.Fatal(err)
+	}
+	a.SubID = fakeID
+
+	if _, err := s.ChangePlan(ctx, user(t, pool, a), "solo"); !errors.Is(err, billing.ErrSamePlan) {
+		t.Fatalf("same plan: %v", err)
+	}
+	// Upgrade: at once, prorated, plan_changed email.
+	ch, err := s.ChangePlan(ctx, user(t, pool, a), "pro")
+	if err != nil || ch.Plan != "pro" || ch.ScheduledPlan != nil {
+		t.Fatalf("upgrade: %+v %v", ch, err)
+	}
+	patch := f.Bodies["PATCH /subscriptions/"+a.SubID][0]
+	if patch["proration_billing_mode"] != "prorated_immediately" || patch["items"].([]any)[0].(map[string]any)["price_id"] != "pri_pro_test" {
+		t.Fatalf("upgrade body: %v", patch)
+	}
+	sub, _ := billing.GetSubscription(ctx, pool, a.SubID)
+	if sub.Plan != "pro" || sub.Seats != 2 {
+		t.Fatalf("row after upgrade: %+v", sub)
+	}
+	if k := eventKinds(t, pool, a); len(k) != 1 || k[0] != "plan_changed" {
+		t.Fatalf("events %v", k)
+	}
+	if p := accountEmail(t, pool, a, "plan_changed", "from Solo to Pro"); p["from_plan"] != "solo" || p["to_plan"] != "pro" || p["effective_at"] == nil {
+		t.Fatalf("plan_changed payload %v", p)
+	}
+	// Downgrade refused while two large run (16 GB > 8).
+	addProject(t, pool, a, "second", "large", "running", 40<<30)
+	_, err = s.ChangePlan(ctx, user(t, pool, a), "solo")
+	var over *billing.OverPlanError
+	if !errors.As(err, &over) || over.RunningGB != 16 || over.DiskAllocatedGB != 80 {
+		t.Fatalf("over plan: %v", err)
+	}
+	// Stopped, it is scheduled for period_end.
+	if _, err := pool.Exec(ctx, "update projects set state = 'stopped' where user_id = $1", a.UserID); err != nil {
+		t.Fatal(err)
+	}
+	ch, err = s.ChangePlan(ctx, user(t, pool, a), "solo")
+	if err != nil || ch.Plan != "pro" || ch.ScheduledPlan == nil || *ch.ScheduledPlan != "solo" || !ch.EffectiveAt.Equal(a.Period.End) {
+		t.Fatalf("downgrade: %+v %v", ch, err)
+	}
+	if patches := f.Bodies["PATCH /subscriptions/"+a.SubID]; patches[len(patches)-1]["proration_billing_mode"] != "prorated_next_billing_period" {
+		t.Fatalf("downgrade body: %v", patches[len(patches)-1])
+	}
+	sub, _ = billing.GetSubscription(ctx, pool, a.SubID)
+	if sub.ScheduledPlan == nil || *sub.ScheduledPlan != "solo" {
+		t.Fatal("scheduled_plan not stored")
+	}
+	// A webhook for the same subscription keeps the scheduled downgrade.
+	w := newHooks(t, pool, f, nil, nil)
+	if err := post(t, w, f, event("subscription.updated", subData(a.SubID, a, "pri_pro_test", "active", nil))); err != nil {
+		t.Fatal(err)
+	}
+	sub, _ = billing.GetSubscription(ctx, pool, a.SubID)
+	if sub.ScheduledPlan == nil {
+		t.Fatal("the webhook dropped the scheduled downgrade")
+	}
+	// Choosing pro again undoes it.
+	if ch, err = s.ChangePlan(ctx, user(t, pool, a), "pro"); err != nil || ch.ScheduledPlan != nil {
+		t.Fatalf("undo: %+v %v", ch, err)
+	}
+	sub, _ = billing.GetSubscription(ctx, pool, a.SubID)
+	if sub.ScheduledPlan != nil {
+		t.Fatal("scheduled_plan not cleared")
+	}
+	// Cancel, twice, resume, resume.
+	if _, err := s.Resume(ctx, user(t, pool, a)); !errors.Is(err, billing.ErrNotCancelled) {
+		t.Fatalf("resume with nothing scheduled: %v", err)
+	}
+	cancelAt, err := s.Cancel(ctx, user(t, pool, a))
+	if err != nil || !cancelAt.Equal(time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("cancel: %v %v", cancelAt, err)
+	}
+	if f.Bodies["POST /subscriptions/"+a.SubID+"/cancel"][0]["effective_from"] != "next_billing_period" {
+		t.Fatal("cancel is at the next billing period")
+	}
+	if _, err := s.Cancel(ctx, user(t, pool, a)); !errors.Is(err, billing.ErrAlreadyCancelled) {
+		t.Fatalf("second cancel: %v", err)
+	}
+	if k := eventKinds(t, pool, a); len(k) != 2 || k[1] != "subscription_cancelled" {
+		t.Fatalf("events %v", k)
+	}
+	if p := accountEmail(t, pool, a, "subscription_cancelled", "Pro", "1 November 2026 at 00:00 UTC"); p["plan"] != "pro" {
+		t.Fatalf("subscription_cancelled payload %v", p)
+	}
+	resumed, err := s.Resume(ctx, user(t, pool, a))
+	if err != nil || resumed.CancelAt != nil {
+		t.Fatalf("resume: %+v %v", resumed, err)
+	}
+	if sc, present := f.Bodies["PATCH /subscriptions/"+a.SubID][len(f.Bodies["PATCH /subscriptions/"+a.SubID])-1]["scheduled_change"]; !present || sc != nil {
+		t.Fatal("resume PATCHes scheduled_change null")
+	}
+	// No subscription: ErrNoSubscription.
+	n := seedAccount(t, pool, "", "none", "", "")
+	if _, err := s.ChangePlan(ctx, user(t, pool, n), "pro"); !errors.Is(err, billing.ErrNoSubscription) {
+		t.Fatalf("no subscription: %v", err)
+	}
+	// Upgrade needs a free seat.
+	fullS, _ := newService(t, pool, f, fullSeats{})
+	b := seedAccount(t, pool, "solo", "active", "", "")
+	if _, err := fullS.ChangePlan(ctx, user(t, pool, b), "pro"); !errors.Is(err, billing.ErrNoSeat) {
+		t.Fatalf("no seat: %v", err)
+	}
+}
+
+func TestPortalAndInvoices(t *testing.T) {
+	pool := testdb.Open(t)
+	f := newFakePaddle()
+	defer f.Close()
+	s, _ := newService(t, pool, f, nil)
+	ctx := context.Background()
+	a := seedAccount(t, pool, "pro", "active", "", "")
+	// The seeded customer id is unknown to the fake; EnsureCustomer keeps
+	// the stored one, so register it.
+	f.customers["ctm_"+a.Handle] = map[string]any{"id": "ctm_" + a.Handle, "email": a.Email, "status": "active"}
+	url, err := s.Portal(ctx, user(t, pool, a), "")
+	if err != nil || url != "https://portal.fake/overview/ctm_"+a.Handle {
+		t.Fatalf("portal: %s %v", url, err)
+	}
+	url, err = s.Portal(ctx, user(t, pool, a), "payment_method")
+	if err != nil || url != "https://portal.fake/payment/"+a.SubID {
+		t.Fatalf("payment method link: %s %v", url, err)
+	}
+	f.AddTransaction("ctm_"+a.Handle, a.SubID, "completed", 6490, 590)
+	f.AddTransaction("ctm_"+a.Handle, a.SubID, "draft", 100, 0)
+	inv, err := s.Invoices(ctx, user(t, pool, a))
+	if err != nil || len(inv) != 1 {
+		t.Fatalf("invoices: %v %v", inv, err)
+	}
+	i := inv[0]
+	if i["amount_cents"] != int64(6490) || i["tax_cents"] != int64(590) || i["subtotal_cents"] != int64(5900) || i["status"] != "completed" || i["currency"] != "USD" || !strings.HasSuffix(i["pdf_url"].(string), ".pdf") || i["period_start"] != "2026-10-01T00:00:00Z" {
+		t.Fatalf("invoice shape: %v", i)
+	}
+	for _, k := range []string{"id", "number", "status", "currency", "amount_cents", "subtotal_cents", "tax_cents", "created_at", "period_start", "period_end", "hosted_url", "pdf_url"} {
+		if _, ok := i[k]; !ok {
+			t.Errorf("invoice lacks %s", k)
+		}
+	}
+	// No customer yet: an empty list, not an error.
+	n := seedAccount(t, pool, "", "none", "", "")
+	if inv, err := s.Invoices(ctx, user(t, pool, n)); err != nil || len(inv) != 0 {
+		t.Fatalf("no customer: %v %v", inv, err)
+	}
+}
+
+// Account deletion: the pending overage is charged immediately, then the
+// subscription is cancelled at once, in that order.
+func TestCloseAccountChargesThenCancels(t *testing.T) {
+	pool := testdb.Open(t)
+	f := newFakePaddle()
+	defer f.Close()
+	s, _ := newService(t, pool, f, nil)
+	ctx := context.Background()
+	a := seedAccount(t, pool, "solo", "active", "large", "running")
+	f.subs[a.SubID] = map[string]any{"id": a.SubID, "status": "active", "customer_id": "ctm_" + a.Handle}
+	usageHour(t, pool, a.ProjectID, a.Period.Start, "large", 3600, 270<<30, a.Period)
+
+	if err := s.CloseAccount(ctx, a.UserID); err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	for _, r := range f.Requests {
+		if strings.HasPrefix(r, "POST /subscriptions/") {
+			order = append(order, r)
+		}
+	}
+	if len(order) != 2 || order[0] != "POST /subscriptions/"+a.SubID+"/charge" || order[1] != "POST /subscriptions/"+a.SubID+"/cancel" {
+		t.Fatalf("order: %v", order)
+	}
+	if f.Bodies["POST /subscriptions/"+a.SubID+"/charge"][0]["effective_from"] != "immediately" || f.Bodies["POST /subscriptions/"+a.SubID+"/cancel"][0]["effective_from"] != "immediately" {
+		t.Fatal("both are immediate")
+	}
+	var cents int64
+	var txn *string
+	if err := pool.QueryRow(ctx, "select cents, paddle_transaction_id from overage_charges where subscription_id = $1", a.SubID).Scan(&cents, &txn); err != nil || cents != 100 || txn == nil {
+		t.Fatalf("overage line: %d %v %v", cents, txn, err)
+	}
+	sub, _ := billing.GetSubscription(ctx, pool, a.SubID)
+	if sub.Status != "canceled" || userField(t, pool, a, "billing_status") != "none" {
+		t.Fatalf("after close: %s %s", sub.Status, userField(t, pool, a, "billing_status"))
+	}
+	// A user without a subscription: nothing to do.
+	n := seedAccount(t, pool, "", "none", "", "")
+	if err := s.CloseAccount(ctx, n.UserID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSubscriptionSeatsStub(t *testing.T) {
+	pool := testdb.Open(t)
+	ctx := context.Background()
+	seedAccount(t, pool, "pro", "active", "", "")
+	seedAccount(t, pool, "solo", "trial", "", "")
+	c := seedAccount(t, pool, "solo", "active", "", "")
+	if _, err := pool.Exec(ctx, "update subscriptions set status = 'canceled' where id = $1", c.SubID); err != nil {
+		t.Fatal(err)
+	}
+	s := &billing.SubscriptionSeats{Pool: pool, Total: 4}
+	count, err := s.Count(ctx)
+	if err != nil || count.Total != 4 || count.Held != 3 || count.Free != 1 {
+		t.Fatalf("count: %+v %v", count, err)
+	}
+	if ok, place, err := s.Reserve(ctx, "x", 1); err != nil || !ok || place != nil {
+		t.Fatalf("one seat free: %v %v %v", ok, place, err)
+	}
+	if ok, _, err := s.Reserve(ctx, "x", 2); err != nil || ok {
+		t.Fatalf("two seats: %v %v", ok, err)
+	}
+	unlimited := &billing.SubscriptionSeats{Pool: pool}
+	if ok, _, err := unlimited.Reserve(ctx, "x", 2); err != nil || !ok {
+		t.Fatalf("SEATS_TOTAL=0 is unlimited: %v %v", ok, err)
+	}
+	if err := s.Converted(ctx, "x"); err != nil {
+		t.Fatal(err)
+	}
+}

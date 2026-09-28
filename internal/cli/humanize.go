@@ -41,7 +41,7 @@ func reasonFor(code, message string) string {
 	case "host_unreachable", "unreachable":
 		return "its host is not reachable"
 	case "payment_required":
-		return "the account needs a card on file"
+		return "the account needs a plan"
 	case "":
 		return humaneMessage(message)
 	default:

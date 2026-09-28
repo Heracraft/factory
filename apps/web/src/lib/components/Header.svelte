@@ -16,14 +16,18 @@
 	}
 </script>
 
+<!-- Below sm the five links and the wordmark share 350px: the wordmark
+     drops a size and the links close up, so the page never scrolls sideways
+     on a phone (judged at 390 and 360; CLAUDE.md "Judge visuals at real size"). -->
 <header class="border-b border-[var(--rule)]">
-	<div class="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4 sm:gap-6 sm:px-5">
-		<a class="shrink-0" href={resolve('/projects')} aria-label="repose, projects"><Logo /></a>
-		<!-- At phone width Sign out moves to the Account page, and on a very
-		     narrow screen the links scroll sideways inside the header rather
-		     than pushing the page wider. -->
+	<div class="mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 px-5 sm:gap-6">
+		<a href={resolve('/projects')} aria-label="repose, projects" class="shrink-0"
+			><span class="sm:hidden"><Logo size="sm" /></span><span class="hidden sm:inline"
+				><Logo /></span
+			></a
+		>
 		<nav
-			class="flex h-full min-w-0 items-stretch gap-3 overflow-x-auto text-sm [scrollbar-width:none] sm:gap-6"
+			class="flex h-full items-stretch gap-2.5 text-[13px] whitespace-nowrap sm:gap-6 sm:text-sm"
 			aria-label="Main"
 		>
 			{#each links as link (link.href)}
@@ -31,7 +35,7 @@
 				<a
 					href={link.href}
 					aria-current={isCurrent(link.href) ? 'page' : undefined}
-					class="-mb-px flex shrink-0 items-center border-b {isCurrent(link.href)
+					class="-mb-px flex items-center border-b {isCurrent(link.href)
 						? 'border-zinc-900 text-zinc-950 dark:border-zinc-100 dark:text-zinc-50'
 						: 'border-transparent text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100'}"
 					>{link.label}</a
@@ -40,7 +44,7 @@
 			{/each}
 			<button
 				type="button"
-				class="hidden shrink-0 cursor-pointer whitespace-nowrap sm:block text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+				class="cursor-pointer text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
 				onclick={() => signOut()}>Sign out</button
 			>
 		</nav>

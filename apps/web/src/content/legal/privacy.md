@@ -35,8 +35,8 @@ its size class, CPU time, memory in use, bytes sent and received, disk
 allocated and used, the number of open SSH sessions and attached tmux
 clients, the number of Docker containers running, and which agents are
 running in which tmux windows and whether they are working, idle, or
-waiting for input. These numbers become your bill and the signals we watch
-for abuse.
+waiting for input. Bytes sent count against your plan's egress allowance;
+all of these numbers are the signals we watch for abuse.
 
 **Process samples.** **We sample the processes running in your
 environment once a minute and record their names, CPU time, memory use and
@@ -89,9 +89,13 @@ Environments and their disks run on virtual machines in Microsoft Azure
 (East US). Snapshots are in Azure Blob Storage in the same region. Our
 database runs on a virtual machine in the same region and is backed up
 nightly to Cloudflare R2. Identity is handled by a Logto instance we run
-ourselves; GitHub sees only the sign-in. Payments are handled by Stripe,
-which holds your card; we hold a customer reference and the last invoice
-status, never card numbers. Email notifications are sent through Resend;
+ourselves; GitHub sees only the sign-in. Payments are handled by Paddle,
+the merchant of record: at checkout Paddle receives your email address,
+your country (for tax) and your card, and holds them under
+[Paddle's privacy policy](https://www.paddle.com/legal/privacy). We hold
+Paddle's identifiers for your customer and subscription, your plan and
+its status, the dates of the period and the invoice totals, never card
+numbers. Email notifications are sent through Resend;
 push notifications go to the ntfy endpoint you configure, which may be a
 third party of your choosing.
 

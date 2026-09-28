@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-364 entries.
+371 entries.
 
 ## Scope
 
@@ -77,7 +77,7 @@ pointer, not a summary.
 - **R3-1** Provisioning is OpenTofu for Azure resources with nixos-anywhere as a provisioner; hostd self-registers — L234
 - **R3-5** Capacity is added manually at an 80 percent memory alert — L238
 - **R2-9** Observability reuses the existing Loki, Grafana and Fluent Bit; add Prometheus there; OpenTelemetry in the control plane with no traces backend yet. Record everything non-invasive — L240
-- **R2-12 + R3-16 + R4-7 + R4-8** Stripe from day one, card required before the first guest, $10 credit trial. Meters: guest-hours by class, volume GB-months, egress GB. Hourly rate with a monthly cap per project equal to the flat price (49/99/199) — partly amended by I-205; L244
+- **R2-12 + R3-16 + R4-7 + R4-8** Stripe from day one, card required before the first guest, $10 credit trial. Meters: guest-hours by class, volume GB-months, egress GB. Hourly rate with a monthly cap per project equal to the flat price (49/99/199) — partly amended by I-205; partly superseded by I-289; L244
 - **R4-11** Retention: destroy deletes the volume and keeps the last snapshot 30 days; cancellation stops guests, keeps snapshots 30 days — L252
 - **R4-12** + R4 domain note. The name is `repose` everywhere. Hosted under `herakraft.co` (`repose.herakraft.co`, `api.repose.herakraft.co`, `ssh.repose.herakraft.co`) until it graduates to its own domain — partly superseded by I-15; L255
 - **R5-6** No teams in the first release — L261
@@ -352,7 +352,7 @@ pointer, not a summary.
 - **I-266** mosh is not offered — 2026-09-26; L6867
 - **I-268** `repose resize` takes the project as its first argument — 2026-09-26; L6895
 - **I-272** The laptop checkout gets a fetch-only `repose` git remote for the machine's checkout — 2026-09-26; L6911
-- **I-269** A capacity waitlist holds a new user's first project when the fleet is near full — 2026-09-26; L6982
+- **I-269** A capacity waitlist holds a new user's first project when the fleet is near full — 2026-09-26; amended by I-290; L6982
 - **I-273** `repose ls` and `repose rm` are the names; `projects` and `destroy` are aliases — 2026-09-26; L7037
 - **I-274** `repose ps` lists the tmux windows — 2026-09-26; L7064
 - **I-275** `repose exec` runs one command in the checkout; `repose ssh` opens a shell there — 2026-09-26; L7082
@@ -367,32 +367,39 @@ pointer, not a summary.
 - **I-286** The repository is `Heracraft/repose` — 2026-09-27; L7503
 - **I-287** The landing has a design system of its own, drawn from its pictures — 2026-09-27; L7516
 - **I-288** Every landing shape names a feature and appears where the feature is; the footer collects them; the logo is an r-mark — 2026-09-27; L7541
-- **I-296** `repose browser bridge` lends the guest's browser tools the laptop's own Chrome, through Chrome's DevTools switch, a front that answers `/json/version`, and a reverse tunnel whose remote command holds the guest's endpoint switched — 2026-09-27; L7563
-- **I-297** The user docs have a Tutorials section: one job per page, in the order a new user meets them — 2026-09-27; partly amended by I-316; L7622
-- **I-298** The Vercel CLI's login stays on the laptop — 2026-09-27; L7642
-- **I-330** A signed-in visitor can read the landing page — 2026-09-28; L7682
-- **I-331** Sign-out leaves the page alone until the browser goes, and no page paints before its stylesheet — 2026-09-28; L7696
-- **I-332** Settings save as they change; the ntfy URL keeps a Save — 2026-09-28; L7716
-- **I-333** "Recently destroyed" shows ten rows, then more on request — 2026-09-28; L7735
-- **I-300** A project being destroyed does not count toward the project limit; one left in error by a failed destroy does — 2026-09-28; L7742
-- **I-301** `repose run` on a project being destroyed waits and starts over — 2026-09-28; L7760
-- **I-302** `repose sync [PROJECT]` — 2026-09-28; L7777
-- **I-303** A run with nothing new prints no sync line — 2026-09-28; L7784
-- **I-304** The attach after `repose run PROMPT` falls back to the session — 2026-09-28; L7793
-- **I-305** `repose attach --bridge` keeps `--bridge` on the fast path — 2026-09-28; L7805
-- **I-306** A guest in bypass mode always skips Claude Code's bypass warning — 2026-09-28; L7810
-- **I-320** Config commands show run's ✓ steps, read off the build log — 2026-09-28; L7826
-- **I-321** `repose config apply` with no file applies the configuration again — 2026-09-28; L7863
-- **I-322** Build log lines carry the time they reached the api — 2026-09-28; L7875
-- **I-323** `config add` and `config remove` honour `reboot_required` — L7891
-- **I-324** Port forwards that appear together get one message, in the status bar's colours — 2026-09-28; L7901
-- **I-325** hostd refuses an apply whose record says "not running" while the hypervisor runs — 2026-09-28; L7916
-- **I-326** Config builds: two derivations at a time, and two reads in parallel — L7937
-- **I-327** The "Config" docs page is "Installing software" — L7956
-- **I-310** `repose browser [PROJECT]` is the machine's own browser, on its desktop; `repose browser bridge` stays the laptop's Chrome; `repose open --desktop` stays as the same command — 2026-09-28; L7964
-- **I-311** The bridge enforces what the agents may do in the laptop's Chrome itself, at the CDP layer: always-on refusals, and `--allow HOST` enforced by a CDP connection of the bridge's own — 2026-09-28; L7984
-- **I-312** The bridge needs a running machine and does not start one; there is no detached bridge — 2026-09-28; L8068
-- **I-313** Closing a bridge is one ssh, bounded at 4 s, and never waits for a tmux client — 2026-09-28; L8080
-- **I-314** The bridge prints a navigation log on the user's own terminal: time, host and path, `blocked` or not, never a query or fragment, and nothing is stored — 2026-09-28; L8096
-- **I-315** `--bridge-allow HOST` on `run` and `attach` is the allowlist for `--bridge`, and implies it — 2026-09-28; L8112
-- **I-316** The user's Chrome has one page, "Lend the agents your Chrome" (`/docs/your-chrome`), under Using repose; the tutorial page it replaces is removed — 2026-09-28; L8123
+- **I-289** Monthly plans through Paddle: Solo and Pro buy memory that may run at once, disk and egress; a week free with a card; no hourly meter — 2026-09-27; L7563
+- **I-290** Seats: the waitlist gates checkout, not the first project; a seat is 8 GB running at once; invitations hold a seat 72 hours — 2026-09-27; L7641
+- **I-291** Every email is HTML with a plain-text twin, from one template, and the account emails exist — 2026-09-27; L7680
+- **I-293** How the plans landed in the code: repose_api_ metric names, the limits an exempt account keeps, stops counted, once-only emails derived from the events table, and a subscriptions-only seat count until I-290 merges — 2026-09-27; L7706
+- **I-294** Seats and emails, the choices the spec left open: one account-event helper, the sentence, a re-queue on a new checkout, no `!` in an email — 2026-09-27; L7763
+- **I-295** The dashboard under plans: the fake's default is exempt, the Paddle stub, one site-wide CSP, and what the pages stop showing — 2026-09-27; L7831
+- **I-292** Watching the agent's browser is one command: `repose browser` opens a viewer page repose ships, sized to the tab, on TigerVNC's Xvnc, with the password in the URL fragment and the forward in the background — 2026-09-27; L7876
+- **I-296** `repose browser bridge` lends the guest's browser tools the laptop's own Chrome, through Chrome's DevTools switch, a front that answers `/json/version`, and a reverse tunnel whose remote command holds the guest's endpoint switched — 2026-09-27; L7968
+- **I-297** The user docs have a Tutorials section: one job per page, in the order a new user meets them — 2026-09-27; partly amended by I-316; L8027
+- **I-298** The Vercel CLI's login stays on the laptop — 2026-09-27; L8047
+- **I-330** A signed-in visitor can read the landing page — 2026-09-28; L8087
+- **I-331** Sign-out leaves the page alone until the browser goes, and no page paints before its stylesheet — 2026-09-28; L8101
+- **I-332** Settings save as they change; the ntfy URL keeps a Save — 2026-09-28; L8121
+- **I-333** "Recently destroyed" shows ten rows, then more on request — 2026-09-28; L8140
+- **I-300** A project being destroyed does not count toward the project limit; one left in error by a failed destroy does — 2026-09-28; L8147
+- **I-301** `repose run` on a project being destroyed waits and starts over — 2026-09-28; L8165
+- **I-302** `repose sync [PROJECT]` — 2026-09-28; L8182
+- **I-303** A run with nothing new prints no sync line — 2026-09-28; L8189
+- **I-304** The attach after `repose run PROMPT` falls back to the session — 2026-09-28; L8198
+- **I-305** `repose attach --bridge` keeps `--bridge` on the fast path — 2026-09-28; L8210
+- **I-306** A guest in bypass mode always skips Claude Code's bypass warning — 2026-09-28; L8215
+- **I-320** Config commands show run's ✓ steps, read off the build log — 2026-09-28; L8231
+- **I-321** `repose config apply` with no file applies the configuration again — 2026-09-28; L8268
+- **I-322** Build log lines carry the time they reached the api — 2026-09-28; L8280
+- **I-323** `config add` and `config remove` honour `reboot_required` — L8296
+- **I-324** Port forwards that appear together get one message, in the status bar's colours — 2026-09-28; L8306
+- **I-325** hostd refuses an apply whose record says "not running" while the hypervisor runs — 2026-09-28; L8321
+- **I-326** Config builds: two derivations at a time, and two reads in parallel — L8342
+- **I-327** The "Config" docs page is "Installing software" — L8361
+- **I-310** `repose browser [PROJECT]` is the machine's own browser, on its desktop; `repose browser bridge` stays the laptop's Chrome; `repose open --desktop` stays as the same command — 2026-09-28; L8369
+- **I-311** The bridge enforces what the agents may do in the laptop's Chrome itself, at the CDP layer: always-on refusals, and `--allow HOST` enforced by a CDP connection of the bridge's own — 2026-09-28; L8391
+- **I-312** The bridge needs a running machine and does not start one; there is no detached bridge — 2026-09-28; L8475
+- **I-313** Closing a bridge is one ssh, bounded at 4 s, and never waits for a tmux client — 2026-09-28; L8487
+- **I-314** The bridge prints a navigation log on the user's own terminal: time, host and path, `blocked` or not, never a query or fragment, and nothing is stored — 2026-09-28; L8503
+- **I-315** `--bridge-allow HOST` on `run` and `attach` is the allowlist for `--bridge`, and implies it — 2026-09-28; L8519
+- **I-316** The user's Chrome has one page, "Lend the agents your Chrome" (`/docs/your-chrome`), under Using repose; the tutorial page it replaces is removed — 2026-09-28; L8530

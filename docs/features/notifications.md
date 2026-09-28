@@ -108,11 +108,22 @@ Channels (`workstreams/13-notifications.md` §5.6):
 - Email through Resend, to the account's email, one message per event,
   subject `[repose] <project>: <agent> <verb>` for agent events (e.g.
   `[repose] todo-app: claude finished`) or a dedicated line for platform
-  events (today: `Your guests were stopped for non-payment`). The body
-  carries the summary, a `repose attach` hint, a dashboard link, and — once
-  the platform's signing key exists, which it does from the api's first
-  start — a one-click unsubscribe link that turns email off with no login
-  required. On by default at signup; no time-based default change.
+  and account events (`internal/api/notify.Subject`). Every email is
+  rendered twice from one content, as HTML and as plain text, and both go
+  in the one Resend call (DECISIONS I-291): one HTML layout
+  (`internal/api/notify/templates/layout.html`, a 600 px table, inline
+  styles, system fonts, the landing's paper and ink in light mode only,
+  the word `repose` as the header, no images, no tracking) and one text
+  layout, filled from a per-kind partial under `templates/kinds/`. Golden
+  files under `internal/api/notify/testdata/<kind>.html|.txt` pin every
+  kind (`TestGoldenEmails`, `-update` rewrites them). Everything a tenant
+  wrote (a summary, a project name, a question) is escaped where it is
+  placed. An agent email carries the summary, a `repose attach` row, a
+  button to the project and, once the platform's signing key exists (from
+  the api's first start), a one-click unsubscribe line that turns email
+  off with no login; an `agent_question` renders its options as buttons
+  calling the signed reply links. On by default at signup; no time-based
+  default change.
 - ntfy: the user sets any ntfy-compatible URL, including a self-hosted
   server; the platform POSTs the message with a title, a priority (higher
   for `needs_input` and failures), and a `click` URL pointing at the
@@ -123,6 +134,42 @@ Channels (`workstreams/13-notifications.md` §5.6):
 - Both can be on. Neither is required. Turning one off deletes its
   already-queued deliveries rather than sending one more batch to a
   channel the user just disabled.
+
+## Account emails
+
+Account events name a user and no project (`events.user_id`, migration
+0007) and are transactional: sent whatever `notify_email` says, by email
+only (ntfy is a project channel), and without an unsubscribe line, since
+each answers something the user did or is about to be charged for
+(DECISIONS I-269, I-291). The list is `events.AccountKinds`; the outbox
+reads it, so a producer and the sender cannot disagree. A producer writes
+one with `events.InsertAccount(ctx, tx, userID, now, kind, payload)` in
+its own transaction (the row and the email are one commit) or
+`Ingest.Account`; `payload` is marshalled into `events.summary` as a small
+JSON object of the fields the template renders, and a template renders
+gracefully when a field is missing. Paddle's own receipts and
+payment-failure emails stay on in Paddle's dashboard, so a failed payment
+produces Paddle's email about the card and ours about the machines.
+
+| Kind | Subject | When, and who writes it | `summary` fields |
+|---|---|---|---|
+| `welcome` | Welcome to repose | first sign-in, `internal/api/auth/users.go` in the user's insert transaction: install, `repose run`, choose a plan; the seven free days | none |
+| `waitlist_joined` | You're on the waitlist | `waitlist.Service.Reserve` or `Join` created the row: the place, that a seat is 8 GB running at once, that an email comes at their turn and the hold is 72 hours | `{position}` |
+| `waitlist_invited` | A seat is yours for 72 hours | the invite tick or `repose-admin waitlist admit` (replaces `waitlist_admitted`): choose a plan at `/billing` before `hold_until`, what an expired hold means | `{hold_until}` |
+| `waitlist_expired` | Your seat hold ran out | the tick, when `hold_until` passed unconverted: back on the list at position N | `{position}` |
+| `trial_ending` | Your free week ends soon | billing, two days before `trial_end`: the plan, the amount, the charge date, the cancel link | `{plan, amount_cents, charge_at}` |
+| `payment_failed` | Your payment failed | billing, day 0 and day 2 of `past_due`: update the card in Paddle's portal, machines run three days, then stop | `{plan, amount_cents, portal_url?}` |
+| `subscription_cancelled` | Your plan is ending | billing, on a cancellation: the end date, machines stop then, snapshots kept 30 days, resume link | `{plan, ends_at}` |
+| `subscription_ended` | Your plan has ended | billing, at the end: machines stopped, the retention date, how to come back | `{plan, ended_at, retention_until}` |
+| `plan_changed` | Your plan changed | billing, on an upgrade or a scheduled downgrade | `{from_plan, to_plan, effective_at}` |
+| `egress_stopped` | Your machines were stopped: egress limit | billing, at four times the egress allowance: the period's egress, the limit, until when, the upgrade link | `{plan, egress_gb, limit_gb, until}` |
+
+`billing_stopped` (`Your guests were stopped for non-payment`) and
+`abuse_stopped` (`Your guest was stopped: a cryptocurrency miner was
+running`) stay project events with their own subjects, rendered through
+the same layout. Dates in payloads are RFC 3339 and render as `4 October
+2026 at 14:00 UTC`; amounts are cents and render as `$29.00`; plans are
+`solo|pro` and render as their names.
 
 Agents' own features are untouched: Claude Code Remote Control works from a
 guest when the user logged in with a subscription inside it; Claude channels
@@ -153,7 +200,7 @@ Workstreams 13 (delivery, dedupe, rate cap, Resend, ntfy, unsubscribe), 04
 (ingest, events routes, `PATCH /me` notify settings, the ops engine's
 platform-event hook), 07 (`notify` and `events` commands), 08 (settings and
 event stream pages), 02 (`repose-hook` and wrappers), 09 (`billing_stopped`'s
-producer, `internal/billing/dunning.go`).
+producer, `internal/billing/dunning.go`, and the plan emails of I-291).
 
 ## Deferred
 

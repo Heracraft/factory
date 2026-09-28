@@ -44,7 +44,7 @@ You are `dev`, with passwordless `sudo`. The checkout is under `/home/dev`, and 
 ## Browser
 
 - Drive a browser with the `playwright` or `chrome-devtools` MCP tools when you have them (Claude Code does), or with Playwright from code. Its browsers are installed; skip `npx playwright install`. <!-- /docs/machine#browser -->
-- The `playwright` and `chrome-devtools` tools share one browser, which the user sees live when they run `repose browser` on their laptop. For a step only a person can do (a captcha, a passkey, a login), ask them to open the desktop and do it in that browser; its logins are kept. <!-- /docs/machine#browser -->
+- The `playwright` and `chrome-devtools` tools share one browser, which the user sees live when they run `repose browser` on their laptop. For a step only a person can do (a captcha, a passkey, a login), ask them to run `repose browser` and do it in that browser; its logins are kept. <!-- /docs/machine#browser -->
 - While the user runs `repose browser bridge` on their laptop, those same two tools drive the user's own Chrome there instead, with their logins and extensions; the switch happens on your next call, nothing restarts. `repose-guest-profile browser bridge status` prints on while it does, off otherwise. A site the user is logged in to on their laptop needs that; ask them for the bridge rather than for their password. <!-- /docs/machine#use-your-own-chrome --> <!-- needs: repose-guest-profile -->
 - The user may open the bridge with an allowlist. Then a site off the list fails: navigating there returns an error saying it is not on the bridge's allowlist, and pages there fail to load with net::ERR_BLOCKED_BY_CLIENT. Ask the user to add the site; don't try to reach it another way. Tabs of theirs on other sites are hidden from you. <!-- /docs/your-chrome#keep-the-agents-to-some-sites -->
 
@@ -77,6 +77,8 @@ You are `dev`, with passwordless `sudo`. The checkout is under `/home/dev`, and 
 
 ## Limits
 
+- The user's plan buys memory that may run at once (Solo 8 GB, Pro 16 GB), disk that may be allocated and egress for the month. A start refused with exit code 7 and a message naming the machine using the memory is the user's call: they stop one or upgrade. Don't work around it. <!-- /docs/limits#your-plan -->
+- Data this machine sends to the internet counts against the user's monthly egress allowance (250 GB on Solo, 500 GB on Pro); every GB past it costs them $0.05, and at four times the allowance their machines stop until the month turns. Incoming data is free, disk is a hard limit: don't download, serve or upload large files needlessly. <!-- /docs/limits#egress -->
 - Nothing on the internet can connect to this machine. Outbound traffic is allowed, up to 200 Mbit/s. <!-- /docs/limits#network --> <!-- /docs/machine#network -->
 - Outbound port 25 is blocked. Send mail through a provider's API or its submission port (587 or 465). <!-- /docs/limits#network -->
 - New outbound connections are limited to 200 a second, in bursts of up to 2000. <!-- /docs/limits#network -->

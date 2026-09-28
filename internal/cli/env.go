@@ -206,7 +206,7 @@ func exitCodeFor(err error, stderr io.Writer) int {
 			_, _ = fmt.Fprintln(stderr, "Not logged in. Run `repose login`.")
 			return ExitNotLoggedIn
 		case "payment_required":
-			_, _ = fmt.Fprintln(stderr, "Add a card at https://repose.herakraft.co/billing first.")
+			_, _ = fmt.Fprintln(stderr, paymentRequiredMessage(apiErr))
 			return ExitPaymentRequired
 		case "capacity":
 			_, _ = fmt.Fprintln(stderr, "No capacity right now; try again in a few minutes. (We have been alerted.)")

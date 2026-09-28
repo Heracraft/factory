@@ -1,19 +1,27 @@
 ---
 title: Limits and acceptable use
-description: How many projects you can have, what the network allows, and what gets a machine stopped.
+description: What your plan allows at once, how many projects you can have, what the network allows, and what gets a machine stopped.
 section: Account
 order: 31
 ---
 
+## Your plan
+
+A plan buys memory that may run at once, disk that may be allocated, and egress for the month ([Pricing](/docs/billing)). Solo runs 8 GB at once (one `large`, or two `small`), Pro 16 GB (one `xl`, two `large`, any mix). Starting a machine that would pass it is refused with exit code 7 and a message that names the machine using the memory; stop it, or upgrade. An `xl` needs Pro.
+
 ## Projects
 
-A new account can have 3 projects, at most 1 of them `xl`. After your first paid invoice, the limit is 10 projects of any size. Destroyed projects don't count, and neither does one still being destroyed. A project whose destroy failed still counts until `repose rm` succeeds. Each copy [`repose fork`](/docs/lifecycle#fork-a-project) makes is a project.
+Solo allows 10 projects and Pro 25, running or stopped. Destroyed projects don't count, and neither does one still being destroyed, for projects or for disk. A project whose destroy failed still counts until `repose rm` succeeds. Each copy [`repose fork`](/docs/lifecycle#fork-a-project) makes is a project. Disk bounds it anyway: Solo allocates up to 100 GB across its projects, Pro 250 GB.
 
 ## When repose is full
 
-Machines never share memory, so there's room for a fixed number of them. When the servers are close to full, a new account's first project waits: `repose run` says `repose is at capacity. You're number 3 on the waitlist; we'll email you@example.com when there's room.` and exits with code 8. Running it again keeps your place. The dashboard shows your place too.
+Machines never share memory, so there's room for a fixed number of them. A seat is 8 GB running at once: Solo takes one, Pro two. When no seat is free, choosing a plan puts you on the waitlist instead: `repose is full right now. You're number 3 on the waitlist; we'll email you@example.com when there's a seat.` The Billing page and the landing page show the seats left and the number waiting.
 
-We let people in, in the order they joined, as room frees up or we add a server. You get one email when it's your turn; it's sent even if you've turned notification emails off. Then run `repose run` again. Once you're in, or once you've had a project, you never wait in this queue again.
+We let people in, in the order they joined, as seats free up or we add a server. You get one email when it's your turn, sent even if you've turned notification emails off, and the seat is held for you for 72 hours. Choose your plan within them; a hold that runs out moves you to the back of the queue, and the email says so.
+
+## Egress
+
+Data your machines send to the internet is counted against the month's allowance (250 GB on Solo, 500 GB on Pro), then $0.05 per GB. At four times the allowance your machines are stopped until the month turns, with an email. Incoming data, and your own SSH traffic through the gateway, don't count.
 
 ## Network
 

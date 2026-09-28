@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { money, gb, projectedMonthCents, normalizeRemoteDisplay, trialTimeLeft } from './format';
+import {
+	money,
+	gb,
+	gbs,
+	price,
+	dateOnly,
+	timeUntil,
+	share,
+	normalizeRemoteDisplay
+} from './format';
 
 describe('money', () => {
 	it('formats cents as dollars', () => {
@@ -18,20 +27,50 @@ describe('gb', () => {
 	});
 });
 
-describe('projectedMonthCents', () => {
-	it('projects a flat run rate across the rest of the month', () => {
-		// Noon on January 1st (31 days): 12h elapsed today and this month,
-		// 744 total hours, so 732 remain. $12 so far today is a $1/h rate,
-		// so the projection is today's $12 plus $1/h for the 732 remaining
-		// hours.
-		const now = new Date(2026, 0, 1, 12, 0, 0);
-		const projected = projectedMonthCents(1200, 1200, now);
-		expect(projected).toBe(1200 + 100 * 732);
+describe('price', () => {
+	it('drops the cents of a whole-dollar plan price', () => {
+		expect(price(2900)).toBe('$29');
+		expect(price(5900)).toBe('$59');
 	});
+	it('keeps the cents of an overage', () => {
+		expect(price(250)).toBe('$2.50');
+	});
+});
 
-	it('returns the month-to-date figure when less than an hour has elapsed today', () => {
-		const now = new Date(2026, 0, 5, 0, 30, 0);
-		expect(projectedMonthCents(5000, 0, now)).toBe(5000);
+describe('gbs', () => {
+	it("formats the api's GB figures", () => {
+		expect(gbs(100)).toBe('100 GB');
+		expect(gbs(37.25)).toBe('37.3 GB');
+		expect(gbs(0)).toBe('0 GB');
+	});
+});
+
+describe('dateOnly', () => {
+	it('gives the local date of a charge', () => {
+		const d = new Date(2026, 9, 4, 15, 30);
+		expect(dateOnly(d.toISOString())).toBe('2026-10-04');
+	});
+});
+
+describe('timeUntil', () => {
+	const now = new Date(2026, 8, 27, 12, 0, 0);
+	it('counts hours under two days and days after', () => {
+		expect(timeUntil(new Date(2026, 8, 27, 13, 30).toISOString(), now)).toBe('1 hour');
+		expect(timeUntil(new Date(2026, 8, 28, 12, 0).toISOString(), now)).toBe('24 hours');
+		expect(timeUntil(new Date(2026, 8, 30, 12, 0).toISOString(), now)).toBe('3 days');
+	});
+	it('says less than an hour, then nothing once passed', () => {
+		expect(timeUntil(new Date(2026, 8, 27, 12, 20).toISOString(), now)).toBe('less than an hour');
+		expect(timeUntil(new Date(2026, 8, 27, 11, 0).toISOString(), now)).toBe('');
+	});
+});
+
+describe('share', () => {
+	it('clamps a usage bar to the limit and treats no limit as empty', () => {
+		expect(share(4, 8)).toBe(0.5);
+		expect(share(300, 250)).toBe(1);
+		expect(share(3, 0)).toBe(0);
+		expect(share(-1, 8)).toBe(0);
 	});
 });
 
@@ -52,20 +91,5 @@ describe('normalizeRemoteDisplay', () => {
 		const a = normalizeRemoteDisplay('git@github.com:a/b.git');
 		const b = normalizeRemoteDisplay('https://github.com/a/b');
 		expect(a).toBe(b);
-	});
-});
-
-describe('trialTimeLeft', () => {
-	it('says time, never money (I-205)', () => {
-		expect(trialTimeLeft(336)).toBe(
-			'Your first day of compute: 24 hours left on large (48 on small).'
-		);
-		expect(trialTimeLeft(20)).toBe('Your first day of compute: 1 hour left on large (2 on small).');
-		expect(trialTimeLeft(10)).toBe(
-			'Your first day of compute: under an hour left on large (1 hour on small).'
-		);
-		expect(trialTimeLeft(0)).toBe('Your first day of compute is used up.');
-		expect(trialTimeLeft(-5)).toBe('Your first day of compute is used up.');
-		for (const c of [336, 100, 20, 0]) expect(trialTimeLeft(c)).not.toMatch(/\$/);
 	});
 });

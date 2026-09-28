@@ -17,19 +17,18 @@ repose run "start the dev server, open the signup page with playwright, fill the
 
 In tmux you'll see the agent start the server, call the browser tool and describe what it saw. The screenshot lands in the checkout on the machine.
 
-## Open the desktop
+## Open the view
 
-From another terminal on your laptop:
+From another terminal on your laptop, or the same one after the agent has started:
 
 ```
 $ repose browser
-http://localhost:6080/vnc.html?autoconnect=1 (Ctrl-C stops the forward; the desktop keeps running)
-VNC password: 5m2k8Q1p
+Watching todo-app's browser at http://localhost:6080/#p=5m2k8Q1p (the view sleeps after 30 idle minutes; repose browser --stop ends it).
 ```
 
-A tab opens with the machine's screen. Enter the password and you're looking at the agent's Chromium, the same window it's driving, with the page it's on. It updates live: when the agent navigates, you see the navigation.
+A tab opens with the machine's screen and you're looking at the agent's Chromium, the same window it's driving, with the page it's on. Nothing to type: the password is the part of the link after `#`, and your browser never sends it anywhere. The screen takes the size of your tab. It updates live: when the agent navigates, you see the navigation. The command returns at once and keeps its forward running in the background; run it again for the same link.
 
-If 6080 is taken on your laptop (another project's desktop, usually), a free port is used and the URL shows it.
+If 6080 is taken on your laptop (another project's view, usually), a free port is used and the link shows it.
 
 ## Take over
 
@@ -39,11 +38,11 @@ The screen is not a recording. Click in it and you're using the agent's browser.
 - **A captcha, a passkey, a 2FA prompt.** Do it, then tell the agent to carry on.
 - **A quick check.** Scroll to the part of the page the agent described and see it for yourself.
 
-Agents know this too. Their guide to the machine tells them to ask you to open the desktop when a page needs a human, so a prompt like "log in to the staging site and check the dashboard" ends with the agent asking rather than guessing at credentials. When you get that message, `repose browser`, log in, and reply.
+Agents know this too. Their guide to the machine tells them to ask you to run `repose browser` when a page needs a human, so a prompt like "log in to the staging site and check the dashboard" ends with the agent asking rather than guessing at credentials. When you get that message, `repose browser`, log in, and reply.
 
 ## Close it
 
-`Ctrl-C` in the terminal that opened the desktop stops the forward; the desktop itself stays up for 30 minutes without a viewer, then stops. `repose browser --stop` stops it now. The agent's browser is separate: it keeps running while an agent uses it and stops after 30 minutes with neither an agent nor you on it. Stopping the desktop never interrupts an agent.
+Close the tab and the view stays up for 30 minutes without a viewer, then sleeps; opening the link again wakes it. `repose browser --stop` closes the view and the forward now. The agent's browser is separate: it keeps running while an agent uses it and stops after 30 minutes with neither an agent nor you on it. Stopping the view never interrupts an agent.
 
 ## Things worth knowing
 

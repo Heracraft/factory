@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/heracraft/repose/internal/api/metrics"
+	"github.com/heracraft/repose/internal/api/ops"
 	"github.com/heracraft/repose/internal/api/store"
 	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/db"
@@ -19,8 +20,8 @@ import (
 
 func TestMain(m *testing.M) { os.Exit(testdb.Run(m)) }
 
-// quiet is a logger that keeps the test output readable; set BILLING_TEST_LOG
-// to see what the rollup and the webhooks say.
+// quiet is a logger that keeps the test output readable; set
+// BILLING_TEST_LOG to see what the jobs say.
 func quiet() *slog.Logger {
 	if os.Getenv("BILLING_TEST_LOG") != "" {
 		return slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -28,115 +29,181 @@ func quiet() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
+// testConfig is a sandbox configuration pointed at the fake.
+func testConfig(f *fakePaddle) billing.Config {
+	return billing.Config{APIKey: "pdl_sdbx_apikey_test", WebhookSecret: f.Secret(), ClientToken: "test_client_token",
+		PriceSolo: "pri_solo_test", PricePro: "pri_pro_test", ProductOverage: "pro_overage_test",
+		DashboardURL: "https://repose.herakraft.co", PortalReturnURL: "https://repose.herakraft.co/billing", BaseURL: f.URL(), Enforce: true}
+}
+
 // account is a seeded user with one project.
 type account struct {
 	UserID    uuid.UUID
 	Handle    string
+	Email     string
 	ProjectID uuid.UUID
-	GuestID   uuid.UUID
-	Anchor    time.Time
+	Slug      string
+	SubID     string
+	Period    billing.Period
 }
 
-// seedAccount inserts a user anchored at anchor, with the trial credit in
-// the ledger the way auth.Provisioner does it, and one project.
-func seedAccount(t *testing.T, pool *db.Pool, class string, anchor time.Time, credit int64) account {
+// period is the fixed billing period the seeded subscriptions carry.
+func period() billing.Period {
+	return billing.Period{Start: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), End: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)}
+}
+
+// seedAccount inserts a user with billing_status status and, when plan is
+// not empty, a live subscription on it (status trialing|active|past_due
+// from the account status), plus one project of class in state.
+func seedAccount(t *testing.T, pool *db.Pool, plan, status, class, state string) account {
 	t.Helper()
 	ctx := context.Background()
-	a := account{UserID: store.NewID(), ProjectID: store.NewID(), GuestID: store.NewID(), Anchor: anchor.UTC()}
+	a := account{UserID: store.NewID(), ProjectID: store.NewID(), Period: period()}
 	a.Handle = "u" + a.UserID.String()[24:]
-	if _, err := pool.Exec(ctx, `insert into users (id, handle, email, billing_status, has_card, trial_credit_cents, stripe_customer_id, created_at, billing_anchor)
-		values ($1, $2, $3, 'trial', true, 0, $4, $5, $5)`, a.UserID, a.Handle, a.Handle+"@example.test", "cus_"+a.Handle, a.Anchor); err != nil {
+	a.Email = a.Handle + "@example.test"
+	a.Slug = "s" + a.ProjectID.String()[24:]
+	if _, err := pool.Exec(ctx, `insert into users (id, handle, email, billing_status, has_card, paddle_customer_id, created_at)
+		values ($1, $2, $3, $4, $5, $6, $7)`, a.UserID, a.Handle, a.Email, status, plan != "", nullIf(plan == "", "ctm_"+a.Handle), a.Period.Start.Add(-24*time.Hour)); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
-	if credit != 0 {
-		if _, err := billing.Credit(ctx, pool, a.UserID, credit, billing.ReasonTrial, ""); err != nil {
-			t.Fatalf("seed credit: %v", err)
+	if plan != "" {
+		subStatus := map[string]string{"trial": billing.StatusTrialing, "active": billing.StatusActive, "past_due": billing.StatusPastDue}[status]
+		if subStatus == "" {
+			subStatus = billing.StatusActive
+		}
+		p, _ := billing.PlanByID(plan)
+		a.SubID = "sub_" + a.Handle
+		var trialEnd *time.Time
+		if subStatus == billing.StatusTrialing {
+			te := a.Period.Start.Add(7 * 24 * time.Hour)
+			trialEnd = &te
+		}
+		if _, err := pool.Exec(ctx, `insert into subscriptions (id, user_id, paddle_customer_id, plan, status, seats, period_start, period_end, next_billed_at, trial_end, created_at)
+			values ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9, $7)`, a.SubID, a.UserID, "ctm_"+a.Handle, plan, subStatus, p.Seats, a.Period.Start, a.Period.End, trialEnd); err != nil {
+			t.Fatalf("seed subscription: %v", err)
 		}
 	}
-	if _, err := pool.Exec(ctx, `insert into projects (id, user_id, name, slug, class, state, volume_bytes, guest_id, created_at)
-		values ($1, $2, 'todo', $3, $4, 'running', $5, $6, $7)`,
-		a.ProjectID, a.UserID, "s"+a.ProjectID.String()[24:], class, int64(40)<<30, a.GuestID, a.Anchor); err != nil {
-		t.Fatalf("seed project: %v", err)
+	if class != "" {
+		if _, err := pool.Exec(ctx, `insert into projects (id, user_id, name, slug, class, state, volume_bytes, guest_id, created_at)
+			values ($1, $2, $3, $3, $4, $5, $6, $7, $8)`, a.ProjectID, a.UserID, a.Slug, class, state, int64(40)<<30, store.NewID(), a.Period.Start); err != nil {
+			t.Fatalf("seed project: %v", err)
+		}
 	}
 	return a
 }
 
+func nullIf(cond bool, v string) *string {
+	if cond {
+		return nil
+	}
+	return &v
+}
+
+// addProject adds another project to an account.
+func addProject(t *testing.T, pool *db.Pool, a account, slug, class, state string, volume int64) uuid.UUID {
+	t.Helper()
+	id := store.NewID()
+	if _, err := pool.Exec(context.Background(), `insert into projects (id, user_id, name, slug, class, state, volume_bytes, guest_id, created_at)
+		values ($1, $2, $3, $3, $4, $5, $6, $7, $8)`, id, a.UserID, slug, class, state, volume, store.NewID(), a.Period.Start); err != nil {
+		t.Fatalf("add project: %v", err)
+	}
+	return id
+}
+
+// usageHour writes one usage_hours row directly (the rollup's output).
+func usageHour(t *testing.T, pool *db.Pool, projectID uuid.UUID, hour time.Time, class string, runningSeconds int, egress int64, p billing.Period) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), `insert into usage_hours (project_id, hour, class, running_seconds, gb_alloc, egress_bytes, cost_cents, period_start, period_end, price_version)
+		values ($1, $2, $3, $4, 40, $5, 0, $6, $7, 'plan-v1') on conflict (project_id, hour) do update set egress_bytes = excluded.egress_bytes, running_seconds = excluded.running_seconds`,
+		projectID, hour.UTC(), class, runningSeconds, egress, p.Start, p.End); err != nil {
+		t.Fatalf("usage hour: %v", err)
+	}
+}
+
 // sample writes one meter_samples minute.
-func sample(t *testing.T, pool *db.Pool, a account, ts time.Time, state, class string, diskAlloc, netTx int64) {
+func sample(t *testing.T, pool *db.Pool, projectID uuid.UUID, ts time.Time, state, class string, diskAlloc, netTx int64) {
 	t.Helper()
 	if _, err := pool.Exec(context.Background(), `insert into meter_samples (ts, project_id, host_id, state, class, disk_alloc, net_tx, guestd_ok)
 		values ($1, $2, $3, $4, $5, $6, $7, true) on conflict do nothing`,
-		ts.UTC(), a.ProjectID, uuid.Nil, state, class, diskAlloc, netTx); err != nil {
+		ts.UTC(), projectID, uuid.Nil, state, class, diskAlloc, netTx); err != nil {
 		t.Fatalf("sample at %s: %v", ts, err)
 	}
 }
 
-// recorder is a UsagePusher that remembers what it was given.
-type recorder struct {
-	rows []billing.UsageRow
-	fail error
-}
-
-func (p *recorder) PushUsage(_ context.Context, r billing.UsageRow) (string, error) {
-	if p.fail != nil {
-		return "", p.fail
-	}
-	p.rows = append(p.rows, r)
-	return "usage:" + r.ProjectID + ":" + r.Hour.Format(time.RFC3339), nil
-}
-
-func (p *recorder) total() int64 {
-	var n int64
-	for _, r := range p.rows {
-		n += r.Billable()
-	}
-	return n
-}
-
-func newRollup(pool *db.Pool, p billing.UsagePusher) *billing.Rollup {
-	return billing.NewRollup(pool, p, metrics.NewNop(), quiet())
-}
-
-// sums reads the period totals of a project straight from usage_hours.
-func sums(t *testing.T, pool *db.Pool, projectID uuid.UUID) (guest, storage, egress, cost, credit int64) {
-	t.Helper()
-	err := pool.QueryRow(context.Background(), `select coalesce(sum(guest_cents),0), coalesce(sum(storage_cents),0),
-		coalesce(sum(egress_cents),0), coalesce(sum(cost_cents),0), coalesce(sum(credit_cents),0)
-		from usage_hours where project_id = $1`, projectID).Scan(&guest, &storage, &egress, &cost, &credit)
-	if err != nil {
-		t.Fatalf("sum usage_hours: %v", err)
-	}
-	return
-}
-
-// ensurePartitions creates the monthly meter_samples partitions the test's
-// span needs; testdb's template only has the ones the api made at start.
+// ensurePartitions creates the monthly meter_samples partitions a span needs.
 func ensurePartitions(t *testing.T, pool *db.Pool, from, to time.Time) {
 	t.Helper()
-	ctx := context.Background()
 	m := time.Date(from.UTC().Year(), from.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
 	for ; !m.After(to.UTC()); m = m.AddDate(0, 1, 0) {
-		if err := db.EnsurePartitions(ctx, pool, m); err != nil {
+		if err := db.EnsurePartitions(context.Background(), pool, m); err != nil {
 			t.Fatalf("partitions for %s: %v", m.Format("2006-01"), err)
 		}
 	}
 }
 
-// fillRunning writes `hours * 60` running minutes in one statement, with
-// the egress spread evenly across them. Inserting them one at a time makes
-// a 720-hour period test take minutes.
-func fillRunning(t *testing.T, pool *db.Pool, a account, start time.Time, hours int, class string, diskAlloc, egressTotal int64) {
-	t.Helper()
-	minutes := int64(hours) * 60
-	per := int64(0)
-	if minutes > 0 {
-		per = egressTotal / minutes
-	}
-	_, err := pool.Exec(context.Background(), `insert into meter_samples (ts, project_id, host_id, state, class, disk_alloc, net_tx, guestd_ok)
-		select $1::timestamptz + (g || ' minutes')::interval, $2, $3, 'running', $4, $5, $6, true
-		from generate_series(0, $7::bigint - 1) g on conflict do nothing`,
-		start.UTC(), a.ProjectID, uuid.Nil, class, diskAlloc, per, minutes)
-	if err != nil {
-		t.Fatalf("fill %d running hours: %v", hours, err)
-	}
+// stopRecorder stands in for the ops engine: it writes the same pending op
+// row Enqueue would, so a test can read back the kind and parameters.
+type stopRecorder struct {
+	calls []ops.NewOp
+	kicks int
 }
+
+func (s *stopRecorder) Enqueue(ctx context.Context, q store.Querier, n ops.NewOp, allowQueue bool) (uuid.UUID, error) {
+	s.calls = append(s.calls, n)
+	id := store.NewID()
+	params := map[string]any{"phases": n.Phases}
+	for k, v := range n.Params {
+		params[k] = v
+	}
+	_, err := q.Exec(ctx, "insert into ops (id, project_id, kind, state, params) values ($1, $2, $3, 'pending', $4)", id, n.ProjectID, n.Kind, params)
+	return id, err
+}
+
+func (s *stopRecorder) Kick() { s.kicks++ }
+
+// userField reads one column of the account's users row as text.
+func userField(t *testing.T, pool *db.Pool, a account, col string) string {
+	t.Helper()
+	var v *string
+	if err := pool.QueryRow(context.Background(), "select "+col+"::text from users where id = $1", a.UserID).Scan(&v); err != nil {
+		t.Fatalf("read users.%s: %v", col, err)
+	}
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
+// eventKinds lists the account's user-only events, oldest first.
+func eventKinds(t *testing.T, pool *db.Pool, a account) []string {
+	t.Helper()
+	rows, err := pool.Query(context.Background(), "select kind from events where user_id = $1 order by ts, id", a.UserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, k)
+	}
+	return out
+}
+
+// outboxEmails counts email outbox rows for the account's events.
+func outboxEmails(t *testing.T, pool *db.Pool, a account) int {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(context.Background(), "select count(*) from events_outbox o join events e on e.id = o.event_id where e.user_id = $1 and o.channel = 'email'", a.UserID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func nop() *metrics.M { return metrics.NewNop() }
+
+// at is a clock a job's Now can be pinned to.
+func at(t time.Time) func() time.Time { return func() time.Time { return t } }

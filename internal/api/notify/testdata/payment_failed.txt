@@ -1,0 +1,10 @@
+Your last payment failed
+
+The charge for Pro ($59.00) did not go through. Update your card in the billing portal and the next attempt takes it.
+
+Your machines keep running for three days. After that they are snapshotted and stopped until a payment arrives.
+
+Update your card: https://customer-portal.paddle.com/cpl_abc
+
+--
+repose. Open the dashboard: https://repose.herakraft.co

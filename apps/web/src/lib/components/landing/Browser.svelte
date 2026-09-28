@@ -3,7 +3,8 @@
   machine (the owner's job-alerts app), 2026-09-26.
 
   Top: the machine's Chromium as the desktop shows it, captured through
-  `repose open --desktop` (noVNC canvas, 1x) while the run below happened: the
+  the desktop viewer (noVNC canvas, 1x; the command is `repose browser`
+  since I-292) while the run below happened: the
   toolbar and the page, cropped out of the window (static/landing/browser-*).
   The window was 586px wide at 125% zoom so the text survives the scale-down.
   States, in the order they happened: about:blank; /feedback loaded; the bug

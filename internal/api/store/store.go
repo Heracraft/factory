@@ -25,36 +25,36 @@ type Querier interface {
 
 // User is a users row.
 type User struct {
-	ID               uuid.UUID `db:"id"`
-	LogtoSub         *string   `db:"logto_sub"`
-	Handle           string    `db:"handle"`
-	Email            *string   `db:"email"`
-	GithubLogin      *string   `db:"github_login"`
-	TZ               *string   `db:"tz"`
-	NotifyEmail      bool      `db:"notify_email"`
-	NtfyURL          *string   `db:"ntfy_url"`
-	StripeCustomerID *string   `db:"stripe_customer_id"`
-	// StripeSubscriptionID, BillingAnchor and PastDueSince are workstream
-	// 09's (migration 0003): the subscription carrying the three metered
-	// prices, the signup anchor the billing period is counted from, and
-	// when the account first failed a payment.
-	StripeSubscriptionID *string    `db:"stripe_subscription_id"`
-	BillingAnchor        *time.Time `db:"billing_anchor"`
-	PastDueSince         *time.Time `db:"past_due_since"`
-	BillingStatus        string     `db:"billing_status"`
-	HasCard              bool       `db:"has_card"`
-	TrialCreditCents     int64      `db:"trial_credit_cents"`
-	ProjectLimit         int        `db:"project_limit"`
-	XLLimit              int        `db:"xl_limit"`
-	SuspendedAt          *time.Time `db:"suspended_at"`
-	SuspendedReason      *string    `db:"suspended_reason"`
-	CancelledAt          *time.Time `db:"cancelled_at"`
-	DeletedAt            *time.Time `db:"deleted_at"`
-	CreatedAt            time.Time  `db:"created_at"`
-	UpdatedAt            time.Time  `db:"updated_at"`
+	ID          uuid.UUID `db:"id"`
+	LogtoSub    *string   `db:"logto_sub"`
+	Handle      string    `db:"handle"`
+	Email       *string   `db:"email"`
+	GithubLogin *string   `db:"github_login"`
+	TZ          *string   `db:"tz"`
+	NotifyEmail bool      `db:"notify_email"`
+	NtfyURL     *string   `db:"ntfy_url"`
+	// PaddleCustomerID is the Paddle customer, created at checkout (0008,
+	// I-289). BillingAnchor is unused since I-289 (the period is the
+	// subscription's); PastDueSince is when the account first failed a
+	// payment, which the 3-day stop reads. BillingStatus is a projection
+	// of the subscription: none|trial|active|past_due|suspended|exempt.
+	PaddleCustomerID *string    `db:"paddle_customer_id"`
+	BillingAnchor    *time.Time `db:"billing_anchor"`
+	PastDueSince     *time.Time `db:"past_due_since"`
+	BillingStatus    string     `db:"billing_status"`
+	HasCard          bool       `db:"has_card"`
+	TrialCreditCents int64      `db:"trial_credit_cents"`
+	ProjectLimit     int        `db:"project_limit"`
+	XLLimit          int        `db:"xl_limit"`
+	SuspendedAt      *time.Time `db:"suspended_at"`
+	SuspendedReason  *string    `db:"suspended_reason"`
+	CancelledAt      *time.Time `db:"cancelled_at"`
+	DeletedAt        *time.Time `db:"deleted_at"`
+	CreatedAt        time.Time  `db:"created_at"`
+	UpdatedAt        time.Time  `db:"updated_at"`
 }
 
-const userCols = `id, logto_sub, handle, email, github_login, tz, notify_email, ntfy_url, stripe_customer_id, stripe_subscription_id, billing_anchor, past_due_since, billing_status, has_card, trial_credit_cents, project_limit, xl_limit, suspended_at, suspended_reason, cancelled_at, deleted_at, created_at, updated_at`
+const userCols = `id, logto_sub, handle, email, github_login, tz, notify_email, ntfy_url, paddle_customer_id, billing_anchor, past_due_since, billing_status, has_card, trial_credit_cents, project_limit, xl_limit, suspended_at, suspended_reason, cancelled_at, deleted_at, created_at, updated_at`
 
 // Project is a projects row.
 type Project struct {
@@ -506,29 +506,43 @@ func SetSetting(ctx context.Context, q Querier, key, value string) error {
 	return err
 }
 
-// --- waitlist (DECISIONS I-269) -----------------------------------------
+// --- waitlist (DECISIONS I-269, I-290) --------------------------------
 
 // WaitlistEntry is a waitlist row with the user's handle and, while the
 // user waits, their place in the queue (1 is next).
 type WaitlistEntry struct {
-	UserID     uuid.UUID  `db:"user_id"`
-	Handle     string     `db:"handle"`
-	JoinedAt   time.Time  `db:"joined_at"`
-	AdmittedAt *time.Time `db:"admitted_at"`
-	AdmittedBy *string    `db:"admitted_by"`
-	// Position is 0 once admitted, and for a waiting user whose account
-	// is suspended, cancelled or deleted: such a user holds no place.
+	UserID    uuid.UUID  `db:"user_id"`
+	Handle    string     `db:"handle"`
+	JoinedAt  time.Time  `db:"joined_at"`
+	InvitedAt *time.Time `db:"invited_at"`
+	InvitedBy *string    `db:"invited_by"`
+	// HoldUntil is when the invitation's seat hold runs out; set with
+	// InvitedAt.
+	HoldUntil *time.Time `db:"hold_until"`
+	// ConvertedAt is when the invited user's subscription arrived.
+	ConvertedAt *time.Time `db:"converted_at"`
+	// ExpiredInvites counts holds that ran out; each moved the user to
+	// the back.
+	ExpiredInvites int `db:"expired_invites"`
+	// Position is 0 once invited, and for a waiting user whose account is
+	// suspended, cancelled or deleted: such a user holds no place.
 	Position int `db:"position"`
+}
+
+// Holding reports whether the entry holds a seat: invited, not
+// converted, and the hold has not run out at now.
+func (e *WaitlistEntry) Holding(now time.Time) bool {
+	return e.InvitedAt != nil && e.ConvertedAt == nil && e.HoldUntil != nil && e.HoldUntil.After(now)
 }
 
 // waitlistSQL numbers the waiting users of live accounts oldest first;
 // everyone else gets position 0.
-const waitlistSQL = `select w.user_id, u.handle, w.joined_at, w.admitted_at, w.admitted_by,
+const waitlistSQL = `select w.user_id, u.handle, w.joined_at, w.invited_at, w.invited_by, w.hold_until, w.converted_at, w.expired_invites,
 	coalesce(q.position, 0)::integer as position
 	from waitlist w join users u on u.id = w.user_id
 	left join (select w2.user_id, row_number() over (order by w2.joined_at, w2.user_id) as position
 	             from waitlist w2 join users u2 on u2.id = w2.user_id
-	            where w2.admitted_at is null and u2.suspended_at is null and u2.cancelled_at is null and u2.deleted_at is null) q
+	            where w2.invited_at is null and u2.suspended_at is null and u2.cancelled_at is null and u2.deleted_at is null) q
 	  on q.user_id = w.user_id`
 
 // GetWaitlistEntry returns the user's row, or db.ErrNotFound.
@@ -542,7 +556,7 @@ func ListWaiting(ctx context.Context, q Querier) ([]WaitlistEntry, error) {
 }
 
 // ListWaitlist returns every row: the waiting in order, then the rest,
-// newest admission first.
+// newest invitation first.
 func ListWaitlist(ctx context.Context, q Querier) ([]WaitlistEntry, error) {
-	return many[WaitlistEntry](ctx, q, waitlistSQL+" order by q.position nulls last, w.admitted_at desc nulls last, w.joined_at")
+	return many[WaitlistEntry](ctx, q, waitlistSQL+" order by q.position nulls last, w.invited_at desc nulls last, w.joined_at")
 }

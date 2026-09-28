@@ -4,17 +4,20 @@
 	import { getMe, listDestroyed, listProjects } from '$lib/api/client';
 	import { toastApiError } from '$lib/api/toast';
 	import { pollWhileVisible } from '$lib/poll';
-	import { money, normalizeRemoteDisplay, uptime } from '$lib/format';
+	import { dateTime, normalizeRemoteDisplay, uptime } from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import StateDot from '$lib/components/StateDot.svelte';
 	import { abuseStopReason } from '$lib/abuse';
 	import RecentlyDestroyed from '$lib/components/RecentlyDestroyed.svelte';
-	import type { DestroyedProject, Project } from '$lib/api/types';
+	import type { DestroyedProject, Me, Project } from '$lib/api/types';
 
 	let projects = $state<Project[] | undefined>(undefined);
 	let destroyed = $state<DestroyedProject[]>([]);
-	/** The place on the capacity waitlist, for a user with no project yet (I-269). */
-	let waitlist = $state<{ position: number; email: string } | undefined>(undefined);
+	/** The account, for the seats and waitlist state of a user with no project yet (I-290). */
+	let me = $state<Me | undefined>(undefined);
+	let holdActive = $derived(
+		!!me?.waitlist?.hold_until && new Date(me.waitlist.hold_until).getTime() > Date.now()
+	);
 
 	async function refresh() {
 		try {
@@ -34,10 +37,9 @@
 		}
 		if (projects.length === 0) {
 			try {
-				const me = await getMe();
-				waitlist = me.waitlist ? { position: me.waitlist.position, email: me.email } : undefined;
+				me = await getMe();
 			} catch {
-				waitlist = undefined;
+				me = undefined;
 			}
 		}
 	}
@@ -65,13 +67,10 @@
 	let summary = $derived.by(() => {
 		if (!projects || projects.length === 0) return undefined;
 		const awake = projects.filter((p) => p.state === 'running').length;
-		const month = projects.reduce((n, p) => n + (p.cost_month_cents ?? 0), 0);
-		const parts = [
+		return [
 			`${projects.length} ${projects.length === 1 ? 'project' : 'projects'}`,
-			`${awake} running`,
-			`${money(month)} this month`
-		];
-		return parts.join(' · ');
+			`${awake} running`
+		].join(' · ');
 	});
 </script>
 
@@ -84,10 +83,20 @@
 		<p class="text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
 	{:else if projects.length === 0}
 		<div class="max-w-xl">
-			{#if waitlist}
-				<div class="banner banner--warn mb-6">
-					repose is at capacity. You’re number {waitlist.position} on the waitlist; we’ll email
-					{waitlist.email} when there’s room. Then run <code>repose run</code> again.
+			{#if me?.waitlist && holdActive && me.waitlist.hold_until}
+				<div class="banner banner--ok mb-6" data-testid="seat-held">
+					Your seat is held until {dateTime(me.waitlist.hold_until)}.
+					<a href={resolve('/billing')} class="link">Choose a plan</a> before then.
+				</div>
+			{:else if me?.waitlist}
+				<div class="banner banner--warn mb-6" data-testid="waitlist-place">
+					repose is full. You’re number {me.waitlist.position} on the waitlist; we’ll email
+					{me.email} when a seat frees, and you’ll have 72 hours to choose a plan.
+				</div>
+			{:else if me?.billing.status === 'none'}
+				<div class="banner mb-6" data-testid="no-plan">
+					<a href={resolve('/billing')} class="link">Choose a plan</a> before your first machine can start.
+					Seven days free, card at checkout.
 				</div>
 			{/if}
 			<h2 class="text-xl font-semibold">No projects yet</h2>
@@ -108,8 +117,6 @@ cd ~/code/your-project && repose run</pre>
 						<th>State</th>
 						<th>Size</th>
 						<th>Agents</th>
-						<th class="text-right">Today</th>
-						<th class="text-right">This month</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -134,9 +141,10 @@ cd ~/code/your-project && repose run</pre>
 									</div>
 								{/if}
 								{#if p.state === 'running' && p.idle}
-									<!-- Nobody on it for a day, still billing (I-262). -->
+									<!-- Nobody on it for a day, still running and holding its
+									     memory against the plan (I-262, I-289). -->
 									<div class="mt-0.5 text-xs text-amber-700 dark:text-amber-400">
-										idle {uptime(p.idle.since)} · ~{money(p.idle.hourly_cents)}/h
+										idle {uptime(p.idle.since)} · still running
 									</div>
 								{/if}
 								{#if reason(p)}
@@ -147,8 +155,6 @@ cd ~/code/your-project && repose run</pre>
 							</td>
 							<td class="font-mono text-[13px]">{p.class}</td>
 							<td class="text-zinc-600 dark:text-zinc-400">{agentSummary(p)}</td>
-							<td class="text-right font-mono text-[13px]">{money(p.cost_today_cents)}</td>
-							<td class="text-right font-mono text-[13px]">{money(p.cost_month_cents)}</td>
 						</tr>
 					{/each}
 				</tbody>

@@ -12,6 +12,7 @@ import (
 
 	"github.com/heracraft/repose/internal/api/ops"
 	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/obs"
 )
@@ -106,10 +107,14 @@ func (s *Server) restoreByName(w http.ResponseWriter, r *http.Request) error {
 	if body.Name != nil {
 		name = *body.Name
 	}
-	if err := s.billingGate(u); err != nil {
+	start := body.Start == nil || *body.Start
+	class := ""
+	if start {
+		class = src.Class
+	}
+	if err := s.gate(r, u, billing.Request{Class: class, AddDiskBytes: src.VolumeBytes}); err != nil {
 		return err
 	}
-	start := body.Start == nil || *body.Start
 	if start {
 		if err := s.abuseGate(ctx, src); err != nil {
 			return err
@@ -215,15 +220,20 @@ func (s *Server) restoreAsNew(ctx context.Context, u *store.User, src *store.Pro
 	if u.CancelledAt != nil {
 		return nil, uuid.Nil, errf("forbidden", "account is cancelled")
 	}
+	sub, err := billing.LiveSubscription(ctx, s.d.Pool, u.ID)
+	if err != nil {
+		return nil, uuid.Nil, err
+	}
+	limits := billing.LimitsFor(u, sub)
 	newID := store.NewID()
 	var opID uuid.UUID
-	err := db.InTx(ctx, s.d.Pool, func(tx db.Tx) error {
+	err = db.InTx(ctx, s.d.Pool, func(tx db.Tx) error {
 		var count int
 		if err := tx.QueryRow(ctx, "select count(*) from projects where user_id = (select id from users where id = $1 for update) and "+countsTowardLimit, u.ID).Scan(&count); err != nil {
 			return err
 		}
-		if count >= u.ProjectLimit {
-			return withDetail(errf("invalid", "you have %d of %d projects; destroy one to restore this", count, u.ProjectLimit), map[string]any{"limit": u.ProjectLimit})
+		if count >= limits.Projects {
+			return projectLimitError(count, limits.Projects, 1)
 		}
 		// The remote comes back with the project unless a live project
 		// already has it, so the checkout finds the restored project again.

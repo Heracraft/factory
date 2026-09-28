@@ -101,11 +101,13 @@ func Project(ctx context.Context, q store.Querier, p *store.Project, now time.Ti
 	return since, ok, nil
 }
 
-// Summary is the notification body: counts, times and the price only,
-// never anything from inside the guest.
+// Summary is the notification body: counts, times and the class only,
+// never anything from inside the guest. Since I-289 a plan buys memory
+// that may run at once, so an idle machine costs its share of the plan,
+// not a rate.
 func Summary(slug, class string, idleFor time.Duration) string {
-	return fmt.Sprintf("%s has had no SSH session and no agent working for %dh, and is still running. It bills $%.2f an hour (%s) until you stop it: `repose stop %s`. repose never stops a machine for being idle.",
-		slug, int(idleFor/time.Hour), float64(billing.Hourly(class))/100, class, slug)
+	return fmt.Sprintf("%s has had no SSH session and no agent working for %dh, and is still running, holding %d GB of your plan's memory (%s) until you stop it: `repose stop %s`. repose never stops a machine for being idle.",
+		slug, int(idleFor/time.Hour), billing.ClassMemoryGB(class), class, slug)
 }
 
 // Warner raises Kind once per idle episode per project. An episode starts

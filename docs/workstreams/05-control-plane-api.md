@@ -34,9 +34,10 @@ as a stateless container on Coolify with Postgres beside it.
   expires (30-day rule) and deletes blobs.
 - Events and the notification outbox (delivery is workstream 13; the api
   owns the row and the outbox worker calls 13's senders).
-- Metering: `meter_samples` ingest, hourly rollup into `usage_hours` with
-  cost computation, Stripe usage record push (the price table and Stripe
-  wiring belong to 09; the api owns the rollup job and calls 09's package).
+- Metering: `meter_samples` ingest, hourly rollup into `usage_hours`
+  (hours, disk, egress; no price since I-289: the plan table, the Paddle
+  wiring, the gate and the overage line belong to 09; the api owns the
+  rollup job and calls 09's package).
 - `repose-admin`: `hosts add` (mints a join token), `hosts list|drain|
   retire`, `users suspend|unsuspend|limits`, `projects exec` (audited),
   `db migrate|status`, `ca rotate`, `base release <version>`.
@@ -48,14 +49,15 @@ as a stateless container on Coolify with Postgres beside it.
 ### Billing-exempt accounts (DECISIONS I-16)
 
 `repose-admin users exempt <handle>` sets `billing_status=exempt`. Exempt
-users pass the card and trial checks, still accrue `usage_hours`, and are
-never pushed to Stripe. With no `STRIPE_*` variables the api starts normally
-and billing routes answer `503 billing_disabled`.
+users pass the plan gate and still accrue `usage_hours`. With no
+`PADDLE_API_KEY` the api starts normally, billing routes answer
+`503 billing_disabled` and every other account is refused compute with
+`subscription_required` (I-289).
 
 ## 3. Scope: does not build
 
-- Price constants, Stripe customer and invoice logic, the trial ledger:
-  workstream 09. The api exposes `/billing/*` by calling 09's package.
+- The plan table, the Paddle client, the webhook, the gate and the overage
+  line: workstream 09. The api exposes `/billing/*` by calling 09's package.
 - Email and ntfy senders: workstream 13. The api runs the outbox loop.
 - The dashboard: workstream 08.
 - The gateway's relay: workstream 06. The api serves `/internal/*`.
@@ -90,7 +92,7 @@ main
  ├─ grpc.Server :8443         hosts (mTLS), same process
  ├─ hostmgr                    one goroutine per connected host stream
  ├─ opsworker                  drives ops rows through hostd commands
- ├─ outbox                     notifications, Stripe usage, snapshot expiry
+ ├─ outbox                     notifications, snapshot expiry
  ├─ rollup                     hourly meter rollup (leader-elected via pg advisory lock)
  └─ certcleanup                expired certificates and revocations pruning
 ```
@@ -295,11 +297,10 @@ Every hour at :05, under the advisory lock, for the previous hour:
 `running_seconds` = count of `meter_samples` rows with `state = running` in
 that hour times 60 (capped at 3600); `gb_alloc` = max `disk_alloc` in the
 hour; `egress_bytes` = sum of `net_tx` deltas. `cost_cents` =
-`billing.Price(class, running_seconds, gb_alloc, egress_bytes, month_to_date)`
-(09 owns the function and the cap logic). Upsert into `usage_hours`, then
-`billing.PushUsage(row)` which sets `stripe_usage_record_id`. Samples
-missing for a whole hour (host down) produce a row with zeros and an
-operator alert, never a guess.
+`billing.Price(class, running_seconds, gb_alloc, egress_bytes)` (09 owns
+the function; since I-289 it normalises and prices nothing). Upsert into
+`usage_hours`. Samples missing for a whole hour (host down) produce a row
+with zeros and an operator alert, never a guess.
 
 ### 5.11 Internal routes
 
@@ -337,7 +338,7 @@ health check `GET /healthz` every 10 s, rolling deploy on. Env from
 Coolify: `DATABASE_URL`, `LOGTO_ISSUER`, `LOGTO_M2M_CLIENT_ID/SECRET`,
 `API_RESOURCE`, `KEYVAULT_URL`, `KEYVAULT_KEY_NAME`,
 `AZURE_CLIENT_ID/SECRET/TENANT_ID`, `BLOB_ACCOUNT_URL`, `BLOB_CONTAINER`,
-`STRIPE_*` (09), `RESEND_API_KEY` (13), `OTEL_EXPORTER_OTLP_ENDPOINT`
+`PADDLE_*` (09), `RESEND_API_KEY` (13), `OTEL_EXPORTER_OTLP_ENDPOINT`
 (optional), `GRPC_SERVER_CERT/KEY`, `GATEWAY_HOST/PORT`, `API_MODE`. The
 full list with defaults is `ops/coolify/api.env.example`; the CA material
 is not an environment variable (I-42). Coolify app `api-grpc`: same
@@ -390,7 +391,7 @@ Traces around every op and every hostd command.
 | Host stream drops mid-op | op stays `running`; resent on Hello; if the host stays unreachable 10 min, op `error: host unreachable` | CLI shows `waiting for host` then the error |
 | Build fails | revision `failed` with error and line; op `error` | CLI prints the Nix error and `fragment.nix:<line>`; exit 10 |
 | Key Vault down | secret writes fail; guest start retries 30 min then errors | CLI: `secret service unavailable`; alert |
-| Stripe usage push fails | `stripe_usage_record_id` null, retried hourly, alert after 6 h | operator |
+| Paddle refuses the overage charge | `overage_charges` row without a transaction id, `OverageChargeFailed`, `billing overage-now` retries | operator |
 | Postgres down | `/healthz` fails, Coolify does not route; hostd streams drop and buffer samples | alert |
 | Duplicate `Result` or `Event` | ignored by unique indexes | none |
 | Snapshot expiry deletes a blob a restore is reading | restore holds a `snapshots.deleted_at is null` check inside the same transaction that the expiry job uses `select ... for update skip locked` on | none |
@@ -572,13 +573,11 @@ waits on host-01 (`ops/checks/README.md` names the script that closes it).
       Evidence: `internal/api/notify/notify_test.go`
       `TestOutboxDeliversOncePerChannelAndRetries`,
       `TestPermanentFailureIsNotRetried`.
-- [~] Hourly rollup produces the documented figures for a synthetic day
-      (one large guest 10 h running, 40 GB, 3 GB egress) and pushes to
-      Stripe test mode. Evidence: `internal/api/meter/meter_test.go`
-      `TestIngestAndSyntheticDayRollup` (153 cents for the synthetic day,
-      STATUS 05). The Stripe test-mode push and screenshot are M4 (09, I-16).
-      — waits on: owner (Stripe test-mode key in the api's env; then
-      docs/ops/M4-GATE.md §2 is the push and screenshot).
+- [x] Hourly rollup produces the documented figures for a synthetic day
+      (one large guest 10 h running, 40 GB, 3 GB egress). Evidence:
+      `internal/api/meter/meter_test.go` `TestIngestAndSyntheticDayRollup`
+      (36000 running seconds, 3 GB, no cents: plan-v1, I-289). The Stripe
+      push half of this row went with I-289.
 - [x] `/internal/*` rejects requests without the gateway client cert.
       Evidence: `internal/api/app/app_test.go`
       `TestProcessDevModeAndInternalMTLS`. On the live control plane the
@@ -644,7 +643,7 @@ waits on host-01 (`ops/checks/README.md` names the script that closes it).
       entries "api: login service unavailable", "api: could not create
       your account", "api: no capacity right now", "api: op stuck waiting
       for host", "api: build failed", "api: secret service unavailable",
-      "StripePushFail", "api: Postgres down", "api: duplicate results or
+      "OverageChargeFailed", "api: Postgres down", "api: duplicate results or
       events", "api: snapshot deleted under a restore", "api: rollup or
       expiry not running on one replica", "api: user reports \"account
       suspended\"".

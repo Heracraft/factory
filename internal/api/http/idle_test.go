@@ -89,7 +89,7 @@ func TestIdleRunningProjectWarnsOncePerStretch(t *testing.T) {
 	if err := e.h.Pool.QueryRow(ctx, "select e.summary, (select count(*) from events_outbox o where o.event_id = e.id) from events e where e.project_id = $1 and e.kind = 'idle_running'", p.ID).Scan(&summary, &outbox); err != nil {
 		t.Fatal(err)
 	}
-	if outbox == 0 || !strings.Contains(summary, "repose stop forgotten") || !strings.Contains(summary, "$0.14 an hour") || !strings.Contains(summary, "for 26h") {
+	if outbox == 0 || !strings.Contains(summary, "repose stop forgotten") || !strings.Contains(summary, "holding 8 GB of your plan's memory") || !strings.Contains(summary, "for 26h") {
 		t.Fatalf("summary %q, outbox rows %d", summary, outbox)
 	}
 	if st := e.h.Project(p.ID).State; st != "running" {
@@ -155,7 +155,9 @@ func TestProjectJSONIdle(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.raw), &list); err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 1 || list[0].Idle == nil || list[0].Idle.HourlyCents != 7 || !list[0].Idle.Since.Equal(now.Add(-27*time.Hour)) {
+	// hourly_cents is 0 since I-289 (a plan buys memory, not hours) and
+	// stays one release.
+	if len(list) != 1 || list[0].Idle == nil || list[0].Idle.HourlyCents != 0 || !list[0].Idle.Since.Equal(now.Add(-27*time.Hour)) {
 		t.Fatalf("idle in list: %s", r.raw)
 	}
 }

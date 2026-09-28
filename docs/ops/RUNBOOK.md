@@ -138,8 +138,8 @@ copy-paste version):
 | Rotate a host's mTLS cert | `repose-admin hosts rotate-cert host-NN` |
 | Rotate the Key Vault wrapping key | `az keyvault key rotate` then `repose-admin secrets rewrap` |
 | Query audit log | `repose-admin audit --user <handle> --since 24h` |
-| See the capacity waitlist | `repose-admin waitlist list` (position, handle, joined, admitted, by) |
-| Let someone in ahead of the queue | `repose-admin waitlist admit <handle>`, or `repose-admin waitlist admit --next N` for the next N; audited, one email each (I-269) |
+| See the seats and the waitlist | `repose-admin seats` (total, held, free, waiting, source), `repose-admin waitlist list` (position, handle, joined, invited, hold, converted, expired, by) |
+| Invite someone ahead of the queue | `repose-admin waitlist admit <handle>`, or `repose-admin waitlist admit --next N` for the next N; a 72-hour seat hold and one email each, audited `waitlist_admit` (I-269, I-290) |
 | Publish a base version | `repose-admin base publish --rev <full 40-hex sha on main> --changelog "..." [--security]`; a short, unknown or off-main sha is refused (I-173); `--unverified-rev` skips only the GitHub check, for when GitHub is down |
 | Smoke-test a host | `repose-admin hosts smoke host-NN` (create, snapshot, stop, start, destroy a throwaway guest) |
 | Initialise the CAs (once) | `repose-admin ca init`; then `repose-admin ca sign-client --name gateway --out <dir>` for the edge |
@@ -157,32 +157,38 @@ Reserved memory on a host is above 80 percent.
    drift").
 2. Add a host (workstream 11 §5). Until it is `ready`, the scheduler still
    places on the full host; drain it if placements must stop now.
-3. New users are already being held: past the same 80 percent line across
-   the fleet, a first project goes on the waitlist ("Waitlist growing").
+3. Checkouts are already being held once every 8 GB seat of the fleet is
+   taken ("Waitlist growing"); memory at 80 percent on one host says
+   nothing about seats, which count the whole fleet.
 
 ## Waitlist growing
 
 `repose_api_waitlist_waiting` above zero, or `repose-admin waitlist list`
-shows people waiting (DECISIONS I-269). A user's first project waits while
-the memory reserved on ready, undrained hosts, plus 8 GB per admission of
-the last 72 hours not yet taken up, plus the new project, would pass
-`WAITLIST_PERCENT` (default 80) of their usable memory.
+shows people waiting (DECISIONS I-269, I-290). A checkout needs the plan's
+seats free; a seat is 8 GB running at once, the fleet has as many as its
+`ready`, undrained hosts have usable 8 GB blocks (or `SEATS_TOTAL`), and
+live subscriptions and unexpired invitations hold them. `repose-admin
+seats` prints total, held, free, waiting and where the total came from.
 
-1. Add a host (workstream 11 §5), as for HostMemory80. Nothing else: once
-   it is `ready`, the api's minute tick admits the queue oldest first
-   while the projection stays under the line, and each admitted user gets
-   one email telling them to run `repose run` again. `waitlist_admit` in
-   the api log (grpc app) carries the count.
-2. To let one person in now (a tester, someone who wrote in):
-   `repose-admin waitlist admit <handle>`. They are counted against
-   capacity like any admission.
-3. To turn the waitlist off (a demo, a launch with hosts to spare), set
-   `WAITLIST_PERCENT=0` on both api apps and redeploy: nobody new is
-   held, and the tick admits, and emails, everyone still waiting. Users
-   then meet plain `capacity` if no host fits.
-4. Nobody is admitted with no ready host at all: with every host
-   unreachable or draining there is no usable memory, and the gate stops
-   holding new users (they meet `capacity`) until one is back.
+1. Add a host (workstream 11 §5), or raise `SEATS_TOTAL` on both api apps
+   and redeploy if the number was the limit rather than the hosts. Nothing
+   else: once a seat is free, the api's minute tick invites the oldest
+   waiting user, holds the seat 72 hours for them and emails them to
+   choose a plan; `waitlist_invite` in the api log (grpc app) carries the
+   count. A hold that runs out moves the user to the back
+   (`waitlist_expire`) and the seat goes to the next one.
+2. To see the queue: `repose-admin waitlist list` (position, handle,
+   joined, invited, hold, converted, expired invites, by). `GET
+   /public/seats` is the same count the landing page shows.
+3. To let one person in now (a tester, someone who wrote in):
+   `repose-admin waitlist admit <handle>` (or `admit --next N`). They get
+   the invitation email and a 72-hour hold like an automatic invitation,
+   which holds a seat even when none is free; the next automatic
+   invitation waits for it.
+4. There is no off switch. A launch with hosts to spare sets `SEATS_TOTAL`
+   high enough that nobody is refused; `0` derives the count from the
+   hosts. With no ready host at all the count is zero and every checkout
+   waitlists: that is an outage, fix the hosts.
 
 ## HostUnreachable
 
@@ -627,16 +633,6 @@ Postgres grows. Nothing else breaks and no data is lost
    date_trunc('month', now())::date);` is the fix, and hostd's sample buffer
    holds what did not land (workstream 03).
 
-## StripePushFail
-
-Usage records failed to push.
-
-1. Stripe dashboard, API logs. A 400 usually means the subscription item
-   id changed (a user changed plan): `repose-admin billing resync
-   --user`.
-2. Rows keep `stripe_usage_record_id = null` and are retried hourly; no
-   usage is lost.
-
 ## HostUnregistered (host never registered)
 
 A new host has been up for more than five minutes and is not in `hosts
@@ -872,23 +868,37 @@ directory` for store paths, or guestd sends `Warning{store_path_missing}`.
 
 ## Desktop not starting
 
-`repose open --desktop` hangs, or the browser shows a connection error on
-6080.
+`repose browser` fails at "start the desktop in the guest" or "reach the
+desktop through the forward", or the viewer page says the machine's
+desktop is off.
 
-1. In the guest: `systemctl status repose-novnc.socket repose-xvfb
-   repose-x11vnc repose-novnc`. The socket must be `listening`; a
+1. In the guest: `systemctl status repose-novnc.socket repose-xvnc
+   repose-openbox repose-novnc`. The socket must be `listening`; a
    connection to 127.0.0.1:6080 starts the proxy, which requires the whole
-   chain. `journalctl -u repose-x11vnc` failing at `ExecStartPre` means the
+   chain. `journalctl -u repose-xvnc` failing at `ExecStartPre` means the
    password step could not write `/run/repose/desktop` (must be 0700 dev;
-   tmpfiles recreates it at boot).
-2. `Xvfb` failing with `Cannot establish any listening sockets` means a
+   tmpfiles recreates it at boot). `journalctl -u repose-novnc` failing at
+   `ExecStartPre` means the web root under `/run/repose/desktop/web`
+   could not be built (same directory).
+2. `Xvnc` failing with `Cannot establish any listening sockets` means a
    stale `/tmp/.X11-unix/X99` lock from a killed server: remove
-   `/tmp/.X99-lock` and `/tmp/.X11-unix/X99`, then reconnect.
+   `/tmp/.X99-lock` and `/tmp/.X11-unix/X99`, then reconnect. `Xvnc`
+   failing to read `vnc-passwd`: remove both password files in
+   `/run/repose/desktop` and start again; the next start writes a new
+   pair (the user's link then needs `repose browser` again).
 3. The chain stopped by itself: that is the 30-minute idle stop
-   (`journalctl -u repose-desktop-idle`); reconnecting starts it again with
-   a new password (`repose-guest-profile desktop start` prints it).
-4. A headed browser shows nothing on the desktop: the shell that launched
-   it had no `DISPLAY` because it started before Xvfb. New shells export
+   (`journalctl -u repose-desktop-idle`); the page reconnects by itself
+   and the link keeps working, since the password is the boot's.
+4. The page connects but the screen stays 1440x900 or the browser window
+   does not fill it: `xrandr -display :99` in the guest shows the screen
+   Xvnc has; `xdotool getwindowgeometry` on the Chromium window shows
+   whether openbox re-maximised it. A window that did not follow is an
+   openbox restart away (`systemctl restart repose-openbox`).
+5. The laptop side: `repose browser` reuses a recorded forward only while
+   its port answers `/healthz`; `~/.config/repose/browser-forwards/` holds
+   the record, and `repose browser --stop` clears it.
+6. A headed browser shows nothing on the desktop: the shell that launched
+   it had no `DISPLAY` because it started before Xvnc. New shells export
    `DISPLAY=:99` while the X socket exists; open a new tmux window.
 
 ## Prisma, Playwright or a Python wheel fails in a guest
@@ -1884,115 +1894,146 @@ the guest says `command not found`, or the run said `Could not install
 4. A Go or cargo fallback install lands in `~/.local/bin`, which is on
    the login PATH; a shell started before the install needs `hash -r`.
 
-## StripePushBacklog
+## PaddleWebhookRejected
 
-`repose_api_billing_stripe_push_backlog_seconds` past six hours: the
-oldest `usage_hours` row with no `stripe_usage_record_id` is that old.
-`StripePushFail` catches a push that errors; this catches the quiet cases
-where nothing errors and nothing ships.
+Five or more deliveries in ten minutes failed the `Paddle-Signature`
+check (`webhook_received` lines with `result=bad_signature`; the body is
+never logged). Two causes, in order of likelihood:
 
-Look in this order:
+1. **`PADDLE_WEBHOOK_SECRET` is not this destination's endpoint secret.**
+   Paddle's dashboard > Developer tools > Notifications shows the
+   destination and its secret; a sandbox secret on a live deployment, or a
+   second destination, is the usual story. Paste the right one into the
+   Coolify environment of `api` and `api-grpc`. During a rotation the api
+   accepts the old and the new secret side by side (`billing.NewWebhooks`
+   takes extra secrets), so no delivery is lost.
+2. **The clock.** A `ts` more than five minutes from the api's clock is
+   refused. Check NTP on the control VM before anything else.
 
-1. Is Stripe configured at all? The api logs `billing_disabled` at start
-   when `STRIPE_SECRET_KEY` is unset, and every billing route answers
-   `503 billing_disabled` (DECISIONS I-16). Rows keep accruing and are
-   pushed once it is set; nothing is lost.
-2. Is the rollup running? `RollupLag` and `api: rollup or expiry not
-   running on one replica` above.
-3. Is Stripe refusing? `stripe_push_fail` lines carry the error. A key
-   that was rotated or a meter that was deleted are the two that produce a
-   steady failure.
-
-Then `repose-admin billing resync`, which re-pushes every pending row and
-prints how many moved. The push is idempotent twice over: a row with a
-record id is never re-sent, and the meter event identifier
-(`usage:<project>:<hour>:<part>`) is unique at Stripe's end as well, so a
-resync cannot double-bill.
-
-## BillingMismatch
-
-`repose_api_billing_mismatch_cents` above zero: the nightly reconciliation
-found `usage_hours` and Stripe disagreeing for at least one account. The
-job never fixes a difference, so the alert stays lit until a human acts.
-
-```
-repose-admin billing reconcile              # the current period, per account
-repose-admin billing reconcile --month 2026-10
-repose-admin billing explain <project> <2026-10-04T13>
-```
-
-The `UNPUSHED` column is the usual innocent explanation: rows that have
-not reached Stripe yet, which is `StripePushBacklog`, not a mismatch of
-substance. A difference that is not explained by unpushed rows means one
-of the two ledgers is wrong:
-
-- **usage_hours is right, Stripe is short.** Re-push with `billing
-  resync`. If the rows already carry record ids and Stripe still has not
-  got them, the identifiers were consumed by an earlier push that failed
-  after Stripe accepted it; issue the difference as an invoice item in the
-  Stripe dashboard rather than clearing the record ids.
-- **Stripe is right, usage_hours is wrong.** Do not edit `usage_hours`:
-  it is the ledger of record for what was used, and an invoice already
-  refers to it. Correct the customer with `repose-admin billing credit
-  <handle> <cents> "<reason>"`, which is what the credit ledger is for.
-
-Either way, nothing here is automatic and nothing is silent.
-
-## A user says they were overcharged
-
-`repose-admin billing show <handle>` first: status, credit balance, the
-current period and what its invoice must come to, split into the three
-lines, and the last invoices the webhooks recorded (DECISIONS I-185). Then
-`repose-admin billing explain <project> <hour>`, which prints every input and each
-step of the pricing rule for one hour: the samples the hour was built from,
-the period running totals before it, which cap applied and why, the storage
-remainder, the credit taken and what reached Stripe. Walk the hours they
-question; the arithmetic is the answer.
-
-The three that come up:
-
-- **"I stopped it and it still charged me."** Storage accrues for as long
-  as the project exists, on the *allocated* volume size (`PRICING.md`). The
-  `storage` line in `explain` shows it; the `guest` line will be zero.
-- **"It says more hours than I used."** A guest-hour is a minute of
-  `running` samples; `explain` prints how many samples the hour had. If it
-  shows fewer samples than seconds implies, that is the gap case and it
-  under-bills, never over.
-- **"I was charged after I hit the cap."** The cap is per project per
-  billing period and applies to guest-hours only; storage and egress are
-  always additive (§5.1). `explain` names the cap class and the period
-  total, which is where a mid-period class change shows up.
-
-A correction is a `repose-admin billing credit` row, never an edit to
-`usage_hours`.
-
-## StripeWebhookRejected
-
-Five or more deliveries in ten minutes failed signature verification
-(`stripe_webhook` lines with `result=bad_signature`; the body is never
-logged). Two causes, in order of likelihood:
-
-1. **The endpoint's API version does not match the deployed SDK.**
-   `stripe-go` refuses an event rendered under another version, because an
-   object it deserialises wrongly is a wrong amount. `go doc
-   github.com/stripe/stripe-go/v83.APIVersion` prints what the binary
-   expects; the endpoint's version is on its page in the Stripe dashboard.
-   Recreate it on the right version with `ops/stripe/bootstrap.sh
-   --rotate-webhook` and paste the new `STRIPE_WEBHOOK_SECRET` it prints
-   (DECISIONS I-180). This is the one that appears right after an SDK
-   upgrade.
-2. **`STRIPE_WEBHOOK_SECRET` is not this endpoint's signing secret.** A
-   second endpoint, or a test-mode secret on a live-mode deployment.
-
-While it fires, no invoice event is applied: accounts will not move to
-`past_due` or back to `active`. Stripe retries for up to three days, so
-fixing the secret inside that window replays everything; past it, resend
-the events from the endpoint's page in the dashboard.
+While it fires, no subscription or payment event is applied: accounts do
+not move to `past_due`, back to `active`, or to `trial` after a checkout.
+Paddle retries failed deliveries for three days, so fixing the secret
+inside that window replays everything; past it, the destination's page in
+the dashboard resends the missed events, and the `paddle_events` primary
+key drops the ones that did arrive.
 
 If neither is true, someone is posting at the endpoint. It is
 unauthenticated by design (the signature is the authentication) and a
 forged body cannot pass, so this is noise rather than an incident; the
 rate limit in front of the api is the answer if it becomes constant.
+
+## OverageChargeFailed
+
+`repose_api_billing_overage_charges_total{result="error"}` moved: the
+hourly job computed a period's egress overage, recorded it in
+`overage_charges`, and Paddle refused the one-time charge
+(`overage_charged` lines with `result=error` carry Paddle's code). The row
+stays without `paddle_transaction_id`, the period is not marked charged,
+and nothing sends it again by itself, because a second attempt could
+double a line Paddle did accept after answering an error.
+
+```
+repose-admin billing show <handle>              # "overage lines": the period, the GB, the cents, "transaction none yet"
+repose-admin billing overage-now <handle>       # sends this period's line if it is not on record; says so if it is
+```
+
+Read Paddle's error first: `subscription_locked_processing` means Paddle
+is billing the subscription right now (wait ten minutes and retry);
+`entity_not_found` means the subscription id in our table is not
+Paddle's (compare with the dashboard). Then, if the period has not
+billed yet, delete the row and run `overage-now`, which records and sends
+it again:
+
+```
+delete from overage_charges where subscription_id = 'sub_...' and period_start = '2026-10-01';
+```
+
+If the invoice already went out without the line, add the charge in
+Paddle's dashboard (Subscriptions > the subscription > Charge one-time)
+for the recorded cents and put the transaction id on the row, so `show`
+and `explain` agree with what was charged. Paddle locks the invoice about
+thirty minutes before `next_billed_at`, which is why the job runs three
+hours ahead.
+
+## BillingStopped
+
+`repose_api_billing_stops_total` moved: the api stopped a tenant's running
+machines by itself, with a snapshot, for one of three reasons (the label):
+
+- `past_due`: three days after a failed payment (PRICING.md "Failed
+  payments"); the account is `suspended` with `suspended_reason =
+  billing`, `billing_stopped` went to the user, and a payment lifts it by
+  itself (`transaction.completed`).
+- `ended`: the subscription reached its end (cancelled at period end, or
+  Paddle cancelled it); `subscription_ended` went to the user; the account
+  is `none` and a new checkout is the way back.
+- `egress`: the period's egress passed four times the plan's allowance;
+  `egress_stopped` went to the user; starts are refused with
+  `egress_limit` until `period_end`, or sooner on an upgrade.
+
+Nothing is deleted for 30 days. `repose-admin billing show <handle>` shows
+which; the `events` table has the email that went out. There is nothing to
+fix unless the reason is wrong: an `egress` stop for a tenant with a
+legitimate workload is a conversation about Pro, not a bug.
+
+## Customer disputes a charge
+
+`repose-admin billing show <handle>` first: the subscription, its plan and
+status, the period, what ran (hours per class), the disk allocated, the
+period's egress and the overage arithmetic
+(`ceil(egress GB - included) x 5 cents`), and the overage lines recorded
+with their Paddle transaction ids. Then Paddle's dashboard for the
+transaction itself: its lines are the plan's monthly price, tax for the
+buyer's country (Paddle's, as merchant of record), and at most one
+`Egress overage` line whose description names the GB and the period.
+
+The three that come up:
+
+- **"I was charged after I cancelled."** Cancelling ends the plan at
+  `period_end`; the charge on the day of cancelling is that period's
+  renewal if it fell on the same day. `show` prints `cancels at`; Paddle's
+  transaction list shows the timing. A refund within 14 days of the first
+  charge is policy (PRICING.md "Refunds"); a renewal is not refunded for a
+  part period.
+- **"What is this egress line?"** `repose-admin billing explain <project>
+  <hour>` for any hour of the period prints the period egress over every
+  project of the account and the arithmetic to the cent; the Abuse
+  dashboard's per-project egress panel shows which project sent it. The
+  line is one per period and matches `overage_charges` exactly.
+- **"I did not use it."** A plan is not metered: the month costs the same
+  with the machine stopped. `show` prints the hours anyway; a user who
+  wants to stop paying cancels, and the plan runs to the period's end.
+
+A refund is made in Paddle's dashboard (Transactions > the transaction >
+Refund), where it lands on the same card; record the reason in
+the refund's note in Paddle, which is the trail.
+Nothing in `usage_hours` or `overage_charges` is edited: they are the
+record of what was used and what was sent.
+
+## Move a user between plans by hand
+
+The dashboard's plan page (`POST /billing/plan`) is the normal path: an
+upgrade takes effect at once, prorated by Paddle; a downgrade is scheduled
+for `period_end` and refused while the account would not fit. By hand,
+when the user cannot reach the dashboard or Paddle refused the change:
+
+1. In Paddle's dashboard, Subscriptions > the subscription > Change
+   items: replace the price with the other plan's (`PADDLE_PRICE_SOLO` or
+   `PADDLE_PRICE_PRO` in the api's environment name them), proration
+   "prorated immediately" for an upgrade and "prorated next billing
+   period" for a downgrade.
+2. Paddle sends `subscription.updated`; the webhook writes the new plan
+   and seats on the `subscriptions` row and emails `plan_changed`.
+   `repose-admin billing show <handle>` confirms the plan within a minute.
+3. If the webhook is down (PaddleWebhookRejected), the row lags Paddle.
+   Do not edit `subscriptions.plan` by hand: fix the webhook and resend
+   the event from the destination's page; the row follows.
+
+A downgrade that Paddle accepts while the user runs more than the smaller
+plan allows is not a problem for the api: the next start is refused with
+`plan_limit` naming the machines, and running ones keep running until
+stopped. `SEATS_TOTAL` bounds upgrades: with no free seat the api refuses
+`no_seat`, and by hand you would be overselling the host.
 
 ## Claude asks for a login in every project (login share, I-278)
 

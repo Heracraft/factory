@@ -392,17 +392,48 @@ tests:
         alertname: PartitionDropFail
         exp_alerts: []
 
-  # --- StripePushFail -----------------------------------------------------
+  # --- PaddleWebhookRejected ----------------------------------------------
   - interval: 1m
-    name: StripePushFail fires on one failed push in an hour
+    name: PaddleWebhookRejected fires on six bad signatures in ten minutes
     input_series:
-      - series: 'repose_api_stripe_usage_push_total{job="api",instance="10.255.0.9:9103",result="error"}'
-        values: "0 0 0 1 1 1 1 1 1 1 1 1"
-      - series: 'repose_api_stripe_usage_push_total{job="api",instance="10.255.0.9:9103",result="ok"}'
-        values: "0+5x11"
+      - series: 'repose_api_billing_webhook_total{job="api",instance="10.255.0.9:9103",kind="subscription.updated",result="bad_signature"}'
+        # Prometheus ranges are left-open, so the sample at 1m is outside
+        # a [10m] window evaluated at 11m; six rejections from 2m on.
+        values: "0 0 1 2 3 4 5 6 6 6 6 6"
+      - series: 'repose_api_billing_webhook_total{job="api",instance="10.255.0.9:9103",kind="subscription.updated",result="ok"}'
+        values: "0+3x11"
     alert_rule_test:
       - eval_time: 11m
-        alertname: StripePushFail
+        alertname: PaddleWebhookRejected
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+            exp_annotations:
+              summary: "6 Paddle webhook deliveries rejected in ten minutes"
+              description: "Check PADDLE_WEBHOOK_SECRET against the notification destination's endpoint secret in Paddle's dashboard. While this fires, subscription and payment events are not being applied."
+              runbook: "docs/ops/RUNBOOK.md#paddlewebhookrejected"
+
+  - interval: 1m
+    name: PaddleWebhookRejected stays quiet under five
+    input_series:
+      - series: 'repose_api_billing_webhook_total{job="api",instance="10.255.0.9:9103",kind="subscription.updated",result="bad_signature"}'
+        values: "0 0 1 1 2 2 2 2 2 2 2 2"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: PaddleWebhookRejected
+        exp_alerts: []
+
+  # --- OverageChargeFailed -------------------------------------------------
+  - interval: 1m
+    name: OverageChargeFailed fires on one refused charge in an hour
+    input_series:
+      - series: 'repose_api_billing_overage_charges_total{job="api",instance="10.255.0.9:9103",result="error"}'
+        values: "0 0 0 1 1 1 1 1 1 1 1 1"
+      - series: 'repose_api_billing_overage_charges_total{job="api",instance="10.255.0.9:9103",result="ok"}'
+        values: "0+1x11"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: OverageChargeFailed
         exp_alerts:
           - exp_labels:
               severity: warn
@@ -410,108 +441,48 @@ tests:
               instance: 10.255.0.9:9103
               result: error
             exp_annotations:
-              summary: "Stripe usage records are failing"
-              description: "1 failed pushes in the last hour. The reconciliation job repairs it; if it does not, the invoice undercharges."
-              runbook: "docs/ops/RUNBOOK.md#stripepushfail"
+              summary: "1 egress overage charge(s) failed in the last hour"
+              description: "`repose-admin billing show <handle>` names the line; `billing overage-now <handle>` retries it once the cause is fixed. Paddle locks the invoice about 30 minutes before charging."
+              runbook: "docs/ops/RUNBOOK.md#overagechargefailed"
 
   - interval: 1m
-    name: StripePushFail stays quiet while every push succeeds
+    name: OverageChargeFailed stays quiet while every charge lands
     input_series:
-      - series: 'repose_api_stripe_usage_push_total{job="api",instance="10.255.0.9:9103",result="ok"}'
-        values: "0+5x11"
+      - series: 'repose_api_billing_overage_charges_total{job="api",instance="10.255.0.9:9103",result="ok"}'
+        values: "0+1x11"
     alert_rule_test:
       - eval_time: 11m
-        alertname: StripePushFail
+        alertname: OverageChargeFailed
         exp_alerts: []
 
-  # --- StripePushBacklog ---------------------------------------------------
+  # --- BillingStopped ------------------------------------------------------
   - interval: 1m
-    name: StripePushBacklog fires when the oldest unbilled hour passes six hours
+    name: BillingStopped fires on a machine the api stopped for billing
     input_series:
-      - series: 'repose_api_billing_stripe_push_backlog_seconds{job="api",instance="10.255.0.9:9103"}'
-        values: "25200x40"
-    alert_rule_test:
-      - eval_time: 25m
-        alertname: StripePushBacklog
-        exp_alerts:
-          - exp_labels:
-              severity: warn
-              job: api
-              instance: 10.255.0.9:9103
-            exp_annotations:
-              summary: "the oldest unbilled hour is 7h 0m 0s old"
-              description: "usage_hours rows are not reaching Stripe. `repose-admin billing resync` re-pushes them; until they land the invoice undercharges."
-              runbook: "docs/ops/RUNBOOK.md#stripepushbacklog"
-
-  - interval: 1m
-    name: StripePushBacklog stays quiet while the push keeps up
-    input_series:
-      - series: 'repose_api_billing_stripe_push_backlog_seconds{job="api",instance="10.255.0.9:9103"}'
-        values: "0 3600 0 3600 0 3600 0 3600 0 3600 0 3600 0 3600 0 3600 0 3600 0 3600 0"
-    alert_rule_test:
-      - eval_time: 20m
-        alertname: StripePushBacklog
-        exp_alerts: []
-
-  # --- BillingMismatch -----------------------------------------------------
-  - interval: 1m
-    name: BillingMismatch fires on a difference the reconciliation reported
-    input_series:
-      - series: 'repose_api_billing_mismatch_cents{job="api",instance="10.255.0.9:9103"}'
-        values: "0 0 500x40"
-    alert_rule_test:
-      - eval_time: 40m
-        alertname: BillingMismatch
-        exp_alerts:
-          - exp_labels:
-              severity: warn
-              job: api
-              instance: 10.255.0.9:9103
-            exp_annotations:
-              summary: "usage_hours and Stripe differ by 500 cents"
-              description: "The reconciliation reported and fixed nothing. `repose-admin billing reconcile` names the accounts and `billing explain <project> <hour>` shows one row."
-              runbook: "docs/ops/RUNBOOK.md#billingmismatch"
-
-  - interval: 1m
-    name: BillingMismatch stays quiet when the ledgers agree
-    input_series:
-      - series: 'repose_api_billing_mismatch_cents{job="api",instance="10.255.0.9:9103"}'
-        values: "0x40"
-    alert_rule_test:
-      - eval_time: 40m
-        alertname: BillingMismatch
-        exp_alerts: []
-
-  # --- StripeWebhookRejected -----------------------------------------------
-  - interval: 1m
-    name: StripeWebhookRejected fires on five rejections in ten minutes
-    input_series:
-      - series: 'repose_api_stripe_webhook_total{job="api",instance="10.255.0.9:9103",result="bad_signature"}'
-        values: "0 1 2 3 4 5 6 7 8 9 10 11"
-      - series: 'repose_api_stripe_webhook_total{job="api",instance="10.255.0.9:9103",result="ok"}'
-        values: "0+2x11"
+      - series: 'repose_api_billing_stops_total{job="api",instance="10.255.0.9:9103",reason="past_due"}'
+        values: "0 0 0 0 0 2 2 2 2 2 2 2"
+      - series: 'repose_api_billing_stops_total{job="api",instance="10.255.0.9:9103",reason="egress"}'
+        values: "0 0 0 0 0 0 0 0 0 0 0 0"
     alert_rule_test:
       - eval_time: 11m
-        alertname: StripeWebhookRejected
+        alertname: BillingStopped
         exp_alerts:
           - exp_labels:
-              severity: warn
-              job: api
-              instance: 10.255.0.9:9103
-              result: bad_signature
+              severity: info
+              reason: past_due
             exp_annotations:
-              summary: "10 Stripe webhook deliveries rejected in ten minutes"
-              description: "Check STRIPE_WEBHOOK_SECRET against the endpoint's signing secret, and that the endpoint's API version matches the deployed SDK (ops/AZURE-SETUP.md step 17). While this fires, invoice events are not being applied."
-              runbook: "docs/ops/RUNBOOK.md#stripewebhookrejected"
+              summary: "machines stopped for billing (past_due)"
+              description: "2 machine(s) stopped in the last hour, reason past_due. `repose-admin billing show <handle>` shows the account; nothing is deleted for 30 days."
+              runbook: "docs/ops/RUNBOOK.md#billingstopped"
 
   - interval: 1m
-    name: StripeWebhookRejected ignores a single stray rejection
+    name: BillingStopped stays quiet with no stops
     input_series:
-      - series: 'repose_api_stripe_webhook_total{job="api",instance="10.255.0.9:9103",result="bad_signature"}'
-        values: "0 0 1 1 1 1 1 1 1 1 1 1"
+      - series: 'repose_api_billing_stops_total{job="api",instance="10.255.0.9:9103",reason="past_due"}'
+        values: "0 0 0 0 0 0 0 0 0 0 0 0"
     alert_rule_test:
       - eval_time: 11m
-        alertname: StripeWebhookRejected
+        alertname: BillingStopped
         exp_alerts: []
 
   # --- EgressBlocked ------------------------------------------------------

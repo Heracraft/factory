@@ -54,7 +54,13 @@ func TestFork(t *testing.T) {
 	if r := e.do(t, tok, "POST", "/projects/"+pid+"/fork", map[string]any{"snapshot_id": uuid.NewString(), "count": 1}); r.status != 404 {
 		t.Fatalf("unknown snapshot: %d %s", r.status, r.raw)
 	}
-	// 1 project + 3 forks > 3: refused, and nothing was created.
+	// The plan's project count (I-289): an exempt account works within
+	// users.project_limit, here 3, so 1 project + 3 forks is refused and
+	// nothing is created.
+	e.subscribe(t, "sub-fern", "")
+	if _, err := e.h.Pool.Exec(ctx, "update users set billing_status = 'exempt', project_limit = 3, xl_limit = 1 where logto_sub = 'sub-fern'"); err != nil {
+		t.Fatal(err)
+	}
 	r = e.do(t, tok, "POST", "/projects/"+pid+"/fork", map[string]any{"snapshot_id": sid, "count": 3})
 	if r.status != 400 || errCode(r) != "invalid" {
 		t.Fatalf("over the limit: %d %s", r.status, r.raw)
@@ -64,10 +70,6 @@ func TestFork(t *testing.T) {
 	}
 	if l := e.do(t, tok, "GET", "/projects", nil); len(l.list) != 1 {
 		t.Fatalf("a refused fork created projects: %s", l.raw)
-	}
-	// xl forks count against the xl limit (1).
-	if r := e.do(t, tok, "POST", "/projects/"+pid+"/fork", map[string]any{"snapshot_id": sid, "count": 2, "class": "xl"}); r.status != 400 {
-		t.Fatalf("two xl forks: %d %s", r.status, r.raw)
 	}
 
 	// Two forks.

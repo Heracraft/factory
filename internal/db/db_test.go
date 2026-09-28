@@ -29,12 +29,20 @@ func TestMigrateUpDownUp(t *testing.T) {
 	if len(down) != 1 || down[0] != st.Applied[len(st.Applied)-1] {
 		t.Fatalf("down 1 reverted %v", down)
 	}
+	// 0009 (build_logs.ts) is the newest: its column goes, and 0008's
+	// subscriptions and 0007's waitlist stay.
 	var n int
 	if err := pool.QueryRow(ctx, "select count(*) from information_schema.columns where table_name = 'build_logs' and column_name = 'ts'").Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	if n != 0 {
-		t.Fatal("build_logs.ts still exists after down (0008)")
+		t.Fatal("build_logs.ts still exists after down (0009)")
+	}
+	if err := pool.QueryRow(ctx, "select count(*) from information_schema.tables where table_name in ('subscriptions', 'waitlist')").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("after down 1: %d of subscriptions and waitlist exist, want both (0009 reverted, 0008 and 0007 kept)", n)
 	}
 	up, err := db.MigrateUp(ctx, pool)
 	if err != nil {

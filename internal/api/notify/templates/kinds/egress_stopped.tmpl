@@ -1,0 +1,6 @@
+{{define "heading"}}Your machines were stopped for this period{{end}}
+{{define "body"}}Your machines sent {{if .P.Has "egress_gb"}}{{.P.GB "egress_gb"}}{{else}}more{{end}} this period. {{.P.Plan "plan"}} includes {{if .P.Has "limit_gb"}}{{.P.GB "limit_gb"}}{{else}}an allowance{{end}} a month, and at four times that the machines stop for the rest of the period.
+
+They stay stopped{{if .P.Has "until"}} until {{.P.Date "until"}}{{else}} until the period renews{{end}}. Upgrading the plan lifts the limit now.{{end}}
+{{define "link_label"}}Upgrade the plan{{end}}
+{{define "link_url"}}{{.Billing}}{{end}}

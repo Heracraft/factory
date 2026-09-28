@@ -28,7 +28,7 @@ TCP and UDP ports and the kernel's WireGuard.
 - The hook ingest and noVNC relay listeners that guests reach over
   WireGuard (`:8443` and `:6081` on the edge's wg address). Hook ingest is
   a thin HTTPS forwarder to the api's `/internal/events` (I-4 adds it);
-  noVNC relay is a TCP proxy that the CLI's `open --desktop` reaches through
+  noVNC relay is a TCP proxy that the CLI's `repose browser` reaches through
   an SSH forward, so it is a plain port relay to `guest_ip:6080` keyed by
   the SSH session's project.
 - A stub for the HTTPS preview proxy: the listener on 443 exists, serves a
@@ -226,7 +226,7 @@ example by a hook fired during a guestd restart). Both land in the same
 `events` table with the same dedupe key (`project_id, agent, kind, ts
 rounded to the second`).
 
-`:6081` is not a general relay; `repose open --desktop` uses a normal SSH
+`:6081` is not a general relay; `repose browser` uses a normal SSH
 `-L 6080:localhost:6080` through the gateway relay, so no separate noVNC
 listener is needed. The port is reserved and the listener is not built.
 Recorded here so nobody adds it.

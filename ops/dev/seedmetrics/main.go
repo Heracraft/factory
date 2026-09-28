@@ -112,10 +112,10 @@ func main() {
 		if step%9 == 0 {
 			// The interesting cases, so that the "failures" panels have
 			// something in them on this box: a fragment that does not
-			// evaluate, a snapshot that failed, a Stripe push that errored.
+			// evaluate, a snapshot that failed, an overage charge that errored.
 			host.BuildDuration.WithLabelValues("eval_failed").Observe(3 + rand.Float64()*4)
 			host.SnapshotDuration.WithLabelValues("stop", "error").Observe(12 + rand.Float64()*20)
-			api.StripeUsagePushTotal.WithLabelValues("error").Inc()
+			api.BillingOverageChargesTotal.WithLabelValues("error").Inc()
 		}
 
 		gw.Sessions.Set(float64(2 + rand.N(4)))
@@ -141,7 +141,8 @@ func main() {
 		api.SnapshotAgeSeconds.Set(float64(20*3600 + rand.N(3600)))
 		api.NotifyTotal.WithLabelValues("email", "ok").Add(float64(rand.N(2)))
 		api.NotifyTotal.WithLabelValues("ntfy", "ok").Add(float64(rand.N(2)))
-		api.StripeUsagePushTotal.WithLabelValues("ok").Add(float64(rand.N(2)))
+		api.BillingWebhookTotal.WithLabelValues("subscription.updated", "ok").Add(float64(rand.N(2)))
+		api.BillingGateRefusedTotal.WithLabelValues("plan_limit").Add(float64(rand.N(2)))
 		api.EgressAlertProjects.Set(0)
 
 		select {

@@ -7560,6 +7560,411 @@ moon as the logo (rest fits the name, but a crescent in a header reads as
 a dark-mode toggle); keeping the unassigned shapes in the footer for
 completeness (that is the spawning the owner named).
 
+**I-289. Monthly plans through Paddle: Solo and Pro buy memory that may run
+at once, disk and egress; a week free with a card; no hourly meter.**
+(owner, 2026-09-27: "We're going to launch with the new pricing ... I'm
+definitely going to do Paddle ... We'll still require a card ... use Azure
+as a cash sink for now") Supersedes R2-12 (hourly through Stripe), R4-7
+(the monthly cap per project), R4-8 and I-205 (the trial credit), I-77 and
+I-179 (meter events), I-180 to I-185 (the Stripe subscription, the card
+saved on a SetupIntent, invoices from Stripe, the test-clock gate). What is
+sold is in `docs/PRICING.md`: Solo, $29 a month, 8 GB running at once,
+100 GB disk, 250 GB egress; Pro, $59, 16 GB, 250 GB, 500 GB; egress past
+the allowance $0.05 a GB as one overage line, and at four times the
+allowance the user's machines stop for the period; disk is a hard limit;
+projects 10 and 25; seven days free on the card taken at checkout. Why a
+plan: the product's promise is a machine left working, and an hourly
+meter argued with it; money is taken before compute runs, so a stolen card
+buys a week and one seat instead of a month of arbitrary usage; and the
+plan is an ordinary Paddle subscription, where hourly meters were a
+workaround. Why Paddle: it is the merchant of record, so tax in every
+buyer's country is its problem and the M4 "tax" row closes; the price is
+5% + 50¢ against 2.9% + 30¢, about $2 a Solo month. Why these prices: set
+for the host repose ends up on (a seat is about €8 on Hetzner metal,
+`proposals/2026-09-26-subscription-paddle-hetzner.md` §3); on the launch
+`D64s_v7` a seat that never stops costs about $100, which the Azure credit
+absorbs and the seat count bounds at one host's worth. Why no free launch
+accounts: cash; Paddle discount codes exist for a promotion and need no
+code. Mechanics: `internal/billing` keeps `plans.go` (the table above, one
+place), the `usage_hours` rollup as the internal record of hours, disk and
+egress (its compute cents are 0 from `price_version = "plan-v1"`), the
+3-day stop and the gates; the Stripe client, meters, SetupIntent, credit
+ledger arithmetic, cap and test-clock proof are removed. A `subscriptions`
+table (id = Paddle's subscription id, user_id, plan, status
+`trialing|active|past_due|paused|canceled`, seats, paddle_customer_id,
+period_start, period_end, next_billed_at, trial_end, cancel_at,
+scheduled_plan, overage_charged_for, created_at, updated_at) is the record;
+`users.billing_status` keeps its enum plus `none` (no subscription yet) and
+is a projection of it; `users.stripe_customer_id` becomes
+`paddle_customer_id`; `stripe_events` becomes `paddle_events`;
+`overage_charges` records each period's egress line once
+(unique on subscription and period). Checkout: `POST /billing/checkout
+{plan}` creates a Paddle transaction server-side (customer, price, seven
+day trial, `custom_data.user_id`) and the dashboard opens it with
+Paddle.js and the public client token from `GET /billing`; the subscription
+arrives by webhook (`Paddle-Signature`, HMAC of `ts:body` with the endpoint
+secret, five-minute skew, deduped on event id). Plan changes and
+cancellation go through the api (`POST /billing/plan`, `/billing/cancel`,
+`/billing/resume`), the card and receipts through Paddle's customer portal
+(`POST /billing/portal`), invoices from Paddle's transactions
+(`GET /billing/invoices`, same shape as before). The overage line is sent
+in the hourly tick when `next_billed_at` is within three hours and the
+period has none yet, because Paddle locks the invoice about thirty minutes
+before charging; account deletion charges it first and then cancels,
+because a cancelled subscription drops one-time charges. `payment_required`
+carries `detail.reason` in `subscription_required | plan_limit |
+disk_limit | egress_limit | past_due | suspended` with `detail.plan`,
+`detail.limit_gb`, `detail.used_gb` and `detail.projects` (the slugs using
+the memory) so the CLI can print the whole sentence. Environment:
+`PADDLE_API_KEY` (sandbox or live, told apart by the key prefix, and a test
+refuses live), `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`,
+`PADDLE_PRICE_SOLO`, `PADDLE_PRICE_PRO`, `PADDLE_PRODUCT_OVERAGE`;
+`repose-admin billing paddle-bootstrap` creates the products, prices and
+the notification destination idempotently and prints the block. With no
+`PADDLE_API_KEY` the billing routes answer `503 billing_disabled` and the
+gate refuses non-exempt starts with `subscription_required`, so a deploy
+without keys is safe and useless rather than free. The M4 gate becomes: in
+Paddle's sandbox, a checkout with a test card creates a `trialing`
+subscription and a seat, the webhook makes the account `trial`, a
+simulated `transaction.completed` makes it `active`, a simulated
+`transaction.payment_failed` makes it `past_due` and the 3-day tick stops
+the machine, and an overage charge for a known egress appears on the next
+transaction to the cent (`docs/ops/M4-GATE.md`). *Rejected:* staying on
+Stripe (tax filing per country for a solo operator); hourly on Paddle
+(one-time charges per hour, fighting the invoice lock); a shared CPU and
+memory pool like exe.dev's (guests are sized per project, so "running at
+once" is the honest unit); Paddle.js checkout opened with a price id from
+the browser (the server has to hold the seat and stamp the user id first);
+a hard stop at the egress allowance (an agent mid-task loses its network
+for $0.05 a GB); free plans for the first five (cash); keeping the credit
+ledger for goodwill (Paddle adjustments and discounts are that).
+**I-290. Seats: the waitlist gates checkout, not the first project; a
+seat is 8 GB running at once; invitations hold a seat 72 hours.** (owner,
+2026-09-27: "assume I have the big host ... build a waitlist that allows
+that many amount of users in, and then put them in a waitlist") Amends
+I-269. With plans (I-289) the fleet's unit is the seat: `floor((RAM -
+reserve) / 8 GB)` over `ready`, undrained hosts, or `SEATS_TOTAL` when set
+(`0` derives it; the launch `D64s_v7` is 30), replacing `WAITLIST_PERCENT`
+(memory is never oversubscribed and a seat is exactly what a running
+`large` takes, so a percentage of it was the placement alert's number, not
+a sales limit). Held seats are the seats of every subscription
+`trialing|active|past_due` plus one for each waitlist invitation whose
+`hold_until` has not passed. `POST /billing/checkout` needs the plan's
+seats free (an invited user's hold counts toward their own checkout);
+otherwise, and on `POST /billing/waitlist`, the user joins the waitlist
+and gets `503 waitlisted` with `{position, joined_at, email}` as before.
+`POST /projects` no longer gates: a user without a subscription is refused
+compute with `subscription_required`, and the dashboard's plan page is
+where the seats question is answered. Every minute, under lock 1011, the
+api invites waiting users oldest first while a seat is free, strictly in
+order: `invited_at`, `hold_until = now + 72 h` and the `waitlist_invited`
+email in one transaction guarded by `invited_at is null`. A hold that
+expires unconverted moves the user to the back (`joined_at = now`,
+`expired_invites + 1`) so a ghost cannot block the queue, and the email
+says so; a subscription created for an invited user sets `converted_at`
+and the row stays for the count. Suspended, cancelled and deleted
+accounts hold no place. `GET /public/seats` (no auth) answers `{total,
+free, waiting}` for the landing page, and `GET /billing` carries the same
+plus the user's own place, because the launch is a gauge of interest and
+the count is the reading. `repose-admin waitlist list | admit HANDLE |
+admit --next N` keep their names (admit now means invite; the audit kind
+stays `waitlist_admit`) and `repose-admin seats` prints total, held, free
+and the source. Metrics `repose_api_seats_total`, `_held`,
+`repose_api_waitlist_waiting`, `_joined_total`, `_invited_total`,
+`_converted_total`. *Rejected:* a card to join the waitlist (Paddle has no
+save-a-card step without a subscription, and a $0 subscription per
+waiting user is a mess of ghosts); inviting in batches (strict order is
+what "first come" means on a launch tweet); holding a seat forever
+(blocks the queue); dropping an expired user (three days is enough to
+read one email, but a launch weekend is not a reason to lose them).
+**I-291. Every email is HTML with a plain-text twin, from one template,
+and the account emails exist.** (owner, 2026-09-27: "another thing you
+got to design is emails") Notifications were plain `fmt.Sprintf` text
+and the only account emails were `billing_stopped` and
+`waitlist_admitted`. Now `internal/api/notify` renders every kind through
+one HTML template (`templates/`, Go `html/template`, table layout, inline
+styles, system fonts, the landing's paper and ink colours, the r-mark as
+text, no images, no tracking) and a text template beside it, sent as
+`html` and `text` in one Resend call; golden files under `testdata/` pin
+both. The kinds added: `welcome` (first sign-in: install, run, the plan
+page), `waitlist_joined` (place and what happens next), `waitlist_invited`
+(replaces `waitlist_admitted`: 72 hours, the checkout link, what an
+expired hold means), `trial_ending` (two days before `trial_end`, the
+amount and the date), `payment_failed` (day 0 and day 2 of `past_due`, the
+portal link), `subscription_cancelled` (the end date, what stops then),
+`subscription_ended` (machines stopped, 30-day retention), `plan_changed`,
+`egress_stopped`. Account emails are transactional: sent whatever
+`notify_email` says and without an unsubscribe link, since each answers
+something the user did or is about to be charged for; agent notifications
+keep their unsubscribe line. Subjects stay `[repose] <subject>`. Paddle's
+own receipts and payment-failure emails stay on in Paddle's dashboard, so
+a failed payment produces Paddle's email about the card and ours about
+the machines. *Rejected:* a third-party template service (one more
+account and a tracking pixel); React Email or MJML (a build step for
+eleven emails); images or the logo as an attachment (blocked by default
+in most clients, and the r-mark reads fine as a letter).
+**I-293. How the plans landed in the code: repose_api_ metric names, the
+limits an exempt account keeps, stops counted, once-only emails derived
+from the events table, and a subscriptions-only seat count until I-290
+merges.** (ws/paddle, 2026-09-27) Implementing I-289 settled six things
+the spec left open. (1) Metrics keep the `repose_api_` prefix every api
+family has (I-49, I-60, I-78) and the checked registry's label list:
+`repose_api_billing_webhook_total{kind,result}` (`kind`, not `type`, is
+the allowed label), `repose_api_billing_overage_charges_total{result}`,
+`repose_api_billing_gate_refused_total{reason}`,
+`repose_api_billing_subscriptions_total{plan,status}` (`plan` is added to
+the allowed labels: a two-value enum) and, beyond the spec's list,
+`repose_api_billing_stops_total{reason}` so the `BillingStopped` alert has
+a series to read. (2) `users.project_limit` and `xl_limit` stay and are
+what an exempt or plan-less account works within (`repose-admin users
+limits` still sets them); a subscribed account has its plan's numbers and
+the xl count limit is gone, memory decides. New rows start at Solo's 10
+projects and no xl. (3) "Once" (day 2's `payment_failed`, `trial_ending`,
+`egress_stopped` per period) is derived from the `events` table (no second
+row of the kind since the moment it counts from) rather than new columns:
+no migration, and the email that went out is the guard. (4) A refused
+overage charge leaves its `overage_charges` row without a transaction id
+and the period unmarked, and is never resent by the job: a second attempt
+after Paddle accepted-then-errored would double a line, so the operator
+sends it (`billing overage-now`) after reading Paddle's error;
+`transaction.completed` stamps the id when the line appears on a
+transaction. (5) A trialing subscription's `transaction.completed` (the $0
+checkout) does not make the account `active`, and
+`transaction.payment_failed` without a subscription (a card declined at
+checkout) changes nothing. (6) `billing.SubscriptionSeats` counts held
+seats from `subscriptions` against `SEATS_TOTAL` and never waitlists,
+standing in for I-290's implementation, which replaces it in
+`internal/api/app` at merge; `billing.WaitlistPlace` reads the 0008
+waitlist row for `/me`, `/billing` and the gate's detail because the
+`store.WaitlistEntry` query still names the renamed columns until that
+workstream lands. Also: `idle.hourly_cents` answers 0 and gains
+`memory_gb`; the idle notification names the class's share of the plan's
+memory instead of a rate; growing a volume is gated on the growth with
+every live project's current size counted. *Rejected:* a `settings` key or
+a `dunning` migration for the once-only guards (a second source of truth
+for what the events table already records); `repose_billing_*` names
+(every api family is `repose_api_*` and the registry refuses other
+labels); resending a refused overage charge automatically (a doubled line
+is worse than a late one); making a trialing account `active` on the
+checkout transaction (it is $0 and the trial has a week to run).
+
+*Amended 2026-09-27 (merge):* the http test harness gives every signed-in
+test user a Pro subscription so the compute gate lets its projects
+through; a test about seats strips it with `subscribe(t, sub, "")`, which
+is why `TestSeatsWaitlistAndInvitations` invited nobody at the merge (the
+waiting users' own seats filled the fleet). The same test asserts what
+I-290 says of `POST /projects`: a plan-less user is refused with 402
+`subscription_required` and the place in `detail.waitlist`, not `503
+waitlisted`. On (2): the fork's project count refusal names whose limit
+it is (`You have 10 of 10 projects (Solo's limit), ...`; an exempt account
+reads `your account's limit`), and `TestFork` reaches it by filling Solo's
+ten through the fake's `SetBilling`/`SetPlan` knobs, since the fake's
+default account is exempt (I-295) and reads Pro's 25.
+**I-294. Seats and emails, the choices the spec left open: one account-event
+helper, the sentence, a re-queue on a new checkout, no `!` in an email.**
+(seats-email worker, 2026-09-27, building I-290 and I-291) Where I-290
+and I-291 were silent: (1) Every user-only event goes through
+`events.InsertAccount(ctx, q, userID, ts, kind, payload)`, which writes
+the event and its email outbox row on the caller's `Querier` (a pool or
+the transaction that also sets `invited_at` or inserts the user), refuses
+a kind outside `events.AccountKinds`, and marshals the payload into
+`events.summary` as JSON; `notify.transactional` reads the same map, so a
+producer cannot add an account kind the outbox would treat as project
+mail. The welcome email is written by `auth/users.go` in the user's insert
+transaction. (2) The `waitlisted` sentence is `repose is full right now.
+You're number N on the waitlist; we'll email <address> when there's a
+seat.` (`waitlist.Message`), and the CLI prints the api's message as it
+is, building one from `detail` only when the message is empty; the old
+"at capacity ... when there's room" wording went with the first-project
+gate. (3) A checkout by a user whose row is converted (a plan that has
+since ended) or whose hold ran out re-queues the row (`joined_at = now`,
+`converted_at` cleared, `expired_invites + 1` for the expired case) when
+no seat is free, so a returning user waits like a newcomer and the count
+stays honest; a waiting or holding row is left alone. (4) Expiries run
+before invitations in the same tick, each expiry in its own transaction
+under the waitlist lock and guarded by `hold_until < now and converted_at
+is null`, so a webhook that converts the user in the same minute wins.
+(5) `repose-admin waitlist admit` invites without checking for a free
+seat: an operator letting someone in ahead means it, and the hold then
+counts against the next automatic invitation. (6) `repose-admin seats`
+reads `SEATS_TOTAL` from its own environment; with none it reports the
+hosts' count and says so. (7) The email copy has no exclamation mark and
+no dash, checked by `TestGoldenEmails`; the per-kind partials are
+`text/template` files producing strings that the `html/template` layout
+escapes on placement, so tenant text is escaped once, where it is placed.
+(8) `store.User` follows migration 0008 now (`paddle_customer_id`, no
+subscription column; the `StripeSubscriptionID` field stays with `db:"-"`
+until the Stripe client goes), because no test could run against the
+committed schema otherwise. *Rejected:* a second event helper per
+producer (each would re-implement the outbox rule); keeping the old
+sentence (it told the user to run `repose run` again, which does nothing
+for a seat); dropping a converted row on re-checkout (loses the converted
+count); refusing `admit` on a full fleet (the operator has no other way to
+let a tester in).
+
+*Amended 2026-09-27 (merge of ws/paddle, ws/seats-email and ws/web):* (1)
+holds for the billing producers too: `billing.AccountEvent` and its
+English summaries are gone, and dunning, the webhooks, the service and the
+overage job write typed payloads (`billing.TrialEndingPayload`,
+`PaymentFailedPayload`, `SubscriptionCancelledPayload`,
+`SubscriptionEndedPayload`, `PlanChangedPayload`, `EgressStoppedPayload`,
+the fields of the notifications.md table) through `events.InsertAccount`,
+so the row and its one outbox row are written once, by one helper.
+`payment_failed` carries no `portal_url` (the webhook has no portal
+session for the user; the template links the plan page, where the portal
+button is), `subscription_ended.retention_until` is `ended_at` plus 30
+days (`billing.RetentionDays`), and `plan_changed.effective_at` is the
+moment of the change for an upgrade and the webhook alike.
+`TestAccountPayloadsRender` and the producer tests render each event
+through `notify.Render` and check the plan's name, the amount and the
+date in the HTML and the text. On (2): the one builder is
+`waitlist.Message`, in the waitlist package rather than billing, because
+billing imports waitlist for the seats (a builder in billing would be a
+cycle); `billing.WaitlistedError.Message`, the compute gate's
+`subscription_required` refusal while the user waits (which no longer
+appends the plan page's URL, so the three sentences are one) and the fake
+api's checkout and gate all call it. The CLI keeps its own fallback for an
+api that sent no message and prints the api's sentence as it is: a
+plan-less user's `POST /projects` prints it and exits 7, a `waitlisted`
+checkout refusal or an older api's first-project gate prints it and exits
+8 (`TestRunWaitlistedPrintsPlaceAndExits8`).
+**I-295. The dashboard under plans: the fake's default is exempt, the
+Paddle stub, one site-wide CSP, and what the pages stop showing.**
+(web workstream, 2026-09-27, building I-289 and I-290 into `apps/web` and
+`internal/fakes/api` before the api's own rewrite landed.) Decisions the
+spec left open: (1) `internal/fakes/api` starts with billing off and the
+account `exempt`, so every test that is not about billing keeps its
+compute; the billing modes (`none|trial|active|past_due|suspended|exempt`)
+are a knob, and `SetWaitlisted(n)` keeps its name but now means "no plan,
+no free seat, place n", answered by the gate as `payment_required`
+`subscription_required` with `detail.waitlist` (I-290 moved the waitlist
+off `POST /projects`); the CLI's waitlist test changes with the CLI. The
+fake refuses a `suspended` account at the compute gates only and keeps
+answering reads, so the dashboard can draw the suspended state; the api's
+three-route rule for suspended accounts (api.md) is the api's to enforce.
+(2) Against `paddle.environment = "fake"` the dashboard calls
+`window.__reposePaddleStub.open({transactionId, onCompleted})` instead of
+loading Paddle.js, and a Playwright test installs a stub that completes
+the transaction through the fake's admin listener (`POST
+/paddle/complete`, CORS on) and reports completion; the same page code
+then polls `GET /billing`, so the flow is the production flow minus the
+overlay. (3) The app had no Content-Security-Policy and nothing in front
+of it sets one, so `svelte.config.js` sets one site-wide through
+`kit.csp` (SvelteKit cannot scope it to a route): `script-src 'self'
+https://cdn.paddle.com https://*.paddle.com`, `frame-src` Paddle's
+checkout, `connect-src 'self' https:` plus the loopback the test fixtures
+use (the api and Logto are runtime `PUBLIC_*` values, so they cannot be
+named at build time), `style-src` with `'unsafe-inline'` for Svelte's
+style attributes. (4) With compute cents 0 under `plan-v1`, the project
+page's Cost card becomes a Plan card (the class's memory of the plan's)
+and the projects list drops its Today and This month columns and the
+money in its summary; `cost_today_cents`, `cost_month_cents` and
+`idle.hourly_cents` are still read from the api and ignored. A
+`disk_limit` on a resize is shown as the same banner as a start's
+refusal. (5) The landing's Units squares count the memory that runs at
+once (8 and 16), not vCPUs, since a plan is sold by memory. (6)
+`refunds.md` says two things `PRICING.md` "Refunds" does not: an egress
+overage is not refunded (it records traffic that was sent) and a charge
+made in error is refunded whenever it happened. *Rejected:* enforcing the
+suspended account's three-route rule in the fake (the dashboard's other
+pages would need a state the api has not specified); a CSP as a
+dynamically inserted meta tag on the billing page alone (a meta CSP
+cannot be withdrawn on the next client-side navigation, so it would apply
+to the rest of the session anyway, unstated); keeping the Cost card with
+three zeros.
+
+**I-292. Watching the agent's browser is one command: `repose browser`
+opens a viewer page repose ships, sized to the tab, on TigerVNC's Xvnc,
+with the password in the URL fragment and the forward in the
+background.** (launch round, 2026-09-27; the owner: "let's streamline
+the process of having a VNC and whatever because it's all cumbersome
+right now ... make it more crisp") `repose open --desktop` took a second
+terminal (the forward ran in the foreground until Ctrl-C), printed a
+password the user had to type into stock noVNC's dialog, and showed a
+fixed 1440x900 Xvfb screen scaled to whatever the tab was, blurry on
+anything else, with a new password at every start so a tab left open
+never reconnected. Four changes. (1) `repose browser [PROJECT] [--stop]
+[--no-open]` runs `repose-guest-profile desktop start`, starts `ssh -N`
+as a detached child in its own session (`ExitOnForwardFailure`,
+`ServerAliveInterval 15`, `ServerAliveCountMax 3`, off the
+ControlMaster as before, I-149) to laptop port 6080 or a free one
+(I-261), waits until the viewer's `GET /healthz` answers through it,
+records port and pid in `~/.config/repose/browser-forwards/<slug>.json`,
+prints one line with the URL and opens it. A second run finds the record,
+probes the port for our `healthz` and reuses the forward; `--stop` stops
+the guest's viewer and kills the recorded pid, but only while the port
+still answers as our viewer, so a recycled pid is never killed. `repose
+open --desktop [--stop] [--no-browser]` stays as the hidden old name,
+with one stderr line pointing at the new one. (2) The password travels
+in the URL fragment (`#p=`): a browser never sends the fragment with a
+request, so the forward, websockify and any log see only the path, the
+user types nothing, and I-33's password stays as defence in depth. The
+guest generates it once per boot (`/run` is a tmpfs, so a boot is its
+lifetime) instead of at every start, so the link in an open tab survives
+the idle stop and a `--stop`; a reboot changes it and the page says so.
+(3) The guest serves its own page (`nix/guest/base/desktop/viewer/`:
+`index.html`, `viewer.js`, `viewer.css`, `healthz`) on noVNC 1.7's ES
+module core (`core/` and `vendor/` copied out of `pkgs.novnc`, nothing
+else of it: a store link would carry its Python and numpy, 260 MB), no
+framework, no build step: it connects at once with the
+fragment's password, `resizeSession` and `scaleViewport` on,
+`clipViewport` off, quality 9 and compression 1 (`?q=`, `?c=` adjust),
+a slim bar (project name from `project.json` written at viewer start,
+state, remote size, full screen, copy link with the fragment), reconnect
+with backoff so the socket activation wakes an idled viewer, the
+clipboard bridged both ways where the browser allows, and a plain "the
+machine's desktop is off; start it with repose browser" state after three
+failed connections. (4) TigerVNC's Xvnc replaces Xvfb plus x11vnc: it is
+the X server and the VNC server in one process and implements the
+client's SetDesktopSize, so the screen takes the tab's size (a 2560x1440
+tab gets a 2560x1440 desktop) instead of a scaled 1440x900; openbox
+re-maximises the browser to the new screen (checked in the VM test with
+xdotool after resizes to 2560x1440 and 800x600), Chromium's
+`--window-size` is dropped, `repose-vncconfig` carries the clipboard,
+fontconfig gets grayscale antialiasing with slight hinting (subpixel
+fringes do not survive the trip as an image) and Noto defaults. The
+viewer is now `repose-novnc.service` (the display, `repose-xvnc`, is up
+for the browser alone); Xvnc's VNC port is therefore up whenever the
+display is, on loopback with the password, never auto-forwarded. Closure:
+Xvfb, x11vnc and libvncserver out (5 MB), tigervnc in with fltk, ffmpeg's
+libraries and GLU for the vncviewer nobody runs (about 55 MB); the next
+cut, if the 6 GiB cap bites, is a tigervnc built with `BUILD_VIEWER` off.
+A Retina
+tab is shown at 1x pixels: Chromium reads its scale factor at start, so
+following `devicePixelRatio` would need a browser restart; still sharper
+than the stretched 1440x900, and the bar says "at 1x". Tests: `TestBrowserURLCarriesThePasswordInTheFragment`,
+`TestBrowserForwardArgs`, `TestViewerHealthyKnowsOurViewer`,
+`TestBrowserCmdWatchesReusesAndStops` (fake api, real sshd, a stand-in
+viewer; the printed line, no password on stderr, the reuse, `--stop`),
+`TestBrowserCmdReportsAForwardThatCannotStart`,
+`TestOpenDesktopIsTheOldNameOfBrowser`; guest-desktop gains a plain RFB
+3.8 client (`nix/guest/tests/rfb-client.py`, VncAuth with its own DES)
+that authenticates, receives the framebuffer, and sends SetDesktopSize,
+with `xdpyinfo`, `xrandr` and the Chromium window geometry checked after.
+Measured while landing this, in one test guest back to back: a cold
+Chromium answered DevTools after 333 s and 153 s on Xvfb, 124 s and 145 s
+on Xvnc (the guest's load at 5 on 2 vCPUs; four workers on the four-core
+dev box), and a warm `/json/version` took 1 to 3 s on both, so the display
+server is not what the MCP servers' fixed 30 s connect timeout trips
+over; the test's `mcp()` helper tries a connect timeout again, up to
+four times, and a quiet box never retries. Ships with the base after
+2026.09.27.2 and the CLI after v0.1.20; the docs say what an older half
+does against a newer one. *Rejected:* `ssh -f` for the forward (the forked child's pid is unknown
+to the parent, so `--stop` could not end it; a detached `ssh -N` whose pid
+the CLI keeps does the same and can be stopped); keeping stock `vnc.html`
+with `defaults.json` (its dialog asks for the password, its resize mode is
+a setting the user finds, and it cannot read the fragment); a relay on
+the edge (`:6081` in 06-gateway-edge) or a public URL (a desktop reachable
+without the SSH forward is a new attack surface for a feature the forward
+already serves); a dashboard embed (the page would need the forward to
+exist before the click; the command is the forward); dropping the
+password now that it is invisible (a stray forward on a shared laptop
+would still expose the desktop, I-33); Xorg with the dummy driver plus
+x11vnc (RandR modes would have to be added on the fly and x11vnc still
+does not implement SetDesktopSize); `--force-device-scale-factor` from
+the viewer's `devicePixelRatio` (needs a Chromium restart, which loses
+the agent's page); `<decor>yes</decor>` in openbox (a title bar above
+Chromium's own tab strip, wasted rows in a window nobody moves).
 **I-296. `repose browser bridge` lends the guest's browser tools the
 laptop's own Chrome, through Chrome's DevTools switch, a front that
 answers `/json/version`, and a reverse tunnel whose remote command holds
@@ -7876,7 +8281,7 @@ With a PATH, or with `./repose.nix` present, nothing changed.
 request, dogfood 2026-09-28) `build_logs` had no time, so `repose logs
 --kind build` printed `0001-01-01T00:00:00Z` on every line and `--follow`
 had no cursor (it re-printed the whole log every 2 s). Migration
-`0008_build_log_ts` adds `ts timestamptz not null default now()` (old rows
+`0009_build_log_ts` (numbered 0008 until it met the launch round's `0008_plans` at merge) adds `ts timestamptz not null default now()` (old rows
 get the migration's time; an older api inserting without the column gets
 now()); the buildlog store stamps each line when it is appended; the SSE
 data and `GET /logs?kind=build` lines carry `ts` (and `kind: build`), and
@@ -7980,6 +8385,8 @@ usage error. The user docs now say `repose browser` wherever they said
 --desktop`, which keeps working. *Rejected:* `repose browser desktop` (a
 third word for the common case); removing `open --desktop` (it is in
 released docs, the landing, and people's history).
+
+Amended at merge (2026-09-28, conductor): the launch round's I-292 had already made `repose browser [PROJECT]` the machine's browser, with a background forward and the password in the link, and `repose open --desktop` a hidden old name. I-292's command is the one kept; this entry's own `browser` command (foreground forward, printed password) was dropped at the merge. What stays from this round is `bridge` as a subcommand with I-311's `--allow`.
 
 **I-311. The bridge enforces what the agents may do in the laptop's
 Chrome itself, at the CDP layer: always-on refusals, and `--allow HOST`

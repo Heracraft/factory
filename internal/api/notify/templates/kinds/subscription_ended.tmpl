@@ -1,0 +1,6 @@
+{{define "heading"}}Your plan has ended{{end}}
+{{define "body"}}{{.P.Plan "plan"}} ended{{if .P.Has "ended_at"}} on {{.P.Date "ended_at"}}{{end}} and your machines are stopped.
+
+Their snapshots are kept{{if .P.Has "retention_until"}} until {{.P.Date "retention_until"}}{{else}} for 30 days{{end}}. To come back, choose a plan; each project restores from its snapshot.{{end}}
+{{define "link_label"}}Choose a plan{{end}}
+{{define "link_url"}}{{.Billing}}{{end}}

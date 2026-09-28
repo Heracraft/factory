@@ -17,7 +17,6 @@ import (
 	"github.com/heracraft/repose/internal/api/ops"
 	"github.com/heracraft/repose/internal/api/scheduler"
 	"github.com/heracraft/repose/internal/api/store"
-	"github.com/heracraft/repose/internal/api/waitlist"
 	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/obs"
@@ -44,10 +43,10 @@ func Slug(name string) string {
 const DefaultFragment = "{ pkgs, ... }:\n{\n  home.packages = [ ];\n}\n"
 
 type projectExtras struct {
-	costToday, costMonth int64
-	lastSnapshot         *time.Time
-	latest               *meter.Latest
-	idleSince            *time.Time
+	runningToday, runningMonth int64
+	lastSnapshot               *time.Time
+	latest                     *meter.Latest
+	idleSince                  *time.Time
 }
 
 func (s *Server) extras(ctx context.Context, p *store.Project, tz string) (projectExtras, error) {
@@ -61,7 +60,15 @@ func (s *Server) extras(ctx context.Context, p *store.Project, tz string) (proje
 	now := time.Now().In(loc)
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
-	if err := s.d.Pool.QueryRow(ctx, `select coalesce(sum(cost_cents) filter (where hour >= $2), 0), coalesce(sum(cost_cents) filter (where hour >= $3), 0) from usage_hours where project_id = $1`, p.ID, dayStart, monthStart).Scan(&x.costToday, &x.costMonth); err != nil {
+	// Running seconds today and this period (I-289); the period is the
+	// owner's subscription's, else the calendar month.
+	periodStart := monthStart
+	if sub, err := billing.LiveSubscription(ctx, s.d.Pool, p.UserID); err != nil {
+		return x, err
+	} else if sub != nil {
+		periodStart = sub.Period(now.UTC()).Start
+	}
+	if err := s.d.Pool.QueryRow(ctx, `select coalesce(sum(running_seconds) filter (where hour >= $2), 0), coalesce(sum(running_seconds) filter (where hour >= $3), 0) from usage_hours where project_id = $1`, p.ID, dayStart, periodStart).Scan(&x.runningToday, &x.runningMonth); err != nil {
 		return x, err
 	}
 	if err := s.d.Pool.QueryRow(ctx, "select max(taken_at) from snapshots where project_id = $1 and deleted_at is null", p.ID).Scan(&x.lastSnapshot); err != nil {
@@ -101,15 +108,17 @@ func (s *Server) projectJSON(ctx context.Context, p *store.Project, u *store.Use
 		"id": p.ID, "name": p.Name, "slug": p.Slug, "remote_url": p.RemoteURL, "class": p.Class, "state": p.State,
 		"host_id": p.HostID, "guest_ip": nil, "agent_default": p.AgentDefault, "hold_base_updates": p.HoldBaseUpdates,
 		"base_version": p.BaseVersion, "config_revision_id": p.ConfigRevisionID, "volume_bytes": p.VolumeBytes,
-		"created_at": p.CreatedAt, "started_at": p.StartedAt, "cost_today_cents": x.costToday, "cost_month_cents": x.costMonth,
+		"created_at": p.CreatedAt, "started_at": p.StartedAt, "cost_today_cents": 0, "cost_month_cents": 0,
+		"running_seconds_today": x.runningToday, "running_seconds_month": x.runningMonth,
 		"last_snapshot_at": x.lastSnapshot, "host_unreachable": p.HostUnreachable, "last_error": p.LastError, "tz": p.TZ,
 	}
 	if p.GuestIP != nil {
 		out["guest_ip"] = p.GuestIP.String()
 	}
 	if x.idleSince != nil {
-		// A running machine unused for a day, still billing (I-262).
-		out["idle"] = map[string]any{"since": *x.idleSince, "hourly_cents": billing.Hourly(p.Class)}
+		// A running machine unused for a day, still holding the plan's
+		// memory (I-262). hourly_cents is 0 since I-289, kept one release.
+		out["idle"] = map[string]any{"since": *x.idleSince, "hourly_cents": 0, "memory_gb": billing.ClassMemoryGB(p.Class)}
 	}
 	if x.latest != nil {
 		out["disk_used_bytes"] = x.latest.DiskUsed
@@ -161,26 +170,15 @@ func (s *Server) userProject(r *http.Request) (*store.Project, error) {
 	return store.GetUserProject(r.Context(), s.d.Pool, userFrom(r.Context()).ID, id)
 }
 
-// billingGate is the card and status check before compute (R2-10, I-16).
-// With BILLING_ENFORCE=false it lets everything through: metering and the
-// Stripe push carry on, but nothing is blocked (09-billing.md §8).
-func (s *Server) billingGate(u *store.User) error {
-	if u.BillingStatus == "exempt" || !s.d.BillingEnforce {
-		return nil
+// projectLimitError is the 400 a create, restore or fork past the plan's
+// project count answers (api.md POST /projects/:id/fork).
+func projectLimitError(have, limit, requested int) error {
+	if requested <= 1 {
+		return withDetail(errf("invalid", "you have %d of %d projects; destroy one, or upgrade your plan at https://repose.herakraft.co/billing", have, limit),
+			map[string]any{"limit": limit, "projects": have})
 	}
-	switch u.BillingStatus {
-	case "past_due":
-		return withDetail(errf("payment_required", "your account is past due; update your card"), map[string]any{"reason": "past_due"})
-	case "suspended":
-		return withDetail(errf("payment_required", "your account is suspended"), map[string]any{"reason": "suspended"})
-	}
-	if !u.HasCard {
-		return withDetail(errf("payment_required", "add a card before starting a guest"), map[string]any{"reason": "card_required"})
-	}
-	if u.BillingStatus == "trial" && u.TrialCreditCents <= 0 {
-		return withDetail(errf("payment_required", "your trial credit is used up"), map[string]any{"reason": "trial_depleted"})
-	}
-	return nil
+	return withDetail(errf("invalid", "you have %d of %d projects, and %d more would make %d; destroy some, or upgrade your plan at https://repose.herakraft.co/billing", have, limit, requested, have+requested),
+		map[string]any{"limit": limit, "projects": have, "requested": requested})
 }
 
 // abuseGate refuses to start a project on hold after three miner stops in
@@ -231,25 +229,18 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) error {
 	if body.Agent != nil {
 		agent = *body.Agent
 	}
-	if err := s.billingGate(u); err != nil {
+	// The compute gate (I-289): a plan, its memory for this class and its
+	// disk for the new volume. No waitlist gate here since I-290: checkout
+	// is where the seats question is answered.
+	if err := s.gate(r, u, billing.Request{Class: body.Class, AddDiskBytes: scheduler.DefaultVolume(body.Class)}); err != nil {
 		return err
 	}
 	if u.CancelledAt != nil {
 		return errf("forbidden", "account is cancelled")
 	}
-	// A first project waits for room once the fleet is near full
-	// (DECISIONS I-269). Joining is idempotent: a retry keeps the place.
-	if wl, joined, err := s.d.Waitlist.Check(ctx, u, body.Class, time.Now()); err != nil {
+	limits, err := s.limits(r, u)
+	if err != nil {
 		return err
-	} else if wl != nil {
-		if joined {
-			obs.Logger(ctx, s.d.Log).Info("user waitlisted", "event", "waitlist_join", "user_id", u.ID.String(), "position", wl.Position, "class", body.Class)
-		}
-		email := ""
-		if u.Email != nil {
-			email = *u.Email
-		}
-		return withDetail(errf("waitlisted", "%s", waitlist.Message(wl.Position, email)), map[string]any{"position": wl.Position, "joined_at": wl.JoinedAt, "email": email})
 	}
 	pid := store.NewID()
 	rid := store.NewID()
@@ -257,18 +248,15 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) error {
 		opID uuid.UUID
 		p    *store.Project
 	)
-	err := db.InTx(ctx, s.d.Pool, func(tx db.Tx) error {
-		// Limits are checked under a row lock on the user so two creates
-		// cannot both pass.
-		var count, xl int
-		if err := tx.QueryRow(ctx, "select count(*), count(*) filter (where class = 'xl') from projects where user_id = (select id from users where id = $1 for update) and "+countsTowardLimit, u.ID).Scan(&count, &xl); err != nil {
+	err = db.InTx(ctx, s.d.Pool, func(tx db.Tx) error {
+		// The project count is checked under a row lock on the user so two
+		// creates cannot both pass.
+		var count int
+		if err := tx.QueryRow(ctx, "select count(*) from projects where user_id = (select id from users where id = $1 for update) and "+countsTowardLimit, u.ID).Scan(&count); err != nil {
 			return err
 		}
-		if count >= u.ProjectLimit {
-			return withDetail(errf("invalid", "you have %d of %d projects; destroy one or add a card and pay your first invoice to raise the limit", count, u.ProjectLimit), map[string]any{"limit": u.ProjectLimit, "projects": count})
-		}
-		if body.Class == "xl" && xl >= u.XLLimit {
-			return withDetail(errf("invalid", "you have %d of %d xl projects", xl, u.XLLimit), map[string]any{"xl_limit": u.XLLimit, "xl": xl})
+		if count >= limits.Projects {
+			return projectLimitError(count, limits.Projects, 1)
 		}
 		_, err := tx.Exec(ctx, `insert into projects (id, user_id, name, slug, remote_url, class, state, volume_bytes, tz, agent_default, config_revision_id) values ($1, $2, $3, $4, $5, $6, 'creating', $7, $8, $9, $10)`,
 			pid, u.ID, body.Name, slug, body.RemoteURL, body.Class, scheduler.DefaultVolume(body.Class), body.TZ, agent, rid)
@@ -352,14 +340,11 @@ func (s *Server) patchProject(w http.ResponseWriter, r *http.Request) error {
 		if p.State != "stopped" {
 			return errf("conflict", "changing the class requires the project to be stopped")
 		}
-		if *body.Class == "xl" && p.Class != "xl" {
-			u := userFrom(ctx)
-			var xl int
-			if err := s.d.Pool.QueryRow(ctx, "select count(*) from projects where user_id = $1 and class = 'xl' and "+countsTowardLimit, u.ID).Scan(&xl); err != nil {
+		if billing.ClassMemoryGB(*body.Class) > billing.ClassMemoryGB(p.Class) {
+			// A bigger class has to fit the plan's memory beside what runs
+			// now (an xl needs Pro); the stopped project itself holds none.
+			if err := s.gate(r, userFrom(ctx), billing.Request{Class: *body.Class, Project: p.ID}); err != nil {
 				return err
-			}
-			if xl >= u.XLLimit {
-				return withDetail(errf("invalid", "you have %d of %d xl projects", xl, u.XLLimit), map[string]any{"xl_limit": u.XLLimit})
 			}
 		}
 		if _, err := s.d.Pool.Exec(ctx, "update projects set class = $2 where id = $1 and state = 'stopped'", p.ID, *body.Class); err != nil {
@@ -452,7 +437,7 @@ func (s *Server) startProject(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	u := userFrom(r.Context())
-	if err := s.billingGate(u); err != nil {
+	if err := s.gate(r, u, billing.Request{Class: p.Class, Project: p.ID}); err != nil {
 		return err
 	}
 	if err := s.abuseGate(r.Context(), p); err != nil {
@@ -623,6 +608,10 @@ func (s *Server) resizeProject(w http.ResponseWriter, r *http.Request) error {
 	}
 	if p.GuestID == nil {
 		return errf("conflict", "%s has no guest yet", p.Slug)
+	}
+	// Growing a volume allocates disk against the plan (I-289).
+	if err := s.gate(r, userFrom(r.Context()), billing.Request{AddDiskBytes: body.VolumeBytes - p.VolumeBytes, Project: p.ID}); err != nil {
+		return err
 	}
 	pid := p.ID
 	id, err := s.enqueue(r.Context(), ops.NewOp{Kind: ops.KindResize, ProjectID: &pid, Params: map[string]any{"volume_bytes": float64(body.VolumeBytes)}, Phases: ops.PlanResize()}, false)

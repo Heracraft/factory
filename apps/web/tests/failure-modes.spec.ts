@@ -1,9 +1,23 @@
 // Checklist: "Every failure row in §6 is exercised."
 import { test, expect, type Page } from '@playwright/test';
-import { signIn, createProject, apiURLFromEnv, failNext, fail, unfail } from './helpers';
+import {
+	signIn,
+	createProject,
+	apiURLFromEnv,
+	failNext,
+	fail,
+	unfail,
+	setBilling,
+	resetBilling
+} from './helpers';
 
 test.beforeEach(async ({ page }) => {
+	await resetBilling();
 	await signIn(page);
+});
+
+test.afterAll(async () => {
+	await resetBilling();
 });
 
 // A freshly created project starts already running (the fake's create
@@ -24,19 +38,158 @@ async function stopIfRunning(page: Page): Promise<void> {
 	});
 }
 
-test('Start with no card shows an inline banner and the button stays enabled', async ({ page }) => {
+// api.md's six payment_required reasons, each as the fake's gate answers
+// it (not the error switch, which carries no detail): the api's sentence,
+// the link the reason wants, and for plan_limit a Stop for each machine
+// named (DECISIONS I-289).
+test('Start with no plan shows the refusal with a Choose a plan link and the button stays enabled', async ({
+	page
+}) => {
 	const p = await createProject(apiURLFromEnv(), {
-		name: 'no-card-app',
-		remote_url: 'github.com/heracraft/no-card-app'
+		name: 'no-plan-app',
+		remote_url: 'github.com/heracraft/no-plan-app'
+	});
+	await page.goto(`/projects/${p.id}`);
+	await stopIfRunning(page);
+	await setBilling({ mode: 'none' });
+
+	const startBtn = page.getByRole('button', { name: 'Start', exact: true });
+	await startBtn.click();
+	const refusal = page.getByTestId('refusal');
+	await expect(refusal).toHaveAttribute('data-reason', 'subscription_required');
+	await expect(refusal).toContainText('Choose a plan at https://repose.herakraft.co/billing');
+	await expect(refusal.getByRole('link', { name: 'Choose a plan' })).toHaveAttribute(
+		'href',
+		'/billing'
+	);
+	await expect(startBtn).toBeEnabled();
+});
+
+test('a payment_required without a reason (an older api) still links to Billing', async ({
+	page
+}) => {
+	const p = await createProject(apiURLFromEnv(), {
+		name: 'old-api-app',
+		remote_url: 'github.com/heracraft/old-api-app'
 	});
 	await page.goto(`/projects/${p.id}`);
 	await stopIfRunning(page);
 	await failNext('POST', '/projects/:id/start', 'payment_required');
+	await page.getByRole('button', { name: 'Start', exact: true }).click();
+	const refusal = page.getByTestId('refusal');
+	await expect(refusal).toHaveAttribute('data-reason', 'unknown');
+	await expect(refusal.getByRole('link', { name: 'Billing' })).toHaveAttribute('href', '/billing');
+});
 
+test('plan_limit names the machines using the memory, each with a Stop', async ({ page }) => {
+	const api = apiURLFromEnv();
+	const using = await createProject(api, {
+		name: 'busy-app',
+		remote_url: 'github.com/heracraft/busy-app',
+		class: 'large'
+	});
+	const p = await createProject(api, {
+		name: 'next-app',
+		remote_url: 'github.com/heracraft/next-app'
+	});
+	await page.goto(`/projects/${p.id}`);
+	await stopIfRunning(page);
+	// Every other project of the suite is stopped so that busy-app is the
+	// one machine holding Solo's 8 GB.
+	const list = (await (
+		await fetch(`${api}/projects`, { headers: { Authorization: 'Bearer playwright' } })
+	).json()) as { id: string; state: string }[];
+	for (const q of list) {
+		if (q.state === 'running' && q.id !== using.id) {
+			await fetch(`${api}/projects/${q.id}/stop`, {
+				method: 'POST',
+				headers: { Authorization: 'Bearer playwright', 'Content-Type': 'application/json' },
+				body: JSON.stringify({ snapshot: false })
+			});
+		}
+	}
+	await setBilling({ mode: 'active', plan: 'solo' });
+	await page.getByRole('button', { name: 'Start', exact: true }).click();
+	const refusal = page.getByTestId('refusal');
+	await expect(refusal).toHaveAttribute('data-reason', 'plan_limit');
+	await expect(refusal).toContainText(
+		`would pass Solo's 8 GB running at once; ${using.slug} is using it. Stop one or upgrade.`
+	);
+	await expect(refusal.getByRole('link', { name: 'Upgrade' })).toHaveAttribute('href', '/billing');
+	await refusal.getByRole('button', { name: `Stop ${using.slug}` }).click();
+	await expect(page.getByText(`Stopped ${using.slug}. Start this one again now.`)).toBeVisible({
+		timeout: 10_000
+	});
+	await expect(refusal.getByRole('button', { name: /^Stop / })).toHaveCount(0);
+	// Now it fits.
+	await page.getByRole('button', { name: 'Start', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible({
+		timeout: 10_000
+	});
+});
+
+test('disk_limit on a resize is told like a start refusal, with a Change plan link', async ({
+	page
+}) => {
+	const p = await createProject(apiURLFromEnv(), {
+		name: 'disk-app',
+		remote_url: 'github.com/heracraft/disk-app'
+	});
+	await page.goto(`/projects/${p.id}`);
+	await expect(page.getByRole('button', { name: /^(Start|Stop)$/ }).first()).toBeVisible();
+	await setBilling({ mode: 'active', plan: 'solo' });
+	await page.getByRole('button', { name: 'Resize…' }).click();
+	await page.locator('select.field').selectOption('320');
+	await page.getByRole('button', { name: 'Grow' }).click();
+	const refusal = page.getByTestId('refusal');
+	await expect(refusal).toHaveAttribute('data-reason', 'disk_limit');
+	await expect(refusal).toContainText("would pass Solo's 100 GB");
+	await expect(refusal.getByRole('link', { name: 'Change plan' })).toHaveAttribute(
+		'href',
+		'/billing'
+	);
+});
+
+test('egress_limit, past_due and suspended each show the sentence and the right link', async ({
+	page
+}) => {
+	const p = await createProject(apiURLFromEnv(), {
+		name: 'gated-app',
+		remote_url: 'github.com/heracraft/gated-app'
+	});
+	await page.goto(`/projects/${p.id}`);
+	await stopIfRunning(page);
 	const startBtn = page.getByRole('button', { name: 'Start', exact: true });
+	const refusal = page.getByTestId('refusal');
+
+	await setBilling({ mode: 'active', plan: 'solo', egress_gb: 1000 });
 	await startBtn.click();
-	await expect(page.getByText('Add one in Billing')).toBeVisible();
-	await expect(startBtn).toBeEnabled();
+	await expect(refusal).toHaveAttribute('data-reason', 'egress_limit');
+	await expect(refusal).toContainText(
+		"egress this period is 1000 GB, four times Solo's 250 GB allowance."
+	);
+	await expect(refusal.getByRole('link', { name: 'See usage' })).toHaveAttribute(
+		'href',
+		'/billing'
+	);
+
+	await setBilling({ mode: 'past_due', plan: 'solo', egress_gb: 0 });
+	await startBtn.click();
+	await expect(refusal).toHaveAttribute('data-reason', 'past_due');
+	await expect(refusal).toContainText('Your last payment failed.');
+	await expect(refusal.getByRole('link', { name: 'Update card' })).toHaveAttribute(
+		'href',
+		'/billing'
+	);
+
+	await setBilling({ mode: 'suspended', plan: 'solo' });
+	await startBtn.click();
+	await expect(refusal).toHaveAttribute('data-reason', 'suspended');
+	await expect(refusal).toContainText('Your account is suspended');
+	await expect(refusal.getByRole('link', { name: 'Pay the invoice' })).toHaveAttribute(
+		'href',
+		'/billing'
+	);
 });
 
 test('capacity on Start shows the documented message', async ({ page }) => {

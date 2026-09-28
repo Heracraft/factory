@@ -1,0 +1,6 @@
+{{define "heading"}}Your last payment failed{{end}}
+{{define "body"}}The charge for {{.P.Plan "plan"}}{{if .P.Has "amount_cents"}} ({{.P.Money "amount_cents"}}){{end}} did not go through. Update your card in the billing portal and the next attempt takes it.
+
+Your machines keep running for three days. After that they are snapshotted and stopped until a payment arrives.{{end}}
+{{define "link_label"}}Update your card{{end}}
+{{define "link_url"}}{{if .P.Has "portal_url"}}{{.P.Str "portal_url"}}{{else}}{{.Billing}}{{end}}{{end}}

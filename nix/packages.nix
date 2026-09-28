@@ -63,7 +63,7 @@ let
 
     # `nix build ./nix#guestd` prints the expected value when a dependency
     # changes and this no longer matches.
-    vendorHash = "sha256-gXsbGUYWtES+hP3HBZTl0aVh+EYFavSWxUJxDDi5u9I=";
+    vendorHash = "sha256-s20s9wRZutz/jtol/LG25vnT2O0YGKLQvoHBuh8Chbg=";
 
     postPatch = ''
       mkdir -p internal/gen

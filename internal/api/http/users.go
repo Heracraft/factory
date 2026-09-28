@@ -1,8 +1,8 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -10,39 +10,39 @@ import (
 
 	"github.com/heracraft/repose/internal/api/ops"
 	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/obs"
 )
 
-func userJSON(u *store.User) map[string]any {
+// userJSON is GET /me's body (api.md "Users", DECISIONS I-289): billing is
+// a projection of the live subscription, limits are the plan's, and
+// trial_credit_cents is always 0 (kept one release).
+func (s *Server) userJSON(ctx context.Context, u *store.User) (map[string]any, error) {
+	sub, err := billing.LiveSubscription(ctx, s.d.Pool, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	b := map[string]any{"status": u.BillingStatus, "plan": nil, "seats": 0, "period_end": nil, "trial_end": nil, "cancel_at": nil, "has_card": u.HasCard, "trial_credit_cents": 0}
+	if sub != nil {
+		b["plan"], b["seats"], b["period_end"], b["trial_end"], b["cancel_at"] = sub.Plan, sub.Seats, sub.PeriodEnd, sub.TrialEnd, sub.CancelAt
+	}
+	place, err := billing.WaitlistPlace(ctx, s.d.Pool, u.ID)
+	if err != nil {
+		return nil, err
+	}
 	return map[string]any{
 		"id": u.ID, "handle": u.Handle, "email": u.Email, "github_login": u.GithubLogin, "tz": u.TZ, "created_at": u.CreatedAt,
-		"billing": map[string]any{"status": u.BillingStatus, "trial_credit_cents": u.TrialCreditCents, "has_card": u.HasCard},
-		"limits":  map[string]any{"projects": u.ProjectLimit, "xl": u.XLLimit},
-		"notify":  map[string]any{"email": u.NotifyEmail, "ntfy_url": u.NtfyURL},
-	}
+		"billing":  b,
+		"limits":   billing.LimitsFor(u, sub).JSON(),
+		"notify":   map[string]any{"email": u.NotifyEmail, "ntfy_url": u.NtfyURL},
+		"waitlist": place.JSON(),
+	}, nil
 }
 
 func (s *Server) getMe(w http.ResponseWriter, r *http.Request) error {
-	u := userFrom(r.Context())
-	// 09-billing.md §5.2: the Stripe customer is created at first GET /me.
-	// A Stripe outage must not make the user's own profile unreadable, so a
-	// failure is logged and the next /me tries again; nothing downstream
-	// needs the customer until a card is added.
-	if s.d.Customers != nil && (u.StripeCustomerID == nil || *u.StripeCustomerID == "") && u.BillingStatus != "exempt" {
-		if _, err := s.d.Customers.EnsureCustomer(r.Context(), u.ID); err != nil {
-			obs.Logger(r.Context(), s.d.Log).Warn("could not create the Stripe customer", "event", obs.EventStripeWebhook, "action", "customer_create", "err", err.Error())
-		} else if fresh, err := store.GetUser(r.Context(), s.d.Pool, u.ID); err == nil {
-			u = fresh
-		}
-	}
-	j := userJSON(u)
-	// The user's place on the capacity waitlist while they hold one
-	// (DECISIONS I-269); null otherwise.
-	j["waitlist"] = nil
-	if e, err := store.GetWaitlistEntry(r.Context(), s.d.Pool, u.ID); err == nil && e.AdmittedAt == nil && e.Position > 0 {
-		j["waitlist"] = map[string]any{"position": e.Position, "joined_at": e.JoinedAt}
-	} else if err != nil && !errors.Is(err, db.ErrNotFound) {
+	j, err := s.userJSON(r.Context(), userFrom(r.Context()))
+	if err != nil {
 		return err
 	}
 	writeJSON(w, http.StatusOK, j)
@@ -115,15 +115,27 @@ func (s *Server) patchMe(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	writeJSON(w, http.StatusOK, userJSON(fresh))
+	j, err := s.userJSON(r.Context(), fresh)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, j)
 	return nil
 }
 
-// deleteMe begins cancellation: every live project is destroyed (a final
+// deleteMe begins cancellation: any pending egress overage is charged and
+// the subscription cancelled at once (PRICING.md "Cancelling and changing
+// plans": Paddle drops one-time charges on a cancelled subscription, so
+// the order matters), then every live project is destroyed (a final
 // snapshot kept 30 days) and the account is marked cancelled.
 func (s *Server) deleteMe(w http.ResponseWriter, r *http.Request) error {
 	u := userFrom(r.Context())
 	ctx := r.Context()
+	if s.d.Billing != nil {
+		if err := s.d.Billing.CloseAccount(ctx, u.ID); err != nil {
+			return err
+		}
+	}
 	projects, err := store.ListUserProjects(ctx, s.d.Pool, u.ID)
 	if err != nil {
 		return err

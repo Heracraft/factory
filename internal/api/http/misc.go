@@ -3,7 +3,6 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/heracraft/repose/internal/api/store"
@@ -151,6 +150,8 @@ func (s *Server) usage(w http.ResponseWriter, r *http.Request) error {
 		}
 		hours := map[string]float64{"small": 0, "large": 0, "xl": 0}
 		hours[class] = float64(running) / 3600
+		// cost_cents is the egress overage share and credit_cents 0 from
+		// price_version plan-v1; both stay one release (api.md).
 		out = append(out, map[string]any{"project_id": pid, "slug": slug, "day": day.Format("2006-01-02"), "guest_hours": hours,
 			"gb_months": float64(gb) / 720, "egress_gb": float64(egress) / (1 << 30), "cost_cents": cost, "credit_cents": credit})
 	}
@@ -171,61 +172,3 @@ func sinceParamNamed(r *http.Request, name string) time.Time {
 	}
 	return time.Time{}
 }
-
-func (s *Server) billingPortal(w http.ResponseWriter, r *http.Request) error {
-	u := userFrom(r.Context())
-	url, err := s.d.Billing.PortalURL(r.Context(), u.ID.String())
-	if err != nil {
-		return err
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"url": url})
-	return nil
-}
-
-func (s *Server) billingSetup(w http.ResponseWriter, r *http.Request) error {
-	u := userFrom(r.Context())
-	// An optional body `{"flow": "checkout"}` asks for a hosted Stripe
-	// Checkout page instead of a SetupIntent client secret (DECISIONS
-	// I-182); no body keeps the original answer.
-	var body struct {
-		Flow string `json:"flow"`
-	}
-	if r.ContentLength != 0 {
-		if err := decode(r, &body); err != nil {
-			return err
-		}
-	}
-	switch body.Flow {
-	case "", "setup_intent":
-	case "checkout":
-		url, err := s.d.Billing.SetupCheckout(r.Context(), u.ID.String())
-		if err != nil {
-			return err
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"url": url})
-		return nil
-	default:
-		return errf("invalid", "flow must be checkout or setup_intent")
-	}
-	secret, err := s.d.Billing.SetupIntent(r.Context(), u.ID.String())
-	if err != nil {
-		return err
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"client_secret": secret})
-	return nil
-}
-
-func (s *Server) billingInvoices(w http.ResponseWriter, r *http.Request) error {
-	u := userFrom(r.Context())
-	inv, err := s.d.Billing.Invoices(r.Context(), u.ID.String())
-	if err != nil {
-		return err
-	}
-	if inv == nil {
-		inv = []map[string]any{}
-	}
-	writeJSON(w, http.StatusOK, inv)
-	return nil
-}
-
-var _ = strconv.Itoa
