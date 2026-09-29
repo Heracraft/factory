@@ -62,6 +62,9 @@ type CreateProjectRequest struct {
 	Class        string `json:"class"`
 	TZ           string `json:"tz,omitempty"`
 	AgentDefault string `json:"agent_default,omitempty"`
+	// ExpiresIn makes the project temporary (DECISIONS I-347); never sent
+	// with RemoteURL.
+	ExpiresIn int64 `json:"expires_in_s,omitempty"`
 }
 
 func (c *Client) CreateProject(ctx context.Context, req CreateProjectRequest) (*Project, error) {
@@ -85,6 +88,17 @@ type PatchProjectRequest struct {
 	HoldBaseUpdates *bool   `json:"hold_base_updates,omitempty"`
 	AgentDefault    *string `json:"agent_default,omitempty"`
 	TZ              *string `json:"tz,omitempty"`
+}
+
+// KeepProject makes a temporary project a normal one: PATCH
+// {expires_at: null} (DECISIONS I-347). PatchProjectRequest omits empty
+// fields, so the null is sent from a map of its own.
+func (c *Client) KeepProject(ctx context.Context, id string) (*Project, error) {
+	var p Project
+	if err := c.patch(ctx, "/projects/"+url.PathEscape(id), map[string]any{"expires_at": nil}, &p); err != nil {
+		return nil, err
+	}
+	return &p, nil
 }
 
 func (c *Client) PatchProject(ctx context.Context, id string, req PatchProjectRequest) (*Project, error) {

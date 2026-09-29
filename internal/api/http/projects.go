@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"regexp"
@@ -17,6 +18,7 @@ import (
 	"github.com/heracraft/repose/internal/api/ops"
 	"github.com/heracraft/repose/internal/api/scheduler"
 	"github.com/heracraft/repose/internal/api/store"
+	"github.com/heracraft/repose/internal/api/temp"
 	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/db"
 	"github.com/heracraft/repose/internal/obs"
@@ -112,6 +114,11 @@ func (s *Server) projectJSON(ctx context.Context, p *store.Project, u *store.Use
 		"running_seconds_today": x.runningToday, "running_seconds_month": x.runningMonth,
 		"last_snapshot_at": x.lastSnapshot, "host_unreachable": p.HostUnreachable, "last_error": p.LastError, "tz": p.TZ,
 	}
+	if p.ExpiresAt != nil {
+		// A temporary machine (DECISIONS I-347): destroyed with no
+		// snapshot once this has passed, unless `repose keep` clears it.
+		out["expires_at"] = *p.ExpiresAt
+	}
 	if p.GuestIP != nil {
 		out["guest_ip"] = p.GuestIP.String()
 	}
@@ -203,9 +210,24 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) error {
 		Class     string  `json:"class"`
 		TZ        *string `json:"tz"`
 		Agent     *string `json:"agent_default"`
+		// ExpiresIn makes the project temporary (DECISIONS I-347).
+		ExpiresIn *int64 `json:"expires_in_s"`
 	}
 	if err := decode(r, &body); err != nil {
 		return err
+	}
+	var expiresAt *time.Time
+	if body.ExpiresIn != nil {
+		d := time.Duration(*body.ExpiresIn) * time.Second
+		if d < temp.MinLifetime || d > temp.MaxLifetime {
+			return errf("invalid", "expires_in_s must be between %d and %d", int64(temp.MinLifetime/time.Second), int64(temp.MaxLifetime/time.Second))
+		}
+		if body.RemoteURL != nil && *body.RemoteURL != "" {
+			return errf("invalid", "a temporary project has no remote_url")
+		}
+		body.RemoteURL = nil
+		t := time.Now().Add(d)
+		expiresAt = &t
 	}
 	if !nameRe.MatchString(body.Name) {
 		return errf("invalid", "name must match [A-Za-z0-9._-]{1,64}")
@@ -258,8 +280,8 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) error {
 		if count >= limits.Projects {
 			return projectLimitError(count, limits.Projects, 1)
 		}
-		_, err := tx.Exec(ctx, `insert into projects (id, user_id, name, slug, remote_url, class, state, volume_bytes, tz, agent_default, config_revision_id) values ($1, $2, $3, $4, $5, $6, 'creating', $7, $8, $9, $10)`,
-			pid, u.ID, body.Name, slug, body.RemoteURL, body.Class, scheduler.DefaultVolume(body.Class), body.TZ, agent, rid)
+		_, err := tx.Exec(ctx, `insert into projects (id, user_id, name, slug, remote_url, class, state, volume_bytes, tz, agent_default, config_revision_id, expires_at) values ($1, $2, $3, $4, $5, $6, 'creating', $7, $8, $9, $10, $11)`,
+			pid, u.ID, body.Name, slug, body.RemoteURL, body.Class, scheduler.DefaultVolume(body.Class), body.TZ, agent, rid, expiresAt)
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -287,7 +309,7 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	s.d.Engine.Kick()
-	obs.Logger(ctx, s.d.Log).Info("project created", "event", "project_create", "project_id", pid.String(), "class", body.Class)
+	obs.Logger(ctx, s.d.Log).Info("project created", "event", "project_create", "project_id", pid.String(), "class", body.Class, "temporary", expiresAt != nil)
 	j, err := s.projectJSON(ctx, p, u)
 	if err != nil {
 		return err
@@ -323,11 +345,22 @@ func (s *Server) patchProject(w http.ResponseWriter, r *http.Request) error {
 		// the project's, so the next start's SetupProject writes the zone
 		// the CLI already put in the running guest (I-198).
 		TZ *string `json:"tz"`
+		// ExpiresAt may only be null: `repose keep` makes a temporary
+		// project a normal one (DECISIONS I-347). Raw, so an absent field
+		// and an explicit null differ.
+		ExpiresAt json.RawMessage `json:"expires_at"`
 	}
 	if err := decode(r, &body); err != nil {
 		return err
 	}
 	ctx := r.Context()
+	keep := false
+	if len(body.ExpiresAt) > 0 {
+		if strings.TrimSpace(string(body.ExpiresAt)) != "null" {
+			return errf("invalid", "expires_at can only be set to null, which keeps a temporary project")
+		}
+		keep = true
+	}
 	if body.TZ != nil {
 		if _, err := time.LoadLocation(*body.TZ); err != nil || *body.TZ == "" || strings.ContainsAny(*body.TZ, "\n\r") {
 			return errf("invalid", "tz is not an IANA zone name")
@@ -365,6 +398,18 @@ func (s *Server) patchProject(w http.ResponseWriter, r *http.Request) error {
 		if _, err := s.d.Pool.Exec(ctx, "update projects set tz = $2 where id = $1", p.ID, *body.TZ); err != nil {
 			return err
 		}
+	}
+	if keep && p.ExpiresAt != nil {
+		// Under the row's state: once the reaper (or a DELETE) has marked
+		// it destroying, the destroy is under way and keep is too late.
+		tag, err := s.d.Pool.Exec(ctx, "update projects set expires_at = null where id = $1 and state <> 'destroying' and destroyed_at is null", p.ID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return errf("conflict", "%s is already being destroyed", p.Slug)
+		}
+		obs.Logger(ctx, s.d.Log).Info("temporary project kept", "event", "temp_keep", "project_id", p.ID.String())
 	}
 	fresh, err := store.GetProject(ctx, s.d.Pool, p.ID)
 	if err != nil {

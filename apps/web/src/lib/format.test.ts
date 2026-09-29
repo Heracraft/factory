@@ -6,6 +6,7 @@ import {
 	price,
 	dateOnly,
 	timeUntil,
+	tempLeft,
 	share,
 	normalizeRemoteDisplay
 } from './format';
@@ -62,6 +63,16 @@ describe('timeUntil', () => {
 	it('says less than an hour, then nothing once passed', () => {
 		expect(timeUntil(new Date(2026, 8, 27, 12, 20).toISOString(), now)).toBe('less than an hour');
 		expect(timeUntil(new Date(2026, 8, 27, 11, 0).toISOString(), now)).toBe('');
+	});
+});
+
+describe('tempLeft', () => {
+	const now = new Date(2026, 8, 27, 12, 0, 0);
+	it('rounds up to hours, minutes under an hour, as the CLI does', () => {
+		expect(tempLeft(new Date(2026, 8, 27, 17, 0).toISOString(), now)).toBe('destroyed in 5h');
+		expect(tempLeft(new Date(2026, 8, 27, 16, 1).toISOString(), now)).toBe('destroyed in 5h');
+		expect(tempLeft(new Date(2026, 8, 27, 12, 30).toISOString(), now)).toBe('destroyed in 30m');
+		expect(tempLeft(new Date(2026, 8, 27, 11, 0).toISOString(), now)).toBe('time is up');
 	});
 });
 

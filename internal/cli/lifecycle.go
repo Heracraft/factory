@@ -138,6 +138,12 @@ func destroyPrompt(slug string) string {
 	return fmt.Sprintf("Destroy %s? A final snapshot is kept for 30 days. [y/N] ", slug)
 }
 
+// tempDestroyPrompt is the question for a temporary project, which keeps
+// no snapshot (DECISIONS I-347).
+func tempDestroyPrompt(slug string) string {
+	return fmt.Sprintf("Destroy %s? It is temporary: no snapshot is kept and it cannot be restored. [y/N] ", slug)
+}
+
 // DestroyCmd implements `repose rm [PROJECT] [--yes] [--wait]`.
 // By default it returns as soon as the api has accepted the destroy
 // (DECISIONS I-166): the project reads `destroying` in `repose ls`
@@ -155,7 +161,11 @@ func DestroyCmd(ctx context.Context, e *Env, projectArg string, yes, wait bool, 
 		if confirm == nil {
 			return exitf(ExitUsage, "Destroying %s needs a confirmation; pass --yes to skip it.", project.Slug)
 		}
-		ok, err := confirm(destroyPrompt(project.Slug))
+		prompt := destroyPrompt(project.Slug)
+		if project.ExpiresAt != nil {
+			prompt = tempDestroyPrompt(project.Slug)
+		}
+		ok, err := confirm(prompt)
 		if err != nil {
 			return err
 		}
@@ -180,8 +190,14 @@ func DestroyCmd(ctx context.Context, e *Env, projectArg string, yes, wait bool, 
 		// away (I-272); what was fetched from it stays.
 		_, _ = fmt.Fprintln(e.ErrOut, "Removed the git remote repose; branches already fetched from it stay as repose/*.")
 	}
+	temporary := project.ExpiresAt != nil
 	if !wait {
 		pr.Fail()
+		if temporary {
+			// No snapshot, nothing to restore (I-347).
+			_, _ = fmt.Fprintf(e.Out, "Destroying %s.\n", project.Slug)
+			return nil
+		}
 		_, _ = fmt.Fprintf(e.Out, "Destroying %s. Bring it back within 30 days with: %s\n", project.Slug, restoreHint(project.Slug))
 		return nil
 	}
@@ -229,6 +245,10 @@ func DestroyCmd(ctx context.Context, e *Env, projectArg string, yes, wait bool, 
 		}
 	}
 	pr.Fail()
+	if temporary {
+		_, _ = fmt.Fprintf(e.Out, "Destroyed %s in %s. It was temporary, so no snapshot was kept.\n", project.Slug, fmtElapsed(pr.Total()))
+		return nil
+	}
 	snapLine := fmt.Sprintf("Its final snapshot is kept for 30 days; `%s` brings it back.", restoreHint(project.Slug))
 	if snaps, err := e.Client.ListSnapshots(ctx, project.ID); err == nil {
 		if latest := newestSnapshot(snaps); latest != nil {

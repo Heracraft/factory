@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-381 entries.
+389 entries.
 
 ## Scope
 
@@ -413,3 +413,11 @@ pointer, not a summary.
 - **I-343** A `--worktree` gets the checkout's gitignored `.env` files — 2026-09-28; L8768
 - **I-346** `repose cp` takes several sources, and an argument refusal names what it got — 2026-09-28; L8785
 - **I-347** `repose run --temp` makes a temporary machine: it lives 24 hours from creation, is destroyed with no snapshot, and `repose keep` makes it a normal project — 2026-09-28; L8811
+- **I-348** An explicit `--name` on `run` and `sync` means the project with that name; a new one in a checkout whose remote is taken has no remote — 2026-09-29; L8897
+- **I-349** Temporary machines in the api: `expires_at` (0010), the plan without a snapshot, and `keep` — 2026-09-29; L8933
+- **I-350** The reaper: once a minute under `LockSweeper`, a row per transaction, with a backoff after a failed destroy — 2026-09-29; L8954
+- **I-351** `--temp` in the CLI: flag, name, cache, lines — 2026-09-29; L8977
+- **I-352** The session end destroys a temporary machine only when tmux says the session is gone — 2026-09-29; L9000
+- **I-353** Every sync refusal of the checkout comes before the create — 2026-09-29; L9013
+- **I-354** What agents on a temporary machine are told: nothing yet — 2026-09-29; L9027
+- **I-355** Tests and evidence for temporary machines — 2026-09-29; L9036

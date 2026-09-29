@@ -623,7 +623,7 @@ func (e *Engine) finish(ctx context.Context, op *store.Op) {
 	if op.Kind == KindDestroy && op.ProjectID != nil {
 		// A destroy with no phases (no guest to stop or destroy) still
 		// ends with the project destroyed (I-124).
-		if err := e.markDestroyed(ctx, *op.ProjectID); err != nil {
+		if err := e.markDestroyed(ctx, op, *op.ProjectID); err != nil {
 			e.log.Error("destroy finalise", "event", "op_done", "op_id", op.ID.String(), "err", err.Error())
 		}
 	}

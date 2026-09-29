@@ -204,12 +204,12 @@ Failure handling:
   miner (xmrig) was running ..." until an operator runs `repose-admin
   abuse clear`. The account itself is never suspended by this.
 
-## Temporary machines (designed, not built)
+## Temporary machines
 
 A machine for a test or a spike that nobody will want the next day
-(DECISIONS I-347). It lives 24 hours from creation and is destroyed with
-no snapshot. Nothing here is built yet; the public docs come with the
-code (I-242).
+(DECISIONS I-347, built with I-348..I-355). It lives 24 hours from
+creation and is destroyed with no snapshot. The public docs are
+`lifecycle.md` "Temporary machines" and `cli.md`.
 
 ```
 $ cd ~/code/todo-app
@@ -277,10 +277,10 @@ Sync:
 - A git repository with no commit, or a shallow clone, refuses with the
   usual sentence (`git init && git add -A && git commit -m init`, `git
   fetch --unshallow`, or `--no-sync`), exit 2, before anything is
-  created. The same check moves before the create for every `run` and
-  `sync`, temporary or not: today it runs after the machine has booted.
-  Without `--temp`, a directory that is not a git repository refuses
-  before the create too.
+  created. The same check comes before the create for every `run` and
+  `sync`, temporary or not (I-353); until then it ran after the machine
+  had booted. Without `--temp`, a directory that is not a git repository
+  refuses before the create too.
 - The checkout gets no `repose` git remote; that name stays with the
   checkout's own project. `git fetch tmp-k3f9.repose:~/tmp-k3f9 BRANCH`
   brings back what an agent did.
@@ -298,8 +298,8 @@ Lifetime:
   exits 0. Setting `expires_at` to anything but null answers `400
   invalid`.
 - An hour before `expires_at` a `temp_expiring` notification goes out,
-  once per project (read from the events table). A machine made with
-  less than an hour gets none.
+  once per project (read from the events table). A machine made with a
+  lifetime of an hour or less gets none (I-350).
 
 Expiry:
 
@@ -312,14 +312,19 @@ Expiry:
   `needs_input`, and is looked at again the next minute. From
   `expires_at + 24h` it goes ahead regardless.
 - A stopped or errored temporary project expires the same way.
-- The plan is `[destroy_guest]` from any state with a guest, `[]` with
-  none. No snapshot is taken. `markDestroyed` sets every snapshot of the
+- The plan is `[destroy_guest]`, also for a project with no guest yet:
+  the reaper queues behind an open op, which may be the create that
+  places the guest, and the phase reads the guest when it is sent and
+  skips when there is none (I-350). No snapshot is taken. `markDestroyed` sets every snapshot of the
   project to `expires_at = now()`, so the nightly one, if the machine
   lived through 03:00, goes on the next expiry run.
 - A failed destroy is `error` and `destroy_failed` as for any destroy,
-  and the reaper tries again each minute.
-- When the destroy finishes, a `temp_destroyed` event records it (it
-  notifies). The project does not appear in `repose ls --destroyed`, the
+  and the reaper tries again once 10 minutes have passed since it failed
+  (I-350), so a host that cannot delete a volume does not notify every
+  minute.
+- When a destroy the reaper started finishes, a `temp_destroyed` event
+  records it (it notifies). A `repose rm` or a session end does not: the
+  user asked (I-350). The project does not appear in `repose ls --destroyed`, the
   dashboard's "Recently destroyed" or `repose restore`, since it has no
   restorable snapshot.
 - `repose rm` on a temporary project uses the same no-snapshot plan and
@@ -336,12 +341,14 @@ Ending the session:
 - On Windows, without a TTY or with `REPOSE_INPUT_PROXY=0` the CLI has
   exec'd ssh and cannot look; the machine waits for its expiry.
 
-Built when: `TestRunTempCreatesWithoutRemote`,
+Built (I-348..I-355): `TestRunTempCreatesWithoutRemote`,
 `TestTempExpiryWaitsWhileAttached`, `TestTempExpiryDestroysWithoutSnapshot`,
 `TestKeepClearsExpiry`, `TestTempSessionEndDestroys`,
 `TestTempWithoutRepoSkipsSync`, `TestSyncRefusalComesBeforeCreate`, the `docs_test.go`
-rows for `--temp` and `repose keep`, and a live run on an `e2e-*` project
-that reaches expiry with a short `--temp`.
+rows for `--temp` and `repose keep`; also `TestTempDeleteKeepsNoSnapshot`,
+`TestTempCreateAndKeepContract`, `TestRmAndLsOfATemporaryProject`. Still
+to do after the deploy: a live run on an `e2e-*` project that reaches
+expiry with a short `--temp`.
 
 ## Depends on
 

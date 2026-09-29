@@ -71,7 +71,17 @@ func PlanStop() []string { return []string{PhaseStopGuest} }
 // Stopping first ends the guest's hours and sessions at once and gives a
 // clean snapshot without guestd's freeze, which also makes a dead guestd
 // (I-156) the ordinary path rather than a recovery.
+//
+// A temporary project (expires_at set, DECISIONS I-347) keeps nothing:
+// DestroyGuest stops a running guest itself, and no snapshot is taken,
+// whether the reaper or `repose rm` asked. Its plan names destroy_guest
+// even before the project has a guest: the reaper queues behind an open
+// op (allowQueue), which may be the create that places it, and the phase
+// reads the guest when it is sent and skips when there is none (I-350).
 func PlanDestroy(p *store.Project) []string {
+	if p.ExpiresAt != nil {
+		return []string{PhaseDestroyGuest}
+	}
 	if p.GuestID == nil || p.HostID == nil {
 		return []string{}
 	}
@@ -872,7 +882,7 @@ func (e *Engine) onResult(ctx context.Context, op *store.Op, phase string, res *
 		if op.Kind != KindDestroy {
 			return nil // restore: the old guest is gone, the new one follows
 		}
-		return e.markDestroyed(ctx, p.ID)
+		return e.markDestroyed(ctx, op, p.ID)
 	case PhaseResize:
 		nb, _ := op.Params["volume_bytes"].(float64)
 		_, err := e.pool.Exec(ctx, "update projects set volume_bytes = $2 where id = $1", p.ID, int64(nb))
@@ -1018,12 +1028,35 @@ func (e *Engine) notifyPlatform(ctx context.Context, projectID uuid.UUID, kind, 
 // plan was empty because the project never had a guest (a create that
 // failed before CreateGuest), which used to leave the project in `error`
 // for ever (I-124).
-func (e *Engine) markDestroyed(ctx context.Context, projectID uuid.UUID) error {
-	_, err := e.pool.Exec(ctx, `update projects set state = 'destroyed', destroyed_at = now(), host_id = null, guest_id = null, guest_ip = null, vsock_cid = null where id = $1 and destroyed_at is null`, projectID)
+//
+// A temporary project (expires_at set) keeps no snapshot: every one it
+// has, the nightly one included, expires at once, and the snapshot
+// expiry deletes it on its next run (DECISIONS I-347). A destroy the
+// reaper started (params.expired) records temp_destroyed, once: only
+// the call that marks the row does.
+func (e *Engine) markDestroyed(ctx context.Context, op *store.Op, projectID uuid.UUID) error {
+	tag, err := e.pool.Exec(ctx, `update projects set state = 'destroyed', destroyed_at = now(), host_id = null, guest_id = null, guest_ip = null, vsock_cid = null where id = $1 and destroyed_at is null`, projectID)
 	if err != nil {
 		return err
 	}
 	e.log.Info("project destroyed", "event", "guest_destroy", "project_id", projectID.String())
-	_, err = e.pool.Exec(ctx, "update snapshots set expires_at = coalesce(expires_at, now() + interval '30 days') where project_id = $1 and deleted_at is null", projectID)
-	return err
+	_, err = e.pool.Exec(ctx, `update snapshots s set expires_at = case
+			when p.expires_at is not null then least(coalesce(s.expires_at, now()), now())
+			else coalesce(s.expires_at, now() + interval '30 days') end
+		from projects p where p.id = s.project_id and s.project_id = $1 and s.deleted_at is null`, projectID)
+	if err != nil {
+		return err
+	}
+	if expired, _ := op.Params["expired"].(bool); expired && tag.RowsAffected() > 0 {
+		var slug string
+		if err := e.pool.QueryRow(ctx, "select slug from projects where id = $1", projectID).Scan(&slug); err == nil {
+			e.notifyPlatform(ctx, projectID, "temp_destroyed", TempDestroyedSummary(slug))
+		}
+	}
+	return nil
+}
+
+// TempDestroyedSummary is the temp_destroyed notification's body.
+func TempDestroyedSummary(slug string) string {
+	return fmt.Sprintf("%s was temporary and its time ran out, so it was destroyed. No snapshot was kept.", slug)
 }

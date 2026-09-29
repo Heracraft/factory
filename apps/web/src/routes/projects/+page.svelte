@@ -4,7 +4,7 @@
 	import { getMe, listDestroyed, listProjects } from '$lib/api/client';
 	import { toastApiError } from '$lib/api/toast';
 	import { pollWhileVisible } from '$lib/poll';
-	import { dateTime, normalizeRemoteDisplay, uptime } from '$lib/format';
+	import { dateTime, normalizeRemoteDisplay, tempLeft, uptime } from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import StateDot from '$lib/components/StateDot.svelte';
 	import { abuseStopReason } from '$lib/abuse';
@@ -127,6 +127,13 @@ cd ~/code/your-project && repose run</pre>
 									href={resolve('/projects/[id]', { id: p.id })}
 									class="font-medium underline-offset-4 group-hover:underline">{p.name}</a
 								>
+								{#if p.expires_at}
+									<!-- repose run --temp (I-347): destroyed with no snapshot. -->
+									<span
+										class="ml-1.5 rounded border border-zinc-300 px-1 py-px align-middle text-[11px] text-zinc-600 dark:border-zinc-600 dark:text-zinc-400"
+										>temporary</span
+									>
+								{/if}
 								{#if p.remote_url}
 									<div class="mt-0.5 font-mono text-xs text-zinc-500 dark:text-zinc-400">
 										{normalizeRemoteDisplay(p.remote_url)}
@@ -145,6 +152,11 @@ cd ~/code/your-project && repose run</pre>
 									     memory against the plan (I-262, I-289). -->
 									<div class="mt-0.5 text-xs text-amber-700 dark:text-amber-400">
 										idle {uptime(p.idle.since)} · still running
+									</div>
+								{/if}
+								{#if p.expires_at}
+									<div class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+										{tempLeft(p.expires_at)}
 									</div>
 								{/if}
 								{#if reason(p)}

@@ -134,7 +134,56 @@ For an experiment that shouldn't touch your main project, create another one by 
 repose run --name todo-app-experiment
 ```
 
-Commands in the checkout still mean the original; reach the new one by name. This is also how to run several agents on one repository without them sharing a working tree.
+It gets your checkout, with its whole history and uncommitted work, like any first sync. Commands in the checkout still mean the original; reach the new one by name. Running the same command again in the checkout syncs into `todo-app-experiment` again, and `repose attach todo-app-experiment` gets you back onto it from anywhere. This is also how to run several agents on one repository without them sharing a working tree.
+
+`--name` always means the project with that name: if it exists, `run` uses it, and if not, `run` creates it. It never lands on a project with another name. A name that belongs to another repository's project is refused, so one repository is never synced into another's machine.
+
+The second machine has no git remote of its own, and your checkout's `repose` remote stays pointed at the original. To bring its work back, add a remote for it:
+
+```
+git remote add experiment \
+  todo-app-experiment.repose:~/todo-app-experiment
+git fetch experiment
+```
+
+The same goes for a directory with no git remote, such as your home directory: `repose run --name boxd` makes `boxd` there, or uses it if you have one. A later `repose run` in that directory without `--name` uses the machine `--name` made there last, and says which: `Using boxd, the machine last made in this directory with --name.` For a machine you won't want tomorrow, use `--temp` instead.
+
+## Temporary machines
+
+For a test or a spike that nobody will want the next day, `--temp` makes a new machine that is destroyed after 24 hours, with no snapshot:
+
+```
+$ cd ~/code/todo-app
+$ repose run --temp
+✓ Created tmp-k3f9 (large, temporary: destroyed Sep 29 14:02)  4s
+Synced: 2 modified, 1 untracked (48 new commits)
+Ready in 21s.
+tmp-k3f9 is temporary: destroyed in 24h.
+
+$ cd ~/Downloads
+$ repose run --temp --name spike
+✓ Created spike (large, temporary: destroyed Sep 29 14:05)  4s
+Not a git repository, so nothing was synced.
+```
+
+- `--temp` always makes a new machine, named `tmp-` and four letters unless you pass `--name`. It never uses the checkout's project, and can't be combined with `--project`. Running it twice makes two machines.
+- `--temp 3h` or `--temp 90m` gives it a shorter life, from 10 minutes to 24 hours. It's counted from when the machine was made.
+- In a checkout it syncs as usual, uncommitted work included. In a directory that isn't a git repository it makes an empty machine. The checkout gets no `repose` git remote; fetch an agent's work with `git fetch tmp-k3f9.repose:~/tmp-k3f9 BRANCH`.
+- `run`, `attach`, `repose ls` and `repose status` say how long it has left: `tmp-k3f9 is temporary: destroyed in 5h.` The dashboard shows it as temporary.
+- If you're attached, or an agent is working, when the time runs out, the machine waits until nobody is attached and no agent is working, checking each minute, for up to a day. An agent sitting at its prompt doesn't count as working.
+- You get a notification an hour before the end (for a machine made with more than an hour), and another when it's destroyed. See [Notifications](/docs/notifications).
+- Exiting the last window of its tmux session destroys it at once: `tmp-k3f9 is temporary and its session has ended; destroying it.` Detaching (`Ctrl-b` `d`) doesn't. On Windows, or with `REPOSE_INPUT_PROXY=0`, the CLI can't see the session end, and the machine waits for its time to run out.
+- `repose rm` on it asks `Destroy tmp-k3f9? It is temporary: no snapshot is kept and it cannot be restored.` A temporary machine never appears in `repose ls --destroyed` and can't be restored.
+- A temporary machine counts toward your [project limit](/docs/limits#projects) and plan while it exists, like any other.
+
+To keep one after all:
+
+```
+$ repose keep tmp-k3f9
+tmp-k3f9 is no longer temporary.
+```
+
+It's then a normal project, still reached by name, and gets snapshots like any other from then on.
 
 ## Fork a project
 

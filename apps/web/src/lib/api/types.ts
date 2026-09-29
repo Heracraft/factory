@@ -215,6 +215,9 @@ export interface Project {
 	/** Set while it has run a day with no SSH session and no agent working
 	 * (I-262). hourly_cents is 0 since plans (I-289) and is not shown. */
 	idle?: { since: string; hourly_cents: number };
+	/** Set while the project is temporary (`repose run --temp`, I-347): it is
+	 * destroyed with no snapshot once this has passed. */
+	expires_at?: string;
 }
 
 /** GET /projects/destroyed (I-167): a destroyed project that can still be restored. */

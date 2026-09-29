@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"strings"
 )
 
 // resolveDeps lets tests replace the git and filesystem calls resolution
@@ -20,6 +21,109 @@ func defaultResolveDeps() resolveDeps {
 type ResolveResult struct {
 	Project *Project // nil if nothing matched
 	Remote  string   // normalised remote for cwd, "" if none
+	// NoRemote says a project this run creates gets no remote_url even
+	// though cwd has one: it is temporary, or a second project for a
+	// repository whose remote another project has (DECISIONS I-348), like
+	// a fork's copies (I-254).
+	NoRemote bool
+}
+
+// CreateRemote is the remote_url a project created from this result
+// gets.
+func (r *ResolveResult) CreateRemote() string {
+	if r.NoRemote {
+		return ""
+	}
+	return r.Remote
+}
+
+// resolveForRun is resolveProject for `repose run` and `repose sync`,
+// which also take --name and --temp (DECISIONS I-348, I-351):
+//
+//   - --temp resolves nothing: the run always creates a new project, with
+//     no remote, cached nowhere.
+//   - --name picks the project with that name (or slug) wherever the run
+//     is; without one, the run creates it. It never lands on a project of
+//     another name. The new project takes the checkout's remote only when
+//     no project has it yet (the first project for a repository, named);
+//     otherwise it has none and is reached by name.
+//   - otherwise the usual order (07-cli.md §5.3).
+func resolveForRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) (*ResolveResult, error) {
+	deps := defaultResolveDeps()
+	explicit := e.resolveArg(opts.ProjectArg)
+	switch {
+	case attachOnly:
+		return resolveProject(ctx, e.Client, e.Dir, e.Cwd, explicit, &e.Cache, deps)
+	case opts.Temp > 0:
+		return &ResolveResult{Remote: deps.RemoteFor(e.Cwd), NoRemote: true}, nil
+	case opts.Name != "":
+		remote := deps.RemoteFor(e.Cwd)
+		p, err := findByName(ctx, e.Client, opts.Name)
+		if err != nil {
+			return nil, err
+		}
+		if p != nil {
+			if p.RemoteURL != "" && remote != "" && p.RemoteURL != remote {
+				return nil, exitf(ExitUsage, "%s is the project for %s, and this checkout is %s, so `repose run --name %s` here would sync one repository into the other's machine. `repose attach %s` gets you onto it; another --name makes a new machine for this checkout.", p.Slug, p.RemoteURL, remote, opts.Name, p.Slug)
+			}
+			return &ResolveResult{Project: p, Remote: remote}, nil
+		}
+		res, err := resolveProject(ctx, e.Client, e.Dir, e.Cwd, "", &e.Cache, deps)
+		if err != nil {
+			return nil, err
+		}
+		return &ResolveResult{Remote: res.Remote, NoRemote: res.Project != nil}, nil
+	}
+	res, err := resolveProject(ctx, e.Client, e.Dir, e.Cwd, explicit, &e.Cache, deps)
+	if err != nil {
+		return nil, err
+	}
+	if explicit == "" && res.Project != nil && res.Remote == "" && deps.RootFor(e.Cwd) == "" {
+		// A directory that is not a repository (the home directory, say)
+		// found its project through by_dir: the last one `run --name`
+		// made here. Say which, and how to get another (I-348).
+		e.warn("Using %s, the machine last made in this directory with --name. `repose run --name NEW` makes another; `repose run --temp` makes a throwaway one.", res.Project.Slug)
+	}
+	return res, nil
+}
+
+// slugOf is the api's slug for a project name (internal/api/http Slug):
+// lowercase, [a-z0-9-], runs of anything else one dash, at most 40.
+func slugOf(name string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(name) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			dash = false
+			continue
+		}
+		if !dash {
+			b.WriteByte('-')
+			dash = true
+		}
+	}
+	s := strings.Trim(b.String(), "-")
+	if len(s) > 40 {
+		s = strings.TrimRight(s[:40], "-")
+	}
+	return s
+}
+
+// findByName is the live project called name: by its name, or by the
+// slug that name would get.
+func findByName(ctx context.Context, client *Client, name string) (*Project, error) {
+	projects, err := client.ListProjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+	slug := slugOf(name)
+	for _, p := range projects {
+		if p.Name == name || (slug != "" && p.Slug == slug) {
+			return &p, nil
+		}
+	}
+	return nil, nil
 }
 
 // dirKey is the by_dir key for cwd: the repository root when cwd is inside

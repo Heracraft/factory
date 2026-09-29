@@ -353,6 +353,7 @@ func (f *Fake) createProject(w http.ResponseWriter, r *http.Request) *apiError {
 		Class        string `json:"class"`
 		TZ           string `json:"tz"`
 		AgentDefault string `json:"agent_default"`
+		ExpiresIn    *int64 `json:"expires_in_s"`
 	}
 	if e := decodeBody(r, &body, false); e != nil {
 		return e
@@ -362,10 +363,21 @@ func (f *Fake) createProject(w http.ResponseWriter, r *http.Request) *apiError {
 			return invalid("tz: unknown time zone")
 		}
 	}
+	// A temporary project (DECISIONS I-347): 600..86400 seconds, no remote.
+	if body.ExpiresIn != nil && (*body.ExpiresIn < 600 || *body.ExpiresIn > 86400) {
+		return invalid("expires_in_s must be between 600 and 86400")
+	}
+	if body.ExpiresIn != nil && body.RemoteURL != "" {
+		return invalid("a temporary project has no remote_url")
+	}
 	u := userFrom(r)
 	p, e := f.create(u, body.Name, body.RemoteURL, body.Class)
 	if e != nil {
 		return e
+	}
+	if body.ExpiresIn != nil {
+		t := f.now().Add(time.Duration(*body.ExpiresIn) * time.Second)
+		p.ExpiresAt = &t
 	}
 	if body.TZ != "" {
 		z := body.TZ
@@ -415,6 +427,8 @@ func (f *Fake) patchProject(w http.ResponseWriter, r *http.Request) *apiError {
 		HoldBaseUpdates *bool   `json:"hold_base_updates"`
 		AgentDefault    *string `json:"agent_default"`
 		TZ              *string `json:"tz"`
+		// Only null: `repose keep` (DECISIONS I-347).
+		ExpiresAt json.RawMessage `json:"expires_at"`
 	}
 	if e := decodeBody(r, &body, false); e != nil {
 		return e
@@ -422,6 +436,15 @@ func (f *Fake) patchProject(w http.ResponseWriter, r *http.Request) *apiError {
 	p, e := f.project(userFrom(r), r.PathValue("id"))
 	if e != nil {
 		return e
+	}
+	if len(body.ExpiresAt) > 0 {
+		if strings.TrimSpace(string(body.ExpiresAt)) != "null" {
+			return invalid("expires_at can only be set to null, which keeps a temporary project")
+		}
+		if p.State == "destroying" {
+			return errf("conflict", "%s is already being destroyed", p.Slug)
+		}
+		p.ExpiresAt = nil
 	}
 	if body.TZ != nil {
 		if _, err := time.LoadLocation(*body.TZ); err != nil || *body.TZ == "" {
@@ -490,20 +513,62 @@ func (f *Fake) finishDestroy(p *project) {
 	if p.State == "running" {
 		f.stop(p, false)
 	}
-	// The real destroy stops, then snapshots the stopped volume (I-165).
-	f.snapshot(p, "stop")
+	temporary := p.ExpiresAt != nil
+	if !temporary {
+		// The real destroy stops, then snapshots the stopped volume (I-165).
+		f.snapshot(p, "stop")
+	}
 	p.State = "destroyed"
 	p.HostID = ""
 	p.destroyed = true
 	p.destroyedAt = f.now()
 	p.retained = f.now().Add(retentionDays * 24 * time.Hour)
+	if temporary {
+		// A temporary project keeps nothing (I-347): every snapshot it has
+		// expires now.
+		p.retained = f.now()
+	}
 	for _, s := range p.snapshots {
-		if s.ExpiresAt == nil {
+		if s.ExpiresAt == nil || temporary {
 			t := p.retained
 			s.ExpiresAt = &t
 		}
 	}
+	if temporary {
+		f.event(p, "project.destroyed", "", "volume deleted, no snapshot kept (temporary)")
+		return
+	}
 	f.event(p, "project.destroyed", "", "volume deleted, last snapshot kept 30 days")
+}
+
+// ExpireTemporary is the api's reaper at the fake's now (DECISIONS
+// I-347): every temporary project whose expires_at has passed is
+// destroyed, with no snapshot, and records temp_destroyed. It returns the
+// slugs destroyed. The fake has no samples, so nothing holds a destroy.
+func (f *Fake) ExpireTemporary() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []string
+	for _, p := range f.projects {
+		if p.destroyed || p.ExpiresAt == nil || p.ExpiresAt.After(f.now()) {
+			continue
+		}
+		f.finishDestroy(p)
+		f.event(p, "temp_destroyed", "", p.Slug+" was temporary and its time ran out, so it was destroyed. No snapshot was kept.")
+		out = append(out, p.Slug)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// SetExpiresAt moves a temporary project's end (tests), or makes a
+// project temporary.
+func (f *Fake) SetExpiresAt(projectID string, t time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if p, ok := f.projects[projectID]; ok {
+		p.ExpiresAt = &t
+	}
 }
 
 func (f *Fake) startProject(w http.ResponseWriter, r *http.Request) *apiError {

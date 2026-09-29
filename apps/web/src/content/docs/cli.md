@@ -28,18 +28,19 @@ Create or start this checkout's machine, sync, and attach. With a prompt, start 
 
 On your laptop, `run` changes one thing in the checkout: it adds a git remote named `repose` for the machine's checkout, so `git fetch repose` brings the agent's commits back. See [Getting work back](/docs/sync#getting-work-back).
 
-| Flag                      |                                                                                                                                |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `--agent NAME`            | `claude`, `codex`, `opencode`, `gemini` or `pi`.                                                                               |
-| `--no-attach`             | Don't attach afterwards.                                                                                                       |
-| `--worktree`              | Start the agent in its own git worktree. Needs a prompt.                                                                       |
-| `--no-sync`               | Skip the git sync and the copied logins.                                                                                       |
-| `--stash-remote`          | Stash the machine's uncommitted changes before syncing.                                                                        |
-| `--discard-remote`        | Discard the machine's uncommitted changes before syncing.                                                                      |
-| `--size small\|large\|xl` | Size of a new project.                                                                                                         |
-| `--name NAME`             | Project name, for a directory with no remote or a second project.                                                              |
-| `--bridge`                | Also bridge your Chrome to the machine while attached, see [`repose browser bridge`](#repose-browser-bridge-project).          |
-| `--bridge-allow HOST`     | Bridge, and let the agents use only this site in your Chrome. Repeatable; `*.example.com` is `example.com` and its subdomains. |
+| Flag                      |                                                                                                                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--agent NAME`            | `claude`, `codex`, `opencode`, `gemini` or `pi`.                                                                                                                  |
+| `--no-attach`             | Don't attach afterwards.                                                                                                                                          |
+| `--worktree`              | Start the agent in its own git worktree. Needs a prompt.                                                                                                          |
+| `--no-sync`               | Skip the git sync and the copied logins.                                                                                                                          |
+| `--stash-remote`          | Stash the machine's uncommitted changes before syncing.                                                                                                           |
+| `--discard-remote`        | Discard the machine's uncommitted changes before syncing.                                                                                                         |
+| `--size small\|large\|xl` | Size of a new project.                                                                                                                                            |
+| `--name NAME`             | The project called NAME, created if there is none: a second machine for this checkout, or one for a directory with no remote.                                     |
+| `--temp [DURATION]`       | A new temporary machine, destroyed with no snapshot after DURATION (`10m` to `24h`, default `24h`). See [Temporary machines](/docs/lifecycle#temporary-machines). |
+| `--bridge`                | Also bridge your Chrome to the machine while attached, see [`repose browser bridge`](#repose-browser-bridge-project).                                             |
+| `--bridge-allow HOST`     | Bridge, and let the agents use only this site in your Chrome. Repeatable; `*.example.com` is `example.com` and its subdomains.                                    |
 
 ### `repose attach [PROJECT]`
 
@@ -53,12 +54,13 @@ While you're attached, a file you drop on the terminal, or an image you paste wi
 
 Sync this checkout to its machine and don't attach: `repose run --no-attach` under its own name. It creates or starts the machine if needed. See [Sync](/docs/sync).
 
-| Flag                      |                                                           |
-| ------------------------- | --------------------------------------------------------- |
-| `--stash-remote`          | Stash the machine's uncommitted changes before syncing.   |
-| `--discard-remote`        | Discard the machine's uncommitted changes before syncing. |
-| `--size small\|large\|xl` | Size of a new project.                                    |
-| `--name NAME`             | Project name, for a directory with no remote.             |
+| Flag                      |                                                                    |
+| ------------------------- | ------------------------------------------------------------------ |
+| `--stash-remote`          | Stash the machine's uncommitted changes before syncing.            |
+| `--discard-remote`        | Discard the machine's uncommitted changes before syncing.          |
+| `--size small\|large\|xl` | Size of a new project.                                             |
+| `--name NAME`             | The project called NAME, created if there is none.                 |
+| `--temp [DURATION]`       | A new temporary machine, destroyed after DURATION (default `24h`). |
 
 ### `repose ps [PROJECT]`
 
@@ -170,7 +172,7 @@ List the tools the next `repose run` would install on the machine, and why, and 
 
 ### `repose ls`
 
-Every project in a table, with a line under it for each running project nobody has used for a day ([Idle machines](/docs/lifecycle#idle-machines)). `--json` for full records, `--destroyed` for destroyed projects that can still be restored (with `--all`, every one). `-q`/`--quiet` prints only the names, one per line:
+Every project in a table, with a line under it for each running project nobody has used for a day ([Idle machines](/docs/lifecycle#idle-machines)) and for each temporary one, saying when it is destroyed. `--json` for full records, `--destroyed` for destroyed projects that can still be restored (with `--all`, every one). `-q`/`--quiet` prints only the names, one per line:
 
 ```
 repose ls -q | xargs -n1 repose stop
@@ -178,7 +180,7 @@ repose ls -q | xargs -n1 repose stop
 
 ### `repose status [PROJECT]`
 
-One project in detail, including processes listening on ports, and the idle line when it has had nobody on it for a day. `--json`, `--watch` (every 5 seconds).
+One project in detail, including processes listening on ports, the idle line when it has had nobody on it for a day, and when a temporary one is destroyed. `--json`, `--watch` (every 5 seconds).
 
 ### `repose start [PROJECT]`
 
@@ -193,6 +195,12 @@ Stop the machine and snapshot its disk. `--no-snapshot` skips the snapshot.
 Delete the machine and disk; a final snapshot is kept 30 days. `-y`/`--yes` skips the question (required without a terminal). `--wait` waits until it's done. Run in the project's checkout, it removes the `repose` git remote; branches already fetched from it stay.
 
 `repose projects` and `repose destroy`, the old names, still work.
+
+On a temporary machine the question says that no snapshot is kept, and it can't be restored.
+
+### `repose keep [PROJECT]`
+
+Make a temporary machine a normal one: it is no longer destroyed when its time runs out. It keeps no git remote; reach it by name as before. On a project that isn't temporary it says so and does nothing. See [Temporary machines](/docs/lifecycle#temporary-machines).
 
 ### `repose restore [NAME]`
 

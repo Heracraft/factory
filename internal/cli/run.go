@@ -25,6 +25,9 @@ type RunOptions struct {
 	Bridge        bool     // the laptop's Chrome is bridged in beside the attach (I-296)
 	BridgeAllow   []string // --bridge-allow: the bridge's allowlist (I-311)
 	ProjectArg    string
+	// Temp is --temp's lifetime, 0 without it: a new temporary project
+	// (DECISIONS I-347).
+	Temp time.Duration
 }
 
 // opPollInterval is how often an op (and the project, for the phase
@@ -65,7 +68,18 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			return err
 		}
 	} else {
-		early = startEarlyProbe(ctx, e, opts)
+		if opts.Temp > 0 && opts.ProjectArg != "" {
+			return exitf(ExitUsage, "--temp always creates a new machine; it cannot be used with --project (%s).", opts.ProjectArg)
+		}
+		if opts.Name != "" && opts.ProjectArg != "" && opts.Name != opts.ProjectArg {
+			return exitf(ExitUsage, "--name %s and --project %s name two projects; pass one.", opts.Name, opts.ProjectArg)
+		}
+		if opts.Temp == 0 && opts.Name == "" {
+			// A guess from the cache: the checkout's project. --name and
+			// --temp name another, and the probe (which creates the
+			// checkout's directory) must not touch this one.
+			early = startEarlyProbe(ctx, e, opts)
+		}
 		e.early = early
 		e.guestUp = func(p *Project) { startBootProbe(ctx, e, p, !opts.NoSync) }
 	}
@@ -77,16 +91,34 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	pr := e.newProgress()
 	defer pr.Fail() // clears a spinner line left by an early return
 
+	// Every refusal the sync would make of the checkout alone comes
+	// before a machine is created or started for it (I-353); the git
+	// reads run beside the api's.
+	precheck := make(chan error, 1)
+	if !attachOnly && !opts.NoSync {
+		go func() { precheck <- syncPrecheck(syncRoot(e.Cwd)) }()
+	} else {
+		precheck <- nil
+	}
 	endResolve := timeSpan("phase resolve")
-	res, err := resolveProject(ctx, e.Client, e.Dir, e.Cwd, e.resolveArg(opts.ProjectArg), &e.Cache, defaultResolveDeps())
+	res, err := resolveForRun(ctx, e, opts, attachOnly)
 	if err != nil {
 		return err
 	}
-
+	if !attachOnly && res.Project == nil && res.Remote == "" && opts.Name == "" && opts.Temp == 0 {
+		return errNoRemoteNoName()
+	}
 	if !attachOnly && opts.Agent == "" && opts.Prompt != "" && !strings.ContainsAny(strings.TrimSpace(opts.Prompt), " \t\n") {
 		if err := refusePromptThatIsASlug(ctx, e, opts.Prompt); err != nil {
 			return err
 		}
+	}
+	skipSync := false
+	if err := <-precheck; err != nil {
+		if opts.Temp == 0 || gitRepoRoot(e.Cwd) != "" {
+			return err
+		}
+		skipSync = true // --temp outside a repository: an empty machine
 	}
 
 	endResolve()
@@ -100,10 +132,10 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		if attachOnly {
 			return errNoProjectFoundFor(res.Remote, e.Command)
 		}
-		if res.Remote == "" && opts.Name == "" {
+		if res.Remote == "" && opts.Name == "" && opts.Temp == 0 {
 			return errNoRemoteNoName()
 		}
-		project, err = createProjectForRun(ctx, e, res.Remote, opts, pr)
+		project, err = createProjectForRun(ctx, e, res.CreateRemote(), opts, pr)
 		if err != nil {
 			return err
 		}
@@ -156,16 +188,25 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		// from anywhere else would carry some other repository's.
 		helper.RepoDir = root
 	}
+	// After the attach on the input-proxy path: a temporary machine whose
+	// session has ended goes at once (I-352).
+	afterAttach := func() { tempSessionEnded(ctx, e, target, project) }
 	if attachOnly {
 		// The carry runs beside the attach, never before it (I-195).
 		helper.Carry = true
 		e.addReposeRemote(project) // I-272
 		startSessionHelper(e, helper)
 		tzSaved()
-		return attachTmux(target, project.Slug, "", tz, helper.RepoDir)
+		if l := tempLine(project, time.Now(), false); l != "" {
+			_, _ = fmt.Fprintln(e.ErrOut, l)
+		}
+		return attachTmux(target, project.Slug, "", tz, helper.RepoDir, afterAttach)
 	}
 
-	if !opts.NoSync {
+	if skipSync {
+		_, _ = fmt.Fprintln(e.Out, "Not a git repository, so nothing was synced.")
+		helper.Carry = true
+	} else if !opts.NoSync {
 		repoRoot := gitRepoRoot(e.Cwd)
 		if repoRoot == "" {
 			repoRoot = e.Cwd
@@ -326,12 +367,15 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	}
 
 	_, _ = fmt.Fprintf(e.ErrOut, "Ready in %s.\n", fmtElapsed(pr.Total()))
+	if l := tempLine(project, time.Now(), false); l != "" {
+		_, _ = fmt.Fprintln(e.ErrOut, l)
+	}
 	tzSaved()
 	if opts.NoAttach {
 		return nil
 	}
 	startSessionHelper(e, helper)
-	return attachTmux(target, project.Slug, window, tz, helper.RepoDir)
+	return attachTmux(target, project.Slug, window, tz, helper.RepoDir, afterAttach)
 }
 
 // syncResultLine is what a run prints about its sync. With nothing new on
@@ -539,7 +583,11 @@ func hasOAuthSecret(ctx context.Context, c *Client, projectID string) (bool, err
 // tz, when known, travels as the session's TZ (sshd's AcceptEnv and the
 // gateway pass it), so a base whose tmux takes TZ from the attaching
 // client (update-environment) gets the laptop's zone rather than none.
-func attachTmux(t sshTarget, slug, window, tz, repoDir string) error {
+//
+// after, when not nil, runs once the attach has returned on the
+// input-proxy path, the only one where the CLI is still there to run it
+// (a temporary machine's session-end check, I-352).
+func attachTmux(t sshTarget, slug, window, tz, repoDir string, after func()) error {
 	extra := []string{"-t"}
 	if tz != "" {
 		if err := os.Setenv("TZ", tz); err == nil {
@@ -550,6 +598,9 @@ func attachTmux(t sshTarget, slug, window, tz, repoDir string) error {
 	if inputProxyEnabled() {
 		args := append(append(append([]string{}, extra...), t.Args...), remote)
 		if handled, err := runInputProxy(args, newDropHandler(t, slug, repoDir)); handled {
+			if after != nil {
+				after()
+			}
 			return err
 		}
 	}
@@ -975,6 +1026,9 @@ func waitOpWith(ctx context.Context, c *Client, projectID, opID string, out io.W
 
 func createProjectForRun(ctx context.Context, e *Env, remote string, opts RunOptions, pr *progress) (*Project, error) {
 	name := opts.Name
+	if name == "" && opts.Temp > 0 {
+		name = tempName()
+	}
 	if name == "" {
 		name = basenameFromRemote(remote, e.Cwd)
 	}
@@ -983,6 +1037,11 @@ func createProjectForRun(ctx context.Context, e *Env, remote string, opts RunOpt
 		class = e.Cfg.DefaultClass
 	}
 	req := CreateProjectRequest{Name: name, RemoteURL: remote, Class: class, TZ: localTZ()}
+	if opts.Temp > 0 {
+		// Found by nothing and cached nowhere (I-351): its name is how
+		// every later command reaches it.
+		req.RemoteURL, req.ExpiresIn = "", int64(opts.Temp/time.Second)
+	}
 	// config.toml's default_agent becomes the new project's own default,
 	// which is what `run PROMPT` without --agent reads; an existing
 	// project keeps the one it was created with (I-241).
@@ -997,12 +1056,18 @@ func createProjectForRun(ctx context.Context, e *Env, remote string, opts RunOpt
 			// slug every later line and command uses, not the name as
 			// typed ("teksafari.org" is created as teksafari-org); the
 			// POST itself takes well under a second (I-191).
-			pr.Phase("Creating "+p.Slug, fmt.Sprintf("Created %s (%s)", p.Slug, class))
+			pr.Phase("Creating "+p.Slug, createdLabel(p, class))
+			if opts.Temp > 0 {
+				return p, nil
+			}
+			deps := defaultResolveDeps()
 			dir := ""
-			if remote == "" {
+			if remote == "" && deps.RemoteFor(e.Cwd) == "" {
 				// A --name project with no remote has nothing else to be
-				// found by; one with a remote is found by it (I-152).
-				dir = dirKey(e.Cwd, defaultResolveDeps())
+				// found by; one with a remote is found by it (I-152). A
+				// second project for a checkout that has a remote (I-348)
+				// is reached by name: by_dir would not be believed there.
+				dir = dirKey(e.Cwd, deps)
 			}
 			rememberProject(&e.Cache, remote, dir, *p)
 			if err := e.saveCache(); err != nil {
@@ -1077,6 +1142,9 @@ func startOver(ctx context.Context, e *Env, res *ResolveResult, opts *RunOptions
 		opts.Name = old.Name
 	}
 	res.Project, res.Remote = nil, remote
+	// The fresh project has a remote only when the old one did: a second
+	// project for a checkout (I-348) stays reached by name.
+	res.NoRemote = old.RemoteURL == ""
 	return nil
 }
 
