@@ -43,6 +43,8 @@ type Project struct {
 	// Idle is set by a test to stand for a running project nobody has used
 	// for a day (DECISIONS I-262).
 	Idle *Idle `json:"idle,omitempty"`
+	// ExpiresAt is set on a temporary project (DECISIONS I-347).
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 // Idle is Project.idle.

@@ -45,6 +45,20 @@ Identity:
   for such a project), and naming a project explicitly (`repose attach
   izma`, `--project`) never writes it, so one checkout can never be sent
   to another checkout's guest (DECISIONS I-152).
+- `--name NAME` on `run` or `sync` means the project called NAME (by name,
+  or by the slug NAME gets) wherever the command runs, and creates it when
+  there is none; it never lands on a project of another name (DECISIONS
+  I-348). A NAME that is another repository's project exits 2 instead of
+  syncing one repository into the other's machine. A new NAME takes the
+  checkout's remote only when no project has that remote yet; otherwise
+  it is a second project for the repository, with no remote (as a fork's
+  copies, I-254), reached by name, and the checkout's own project is still
+  what a plain `run` there means. Its first sync sends the whole history.
+- A plain `repose run` in a directory that is not a git repository and
+  has a `by_dir` entry lands on that project, the last one `--name` made
+  there, and says so on stderr (`Using boxd, the machine last made in
+  this directory with --name. ...`). `repose run --temp` there always
+  makes a new machine.
 - `repose run` in a directory with no remote and no `--name` exits 2 with
   the one line above. Any other command that finds no project exits 4
   (`No repose project here, and this directory has no git remote. Name

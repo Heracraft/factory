@@ -131,6 +131,7 @@ func newRootCmd(version string) *cobra.Command {
 		newConfigCmd(env, g),
 		newSnapshotsCmd(env, g),
 		newRmCmd(env, g),
+		newKeepCmd(env, g),
 		newRestoreCmd(env),
 		newForkCmd(envJSON, env, g),
 		newLogsCmd(envJSON, env, g),
@@ -289,6 +290,7 @@ func newLogoutCmd(env func() (*Env, error)) *cobra.Command {
 
 func newRunCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var opts RunOptions
+	var tempRaw string
 	cmd := &cobra.Command{
 		Use:   "run [PROMPT]",
 		Short: "Create or start this checkout's machine, sync it and attach; with PROMPT, start an agent on it",
@@ -297,6 +299,11 @@ func newRunCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 			"this checkout; name another with --project (`repose attach PROJECT` attaches without syncing).",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			temp, args, err := resolveTempFlag(tempRaw, args)
+			if err != nil {
+				return cobraUsageError{err}
+			}
+			opts.Temp = temp
 			opts.Prompt = strings.TrimSpace(strings.Join(args, " "))
 			opts.ProjectArg = g.project
 			if opts.Agent != "" && !isAgent(opts.Agent) {
@@ -317,7 +324,8 @@ func newRunCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&opts.Agent, "agent", "", "claude|opencode|codex|gemini|pi")
 	cmd.Flags().StringVar(&opts.Size, "size", "", "small|large|xl")
-	cmd.Flags().StringVar(&opts.Name, "name", "", "project name, for a directory with no git remote")
+	cmd.Flags().StringVar(&opts.Name, "name", "", "the project with this name, created if there is none (a second machine for a checkout, or one for a directory with no git remote)")
+	addTempFlag(cmd, &tempRaw)
 	cmd.Flags().BoolVar(&opts.StashRemote, "stash-remote", false, "stash the guest's uncommitted changes before syncing")
 	cmd.Flags().BoolVar(&opts.DiscardRemote, "discard-remote", false, "discard the guest's uncommitted changes before syncing")
 	cmd.Flags().BoolVar(&opts.NoSync, "no-sync", false, "skip the git and credential sync")
@@ -363,12 +371,18 @@ func newAttachCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 // attaching.
 func newSyncCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	var opts RunOptions
+	var tempRaw string
 	cmd := &cobra.Command{
 		Use:               "sync [PROJECT]",
 		Short:             "Sync this checkout to its machine, creating or starting it if needed, without attaching",
 		Args:              projectArgs,
 		ValidArgsFunction: completeProject(env),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			temp, args, err := resolveTempFlag(tempRaw, args)
+			if err != nil {
+				return cobraUsageError{err}
+			}
+			opts.Temp = temp
 			project, err := projectFrom(args, g)
 			if err != nil {
 				return err
@@ -382,7 +396,8 @@ func newSyncCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&opts.Size, "size", "", "small|large|xl, for a machine this creates")
-	cmd.Flags().StringVar(&opts.Name, "name", "", "project name, for a directory with no git remote")
+	cmd.Flags().StringVar(&opts.Name, "name", "", "the project with this name, created if there is none (a second machine for a checkout, or one for a directory with no git remote)")
+	addTempFlag(cmd, &tempRaw)
 	cmd.Flags().BoolVar(&opts.StashRemote, "stash-remote", false, "stash the guest's uncommitted changes before syncing")
 	cmd.Flags().BoolVar(&opts.DiscardRemote, "discard-remote", false, "discard the guest's uncommitted changes before syncing")
 	_ = cmd.RegisterFlagCompletionFunc("size", cobra.FixedCompletions([]string{"small", "large", "xl"}, cobra.ShellCompDirectiveNoFileComp))
@@ -850,6 +865,36 @@ func newSnapshotsCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	restore.Flags().BoolVar(&yes, "yes", false, "skip the confirmation")
 	root.AddCommand(list, create, restore)
 	return root
+}
+
+// addTempFlag is run's and sync's --temp [DURATION] (DECISIONS I-351).
+// Bare, it is 24h; `--temp 3h` takes the argument after it when that
+// reads as a duration, `--temp=3h` always does.
+func addTempFlag(cmd *cobra.Command, raw *string) {
+	cmd.Flags().StringVar(raw, "temp", "", "a new temporary machine, destroyed with no snapshot after DURATION (10m to 24h, default 24h)")
+	cmd.Flags().Lookup("temp").NoOptDefVal = tempBare
+}
+
+// newKeepCmd is `repose keep`: a temporary machine becomes a normal one
+// (DECISIONS I-347).
+func newKeepCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
+	return &cobra.Command{
+		Use:               "keep [PROJECT]",
+		Short:             "Keep a temporary machine: it is no longer destroyed when its time runs out",
+		Args:              projectArgs,
+		ValidArgsFunction: completeProject(env),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			project, err := projectFrom(args, g)
+			if err != nil {
+				return err
+			}
+			e, err := env()
+			if err != nil {
+				return err
+			}
+			return KeepCmd(cmd.Context(), e, project)
+		},
+	}
 }
 
 // newRmCmd is `repose rm`, which destroys a project. It was `repose

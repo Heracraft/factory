@@ -86,7 +86,7 @@ paths, `REPOSE=1`).
 repose login [--no-browser]
 repose logout
 repose run [PROMPT...] [--agent claude|opencode|codex|gemini|pi] [--size small|large|xl]
-            [--name NAME] [--stash-remote | --discard-remote] [--no-sync] [--no-attach]
+            [--name NAME] [--temp [DURATION]] [--stash-remote | --discard-remote] [--no-sync] [--no-attach]
             [--worktree]
 repose attach [PROJECT]
 repose start [PROJECT]

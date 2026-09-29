@@ -8810,7 +8810,7 @@ alone without the multi-source form (the user's intent was plain and scp
 supports it).
 **I-347. `repose run --temp` makes a temporary machine: it lives 24
 hours from creation, is destroyed with no snapshot, and `repose keep`
-makes it a normal project.** (owner, 2026-09-28; designed, not built)
+makes it a normal project.** (owner, 2026-09-28; built by I-348..I-355)
 The owner wants a machine with no project, no git and no checkout, which
 nobody expects to find the next day. Today that takes `run --name X
 --no-sync` and a `repose rm` you have to remember, and the destroy keeps a
@@ -8893,3 +8893,157 @@ back. The interface changes (`POST /projects` `expires_in_s`, `Project`
   only `--temp`: a project meant to last, made in the wrong directory,
   would come up empty and the owner would find out when they looked for
   the code.
+
+**I-348. An explicit `--name` on `run` and `sync` means the project with
+that name; a new one in a checkout whose remote is taken has no remote.**
+(07, 2026-09-29; the owner's `repose run --no-sync --name boxd` in `~`
+attached to `issuer-migration`.) `resolveProject` returned the `by_dir`
+entry for the directory before `--name` was looked at, and `--name` was
+used only when nothing resolved. The same order sent `run --name X` in a
+checkout to the checkout's own project, while `/docs/lifecycle` "A second
+machine for the same repository" promised a new project called X. Now
+`resolveForRun` looks `--name` up first, by name or by the slug the name
+gets, wherever the command runs: found, it is the project; not found, the
+run creates it. It never lands on a project of another name. A new NAME
+takes the checkout's remote only when no project has it yet (a first
+project for a repository, named); otherwise, since the database allows
+one live project per `(user, remote_url)` (`projects_user_remote`), it
+gets `remote_url` null as a fork's copies do (I-254), is reached by name,
+is not written to `projects.json`, and gets no `repose` git remote (that
+name stays with the checkout's own project; `checkoutOwnsProject` already
+says no). Its first sync sends the whole history. A NAME that is another
+repository's project (both have remotes and they differ) exits 2 instead
+of syncing one repository into the other's machine. `--name` with a
+different `--project` exits 2. With `--name` or `--temp` the early probe
+(I-223) is skipped: it would create the checkout's directory in the
+cached project's guest. For the home directory: a `--name` project with
+no remote is still written to `by_dir` (it has nothing else to be found
+by, I-152), so a plain `repose run` there lands on the last one made. That
+stays, and when the directory is not a git repository the run says so on
+stderr: `Using boxd, the machine last made in this directory with
+--name. ...`, naming `--name NEW` for another and `--temp` for a
+throwaway one. `--temp` there always makes a new machine (I-351).
+*Rejected:*
+- Dropping `by_dir` for directories that are not repositories: a plain
+  `repose attach` or `repose status` in `~/scratch` after `run --name
+  scratch` would stop working, which I-152 built on purpose.
+- Letting the second project take the remote from the first: it would
+  move `repose run` in the checkout to the experiment.
+
+**I-349. Temporary machines in the api: `expires_at` (0010), the plan
+without a snapshot, and `keep`.** (05, 2026-09-29; builds I-347.)
+Migration `0010_project_expires_at` adds `projects.expires_at timestamptz`
+and a partial index on it where it is set on a live row. `POST /projects`
+takes `expires_in_s` (600..86400, `400 invalid` outside, or with a
+`remote_url`); `Project` carries `expires_at` only while it is set, so an
+older client sees nothing new. `PATCH /projects/:id` takes `expires_at`
+as a raw field: absent leaves it, `null` clears it (`repose keep`), any
+other value is `400 invalid`, and on a project already `destroying` it is
+`409 conflict`, since the destroy is under way. `PlanDestroy` for a
+temporary project is `[destroy_guest]` whatever its state: hostd's
+DestroyGuest stops a running guest itself, and a `repose rm` of one uses
+the same plan. `markDestroyed` sets the project's snapshots to expire now
+(`least(coalesce(expires_at, now()), now())`, so the second call from
+`finish` does not move them), the snapshot expiry deletes a nightly one
+on its next run, and `RestorableSnapshotWhere` already hides them from
+`ls --destroyed` and `restore` meanwhile. `temp_destroyed` is recorded
+only when the op has `params.expired` (the reaper's) and only by the call
+that marks the row, so a `repose rm` or a session end, which the user
+asked for, sends no notification.
+
+**I-350. The reaper: once a minute under `LockSweeper`, a row per
+transaction, with a backoff after a failed destroy.** (05, 2026-09-29;
+builds I-347.) `internal/api/temp` runs on the api's minute tick under
+`db.LockSweeper` (1007). It first raises `temp_expiring` for projects
+whose `expires_at` is within the hour, made with a lifetime of more than
+an hour (an hour or less would warn at once), and with no such event yet.
+Then each expired project not `destroying` or `destroyed` is locked with
+`for update skip locked`, checked again, and skipped when a destroy op is
+open, when the last destroy failed less than 10 minutes ago (each failure
+sends `destroy_failed`, and I-347's "each minute" would send up to 60 an
+hour for a host that cannot delete a volume), or when the newest sample,
+under 10 minutes old and before `expires_at + 24h`, shows an ssh session,
+a tmux client, or an agent that is not `idle` or `needs_input`. A sample
+with guestd not answering does not hold it, unlike the idle warning's
+count of use: it says nothing about anyone, and the 24 hours bound the
+wait anyway. Otherwise the destroy is enqueued with `allowQueue=true` and
+`params.expired`, and the project marked `destroying` in the same
+transaction, as `DELETE` does. The plan names `destroy_guest` even for a
+project with no guest yet: an op it queues behind may be the create that
+places the guest, and the phase reads the guest when it is sent (and
+skips with none); a plan fixed at enqueue as `[]` would have ended with
+the project marked destroyed and its guest left on the host.
+
+**I-351. `--temp` in the CLI: flag, name, cache, lines.** (07,
+2026-09-29; builds I-347.) `--temp` is a string flag with cobra's
+`NoOptDefVal`, on `run` and `sync`. Bare, it is 24h; `--temp=3h` always
+takes the value; `--temp 3h` takes the argument after it when that parses
+as a Go duration (`3h`, `90m`, `1h30m`), so a prompt that begins with a
+duration needs the `=` form. Outside 10m..24h it exits 2. It never
+resolves, never writes `projects.json`, and with `--project` (or a
+`PROJECT` on `sync`) exits 2; `REPOSE_PROJECT` is ignored. The name is
+`--name` or `tmp-` plus four characters of `a-z2-7` from crypto/rand,
+with run's usual `-2` retry. The create line is `Created tmp-k3f9 (large,
+temporary: destroyed Sep 29 14:02)`; `run`, `sync` and `attach` print
+`tmp-k3f9 is temporary: destroyed in 5h.` on stderr (the spec's line, no
+keep hint, so it fits a docs code block); `ls` prints it with "`repose
+keep tmp-k3f9` keeps it." under the table, and `status` as `temporary:
+destroyed in 5h; ...`. The time left rounds up (hours from an hour,
+minutes under), so "in 1h" is never early; past the expiry it says the
+machine goes once nobody is attached. `repose rm` asks `Destroy tmp-k3f9?
+It is temporary: no snapshot is kept and it cannot be restored. [y/N]` and
+prints no restore hint. The dashboard's project list shows a `temporary`
+badge after the name and the same "destroyed in 5h" under the state.
+`repose keep` on a project that is not temporary prints `NAME is not
+temporary.` and exits 0.
+
+**I-352. The session end destroys a temporary machine only when tmux says
+the session is gone.** (07, 2026-09-29; builds I-347.) After the attach
+returns on the input-proxy path (`attachTmux` now takes an `after` hook,
+run only there), `run` and `attach` run `tmux has-session -t =<slug>`
+over the command's ssh master. Only exit 1 (the session, or the whole
+tmux server, is gone) counts: an ssh that could not connect (255) says
+nothing, and the machine then waits for its expiry. It prints
+`tmp-q7wd is temporary and its session has ended; destroying it.`, sends
+the DELETE without asking, and closes the master; a DELETE that fails
+says so and that the expiry still applies. The fast attach (I-223) never
+sees a temporary project, since `projects.json` never names one, so it
+needs no hook.
+
+**I-353. Every sync refusal of the checkout comes before the create.**
+(07, 2026-09-29; builds I-347.) `syncPrecheck` (not a git repository, no
+commit, a shallow clone) is what `syncGuest` checked first; `run` and
+`sync` now run it in a goroutine beside the resolve and wait for it
+before creating, starting or restarting anything, so a refused run no
+longer boots a machine first. The resolve's own refusal ("This directory
+has no git remote. Pass --name NAME") and the prompt-is-a-project check
+still come first: they name the more useful fix. With `--temp`, a
+directory that is not a repository skips the sync and prints `Not a git
+repository, so nothing was synced.` (the carry then runs in the session
+helper, as with `--no-sync`); a repository with no commit or a shallow
+clone still refuses. `syncGuest` keeps its own check for its other
+callers.
+
+**I-354. What agents on a temporary machine are told: nothing yet.** (07,
+2026-09-29.) The guest cannot know it is temporary: `project.json` is
+written at SetupProject and is not rewritten by `repose keep`, so a field
+there would go stale, and a marker the CLI writes over ssh would be a new
+guest contract for one line of the agent guide. The CLI's time-left line
+and the `temp_expiring` notification reach the person who chose the
+lifetime. If agents need it, the way is a guestd field refreshed at every
+start and keep, with a base publish; not in this round.
+
+**I-355. Tests and evidence for temporary machines.** (2026-09-29.) The
+spec's list, as built: `TestRunTempCreatesWithoutRemote`,
+`TestTempWithoutRepoSkipsSync`, `TestSyncRefusalComesBeforeCreate`,
+`TestKeepClearsExpiry`, `TestTempSessionEndDestroys` (a real tmux in the
+test guest, killed), `TestRmAndLsOfATemporaryProject` and
+`TestTempFlagParsing` in the CLI against the fake api, which accepts
+`expires_in_s` and `PATCH expires_at: null`, destroys a temporary project
+without a snapshot, and has `ExpireTemporary` for tests; and
+`TestTempCreateAndKeepContract`, `TestTempExpiryWaitsWhileAttached`,
+`TestTempExpiryDestroysWithoutSnapshot` and `TestTempDeleteKeepsNoSnapshot`
+against Postgres and the fake hostd. I-348's two cases are
+`TestRunNameInHomePicksTheNamedProject` and
+`TestRunNameInCheckoutMakesASecondProject`. The live run to expiry with a
+short `--temp` on an `e2e-*` project is left for after the deploy.

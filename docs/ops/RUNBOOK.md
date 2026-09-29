@@ -190,6 +190,27 @@ seats` prints total, held, free, waiting and where the total came from.
    hosts. With no ready host at all the count is zero and every checkout
    waitlists: that is an outage, fix the hosts.
 
+## Temporary machine not destroyed
+
+A project made with `repose run --temp` is past its `expires_at` and
+still there (DECISIONS I-347, I-350). The api's minute tick (grpc app,
+under advisory lock 1007) destroys it; `temp_reap` in the api log carries
+the counts, `temp_expire` names each project it enqueued, and
+`temp_reap_fail` is a failed run.
+
+1. `select id, slug, state, expires_at from projects where expires_at <
+   now() and destroyed_at is null;` lists the overdue ones.
+2. Waiting is normal for up to 24 hours past `expires_at` while the
+   newest meter sample (under 10 minutes old) shows an ssh session, a tmux
+   client or an agent working. From then it goes regardless.
+3. A destroy that failed leaves the project in `error` with
+   `destroy_failed`; the reaper tries again 10 minutes after each failure.
+   Fix the host cause as in "Snapshot, stop or destroy slow" below.
+4. Nothing enqueued at all and no `temp_reap_fail`: no replica holds lock
+   1007 (`select * from pg_locks where locktype = 'advisory' and objid =
+   1007;`), which means the grpc app is not running its loops.
+5. The owner can always `repose rm NAME` or `repose keep NAME` it.
+
 ## HostUnreachable
 
 No heartbeat for 90 seconds.

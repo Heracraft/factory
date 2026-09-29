@@ -35,6 +35,7 @@ projects     (id pk, user_id fk, name text, slug text, remote_url text,
               config_revision_id uuid null, volume_bytes bigint,
               tz text, host_unreachable bool, last_error text,
               started_at, stopped_at, destroyed_at,
+              expires_at null,  -- a temporary project's end (0010, I-347)
               unique (user_id, slug) where destroyed_at is null,
               unique (user_id, remote_url) where destroyed_at is null)
 
@@ -162,7 +163,8 @@ schema_migrations (version int pk, name text, applied_at)
 ```
 
 Indexes: `projects(user_id)`, `projects(host_id) where state in ('running',
-'starting')`, `events(project_id, ts desc)`, `snapshots(project_id, taken_at
+'starting')`, `projects(expires_at) where expires_at is not null and
+destroyed_at is null` (0010), `events(project_id, ts desc)`, `snapshots(project_id, taken_at
 desc)`, `certificates(user_id) where revoked_at is null`, `usage_hours(hour)`,
 `usage_hours(project_id, period_start)`, `abuse_events(project_id, ts desc)`,
 `questions(project_id, created_at desc)`, `questions(expires_at) where state
@@ -178,7 +180,7 @@ user_id) where invited_at is null`, `waitlist(hold_until) where invited_at
 is not null and converted_at is null`.
 
 Migrations `0001_init`, `0002_outbox_sessions_settings`, `0003_billing`,
-`0004_gateway_session_id`, `0005_abuse_events`, `0006_questions`, `0007_waitlist`, `0008_plans` and `0009_build_log_ts` create all of this; `repose-admin db migrate --down 1` reverts one. Partitions of the
+`0004_gateway_session_id`, `0005_abuse_events`, `0006_questions`, `0007_waitlist`, `0008_plans`, `0009_build_log_ts` and `0010_project_expires_at` create all of this; `repose-admin db migrate --down 1` reverts one. Partitions of the
 sample tables are created for the current and next month at start and by
 the daily job, which also drops partitions past retention.
 

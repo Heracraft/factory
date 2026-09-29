@@ -52,7 +52,10 @@ Events (see agents.md for how each agent produces them):
   stop in 24 hours, that the project cannot start until reviewed),
   `idle_running` (DECISIONS I-262: a running guest with no SSH session,
   no tmux client and no working agent for 24 hours; once per idle
-  stretch, title `<project>: idle, still billing`, never a stop), and
+  stretch, title `<project>: idle, still billing`, never a stop),
+  `temp_expiring` and `temp_destroyed` (DECISIONS I-347: a temporary
+  machine an hour before its end, titled `<project>: destroyed in an
+  hour`, and its end, `<project>: temporary machine destroyed`), and
   the agent-sent `agent_message` and `agent_question` (DECISIONS I-244,
   below). Each carries the agent name (agent kinds only), the
   tmux window, a summary of at most 1 KB, and a timestamp.

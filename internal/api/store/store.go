@@ -82,9 +82,12 @@ type Project struct {
 	DestroyedAt      *time.Time  `db:"destroyed_at"`
 	CreatedAt        time.Time   `db:"created_at"`
 	UpdatedAt        time.Time   `db:"updated_at"`
+	// ExpiresAt is set on a temporary project (0010, DECISIONS I-347):
+	// the reaper destroys it, with no snapshot, once this has passed.
+	ExpiresAt *time.Time `db:"expires_at"`
 }
 
-const projectCols = `id, user_id, name, slug, remote_url, class, state, host_id, guest_id, guest_ip, vsock_cid, agent_default, hold_base_updates, base_version, config_revision_id, volume_bytes, tz, host_unreachable, last_error, started_at, stopped_at, destroyed_at, created_at, updated_at`
+const projectCols = `id, user_id, name, slug, remote_url, class, state, host_id, guest_id, guest_ip, vsock_cid, agent_default, hold_base_updates, base_version, config_revision_id, volume_bytes, tz, host_unreachable, last_error, started_at, stopped_at, destroyed_at, created_at, updated_at, expires_at`
 
 // Host is a hosts row.
 type Host struct {

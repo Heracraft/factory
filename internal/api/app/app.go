@@ -32,6 +32,7 @@ import (
 	"github.com/heracraft/repose/internal/api/questions"
 	"github.com/heracraft/repose/internal/api/secrets"
 	"github.com/heracraft/repose/internal/api/snapshots"
+	"github.com/heracraft/repose/internal/api/temp"
 	"github.com/heracraft/repose/internal/api/waitlist"
 	"github.com/heracraft/repose/internal/billing"
 	"github.com/heracraft/repose/internal/db"
@@ -421,6 +422,7 @@ func (a *App) loops(ctx context.Context) {
 	dunning := billing.NewDunning(a.pool, a.engine, a.events, a.bcfg, a.m, a.log)
 	bump := basebump.New(a.pool, a.engine, a.events, a.log)
 	idleWarn := &idle.Warner{Pool: a.pool, Events: a.events}
+	reaper := &temp.Reaper{Pool: a.pool, Engine: a.engine, Events: a.events, Log: a.log}
 	inviter := &waitlist.Inviter{Pool: a.pool, Total: a.cfg.SeatsTotal, M: a.m, Log: a.log}
 	a.engine.SetOnFinished(bump.OnOpFinished)
 	go bump.Run(ctx)
@@ -466,6 +468,20 @@ func (a *App) loops(ctx context.Context) {
 				}
 				if expired > 0 {
 					a.log.Info("waitlist holds expired", "event", "waitlist_expire", "count", expired)
+				}
+				release()
+			}
+			// Temporary machines: the hour's warning and the destroy at
+			// expiry, every minute, one replica at a time (DECISIONS
+			// I-347, I-350). The daily ticker would not do: a redeploy
+			// restarts it (I-112).
+			if release, ok, err := db.TryLock(ctx, a.pool, db.LockSweeper); err == nil && ok {
+				res, err := reaper.Run(ctx, now)
+				if err != nil && ctx.Err() == nil {
+					a.log.Error("temporary machines", "event", "temp_reap_fail", "err", err.Error())
+				}
+				if res.Warned > 0 || res.Destroyed > 0 {
+					a.log.Info("temporary machines", "event", "temp_reap", "warned", res.Warned, "destroyed", res.Destroyed, "waiting", res.Waiting)
 				}
 				release()
 			}

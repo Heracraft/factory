@@ -155,9 +155,12 @@ repose run --no-attach "..."  # start it, keep your shell
 repose sync                   # sync only, no agent, no attach
 repose run --no-sync          # skip the sync
 repose run --size xl          # size of a new project
-repose run --name scratch     # a directory with no git remote
+repose run --name scratch     # a project by name, made if missing
+repose run --temp             # a new machine, gone after 24 hours
 repose run --project todo-app # a project other than this checkout's
 ```
+
+`--name` is also how you get [a second machine for the same repository](/docs/lifecycle#a-second-machine-for-the-same-repository), and `--temp` is described under [Temporary machines](/docs/lifecycle#temporary-machines).
 
 The full list is in the [CLI reference](/docs/cli#repose-run-prompt).
 

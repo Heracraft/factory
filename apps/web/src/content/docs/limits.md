@@ -11,7 +11,7 @@ A plan buys memory that may run at once, disk that may be allocated, and egress 
 
 ## Projects
 
-Solo allows 10 projects and Pro 25, running or stopped. Destroyed projects don't count, and neither does one still being destroyed, for projects or for disk. A project whose destroy failed still counts until `repose rm` succeeds. Each copy [`repose fork`](/docs/lifecycle#fork-a-project) makes is a project. Disk bounds it anyway: Solo allocates up to 100 GB across its projects, Pro 250 GB.
+Solo allows 10 projects and Pro 25, running or stopped. Destroyed projects don't count, and neither does one still being destroyed, for projects or for disk. A project whose destroy failed still counts until `repose rm` succeeds. Each copy [`repose fork`](/docs/lifecycle#fork-a-project) makes is a project, and so is a [temporary machine](/docs/lifecycle#temporary-machines) until it's destroyed. A temporary machine lives from 10 minutes to 24 hours, and waits at most a day past that while someone is attached. Disk bounds it anyway: Solo allocates up to 100 GB across its projects, Pro 250 GB.
 
 ## When repose is full
 

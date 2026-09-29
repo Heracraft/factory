@@ -80,6 +80,10 @@ type Project struct {
 	// session and no agent working (DECISIONS I-262). Absent from older
 	// apis, which the CLI treats as "not idle".
 	Idle *ProjectIdle `json:"idle,omitempty"`
+	// ExpiresAt is set while the project is temporary (DECISIONS I-347):
+	// the api destroys it, with no snapshot, once this has passed. Absent
+	// from older apis and on every normal project.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 // ProjectIdle is Project.idle.

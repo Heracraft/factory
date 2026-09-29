@@ -115,7 +115,9 @@ func forgetReposeRemote(root, slug string) bool {
 // a project named with --project) would point the checkout's remote at a
 // different repository's machine.
 func (e *Env) checkoutOwnsProject(root string, p *Project) bool {
-	if root == "" || p == nil || p.Slug == "" {
+	// A temporary machine never gets the checkout's `repose` remote: that
+	// name stays with the checkout's own project (I-347).
+	if root == "" || p == nil || p.Slug == "" || p.ExpiresAt != nil {
 		return false
 	}
 	remote := gitRemoteOrigin(root)

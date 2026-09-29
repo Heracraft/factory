@@ -103,3 +103,13 @@ export function share(used: number, limit: number): number {
 	if (limit <= 0) return 0;
 	return Math.min(1, Math.max(0, used / limit));
 }
+
+/** A temporary machine's time left, as the CLI says it (I-347): "destroyed
+ * in 5h", minutes under an hour, rounded up; "time is up" once passed (the
+ * destroy waits while someone is attached). */
+export function tempLeft(expiresAt: string, now = new Date()): string {
+	const ms = new Date(expiresAt).getTime() - now.getTime();
+	if (ms <= 0) return 'time is up';
+	if (ms < 3_600_000) return `destroyed in ${Math.max(1, Math.ceil(ms / 60_000))}m`;
+	return `destroyed in ${Math.ceil(ms / 3_600_000)}h`;
+}

@@ -344,21 +344,49 @@ func parseProbe(out string) guestProbe {
 	return p
 }
 
+// syncRoot is the directory a run syncs from cwd: the repository's root,
+// or cwd itself outside one (which syncPrecheck then refuses).
+func syncRoot(cwd string) string {
+	if root := gitRepoRoot(cwd); root != "" {
+		return root
+	}
+	return cwd
+}
+
+// syncPrecheck is every refusal the sync makes of the laptop's checkout
+// alone: not a git repository, no commit yet, a shallow clone. run and
+// sync call it before they create or start anything (DECISIONS I-353),
+// so the refusal no longer comes after a machine has booted for nothing;
+// syncGuest calls it again for its other callers.
+func syncPrecheck(localRepoDir string) error {
+	if gitRepoRoot(localRepoDir) == "" {
+		return exitf(ExitUsage, "repose syncs your work through git, and %s is not a git checkout. Run `git init && git add -A && git commit -m init` there first, or pass --no-sync.", localRepoDir)
+	}
+	if _, err := gitHeadCommit(localRepoDir); err != nil {
+		return errNoCommits()
+	}
+	if shallow, _ := gitCmd(localRepoDir, "rev-parse", "--is-shallow-repository"); shallow == "true" {
+		return exitf(ExitUsage, "Your checkout is a shallow clone, so repose cannot send its history to the guest. Run `git fetch --unshallow` and try again, or pass --no-sync.")
+	}
+	return nil
+}
+
+func errNoCommits() error {
+	return exitf(ExitUsage, "Your checkout has no commits yet, so there is nothing to sync. Commit once (`git add -A && git commit -m init`) and run again, or pass --no-sync.")
+}
+
 // syncGuest runs the whole sync step against localRepoDir's git state
 // (I-150): the laptop sends the commits itself, as a git bundle of what
 // the guest lacks, so the guest never needs credentials for origin. Two
 // ssh round trips: a probe, then one payload (bundle, diff, untracked
 // tar) and one script that applies it.
 func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts SyncOptions) (*SyncSummary, error) {
-	if gitRepoRoot(localRepoDir) == "" {
-		return nil, exitf(ExitUsage, "repose syncs your work through git, and %s is not a git checkout. Run `git init && git add -A && git commit -m init` there first, or pass --no-sync.", localRepoDir)
+	if err := syncPrecheck(localRepoDir); err != nil {
+		return nil, err
 	}
 	head, err := gitHeadCommit(localRepoDir)
 	if err != nil {
-		return nil, exitf(ExitUsage, "Your checkout has no commits yet, so there is nothing to sync. Commit once (`git add -A && git commit -m init`) and run again, or pass --no-sync.")
-	}
-	if shallow, _ := gitCmd(localRepoDir, "rev-parse", "--is-shallow-repository"); shallow == "true" {
-		return nil, exitf(ExitUsage, "Your checkout is a shallow clone, so repose cannot send its history to the guest. Run `git fetch --unshallow` and try again, or pass --no-sync.")
+		return nil, errNoCommits()
 	}
 	branch, err := gitCurrentBranch(localRepoDir)
 	if err != nil {

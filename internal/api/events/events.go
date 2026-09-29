@@ -35,6 +35,9 @@ var notifyKinds = map[string]bool{
 	// A running machine nobody used for a day, once per idle stretch
 	// (internal/api/idle, DECISIONS I-262).
 	"idle_running": true,
+	// A temporary machine an hour from its end, and its end (internal/api/
+	// temp, DECISIONS I-347).
+	"temp_expiring": true, "temp_destroyed": true,
 }
 
 // noDedupe are kinds the user sent on purpose, one notification each: two

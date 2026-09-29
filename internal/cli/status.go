@@ -73,6 +73,10 @@ func writeProjectsTable(w io.Writer, projects []Project) {
 		if l := idleLine(p, time.Now()); l != "" {
 			_, _ = fmt.Fprintf(w, "%s: %s\n", p.Slug, l)
 		}
+		if l := tempLine(p, time.Now(), true); l != "" {
+			// A temporary machine (I-347), and how long it has.
+			_, _ = fmt.Fprintln(w, l)
+		}
 		if p.State == "error" {
 			reason := projectReason(p)
 			if reason == "" {
@@ -99,6 +103,10 @@ func writeStatusLines(w io.Writer, p *Project, route *Route, snaps []Snapshot, e
 	if l := idleLine(p, time.Now()); l != "" {
 		// DECISIONS I-262: nobody on it for a day, and still billing.
 		_, _ = fmt.Fprintf(w, "  %s\n", l)
+	}
+	if t := tempWhen(p, time.Now()); t != "" {
+		// DECISIONS I-347: a temporary machine, and how long it has.
+		_, _ = fmt.Fprintf(w, "  temporary: %s; `repose keep %s` keeps it\n", t, p.Slug)
 	}
 	if p.State == "error" {
 		reason := projectReason(p)
