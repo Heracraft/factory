@@ -183,6 +183,11 @@ func TestSyncNoRemoteSendsHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustRun(t, guestRepo, "git", "init", "-q", "-b", "main", ".")
+	// The whole history arrives in one fetch, which can start git's
+	// detached auto gc/maintenance; it went on writing into .git while
+	// t.TempDir's cleanup removed it (CI, 2026-09-29).
+	mustRun(t, guestRepo, "git", "config", "gc.auto", "0")
+	mustRun(t, guestRepo, "git", "config", "maintenance.auto", "false")
 
 	if _, err := syncGuest(context.Background(), f.target, local, testSlug, SyncOptions{NoRemote: true}); err != nil {
 		t.Fatalf("syncGuest: %v", err)

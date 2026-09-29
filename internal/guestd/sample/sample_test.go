@@ -117,7 +117,15 @@ func TestSampleIsUnder20Milliseconds(t *testing.T) {
 	}
 	avg := time.Since(start) / runs
 	t.Logf("sample of %d processes took %v on average", len(procs), avg)
-	if avg > 20*time.Millisecond {
-		t.Fatalf("a sample took %v, over the 20 ms budget in docs/workstreams/04-guestd.md", avg)
+	// The budget is 20 ms. CI runs every test under -race, which slows this
+	// code 5 to 10 times: it failed there four times in two days at about
+	// 35 ms. Under the race detector the check is 5x looser, still a guard
+	// against a sample that got many times slower.
+	budget := 20 * time.Millisecond
+	if raceEnabled {
+		budget *= 5
+	}
+	if avg > budget {
+		t.Fatalf("a sample took %v, over the %v budget (20 ms in docs/workstreams/04-guestd.md, 5x under -race)", avg, budget)
 	}
 }
