@@ -12,6 +12,7 @@ import (
 	"github.com/heracraft/repose/internal/api/notify"
 	"github.com/heracraft/repose/internal/api/store"
 	"github.com/heracraft/repose/internal/api/waitlist"
+	"github.com/heracraft/repose/internal/db"
 )
 
 // DECISIONS I-290: seats are the fleet's 8 GB blocks (or SEATS_TOTAL),
@@ -114,9 +115,19 @@ func TestSeatsWaitlistAndInvitations(t *testing.T) {
 		t.Fatalf("create without a plan while the fleet is full: %d %s", r.status, r.raw)
 	}
 
-	// Full: the tick invites nobody.
+	// Full: the tick invites nobody. Run as the api's loop runs it, under
+	// the tick's lock; under LockWaitlist it waited on itself for good
+	// (I-357), so a bounded context turns that hang into a failure.
 	inv := &waitlist.Inviter{Pool: e.h.Pool, M: e.h.Metrics, Log: e.h.Log}
-	if n, x, err := inv.Run(ctx, clock); err != nil || n != 0 || x != 0 {
+	release, ok, err := db.TryLock(ctx, e.h.Pool, db.LockWaitlistTick)
+	if err != nil || !ok {
+		t.Fatalf("tick lock: %v %v", ok, err)
+	}
+	tickCtx, cancelTick := context.WithTimeout(ctx, 10*time.Second)
+	n, x, err := inv.Run(tickCtx, clock)
+	cancelTick()
+	release()
+	if err != nil || n != 0 || x != 0 {
 		t.Fatalf("full fleet invited %d expired %d %v", n, x, err)
 	}
 	// One seat frees: B is invited and holds it; C waits, first in line.
@@ -240,7 +251,7 @@ func TestSeatsWaitlistAndInvitations(t *testing.T) {
 	// 72 hours pass: C's hold runs out, C goes to the back behind D with
 	// the expiry email saying so, and the freed seat goes to D.
 	clock = invitedC.Add(72*time.Hour + time.Minute)
-	n, x, err := inv.Run(ctx, clock)
+	n, x, err = inv.Run(ctx, clock)
 	if err != nil || x != 1 || n != 1 {
 		t.Fatalf("expiry tick: invited %d expired %d %v", n, x, err)
 	}

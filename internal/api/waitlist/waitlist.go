@@ -322,8 +322,11 @@ func inviteTx(ctx context.Context, tx db.Tx, userID uuid.UUID, by string, now ti
 }
 
 // Inviter is the minute tick: expiries first, then invitations while a
-// seat is free. The caller holds db.LockWaitlist (TryLock) so one replica
-// runs it; the transaction lock inside keeps Reserve out meanwhile.
+// seat is free. The caller holds db.LockWaitlistTick (TryLock) so one
+// replica runs it; the transaction lock inside (LockWaitlist) keeps
+// Reserve out meanwhile. The caller must not hold LockWaitlist: its
+// session lock blocks these transactions, which run on other
+// connections, for good (I-357).
 type Inviter struct {
 	Pool  *db.Pool
 	Total int

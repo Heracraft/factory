@@ -71,6 +71,11 @@ const (
 	LockCAInit      int64 = 1009
 	LockQuestions   int64 = 1010
 	LockWaitlist    int64 = 1011
+	// LockWaitlistTick picks the one replica that runs the waitlist's
+	// minute tick. It is not LockWaitlist: the tick's transactions take
+	// that one themselves on other connections, and a session lock held
+	// by the loop blocked them forever (DECISIONS I-357).
+	LockWaitlistTick int64 = 1012
 )
 
 // TryLock takes a session-level advisory lock on a dedicated connection

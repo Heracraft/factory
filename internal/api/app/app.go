@@ -458,7 +458,7 @@ func (a *App) loops(ctx context.Context) {
 			// The seats waitlist expires holds that ran out and invites
 			// the oldest waiting users while a seat is free, every minute,
 			// one replica at a time (DECISIONS I-269, I-290).
-			if release, ok, err := db.TryLock(ctx, a.pool, db.LockWaitlist); err == nil && ok {
+			if release, ok, err := db.TryLock(ctx, a.pool, db.LockWaitlistTick); err == nil && ok {
 				invited, expired, err := inviter.Run(ctx, now)
 				if err != nil && ctx.Err() == nil {
 					a.log.Error("waitlist tick", "event", "waitlist_invite_fail", "err", err.Error())

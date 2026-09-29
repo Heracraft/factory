@@ -9063,3 +9063,22 @@ minutes; we have been alerted." No start is sent. Not specific to
 `--temp`: every create on a full host did this.
 `TestCreateThatFailedAtOnceReportsItsOwnError` (sent one start before;
 none after).
+
+**I-357. The waitlist's minute tick runs under its own lock,
+`LockWaitlistTick` (1012), not `LockWaitlist`.** (conductor, live check of
+I-349, 2026-09-29) Expired temporary machines were not destroyed. In
+production `pg_locks` showed the api loop's connection holding the
+session lock 1011 (`TryLock(LockWaitlist)`, app.go's minute case) and a
+second connection of the same process blocked for 7 minutes on
+`pg_advisory_xact_lock(1011)`: `Inviter.Run`'s own transactions take that
+lock on other pool connections, and advisory locks belong to a session, so
+the tick waited on itself for good. Everything after it in the loop's
+`select` stopped with it: the temporary-machine reaper (I-350), the
+billing rollup, the limiter cleanup and the 15-second host sweep; and
+every `Reserve` and `Join` (checkout and the waitlist, I-290) would have
+queued behind the stuck lock. It happened from the launch round's first
+deploy after every restart; its tests called `Inviter.Run` without the
+loop's lock. The tick now takes `LockWaitlistTick` to pick one replica;
+`LockWaitlist` stays the transactions' own lock. `TestSeatsWaitlistAndInvitations`
+now runs the first tick under the loop's lock with a 10 s deadline: under
+1011 it fails with "context deadline exceeded", under 1012 it passes.

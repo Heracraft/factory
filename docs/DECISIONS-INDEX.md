@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-390 entries.
+391 entries.
 
 ## Scope
 
@@ -422,3 +422,4 @@ pointer, not a summary.
 - **I-354** What agents on a temporary machine are told: nothing yet — 2026-09-29; L9027
 - **I-355** Tests and evidence for temporary machines — 2026-09-29; L9036
 - **I-356** `run` reports a create that failed at once, instead of starting the project it left behind — 2026-09-29; L9051
+- **I-357** The waitlist's minute tick runs under its own lock, `LockWaitlistTick` (1012), not `LockWaitlist` — 2026-09-29; L9067
