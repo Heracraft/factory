@@ -1,23 +1,23 @@
 {
   "claude-code": {
-    "version": "2.1.283",
+    "version": "2.1.284",
     "x86_64-linux": {
-      "url": "https://downloads.claude.ai/claude-code-releases/2.1.283/linux-x64/claude",
-      "hash": "sha256-GFlYPOMpIFlcYe+Gi+5S4bFZT3SG2yCZNeAfHl6ASuI="
+      "url": "https://downloads.claude.ai/claude-code-releases/2.1.284/linux-x64/claude",
+      "hash": "sha256-XNkKq9g/ihUTbDWqN7sdkrNImTVzMWZD3D/k4Er7+I8="
     }
   },
   "opencode": {
-    "version": "1.18.32",
+    "version": "1.18.33",
     "x86_64-linux": {
-      "url": "https://github.com/anomalyco/opencode/releases/download/v1.18.32/opencode-linux-x64.tar.gz",
-      "hash": "sha256-MEbgQE/cYPuAMH56R4JLoHR3NkF4pNCbqoVISW3W1Ds="
+      "url": "https://github.com/anomalyco/opencode/releases/download/v1.18.33/opencode-linux-x64.tar.gz",
+      "hash": "sha256-5UYSMhOuR5CaQmhpKqS5SVDQEa/pysmTh1OiGU8cFtU="
     }
   },
   "codex": {
-    "version": "0.157.1",
+    "version": "0.159.0",
     "x86_64-linux": {
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.157.1/codex-x86_64-unknown-linux-musl.tar.gz",
-      "hash": "sha256-6YwejgKOgTf6LSQVyC7Fjns3AaYn41VKrOWzyjFFSvI="
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.159.0/codex-x86_64-unknown-linux-musl.tar.gz",
+      "hash": "sha256-blh6CMs5WZgWxZiwfhe0vL+dQbXBwHk6S2MrZ0Hpy8A="
     }
   },
   "gemini-cli": {
