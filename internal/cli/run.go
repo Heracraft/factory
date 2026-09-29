@@ -676,10 +676,22 @@ func ensureRunningFrom(ctx context.Context, e *Env, project *Project, pr *progre
 	var err error
 	var p *Project
 	if !fresh {
+		created := project.OpID
 		if p, err = e.Client.GetProject(ctx, project.ID); err != nil {
 			return err
 		}
 		*project = *p
+		// A create that failed at once (no host with capacity) has
+		// already left the project in error with no op in flight by the
+		// time it is read back; starting it then fails with "project has
+		// no guest", which hid the capacity error (dogfood, I-356). Say
+		// what the create said.
+		if project.State == "error" && project.OpID == "" && created != "" {
+			if op, err := e.Client.GetOp(ctx, project.ID, created); err == nil && op.State == "error" {
+				pr.Fail()
+				return e.opFailed("create", project.Slug, op.Error, nextAfterFailedStart(project.Slug, op.Error.Code))
+			}
+		}
 	}
 	if project.State == "running" && !guestdDead(project) {
 		return nil

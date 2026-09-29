@@ -9047,3 +9047,19 @@ against Postgres and the fake hostd. I-348's two cases are
 `TestRunNameInHomePicksTheNamedProject` and
 `TestRunNameInCheckoutMakesASecondProject`. The live run to expiry with a
 short `--temp` on an `e2e-*` project is left for after the deploy.
+
+**I-356. `run` reports a create that failed at once, instead of starting
+the project it left behind.** (conductor, live check of I-349, 2026-09-29)
+With host-01 full, `repose run --temp 10m --name e2e-tmpexit` printed
+"Could not start e2e-tmpexit: project has no guest; create it first". The
+create op had failed at placement with `capacity` within the POST's own
+second, so the project read back as `error` with no op, and
+`ensureRunningFrom` (not fresh: a project just created is read again)
+treated it like any errored project and sent a start. It now keeps the
+create's `op_id` across that read, and when the project reads `error`
+with no op, reads that op and, if it failed, reports it: "Could not
+create e2e-full: no host with capacity (capacity). Try again in a few
+minutes; we have been alerted." No start is sent. Not specific to
+`--temp`: every create on a full host did this.
+`TestCreateThatFailedAtOnceReportsItsOwnError` (sent one start before;
+none after).

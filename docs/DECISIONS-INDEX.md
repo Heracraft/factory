@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-389 entries.
+390 entries.
 
 ## Scope
 
@@ -421,3 +421,4 @@ pointer, not a summary.
 - **I-353** Every sync refusal of the checkout comes before the create — 2026-09-29; L9013
 - **I-354** What agents on a temporary machine are told: nothing yet — 2026-09-29; L9027
 - **I-355** Tests and evidence for temporary machines — 2026-09-29; L9036
+- **I-356** `run` reports a create that failed at once, instead of starting the project it left behind — 2026-09-29; L9051
