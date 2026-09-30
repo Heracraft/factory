@@ -86,7 +86,7 @@ Or restore into a new project and leave the original alone:
 repose snapshots restore SNAPSHOT_ID --as-new todo-app-old
 ```
 
-The dashboard's snapshot list has **Create**, **Restore** and **Restore as new…** too.
+The dashboard's snapshot list has **Create**, **Restore…** and **Restore as new…** too. **Restore…** works on a stopped project and asks you to type the project's name first, as **Destroy** does.
 
 ## Destroy and restore
 

@@ -66,6 +66,64 @@ written so they cannot happen quietly.
       names is not in the guest), and for a new command the
       `guest-agent-guide` VM test output is pasted.
 
+## For every change to the web app's look
+
+`docs/DESIGN-LANGUAGE.md` is the spec (DECISIONS I-369). Run these from
+the repository root; each prints nothing when the rule holds. `$L` leaves
+out the landing (`routes/+page.svelte`, `routes/landing.css`,
+`lib/components/landing/`), which `LANDING.md` governs:
+`L=(--glob '!**/landing/**' --glob '!**/routes/+page.svelte' --glob
+'!**/routes/landing.css')`. A hit is fixed, or the rule changes through a
+DECISIONS entry and this list with it. Counts as of 2026-09-30.
+
+- [ ] Text colours come from the ink tokens, and zinc-400 and lighter is
+      never text. Evidence: `rg -n 'text-zinc-[3-6]00' apps/web/src --glob
+      '*.svelte' "${L[@]}"` prints 0 lines.
+- [ ] Blue is only the palette, links, focus and selection, all in
+      `layout.css`. Evidence: `rg -n 'blue-[0-9]' apps/web/src "${L[@]}"
+      --glob '!**/routes/layout.css'` prints 0 lines (`layout.css` itself
+      has 18: eleven palette steps, `--sh-accent` twice, `--focus` twice,
+      selection, `.link` and the docs' links).
+- [ ] No shadows, and no gradient of more than one colour. Evidence: `rg
+      -n 'shadow-|box-shadow: [^n]' apps/web/src "${L[@]}"` prints 0
+      lines; `rg -nP 'gradient\((?!(var\([^)]*\)|#[0-9a-fA-F]+|currentColor),
+      \1\))' apps/web/src` prints 0 lines.
+- [ ] Toasts are house banners. Evidence: `rg -n 'richColors' apps/web/src
+      --glob '*.svelte' | rg -v '<!--'` prints 0 lines.
+- [ ] No page asks a third party for a font. Evidence: `rg -n
+      'fonts\.(googleapis|gstatic)' apps/web/src apps/web/static` prints 0
+      lines, and a page load's network panel shows only the site's host.
+- [ ] No native dialogs. Evidence: `rg -n 'window\.confirm|[^.\w/]confirm\('
+      apps/web/src --glob '*.{svelte,ts}' | rg -v '//|onconfirm'` prints 0
+      lines.
+- [ ] Sizes come from the scale, not overrides or hand-written values.
+      Evidence: `rg -n '![pm][xytrbl]?-' apps/web/src --glob '*.svelte'
+      "${L[@]}"` prints 0 lines (buttons use `.btn--sm` or `.btn--lg`);
+      `rg -n 'text-\[[0-9.]+(px|rem|em)\]' apps/web/src --glob '*.svelte'`
+      prints 0 lines; `rg -n '\[var\(--' apps/web/src --glob '*.svelte'
+      "${L[@]}"` prints 0 lines (use `text-ink-muted`, `border-rule` and
+      the other token utilities).
+- [ ] Corners stay at 4px or less, weight stays at semibold, and no
+      stray hue. Evidence: `rg -n 'rounded-(md|lg|xl|2xl|3xl|full)\b|font-bold'
+      apps/web/src --glob '*.svelte' "${L[@]}"` and `rg -n
+      'purple|violet|fuchsia|pink-|orange-|indigo|teal|cyan|lime-'
+      apps/web/src --glob '*.{svelte,css}' "${L[@]}"` each print 0 lines.
+- [ ] One scheme mechanism and a visible focus ring. Evidence: `rg -n
+      'data-theme|class="dark' apps/web/src` prints 0 lines; `rg -n
+      'outline-none' apps/web/src "${L[@]}"` prints only the docs drawer
+      (`routes/docs/+layout.svelte`, which is focused by script, not by
+      the keyboard).
+- [ ] A new component that shows state in a fill or a coloured border has
+      a rule in the `forced-colors` block of `layout.css`. Evidence: a
+      capture with Chromium's `forcedColors: 'active'`.
+- [ ] The accessibility gate passes: `pnpm build`, then `pnpm a11y` in
+      `apps/web`, 52 runs (13 pages, light and dark, 1440 and 390), with
+      `KNOWN_FAILURES` empty or each entry carrying a reason (DECISIONS
+      I-389).
+- [ ] Judged at real size: viewport captures or crops at 1x, 1440 and
+      390 wide, light and dark, of every changed page (CLAUDE.md "Judge
+      visuals at real size").
+
 ## For every workstream, before it is called done
 
 - [ ] Every command, flag, endpoint, message, table and field named in the

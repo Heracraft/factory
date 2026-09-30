@@ -3,9 +3,11 @@
 The owner's rules for `apps/web/src/routes/+page.svelte` and
 `apps/web/src/lib/components/landing/`, collected from their reviews in
 September 2026. Read this before touching the landing page; each rule exists
-because a version broke it and was sent back. `DESIGN-LANGUAGE.md` covers the
-general house style (serif headings, palette, borders not boxes); this file
-covers what the landing page shows and says.
+because a version broke it and was sent back. `DESIGN-LANGUAGE.md`,
+"Foundation", holds what the landing shares with every page (the tokens
+including `--ink*`, the palette, the contrast floor, the faces and the one
+mono, the logo); this file covers what the landing page shows and says, and
+the grammar it adds.
 
 ## What we sell
 
@@ -195,9 +197,10 @@ and underlined every heading. The page is one system:
   - *Progress* (`Gauge.svelte`): each of the three steps is a circle
     filled a third, two thirds, then whole; grey, and the blue accent for
     the last, "done".
-  - *Capacity* (`Units.svelte`): each pricing card counts its vCPUs in
-    small squares (2, 4, 8), Isotype's own form for a quantity, so the
-    sizes compare at a glance.
+  - *Capacity* (`Units.svelte`): each pricing card counts the memory
+    that may run at once in small squares, one per GB (8, 16, 32, in rows
+    of eight), Isotype's own form for a quantity, so the plans compare at
+    a glance.
   The rest each name one feature and appear where that feature is, so
   the footer's row is the page's own symbols and none "spawns from
   heaven" (owner, 2026-09-27). The mapping, in page order:
@@ -233,11 +236,12 @@ and underlined every heading. The page is one system:
   or card, the footer's shapes stand on its rule.
 - **The blue bar marks "full permissions" and the prices, nothing else.**
   Section headings are bold serif with no bar.
-- **One motion**: a group rises into place when it comes into view.
-  Nothing else moves, with one exception that carries meaning (owner,
-  2026-09-27): the snapshot mark clicks a quarter turn when a snapshot is
-  taken and rewinds a full turn when one is restored, in the hero and in
-  the "Let it break" card. No labels on any of it. Under `prefers-reduced-motion` every shape is
+- **Shapes move one way**: a group lands in place when it comes into
+  view. The one other shape motion carries meaning (owner, 2026-09-27):
+  the snapshot mark clicks a quarter turn when a snapshot is taken and
+  rewinds a full turn when one is restored, in the hero and in the "Let it
+  break" card. No labels on any of it. Every motion on the page is listed
+  under "Motion" below; under `prefers-reduced-motion` every shape is
   still and whole.
 - **The palette the landing had before the shapes, and nothing else, and
   no agent's brand colour.** The shapes, the bar and the price rules use
@@ -253,8 +257,12 @@ and underlined every heading. The page is one system:
   at mid values so nothing vanishes or shouts: zinc-400 and zinc-300 on
   paper, zinc-500 and zinc-600 in the dark; the blue fill is blue-500
   (a step lighter than the pictures' blue-600 lines) so it doesn't
-  outweigh the greys; ink only for small details (a hole, a diamond's top),
-  never a whole shape. Judge it on a full-page screenshot in both themes.
+  outweigh the greys; `--sh-ink` only for small details (a hole, a
+  diamond's top), never a whole shape. In the light scheme those details
+  are holes in zinc-700; in the dark they are lit marks in zinc-400, since
+  a dark detail on the dark paper ring vanished (DECISIONS I-379). Judge
+  the balance on viewport captures at 1x in both themes, one per section,
+  as "Process" says; a full-page capture only shows the page's rhythm.
 - **Where a shape and a mark are the same form, they are one.** The star
   is Gemini's sparkle (`SPARKLE` in `marks.ts`); Gemini CLI's mark in the
   toolchain box is that sparkle.
@@ -263,12 +271,38 @@ and underlined every heading. The page is one system:
   thin cross in the text's ink, its crossing left of centre and low, and
   three flat blocks hugging the crossing: a skinny one in `--sh-grey`
   above-left, a middle square in `--sh-light` above-right on the arm, and
-  the big square in `--sh-accent` below-right. The favicon
+  the big square in `--sh-accent` below-right (in the dark, the two grey
+  blocks step lighter so they hold at header size). The favicon
   (`favicon.svg`, `favicon.png`) is a heavier cut of it, stems 10 instead
   of 4, so it holds at 16px. It replaced the r (a stem and a blue quarter
-  disc), which had replaced the quartered ring.
+  disc), which had replaced the quartered ring. The mark is in every
+  page's header, not only this one's (I-381); where it appears and its
+  minimum size are in `DESIGN-LANGUAGE.md`, "Logo".
 - The shapes live in `landing/Shape.svelte` and draw only from the `--sh-*`
   tokens. The app's own pages never use them.
+
+## Motion
+
+Everything that moves on the landing. Each runs only under
+`prefers-reduced-motion: no-preference`; with reduced motion the page is
+drawn in its final state.
+
+- **The chrome, once on load**: the rails draw from the top down (1.1s,
+  `--land-ease`, `cubic-bezier(0.65, 0, 0.35, 1)`); the ticks fade in
+  after them (0.4s ease-out, from 0.9s); the blue bar under "full
+  permissions" wipes in from the left (0.8s, `--land-ease`, from 0.5s).
+  The prices' bar does not move.
+- **Shapes landing**: a group lands in place when it comes into view, one
+  shape after another (`.land` in `layout.css`: opacity 0.3s ease-out,
+  transform 0.7s `cubic-bezier(0.34, 1.56, 0.64, 1)`, a small overshoot,
+  each shape delayed by its `--d`).
+- **The snapshot mark** turns a quarter when a snapshot is taken and a
+  full turn back when one is restored.
+- **The pictures** loop in anime.js, the calm motion of "Your working
+  state": stagger, travel, settle, rest, loop.
+
+Nothing else moves. A new motion is added to this list with its duration
+and easing, or it does not ship.
 
 ## Where terminals are allowed
 
@@ -303,8 +337,8 @@ by `+page.svelte` alone; the house tokens stay in `layout.css`):
 
 - **Rails.** The content stands between two hairlines (`.rails`) that run
   from the top bar to the footer, 1120px apart at most. They are hidden
-  below 768px. On load they draw themselves from the top down, once; the
-  one motion the chrome has.
+  below 768px. On load they draw themselves from the top down, once, and
+  the ticks fade in after them ("Motion").
 - **Rules run wall to wall, ticked.** Every section (`.sec`) opens with a
   rule across the full width, and a small cross (`::before`/`::after`)
   marks where it meets each rail, as a drawing marks an intersection. The
@@ -336,12 +370,14 @@ by `+page.svelte` alone; the house tokens stay in `layout.css`):
   picture shows a row of a terminal.
 - **The sign-off.** The footer's shape set stands one to a cell between
   the rails (`.frieze`), the rule under it, then the wordmark and links.
-  Six cells on a phone.
+  Eight cells in one row at every width, a phone included.
 - **Type.** Display `clamp(2.75rem, 6.6vw, 5.25rem)`; section titles
   `clamp(1.9rem, 3.4vw, 2.5rem)`; cell and step titles 1.125rem serif
-  600; lead `clamp(1rem, 1.3vw, 1.125rem)`; labels 11px mono, 0.14em
-  tracking, uppercase (the price's "per hour"). Ink in three steps (`--ink`, `--ink-muted`,
-  `--ink-faint`), redefined for the dark scheme; defined in `layout.css` so they are set before `landing.css` arrives (I-331).
+  600; lead `clamp(1rem, 1.3vw, 1.125rem)`; labels 11px JetBrains Mono,
+  0.12em tracking, uppercase (the price's "a month"). Text takes the
+  Foundation's three ink steps (`--ink`, `--ink-muted`, `--ink-faint`,
+  `DESIGN-LANGUAGE.md`, "Tokens"), set in `layout.css` so they apply
+  before `landing.css` arrives (I-331).
 
 Everything in "Shape language" still holds: shapes encode or are absent,
 the palette is the neutrals and the one blue, the pictures are untouched.
