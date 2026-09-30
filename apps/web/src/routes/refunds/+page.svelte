@@ -4,7 +4,7 @@
 </script>
 
 <svelte:head>
-	<title>Refunds — repose</title>
+	<title>Refunds · repose</title>
 </svelte:head>
 
 <LegalPage {raw} />

@@ -26,7 +26,7 @@
 {:else if !moved}
 	<main class="pt-8 pb-24">
 		<h1 class="text-3xl font-semibold">No such page</h1>
-		<p class="mt-3 text-zinc-600 dark:text-zinc-400">
+		<p class="mt-3 text-ink-muted">
 			There's no docs page called “{page.params.slug}”.
 			<a href={resolve('/docs')} class="link">The overview</a> lists everything.
 		</p>

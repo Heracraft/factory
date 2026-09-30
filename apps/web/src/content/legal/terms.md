@@ -1,7 +1,7 @@
 ---
 title: Terms of service
 effective: 2026-09-27
-status: draft for launch review
+status: these terms are under review before launch.
 ---
 
 # Terms of service

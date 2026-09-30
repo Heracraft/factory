@@ -1,7 +1,7 @@
 ---
 title: Privacy policy
 effective: 2026-09-27
-status: draft for launch review; the two quoted boundaries are binding on the code today (docs/SECURITY.md, test/isolation)
+status: this policy is under review before launch. The sentences in bold already bind the service today.
 ---
 
 # Privacy policy

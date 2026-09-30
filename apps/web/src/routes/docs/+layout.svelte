@@ -3,8 +3,8 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { authState, signIn } from '$lib/auth.svelte';
-	import { docsBySection, search } from '$lib/docs';
-	import Logo from '$lib/components/Logo.svelte';
+	import { docBySlug, docsBySection, search } from '$lib/docs';
+	import HeaderFrame from '$lib/components/HeaderFrame.svelte';
 
 	let { children } = $props();
 
@@ -16,6 +16,10 @@
 	let menuButton: HTMLButtonElement | undefined = $state();
 
 	let current = $derived(page.params.slug ?? 'index');
+	// The open page's sections, listed under its link in the sidebar. They
+	// took a right rail before; in the header's max-w-5xl column a rail
+	// would leave the text too narrow for the docs' 70-column code.
+	let sections = $derived((docBySlug(current)?.headings ?? []).filter((h) => h.depth === 2));
 
 	function href(slug: string): string {
 		return slug === 'index' ? resolve('/docs') : resolve('/docs/[slug]', { slug });
@@ -104,47 +108,43 @@
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -- every internal href here comes from href(), which builds it with resolve() -->
 
-<header class="sticky top-0 z-30 border-b border-[var(--rule)] bg-[var(--page)]">
-	<div class="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-5">
-		<div class="flex items-center gap-3">
-			<button
-				bind:this={menuButton}
-				type="button"
-				class="-ml-2 rounded-sm p-2 text-zinc-700 hover:bg-[var(--sunken)] hover:text-zinc-950 lg:hidden dark:text-zinc-300 dark:hover:text-zinc-50"
-				aria-label={menuOpen ? 'Close the docs menu' : 'Open the docs menu'}
-				aria-expanded={menuOpen}
-				aria-controls="docs-nav"
-				onclick={() => (menuOpen ? closeMenu() : openMenu())}
-			>
-				<svg viewBox="0 0 20 20" class="h-5 w-5" aria-hidden="true" fill="none">
-					{#if menuOpen}
-						<path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" />
-					{:else}
-						<path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="currentColor" stroke-width="1.5" />
-					{/if}
-				</svg>
-			</button>
-			<a href={resolve('/')} aria-label="repose, home"><Logo /></a>
-			<a
-				href={resolve('/docs')}
-				class="text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-				>Docs</a
-			>
-		</div>
-		<nav class="flex items-center gap-5 text-sm" aria-label="Site">
-			<a
-				href="https://github.com/Heracraft/repose"
-				class="hidden text-zinc-600 hover:text-zinc-900 sm:inline dark:text-zinc-400 dark:hover:text-zinc-100"
-				>GitHub</a
-			>
-			{#if authState.authenticated}
-				<a href={resolve('/projects')} class="btn-quiet !py-1.5">Dashboard</a>
-			{:else}
-				<button type="button" class="btn-quiet !py-1.5" onclick={() => signIn()}>Sign in</button>
-			{/if}
-		</nav>
-	</div>
-</header>
+<!-- The shared header frame, kept in view while you read. The menu button
+     sits at the right end so the logo is at the same x as on the dashboard
+     and the legal pages; the drawer it opens still comes from the left, where
+     the sidebar lives from lg up. -->
+<HeaderFrame home={resolve('/')} label="repose, home" sticky>
+	{#snippet lead()}
+		<a href={resolve('/docs')} class="text-sm text-ink-muted hover:text-ink">Docs</a>
+	{/snippet}
+	<nav class="flex items-center gap-4 text-sm sm:gap-5" aria-label="Site">
+		<a
+			href="https://github.com/Heracraft/repose"
+			class="hidden text-ink-muted hover:text-ink sm:inline">GitHub</a
+		>
+		{#if authState.authenticated}
+			<a href={resolve('/projects')} class="btn-quiet btn--sm">Dashboard</a>
+		{:else}
+			<button type="button" class="btn-quiet btn--sm" onclick={() => signIn()}>Sign in</button>
+		{/if}
+		<button
+			bind:this={menuButton}
+			type="button"
+			class="-mr-2 rounded-sm p-2 text-ink-muted hover:bg-[var(--sunken)] hover:text-ink lg:hidden"
+			aria-label={menuOpen ? 'Close the docs menu' : 'Open the docs menu'}
+			aria-expanded={menuOpen}
+			aria-controls="docs-nav"
+			onclick={() => (menuOpen ? closeMenu() : openMenu())}
+		>
+			<svg viewBox="0 0 20 20" class="h-5 w-5" aria-hidden="true" fill="none">
+				{#if menuOpen}
+					<path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" />
+				{:else}
+					<path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="currentColor" stroke-width="1.5" />
+				{/if}
+			</svg>
+		</button>
+	</nav>
+</HeaderFrame>
 
 {#if menuOpen}
 	<!-- The backdrop is a pointer target only; Escape and the menu button close the drawer from the keyboard. -->
@@ -155,7 +155,7 @@
 	></div>
 {/if}
 
-<div class="mx-auto flex max-w-6xl gap-10 px-5">
+<div class="mx-auto flex max-w-5xl gap-10 px-5">
 	<aside
 		id="docs-nav"
 		bind:this={nav}
@@ -187,23 +187,21 @@
 							class="block rounded-sm px-2 py-1.5 hover:bg-[var(--sunken)]"
 						>
 							<span class="block text-sm font-medium">
-								{hit.doc.title}{#if hit.heading}<span class="text-zinc-600 dark:text-zinc-400">
+								{hit.doc.title}{#if hit.heading}<span class="text-ink-muted">
 										› {hit.heading.text}</span
 									>{/if}
 							</span>
-							<span class="mt-0.5 block text-xs text-zinc-600 dark:text-zinc-400"
-								>{hit.snippet}</span
-							>
+							<span class="mt-0.5 block text-xs text-ink-muted">{hit.snippet}</span>
 						</a>
 					</li>
 				{:else}
-					<li class="px-2 py-1.5 text-sm text-zinc-600 dark:text-zinc-400">Nothing matches.</li>
+					<li class="px-2 py-1.5 text-sm text-ink-muted">Nothing matches.</li>
 				{/each}
 			</ul>
 		{:else}
 			<nav class="mt-5" aria-label="Docs">
 				{#each groups as group (group.section)}
-					<p class="mt-5 mb-1 px-2 text-sm font-medium text-zinc-950 first:mt-0 dark:text-zinc-50">
+					<p class="mt-5 mb-1 px-2 text-sm font-medium text-ink first:mt-0">
 						{group.section}
 					</p>
 					<ul>
@@ -213,10 +211,24 @@
 									href={href(doc.slug)}
 									aria-current={current === doc.slug ? 'page' : undefined}
 									class="block rounded-sm px-2 py-1 text-sm {current === doc.slug
-										? 'bg-[var(--sunken)] font-medium text-zinc-950 dark:text-zinc-50'
-										: 'text-zinc-700 hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50'}"
-									>{doc.title}</a
+										? 'bg-[var(--sunken)] font-medium text-ink'
+										: 'text-ink-muted hover:text-ink'}">{doc.title}</a
 								>
+								{#if current === doc.slug && sections.length > 1}
+									<ul
+										class="mt-1 mb-2 ml-2 border-l border-[var(--rule)] pl-3"
+										aria-label="On this page"
+									>
+										{#each sections as h (h.id)}
+											<li>
+												<a
+													href={`#${h.id}`}
+													class="block py-0.5 text-[13px] text-ink-muted hover:text-ink">{h.text}</a
+												>
+											</li>
+										{/each}
+									</ul>
+								{/if}
 							</li>
 						{/each}
 					</ul>

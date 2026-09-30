@@ -7,7 +7,13 @@
 	// arm, and the big square in the one blue below-right. Flat, no stroke;
 	// the favicon is this same drawing. The viewBox is cropped to the
 	// drawing so the thin stems get every pixel the header gives the mark.
-	let { size = 'base', mark = false }: { size?: 'sm' | 'base'; mark?: boolean } = $props();
+	// word=false draws the mark alone, for a header row on a phone that has
+	// no room for both; the link around it carries the name.
+	let {
+		size = 'base',
+		mark = false,
+		word = true
+	}: { size?: 'sm' | 'base'; mark?: boolean; word?: boolean } = $props();
 </script>
 
 <span
@@ -31,5 +37,5 @@
 				height="92"
 				fill="currentColor"
 			/><rect x="13" y="50" width="74" height="4" fill="currentColor" /></svg
-		>{/if}repose</span
+		>{/if}{#if word}repose{/if}</span
 >
