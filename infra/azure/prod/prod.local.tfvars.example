@@ -45,3 +45,9 @@ cloudflare_zone_id = "0123456789abcdef0123456789abcdef"
 # gets it through cloud-init; on a live VM the peer is written by hand
 # (infra/README.md, "Wiring the control plane to the edge").
 # edge_wireguard_public_key = "..."
+
+# The Entra object id that keeps the Key Vault operator policy (the owner's
+# user: `az ad signed-in-user show --query id -o tsv`). Without it the policy
+# goes to whoever runs tofu, and a plan as a service principal wants to
+# replace the owner's policy with its own (DECISIONS I-361).
+# operator_object_id = "00000000-0000-0000-0000-000000000000"

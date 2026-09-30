@@ -9130,3 +9130,27 @@ Check an inbound gateway session before calling such a tunnel done.
 *Rejected:* adding kanali's 10.64 address to its AllowedIPs on the edge,
 which would let a peer send as part of host-01's guest range; narrower
 AllowedIPs here, since the operator sshd is on 10.255.0.1 itself.
+
+**I-361. kanali runs tofu as its own service principal; the Key Vault
+operator policy is pinned to the owner.** (owner, kanali, 2026-09-29)
+`kanali-tofu` has Contributor and Storage Blob Data Contributor on
+`repose-prod`, and its credentials are kanali's `ARM_*` secrets; the state
+backend uses Entra auth (`use_azuread_auth`), so Contributor alone cannot
+read the state. The vault's operator policy took `coalesce(operator_object_id,
+<caller>)`, and the prod and staging roots never passed
+`operator_object_id`, so the first plan as the service principal wanted to
+replace the owner's policy with its own (`object_id 07b58b32... ->
+0be39425... # forces replacement`). An apply would have left the owner
+without key management on the vault that wraps every user's DEK. Both roots
+now declare and pass it, and the local tfvars set it to the owner. The
+service principal got Get, List and GetRotationPolicy on keys by `az
+keyvault set-policy`, with the owner's approval, because a plan refreshes
+the key; that policy is outside tofu, which manages each policy as its own
+resource and leaves others alone. Contributor can edit vault access policies,
+so this principal can grant itself more; that is the owner's accepted risk
+for a coordinator that applies. Evidence: `make -C infra plan ENV=prod` as
+the service principal, "No changes"; `make -C infra validate` passes.
+*Rejected:* running tofu from a copied `~/.azure` (the dev box's way; the
+refresh token lapses after 90 days idle and device-code login is blocked
+from a VM); RBAC on the vault (a migration of a vault holding live keys, for
+one reader).

@@ -68,6 +68,7 @@ module "environment" {
   operator_authorized_keys = var.operator_authorized_keys
   ssh_private_key_path     = var.ssh_private_key_path
   api_identity_object_id   = var.api_identity_object_id
+  operator_object_id       = var.operator_object_id
 
   flake_path = var.flake_path
   build_on   = var.build_on

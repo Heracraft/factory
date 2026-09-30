@@ -202,3 +202,9 @@ variable "dns_zone" {
   description = "DNS zone the repose names live in."
   default     = "herakraft.co"
 }
+
+variable "operator_object_id" {
+  type        = string
+  description = "Entra object id that keeps the Key Vault operator policy. Null means whoever runs tofu, which moves the policy to a service principal the first time one applies (DECISIONS I-361). Set it in the local tfvars."
+  default     = null
+}
