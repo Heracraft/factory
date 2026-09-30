@@ -9187,9 +9187,15 @@ three blocks against the crossing: skinny above-left (7 by 32), a middle
 square above-right on the arm (12 by 14), and the big square below-right
 (20 by 18). Colours are the landing's: the cross in the text's ink, the
 blocks in `--sh-grey`, `--sh-light` and `--sh-accent`. `Logo.svelte`
-draws it and `static/favicon.png` is rendered from the same rectangles
-at 128px on transparent, so the Logto sign-in page and the sign-in
-emails, which load that PNG, change with the next deploy of the web app.
+draws it cropped to the drawing at 28px tall (24 for `sm`), since at the
+r's 20px square the stems fell under a pixel. The favicon is a heavier
+cut of the same arrangement (stems 10, blocks a little larger), because
+the traced stems vanish at 16px: `static/favicon.svg` flips its colours
+with the scheme so the cross shows on a dark tab bar, and
+`static/favicon.png` is the light version at 128px on transparent; both
+links carry `?v=2` so browsers drop the cached r. The Logto sign-in page
+and the sign-in emails load that PNG, so they change with the next
+deploy of the web app.
 The studies are in the owner's artifact "repose mark studies" (rounds
 one to four; T2 in round four). *Rejected:* the same arrangement with
 blocks 1.5 times larger and a heavier stem (T6, T7: they read better at

@@ -5,7 +5,8 @@
 	// blocks hugging the crossing in the landing's palette: a skinny one in
 	// grey above-left, a middle square in the light grey above-right on the
 	// arm, and the big square in the one blue below-right. Flat, no stroke;
-	// the favicon is this same drawing.
+	// the favicon is this same drawing. The viewBox is cropped to the
+	// drawing so the thin stems get every pixel the header gives the mark.
 	let { size = 'base', mark = false }: { size?: 'sm' | 'base'; mark?: boolean } = $props();
 </script>
 
@@ -14,8 +15,8 @@
 		? 'text-base'
 		: 'text-lg'}"
 	>{#if mark}<svg
-			viewBox="0 0 100 100"
-			class="{size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'} shrink-0"
+			viewBox="13 4 74 92"
+			class="{size === 'sm' ? 'h-6' : 'h-7'} w-auto shrink-0"
 			aria-hidden="true"
 			><rect x="36" y="18" width="7" height="32" fill="var(--sh-grey)" /><rect
 				x="47"
