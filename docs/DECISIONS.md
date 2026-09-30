@@ -9937,3 +9937,30 @@ was settled fixing it:
   "Replace" heading, left from the I-13 framing, is "Controls".
 *Kept:* the landing header's 60px height and 216px inset (landing files
 belong to the landing-critique branch).
+
+**I-394. Design repair round 4: a quiet poll failure does not latch,
+billing opens one panel at a time, and code wraps where it should.**
+(design critique repair, 2026-09-30; amends I-393) What the fourth verify
+round found, and what was settled fixing it:
+- `PollFailure` latched a failure it kept quiet. A project's events poll
+  whose first tick failed under the load banner never toasted after
+  Retry loaded the project, however long it kept failing. Only a toast
+  latches now; a quiet failure is looked at again on the next tick.
+- Billing. Resume plan gives focus to Cancel plan, the mirror of what
+  cancel does (WCAG 2.4.3). Change plan and the Cancel plan question
+  close each other, so the question renders right under the action row,
+  where its button was, and not under the plan list.
+- Wrapping. The project page's remote URL uses `wrap-anywhere`, not
+  `break-all`, so it breaks at a hyphen or a slash before mid-word. The
+  legal pages render inline code with the docs' renderer, moved to
+  `lib/codespan.ts`, so `repose-notify` no longer splits at its hyphen.
+- Docs code blocks wider than their box take `tabindex=0` (set in
+  DocPage, rechecked on resize, so a block that fits is no tab stop) and
+  show a shade at the hidden edge; axe's scrollable-region-focusable
+  would flag them in engines that do not focus a scroller on their own.
+- DESIGN-LANGUAGE.md: the Nix editor's `--sunken` fill (I-393) is in
+  the token table and under "Hairlines, not boxes"; the mark-alone rule
+  below `sm` covers the `HeaderFrame` headers and names the landing, whose
+  files the landing-critique branch owns, as the exception.
+*Kept:* the landing's header and footer logos as they are, for that
+branch to settle.

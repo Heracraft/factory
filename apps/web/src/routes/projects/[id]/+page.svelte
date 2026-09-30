@@ -522,7 +522,10 @@
 				<code class="codeblock mt-3 block px-3 py-2">repose run</code>
 				<code class="codeblock mt-2 block px-3 py-2">ssh {project.slug}.repose</code>
 				{#if project.remote_url}
-					<p class="mt-2 font-mono text-compact break-all text-ink-muted">
+					<!-- wrap-anywhere, not break-all: the URL breaks at a hyphen or a
+					     slash first, and mid-word only for a part wider than the card.
+					     break-all split "kanali-with-a-longer-name" as "…-long" / "er-name". -->
+					<p class="mt-2 font-mono text-compact wrap-anywhere text-ink-muted">
 						{normalizeRemoteDisplay(project.remote_url)}
 					</p>
 				{/if}

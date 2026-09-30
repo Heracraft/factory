@@ -1,8 +1,13 @@
 <script lang="ts">
-	import { marked } from 'marked';
+	import { Marked } from 'marked';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { codespan } from '$lib/codespan';
 	import HeaderFrame from './HeaderFrame.svelte';
+
+	// Inline code renders as the docs render it, so `repose-notify` stays
+	// on one line here too; marked's default let it break at its hyphen.
+	const marked = new Marked({ renderer: { codespan } });
 
 	let { raw }: { raw: string } = $props();
 

@@ -204,6 +204,9 @@
 		try {
 			await billingResume();
 			await load();
+			// The mirror of cancel(): Resume plan is gone once cancel_at
+			// clears, so Cancel plan takes the focus.
+			void focusAfterRender('cancel-plan');
 		} catch (err) {
 			toastApiError(err, 'Could not resume the plan.');
 		} finally {
@@ -467,18 +470,25 @@
 						onclick={() => {
 							changing = !changing;
 							changeError = undefined;
+							confirmCancel = false;
 						}}>Change plan</button
 					>
 					<!-- The documented two-step (DESIGN-LANGUAGE.md, "Confirmation"):
 					     the button turns into the question below, and Keep it
-					     brings it back with the focus on it (I-393). -->
+					     brings it back with the focus on it (I-393). One panel at a
+					     time: opening the question closes Change plan and the reverse,
+					     so the question sits right under the row, not under the plan
+					     list. -->
 					{#if !confirmCancel}
 						<button
 							type="button"
 							id="cancel-plan"
 							class="btn-ghost-danger"
 							disabled={!!busy}
-							onclick={() => (confirmCancel = true)}>Cancel plan</button
+							onclick={() => {
+								changing = false;
+								confirmCancel = true;
+							}}>Cancel plan</button
 						>
 					{/if}
 				{/if}

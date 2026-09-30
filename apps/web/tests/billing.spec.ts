@@ -328,6 +328,15 @@ test('cancelling asks first, then shows the end date and a Resume that undoes it
 }) => {
 	await setBilling({ mode: 'active', plan: 'solo' });
 	await page.goto('/billing');
+	// One panel at a time: the question closes Change plan and the reverse.
+	await page.getByRole('button', { name: 'Change plan' }).click();
+	await expect(page.getByTestId('change-plan')).toBeVisible();
+	await page.getByRole('button', { name: 'Cancel plan' }).click();
+	await expect(page.getByTestId('change-plan')).toHaveCount(0);
+	await page.getByRole('button', { name: 'Change plan' }).click();
+	await expect(page.getByTestId('confirm-cancel')).toHaveCount(0);
+	await page.getByRole('button', { name: 'Change plan' }).click();
+	await expect(page.getByTestId('change-plan')).toHaveCount(0);
 	await page.getByRole('button', { name: 'Cancel plan' }).click();
 	const confirm = page.getByTestId('confirm-cancel');
 	await expect(confirm).toContainText('It ends on');
@@ -345,4 +354,6 @@ test('cancelling asks first, then shows the end date and a Resume that undoes it
 	await expect(page.getByRole('button', { name: 'Change plan' })).toHaveCount(0);
 	await page.getByRole('button', { name: 'Resume plan' }).click();
 	await expect(page.getByTestId('plan-status')).toContainText('Active. Renews');
+	// Resume plan is gone; focus goes to Cancel plan, not <body>.
+	await expect(page.getByRole('button', { name: 'Cancel plan' })).toBeFocused();
 });

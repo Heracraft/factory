@@ -802,7 +802,20 @@
 	   column (DECISIONS I-345, docs.test.ts). */
 	white-space: pre;
 	overflow-x: auto;
-	background-color: var(--sunken);
+	/* A block wider than its box shows a shade at the edge that hides
+	   text, so a cut line such as "(2 new comm" reads as more to scroll to:
+	   a phone's overlay scrollbar shows only while the block moves. The
+	   two "local" layers scroll with the text and cover the shade once
+	   that edge is reached, so a block that fits shows none. */
+	background:
+		linear-gradient(to right, var(--sunken) 40%, transparent) left / 1.5rem 100% no-repeat local,
+		linear-gradient(to left, var(--sunken) 40%, transparent) right / 1.5rem 100% no-repeat local,
+		radial-gradient(farthest-side at 0 50%, var(--scroll-shade), transparent) left / 0.625rem 100%
+			no-repeat scroll,
+		radial-gradient(farthest-side at 100% 50%, var(--scroll-shade), transparent) right / 0.625rem
+			100% no-repeat scroll,
+		var(--sunken);
+	--scroll-shade: color-mix(in oklab, var(--ink) 22%, transparent);
 	border-color: var(--rule);
 }
 .doc .table-wrap {

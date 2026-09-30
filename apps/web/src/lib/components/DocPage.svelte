@@ -38,6 +38,26 @@
 		return () => el.removeEventListener('click', onClick);
 	});
 
+	// A code block wider than its box scrolls, and a scroller the keyboard
+	// cannot reach is one a keyboard user cannot read to its end (axe
+	// scrollable-region-focusable; only Chromium focuses one on its own).
+	// Only a block that overflows gets the tab stop, checked again when the
+	// column changes width, so at 1440, where the docs fit, Tab skips them.
+	$effect(() => {
+		if (!article) return;
+		const blocks = [...article.querySelectorAll<HTMLPreElement>('pre')];
+		const mark = () => {
+			for (const pre of blocks) {
+				if (pre.scrollWidth > pre.clientWidth) pre.tabIndex = 0;
+				else pre.removeAttribute('tabindex');
+			}
+		};
+		mark();
+		const ro = new ResizeObserver(mark);
+		for (const pre of blocks) ro.observe(pre);
+		return () => ro.disconnect();
+	});
+
 	function href(slug: string): string {
 		return slug === 'index' ? resolve('/docs') : resolve('/docs/[slug]', { slug });
 	}

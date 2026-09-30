@@ -39,16 +39,29 @@ describe('PollFailure', () => {
 	test('says nothing while the page banner shows', () => {
 		const f = new PollFailure('Could not load snapshots.');
 		f.fail(forbidden, true);
-		f.fail(forbidden);
+		f.fail(forbidden, true);
 		expect(error).not.toHaveBeenCalled();
 		f.ok();
 		expect(dismiss).not.toHaveBeenCalled();
 	});
 
-	test('says nothing while the outage bar shows', () => {
+	test('toasts once the banner has gone and the poll still fails', () => {
+		// The project page's events poll: its first tick fails under the load
+		// banner (quiet), Retry loads the project, and events keeps failing.
+		const f = new PollFailure('Could not load events.');
+		f.fail(forbidden, true);
+		f.fail(forbidden);
+		f.fail(forbidden);
+		expect(error).toHaveBeenCalledTimes(1);
+	});
+
+	test('says nothing while the outage bar shows, and toasts if the poll fails after it', () => {
 		const f = new PollFailure('Could not load projects.');
 		reachability.down('server');
 		f.fail(new ApiError({ code: 'internal', message: 'internal error' }, 500, null));
 		expect(error).not.toHaveBeenCalled();
+		reachability.ok = true;
+		f.fail(forbidden);
+		expect(error).toHaveBeenCalledTimes(1);
 	});
 });

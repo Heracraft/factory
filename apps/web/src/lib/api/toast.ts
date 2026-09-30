@@ -18,22 +18,25 @@ export function toastApiError(err: unknown, fallback = 'Something went wrong.'):
  * bar, which the client raised before the error reached here. The first
  * poll that gets through dismisses the toast, so a stale one does not stay
  * after the api is back.
+ *
+ * Only a toast latches. A failure that stayed quiet is looked at again on
+ * the next tick: if the banner or the bar has gone and the poll still
+ * fails, that tick toasts. Latching the quiet one too left a project's
+ * events list silently stale when its first tick failed under the load
+ * banner and later ticks kept failing after Retry cleared it.
  */
 export class PollFailure {
-	failing = false;
 	private toastId: string | number | undefined;
 
 	constructor(private fallback: string) {}
 
 	fail(err: unknown, quiet = false): void {
-		if (this.failing) return;
-		this.failing = true;
+		if (this.toastId !== undefined) return;
 		if (quiet || !reachability.ok) return;
 		this.toastId = toast.error(errorText(err, this.fallback));
 	}
 
 	ok(): void {
-		this.failing = false;
 		if (this.toastId !== undefined) toast.dismiss(this.toastId);
 		this.toastId = undefined;
 	}

@@ -23,8 +23,8 @@ theme toggle, no `class="dark"`, no `[data-theme]`.
 | Token | Light | Dark | Use |
 |---|---|---|---|
 | `--page` | `#fbfbfa` | `#111110` | The page ground (`bg-page`). `app.html` paints it before the CSS loads (I-331). |
-| `--surface` | `#ffffff` | `#161615` | Fields, `.btn-quiet`, `.banner`, toasts. |
-| `--sunken` | `#f4f4f2` | `#1b1b1a` | Code blocks, the landing's stages, kbd. |
+| `--surface` | `#ffffff` | `#161615` | Fields, `.btn-quiet`, `.banner`, toasts, the Nix editor's current line. |
+| `--sunken` | `#f4f4f2` | `#1b1b1a` | Code blocks, the Nix editor, the landing's stages, kbd. |
 | `--rule` | `#e6e6e3` | `#2a2a28` | Hairlines between sections, rows and cards. |
 | `--rule-strong` | `#cfcfcb` | `#3b3b38` | Badges, table heads, banners. Never the only edge of a control. |
 | `--control-edge` | `#888883` | `#6e6e6a` | The edge of anything you type into or press: fields, `.btn-quiet`, the hollow state dot, the meter track (`border-control`). |
@@ -179,10 +179,14 @@ grey, light grey and the accent) followed by "repose" in Noto Serif 600.
 The mark is in every header (I-381):
 
 - 28px tall with the word from `sm` up, on every page.
-- Below `sm`: the 24px `sm` cut alone, on every page. The dashboard's
-  five links leave no room for the word, and the docs and legal headers
-  drop it too, so the header is the same wherever a phone goes (I-391,
-  I-393). The link around it carries the name.
+- Below `sm`: the 24px `sm` cut alone in every `HeaderFrame` header
+  (dashboard, docs, legal). The dashboard's five links leave no room for
+  the word, and the docs and legal headers drop it too, so the header is
+  the same from one of those pages to the next on a phone (I-391, I-393).
+  The link around it carries the name. The landing is the exception: its
+  own header keeps the 28px mark with the word at 390, and its footer a
+  `sm` mark with the word. The landing-critique branch owns those files
+  (I-394).
 - Never under 24px. At 16px (the tab) use the favicon, a heavier cut of
   the same drawing (`static/favicon.svg`, `favicon.png`).
 - The mark's grey blocks have their own greys so they hold 3:1 at header
@@ -229,7 +233,10 @@ Sections separate with a top rule and spacing (`.form-section`, whose
 first one on a page draws no rule under the title's; `.row`). `.card` is a
 bordered box with no fill or shadow. `.btn-quiet`, `.banner` and fields
 keep a `--surface` fill, one step off `--page`, so a control reads as
-something you can use.
+something you can use. The Nix editor is the one field on `--sunken`: it
+holds code, and code sits on `--sunken` everywhere; its `--control-edge`
+border still marks it as a control, and its current line is `--surface`
+(I-393).
 
 ## Buttons
 
@@ -309,7 +316,9 @@ Every view that loads or acts has each of these:
   "Retrying…" while it runs) that re-runs the same load. Only the first
   load goes there; a refresh that fails later keeps the content on screen
   and raises a toast (I-385), once, when the poll starts failing
-  (`PollFailure` in `lib/api/toast.ts`, I-393). A page keeps its load error until a load
+  (`PollFailure` in `lib/api/toast.ts`, I-393), or, if the load banner or
+  the outage bar was saying it then, on the first failed tick after it
+  goes (I-394). A page keeps its load error until a load
   succeeds, so the banner and its button stay through a retry and keep
   the keyboard's focus; a breadcrumb waiting on the failed load's name
   reads "Project", not "…".
@@ -379,7 +388,9 @@ page with nothing to show is a banner, not a toast, and not both: one
 failure is said once, in `errorText`'s words (I-390). A poll says it once
 too: a toast on the first failed tick, none while the load banner or the
 outage bar shows, and the toast dismissed when a tick gets through
-(`PollFailure`, I-393).
+(`PollFailure`, I-393). Only a toast counts as said: a tick that failed
+quietly under the banner or the bar does not stop the next one, after
+they have gone, from toasting (I-394).
 
 ## The outage bar
 
@@ -445,9 +456,13 @@ body weight with no backticks; a span with no space in it (a command, a
 flag, a path) of 30 characters or fewer never breaks across lines, a
 span with spaces breaks only at them (`--api-url URL`, I-393), and a
 longer word (a URL) wraps, so no chip pushes a phone's page sideways
-(`docs.test.ts` holds the limit). A command used as a heading is the
+(`docs.test.ts` holds the limit). The legal pages render inline code
+with the same renderer (`lib/codespan.ts`, I-394). A command used as a heading is the
 heading's own mono text, not a chip. Shell blocks are ink with muted
 prompts and output, and no token hue: in the docs blue is a link (I-388).
+A block wider than its box shows a shade at the edge where text is
+hidden, and takes a tab stop so a keyboard can scroll it; a block that
+fits has neither (I-394).
 The copy button is 28px tall and says "Copied" to a screen reader through
 a live region as well as on its face. Links are in
 the accent; h2 sections are separated by a rule. The sidebar's "On this
