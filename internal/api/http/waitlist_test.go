@@ -49,7 +49,7 @@ func TestSeatsWaitlistAndInvitations(t *testing.T) {
 	exec("update hosts set mem_bytes = $2 where id = $1", e.h.HostID, int64(8)<<30)
 	exec("insert into hosts (id, name, state, mem_bytes) values ($1, 'host-wl', 'ready', $2)", store.NewID(), int64(24)<<30)
 	filler := e.h.NewUser("filler")
-	exec("insert into subscriptions (id, user_id, paddle_customer_id, plan, status, seats) values ('sub_filler', $1, 'ctm_filler', 'pro', 'active', 2)", filler.ID)
+	exec("insert into subscriptions (id, user_id, paddle_customer_id, plan, status, seats) values ('sub_filler', $1, 'ctm_filler', 'plus', 'active', 2)", filler.ID)
 
 	c, err := svc.Count(ctx)
 	if err != nil || c != (waitlist.Count{Total: 2, Held: 2, Free: 0, Waiting: 0}) {
@@ -57,7 +57,7 @@ func TestSeatsWaitlistAndInvitations(t *testing.T) {
 	}
 
 	// B signs in (the welcome email is queued with the row) and joins.
-	// signIn gives every test user a Pro plan so compute works; B and C
+	// signIn gives every test user a Plus plan so compute works; B and C
 	// are here for a seat, so theirs go.
 	tokB := e.signIn(t, "sub-wl-b", "wlb")
 	e.subscribe(t, "sub-wl-b", "")
@@ -174,13 +174,13 @@ func TestSeatsWaitlistAndInvitations(t *testing.T) {
 	}
 
 	// B's own hold counts toward B's checkout: Solo (1 seat) may proceed,
-	// Pro (2) may not, and B keeps the hold rather than rejoining.
+	// Plus (2) may not, and B keeps the hold rather than rejoining.
 	if ok, _, err := svc.Reserve(ctx, idB.String(), 1); err != nil || !ok {
 		t.Fatalf("reserve B solo: %v %v", ok, err)
 	}
 	ok, place, err = svc.Reserve(ctx, idB.String(), 2)
 	if err != nil || ok || place == nil || place.InvitedAt == nil || place.Position != 0 {
-		t.Fatalf("reserve B pro: ok=%v place=%+v err=%v", ok, place, err)
+		t.Fatalf("reserve B plus: ok=%v place=%+v err=%v", ok, place, err)
 	}
 	// B's subscription arrives: converted, the row stays, the seat is the
 	// subscription's now.

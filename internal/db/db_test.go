@@ -3,6 +3,7 @@ package db_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,20 +30,21 @@ func TestMigrateUpDownUp(t *testing.T) {
 	if len(down) != 1 || down[0] != st.Applied[len(st.Applied)-1] {
 		t.Fatalf("down 1 reverted %v", down)
 	}
-	// 0010 (projects.expires_at) is the newest: its column goes, and
-	// 0009's build_logs.ts stays.
+	// 0011 (the plus plan) is the newest: the plan check forgets 'plus',
+	// and 0010's projects.expires_at stays.
+	var def string
+	if err := pool.QueryRow(ctx, "select pg_get_constraintdef(oid) from pg_constraint where conname = 'subscriptions_plan_check'").Scan(&def); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(def, "plus") {
+		t.Fatalf("subscriptions_plan_check still allows plus after down (0011): %s", def)
+	}
 	var n int
 	if err := pool.QueryRow(ctx, "select count(*) from information_schema.columns where table_name = 'projects' and column_name = 'expires_at'").Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != 0 {
-		t.Fatal("projects.expires_at still exists after down (0010)")
-	}
-	if err := pool.QueryRow(ctx, "select count(*) from information_schema.columns where table_name = 'build_logs' and column_name = 'ts'").Scan(&n); err != nil {
-		t.Fatal(err)
-	}
 	if n != 1 {
-		t.Fatal("build_logs.ts is gone after down 1 (0010 reverted, 0009 kept)")
+		t.Fatal("projects.expires_at is gone after down 1 (0011 reverted, 0010 kept)")
 	}
 	up, err := db.MigrateUp(ctx, pool)
 	if err != nil {

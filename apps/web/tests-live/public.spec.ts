@@ -40,16 +40,17 @@ test('landing renders with the install command and the sign-in button', async ({
 	});
 });
 
-// docs/PRICING.md "Plans" (DECISIONS I-289): the two plans and the seats
+// docs/PRICING.md "Plans" (DECISIONS I-289): the three plans and the seats
 // line. A change to either file that is not matched in the other fails
 // here.
 test('landing pricing matches PRICING.md', async ({ page }) => {
 	await page.goto('/');
 	const pricing = page.locator('section', { has: page.getByRole('heading', { name: 'Pricing' }) });
-	await expect(pricing.getByText('Two plans. Seven days free, card at checkout.')).toBeVisible();
+	await expect(pricing.getByText('Three plans. Seven days free, card at checkout.')).toBeVisible();
 	const plans: Array<[string, string, string]> = [
 		['Solo', '$29', '8 GB running at once · 100 GB disk · 250 GB egress'],
-		['Pro', '$59', '16 GB running at once · 250 GB disk · 500 GB egress']
+		['Plus', '$59', '16 GB running at once · 250 GB disk · 500 GB egress'],
+		['Pro', '$99', '32 GB running at once · 500 GB disk · 1 TB egress']
 	];
 	for (const [name, price, spec] of plans) {
 		const cell = pricing.locator('.tier', {

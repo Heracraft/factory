@@ -15,7 +15,7 @@ package billing
 // TestPlansMatchPricingDoc parses the doc's table and fails when they
 // disagree.
 type Plan struct {
-	ID           string // solo | pro
+	ID           string // solo | plus | pro
 	Name         string
 	PriceCents   int64
 	Currency     string
@@ -27,14 +27,15 @@ type Plan struct {
 	ProjectLimit int
 }
 
-// The two plans.
+// The three plans (DECISIONS I-362).
 var (
 	Solo = Plan{ID: "solo", Name: "Solo", PriceCents: 2900, Currency: "USD", TrialDays: 7, Seats: 1, MemoryGB: 8, DiskGB: 100, EgressGB: 250, ProjectLimit: 10}
-	Pro  = Plan{ID: "pro", Name: "Pro", PriceCents: 5900, Currency: "USD", TrialDays: 7, Seats: 2, MemoryGB: 16, DiskGB: 250, EgressGB: 500, ProjectLimit: 25}
+	Plus = Plan{ID: "plus", Name: "Plus", PriceCents: 5900, Currency: "USD", TrialDays: 7, Seats: 2, MemoryGB: 16, DiskGB: 250, EgressGB: 500, ProjectLimit: 25}
+	Pro  = Plan{ID: "pro", Name: "Pro", PriceCents: 9900, Currency: "USD", TrialDays: 7, Seats: 4, MemoryGB: 32, DiskGB: 500, EgressGB: 1000, ProjectLimit: 50}
 )
 
 // Plans lists the plans in the order the dashboard shows them.
-var Plans = []Plan{Solo, Pro}
+var Plans = []Plan{Solo, Plus, Pro}
 
 const (
 	// EgressHardStopMultiplier is how far past the allowance a period's
@@ -56,7 +57,7 @@ const (
 // are never repriced).
 const PriceVersion = "plan-v1"
 
-// PlanByID finds a plan; ok is false for anything but solo and pro.
+// PlanByID finds a plan; ok is false for anything but solo, plus and pro.
 func PlanByID(id string) (Plan, bool) {
 	for _, p := range Plans {
 		if p.ID == id {
@@ -143,4 +144,15 @@ func Price(in Inputs) Result {
 		r.EgressBytes = 0
 	}
 	return r
+}
+
+// SmallestFor is the cheapest plan whose memory holds a machine of the
+// class, which is what "an xl needs ..." names; Pro when none does.
+func SmallestFor(class string) Plan {
+	for _, p := range Plans {
+		if p.MemoryGB >= ClassMemoryGB(class) {
+			return p
+		}
+	}
+	return Pro
 }

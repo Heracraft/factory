@@ -62,12 +62,12 @@ func TestAccountPayloadsRender(t *testing.T) {
 		payload any
 		wants   []string
 	}{
-		{billing.KindTrialEnding, billing.TrialEndingPayload{Plan: "pro", AmountCents: 5900, ChargeAt: at}, []string{"Pro", "$59.00", "8 October 2026 at 14:00 UTC"}},
+		{billing.KindTrialEnding, billing.TrialEndingPayload{Plan: "plus", AmountCents: 5900, ChargeAt: at}, []string{"Plus", "$59.00", "8 October 2026 at 14:00 UTC"}},
 		{billing.KindPaymentFailed, billing.PaymentFailedPayload{Plan: "solo", AmountCents: 2900}, []string{"Solo", "$29.00", "https://repose.herakraft.co/billing"}},
 		{billing.KindPaymentFailed, billing.PaymentFailedPayload{Plan: "solo", AmountCents: 2900, PortalURL: "https://customer-portal.paddle.com/x"}, []string{"Solo", "$29.00", "https://customer-portal.paddle.com/x"}},
-		{billing.KindSubscriptionCancelled, billing.SubscriptionCancelledPayload{Plan: "pro", EndsAt: at}, []string{"Pro", "8 October 2026 at 14:00 UTC"}},
+		{billing.KindSubscriptionCancelled, billing.SubscriptionCancelledPayload{Plan: "plus", EndsAt: at}, []string{"Plus", "8 October 2026 at 14:00 UTC"}},
 		{billing.KindSubscriptionEnded, billing.SubscriptionEndedPayload{Plan: "solo", EndedAt: at, RetentionUntil: at.Add(30 * 24 * time.Hour)}, []string{"Solo", "8 October 2026 at 14:00 UTC", "7 November 2026 at 14:00 UTC"}},
-		{billing.KindPlanChanged, billing.PlanChangedPayload{FromPlan: "solo", ToPlan: "pro", EffectiveAt: at}, []string{"from Solo to Pro", "8 October 2026 at 14:00 UTC"}},
+		{billing.KindPlanChanged, billing.PlanChangedPayload{FromPlan: "solo", ToPlan: "plus", EffectiveAt: at}, []string{"from Solo to Plus", "8 October 2026 at 14:00 UTC"}},
 		{billing.KindEgressStopped, billing.EgressStoppedPayload{Plan: "solo", EgressGB: 1000.25, LimitGB: 250, Until: at}, []string{"Solo", "1000.3 GB", "250 GB", "8 October 2026 at 14:00 UTC"}},
 	}
 	for _, c := range cases {

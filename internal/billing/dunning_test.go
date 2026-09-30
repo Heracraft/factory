@@ -137,7 +137,7 @@ func TestTrialEnding(t *testing.T) {
 	defer f.Close()
 	d := billing.NewDunning(pool, &stopRecorder{}, nil, testConfig(f), nop(), quiet())
 	ctx := context.Background()
-	a := seedAccount(t, pool, "pro", "trial", "", "") // trial_end = period start + 7 days
+	a := seedAccount(t, pool, "plus", "trial", "", "") // trial_end = period start + 7 days
 	trialEnd := a.Period.Start.Add(7 * 24 * time.Hour)
 
 	d.Now = at(trialEnd.Add(-3 * 24 * time.Hour))
@@ -158,7 +158,7 @@ func TestTrialEnding(t *testing.T) {
 	if k := eventKinds(t, pool, a); len(k) != 1 || k[0] != "trial_ending" {
 		t.Fatalf("events %v", k)
 	}
-	if p := accountEmail(t, pool, a, "trial_ending", "Pro", "$59.00", "8 October 2026 at 00:00 UTC"); p["plan"] != "pro" || p["amount_cents"] != float64(5900) || p["charge_at"] != "2026-10-08T00:00:00Z" {
+	if p := accountEmail(t, pool, a, "trial_ending", "Plus", "$59.00", "8 October 2026 at 00:00 UTC"); p["plan"] != "plus" || p["amount_cents"] != float64(5900) || p["charge_at"] != "2026-10-08T00:00:00Z" {
 		t.Fatalf("payload %v", p)
 	}
 	if outboxEmails(t, pool, a) != 1 {

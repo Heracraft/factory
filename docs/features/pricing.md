@@ -20,8 +20,8 @@ The CLI prints the api's sentence for every `payment_required` and exits
 restoring and forking a project all answer `payment_required` with
 `detail.reason = subscription_required` until one is chosen.
 
-The dashboard's billing page shows the two plans, Solo at $29 and Pro at
-$59 a month, and how many seats are left. "Choose" opens Paddle's checkout
+The dashboard's billing page shows the three plans, Solo at $29, Plus at
+$59 and Pro at $99 a month, and how many seats are left. "Choose" opens Paddle's checkout
 in the page (Paddle.js with a transaction the api made, so the seat is
 held and the account is stamped before the card form appears); the card
 and the billing address go to Paddle, never to the platform, and Paddle
@@ -41,7 +41,8 @@ then on and gets one email when a seat is theirs, held for 72 hours
 | Plan | Running at once | Disk | Egress a month | Projects |
 |---|---|---|---|---|
 | Solo | 8 GB: one `large`, or two `small` | 100 GB | 250 GB | 10 |
-| Pro | 16 GB: one `xl`, two `large`, any mix | 250 GB | 500 GB | 25 |
+| Plus | 16 GB: one `xl`, two `large`, any mix | 250 GB | 500 GB | 25 |
+| Pro | 32 GB: two `xl`, four `large`, any mix | 500 GB | 1000 GB | 50 |
 
 Projects cost nothing while stopped, the month costs the same however
 much runs, and nothing is metered by the hour. The other reasons
@@ -49,7 +50,7 @@ much runs, and nothing is metered by the hour. The other reasons
 
 | `detail.reason` | When | What the user reads |
 |---|---|---|
-| `plan_limit` | the running memory plus this machine's class would pass the plan's | `Your Solo plan runs 8 GB at once and todo-app is using it. Stop it, or upgrade at https://repose.herakraft.co/billing.` (an `xl` on Solo: `an xl machine needs 16 GB. Upgrade to Pro`) |
+| `plan_limit` | the running memory plus this machine's class would pass the plan's | `Your Solo plan runs 8 GB at once and todo-app is using it. Stop it, or upgrade at https://repose.herakraft.co/billing.` (an `xl` on Solo: `an xl machine needs 16 GB. Upgrade to Plus`) |
 | `disk_limit` | the allocated disk plus this volume would pass the plan's | `Your Solo plan allocates up to 100 GB of disk and your projects use 70 GB; this needs 40 GB more. Destroy a project, or upgrade at …` |
 | `egress_limit` | this period's egress passed four times the allowance | `Your machines are stopped until 1 November: this period's egress passed 1000 GB, four times the Solo plan's 250 GB allowance. Upgrade at …, or wait for the period to end.` |
 | `past_due` | the last payment failed | `Your last payment failed. Update your card at … to start machines again.` |
@@ -96,10 +97,11 @@ address and downloads receipts. Paddle sends its own receipt emails.
 
 ## Changing and cancelling
 
-Upgrading Solo to Pro takes effect at once, prorated by Paddle on the next
-invoice, and needs one more free seat. Downgrading takes effect at the
-next renewal and is refused (`409 conflict`, `detail.reason = over_plan`)
-while the running memory or allocated disk would not fit Solo; stop or
+Upgrading to a bigger plan takes effect at once, prorated by Paddle on the
+next invoice, and needs the extra seats free. Downgrading takes effect at
+the next renewal and is refused (`409 conflict`, `detail.reason =
+over_plan`) while the running memory or allocated disk would not fit the
+smaller plan; stop or
 destroy first. Cancelling ends the plan at the period's end (during the
 trial, at the trial's end): machines run until then, stop at it, and the
 snapshots stay 30 days. A cancellation can be undone until it takes

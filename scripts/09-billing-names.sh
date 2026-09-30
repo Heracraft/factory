@@ -29,7 +29,7 @@ row "usage line in repose-admin help" "^  billing " internal/admin/admin.go
 row "ops/paddle/bootstrap.sh" "billing paddle-bootstrap" ops/paddle/bootstrap.sh
 
 echo "== plans (internal/billing/plans.go) =="
-for k in Solo Pro EgressHardStopMultiplier OveragePerGBCents SeatGB; do row "$k" "^\s*$k\b" internal/billing/plans.go; done
+for k in Solo Plus Pro EgressHardStopMultiplier OveragePerGBCents SeatGB; do row "$k" "^\s*$k\b" internal/billing/plans.go; done
 row "Plans" "^var Plans\b" internal/billing/plans.go
 row "PriceVersion plan-v1" '^const PriceVersion = "plan-v1"' internal/billing/plans.go
 for f in PlanByID ClassMemoryGB OverageCents Price; do row "func $f" "^func $f\(" internal/billing/plans.go; done
@@ -55,8 +55,8 @@ for h in PaddleWebhookRejected OverageChargeFailed BillingStopped "Customer disp
 row "dashboard billing" '"repose-billing"' ops/dashboards/gen.py
 
 echo "== env (ops/coolify/api.env.example) =="
-for v in PADDLE_API_KEY PADDLE_WEBHOOK_SECRET PADDLE_CLIENT_TOKEN PADDLE_PRICE_SOLO PADDLE_PRICE_PRO PADDLE_PRODUCT_OVERAGE PADDLE_PORTAL_RETURN_URL SEATS_TOTAL BILLING_ENFORCE; do row "$v" "^$v" ops/coolify/api.env.example; done
-for v in PADDLE_API_KEY PADDLE_WEBHOOK_SECRET PADDLE_CLIENT_TOKEN PADDLE_PRICE_SOLO PADDLE_PRICE_PRO PADDLE_PRODUCT_OVERAGE BILLING_ENFORCE; do row "$v read" "\"$v\"" internal/billing/config.go; done
+for v in PADDLE_API_KEY PADDLE_WEBHOOK_SECRET PADDLE_CLIENT_TOKEN PADDLE_PRICE_SOLO PADDLE_PRICE_PLUS PADDLE_PRICE_PRO PADDLE_PRODUCT_OVERAGE PADDLE_PORTAL_RETURN_URL SEATS_TOTAL BILLING_ENFORCE; do row "$v" "^$v" ops/coolify/api.env.example; done
+for v in PADDLE_API_KEY PADDLE_WEBHOOK_SECRET PADDLE_CLIENT_TOKEN PADDLE_PRICE_SOLO PADDLE_PRICE_PLUS PADDLE_PRICE_PRO PADDLE_PRODUCT_OVERAGE BILLING_ENFORCE; do row "$v read" "\"$v\"" internal/billing/config.go; done
 
 echo "== nothing of Stripe left in code =="
 # internal/cli/scan.go and its testdata name "stripe" as an npm script in a

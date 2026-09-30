@@ -119,16 +119,17 @@ a day.
     ops/paddle/bootstrap.sh > /tmp/paddle.env     # prompts for pdl_sdbx_...
     ```
 
-    It creates, or finds on a rerun: the products `repose Solo` and
-    `repose Pro` with one monthly price each ($29 and $59, seven-day trial,
-    `custom_data.repose = solo|pro`); the product `repose egress overage`
+    It creates, or finds on a rerun: the products `repose Solo`,
+    `repose Plus` and `repose Pro` with one monthly price each ($29, $59
+    and $99, seven-day trial, `custom_data.repose = solo|plus|pro`); the product `repose egress overage`
     the $0.05/GB line is charged under; and the notification destination
     `https://api.repose.herakraft.co/v1/billing/webhook` subscribed to the
     ten events of 09-billing.md §5.11 (`subscription.*`,
     `transaction.completed`, `transaction.payment_failed`). It refuses a
     live key unless given `--live`. `/tmp/paddle.env` is the block to paste
     into the api's Coolify environment (both `api` and `api-grpc`):
-    `PADDLE_PRICE_SOLO`, `PADDLE_PRICE_PRO`, `PADDLE_PRODUCT_OVERAGE`,
+    `PADDLE_PRICE_SOLO`, `PADDLE_PRICE_PLUS`, `PADDLE_PRICE_PRO`,
+    `PADDLE_PRODUCT_OVERAGE`,
     `PADDLE_WEBHOOK_SECRET`; add `PADDLE_API_KEY` and `PADDLE_CLIENT_TOKEN`
     from the dashboard beside them. Coolify restarts the app itself. Delete
     the file afterwards: it holds the webhook secret.

@@ -14,7 +14,16 @@ I-77, I-179 to I-185 and I-205; the hourly design is kept in
 | Plan | Price | Running at once | Disk | Egress a month | Seats |
 |---|---|---|---|---|---|
 | Solo | $29 a month | 8 GB: one `large`, or two `small` | 100 GB | 250 GB | 1 |
-| Pro | $59 a month | 16 GB: one `xl`, two `large`, any mix | 250 GB | 500 GB | 2 |
+| Plus | $59 a month | 16 GB: one `xl`, two `large`, any mix | 250 GB | 500 GB | 2 |
+| Pro | $99 a month | 32 GB: two `xl`, four `large`, any mix | 500 GB | 1000 GB | 4 |
+
+Three plans because one agent needs a `large`: a harness with its
+language servers, builds and browser fills 8 GB, and a smaller machine
+gets its session OOM-killed partway through. So Solo is one agent working,
+Plus two, Pro four. Pro is for the user who runs several agents at once
+across repositories, who already pays Anthropic $100 to $200 a month, and
+who is the product's best source of feedback; it is not capped beyond the
+seat count (DECISIONS I-362).
 
 Prices are in USD and exclude tax; Paddle adds and remits the tax for the
 buyer's country as merchant of record, which is the whole reason for Paddle
@@ -28,7 +37,7 @@ What a plan means, in rules:
   restoring) machines never exceeds the plan's memory. Starting one more is
   refused with `payment_required`, `detail.reason = plan_limit`, and the
   message names the machines using the memory: stop one or upgrade. An
-  `xl` needs Pro.
+  `xl` needs Plus or Pro, and the refusal names Plus.
 - **Disk.** The sum of the allocated volume sizes of a user's live projects
   never exceeds the plan's disk. Creating a project or growing a volume past
   it is refused with `detail.reason = disk_limit`. Allocated, not used,
@@ -39,15 +48,15 @@ What a plan means, in rules:
   hooks) is not counted; ingress is free. Past the allowance, $0.05 a GB is
   added to the next invoice as one overage line (a Paddle one-time charge on
   the subscription, sent before the period locks). At four times the
-  allowance (1 TB on Solo, 2 TB on Pro) the user's machines are stopped
+  allowance (1 TB on Solo, 2 TB on Plus, 4 TB on Pro) the user's machines are stopped
   for the rest of the period with `detail.reason = egress_limit` and an
   `egress_stopped` email; that is the stolen-card ceiling, not a price.
-- **Projects.** 10 on Solo, 25 on Pro, live or stopped; disk bounds it
+- **Projects.** 10 on Solo, 25 on Plus, 50 on Pro, live or stopped; disk bounds it
   anyway. Destroyed projects and their 30-day snapshots are free.
 
 Example: a Solo user with a `large` running all month, a 40 GB disk, and
 20 GB of egress pays $29. The same user with 300 GB of egress pays $29 plus
-$2.50. Two `large` machines at once need Pro.
+$2.50. Two `large` machines at once need Plus; three or four need Pro.
 
 ## The trial
 
@@ -67,7 +76,7 @@ by the code.
 ## Seats and the waitlist
 
 A seat is 8 GB of memory that may run at once on the fleet: Solo holds one,
-Pro two. Memory is never oversubscribed, so the fleet has exactly as many
+Plus two, Pro four. Memory is never oversubscribed, so the fleet has exactly as many
 seats as its `ready`, undrained hosts have usable 8 GB blocks (RAM minus the
 host reserve), or `SEATS_TOTAL` when the operator sets it (the launch host,
 a `D64s_v7`, is 30 seats). Seats are held by every subscription that is
@@ -94,7 +103,7 @@ machines again (DECISIONS R4-11 stands).
 
 A plan is cancelled from the dashboard or Paddle's portal and ends at the
 period's end; machines run until then and stop at it, with the 30-day
-retention from that day. Upgrading (Solo to Pro) takes effect at once,
+retention from that day. Upgrading (to a plan with more seats) takes effect at once,
 prorated by Paddle. Downgrading takes effect at the next renewal and is
 refused while the user's running memory or allocated disk would not fit the
 smaller plan. Deleting the account cancels the subscription at once, after
@@ -117,18 +126,19 @@ memory oversubscription; CPU is oversubscribed 2:1). The launch host is a
 `D64s_v7` (DECISIONS I-39) at about $3,000 a month on demand, so a seat
 that runs around the clock costs about $100 in compute before storage, the
 control plane and the edge, and Solo at $29 loses about $70 a month on such
-a user. That is accepted for the launch (owner, 2026-09-27: "use Azure as a
+a user; a Pro user running four seats all month costs about $400 and loses
+about $300. That is accepted for the launch (owner, 2026-09-27: "use Azure as a
 cash sink for now"): the Azure credit pays for it while the product is
 learned, the seat count caps the loss at the size of one host, and the
 prices are set for the host the business ends up on. On a Hetzner AX162-R
 (about €242 a month for 256 GB, `proposals/2026-09-26-subscription-paddle-hetzner.md`
-§3) a seat costs about €8 and both plans clear their floor several times
-over. Nothing in the plan prices is tied to Azure; if hosts move, prices
+§3) a seat costs about €8 and every plan clears its floor several times
+over (Pro's four seats cost about €32 against $99). Nothing in the plan prices is tied to Azure; if hosts move, prices
 stay and margin changes.
 
 Paddle takes 5% plus 50¢ a transaction (Stripe would take about 2.9% plus
-30¢ and leave the tax filing to us): $1.95 of a Solo month, $3.45 of a Pro
-one.
+30¢ and leave the tax filing to us): $1.95 of a Solo month, $3.45 of a Plus
+one, $5.45 of a Pro one.
 
 ## What is deliberately not priced
 

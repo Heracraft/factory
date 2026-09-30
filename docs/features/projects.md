@@ -120,7 +120,7 @@ Ownership:
 ## Seats and the waitlist
 
 A seat is 8 GB of memory that may run at once on the fleet; Solo holds one,
-Pro two (`docs/PRICING.md`, DECISIONS I-290). The fleet has as many seats
+Plus two, Pro four (`docs/PRICING.md`, DECISIONS I-290, I-362). The fleet has as many seats
 as its `ready`, undrained hosts have usable 8 GB blocks, or `SEATS_TOTAL`
 when the operator set it. Seats are held by every subscription that is
 `trialing`, `active` or `past_due` and by every waitlist invitation whose

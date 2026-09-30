@@ -173,7 +173,7 @@ func (g *Gate) check(ctx context.Context, u *store.User, req Request) (*Refusal,
 func planLimitMessage(plan Plan, class string, slugs []string, url string) string {
 	need := ClassMemoryGB(class)
 	if need > plan.MemoryGB {
-		return fmt.Sprintf("Your %s plan runs %d GB at once and an %s machine needs %d GB. Upgrade to Pro at %s.", plan.Name, plan.MemoryGB, class, need, url)
+		return fmt.Sprintf("Your %s plan runs %d GB at once and an %s machine needs %d GB. Upgrade to %s at %s.", plan.Name, plan.MemoryGB, class, need, SmallestFor(class).Name, url)
 	}
 	switch len(slugs) {
 	case 0:

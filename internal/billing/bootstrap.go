@@ -33,9 +33,11 @@ type BootstrapOptions struct {
 type BootstrapResult struct {
 	Environment    string
 	ProductSolo    string
+	ProductPlus    string
 	ProductPro     string
 	ProductOverage string
 	PriceSolo      string
+	PricePlus      string
 	PricePro       string
 	WebhookID      string
 	// WebhookSecret is the endpoint secret Paddle gives once; on a rerun
@@ -115,6 +117,8 @@ func Bootstrap(ctx context.Context, p *Paddle, o BootstrapOptions) (*BootstrapRe
 		switch plan.ID {
 		case Solo.ID:
 			res.ProductSolo, res.PriceSolo = id, priceID
+		case Plus.ID:
+			res.ProductPlus, res.PricePlus = id, priceID
 		case Pro.ID:
 			res.ProductPro, res.PricePro = id, priceID
 		}
@@ -172,6 +176,7 @@ func (r *BootstrapResult) EnvBlock() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Paddle %s, from repose-admin billing paddle-bootstrap\n", r.Environment)
 	fmt.Fprintf(&b, "PADDLE_PRICE_SOLO=%s\n", r.PriceSolo)
+	fmt.Fprintf(&b, "PADDLE_PRICE_PLUS=%s\n", r.PricePlus)
 	fmt.Fprintf(&b, "PADDLE_PRICE_PRO=%s\n", r.PricePro)
 	fmt.Fprintf(&b, "PADDLE_PRODUCT_OVERAGE=%s\n", r.ProductOverage)
 	if r.WebhookSecret != "" {

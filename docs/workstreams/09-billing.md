@@ -271,8 +271,9 @@ What runs since 2026-09-27, with the exact names.
 
 **The plan table.** `internal/billing/plans.go`: `Plan{ID, Name,
 PriceCents, Currency, TrialDays, Seats, MemoryGB, DiskGB, EgressGB,
-ProjectLimit}`, `Solo` (solo, 2900, 7, 1, 8, 100, 250, 10) and `Pro` (pro,
-5900, 7, 2, 16, 250, 500, 25), `Plans`, `PlanByID`,
+ProjectLimit}`, `Solo` (solo, 2900, 7, 1, 8, 100, 250, 10), `Plus` (plus,
+5900, 7, 2, 16, 250, 500, 25) and `Pro` (pro, 9900, 7, 4, 32, 500, 1000,
+50) since I-362, `Plans`, `PlanByID`, `SmallestFor(class)`,
 `EgressHardStopMultiplier = 4`, `OveragePerGBCents = 5`, `SeatGB = 8`,
 `ClassMemoryGB` (small 4, large 8, xl 16), `OverageCents(plan, bytes)`
 (whole GB over, rounded up, at 5 cents), `PriceVersion = "plan-v1"`.
@@ -283,9 +284,9 @@ table in `PRICING.md`.
 **Configuration.** `config.go`: `PADDLE_API_KEY` (the prefix `pdl_sdbx_`
 means the sandbox, anything else live: `Environment()`),
 `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_PRICE_SOLO`,
-`PADDLE_PRICE_PRO`, `PADDLE_PRODUCT_OVERAGE`, `PADDLE_PORTAL_RETURN_URL`
+`PADDLE_PRICE_PLUS`, `PADDLE_PRICE_PRO`, `PADDLE_PRODUCT_OVERAGE`, `PADDLE_PORTAL_RETURN_URL`
 (default `DASHBOARD_URL/billing`), `BILLING_ENFORCE`, `SEATS_TOTAL`.
-`Validate` refuses a key without the secret, both prices and the overage
+`Validate` refuses a key without the secret, all three prices and the overage
 product. No key: the routes answer `503 billing_disabled` and the gate
 refuses every non-exempt account with `subscription_required`.
 

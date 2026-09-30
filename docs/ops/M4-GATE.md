@@ -49,9 +49,10 @@ ops/paddle/bootstrap.sh > /tmp/paddle.env
 ```
 
 Stderr lists each object as `created` (first run) or `found` (any rerun):
-`product solo`, `price solo`, `product pro`, `price pro`, `product
-overage`, `webhook`. Stdout, in `/tmp/paddle.env`, is the block:
-`PADDLE_PRICE_SOLO`, `PADDLE_PRICE_PRO`, `PADDLE_PRODUCT_OVERAGE`,
+`product solo`, `price solo`, `product plus`, `price plus`, `product
+pro`, `price pro`, `product overage`, `webhook`. Stdout, in
+`/tmp/paddle.env`, is the block: `PADDLE_PRICE_SOLO`, `PADDLE_PRICE_PLUS`,
+`PADDLE_PRICE_PRO`, `PADDLE_PRODUCT_OVERAGE`,
 `PADDLE_WEBHOOK_SECRET`. Paste it into the Coolify environment of **both**
 `api` and `api-grpc` with `PADDLE_API_KEY` and `PADDLE_CLIENT_TOKEN` beside
 it (both read billing: the webhook is served by `api`, the hourly jobs run
@@ -85,7 +86,7 @@ one; exempt accounts pass the gate and never reach checkout, I-16).
    `billing none`, `subscription - (no plan chosen)`. `repose run` in any
    checkout prints `Choose a plan at https://repose.herakraft.co/billing
    first.` and exits 7.
-2. `/billing` shows Solo and Pro with the seats left. Choose **Solo**.
+2. `/billing` shows Solo, Plus and Pro with the seats left. Choose **Solo**.
    Paddle's checkout opens in the page; the test card is `4242 4242 4242
    4242`, any future expiry, any CVC, a real-looking address (Paddle's
    sandbox cards are listed under Developer tools > Test cards). It

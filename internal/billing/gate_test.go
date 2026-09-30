@@ -85,15 +85,26 @@ func TestGateEveryReason(t *testing.T) {
 		t.Fatalf("start after stop: %v", err)
 	}
 	r = refusal(t, g.Check(ctx, user(t, pool, b), billing.Request{Class: "xl"}))
-	if r.Message != "Your Solo plan runs 8 GB at once and an xl machine needs 16 GB. Upgrade to Pro at "+url+"." {
+	if r.Message != "Your Solo plan runs 8 GB at once and an xl machine needs 16 GB. Upgrade to Plus at "+url+"." {
 		t.Fatalf("xl on solo: %s", r.Message)
 	}
 	// Two machines: "x and y are using it. Stop one".
-	c := seedAccount(t, pool, "pro", "active", "large", "running")
+	c := seedAccount(t, pool, "plus", "active", "large", "running")
 	addProject(t, pool, c, "api", "large", "starting", 40<<30)
 	r = refusal(t, g.Check(ctx, user(t, pool, c), billing.Request{Class: "small"}))
 	if !strings.Contains(r.Message, "api and "+c.Slug+" are using it. Stop one, or upgrade") || r.Detail["used_gb"] != 16 {
 		t.Fatalf("two machines: %+v", r)
+	}
+	// Pro runs 32 GB: three large and a fourth fit, an xl beside them does not.
+	pr := seedAccount(t, pool, "pro", "active", "large", "running")
+	addProject(t, pool, pr, "api", "large", "running", 40<<30)
+	addProject(t, pool, pr, "web", "large", "running", 40<<30)
+	if err := g.Check(ctx, user(t, pool, pr), billing.Request{Class: "large"}); err != nil {
+		t.Fatalf("a fourth large on Pro: %v", err)
+	}
+	r = refusal(t, g.Check(ctx, user(t, pool, pr), billing.Request{Class: "xl"}))
+	if r.Reason != "plan_limit" || !strings.HasPrefix(r.Message, "Your Pro plan runs 32 GB at once and ") || r.Detail["limit_gb"] != 32 || r.Detail["used_gb"] != 24 {
+		t.Fatalf("xl beside three large on Pro: %+v", r)
 	}
 
 	// disk_limit: 100 GB on Solo, 70 allocated, 40 more asked.
@@ -172,21 +183,25 @@ func TestLimitsFor(t *testing.T) {
 	if l.Projects != 3 || l.XL != 0 || l.MemoryGB != 8 || l.Plan != nil {
 		t.Fatalf("no plan: %+v", l)
 	}
+	l = billing.LimitsFor(u, &billing.Sub{Plan: "plus", Status: "active"})
+	if l.Projects != 25 || l.XL != 1 || l.MemoryGB != 16 || l.DiskGB != 250 || l.EgressGB != 500 || l.Plan.ID != "plus" {
+		t.Fatalf("plus: %+v", l)
+	}
 	l = billing.LimitsFor(u, &billing.Sub{Plan: "pro", Status: "active"})
-	if l.Projects != 25 || l.XL != 1 || l.MemoryGB != 16 || l.DiskGB != 250 || l.EgressGB != 500 || l.Plan.ID != "pro" {
+	if l.Projects != 50 || l.XL != 1 || l.MemoryGB != 32 || l.DiskGB != 500 || l.EgressGB != 1000 || l.Plan.ID != "pro" {
 		t.Fatalf("pro: %+v", l)
 	}
 	l = billing.LimitsFor(u, &billing.Sub{Plan: "solo", Status: "trialing"})
 	if l.Projects != 10 || l.XL != 0 {
 		t.Fatalf("solo: %+v", l)
 	}
-	l = billing.LimitsFor(u, &billing.Sub{Plan: "pro", Status: "canceled"})
+	l = billing.LimitsFor(u, &billing.Sub{Plan: "plus", Status: "canceled"})
 	if l.Plan != nil {
 		t.Fatal("a canceled subscription grants nothing")
 	}
 	u.BillingStatus = "exempt"
 	l = billing.LimitsFor(u, nil)
-	if l.XL != 1 || l.MemoryGB != 16 {
+	if l.XL != 1 || l.MemoryGB != 32 {
 		t.Fatalf("exempt: %+v", l)
 	}
 	j := l.JSON()

@@ -53,7 +53,8 @@ type PlanDef struct {
 // Plans is docs/PRICING.md's table.
 var Plans = []PlanDef{
 	{ID: "solo", Name: "Solo", PriceCents: 2900, Currency: "USD", TrialDays: 7, Seats: 1, MemoryGB: 8, DiskGB: 100, EgressGB: 250, ProjectLimit: 10},
-	{ID: "pro", Name: "Pro", PriceCents: 5900, Currency: "USD", TrialDays: 7, Seats: 2, MemoryGB: 16, DiskGB: 250, EgressGB: 500, ProjectLimit: 25},
+	{ID: "plus", Name: "Plus", PriceCents: 5900, Currency: "USD", TrialDays: 7, Seats: 2, MemoryGB: 16, DiskGB: 250, EgressGB: 500, ProjectLimit: 25},
+	{ID: "pro", Name: "Pro", PriceCents: 9900, Currency: "USD", TrialDays: 7, Seats: 4, MemoryGB: 32, DiskGB: 500, EgressGB: 1000, ProjectLimit: 50},
 }
 
 // classGB is each size class's memory, the unit a plan counts
@@ -113,7 +114,7 @@ type Seats struct {
 type BillingState struct {
 	// Mode is one of the Billing* constants.
 	Mode *string `json:"mode,omitempty"`
-	// Plan is solo or pro; ignored unless the mode has a subscription.
+	// Plan is solo, plus or pro; ignored unless the mode has a subscription.
 	Plan *string `json:"plan,omitempty"`
 	// ScheduledPlan is a downgrade waiting for the renewal; "" clears it.
 	ScheduledPlan *string `json:"scheduled_plan,omitempty"`
@@ -209,7 +210,7 @@ func (f *Fake) setMode(mode string) {
 	}
 }
 
-// SetPlan puts the subscription on solo or pro.
+// SetPlan puts the subscription on solo, plus or pro.
 func (f *Fake) SetPlan(plan string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -293,13 +294,13 @@ func (f *Fake) SetBillingState(s BillingState) error {
 	}
 	if s.Plan != nil {
 		if planByID(*s.Plan) == nil {
-			return fmt.Errorf("plan: solo or pro")
+			return fmt.Errorf("plan: solo, plus or pro")
 		}
 		f.bill.plan = *s.Plan
 	}
 	if s.ScheduledPlan != nil {
 		if *s.ScheduledPlan != "" && planByID(*s.ScheduledPlan) == nil {
-			return fmt.Errorf("scheduled_plan: solo, pro or empty")
+			return fmt.Errorf("scheduled_plan: solo, plus, pro or empty")
 		}
 		f.bill.scheduledPlan = *s.ScheduledPlan
 	}
@@ -639,15 +640,17 @@ func (f *Fake) meBilling() billingView {
 func (f *Fake) meLimits() limitsView {
 	switch f.bill.mode {
 	case BillingOff, BillingExempt:
-		pro := planByID("pro")
-		return limitsView{Projects: pro.ProjectLimit, XL: 1, MemoryGB: pro.MemoryGB, DiskGB: pro.DiskGB, EgressGB: pro.EgressGB}
+		// The top plan's numbers (I-289).
+		top := Plans[len(Plans)-1]
+		return limitsView{Projects: top.ProjectLimit, XL: 1, MemoryGB: top.MemoryGB, DiskGB: top.DiskGB, EgressGB: top.EgressGB}
 	}
 	plan := f.currentPlan()
 	if plan == nil {
 		return limitsView{}
 	}
+	// An xl fits any plan that holds 16 GB running at once (Plus and Pro).
 	xl := 0
-	if plan.ID == "pro" {
+	if plan.MemoryGB >= classGB["xl"] {
 		xl = 1
 	}
 	return limitsView{Projects: plan.ProjectLimit, XL: xl, MemoryGB: plan.MemoryGB, DiskGB: plan.DiskGB, EgressGB: plan.EgressGB}
@@ -677,7 +680,7 @@ func (f *Fake) getBilling(w http.ResponseWriter, r *http.Request) *apiError {
 	for _, p := range Plans {
 		available := f.seatsFor() >= p.Seats
 		if cur := f.currentPlan(); cur != nil {
-			// A subscriber holds their seats already; the other plan needs
+			// A subscriber holds their seats already; another plan needs
 			// only the difference.
 			available = f.seatsFree() >= p.Seats-cur.Seats
 		}
@@ -709,7 +712,7 @@ func (f *Fake) billingCheckout(w http.ResponseWriter, r *http.Request) *apiError
 	}
 	plan := planByID(body.Plan)
 	if plan == nil {
-		return invalid("plan: solo or pro")
+		return invalid("plan: solo, plus or pro")
 	}
 	if f.hasSubscription() {
 		return errf("conflict", "you already have a plan; change it instead").withDetail(map[string]any{"reason": "subscribed"})
@@ -751,7 +754,7 @@ func (f *Fake) billingPlan(w http.ResponseWriter, r *http.Request) *apiError {
 	}
 	to := planByID(body.Plan)
 	if to == nil {
-		return invalid("plan: solo or pro")
+		return invalid("plan: solo, plus or pro")
 	}
 	cur := f.currentPlan()
 	if cur == nil {

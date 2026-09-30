@@ -9177,6 +9177,47 @@ the service principal, "No changes"; `make -C infra validate` passes.
 refresh token lapses after 90 days idle and device-code login is blocked
 from a VM); RBAC on the vault (a migration of a vault holding live keys, for
 one reader).
+**I-362. A third plan: Pro becomes Plus, and a new Pro at $99 buys 32 GB
+running at once.** (owner, 2026-09-29: "we need one more pricing plan";
+"pro -> plus, new -> pro? no users rn havent launched yet"; "lets not cap
+pro customers. they are the real feedback pipelines") Amends I-289 and
+I-290. The plans are Solo ($29, 8 GB, 100 GB disk, 250 GB egress, 10
+projects, 1 seat), Plus (what Pro was: $59, 16 GB, 250 GB, 500 GB, 25, 2
+seats) and Pro ($99, 32 GB, 500 GB, 1000 GB, 50, 4 seats). Why a bigger
+plan and no smaller one: one agent session needs a `large`, because a
+harness with its language servers, builds and browser fills 8 GB and a
+smaller machine gets the session OOM-killed partway through, so memory
+sets the floor and Solo is one agent working, Plus two. The buyer the
+2026-09-26 marketing research found best is the heavy Claude Code user
+already paying Anthropic $100 to $200 a month and running several agents
+across repositories; on Plus that user hit the `plan_limit` refusal with
+nothing to upgrade to. Why $99: it sits under the Max price that buyer
+already pays, prices four agents at about one Max seat, and gives a small
+volume discount per GB ($3.09 against Solo's $3.63 and Plus's $3.69) so
+the upgrade reads as worth it. Why the rename is free: no subscriber
+exists and `paddle-bootstrap` has not run against a live key, so no Paddle
+product sells the old Pro. Why no cap on Pro beyond the seat count: Pro
+users are the product's feedback, and the waitlist already bounds the
+fleet; on the launch `D64s_v7` a Pro user running four seats all month
+costs about $400 and loses about $300, which the Azure credit absorbs as
+I-289 accepted for Solo. Mechanics: `internal/billing/plans.go` gains
+`Plus` and `SmallestFor(class)`, so the refusal for an `xl` on Solo says
+"Upgrade to Plus" (the cheapest plan that holds one); `resize --class xl`
+says it needs the Plus plan. `PADDLE_PRICE_PLUS` joins the environment and
+`Validate` refuses a key without all three prices or with two plans on one
+price; `paddle-bootstrap` makes eight objects (three products and prices,
+the overage product, the webhook). Migration 0011 widens the
+`subscriptions.plan` and `scheduled_plan` checks to `solo|plus|pro`. Plan
+changes between any two plans follow the seat count as before: more seats
+at once and prorated, fewer at the renewal after the fit check. An exempt
+account's `limits` block shows the biggest plan, now 32 GB. The api's
+`plan` field and the `repose_api_billing_subscriptions_total{plan}` label
+gain one value; nothing that read `solo|pro` breaks. *Rejected:* a plan
+below Solo (the floor is a `large`, and at $100 a seat on Azure a cheaper
+always-on seat needs suspend-when-idle first); Max or Team as the name
+(Anthropic's plan, and seats for other people, which R5-6 defers); $119
+(matches Plus per GB exactly, but gives the heavy user no reason to pick
+Pro over two Plus accounts); a sales cap on Pro during the Azure period.
 
 **I-363. The logo is the owner's cross-and-blocks sketch, traced; it
 replaces the r.** (owner, 2026-09-29: a notebook drawing, then "T2 is it.

@@ -37,7 +37,7 @@ func newFakePaddle(t *testing.T) *fakePaddle {
 	f.srv = httptest.NewServer(http.HandlerFunc(f.handle))
 	t.Cleanup(f.srv.Close)
 	f.cfg = billing.Config{APIKey: "pdl_sdbx_apikey_test", WebhookSecret: f.secret, ClientToken: "test_client_token",
-		PriceSolo: "pri_solo_test", PricePro: "pri_pro_test", ProductOverage: "pro_overage_test",
+		PriceSolo: "pri_solo_test", PricePlus: "pri_plus_test", PricePro: "pri_pro_test", ProductOverage: "pro_overage_test",
 		DashboardURL: "https://repose.herakraft.co", BaseURL: f.srv.URL, Enforce: true}
 	return f
 }

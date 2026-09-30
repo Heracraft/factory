@@ -23,14 +23,14 @@ func TestBootstrapIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Created) != 6 || len(res.Found) != 0 {
+	if len(res.Created) != 8 || len(res.Found) != 0 {
 		t.Fatalf("first run: created %v found %v", res.Created, res.Found)
 	}
-	if res.PriceSolo == "" || res.PricePro == "" || res.ProductOverage == "" || res.WebhookSecret != f.Secret() || res.Environment != "sandbox" {
+	if res.PriceSolo == "" || res.PricePlus == "" || res.PricePro == "" || res.ProductOverage == "" || res.WebhookSecret != f.Secret() || res.Environment != "sandbox" {
 		t.Fatalf("result: %+v", res)
 	}
 	prices := f.Bodies["POST /prices"]
-	if len(prices) != 2 {
+	if len(prices) != 3 {
 		t.Fatalf("%d prices created", len(prices))
 	}
 	for _, pr := range prices {
@@ -40,7 +40,7 @@ func TestBootstrapIsIdempotent(t *testing.T) {
 		if tp["interval"] != "day" || tp["frequency"] != float64(7) || bc["interval"] != "month" || bc["frequency"] != float64(1) || up["currency_code"] != "USD" {
 			t.Fatalf("price body: %v", pr)
 		}
-		if up["amount"] != "2900" && up["amount"] != "5900" {
+		if up["amount"] != "2900" && up["amount"] != "5900" && up["amount"] != "9900" {
 			t.Fatalf("price amount %v", up["amount"])
 		}
 	}
@@ -49,7 +49,7 @@ func TestBootstrapIsIdempotent(t *testing.T) {
 		t.Fatalf("notification setting: %v", ns)
 	}
 	block := res.EnvBlock()
-	for _, want := range []string{"PADDLE_PRICE_SOLO=" + res.PriceSolo, "PADDLE_PRICE_PRO=" + res.PricePro, "PADDLE_PRODUCT_OVERAGE=" + res.ProductOverage, "PADDLE_WEBHOOK_SECRET=" + f.Secret()} {
+	for _, want := range []string{"PADDLE_PRICE_SOLO=" + res.PriceSolo, "PADDLE_PRICE_PLUS=" + res.PricePlus, "PADDLE_PRICE_PRO=" + res.PricePro, "PADDLE_PRODUCT_OVERAGE=" + res.ProductOverage, "PADDLE_WEBHOOK_SECRET=" + f.Secret()} {
 		if !strings.Contains(block, want) {
 			t.Errorf("block lacks %q:\n%s", want, block)
 		}
@@ -63,7 +63,7 @@ func TestBootstrapIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(again.Created) != 0 || len(again.Found) != 6 || again.PriceSolo != res.PriceSolo || again.PricePro != res.PricePro || again.WebhookSecret != f.Secret() {
+	if len(again.Created) != 0 || len(again.Found) != 8 || again.PriceSolo != res.PriceSolo || again.PricePlus != res.PricePlus || again.PricePro != res.PricePro || again.WebhookSecret != f.Secret() {
 		t.Fatalf("rerun: created %v found %v", again.Created, again.Found)
 	}
 	for _, r := range f.Requests[before:] {

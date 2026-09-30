@@ -1,29 +1,32 @@
 ---
 title: Pricing
-description: The two plans, what each one buys, the free week, and where to see your hours.
+description: The three plans, what each one buys, the free week, and where to see your hours.
 section: Account
 order: 30
 ---
 
 repose is a monthly plan. You choose one before your first machine starts, with a card, and the first week is free.
 
-| Plan | A month | Running at once | Disk | Egress a month | Projects |
-| ---- | ------- | --------------- | ---- | -------------- | -------- |
-| Solo | $29     | 8 GB: one `large`, or two `small` | 100 GB | 250 GB | 10 |
-| Pro  | $59     | 16 GB: one `xl`, two `large`, any mix | 250 GB | 500 GB | 25 |
+| Plan | A month | Running at once                        | Disk   | Egress a month | Projects |
+| ---- | ------- | -------------------------------------- | ------ | -------------- | -------- |
+| Solo | $29     | 8 GB: one `large`, or two `small`      | 100 GB | 250 GB         | 10       |
+| Plus | $59     | 16 GB: one `xl`, two `large`, any mix  | 250 GB | 500 GB         | 25       |
+| Pro  | $99     | 32 GB: two `xl`, four `large`, any mix | 500 GB | 1 TB           | 50       |
 
 Prices are in USD and exclude tax, which Paddle adds at checkout for your country. A machine's size is its memory: `small` is 2 vCPU and 4 GB, `large` 4 vCPU and 8 GB, `xl` 8 vCPU and 16 GB. A plan says how much of that may run at the same time; projects cost nothing while stopped, and the month costs the same however many hours run.
 
+An agent session needs a `large` to finish its work: a coding agent with its language servers, builds and browser fills 8 GB, and a `small` runs out of memory partway through. So pick by how many agents you want working at once: one on Solo, two on Plus, four on Pro.
+
 ## The free week
 
-Seven days on either plan. Your card is taken at checkout and first charged on day eight, unless you cancel before then; nothing stops on day eight. Cancelling during the week ends the plan at the week's end.
+Seven days on any plan. Your card is taken at checkout and first charged on day eight, unless you cancel before then; nothing stops on day eight. Cancelling during the week ends the plan at the week's end.
 
 ## What a plan means
 
-- **Memory.** Starting a machine that would put your running machines past the plan is refused, and the message names the machine using the memory: `Your Solo plan runs 8 GB at once and todo-app is using it. Stop it, or upgrade at https://repose.herakraft.co/billing.` An `xl` needs Pro.
+- **Memory.** Starting a machine that would put your running machines past the plan is refused, and the message names the machine using the memory: `Your Solo plan runs 8 GB at once and todo-app is using it. Stop it, or upgrade at https://repose.herakraft.co/billing.` An `xl` needs Plus or Pro.
 - **Disk.** Creating a project or growing a disk past the plan's total is refused. Disk counts by the size you chose, running or stopped; snapshots are free.
-- **Egress.** Data your machines send to the internet, over the month. Incoming data and your own SSH traffic, port forwards included, don't count. Past the allowance, $0.05 per GB is added to your next invoice as one line. At four times the allowance (1 TB on Solo, 2 TB on Pro) your machines stop until the month turns, and you get an email.
-- **Projects.** 10 on Solo, 25 on Pro, running or stopped. Destroyed projects and their 30-day snapshots don't count.
+- **Egress.** Data your machines send to the internet, over the month. Incoming data and your own SSH traffic, port forwards included, don't count. Past the allowance, $0.05 per GB is added to your next invoice as one line. At four times the allowance (1 TB on Solo, 2 TB on Plus, 4 TB on Pro) your machines stop until the month turns, and you get an email.
+- **Projects.** 10 on Solo, 25 on Plus, 50 on Pro, running or stopped. Destroyed projects and their 30-day snapshots don't count.
 
 Example: a Solo user with a `large` running all month, a 40 GB disk and 20 GB of egress pays $29. The same user with 300 GB of egress pays $29 plus $2.50.
 
@@ -39,7 +42,7 @@ The dashboard's **Billing** page shows the same against your plan: memory runnin
 
 ## Changing and cancelling
 
-Upgrading Solo to Pro takes effect at once; Paddle prorates the difference on your next invoice. Downgrading takes effect at your next renewal, and is refused while your running machines or allocated disk would not fit Solo; stop or destroy some first. Cancelling ends the plan at the end of the month you have paid for: machines run until then, stop then, and their snapshots stay 30 days. You can undo a cancellation until it takes effect.
+Upgrading to a bigger plan takes effect at once; Paddle prorates the difference on your next invoice. Downgrading takes effect at your next renewal, and is refused while your running machines or allocated disk would not fit the smaller plan; stop or destroy some first. Cancelling ends the plan at the end of the month you have paid for: machines run until then, stop then, and their snapshots stay 30 days. You can undo a cancellation until it takes effect.
 
 The card, the billing address and your receipts are in Paddle's portal, reached from the Billing page.
 
@@ -47,12 +50,12 @@ The card, the billing address and your receipts are in Paddle's portal, reached 
 
 Paddle retries on its own schedule. Meanwhile:
 
-| When   | What happens |
-| ------ | ------------ |
-| day 0  | your machines keep running; starting one is refused; you get an email |
-| day 2  | a second email |
+| When   | What happens                                                           |
+| ------ | ---------------------------------------------------------------------- |
+| day 0  | your machines keep running; starting one is refused; you get an email  |
+| day 2  | a second email                                                         |
 | day 3  | every running machine is snapshotted and stopped, and you get an email |
-| day 33 | the snapshots are deleted |
+| day 33 | the snapshots are deleted                                              |
 
 Paying at any point before day 33 unblocks starts. It does not start your machines again; that is yours to do with `repose start`.
 

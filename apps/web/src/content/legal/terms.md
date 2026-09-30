@@ -91,7 +91,7 @@ waitlist and are offered in order as seats free.
 
 ## Billing
 
-repose is sold as a monthly plan, Solo or Pro, through Paddle, which is
+repose is sold as a monthly plan, Solo, Plus or Pro, through Paddle, which is
 the merchant of record: Paddle takes the payment, adds and remits the tax
 for your country, and issues the receipt. Prices are published on the site
 in US dollars before tax. A plan sets how much memory may run at once,

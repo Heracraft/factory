@@ -176,36 +176,36 @@ func TestWebhookSubscriptionLifecycle(t *testing.T) {
 		t.Fatal("trial_end cleared once the item has no trial dates")
 	}
 	// Plan change.
-	must("subscription.updated", subData("sub_life", a, "pri_pro_test", "active", nil))
+	must("subscription.updated", subData("sub_life", a, "pri_plus_test", "active", nil))
 	sub, _ = billing.GetSubscription(ctx, pool, "sub_life")
-	if sub.Plan != "pro" || sub.Seats != 2 {
-		t.Fatalf("updated to pro: %+v", sub)
+	if sub.Plan != "plus" || sub.Seats != 2 {
+		t.Fatalf("updated to plus: %+v", sub)
 	}
 	// Cancellation scheduled.
-	must("subscription.updated", subData("sub_life", a, "pri_pro_test", "active", map[string]any{"scheduled_change": map[string]any{"action": "cancel", "effective_at": "2026-11-01T00:00:00Z"}}))
+	must("subscription.updated", subData("sub_life", a, "pri_plus_test", "active", map[string]any{"scheduled_change": map[string]any{"action": "cancel", "effective_at": "2026-11-01T00:00:00Z"}}))
 	sub, _ = billing.GetSubscription(ctx, pool, "sub_life")
 	if sub.CancelAt == nil || !sub.CancelAt.Equal(time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("cancel_at: %+v", sub.CancelAt)
 	}
 	// Resumed: the scheduled change is gone.
-	must("subscription.resumed", subData("sub_life", a, "pri_pro_test", "active", nil))
+	must("subscription.resumed", subData("sub_life", a, "pri_plus_test", "active", nil))
 	sub, _ = billing.GetSubscription(ctx, pool, "sub_life")
 	if sub.CancelAt != nil {
 		t.Fatal("resume clears cancel_at")
 	}
 	// Past due, paused, then canceled.
-	must("subscription.past_due", subData("sub_life", a, "pri_pro_test", "past_due", nil))
+	must("subscription.past_due", subData("sub_life", a, "pri_plus_test", "past_due", nil))
 	if userField(t, pool, a, "billing_status") != "past_due" || userField(t, pool, a, "past_due_since") == "" {
 		t.Fatal("past_due projected with past_due_since")
 	}
-	must("subscription.paused", subData("sub_life", a, "pri_pro_test", "paused", nil))
+	must("subscription.paused", subData("sub_life", a, "pri_plus_test", "paused", nil))
 	if userField(t, pool, a, "billing_status") != "none" {
 		t.Fatal("paused -> none")
 	}
 	if len(stop.calls) != 0 {
 		t.Fatal("paused stops nothing itself")
 	}
-	must("subscription.canceled", subData("sub_life", a, "pri_pro_test", "canceled", nil))
+	must("subscription.canceled", subData("sub_life", a, "pri_plus_test", "canceled", nil))
 	if userField(t, pool, a, "billing_status") != "none" {
 		t.Fatal("canceled -> none")
 	}
@@ -213,7 +213,7 @@ func TestWebhookSubscriptionLifecycle(t *testing.T) {
 		t.Fatalf("canceled stops the running machine with a snapshot: %+v", stop.calls)
 	}
 	// A second canceled (replayed by Paddle with a new id) stops nothing more.
-	must("subscription.canceled", subData("sub_life", a, "pri_pro_test", "canceled", nil))
+	must("subscription.canceled", subData("sub_life", a, "pri_plus_test", "canceled", nil))
 	if len(stop.calls) != 1 {
 		t.Fatal("canceled twice stopped twice")
 	}
@@ -225,13 +225,13 @@ func TestWebhookSubscriptionLifecycle(t *testing.T) {
 	if outboxEmails(t, pool, a) != 3 {
 		t.Fatalf("%d emails queued, want 3", outboxEmails(t, pool, a))
 	}
-	if p := accountEmail(t, pool, a, "plan_changed", "from Solo to Pro", "3 October 2026 at 12:00 UTC"); p["from_plan"] != "solo" || p["to_plan"] != "pro" {
+	if p := accountEmail(t, pool, a, "plan_changed", "from Solo to Plus", "3 October 2026 at 12:00 UTC"); p["from_plan"] != "solo" || p["to_plan"] != "plus" {
 		t.Fatalf("plan_changed payload %v", p)
 	}
-	if p := accountEmail(t, pool, a, "subscription_cancelled", "Pro", "1 November 2026 at 00:00 UTC"); p["plan"] != "pro" || p["ends_at"] != "2026-11-01T00:00:00Z" {
+	if p := accountEmail(t, pool, a, "subscription_cancelled", "Plus", "1 November 2026 at 00:00 UTC"); p["plan"] != "plus" || p["ends_at"] != "2026-11-01T00:00:00Z" {
 		t.Fatalf("subscription_cancelled payload %v", p)
 	}
-	if p := accountEmail(t, pool, a, "subscription_ended", "Pro", "3 October 2026 at 12:00 UTC", "2 November 2026 at 12:00 UTC"); p["plan"] != "pro" || p["retention_until"] != "2026-11-02T12:00:00Z" {
+	if p := accountEmail(t, pool, a, "subscription_ended", "Plus", "3 October 2026 at 12:00 UTC", "2 November 2026 at 12:00 UTC"); p["plan"] != "plus" || p["retention_until"] != "2026-11-02T12:00:00Z" {
 		t.Fatalf("subscription_ended payload %v", p)
 	}
 	var live *billing.Sub
@@ -293,7 +293,7 @@ func TestWebhookTransactions(t *testing.T) {
 
 	// A renewal that fails: past_due, past_due_since, one payment_failed
 	// email; a second failure (Paddle's retry) sends no second email.
-	b := seedAccount(t, pool, "pro", "active", "", "")
+	b := seedAccount(t, pool, "plus", "active", "", "")
 	if err := post(t, w, f, event("transaction.payment_failed", txn(b.SubID, b))); err != nil {
 		t.Fatal(err)
 	}
@@ -372,13 +372,13 @@ func TestWebhookResolvesByCustomer(t *testing.T) {
 	if _, err := pool.Exec(context.Background(), "update users set paddle_customer_id = $2 where id = $1", a.UserID, "ctm_"+a.Handle); err != nil {
 		t.Fatal(err)
 	}
-	d := subData("sub_byc", a, "pri_pro_test", "active", nil)
+	d := subData("sub_byc", a, "pri_plus_test", "active", nil)
 	delete(d, "custom_data")
 	if err := post(t, w, f, event("subscription.activated", d)); err != nil {
 		t.Fatal(err)
 	}
 	sub, err := billing.LiveSubscription(context.Background(), pool, a.UserID)
-	if err != nil || sub == nil || sub.Plan != "pro" {
+	if err != nil || sub == nil || sub.Plan != "plus" {
 		t.Fatalf("resolved by customer: %+v %v", sub, err)
 	}
 	if userField(t, pool, a, "billing_status") != "active" {

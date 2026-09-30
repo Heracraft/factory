@@ -172,7 +172,7 @@ produces Paddle's email about the card and ours about the machines.
 running`) stay project events with their own subjects, rendered through
 the same layout. Dates in payloads are RFC 3339 and render as `4 October
 2026 at 14:00 UTC`; amounts are cents and render as `$29.00`; plans are
-`solo|pro` and render as their names.
+`solo|plus|pro` and render as their names.
 
 Agents' own features are untouched: Claude Code Remote Control works from a
 guest when the user logged in with a subscription inside it; Claude channels

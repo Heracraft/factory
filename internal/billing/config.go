@@ -18,9 +18,10 @@ type Config struct {
 	// ClientToken is the public Paddle.js token GET /billing hands the
 	// dashboard.
 	ClientToken string
-	// PriceSolo and PricePro are the pri_... ids of the two plans;
-	// ProductOverage the pro_... id the egress line is charged under.
+	// PriceSolo, PricePlus and PricePro are the pri_... ids of the three
+	// plans; ProductOverage the pro_... id the egress line is charged under.
 	PriceSolo      string
+	PricePlus      string
 	PricePro       string
 	ProductOverage string
 	// PortalReturnURL is where Paddle's customer portal sends the user back.
@@ -67,6 +68,8 @@ func (c Config) PlanPrice(plan string) string {
 	switch plan {
 	case Solo.ID:
 		return c.PriceSolo
+	case Plus.ID:
+		return c.PricePlus
 	case Pro.ID:
 		return c.PricePro
 	}
@@ -80,6 +83,8 @@ func (c Config) PlanForPrice(priceID string) string {
 		return ""
 	case c.PriceSolo:
 		return Solo.ID
+	case c.PricePlus:
+		return Plus.ID
 	case c.PricePro:
 		return Pro.ID
 	}
@@ -101,6 +106,7 @@ func ConfigFromEnv() (cfg Config, enabled bool) {
 		WebhookSecret:   strings.TrimSpace(os.Getenv("PADDLE_WEBHOOK_SECRET")),
 		ClientToken:     strings.TrimSpace(os.Getenv("PADDLE_CLIENT_TOKEN")),
 		PriceSolo:       strings.TrimSpace(os.Getenv("PADDLE_PRICE_SOLO")),
+		PricePlus:       strings.TrimSpace(os.Getenv("PADDLE_PRICE_PLUS")),
 		PricePro:        strings.TrimSpace(os.Getenv("PADDLE_PRICE_PRO")),
 		ProductOverage:  strings.TrimSpace(os.Getenv("PADDLE_PRODUCT_OVERAGE")),
 		PortalReturnURL: env("PADDLE_PORTAL_RETURN_URL", dash+"/billing"),
@@ -133,6 +139,7 @@ func (c Config) Validate() error {
 	for name, v := range map[string]string{
 		"PADDLE_WEBHOOK_SECRET":  c.WebhookSecret,
 		"PADDLE_PRICE_SOLO":      c.PriceSolo,
+		"PADDLE_PRICE_PLUS":      c.PricePlus,
 		"PADDLE_PRICE_PRO":       c.PricePro,
 		"PADDLE_PRODUCT_OVERAGE": c.ProductOverage,
 	} {
@@ -144,8 +151,8 @@ func (c Config) Validate() error {
 		sort.Strings(missing)
 		return errors.New("PADDLE_API_KEY is set but " + strings.Join(missing, ", ") + " is not")
 	}
-	if c.PriceSolo == c.PricePro {
-		return errors.New("PADDLE_PRICE_SOLO and PADDLE_PRICE_PRO are the same price")
+	if c.PriceSolo == c.PricePlus || c.PriceSolo == c.PricePro || c.PricePlus == c.PricePro {
+		return errors.New("PADDLE_PRICE_SOLO, PADDLE_PRICE_PLUS and PADDLE_PRICE_PRO are not three different prices")
 	}
 	return nil
 }

@@ -1,5 +1,5 @@
 // docs/workstreams/08-dashboard.md §5.8 and DECISIONS I-289/I-290: the
-// billing page sells two plans through Paddle, gates them on seats, and
+// billing page sells three plans through Paddle, gates them on seats, and
 // shows a subscription's status, usage of the plan and its invoices.
 import { test, expect } from '@playwright/test';
 import {
@@ -15,6 +15,24 @@ test.afterAll(async () => {
 	await resetBilling();
 });
 
+/** Stops every running machine of the fake's one account: other specs
+ * leave some running, and the plan gate measures them. */
+async function stopAll(): Promise<void> {
+	const api = apiURLFromEnv();
+	const list = (await (
+		await fetch(`${api}/projects`, { headers: { Authorization: 'Bearer playwright' } })
+	).json()) as { id: string; state: string }[];
+	for (const p of list) {
+		if (p.state === 'running') {
+			await fetch(`${api}/projects/${p.id}/stop`, {
+				method: 'POST',
+				headers: { Authorization: 'Bearer playwright', 'Content-Type': 'application/json' },
+				body: JSON.stringify({ snapshot: false })
+			});
+		}
+	}
+}
+
 test.beforeEach(async ({ page }) => {
 	await resetBilling();
 	await signIn(page);
@@ -26,7 +44,7 @@ test('with billing off the page says so and sells nothing', async ({ page }) => 
 	await expect(page.getByRole('button', { name: /Choose/ })).toHaveCount(0);
 });
 
-test('with no plan and seats free, both plan cards are shown from GET /billing', async ({
+test('with no plan and seats free, the three plan cards are shown from GET /billing', async ({
 	page
 }) => {
 	await setBilling({ mode: 'none' });
@@ -39,20 +57,45 @@ test('with no plan and seats free, both plan cards are shown from GET /billing',
 	await expect(solo.getByText('100 GB', { exact: true })).toBeVisible();
 	await expect(solo.getByText('250 GB', { exact: true })).toBeVisible();
 	await expect(solo.getByText('7 days free, card at checkout, cancel any time.')).toBeVisible();
+	const plus = page.getByTestId('plan-plus');
+	await expect(plus.getByRole('heading', { name: 'Plus' })).toBeVisible();
+	await expect(plus.getByText('$59')).toBeVisible();
+	await expect(plus.getByText('16 GB: one xl, two large, or any mix')).toBeVisible();
 	const pro = page.getByTestId('plan-pro');
-	await expect(pro.getByText('$59')).toBeVisible();
-	await expect(pro.getByText('16 GB: one xl, two large, or any mix')).toBeVisible();
+	await expect(pro.getByRole('heading', { name: 'Pro' })).toBeVisible();
+	await expect(pro.getByText('$99')).toBeVisible();
+	await expect(pro.getByText('32 GB: two xl, four large, or any mix')).toBeVisible();
+	await expect(pro.getByText('500 GB', { exact: true })).toBeVisible();
+	await expect(pro.getByText('1 TB', { exact: true })).toBeVisible();
+	await expect(pro.getByText('50', { exact: true })).toBeVisible();
+	await expect(page.getByRole('list', { name: 'Plans' }).locator('h3')).toHaveText([
+		'Solo',
+		'Plus',
+		'Pro'
+	]);
 	await expect(page.getByRole('button', { name: 'Choose Solo' })).toBeEnabled();
+	await expect(page.getByRole('button', { name: 'Choose Plus' })).toBeEnabled();
 	await expect(page.getByRole('button', { name: 'Choose Pro' })).toBeEnabled();
 	await expect(page.getByRole('link', { name: 'Refunds' })).toHaveAttribute('href', '/refunds');
 });
 
-test('one seat free: Solo can be chosen, Pro says why not', async ({ page }) => {
+test('one seat free: Solo can be chosen, Plus and Pro say why not', async ({ page }) => {
 	await setBilling({ mode: 'none', seats: { total: 30, held: 29, waiting: 0 } });
 	await page.goto('/billing');
 	await expect(page.getByRole('button', { name: 'Choose Solo' })).toBeEnabled();
+	await expect(page.getByRole('button', { name: 'Choose Plus' })).toBeDisabled();
 	await expect(page.getByRole('button', { name: 'Choose Pro' })).toBeDisabled();
-	await expect(page.getByText('Needs 2 seats; 1 free.')).toBeVisible();
+	await expect(page.getByTestId('plan-plus')).toContainText('Needs 2 seats; 1 free.');
+	await expect(page.getByTestId('plan-pro')).toContainText('Needs 4 seats; 1 free.');
+});
+
+test('three seats free: Solo and Plus can be chosen, Pro needs four', async ({ page }) => {
+	await setBilling({ mode: 'none', seats: { total: 30, held: 27, waiting: 0 } });
+	await page.goto('/billing');
+	await expect(page.getByRole('button', { name: 'Choose Solo' })).toBeEnabled();
+	await expect(page.getByRole('button', { name: 'Choose Plus' })).toBeEnabled();
+	await expect(page.getByRole('button', { name: 'Choose Pro' })).toBeDisabled();
+	await expect(page.getByTestId('plan-pro')).toContainText('Needs 4 seats; 3 free.');
 });
 
 test('choosing a plan opens the checkout and, once completed, the plan appears', async ({
@@ -61,9 +104,9 @@ test('choosing a plan opens the checkout and, once completed, the plan appears',
 	await setBilling({ mode: 'none' });
 	await installPaddleStub(page);
 	await page.goto('/billing');
-	await page.getByRole('button', { name: 'Choose Pro' }).click();
+	await page.getByRole('button', { name: 'Choose Plus' }).click();
 	// The stub completed the transaction; the page polls GET /billing.
-	await expect(page.getByTestId('plan').getByRole('heading', { name: 'Pro' })).toBeVisible({
+	await expect(page.getByTestId('plan').getByRole('heading', { name: 'Plus' })).toBeVisible({
 		timeout: 10_000
 	});
 	const opened = await page.evaluate(() => window.__reposePaddleOpened);
@@ -117,7 +160,8 @@ test('an invited user sees the held seat and the plan cards', async ({ page }) =
 	await expect(page.getByTestId('seat-held')).toContainText('Your seat is held until');
 	await expect(page.getByTestId('seat-held')).toContainText('(2 days left)');
 	await expect(page.getByRole('button', { name: 'Choose Solo' })).toBeEnabled();
-	// Pro needs two seats; the hold is one.
+	// Plus needs two seats and Pro four; the hold is one.
+	await expect(page.getByRole('button', { name: 'Choose Plus' })).toBeDisabled();
 	await expect(page.getByRole('button', { name: 'Choose Pro' })).toBeDisabled();
 });
 
@@ -137,7 +181,7 @@ test('a trial shows the first charge date, the usage bars and the project count'
 test('an active plan shows its renewal, receipts through Paddle, and invoices with PDF links', async ({
 	page
 }) => {
-	await setBilling({ mode: 'active', plan: 'pro' });
+	await setBilling({ mode: 'active', plan: 'plus' });
 	await page.goto('/billing');
 	await expect(page.getByTestId('plan-status')).toContainText('Active. Renews');
 	const list = page.getByRole('list', { name: 'Invoices' });
@@ -176,16 +220,25 @@ test('past due shows the failed payment and the card link; suspended says what h
 test('upgrading takes effect at once; a downgrade the machines do not fit is refused with over_plan', async ({
 	page
 }) => {
+	await stopAll();
 	await setBilling({ mode: 'active', plan: 'solo' });
 	await page.goto('/billing');
 	await page.getByRole('button', { name: 'Change plan' }).click();
-	const change = page.getByTestId('change-plan');
-	await expect(change).toContainText('Upgrade to Pro ($59 a month');
-	await expect(change).toContainText('Takes effect at once');
-	await page.getByRole('button', { name: 'Upgrade to Pro' }).click();
-	await expect(page.getByTestId('plan').getByRole('heading', { name: 'Pro' })).toBeVisible();
+	// From Solo both other plans are upgrades.
+	await expect(page.getByTestId('change-to-plus')).toContainText('Upgrade to Plus ($59 a month');
+	await expect(page.getByTestId('change-to-plus')).toContainText('Takes effect at once');
+	await expect(page.getByTestId('change-to-pro')).toContainText('Upgrade to Pro ($99 a month');
+	await expect(page.getByRole('button', { name: /Downgrade/ })).toHaveCount(0);
+	await page.getByRole('button', { name: 'Upgrade to Plus' }).click();
+	await expect(page.getByTestId('plan').getByRole('heading', { name: 'Plus' })).toBeVisible();
 
-	// Two large machines running: 16 GB, Pro's whole allowance and twice Solo's.
+	// From Plus, one of each.
+	await page.getByRole('button', { name: 'Change plan' }).click();
+	await expect(page.getByTestId('change-to-solo')).toContainText('Downgrade to Solo ($29 a month');
+	await expect(page.getByTestId('change-to-pro')).toContainText('Upgrade to Pro ($99 a month');
+	await page.getByRole('button', { name: 'Change plan' }).click();
+
+	// Two large machines running: 16 GB, Plus's whole allowance and twice Solo's.
 	const api = apiURLFromEnv();
 	await createProject(api, {
 		name: 'over-a',
@@ -208,32 +261,49 @@ test('upgrading takes effect at once; a downgrade the machines do not fit is ref
 	await expect(err).toContainText('Stop machines or destroy projects first.');
 });
 
+test('on Pro both other plans are downgrades, and Plus is refused while three large machines run', async ({
+	page
+}) => {
+	await stopAll();
+	await setBilling({ mode: 'active', plan: 'pro' });
+	const api = apiURLFromEnv();
+	for (const n of ['pro-a', 'pro-b', 'pro-c']) {
+		await createProject(api, { name: n, remote_url: `github.com/heracraft/${n}`, class: 'large' });
+	}
+	await page.goto('/billing');
+	await expect(page.getByTestId('meter-running-now')).toContainText('24 GB of 32 GB');
+	await expect(page.getByTestId('meter-running-now')).toContainText(
+		'two xl, four large, or any mix'
+	);
+	await page.getByRole('button', { name: 'Change plan' }).click();
+	await expect(page.getByTestId('change-to-solo')).toContainText('Downgrade to Solo ($29 a month');
+	await expect(page.getByTestId('change-to-plus')).toContainText('Downgrade to Plus ($59 a month');
+	await expect(page.getByTestId('change-to-plus')).toContainText('Takes effect at the renewal');
+	await expect(page.getByRole('button', { name: /Upgrade/ })).toHaveCount(0);
+	await page.getByRole('button', { name: 'Downgrade to Plus' }).click();
+	const err = page.getByTestId('change-error');
+	await expect(err).toContainText('Plus holds 16 GB running at once and 250 GB of disk');
+	await expect(err).toContainText('you have 24 GB running');
+	await stopAll();
+});
+
 test('a downgrade that fits is scheduled for the renewal and can be undone', async ({ page }) => {
 	// The seat count and plan are set directly; the fake's own projects
 	// (created by other specs) are what the gate measures, so this test
 	// stops them all first through the api.
-	const api = process.env.PUBLIC_API_URL!;
-	const list = (await (
-		await fetch(`${api}/projects`, { headers: { Authorization: 'Bearer playwright' } })
-	).json()) as { id: string; state: string }[];
-	for (const p of list) {
-		if (p.state === 'running') {
-			await fetch(`${api}/projects/${p.id}/stop`, {
-				method: 'POST',
-				headers: { Authorization: 'Bearer playwright', 'Content-Type': 'application/json' },
-				body: JSON.stringify({ snapshot: false })
-			});
-		}
-	}
+	await stopAll();
 	await setBilling({ mode: 'active', plan: 'pro' });
 	await page.goto('/billing');
 	await page.getByRole('button', { name: 'Change plan' }).click();
-	await page.getByRole('button', { name: 'Downgrade to Solo' }).click();
-	await expect(page.getByTestId('plan-status')).toContainText('Changes to Solo on');
+	await page.getByRole('button', { name: 'Downgrade to Plus' }).click();
+	await expect(page.getByTestId('plan-status')).toContainText('Changes to Plus on');
+	// With Plus scheduled, the box offers to keep Pro and still lists Solo.
 	await page.getByRole('button', { name: 'Change plan' }).click();
-	await expect(page.getByTestId('change-plan')).toContainText('Solo is scheduled for');
+	await expect(page.getByTestId('change-keep')).toContainText('Plus is scheduled for');
+	await expect(page.getByTestId('change-to-solo')).toContainText('Downgrade to Solo');
+	await expect(page.getByTestId('change-to-plus')).toHaveCount(0);
 	await page.getByRole('button', { name: 'Keep Pro' }).click();
-	await expect(page.getByTestId('plan-status')).not.toContainText('Changes to Solo');
+	await expect(page.getByTestId('plan-status')).not.toContainText('Changes to Plus');
 });
 
 test('cancelling asks first, then shows the end date and a Resume that undoes it', async ({

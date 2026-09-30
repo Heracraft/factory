@@ -14,6 +14,8 @@ func planName(id string) string {
 	switch id {
 	case "solo":
 		return "Solo"
+	case "plus":
+		return "Plus"
 	case "pro":
 		return "Pro"
 	case "":

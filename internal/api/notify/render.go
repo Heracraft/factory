@@ -145,6 +145,8 @@ func (p payload) Plan(k string) string {
 	switch s {
 	case "solo":
 		return "Solo"
+	case "plus":
+		return "Plus"
 	case "pro":
 		return "Pro"
 	case "":

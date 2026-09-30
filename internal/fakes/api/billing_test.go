@@ -63,17 +63,26 @@ func TestBillingNoSubscription(t *testing.T) {
 	if b.Subscription != nil && string(*b.Subscription) != "null" {
 		t.Fatalf("subscription: %s", *b.Subscription)
 	}
-	if len(b.Plans) != 2 || b.Plans[0].ID != "solo" || b.Plans[1].ID != "pro" || !b.Plans[0].Available || !b.Plans[1].Available || b.Plans[1].MemoryGB != 16 {
+	if len(b.Plans) != 3 || b.Plans[0].ID != "solo" || b.Plans[1].ID != "plus" || b.Plans[2].ID != "pro" ||
+		!b.Plans[0].Available || !b.Plans[1].Available || !b.Plans[2].Available ||
+		b.Plans[0].MemoryGB != 8 || b.Plans[1].MemoryGB != 16 || b.Plans[2].MemoryGB != 32 {
 		t.Fatalf("plans: %s", r.body)
 	}
 	if b.Seats.Free != 18 || b.Paddle.Environment != FakeEnvironment || b.Paddle.ClientToken == "" || b.Usage.MemoryGB != 0 {
 		t.Fatalf("billing: %s", r.body)
 	}
-	// One seat free: Solo yes, Pro no.
+	// Three seats free: Solo and Plus yes, Pro (four seats) no.
+	f.SetSeats(30, 27, 0)
+	r = call(t, f, "GET", "/v1/billing", tok, nil)
+	r.json(t, &b)
+	if !b.Plans[0].Available || !b.Plans[1].Available || b.Plans[2].Available {
+		t.Fatalf("plans with three seats: %s", r.body)
+	}
+	// One seat free: Solo yes, Plus and Pro no.
 	f.SetSeats(30, 29, 0)
 	r = call(t, f, "GET", "/v1/billing", tok, nil)
 	r.json(t, &b)
-	if !b.Plans[0].Available || b.Plans[1].Available {
+	if !b.Plans[0].Available || b.Plans[1].Available || b.Plans[2].Available {
 		t.Fatalf("plans with one seat: %s", r.body)
 	}
 	// The GET /me projection.
@@ -90,7 +99,7 @@ func TestBillingCheckoutToTrial(t *testing.T) {
 	defer f.Close()
 	f.SetBilling(BillingNone)
 	wantErr(t, call(t, f, "POST", "/v1/billing/checkout", tok, map[string]string{"plan": "gold"}), 400, "invalid")
-	r := call(t, f, "POST", "/v1/billing/checkout", tok, map[string]string{"plan": "pro"})
+	r := call(t, f, "POST", "/v1/billing/checkout", tok, map[string]string{"plan": "plus"})
 	want(t, r, 200)
 	m := decodeMap(t, r)
 	txn, _ := m["transaction_id"].(string)
@@ -115,14 +124,14 @@ func TestBillingCheckoutToTrial(t *testing.T) {
 		Seats Seats `json:"seats"`
 	}
 	r.json(t, &b)
-	if b.Subscription.Plan != "pro" || b.Subscription.Status != "trialing" || b.Subscription.Seats != 2 || b.Subscription.TrialEnd == nil || b.Subscription.NextBill == nil {
+	if b.Subscription.Plan != "plus" || b.Subscription.Status != "trialing" || b.Subscription.Seats != 2 || b.Subscription.TrialEnd == nil || b.Subscription.NextBill == nil {
 		t.Fatalf("after checkout: %s", r.body)
 	}
 	if !b.Subscription.NextBill.Equal(*b.Subscription.TrialEnd) {
 		t.Fatalf("first charge is at the trial's end: %s", r.body)
 	}
 	if b.Seats.Held != 14 {
-		t.Fatalf("seats held after a Pro checkout: %d", b.Seats.Held)
+		t.Fatalf("seats held after a Plus checkout: %d", b.Seats.Held)
 	}
 	// A second checkout is a conflict: change the plan instead.
 	r = call(t, f, "POST", "/v1/billing/checkout", tok, map[string]string{"plan": "solo"})
@@ -131,7 +140,7 @@ func TestBillingCheckoutToTrial(t *testing.T) {
 		t.Fatalf("detail: %s", r.body)
 	}
 	r = call(t, f, "GET", "/v1/me", tok, nil)
-	if !strings.Contains(string(r.body), `"status":"trial"`) || !strings.Contains(string(r.body), `"plan":"pro"`) || !strings.Contains(string(r.body), `"xl":1`) {
+	if !strings.Contains(string(r.body), `"status":"trial"`) || !strings.Contains(string(r.body), `"plan":"plus"`) || !strings.Contains(string(r.body), `"xl":1`) {
 		t.Fatalf("me: %s", r.body)
 	}
 }
@@ -194,26 +203,26 @@ func TestBillingPlanChange(t *testing.T) {
 	f := New(Options{})
 	defer f.Close()
 	f.SetBilling(BillingNone)
-	r := call(t, f, "POST", "/v1/billing/plan", tok, map[string]string{"plan": "pro"})
+	r := call(t, f, "POST", "/v1/billing/plan", tok, map[string]string{"plan": "plus"})
 	wantErr(t, r, 409, "conflict")
 	if detailOf(t, r)["reason"] != "no_subscription" {
 		t.Fatalf("detail: %s", r.body)
 	}
 	f.SetBilling(BillingActive)
 	f.SetSeats(30, 30, 0)
-	r = call(t, f, "POST", "/v1/billing/plan", tok, map[string]string{"plan": "pro"})
+	r = call(t, f, "POST", "/v1/billing/plan", tok, map[string]string{"plan": "plus"})
 	wantErr(t, r, 409, "conflict")
 	if detailOf(t, r)["reason"] != "no_seat" {
 		t.Fatalf("detail: %s", r.body)
 	}
 	f.SetSeats(30, 29, 0)
-	r = call(t, f, "POST", "/v1/billing/plan", tok, map[string]string{"plan": "pro"})
+	r = call(t, f, "POST", "/v1/billing/plan", tok, map[string]string{"plan": "plus"})
 	want(t, r, 200)
 	m := decodeMap(t, r)
-	if m["plan"] != "pro" || m["scheduled_plan"] != nil {
+	if m["plan"] != "plus" || m["scheduled_plan"] != nil {
 		t.Fatalf("upgrade: %s", r.body)
 	}
-	// Two large machines fit Pro and not Solo: the downgrade is refused.
+	// Two large machines fit Plus and not Solo: the downgrade is refused.
 	mkPlanProject(t, f, "a", "large")
 	mkPlanProject(t, f, "b", "large")
 	r = call(t, f, "POST", "/v1/billing/plan", tok, map[string]string{"plan": "solo"})
@@ -229,7 +238,7 @@ func TestBillingPlanChange(t *testing.T) {
 	r = call(t, f, "POST", "/v1/billing/plan", tok, map[string]string{"plan": "solo"})
 	want(t, r, 200)
 	m = decodeMap(t, r)
-	if m["plan"] != "pro" || m["scheduled_plan"] != "solo" || m["effective_at"] == nil {
+	if m["plan"] != "plus" || m["scheduled_plan"] != "solo" || m["effective_at"] == nil {
 		t.Fatalf("downgrade: %s", r.body)
 	}
 	r = call(t, f, "GET", "/v1/billing", tok, nil)
@@ -237,10 +246,96 @@ func TestBillingPlanChange(t *testing.T) {
 		t.Fatalf("billing after downgrade: %s", r.body)
 	}
 	// Choosing the current plan again undoes the schedule.
-	want(t, call(t, f, "POST", "/v1/billing/plan", tok, map[string]string{"plan": "pro"}), 200)
+	want(t, call(t, f, "POST", "/v1/billing/plan", tok, map[string]string{"plan": "plus"}), 200)
 	r = call(t, f, "GET", "/v1/billing", tok, nil)
 	if !strings.Contains(string(r.body), `"scheduled_plan":null`) {
 		t.Fatalf("billing after undo: %s", r.body)
+	}
+}
+
+// Pro holds four seats: the checkout needs four free, and the trial
+// carries Pro's limits (32 GB, 50 projects, an xl).
+func TestBillingCheckoutPro(t *testing.T) {
+	f := New(Options{})
+	defer f.Close()
+	f.SetBilling(BillingNone)
+	f.SetSeats(30, 27, 0)
+	wantErr(t, call(t, f, "POST", "/v1/billing/checkout", tok, map[string]string{"plan": "pro"}), 503, "waitlisted")
+	f.SetBilling(BillingNone)
+	f.SetWaitlist(0, time.Time{})
+	f.SetSeats(30, 26, 0)
+	r := call(t, f, "POST", "/v1/billing/checkout", tok, map[string]string{"plan": "pro"})
+	want(t, r, 200)
+	txn, _ := decodeMap(t, r)["transaction_id"].(string)
+	if err := f.CompleteCheckout(txn); err != nil {
+		t.Fatal(err)
+	}
+	r = call(t, f, "GET", "/v1/billing", tok, nil)
+	var b struct {
+		Subscription struct {
+			Plan  string `json:"plan"`
+			Seats int    `json:"seats"`
+		} `json:"subscription"`
+		Seats Seats `json:"seats"`
+	}
+	r.json(t, &b)
+	if b.Subscription.Plan != "pro" || b.Subscription.Seats != 4 || b.Seats.Held != 30 {
+		t.Fatalf("after a Pro checkout: %s", r.body)
+	}
+	r = call(t, f, "GET", "/v1/me", tok, nil)
+	if !strings.Contains(string(r.body), `"limits":{"projects":50,"xl":1,"memory_gb":32,"disk_gb":500,"egress_gb":1000}`) {
+		t.Fatalf("me: %s", r.body)
+	}
+}
+
+// With three plans a change can skip one: Solo straight to Pro takes the
+// three extra seats at once, and Pro down to Plus waits for the renewal
+// unless what runs does not fit Plus's 16 GB.
+func TestBillingPlanChangePro(t *testing.T) {
+	f := New(Options{})
+	defer f.Close()
+	f.SetBilling(BillingActive)
+	f.SetPlan("solo")
+	f.SetSeats(30, 28, 0)
+	r := call(t, f, "POST", "/v1/billing/plan", tok, map[string]string{"plan": "pro"})
+	wantErr(t, r, 409, "conflict")
+	if detailOf(t, r)["reason"] != "no_seat" {
+		t.Fatalf("detail: %s", r.body)
+	}
+	f.SetSeats(30, 27, 0)
+	r = call(t, f, "POST", "/v1/billing/plan", tok, map[string]string{"plan": "pro"})
+	want(t, r, 200)
+	if m := decodeMap(t, r); m["plan"] != "pro" || m["scheduled_plan"] != nil {
+		t.Fatalf("upgrade: %s", r.body)
+	}
+	r = call(t, f, "GET", "/v1/billing", tok, nil)
+	if !strings.Contains(string(r.body), `"held":30`) {
+		t.Fatalf("seats after Solo to Pro: %s", r.body)
+	}
+	// Three large machines (24 GB) fit Pro and not Plus.
+	mkPlanProject(t, f, "a", "large")
+	mkPlanProject(t, f, "b", "large")
+	mkPlanProject(t, f, "c", "large")
+	r = call(t, f, "POST", "/v1/billing/plan", tok, map[string]string{"plan": "plus"})
+	wantErr(t, r, 409, "conflict")
+	d := detailOf(t, r)
+	if d["reason"] != "over_plan" || d["running_gb"] != float64(24) {
+		t.Fatalf("over_plan detail: %s", r.body)
+	}
+	// Stop one: 16 GB fits Plus, and the downgrade waits for the renewal.
+	var list []struct{ ID string }
+	call(t, f, "GET", "/v1/projects", tok, nil).json(t, &list)
+	want(t, call(t, f, "POST", "/v1/projects/"+list[0].ID+"/stop", tok, map[string]bool{"snapshot": false}), 202)
+	r = call(t, f, "POST", "/v1/billing/plan", tok, map[string]string{"plan": "plus"})
+	want(t, r, 200)
+	if m := decodeMap(t, r); m["plan"] != "pro" || m["scheduled_plan"] != "plus" || m["effective_at"] == nil {
+		t.Fatalf("downgrade: %s", r.body)
+	}
+	// Solo is still out of reach with 16 GB running.
+	r = call(t, f, "POST", "/v1/billing/plan", tok, map[string]string{"plan": "solo"})
+	wantErr(t, r, 409, "conflict")
+	if detailOf(t, r)["reason"] != "over_plan" {
+		t.Fatalf("Pro to Solo: %s", r.body)
 	}
 }
 
@@ -331,7 +426,7 @@ func TestBillingGates(t *testing.T) {
 	if detailOf(t, r)["reason"] != "plan_limit" {
 		t.Fatalf("start over the plan: %s", r.body)
 	}
-	// An xl needs Pro.
+	// An xl needs Plus or Pro.
 	bid, _ := b["id"].(string)
 	want(t, call(t, f, "POST", "/v1/projects/"+bid+"/stop", tok, map[string]bool{"snapshot": false}), 202)
 	r = call(t, f, "POST", "/v1/projects", tok, map[string]string{"name": "big", "remote_url": "github.com/x/big", "class": "xl"})
@@ -386,7 +481,18 @@ func TestBillingStateKnob(t *testing.T) {
 		t.Fatalf("invoices: %s", r.body)
 	}
 	bad := "gold"
-	if err := f.SetBillingState(BillingState{Plan: &bad}); err == nil {
-		t.Fatal("accepted an unknown plan")
+	if err := f.SetBillingState(BillingState{Plan: &bad}); err == nil || err.Error() != "plan: solo, plus or pro" {
+		t.Fatalf("accepted an unknown plan: %v", err)
+	}
+	if err := f.SetBillingState(BillingState{ScheduledPlan: &bad}); err == nil || err.Error() != "scheduled_plan: solo, plus, pro or empty" {
+		t.Fatalf("accepted an unknown scheduled plan: %v", err)
+	}
+	plus := "plus"
+	if err := f.SetBillingState(BillingState{ScheduledPlan: &plus}); err != nil {
+		t.Fatal(err)
+	}
+	r = call(t, f, "GET", "/v1/billing", tok, nil)
+	if !strings.Contains(string(r.body), `"scheduled_plan":"plus"`) {
+		t.Fatalf("scheduled plus: %s", r.body)
 	}
 }

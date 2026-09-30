@@ -556,7 +556,7 @@ func TestMe(t *testing.T) {
 		} `json:"limits"`
 	}
 	r.json(t, &me)
-	if me.ID != CannedUser.ID || me.Handle != "heracraft" || me.Email != "dev@example.com" || me.Billing.Status != "exempt" || me.Limits.Projects != 25 {
+	if me.ID != CannedUser.ID || me.Handle != "heracraft" || me.Email != "dev@example.com" || me.Billing.Status != "exempt" || me.Limits.Projects != 50 || me.Limits.XL != 1 {
 		t.Fatalf("me: %s", r.body)
 	}
 	r = call(t, f, "POST", "/v1/me/notify-test", tok, nil)

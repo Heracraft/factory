@@ -392,9 +392,6 @@
 	.tiers {
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
-	.tiers--two {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
 }
 .tier {
 	position: relative;
@@ -414,6 +411,13 @@
 	align-items: flex-end;
 	justify-content: space-between;
 	gap: 0.75rem;
+}
+/* Side by side, tall enough for Pro's four rows of units, so the names
+   and the spec lines of the three cards sit on one line across. */
+@media (min-width: 768px) {
+	.tier-top {
+		min-height: 45px;
+	}
 }
 .tier-name {
 	font-family: var(--font-display);

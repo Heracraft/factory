@@ -20,7 +20,7 @@ export type GuestState =
  * `none` is an account with no plan yet, `trial` a trialing one. */
 export type BillingStatus = 'none' | 'trial' | 'active' | 'past_due' | 'suspended' | 'exempt';
 
-export type PlanId = 'solo' | 'pro';
+export type PlanId = 'solo' | 'plus' | 'pro';
 
 /** The subscription's own status, Paddle's words (docs/interfaces/api.md GET /billing). */
 export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'paused' | 'canceled';

@@ -53,9 +53,9 @@ func TestBillingGateBlocksCompute(t *testing.T) {
 		t.Fatalf("stop: %d %s", stop.status, stop.raw)
 	}
 	e.waitOp(t, stop)
-	// Class change to xl on Solo: plan_limit (xl needs Pro).
+	// Class change to xl on Solo: plan_limit (xl needs Plus).
 	r = e.do(t, tok, "PATCH", "/projects/"+pid, map[string]any{"class": "xl"})
-	if r.status != 402 || errDetail(r, "reason") != "plan_limit" || !strings.Contains(errMessage(r), "an xl machine needs 16 GB. Upgrade to Pro") {
+	if r.status != 402 || errDetail(r, "reason") != "plan_limit" || !strings.Contains(errMessage(r), "an xl machine needs 16 GB. Upgrade to Plus") {
 		t.Fatalf("xl on solo: %d %s", r.status, r.raw)
 	}
 	// Growing the volume past 100 GB: disk_limit.
@@ -177,10 +177,10 @@ func TestPlanProjectLimit(t *testing.T) {
 	if r.status != 400 || errCode(r) != "invalid" || r.body["error"].(map[string]any)["detail"].(map[string]any)["limit"] != float64(10) || !strings.Contains(errMessage(r), "you have 10 of 10 projects") {
 		t.Fatalf("eleventh: %d %s", r.status, r.raw)
 	}
-	e.subscribe(t, "sub-count", "pro")
+	e.subscribe(t, "sub-count", "plus")
 	r = e.do(t, tok, "POST", "/projects", map[string]any{"name": "eleventh", "class": "small"})
 	if r.status != 201 {
-		t.Fatalf("eleventh on Pro: %d %s", r.status, r.raw)
+		t.Fatalf("eleventh on Plus: %d %s", r.status, r.raw)
 	}
 }
 
@@ -253,7 +253,7 @@ func TestBillingRoutes(t *testing.T) {
 		}
 	}
 	plans := r.body["plans"].([]any)
-	if len(plans) != 2 || plans[0].(map[string]any)["available"] != true || plans[1].(map[string]any)["price_cents"] != float64(5900) {
+	if len(plans) != 3 || plans[0].(map[string]any)["available"] != true || plans[1].(map[string]any)["price_cents"] != float64(5900) || plans[2].(map[string]any)["price_cents"] != float64(9900) {
 		t.Fatalf("plans: %v", plans)
 	}
 	if r.body["paddle"].(map[string]any)["client_token"] != "test_client_token" || r.body["paddle"].(map[string]any)["environment"] != "sandbox" {
@@ -268,7 +268,7 @@ func TestBillingRoutes(t *testing.T) {
 		t.Fatalf("checkout: %d %s", r.status, r.raw)
 	}
 	// Plan change and cancel before a subscription: 409 no_subscription.
-	if r := e.do(t, tok, "POST", "/billing/plan", map[string]any{"plan": "pro"}); r.status != 409 || errDetail(r, "reason") != "no_subscription" {
+	if r := e.do(t, tok, "POST", "/billing/plan", map[string]any{"plan": "plus"}); r.status != 409 || errDetail(r, "reason") != "no_subscription" {
 		t.Fatalf("plan without subscription: %d %s", r.status, r.raw)
 	}
 	if r := e.do(t, tok, "POST", "/billing/cancel", nil); r.status != 409 {
@@ -305,7 +305,7 @@ func TestBillingRoutes(t *testing.T) {
 	if b["status"] != "trial" || b["plan"] != "solo" || b["trial_end"] == nil || b["has_card"] != true {
 		t.Fatalf("/me after webhook: %s", r.raw)
 	}
-	if r := e.do(t, tok, "POST", "/billing/checkout", map[string]any{"plan": "pro"}); r.status != 409 || errDetail(r, "reason") != "subscribed" {
+	if r := e.do(t, tok, "POST", "/billing/checkout", map[string]any{"plan": "plus"}); r.status != 409 || errDetail(r, "reason") != "subscribed" {
 		t.Fatalf("second checkout: %d %s", r.status, r.raw)
 	}
 	// Overview with a plan.
@@ -318,9 +318,9 @@ func TestBillingRoutes(t *testing.T) {
 	if usage["memory_gb"] != float64(8) || usage["egress_included_gb"] != float64(250) || usage["project_limit"] != float64(10) {
 		t.Fatalf("usage: %v", usage)
 	}
-	// Upgrade to pro, then cancel and resume, then the portal and invoices.
-	r = e.do(t, tok, "POST", "/billing/plan", map[string]any{"plan": "pro"})
-	if r.status != 200 || r.body["plan"] != "pro" || r.body["scheduled_plan"] != nil {
+	// Upgrade to plus, then cancel and resume, then the portal and invoices.
+	r = e.do(t, tok, "POST", "/billing/plan", map[string]any{"plan": "plus"})
+	if r.status != 200 || r.body["plan"] != "plus" || r.body["scheduled_plan"] != nil {
 		t.Fatalf("upgrade: %d %s", r.status, r.raw)
 	}
 	r = e.do(t, tok, "POST", "/billing/cancel", nil)
@@ -331,7 +331,7 @@ func TestBillingRoutes(t *testing.T) {
 		t.Fatalf("second cancel: %d %s", r.status, r.raw)
 	}
 	r = e.do(t, tok, "POST", "/billing/resume", nil)
-	if r.status != 200 || r.body["plan"] != "pro" {
+	if r.status != 200 || r.body["plan"] != "plus" {
 		t.Fatalf("resume: %d %s", r.status, r.raw)
 	}
 	if r := e.do(t, tok, "POST", "/billing/resume", nil); r.status != 409 || errDetail(r, "reason") != "not_cancelled" {

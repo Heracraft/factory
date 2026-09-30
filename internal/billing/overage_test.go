@@ -65,7 +65,7 @@ func TestOverageChargeOnce(t *testing.T) {
 	}
 
 	// Under the allowance: marked, nothing sent, no row.
-	b := seedAccount(t, pool, "pro", "active", "large", "stopped")
+	b := seedAccount(t, pool, "plus", "active", "large", "stopped")
 	f.subs[b.SubID] = map[string]any{"id": b.SubID, "status": "active"}
 	usageHour(t, pool, b.ProjectID, b.Period.Start, "large", 3600, 100<<30, b.Period)
 	charges, _, err = o.Run(ctx)
@@ -185,7 +185,7 @@ func TestEgressHardStop(t *testing.T) {
 		t.Fatalf("gate after the stop: %+v", r)
 	}
 	// BILLING_ENFORCE=false: the ceiling is logged, nothing stops.
-	b := seedAccount(t, pool, "pro", "active", "large", "running")
+	b := seedAccount(t, pool, "plus", "active", "large", "running")
 	usageHour(t, pool, b.ProjectID, b.Period.Start.Add(time.Hour), "large", 3600, 2000<<30, b.Period)
 	o.Enforce = false
 	_, stopped, err = o.Run(ctx)

@@ -28,6 +28,7 @@ func TestBillingSubcommands(t *testing.T) {
 	t.Setenv("PADDLE_API_KEY", "pdl_sdbx_apikey_test")
 	t.Setenv("PADDLE_WEBHOOK_SECRET", "pdl_ntfset_test")
 	t.Setenv("PADDLE_PRICE_SOLO", "pri_solo_test")
+	t.Setenv("PADDLE_PRICE_PLUS", "pri_plus_test")
 	t.Setenv("PADDLE_PRICE_PRO", "pri_pro_test")
 	t.Setenv("PADDLE_PRODUCT_OVERAGE", "pro_overage_test")
 
@@ -104,7 +105,7 @@ func TestBillingSubcommands(t *testing.T) {
 		t.Fatalf("bootstrap: %s %v", out, err)
 	}
 	again, err := run(t, e, "billing", "paddle-bootstrap", "--webhook-url", "https://api.test/v1/billing/webhook")
-	if err != nil || !strings.Contains(again, "created 0 object(s), found 6") {
+	if err != nil || !strings.Contains(again, "created 0 object(s), found 8") {
 		t.Fatalf("bootstrap rerun: %s %v", again, err)
 	}
 	t.Setenv("PADDLE_API_KEY", "pdl_live_apikey_test")

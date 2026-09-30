@@ -2009,7 +2009,7 @@ machines by itself, with a snapshot, for one of three reasons (the label):
 Nothing is deleted for 30 days. `repose-admin billing show <handle>` shows
 which; the `events` table has the email that went out. There is nothing to
 fix unless the reason is wrong: an `egress` stop for a tenant with a
-legitimate workload is a conversation about Pro, not a bug.
+legitimate workload is a conversation about a bigger plan, not a bug.
 
 ## Customer disputes a charge
 
@@ -2053,8 +2053,9 @@ for `period_end` and refused while the account would not fit. By hand,
 when the user cannot reach the dashboard or Paddle refused the change:
 
 1. In Paddle's dashboard, Subscriptions > the subscription > Change
-   items: replace the price with the other plan's (`PADDLE_PRICE_SOLO` or
-   `PADDLE_PRICE_PRO` in the api's environment name them), proration
+   items: replace the price with the other plan's (`PADDLE_PRICE_SOLO`,
+   `PADDLE_PRICE_PLUS` and `PADDLE_PRICE_PRO` in the api's environment
+   name them), proration
    "prorated immediately" for an upgrade and "prorated next billing
    period" for a downgrade.
 2. Paddle sends `subscription.updated`; the webhook writes the new plan

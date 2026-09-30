@@ -235,7 +235,7 @@ func (e *env) signIn(t *testing.T, sub, login string) string {
 	if r.status != 200 {
 		t.Fatalf("first sign-in: %d %s", r.status, r.raw)
 	}
-	e.subscribe(t, sub, "pro")
+	e.subscribe(t, sub, "plus")
 	return tok
 }
 
@@ -258,10 +258,7 @@ func (e *env) subscribe(t *testing.T, sub, plan string) {
 		}
 		return
 	}
-	seats := 1
-	if plan == "pro" {
-		seats = 2
-	}
+	seats := map[string]int{"solo": 1, "plus": 2, "pro": 4}[plan]
 	if _, err := e.h.Pool.Exec(ctx, `insert into subscriptions (id, user_id, paddle_customer_id, plan, status, seats, period_start, period_end, next_billed_at)
 		values ('sub_' || $1, $2, 'ctm_' || $1, $3, 'active', $4, date_trunc('month', now()), date_trunc('month', now()) + interval '1 month', date_trunc('month', now()) + interval '1 month')`,
 		sub, uid, plan, seats); err != nil {
@@ -486,11 +483,11 @@ func TestSignInAndProjectsLifecycle(t *testing.T) {
 	if msg, _ := r.body["error"].(map[string]any)["message"].(string); msg != "Choose a plan at https://repose.herakraft.co/billing first." {
 		t.Fatalf("message %q", msg)
 	}
-	e.subscribe(t, "sub-alice", "pro")
+	e.subscribe(t, "sub-alice", "plus")
 	r = e.do(t, tok, "GET", "/me", nil)
 	b = r.body["billing"].(map[string]any)
 	l = r.body["limits"].(map[string]any)
-	if b["status"] != "active" || b["plan"] != "pro" || b["seats"].(float64) != 2 || b["period_end"] == nil || l["projects"].(float64) != 25 || l["xl"].(float64) != 1 || l["memory_gb"].(float64) != 16 {
+	if b["status"] != "active" || b["plan"] != "plus" || b["seats"].(float64) != 2 || b["period_end"] == nil || l["projects"].(float64) != 25 || l["xl"].(float64) != 1 || l["memory_gb"].(float64) != 16 {
 		t.Fatalf("subscribed /me: %s", r.raw)
 	}
 	// Validation.
@@ -524,11 +521,11 @@ func TestSignInAndProjectsLifecycle(t *testing.T) {
 	if r := e.do(t, tok, "POST", "/projects", map[string]any{"name": "other", "class": "small", "remote_url": "github.com/alice/todo"}); r.status != 409 {
 		t.Fatalf("dup remote: %d %s", r.status, r.raw)
 	}
-	// The plan's memory (Pro, 16 GB): the large running takes 8; an xl
+	// The plan's memory (Plus, 16 GB): the large running takes 8; an xl
 	// (16) does not fit beside it, two smalls do, a third does not.
 	r = e.do(t, tok, "POST", "/projects", map[string]any{"name": "big", "class": "xl"})
 	if r.status != 402 || errDetail(r, "reason") != "plan_limit" {
-		t.Fatalf("xl beside a large on Pro: %d %s", r.status, r.raw)
+		t.Fatalf("xl beside a large on Plus: %d %s", r.status, r.raw)
 	}
 	if projects, _ := r.body["error"].(map[string]any)["detail"].(map[string]any)["projects"].([]any); len(projects) != 1 || projects[0] != "todo-app" {
 		t.Fatalf("plan_limit names the machines: %s", r.raw)

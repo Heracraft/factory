@@ -64,7 +64,7 @@ func TestCheckout(t *testing.T) {
 	}
 	// A subscriber is refused with subscribed.
 	b := seedAccount(t, pool, "solo", "active", "", "")
-	if _, err := s.Checkout(ctx, user(t, pool, b), "pro"); !errors.Is(err, billing.ErrSubscribed) {
+	if _, err := s.Checkout(ctx, user(t, pool, b), "plus"); !errors.Is(err, billing.ErrSubscribed) {
 		t.Fatalf("subscribed: %v", err)
 	}
 	// No seat: waitlisted with the place, no transaction.
@@ -84,7 +84,7 @@ func TestCheckout(t *testing.T) {
 		t.Fatal(err)
 	}
 	plans := ov["plans"].([]map[string]any)
-	if len(plans) != 2 || plans[0]["available"] != false || plans[0]["price_cents"] != int64(2900) || plans[1]["id"] != "pro" {
+	if len(plans) != 3 || plans[0]["available"] != false || plans[0]["price_cents"] != int64(2900) || plans[1]["id"] != "plus" || plans[2]["id"] != "pro" || plans[2]["seats"] != 4 {
 		t.Fatalf("plans: %v", plans)
 	}
 	seats := ov["seats"].(map[string]any)
@@ -122,22 +122,22 @@ func TestPlanChangesCancelResume(t *testing.T) {
 		t.Fatalf("same plan: %v", err)
 	}
 	// Upgrade: at once, prorated, plan_changed email.
-	ch, err := s.ChangePlan(ctx, user(t, pool, a), "pro")
-	if err != nil || ch.Plan != "pro" || ch.ScheduledPlan != nil {
+	ch, err := s.ChangePlan(ctx, user(t, pool, a), "plus")
+	if err != nil || ch.Plan != "plus" || ch.ScheduledPlan != nil {
 		t.Fatalf("upgrade: %+v %v", ch, err)
 	}
 	patch := f.Bodies["PATCH /subscriptions/"+a.SubID][0]
-	if patch["proration_billing_mode"] != "prorated_immediately" || patch["items"].([]any)[0].(map[string]any)["price_id"] != "pri_pro_test" {
+	if patch["proration_billing_mode"] != "prorated_immediately" || patch["items"].([]any)[0].(map[string]any)["price_id"] != "pri_plus_test" {
 		t.Fatalf("upgrade body: %v", patch)
 	}
 	sub, _ := billing.GetSubscription(ctx, pool, a.SubID)
-	if sub.Plan != "pro" || sub.Seats != 2 {
+	if sub.Plan != "plus" || sub.Seats != 2 {
 		t.Fatalf("row after upgrade: %+v", sub)
 	}
 	if k := eventKinds(t, pool, a); len(k) != 1 || k[0] != "plan_changed" {
 		t.Fatalf("events %v", k)
 	}
-	if p := accountEmail(t, pool, a, "plan_changed", "from Solo to Pro"); p["from_plan"] != "solo" || p["to_plan"] != "pro" || p["effective_at"] == nil {
+	if p := accountEmail(t, pool, a, "plan_changed", "from Solo to Plus"); p["from_plan"] != "solo" || p["to_plan"] != "plus" || p["effective_at"] == nil {
 		t.Fatalf("plan_changed payload %v", p)
 	}
 	// Downgrade refused while two large run (16 GB > 8).
@@ -152,7 +152,7 @@ func TestPlanChangesCancelResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	ch, err = s.ChangePlan(ctx, user(t, pool, a), "solo")
-	if err != nil || ch.Plan != "pro" || ch.ScheduledPlan == nil || *ch.ScheduledPlan != "solo" || !ch.EffectiveAt.Equal(a.Period.End) {
+	if err != nil || ch.Plan != "plus" || ch.ScheduledPlan == nil || *ch.ScheduledPlan != "solo" || !ch.EffectiveAt.Equal(a.Period.End) {
 		t.Fatalf("downgrade: %+v %v", ch, err)
 	}
 	if patches := f.Bodies["PATCH /subscriptions/"+a.SubID]; patches[len(patches)-1]["proration_billing_mode"] != "prorated_next_billing_period" {
@@ -164,15 +164,15 @@ func TestPlanChangesCancelResume(t *testing.T) {
 	}
 	// A webhook for the same subscription keeps the scheduled downgrade.
 	w := newHooks(t, pool, f, nil, nil)
-	if err := post(t, w, f, event("subscription.updated", subData(a.SubID, a, "pri_pro_test", "active", nil))); err != nil {
+	if err := post(t, w, f, event("subscription.updated", subData(a.SubID, a, "pri_plus_test", "active", nil))); err != nil {
 		t.Fatal(err)
 	}
 	sub, _ = billing.GetSubscription(ctx, pool, a.SubID)
 	if sub.ScheduledPlan == nil {
 		t.Fatal("the webhook dropped the scheduled downgrade")
 	}
-	// Choosing pro again undoes it.
-	if ch, err = s.ChangePlan(ctx, user(t, pool, a), "pro"); err != nil || ch.ScheduledPlan != nil {
+	// Choosing plus again undoes it.
+	if ch, err = s.ChangePlan(ctx, user(t, pool, a), "plus"); err != nil || ch.ScheduledPlan != nil {
 		t.Fatalf("undo: %+v %v", ch, err)
 	}
 	sub, _ = billing.GetSubscription(ctx, pool, a.SubID)
@@ -196,7 +196,7 @@ func TestPlanChangesCancelResume(t *testing.T) {
 	if k := eventKinds(t, pool, a); len(k) != 2 || k[1] != "subscription_cancelled" {
 		t.Fatalf("events %v", k)
 	}
-	if p := accountEmail(t, pool, a, "subscription_cancelled", "Pro", "1 November 2026 at 00:00 UTC"); p["plan"] != "pro" {
+	if p := accountEmail(t, pool, a, "subscription_cancelled", "Plus", "1 November 2026 at 00:00 UTC"); p["plan"] != "plus" {
 		t.Fatalf("subscription_cancelled payload %v", p)
 	}
 	resumed, err := s.Resume(ctx, user(t, pool, a))
@@ -208,14 +208,68 @@ func TestPlanChangesCancelResume(t *testing.T) {
 	}
 	// No subscription: ErrNoSubscription.
 	n := seedAccount(t, pool, "", "none", "", "")
-	if _, err := s.ChangePlan(ctx, user(t, pool, n), "pro"); !errors.Is(err, billing.ErrNoSubscription) {
+	if _, err := s.ChangePlan(ctx, user(t, pool, n), "plus"); !errors.Is(err, billing.ErrNoSubscription) {
 		t.Fatalf("no subscription: %v", err)
 	}
 	// Upgrade needs a free seat.
 	fullS, _ := newService(t, pool, f, fullSeats{})
 	b := seedAccount(t, pool, "solo", "active", "", "")
-	if _, err := fullS.ChangePlan(ctx, user(t, pool, b), "pro"); !errors.Is(err, billing.ErrNoSeat) {
+	if _, err := fullS.ChangePlan(ctx, user(t, pool, b), "plus"); !errors.Is(err, billing.ErrNoSeat) {
 		t.Fatalf("no seat: %v", err)
+	}
+}
+
+// TestPlanChangePlusPro moves between the two upper plans: Plus to Pro
+// takes two more seats at once; Pro to Plus is refused while three large
+// machines run (24 GB > 16) and scheduled once one stops.
+func TestPlanChangePlusPro(t *testing.T) {
+	pool := testdb.Open(t)
+	f := newFakePaddle()
+	defer f.Close()
+	s, _ := newService(t, pool, f, nil)
+	ctx := context.Background()
+	a := seedAccount(t, pool, "plus", "active", "large", "running")
+	f.AddSubscription("ctm_"+a.Handle, "pri_plus_test", "active")
+	var fakeID string
+	for id := range f.subs {
+		fakeID = id
+	}
+	if _, err := pool.Exec(ctx, "update subscriptions set id = $2 where id = $1", a.SubID, fakeID); err != nil {
+		t.Fatal(err)
+	}
+	a.SubID = fakeID
+
+	ch, err := s.ChangePlan(ctx, user(t, pool, a), "pro")
+	if err != nil || ch.Plan != "pro" || ch.ScheduledPlan != nil {
+		t.Fatalf("upgrade: %+v %v", ch, err)
+	}
+	patch := f.Bodies["PATCH /subscriptions/"+a.SubID][0]
+	if patch["proration_billing_mode"] != "prorated_immediately" || patch["items"].([]any)[0].(map[string]any)["price_id"] != "pri_pro_test" {
+		t.Fatalf("upgrade body: %v", patch)
+	}
+	sub, _ := billing.GetSubscription(ctx, pool, a.SubID)
+	if sub.Plan != "pro" || sub.Seats != 4 {
+		t.Fatalf("row after upgrade: %+v", sub)
+	}
+	if p := accountEmail(t, pool, a, "plan_changed", "from Plus to Pro"); p["to_plan"] != "pro" {
+		t.Fatalf("plan_changed payload %v", p)
+	}
+	addProject(t, pool, a, "api", "large", "running", 40<<30)
+	third := addProject(t, pool, a, "web", "large", "running", 40<<30)
+	_, err = s.ChangePlan(ctx, user(t, pool, a), "plus")
+	var over *billing.OverPlanError
+	if !errors.As(err, &over) || over.RunningGB != 24 {
+		t.Fatalf("over plan: %v", err)
+	}
+	if _, err := pool.Exec(ctx, "update projects set state = 'stopped' where id = $1", third); err != nil {
+		t.Fatal(err)
+	}
+	ch, err = s.ChangePlan(ctx, user(t, pool, a), "plus")
+	if err != nil || ch.Plan != "pro" || ch.ScheduledPlan == nil || *ch.ScheduledPlan != "plus" {
+		t.Fatalf("downgrade: %+v %v", ch, err)
+	}
+	if patches := f.Bodies["PATCH /subscriptions/"+a.SubID]; patches[len(patches)-1]["items"].([]any)[0].(map[string]any)["price_id"] != "pri_plus_test" {
+		t.Fatalf("downgrade body: %v", patches[len(patches)-1])
 	}
 }
 
@@ -225,7 +279,7 @@ func TestPortalAndInvoices(t *testing.T) {
 	defer f.Close()
 	s, _ := newService(t, pool, f, nil)
 	ctx := context.Background()
-	a := seedAccount(t, pool, "pro", "active", "", "")
+	a := seedAccount(t, pool, "plus", "active", "", "")
 	// The seeded customer id is unknown to the fake; EnsureCustomer keeps
 	// the stored one, so register it.
 	f.customers["ctm_"+a.Handle] = map[string]any{"id": "ctm_" + a.Handle, "email": a.Email, "status": "active"}
@@ -305,7 +359,7 @@ func TestCloseAccountChargesThenCancels(t *testing.T) {
 func TestSubscriptionSeatsStub(t *testing.T) {
 	pool := testdb.Open(t)
 	ctx := context.Background()
-	seedAccount(t, pool, "pro", "active", "", "")
+	seedAccount(t, pool, "plus", "active", "", "")
 	seedAccount(t, pool, "solo", "trial", "", "")
 	c := seedAccount(t, pool, "solo", "active", "", "")
 	if _, err := pool.Exec(ctx, "update subscriptions set status = 'canceled' where id = $1", c.SubID); err != nil {

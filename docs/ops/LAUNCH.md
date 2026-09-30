@@ -37,10 +37,10 @@ apps at the same time; the api ignores it and logs a warning (I-290).
    PADDLE_API_KEY=... API_PUBLIC_URL=https://api.repose.herakraft.co repose-admin billing paddle-bootstrap
    ```
 
-   It creates the two products and prices (Solo $29, Pro $59, seven-day
-   trial), the overage product and the webhook destination at
+   It creates the three products and prices (Solo $29, Plus $59, Pro $99,
+   seven-day trial), the overage product and the webhook destination at
    `https://api.repose.herakraft.co/v1/billing/webhook`, and prints the
-   env block: `PADDLE_PRICE_SOLO`, `PADDLE_PRICE_PRO`,
+   env block: `PADDLE_PRICE_SOLO`, `PADDLE_PRICE_PLUS`, `PADDLE_PRICE_PRO`,
    `PADDLE_PRODUCT_OVERAGE`, `PADDLE_WEBHOOK_SECRET`. Paste it into both
    api apps and redeploy. It is idempotent: run it again and it prints the
    same ids.

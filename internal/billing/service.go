@@ -44,7 +44,7 @@ func (s *Service) Seats() waitlist.Seats { return s.seats }
 
 // The refusals the routes map to conflict, invalid and waitlisted.
 var (
-	ErrUnknownPlan      = errors.New("plan must be solo or pro")
+	ErrUnknownPlan      = errors.New("plan must be solo, plus or pro")
 	ErrSubscribed       = errors.New("a subscription exists; change it with /billing/plan")
 	ErrNoSubscription   = errors.New("the account has no subscription")
 	ErrAlreadyCancelled = errors.New("the subscription is already cancelled")

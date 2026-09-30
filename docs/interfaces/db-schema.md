@@ -104,7 +104,7 @@ credit_ledger (id pk, user_id fk, cents bigint, reason text, ref text, created_a
               -- '<project_id>:<hour>' for a usage debit, unique among reason='usage'
 
 subscriptions (id text pk,  -- Paddle's subscription id (0008, I-289)
-              user_id fk, paddle_customer_id text, plan text,  -- solo|pro
+              user_id fk, paddle_customer_id text, plan text,  -- solo|plus|pro (0011, I-362)
               status text,  -- trialing|active|past_due|paused|canceled; at most one live per user
               seats int, period_start, period_end, next_billed_at, trial_end,
               cancel_at null,          -- a scheduled cancellation takes effect here

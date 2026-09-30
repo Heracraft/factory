@@ -668,8 +668,8 @@ def billing() -> dict:
             panel(
                 "table", "Egress this period per account",
                 [sql("""select u.handle as owner, s.plan, sum(h.egress_bytes) as egress,
-                        (case s.plan when 'pro' then 500 else 250 end) as included_gb,
-                        greatest(0, ceil(sum(h.egress_bytes) / 1073741824.0 - (case s.plan when 'pro' then 500 else 250 end))) * 5 / 100.0 as overage_usd
+                        (case s.plan when 'pro' then 1000 when 'plus' then 500 else 250 end) as included_gb,
+                        greatest(0, ceil(sum(h.egress_bytes) / 1073741824.0 - (case s.plan when 'pro' then 1000 when 'plus' then 500 else 250 end))) * 5 / 100.0 as overage_usd
                         from subscriptions s join users u on u.id = s.user_id
                         join projects p on p.user_id = s.user_id join usage_hours h on h.project_id = p.id
                         where s.status in ('trialing','active','past_due') and h.hour >= s.period_start and h.hour < s.period_end
@@ -696,7 +696,7 @@ def billing() -> dict:
                 "timeseries", "Egress per hour",
                 [sql("""select hour as time, sum(egress_bytes) as egress from usage_hours
                         where $__timeFilter(hour) group by 1 order by 1""")],
-                desc="250 GB a month is included on Solo, 500 on Pro, then $0.05 a GB; machines stop at four times the allowance. The per-project view is on the Abuse dashboard.",
+                desc="250 GB a month is included on Solo, 500 on Plus, 1000 on Pro, then $0.05 a GB; machines stop at four times the allowance. The per-project view is on the Abuse dashboard.",
                 unit="bytes", w=24,
             ),
         ],

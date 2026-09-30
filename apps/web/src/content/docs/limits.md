@@ -7,21 +7,21 @@ order: 31
 
 ## Your plan
 
-A plan buys memory that may run at once, disk that may be allocated, and egress for the month ([Pricing](/docs/billing)). Solo runs 8 GB at once (one `large`, or two `small`), Pro 16 GB (one `xl`, two `large`, any mix). Starting a machine that would pass it is refused with exit code 7 and a message that names the machine using the memory; stop it, or upgrade. An `xl` needs Pro.
+A plan buys memory that may run at once, disk that may be allocated, and egress for the month ([Pricing](/docs/billing)). Solo runs 8 GB at once (one `large`, or two `small`), Plus 16 GB (one `xl`, two `large`, any mix), Pro 32 GB (two `xl`, four `large`, any mix). Starting a machine that would pass it is refused with exit code 7 and a message that names the machine using the memory; stop it, or upgrade. An `xl` needs Plus or Pro.
 
 ## Projects
 
-Solo allows 10 projects and Pro 25, running or stopped. Destroyed projects don't count, and neither does one still being destroyed, for projects or for disk. A project whose destroy failed still counts until `repose rm` succeeds. Each copy [`repose fork`](/docs/lifecycle#fork-a-project) makes is a project, and so is a [temporary machine](/docs/lifecycle#temporary-machines) until it's destroyed. A temporary machine lives from 10 minutes to 24 hours, and waits at most a day past that while someone is attached. Disk bounds it anyway: Solo allocates up to 100 GB across its projects, Pro 250 GB.
+Solo allows 10 projects, Plus 25 and Pro 50, running or stopped. Destroyed projects don't count, and neither does one still being destroyed, for projects or for disk. A project whose destroy failed still counts until `repose rm` succeeds. Each copy [`repose fork`](/docs/lifecycle#fork-a-project) makes is a project, and so is a [temporary machine](/docs/lifecycle#temporary-machines) until it's destroyed. A temporary machine lives from 10 minutes to 24 hours, and waits at most a day past that while someone is attached. Disk bounds it anyway: Solo allocates up to 100 GB across its projects, Plus 250 GB, Pro 500 GB.
 
 ## When repose is full
 
-Machines never share memory, so there's room for a fixed number of them. A seat is 8 GB running at once: Solo takes one, Pro two. When no seat is free, choosing a plan puts you on the waitlist instead: `repose is full right now. You're number 3 on the waitlist; we'll email you@example.com when there's a seat.` The Billing page and the landing page show the seats left and the number waiting.
+Machines never share memory, so there's room for a fixed number of them. A seat is 8 GB running at once: Solo takes one, Plus two, Pro four. When no seat is free, choosing a plan puts you on the waitlist instead: `repose is full right now. You're number 3 on the waitlist; we'll email you@example.com when there's a seat.` The Billing page and the landing page show the seats left and the number waiting.
 
 We let people in, in the order they joined, as seats free up or we add a server. You get one email when it's your turn, sent even if you've turned notification emails off, and the seat is held for you for 72 hours. Choose your plan within them; a hold that runs out moves you to the back of the queue, and the email says so.
 
 ## Egress
 
-Data your machines send to the internet is counted against the month's allowance (250 GB on Solo, 500 GB on Pro), then $0.05 per GB. At four times the allowance your machines are stopped until the month turns, with an email. Incoming data, and your own SSH traffic through the gateway, don't count.
+Data your machines send to the internet is counted against the month's allowance (250 GB on Solo, 500 GB on Plus, 1 TB on Pro), then $0.05 per GB. At four times the allowance your machines are stopped until the month turns, with an email. Incoming data, and your own SSH traffic through the gateway, don't count.
 
 ## Network
 

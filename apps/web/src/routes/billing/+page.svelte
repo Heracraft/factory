@@ -42,13 +42,25 @@
 	let plan = $derived<Plan | undefined>(
 		billing && sub ? billing.plans.find((p) => p.id === sub.plan) : undefined
 	);
-	let otherPlan = $derived<Plan | undefined>(
-		billing && sub ? billing.plans.find((p) => p.id !== sub.plan) : undefined
+	// Every plan but the current one, in the api's order (solo, plus, pro):
+	// more seats is an upgrade, fewer a downgrade (docs/PRICING.md).
+	let otherPlans = $derived<Plan[]>(
+		billing && sub ? billing.plans.filter((p) => p.id !== sub.plan) : []
+	);
+	let scheduledPlan = $derived<Plan | undefined>(
+		billing && sub?.scheduled_plan
+			? billing.plans.find((p) => p.id === sub.scheduled_plan)
+			: undefined
 	);
 	let holdActive = $derived(
 		!!billing?.waitlist?.hold_until && new Date(billing.waitlist.hold_until).getTime() > Date.now()
 	);
 	let anyAvailable = $derived(!!billing?.plans.some((p) => p.available));
+	// The three plan cards need the list width; everything else reads at
+	// the form's.
+	let showCards = $derived(
+		!!billing && !sub && !settingUp && (setupTimedOut || holdActive || anyAvailable)
+	);
 	let accountStatus = $derived(me?.billing.status);
 
 	async function load() {
@@ -152,7 +164,7 @@
 	}
 
 	async function changePlan(to: PlanId) {
-		busy = 'plan';
+		busy = `plan-${to}`;
 		changeError = undefined;
 		try {
 			await billingChangePlan(to);
@@ -202,9 +214,19 @@
 		}
 	}
 
-	/** "one large, or two small" for a plan's memory (docs/PRICING.md). */
+	const counts = ['none', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
+	const count = (n: number) => counts[n] ?? String(n);
+	// Egress allowances read as the pricing table writes them: 1000 GB is 1 TB.
+	const allowance = (gb: number) =>
+		gb >= 1000 && gb % 1000 === 0 ? `${gb / 1000} TB` : `${gb} GB`;
+
+	/** "one large, or two small" for a plan's memory (docs/PRICING.md):
+	 * xl 16 GB, large 8, small 4. */
 	function runsAtOnce(p: Plan): string {
-		return p.memory_gb >= 16 ? 'one xl, two large, or any mix' : 'one large, or two small';
+		const xl = Math.floor(p.memory_gb / 16);
+		const large = Math.floor(p.memory_gb / 8);
+		if (xl > 0) return `${count(xl)} xl, ${count(large)} large, or any mix`;
+		return `${count(large)} large, or ${count(Math.floor(p.memory_gb / 4))} small`;
 	}
 </script>
 
@@ -234,17 +256,24 @@
 					</div>
 					<div class="flex justify-between gap-4">
 						<dt class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">Egress a month</dt>
-						<dd>{p.egress_gb} GB</dd>
+						<dd>{allowance(p.egress_gb)}</dd>
 					</div>
 					<div class="flex justify-between gap-4">
 						<dt class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">Projects</dt>
 						<dd>{p.project_limit}</dd>
 					</div>
 				</dl>
-				<p class="mt-4 text-sm text-zinc-500 dark:text-zinc-400">
+				<p class="mt-4 text-sm text-pretty text-zinc-500 dark:text-zinc-400">
 					{p.trial_days} days free, card at checkout, cancel any time.
 				</p>
+				<!-- The note sits above the button so the buttons line up across
+				     the cards whether or not one has a note. -->
 				<div class="mt-auto pt-5">
+					{#if !p.available && billing}
+						<p class="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+							Needs {p.seats} seats; {billing.seats.free} free.
+						</p>
+					{/if}
 					<button
 						type="button"
 						class="btn w-full"
@@ -253,18 +282,13 @@
 					>
 						{busy === `choose-${p.id}` ? 'Opening checkout…' : `Choose ${p.name}`}
 					</button>
-					{#if !p.available && billing}
-						<p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-							Needs {p.seats} seats; {billing.seats.free} free.
-						</p>
-					{/if}
 				</div>
 			</li>
 		{/each}
 	</ul>
 {/snippet}
 
-<PageShell title="Billing" width="form">
+<PageShell title="Billing" width={showCards ? 'list' : 'form'}>
 	{#if billingDisabled}
 		<p class="text-sm text-zinc-500 dark:text-zinc-400" data-testid="billing-disabled">
 			Billing is not switched on yet.
@@ -380,8 +404,8 @@
 				{:else}
 					Active.
 				{/if}
-				{#if sub.scheduled_plan && otherPlan}
-					Changes to {otherPlan.name} on {dateOnly(sub.period_end)}.
+				{#if scheduledPlan}
+					Changes to {scheduledPlan.name} on {dateOnly(sub.period_end)}.
 				{/if}
 			</p>
 
@@ -449,59 +473,58 @@
 				>
 			</div>
 
-			{#if changing && otherPlan}
-				{@const other = otherPlan}
+			{#if changing && otherPlans.length}
 				<div
-					class="mt-4 rounded-sm border p-4 text-sm"
+					class="mt-4 rounded-sm border text-sm"
 					style="border-color: var(--rule)"
 					data-testid="change-plan"
 				>
-					{#if sub.scheduled_plan}
-						<p>
-							{otherPlan.name} is scheduled for {dateOnly(sub.period_end)}. Keep {plan.name} instead?
-						</p>
-						<button
-							type="button"
-							class="btn mt-3"
-							disabled={!!busy}
-							onclick={() => changePlan(sub.plan)}
-						>
-							{busy === 'plan' ? 'Saving…' : `Keep ${plan.name}`}
-						</button>
-					{:else if otherPlan.price_cents > plan.price_cents}
-						<p>
-							Upgrade to <b>{otherPlan.name}</b> ({price(otherPlan.price_cents)} a month:
-							{otherPlan.memory_gb} GB running at once, {otherPlan.disk_gb} GB disk,
-							{otherPlan.egress_gb} GB egress). Takes effect at once; Paddle prorates the rest of this
-							period.
-						</p>
-						<button
-							type="button"
-							class="btn mt-3"
-							disabled={!!busy}
-							onclick={() => changePlan(other.id)}
-						>
-							{busy === 'plan' ? 'Upgrading…' : `Upgrade to ${otherPlan.name}`}
-						</button>
-					{:else}
-						<p>
-							Downgrade to <b>{otherPlan.name}</b> ({price(otherPlan.price_cents)} a month:
-							{otherPlan.memory_gb} GB running at once, {otherPlan.disk_gb} GB disk,
-							{otherPlan.egress_gb} GB egress). Takes effect at the renewal on {dateOnly(
-								sub.period_end
-							)}; what runs and what is allocated has to fit it first.
-						</p>
-						<button
-							type="button"
-							class="btn mt-3"
-							disabled={!!busy}
-							onclick={() => changePlan(other.id)}
-						>
-							{busy === 'plan' ? 'Scheduling…' : `Downgrade to ${otherPlan.name}`}
-						</button>
+					{#if scheduledPlan}
+						<div class="change-row p-4" data-testid="change-keep">
+							<p>
+								{scheduledPlan.name} is scheduled for {dateOnly(sub.period_end)}. Keep {plan.name}
+								instead?
+							</p>
+							<button
+								type="button"
+								class="btn mt-3"
+								disabled={!!busy}
+								onclick={() => changePlan(sub.plan)}
+							>
+								{busy === `plan-${sub.plan}` ? 'Saving…' : `Keep ${plan.name}`}
+							</button>
+						</div>
 					{/if}
+					{#each otherPlans.filter((p) => p.id !== scheduledPlan?.id) as other (other.id)}
+						{@const up = other.seats > plan.seats}
+						<div class="change-row p-4" data-testid="change-to-{other.id}">
+							<p>
+								{up ? 'Upgrade' : 'Downgrade'} to <b>{other.name}</b> ({price(other.price_cents)} a month:
+								{other.memory_gb} GB running at once, {other.disk_gb} GB disk,
+								{allowance(other.egress_gb)} egress).
+								{#if up}
+									Takes effect at once; Paddle prorates the rest of this period.
+								{:else}
+									Takes effect at the renewal on {dateOnly(sub.period_end)}; what runs and what is
+									allocated has to fit it first.
+								{/if}
+							</p>
+							<button
+								type="button"
+								class="{up ? 'btn' : 'btn-quiet'} mt-3"
+								disabled={!!busy}
+								onclick={() => changePlan(other.id)}
+							>
+								{#if busy === `plan-${other.id}`}
+									{up ? 'Upgrading…' : 'Scheduling…'}
+								{:else}
+									{up ? 'Upgrade' : 'Downgrade'} to {other.name}
+								{/if}
+							</button>
+						</div>
+					{/each}
 					{#if changeError}
-						<p class="field-error" data-testid="change-error">{changeError}</p>
+						<p class="field-error px-4 pb-4" data-testid="change-error">{changeError}</p>
 					{/if}
 				</div>
 			{/if}
@@ -571,7 +594,8 @@
 </PageShell>
 
 <style>
-	/* Two plan cards side by side from 480px, one under the other below. */
+	/* Three plan cards side by side from 900px (the page is list-wide while
+	   they show), one under the other below. */
 	.plans {
 		display: grid;
 		gap: 1rem;
@@ -579,9 +603,12 @@
 		margin: 0;
 		padding: 0;
 	}
-	@media (min-width: 480px) {
+	@media (min-width: 900px) {
 		.plans {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
+			grid-template-columns: repeat(3, minmax(0, 1fr));
 		}
+	}
+	.change-row + .change-row {
+		border-top: 1px solid var(--rule);
 	}
 </style>

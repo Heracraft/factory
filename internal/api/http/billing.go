@@ -75,7 +75,7 @@ func (s *Server) billingCheckout(w http.ResponseWriter, r *http.Request) error {
 	var wl *billing.WaitlistedError
 	switch {
 	case errors.Is(err, billing.ErrUnknownPlan):
-		return errf("invalid", "plan must be solo or pro")
+		return errf("invalid", "plan must be solo, plus or pro")
 	case errors.Is(err, billing.ErrSubscribed):
 		return withDetail(errf("conflict", "you already have a plan; change it from the billing page"), map[string]any{"reason": "subscribed"})
 	case errors.As(err, &wl):
@@ -103,7 +103,7 @@ func (s *Server) billingPlan(w http.ResponseWriter, r *http.Request) error {
 	var over *billing.OverPlanError
 	switch {
 	case errors.Is(err, billing.ErrUnknownPlan):
-		return errf("invalid", "plan must be solo or pro")
+		return errf("invalid", "plan must be solo, plus or pro")
 	case errors.Is(err, billing.ErrNoSubscription):
 		return withDetail(errf("conflict", "you have no plan yet; choose one with a checkout"), map[string]any{"reason": "no_subscription"})
 	case errors.Is(err, billing.ErrSamePlan):

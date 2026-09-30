@@ -62,8 +62,8 @@ export const unfail = (method: string, path: string) => adminCall('/unfail', { m
 /** The fake's billing knobs (internal/fakes/api.BillingState, cmd/fakeapi POST /billing). */
 export interface BillingState {
 	mode?: 'off' | 'none' | 'trial' | 'active' | 'past_due' | 'suspended' | 'exempt';
-	plan?: 'solo' | 'pro';
-	scheduled_plan?: 'solo' | 'pro' | '';
+	plan?: 'solo' | 'plus' | 'pro';
+	scheduled_plan?: 'solo' | 'plus' | 'pro' | '';
 	cancelled?: boolean;
 	seats?: { total: number; held: number; waiting: number };
 	waitlist?: { position: number; invited?: boolean; hold_hours?: number };

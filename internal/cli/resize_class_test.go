@@ -20,7 +20,7 @@ func TestClassSpecsMatchBillingAndHost(t *testing.T) {
 		}
 		wantPlan := billing.Solo
 		if c.MemGB > billing.Solo.MemoryGB {
-			wantPlan = billing.Pro
+			wantPlan = billing.Plus
 		}
 		if c.Plan != wantPlan.Name {
 			t.Errorf("%s: cli says %s, the smallest plan with %d GB is %s", class, c.Plan, c.MemGB, wantPlan.Name)
@@ -74,7 +74,7 @@ func TestResizeClass(t *testing.T) {
 		if got := get(t, e, p.ID); got.Class != "xl" || got.State != "stopped" {
 			t.Fatalf("after: %s %s", got.Class, got.State)
 		}
-		if !strings.Contains(out.String(), "from large to xl: 8 vCPU, 16 GB memory; needs the Pro plan") || !strings.Contains(out.String(), "`repose start todo-app`") {
+		if !strings.Contains(out.String(), "from large to xl: 8 vCPU, 16 GB memory; needs the Plus plan") || !strings.Contains(out.String(), "`repose start todo-app`") {
 			t.Fatalf("output %q", out.String())
 		}
 	})

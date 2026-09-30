@@ -21,18 +21,18 @@ type classSpec struct {
 var classSpecs = map[string]classSpec{
 	"small": {VCPUs: 2, MemGB: 4, Plan: "Solo"},
 	"large": {VCPUs: 4, MemGB: 8, Plan: "Solo"},
-	"xl":    {VCPUs: 8, MemGB: 16, Plan: "Pro"},
+	"xl":    {VCPUs: 8, MemGB: 16, Plan: "Plus"},
 }
 
 // classSummary is "4 vCPU, 8 GB memory; fits the Solo plan" or "8 vCPU,
-// 16 GB memory; needs the Pro plan".
+// 16 GB memory; needs the Plus plan".
 func classSummary(class string) string {
 	c, ok := classSpecs[class]
 	if !ok {
 		return class
 	}
 	verb := "fits the"
-	if c.Plan == "Pro" {
+	if c.Plan != "Solo" {
 		verb = "needs the"
 	}
 	return fmt.Sprintf("%d vCPU, %d GB memory; %s %s plan", c.VCPUs, c.MemGB, verb, c.Plan)

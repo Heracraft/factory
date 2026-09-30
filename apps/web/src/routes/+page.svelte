@@ -68,7 +68,7 @@
 		{ title: 'Sign in', command: 'repose login' },
 		{ title: 'Run in any checkout', command: 'cd ~/code/recruiting && repose run' }
 	];
-	// docs/PRICING.md's two plans. The Units count is the memory that may
+	// docs/PRICING.md's three plans. The Units count is the memory that may
 	// run at once, one square per GB, so the plans compare at a glance.
 	const plans: {
 		name: string;
@@ -87,12 +87,20 @@
 			egress: '250 GB'
 		},
 		{
-			name: 'Pro',
+			name: 'Plus',
 			price: '$59',
 			memory: 16,
 			runs: 'one xl, two large, or any mix',
 			disk: '250 GB',
 			egress: '500 GB'
+		},
+		{
+			name: 'Pro',
+			price: '$99',
+			memory: 32,
+			runs: 'two xl, four large, or any mix',
+			disk: '500 GB',
+			egress: '1 TB'
 		}
 	];
 	// The footer's row: every shape the page used, in the order it used
@@ -253,9 +261,9 @@
 
 		<section class="sec">
 			<SectionHead id="pricing" title="Pricing">
-				Two plans. Seven days free, card at checkout.
+				Three plans. Seven days free, card at checkout.
 			</SectionHead>
-			<ul class="tiers tiers--two" use:landOnView>
+			<ul class="tiers" use:landOnView>
 				{#each plans as t, i (t.name)}
 					<li class="tier">
 						<div class="tier-top">

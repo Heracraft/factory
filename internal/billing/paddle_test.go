@@ -20,20 +20,24 @@ func TestPaddleEnvironmentFromKey(t *testing.T) {
 	if cfg.Environment() != "sandbox" {
 		t.Fatal("config environment")
 	}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "PADDLE_PRICE_PRO") || !strings.Contains(err.Error(), "PADDLE_WEBHOOK_SECRET") {
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "PADDLE_PRICE_PRO") || !strings.Contains(err.Error(), "PADDLE_PRICE_PLUS") || !strings.Contains(err.Error(), "PADDLE_WEBHOOK_SECRET") {
 		t.Fatalf("a key without the rest is refused, naming what is missing: %v", err)
 	}
 	if err := (billing.Config{}).Validate(); err != nil {
 		t.Fatalf("no key is a valid (disabled) configuration: %v", err)
 	}
-	full := billing.Config{APIKey: "k", WebhookSecret: "s", PriceSolo: "a", PricePro: "b", ProductOverage: "p"}
+	full := billing.Config{APIKey: "k", WebhookSecret: "s", PriceSolo: "a", PricePlus: "c", PricePro: "b", ProductOverage: "p"}
 	if err := full.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	full.PricePro = "a"
+	if full.PlanForPrice("a") != "solo" || full.PlanForPrice("c") != "plus" || full.PlanForPrice("b") != "pro" || full.PlanForPrice("zzz") != "" || full.PlanPrice("plus") != "c" || full.PlanPrice("pro") != "b" {
+		t.Fatal("price <-> plan mapping")
+	}
+	full.PricePro = "c"
 	if err := full.Validate(); err == nil {
 		t.Fatal("two plans on one price is refused")
 	}
+	full.PricePro = "a"
 	if full.PlanForPrice("a") != "solo" || full.PlanForPrice("zzz") != "" || full.PlanPrice("pro") != "a" {
 		t.Fatal("price <-> plan mapping")
 	}
