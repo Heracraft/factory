@@ -32,11 +32,23 @@
 				visibility: hidden;
 			}
 		</style>
-		<link rel="preconnect" href="https://fonts.googleapis.com" />
-		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+		<!-- The fonts are self-hosted (static/fonts, @font-face in
+		     routes/layout.css). The two heading cuts are fetched before the CSS
+		     that names them arrives: 700 is the landing's headline, 600 every
+		     dashboard title. -->
 		<link
-			href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Serif:wght@400;600;700&display=swap"
-			rel="stylesheet"
+			rel="preload"
+			href="%sveltekit.assets%/fonts/noto-serif-latin-700-normal.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin="anonymous"
+		/>
+		<link
+			rel="preload"
+			href="%sveltekit.assets%/fonts/noto-serif-latin-600-normal.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin="anonymous"
 		/>
 		%sveltekit.head%
 	</head>

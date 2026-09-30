@@ -5,7 +5,9 @@
  * One restrained system for every page: neutral paper and ink, hairline
  * rules, corners of 2 to 4px, no shadows or gradients, one accent colour
  * (links, focus, selection). Every heading is Noto Serif; body text is the
- * system sans; commands and ids are the system mono.
+ * system sans; commands and ids are JetBrains Mono. Both faces are served
+ * from static/fonts, so no page asks a third party for a font (the privacy
+ * policy names every processor, and a font CDN is not one of them).
  *
  * The pages use Tailwind's zinc, blue, emerald, amber and red scales. They
  * are re-toned here so every page follows the same palette without each
@@ -13,11 +15,22 @@
  * "running", amber "attention", red "failed".
  */
 @theme {
-	--font-display: 'Noto Serif', Georgia, 'Times New Roman', serif;
-	--font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+	/* Each webfont is followed by a local face scaled to its metrics (the
+	   @font-face rules below), so the swap from fallback to webfont does not
+	   move the text. */
+	--font-display: 'Noto Serif', 'Noto Serif Fallback', Georgia, 'Times New Roman', serif;
+	--font-mono:
+		'JetBrains Mono', 'JetBrains Mono Fallback', ui-monospace, 'SF Mono', Menlo, Consolas,
+		'DejaVu Sans Mono', 'Liberation Mono', monospace;
+	/* Tailwind's own default, written out so the body face is a choice made
+	   here and not whatever a Tailwind upgrade ships. */
+	--font-sans:
+		-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', Arial,
+		sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 
-	/* Sharp by default: the whole radius scale tops out at 4px. */
-	--radius-xs: 1px;
+	/* Sharp by default: the whole radius scale runs from 2px to 4px, so
+	   rounded-xs on a badge or a dot is still a corner and not a 1px blur. */
+	--radius-xs: 2px;
 	--radius-sm: 2px;
 	--radius-md: 3px;
 	--radius-lg: 4px;
@@ -30,7 +43,9 @@
 	--color-zinc-200: #e4e4e1;
 	--color-zinc-300: #cfcfcb;
 	--color-zinc-400: #a2a29d;
-	--color-zinc-500: #767671;
+	/* 500 is the darkest grey pages used for small text on --sunken, so it
+	   sits just dark enough for 4.5:1 there (#767671 gave 4.15). */
+	--color-zinc-500: #70706b;
 	--color-zinc-600: #595955;
 	--color-zinc-700: #3e3e3b;
 	--color-zinc-800: #282826;
@@ -86,6 +101,169 @@
 	--color-red-950: #311110;
 }
 
+/*
+ * The scheme-aware colours as utilities: text-ink, text-ink-muted,
+ * text-ink-faint, border-control, bg-surface and the rest. Inline, so each
+ * utility reads the variable itself and follows the scheme switch on :root
+ * instead of a value frozen when the theme was built. Pages use these rather
+ * than hand-pairing text-zinc-500 with dark:text-zinc-400, which is how the
+ * dashboard and the landing ended up with two different "muted" greys.
+ */
+@theme inline {
+	--color-ink: var(--ink);
+	--color-ink-muted: var(--ink-muted);
+	--color-ink-faint: var(--ink-faint);
+	--color-control: var(--control-edge);
+	--color-page: var(--page);
+	--color-surface: var(--surface);
+	--color-sunken: var(--sunken);
+	--color-rule: var(--rule);
+	--color-rule-strong: var(--rule-strong);
+}
+
+/*
+ * The two webfonts, self-hosted (static/fonts, with their OFL licences).
+ * Latin is what the pages are written in; latin-ext is there for names a
+ * user types, and a browser fetches it only when a page has such a
+ * character. JetBrains Mono's italic is the docs' code comments.
+ */
+@font-face {
+	font-family: 'Noto Serif';
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url('/fonts/noto-serif-latin-400-normal.woff2') format('woff2');
+	unicode-range:
+		U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+		U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+	font-family: 'Noto Serif';
+	font-style: normal;
+	font-weight: 600;
+	font-display: swap;
+	src: url('/fonts/noto-serif-latin-600-normal.woff2') format('woff2');
+	unicode-range:
+		U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+		U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+	font-family: 'Noto Serif';
+	font-style: normal;
+	font-weight: 700;
+	font-display: swap;
+	src: url('/fonts/noto-serif-latin-700-normal.woff2') format('woff2');
+	unicode-range:
+		U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+		U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+	font-family: 'Noto Serif';
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url('/fonts/noto-serif-latin-ext-400-normal.woff2') format('woff2');
+	unicode-range:
+		U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+		U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+		U+A720-A7FF;
+}
+@font-face {
+	font-family: 'Noto Serif';
+	font-style: normal;
+	font-weight: 600;
+	font-display: swap;
+	src: url('/fonts/noto-serif-latin-ext-600-normal.woff2') format('woff2');
+	unicode-range:
+		U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+		U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+		U+A720-A7FF;
+}
+@font-face {
+	font-family: 'Noto Serif';
+	font-style: normal;
+	font-weight: 700;
+	font-display: swap;
+	src: url('/fonts/noto-serif-latin-ext-700-normal.woff2') format('woff2');
+	unicode-range:
+		U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+		U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+		U+A720-A7FF;
+}
+@font-face {
+	font-family: 'JetBrains Mono';
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url('/fonts/jetbrains-mono-latin-400-normal.woff2') format('woff2');
+	unicode-range:
+		U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+		U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+	font-family: 'JetBrains Mono';
+	font-style: normal;
+	font-weight: 600;
+	font-display: swap;
+	src: url('/fonts/jetbrains-mono-latin-600-normal.woff2') format('woff2');
+	unicode-range:
+		U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+		U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+	font-family: 'JetBrains Mono';
+	font-style: italic;
+	font-weight: 400;
+	font-display: swap;
+	src: url('/fonts/jetbrains-mono-latin-400-italic.woff2') format('woff2');
+	unicode-range:
+		U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+		U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+	font-family: 'JetBrains Mono';
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url('/fonts/jetbrains-mono-latin-ext-400-normal.woff2') format('woff2');
+	unicode-range:
+		U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+		U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+		U+A720-A7FF;
+}
+@font-face {
+	font-family: 'JetBrains Mono';
+	font-style: normal;
+	font-weight: 600;
+	font-display: swap;
+	src: url('/fonts/jetbrains-mono-latin-ext-600-normal.woff2') format('woff2');
+	unicode-range:
+		U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+		U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+		U+A720-A7FF;
+}
+/* Local faces scaled to the webfonts' average width and vertical metrics
+   (from @capsizecss/metrics: Noto Serif 481/1000 wide, ascent 1069, descent
+   293; Georgia 913/2048; JetBrains Mono 600/1000, ascent 1020, descent 300;
+   Courier New 1229/2048). A heading painted in the fallback wraps where the
+   webfont will, so nothing jumps when it arrives. */
+@font-face {
+	font-family: 'Noto Serif Fallback';
+	src: local('Georgia');
+	size-adjust: 107.9%;
+	ascent-override: 99.07%;
+	descent-override: 27.15%;
+	line-gap-override: 0%;
+}
+@font-face {
+	font-family: 'JetBrains Mono Fallback';
+	src: local('Courier New');
+	size-adjust: 99.98%;
+	ascent-override: 102.02%;
+	descent-override: 30.01%;
+	line-gap-override: 0%;
+}
+
 @layer base {
 	:root {
 		color-scheme: light dark;
@@ -108,27 +286,38 @@
 		--sh-light: var(--color-zinc-300);
 		--sh-ink: var(--color-zinc-700);
 		--sh-paper: var(--surface);
-		--sh-stop: var(--color-red-600);
 
-		/* The landing's text colours (landing.css). Here rather than there so
-		   they are set before the landing's own stylesheet arrives
-		   (DECISIONS I-331). */
+		/* The text colours, for every page (text-ink, text-ink-muted,
+		   text-ink-faint). Here rather than in landing.css so they are set
+		   before the landing's own stylesheet arrives (DECISIONS I-331).
+		   Each holds 4.5:1 on --page, --surface and --sunken in its scheme,
+		   so small print on a code block still passes. */
 		--ink: var(--color-zinc-900);
 		--ink-muted: var(--color-zinc-600);
-		--ink-faint: var(--color-zinc-500);
+		--ink-faint: #6b6b66;
+		/* The edge of anything you type into or press: fields, quiet
+		   buttons, the stopped dot. 3:1 against the page and the surface
+		   (WCAG 1.4.11); --rule-strong, at 1.6:1, is for rules and badges,
+		   which nobody has to find to use. */
+		--control-edge: #888883;
+		/* The focus ring's colour, one place for both schemes. */
+		--focus: var(--color-blue-600);
 	}
 	@media (prefers-color-scheme: dark) {
 		:root {
 			--sh-accent: var(--color-blue-400);
 			--sh-grey: var(--color-zinc-500);
 			--sh-light: var(--color-zinc-600);
-			--sh-ink: var(--color-zinc-900);
-			/* red-400 sits too close to the orange in the dark for a tile
-			   turning rogue to show; red-500 does not. */
-			--sh-stop: var(--color-red-500);
+			/* Light on dark: the pupil and the door are holes in the light
+			   scheme and lit marks in the dark one. zinc-900 here sat at
+			   1.02:1 on the paper ring and erased both; zinc-400 holds 7:1
+			   on it and stays a mid value beside the zinc-500 shapes. */
+			--sh-ink: var(--color-zinc-400);
 			--ink: var(--color-zinc-100);
 			--ink-muted: var(--color-zinc-400);
-			--ink-faint: var(--color-zinc-500);
+			--ink-faint: #8f8f8a;
+			--control-edge: #6a6a66;
+			--focus: var(--color-blue-400);
 			--page: #111110;
 			--surface: #161615;
 			--sunken: #1b1b1a;
@@ -168,7 +357,8 @@
 		font-family: var(--font-mono);
 	}
 	:focus-visible {
-		@apply outline-2 outline-offset-2 outline-blue-600 dark:outline-blue-400;
+		@apply outline-2 outline-offset-2;
+		outline-color: var(--focus);
 	}
 	input[type='checkbox'],
 	input[type='radio'] {
@@ -200,22 +390,24 @@
 
 	/* Inputs */
 	.field {
-		@apply rounded-sm border px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-300;
+		@apply rounded-sm border px-3 py-2 text-sm text-ink placeholder:text-ink-faint;
 		background-color: var(--surface);
-		border-color: var(--rule-strong);
+		border-color: var(--control-edge);
 	}
+	/* Focus is the house ring from :focus-visible (a text field matches it on
+	   a click too), which a set field's dark border cannot be mistaken for. */
 	textarea.field {
 		@apply min-h-24;
 	}
 	select.field {
 		@apply cursor-pointer appearance-none bg-no-repeat pr-9;
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23767671' stroke-width='1.5' stroke-linecap='square'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2370706b' stroke-width='1.5' stroke-linecap='square'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
 		background-position: right 0.625rem center;
 		background-size: 1rem;
 	}
 	input[type='search'].field {
 		@apply bg-no-repeat pl-9;
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23767671' stroke-width='1.5'%3E%3Ccircle cx='7' cy='7' r='4.5'/%3E%3Cpath d='M10.5 10.5L14 14'/%3E%3C/svg%3E");
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2370706b' stroke-width='1.5'%3E%3Ccircle cx='7' cy='7' r='4.5'/%3E%3Cpath d='M10.5 10.5L14 14'/%3E%3C/svg%3E");
 		background-position: left 0.6875rem center;
 		background-size: 1rem;
 	}
@@ -244,7 +436,7 @@
 	}
 	.btn-quiet {
 		@apply text-zinc-800 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800;
-		border-color: var(--rule-strong);
+		border-color: var(--control-edge);
 		background-color: var(--surface);
 	}
 	.btn-danger {
@@ -256,6 +448,16 @@
 	.btn-ghost-danger {
 		@apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-sm text-red-700 underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400;
 	}
+	/* Sizes. The default suits a form; a row, a toolbar or a header bar
+	   takes the compact one, and a page's single call to action the large
+	   one. Pages use these instead of !py-* overrides, so one change here
+	   resizes every compact button at once. */
+	.btn--sm {
+		@apply px-3 py-1.5;
+	}
+	.btn--lg {
+		@apply px-5 py-2.5;
+	}
 
 	/* Small tag. */
 	.badge {
@@ -265,31 +467,32 @@
 	.badge--new {
 		@apply border-emerald-600/40 text-emerald-700 dark:border-emerald-400/40 dark:text-emerald-300;
 	}
-	.badge--warn {
-		@apply border-amber-600/40 text-amber-700 dark:border-amber-400/40 dark:text-amber-300;
-	}
 	.badge--error {
 		@apply border-red-600/40 text-red-700 dark:border-red-400/40 dark:text-red-300;
 	}
-	.badge--info {
-		@apply text-zinc-500 dark:text-zinc-400;
-	}
 
-	/* State marker: a small square. */
+	/* State marker: a small square, always next to the state's word. A
+	   plain .dot is hollow (stopped, destroyed: nothing inside is running);
+	   the others are filled, and the edge takes the fill's colour. Each
+	   holds 3:1 on the page in both schemes. Busy is ink, not the accent:
+	   blue means "you can act here" (links, focus, selection), and a
+	   machine that is starting or being destroyed is neither. It pulses
+	   only for visitors who have not asked for less motion. */
 	.dot {
-		@apply inline-block h-2 w-2 shrink-0 rounded-xs bg-zinc-400 dark:bg-zinc-600;
+		@apply inline-block h-2 w-2 shrink-0 rounded-xs border bg-transparent;
+		border-color: var(--control-edge);
 	}
 	.dot--good {
-		@apply bg-emerald-500 dark:bg-emerald-400;
+		@apply border-emerald-500 bg-emerald-500 dark:border-emerald-300 dark:bg-emerald-300;
 	}
-	.dot--warn {
-		@apply bg-amber-500;
-	}
+	/* In the dark, running is emerald-300 and error red-500: at emerald-400
+	   and red-400 the two had nearly the same lightness, and a red-green
+	   colour-blind eye could not tell them apart. */
 	.dot--error {
-		@apply bg-red-600 dark:bg-red-400;
+		@apply border-red-600 bg-red-600 dark:border-red-500 dark:bg-red-500;
 	}
 	.dot--busy {
-		@apply animate-pulse bg-blue-600 dark:bg-blue-400;
+		@apply border-zinc-700 bg-zinc-700 motion-safe:animate-pulse dark:border-zinc-300 dark:bg-zinc-300;
 	}
 
 	/* A row in a list: a hairline on its top edge. */
@@ -297,14 +500,12 @@
 		@apply border-t py-3 first:border-t-0;
 		border-color: var(--rule);
 	}
-	.row--group {
-		@apply border-t py-2.5;
-		border-color: var(--rule-strong);
-	}
 
+	/* A bordered box with no fill (DESIGN-LANGUAGE.md, "Hairlines, not
+	   boxes"): the page shows through, so a card never reads as a raised
+	   panel. */
 	.card {
 		@apply rounded-sm border p-5;
-		background-color: var(--surface);
 		border-color: var(--rule);
 	}
 	.codeblock {
@@ -341,34 +542,6 @@
 	.check-row {
 		@apply flex items-center gap-2.5 py-1.5 text-sm text-zinc-800 dark:text-zinc-200;
 	}
-	.switch {
-		@apply relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-sm border bg-zinc-200 transition-colors dark:bg-zinc-800;
-		border-color: var(--rule-strong);
-	}
-	.switch:has(input:focus-visible) {
-		@apply outline-2 outline-offset-2 outline-blue-600;
-	}
-	.switch[data-on='true'] {
-		@apply border-zinc-900 bg-zinc-900 dark:border-zinc-100 dark:bg-zinc-100;
-	}
-	.switch-knob {
-		@apply pointer-events-none ml-0.5 h-3.5 w-3.5 translate-x-0 rounded-xs bg-white transition-transform dark:bg-zinc-400;
-	}
-	.switch[data-on='true'] .switch-knob {
-		@apply translate-x-4 dark:bg-zinc-900;
-	}
-	.radio-row {
-		@apply flex items-start gap-2.5 py-2;
-	}
-	.radio-row input[type='radio'] {
-		@apply mt-1;
-	}
-	.radio-row-label {
-		@apply text-sm font-medium text-zinc-900 dark:text-zinc-100;
-	}
-	.radio-row-help {
-		@apply text-sm text-zinc-500 dark:text-zinc-400;
-	}
 	.check-list-row {
 		@apply flex items-start gap-2.5 border-t py-2 first:border-t-0;
 		border-color: var(--rule);
@@ -382,7 +555,7 @@
 		@apply w-full border-collapse text-sm;
 	}
 	.table th {
-		@apply border-b px-3 py-2 text-left text-xs font-medium text-zinc-500 dark:text-zinc-400;
+		@apply border-b px-3 py-2 text-left text-xs font-medium text-ink-muted;
 		border-color: var(--rule-strong);
 	}
 	.table td {
@@ -407,10 +580,11 @@
 	border-color: var(--rule-strong);
 }
 .nix-editor .cm-editor.cm-focused {
-	@apply border-zinc-900 outline-none dark:border-zinc-300;
+	@apply border-zinc-900 outline-2 outline-offset-2 dark:border-zinc-300;
+	outline-color: var(--focus);
 }
 .nix-editor .cm-editor .cm-gutters {
-	@apply border-r text-zinc-400 dark:text-zinc-600;
+	@apply border-r text-ink-faint;
 	background-color: var(--sunken);
 	border-color: var(--rule);
 }
@@ -443,7 +617,7 @@
 	@apply mt-0 border-t-0 pt-0;
 }
 .doc .anchor {
-	@apply absolute -left-5 font-normal text-zinc-400 no-underline opacity-0 transition-opacity;
+	@apply absolute -left-5 font-normal text-ink-faint no-underline opacity-0 transition-opacity;
 }
 .doc :where(h2, h3):hover .anchor,
 .doc .anchor:focus-visible {
@@ -508,40 +682,185 @@
 }
 .doc pre .prompt,
 .doc pre .output {
-	@apply text-zinc-500 dark:text-zinc-400;
+	@apply text-ink-muted;
 }
 .doc pre .prompt {
 	@apply select-none;
 }
 
-/* Code in the docs (highlight in lib/docs.ts): lezer's tok-* classes,
-   in muted tones that hold up on both the light and the dark code ground. */
+/* Code in the docs (highlight in lib/docs.ts): lezer's tok-* classes, in
+   the re-toned palette and mostly in weight rather than hue. Keywords are
+   ink at 600, names are full ink over the block's zinc-800, literals take
+   the two quiet hues the house already has (emerald, amber), and comments
+   and punctuation step back to the faint grey. No blue: in the docs blue is
+   a link. Every tone holds 4.5:1 on --sunken in both schemes. */
 .doc pre .tok-keyword {
-	@apply text-purple-700 dark:text-purple-300;
+	@apply font-semibold text-ink;
 }
 .doc pre .tok-string,
 .doc pre .tok-string2 {
 	@apply text-emerald-700 dark:text-emerald-300;
 }
 .doc pre .tok-comment {
-	@apply text-zinc-500 italic dark:text-zinc-400;
+	@apply text-ink-faint italic;
 }
 .doc pre .tok-number,
 .doc pre .tok-bool,
 .doc pre .tok-atom {
 	@apply text-amber-700 dark:text-amber-300;
 }
-.doc pre .tok-propertyName {
-	@apply text-blue-700 dark:text-blue-300;
-}
+.doc pre .tok-propertyName,
 .doc pre .tok-variableName.tok-definition {
-	@apply text-blue-700 dark:text-blue-300;
+	@apply text-ink;
 }
 .doc pre .tok-url {
 	@apply text-emerald-700 underline dark:text-emerald-300;
 }
 .doc pre .tok-punctuation {
-	@apply text-zinc-500 dark:text-zinc-400;
+	@apply text-ink-faint;
+}
+
+/*
+ * Toasts (svelte-sonner, mounted in routes/+layout.svelte without
+ * richColors). Sonner's own look has 8px corners, a drop shadow and its own
+ * saturated green and red; these rules give a toast the house's banner
+ * instead: a 2px corner, a hairline, no shadow, and the .banner--ok and
+ * .banner--error colours (9:1 or better in both schemes). Unlayered, and
+ * one attribute more specific than sonner's rules, because sonner injects
+ * its stylesheet unlayered when the Toaster mounts.
+ */
+:root [data-sonner-toaster][data-sonner-theme] {
+	--normal-bg: var(--surface);
+	--normal-bg-hover: var(--sunken);
+	--normal-border: var(--rule-strong);
+	--normal-border-hover: var(--control-edge);
+	--normal-text: var(--ink);
+	--success-bg: var(--color-emerald-50);
+	--success-border: color-mix(in srgb, var(--color-emerald-600) 40%, transparent);
+	--success-text: var(--color-emerald-800);
+	--error-bg: var(--color-red-50);
+	--error-border: color-mix(in srgb, var(--color-red-600) 40%, transparent);
+	--error-text: var(--color-red-800);
+	--warning-bg: var(--color-amber-50);
+	--warning-border: color-mix(in srgb, var(--color-amber-600) 40%, transparent);
+	--warning-text: var(--color-amber-800);
+	--info-bg: var(--surface);
+	--info-border: var(--rule-strong);
+	--info-text: var(--ink);
+	--border-radius: var(--radius-sm);
+	font-family: var(--font-sans);
+}
+@media (prefers-color-scheme: dark) {
+	:root [data-sonner-toaster][data-sonner-theme] {
+		--success-bg: var(--color-emerald-950);
+		--success-border: color-mix(in srgb, var(--color-emerald-400) 30%, transparent);
+		--success-text: var(--color-emerald-200);
+		--error-bg: var(--color-red-950);
+		--error-border: color-mix(in srgb, var(--color-red-400) 30%, transparent);
+		--error-text: var(--color-red-200);
+		--warning-bg: var(--color-amber-950);
+		--warning-border: color-mix(in srgb, var(--color-amber-400) 30%, transparent);
+		--warning-text: var(--color-amber-200);
+	}
+}
+:root [data-sonner-toaster] [data-sonner-toast][data-styled='true'] {
+	border-radius: var(--radius-sm);
+	box-shadow: none;
+}
+:root [data-sonner-toaster] [data-sonner-toast][data-styled='true']:focus-visible {
+	box-shadow: none;
+	outline: 2px solid var(--focus);
+	outline-offset: 2px;
+}
+:root [data-sonner-toaster] [data-sonner-toast][data-styled='true'] [data-description] {
+	color: var(--ink-muted);
+}
+:root [data-sonner-toaster] [data-sonner-toast][data-styled='true'] [data-button] {
+	border-radius: var(--radius-sm);
+}
+/* A typed toast is a banner of its kind; its description takes the same
+   colour, which holds 4.5:1 on the tinted ground where --ink-muted might
+   not. */
+:root [data-sonner-toaster] [data-sonner-toast][data-styled='true'][data-type='success'] {
+	background: var(--success-bg);
+	border-color: var(--success-border);
+	color: var(--success-text);
+}
+:root [data-sonner-toaster] [data-sonner-toast][data-styled='true'][data-type='error'] {
+	background: var(--error-bg);
+	border-color: var(--error-border);
+	color: var(--error-text);
+}
+:root [data-sonner-toaster] [data-sonner-toast][data-styled='true'][data-type='warning'] {
+	background: var(--warning-bg);
+	border-color: var(--warning-border);
+	color: var(--warning-text);
+}
+:root
+	[data-sonner-toaster]
+	[data-sonner-toast][data-styled='true']:is(
+		[data-type='success'],
+		[data-type='error'],
+		[data-type='warning']
+	)
+	[data-description] {
+	color: inherit;
+}
+
+/*
+ * Forced colours (Windows High Contrast and the like). The browser repaints
+ * every background as Canvas and every edge as one system colour, which
+ * erases whatever carries a state in a fill or in a transparent-versus-
+ * coloured border. Each rule below puts that state back in a system colour
+ * the visitor's own theme chose. Unlayered, so the utilities in page markup
+ * (border-transparent on the header's links) do not win.
+ */
+@media (forced-colors: active) {
+	/* State dots: filled states in CanvasText, the hollow one an outline. */
+	.dot {
+		forced-color-adjust: none;
+		border-color: CanvasText;
+		background-color: Canvas;
+	}
+	.dot--good,
+	.dot--error,
+	.dot--busy {
+		background-color: CanvasText;
+	}
+	/* Meters draw their own forced-colour fill (Meter.svelte). */
+	/* The current page in a nav: an underline the other links do not
+	   have, since every link's bottom edge is forced visible. */
+	nav a[aria-current='page'] {
+		text-decoration: underline;
+		text-decoration-thickness: 2px;
+		text-underline-offset: 0.35em;
+	}
+	/* A select's chevron and the search field's glass are background
+	   images drawn in a fixed grey; the native arrow follows the theme. */
+	select.field {
+		appearance: auto;
+		background-image: none;
+		padding-right: 0.5rem;
+	}
+	input[type='search'].field {
+		background-image: none;
+		padding-left: 0.75rem;
+	}
+	/* A disabled button says so in GrayText, since its opacity is lost. */
+	.btn {
+		border-color: ButtonText;
+	}
+	.btn:disabled,
+	.btn-quiet:disabled,
+	.btn-danger:disabled {
+		border-color: GrayText;
+		color: GrayText;
+	}
+	.badge,
+	.kbd,
+	kbd {
+		border-color: CanvasText;
+	}
 }
 
 /* app.html hides the body until this file applies, so a page rendered

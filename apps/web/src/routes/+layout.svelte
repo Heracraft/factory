@@ -36,11 +36,12 @@
 	let showChildren = $derived(authState.authenticated === true || isPublic(page.url.pathname));
 </script>
 
-<Toaster theme="system" position="bottom-right" richColors />
+<!-- No richColors: layout.css gives each toast type its banner's colours. -->
+<Toaster theme="system" position="bottom-right" />
 
 {#if !reachability.ok}
 	<div
-		class="border-b border-red-200 bg-red-100 px-4 py-2 text-center text-sm font-medium text-red-700 dark:border-red-500/20 dark:bg-red-500/15 dark:text-red-400"
+		class="border-b border-red-600/40 bg-red-50 px-4 py-2 text-center text-sm font-medium text-red-800 dark:border-red-400/30 dark:bg-red-950 dark:text-red-200"
 	>
 		Cannot reach the API. Retrying…
 	</div>
