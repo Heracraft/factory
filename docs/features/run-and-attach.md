@@ -180,7 +180,8 @@ Sequence and idempotency (from DESIGN §10):
 3. Get or refresh the SSH certificate; write the SSH config block and
    check the alias resolves (I-151).
 4. Sync credential files (secrets.md), then the checkout
-   (sync-at-launch.md). Both skipped with `--no-sync`.
+   (sync-at-launch.md). `--no-sync` skips the checkout only; the
+   credential files still go (DECISIONS I-366).
 5. Start the agent window if a prompt was given, then attach.
 
 Running `repose run` twice in a row attaches twice and changes nothing else.

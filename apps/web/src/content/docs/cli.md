@@ -33,7 +33,7 @@ On your laptop, `run` changes one thing in the checkout: it adds a git remote na
 | `--agent NAME`            | `claude`, `codex`, `opencode`, `gemini` or `pi`.                                                                                                                  |
 | `--no-attach`             | Don't attach afterwards.                                                                                                                                          |
 | `--worktree`              | Start the agent in its own git worktree. Needs a prompt.                                                                                                          |
-| `--no-sync`               | Skip the git sync and the copied logins.                                                                                                                          |
+| `--no-sync`               | Skip the git sync. Your tool logins and git identity are still copied.                                                                                            |
 | `--stash-remote`          | Stash the machine's uncommitted changes before syncing.                                                                                                           |
 | `--discard-remote`        | Discard the machine's uncommitted changes before syncing.                                                                                                         |
 | `--size small\|large\|xl` | Size of a new project.                                                                                                                                            |

@@ -278,9 +278,11 @@ $ repose run
    API says `running`, polling every second, then print `Connected to
    <slug> (<class>)`. This first ssh becomes the ControlMaster every later
    one in the command shares.
-5. Credential sync (unless `--no-sync`), first in step 6d's ssh, before
-   its git steps (a first sync that clones in the guest, I-203, sends it
-   on its own before the clone; DECISIONS I-224):
+5. Credential sync, first in step 6d's ssh, before its git steps (a
+   first sync that clones in the guest, I-203, sends it on its own before
+   the clone; DECISIONS I-224). With `--no-sync`, or outside a
+   repository, it goes in two ssh commands of its own, the guest's
+   markers and then what changed, together with the carry (I-366):
    for each row of the table in `interfaces/guest-conventions.md`, if the
    laptop file exists, copy it to the guest path with its mode; set the
    git identity with `git config --global`; when gh travelled and the

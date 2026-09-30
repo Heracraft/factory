@@ -270,8 +270,13 @@ git rev-parse -q --verify HEAD || true
 [ -f "$repose_synced-key" ] && tail -n +2 "$repose_synced-key" | { repose_n=0; while IFS=' ' read -r c p; do repose_n=1; if [ -n "$p" ]; then git -C "$p" cat-file -e "$c^{commit}" 2>/dev/null || exit 1; else git cat-file -e "$c^{commit}" 2>/dev/null || exit 1; fi; done; [ "$repose_n" = 1 ]; } && echo '#synchas'
 echo '#origin'
 git remote get-url origin >/dev/null 2>&1 && echo yes || true
-if [ -f %s ]; then while IFS= read -r p; do [ -e "$p" ] || { echo '#credsmissing'; break; }; done < %s; fi
-%s`, slug, syncedFP, envPathsCheck, credsPathsFile, credsPathsFile, markerScript())
+%s%s`, slug, syncedFP, envPathsCheck, credsMissingScript(), markerScript())
+}
+
+// credsMissingScript prints `#credsmissing` when a login file the last
+// copy wrote is gone from the guest, so the logins go again.
+func credsMissingScript() string {
+	return fmt.Sprintf("if [ -f %s ]; then while IFS= read -r p; do [ -e \"$p\" ] || { echo '#credsmissing'; break; }; done < %s; fi\n", credsPathsFile, credsPathsFile)
 }
 
 func parseProbe(out string) guestProbe {

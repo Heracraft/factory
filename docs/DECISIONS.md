@@ -9276,3 +9276,22 @@ doubled paste. `TestReadMaskedEchoesAStarPerCharacter`,
 `TestReadHiddenLineOnATerminal` (real pty: stars on the screen, the value
 never, echo and canonical mode back after). *Rejected:* a fixed-width mask
 (hides a doubled or truncated paste).
+
+**I-366. `run --no-sync` still copies the tool logins and the carry.**
+(owner, 2026-09-29; reverses the "Skip the git sync and the copied
+logins" of `cli.md` and 07-cli.md §5.5 step 5's "unless `--no-sync`")
+The logins rode only the sync's apply ssh (I-224), so `repose run
+--no-sync`, and since I-358 every run outside a repository, attached to a
+machine without the laptop's gh, Codex or opencode login; the owner read
+that as a bug, since `--no-sync` is about the checkout. When a run leaves
+the checkout alone it now sends the same payload the apply would have:
+logins (mtime rule unchanged), git identity, Claude files, tools list and
+zone, in two ssh commands (the guest's markers with the `#credsmissing`
+check the probe uses, then only what changed; none when nothing did),
+before the attach, and prints the same `Credentials:` line. It replaces
+the session helper's carry on those two paths, so `--no-attach` gets it
+too. A failure is a warning and the run goes on. `repose attach` is
+unchanged. `TestRunWithoutSyncStillCopiesToolLogins` failed before
+(guest `hosts.yml` empty) and passes. *Rejected:* adding the logins to the
+session helper (it does not run with `--no-attach`, and its messages only
+reach tmux's status line).

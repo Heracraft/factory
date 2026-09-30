@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-399 entries.
+400 entries.
 
 ## Scope
 
@@ -431,3 +431,4 @@ pointer, not a summary.
 - **I-363** The logo is the owner's cross-and-blocks sketch, traced; it replaces the r — 2026-09-29; L9222
 - **I-364** tmux's mouse mode is off in the guest — 2026-09-29; L9248
 - **I-365** `repose secrets set` echoes one `*` per character — 2026-09-29; L9263
+- **I-366** `run --no-sync` still copies the tool logins and the carry — 2026-09-29; L9280

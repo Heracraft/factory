@@ -199,7 +199,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 
 	if skipSync {
 		_, _ = fmt.Fprintln(e.Out, "Not a git repository, so nothing was synced.")
-		helper.Carry = true
+		e.carryWithoutSync(ctx, target, project, helper.RepoDir, tz)
 	} else if !opts.NoSync {
 		repoRoot := gitRepoRoot(e.Cwd)
 		if repoRoot == "" {
@@ -293,7 +293,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			}
 		}
 	} else {
-		helper.Carry = true
+		e.carryWithoutSync(ctx, target, project, helper.RepoDir, tz)
 	}
 	// The machine has its checkout now: point this checkout's `repose`
 	// remote at it (I-272).
@@ -1257,4 +1257,59 @@ func tzFromLocaltime(path string) string {
 		return ""
 	}
 	return z
+}
+
+// carryWithoutSync sends what the sync's apply would have carried, the
+// tool logins, the git identity, the Claude files, the tools list and the
+// zone, when a run leaves the checkout alone (`--no-sync`, a directory
+// that is not a repository). Two ssh commands: the guest's markers, then
+// only what changed. A failure is a warning; the run goes on (DECISIONS
+// I-366).
+func (e *Env) carryWithoutSync(ctx context.Context, t sshTarget, project *Project, repoDir, tz string) {
+	out, err := runSSH(ctx, t, markerScript()+credsMissingScript(), nil)
+	if err != nil {
+		e.warn("Could not copy your tool logins to the guest (%s).", oneLine(err.Error()))
+		return
+	}
+	markers := parseMarkers(string(out))
+	if strings.Contains(string(out), "#credsmissing") {
+		delete(markers, credsMarker)
+	}
+	co := carryOptions{TZ: tz, Markers: markers, Tools: buildToolsCarry(e.HomeDir, repoDir)}
+	if repoDir != "" {
+		gc, err := buildGitCarry(repoDir, e.HomeDir)
+		if err != nil {
+			e.warn("Could not read your git config (%s); the guest keeps its own.", oneLine(err.Error()))
+		}
+		if gc != nil {
+			for _, n := range gc.Notes {
+				e.warn("%s", n)
+			}
+		}
+		co.Git = gc
+	}
+	if cc, _ := buildClaudeCarry(e.HomeDir); cc != nil {
+		for _, n := range cc.Notes {
+			e.warn("%s", n)
+		}
+		co.Claude = cc
+	}
+	copied, carried, err := syncCredentialsAndCarry(ctx, t, e.HomeDir, repoDir, credSyncOptions{
+		RemoteURL: project.RemoteURL,
+		Kept: func(label string) {
+			e.warn("Kept the guest's %s login: it is newer than the laptop's.", label)
+		},
+	}, co)
+	if err != nil {
+		e.warn("%s", oneLine(err.Error()))
+		return
+	}
+	if len(copied) > 0 {
+		_, _ = fmt.Fprintf(e.Out, "Credentials: %s\n", strings.Join(copied, ", "))
+	}
+	if carried != nil {
+		for _, l := range carried.Lines() {
+			_, _ = fmt.Fprintln(e.ErrOut, l)
+		}
+	}
 }
