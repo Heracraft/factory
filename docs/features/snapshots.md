@@ -105,8 +105,10 @@ Forking (DECISIONS I-254, I-255):
 - A copy gets the source's volume size, configuration revision and named
   secrets (ciphertext rows copied; not the guest's sshd material), and no
   `remote_url`: the source keeps its checkout, so `repose run` there still
-  means the source. The copy's `~/<slug>` is a symlink to the source's
-  `~/<slug>` on the copied volume, made by guestd's `SetupProject`.
+  means the source. The copy's checkout is the source's, at the same
+  path, since `~/.repose/checkout` comes with the volume (I-368); for a
+  source set up before I-368 the copy's `~/<slug>` is a symlink to the
+  source's `~/<slug>`, made by guestd's `SetupProject` (I-255).
 - With `--prompt`, the CLI starts the agent with that prompt in each
   running copy, without syncing the laptop into it, and does not attach.
 - Each copy is a project: it counts toward the limit and is billed like

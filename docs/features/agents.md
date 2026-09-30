@@ -201,8 +201,8 @@ guest, and never its login or its history:
 
 ## Behaviour that must hold
 
-- Every agent starts in its own tmux window named after it, in
-  `/home/dev/<slug>`, with the prompt typed once the TUI is ready
+- Every agent starts in its own tmux window named after it, in the
+  checkout (guest-conventions "The checkout"), with the prompt typed once the TUI is ready
   (run-and-attach.md).
 - Every agent's completion and needs-input reach the API as events within
   10 seconds of the hook firing, or within 90 seconds for heuristic agents.

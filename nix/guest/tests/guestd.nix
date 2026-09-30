@@ -99,7 +99,9 @@ pkgs.testers.runNixOSTest {
         Type = "forking";
         ExecStart = "${pkgs.writeShellScript "repose-tmux-session" ''
           slug=$(${pkgs.jq}/bin/jq -r .slug /home/dev/.repose/project.json)
-          exec ${pkgs.tmux}/bin/tmux new-session -d -s "$slug" -n shell -c "/home/dev/$slug"
+          dir=/home/dev
+          [ -d "/home/dev/$slug" ] && dir="/home/dev/$slug"
+          exec ${pkgs.tmux}/bin/tmux new-session -d -s "$slug" -n shell -c "$dir"
         ''}";
         ExecStop = "${pkgs.tmux}/bin/tmux kill-server";
         RemainAfterExit = true;
@@ -204,13 +206,20 @@ pkgs.testers.runNixOSTest {
         )
 
     with subtest("SetupProject creates the tree and the tmux session"):
-        call("setup-project", {
+        setup = {
             "projectSlug": "todo-app",
             "remoteUrl": "https://github.com/heracraft/todo-app",
             "tz": "Africa/Nairobi",
             "lang": "C.UTF-8",
-        })
-        guest.succeed("test -d /home/dev/todo-app/.git")
+        }
+        call("setup-project", setup)
+        # No checkout until the CLI's first sync records one (I-368).
+        guest.succeed("test ! -e /home/dev/todo-app")
+        guest.succeed("sudo -u dev sh -c 'mkdir -p ~/factory && echo factory > ~/.repose/checkout'")
+        call("setup-project", setup)
+        guest.succeed("test -d /home/dev/factory/.git")
+        guest.succeed("sudo -u dev git -C /home/dev/factory remote get-url origin | grep -q heracraft/todo-app")
+        guest.succeed("test ! -e /home/dev/todo-app")
         guest.succeed("grep -q 'REPOSE_PROJECT=todo-app' /etc/repose/env")
         guest.succeed("grep -q 'TZ=Africa/Nairobi' /etc/repose/env")
         guest.succeed("stat -c '%U' /home/dev/.repose/project.json | grep -q dev")
@@ -225,7 +234,7 @@ pkgs.testers.runNixOSTest {
         )
         guest.succeed(
             "sudo -u dev tmux new-window -t todo-app -n claude "
-            "-c /home/dev/todo-app '${fakeClaude}/bin/claude'"
+            "-c /home/dev/factory '${fakeClaude}/bin/claude'"
         )
         guest.sleep(2)
         print(guest.succeed("sudo -u dev tmux list-windows -t todo-app"))

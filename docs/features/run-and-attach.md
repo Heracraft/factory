@@ -104,14 +104,16 @@ answering)`, I-157).
 Session and windows (see `interfaces/guest-conventions.md`):
 
 - The tmux session is named after the project slug and exists from guest
-  boot, with a window `shell` whose working directory is
-  `/home/dev/<slug>`. `repose run` with no prompt attaches to the session's
+  boot, with a window `shell` whose working directory is the checkout
+  (`/home/dev/<laptop folder>` since I-368, `/home/dev` while the machine
+  has none; guest-conventions "The checkout"). `repose run` with no
+  prompt attaches to the session's
   current window.
 - A prompt opens a window named after the agent (`claude`, `opencode`,
   `codex`, `gemini`, `pi`). If that window already exists, the new one is
   the lowest free `<agent>-N` (`-2`, `-3`, ... with no limit, I-253). With
-  `--worktree` the window opens in `~/<slug>-<window>`, a git worktree on
-  branch `repose/<window>` (guest-conventions "tmux"); otherwise in the
+  `--worktree` the window opens in `~/<checkout>-worktree-<N>`, a git
+  worktree on branch `worktree-<N>` (guest-conventions "tmux"); otherwise in the
   checkout. The agent's interactive TUI runs in that window,
   never a headless or print mode, because the point is that the user can
   attach and see the live session with its history.
@@ -298,8 +300,8 @@ is not a terminal: the CLI execs ssh as before. Nothing is logged.
   `window_activity` and `window_active`. Idle time is the guest's clock
   minus the activity time, so a skewed laptop clock does not matter.
   `-q` prints names, `--json` the records. Nothing is logged.
-- `repose exec [PROJECT] -- CMD...` runs, over ssh, `cd ~/<slug>` (home
-  with a stderr note when missing), `/etc/profile.d/repose.sh`, then
+- `repose exec [PROJECT] -- CMD...` runs, over ssh, `cd` into the
+  checkout (the home directory when the machine has none, I-368), `/etc/profile.d/repose.sh`, then
   `/etc/repose/devshell.sh` (the agent wrappers' loader, I-259) or, on an
   older base, `direnv export bash`, then `exec` of the arguments, each
   single-quoted. No stdin without `-i`, a remote tty only with `-t`

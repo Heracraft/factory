@@ -87,7 +87,7 @@ Your laptop has new work as well, so syncing now would write over them. Nothing 
   `attach`, `start`, or any other command. `run --stash-remote` and
   `--discard-remote` exit 2 naming `repose sync` with the same flag.
   Everything below describes `repose sync` and a run's first sync.
-- The guest checks `git status --porcelain` in `/home/dev/<slug>` first
+- The guest checks `git status --porcelain` in the checkout first
   (this includes untracked files, so an agent's scratch file counts as
   dirty too). If it is non-empty (and not the last sync's own, below)
   and neither `--stash-remote` nor `--discard-remote` was given, what
@@ -161,7 +161,7 @@ every commit the laptop knows), there is nothing to write over: the checkout is 
   laptop's (I-258). Only
   the untracked files (`git ls-files --others --exclude-standard`,
   filtered by `sync.exclude` in `config.toml`) travel as a tar, extracted
-  in `~/<slug>`. Bundle, diff and untracked tar go as one payload in one
+  in the checkout. Bundle, diff and untracked tar go as one payload in one
   ssh; nothing writes a custom sync helper into the guest, and every
   command there is stock git and tar.
 - Submodules travel like the superproject (DECISIONS I-263). Every
@@ -225,10 +225,13 @@ every commit the laptop knows), there is nothing to write over: the checkout is 
 - The summary line prints whenever the apply ran (I-303),
   `Synced: <n> modified, <m> untracked`, even when both are zero, followed by `, <e> env files` when .env files
   were written and `(<k> new commits)` when commits travelled.
-- The guest's checkout is at `/home/dev/<slug>`, which guestd's
-  `SetupProject` creates with an `origin` (02/04's contract). If it is
-  missing anyway, the sync creates it (`git init`) and adds `origin`
-  rather than failing.
+- The guest's checkout is found by the rule in guest-conventions.md "The
+  checkout". A machine with none gets it from the sync's probe, at
+  `/home/dev/<laptop folder>` (made safe; the slug when that name is
+  taken), recorded in `~/.repose/checkout`, `git init`ed, with `origin`
+  added by the apply (DECISIONS I-368). The run then prints `Checkout:
+  ~/<name> on the machine`. A machine set up before I-368 keeps
+  `/home/dev/<slug>`.
 - The first sync of a large GitHub repository clones in the guest
   (DECISIONS I-203). When the guest has no commits yet, the remote is on
   github.com and the laptop's `git count-objects -v` reports a

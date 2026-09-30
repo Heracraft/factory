@@ -35,7 +35,7 @@ Credentials: gh
 Ready in 14s.
 ```
 
-You're now in a shell on the machine, in `/home/dev/your-project`, with your uncommitted changes and unpushed commits applied. The shell runs inside tmux, a terminal session that keeps running when you disconnect.
+You're now in a shell on the machine, in `/home/dev/your-project` (the checkout takes your laptop folder's name), with your uncommitted changes and unpushed commits applied. The shell runs inside tmux, a terminal session that keeps running when you disconnect.
 
 ## 3. Log in to Claude Code on the machine
 

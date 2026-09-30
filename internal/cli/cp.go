@@ -52,17 +52,29 @@ func parseCpSide(arg string) cpSide {
 }
 
 // guestPath makes a guest path scp understands: relative to the
-// checkout unless absolute or ~-based.
-func (s cpSide) guestPath(slug string) string {
+// checkout unless absolute or ~-based. checkout is the checkout's name
+// under the home, "" when the machine has none and relative paths start
+// at the home directory (I-368).
+func (s cpSide) guestPath(checkout string) string {
 	p := s.Path
 	switch {
-	case p == "" || p == ".":
-		return slug
 	case strings.HasPrefix(p, "/"), p == "~", strings.HasPrefix(p, "~/"):
 		return p
+	case checkout == "" && (p == "" || p == "."):
+		return "."
+	case checkout == "":
+		return p
+	case p == "" || p == ".":
+		return checkout
 	default:
-		return slug + "/" + p
+		return checkout + "/" + p
 	}
+}
+
+// relative reports whether the guest side needs the checkout's name.
+func (s cpSide) relative() bool {
+	p := s.Path
+	return s.Remote && !strings.HasPrefix(p, "/") && p != "~" && !strings.HasPrefix(p, "~/")
 }
 
 func newCpCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
@@ -149,6 +161,15 @@ func CpCmd(ctx context.Context, e *Env, srcArgs []string, dstArg string, recursi
 	if err != nil {
 		return err
 	}
+	checkout := ""
+	for _, s := range append(srcs, dst) {
+		if s.relative() {
+			if checkout, err = guestCheckoutName(ctx, target, project.Slug); err != nil {
+				return err
+			}
+			break
+		}
+	}
 	host, opts := scpTarget(target)
 	args := append([]string{}, scpExtraArgs...)
 	legacy := false
@@ -170,7 +191,7 @@ func CpCmd(ctx context.Context, e *Env, srcArgs []string, dstArg string, recursi
 	}
 	for _, s := range append(srcs, dst) {
 		if s.Remote {
-			p := s.guestPath(project.Slug)
+			p := s.guestPath(checkout)
 			if legacy {
 				// The old protocol hands the path to the guest's shell,
 				// which splits it on spaces and expands $.

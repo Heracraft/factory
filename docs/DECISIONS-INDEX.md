@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-401 entries.
+402 entries.
 
 ## Scope
 
@@ -433,3 +433,4 @@ pointer, not a summary.
 - **I-365** `repose secrets set` echoes one `*` per character — 2026-09-29; L9263
 - **I-366** `run --no-sync` still copies the tool logins and the carry — 2026-09-29; L9280
 - **I-367** `repose run` syncs the checkout only into a machine that has no commit yet; `repose sync` is the explicit sync — 2026-09-29; L9299
+- **I-368** The machine's checkout is named after the laptop folder of its first sync; a machine with no checkout works in the home directory — 2026-09-29; L9346

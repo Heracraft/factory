@@ -22,9 +22,10 @@
 #                                           as that ssh, DECISIONS I-296)
 { config, lib, pkgs, ... }:
 let
+  checkout = import ./checkout.nix { inherit pkgs; };
   script = pkgs.writeShellApplication {
     name = "repose-guest-profile";
-    runtimeInputs = [ pkgs.jq pkgs.coreutils pkgs.systemd ];
+    runtimeInputs = [ pkgs.jq pkgs.coreutils pkgs.systemd checkout ];
     text = ''
       project=/home/dev/.repose/project.json
       # The desktop is the viewer (websockify and the page); the display,
@@ -42,12 +43,13 @@ let
           else
             proj='{}'
           fi
-          jq -n --argjson project "$proj" --arg base "$base" --argjson running "$running" \
+          dir=$(repose-checkout)
+          jq -n --argjson project "$proj" --arg base "$base" --argjson running "$running" --arg dir "$dir" \
             '{
               project_id: ($project.project_id // null),
               slug: ($project.slug // null),
               name: ($project.name // null),
-              dir: (if $project.slug then "/home/dev/" + $project.slug else null end),
+              dir: $dir,
               tz: ($project.tz // null),
               class: ($project.class // null),
               base_version: $base,
@@ -113,5 +115,5 @@ let
   };
 in
 {
-  environment.systemPackages = [ script ];
+  environment.systemPackages = [ script checkout ];
 }

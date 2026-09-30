@@ -325,9 +325,26 @@ in
           guest.succeed("install -d -o dev -g dev -m 0700 /home/dev/.repose")
           guest.succeed("""echo '{"project_id":"0192e4b0-0000-7000-8000-000000000001","slug":"todo-app","name":"todo-app","tz":"Europe/Berlin","class":"large"}' > /home/dev/.repose/project.json && chown dev:dev /home/dev/.repose/project.json""")
           guest.wait_until_succeeds("sudo -u dev tmux ls | grep -q '^todo-app:'", timeout=60)
+          # No checkout yet (I-368): the session works in the home directory,
+          # and nothing is made under the slug.
           win = guest.succeed("sudo -u dev tmux list-windows -t todo-app -F '#{window_name} #{pane_current_path}'").strip()
-          assert win == "shell /home/dev/todo-app", win
+          assert win == "shell /home/dev", win
+          guest.succeed("test ! -e /home/dev/todo-app")
+          assert guest.succeed("sudo -u dev repose-checkout").strip() == "/home/dev"
           guest.succeed("grep -Eq 'set-clipboard +on' /etc/tmux.conf && grep -Eq 'mouse +off' /etc/tmux.conf && grep -Eq 'history-limit +50000' /etc/tmux.conf")
+
+      with subtest("I-368: the session starts in the checkout the first sync recorded"):
+          guest.succeed("sudo -u dev sh -c 'mkdir -p ~/factory && echo factory > ~/.repose/checkout'")
+          assert guest.succeed("sudo -u dev repose-checkout").strip() == "/home/dev/factory"
+          guest.succeed("sudo -u dev tmux kill-session -t todo-app")
+          guest.succeed("sudo -u dev XDG_RUNTIME_DIR=/run/user/1000 systemctl --user restart repose-tmux-session.service")
+          guest.wait_until_succeeds("sudo -u dev tmux ls | grep -q '^todo-app:'", timeout=60)
+          win = guest.succeed("sudo -u dev tmux list-windows -t todo-app -F '#{window_name} #{pane_current_path}'").strip()
+          assert win == "shell /home/dev/factory", win
+          # A name that leads out of the home is ignored.
+          guest.succeed("sudo -u dev sh -c 'echo ../etc > ~/.repose/checkout'")
+          assert guest.succeed("sudo -u dev repose-checkout").strip() == "/home/dev"
+          guest.succeed("sudo -u dev sh -c 'echo factory > ~/.repose/checkout'")
 
       with subtest("I-264: the running server has extended keys, passthrough and hyperlinks"):
           def opt(scope, name):
@@ -448,7 +465,7 @@ in
 
       with subtest("guest profile script"):
           prof = json.loads(guest.succeed("sudo -u dev repose-guest-profile"))
-          assert prof["slug"] == "todo-app" and prof["dir"] == "/home/dev/todo-app", prof
+          assert prof["slug"] == "todo-app" and prof["dir"] == "/home/dev/factory", prof
           assert prof["base_version"] == "${baseVersion}", prof
           assert prof["desktop"]["running"] is False, prof
     '';

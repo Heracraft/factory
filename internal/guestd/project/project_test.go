@@ -62,11 +62,13 @@ func TestSetupWritesEverything(t *testing.T) {
 		}
 	}
 
-	if fi, err := os.Stat(p.ProjectDir("todo-app")); err != nil || !fi.IsDir() {
-		t.Fatalf("project directory: %v", err)
+	// A new machine has no checkout until the CLI's first sync makes one
+	// (I-368): no ~/<slug>, no git init.
+	if _, err := os.Lstat(p.ProjectDir("todo-app")); !os.IsNotExist(err) {
+		t.Fatalf("~/todo-app was made: %v", err)
 	}
-	if _, ok := run.Ran("git init"); !ok {
-		t.Fatalf("git init was not run; calls: %v", run.Calls())
+	if _, ok := run.Ran("git init"); ok {
+		t.Fatalf("git init ran with no checkout; calls: %v", run.Calls())
 	}
 	if _, ok := run.Ran("start " + TmuxUnit); !ok {
 		t.Fatalf("%s was not started; calls: %v", TmuxUnit, run.Calls())
@@ -173,7 +175,10 @@ func TestSetupReportsAFailedTmuxStart(t *testing.T) {
 // The CLI's sync runs `git fetch origin` in the guest; a git init with no
 // origin is the failure the first real run hit (DECISIONS I-107).
 func TestSetupPointsOriginAtTheRemote(t *testing.T) {
-	h, _, run := newHandler(t)
+	h, p, run := newHandler(t)
+	if err := os.MkdirAll(p.ProjectDir("todo-app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	r := req()
 	r.RemoteUrl = "github.com/heracraft/todo-app"
 	if err := h.Setup(context.Background(), r); err != nil {
@@ -195,6 +200,69 @@ func TestOriginURL(t *testing.T) {
 	} {
 		if got := originURL(in); got != want {
 			t.Errorf("originURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// The checkout the CLI recorded (I-368) is the one Setup works on, git
+// init and origin included; ~/<slug> is never made beside it.
+func TestSetupUsesTheRecordedCheckout(t *testing.T) {
+	h, p, run := newHandler(t)
+	if err := os.MkdirAll(p.ProjectDir("factory"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(p.CheckoutFile()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p.CheckoutFile(), []byte("factory\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := req()
+	r.RemoteUrl = "github.com/heracraft/todo-app"
+	if err := h.Setup(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	c, ok := run.Ran("git init")
+	if !ok || c.Dir != p.ProjectDir("factory") {
+		t.Fatalf("git init in %q (%v); calls: %v", c.Dir, ok, run.Calls())
+	}
+	if c, ok := run.Ran("git remote add origin"); !ok || c.Dir != p.ProjectDir("factory") {
+		t.Fatalf("origin set in %q (%v)", c.Dir, ok)
+	}
+	if _, err := os.Lstat(p.ProjectDir("todo-app")); !os.IsNotExist(err) {
+		t.Fatalf("~/todo-app was made: %v", err)
+	}
+}
+
+// A checkout file that names something other than one directory of the
+// home is ignored, never followed.
+func TestRecordedCheckoutStaysInTheHome(t *testing.T) {
+	h, p, _ := newHandler(t)
+	if err := os.MkdirAll(p.ProjectDir("real"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(p.CheckoutFile()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, p.ProjectDir("escape")); err != nil {
+		t.Fatal(err)
+	}
+	for body, want := range map[string]string{
+		"real\n":        "real",
+		"missing\n":     "",
+		"../etc\n":      "",
+		".ssh\n":        "",
+		"a/b\n":         "",
+		"escape\n":      "",
+		"\n":            "",
+		"real\nother\n": "",
+	} {
+		if err := os.WriteFile(p.CheckoutFile(), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if got := h.recordedCheckout(); got != want {
+			t.Errorf("checkout file %q: got %q, want %q", body, got, want)
 		}
 	}
 }

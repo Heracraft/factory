@@ -92,7 +92,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			early = startEarlyProbe(ctx, e, opts)
 		}
 		e.early = early
-		e.guestUp = func(p *Project) { startBootProbe(ctx, e, p, !opts.NoSync) }
+		e.guestUp = func(p *Project) { startBootProbe(ctx, e, p, !opts.NoSync && gitRepoRoot(e.Cwd) != "") }
 	}
 
 	// Other projects left running with nobody on them (I-262), read
@@ -199,7 +199,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	if attachOnly {
 		// The carry runs beside the attach, never before it (I-195).
 		helper.Carry = true
-		e.addReposeRemote(project) // I-272
+		e.addReposeRemote(ctx, project, target, nil) // I-272
 		startSessionHelper(e, helper)
 		tzSaved()
 		if l := tempLine(project, time.Now(), false); l != "" {
@@ -208,9 +208,11 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		return attachTmux(target, project.Slug, "", tz, helper.RepoDir, afterAttach)
 	}
 
+	// The machine's checkout, as its sync or carry found it (I-368).
+	var checkout *string
 	if skipSync {
 		_, _ = fmt.Fprintln(e.Out, "Not a git repository, so nothing was synced.")
-		e.carryWithoutSync(ctx, target, project, helper.RepoDir, tz)
+		checkout = e.carryWithoutSync(ctx, target, project, helper.RepoDir, tz)
 	} else if !opts.NoSync {
 		repoRoot := gitRepoRoot(e.Cwd)
 		if repoRoot == "" {
@@ -289,8 +291,12 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		}
 		endSync()
 		pr.End()
+		checkout = &summary.Checkout
 		if l := syncResultLine(summary, opts.NoAttach); l != "" {
 			_, _ = fmt.Fprintln(e.Out, l)
+		}
+		if summary.Created {
+			_, _ = fmt.Fprintf(e.Out, "Checkout: %s on the machine\n", tildePath(summary.Checkout))
 		}
 		for _, w := range summary.Warnings() {
 			_, _ = fmt.Fprintln(e.ErrOut, w)
@@ -304,11 +310,11 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			}
 		}
 	} else {
-		e.carryWithoutSync(ctx, target, project, helper.RepoDir, tz)
+		checkout = e.carryWithoutSync(ctx, target, project, helper.RepoDir, tz)
 	}
 	// The machine has its checkout now: point this checkout's `repose`
 	// remote at it (I-272).
-	e.addReposeRemote(project)
+	e.addReposeRemote(ctx, project, target, checkout)
 
 	window := ""
 	if opts.Prompt != "" {
@@ -320,7 +326,10 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			agent = e.Cfg.DefaultAgent
 		}
 		pr.Phase("Starting "+agent, "")
-		name, dir := "", "~/"+project.Slug
+		name, dir := "", ""
+		if checkout != nil {
+			dir = tildePath(*checkout)
+		}
 		if opts.Worktree {
 			wt, err := prepareWorktree(ctx, target, project.Slug, agent)
 			if err != nil {
@@ -330,10 +339,10 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			pr.End()
 			_, _ = fmt.Fprintf(e.Out, "Worktree: %s on branch %s\n", wt.Dir, wt.Branch)
 			if wt.Env > 0 {
-				_, _ = fmt.Fprintf(e.Out, "Copied %d .env %s from ~/%s\n", wt.Env, plural(wt.Env, "file", "files"), project.Slug)
+				_, _ = fmt.Fprintf(e.Out, "Copied %d .env %s from %s\n", wt.Env, plural(wt.Env, "file", "files"), tildePath(wt.Checkout))
 			}
 			if wt.Dirty {
-				_, _ = fmt.Fprintf(e.ErrOut, "The worktree starts at the last commit; the uncommitted changes in ~/%s are not in it.\n", project.Slug)
+				_, _ = fmt.Fprintf(e.ErrOut, "The worktree starts at the last commit; the uncommitted changes in %s are not in it.\n", tildePath(wt.Checkout))
 			}
 			pr.Phase("Starting "+agent, "")
 		} else {
@@ -642,13 +651,18 @@ func attachTmux(t sshTarget, slug, window, tz, repoDir string, after func()) err
 // (I-304). The window is checked on the guest, in the same ssh, and when
 // it is gone the attach goes to the session with one line saying why: on
 // the terminal (seen after a detach) and in tmux's status line.
+//
+// Every attach sets the session's working directory to the checkout
+// (`-c`), so a window opened with Ctrl-b c starts there even when the
+// session began in the home directory before the first sync (I-368).
 func attachCommand(slug, window string) string {
+	co := checkoutVar(slug)
 	if window == "" {
-		return fmt.Sprintf("tmux attach -t %s", shQuote(slug))
+		return co + fmt.Sprintf(`exec tmux attach -t %s -c "$repose_co"`, shQuote(slug))
 	}
 	target := shQuote(slug + ":" + window)
 	msg := fmt.Sprintf("The %s window closed before the attach: the agent in it exited. Attached to the session instead; start the agent again there.", window)
-	return fmt.Sprintf("if tmux has-session -t %[1]s 2>/dev/null; then exec tmux attach -t %[1]s; fi; printf '%%s\\n' %[3]s >&2; exec tmux attach -t %[2]s \\; display-message -d 10000 %[3]s",
+	return co + fmt.Sprintf("if tmux has-session -t %[1]s 2>/dev/null; then exec tmux attach -t %[1]s -c \"$repose_co\"; fi; printf '%%s\\n' %[3]s >&2; exec tmux attach -t %[2]s -c \"$repose_co\" \\; display-message -d 10000 %[3]s",
 		target, shQuote(slug), shQuote(msg))
 }
 
@@ -1299,11 +1313,18 @@ func tzFromLocaltime(path string) string {
 // that is not a repository). Two ssh commands: the guest's markers, then
 // only what changed. A failure is a warning; the run goes on (DECISIONS
 // I-366).
-func (e *Env) carryWithoutSync(ctx context.Context, t sshTarget, project *Project, repoDir, tz string) {
-	out, err := runSSH(ctx, t, markerScript()+credsMissingScript(), nil)
+//
+// It returns the machine's checkout name, which the markers' ssh reads
+// on the way (I-368), or nil when that ssh failed.
+func (e *Env) carryWithoutSync(ctx context.Context, t sshTarget, project *Project, repoDir, tz string) *string {
+	out, err := runSSH(ctx, t, checkoutVar(project.Slug)+checkoutReport+markerScript()+credsMissingScript(), nil)
 	if err != nil {
 		e.warn("Could not copy your tool logins to the guest (%s).", oneLine(err.Error()))
-		return
+		return nil
+	}
+	var checkout *string
+	if name, ok := parseCheckout(string(out)); ok {
+		checkout = &name
 	}
 	markers := parseMarkers(string(out))
 	if strings.Contains(string(out), "#credsmissing") {
@@ -1336,7 +1357,7 @@ func (e *Env) carryWithoutSync(ctx context.Context, t sshTarget, project *Projec
 	}, co)
 	if err != nil {
 		e.warn("%s", oneLine(err.Error()))
-		return
+		return checkout
 	}
 	if len(copied) > 0 {
 		_, _ = fmt.Fprintf(e.Out, "Credentials: %s\n", strings.Join(copied, ", "))
@@ -1346,4 +1367,5 @@ func (e *Env) carryWithoutSync(ctx context.Context, t sshTarget, project *Projec
 			_, _ = fmt.Fprintln(e.ErrOut, l)
 		}
 	}
+	return checkout
 }

@@ -111,7 +111,7 @@ func (h *Handler) Setup(ctx context.Context, req *guestdv1.SetupProject) error {
 	if info, err := h.load(); err == nil {
 		prev = info.Slug
 	}
-	created, linked, err := h.ensureProjectDir(slug, prev)
+	dir, linked, err := h.findCheckout(slug, prev)
 	if err != nil {
 		return err
 	}
@@ -121,12 +121,17 @@ func (h *Handler) Setup(ctx context.Context, req *guestdv1.SetupProject) error {
 	if err := h.writeEnvFile(req); err != nil {
 		return err
 	}
-	initialised, err := h.ensureGitRepo(ctx, slug)
-	if err != nil {
-		return err
-	}
-	if err := h.ensureOrigin(ctx, slug, req.GetRemoteUrl()); err != nil {
-		return err
+	// A machine with no checkout yet gets none here: the CLI's first sync
+	// makes it, named after the laptop folder (I-368), and until then
+	// the session and the agents work in the home directory.
+	initialised := false
+	if dir != "" {
+		if initialised, err = h.ensureGitRepo(ctx, dir); err != nil {
+			return err
+		}
+		if err := h.ensureOrigin(ctx, dir, req.GetRemoteUrl()); err != nil {
+			return err
+		}
 	}
 	err = h.ensureTmux(ctx)
 	if err != nil {
@@ -145,7 +150,7 @@ func (h *Handler) Setup(ctx context.Context, req *guestdv1.SetupProject) error {
 	}
 	h.log.Info("project set up",
 		"event", "setup_project", "project_id", id,
-		"dir_created", created, "dir_linked", linked, "git_init", initialised)
+		"checkout_found", dir != "", "dir_linked", linked, "git_init", initialised)
 	return nil
 }
 
@@ -206,43 +211,74 @@ func (h *Handler) writeEnvFile(req *guestdv1.SetupProject) error {
 	return nil
 }
 
-// ensureProjectDir makes ~/<slug> exist. When it does not and the volume
-// was set up before under prev (a fork or a restore under another name,
-// DECISIONS I-255), ~/<slug> becomes a symlink to the checkout there, so
-// the agent, the tmux session and the CLI find the code the snapshot
-// holds; a symlink rather than a rename, because absolute paths inside
-// the checkout (a virtualenv, a bind mount, the agent's own history) keep
-// working. created reports a new empty directory, linked a new symlink.
-func (h *Handler) ensureProjectDir(slug, prev string) (created, linked bool, err error) {
-	dir := h.paths.ProjectDir(slug)
+// findCheckout returns the checkout's directory, by the rule the CLI's
+// checkoutVar and repose-checkout share (interfaces/guest-conventions.md
+// "The checkout", DECISIONS I-368): the directory ~/.repose/checkout
+// names, else ~/<slug>, else "" (no checkout: nothing is made). A volume
+// set up before under prev with no checkout file (a fork or a restore
+// under another name of a machine from before I-368, I-255) gets ~/<slug>
+// as a symlink to the checkout there, so the agent, the tmux session and
+// the CLI find the code the snapshot holds; a symlink rather than a
+// rename, because absolute paths inside the checkout (a virtualenv, a
+// bind mount, the agent's own history) keep working. linked reports a new
+// symlink.
+func (h *Handler) findCheckout(slug, prev string) (dir string, linked bool, err error) {
+	if name := h.recordedCheckout(); name != "" {
+		return h.paths.ProjectDir(name), false, nil
+	}
+	dir = h.paths.ProjectDir(slug)
 	if _, err := os.Stat(dir); err == nil {
-		return false, false, nil
+		return dir, false, nil
 	} else if !os.IsNotExist(err) {
-		return false, false, sysdep.Errf(sysdep.CodeInternal, "stat project directory: %w", err)
+		return "", false, sysdep.Errf(sysdep.CodeInternal, "stat project directory: %w", err)
 	}
 	// A symlink whose target is gone (the user removed the old
-	// checkout) is replaced, not followed into an error.
+	// checkout) is removed, not followed into an error.
 	if fi, err := os.Lstat(dir); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		if err := os.Remove(dir); err != nil {
-			return false, false, sysdep.Errf(sysdep.CodeInternal, "remove a dangling project link: %w", err)
+			return "", false, sysdep.Errf(sysdep.CodeInternal, "remove a dangling project link: %w", err)
 		}
 	}
 	if target := h.previousCheckout(slug, prev); target != "" {
 		if err := os.Symlink(target, dir); err != nil {
-			return false, false, sysdep.Errf(sysdep.CodeInternal, "link the project directory: %w", err)
+			return "", false, sysdep.Errf(sysdep.CodeInternal, "link the project directory: %w", err)
 		}
 		if err := os.Lchown(dir, h.uid, h.gid); err != nil && !os.IsPermission(err) {
-			return false, false, sysdep.Errf(sysdep.CodeInternal, "chown project link: %w", err)
+			return "", false, sysdep.Errf(sysdep.CodeInternal, "chown project link: %w", err)
 		}
-		return false, true, nil
+		return dir, true, nil
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return false, false, sysdep.Errf(sysdep.CodeInternal, "create project directory: %w", err)
+	return "", false, nil
+}
+
+// recordedCheckout is the name ~/.repose/checkout holds when it is one
+// directory of the home that exists and resolves inside the home; ""
+// otherwise. The file is dev's, so a name that is a path, starts with a
+// dot, or leads out of the home is ignored rather than followed.
+func (h *Handler) recordedCheckout() string {
+	b, err := os.ReadFile(h.paths.CheckoutFile())
+	if err != nil {
+		return ""
 	}
-	if err := os.Chown(dir, h.uid, h.gid); err != nil && !os.IsPermission(err) {
-		return false, false, sysdep.Errf(sysdep.CodeInternal, "chown project directory: %w", err)
+	name := strings.TrimSpace(string(b))
+	if name == "" || strings.HasPrefix(name, ".") || strings.ContainsAny(name, "/\\\x00\n") {
+		return ""
 	}
-	return true, false, nil
+	home, err := filepath.EvalSymlinks(h.paths.Home())
+	if err != nil {
+		return ""
+	}
+	real, err := filepath.EvalSymlinks(h.paths.ProjectDir(name))
+	if err != nil {
+		return ""
+	}
+	if fi, err := os.Stat(real); err != nil || !fi.IsDir() {
+		return ""
+	}
+	if rel, err := filepath.Rel(home, real); err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return ""
+	}
+	return name
 }
 
 // previousCheckout is the link target for ~/<slug>: the directory ~/<prev>
@@ -272,8 +308,7 @@ func (h *Handler) previousCheckout(slug, prev string) string {
 
 // ensureGitRepo runs git init as dev when the directory has no .git, so the
 // CLI's fetch-and-checkout at run has somewhere to land.
-func (h *Handler) ensureGitRepo(ctx context.Context, slug string) (bool, error) {
-	dir := h.paths.ProjectDir(slug)
+func (h *Handler) ensureGitRepo(ctx context.Context, dir string) (bool, error) {
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 		return false, nil
 	} else if !os.IsNotExist(err) {
@@ -302,12 +337,11 @@ func (h *Handler) ensureGitRepo(ctx context.Context, slug string) (bool, error) 
 // SSH through the agent the CLI forwards, so origin is the SSH form. The
 // first real run found the directory git-inited with no origin at all
 // (DECISIONS I-107). Idempotent: set-url when origin exists.
-func (h *Handler) ensureOrigin(ctx context.Context, slug, remote string) error {
+func (h *Handler) ensureOrigin(ctx context.Context, dir, remote string) error {
 	url := originURL(remote)
 	if url == "" {
 		return nil
 	}
-	dir := h.paths.ProjectDir(slug)
 	run := func(argv ...string) (int, error) {
 		res, err := h.run.Run(ctx, sysdep.RunSpec{
 			Argv:      argv,

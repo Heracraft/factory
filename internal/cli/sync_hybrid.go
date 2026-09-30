@@ -63,8 +63,8 @@ func gitPackKiB(dir string) int64 {
 // without a base it knows the next bundle would carry the whole history
 // again. ok=false with why is the fall back; err is only for an ssh that
 // failed outright.
-func hybridFetch(ctx context.Context, t sshTarget, slug, url string, bases []string) (tips []string, ok bool, why string, err error) {
-	script := fmt.Sprintf(`cd ~/%s
+func hybridFetch(ctx context.Context, t sshTarget, dir, url string, bases []string) (tips []string, ok bool, why string, err error) {
+	script := fmt.Sprintf(`cd %s
 export GIT_TERMINAL_PROMPT=0
 e=$(mktemp)
 if git fetch -q --no-tags %s '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*' </dev/null 2>"$e"; then
@@ -80,7 +80,7 @@ git for-each-ref --format='%%(objectname)'
 git cat-file --batch-check='%%(objectname) %%(objecttype)' | while read -r o ty; do
   case $ty in commit|tag) echo "$o" ;; esac
 done
-`, slug, shQuote(url))
+`, homeShell(dir), shQuote(url))
 	out, err := runSSH(ctx, t, script, strings.NewReader(strings.Join(bases, "\n")+"\n"))
 	if err != nil {
 		return nil, false, "", stepFailed("clone your repository in the guest", err, "")

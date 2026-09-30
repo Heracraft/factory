@@ -25,7 +25,9 @@ only, left alone with a message saying where to add the line (I-151).
 In a project's own checkout (its origin is the project's remote, or its
 root is the project's `by_dir` entry), `run` and `attach` own the
 `[remote "repose"]` section of `.git/config` when its `url` has the shape
-`<slug>.repose:~/<slug>`: `url` (retargeted when the slug differs),
+`<slug>.repose:~/<checkout>` (the checkout's name under the guest's home,
+I-368; `<slug>` on a machine set up before): `url` (retargeted when it
+differs),
 git's default `fetch` refspec, `pushurl = this remote is fetch-only;
 repose sync sends your work to the machine` (I-367; a remote added
 before says `repose run` and is left so, since ownership goes by `url`)
@@ -49,7 +51,9 @@ or `:PATH` (this checkout's project), the other a laptop path; a path
 starting with `/` or `.` is always local, as with scp. Several sources
 are all on one side (and name one project) and go into the directory
 DST. A relative guest
-path is taken from `~/<slug>`. It runs `scp` with the project's ssh
+path is taken from the checkout (`guest-conventions.md` "The checkout",
+I-368; the home directory when the machine has none), which costs one
+ssh to ask the guest. It runs `scp` with the project's ssh
 target (the multiplexed `<slug>.repose` alias), so it refreshes the
 certificate like `run`, needs a running guest (exit 5 otherwise), and
 exits with scp's code.

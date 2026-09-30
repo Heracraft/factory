@@ -72,6 +72,11 @@ func (p Paths) Home() string { return p.join("home", "dev") }
 // ProjectDir is /home/dev/<slug>, the project checkout.
 func (p Paths) ProjectDir(slug string) string { return p.join("home", "dev", slug) }
 
+// CheckoutFile is /home/dev/.repose/checkout: the name, under the home,
+// of the checkout's directory, written by the CLI's first sync (DECISIONS
+// I-368).
+func (p Paths) CheckoutFile() string { return p.join("home", "dev", ".repose", "checkout") }
+
 // ProjectJSON is /home/dev/.repose/project.json.
 func (p Paths) ProjectJSON() string { return p.join("home", "dev", ".repose", "project.json") }
 

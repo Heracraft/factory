@@ -11,6 +11,21 @@ An agent's uncommitted work on the machine can't block a `repose run`, and you c
 
 `repose attach` and `repose run --no-sync` never touch the machine's checkout, not even on a new machine.
 
+## Where the checkout is
+
+The first sync puts your checkout in the machine's home directory under your laptop folder's name, whatever the project is called. Run `repose run --name kanali` in `~/Downloads/projects/factory` and the project is `kanali` but the checkout is `/home/dev/factory`, and the run says so:
+
+```text
+Synced: 14 modified, 30 untracked, 1 env file
+Checkout: ~/factory on the machine
+```
+
+The host is the project's name and the path is your folder's: `scp -r ./infra kanali.repose:factory/`, `ssh kanali.repose 'cd factory && ls'`. A folder name with spaces or other characters becomes a safe name (`job search` is `job-search`). If the machine already has a non-empty directory of that name, such as `~/go`, the checkout goes under the project's name instead.
+
+A machine with no checkout, one made with `repose run --no-sync` or from a directory that isn't a git repository, has you work in `/home/dev` itself. Its first `repose sync` makes the checkout.
+
+Later runs, from any folder or laptop, use the checkout the machine already has. A machine whose checkout an earlier version of repose made keeps it at `/home/dev/<project>`.
+
 ## What travels
 
 - **Commits.** Your current branch, including commits you haven't pushed. They go straight from your laptop, so private repositories work with no setup on the machine.

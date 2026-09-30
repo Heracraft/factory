@@ -9342,3 +9342,75 @@ syncing on `run` when the guest is clean (a clean guest can still hold an
 agent's commits, and "sometimes it syncs" is the confusion being removed);
 a prompt on `run` (scripts; and I-248 already rejected it); dropping the
 key computation on skipped runs (then the line could not be printed).
+
+**I-368. The machine's checkout is named after the laptop folder of its
+first sync; a machine with no checkout works in the home directory.**
+(owner, 2026-09-29; amends the `/home/dev/<slug>` of DESIGN.md,
+guest-conventions.md and I-255) The owner ran `repose run --name kanali`
+in `~/Downloads/projects/factory`, then `scp -r ./infra
+kanali.repose:~/kanali/factory/`, which failed four ways with "realpath
+... No such file": the checkout was `~/kanali`, named after the project,
+and nothing on screen had said where it was. The owner's rule: a sync of
+a folder puts it in `/home/dev/<folder>`; a project named like its
+folder, the common case, looks the same as before; with nothing synced
+the user lands in `/home/dev`. How:
+
+- *One rule, three readers.* `~/.repose/checkout` holds the directory's
+  name. The checkout is the directory it names when that exists, else
+  `~/<slug>` when that exists (every machine set up before this, whose
+  guestd made it at each start), else none, and work happens in `~`. The
+  CLI's `checkoutVar` (shell, in every remote script that works "in the
+  checkout": exec, `repose ssh`, agent windows, worktrees, attach, cp,
+  code), guestd's `findCheckout` (Go, which also refuses a name that
+  resolves outside the home) and the base's new `repose-checkout` (the
+  tmux session unit and `repose-guest-profile`) apply it.
+  guest-conventions.md "The checkout" is the contract.
+- *Only a sync makes one.* The sync's probe, finding none, makes
+  `~/<name>` with `<name>` the laptop root's basename run through I-358's
+  `dirProjectName` (so `job search` is `job-search` and a leading dot
+  goes), or the slug when that is empty or `~/<name>` is a non-empty
+  directory or not a directory (`~/go` from Go tooling); it writes the
+  name, git-inits, and prints `#created`. The run then says `Checkout:
+  ~/<name> on the machine` once. guestd's `SetupProject` no longer makes
+  `~/<slug>`, and git-inits and sets `origin` only in a checkout the rule
+  finds. The early and boot probes no longer run outside a repository,
+  where they would have made a checkout for a run that syncs nothing.
+- *The session catches up.* A new machine's tmux session starts in `~`,
+  before any checkout exists. The sync that makes the checkout respawns
+  the `shell` window into it when that window is an idle shell in `~`
+  (never anything busy), and every attach passes `tmux attach -c
+  <checkout>`, so Ctrl-b c opens there.
+- *The `repose` remote* is `<slug>.repose:~/<checkout>`: run passes the
+  name its sync or carry just learned; attach keeps an existing remote of
+  the CLI's shape and asks the guest (one ssh) only when it must add one;
+  a machine with no checkout gets none. The CLI's shape is now any
+  `<slug>.repose:~/<name>`, so `todo-app.repose:~/other` counts as the
+  CLI's and may be retargeted. `repose cp` and `repose code` spend one ssh
+  asking the guest for the name.
+- *Compatibility.* A machine set up before keeps `~/<slug>` everywhere,
+  new CLI or old; an old CLI against a new base still works, because the
+  rule's second branch is its layout and the probe it runs made
+  `~/<slug>` itself. A fork of a new machine has the same checkout path,
+  since the file comes with the volume; a fork of an old one keeps I-255's
+  link. Worktrees are `~/<checkout>-worktree-<N>`. Needs a base publish
+  for guestd, the tmux unit and `repose-checkout`; until then new
+  machines behave as old ones (guestd makes `~/<slug>` first).
+
+`TestFirstSyncNamesTheCheckoutAfterTheLaptopFolder` (folder `factory`,
+project `proj`: `~/factory`, `~/.repose/checkout`, no `~/proj`, the
+Checkout line once, remote `proj.repose:~/factory`, exec and an agent
+window in it), `TestLaterRunsKeepTheRecordedCheckout`,
+`TestFirstSyncFallsBackToTheSlugWhenTheNameIsTaken`,
+`TestAnOldCheckoutStaysUnderTheSlug`, `TestNoSyncMakesNoCheckout`,
+`TestFirstSyncMovesTheIdleShellIntoTheCheckout` (idle shell moved, busy
+one left), `TestCpGuestPathFollowsTheCheckout`,
+`TestCheckoutNameFromTheFolder`; guestd `TestSetupUsesTheRecordedCheckout`,
+`TestRecordedCheckoutStaysInTheHome`; VM tests `guest-base` (session in
+`/home/dev` with no checkout, in `~/factory` once recorded, `../etc`
+ignored, profile `dir`) and `guestd` (SetupProject makes nothing, then
+git-inits `~/factory` and sets its origin). *Rejected:* keeping
+`~/<slug>` and printing it (the owner's point is that the folder name is
+what the user already knows); a symlink `~/<folder>` to `~/<slug>` (two
+names for one directory in `ls ~`); recording the name in `project.json`
+(guestd rewrites that file at every start from the api's record); the
+laptop's projects cache (a second laptop or a fork would not have it).

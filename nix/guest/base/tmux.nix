@@ -4,12 +4,15 @@
 # belongs to dev's tmux server and outlives guestd restarts. It waits (path
 # unit) for /home/dev/.repose/project.json, which guestd writes at
 # SetupProject, then creates the session named after the slug with window
-# `shell` in /home/dev/<slug>. Creating it twice is a no-op.
+# `shell` in the checkout (repose-checkout: the laptop folder's name since
+# DECISIONS I-368, ~/<slug> on an older machine, the home directory when
+# the machine has none yet). Creating it twice is a no-op.
 { config, lib, pkgs, ... }:
 let
+  checkout = import ./checkout.nix { inherit pkgs; };
   tmuxSession = pkgs.writeShellApplication {
     name = "repose-tmux-session";
-    runtimeInputs = [ pkgs.tmux pkgs.jq pkgs.coreutils pkgs.gnused pkgs.bash ];
+    runtimeInputs = [ pkgs.tmux pkgs.jq pkgs.coreutils pkgs.gnused pkgs.bash checkout ];
     text = ''
       project="$HOME/.repose/project.json"
       if [ ! -s "$project" ]; then
@@ -21,8 +24,7 @@ let
         echo "repose-tmux-session: project.json has no slug" >&2
         exit 1
       fi
-      dir="$HOME/$slug"
-      mkdir -p "$dir"
+      dir=$(repose-checkout)
       if tmux has-session -t "=$slug" 2>/dev/null; then
         exit 0
       fi

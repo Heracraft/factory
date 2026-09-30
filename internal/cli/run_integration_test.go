@@ -91,7 +91,16 @@ func newSyncFixture(t *testing.T) *syncFixture {
 	return &syncFixture{bare: bare, local: local, guestHome: guestHome, guest: guest, target: target}
 }
 
-func (f *syncFixture) guestRepo() string { return filepath.Join(f.guestHome, testSlug) }
+// guestRepo is the guest's checkout, found as the guest finds it
+// (checkoutVar): the name ~/.repose/checkout records, else ~/<slug>.
+func (f *syncFixture) guestRepo() string {
+	if b, err := os.ReadFile(filepath.Join(f.guestHome, ".repose", "checkout")); err == nil {
+		if n := strings.TrimSpace(string(b)); n != "" {
+			return filepath.Join(f.guestHome, n)
+		}
+	}
+	return filepath.Join(f.guestHome, testSlug)
+}
 
 func TestSyncDirtyRemoteRefused(t *testing.T) {
 	f := newSyncFixture(t)
@@ -558,7 +567,7 @@ func TestRunWorktree(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("x\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, err := runSSH(ctx, f.target, probeScript(testSlug), nil)
+	out, err := runSSH(ctx, f.target, probeScript(testSlug, ""), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

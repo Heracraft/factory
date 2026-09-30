@@ -74,8 +74,9 @@ func TestRunTempCreatesWithoutRemote(t *testing.T) {
 		t.Fatalf("checkout got a repose remote: %q", out)
 	}
 	// The checkout went up, with its whole history (no remote to clone).
-	if _, err := os.Stat(filepath.Join(f.guestHome, p.Slug, "README.md")); err != nil {
-		t.Fatalf("checkout not synced into ~/%s: %v", p.Slug, err)
+	// A new machine's checkout is named after the laptop folder (I-368).
+	if _, err := os.Stat(filepath.Join(f.guestHome, checkoutName(f.local), "README.md")); err != nil {
+		t.Fatalf("checkout not synced into ~/%s: %v", checkoutName(f.local), err)
 	}
 	if !strings.Contains(errOut.buf.String(), p.Slug+" is temporary: destroyed in 3h.") {
 		t.Fatalf("stderr %q lacks the time left", errOut.buf.String())
@@ -387,7 +388,7 @@ func TestRunNameInCheckoutMakesASecondProject(t *testing.T) {
 	if len(ps) != 2 || exp == nil || exp.RemoteURL != "" {
 		t.Fatalf("projects = %+v", ps)
 	}
-	if _, err := os.Stat(filepath.Join(f.guestHome, "proj-experiment", "README.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(f.guestHome, checkoutName(f.local), "README.md")); err != nil {
 		t.Fatalf("checkout not synced into the second project: %v", err)
 	}
 	if e.Cache.ByRemote[remote].ProjectID != own || len(e.Cache.ByDir) != 0 {

@@ -91,7 +91,7 @@ Open a shell on the machine in the checkout, outside tmux; `exit` ends it. For o
 
 ### `repose code [PROJECT]`
 
-Open the project's checkout, `/home/dev/<project>`, in an editor on your laptop, over SSH to `<project>.repose`. It uses VS Code (`code`) if it's installed, else Cursor (`cursor`), else Zed (`zed`); on a Mac it also looks in `/Applications` and `~/Applications`. The machine must be running.
+Open the project's checkout, `/home/dev/<folder>` ([Where the checkout is](/docs/sync#where-the-checkout-is)), in an editor on your laptop, over SSH to `<project>.repose`. It uses VS Code (`code`) if it's installed, else Cursor (`cursor`), else Zed (`zed`); on a Mac it also looks in `/Applications` and `~/Applications`. The machine must be running.
 
 ```
 $ repose code todo-app

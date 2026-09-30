@@ -65,10 +65,6 @@ func (ed editorSpec) find(home string) string {
 	return ""
 }
 
-// guestCheckout is the project's checkout in the machine
-// (docs/interfaces/guest-conventions.md).
-func guestCheckout(slug string) string { return "/home/dev/" + slug }
-
 // editorArgs is what opens host:dir in ed.
 func editorArgs(ed editorSpec, host, dir string) []string {
 	if ed.Name == "zed" {
@@ -136,12 +132,16 @@ func CodeCmd(ctx context.Context, e *Env, projectArg, editorFlag string) error {
 	// The certificate and the Host block, proved with an ssh, before the
 	// editor tries its own connection: the editor's errors are far less
 	// clear than the CLI's.
-	project, _, err := connectRunning(ctx, e, projectArg)
+	project, target, err := connectRunning(ctx, e, projectArg)
 	if err != nil {
 		return err
 	}
 	host := project.Slug + ".repose"
-	dir := guestCheckout(project.Slug)
+	name, err := guestCheckoutName(ctx, target, project.Slug)
+	if err != nil {
+		return err
+	}
+	dir := guestHomePath(name)
 	_, _ = fmt.Fprintf(e.Out, "Opening %s:%s in %s\n", host, dir, ed.Label)
 	cmd := exec.CommandContext(ctx, bin, editorArgs(ed, host, dir)...)
 	// The editor's own ssh runs later, outside this command: it must run

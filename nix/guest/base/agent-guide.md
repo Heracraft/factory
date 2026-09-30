@@ -11,6 +11,7 @@ This is a repose machine: a NixOS virtual machine for one project, where agents 
 The user works from their laptop. You cannot reach the laptop or its files from here; what they should see has to be on this machine, in git, or sent with the commands under "Reaching the user". <!-- /docs/secrets#what-an-agent-on-the-machine-can-reach -->
 The user can also work in this checkout from their laptop without attaching: in their editor over SSH (`repose code`), or one command at a time (`repose exec`), so files here can change while you work. <!-- /docs/ssh-and-editors -->
 You are `dev`, with passwordless `sudo`. The checkout is under `/home/dev`, and everything in `/home/dev` survives a stop. <!-- /docs/machine -->
+The checkout is named after the folder on the user's laptop it came from, not after the project, and `repose-checkout` prints its path; before the first sync there is none and work happens in `/home/dev`. <!-- /docs/sync#where-the-checkout-is --> <!-- needs: repose-checkout -->
 
 ## Servers and ports
 
@@ -65,7 +66,7 @@ You are `dev`, with passwordless `sudo`. The checkout is under `/home/dev`, and 
 - Commit your work so the user can get it. From their laptop they fetch the commits in this checkout, worktree branches included, straight from this machine with `git fetch repose`, so they don't need you to push. Uncommitted changes don't reach them that way. Push when they ask for it. <!-- /docs/sync#getting-work-back -->
 - Push over HTTPS. When the user's `gh` login was copied, `git push` to github.com works, and `git@github.com:` remotes are rewritten to HTTPS. There is no SSH key on this machine. <!-- /docs/secrets#logins-copied-from-your-laptop -->
 - Commits made here are unsigned; the signing key stays on the laptop. <!-- /docs/secrets#git-and-claude-code-settings -->
-- If you were started in a folder next to the checkout (`~/PROJECT-worktree-1` and the like), it is a git worktree on its own branch (worktree-1 and the like), so other agents' files are not yours. Commit your work on that branch; don't copy it into the checkout. <!-- /docs/run-and-attach#several-agents-separate-trees -->
+- If you were started in a folder next to the checkout (`~/CHECKOUT-worktree-1` and the like, where CHECKOUT is the checkout's folder), it is a git worktree on its own branch (worktree-1 and the like), so other agents' files are not yours. Commit your work on that branch; don't copy it into the checkout. <!-- /docs/run-and-attach#several-agents-separate-trees -->
 
 ## Agents
 

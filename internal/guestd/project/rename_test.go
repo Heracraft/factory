@@ -68,16 +68,16 @@ func TestSetupUnderANewNameLinksTheOldCheckout(t *testing.T) {
 		t.Fatalf("fork of a fork: %q, %v", target, err)
 	}
 
-	// The old checkout gone: the dangling link is replaced by an empty
-	// directory.
+	// The old checkout gone: the dangling link is removed, and nothing
+	// replaces it (the next sync makes a checkout, I-368).
 	if err := os.RemoveAll(p.ProjectDir("todo-app")); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.Setup(ctx, fork); err != nil {
 		t.Fatalf("setup over a dangling link: %v", err)
 	}
-	if fi, err := os.Lstat(link); err != nil || !fi.IsDir() {
-		t.Fatalf("dangling link not replaced by a directory: %v %v", fi, err)
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Fatalf("dangling link left or replaced: %v", err)
 	}
 }
 

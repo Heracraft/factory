@@ -302,8 +302,10 @@ $ repose run
       list; `git ls-files --others --exclude-standard` → untracked list. A
       directory that is not a repository, has no commit, or is a shallow
       clone exits 2 with the command that fixes it (or `--no-sync`).
-   b. Remote, one ssh: create `~/<slug>` (and `git init` it) if missing,
-      then report `git status --porcelain`, every commit a ref or `HEAD`
+   b. Remote, one ssh: find the checkout (guest-conventions "The
+      checkout"); with none, make `~/<laptop folder>` (the slug when that
+      name is taken), record it in `~/.repose/checkout` and `git init` it
+      (I-368); then report `git status --porcelain`, every commit a ref or `HEAD`
       points at, and whether `origin` exists. If the status is non-empty
       and neither `--stash-remote` nor `--discard-remote`: exit 6 with
 
@@ -363,10 +365,10 @@ $ repose run
       deletion committed on the laptop is a deletion in the guest.
    Print one line `Credentials: gh, opencode` naming what step 5 copied.
 7. If PROMPT given: agent = `--agent` or project `agent_default`. Over SSH:
-   `tmux new-window -t <slug> -n <agent> -c ~/<slug> -d '<agent>'` (name
+   `tmux new-window -t <slug> -n <agent> -c <checkout> -d '<agent>'` (name
    becomes the lowest free `<agent>-N`, N >= 2, if the window exists,
    DECISIONS I-253; with `--worktree`, which needs a PROMPT, the directory
-   is a new `git worktree add -b repose/<window> ~/<slug>-<window> HEAD`
+   is a new `git worktree add -b worktree-<N> ~/<checkout>-worktree-<N> HEAD`
    and the name also skips any N whose worktree path or branch exists; a
    checkout with no `.git` or no commit is refused with exit 2), wait until the pane has been
    idle 1 second (`tmux display -p '#{pane_current_command}'` is the agent

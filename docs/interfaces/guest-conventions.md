@@ -4,12 +4,39 @@ What every guest guarantees, so the CLI, hooks and guestd can rely on it.
 Produced by `nix/guest/base/` (workstream 02); every path, name and variable
 here exists in that module under exactly this name.
 
+## The checkout
+
+Every reader of the checkout's location applies one rule (DECISIONS
+I-368): the CLI's `checkoutVar`, guestd's `findCheckout`, and the guest
+command `repose-checkout` (prints the absolute path), which the tmux
+session unit and `repose-guest-profile` use.
+
+1. `/home/dev/.repose/checkout` names a directory of `/home/dev` that
+   exists (and, for guestd, resolves inside the home): that directory.
+2. Else `/home/dev/<slug>` exists: that directory (a machine set up
+   before I-368).
+3. Else there is no checkout, and the session, agents, `repose exec`,
+   `repose ssh` and relative `repose cp` paths work in `/home/dev`.
+
+Only the CLI's sync makes a checkout, in its probe: when the rule finds
+none, it makes `/home/dev/<name>`, where `<name>` is the laptop
+checkout's folder made safe as a project name is (`job search` is
+`job-search`), or the slug when that is empty or `/home/dev/<name>` is a
+non-empty directory or not a directory; it writes the name to
+`/home/dev/.repose/checkout` and `git init`s it. guestd never makes one:
+`SetupProject` git-inits and points `origin` at the remote only in a
+checkout the rule finds. The sync that made the checkout replaces the
+session's `shell` window (`tmux respawn-pane -k -c <checkout>`) when it
+is an idle shell in `/home/dev`, and every attach passes `-c <checkout>`
+to `tmux attach`, so new windows open there.
+
 ## Filesystem
 
 | Path | What |
 |---|---|
-| `/home/dev/<slug>` | the project checkout; the tmux session's default directory. On a volume restored under another slug (a fork, a restore `--as-new`), a relative symlink to the checkout of the slug `/home/dev/.repose/project.json` named before, made by `SetupProject` when `/home/dev/<slug>` does not exist (DECISIONS I-255) |
-| `/home/dev/<slug>-worktree-<N>` | a git worktree of the checkout on branch `worktree-<N>`, made by `repose run --worktree` (DECISIONS I-253, I-342); see "tmux". Worktrees made before I-342 are `/home/dev/<slug>-<window>` on `repose/<window>` and stay as they are |
+| `/home/dev/<checkout>` | the project checkout, found by the rule in "The checkout" below; the tmux session's default directory. Made by the CLI's first sync, named after the laptop folder (DECISIONS I-368). On a machine set up before I-368 it is `/home/dev/<slug>`, which guestd's `SetupProject` made at every start; on such a volume restored under another slug (a fork, a restore `--as-new`) with no `/home/dev/.repose/checkout`, `SetupProject` makes `/home/dev/<slug>` a relative symlink to the checkout of the slug `project.json` named before (DECISIONS I-255) |
+| `/home/dev/.repose/checkout` | one line, the checkout's directory name under `/home/dev` (`[A-Za-z0-9._-]`, no leading dot, no `/`), written by the CLI's first sync (I-368); absent on a machine with no checkout and on one set up before I-368 |
+| `/home/dev/<checkout>-worktree-<N>` | a git worktree of the checkout on branch `worktree-<N>`, made by `repose run --worktree` (DECISIONS I-253, I-342); see "tmux". Worktrees made before I-342 are `/home/dev/<slug>-<window>` on `repose/<window>` and stay as they are |
 | `/home/dev/.repose/project.json` | `{project_id, slug, name, remote_url, user_handle, class, tz}` written by guestd at SetupProject |
 | `/etc/repose/env` | `TZ=` and `REPOSE_PROJECT=` lines written by guestd at SetupProject, sourced by every shell; the CLI replaces the `TZ=` line (through `sudo`, root 0644, by rename) on `run` and `attach` when the laptop's zone differs (I-198) |
 | `/etc/repose/base-version` | the platform base version string (same as `nixos-version`'s label) |
@@ -45,25 +72,27 @@ here exists in that module under exactly this name.
 - Session name = project slug, created by the user unit
   `repose-tmux-session.service` (started by a path unit once
   `/home/dev/.repose/project.json` exists, and by guestd at SetupProject)
-  with window `shell` in `/home/dev/<slug>`. Running it again is a no-op.
+  with window `shell` in the checkout (`repose-checkout`; `/home/dev`
+  when there is none, I-368). Running it again is a no-op.
 - Agent windows are named after the agent: `claude`, `opencode`, `codex`,
   `gemini`, `pi`. Further instances get the lowest free `claude-N`, N >= 2,
   with no upper limit (DECISIONS I-253); anything reading window names
   accepts any number of digits (guestd's `sample.AgentOf` always did).
 - `repose run --worktree "prompt"` (I-253, I-342) first runs `git -C
-  /home/dev/<slug> worktree add -b worktree-<N> /home/dev/<slug>-worktree-<N>
-  <HEAD>`, copies the checkout's gitignored `.env` and `.env.*` files into
-  it (I-343), and opens the agent's window there (`-c
-  /home/dev/<slug>-worktree-<N>`). N is the lowest number, from 1, whose
-  `/home/dev/<slug>-worktree-<N>` path and `worktree-<N>` branch are both
+  /home/dev/<checkout> worktree add -b worktree-<N>
+  /home/dev/<checkout>-worktree-<N> <HEAD>`, copies the checkout's
+  gitignored `.env` and `.env.*` files into it (I-343), and opens the
+  agent's window there (`-c /home/dev/<checkout>-worktree-<N>`). N is the
+  lowest number, from 1, whose `/home/dev/<checkout>-worktree-<N>` path
+  and `worktree-<N>` branch are both
   free, so a worktree is never reused. The window is named as any other
   (`<agent>` or `<agent>-N`), apart from the worktree's number. The branch
   has no `repose/` prefix: the laptop's `git fetch repose` files it as
   `repose/worktree-<N>`. Worktrees live beside the checkout, never in
   it, so the sync's status, stash, fingerprint and tar never see them;
   nothing removes them but the user (`git worktree remove`).
-- `repose attach` = `tmux attach -t <slug>`; `repose run "prompt"` =
-  `tmux new-window -t <slug> -n <agent> -c /home/dev/<slug> '<agent> ...'`
+- `repose attach` = `tmux attach -t <slug> -c <checkout>`; `repose run
+  "prompt"` = `tmux new-window -t <slug> -n <agent> -c <checkout> '<agent> ...'`
   then `tmux send-keys -t <slug>:<agent> '<prompt>' Enter` after the TUI is
   up (guestd waits for the pane to be idle 1 s).
 - `/etc/tmux.conf`: `set -g set-clipboard on`, `set -g mouse off` (DECISIONS I-364;

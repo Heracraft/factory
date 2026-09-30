@@ -134,7 +134,7 @@ For an experiment that shouldn't touch your main project, create another one by 
 repose run --name todo-app-experiment
 ```
 
-It gets your checkout, with its whole history and uncommitted work, like any first sync. Commands in the checkout still mean the original; reach the new one by name. Running the same command again in the checkout syncs into `todo-app-experiment` again, and `repose attach todo-app-experiment` gets you back onto it from anywhere. This is also how to run several agents on one repository without them sharing a working tree.
+It gets your checkout, with its whole history and uncommitted work, like any first sync. Commands in the checkout still mean the original; reach the new one by name. Running the same command again in the checkout attaches to `todo-app-experiment` again, and `repose attach todo-app-experiment` gets you back onto it from anywhere. This is also how to run several agents on one repository without them sharing a working tree.
 
 `--name` always means the project with that name: if it exists, `run` uses it, and if not, `run` creates it. It never lands on a project with another name. A name that belongs to another repository's project is refused, so one repository is never synced into another's machine.
 
@@ -142,7 +142,7 @@ The second machine has no git remote of its own, and your checkout's `repose` re
 
 ```
 git remote add experiment \
-  todo-app-experiment.repose:~/todo-app-experiment
+  todo-app-experiment.repose:~/todo-app
 git fetch experiment
 ```
 
@@ -168,7 +168,7 @@ Not a git repository, so nothing was synced.
 
 - `--temp` always makes a new machine, named `tmp-` and four letters unless you pass `--name`. It never uses the checkout's project, and can't be combined with `--project`. Running it twice makes two machines.
 - `--temp 3h` or `--temp 90m` gives it a shorter life, from 10 minutes to 24 hours. It's counted from when the machine was made.
-- In a checkout it syncs as usual, uncommitted work included. In a directory that isn't a git repository it makes an empty machine. The checkout gets no `repose` git remote; fetch an agent's work with `git fetch tmp-k3f9.repose:~/tmp-k3f9 BRANCH`.
+- In a checkout it syncs as usual, uncommitted work included. In a directory that isn't a git repository it makes an empty machine. The checkout gets no `repose` git remote; fetch an agent's work with `git fetch tmp-k3f9.repose:~/todo-app BRANCH`, where `todo-app` is your checkout folder's name (the run prints it as `Checkout: ~/todo-app on the machine`).
 - `run`, `attach`, `repose ls` and `repose status` say how long it has left: `tmp-k3f9 is temporary: destroyed in 5h.` The dashboard shows it as temporary.
 - If you're attached, or an agent is working, when the time runs out, the machine waits until nobody is attached and no agent is working, checking each minute, for up to a day. An agent sitting at its prompt doesn't count as working.
 - You get a notification an hour before the end (for a machine made with more than an hour), and another when it's destroyed. See [Notifications](/docs/notifications).
@@ -198,14 +198,14 @@ from its snapshot of 2026-09-25 14:02 in 48s:
   todo-app-fork-3  running (large)
 ```
 
-`repose fork` snapshots the project and restores the snapshot into new projects. Each copy starts with the same disk: the code and its uncommitted changes, installed dependencies, Docker images, logins made on the machine. It also gets the project's configuration and [secrets](/docs/secrets). Processes don't carry over; each copy boots fresh. The code is at `~/todo-app-fork-1` in the first copy, which links to `~/todo-app`, so paths inside the project keep working.
+`repose fork` snapshots the project and restores the snapshot into new projects. Each copy starts with the same disk: the code and its uncommitted changes, installed dependencies, Docker images, logins made on the machine. It also gets the project's configuration and [secrets](/docs/secrets). Processes don't carry over; each copy boots fresh. The code is at the same path in every copy, `~/todo-app`, so paths inside the project keep working. (Copying a machine whose checkout an earlier version of repose made gives `~/todo-app-fork-1`, a link to `~/todo-app`.)
 
 `--prompt "..."` starts the agent in every copy with the same prompt. To give each copy its own prompt, attach to it and type it, or run `repose run --project todo-app-fork-2 "..."`, which leaves the copy's checkout as it is.
 
 The original keeps running and is still the project `repose run` uses in your checkout. Reach the copies by name: `repose attach todo-app-fork-2`. To keep one copy's work, commit it there and fetch it into your checkout with a remote for that copy:
 
 ```
-git remote add fork-2 todo-app-fork-2.repose:~/todo-app-fork-2
+git remote add fork-2 todo-app-fork-2.repose:~/todo-app
 git fetch fork-2
 git merge fork-2/main
 ```

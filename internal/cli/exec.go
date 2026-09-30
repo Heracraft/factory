@@ -48,11 +48,11 @@ func execScript(slug string, argv []string) string {
 	if i := strings.LastIndex(name, "/"); i >= 0 {
 		name = name[i+1:]
 	}
-	return fmt.Sprintf(`cd ~/%[1]s 2>/dev/null || { echo "repose: ~/%[1]s does not exist on the machine yet; running in ~" >&2; cd ~; }
+	return fmt.Sprintf(`%[1]scd "$repose_co"
 [ -r /etc/profile.d/repose.sh ] && . /etc/profile.d/repose.sh
 if [ -r %[2]s ]; then . %[2]s; REPOSE_DEVSHELL_QUIET=1 _repose_devshell %[3]s; unset -f _repose_devshell _repose_devshell_done
 elif command -v direnv >/dev/null 2>&1; then eval "$(direnv export bash 2>/dev/null)"; fi
-exec %[4]s`, slug, execDevshell, shQuote(name), strings.Join(quoted, " "))
+exec %[4]s`, checkoutVar(slug), execDevshell, shQuote(name), strings.Join(quoted, " "))
 }
 
 // execSSHArgs are ssh's arguments for opts on target.
@@ -147,7 +147,7 @@ func ExecCmd(ctx context.Context, e *Env, opts ExecOptions, stdin io.Reader) err
 // sshShellScript is `repose ssh`'s remote command: the user's login shell,
 // interactive, in the checkout (home when there is none yet).
 func sshShellScript(slug string) string {
-	return fmt.Sprintf(`cd ~/%[1]s 2>/dev/null || cd ~; exec "${SHELL:-bash}" -l`, slug)
+	return checkoutVar(slug) + `cd "$repose_co"; exec "${SHELL:-bash}" -l`
 }
 
 func newSSHCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {

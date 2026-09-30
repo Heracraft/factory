@@ -216,7 +216,7 @@ func attachFast(ctx context.Context, e *Env, explicit string, bridge bool) (done
 	tz := laptopTZ()
 	helper := fastAttachHelper(e, guess, target, tz, explicit, bridge)
 	if helper.RepoDir != "" {
-		e.addReposeRemote(guess) // I-272
+		e.addReposeRemote(ctx, guess, target, nil) // I-272
 	}
 	startSessionHelper(e, helper)
 	return true, attachTmux(target, guess.Slug, "", tz, helper.RepoDir, nil)
@@ -260,7 +260,10 @@ type earlyProbe struct {
 }
 
 func startEarlyProbe(ctx context.Context, e *Env, opts RunOptions) *earlyProbe {
-	if opts.NoSync {
+	// Outside a repository nothing syncs, and the probe would make a
+	// checkout the machine should not have (I-358, I-368).
+	root := gitRepoRoot(e.Cwd)
+	if opts.NoSync || root == "" {
 		return nil
 	}
 	guess := cachedGuess(e, e.resolveArg(opts.ProjectArg), defaultResolveDeps())
@@ -277,7 +280,7 @@ func startEarlyProbe(ctx context.Context, e *Env, opts RunOptions) *earlyProbe {
 	ep.started = time.Now()
 	go func() {
 		defer close(ep.done)
-		ep.out, ep.err = runSSH(ctx, target, probeScript(guess.Slug), nil)
+		ep.out, ep.err = runSSH(ctx, target, probeScript(guess.Slug, checkoutName(root)), nil)
 	}()
 	return ep
 }
@@ -342,7 +345,7 @@ func startBootProbe(ctx context.Context, e *Env, p *Project, withProbe bool) {
 	ep := &earlyProbe{id: p.ID, slug: p.Slug, target: target, cold: true, boot: true, usable: true, noProbe: !withProbe, done: make(chan struct{})}
 	script := "true"
 	if withProbe {
-		script = probeScript(p.Slug)
+		script = probeScript(p.Slug, checkoutName(gitRepoRoot(e.Cwd)))
 	}
 	timingf("run: guest up; first connection started beside the project read")
 	go func() {

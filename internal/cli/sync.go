@@ -120,6 +120,10 @@ type SyncSummary struct {
 	// never took (Modified, Untracked and Commits count it).
 	Skipped     bool
 	LaptopAhead bool
+	// Checkout is the checkout's directory under the guest's home;
+	// Created says this sync made it, the machine's first (I-368).
+	Checkout string
+	Created  bool
 }
 
 // skipCheckout is syncGuest for a run whose guest already has a
@@ -127,7 +131,7 @@ type SyncSummary struct {
 // and the carry go in one ssh (none when nothing changed), and the
 // summary records whether the laptop has work the guest never took.
 func skipCheckout(ctx context.Context, t sshTarget, localRepoDir string, opts SyncOptions, probe guestProbe, wantRefs []string, nothingNew bool, branch, head string, modified, untracked int) (*SyncSummary, error) {
-	s := &SyncSummary{Branch: branch, Head: head, Skipped: true}
+	s := &SyncSummary{Branch: branch, Head: head, Skipped: true, Checkout: probe.checkout}
 	if !nothingNew {
 		n, err := countCommitsToSend(localRepoDir, wantRefs, probe.tips)
 		if err != nil {
@@ -161,6 +165,21 @@ func skipCheckout(ctx context.Context, t sshTarget, localRepoDir string, opts Sy
 	}
 	s.Copied, s.Carried = carry.finish(string(out))
 	return s, nil
+}
+
+// freshShellScript, on the sync that made the checkout, moves the tmux
+// session's `shell` window into it: the session started in the home
+// directory, since the machine had no checkout then (I-368). Only a shell
+// sitting idle in the home directory is replaced; anything else is left
+// as it is. "" on every other sync.
+func freshShellScript(slug string, probe guestProbe) string {
+	if !probe.created {
+		return ""
+	}
+	w := shQuote("=" + slug + ":shell")
+	return fmt.Sprintf(`repose_p=$(tmux display-message -p -t %[1]s '#{pane_current_path} #{pane_current_command}' 2>/dev/null || true)
+case "$repose_p" in "$HOME bash"|"$HOME -bash"|"$HOME sh") tmux respawn-pane -k -t %[1]s -c %[2]s 2>/dev/null || true ;; esac
+`, w, homeShell(probe.checkout))
 }
 
 // dirtyTreeError is 07-cli.md §6's exit 6, carrying the file list for the
@@ -229,6 +248,10 @@ type guestProbe struct {
 	// a laptop with the same key has none to send, even when no guest ref
 	// points at a commit the laptop knows (I-284).
 	syncHas bool
+	// checkout is the checkout's directory under the home (I-368), and
+	// created says this probe made it: the machine's first sync.
+	checkout string
+	created  bool
 }
 
 // syncedFP holds the shell functions every dirtiness judgement of the
@@ -299,11 +322,11 @@ repose_synced=$(git rev-parse --git-path repose-synced)
 // one whose SetupProject has not run), then reports the dirty list,
 // whether that dirt is only what the last sync wrote (I-210), the
 // commits the guest has refs to, and whether it has an origin. One ssh.
-func probeScript(slug string) string {
+// probeScript is the sync's first ssh. It finds the checkout (checkoutVar)
+// and, on a machine with none, makes it at ~/<want> (I-368) and says so.
+func probeScript(slug, want string) string {
 	return fmt.Sprintf(`set -e
-d=~/%s
-mkdir -p "$d"
-cd "$d"
+%s%s%scd "$repose_co"
 [ -d .git ] || git init -q
 %s
 %s
@@ -322,7 +345,7 @@ git rev-parse -q --verify HEAD || true
 [ -f "$repose_synced-key" ] && tail -n +2 "$repose_synced-key" | { repose_n=0; while IFS=' ' read -r c p; do repose_n=1; if [ -n "$p" ]; then git -C "$p" cat-file -e "$c^{commit}" 2>/dev/null || exit 1; else git cat-file -e "$c^{commit}" 2>/dev/null || exit 1; fi; done; [ "$repose_n" = 1 ]; } && echo '#synchas'
 echo '#origin'
 git remote get-url origin >/dev/null 2>&1 && echo yes || true
-%s%s`, slug, syncedFP, envPathsCheck, credsMissingScript(), markerScript())
+%s%s`, checkoutVar(slug), checkoutCreate(slug, want), checkoutReport, syncedFP, envPathsCheck, credsMissingScript(), markerScript())
 }
 
 // credsMissingScript prints `#credsmissing` when a login file the last
@@ -337,6 +360,14 @@ func parseProbe(out string) guestProbe {
 	seen := map[string]bool{}
 	for _, l := range strings.Split(out, "\n") {
 		if strings.HasPrefix(l, "#marker ") {
+			continue
+		}
+		if l == "#created" {
+			p.created = true
+			continue
+		}
+		if l == "#checkout" || strings.HasPrefix(l, "#checkout ") {
+			p.checkout = strings.TrimSpace(strings.TrimPrefix(l, "#checkout"))
 			continue
 		}
 		if rest, ok := strings.CutPrefix(l, "#envnewer "); ok {
@@ -456,7 +487,7 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		out, err = opts.Probe()
 	}
 	if opts.Probe == nil || err != nil {
-		out, err = runSSH(ctx, t, probeScript(slug), nil)
+		out, err = runSSH(ctx, t, probeScript(slug, checkoutName(localRepoDir)), nil)
 	}
 	if err != nil {
 		return nil, stepFailed("read the guest's checkout", err, "")
@@ -597,7 +628,7 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	if cloneURL != "" {
 		{
 			url := cloneURL
-			tips, ok, why, err := hybridFetch(ctx, t, slug, url, laptopBases(localRepoDir))
+			tips, ok, why, err := hybridFetch(ctx, t, probe.checkout, url, laptopBases(localRepoDir))
 			if err != nil {
 				return nil, err
 			}
@@ -614,7 +645,7 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 	if err != nil {
 		return nil, err
 	}
-	summary := &SyncSummary{Branch: branch, Head: head, ClonedFrom: cloned, CloneFailed: cloneFailed, Copied: copied, Carried: carried}
+	summary := &SyncSummary{Branch: branch, Head: head, ClonedFrom: cloned, CloneFailed: cloneFailed, Copied: copied, Carried: carried, Checkout: probe.checkout, Created: probe.created}
 	if summary.Commits, err = countRevs(localRepoDir, revs); err != nil {
 		return nil, err
 	}
@@ -743,7 +774,7 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		// The key is cleared before the checkout is touched and written
 		// once the apply has finished, so a sync that stopped half way
 		// never matches.
-		script = applyScript(slug, head, branch, track, bundleRefs, len(bundleRefs) > 0, opts, probe, subScript+superOps) + envScript + recordSyncedScript +
+		script = applyScript(probe.checkout, head, branch, track, bundleRefs, len(bundleRefs) > 0, opts, probe, subScript+superOps) + envScript + recordSyncedScript + freshShellScript(slug, probe) +
 			fmt.Sprintf("printf '%%s\\n' %s > \"$repose_synced-key\"\n", syncedKeyLines(syncKey, head, track, subs))
 		// Right after the unpack, before anything touches the checkout:
 		// the stash below needs the identity the git part carries.
@@ -915,9 +946,9 @@ while IFS= read -r l || [ -n "$l" ]; do printf '%s%%s
 // guest's tree aside if asked, fetch the bundle, move the refs, check
 // out, and lay the staged and unstaged diffs and the untracked files on
 // top.
-func applyScript(slug, head, branch, track string, bundleRefs []string, hasBundle bool, opts SyncOptions, probe guestProbe, subScript string) string {
+func applyScript(dir, head, branch, track string, bundleRefs []string, hasBundle bool, opts SyncOptions, probe guestProbe, subScript string) string {
 	var b strings.Builder
-	_, _ = fmt.Fprintf(&b, "set -e\ncd ~/%s\n", slug)
+	_, _ = fmt.Fprintf(&b, "set -e\ncd %s\n", homeShell(dir))
 	b.WriteString(syncedFP)
 	b.WriteString(applyUnpack)
 	if len(probe.dirty) == 0 {

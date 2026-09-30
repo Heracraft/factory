@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -27,18 +28,24 @@ const reposeRemotePushURL = "this remote is fetch-only; repose sync sends your w
 // CLI already said once that a remote named repose points elsewhere.
 const reposeRemoteNotedKey = "repose.remoteNoted"
 
-// reposeRemoteURL is the machine's checkout of slug: ~/<slug> on the
-// machine, over the ssh alias every project has.
-func reposeRemoteURL(slug string) string { return slug + ".repose:~/" + slug }
+// reposeRemoteURL is the machine's checkout: ~/<dir> on slug's machine
+// (dir is the laptop folder of its first sync since I-368, the slug on a
+// machine set up before), over the ssh alias every project has.
+func reposeRemoteURL(slug, dir string) string { return slug + ".repose:~/" + dir }
 
 // reposeRemoteShape matches every URL reposeRemoteURL makes. A remote
 // named repose with this shape is the CLI's own, so it may be retargeted
 // or removed; any other is the user's and is never touched.
-var reposeRemoteShape = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*)\.repose:~/([a-z0-9][a-z0-9-]*)$`)
+var reposeRemoteShape = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*)\.repose:~/([A-Za-z0-9_][A-Za-z0-9._-]*)$`)
 
-func isReposeRemoteURL(u string) bool {
-	m := reposeRemoteShape.FindStringSubmatch(u)
-	return m != nil && m[1] == m[2]
+func isReposeRemoteURL(u string) bool { return reposeRemoteShape.MatchString(u) }
+
+// reposeRemoteHost is the project slug of a URL of the CLI's shape, or "".
+func reposeRemoteHost(u string) string {
+	if m := reposeRemoteShape.FindStringSubmatch(u); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 // remoteURLOf is the raw configured URL of a remote (no insteadOf
@@ -57,8 +64,8 @@ func remoteURLOf(root, name string) string {
 // named repose with any other URL is the user's and is left alone, with
 // a note the first time. It returns what to tell the user ("" for
 // nothing): a line when the remote is added, and the one-time note.
-func ensureReposeRemote(root, slug string) (string, error) {
-	want := reposeRemoteURL(slug)
+func ensureReposeRemote(root, slug, dir string) (string, error) {
+	want := reposeRemoteURL(slug, dir)
 	cur := remoteURLOf(root, reposeRemoteName)
 	switch {
 	case cur == want:
@@ -100,7 +107,7 @@ func ensureReposeRemote(root, slug string) (string, error) {
 // (repose/main and the rest) stay, so work fetched before the machine
 // was removed is not lost with it. It reports whether it removed one.
 func forgetReposeRemote(root, slug string) bool {
-	if root == "" || remoteURLOf(root, reposeRemoteName) != reposeRemoteURL(slug) {
+	if root == "" || reposeRemoteHost(remoteURLOf(root, reposeRemoteName)) != slug {
 		return false
 	}
 	_, err := gitCmd(root, "config", "--remove-section", "remote."+reposeRemoteName)
@@ -130,12 +137,33 @@ func (e *Env) checkoutOwnsProject(root string, p *Project) bool {
 // addReposeRemote is what run and attach call: the remote for the
 // project when this checkout is its own. A failure is a warning, never a
 // failed command: the remote is a convenience beside the run.
-func (e *Env) addReposeRemote(p *Project) {
+//
+// checkout is the machine's checkout name when the caller already knows
+// it (a run's sync or carry learned it), nil when it does not (attach).
+// Unknown, a remote already of the CLI's shape for this machine is kept
+// as it is, and a missing one costs one ssh to ask the guest. A machine
+// with no checkout (the name "") gets no remote: there is nothing to
+// fetch (I-368).
+func (e *Env) addReposeRemote(ctx context.Context, p *Project, t sshTarget, checkout *string) {
 	root := gitRepoRoot(e.Cwd)
 	if !e.checkoutOwnsProject(root, p) {
 		return
 	}
-	note, err := ensureReposeRemote(root, p.Slug)
+	if checkout == nil {
+		if reposeRemoteHost(remoteURLOf(root, reposeRemoteName)) == p.Slug {
+			return
+		}
+		name, err := guestCheckoutName(ctx, t, p.Slug)
+		if err != nil {
+			e.warn("Could not add the git remote repose (%s).", oneLine(err.Error()))
+			return
+		}
+		checkout = &name
+	}
+	if *checkout == "" {
+		return
+	}
+	note, err := ensureReposeRemote(root, p.Slug, *checkout)
 	if err != nil {
 		e.warn("Could not add the git remote repose (%s).", oneLine(err.Error()))
 		return

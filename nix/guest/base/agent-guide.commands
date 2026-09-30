@@ -17,6 +17,7 @@ npx
 opencode
 pi
 repose-ask needs
+repose-checkout needs
 repose-guest-profile needs
 repose-notify needs
 sh

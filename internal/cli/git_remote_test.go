@@ -37,7 +37,7 @@ func gitFails(t *testing.T, dir string, args ...string) string {
 
 func TestReposeRemoteAddedOnce(t *testing.T) {
 	dir := newCheckout(t)
-	note, err := ensureReposeRemote(dir, "todo-app")
+	note, err := ensureReposeRemote(dir, "todo-app", "todo-app")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestReposeRemoteAddedOnce(t *testing.T) {
 	before := mustRun(t, dir, "git", "config", "--list", "--local")
 
 	// Again: nothing to say and nothing changed.
-	note, err = ensureReposeRemote(dir, "todo-app")
+	note, err = ensureReposeRemote(dir, "todo-app", "todo-app")
 	if err != nil || note != "" {
 		t.Fatalf("second call = %q, %v; want silence", note, err)
 	}
@@ -75,7 +75,7 @@ func TestReposeRemoteAddedOnce(t *testing.T) {
 
 	// The CLI's own remote for another slug (a project recreated under
 	// a new name) is moved, silently.
-	note, err = ensureReposeRemote(dir, "todo-app-2")
+	note, err = ensureReposeRemote(dir, "todo-app-2", "todo-app-2")
 	if err != nil || note != "" {
 		t.Fatalf("retarget = %q, %v", note, err)
 	}
@@ -87,7 +87,7 @@ func TestReposeRemoteAddedOnce(t *testing.T) {
 func TestReposeRemoteLeavesAForeignOneAlone(t *testing.T) {
 	dir := newCheckout(t)
 	mustRun(t, dir, "git", "remote", "add", "repose", "git@github.com:someone/repose.git")
-	note, err := ensureReposeRemote(dir, "todo-app")
+	note, err := ensureReposeRemote(dir, "todo-app", "todo-app")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestReposeRemoteLeavesAForeignOneAlone(t *testing.T) {
 	if !strings.Contains(note, "git remote add NAME todo-app.repose:~/todo-app") {
 		t.Fatalf("note does not say how to add one: %q", note)
 	}
-	note, err = ensureReposeRemote(dir, "todo-app")
+	note, err = ensureReposeRemote(dir, "todo-app", "todo-app")
 	if err != nil || note != "" {
 		t.Fatalf("second call = %q, %v; the note is said once", note, err)
 	}
@@ -117,7 +117,9 @@ func TestIsReposeRemoteURL(t *testing.T) {
 	for u, want := range map[string]bool{
 		"todo-app.repose:~/todo-app":       true,
 		"a.repose:~/a":                     true,
-		"todo-app.repose:~/other":          false,
+		"todo-app.repose:~/other":          true, // a checkout named after the laptop folder (I-368)
+		"todo-app.repose:~/job-search.v2":  true,
+		"todo-app.repose:~/.ssh":           false,
 		"git@github.com:a/b.git":           false,
 		"ssh://todo-app.repose/~/todo-app": false,
 		"todo-app.repose:~/todo-app/.git":  false,
@@ -222,7 +224,7 @@ func TestFetchReposeBringsTheMachinesCommits(t *testing.T) {
 	mustRun(t, wt, "git", "commit", "-q", "-m", "worktree-1: the other approach")
 	wtHead := mustRun(t, wt, "git", "rev-parse", "HEAD")
 
-	if _, err := ensureReposeRemote(f.local, testSlug); err != nil {
+	if _, err := ensureReposeRemote(f.local, testSlug, testSlug); err != nil {
 		t.Fatal(err)
 	}
 	mustRun(t, f.local, "git", "fetch", "-q", "repose")
