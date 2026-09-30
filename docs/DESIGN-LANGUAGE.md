@@ -52,7 +52,8 @@ colour has one meaning:
 - **Zinc** is a neutral grey: text, rules, the primary button.
 - **Blue is the accent**, for links (`.link`, the docs' links), the focus
   ring and text selection. Nothing else is blue in the dashboard, the
-  docs or the legal pages; a busy state, a current tab and code syntax
+  docs or the legal pages except the logo's big square (see Logo); a
+  busy state, a current tab and code syntax
   are not (I-373, I-374, I-388). The landing's shapes and bar use it as
   `LANDING.md` says.
 - **Emerald** is running and success, **amber** attention (a warning
@@ -178,15 +179,17 @@ grey, light grey and the accent) followed by "repose" in Noto Serif 600.
 The mark is in every header (I-381):
 
 - 28px tall with the word from `sm` up, on every page.
-- Below `sm`: the 24px `sm` cut, with the word on the docs and legal
-  pages and alone on the dashboard, whose five links leave no room for
-  both. One size, so the mark does not change between pages on a phone
-  (I-391). The link around it carries the name.
+- Below `sm`: the 24px `sm` cut alone, on every page. The dashboard's
+  five links leave no room for the word, and the docs and legal headers
+  drop it too, so the header is the same wherever a phone goes (I-391,
+  I-393). The link around it carries the name.
 - Never under 24px. At 16px (the tab) use the favicon, a heavier cut of
   the same drawing (`static/favicon.svg`, `favicon.png`).
 - The mark's grey blocks have their own greys so they hold 3:1 at header
-  size: zinc-500 and `#888883` in the light, zinc-400 and zinc-500 in the
-  dark. The landing's large shapes keep `--sh-grey` and `--sh-light`.
+  size: zinc-500 and `--control-edge` in the light, zinc-400 and
+  `--control-edge` in the dark. The landing's large shapes keep
+  `--sh-grey` and `--sh-light`. The big square is `--sh-accent`, the one
+  `--sh-*` token that appears off `/` (I-363, I-393).
 
 ## Page frame and header
 
@@ -245,7 +248,9 @@ Visual weight tracks consequence. Choices of equal weight (a question's
 answers) are all `.btn-quiet`, never a row of primaries. Sizes (I-376):
 the default suits a form; `.btn--sm` (`px-3 py-1.5`) is for rows, toolbars
 and header bars. No `!py-*` or `!px-*` overrides. Hover and press
-(`active:`, one step darker than hover) apply to enabled buttons only. A
+(`active:`, one step darker than hover) apply to every button and to a
+link drawn as one; a disabled button does not answer them. Never gate
+them with `enabled:`, which no `<a>` matches (I-393). A
 disabled `.btn`, `.btn-quiet` or `.btn-danger` has one look whatever its
 kind: a `--rule-strong` outline on `--surface` with `--ink-faint` text
 (I-391); `aria-disabled="true"` takes the same look, for a button that
@@ -303,7 +308,8 @@ Every view that loads or acts has each of these:
   `.banner--error` (`role=alert`) with a Retry (`.btn-quiet .btn--sm`,
   "Retrying…" while it runs) that re-runs the same load. Only the first
   load goes there; a refresh that fails later keeps the content on screen
-  and raises a toast (I-385). A page keeps its load error until a load
+  and raises a toast (I-385), once, when the poll starts failing
+  (`PollFailure` in `lib/api/toast.ts`, I-393). A page keeps its load error until a load
   succeeds, so the banner and its button stay through a retry and keep
   the keyboard's focus; a breadcrumb waiting on the failed load's name
   reads "Project", not "…".
@@ -343,7 +349,9 @@ One pattern per consequence, and never the browser's `confirm()` (I-386):
   finished) gives focus back only if focus was still inside it.
   `lib/focus.ts` has the two helpers.
 - **Leaving unsaved edits**: the SvelteKit navigation is cancelled and a
-  `.banner--warn` asks in place, with Stay (focused) and Leave.
+  `.banner--warn` asks in place, with Stay (focused) and Leave. Stay puts
+  focus back on the link that asked to leave, or on the unsaved field
+  when the browser's Back asked (I-393).
 
 No modals: the inline panel keeps what is being confirmed on screen.
 
@@ -368,16 +376,22 @@ neutral, the `.banner--ok`, `--error` and `--warn` colours for typed
 ones, 2px corner, a hairline, no shadow. Toasts report the result of
 something the user did, and a failed refresh. A failure that leaves the
 page with nothing to show is a banner, not a toast, and not both: one
-failure is said once, in `errorText`'s words (I-390).
+failure is said once, in `errorText`'s words (I-390). A poll says it once
+too: a toast on the first failed tick, none while the load banner or the
+outage bar shows, and the toast dismissed when a tick gets through
+(`PollFailure`, I-393).
 
 ## The outage bar
 
 A strip in the `.banner--error` colours across the top of every page
 while the api is down (08-dashboard.md 6): "Cannot reach the API.
 Retrying…" when a request got no answer, "The API is failing right now.
-Retrying…" on a 5xx. A 503 the api gives as an answer
-(`billing_disabled`, `waitlisted`) is not an outage and raises no bar
-(I-390).
+Retrying…" on a 5xx. A 503 carrying one of the codes api.md lists as
+answers ("Errors"; `ANSWER_503` in `lib/api/errors.ts`) is not an outage
+and raises no bar (I-390, I-393). The bar is said in a `role=status`
+region (`#outage`) that is always in the page and empty while the api
+answers; only its contents change, so a screen reader announces the bar
+when it comes (I-393).
 
 ## Keyboard
 
@@ -391,12 +405,13 @@ Retry, forced colours and reduced motion (I-392).
 
 An unlayered `@media (forced-colors: active)` block in `layout.css` puts
 back whatever carries a state in a fill or a coloured border (I-377):
-state dots, the current nav item, select arrows, button, badge and key
+state dots, the current nav item, the current tab (a 3px `Highlight`
+edge, I-393), select arrows, button, badge and key
 edges, disabled buttons in `GrayText`, and the meter fill
 (`Meter.svelte`). A new component that shows state that way adds its rule
 there and is checked with Chromium's `forcedColors: 'active'`.
 
-## Replace
+## Controls
 
 For boolean and pick-one settings (notification channels on or off, hold
 base updates, default agent, size class) use plain controls in the same
@@ -427,8 +442,9 @@ plugin's `--tw-prose-*` colours mapped to the ink and rule tokens and no
 off the palette. Every heading is 600, as on the dashboard, and the h1 is
 the dashboard's `text-3xl` at every width. Inline code is a quiet chip at
 body weight with no backticks; a span with no space in it (a command, a
-flag, a path) of 30 characters or fewer never breaks across lines, and a
-longer one (a URL) wraps, so no chip pushes a phone's page sideways
+flag, a path) of 30 characters or fewer never breaks across lines, a
+span with spaces breaks only at them (`--api-url URL`, I-393), and a
+longer word (a URL) wraps, so no chip pushes a phone's page sideways
 (`docs.test.ts` holds the limit). A command used as a heading is the
 heading's own mono text, not a chip. Shell blocks are ink with muted
 prompts and output, and no token hue: in the docs blue is a link (I-388).
@@ -442,8 +458,9 @@ its link in the sidebar from `lg` up and in an "On this page" fold below
 (I-383). The prose's 33rem and the column's 68ch are two measures on
 purpose, so the right edge of a paragraph and of a code block differ by
 design. Legal pages show their effective date under the title and, from
-`lg` up, list their sections in an "On this page" column at the right
-edge of the 5xl column, in the docs sidebar's type and 28px rows (I-392).
+`lg` up, list their sections in an "On this page" column 64px to the
+right of the text, in the docs sidebar's type and 28px rows (I-392,
+I-393).
 
 # The landing's exception
 
@@ -451,7 +468,8 @@ The landing adds a shape set in the `--sh-*` tokens (zinc greys, ink and
 the blue accent), a blue bar under its headline and prices, a sphere
 drawn with SVG noise and a gradient, its own display sizes, and its own
 page grammar (rails, ticked rules, stages, cells) in
-`apps/web/src/routes/landing.css`. Those exist only on `/` and are
+`apps/web/src/routes/landing.css`. Those exist only on `/`, save the
+logo's `--sh-accent` square in every header (see Logo), and are
 described in `LANDING.md`. Every other page follows this document with no
 exception.
 

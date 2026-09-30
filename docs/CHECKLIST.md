@@ -105,6 +105,10 @@ DECISIONS entry and this list with it. Counts as of 2026-09-30.
       prints 0 lines; `rg -n '\[var\(--' apps/web/src --glob '*.svelte'
       "${L[@]}"` prints 0 lines (use `text-ink-muted`, `border-rule` and
       the other token utilities).
+- [ ] Mono under 13px is only a badge. Evidence: `rg -n
+      'font-mono[^"]*text-x?xs|text-x?xs[^"]*font-mono|font-mono[^"]*text-2xs|text-2xs[^"]*font-mono'
+      apps/web/src --glob '*.svelte' "${L[@]}"` prints 0 lines (running
+      mono is `text-compact` or larger; a badge is `.badge`, I-393).
 - [ ] Corners stay at 4px or less, weight stays at semibold, and no
       stray hue. Evidence: `rg -n 'rounded-(md|lg|xl|2xl|3xl|full)\b|font-bold|<b>|<strong'
       apps/web/src --glob '*.svelte' "${L[@]}"` and `rg -n

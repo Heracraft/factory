@@ -9871,3 +9871,69 @@ and the ligature setting. *Kept:* the dashboard header's mark without the
 word below `sm` (I-381, I-391); the docs' shell blocks without token
 colour (I-388); the outage bar alongside a page's own banner (I-390); the
 toast at the bottom on a phone (I-391).
+
+**I-393. Design repair round 3: one failure is reported once, 503
+answers come from one list, and links drawn as buttons answer the
+pointer.** (design critique repair, 2026-09-30; amends I-363, I-381,
+I-385, I-390, I-391, I-392) What the third verify round found, and what
+was settled fixing it:
+- Button links. I-392 gated the hover and press fills behind Tailwind's
+  `enabled:`, and `:enabled` never matches an `<a>`, so the docs header's
+  Dashboard and the landing's three button links lost both. The kinds use
+  plain `hover:` and `active:` again, and the disabled rule, which already
+  outranks them, keeps a disabled button inert. Ghost buttons use
+  `:not(:disabled, [aria-disabled='true'])` for the same reason.
+- 503 answers. `capacity` is a 503 the api gives on purpose, like
+  `waitlisted` and `billing_disabled` (`statusOf` in
+  `internal/api/http/server.go`), and it raised the outage bar beside
+  Start's capacity banner. api.md's "Errors" paragraph now lists the
+  three, `ANSWER_503` in `lib/api/errors.ts` holds them, and
+  DESIGN-LANGUAGE.md and 08-dashboard.md point to api.md instead of
+  repeating the list. Only a 503 is an answer: a 500 with any code is
+  still an outage.
+- One failure, one report. The project page's events and snapshots polls
+  each toasted on every failed tick, beside the load banner; the projects
+  list toasted on every failed refresh. `PollFailure` (`lib/api/toast.ts`)
+  toasts on the first failure only, not at all while the load banner or
+  the outage bar says it, and dismisses its toast when a tick gets
+  through. The projects list, the project page's three polls and
+  QuestionsCard use it; `toast.test.ts` holds it.
+- The outage bar is said in a `role=status` region (`#outage`) that is
+  always in the layout, so a screen reader announces the text when it
+  arrives; inserted with its text, the region was often not read.
+- Focus. Billing's Cancel plan now follows the documented two-step: the
+  button turns into the question, the danger button is `.btn--sm`, Keep
+  it takes focus when it opens and gives it back to Cancel plan, and a
+  cancel that goes through puts it on Resume plan. Settings' Stay gives
+  focus back to the link that asked to leave, or to the ntfy field when
+  the browser's Back asked.
+- Type. A legal page's h1, from its markdown, was the typography plugin's
+  36px; `.doc h1` is `text-3xl` like every other page title. Running mono
+  (a build error, a remote URL) was 12px against the 13px floor for mono
+  that is more than a label; it is `text-compact`, and CHECKLIST.md has a
+  grep for it.
+- Forced colours mark the current config tab with a 3px `Highlight`
+  edge; the others' edges are Canvas.
+- Logo. The mark's middle block is `--control-edge` in both schemes
+  rather than its light hex. The docs said the blocks were `--sh-grey` and
+  `--sh-light` and that `--sh-*` never leaves `/`; the code, which I-381
+  and I-391 settled, gives the mark its own greys and its big square
+  `--sh-accent` in every header. LANDING.md and DESIGN-LANGUAGE.md now
+  say so, naming the square as the one `--sh-*` token off the landing.
+- Headers below `sm` show the mark alone on every page. The dashboard
+  needs the room, and the docs and legal headers keeping the word made
+  the header change between pages on a phone (amends I-391's "with the
+  word on the docs and legal pages").
+- Docs code with spaces (`--api-url URL`) breaks only at its spaces:
+  each word of 30 characters or fewer is a `.nobreak` span, so a line no
+  longer ends at `--`.
+- The legal pages' "On this page" list sits 64px right of the text, not
+  at the column's edge 230px away (amends I-392).
+- The Nix editor is on `--sunken`, where code sits everywhere else, with
+  the current line on `--surface`; on `--surface` it was a pure white
+  block on the warm page in the light.
+- The secrets page's empty state is an h2 and a sentence naming the form
+  and `repose secrets set`, as "States" asks. DESIGN-LANGUAGE.md's
+  "Replace" heading, left from the I-13 framing, is "Controls".
+*Kept:* the landing header's 60px height and 216px inset (landing files
+belong to the landing-critique branch).

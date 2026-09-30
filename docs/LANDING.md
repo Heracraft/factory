@@ -282,17 +282,20 @@ and underlined every heading. The page is one system:
 - **The logo** (`Logo.svelte`, and `static/favicon.png` from the same
   drawing) is the owner's notebook sketch, traced (DECISIONS I-363): a
   thin cross in the text's ink, its crossing left of centre and low, and
-  three flat blocks hugging the crossing: a skinny one in `--sh-grey`
-  above-left, a middle square in `--sh-light` above-right on the arm, and
-  the big square in `--sh-accent` below-right (in the dark, the two grey
-  blocks step lighter so they hold at header size). The favicon
+  three flat blocks hugging the crossing: a skinny one in grey above-left,
+  a middle square in a fainter grey above-right on the arm, and the big
+  square in `--sh-accent` below-right. The two greys are the mark's own,
+  not `--sh-grey` and `--sh-light`, which vanish at header size; their
+  values are in `DESIGN-LANGUAGE.md`, "Logo" (I-393). The favicon
   (`favicon.svg`, `favicon.png`) is a heavier cut of it, stems 10 instead
   of 4, so it holds at 16px. It replaced the r (a stem and a blue quarter
   disc), which had replaced the quartered ring. The mark is in every
   page's header, not only this one's (I-381); where it appears and its
   minimum size are in `DESIGN-LANGUAGE.md`, "Logo".
 - The shapes live in `landing/Shape.svelte` and draw only from the `--sh-*`
-  tokens. The app's own pages never use them.
+  tokens. The app's own pages never use them, with one exception: the
+  logo's big square is `--sh-accent`, and the logo is in every header
+  (I-363, I-381, I-393).
 
 ## Motion
 

@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-426 entries.
+427 entries.
 
 ## Scope
 
@@ -428,7 +428,7 @@ pointer, not a summary.
 - **I-360** kanali's tunnel carries only packets from 10.255.254.1 — 2026-09-29; L9139
 - **I-361** kanali runs tofu as its own service principal; the Key Vault operator policy is pinned to the owner — 2026-09-29; L9160
 - **I-362** A third plan: Pro becomes Plus, and a new Pro at $99 buys 32 GB running at once — 2026-09-29; L9183
-- **I-363** The logo is the owner's cross-and-blocks sketch, traced; it replaces the r — 2026-09-29; amended by I-381; L9225
+- **I-363** The logo is the owner's cross-and-blocks sketch, traced; it replaces the r — 2026-09-29; amended by I-381; amended by I-393; L9225
 - **I-364** tmux's mouse mode is off in the guest — 2026-09-29; L9251
 - **I-365** `repose secrets set` echoes one `*` per character — 2026-09-29; L9266
 - **I-366** `run --no-sync` still copies the tool logins and the carry — 2026-09-29; L9283
@@ -446,15 +446,16 @@ pointer, not a summary.
 - **I-378** Unused patterns are deleted rather than documented — 2026-09-30; L9579
 - **I-379** In the dark, the landing's small ink details are lit marks — 2026-09-30; L9590
 - **I-380** One header frame for the dashboard, the docs and the legal pages; form pages sit flush left — 2026-09-30; L9598
-- **I-381** The I-363 mark is in every header — 2026-09-30; amended by I-391; L9615
+- **I-381** The I-363 mark is in every header — 2026-09-30; amended by I-391; amended by I-393; L9615
 - **I-382** Docs and legal prose hold a readable measure — 2026-09-30; amended by I-392; L9629
 - **I-383** The docs' right rail moves into the sidebar, and the menu button moves to the right — 2026-09-30; L9640
 - **I-384** Legal pages use the docs' prose styles, show their effective date, and keep a Draft banner that names nothing internal — 2026-09-30; amended by I-391; amended by I-392; L9650
-- **I-385** Only a page's first load can fail to a banner with Retry — 2026-09-30; L9666
+- **I-385** Only a page's first load can fail to a banner with Retry — 2026-09-30; amended by I-393; L9666
 - **I-386** One confirmation pattern per consequence, and no native `confirm()` — 2026-09-30; L9679
 - **I-387** Restore-as-new is one `RestoreNameForm` — 2026-09-30; L9696
 - **I-388** The config editor's Menu and Nix switch is ARIA tabs styled like the header's current page — 2026-09-30; L9704
 - **I-389** The accessibility gate fails on any failed binary audit, audits signed in for real, and covers every page in both schemes at two widths — 2026-09-30; L9715
-- **I-390** A 503 the api gives as an answer is not an outage, a 500 is not "cannot reach", and one failure is said once — 2026-09-30; L9734
-- **I-391** Design critique repair: focus follows in-place panels, one disabled look, and the gaps the first pass left — 2026-09-30; L9757
-- **I-392** Design repair round 2: ghost buttons show they can be pressed, one accent token, pictures keep their tools' colours, and the keyboard path is tested — 2026-09-30; L9807
+- **I-390** A 503 the api gives as an answer is not an outage, a 500 is not "cannot reach", and one failure is said once — 2026-09-30; amended by I-393; L9734
+- **I-391** Design critique repair: focus follows in-place panels, one disabled look, and the gaps the first pass left — 2026-09-30; amended by I-393; L9757
+- **I-392** Design repair round 2: ghost buttons show they can be pressed, one accent token, pictures keep their tools' colours, and the keyboard path is tested — 2026-09-30; amended by I-393; L9807
+- **I-393** Design repair round 3: one failure is reported once, 503 answers come from one list, and links drawn as buttons answer the pointer — 2026-09-30; L9875
