@@ -12,10 +12,21 @@ machine.
 ```bash
 nix develop                                  # go, tofu, az, wg, promtool, grafana-cli
 az login
-export DATABASE_URL=...                      # repose-admin talks to Postgres directly (I-42); over the Coolify VM's WireGuard address
-repose-admin operator-cert                  # 8h Host-CA cert, add it next to ~/.ssh/id_ed25519
-sudo wg-quick up ops/wg/operator.conf        # 10.255.0.0/16 reachable
+ops/dev/operator-cert.sh <control>           # 8h Host-CA cert next to ~/.ssh/id_ed25519
 ```
+
+Postgres publishes no port: it is on the control VM's `coolify` Docker
+network only (`ops/coolify/postgres/docker-compose.yml`). `repose-admin`
+therefore runs inside the api container, which has `DATABASE_URL`:
+`ssh root@<control> docker exec <api container> repose-admin ...`, and
+`psql` is `docker exec -it <postgres container> psql -U repose`. The
+operator reaches the control VM and the edge's sshd on 2222 either from an
+address in `operator_cidrs`, or as a WireGuard peer of the edge, which the
+edge's input chain admits on 2222; hosts are then `ssh -J
+root@<edge>:2222 root@10.255.0.x` with the certificate. kanali, the
+owner's coordinator guest, is the second kind (DECISIONS I-359): `sudo
+wg-quick up ~/.kanali/wg-repose.conf`, then `ssh repose-edge`,
+`repose-control`, `host-01`.
 
 ### Control plane (control VM, a server of the owner's Coolify)
 

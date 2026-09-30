@@ -9082,3 +9082,30 @@ loop's lock. The tick now takes `LockWaitlistTick` to pick one replica;
 `LockWaitlist` stays the transactions' own lock. `TestSeatsWaitlistAndInvitations`
 now runs the first tick under the loop's lock with a 10 s deadline: under
 1011 it fails with "context deadline exceeded", under 1012 it passes.
+
+**I-359. kanali, the owner's coordinator guest, is WireGuard peer
+10.255.254.1 on the edge hub, with no forward rule.** (owner, 2026-09-29)
+The conductor moved off the Azure dev box into `kanali`, a repose guest on
+host-01. Guests reach none of the operator paths: host-01's NAT address
+is not in `operator_cidrs`, and the WireGuard network is closed to guests
+(DESIGN §7). kanali dials the hub like the monitoring server (I-170) and
+is declared in `nix/edge/edge-01.nix` `staticPeers`, so wgsync keeps it.
+The input chain already admits the operator sshd on 2222 from
+10.255.0.0/16, so the peer needs no forward rule. kanali reaches the
+control VM (`10.255.255.1:22`) and hosts by jumping through that sshd:
+`ssh -J root@10.255.0.1:2222`. Its plain key goes in the edge's and the
+control VM's root `authorized_keys` and in `operator_authorized_keys`.
+Hosts take it by an 8 h certificate from `repose-admin operator-cert`
+(I-139), never by a key in `host-01.nix`. Operator peers take
+10.255.254.0/24, outside the host allocator's 10.255.0.2 to 10.255.3.233
+(`hostmgr.allocate`, host n is 10.255.0.(n+1)). The same rule shows the
+monitoring server's 10.255.0.3 is host-02's address; it has to move
+before a second host registers. kanali runs on a host it may switch, so
+the laptop and the dev box keep their operator paths as break-glass, and
+host-01 switches stay with the owner. *Rejected:* Tailscale, which puts a
+guest running agents and a browser on the owner's personal tailnet, held
+by an ACL the repository cannot check (I-170's reason); host-01's NAT
+address in `operator_cidrs`, which opens operator SSH to every tenant on
+that host; forward rules to port 22, which would open every host's sshd to
+kanali directly, where the jump keeps each hop in the edge's verbose sshd
+log and leaves one key on the edge to revoke.

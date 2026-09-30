@@ -32,6 +32,16 @@
         publicKey = "DHJ1o9kWyk2UpEig5CSzPxohorEVuM1YUFyvy1B5HTM=";
         allowedIPs = [ "10.255.0.3/32" ];
       }
+      # kanali, the owner's coordinator: a repose guest on host-01 that
+      # dials this hub through host-01's NAT (DECISIONS I-359). It needs no
+      # forward rule: the input chain already admits the operator sshd on
+      # 2222 from 10.255.0.0/16, and it reaches the control VM and hosts
+      # by jumping through that sshd. 10.255.254.0/24 is for operator
+      # peers, outside the host allocator's 10.255.0.2 to 10.255.3.233.
+      {
+        publicKey = "PEtn0tzqr8dvfAUJFbrPJv48ZJXZ/cOi9p2enWpl0W8=";
+        allowedIPs = [ "10.255.254.1/32" ];
+      }
     ];
 
     monitoring.peerCIDRs = [ "10.255.0.3/32" ];
