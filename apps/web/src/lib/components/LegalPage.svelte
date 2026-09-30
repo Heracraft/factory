@@ -72,7 +72,7 @@
 				href={link.href}
 				aria-current={page.url.pathname === link.href ? 'page' : undefined}
 				class="-mb-px flex items-center border-b {page.url.pathname === link.href
-					? 'border-[var(--ink)] text-ink'
+					? 'border-ink text-ink'
 					: 'border-transparent text-ink-muted hover:text-ink'}">{link.label}</a
 			>
 			<!-- eslint-enable svelte/no-navigation-without-resolve -->

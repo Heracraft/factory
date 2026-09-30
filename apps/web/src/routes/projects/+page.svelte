@@ -144,7 +144,7 @@ cd ~/code/your-project && repose run</pre>
 									     to find it by. -->
 									<a
 										href={resolve('/projects/[id]', { id: p.id })}
-										class="font-medium underline decoration-[var(--rule-strong)] decoration-1 underline-offset-4 hover:decoration-current"
+										class="font-medium underline decoration-rule-strong decoration-1 underline-offset-4 hover:decoration-current"
 										>{p.name}</a
 									>
 									{#if p.expires_at}
@@ -182,7 +182,7 @@ cd ~/code/your-project && repose run</pre>
 										</div>
 									{/if}
 								</td>
-								<td class="font-mono text-[13px]">{p.class}</td>
+								<td class="font-mono text-compact">{p.class}</td>
 								<td class="text-ink-muted">{agentSummary(p)}</td>
 							</tr>
 						{/each}

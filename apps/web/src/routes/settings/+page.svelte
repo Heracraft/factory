@@ -161,10 +161,9 @@
 		error={loadError}
 		onretry={load}
 	>
-		<!-- The first section draws no rule of its own: the page title's rule
-		     is directly above it, and two hairlines 40px apart read as a gap
-		     where something failed to render. -->
-		<div class="form-section mt-0 border-t-0 pt-0">
+		<!-- The first section draws no rule of its own (.form-section:first-child
+		     in layout.css): the page title's rule is directly above it. -->
+		<div class="form-section">
 			<h2 class="text-xl font-semibold">Timezone</h2>
 			{#if timezones.length}
 				<select

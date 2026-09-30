@@ -315,7 +315,7 @@
 		top: 0;
 		height: 630px;
 		transform-origin: 0 0;
-		font-family: 'JetBrains Mono', 'SF Mono', Menlo, 'DejaVu Sans Mono', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 12px;
 		font-variant-ligatures: none;
 		color: #d4d4d0;
@@ -423,24 +423,15 @@
 		padding: 0;
 		background: none;
 		border: 0;
-		color: var(--color-zinc-600);
-		font-size: 13px;
+		color: var(--ink-muted);
+		font-size: var(--text-compact);
 	}
 	.chapter:hover,
 	.chapter.current {
-		color: var(--color-zinc-900);
+		color: var(--ink);
 	}
 	.chapter.current {
 		font-weight: 500;
-	}
-	@media (prefers-color-scheme: dark) {
-		.chapter {
-			color: var(--color-zinc-400);
-		}
-		.chapter:hover,
-		.chapter.current {
-			color: var(--color-zinc-100);
-		}
 	}
 	.bar {
 		display: block;

@@ -477,12 +477,12 @@
 
 		<QuestionsCard projectId={id} />
 
-		<!-- Card titles are h2 at body size: each card is a section of the
-		     page under its h1, and the larger text-xl h2 is kept for the
-		     full-width sections below the grid (Destroy). -->
+		<!-- Each card is a section of the page under its h1, so its title is
+		     an h2 at the one h2 size every dashboard page uses (text-xl), the
+		     same as billing's plan cards and the Destroy section below. -->
 		<div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
 			<div class="card min-w-0">
-				<h2 class="text-base font-semibold">Connect</h2>
+				<h2 class="text-xl font-semibold">Connect</h2>
 				<code class="codeblock mt-3 block px-3 py-2 text-sm">repose run</code>
 				<code class="codeblock mt-2 block px-3 py-2 text-sm">ssh {project.slug}.repose</code>
 				{#if project.remote_url}
@@ -493,7 +493,7 @@
 			</div>
 
 			<div class="card">
-				<h2 class="text-base font-semibold">Signals</h2>
+				<h2 class="text-xl font-semibold">Signals</h2>
 				{#if project.signals}
 					<dl class="mt-3 space-y-1 text-sm">
 						<div class="flex justify-between gap-4">
@@ -529,7 +529,7 @@
 			</div>
 
 			<div class="card">
-				<h2 class="text-base font-semibold">Plan</h2>
+				<h2 class="text-xl font-semibold">Plan</h2>
 				<dl class="mt-3 space-y-1 text-sm">
 					<div class="flex justify-between gap-4">
 						<dt class="text-ink-muted">Memory while running</dt>
@@ -546,7 +546,7 @@
 			</div>
 
 			<div class="card">
-				<h2 class="text-base font-semibold">Disk</h2>
+				<h2 class="text-xl font-semibold">Disk</h2>
 				<p class="mt-3 text-sm tabular-nums">
 					{project.disk_used_bytes !== undefined ? gb(project.disk_used_bytes) : '—'} / {gb(
 						project.volume_bytes
@@ -587,7 +587,7 @@
 			</div>
 
 			<div class="card">
-				<h2 class="text-base font-semibold">Last build</h2>
+				<h2 class="text-xl font-semibold">Last build</h2>
 				{#if currentRevisionStatus()}
 					{@const rev = currentRevisionStatus()}
 					<p class="mt-3 text-sm">
@@ -606,7 +606,7 @@
 			</div>
 
 			<div class="card sm:col-span-2">
-				<h2 class="text-base font-semibold">Events</h2>
+				<h2 class="text-xl font-semibold">Events</h2>
 				{#if events.length === 0}
 					<p class="mt-3 text-sm text-ink-muted">No events yet.</p>
 				{:else}
@@ -628,8 +628,15 @@
 
 			<div class="card sm:col-span-2">
 				<div class="flex items-center justify-between gap-4">
-					<h2 class="text-base font-semibold">Snapshots</h2>
-					<button type="button" class="btn-ghost" disabled={!!opBusy} onclick={onCreateSnapshot}>
+					<h2 class="text-xl font-semibold">Snapshots</h2>
+					<!-- -mr-2 takes back the ghost button's padding, so "Create" ends
+					     on the card's edge like the rows' actions below it. -->
+					<button
+						type="button"
+						class="btn-ghost -mr-2"
+						disabled={!!opBusy}
+						onclick={onCreateSnapshot}
+					>
 						{opBusy === 'snapshot' ? 'Snapshotting…' : 'Create'}
 					</button>
 				</div>
@@ -667,11 +674,7 @@
 									{/if}
 								</div>
 								{#if open === 'replace'}
-									<div
-										class="mt-3 rounded-sm border p-4"
-										style="border-color: var(--rule)"
-										data-testid="restore-confirm"
-									>
+									<div class="mt-3 rounded-sm border p-4 border-rule" data-testid="restore-confirm">
 										<p>
 											Restoring replaces the disk of {project.slug} with this snapshot. Anything written
 											since {dateTime(s.created_at)} is lost.

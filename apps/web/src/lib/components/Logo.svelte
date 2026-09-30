@@ -24,12 +24,12 @@
 			viewBox="13 4 74 92"
 			class="{size === 'sm' ? 'h-6' : 'h-7'} w-auto shrink-0"
 			aria-hidden="true"
-			><rect x="36" y="18" width="7" height="32" fill="var(--sh-grey)" /><rect
+			><rect x="36" y="18" width="7" height="32" class="mark-grey" /><rect
 				x="47"
 				y="36"
 				width="12"
 				height="14"
-				fill="var(--sh-light)"
+				class="mark-light"
 			/><rect x="47" y="54" width="20" height="18" fill="var(--sh-accent)" /><rect
 				x="43"
 				y="4"
@@ -39,3 +39,26 @@
 			/><rect x="13" y="50" width="74" height="4" fill="currentColor" /></svg
 		>{/if}{#if word}repose{/if}</span
 >
+
+<style>
+	/* The two grey blocks take the landing's shape greys, except in the
+	   dark: there --sh-light (zinc-600) sat at 2.7:1 on --page and the
+	   small blocks all but vanished at 24 and 28px. The mark steps each one
+	   lighter instead, zinc-400 and zinc-500 (7.4:1 and 3.8:1), so the light
+	   block stays the fainter of the two and both hold 3:1. The landing's
+	   large shapes keep their own darker greys. */
+	.mark-grey {
+		fill: var(--sh-grey);
+	}
+	.mark-light {
+		fill: var(--sh-light);
+	}
+	@media (prefers-color-scheme: dark) {
+		.mark-grey {
+			fill: var(--color-zinc-400);
+		}
+		.mark-light {
+			fill: var(--color-zinc-500);
+		}
+	}
+</style>

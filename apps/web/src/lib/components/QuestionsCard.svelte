@@ -76,7 +76,7 @@
 
 {#if questions.length > 0 || answered}
 	<div class="card mt-6" data-testid="questions">
-		<h2 class="text-base font-semibold">Questions</h2>
+		<h2 class="text-xl font-semibold">Questions</h2>
 		<!-- The live region is always in the page, so the line that appears
 		     inside it is announced; a region inserted with its text already
 		     in it is often read by no screen reader. -->

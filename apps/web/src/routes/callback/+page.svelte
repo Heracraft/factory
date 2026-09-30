@@ -20,4 +20,4 @@
 	<title>Signing in… — repose</title>
 </svelte:head>
 
-<p class="p-16 text-center text-zinc-500 dark:text-zinc-400">Signing in…</p>
+<p class="p-16 text-center text-ink-muted" role="status">Signing in…</p>

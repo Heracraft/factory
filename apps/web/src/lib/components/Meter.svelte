@@ -32,7 +32,7 @@
 <div class="meter" data-testid="meter-{label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}">
 	<div class="flex items-baseline justify-between gap-4 text-sm">
 		<span class="font-medium">{label}</span>
-		<span class="font-mono text-[13px] text-ink-muted tabular-nums">
+		<span class="font-mono text-compact text-ink-muted tabular-nums">
 			{reading}{#if over}<span class="text-amber-700 dark:text-amber-400"> · over</span>{/if}
 		</span>
 	</div>

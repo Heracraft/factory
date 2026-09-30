@@ -438,16 +438,13 @@
 				/>
 				<p class="text-sm" data-testid="projects-count">
 					<span class="font-medium">Projects</span>
-					<span class="ml-2 font-mono text-[13px] text-ink-muted tabular-nums"
+					<span class="ml-2 font-mono text-compact text-ink-muted tabular-nums"
 						>{billing.usage.projects} of {billing.usage.project_limit}</span
 					>
 				</p>
 			</div>
 
-			<div
-				class="mt-6 flex flex-wrap gap-x-5 gap-y-2 border-t pt-4"
-				style="border-color: var(--rule)"
-			>
+			<div class="mt-6 flex flex-wrap gap-x-5 gap-y-2 border-t pt-4 border-rule">
 				{#if sub.cancel_at}
 					<button type="button" class="btn" disabled={!!busy} onclick={resume}>
 						{busy === 'resume' ? 'Resuming…' : 'Resume plan'}
@@ -478,11 +475,7 @@
 			</div>
 
 			{#if changing && otherPlans.length}
-				<div
-					class="mt-4 rounded-sm border text-sm"
-					style="border-color: var(--rule)"
-					data-testid="change-plan"
-				>
+				<div class="mt-4 rounded-sm border text-sm border-rule" data-testid="change-plan">
 					{#if scheduledPlan}
 						<div class="change-row p-4" data-testid="change-keep">
 							<p>
@@ -534,11 +527,7 @@
 			{/if}
 
 			{#if confirmCancel}
-				<div
-					class="mt-4 rounded-sm border p-4 text-sm"
-					style="border-color: var(--rule)"
-					data-testid="confirm-cancel"
-				>
+				<div class="mt-4 rounded-sm border p-4 text-sm border-rule" data-testid="confirm-cancel">
 					<p>
 						Your plan ends on {dateOnly(
 							sub.status === 'trialing' && sub.trial_end ? sub.trial_end : sub.period_end

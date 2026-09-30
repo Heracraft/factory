@@ -56,7 +56,7 @@
 	function validateName(n: string): string | undefined {
 		if (RESERVED.has(n)) return "This name is reserved for the guest's SSH host material.";
 		if (!NAME_RE.test(n))
-			return 'Must match [A-Z][A-Z0-9_]{0,63} — uppercase letters, digits and underscore.';
+			return 'Must match [A-Z][A-Z0-9_]{0,63}: uppercase letters, digits and underscores, starting with a letter.';
 		return undefined;
 	}
 
@@ -220,7 +220,7 @@
 						id="secret-file"
 						type="file"
 						bind:this={fileInput}
-						class="mt-1.5 block w-full text-sm text-ink-muted file:mr-3 file:cursor-pointer file:rounded-sm file:border file:border-solid file:border-control file:bg-[var(--surface)] file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink"
+						class="mt-1.5 block w-full text-sm text-ink-muted file:mr-3 file:cursor-pointer file:rounded-sm file:border file:border-solid file:border-control file:bg-surface file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink"
 						aria-invalid={valueError ? 'true' : undefined}
 						aria-describedby={valueError ? 'secret-value-error' : undefined}
 						onchange={() => (valueError = undefined)}

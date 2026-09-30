@@ -60,7 +60,7 @@
 
 	{#if toc.length > 1}
 		<!-- Below lg the sidebar is a closed drawer, so the page's own list folds in here. -->
-		<details class="group mt-6 rounded-sm border border-[var(--rule)] lg:hidden">
+		<details class="group mt-6 rounded-sm border border-rule lg:hidden">
 			<summary
 				class="flex cursor-pointer list-none items-center justify-between px-4 py-2 text-sm font-medium [&::-webkit-details-marker]:hidden"
 			>
@@ -72,7 +72,7 @@
 					fill="none"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="1.5" /></svg
 				>
 			</summary>
-			<ul class="space-y-1.5 border-t border-[var(--rule)] px-4 py-3 text-sm">
+			<ul class="space-y-1.5 border-t border-rule px-4 py-3 text-sm">
 				{#each toc as h (h.id)}
 					<li>
 						<a href={`#${h.id}`} class="text-ink-muted hover:text-ink">{h.text}</a>
@@ -91,13 +91,13 @@
 	</article>
 
 	<nav
-		class="mt-16 grid gap-4 border-t border-[var(--rule)] pt-6 sm:grid-cols-2"
+		class="mt-16 grid gap-4 border-t border-rule pt-6 sm:grid-cols-2"
 		aria-label="Previous and next page"
 	>
 		{#if prev}
 			<a
 				href={href(prev.slug)}
-				class="group rounded-sm border border-[var(--rule)] px-4 py-3 hover:border-[var(--rule-strong)]"
+				class="group rounded-sm border border-rule px-4 py-3 hover:border-rule-strong"
 			>
 				<span class="block text-xs text-ink-muted">Previous</span>
 				<span class="mt-0.5 block font-medium group-hover:underline">{prev.title}</span>
@@ -108,7 +108,7 @@
 		{#if next}
 			<a
 				href={href(next.slug)}
-				class="group rounded-sm border border-[var(--rule)] px-4 py-3 text-right hover:border-[var(--rule-strong)]"
+				class="group rounded-sm border border-rule px-4 py-3 text-right hover:border-rule-strong"
 			>
 				<span class="block text-xs text-ink-muted">Next</span>
 				<span class="mt-0.5 block font-medium group-hover:underline">{next.title}</span>

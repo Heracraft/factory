@@ -86,7 +86,7 @@
 			Each keeps its last snapshot for 30 days. Restore it here or with
 			<code>repose restore NAME</code>.
 		</p>
-		<ul class="mt-4 border-t border-[var(--rule-strong)]">
+		<ul class="mt-4 border-t border-rule-strong">
 			{#each visible as d (d.id)}
 				<li class="row" data-testid="destroyed-row">
 					<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -98,7 +98,10 @@
 							{/if}
 						</div>
 						{#if openFor !== d.id}
-							<button type="button" class="btn-ghost" disabled={busy} onclick={() => open(d)}
+							<!-- -mx-2 takes back the ghost button's padding, so "Restore…"
+							     lines up with the list's edge at the right and, on a phone,
+							     under the name when it wraps. -->
+							<button type="button" class="btn-ghost -mx-2" disabled={busy} onclick={() => open(d)}
 								>Restore…</button
 							>
 						{/if}

@@ -256,7 +256,7 @@
 		     page: ink with a 1px underline, no accent colour and no change of
 		     weight (DESIGN-LANGUAGE.md). -->
 			<div
-				class="flex gap-6 border-b border-[var(--rule)] text-sm"
+				class="flex gap-6 border-b border-rule text-sm"
 				role="tablist"
 				aria-label="Config editor"
 				tabindex="-1"

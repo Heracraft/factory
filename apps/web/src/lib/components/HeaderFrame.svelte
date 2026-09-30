@@ -33,7 +33,7 @@
      to its 24px cut; a compact row (the dashboard's, with five links) shows
      the 28px mark alone there, since mark and word left the links 16px
      short at 390 and 46px short at 360. -->
-<header class="border-b border-[var(--rule)] {sticky ? 'sticky top-0 z-30 bg-[var(--page)]' : ''}">
+<header class="border-b border-rule {sticky ? 'sticky top-0 z-30 bg-page' : ''}">
 	<div class="mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 px-5 sm:gap-6">
 		<div class="flex min-w-0 items-center gap-3 sm:gap-4">
 			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- callers pass home built with resolve() -->

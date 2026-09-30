@@ -28,6 +28,15 @@
 		-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', Arial,
 		sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 
+	/* Two steps below Tailwind's text-sm, named so pages stop writing
+	   text-[13px] and text-[0.7rem] by hand. text-compact (13px) is a mono
+	   reading beside sans text (a size class, a meter's figures, a code
+	   block) and a dense nav; text-2xs (11px) is a badge, and the floor for
+	   any text on these pages. Neither sets a line height, so each keeps the
+	   line height of the text around it, as the arbitrary sizes did. */
+	--text-compact: 0.8125rem;
+	--text-2xs: 0.6875rem;
+
 	/* Sharp by default: the whole radius scale runs from 2px to 4px, so
 	   rounded-xs on a badge or a dot is still a corner and not a 1px blur. */
 	--radius-xs: 2px;
@@ -326,7 +335,7 @@
 		}
 	}
 	body {
-		@apply min-h-dvh text-zinc-900 antialiased dark:text-zinc-100;
+		@apply min-h-dvh text-ink antialiased;
 		background-color: var(--page);
 	}
 	/* The landing page (routes/landing.css sets it visible) stays hidden
@@ -419,10 +428,16 @@
 		@apply mt-2 text-sm text-red-600 dark:text-red-400;
 	}
 
-	/* A top-level group on a settings page. */
+	/* A top-level group on a settings page. The first one on a page draws
+	   no rule of its own: PageShell's title rule sits directly above it,
+	   and two hairlines 40px apart read as a gap where something failed to
+	   render. */
 	.form-section {
 		@apply mt-10 border-t pt-6;
 		border-color: var(--rule);
+	}
+	.form-section:first-child {
+		@apply mt-0 border-t-0 pt-0;
 	}
 
 	/* Buttons: rectangular, flat. */
@@ -443,7 +458,7 @@
 		@apply border-red-600 text-red-700 hover:bg-red-50 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-950;
 	}
 	.btn-ghost {
-		@apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-sm text-zinc-600 underline-offset-4 hover:text-zinc-950 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-50;
+		@apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-sm text-ink-muted underline-offset-4 hover:text-ink hover:underline disabled:cursor-not-allowed disabled:opacity-50;
 	}
 	.btn-ghost-danger {
 		@apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-sm text-red-700 underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400;
@@ -461,7 +476,8 @@
 
 	/* Small tag. */
 	.badge {
-		@apply inline-flex items-center rounded-xs border px-1.5 py-px font-mono text-[0.7rem] text-zinc-600 dark:text-zinc-400;
+		@apply inline-flex items-center rounded-xs border px-1.5 py-px font-mono text-ink-muted;
+		font-size: var(--text-2xs);
 		border-color: var(--rule-strong);
 	}
 	.badge--new {
@@ -509,7 +525,8 @@
 		border-color: var(--rule);
 	}
 	.codeblock {
-		@apply overflow-x-auto rounded-sm border p-3 font-mono text-[0.8rem] leading-relaxed whitespace-pre-wrap text-zinc-800 dark:text-zinc-200;
+		@apply overflow-x-auto rounded-sm border p-3 font-mono leading-relaxed whitespace-pre-wrap text-zinc-800 dark:text-zinc-200;
+		font-size: var(--text-compact);
 		background-color: var(--sunken);
 		border-color: var(--rule);
 	}
@@ -534,7 +551,8 @@
 	}
 	kbd,
 	.kbd {
-		@apply inline-flex items-center rounded-xs border px-1 font-mono text-[0.75rem] text-zinc-700 dark:text-zinc-300;
+		@apply inline-flex items-center rounded-xs border px-1 font-mono text-zinc-700 dark:text-zinc-300;
+		font-size: var(--text-xs);
 		border-color: var(--rule-strong);
 		background-color: var(--sunken);
 	}
@@ -589,7 +607,7 @@
 	border-color: var(--rule);
 }
 .nix-editor .cm-editor .cm-content {
-	@apply font-mono text-zinc-900 dark:text-zinc-100;
+	@apply font-mono text-ink;
 }
 .nix-editor .cm-editor .cm-activeLine,
 .nix-editor .cm-editor .cm-activeLineGutter {
@@ -599,8 +617,9 @@
 	@apply bg-red-100 dark:bg-red-950;
 }
 
-/* The user docs (/docs): prose from src/content/docs, in the site's own
-   palette rather than the typography plugin's defaults. Outside any layer
+/* The user docs (/docs) and the legal pages (LegalPage.svelte): prose from
+   src/content, in the site's own palette rather than the typography
+   plugin's defaults. Outside any layer
    on purpose: the plugin's rules sit in a later layer than components, and
    a layered rule loses to an unlayered one whatever its specificity. */
 .doc {
@@ -632,7 +651,8 @@
 	font-size: 0.88em;
 }
 .doc pre {
-	@apply rounded-sm border text-[13px] leading-6 text-zinc-800 dark:text-zinc-200;
+	@apply rounded-sm border leading-6 text-zinc-800 dark:text-zinc-200;
+	font-size: var(--text-compact);
 	tab-size: 2;
 	/* A long line scrolls, as in a terminal; the docs are written to fit the
 	   column (DECISIONS I-345, docs.test.ts). */
@@ -648,7 +668,7 @@
 	@apply my-0 text-sm;
 }
 .doc th {
-	@apply text-left font-medium text-zinc-600 dark:text-zinc-400;
+	@apply text-left font-medium text-ink-muted;
 }
 .doc td code {
 	@apply whitespace-nowrap;
@@ -673,7 +693,7 @@
 	}
 }
 .doc .code .copy {
-	@apply absolute top-2 right-2 rounded-xs border px-2 py-0.5 text-xs text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50;
+	@apply absolute top-2 right-2 rounded-xs border px-2 py-0.5 text-xs text-ink-muted hover:text-ink;
 	background-color: var(--page);
 	border-color: var(--rule);
 }

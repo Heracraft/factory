@@ -129,7 +129,7 @@
 		<button
 			bind:this={menuButton}
 			type="button"
-			class="-mr-2 rounded-sm p-2 text-ink-muted hover:bg-[var(--sunken)] hover:text-ink lg:hidden"
+			class="-mr-2 rounded-sm p-2 text-ink-muted hover:bg-sunken hover:text-ink lg:hidden"
 			aria-label={menuOpen ? 'Close the docs menu' : 'Open the docs menu'}
 			aria-expanded={menuOpen}
 			aria-controls="docs-nav"
@@ -162,7 +162,7 @@
 		onscroll={onNavScroll}
 		tabindex="-1"
 		aria-label="Docs menu"
-		class="fixed top-14 bottom-0 left-0 z-20 w-[min(20rem,85vw)] overflow-y-auto overscroll-contain border-r border-[var(--rule)] bg-[var(--page)] px-5 pb-10 duration-200 ease-out outline-none motion-reduce:transition-none {menuOpen
+		class="fixed top-14 bottom-0 left-0 z-20 w-[min(20rem,85vw)] overflow-y-auto overscroll-contain border-r border-rule bg-page px-5 pb-10 duration-200 ease-out outline-none motion-reduce:transition-none {menuOpen
 			? 'visible translate-x-0 transition-[translate]'
 			: 'invisible -translate-x-full transition-[translate,visibility]'} lg:visible lg:sticky lg:top-14 lg:bottom-auto lg:z-auto lg:h-[calc(100dvh-3.5rem)] lg:w-60 lg:shrink-0 lg:translate-x-0 lg:border-r-0 lg:bg-transparent lg:px-0 lg:transition-none"
 	>
@@ -184,7 +184,7 @@
 					<li>
 						<a
 							href={href(hit.doc.slug) + (hit.heading ? `#${hit.heading.id}` : '')}
-							class="block rounded-sm px-2 py-1.5 hover:bg-[var(--sunken)]"
+							class="block rounded-sm px-2 py-1.5 hover:bg-sunken"
 						>
 							<span class="block text-sm font-medium">
 								{hit.doc.title}{#if hit.heading}<span class="text-ink-muted">
@@ -211,19 +211,17 @@
 									href={href(doc.slug)}
 									aria-current={current === doc.slug ? 'page' : undefined}
 									class="block rounded-sm px-2 py-1 text-sm {current === doc.slug
-										? 'bg-[var(--sunken)] font-medium text-ink'
+										? 'bg-sunken font-medium text-ink'
 										: 'text-ink-muted hover:text-ink'}">{doc.title}</a
 								>
 								{#if current === doc.slug && sections.length > 1}
-									<ul
-										class="mt-1 mb-2 ml-2 border-l border-[var(--rule)] pl-3"
-										aria-label="On this page"
-									>
+									<ul class="mt-1 mb-2 ml-2 border-l border-rule pl-3" aria-label="On this page">
 										{#each sections as h (h.id)}
 											<li>
 												<a
 													href={`#${h.id}`}
-													class="block py-0.5 text-[13px] text-ink-muted hover:text-ink">{h.text}</a
+													class="block py-0.5 text-compact text-ink-muted hover:text-ink"
+													>{h.text}</a
 												>
 											</li>
 										{/each}

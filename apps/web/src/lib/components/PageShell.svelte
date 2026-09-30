@@ -46,7 +46,7 @@
 				{/each}
 			</p>
 		{/if}
-		<div class="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--rule)] pb-5">
+		<div class="flex flex-wrap items-end justify-between gap-4 border-b border-rule pb-5">
 			<div class="min-w-0">
 				<h1 class="text-3xl font-semibold">{title}</h1>
 				{#if lede}<p class="mt-1.5 text-sm text-ink-muted">{lede}</p>{/if}

@@ -21,7 +21,7 @@
      on a phone (judged at 390 and 360; CLAUDE.md "Judge visuals at real size"). -->
 <HeaderFrame home={resolve('/projects')} label="repose, projects" compact>
 	<nav
-		class="flex h-full items-stretch gap-2.5 text-[13px] whitespace-nowrap sm:gap-6 sm:text-sm"
+		class="flex h-full items-stretch gap-2.5 text-compact whitespace-nowrap sm:gap-6 sm:text-sm"
 		aria-label="Main"
 	>
 		{#each links as link (link.href)}
@@ -30,7 +30,7 @@
 				href={link.href}
 				aria-current={isCurrent(link.href) ? 'page' : undefined}
 				class="-mb-px flex items-center border-b {isCurrent(link.href)
-					? 'border-[var(--ink)] text-ink'
+					? 'border-ink text-ink'
 					: 'border-transparent text-ink-muted hover:text-ink'}">{link.label}</a
 			>
 			<!-- eslint-enable svelte/no-navigation-without-resolve -->
