@@ -29,6 +29,9 @@
 	let heldNavigation = $state<URL | undefined>(undefined);
 	let leaveAnyway = false;
 	let stayButton = $state<HTMLButtonElement | undefined>(undefined);
+	// What had focus when the navigation was held (the link followed), so
+	// Stay can give it back instead of dropping it to <body> (I-393).
+	let heldFrom: HTMLElement | undefined;
 
 	let ntfyDirty = $derived(ntfyUrl.trim() !== savedNtfyUrl);
 
@@ -82,9 +85,24 @@
 		// buttons rather than the browser's dialog.
 		cancel();
 		if (type === 'leave' || !to) return;
+		const active = document.activeElement;
+		heldFrom = active instanceof HTMLElement && active !== document.body ? active : undefined;
 		heldNavigation = to.url;
 		void tick().then(() => stayButton?.focus());
 	});
+
+	/**
+	 * Stay closes the question and puts focus back on the control that
+	 * asked to leave; a navigation with no such control (the browser's Back)
+	 * returns it to the unsaved field.
+	 */
+	async function stay() {
+		heldNavigation = undefined;
+		const back = heldFrom?.isConnected ? heldFrom : document.getElementById('ntfy-url');
+		heldFrom = undefined;
+		await tick();
+		back?.focus();
+	}
 
 	async function leave() {
 		const url = heldNavigation;
@@ -215,11 +233,8 @@
 					>
 						<p>The ntfy URL is not saved. Leave this page anyway?</p>
 						<div class="flex items-center gap-2">
-							<button
-								type="button"
-								class="btn-quiet btn--sm"
-								bind:this={stayButton}
-								onclick={() => (heldNavigation = undefined)}>Stay</button
+							<button type="button" class="btn-quiet btn--sm" bind:this={stayButton} onclick={stay}
+								>Stay</button
 							>
 							<button type="button" class="btn-ghost" onclick={leave}>Leave</button>
 						</div>

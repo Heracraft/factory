@@ -73,6 +73,8 @@ test('leaving settings with an unsaved ntfy URL asks first', async ({ page }) =>
 	await expect(page.getByRole('button', { name: 'Stay' })).toBeFocused();
 	await page.getByRole('button', { name: 'Stay' }).click();
 	await expect(ask).toHaveCount(0);
+	// Focus goes back to the link that asked to leave, not to <body> (I-393).
+	await expect(projects).toBeFocused();
 	await expect(page.getByLabel('ntfy URL')).toHaveValue('https://ntfy.sh/repose-unsaved');
 	await expect(page).toHaveURL('/settings');
 

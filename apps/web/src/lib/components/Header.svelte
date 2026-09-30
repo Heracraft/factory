@@ -19,7 +19,7 @@
 <!-- Below sm the five links and the logo share 350px: the logo is the
      mark alone and the links close up, so the page never scrolls sideways
      on a phone (judged at 390 and 360; CLAUDE.md "Judge visuals at real size"). -->
-<HeaderFrame home={resolve('/projects')} label="repose, projects" compact>
+<HeaderFrame home={resolve('/projects')} label="repose, projects">
 	<nav
 		class="flex h-full items-stretch gap-2.5 text-compact whitespace-nowrap sm:gap-6 sm:text-sm"
 		aria-label="Main"

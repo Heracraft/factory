@@ -140,6 +140,6 @@ test('a failed first load shows the error and Retry loads the list', async ({ pa
 	const failed = page.getByRole('alert');
 	await expect(failed).toBeVisible();
 	await failed.getByRole('button', { name: 'Retry' }).click();
-	await expect(page.getByText('No secrets yet.')).toBeVisible();
+	await expect(page.getByRole('heading', { level: 2, name: 'No secrets yet' })).toBeVisible();
 	await expect(failed).toHaveCount(0);
 });

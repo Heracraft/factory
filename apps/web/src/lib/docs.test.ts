@@ -171,6 +171,13 @@ describe('user docs', () => {
 		);
 	});
 
+	it("breaks code with spaces at its spaces, not at a flag's hyphens", () => {
+		const html = docBySlug('cli')!.html;
+		expect(html).toContain(
+			'<code><span class="nobreak">--api-url</span> <span class="nobreak">URL</span></code>'
+		);
+	});
+
 	it('scrolls a code block instead of wrapping it', () => {
 		const html = docBySlug('tutorial-git')!.html;
 		expect(html).toContain('<code class="language-text">');

@@ -475,7 +475,10 @@
 	   Tailwind's transition-colors includes outline-color, so the focus
 	   ring faded in from the button's own colour instead of appearing. A
 	   press darkens the fill one step past hover (active:), so a click or
-	   a tap shows it landed; both are for enabled buttons only. */
+	   a tap shows it landed. Plain hover: and active:, not enabled:, since
+	   :enabled never matches an <a>, and a link drawn as a button (the
+	   docs header's Dashboard) lost both (I-393). A disabled button stays
+	   inert through the disabled rule below, which outranks these. */
 	.btn,
 	.btn-quiet,
 	.btn-danger {
@@ -485,15 +488,15 @@
 		transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 	}
 	.btn {
-		@apply border-zinc-900 bg-zinc-900 text-white enabled:hover:bg-zinc-700 enabled:active:bg-zinc-600 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900 dark:enabled:hover:bg-zinc-300 dark:enabled:active:bg-zinc-400;
+		@apply border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-700 active:bg-zinc-600 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 dark:active:bg-zinc-400;
 	}
 	.btn-quiet {
-		@apply text-zinc-800 enabled:hover:bg-zinc-100 enabled:active:bg-zinc-200 dark:text-zinc-200 dark:enabled:hover:bg-zinc-800 dark:enabled:active:bg-zinc-700;
+		@apply text-zinc-800 hover:bg-zinc-100 active:bg-zinc-200 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:active:bg-zinc-700;
 		border-color: var(--control-edge);
 		background-color: var(--surface);
 	}
 	.btn-danger {
-		@apply border-red-600 text-red-700 enabled:hover:bg-red-50 enabled:active:bg-red-100 dark:border-red-400 dark:text-red-400 dark:enabled:hover:bg-red-950 dark:enabled:active:bg-red-900;
+		@apply border-red-600 text-red-700 hover:bg-red-50 active:bg-red-100 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-950 dark:active:bg-red-900;
 	}
 	/* Ghost buttons are words, but a word that does something shows it at
 	   rest: a hairline underline in the control edge's grey (3:1, like any
@@ -501,7 +504,8 @@
 	   pointer. Grey and underlined, a ghost button cannot be mistaken for
 	   a link, which is blue. The danger kind's underline is its own red at
 	   45%, so the word and its mark stay one colour. Hover and press apply
-	   only while enabled, so a disabled one does not answer the pointer. */
+	   to anything not disabled, a link included (:enabled never matches an
+	   <a>), so a disabled one does not answer the pointer. */
 	.btn-ghost,
 	.btn-ghost-danger {
 		@apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-sm underline decoration-1 underline-offset-4 disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50;
@@ -510,12 +514,14 @@
 		transition-duration: 150ms;
 		transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 	}
-	.btn-ghost:enabled:is(:hover, :active),
-	.btn-ghost-danger:enabled:is(:hover, :active) {
+	:is(.btn-ghost, .btn-ghost-danger):not(:disabled, [aria-disabled='true']):is(:hover, :active) {
 		text-decoration-color: currentColor;
 	}
 	.btn-ghost {
-		@apply text-ink-muted enabled:hover:text-ink enabled:active:text-ink;
+		@apply text-ink-muted;
+	}
+	.btn-ghost:not(:disabled, [aria-disabled='true']):is(:hover, :active) {
+		color: var(--ink);
 	}
 	.btn-ghost-danger {
 		@apply text-red-700 dark:text-red-400;
@@ -664,10 +670,13 @@
 }
 
 /* Nix editor (CodeMirror 6). Unlayered on purpose: CodeMirror injects its
-   theme as unlayered styles, and those beat anything inside a layer. */
+   theme as unlayered styles, and those beat anything inside a layer. Code
+   sits on --sunken everywhere else (.codeblock, the docs' pre), so the
+   editor does too: on --surface it was a 320px pure white block on the
+   warm page in the light (I-393). The current line lifts to --surface. */
 .nix-editor .cm-editor {
 	@apply h-full rounded-sm border text-sm;
-	background-color: var(--surface);
+	background-color: var(--sunken);
 	border-color: var(--control-edge);
 }
 .nix-editor .cm-editor.cm-focused {
@@ -684,7 +693,7 @@
 }
 .nix-editor .cm-editor .cm-activeLine,
 .nix-editor .cm-editor .cm-activeLineGutter {
-	background-color: var(--sunken);
+	background-color: var(--surface);
 }
 .nix-editor .cm-line-error {
 	@apply bg-red-100 dark:bg-red-950;
@@ -730,6 +739,12 @@
 .doc :where(h1, h2, h3, h4) {
 	@apply font-semibold;
 }
+/* A policy's title is the h1 inside its markdown, which the plugin set at
+   2.25em (36px); the docs and dashboard h1 is text-3xl, 30px, at every
+   width (DESIGN-LANGUAGE.md, "Docs and legal pages"). */
+.doc :where(h1) {
+	@apply text-3xl;
+}
 .doc :where(h2, h3) {
 	@apply relative scroll-mt-20;
 }
@@ -759,10 +774,13 @@
    or fewer; lib/docs.ts marks it) never breaks across lines: a line that
    ended at "--" left the flag's name at the start of the next. 30
    characters fit the column at 360, and docs.test.ts holds the limit. Code
-   with spaces, an error message quoted whole, wraps as prose does, and so
-   does a longer span such as a URL, at its slashes or, if it has none,
-   anywhere, so no chip pushes the page wider than the phone. */
-.doc code.nobreak {
+   with spaces, a flag with its argument or an error message quoted whole,
+   wraps at its spaces only: each short word in it is a .nobreak span, so
+   "--api-url URL" cannot end a line at "--" (I-393). A longer span such
+   as a URL wraps at its slashes or, if it has none, anywhere, so no chip
+   pushes the page wider than the phone. */
+.doc code.nobreak,
+.doc code .nobreak {
 	@apply whitespace-nowrap;
 }
 .doc :not(pre) > code:not(.nobreak) {
@@ -981,6 +999,17 @@
 		text-decoration: underline;
 		text-decoration-thickness: 2px;
 		text-underline-offset: 0.35em;
+	}
+	/* The current tab (config's Menu and Nix): its ink underline versus the
+	   others' transparent one was a colour difference, and forced colours
+	   drew every tab's edge in CanvasText, so none was marked (I-393). The
+	   current one takes the Highlight colour at 3px, the others keep none. */
+	[role='tab'] {
+		border-bottom-color: Canvas;
+	}
+	[role='tab'][aria-selected='true'] {
+		border-bottom-width: 3px;
+		border-bottom-color: Highlight;
 	}
 	/* A select's chevron and the search field's glass are background
 	   images drawn in a fixed grey; the native arrow follows the theme. */

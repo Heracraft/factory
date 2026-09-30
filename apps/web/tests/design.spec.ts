@@ -81,6 +81,33 @@ test.describe('signed in', () => {
 		expect(fill).not.toBe('rgba(0, 0, 0, 0)');
 		expect(fill).toBe(edge);
 	});
+
+	test('forced colours mark the current config tab and no other', async ({ page }) => {
+		const p = await createProject(apiURLFromEnv(), {
+			name: 'forced-tabs-app',
+			remote_url: 'github.com/heracraft/forced-tabs-app'
+		});
+		await page.emulateMedia({ forcedColors: 'active' });
+		await page.goto(`/projects/${p.id}/config`);
+		const tabs = page.getByRole('tab');
+		await expect(tabs).toHaveCount(2);
+		const edges = await tabs.evaluateAll((els) =>
+			els.map((el) => {
+				const s = getComputedStyle(el);
+				return {
+					selected: el.getAttribute('aria-selected') === 'true',
+					edge: `${s.borderBottomWidth} ${s.borderBottomColor}`,
+					page: getComputedStyle(document.body).backgroundColor
+				};
+			})
+		);
+		const current = edges.find((e) => e.selected)!;
+		const other = edges.find((e) => !e.selected)!;
+		expect(current.edge).not.toBe(other.edge);
+		expect(current.edge.startsWith('3px')).toBe(true);
+		// The other tab's edge is the page's own colour: no mark.
+		expect(other.edge.endsWith(other.page)).toBe(true);
+	});
 });
 
 test.describe('public pages', () => {

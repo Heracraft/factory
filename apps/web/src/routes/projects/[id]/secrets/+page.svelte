@@ -143,7 +143,14 @@
 		error={loadError}
 	>
 		{#if secrets && secrets.length === 0}
-			<p class="text-sm text-ink-muted">No secrets yet.</p>
+			<!-- The empty state (DESIGN-LANGUAGE.md "States"): an h2 that says
+			     so and how to get one there, the form below or the CLI. -->
+			<h2 class="text-xl font-semibold">No secrets yet</h2>
+			<p class="mt-2 text-sm text-ink-muted">
+				Add one below, or run <code>repose secrets set NAME</code> on your laptop. The guest sees
+				each as an environment variable and a file in
+				<code>/run/repose/secrets/</code>.
+			</p>
 		{:else if secrets}
 			<ul>
 				{#each secrets as s (s.name)}

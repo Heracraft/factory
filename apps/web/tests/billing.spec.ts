@@ -330,10 +330,15 @@ test('cancelling asks first, then shows the end date and a Resume that undoes it
 	await page.goto('/billing');
 	await page.getByRole('button', { name: 'Cancel plan' }).click();
 	const confirm = page.getByTestId('confirm-cancel');
-	await expect(confirm).toContainText('Your plan ends on');
+	await expect(confirm).toContainText('It ends on');
 	await expect(confirm).toContainText('snapshots are kept 30 days after');
+	// The documented two-step (I-393): the button turns into the question,
+	// focus goes to Keep it, and Keep it gives it back to Cancel plan.
+	await expect(confirm.getByRole('button', { name: 'Keep it' })).toBeFocused();
+	await expect(page.getByRole('button', { name: 'Cancel plan' })).toHaveCount(1);
 	await page.getByRole('button', { name: 'Keep it' }).click();
 	await expect(page.getByTestId('confirm-cancel')).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Cancel plan' })).toBeFocused();
 	await page.getByRole('button', { name: 'Cancel plan' }).click();
 	await page.getByTestId('confirm-cancel').getByRole('button', { name: 'Cancel plan' }).click();
 	await expect(page.getByTestId('plan-status')).toContainText('Cancelled. Ends');

@@ -20,6 +20,7 @@
 	import PageShell from '$lib/components/PageShell.svelte';
 	import Meter from '$lib/components/Meter.svelte';
 	import LoadState, { loadErrorText } from '$lib/components/LoadState.svelte';
+	import { focusAfterRender, focusOnMount } from '$lib/focus';
 	import type { Billing, Invoice, Me, Plan, PlanId } from '$lib/api/types';
 
 	let me = $state<Me | undefined>(undefined);
@@ -188,6 +189,9 @@
 			await billingCancel();
 			confirmCancel = false;
 			await load();
+			// Cancel plan is gone once the plan is cancelled; Resume plan
+			// takes its place and the focus with it.
+			void focusAfterRender('resume-plan', 'cancel-plan');
 		} catch (err) {
 			toastApiError(err, 'Could not cancel the plan.');
 		} finally {
@@ -452,7 +456,7 @@
 
 			<div class="mt-6 flex flex-wrap gap-x-5 gap-y-2 border-t pt-4 border-rule">
 				{#if sub.cancel_at}
-					<button type="button" class="btn" disabled={!!busy} onclick={resume}>
+					<button type="button" id="resume-plan" class="btn" disabled={!!busy} onclick={resume}>
 						{busy === 'resume' ? 'Resuming…' : 'Resume plan'}
 					</button>
 				{:else}
@@ -465,12 +469,18 @@
 							changeError = undefined;
 						}}>Change plan</button
 					>
-					<button
-						type="button"
-						class="btn-ghost-danger"
-						disabled={!!busy}
-						onclick={() => (confirmCancel = true)}>Cancel plan</button
-					>
+					<!-- The documented two-step (DESIGN-LANGUAGE.md, "Confirmation"):
+					     the button turns into the question below, and Keep it
+					     brings it back with the focus on it (I-393). -->
+					{#if !confirmCancel}
+						<button
+							type="button"
+							id="cancel-plan"
+							class="btn-ghost-danger"
+							disabled={!!busy}
+							onclick={() => (confirmCancel = true)}>Cancel plan</button
+						>
+					{/if}
 				{/if}
 				<button
 					type="button"
@@ -534,19 +544,26 @@
 			{/if}
 
 			{#if confirmCancel}
-				<div class="mt-4 rounded-sm border p-4 text-sm border-rule" data-testid="confirm-cancel">
-					<p>
-						Your plan ends on {dateOnly(
+				<div class="mt-4 text-sm" data-testid="confirm-cancel">
+					<p class="text-ink-muted">
+						Cancel the plan? It ends on {dateOnly(
 							sub.status === 'trialing' && sub.trial_end ? sub.trial_end : sub.period_end
 						)}. Machines run until then and stop at it; snapshots are kept 30 days after. Nothing is
 						charged after that.
 					</p>
-					<div class="mt-3 flex gap-2">
-						<button type="button" class="btn-danger" disabled={!!busy} onclick={cancel}>
+					<div class="mt-2 flex items-center gap-2">
+						<button type="button" class="btn-danger btn--sm" disabled={!!busy} onclick={cancel}>
 							{busy === 'cancel' ? 'Cancelling…' : 'Cancel plan'}
 						</button>
-						<button type="button" class="btn-ghost" onclick={() => (confirmCancel = false)}
-							>Keep it</button
+						<!-- Focus lands on the safe choice when the question opens. -->
+						<button
+							type="button"
+							class="btn-ghost"
+							use:focusOnMount
+							onclick={() => {
+								confirmCancel = false;
+								void focusAfterRender('cancel-plan');
+							}}>Keep it</button
 						>
 					</div>
 				</div>

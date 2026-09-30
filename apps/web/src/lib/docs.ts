@@ -193,9 +193,22 @@ function render(body: string): { html: string; headings: DocHeading[] } {
 			// spaces (a quoted message) wraps as prose does. So does a span
 			// longer than NOBREAK_MAX: kept whole, a 44-character ntfy URL
 			// ran 54px past the column at 390 and scrolled the page sideways.
+			// Inside a span with spaces, each short word is kept whole, so
+			// "--api-url URL" breaks at its space and never after "--"
+			// (I-393); a long word in it still wraps anywhere.
 			codespan(token: Tokens.Codespan) {
-				if (/\s/.test(token.text) || token.text.length > NOBREAK_MAX) return false;
-				return `<code class="nobreak">${escapeHTML(token.text)}</code>`;
+				if (!/\s/.test(token.text)) {
+					if (token.text.length > NOBREAK_MAX) return false;
+					return `<code class="nobreak">${escapeHTML(token.text)}</code>`;
+				}
+				const words = token.text
+					.split(/(\s+)/)
+					.map((w) =>
+						w === '' || /^\s+$/.test(w) || w.length > NOBREAK_MAX
+							? escapeHTML(w)
+							: `<span class="nobreak">${escapeHTML(w)}</span>`
+					);
+				return `<code>${words.join('')}</code>`;
 			},
 			blockquote(
 				this: { parser: { parse(t: Tokens.Generic[]): string } },

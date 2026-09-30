@@ -108,9 +108,11 @@
      docs' prose styles (.doc), so inline code is a quiet chip in the body
      weight rather than bold mono in literal backticks, and a policy reads
      like the docs page that links to it. From lg up the policy's sections
-     are listed at the column's right edge, where a 33rem text alone left
-     450px of the 984px column empty and the page leaning left. -->
-<main id="main" class="mx-auto flex max-w-5xl gap-10 px-5 pt-10 pb-24">
+     are listed beside the text, where a 33rem text alone left 450px of the
+     984px column empty and the page leaning left. Beside it, 64px off,
+     and not pushed to the column's right edge: there the list sat 230px
+     from the text and read as a separate thing (I-393). -->
+<main id="main" class="mx-auto flex max-w-5xl gap-16 px-5 pt-10 pb-24">
 	<div class="max-w-[33rem] min-w-0 flex-1">
 		{#if meta.status}
 			<p class="banner banner--warn">Draft: {meta.status}</p>
@@ -125,7 +127,7 @@
 	{#if rendered.sections.length > 1}
 		<!-- The docs sidebar's "On this page" list, in the same type and
 		     the same 28px rows, sticky so it stays beside a long policy. -->
-		<nav class="ml-auto hidden w-56 shrink-0 lg:block" aria-label="On this page">
+		<nav class="hidden w-56 shrink-0 lg:block" aria-label="On this page">
 			<div class="sticky top-10 border-l border-rule pl-3">
 				<p class="text-sm font-medium text-ink">On this page</p>
 				<ul class="mt-1">

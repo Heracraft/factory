@@ -2,9 +2,10 @@
 	// The wordmark: the name in the heading face, behind the mark. The mark
 	// is the owner's notebook sketch, traced (DECISIONS I-363): a thin cross
 	// in the text's ink, its crossing left of centre and low, and three
-	// blocks hugging the crossing in the landing's palette: a skinny one in
-	// grey above-left, a middle square in the light grey above-right on the
-	// arm, and the big square in the one blue below-right. Flat, no stroke;
+	// blocks hugging the crossing: a skinny one in grey above-left, a middle
+	// square in a fainter grey above-right on the arm (both the mark's own
+	// greys, see the style block), and the big square in the landing's blue,
+	// --sh-accent, below-right: the one --sh-* token off the landing. Flat, no stroke;
 	// the favicon is this same drawing. The viewBox is cropped to the
 	// drawing so the thin stems get every pixel the header gives the mark.
 	// word=false draws the mark alone, for a header row on a phone that has
@@ -45,24 +46,22 @@
 	   greys: at header size the blocks are a few pixels wide, and the shape
 	   greys that read on a 200px drawing vanish there. In the light the
 	   shapes' zinc-300 sat at 1.5:1 on --page and zinc-400 at 2.5:1; the mark
-	   takes zinc-500 for the skinny block (4.8:1) and #888883 for the middle
-	   one (3.4:1, the --control-edge grey), so both hold 3:1 and the middle
-	   block stays the fainter of the two. In the dark, --sh-light (zinc-600)
-	   sat at 2.7:1; the mark steps each one lighter instead, zinc-400 and
-	   zinc-500 (7.4:1 and 3.8:1). The landing's large shapes keep their own
-	   greys. */
+	   takes zinc-500 for the skinny block (4.8:1) and --control-edge for the
+	   middle one (3.4:1), so both hold 3:1 and the middle block stays the
+	   fainter of the two. In the dark, --sh-light (zinc-600) sat at 2.7:1;
+	   the skinny block steps to zinc-400 (7.4:1) and the middle one stays
+	   --control-edge, whose dark value holds 3.7:1. The token, not its hex,
+	   so the mark follows the floor I-370 keeps on it (I-393). The
+	   landing's large shapes keep their own greys. */
 	.mark-grey {
 		fill: var(--color-zinc-500);
 	}
 	.mark-light {
-		fill: #888883;
+		fill: var(--control-edge);
 	}
 	@media (prefers-color-scheme: dark) {
 		.mark-grey {
 			fill: var(--color-zinc-400);
-		}
-		.mark-light {
-			fill: var(--color-zinc-500);
 		}
 	}
 </style>

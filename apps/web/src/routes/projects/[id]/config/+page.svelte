@@ -397,7 +397,7 @@
 						)}</pre>
 					{#if buildDone && buildError}
 						<div class="banner banner--error mt-3">
-							<p class="font-mono text-xs whitespace-pre-wrap">{buildError}</p>
+							<p class="font-mono text-compact whitespace-pre-wrap">{buildError}</p>
 						</div>
 					{:else if buildDone}
 						<p class="mt-3 text-sm text-emerald-700 dark:text-emerald-400">Applied.</p>
