@@ -9450,13 +9450,14 @@ settles the two greys the dashboard and the landing called "muted"; faint
 `--sunken` in its scheme (faint: 4.86 on light `--sunken`, 5.31 on dark).
 The old faint, zinc-500 in both schemes, was 4.14:1 on dark `--page`,
 and zinc-400 text at 2.56:1 carried the dashboard's 12px metadata. A new
-`--control-edge` (`#888883` / `#6a6a66`, 3.2:1 or better on page,
-surface and sunken, WCAG 1.4.11) edges fields, quiet buttons and the
+`--control-edge` (`#888883` / `#6e6e6a`, 3.2:1 or better on page,
+surface and sunken, WCAG 1.4.11; the dark value was `#6a6a66` until I-391
+found it at 3.17:1 on `--sunken`) edges fields, quiet buttons and the
 hollow state dot; the old field edge, `--rule-strong`, was 1.56:1 and
 stays for rules, badges and table heads, which nobody has to find to use.
 `--color-zinc-500` is re-toned from `#767671` to `#70706b` so the darkest
-grey pages still use for small text reaches 4.52:1 on `--sunken` (was
-4.15). `--radius-xs` is 2px (was 1px), so `rounded-xs` on badges, dots
+grey pages still use for small text reaches 4.52:1 on light `--sunken`
+(was 4.15). In the dark it is 3.5 to 3.8:1 and is never text there. `--radius-xs` is 2px (was 1px), so `rounded-xs` on badges, dots
 and keys is a real corner and "2 to 4px" is true of the whole scale.
 `.card` lost its fill to match the doc's "no fill or shadow";
 `.btn-quiet` and `.banner` keep their `--surface` fill, which lifts them
@@ -9549,11 +9550,12 @@ gap where something failed to render. *Rejected:* a separate
 plan cards were already `text-xl` h2, and two sizes for one level is the
 drift the critique flagged).
 
-**I-376. Buttons come in three sizes: `.btn--sm`, the default and
-`.btn--lg`.** (design critique, 2026-09-30) Seventeen `!py-*` and `!px-*`
-overrides resized buttons one page at a time. `.btn--sm` (`px-3 py-1.5`)
-is for rows, toolbars and header bars; `.btn--lg` (`px-5 py-2.5`) for a
-page's single call to action. They replace the overrides, so one change
+**I-376. Buttons come in two sizes: `.btn--sm` and the default.** (design
+critique, 2026-09-30) Seventeen `!py-*` and `!px-*` overrides resized
+buttons one page at a time. `.btn--sm` (`px-3 py-1.5`) is for rows,
+toolbars and header bars. A `.btn--lg` for a page's single call to action
+was added with it and deleted under I-378 when nothing used it (I-391);
+it comes back with its first user. `.btn--sm` replaces the overrides, so one change
 in `layout.css` resizes every compact button. The landing's
 `+page.svelte` still carries six overrides, left to the landing-critique
 branch that rewrites that file.
@@ -9654,8 +9656,10 @@ quiet chip at body weight with no backticks, links take the docs' colour,
 and h2 sections are separated by a rule. Each shows its frontmatter
 effective date under the title. The Draft banner stays, since no entry
 here says the policies are final; privacy's reads "this policy is under
-review before launch. The sentences in bold already bind the service
-today." (the policy's own opening claim), and terms' reads "these terms
+review before launch. The two sentences in bold under "Process samples"
+already bind the service today." (the policy's own opening claim, which
+names them the same way; "the sentences in bold" also took in every
+section's bold lead-in, I-391), and terms' reads "these terms
 are under review before launch." Page titles read "Privacy · repose" and
 the like, without an em dash.
 
@@ -9726,3 +9730,76 @@ dashboard redirected to. Each run asserts the audited URL's path, so a
 bounced audit fails. The gate covers every routable page but `/callback`
 (13), light and dark, at 1440x900 and 390x844, the sizes of CLAUDE.md's
 "Judge visuals at real size": 52 runs.
+
+**I-390. A 503 the api gives as an answer is not an outage, a 500 is not
+"cannot reach", and one failure is said once.** (design critique repair,
+2026-09-30; narrows `08-dashboard.md` §6 "API 5xx or unreachable") The
+client set the outage bar on every status of 500 or more, and the api
+answers `billing_disabled` and `waitlisted` with a 503 on purpose, so
+/billing showed "Cannot reach the API. Retrying…" over "Billing is not
+switched on yet." whenever billing was off. `isOutage` in
+`lib/api/errors.ts` now leaves those two codes out; any other 5xx, and a
+5xx whose body is not the api's JSON (a proxy's page), still raises the
+bar. The bar has two wordings: "Cannot reach the API. Retrying…" when a
+request got no answer, and "The API is failing right now. Retrying…" on a
+5xx, since an api that answered 500 was reached. A failed first load
+said one failure three times (the bar, the LoadState banner and a toast
+with the same text); the projects list and the project page now raise the
+banner alone before their first load, as the other four pages already
+did, and the bar says something different. `errorText`, shared by the
+toast and the banner, replaces the api's bare "internal error" with the
+caller's sentence and "The API failed on its side; try again shortly."
+Pinned by `errors.test.ts` and by `failure-modes.spec.ts` and
+`billing.spec.ts`. *Rejected:* hiding the bar whenever a page shows its
+own banner (the bar is the only signal that polling has backed off to
+60s).
+
+**I-391. Design critique repair: focus follows in-place panels, one
+disabled look, and the gaps the first pass left.** (design critique
+repair, 2026-09-30; amends I-370, I-376, I-381, I-384) The first pass
+left these, found by the verify round and the a11y gate:
+- Focus. A panel that opens in place of the button that asked for it (a
+  secret's two-step delete, a snapshot's Restore and Restore as new, a
+  destroyed project's Restore) removed that button, and focus fell to
+  `<body>` (WCAG 2.4.3). The panel now takes focus ("Keep it", or the
+  field of `ConfirmType` or `RestoreNameForm`), Cancel and Keep it give it
+  back to the button, and a deleted row passes it to the next row's
+  Delete (`lib/focus.ts`).
+- `ConfirmType` has a visible label, "Type `slug` to confirm", where it
+  had only a placeholder and an `aria-label`, which broke the Fields rule
+  it is the main user of.
+- Disabled buttons have one look: a `--rule-strong` outline on
+  `--surface` with `--ink-faint` text. At `opacity-50` a primary button
+  was a grey block (dark text on mid grey in the dark) and a danger
+  button a pale red outline.
+- Edges: the Nix editor (1.56:1) and the docs' copy button (1.2:1) take
+  `--control-edge`; dark `--control-edge` is `#6e6e6a` (3.37:1 on
+  `--sunken`, was 3.17). The Nix editor's content gets an `aria-label`,
+  which the gate found missing once it audited the config page for real.
+- The mark's grey blocks in the light are zinc-500 and `#888883` (4.8 and
+  3.4:1), where the landing's shape greys were 2.5 and 1.5:1. Below `sm`
+  the dashboard's mark alone is the 24px cut the docs use, not 28px.
+- Docs and legal prose map the typography plugin's `--tw-prose-*` colours
+  to the ink and rule tokens (its `prose-zinc` is Tailwind's stock cool
+  zinc, and `prose-invert` made the dark h2 pure white); every heading is
+  600. Inline code with no space in it (a command, a flag, a path) does
+  not break across lines, and a command used as a docs heading is mono
+  text, not a chip. The sidebar's "On this page" links are 28px tall
+  (the gate's target-size audit failed at 22px).
+- The breadcrumb spaces its `·` with a flex gap (template whitespace put
+  4px before it and 10px after). The projects table's size sits on the
+  state's baseline; a destroyed row shows its size as mono text in its
+  meta line, not a badge, so a size looks the same in both lists. The
+  outage bar uses the `.banner--error` class. Toasts line up with the
+  content column from 600px up.
+- `.field--set` and `.btn--lg` had no user and are deleted (I-378). The
+  CSP no longer allows Google Fonts, and the CHECKLIST grep for font
+  hosts covers `svelte.config.js`.
+- The a11y gate's config target waits for the Menu tab, not a button
+  (I-388 made it a tab). `KNOWN_FAILURES` names colour contrast on `/`:
+  the landing pictures at 390 set their own greys inside
+  `components/landing/*.svelte`, which the landing-critique branch
+  rewrites; the entry goes when that branch lands.
+*Rejected:* focusing the danger button of a two-step when it opens
+(Enter would then delete); moving the toast to the top on a phone (it
+would cover the header's links instead of the page's last button).

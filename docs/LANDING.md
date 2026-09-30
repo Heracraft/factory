@@ -30,7 +30,12 @@ palette, the design, it's beautiful... we should maintain that aesthetic.
 It has to be like that." Every other animated visual (the hero, "Break it
 and roll it back") matches it: the same light panels with hairline
 borders, the same row and chip styling, the same blue accent for what
-moves, the same calm anime.js motion (stagger, travel, settle, rest, loop).
+moves, the same anime.js motion: stagger, travel, settle, rest, loop.
+Calm means no move is shorter than 120ms or longer than 1.1s; travel
+eases in and out (`inOutCubic`), a reveal eases out (`outQuad`,
+`outCubic`) and an exit eases in (`inQuad`); only a chip or a mark
+arriving overshoots (`outBack`); and nothing moves during the rest before
+the loop starts again.
 Frames of it for reference: record them from the live page before starting.
 
 ## Less is more
@@ -38,7 +43,9 @@ Frames of it for reference: record them from the live page before starting.
 - Show only what carries the point. A list of fifteen files where two
   matter is noise: the viewer can't find the important ones fast. Show the
   few things that matter (a small group reads instantly, like `.ssh`
-  and a cat photo), cut the rest, or mute it hard.
+  and a cat photo), and cut the rest. What must stay for context but does
+  not matter is muted: its text in `--ink-faint`, the faintest grey that
+  still holds 4.5:1, its icon in the same grey, never a colour.
 - Transfers are quick: one folder, or at most three items, moving across;
   not every file.
 
@@ -185,8 +192,9 @@ of the house style, not in place of it. Two attempts were sent back: one let
 the shapes take over the page, the next added them at the top and bottom
 and underlined every heading. The page is one system:
 
-- **Every section is built the same way**: a header (bold serif heading,
-  one sentence) and then its picture on a stage, the sunken hairline panel
+- **Every section is built the same way**: a header (the bold serif
+  heading, with a sentence only where the picture cannot carry a fact; see
+  "Copy") and then its picture on a stage, the sunken hairline panel
   the grid cards already use. The hero picture and "Your working state"
   sit on a stage too, which keeps the headline apart from the picture.
 - **A shape encodes something, or it isn't there.** Owner, 2026-09-27:
@@ -299,7 +307,8 @@ drawn in its final state.
 - **The snapshot mark** turns a quarter when a snapshot is taken and a
   full turn back when one is restored.
 - **The pictures** loop in anime.js, the calm motion of "Your working
-  state": stagger, travel, settle, rest, loop.
+  state" as the top of this file defines it: stagger, travel, settle, rest,
+  loop, each move 120ms to 1.1s.
 
 Nothing else moves. A new motion is added to this list with its duration
 and easing, or it does not ship.
@@ -344,7 +353,8 @@ by `+page.svelte` alone; the house tokens stay in `layout.css`):
   marks where it meets each rail, as a drawing marks an intersection. The
   top bar's rule is ticked the same way.
 - **A section is a head, then a stage.** The head (`SectionHead.svelte`)
-  is the bold serif title and one sentence, inset from the rails by
+  is the bold serif title, and a sentence only where the picture cannot
+  carry a fact ("Copy"), inset from the rails by
   `--land-x`; no number and no running label (a "01 Run" label was tried
   and dropped, owner, 2026-09-27: generic). The stage (`.landing-stage`)
   is sunken and fills the width between the rails, so a picture reads as

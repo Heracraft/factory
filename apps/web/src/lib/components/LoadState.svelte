@@ -1,14 +1,12 @@
 <script lang="ts" module>
-	import { ApiError, NetworkError } from '$lib/api/errors';
+	import { errorText } from '$lib/api/errors';
 
 	/**
-	 * The sentence a failed first load shows, in the words toastApiError
+	 * The sentence a failed first load shows: errorText, the one toastApiError
 	 * uses, so the banner and the toast never disagree about one failure.
 	 */
 	export function loadErrorText(err: unknown, fallback: string): string {
-		if (err instanceof ApiError) return err.message;
-		if (err instanceof NetworkError) return 'Cannot reach the API.';
-		return fallback;
+		return errorText(err, fallback);
 	}
 </script>
 

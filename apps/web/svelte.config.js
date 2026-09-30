@@ -17,14 +17,16 @@ const config = {
 		// pages). connect-src cannot name the api and Logto, which are
 		// runtime PUBLIC_* values, so it allows https and the loopback the
 		// Playwright fixtures listen on. Svelte writes style attributes, so
-		// style-src keeps 'unsafe-inline'.
+		// style-src keeps 'unsafe-inline'. The fonts are served from
+		// static/fonts (DECISIONS I-371), so style-src and font-src name no
+		// font CDN.
 		csp: {
 			mode: 'auto',
 			directives: {
 				'default-src': ['self'],
 				'script-src': ['self', 'https://cdn.paddle.com', 'https://*.paddle.com'],
-				'style-src': ['self', 'unsafe-inline', 'https://fonts.googleapis.com'],
-				'font-src': ['self', 'https://fonts.gstatic.com'],
+				'style-src': ['self', 'unsafe-inline'],
+				'font-src': ['self'],
 				'img-src': ['self', 'data:', 'https:'],
 				'connect-src': [
 					'self',

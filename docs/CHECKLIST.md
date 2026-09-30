@@ -90,15 +90,16 @@ DECISIONS entry and this list with it. Counts as of 2026-09-30.
       \1\))' apps/web/src` prints 0 lines.
 - [ ] Toasts are house banners. Evidence: `rg -n 'richColors' apps/web/src
       --glob '*.svelte' | rg -v '<!--'` prints 0 lines.
-- [ ] No page asks a third party for a font. Evidence: `rg -n
-      'fonts\.(googleapis|gstatic)' apps/web/src apps/web/static` prints 0
-      lines, and a page load's network panel shows only the site's host.
+- [ ] No page asks a third party for a font, and the CSP allows none.
+      Evidence: `rg -n 'fonts\.(googleapis|gstatic)' apps/web/src
+      apps/web/static apps/web/svelte.config.js` prints 0 lines, and a page
+      load's network panel shows only the site's host.
 - [ ] No native dialogs. Evidence: `rg -n 'window\.confirm|[^.\w/]confirm\('
       apps/web/src --glob '*.{svelte,ts}' | rg -v '//|onconfirm'` prints 0
       lines.
 - [ ] Sizes come from the scale, not overrides or hand-written values.
       Evidence: `rg -n '![pm][xytrbl]?-' apps/web/src --glob '*.svelte'
-      "${L[@]}"` prints 0 lines (buttons use `.btn--sm` or `.btn--lg`);
+      "${L[@]}"` prints 0 lines (a compact button uses `.btn--sm`);
       `rg -n 'text-\[[0-9.]+(px|rem|em)\]' apps/web/src --glob '*.svelte'`
       prints 0 lines; `rg -n '\[var\(--' apps/web/src --glob '*.svelte'
       "${L[@]}"` prints 0 lines (use `text-ink-muted`, `border-rule` and

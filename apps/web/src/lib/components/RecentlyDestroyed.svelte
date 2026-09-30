@@ -14,6 +14,7 @@
 	import { DESTROYED_FIRST, defaultRestoreName, moreToShow, timeLeft } from '$lib/destroyed';
 	import type { DestroyedProject } from '$lib/api/types';
 	import RestoreNameForm from '$lib/components/RestoreNameForm.svelte';
+	import { focusAfterRender } from '$lib/focus';
 
 	let {
 		destroyed,
@@ -42,6 +43,12 @@
 		openFor = d.id;
 		name = defaultRestoreName(d, liveSlugs);
 		nameError = undefined;
+	}
+
+	/** Close the name field and give focus back to the row's Restore button. */
+	function close(d: DestroyedProject) {
+		openFor = undefined;
+		void focusAfterRender(`restore-open-${d.id}`);
 	}
 
 	function mb(bytes: number): string {
@@ -92,7 +99,6 @@
 					<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
 						<div class="min-w-0">
 							<span class="font-medium">{d.name}</span>
-							<span class="badge ml-2">{d.class}</span>
 							{#if !d.name_free}
 								<span class="badge ml-2">name in use</span>
 							{/if}
@@ -101,15 +107,21 @@
 							<!-- -mx-2 takes back the ghost button's padding, so "Restore…"
 							     lines up with the list's edge at the right and, on a phone,
 							     under the name when it wraps. -->
-							<button type="button" class="btn-ghost -mx-2" disabled={busy} onclick={() => open(d)}
-								>Restore…</button
+							<button
+								type="button"
+								id={`restore-open-${d.id}`}
+								class="btn-ghost -mx-2"
+								disabled={busy}
+								onclick={() => open(d)}>Restore…</button
 							>
 						{/if}
 					</div>
+					<!-- The size is mono text, as in the projects table above: a
+					     badge is for a tag like "name in use", not for a value. -->
 					<p class="mt-0.5 text-sm text-ink-muted tabular-nums">
-						Destroyed {relativeTime(d.destroyed_at)} · snapshot {dateTime(d.snapshot.created_at)}, {mb(
-							d.snapshot.bytes
-						)}
+						<span class="font-mono text-compact text-ink">{d.class}</span> · destroyed {relativeTime(
+							d.destroyed_at
+						)} · snapshot {dateTime(d.snapshot.created_at)}, {mb(d.snapshot.bytes)}
 						{#if d.restorable_until}
 							· restorable until {dateTime(d.restorable_until).slice(0, 10)} ({timeLeft(
 								d.restorable_until
@@ -123,7 +135,7 @@
 							error={nameError}
 							{busy}
 							onsubmit={(n) => void restore(d, n)}
-							oncancel={() => (openFor = undefined)}
+							oncancel={() => close(d)}
 						/>
 					{/if}
 				</li>

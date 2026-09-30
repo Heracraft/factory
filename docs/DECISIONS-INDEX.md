@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-423 entries.
+425 entries.
 
 ## Scope
 
@@ -435,23 +435,25 @@ pointer, not a summary.
 - **I-367** `repose run` syncs the checkout only into a machine that has no commit yet; `repose sync` is the explicit sync — 2026-09-29; L9302
 - **I-368** The machine's checkout is named after the laptop folder of its first sync; a machine with no checkout works in the home directory — 2026-09-29; L9349
 - **I-369** One design foundation under every page; the dashboard no longer follows the recruiting app — 2026-09-30; L9421
-- **I-370** Shared text and edge tokens with a contrast floor: 4.5:1 for text, 3:1 for control edges and state marks — 2026-09-30; L9441
-- **I-371** The fonts are self-hosted, and JetBrains Mono is the one monospace — 2026-09-30; L9469
-- **I-372** A focused field shows the house focus ring — 2026-09-30; L9488
-- **I-373** State dots: busy is ink, stopped is hollow, and running and error differ in lightness — 2026-09-30; L9499
-- **I-374** Toasts and docs code highlighting take the house colours — 2026-09-30; L9517
-- **I-375** A type scale with two named small steps and one size per heading level — 2026-09-30; L9532
-- **I-376** Buttons come in three sizes: `.btn--sm`, the default and `.btn--lg` — 2026-09-30; L9552
-- **I-377** Forced colours are part of the system — 2026-09-30; L9561
-- **I-378** Unused patterns are deleted rather than documented — 2026-09-30; L9577
-- **I-379** In the dark, the landing's small ink details are lit marks — 2026-09-30; L9588
-- **I-380** One header frame for the dashboard, the docs and the legal pages; form pages sit flush left — 2026-09-30; L9596
-- **I-381** The I-363 mark is in every header — 2026-09-30; L9613
-- **I-382** Docs and legal prose hold a readable measure — 2026-09-30; L9627
-- **I-383** The docs' right rail moves into the sidebar, and the menu button moves to the right — 2026-09-30; L9638
-- **I-384** Legal pages use the docs' prose styles, show their effective date, and keep a Draft banner that names nothing internal — 2026-09-30; L9648
-- **I-385** Only a page's first load can fail to a banner with Retry — 2026-09-30; L9662
-- **I-386** One confirmation pattern per consequence, and no native `confirm()` — 2026-09-30; L9675
-- **I-387** Restore-as-new is one `RestoreNameForm` — 2026-09-30; L9692
-- **I-388** The config editor's Menu and Nix switch is ARIA tabs styled like the header's current page — 2026-09-30; L9700
-- **I-389** The accessibility gate fails on any failed binary audit, audits signed in for real, and covers every page in both schemes at two widths — 2026-09-30; L9711
+- **I-370** Shared text and edge tokens with a contrast floor: 4.5:1 for text, 3:1 for control edges and state marks — 2026-09-30; amended by I-391; L9441
+- **I-371** The fonts are self-hosted, and JetBrains Mono is the one monospace — 2026-09-30; L9470
+- **I-372** A focused field shows the house focus ring — 2026-09-30; L9489
+- **I-373** State dots: busy is ink, stopped is hollow, and running and error differ in lightness — 2026-09-30; L9500
+- **I-374** Toasts and docs code highlighting take the house colours — 2026-09-30; L9518
+- **I-375** A type scale with two named small steps and one size per heading level — 2026-09-30; L9533
+- **I-376** Buttons come in two sizes: `.btn--sm` and the default — 2026-09-30; L9553
+- **I-377** Forced colours are part of the system — 2026-09-30; L9563
+- **I-378** Unused patterns are deleted rather than documented — 2026-09-30; L9579
+- **I-379** In the dark, the landing's small ink details are lit marks — 2026-09-30; L9590
+- **I-380** One header frame for the dashboard, the docs and the legal pages; form pages sit flush left — 2026-09-30; L9598
+- **I-381** The I-363 mark is in every header — 2026-09-30; L9615
+- **I-382** Docs and legal prose hold a readable measure — 2026-09-30; L9629
+- **I-383** The docs' right rail moves into the sidebar, and the menu button moves to the right — 2026-09-30; L9640
+- **I-384** Legal pages use the docs' prose styles, show their effective date, and keep a Draft banner that names nothing internal — 2026-09-30; L9650
+- **I-385** Only a page's first load can fail to a banner with Retry — 2026-09-30; L9666
+- **I-386** One confirmation pattern per consequence, and no native `confirm()` — 2026-09-30; L9679
+- **I-387** Restore-as-new is one `RestoreNameForm` — 2026-09-30; L9696
+- **I-388** The config editor's Menu and Nix switch is ARIA tabs styled like the header's current page — 2026-09-30; L9704
+- **I-389** The accessibility gate fails on any failed binary audit, audits signed in for real, and covers every page in both schemes at two widths — 2026-09-30; L9715
+- **I-390** A 503 the api gives as an answer is not an outage, a 500 is not "cannot reach", and one failure is said once — 2026-09-30; L9734
+- **I-391** Design critique repair: focus follows in-place panels, one disabled look, and the gaps the first pass left — 2026-09-30; L9757

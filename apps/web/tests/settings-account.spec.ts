@@ -111,10 +111,10 @@ test('account deletion requires typing the exact handle', async ({ page }) => {
 	const deleteBtn = page.getByRole('button', { name: 'Delete account' });
 	await expect(deleteBtn).toBeDisabled();
 
-	await page.getByPlaceholder(/to confirm/).fill('not-my-handle');
+	await page.getByLabel(/to confirm/).fill('not-my-handle');
 	await expect(deleteBtn).toBeDisabled();
 
-	await page.getByPlaceholder(/to confirm/).fill('heracraft');
+	await page.getByLabel(/to confirm/).fill('heracraft');
 	await expect(deleteBtn).toBeEnabled();
 	await deleteBtn.click();
 

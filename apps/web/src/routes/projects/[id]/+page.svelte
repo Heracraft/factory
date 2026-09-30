@@ -28,8 +28,9 @@
 	import { abuseStopReason } from '$lib/abuse';
 	import ConfirmType from '$lib/components/ConfirmType.svelte';
 	import QuestionsCard from '$lib/components/QuestionsCard.svelte';
-	import LoadState from '$lib/components/LoadState.svelte';
+	import LoadState, { loadErrorText } from '$lib/components/LoadState.svelte';
 	import RestoreNameForm from '$lib/components/RestoreNameForm.svelte';
+	import { focusAfterRender } from '$lib/focus';
 	import type {
 		Me,
 		PaymentRequiredReason,
@@ -99,6 +100,13 @@
 		restoreAsNewError = undefined;
 	}
 
+	/** Close a restore panel and give focus back to the button that opened it. */
+	function closeRestore() {
+		const open = restorePanel;
+		restorePanel = undefined;
+		if (open) void focusAfterRender(`restore-${open.kind}-${open.snapshotId}`);
+	}
+
 	async function refresh() {
 		try {
 			project = await getProject(id);
@@ -110,11 +118,15 @@
 				notFound = true;
 				return;
 			}
+			// Before the first load the banner says why, in the toast's words
+			// (loadErrorText); a toast as well would say it twice. After it,
+			// what is on screen stays and the toast reports the refresh.
 			if (!project) {
 				loadFailed = true;
-				loadError = err instanceof Error ? err.message : undefined;
+				loadError = loadErrorText(err, 'Could not load the project.');
+			} else {
+				toastApiError(err, 'Could not load the project.');
 			}
-			toastApiError(err, 'Could not load the project.');
 		}
 	}
 
@@ -660,12 +672,14 @@
 										<span class="-mx-2 flex flex-wrap items-center">
 											<button
 												type="button"
+												id={`restore-replace-${s.id}`}
 												class="btn-ghost-danger"
 												disabled={!!opBusy}
 												onclick={() => openRestore(s.id, 'replace')}>Restore…</button
 											>
 											<button
 												type="button"
+												id={`restore-new-${s.id}`}
 												class="btn-ghost"
 												disabled={!!opBusy}
 												onclick={() => openRestore(s.id, 'new')}>Restore as new…</button
@@ -692,7 +706,8 @@
 												busy={opBusy === 'restore'}
 												disabled={!!opBusy || project.state !== 'stopped'}
 												onconfirm={() => onRestore(s.id)}
-												oncancel={() => (restorePanel = undefined)}
+												autofocus
+												oncancel={closeRestore}
 											/>
 										</div>
 									</div>
@@ -704,7 +719,7 @@
 										busy={opBusy === 'restore'}
 										submitLabel="Restore as new"
 										onsubmit={(n) => void onRestore(s.id, n)}
-										oncancel={() => (restorePanel = undefined)}
+										oncancel={closeRestore}
 									/>
 								{/if}
 							</li>

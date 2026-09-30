@@ -84,7 +84,7 @@
 
 	<article
 		bind:this={article}
-		class="doc prose prose-zinc dark:prose-invert prose-code:before:content-none prose-code:after:content-none mt-8 max-w-none [&>:is(p,ul,ol,blockquote,dl,.note)]:max-w-[33rem]"
+		class="doc prose prose-code:before:content-none prose-code:after:content-none mt-8 max-w-none [&>:is(p,ul,ol,blockquote,dl,.note)]:max-w-[33rem]"
 	>
 		<!-- eslint-disable-next-line svelte/no-at-html-tags -- doc.html is rendered from this repo's own src/content/docs/*.md at build time, never from a user or the api -->
 		{@html doc.html}

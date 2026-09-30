@@ -17,8 +17,15 @@
 	let {
 		value = $bindable(''),
 		errorLine,
-		readonly = false
-	}: { value: string; errorLine?: number; readonly?: boolean } = $props();
+		readonly = false,
+		label = 'Nix fragment'
+	}: {
+		value: string;
+		errorLine?: number;
+		readonly?: boolean;
+		/** The editor's accessible name: CodeMirror's content is a role=textbox with none of its own. */
+		label?: string;
+	} = $props();
 
 	let container: HTMLDivElement;
 	let view: EditorView | undefined;
@@ -58,6 +65,7 @@
 				errorLineField,
 				keymap.of([...defaultKeymap, ...historyKeymap]),
 				EditorView.editable.of(!readonly),
+				EditorView.contentAttributes.of({ 'aria-label': label }),
 				EditorView.updateListener.of((u) => {
 					if (u.docChanged) value = u.state.doc.toString();
 				})

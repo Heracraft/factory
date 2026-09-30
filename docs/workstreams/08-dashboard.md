@@ -183,7 +183,7 @@ running"; the list has no cost columns.
 |---|---|
 | Logto sign-in fails or is cancelled | back to landing with a toast `Sign-in was cancelled or failed; try again.` |
 | Access token refresh fails | sign out, redirect to landing, toast `Session expired, sign in again.` |
-| API 5xx or unreachable | persistent bar, polling continues with backoff to 60 s |
+| API 5xx or unreachable | persistent bar, polling continues with backoff to 60 s; a 503 with `billing_disabled` or `waitlisted` is an answer, not an outage, and a 5xx says the api is failing rather than unreachable (I-390) |
 | Build fails | error block under the editor, fragment line highlighted, revision marked failed, Apply re-enabled |
 | Start refused for a billing reason | inline banner with the api's sentence and the link the reason wants (§5.8); button stays enabled |
 | Destroy typed wrong | button disabled until the slug matches exactly |
@@ -335,15 +335,19 @@ suites back most of it: `apps/web/tests/` against `internal/fakes/api`
       screenshot attached to the run. `/install.sh` is asserted to return
       the real script (I-98).
 - [x] Lighthouse accessibility score 90 or higher on `/projects` and
-      `/projects/[id]/config`. Evidence: **100 on both**, and 100 on the
-      landing page, via `playwright.a11y.config.ts` (Lighthouse attaches
-      to the browser Playwright has already signed in, so the audited
-      pages have a session). The first run scored 98 on every page,
-      failing `landmark-one-main`: every page was a `<div>`, so "skip to
-      main content" had nothing to jump to. Fixed in `PageShell`,
-      `LegalPage` and the landing page. The live landing page scores 100
-      on the deployed image. The audit now runs in CI with its reports
-      uploaded on every run, because a score checked once by hand drifts.
+      `/projects/[id]/config`. Evidence (re-run 2026-09-30 under I-389; the
+      earlier "100 on both" came from the signed-out landing page the
+      dashboard redirected Lighthouse to, so it proved nothing about these
+      two pages): `pnpm a11y` with Lighthouse 13.5.0, in a Playwright
+      persistent context that is signed in, asserting each audited path:
+      **52 passed** (13 pages x light and dark x 1440 and 390). `/projects`
+      and `/projects/[id]/config` score **100** in all four runs each, with
+      no failed binary audit; the config runs first had to find the Menu
+      tab (I-388) and then an unnamed CodeMirror textbox, both fixed
+      (I-391). The one tolerated failure is colour contrast on `/` at 390
+      (score 96), named in `KNOWN_FAILURES` until the landing-critique
+      branch lands. The audit runs in CI with its reports uploaded, because
+      a score checked once by hand drifts.
 - [x] `features/config.md`, `features/secrets.md`, `features/snapshots.md`
       match what the pages do. Evidence: re-read; and two *other* feature
       docs did not match and were corrected rather than left

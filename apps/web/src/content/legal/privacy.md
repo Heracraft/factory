@@ -1,7 +1,7 @@
 ---
 title: Privacy policy
 effective: 2026-09-27
-status: this policy is under review before launch. The sentences in bold already bind the service today.
+status: this policy is under review before launch. The two sentences in bold under "Process samples" already bind the service today.
 ---
 
 # Privacy policy
@@ -10,9 +10,9 @@ repose gives each of your projects a persistent Linux environment on a
 shared server where coding agents keep working after your laptop closes.
 This policy says what we record about you and your environments, what we
 never record, where it lives, how long we keep it, and who can see it. It
-is written to be checked against the software; the sentences in bold are
-enforced by tests in the repository, and a change to them is a change to
-the product.
+is written to be checked against the software; the two sentences in bold
+under "Process samples" are enforced by tests in the repository, and a
+change to them is a change to the product.
 
 ## What we record
 

@@ -93,7 +93,7 @@
 			<p class="banner banner--warn">Draft: {meta.status}</p>
 		{/if}
 		<article
-			class="doc prose prose-zinc dark:prose-invert max-w-none [&_.effective]:mt-[-0.75em] [&_.effective]:text-sm [&_.effective]:text-ink-muted"
+			class="doc prose max-w-none [&_.effective]:mt-[-0.75em] [&_.effective]:text-sm [&_.effective]:text-ink-muted"
 		>
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -- `raw` only ever comes from this repo's own src/content/legal/*.md via a ?raw import, never from a user or the api -->
 			{@html html}

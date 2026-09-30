@@ -9,7 +9,7 @@
 	import StateDot from '$lib/components/StateDot.svelte';
 	import { abuseStopReason } from '$lib/abuse';
 	import RecentlyDestroyed from '$lib/components/RecentlyDestroyed.svelte';
-	import LoadState from '$lib/components/LoadState.svelte';
+	import LoadState, { loadErrorText } from '$lib/components/LoadState.svelte';
 	import type { DestroyedProject, Me, Project } from '$lib/api/types';
 
 	let projects = $state<Project[] | undefined>(undefined);
@@ -28,11 +28,15 @@
 			projects = await listProjects();
 			loadFailed = false;
 		} catch (err) {
+			// Before the first load the banner says why, in the toast's words
+			// (loadErrorText); a toast as well would say it twice. After it,
+			// the list on screen stays and the toast reports the refresh.
 			if (projects === undefined) {
 				loadFailed = true;
-				loadError = err instanceof Error ? err.message : undefined;
+				loadError = loadErrorText(err, 'Could not load projects.');
+			} else {
+				toastApiError(err, 'Could not load projects.');
 			}
-			toastApiError(err, 'Could not load projects.');
 			// Not asked while the list fails: its answer would reset the
 			// "cannot reach the api" bar the failed list just raised.
 			return;
@@ -182,7 +186,9 @@ cd ~/code/your-project && repose run</pre>
 										</div>
 									{/if}
 								</td>
-								<td class="font-mono text-compact">{p.class}</td>
+								<!-- leading-5 gives the 13px mono the 20px line of the text-sm
+								     cells beside it, so the size sits on the state's baseline. -->
+								<td class="font-mono text-compact leading-5">{p.class}</td>
 								<td class="text-ink-muted">{agentSummary(p)}</td>
 							</tr>
 						{/each}

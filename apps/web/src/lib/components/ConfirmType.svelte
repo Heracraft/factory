@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { focusOnMount } from '$lib/focus';
+
 	// A destructive action's confirm control: the button stays disabled until
 	// the exact word is typed, per 08-dashboard.md 5.2 ("Destroy with confirm
 	// typing the slug") and 6 ("Destroy typed wrong -> button disabled until
@@ -12,7 +14,8 @@
 		disabled = false,
 		busy = false,
 		busyLabel,
-		oncancel
+		oncancel,
+		autofocus = false
 	}: {
 		word: string;
 		label: string;
@@ -23,34 +26,48 @@
 		busyLabel?: string;
 		/** When given, a Cancel beside the button closes the panel around it. */
 		oncancel?: () => void;
+		/**
+		 * Focus the field when the control appears: set by a panel that opens
+		 * in place of the button that asked for it, so focus follows the
+		 * click instead of falling to the page.
+		 */
+		autofocus?: boolean;
 	} = $props();
 
+	const fieldId = $props.id();
 	let typed = $state('');
 	let ready = $derived(!disabled && !busy && typed === word);
 </script>
 
-<!-- A form so Enter confirms once the word matches, the same as a click. -->
+<!-- A form so Enter confirms once the word matches, the same as a click.
+     The field has a visible label naming the word to type (DESIGN-LANGUAGE.md,
+     "Fields"): a placeholder vanished at the first keystroke, and with it
+     the only on-screen copy of the word. -->
 <form
-	class="flex flex-col gap-2 sm:flex-row sm:items-center"
 	onsubmit={(e) => {
 		e.preventDefault();
 		if (ready) onconfirm();
 	}}
 >
-	<input
-		class="field w-full sm:w-56"
-		placeholder={`Type "${word}" to confirm`}
-		bind:value={typed}
-		autocomplete="off"
-		spellcheck="false"
-		aria-label={`Type ${word} to confirm`}
-	/>
-	<div class="flex items-center gap-2">
-		<button type="submit" class="btn-danger" disabled={!ready}>
-			{busy && busyLabel ? busyLabel : label}
-		</button>
-		{#if oncancel}
-			<button type="button" class="btn-ghost" onclick={oncancel}>Cancel</button>
-		{/if}
+	<label for={fieldId} class="block text-sm text-ink-muted"
+		>Type <span class="font-mono text-ink">{word}</span> to confirm</label
+	>
+	<div class="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-center">
+		<input
+			id={fieldId}
+			class="field w-full sm:w-56"
+			bind:value={typed}
+			autocomplete="off"
+			spellcheck="false"
+			use:focusOnMount={autofocus}
+		/>
+		<div class="flex items-center gap-2">
+			<button type="submit" class="btn-danger" disabled={!ready}>
+				{busy && busyLabel ? busyLabel : label}
+			</button>
+			{#if oncancel}
+				<button type="button" class="btn-ghost" onclick={oncancel}>Cancel</button>
+			{/if}
+		</div>
 	</div>
 </form>

@@ -181,6 +181,13 @@ function render(body: string): { html: string; headings: DocHeading[] } {
 				if (!(lang in PARSERS) && lang !== 'text') return false;
 				return codeBlock(lang, token.text);
 			},
+			// A span with no space in it is a command, a flag or a path, and
+			// .doc code.nobreak keeps it on one line; one with spaces (a
+			// quoted message) wraps as prose does.
+			codespan(token: Tokens.Codespan) {
+				if (/\s/.test(token.text)) return false;
+				return `<code class="nobreak">${escapeHTML(token.text)}</code>`;
+			},
 			blockquote(
 				this: { parser: { parse(t: Tokens.Generic[]): string } },
 				token: Tokens.Blockquote

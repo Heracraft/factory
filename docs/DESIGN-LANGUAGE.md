@@ -27,7 +27,7 @@ theme toggle, no `class="dark"`, no `[data-theme]`.
 | `--sunken` | `#f4f4f2` | `#1b1b1a` | Code blocks, the landing's stages, kbd. |
 | `--rule` | `#e6e6e3` | `#2a2a28` | Hairlines between sections, rows and cards. |
 | `--rule-strong` | `#cfcfcb` | `#3b3b38` | Badges, table heads, banners. Never the only edge of a control. |
-| `--control-edge` | `#888883` | `#6a6a66` | The edge of anything you type into or press: fields, `.btn-quiet`, the hollow state dot, the meter track (`border-control`). |
+| `--control-edge` | `#888883` | `#6e6e6a` | The edge of anything you type into or press: fields, `.btn-quiet`, the hollow state dot, the meter track (`border-control`). |
 | `--ink` | zinc-900 | zinc-100 | Primary text (`text-ink`). |
 | `--ink-muted` | zinc-600 | zinc-400 | Secondary text: metadata, ledes, table heads, the inactive nav link. |
 | `--ink-faint` | `#6b6b66` | `#8f8f8a` | Tertiary text: placeholders, code comments, timestamps. |
@@ -57,11 +57,16 @@ No purple, pink, orange or other hue. A new colour needs a DECISIONS entry.
 ## Contrast floor
 
 - Text: 4.5:1 or better on `--page`, `--surface` and `--sunken` in both
-  schemes. Every `--ink*` token holds it; so does zinc-500 (`#70706b`,
-  4.52:1 on light `--sunken`), the lightest grey allowed for small text.
-  zinc-400 and zinc-300 are never text.
+  schemes. Every `--ink*` token holds it. zinc-500 (`#70706b`) holds it in
+  the light scheme only (4.52:1 on `--sunken`); in the dark it is 3.5 to
+  3.8:1, so it is never dark-scheme text. zinc-400 and zinc-300 are never
+  light-scheme text. A page that needs a grey for text uses `text-ink-muted`
+  or `text-ink-faint`, which switch with the scheme.
 - Control edges, focus rings, state dots and meter tracks: 3:1 or better
-  against what they sit on (WCAG 1.4.11).
+  against what they sit on (WCAG 1.4.11). `--control-edge` holds 3.2:1 or
+  better on `--page`, `--surface` and `--sunken` in both schemes; a control
+  whose only edge is `--rule` or `--rule-strong` fails this (the Nix
+  editor and the docs' copy button did, I-391).
 - State never rides on colour alone: a dot has its word, a meter says
   "over", a current tab has its underline.
 - `tests-a11y/a11y.spec.ts` fails on any Lighthouse binary audit that
@@ -151,14 +156,15 @@ grey, light grey and the accent) followed by "repose" in Noto Serif 600.
 The mark is in every header (I-381):
 
 - 28px tall with the word from `sm` up, on every page.
-- Below `sm`: the 24px `sm` cut with the word on the docs and legal pages,
-  and the 28px mark alone on the dashboard, whose five links leave no room
-  for both. The link around it carries the name.
+- Below `sm`: the 24px `sm` cut, with the word on the docs and legal
+  pages and alone on the dashboard, whose five links leave no room for
+  both. One size, so the mark does not change between pages on a phone
+  (I-391). The link around it carries the name.
 - Never under 24px. At 16px (the tab) use the favicon, a heavier cut of
   the same drawing (`static/favicon.svg`, `favicon.png`).
-- In the dark, the mark's grey blocks are zinc-400 and zinc-500 so they
-  hold 3:1 at header size; the landing's large shapes keep `--sh-grey`
-  and `--sh-light`.
+- The mark's grey blocks have their own greys so they hold 3:1 at header
+  size: zinc-500 and `#888883` in the light, zinc-400 and zinc-500 in the
+  dark. The landing's large shapes keep `--sh-grey` and `--sh-light`.
 
 ## Page frame and header
 
@@ -211,9 +217,10 @@ something you can use.
   be reversed or that opens a confirmation.
 
 Visual weight tracks consequence. Sizes (I-376): the default suits a
-form; `.btn--sm` (`px-3 py-1.5`) is for rows, toolbars and header bars;
-`.btn--lg` (`px-5 py-2.5`) for a page's single call to action. No
-`!py-*` or `!px-*` overrides. A ghost button at the end of a row takes
+form; `.btn--sm` (`px-3 py-1.5`) is for rows, toolbars and header bars.
+No `!py-*` or `!px-*` overrides. A disabled `.btn`, `.btn-quiet` or
+`.btn-danger` has one look whatever its kind: a `--rule-strong` outline
+on `--surface` with `--ink-faint` text (I-391). A ghost button at the end of a row takes
 `-mr-2` (or `-mx-2`) so its word lines up with the content edge.
 
 ## Fields
@@ -222,8 +229,6 @@ form; `.btn--sm` (`px-3 py-1.5`) is for rows, toolbars and header bars;
   placeholder in `--ink-faint`. Focus is the house `:focus-visible` ring,
   2px `--focus`, offset 2px (I-372); a field does not restyle its border
   on focus.
-- `.field--set` darkens the border for a field holding a value the user
-  should notice. It is never the focus indicator.
 - Every field has a visible `<label for>`, or an `aria-label` when the
   row's heading already names it (a search box). A placeholder is an
   example, never the label.
@@ -265,7 +270,8 @@ Every view that loads or acts has each of these:
   and raises a toast (I-385).
 - **Empty**: an h2 that says so ("No projects yet") and one sentence on
   how to get something there, with the command when the CLI is the way.
-- **Disabled**: `opacity-50` and `cursor-not-allowed`, and a sentence
+- **Disabled**: the one disabled look (see Buttons; a ghost button fades
+  to `opacity-50`) and `cursor-not-allowed`, and a sentence
   that says why when the reason is not obvious ("Stop todo-app first",
   "320 GB is the largest size."). When no choice is valid, the control is
   replaced by that sentence.
@@ -281,13 +287,19 @@ Every view that loads or acts has each of these:
 One pattern per consequence, and never the browser's `confirm()` (I-386):
 
 - **Cannot be undone** (destroy a project, delete the account, restore a
-  snapshot over the disk): `ConfirmType`. Type the slug or handle; the
-  `.btn-danger` stays disabled until it matches exactly; Enter confirms.
-  The panel says what is lost.
+  snapshot over the disk): `ConfirmType`. Its field has a visible label,
+  "Type `slug` to confirm", with the word in mono; the `.btn-danger` stays
+  disabled until it matches exactly; Enter confirms. The panel says what
+  is lost.
 - **A single deletion whose cost is recoverable** (a secret, cancelling a
   plan): an inline two-step in the row. The first button turns into a
   sentence naming the effect, a `.btn-danger .btn--sm` that does it and a
   `.btn-ghost` "Keep it".
+- **Focus follows the panel** (WCAG 2.4.3, I-391). A panel that opens in
+  place of the button that asked for it takes focus: "Keep it" in a
+  two-step, the field in `ConfirmType` or `RestoreNameForm`. Cancel or
+  Keep it puts focus back on that button; a row that goes away passes it
+  to the next row's button. `lib/focus.ts` has the two helpers.
 - **Leaving unsaved edits**: the SvelteKit navigation is cancelled and a
   `.banner--warn` asks in place, with Stay (focused) and Leave.
 
@@ -305,11 +317,22 @@ the URL is links with `aria-current`.
 ## Toasts
 
 `svelte-sonner`, `theme="system"`, bottom-right, without `richColors`
-(I-374). A toast is a banner of its kind: `--surface` and `--ink` for
+(I-374). From 600px up the toast's right edge is the content column's,
+not the window's; on a phone sonner spans the width. A toast is a banner of its kind: `--surface` and `--ink` for
 neutral, the `.banner--ok`, `--error` and `--warn` colours for typed
 ones, 2px corner, a hairline, no shadow. Toasts report the result of
 something the user did, and a failed refresh. A failure that leaves the
-page with nothing to show is a banner, not a toast.
+page with nothing to show is a banner, not a toast, and not both: one
+failure is said once, in `errorText`'s words (I-390).
+
+## The outage bar
+
+A strip in the `.banner--error` colours across the top of every page
+while the api is down (08-dashboard.md 6): "Cannot reach the API.
+Retrying…" when a request got no answer, "The API is failing right now.
+Retrying…" on a 5xx. A 503 the api gives as an answer
+(`billing_disabled`, `waitlisted`) is not an outage and raises no bar
+(I-390).
 
 ## Forced colours
 
@@ -345,9 +368,15 @@ stay rejected. So does a toggle switch until a page needs one (the unused
 # Docs and legal pages
 
 They use the Foundation and the shared header. Prose is `.doc` in
-`layout.css`: the site's palette over `@tailwindcss/typography`, inline
-code as a quiet chip at body weight with no backticks, links in the
-accent, h2 sections separated by a rule. Running text holds to 33rem;
+`layout.css`: the site's palette over `@tailwindcss/typography`, with the
+plugin's `--tw-prose-*` colours mapped to the ink and rule tokens and no
+`prose-zinc` or `prose-invert`, whose cool greys and white headings are
+off the palette. Every heading is 600, as on the dashboard. Inline code is
+a quiet chip at body weight with no backticks; a span with no space in it
+(a command, a flag, a path) never breaks across lines, and a command
+used as a heading is the heading's own mono text, not a chip. Links are in
+the accent; h2 sections are separated by a rule. The sidebar's "On this
+page" links are at least 28px tall, over the 24px target size (I-391). Running text holds to 33rem;
 the docs column is 68ch so code blocks and tables get the full 70 columns
 I-345 writes to (I-382). The docs list the current page's sections under
 its link in the sidebar from `lg` up and in an "On this page" fold below

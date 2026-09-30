@@ -41,17 +41,21 @@
 >
 
 <style>
-	/* The two grey blocks take the landing's shape greys, except in the
-	   dark: there --sh-light (zinc-600) sat at 2.7:1 on --page and the
-	   small blocks all but vanished at 24 and 28px. The mark steps each one
-	   lighter instead, zinc-400 and zinc-500 (7.4:1 and 3.8:1), so the light
-	   block stays the fainter of the two and both hold 3:1. The landing's
-	   large shapes keep their own darker greys. */
+	/* The two grey blocks are the mark's own greys, not the landing's shape
+	   greys: at header size the blocks are a few pixels wide, and the shape
+	   greys that read on a 200px drawing vanish there. In the light the
+	   shapes' zinc-300 sat at 1.5:1 on --page and zinc-400 at 2.5:1; the mark
+	   takes zinc-500 for the skinny block (4.8:1) and #888883 for the middle
+	   one (3.4:1, the --control-edge grey), so both hold 3:1 and the middle
+	   block stays the fainter of the two. In the dark, --sh-light (zinc-600)
+	   sat at 2.7:1; the mark steps each one lighter instead, zinc-400 and
+	   zinc-500 (7.4:1 and 3.8:1). The landing's large shapes keep their own
+	   greys. */
 	.mark-grey {
-		fill: var(--sh-grey);
+		fill: var(--color-zinc-500);
 	}
 	.mark-light {
-		fill: var(--sh-light);
+		fill: #888883;
 	}
 	@media (prefers-color-scheme: dark) {
 		.mark-grey {

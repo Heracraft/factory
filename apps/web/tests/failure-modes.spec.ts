@@ -204,16 +204,24 @@ test('capacity on Start shows the documented message', async ({ page }) => {
 	await expect(page.getByText('No capacity right now, try again in a few minutes.')).toBeVisible();
 });
 
-test('a 5xx from the api shows the persistent "cannot reach" bar, which clears once the api recovers', async ({
+test('a 5xx from the api shows the persistent bar, which clears once the api recovers', async ({
 	page
 }) => {
 	await fail('GET', '/projects', 'internal');
 	await page.goto('/projects');
-	await expect(page.getByText('Cannot reach the API')).toBeVisible({ timeout: 15_000 });
+	// The api answered, so the bar says it is failing, not that it cannot
+	// be reached (I-390); the page's banner names the failure once, with
+	// no toast repeating it.
+	const bar = page.getByText('The API is failing right now. Retrying…');
+	await expect(bar).toBeVisible({ timeout: 15_000 });
+	await expect(page.getByText('Cannot reach the API')).toHaveCount(0);
+	await expect(
+		page.getByText('Could not load projects. The API failed on its side; try again shortly.')
+	).toHaveCount(1);
 
 	await unfail('GET', '/projects');
 	// The next poll is scheduled up to 60s out once unreachable (backoff);
 	// reloading forces an immediate re-check rather than waiting it out.
 	await page.reload();
-	await expect(page.getByText('Cannot reach the API')).toHaveCount(0, { timeout: 10_000 });
+	await expect(bar).toHaveCount(0, { timeout: 10_000 });
 });

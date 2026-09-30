@@ -31,16 +31,17 @@
      does not jump when you follow a link between them. The logo carries the
      I-363 mark here as it does on the landing. Below sm the wordmark drops
      to its 24px cut; a compact row (the dashboard's, with five links) shows
-     the 28px mark alone there, since mark and word left the links 16px
-     short at 390 and 46px short at 360. -->
+     that same 24px mark alone there, since mark and word left the links 16px
+     short at 390 and 46px short at 360. One size, so the mark does not
+     change between the dashboard and the docs on a phone. -->
 <header class="border-b border-rule {sticky ? 'sticky top-0 z-30 bg-page' : ''}">
 	<div class="mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 px-5 sm:gap-6">
 		<div class="flex min-w-0 items-center gap-3 sm:gap-4">
 			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- callers pass home built with resolve() -->
 			<a href={home} aria-label={label} class="shrink-0"
-				><span class="sm:hidden"
-					>{#if compact}<Logo mark word={false} />{:else}<Logo size="sm" mark />{/if}</span
-				><span class="hidden sm:inline"><Logo mark /></span></a
+				><span class="sm:hidden"><Logo size="sm" mark word={!compact} /></span><span
+					class="hidden sm:inline"><Logo mark /></span
+				></a
 			>
 			{#if lead}{@render lead()}{/if}
 		</div>

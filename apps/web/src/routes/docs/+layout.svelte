@@ -220,7 +220,7 @@
 											<li>
 												<a
 													href={`#${h.id}`}
-													class="block py-0.5 text-compact text-ink-muted hover:text-ink"
+													class="block py-1 text-compact leading-5 text-ink-muted hover:text-ink"
 													>{h.text}</a
 												>
 											</li>

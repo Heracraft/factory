@@ -43,6 +43,9 @@ test('with billing off the page says so and sells nothing', async ({ page }) => 
 	await page.goto('/billing');
 	await expect(page.getByTestId('billing-disabled')).toHaveText('Billing is not switched on yet.');
 	await expect(page.getByRole('button', { name: /Choose/ })).toHaveCount(0);
+	// billing_disabled is a 503 the api gives as an answer, not an outage,
+	// so no outage bar sits over the page (I-390).
+	await expect(page.getByText(/Retrying…/)).toHaveCount(0);
 });
 
 test('a failed first load says so and Retry loads the page', async ({ page }) => {

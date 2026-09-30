@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ApiError, NetworkError, isApiError } from './errors';
+import { ApiError, NetworkError, errorText, isApiError, isOutage } from './errors';
 
 describe('ApiError', () => {
 	it('carries the documented envelope fields plus the transport ones', () => {
@@ -41,5 +41,30 @@ describe('NetworkError', () => {
 		const err = new NetworkError(cause);
 		expect(err.message).toBe('Cannot reach the API');
 		expect(err.cause).toBe(cause);
+	});
+});
+
+describe('errorText', () => {
+	it('uses the api sentence, except for internal, which says nothing to a reader', () => {
+		const refused = new ApiError({ code: 'invalid', message: 'Name is taken.' }, 400, null);
+		expect(errorText(refused, 'Could not save.')).toBe('Name is taken.');
+		const internal = new ApiError({ code: 'internal', message: 'internal error' }, 500, null);
+		expect(errorText(internal, 'Could not load projects.')).toBe(
+			'Could not load projects. The API failed on its side; try again shortly.'
+		);
+		expect(errorText(new NetworkError(new Error('x')), 'Could not save.')).toBe(
+			'Cannot reach the API.'
+		);
+		expect(errorText(new Error('boom'), 'Could not save.')).toBe('Could not save.');
+	});
+});
+
+describe('isOutage', () => {
+	it('counts a 5xx as an outage unless it is an answer the api chose to give', () => {
+		expect(isOutage(500, 'internal')).toBe(true);
+		expect(isOutage(502, undefined)).toBe(true);
+		expect(isOutage(503, 'billing_disabled')).toBe(false);
+		expect(isOutage(503, 'waitlisted')).toBe(false);
+		expect(isOutage(404, 'not_found')).toBe(false);
 	});
 });

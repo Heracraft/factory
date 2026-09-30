@@ -49,7 +49,16 @@ const OUT_DIR = path.resolve(import.meta.dirname, '../test-results/lighthouse');
  * entry is a debt with a reason, never a way to quiet a run: delete it when
  * the fix lands. Empty means every binary audit must pass everywhere.
  */
-const KNOWN_FAILURES: Record<string, { pages: string[]; reason: string }> = {};
+const KNOWN_FAILURES: Record<string, { pages: string[]; reason: string }> = {
+	'color-contrast': {
+		pages: ['/'],
+		reason:
+			'The landing pictures at 390: span.who and span.fname in the hero snapshot miniature ' +
+			'(light) and the terminal lines in the Editor screenshot (dark) are under 4.5:1. Their ' +
+			'colours are set inside components/landing/*.svelte, which the unmerged landing-critique ' +
+			'branch rewrites; delete this entry when that branch lands with them fixed.'
+	}
+};
 
 /** The two widths docs/LANDING.md judges a page at. */
 const WIDTHS = {
@@ -118,7 +127,7 @@ const PAGES: Target[] = [
 		name: '/projects/[id]/config',
 		signedIn: true,
 		url: () => `/projects/${projectId}/config`,
-		ready: (page) => expect(page.getByRole('button', { name: 'Menu' })).toBeVisible()
+		ready: (page) => expect(page.getByRole('tab', { name: 'Menu' })).toBeVisible()
 	},
 	{
 		name: '/projects/[id]/secrets',

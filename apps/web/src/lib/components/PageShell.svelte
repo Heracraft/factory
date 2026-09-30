@@ -32,10 +32,13 @@
 <main class="mx-auto max-w-5xl px-5 pt-10 pb-24">
 	<div class={width === 'form' ? 'max-w-2xl' : undefined}>
 		{#if crumbs.length}
-			<!-- The separator is a middle dot, as DESIGN-LANGUAGE.md "Page frame" says. -->
-			<p class="mb-3 text-sm text-ink-muted">
+			<!-- The separator is a middle dot, as DESIGN-LANGUAGE.md "Page frame" says.
+			     A flex row with a gap spaces it: with margins, the template's own
+			     whitespace added a space on one side only, 4px before the dot and
+			     10px after it. -->
+			<p class="mb-3 flex flex-wrap items-baseline gap-x-2 text-sm text-ink-muted">
 				{#each crumbs as crumb, i (crumb.label)}
-					{#if i > 0}<span class="mx-1.5" aria-hidden="true">·</span>{/if}
+					{#if i > 0}<span aria-hidden="true">·</span>{/if}
 					{#if crumb.href}
 						<!-- eslint-disable svelte/no-navigation-without-resolve -- callers build crumb.href with $app/paths' resolve() -->
 						<a href={crumb.href} class="hover:text-ink hover:underline">{crumb.label}</a>

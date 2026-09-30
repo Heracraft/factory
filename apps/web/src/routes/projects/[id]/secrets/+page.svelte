@@ -9,6 +9,7 @@
 	import { dateTime } from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import LoadState, { loadErrorText } from '$lib/components/LoadState.svelte';
+	import { focusAfterRender, focusOnMount } from '$lib/focus';
 	import type { Project, SecretMeta } from '$lib/api/types';
 
 	const id = page.params.id as string;
@@ -93,12 +94,24 @@
 		}
 	}
 
+	/** Close the two-step and give focus back to the row's Delete button. */
+	function keep(n: string) {
+		confirming = undefined;
+		void focusAfterRender(`delete-${n}`);
+	}
+
 	async function onDelete(n: string) {
 		deleting = n;
+		// The row goes with the secret, so focus moves to the next row's
+		// Delete, or the previous one, or the Add form when the list empties.
+		const names = (secrets ?? []).map((s) => s.name);
+		const at = names.indexOf(n);
+		const after = [names[at + 1], names[at - 1]].filter(Boolean).map((m) => `delete-${m}`);
 		try {
 			await deleteSecret(id, n);
 			confirming = undefined;
 			await load();
+			void focusAfterRender(...after, 'secret-name');
 		} catch (err) {
 			toastApiError(err, 'Could not remove the secret.');
 		} finally {
@@ -138,6 +151,7 @@
 							{#if confirming !== s.name}
 								<button
 									type="button"
+									id={`delete-${s.name}`}
 									class="btn-ghost-danger"
 									aria-label={`Delete ${s.name}`}
 									onclick={() => (confirming = s.name)}>Delete</button
@@ -159,8 +173,12 @@
 										onclick={() => onDelete(s.name)}
 										>{deleting === s.name ? 'Deleting…' : 'Delete'}</button
 									>
-									<button type="button" class="btn-ghost" onclick={() => (confirming = undefined)}
-										>Keep it</button
+									<!-- Focus lands on the safe choice when the question opens. -->
+									<button
+										type="button"
+										class="btn-ghost"
+										use:focusOnMount
+										onclick={() => keep(s.name)}>Keep it</button
 									>
 								</div>
 							</div>

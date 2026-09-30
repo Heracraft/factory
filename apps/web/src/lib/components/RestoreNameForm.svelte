@@ -2,8 +2,12 @@
      a row in "Recently destroyed" (DECISIONS I-167) and under a snapshot on
      the project page ("Restore as new"). One component so both carry the
      same visible label, the same error wiring and the same wrap at phone
-     width; the two copies had drifted apart before. -->
+     width; the two copies had drifted apart before. The form opens in
+     place of the button that asked for it, so it takes focus into its
+     field; the caller puts focus back on that button when it closes. -->
 <script lang="ts">
+	import { focusOnMount } from '$lib/focus';
+
 	let {
 		id,
 		value = $bindable(''),
@@ -49,6 +53,7 @@
 			spellcheck="false"
 			aria-invalid={error ? 'true' : undefined}
 			aria-describedby={error ? errorId : undefined}
+			use:focusOnMount
 		/>
 		<button type="submit" class="btn" disabled={busy || value.trim() === ''}
 			>{busy ? busyLabel : submitLabel}</button

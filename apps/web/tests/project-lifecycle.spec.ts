@@ -126,12 +126,14 @@ test('restoring a snapshot over the disk asks for the slug, like Destroy', async
 	await expect(panel).toContainText('Anything written since');
 	const restore = panel.getByRole('button', { name: 'Restore', exact: true });
 	await expect(restore).toBeDisabled();
-	await panel.getByPlaceholder(/to confirm/).fill(p.slug);
+	await panel.getByLabel(/to confirm/).fill(p.slug);
 	await expect(panel).toContainText(`Stop ${p.slug} first`);
 	await expect(restore).toBeDisabled();
 
 	await panel.getByRole('button', { name: 'Cancel' }).click();
 	await expect(panel).toHaveCount(0);
+	// Cancel gives focus back to the button that opened the panel (I-391).
+	await expect(row.getByRole('button', { name: 'Restore…' })).toBeFocused();
 	expect(dialogs).toBe(0);
 	expect(restores).toBe(0);
 });
@@ -168,10 +170,10 @@ test('destroy requires the exact slug and redirects to the projects list', async
 	const destroyBtn = page.getByRole('button', { name: 'Destroy', exact: true });
 	await expect(destroyBtn).toBeDisabled();
 
-	await page.getByPlaceholder(/to confirm/).fill('wrong-slug');
+	await page.getByLabel(/to confirm/).fill('wrong-slug');
 	await expect(destroyBtn).toBeDisabled();
 
-	await page.getByPlaceholder(/to confirm/).fill(p.slug);
+	await page.getByLabel(/to confirm/).fill(p.slug);
 	await expect(destroyBtn).toBeEnabled();
 	await destroyBtn.click();
 
@@ -187,7 +189,7 @@ test('a destroyed project can be restored from the projects list', async ({ page
 		remote_url: 'github.com/heracraft/restore-app'
 	});
 	await page.goto(`/projects/${p.id}`);
-	await page.getByPlaceholder(/to confirm/).fill(p.slug);
+	await page.getByLabel(/to confirm/).fill(p.slug);
 	await page.getByRole('button', { name: 'Destroy', exact: true }).click();
 	await expect(page).toHaveURL('/projects', { timeout: 10_000 });
 
