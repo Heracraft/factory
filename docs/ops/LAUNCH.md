@@ -76,6 +76,26 @@ the code in the tweet; the checkout has a discount field.
 
 ## 3. Seats and the host (money)
 
+0. Before the launch host registers, give it a free WireGuard address.
+   The api numbers hosts on the edge's WireGuard network by themselves:
+   the nth host registered gets 10.255.0.(n+1) (`hostmgr.allocate`), so
+   host-01 has .2 and the next host gets .3. Your monitoring server
+   already has .3 (`wg-repose`, I-170); it was picked by hand because it
+   was free then. When the new host registers, the edge hands .3 to it:
+   Grafana loses every scrape, and the hosts' logs to Loki on
+   `10.255.0.3:3100` reach the new host instead. The next edge rebuild
+   takes .3 back, and the new host loses its metrics and operator SSH
+   (DECISIONS I-359). Do one of these first:
+   - Preferred, nothing on your server changes: make `hostmgr.allocate`
+     skip 10.255.0.3, so the new host gets .4. host-01 keeps .2.
+   - Or move the monitoring server to 10.255.254.2, in the operator
+     range: the `Address` in its `wg-repose.conf`, its entry in
+     `nix/edge/edge-01.nix` (`staticPeers`, `monitoring.peerCIDRs`,
+     `lokiUrl`), `repose-admin edge loki http://10.255.254.2:3100`, then
+     an edge switch.
+
+   Check after the host registers: `wg show wg0 allowed-ips` on the edge
+   lists no address twice, and Grafana still shows host-01 `up`.
 1. The launch host: `infra/azure/prod/prod.tfvars` `host_size =
    "Standard_D64s_v7"` and the 2048 GB data disk (I-14, I-39), then
    `make -C infra apply ENV=prod`. About $3,000 a month while it runs
