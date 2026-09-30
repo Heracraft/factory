@@ -9109,3 +9109,24 @@ address in `operator_cidrs`, which opens operator SSH to every tenant on
 that host; forward rules to port 22, which would open every host's sshd to
 kanali directly, where the jump keeps each hop in the edge's verbose sshd
 log and leaves one key on the edge to revoke.
+
+**I-360. kanali's tunnel carries only packets from 10.255.254.1.**
+(owner, kanali, 2026-09-29) Amends I-359. The first config added a
+main-table route for 10.255.0.0/16 into the tunnel. The gateway dials
+every guest from the edge's 10.255.0.1 through the guest's host, so
+kanali's replies to it (source 10.64.0.8) went into the tunnel instead,
+and the edge dropped them, because a peer may send only from its
+AllowedIPs. While the tunnel was up, `repose attach kanali` failed with
+"environment is not accepting connections yet"; the owner got back in by
+restarting kanali, which left the tunnel down. The config now has `Table =
+off`, a rule `from 10.255.254.1 lookup 51820` and the 10.255.0.0/16 route
+in table 51820 only, and the `repose-edge` SSH alias binds 10.255.254.1.
+Evidence with the tunnel up: `ip route get 10.255.0.1 from 10.64.0.8` goes
+via eth0 and `from 10.255.254.1` via wg-repose; the edge read kanali's SSH
+banner from 10.255.0.1; tcpdump showed a live gateway session to
+10.64.0.8:22 flowing both ways on eth0. The rule for any guest that is
+also a hub peer: never route the edge's address from the main table.
+Check an inbound gateway session before calling such a tunnel done.
+*Rejected:* adding kanali's 10.64 address to its AllowedIPs on the edge,
+which would let a peer send as part of host-01's guest range; narrower
+AllowedIPs here, since the operator sshd is on 10.255.0.1 itself.
