@@ -7,7 +7,7 @@ exists because the other two would be wrong for that kind.
 
 ```
 $ repose secrets set DATABASE_URL
-Value for DATABASE_URL (not shown):
+Value for DATABASE_URL: **************************************
 Set DATABASE_URL (pushed to running guest)
 
 $ repose secrets list

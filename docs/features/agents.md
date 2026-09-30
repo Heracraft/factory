@@ -25,7 +25,7 @@ Setting the headless fallback:
 ```
 $ claude setup-token                       # on the laptop
 $ repose secrets set CLAUDE_CODE_OAUTH_TOKEN
-Value for CLAUDE_CODE_OAUTH_TOKEN (not shown):
+Value for CLAUDE_CODE_OAUTH_TOKEN: ****************************************
 Set CLAUDE_CODE_OAUTH_TOKEN (pushed to running guest)
 ```
 

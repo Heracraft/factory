@@ -9,9 +9,11 @@ order: 14
 
 ```
 $ repose secrets set STRIPE_SECRET_KEY
-Value for STRIPE_SECRET_KEY (not shown):
+Value for STRIPE_SECRET_KEY: ********************************
 Set STRIPE_SECRET_KEY (pushed to running guest)
 ```
+
+Each character you type or paste shows as `*`, so you can see the value arrived without it appearing on screen. Backspace and Ctrl-U work as usual.
 
 Or read the value from a file or from your laptop's environment:
 

@@ -9259,3 +9259,20 @@ server keeps its setting until the base is bumped and the guest restarts.
 The `guest-base` VM test greps for `mouse +off`. *Rejected:* a
 `config.toml` or `repose config` switch (one line in `~/.tmux.conf` already
 does it, per machine, without a new key).
+
+**I-365. `repose secrets set` echoes one `*` per character.** (owner,
+2026-09-29) The prompt read with echo off, so after a paste the screen
+showed nothing and the user could not tell whether the value had
+arrived. The terminal now goes into raw mode (`golang.org/x/term`) and
+the CLI draws one `*` per character, counting a multi-byte character
+once; Backspace and Ctrl-H erase one, Ctrl-U all, Enter ends, Ctrl-C
+restores the terminal and exits 130, Ctrl-D on an empty line is "No value
+given." (exit 2) as EOF was before; arrow-key sequences and other control
+characters are dropped. The prompt loses "(not shown)". When raw mode is
+unavailable the old echo-off read runs. `--from-file` and `--from-env` are
+unchanged. The stars show the value's length to anyone watching the
+screen; the owner accepted that, since a fixed `****` could not show a
+doubled paste. `TestReadMaskedEchoesAStarPerCharacter`,
+`TestReadHiddenLineOnATerminal` (real pty: stars on the screen, the value
+never, echo and canonical mode back after). *Rejected:* a fixed-width mask
+(hides a doubled or truncated paste).

@@ -697,7 +697,7 @@ func readSecretValue(name, fromFile string, fromEnv bool) ([]byte, error) {
 		if !isTerminal(os.Stdin) {
 			return nil, exitf(ExitUsage, "No terminal to type %s's value into; use --from-file PATH or --from-env.", name)
 		}
-		_, _ = fmt.Fprintf(os.Stderr, "Value for %s (not shown): ", name)
+		_, _ = fmt.Fprintf(os.Stderr, "Value for %s: ", name)
 		v, err := readHiddenLine()
 		if err != nil {
 			return nil, err
@@ -1335,11 +1335,11 @@ func readLine() (string, error) {
 	return strings.TrimRight(line, "\r\n"), err
 }
 
-// readHiddenLine reads a line with the terminal's echo off (stty, which
-// every macOS and Linux laptop has), so a secret typed at `repose
-// secrets set` never shows on screen or in a screen recording. Echo comes
-// back on however the read ends, Ctrl-C included.
-func readHiddenLine() ([]byte, error) {
+// readEchoOffLine reads a line with the terminal's echo off (stty, which
+// every macOS and Linux laptop has): readHiddenLine's fallback when the
+// terminal cannot go into raw mode. Echo comes back on however the read
+// ends, Ctrl-C included.
+func readEchoOffLine() ([]byte, error) {
 	if runtime.GOOS != "windows" && stty("-echo") == nil {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt)
