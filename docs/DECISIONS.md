@@ -9177,3 +9177,23 @@ the service principal, "No changes"; `make -C infra validate` passes.
 refresh token lapses after 90 days idle and device-code login is blocked
 from a VM); RBAC on the vault (a migration of a vault holding live keys, for
 one reader).
+
+**I-363. The logo is the owner's cross-and-blocks sketch, traced; it
+replaces the r.** (owner, 2026-09-29: a notebook drawing, then "T2 is it.
+just apply the existing brand colors and go use it as the logo") The mark
+is a thin cross (stems 4 on a 100 grid) whose crossing sits left of
+centre and low, the vertical longer than the horizontal as drawn, with
+three blocks against the crossing: skinny above-left (7 by 32), a middle
+square above-right on the arm (12 by 14), and the big square below-right
+(20 by 18). Colours are the landing's: the cross in the text's ink, the
+blocks in `--sh-grey`, `--sh-light` and `--sh-accent`. `Logo.svelte`
+draws it and `static/favicon.png` is rendered from the same rectangles
+at 128px on transparent, so the Logto sign-in page and the sign-in
+emails, which load that PNG, change with the next deploy of the web app.
+The studies are in the owner's artifact "repose mark studies" (rounds
+one to four; T2 in round four). *Rejected:* the same arrangement with
+blocks 1.5 times larger and a heavier stem (T6, T7: they read better at
+16px, but the owner chose the traced proportions); a fourth block
+below-left, which the sketch has; three axes with a cube face; product
+metaphors (a whole rest, pause and continue, a lit cursor); off-brand
+hues for the big square.

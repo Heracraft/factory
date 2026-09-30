@@ -259,9 +259,12 @@ and underlined every heading. The page is one system:
   is Gemini's sparkle (`SPARKLE` in `marks.ts`); Gemini CLI's mark in the
   toolchain box is that sparkle.
 - **The logo** (`Logo.svelte`, and `static/favicon.png` from the same
-  drawing) is a lowercase r built the way the shapes are: a stem in the
-  text's ink and a quarter disc in the blue as its shoulder. The quartered
-  ring it replaced was sent back (owner, 2026-09-27).
+  drawing) is the owner's notebook sketch, traced (DECISIONS I-363): a
+  thin cross in the text's ink, its crossing left of centre and low, and
+  three flat blocks hugging the crossing: a skinny one in `--sh-grey`
+  above-left, a middle square in `--sh-light` above-right on the arm, and
+  the big square in `--sh-accent` below-right. It replaced the r (a stem
+  and a blue quarter disc), which had replaced the quartered ring.
 - The shapes live in `landing/Shape.svelte` and draw only from the `--sh-*`
   tokens. The app's own pages never use them.
 

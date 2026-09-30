@@ -46,7 +46,7 @@ html body[class] {
 	box-shadow: none !important;
 }
 
-/* repose's logo is its r-mark alone, the favicon's drawing, at 36px. */
+/* repose's logo is its mark alone, the favicon's drawing, at 36px. */
 .logto_branding-header img {
 	height: 36px !important;
 	width: auto !important;

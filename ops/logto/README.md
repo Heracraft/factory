@@ -19,7 +19,7 @@ renaming an app renames it in every email it causes.
 
 Each repose app has an application sign-in experience (Applications, the
 app, Branding): display name `repose`, logo
-`https://repose.herakraft.co/favicon.png` (the r-mark), terms
+`https://repose.herakraft.co/favicon.png` (the mark), terms
 `https://repose.herakraft.co/terms`, privacy
 `https://repose.herakraft.co/privacy`. Job Alerts has display name `Job
 Alerts` and logo `https://recruiting.herakraft.co/apple-touch-icon.png`.

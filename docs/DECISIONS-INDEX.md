@@ -427,3 +427,4 @@ pointer, not a summary.
 - **I-359** kanali, the owner's coordinator guest, is WireGuard peer 10.255.254.1 on the edge hub, with no forward rule — 2026-09-29; amended by I-360; L9109
 - **I-360** kanali's tunnel carries only packets from 10.255.254.1 — 2026-09-29; L9136
 - **I-361** kanali runs tofu as its own service principal; the Key Vault operator policy is pinned to the owner — 2026-09-29; L9157
+- **I-363** The logo is the owner's cross-and-blocks sketch, traced; it replaces the r — 2026-09-29; L9181
