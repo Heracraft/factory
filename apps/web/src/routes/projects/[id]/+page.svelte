@@ -28,6 +28,8 @@
 	import { abuseStopReason } from '$lib/abuse';
 	import ConfirmType from '$lib/components/ConfirmType.svelte';
 	import QuestionsCard from '$lib/components/QuestionsCard.svelte';
+	import LoadState from '$lib/components/LoadState.svelte';
+	import RestoreNameForm from '$lib/components/RestoreNameForm.svelte';
 	import type {
 		Me,
 		PaymentRequiredReason,
@@ -41,6 +43,9 @@
 
 	let project = $state<Project | undefined>(undefined);
 	let notFound = $state(false);
+	/** The first load failed; the poll keeps trying, and Retry asks now. */
+	let loadFailed = $state(false);
+	let loadError = $state<string | undefined>(undefined);
 	let lastUpdated = $state<Date | undefined>(undefined);
 	let events = $state<ProjectEvent[]>([]);
 	let snapshots = $state<Snapshot[]>([]);
@@ -59,24 +64,55 @@
 	>(undefined);
 	let stopSnapshotFirst = $state(true);
 
-	// Resize.
-	let showResize = $state(false);
+	// Resize. A volume only grows, so the choices are the sizes strictly
+	// larger than the disk now, and the select opens on the smallest of them.
+	const GIB = 1024 * 1024 * 1024;
 	const SIZES_GB = [20, 40, 80, 160, 320];
-	let resizeTo = $state(SIZES_GB[0]);
+	let showResize = $state(false);
+	let largerSizes = $derived(
+		project ? SIZES_GB.filter((s) => s * GIB > (project?.volume_bytes ?? Infinity)) : []
+	);
+	let resizeTo = $state<number | undefined>(undefined);
+	// A poll can grow the disk under an open panel (another tab, the CLI);
+	// the choice then moves to the next size that is still a grow.
+	$effect(() => {
+		if (showResize && (resizeTo === undefined || !largerSizes.includes(resizeTo))) {
+			resizeTo = largerSizes[0];
+		}
+	});
 
-	// Restore-as-new.
-	let restoreAsNewFor = $state<string | undefined>(undefined);
+	function openResize() {
+		resizeTo = largerSizes[0];
+		showResize = true;
+	}
+
+	// Restore. One snapshot at a time has a panel open under it: either the
+	// typed confirm for restoring over this disk, or the name for a new
+	// project.
+	let restorePanel = $state<{ snapshotId: string; kind: 'replace' | 'new' } | undefined>(undefined);
 	let restoreAsNewName = $state('');
+	let restoreAsNewError = $state<string | undefined>(undefined);
+
+	function openRestore(snapshotId: string, kind: 'replace' | 'new') {
+		restorePanel = { snapshotId, kind };
+		restoreAsNewName = '';
+		restoreAsNewError = undefined;
+	}
 
 	async function refresh() {
 		try {
 			project = await getProject(id);
 			lastUpdated = new Date();
 			notFound = false;
+			loadFailed = false;
 		} catch (err) {
 			if (err instanceof ApiError && err.code === 'not_found') {
 				notFound = true;
 				return;
+			}
+			if (!project) {
+				loadFailed = true;
+				loadError = err instanceof Error ? err.message : undefined;
 			}
 			toastApiError(err, 'Could not load the project.');
 		}
@@ -252,9 +288,12 @@
 	}
 
 	async function onResize() {
+		// The select only offers grows, but the api must never be asked to
+		// shrink a disk from a button labelled Grow, whatever the select holds.
+		if (!project || resizeTo === undefined || resizeTo * GIB <= project.volume_bytes) return;
 		opBusy = 'resize';
 		try {
-			const { op_id } = await resizeProject(id, resizeTo * 1024 * 1024 * 1024);
+			const { op_id } = await resizeProject(id, resizeTo * GIB);
 			waitForOp(op_id, () => {
 				opBusy = undefined;
 				showResize = false;
@@ -287,21 +326,38 @@
 		}
 	}
 
+	/**
+	 * Restores a snapshot over this project's disk, or into a new project
+	 * when asNew names one. Restoring over is confirmed by typing the slug in
+	 * the panel (ConfirmType), the same as Destroy, because it is as final.
+	 */
 	async function onRestore(snapshotId: string, asNew?: string) {
-		if (!asNew && !confirm("Restoring replaces this project's current disk. Continue?")) return;
 		opBusy = 'restore';
+		restoreAsNewError = undefined;
 		try {
 			const { op_id } = await restoreSnapshot(id, snapshotId, asNew);
 			waitForOp(op_id, () => {
 				opBusy = undefined;
-				restoreAsNewFor = undefined;
+				restorePanel = undefined;
 				restoreAsNewName = '';
-				if (asNew) toast.success(`Created ${asNew} from the snapshot.`);
+				toast.success(
+					asNew
+						? `Created ${asNew} from the snapshot.`
+						: `Restored ${project?.name ?? 'the project'}.`
+				);
 				void refresh();
 				void refreshSnapshots();
 			});
 		} catch (err) {
 			opBusy = undefined;
+			// A refused name belongs under the field, like "Recently destroyed".
+			if (asNew && err instanceof ApiError && (err.code === 'conflict' || err.code === 'invalid')) {
+				restoreAsNewError =
+					err.detail?.reason === 'name_taken'
+						? `A project called ${asNew} already exists; pick another name.`
+						: err.message;
+				return;
+			}
 			toastApiError(err, 'Could not restore the snapshot.');
 		}
 	}
@@ -347,13 +403,13 @@
 
 {#if notFound}
 	<PageShell title="Not found" crumbs={[{ label: 'Projects', href: resolve('/projects') }]}>
-		<p class="text-sm text-zinc-500 dark:text-zinc-400">
-			This project doesn't exist, or isn't yours.
-		</p>
+		<p class="text-sm text-ink-muted">This project doesn't exist, or isn't yours.</p>
 	</PageShell>
 {:else if !project}
-	<PageShell title="Loading…" crumbs={[{ label: 'Projects', href: resolve('/projects') }]}>
-		<p class="text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
+	<!-- The h1 stays a name while the project loads: "Loading…" as the
+	     page's heading is what a screen reader announced as its title. -->
+	<PageShell title="Project" crumbs={[{ label: 'Projects', href: resolve('/projects') }]}>
+		<LoadState status={loadFailed ? 'failed' : 'loading'} onretry={refresh} error={loadError} />
 	</PageShell>
 {:else}
 	<PageShell title={project.name} crumbs={[{ label: 'Projects', href: resolve('/projects') }]}>
@@ -375,13 +431,13 @@
 			</div>
 		{/snippet}
 
-		<p class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-zinc-600 dark:text-zinc-400">
-			<span class="text-zinc-900 dark:text-zinc-100"><StateDot state={project.state} /></span>
+		<p class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-muted">
+			<span class="text-ink"><StateDot state={project.state} /></span>
 			<span class="font-mono">{project.class}</span>
 			{#if project.state === 'running'}
-				<span>up {uptime(project.started_at)}</span>
+				<span class="tabular-nums">up {uptime(project.started_at)}</span>
 			{/if}
-			<code class="kbd">ssh {project.slug}.repose</code>
+			<code>ssh {project.slug}.repose</code>
 			<a href={resolve('/projects/[id]/config', { id })} class="link">Config</a>
 			<a href={resolve('/projects/[id]/secrets', { id })} class="link">Secrets</a>
 		</p>
@@ -407,7 +463,7 @@
 						{#each refusal.projects as named (named.id)}
 							<button
 								type="button"
-								class="btn-quiet !py-1"
+								class="btn-quiet btn--sm"
 								disabled={!!opBusy}
 								onclick={() => stopNamed(named)}>Stop {named.slug}</button
 							>
@@ -421,62 +477,67 @@
 
 		<QuestionsCard projectId={id} />
 
+		<!-- Card titles are h2 at body size: each card is a section of the
+		     page under its h1, and the larger text-xl h2 is kept for the
+		     full-width sections below the grid (Destroy). -->
 		<div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-			<div class="card">
-				<h2 class="font-semibold">Connect</h2>
+			<div class="card min-w-0">
+				<h2 class="text-base font-semibold">Connect</h2>
 				<code class="codeblock mt-3 block px-3 py-2 text-sm">repose run</code>
 				<code class="codeblock mt-2 block px-3 py-2 text-sm">ssh {project.slug}.repose</code>
-				<p class="mt-2 text-xs text-zinc-400 dark:text-zinc-500">
-					{normalizeRemoteDisplay(project.remote_url)}
-				</p>
+				{#if project.remote_url}
+					<p class="mt-2 font-mono text-xs break-all text-ink-muted">
+						{normalizeRemoteDisplay(project.remote_url)}
+					</p>
+				{/if}
 			</div>
 
 			<div class="card">
-				<h2 class="font-semibold">Signals</h2>
+				<h2 class="text-base font-semibold">Signals</h2>
 				{#if project.signals}
 					<dl class="mt-3 space-y-1 text-sm">
-						<div class="flex justify-between">
-							<dt class="text-zinc-500 dark:text-zinc-400">SSH sessions</dt>
-							<dd>{project.signals.ssh_sessions}</dd>
+						<div class="flex justify-between gap-4">
+							<dt class="text-ink-muted">SSH sessions</dt>
+							<dd class="tabular-nums">{project.signals.ssh_sessions}</dd>
 						</div>
-						<div class="flex justify-between">
-							<dt class="text-zinc-500 dark:text-zinc-400">tmux clients</dt>
-							<dd>{project.signals.tmux_clients}</dd>
+						<div class="flex justify-between gap-4">
+							<dt class="text-ink-muted">tmux clients</dt>
+							<dd class="tabular-nums">{project.signals.tmux_clients}</dd>
 						</div>
 						{#if project.signals.agents.length === 0}
-							<div class="flex justify-between">
-								<dt class="text-zinc-500 dark:text-zinc-400">Agents</dt>
+							<div class="flex justify-between gap-4">
+								<dt class="text-ink-muted">Agents</dt>
 								<dd>none</dd>
 							</div>
 						{:else}
 							{#each project.signals.agents as a (a.window)}
-								<div class="flex justify-between">
-									<dt class="text-zinc-500 dark:text-zinc-400">{a.agent} ({a.window})</dt>
+								<div class="flex justify-between gap-4">
+									<dt class="text-ink-muted">{a.agent} ({a.window})</dt>
 									<dd>{a.state}</dd>
 								</div>
 							{/each}
 						{/if}
 					</dl>
 				{:else}
-					<p class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">Not running.</p>
+					<p class="mt-3 text-sm text-ink-muted">Not running.</p>
 				{/if}
 				{#if lastUpdated}
-					<p class="mt-3 text-xs text-zinc-400 dark:text-zinc-500">
+					<p class="mt-3 text-xs text-ink-muted">
 						Updated {relativeTime(lastUpdated.toISOString())}
 					</p>
 				{/if}
 			</div>
 
 			<div class="card">
-				<h2 class="font-semibold">Plan</h2>
+				<h2 class="text-base font-semibold">Plan</h2>
 				<dl class="mt-3 space-y-1 text-sm">
-					<div class="flex justify-between">
-						<dt class="text-zinc-500 dark:text-zinc-400">Memory while running</dt>
-						<dd>{memoryLine}</dd>
+					<div class="flex justify-between gap-4">
+						<dt class="text-ink-muted">Memory while running</dt>
+						<dd class="tabular-nums">{memoryLine}</dd>
 					</div>
 					{#if me?.billing.plan}
-						<div class="flex justify-between">
-							<dt class="text-zinc-500 dark:text-zinc-400">Plan</dt>
+						<div class="flex justify-between gap-4">
+							<dt class="text-ink-muted">Plan</dt>
 							<dd class="capitalize">{me.billing.plan}</dd>
 						</div>
 					{/if}
@@ -485,36 +546,48 @@
 			</div>
 
 			<div class="card">
-				<h2 class="font-semibold">Disk</h2>
-				<p class="mt-3 text-sm">
+				<h2 class="text-base font-semibold">Disk</h2>
+				<p class="mt-3 text-sm tabular-nums">
 					{project.disk_used_bytes !== undefined ? gb(project.disk_used_bytes) : '—'} / {gb(
 						project.volume_bytes
 					)}
 				</p>
 				{#if !showResize}
-					<button type="button" class="btn-ghost mt-2 px-0" onclick={() => (showResize = true)}
-						>Resize…</button
-					>
+					{#if largerSizes.length > 0}
+						<button type="button" class="btn-ghost mt-2 px-0" onclick={openResize}>Resize…</button>
+					{:else}
+						<p class="mt-2 text-sm text-ink-muted tabular-nums">
+							{SIZES_GB[SIZES_GB.length - 1]} GB is the largest size.
+						</p>
+					{/if}
 				{:else}
-					{@const currentVolumeBytes = project.volume_bytes}
-					<div class="mt-2 flex items-center gap-2">
-						<select class="field" bind:value={resizeTo}>
-							{#each SIZES_GB.filter((s) => s * 1024 * 1024 * 1024 > currentVolumeBytes) as s (s)}
-								<option value={s}>{s} GB</option>
-							{/each}
-						</select>
-						<button type="button" class="btn" disabled={!!opBusy} onclick={onResize}>
-							{opBusy === 'resize' ? 'Resizing…' : 'Grow'}
-						</button>
-						<button type="button" class="btn-ghost" onclick={() => (showResize = false)}
-							>Cancel</button
-						>
-					</div>
+					<form
+						class="mt-3"
+						onsubmit={(e) => {
+							e.preventDefault();
+							void onResize();
+						}}
+					>
+						<label for="resize-to" class="block text-sm text-ink-muted">Grow to</label>
+						<div class="mt-1.5 flex flex-wrap items-center gap-2">
+							<select id="resize-to" class="field tabular-nums" bind:value={resizeTo}>
+								{#each largerSizes as s (s)}
+									<option value={s}>{s} GB</option>
+								{/each}
+							</select>
+							<button type="submit" class="btn" disabled={!!opBusy || resizeTo === undefined}>
+								{opBusy === 'resize' ? 'Resizing…' : 'Grow'}
+							</button>
+							<button type="button" class="btn-ghost" onclick={() => (showResize = false)}
+								>Cancel</button
+							>
+						</div>
+					</form>
 				{/if}
 			</div>
 
 			<div class="card">
-				<h2 class="font-semibold">Last build</h2>
+				<h2 class="text-base font-semibold">Last build</h2>
 				{#if currentRevisionStatus()}
 					{@const rev = currentRevisionStatus()}
 					<p class="mt-3 text-sm">
@@ -525,7 +598,7 @@
 						>
 					</p>
 				{:else}
-					<p class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">base {project.base_version}</p>
+					<p class="mt-3 text-sm text-ink-muted">base {project.base_version}</p>
 				{/if}
 				<a href={resolve('/projects/[id]/config', { id })} class="link mt-2 inline-block text-sm"
 					>View config</a
@@ -533,18 +606,18 @@
 			</div>
 
 			<div class="card sm:col-span-2">
-				<h2 class="font-semibold">Events</h2>
+				<h2 class="text-base font-semibold">Events</h2>
 				{#if events.length === 0}
-					<p class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">No events yet.</p>
+					<p class="mt-3 text-sm text-ink-muted">No events yet.</p>
 				{:else}
 					<ul class="mt-2">
 						{#each events.slice(0, 20) as e (e.id)}
 							<li class="row flex items-start justify-between gap-4 text-sm">
-								<span>
+								<span class="flex min-w-0 flex-wrap items-baseline gap-2">
 									{#if e.agent}<span class="badge">{e.agent}</span>{/if}
-									<span class="ml-2">{e.summary}</span>
+									<span>{e.summary}</span>
 								</span>
-								<span class="shrink-0 text-xs text-zinc-400 dark:text-zinc-500"
+								<span class="shrink-0 text-xs text-ink-muted tabular-nums"
 									>{relativeTime(e.ts)}</span
 								>
 							</li>
@@ -554,49 +627,83 @@
 			</div>
 
 			<div class="card sm:col-span-2">
-				<div class="flex items-center justify-between">
-					<h2 class="font-semibold">Snapshots</h2>
+				<div class="flex items-center justify-between gap-4">
+					<h2 class="text-base font-semibold">Snapshots</h2>
 					<button type="button" class="btn-ghost" disabled={!!opBusy} onclick={onCreateSnapshot}>
 						{opBusy === 'snapshot' ? 'Snapshotting…' : 'Create'}
 					</button>
 				</div>
 				{#if snapshots.length === 0}
-					<p class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">No snapshots yet.</p>
+					<p class="mt-3 text-sm text-ink-muted">No snapshots yet.</p>
 				{:else}
 					<ul class="mt-2">
 						{#each snapshots as s (s.id)}
-							<li class="row flex items-center justify-between gap-4 text-sm">
-								<span>{dateTime(s.created_at)} · {gb(s.bytes)} · {s.reason}</span>
-								<span class="flex shrink-0 items-center gap-3">
-									{#if restoreAsNewFor === s.id}
-										<input
-											class="field w-40 py-1"
-											placeholder="new project name"
-											bind:value={restoreAsNewName}
-										/>
-										<button
-											type="button"
-											class="btn-ghost"
-											disabled={!restoreAsNewName || !!opBusy}
-											onclick={() => onRestore(s.id, restoreAsNewName)}>Restore as new</button
-										>
-										<button
-											type="button"
-											class="btn-ghost"
-											onclick={() => (restoreAsNewFor = undefined)}>Cancel</button
-										>
-									{:else}
-										<button
-											type="button"
-											class="btn-ghost"
-											disabled={!!opBusy}
-											onclick={() => onRestore(s.id)}>Restore</button
-										>
-										<button type="button" class="btn-ghost" onclick={() => (restoreAsNewFor = s.id)}
-											>Restore as new…</button
-										>
+							{@const open = restorePanel?.snapshotId === s.id ? restorePanel.kind : undefined}
+							<li class="row text-sm" data-testid="snapshot-row">
+								<!-- Wraps: at 390px the actions drop under the date instead
+								     of squeezing it to a word a line. -->
+								<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+									<span class="tabular-nums"
+										>{dateTime(s.created_at)} · {gb(s.bytes)} · {s.reason}</span
+									>
+									{#if !open}
+										<!-- -mx-2 takes back the ghost buttons' own padding, so their
+										     words line up with the card's edge whether the actions sit
+										     at the right or wrap under the date. -->
+										<span class="-mx-2 flex flex-wrap items-center">
+											<button
+												type="button"
+												class="btn-ghost-danger"
+												disabled={!!opBusy}
+												onclick={() => openRestore(s.id, 'replace')}>Restore…</button
+											>
+											<button
+												type="button"
+												class="btn-ghost"
+												disabled={!!opBusy}
+												onclick={() => openRestore(s.id, 'new')}>Restore as new…</button
+											>
+										</span>
 									{/if}
-								</span>
+								</div>
+								{#if open === 'replace'}
+									<div
+										class="mt-3 rounded-sm border p-4"
+										style="border-color: var(--rule)"
+										data-testid="restore-confirm"
+									>
+										<p>
+											Restoring replaces the disk of {project.slug} with this snapshot. Anything written
+											since {dateTime(s.created_at)} is lost.
+										</p>
+										{#if project.state !== 'stopped'}
+											<p class="mt-2 text-ink-muted">
+												Stop {project.slug} first, or restore the snapshot as a new project.
+											</p>
+										{/if}
+										<div class="mt-3">
+											<ConfirmType
+												word={project.slug}
+												label="Restore"
+												busyLabel="Restoring…"
+												busy={opBusy === 'restore'}
+												disabled={!!opBusy || project.state !== 'stopped'}
+												onconfirm={() => onRestore(s.id)}
+												oncancel={() => (restorePanel = undefined)}
+											/>
+										</div>
+									</div>
+								{:else if open === 'new'}
+									<RestoreNameForm
+										id={s.id}
+										bind:value={restoreAsNewName}
+										error={restoreAsNewError}
+										busy={opBusy === 'restore'}
+										submitLabel="Restore as new"
+										onsubmit={(n) => void onRestore(s.id, n)}
+										oncancel={() => (restorePanel = undefined)}
+									/>
+								{/if}
 							</li>
 						{/each}
 					</ul>
@@ -605,14 +712,16 @@
 		</div>
 
 		<div class="form-section">
-			<h2 class="text-lg font-semibold text-red-700 dark:text-red-400">Destroy</h2>
-			<p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+			<h2 class="text-xl font-semibold text-red-700 dark:text-red-400">Destroy</h2>
+			<p class="mt-1 text-sm text-ink-muted">
 				Deletes the volume. The last snapshot is kept 30 days.
 			</p>
 			<div class="mt-3">
 				<ConfirmType
 					word={project.slug}
 					label="Destroy"
+					busyLabel="Destroying…"
+					busy={opBusy === 'destroy'}
 					disabled={!!opBusy}
 					onconfirm={onDestroy}
 				/>

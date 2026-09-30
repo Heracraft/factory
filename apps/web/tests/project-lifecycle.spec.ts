@@ -37,6 +37,127 @@ test('resize grows the volume', async ({ page }) => {
 	await expect(page.getByText('/ 40 GB')).toBeVisible({ timeout: 10_000 });
 });
 
+// The select once opened blank on a value it did not offer (20 GB), and
+// Grow untouched asked the api to shrink a 40 GB disk to 20. It must open
+// on the smallest size larger than the disk and offer only grows.
+test('resize opens on the next size up and offers only grows', async ({ page }) => {
+	const p = await createProject(apiURLFromEnv(), {
+		name: 'resize-default-app',
+		remote_url: 'github.com/heracraft/resize-default-app',
+		class: 'small'
+	});
+	const asked: number[] = [];
+	page.on('request', (r) => {
+		if (r.method() === 'POST' && r.url().endsWith('/resize')) {
+			asked.push((r.postDataJSON() as { volume_bytes: number }).volume_bytes);
+		}
+	});
+	await page.goto(`/projects/${p.id}`);
+	await expect(page.getByText('/ 20 GB')).toBeVisible();
+
+	await page.getByRole('button', { name: 'Resize…' }).click();
+	const select = page.getByLabel('Grow to');
+	await expect(select).toHaveValue('40');
+	await expect(select.locator('option')).toHaveText(['40 GB', '80 GB', '160 GB', '320 GB']);
+	await page.getByRole('button', { name: 'Grow' }).click();
+	await expect(page.getByText('/ 40 GB')).toBeVisible({ timeout: 10_000 });
+	expect(asked).toEqual([40 * 2 ** 30]);
+});
+
+test('a disk at the largest size has no Grow to offer', async ({ page }) => {
+	const p = await createProject(apiURLFromEnv(), {
+		name: 'resize-max-app',
+		remote_url: 'github.com/heracraft/resize-max-app'
+	});
+	await page.route(`**/v1/projects/${p.id}`, async (route) => {
+		if (route.request().method() !== 'GET') return route.fallback();
+		const res = await route.fetch();
+		const json = await res.json();
+		await route.fulfill({ response: res, json: { ...json, volume_bytes: 320 * 2 ** 30 } });
+	});
+	await page.goto(`/projects/${p.id}`);
+	await expect(page.getByText('/ 320 GB')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Resize…' })).toHaveCount(0);
+	await expect(page.getByText('320 GB is the largest size.')).toBeVisible();
+});
+
+/** Serves one snapshot for the project, so the list has a row to act on. */
+async function oneSnapshot(page: import('@playwright/test').Page, projectId: string) {
+	await page.route(`**/v1/projects/${projectId}/snapshots`, (route) =>
+		route.request().method() === 'GET'
+			? route.fulfill({
+					json: [
+						{
+							id: '0199a1c2-3f40-7b8e-9d21-4c5e6f7a8b90',
+							created_at: new Date(Date.now() - 3_600_000).toISOString(),
+							bytes: 2 * 2 ** 30,
+							reason: 'stop'
+						}
+					]
+				})
+			: route.fallback()
+	);
+}
+
+// Restoring over the disk is as final as Destroy, so it takes the same
+// typed confirm instead of the browser's confirm(), and a running project
+// has to be stopped first (features/snapshots.md).
+test('restoring a snapshot over the disk asks for the slug, like Destroy', async ({ page }) => {
+	const p = await createProject(apiURLFromEnv(), {
+		name: 'snap-restore-app',
+		remote_url: 'github.com/heracraft/snap-restore-app'
+	});
+	await oneSnapshot(page, p.id);
+	let dialogs = 0;
+	page.on('dialog', (d) => {
+		dialogs++;
+		void d.dismiss();
+	});
+	let restores = 0;
+	page.on('request', (r) => {
+		if (r.url().endsWith('/restore')) restores++;
+	});
+	await page.goto(`/projects/${p.id}`);
+	await expect(page.getByText('running', { exact: true })).toBeVisible();
+
+	const row = page.getByTestId('snapshot-row');
+	await row.getByRole('button', { name: 'Restore…' }).click();
+	const panel = row.getByTestId('restore-confirm');
+	await expect(panel).toContainText('Anything written since');
+	const restore = panel.getByRole('button', { name: 'Restore', exact: true });
+	await expect(restore).toBeDisabled();
+	await panel.getByPlaceholder(/to confirm/).fill(p.slug);
+	await expect(panel).toContainText(`Stop ${p.slug} first`);
+	await expect(restore).toBeDisabled();
+
+	await panel.getByRole('button', { name: 'Cancel' }).click();
+	await expect(panel).toHaveCount(0);
+	expect(dialogs).toBe(0);
+	expect(restores).toBe(0);
+});
+
+test('restore as new has a labelled name field and fits a phone screen', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	const p = await createProject(apiURLFromEnv(), {
+		name: 'snap-new-app',
+		remote_url: 'github.com/heracraft/snap-new-app'
+	});
+	await oneSnapshot(page, p.id);
+	await page.goto(`/projects/${p.id}`);
+
+	const row = page.getByTestId('snapshot-row');
+	await row.getByRole('button', { name: 'Restore as new…' }).click();
+	const name = row.getByLabel('Name for the restored project');
+	await expect(name).toBeVisible();
+	await expect(row.getByRole('button', { name: 'Restore as new' })).toBeDisabled();
+	await name.fill('snap-new-copy');
+	await expect(row.getByRole('button', { name: 'Restore as new' })).toBeEnabled();
+	const overflow = await page.evaluate(
+		() => document.documentElement.scrollWidth - document.documentElement.clientWidth
+	);
+	expect(overflow).toBeLessThanOrEqual(0);
+});
+
 test('destroy requires the exact slug and redirects to the projects list', async ({ page }) => {
 	const p = await createProject(apiURLFromEnv(), {
 		name: 'destroy-app',

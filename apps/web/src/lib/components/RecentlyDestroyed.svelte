@@ -13,6 +13,7 @@
 	import { dateTime, relativeTime } from '$lib/format';
 	import { DESTROYED_FIRST, defaultRestoreName, moreToShow, timeLeft } from '$lib/destroyed';
 	import type { DestroyedProject } from '$lib/api/types';
+	import RestoreNameForm from '$lib/components/RestoreNameForm.svelte';
 
 	let {
 		destroyed,
@@ -49,11 +50,11 @@
 		return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 	}
 
-	async function restore(d: DestroyedProject) {
+	async function restore(d: DestroyedProject, restoreName: string) {
 		busy = true;
 		nameError = undefined;
 		try {
-			const res = await restoreProject({ project_id: d.id, name: name.trim() });
+			const res = await restoreProject({ project_id: d.id, name: restoreName });
 			toast.success(
 				`Restoring ${res.name} from its snapshot of ${dateTime(res.snapshot_created_at)}.`
 			);
@@ -81,7 +82,7 @@
 {#if destroyed.length > 0}
 	<section class="mt-16" aria-labelledby="recently-destroyed">
 		<h2 id="recently-destroyed" class="text-xl font-semibold">Recently destroyed</h2>
-		<p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+		<p class="mt-1 text-sm text-ink-muted">
 			Each keeps its last snapshot for 30 days. Restore it here or with
 			<code>repose restore NAME</code>.
 		</p>
@@ -102,7 +103,7 @@
 							>
 						{/if}
 					</div>
-					<p class="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+					<p class="mt-0.5 text-sm text-ink-muted tabular-nums">
 						Destroyed {relativeTime(d.destroyed_at)} · snapshot {dateTime(d.snapshot.created_at)}, {mb(
 							d.snapshot.bytes
 						)}
@@ -113,32 +114,14 @@
 						{/if}
 					</p>
 					{#if openFor === d.id}
-						<form
-							class="mt-2 flex flex-wrap items-center gap-2"
-							onsubmit={(e) => {
-								e.preventDefault();
-								void restore(d);
-							}}
-						>
-							<label class="sr-only" for="restore-name-{d.id}">Name for the restored project</label>
-							<input
-								id="restore-name-{d.id}"
-								class="field w-56 py-1"
-								class:field--set={name !== ''}
-								bind:value={name}
-								aria-invalid={nameError ? 'true' : undefined}
-								aria-describedby={nameError ? `restore-error-${d.id}` : undefined}
-							/>
-							<button type="submit" class="btn py-1" disabled={busy || name.trim() === ''}
-								>{busy ? 'Restoring…' : 'Restore'}</button
-							>
-							<button type="button" class="btn-ghost" onclick={() => (openFor = undefined)}
-								>Cancel</button
-							>
-						</form>
-						{#if nameError}
-							<p id="restore-error-{d.id}" class="field-error">{nameError}</p>
-						{/if}
+						<RestoreNameForm
+							id={d.id}
+							bind:value={name}
+							error={nameError}
+							{busy}
+							onsubmit={(n) => void restore(d, n)}
+							oncancel={() => (openFor = undefined)}
+						/>
 					{/if}
 				</li>
 			{/each}
@@ -148,9 +131,7 @@
 				<button type="button" class="btn-ghost px-0" onclick={() => (shown += more)}
 					>Show {more} more</button
 				>
-				<span class="text-sm text-zinc-500 dark:text-zinc-400"
-					>{shown} of {destroyed.length} shown</span
-				>
+				<span class="text-sm text-ink-muted tabular-nums">{shown} of {destroyed.length} shown</span>
 			</div>
 		{/if}
 	</section>
