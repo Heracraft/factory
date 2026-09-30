@@ -20,7 +20,7 @@
 		listRevisions
 	} from '$lib/api/client';
 	import { ApiError } from '$lib/api/errors';
-	import { PollFailure, toastApiError } from '$lib/api/toast';
+	import { PollFailure, PollGroup, toastApiError } from '$lib/api/toast';
 	import { pollWhileVisible, pollUntilDone } from '$lib/poll';
 	import { uptime, gb, relativeTime, dateTime, normalizeRemoteDisplay } from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
@@ -121,13 +121,16 @@
 		if (open) void focusAfterRender(`restore-${open.kind}-${open.snapshotId}`);
 	}
 
-	// One failure, one report (I-393): each poll toasts once when it starts
-	// failing, and none of them while the load banner or the outage bar
-	// already says it. The events and snapshots polls stay quiet while
-	// the project itself has not loaded, since the banner covers the page.
-	const projectFailure = new PollFailure('Could not load the project.');
-	const eventsFailure = new PollFailure('Could not load events.');
-	const snapshotsFailure = new PollFailure('Could not load snapshots.');
+	// One failure, one report (I-393): the page's polls, the questions
+	// card's included, share one toast, raised by the first to fail and
+	// gone when all of them get through (I-395), and none while the load
+	// banner or the outage bar already says it. The events and snapshots
+	// polls stay quiet while the project itself has not loaded, since the
+	// banner covers the page.
+	const pollFailures = new PollGroup();
+	const projectFailure = new PollFailure('Could not load the project.', pollFailures);
+	const eventsFailure = new PollFailure('Could not load events.', pollFailures);
+	const snapshotsFailure = new PollFailure('Could not load snapshots.', pollFailures);
 
 	async function refresh() {
 		try {
@@ -511,7 +514,7 @@
 			<div class="banner banner--warn mt-4">No capacity right now, try again in a few minutes.</div>
 		{/if}
 
-		<QuestionsCard projectId={id} />
+		<QuestionsCard projectId={id} {pollFailures} />
 
 		<!-- Each card is a section of the page under its h1, so its title is
 		     an h2 at the one h2 size every dashboard page uses (text-xl), the

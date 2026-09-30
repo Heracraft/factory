@@ -15,6 +15,7 @@
 	} from '$lib/api/client';
 	import { ApiError } from '$lib/api/errors';
 	import { toastApiError } from '$lib/api/toast';
+	import { reachability } from '$lib/api/reachability.svelte';
 	import { openCheckout, pageTheme } from '$lib/paddle';
 	import { money, price, gbs, dateOnly, dateTime, timeUntil } from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
@@ -66,18 +67,31 @@
 	let accountStatus = $derived(me?.billing.status);
 
 	async function load() {
+		// One failure, one report (DESIGN-LANGUAGE "Toasts", I-395): an
+		// account that did not load is toasted only when the billing call
+		// answered, since an outage fails both and the load banner or the
+		// outage bar already says so.
+		let meError: unknown;
+		const reportMe = () => {
+			if (meError !== undefined && reachability.ok) {
+				toastApiError(meError, 'Could not load the account.');
+			}
+		};
 		try {
 			me = await getMe();
 		} catch (err) {
-			toastApiError(err, 'Could not load the account.');
+			meError = err;
 		}
 		try {
 			billing = await getBilling();
 			billingDisabled = false;
 			loadError = undefined;
+			reportMe();
 		} catch (err) {
-			if (err instanceof ApiError && err.code === 'billing_disabled') billingDisabled = true;
-			else if (billing) {
+			if (err instanceof ApiError && err.code === 'billing_disabled') {
+				billingDisabled = true;
+				reportMe();
+			} else if (billing) {
 				// A refresh after an action: what is on screen stays, and the
 				// toast says the refresh failed.
 				toastApiError(err, 'Could not load billing.');

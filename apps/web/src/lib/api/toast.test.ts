@@ -9,7 +9,7 @@ const { error, dismiss } = vi.hoisted(() => ({
 }));
 vi.mock('svelte-sonner', () => ({ toast: { error, dismiss } }));
 
-import { PollFailure } from './toast';
+import { PollFailure, PollGroup } from './toast';
 import { ApiError } from './errors';
 import { reachability } from './reachability.svelte';
 
@@ -63,5 +63,26 @@ describe('PollFailure', () => {
 		reachability.ok = true;
 		f.fail(forbidden);
 		expect(error).toHaveBeenCalledTimes(1);
+	});
+
+	test('polls in one group raise one toast, gone when all of them get through', () => {
+		// The project page on a 429: its three polls fail on the same tick.
+		const page = new PollGroup();
+		const project = new PollFailure('Could not load the project.', page);
+		const events = new PollFailure('Could not load events.', page);
+		const snapshots = new PollFailure('Could not load snapshots.', page);
+		project.fail(forbidden);
+		events.fail(forbidden);
+		snapshots.fail(forbidden);
+		expect(error).toHaveBeenCalledTimes(1);
+
+		project.ok();
+		events.ok();
+		expect(dismiss).not.toHaveBeenCalled();
+		snapshots.ok();
+		expect(dismiss).toHaveBeenCalledWith('toast-1');
+
+		events.fail(forbidden);
+		expect(error).toHaveBeenCalledTimes(2);
 	});
 });

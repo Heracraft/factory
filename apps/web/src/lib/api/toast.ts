@@ -24,20 +24,42 @@ export function toastApiError(err: unknown, fallback = 'Something went wrong.'):
  * fails, that tick toasts. Latching the quiet one too left a project's
  * events list silently stale when its first tick failed under the load
  * banner and later ticks kept failing after Retry cleared it.
+ *
+ * Polls on one page share a PollGroup, so a failure that reaches all of
+ * them at once, such as a 429 or a 403 on one tick of the project page,
+ * is one toast, not one per poll (I-395). The toast names the first poll
+ * that failed and goes when every poll it covers has got through again.
  */
 export class PollFailure {
-	private toastId: string | number | undefined;
-
-	constructor(private fallback: string) {}
+	constructor(
+		private fallback: string,
+		private group = new PollGroup()
+	) {}
 
 	fail(err: unknown, quiet = false): void {
-		if (this.toastId !== undefined) return;
-		if (quiet || !reachability.ok) return;
-		this.toastId = toast.error(errorText(err, this.fallback));
+		this.group.fail(this, errorText(err, this.fallback), quiet);
 	}
 
 	ok(): void {
-		if (this.toastId !== undefined) toast.dismiss(this.toastId);
+		this.group.ok(this);
+	}
+}
+
+/** One toast for the polls on a page; see PollFailure. */
+export class PollGroup {
+	private toastId: string | number | undefined;
+	private failing = new Set<PollFailure>();
+
+	fail(poll: PollFailure, text: string, quiet: boolean): void {
+		if (quiet || !reachability.ok) return;
+		this.failing.add(poll);
+		if (this.toastId === undefined) this.toastId = toast.error(text);
+	}
+
+	ok(poll: PollFailure): void {
+		this.failing.delete(poll);
+		if (this.failing.size > 0 || this.toastId === undefined) return;
+		toast.dismiss(this.toastId);
 		this.toastId = undefined;
 	}
 }

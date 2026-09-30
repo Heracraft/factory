@@ -673,7 +673,11 @@
    theme as unlayered styles, and those beat anything inside a layer. Code
    sits on --sunken everywhere else (.codeblock, the docs' pre), so the
    editor does too: on --surface it was a 320px pure white block on the
-   warm page in the light (I-393). The current line lifts to --surface. */
+   warm page in the light (I-393). The current line lifts one step toward
+   the reader: to --surface in the light; in the dark --surface is the
+   darker of the two, so the line mixes 5% --ink into --sunken instead,
+   which keeps --ink-faint's line number at 4.5:1 where --rule would not
+   (I-395). */
 .nix-editor .cm-editor {
 	@apply h-full rounded-sm border text-sm;
 	background-color: var(--sunken);
@@ -694,6 +698,12 @@
 .nix-editor .cm-editor .cm-activeLine,
 .nix-editor .cm-editor .cm-activeLineGutter {
 	background-color: var(--surface);
+}
+@media (prefers-color-scheme: dark) {
+	.nix-editor .cm-editor .cm-activeLine,
+	.nix-editor .cm-editor .cm-activeLineGutter {
+		background-color: color-mix(in oklab, var(--ink) 5%, var(--sunken));
+	}
 }
 .nix-editor .cm-line-error {
 	@apply bg-red-100 dark:bg-red-950;
@@ -802,24 +812,34 @@
 	   column (DECISIONS I-345, docs.test.ts). */
 	white-space: pre;
 	overflow-x: auto;
-	/* A block wider than its box shows a shade at the edge that hides
+	/* A block wider than its box shows a 2px bar at each edge that hides
 	   text, so a cut line such as "(2 new comm" reads as more to scroll to:
 	   a phone's overlay scrollbar shows only while the block moves. The
-	   two "local" layers scroll with the text and cover the shade once
-	   that edge is reached, so a block that fits shows none. */
-	background:
-		linear-gradient(to right, var(--sunken) 40%, transparent) left / 1.5rem 100% no-repeat local,
-		linear-gradient(to left, var(--sunken) 40%, transparent) right / 1.5rem 100% no-repeat local,
-		radial-gradient(farthest-side at 0 50%, var(--scroll-shade), transparent) left / 0.625rem 100%
-			no-repeat scroll,
-		radial-gradient(farthest-side at 100% 50%, var(--scroll-shade), transparent) right / 0.625rem
-			100% no-repeat scroll,
-		var(--sunken);
-	--scroll-shade: color-mix(in oklab, var(--ink) 22%, transparent);
+	   bars stay put ("scroll"); two fill-coloured covers scroll with the
+	   text ("local") and sit over a bar once that edge is reached, so a
+	   block that fits shows none. One-colour layers only: a bar, not a
+	   shade, as DESIGN-LANGUAGE "Corners" allows (I-395). */
+	--edge-fill: var(--sunken);
+	background: var(--edge-covers), var(--edge-bars), var(--sunken);
 	border-color: var(--rule);
 }
 .doc .table-wrap {
 	@apply my-6 overflow-x-auto;
+	/* The same edge bars as a code block: a table that still overflows at
+	   390 shows where its cut text continues. */
+	--edge-fill: var(--page);
+	background: var(--edge-covers), var(--edge-bars);
+}
+/* The layers behind both. A custom property holding a layer list
+   resolves per element, so --edge-fill is the element's own fill. */
+.doc pre,
+.doc .table-wrap {
+	--edge-covers:
+		linear-gradient(var(--edge-fill), var(--edge-fill)) left / 0.75rem 100% no-repeat local,
+		linear-gradient(var(--edge-fill), var(--edge-fill)) right / 0.75rem 100% no-repeat local;
+	--edge-bars:
+		linear-gradient(var(--ink-faint), var(--ink-faint)) left / 2px 100% no-repeat scroll,
+		linear-gradient(var(--ink-faint), var(--ink-faint)) right / 2px 100% no-repeat scroll;
 }
 .doc .table-wrap table {
 	@apply my-0 text-sm;
@@ -827,8 +847,14 @@
 .doc th {
 	@apply text-left font-medium text-ink-muted;
 }
-.doc td code {
-	@apply whitespace-nowrap;
+/* From sm up a command in a table stays on one line. On a phone it
+   wraps at its spaces (each word is a .nobreak span), or the command
+   column took all but 75px of a 350px table and cut the description
+   ("repose snapshots restore SNAPSHOT_ID" in cli.md, I-395). */
+@media (width >= 40rem) {
+	.doc td code {
+		@apply whitespace-nowrap;
+	}
 }
 .doc .note {
 	@apply my-6 rounded-sm border-l-2 border-amber-500 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/60 dark:text-amber-100;

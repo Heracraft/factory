@@ -4,12 +4,14 @@
 	import { onMount } from 'svelte';
 	import { listProjectQuestions, answerQuestion, cancelQuestion } from '$lib/api/client';
 	import { ApiError } from '$lib/api/errors';
-	import { PollFailure, toastApiError } from '$lib/api/toast';
+	import { PollFailure, PollGroup, toastApiError } from '$lib/api/toast';
 	import { pollWhileVisible } from '$lib/poll';
 	import { relativeTime } from '$lib/format';
 	import type { Question } from '$lib/api/types';
 
-	let { projectId }: { projectId: string } = $props();
+	// pollFailures is the page's group, so this poll and the page's share
+	// one toast (I-395).
+	let { projectId, pollFailures }: { projectId: string; pollFailures?: PollGroup } = $props();
 
 	let questions = $state<Question[]>([]);
 	let drafts = $state<Record<string, string>>({});
@@ -17,7 +19,9 @@
 	let busy = $state<string | undefined>(undefined);
 	let answered = $state<string | undefined>(undefined);
 	// An outage raises one toast rather than one every poll (I-393).
-	const pollFailure = new PollFailure('Could not load questions.');
+	// The page's group is fixed for its life, so reading it once is right.
+	// svelte-ignore state_referenced_locally
+	const pollFailure = new PollFailure('Could not load questions.', pollFailures);
 
 	async function refresh() {
 		try {

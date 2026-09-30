@@ -23,7 +23,7 @@ theme toggle, no `class="dark"`, no `[data-theme]`.
 | Token | Light | Dark | Use |
 |---|---|---|---|
 | `--page` | `#fbfbfa` | `#111110` | The page ground (`bg-page`). `app.html` paints it before the CSS loads (I-331). |
-| `--surface` | `#ffffff` | `#161615` | Fields, `.btn-quiet`, `.banner`, toasts, the Nix editor's current line. |
+| `--surface` | `#ffffff` | `#161615` | Fields, `.btn-quiet`, `.banner`, toasts, the Nix editor's current line in the light. |
 | `--sunken` | `#f4f4f2` | `#1b1b1a` | Code blocks, the Nix editor, the landing's stages, kbd. |
 | `--rule` | `#e6e6e3` | `#2a2a28` | Hairlines between sections, rows and cards. |
 | `--rule-strong` | `#cfcfcb` | `#3b3b38` | Badges, table heads, banners. Never the only edge of a control. |
@@ -130,7 +130,8 @@ URL (I-392).
 | `text-3xl` | 30px | The page title (`PageShell`'s h1), semibold. |
 
 The landing sets its own display sizes (`LANDING.md`, "Type"). Mono under
-13px is a badge or a label of a word or two, never running text.
+13px is a badge and nothing else: no label, no running text. The
+landing's uppercase labels are its own (I-395).
 Pages write no `text-[13px]`; a size that is missing becomes a step here.
 Figures that change or line up in columns (sizes, counts, times, prices)
 use `tabular-nums`. Page markup uses no `font-bold`; emphasis in body text
@@ -235,8 +236,10 @@ bordered box with no fill or shadow. `.btn-quiet`, `.banner` and fields
 keep a `--surface` fill, one step off `--page`, so a control reads as
 something you can use. The Nix editor is the one field on `--sunken`: it
 holds code, and code sits on `--sunken` everywhere; its `--control-edge`
-border still marks it as a control, and its current line is `--surface`
-(I-393).
+border still marks it as a control. Its current line is one step lighter
+than the fill: `--surface` in the light, and in the dark, where
+`--surface` is the darker, `--sunken` with 5% `--ink` mixed in (I-393,
+I-395).
 
 ## Buttons
 
@@ -460,9 +463,11 @@ longer word (a URL) wraps, so no chip pushes a phone's page sideways
 with the same renderer (`lib/codespan.ts`, I-394). A command used as a heading is the
 heading's own mono text, not a chip. Shell blocks are ink with muted
 prompts and output, and no token hue: in the docs blue is a link (I-388).
-A block wider than its box shows a shade at the edge where text is
-hidden, and takes a tab stop so a keyboard can scroll it; a block that
-fits has neither (I-394).
+A block or table wider than its box shows a 2px `--ink-faint` bar at the
+edge where text is hidden, and takes a tab stop so a keyboard can scroll
+it; one that fits has neither (I-394, I-395). The bar is a one-colour
+layer. On a phone a command in a table wraps at its spaces,
+so the description beside it keeps its width.
 The copy button is 28px tall and says "Copied" to a screen reader through
 a live region as well as on its face. Links are in
 the accent; h2 sections are separated by a rule. The sidebar's "On this

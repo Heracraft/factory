@@ -107,6 +107,8 @@ const PAGES: Target[] = [
 	{ name: '/docs', signedIn: false, url: () => '/docs', ready: heading },
 	// A docs page with prompts, output and a copy button in its code blocks.
 	{ name: '/docs/lifecycle', signedIn: false, url: () => '/docs/lifecycle', ready: heading },
+	// The command tables, the widest in the docs at 390.
+	{ name: '/docs/cli', signedIn: false, url: () => '/docs/cli', ready: heading },
 	{ name: '/privacy', signedIn: false, url: () => '/privacy', ready: heading },
 	{ name: '/terms', signedIn: false, url: () => '/terms', ready: heading },
 	{ name: '/refunds', signedIn: false, url: () => '/refunds', ready: heading },

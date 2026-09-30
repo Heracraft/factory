@@ -9964,3 +9964,34 @@ round found, and what was settled fixing it:
   files the landing-critique branch owns, as the exception.
 *Kept:* the landing's header and footer logos as they are, for that
 branch to settle.
+
+**I-395. Design repair round 5: a scroll edge is a one-colour bar, and
+polls on one page share one toast.**
+(design critique repair, 2026-09-30; amends I-393, I-394) What the fifth
+verify round found, and what was settled fixing it:
+- The docs code blocks' scroll shade (I-394) was two two-colour linear
+  gradients and two radial ones, against DESIGN-LANGUAGE "Corners" and
+  its CHECKLIST grep, and the radial layer read as a shadow. It is now a
+  2px `--ink-faint` bar at each edge, drawn with one-colour
+  `linear-gradient(c, c)` layers; two covers in the box's own fill
+  scroll with the text and hide a bar once its edge is reached. The rule
+  and the grep stay as they were.
+- Docs tables get the same bar and the same tab stop as code blocks. At
+  390, four `/docs/cli` tables were wider than their box, and axe flagged
+  two as scrollable-region-focusable. Below `sm` a command in a table
+  wraps at its spaces, which leaves one table (the environment
+  variables, 15px over) that scrolls. The a11y gate now covers
+  `/docs/cli`, and its tables' empty heads are labelled ("What it
+  does").
+- One failure, one report reaches the rest of the dashboard. The project
+  page's polls and its questions card share a `PollGroup`: a 429 or a
+  403 on one tick is one toast, gone when every poll it covers gets
+  through. Billing toasts a failed account load only when the billing
+  call answered; if billing failed too, its banner or the outage bar
+  says it.
+- The Nix editor's current line lifts in the dark as well: there
+  `--surface` is darker than `--sunken`, so the line is `--sunken` with
+  5% `--ink` mixed in (`#242423`; `--ink-faint` line numbers on it hold
+  4.8:1).
+- DESIGN-LANGUAGE "Type" now matches the CHECKLIST: mono under 13px is a
+  badge and nothing else; the landing's labels are its own.
