@@ -44,7 +44,8 @@ Synced: 4 modified, 2 untracked, 2 env files (3 new commits)
 When the machine already has your checkout and your laptop has work it doesn't, `repose run` attaches without copying it and tells you:
 
 ```text
-Not synced: your laptop has work the machine doesn't (3 modified, 1 untracked, 2 commits). `repose sync` sends it.
+Not synced: your laptop has work the machine doesn't (3 modified,
+1 untracked, 2 commits). `repose sync` sends it.
 ```
 
 With nothing new on your laptop, `repose run` says nothing about syncing.

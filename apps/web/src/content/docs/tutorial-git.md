@@ -38,7 +38,8 @@ repose run
 ```
 
 ```text
-Not synced: your laptop has work the machine doesn't (1 untracked). `repose sync` sends it.
+Not synced: your laptop has work the machine doesn't (1 untracked).
+`repose sync` sends it.
 ```
 
 Detach, then send it:

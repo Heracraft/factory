@@ -29,8 +29,8 @@ func TestReadHiddenLineOnATerminal(t *testing.T) {
 	if err != nil {
 		t.Skipf("no pty: %v", err)
 	}
-	defer ptmx.Close()
-	defer tty.Close()
+	defer func() { _ = ptmx.Close() }()
+	defer func() { _ = tty.Close() }()
 	oldIn, oldErr := os.Stdin, os.Stderr
 	os.Stdin, os.Stderr = tty, tty
 	defer func() { os.Stdin, os.Stderr = oldIn, oldErr }()
