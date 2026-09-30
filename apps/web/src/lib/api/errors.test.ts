@@ -65,6 +65,12 @@ describe('isOutage', () => {
 		expect(isOutage(502, undefined)).toBe(true);
 		expect(isOutage(503, 'billing_disabled')).toBe(false);
 		expect(isOutage(503, 'waitlisted')).toBe(false);
+		// Start refused for want of a host is the capacity banner's answer.
+		expect(isOutage(503, 'capacity')).toBe(false);
+		// A bare 503 from a proxy, with no envelope, is an outage.
+		expect(isOutage(503, undefined)).toBe(true);
+		// Only a 503 is an answer: the same code on a 500 means trouble.
+		expect(isOutage(500, 'capacity')).toBe(true);
 		expect(isOutage(404, 'not_found')).toBe(false);
 	});
 });

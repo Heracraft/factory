@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { getMe, listDestroyed, listProjects } from '$lib/api/client';
-	import { toastApiError } from '$lib/api/toast';
+	import { PollFailure } from '$lib/api/toast';
 	import { pollWhileVisible } from '$lib/poll';
 	import { dateTime, normalizeRemoteDisplay, tempLeft, uptime } from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
@@ -23,20 +23,23 @@
 		!!me?.waitlist?.hold_until && new Date(me.waitlist.hold_until).getTime() > Date.now()
 	);
 
+	// A failing refresh toasts once, not on every poll (I-393).
+	const listFailure = new PollFailure('Could not load projects.');
+
 	async function refresh() {
 		try {
 			projects = await listProjects();
 			loadFailed = false;
+			listFailure.ok();
 		} catch (err) {
 			// Before the first load the banner says why, in the toast's words
 			// (loadErrorText); a toast as well would say it twice. After it,
-			// the list on screen stays and the toast reports the refresh.
+			// the list on screen stays and one toast reports the refresh.
 			if (projects === undefined) {
 				loadFailed = true;
 				loadError = loadErrorText(err, 'Could not load projects.');
-			} else {
-				toastApiError(err, 'Could not load projects.');
 			}
+			listFailure.fail(err, projects === undefined);
 			// Not asked while the list fails: its answer would reset the
 			// "cannot reach the api" bar the failed list just raised.
 			return;
@@ -156,7 +159,7 @@ cd ~/code/your-project && repose run</pre>
 										<span class="badge ml-1.5 align-middle">temporary</span>
 									{/if}
 									{#if p.remote_url}
-										<div class="mt-0.5 font-mono text-xs text-ink-muted">
+										<div class="mt-0.5 font-mono text-compact wrap-anywhere text-ink-muted">
 											{normalizeRemoteDisplay(p.remote_url)}
 										</div>
 									{/if}

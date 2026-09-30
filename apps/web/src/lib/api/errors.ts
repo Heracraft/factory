@@ -48,13 +48,22 @@ export function errorText(err: unknown, fallback: string): string {
 }
 
 /**
+ * The codes the api sends with a 503 on purpose (api.md, "Errors";
+ * statusOf in internal/api/http/server.go). Each is an answer the page
+ * shows in its own words, not an outage: `capacity` (no host can take the
+ * machine; Start shows its capacity banner), `waitlisted` (no free seat)
+ * and `billing_disabled` (billing is not switched on). Counting them put
+ * the outage bar over /billing whenever billing was off (I-390) and over a
+ * refused Start next to its capacity banner (I-393).
+ */
+export const ANSWER_503: readonly ErrorCode[] = ['capacity', 'waitlisted', 'billing_disabled'];
+
+/**
  * Whether a response means the api is in trouble, for the persistent bar
- * (08-dashboard.md 6, "API 5xx or unreachable"). Two codes come with a 503
- * on purpose and are answers, not outages: `billing_disabled` (billing is
- * not switched on) and `waitlisted` (no free seat). Counting them put the
- * outage bar over /billing whenever billing was off (DECISIONS I-390).
+ * (08-dashboard.md 6, "API 5xx or unreachable"): any 5xx except a 503 that
+ * carries one of the ANSWER_503 codes.
  */
 export function isOutage(status: number, code: ErrorCode | undefined): boolean {
 	if (status < 500) return false;
-	return code !== 'billing_disabled' && code !== 'waitlisted';
+	return !(status === 503 && code !== undefined && ANSWER_503.includes(code));
 }

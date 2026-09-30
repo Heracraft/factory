@@ -20,7 +20,7 @@
 		listRevisions
 	} from '$lib/api/client';
 	import { ApiError } from '$lib/api/errors';
-	import { toastApiError } from '$lib/api/toast';
+	import { PollFailure, toastApiError } from '$lib/api/toast';
 	import { pollWhileVisible, pollUntilDone } from '$lib/poll';
 	import { uptime, gb, relativeTime, dateTime, normalizeRemoteDisplay } from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
@@ -121,12 +121,21 @@
 		if (open) void focusAfterRender(`restore-${open.kind}-${open.snapshotId}`);
 	}
 
+	// One failure, one report (I-393): each poll toasts once when it starts
+	// failing, and none of them while the load banner or the outage bar
+	// already says it. The events and snapshots polls stay quiet while
+	// the project itself has not loaded, since the banner covers the page.
+	const projectFailure = new PollFailure('Could not load the project.');
+	const eventsFailure = new PollFailure('Could not load events.');
+	const snapshotsFailure = new PollFailure('Could not load snapshots.');
+
 	async function refresh() {
 		try {
 			project = await getProject(id);
 			lastUpdated = new Date();
 			notFound = false;
 			loadFailed = false;
+			projectFailure.ok();
 		} catch (err) {
 			if (err instanceof ApiError && err.code === 'not_found') {
 				notFound = true;
@@ -134,29 +143,30 @@
 			}
 			// Before the first load the banner says why, in the toast's words
 			// (loadErrorText); a toast as well would say it twice. After it,
-			// what is on screen stays and the toast reports the refresh.
+			// what is on screen stays and one toast reports the refresh.
 			if (!project) {
 				loadFailed = true;
 				loadError = loadErrorText(err, 'Could not load the project.');
-			} else {
-				toastApiError(err, 'Could not load the project.');
 			}
+			projectFailure.fail(err, !project);
 		}
 	}
 
 	async function refreshEvents() {
 		try {
 			events = (await listEvents(id)).slice().sort((a, b) => (a.ts < b.ts ? 1 : -1));
+			eventsFailure.ok();
 		} catch (err) {
-			toastApiError(err, 'Could not load events.');
+			eventsFailure.fail(err, !project);
 		}
 	}
 
 	async function refreshSnapshots() {
 		try {
 			snapshots = await listSnapshots(id);
+			snapshotsFailure.ok();
 		} catch (err) {
-			toastApiError(err, 'Could not load snapshots.');
+			snapshotsFailure.fail(err, !project);
 		}
 	}
 
@@ -512,7 +522,7 @@
 				<code class="codeblock mt-3 block px-3 py-2">repose run</code>
 				<code class="codeblock mt-2 block px-3 py-2">ssh {project.slug}.repose</code>
 				{#if project.remote_url}
-					<p class="mt-2 font-mono text-xs break-all text-ink-muted">
+					<p class="mt-2 font-mono text-compact break-all text-ink-muted">
 						{normalizeRemoteDisplay(project.remote_url)}
 					</p>
 				{/if}

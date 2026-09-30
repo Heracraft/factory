@@ -4,7 +4,7 @@
 	import { onMount } from 'svelte';
 	import { listProjectQuestions, answerQuestion, cancelQuestion } from '$lib/api/client';
 	import { ApiError } from '$lib/api/errors';
-	import { toastApiError } from '$lib/api/toast';
+	import { PollFailure, toastApiError } from '$lib/api/toast';
 	import { pollWhileVisible } from '$lib/poll';
 	import { relativeTime } from '$lib/format';
 	import type { Question } from '$lib/api/types';
@@ -16,17 +16,15 @@
 	let notes = $state<Record<string, string>>({});
 	let busy = $state<string | undefined>(undefined);
 	let answered = $state<string | undefined>(undefined);
-	// Set while the poll is failing, so an outage raises one toast rather
-	// than one every poll; cleared by the first poll that gets through.
-	let pollFailing = false;
+	// An outage raises one toast rather than one every poll (I-393).
+	const pollFailure = new PollFailure('Could not load questions.');
 
 	async function refresh() {
 		try {
 			questions = await listProjectQuestions(projectId);
-			pollFailing = false;
+			pollFailure.ok();
 		} catch (err) {
-			if (!pollFailing) toastApiError(err, 'Could not load questions.');
-			pollFailing = true;
+			pollFailure.fail(err);
 		}
 	}
 

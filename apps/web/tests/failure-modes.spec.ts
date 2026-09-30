@@ -202,6 +202,9 @@ test('capacity on Start shows the documented message', async ({ page }) => {
 	await failNext('POST', '/projects/:id/start', 'capacity');
 	await page.getByRole('button', { name: 'Start', exact: true }).click();
 	await expect(page.getByText('No capacity right now, try again in a few minutes.')).toBeVisible();
+	// capacity is a 503 the api gives as an answer (api.md "Errors"), so
+	// the page's banner is the one report and no outage bar joins it (I-393).
+	await expect(page.locator('#outage')).toBeEmpty();
 });
 
 test('a 5xx from the api shows the persistent bar, which clears once the api recovers', async ({
@@ -214,6 +217,8 @@ test('a 5xx from the api shows the persistent bar, which clears once the api rec
 	// no toast repeating it.
 	const bar = page.getByText('The API is failing right now. Retrying…');
 	await expect(bar).toBeVisible({ timeout: 15_000 });
+	// Said inside the live region that was on the page before it (I-393).
+	await expect(page.getByRole('status').filter({ has: bar })).toHaveAttribute('id', 'outage');
 	await expect(page.getByText('Cannot reach the API')).toHaveCount(0);
 	await expect(
 		page.getByText('Could not load projects. The API failed on its side; try again shortly.')
@@ -224,4 +229,7 @@ test('a 5xx from the api shows the persistent bar, which clears once the api rec
 	// reloading forces an immediate re-check rather than waiting it out.
 	await page.reload();
 	await expect(bar).toHaveCount(0, { timeout: 10_000 });
+	// The region stays, empty, for the next outage to be announced in.
+	await expect(page.locator('#outage')).toBeAttached();
+	await expect(page.locator('#outage')).toBeEmpty();
 });

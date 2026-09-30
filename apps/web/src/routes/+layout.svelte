@@ -79,20 +79,25 @@
 	mobileOffset={{ left: '20px', right: '20px', top: '12px', bottom: '20px' }}
 />
 
-{#if !reachability.ok}
-	<!-- The .banner--error colours, as a strip across the top: square, no
-	     side edges and no margin, since it is the page's edge and not a box
-	     in the column. role=status: it appears after the page has loaded, and
-	     a screen reader should hear it without losing its place. -->
-	<div
-		class="banner banner--error mb-0 rounded-none border-x-0 border-t-0 py-2 text-center font-medium"
-		role="status"
-	>
-		{reachability.reason === 'network'
-			? 'Cannot reach the API. Retrying…'
-			: 'The API is failing right now. Retrying…'}
-	</div>
-{/if}
+<!-- The live region is always in the page and only its contents change:
+     a role=status inserted with its text already in it is often read by
+     no screen reader (I-393). It appears after the page has loaded, and a
+     screen reader should hear it without losing its place. Empty, it
+     draws nothing. -->
+<div id="outage" role="status">
+	{#if !reachability.ok}
+		<!-- The .banner--error colours, as a strip across the top: square,
+		     no side edges and no margin, since it is the page's edge and
+		     not a box in the column. -->
+		<div
+			class="banner banner--error mb-0 rounded-none border-x-0 border-t-0 py-2 text-center font-medium"
+		>
+			{reachability.reason === 'network'
+				? 'Cannot reach the API. Retrying…'
+				: 'The API is failing right now. Retrying…'}
+		</div>
+	{/if}
+</div>
 
 {#if showHeader}
 	<Header />

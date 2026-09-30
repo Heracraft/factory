@@ -122,7 +122,9 @@ has:
   I-385) instead of a toast. Retry re-runs the same load and reads
   "Retrying…" while it does.
 - A later refresh that fails, and any action that fails, keeps the page
-  as it is and raises a toast with the sentence.
+  as it is and raises a toast with the sentence. A poll raises it once,
+  when it starts failing, and not while the load banner or the outage bar
+  already says it; the first tick that gets through dismisses it (I-393).
 - `payment_required` on Start (and on a resize) renders an inline banner
   with the api's sentence, a link to `/billing` named for `detail.reason`
   (§5.8), and for `plan_limit` a Stop for each machine `detail.projects`
@@ -131,8 +133,8 @@ has:
 
 A request that gets no answer raises a persistent bar, "Cannot reach the
 API. Retrying…"; a 5xx raises it as "The API is failing right now.
-Retrying…". The 503s the api gives as answers (`billing_disabled`,
-`waitlisted`) raise no bar. Any other answer clears it (§6, I-390).
+Retrying…". A 503 with one of the codes api.md lists as answers
+("Errors") raises no bar. Any other answer clears it (§6, I-390, I-393).
 
 ### 5.6 Deploy
 
@@ -197,7 +199,7 @@ running"; the list has no cost columns.
 |---|---|
 | Logto sign-in fails or is cancelled | back to landing with a toast `Sign-in was cancelled or failed; try again.` |
 | Access token refresh fails | sign out, redirect to landing, toast `Session expired, sign in again.` |
-| API 5xx or unreachable | persistent bar, polling continues with backoff to 60 s; a 503 with `billing_disabled` or `waitlisted` is an answer, not an outage, and a 5xx says the api is failing rather than unreachable (I-390) |
+| API 5xx or unreachable | persistent bar, polling continues with backoff to 60 s; a 503 with a code api.md lists as an answer is not an outage, and a 5xx says the api is failing rather than unreachable (I-390) |
 | Build fails | error block under the editor, fragment line highlighted, revision marked failed, Apply re-enabled |
 | Start refused for a billing reason | inline banner with the api's sentence and the link the reason wants (§5.8); button stays enabled |
 | Destroy typed wrong | button disabled until the slug matches exactly |
