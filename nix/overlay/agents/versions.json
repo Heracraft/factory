@@ -1,37 +1,37 @@
 {
   "claude-code": {
-    "version": "2.1.283",
+    "version": "2.1.285",
     "x86_64-linux": {
-      "url": "https://downloads.claude.ai/claude-code-releases/2.1.283/linux-x64/claude",
-      "hash": "sha256-GFlYPOMpIFlcYe+Gi+5S4bFZT3SG2yCZNeAfHl6ASuI="
+      "url": "https://downloads.claude.ai/claude-code-releases/2.1.285/linux-x64/claude",
+      "hash": "sha256-M9rR7GFaLgjMeLSU8FwRDkmRbeLHnXjsh5nr9GsjPSk="
     }
   },
   "opencode": {
-    "version": "1.18.32",
+    "version": "1.18.33",
     "x86_64-linux": {
-      "url": "https://github.com/anomalyco/opencode/releases/download/v1.18.32/opencode-linux-x64.tar.gz",
-      "hash": "sha256-MEbgQE/cYPuAMH56R4JLoHR3NkF4pNCbqoVISW3W1Ds="
+      "url": "https://github.com/anomalyco/opencode/releases/download/v1.18.33/opencode-linux-x64.tar.gz",
+      "hash": "sha256-5UYSMhOuR5CaQmhpKqS5SVDQEa/pysmTh1OiGU8cFtU="
     }
   },
   "codex": {
-    "version": "0.157.1",
+    "version": "0.159.2",
     "x86_64-linux": {
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.157.1/codex-x86_64-unknown-linux-musl.tar.gz",
-      "hash": "sha256-6YwejgKOgTf6LSQVyC7Fjns3AaYn41VKrOWzyjFFSvI="
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.159.2/codex-x86_64-unknown-linux-musl.tar.gz",
+      "hash": "sha256-JlhrDSRtQaeZsO+O4a3TcPD7ByGzcJNA8o22EjgWFuo="
     }
   },
   "gemini-cli": {
-    "version": "0.61.0",
+    "version": "0.62.0",
     "npm": {
-      "url": "https://registry.npmjs.org/@google/gemini-cli/-/gemini-cli-0.61.0.tgz",
-      "hash": "sha256-vE76XJJcRDAQW1UoIO0xZLvv+p3CJ5kPySL5VHM7zX0="
+      "url": "https://registry.npmjs.org/@google/gemini-cli/-/gemini-cli-0.62.0.tgz",
+      "hash": "sha256-InYDKxwz0rgosc8ZflL0jnSwo5UyZ2P/AagNl9D7wMM="
     }
   },
   "pi-coding-agent": {
-    "version": "0.87.1",
+    "version": "0.99.1",
     "x86_64-linux": {
-      "url": "https://github.com/earendil-works/pi/releases/download/v0.87.1/pi-linux-x64.tar.gz",
-      "hash": "sha256-gNeN1i1QBJoAa5gdmUxhJVvMEOcwsMJ41OoKdVkJdkw="
+      "url": "https://github.com/earendil-works/pi/releases/download/v0.99.1/pi-linux-x64.tar.gz",
+      "hash": "sha256-yBuaNnuymF+kWiwNTxKxR6zENlVoORClq/k3/iIghCU="
     }
   },
   "chrome-devtools-mcp": {
