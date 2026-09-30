@@ -29,7 +29,7 @@
      spans the header's max-w-5xl column; a form page narrows only its
      content to max-w-2xl, flush left, so its title starts under the logo
      instead of 176px to the right of it at 1440. -->
-<main class="mx-auto max-w-5xl px-5 pt-10 pb-24">
+<main id="main" class="mx-auto max-w-5xl px-5 pt-10 pb-24">
 	<div class={width === 'form' ? 'max-w-2xl' : undefined}>
 		{#if crumbs.length}
 			<!-- The separator is a middle dot, as DESIGN-LANGUAGE.md "Page frame" says.

@@ -45,17 +45,38 @@
 		return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]} ${m[1]}` : iso;
 	}
 
+	// A heading's id, as the docs spell theirs ("Who can see your data" is
+	// who-can-see-your-data). Written here rather than imported from
+	// lib/docs, which would pull every docs page into the legal bundle.
+	function slug(text: string): string {
+		return text
+			.toLowerCase()
+			.replace(/<[^>]+>/g, '')
+			.replace(/&[a-z]+;|&#\d+;/g, '')
+			.replace(/[^a-z0-9]+/g, '-')
+			.replace(/^-|-$/g, '');
+	}
+
 	let { meta, body } = $derived(parseFrontmatter(raw));
 	// The effective date goes straight under the policy's own title, where a
 	// reader looks for it; the frontmatter held it and nothing showed it.
-	let html = $derived(
-		(marked.parse(body) as string).replace(
-			'</h1>',
-			meta.effective
-				? `</h1>\n<p class="effective">Effective ${longDate(meta.effective)}</p>`
-				: '</h1>'
-		)
-	);
+	// Each h2 gets an id, so the contents beside the text can link to it.
+	let rendered = $derived.by(() => {
+		const sections: { id: string; text: string }[] = [];
+		const html = (marked.parse(body) as string)
+			.replace(
+				'</h1>',
+				meta.effective
+					? `</h1>\n<p class="effective">Effective ${longDate(meta.effective)}</p>`
+					: '</h1>'
+			)
+			.replace(/<h2>(.*?)<\/h2>/g, (_, inner: string) => {
+				const id = slug(inner);
+				sections.push({ id, text: inner.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&') });
+				return `<h2 id="${id}">${inner}</h2>`;
+			});
+		return { html, sections };
+	});
 
 	const links = [
 		{ href: resolve('/terms'), label: 'Terms' },
@@ -86,9 +107,11 @@
      which is hard to read and easy to lose your place in. The article takes the
      docs' prose styles (.doc), so inline code is a quiet chip in the body
      weight rather than bold mono in literal backticks, and a policy reads
-     like the docs page that links to it. -->
-<main class="mx-auto max-w-5xl px-5 pt-10 pb-24">
-	<div class="max-w-[33rem]">
+     like the docs page that links to it. From lg up the policy's sections
+     are listed at the column's right edge, where a 33rem text alone left
+     450px of the 984px column empty and the page leaning left. -->
+<main id="main" class="mx-auto flex max-w-5xl gap-10 px-5 pt-10 pb-24">
+	<div class="max-w-[33rem] min-w-0 flex-1">
 		{#if meta.status}
 			<p class="banner banner--warn">Draft: {meta.status}</p>
 		{/if}
@@ -96,7 +119,26 @@
 			class="doc prose max-w-none [&_.effective]:mt-[-0.75em] [&_.effective]:text-sm [&_.effective]:text-ink-muted"
 		>
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -- `raw` only ever comes from this repo's own src/content/legal/*.md via a ?raw import, never from a user or the api -->
-			{@html html}
+			{@html rendered.html}
 		</article>
 	</div>
+	{#if rendered.sections.length > 1}
+		<!-- The docs sidebar's "On this page" list, in the same type and
+		     the same 28px rows, sticky so it stays beside a long policy. -->
+		<nav class="ml-auto hidden w-56 shrink-0 lg:block" aria-label="On this page">
+			<div class="sticky top-10 border-l border-rule pl-3">
+				<p class="text-sm font-medium text-ink">On this page</p>
+				<ul class="mt-1">
+					{#each rendered.sections as h (h.id)}
+						<li>
+							<a
+								href={`#${h.id}`}
+								class="block py-1 text-compact leading-5 text-ink-muted hover:text-ink">{h.text}</a
+							>
+						</li>
+					{/each}
+				</ul>
+			</div>
+		</nav>
+	{/if}
 </main>

@@ -30,7 +30,7 @@
 	import QuestionsCard from '$lib/components/QuestionsCard.svelte';
 	import LoadState, { loadErrorText } from '$lib/components/LoadState.svelte';
 	import RestoreNameForm from '$lib/components/RestoreNameForm.svelte';
-	import { focusAfterRender } from '$lib/focus';
+	import { focusAfterRender, focusOnMount } from '$lib/focus';
 	import type {
 		Me,
 		PaymentRequiredReason,
@@ -82,9 +82,23 @@
 		}
 	});
 
+	let resizeForm = $state<HTMLFormElement | undefined>(undefined);
+
 	function openResize() {
 		resizeTo = largerSizes[0];
 		showResize = true;
+	}
+
+	/**
+	 * Close the resize panel. Focus goes back to the Resize… button (or, when
+	 * the disk is now at the largest size, to the sentence that replaces it),
+	 * but only if it was inside the panel: a grow ends after a poll, and by
+	 * then the person may be somewhere else on the page.
+	 */
+	function closeResize() {
+		const hadFocus = !!resizeForm?.contains(document.activeElement);
+		showResize = false;
+		if (hadFocus) void focusAfterRender('resize-open', 'resize-largest');
 	}
 
 	// Restore. One snapshot at a time has a panel open under it: either the
@@ -306,17 +320,17 @@
 		opBusy = 'resize';
 		try {
 			const { op_id } = await resizeProject(id, resizeTo * GIB);
-			waitForOp(op_id, () => {
+			waitForOp(op_id, async () => {
 				opBusy = undefined;
-				showResize = false;
-				void refresh();
+				await refresh();
+				closeResize();
 			});
 		} catch (err) {
 			opBusy = undefined;
 			// disk_limit is a plan's refusal, told like a start's (api.md).
 			if (err instanceof ApiError && err.code === 'payment_required') {
 				startBanner = err.code;
-				showResize = false;
+				closeResize();
 				await explainRefusal(err);
 				return;
 			}
@@ -495,8 +509,8 @@
 		<div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
 			<div class="card min-w-0">
 				<h2 class="text-xl font-semibold">Connect</h2>
-				<code class="codeblock mt-3 block px-3 py-2 text-sm">repose run</code>
-				<code class="codeblock mt-2 block px-3 py-2 text-sm">ssh {project.slug}.repose</code>
+				<code class="codeblock mt-3 block px-3 py-2">repose run</code>
+				<code class="codeblock mt-2 block px-3 py-2">ssh {project.slug}.repose</code>
 				{#if project.remote_url}
 					<p class="mt-2 font-mono text-xs break-all text-ink-muted">
 						{normalizeRemoteDisplay(project.remote_url)}
@@ -560,21 +574,29 @@
 			<div class="card">
 				<h2 class="text-xl font-semibold">Disk</h2>
 				<p class="mt-3 text-sm tabular-nums">
-					{project.disk_used_bytes !== undefined ? gb(project.disk_used_bytes) : '—'} / {gb(
+					{project.disk_used_bytes !== undefined ? gb(project.disk_used_bytes) : '—'} of {gb(
 						project.volume_bytes
 					)}
 				</p>
 				{#if !showResize}
 					{#if largerSizes.length > 0}
-						<button type="button" class="btn-ghost mt-2 px-0" onclick={openResize}>Resize…</button>
+						<button type="button" id="resize-open" class="btn-ghost mt-2 px-0" onclick={openResize}
+							>Resize…</button
+						>
 					{:else}
-						<p class="mt-2 text-sm text-ink-muted tabular-nums">
+						<!-- tabindex=-1: after a grow to the largest size, focus comes
+						     here in place of the button that went away. -->
+						<p id="resize-largest" tabindex="-1" class="mt-2 text-sm text-ink-muted tabular-nums">
 							{SIZES_GB[SIZES_GB.length - 1]} GB is the largest size.
 						</p>
 					{/if}
 				{:else}
+					<!-- The panel takes the Resize… button's place, so the select
+					     takes its focus (DESIGN-LANGUAGE.md, "Focus follows the
+					     panel"), and Cancel gives it back. -->
 					<form
 						class="mt-3"
+						bind:this={resizeForm}
 						onsubmit={(e) => {
 							e.preventDefault();
 							void onResize();
@@ -582,7 +604,12 @@
 					>
 						<label for="resize-to" class="block text-sm text-ink-muted">Grow to</label>
 						<div class="mt-1.5 flex flex-wrap items-center gap-2">
-							<select id="resize-to" class="field tabular-nums" bind:value={resizeTo}>
+							<select
+								id="resize-to"
+								class="field tabular-nums"
+								bind:value={resizeTo}
+								use:focusOnMount
+							>
 								{#each largerSizes as s (s)}
 									<option value={s}>{s} GB</option>
 								{/each}
@@ -590,9 +617,7 @@
 							<button type="submit" class="btn" disabled={!!opBusy || resizeTo === undefined}>
 								{opBusy === 'resize' ? 'Resizing…' : 'Grow'}
 							</button>
-							<button type="button" class="btn-ghost" onclick={() => (showResize = false)}
-								>Cancel</button
-							>
+							<button type="button" class="btn-ghost" onclick={closeResize}>Cancel</button>
 						</div>
 					</form>
 				{/if}
@@ -624,7 +649,8 @@
 				{:else}
 					<ul class="mt-2">
 						{#each events.slice(0, 20) as e (e.id)}
-							<li class="row flex items-start justify-between gap-4 text-sm">
+							<!-- Baseline, so the smaller time sits on the summary's line. -->
+							<li class="row flex items-baseline justify-between gap-4 text-sm">
 								<span class="flex min-w-0 flex-wrap items-baseline gap-2">
 									{#if e.agent}<span class="badge">{e.agent}</span>{/if}
 									<span>{e.summary}</span>

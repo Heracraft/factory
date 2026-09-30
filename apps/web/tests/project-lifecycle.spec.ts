@@ -29,12 +29,12 @@ test('resize grows the volume', async ({ page }) => {
 		class: 'small'
 	});
 	await page.goto(`/projects/${p.id}`);
-	await expect(page.getByText('/ 20 GB')).toBeVisible();
+	await expect(page.getByText('of 20 GB')).toBeVisible();
 
 	await page.getByRole('button', { name: 'Resize…' }).click();
 	await page.getByRole('combobox').selectOption('40');
 	await page.getByRole('button', { name: 'Grow' }).click();
-	await expect(page.getByText('/ 40 GB')).toBeVisible({ timeout: 10_000 });
+	await expect(page.getByText('of 40 GB')).toBeVisible({ timeout: 10_000 });
 });
 
 // The select once opened blank on a value it did not offer (20 GB), and
@@ -53,14 +53,14 @@ test('resize opens on the next size up and offers only grows', async ({ page }) 
 		}
 	});
 	await page.goto(`/projects/${p.id}`);
-	await expect(page.getByText('/ 20 GB')).toBeVisible();
+	await expect(page.getByText('of 20 GB')).toBeVisible();
 
 	await page.getByRole('button', { name: 'Resize…' }).click();
 	const select = page.getByLabel('Grow to');
 	await expect(select).toHaveValue('40');
 	await expect(select.locator('option')).toHaveText(['40 GB', '80 GB', '160 GB', '320 GB']);
 	await page.getByRole('button', { name: 'Grow' }).click();
-	await expect(page.getByText('/ 40 GB')).toBeVisible({ timeout: 10_000 });
+	await expect(page.getByText('of 40 GB')).toBeVisible({ timeout: 10_000 });
 	expect(asked).toEqual([40 * 2 ** 30]);
 });
 
@@ -76,7 +76,7 @@ test('a disk at the largest size has no Grow to offer', async ({ page }) => {
 		await route.fulfill({ response: res, json: { ...json, volume_bytes: 320 * 2 ** 30 } });
 	});
 	await page.goto(`/projects/${p.id}`);
-	await expect(page.getByText('/ 320 GB')).toBeVisible();
+	await expect(page.getByText('of 320 GB')).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Resize…' })).toHaveCount(0);
 	await expect(page.getByText('320 GB is the largest size.')).toBeVisible();
 });

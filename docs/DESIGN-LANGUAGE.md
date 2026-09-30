@@ -31,11 +31,17 @@ theme toggle, no `class="dark"`, no `[data-theme]`.
 | `--ink` | zinc-900 | zinc-100 | Primary text (`text-ink`). |
 | `--ink-muted` | zinc-600 | zinc-400 | Secondary text: metadata, ledes, table heads, the inactive nav link. |
 | `--ink-faint` | `#6b6b66` | `#8f8f8a` | Tertiary text: placeholders, code comments, timestamps. |
+| `--accent` | blue-700 | blue-300 | Link text (`text-accent`: `.link`, the docs' links). |
+| `--accent-strong` | blue-900 | blue-200 | A link under the pointer (`hover:text-accent-strong`). |
+| `--selection` | blue-200 | blue-800 | The text selection's ground. |
 | `--focus` | blue-600 | blue-400 | The focus ring. |
 
 Pages use `text-ink*`, never a hand-paired `text-zinc-500
 dark:text-zinc-400`. That pairing is how the dashboard and the landing
-ended up with two different "muted" greys (I-370).
+ended up with two different "muted" greys (I-370). The accent is the same:
+a page names `--accent`, never a blue step (I-392). `app.html` writes
+`--page` and `--ink` out by hand for the first paint;
+`src/lib/app-html.test.ts` fails when the two files disagree.
 
 ## Palette
 
@@ -52,7 +58,16 @@ colour has one meaning:
 - **Emerald** is running and success, **amber** attention (a warning
   banner, a meter over its limit), **red** failure and destruction.
 
-No purple, pink, orange or other hue. A new colour needs a DECISIONS entry.
+No purple, pink, orange or other hue in anything the site draws for
+itself: text, controls, rules, state, the landing's shapes and bar. A new
+colour there needs a DECISIONS entry.
+
+One layer is exempt: a picture of a real tool on the landing (a terminal,
+Claude Code, an editor, a browser) keeps that tool's own colours, because
+it shows what you will see (`LANDING.md`, "The hero"). Claude Code's orange
+mascot, its pink `⏵⏵ bypass permissions on` line, a terminal's ANSI
+colours and an editor theme live inside those pictures and nowhere else
+(I-392).
 
 ## Contrast floor
 
@@ -97,6 +112,10 @@ page asks a third party for a font (I-371):
 
 Serif titles over a plain sans page are the identity. Each webfont has a
 metric-matched local fallback, so nothing reflows when it arrives.
+Contextual ligatures are off for the whole page
+(`font-variant-ligatures: no-contextual` on `html`): JetBrains Mono draws
+its code ligatures that way, and one of them spaced `://` apart in every
+URL (I-392).
 
 | Step | Size | Use |
 |---|---|---|
@@ -131,15 +150,18 @@ Motion is for state, and only on colour, opacity and transform.
 
 | Where | What | Duration, easing | Reduced motion |
 |---|---|---|---|
-| Buttons, links, nav | Colour on hover | 150ms, Tailwind's default ease | Stays (colour only) |
+| Buttons, links, nav | Colour on hover and press | 150ms, Tailwind's default ease | Stays (colour only) |
 | `.dot--busy` | Opacity pulse | 2s, `cubic-bezier(0.4, 0, 0.6, 1)`, looping | Still (`motion-safe`) |
 | Docs drawer | Slides in from the left | 200ms ease-out | None (`motion-reduce:transition-none`) |
 | Docs heading anchor | Fades in on hover | 150ms | Stays (opacity only) |
+| Docs "On this page" fold | Chevron turns half a turn | 150ms | None (`motion-reduce:transition-none`) |
 | Landing | Rails, ticks, the hero's bar, shapes landing, the snapshot mark, the pictures | `LANDING.md`, "Motion" | Every shape still and whole |
 
 Anything that travels, turns or loops runs only under
 `prefers-reduced-motion: no-preference`. A colour or opacity change of
-200ms or less may stay for everyone.
+200ms or less may stay for everyone. A transition names its properties:
+Tailwind's `transition-colors` includes `outline-color`, and the focus
+ring faded in with it.
 
 ## Icons
 
@@ -212,16 +234,24 @@ something you can use.
 - `.btn-quiet`: `--control-edge` border on `--surface`, for a secondary
   action that still needs a button's weight.
 - `.btn-danger`: bordered red, for an action that cannot be undone.
-- `.btn-ghost`: text only, muted until hover, for a secondary action.
-- `.btn-ghost-danger`: text only, red, for a destructive action that can
+- `.btn-ghost`: a muted word with a hairline underline in
+  `--control-edge`, which turns ink under the pointer, for a secondary
+  action. The resting underline is what says it can be pressed; grey and
+  underlined, it cannot be taken for a link, which is blue (I-392).
+- `.btn-ghost-danger`: the same in red, for a destructive action that can
   be reversed or that opens a confirmation.
 
-Visual weight tracks consequence. Sizes (I-376): the default suits a
-form; `.btn--sm` (`px-3 py-1.5`) is for rows, toolbars and header bars.
-No `!py-*` or `!px-*` overrides. A disabled `.btn`, `.btn-quiet` or
-`.btn-danger` has one look whatever its kind: a `--rule-strong` outline
-on `--surface` with `--ink-faint` text (I-391). A ghost button at the end of a row takes
-`-mr-2` (or `-mx-2`) so its word lines up with the content edge.
+Visual weight tracks consequence. Choices of equal weight (a question's
+answers) are all `.btn-quiet`, never a row of primaries. Sizes (I-376):
+the default suits a form; `.btn--sm` (`px-3 py-1.5`) is for rows, toolbars
+and header bars. No `!py-*` or `!px-*` overrides. Hover and press
+(`active:`, one step darker than hover) apply to enabled buttons only. A
+disabled `.btn`, `.btn-quiet` or `.btn-danger` has one look whatever its
+kind: a `--rule-strong` outline on `--surface` with `--ink-faint` text
+(I-391); `aria-disabled="true"` takes the same look, for a button that
+must keep focus while it waits (LoadState's Retry). A ghost button at the
+end of a row takes `-mr-2` (or `-mx-2`) so its word lines up with the
+content edge, as on secrets, config revisions and snapshots.
 
 ## Fields
 
@@ -254,8 +284,14 @@ on `--surface` with `--ink-faint` text (I-391). A ghost button at the end of a r
   `aria-label` and `tabindex=0`, so a keyboard can scroll it.
 - `Meter.svelte`: one series as a thin bar on a `--control-edge` track,
   ink fill, amber past the limit with the word "over" in the reading and
-  in `aria-valuetext`. Charts beyond a meter need a DECISIONS entry;
-  there is no chart component.
+  in `aria-valuetext`. Every limit on billing is a meter, the project
+  count included. Charts beyond a meter need a DECISIONS entry; there is
+  no chart component.
+- A reading of a share is "X of Y" ("4 GB of 20 GB"), on a meter or in a
+  card, never "X / Y".
+- `.codeblock`: a command block on a dashboard page, 13px mono on
+  `--sunken`. Its lines scroll sideways, as the docs' blocks do; a
+  wrapped install line left "| sh" alone on the last line.
 
 ## States
 
@@ -267,7 +303,10 @@ Every view that loads or acts has each of these:
   `.banner--error` (`role=alert`) with a Retry (`.btn-quiet .btn--sm`,
   "Retrying…" while it runs) that re-runs the same load. Only the first
   load goes there; a refresh that fails later keeps the content on screen
-  and raises a toast (I-385).
+  and raises a toast (I-385). A page keeps its load error until a load
+  succeeds, so the banner and its button stay through a retry and keep
+  the keyboard's focus; a breadcrumb waiting on the failed load's name
+  reads "Project", not "…".
 - **Empty**: an h2 that says so ("No projects yet") and one sentence on
   how to get something there, with the command when the CLI is the way.
 - **Disabled**: the one disabled look (see Buttons; a ghost button fades
@@ -297,9 +336,12 @@ One pattern per consequence, and never the browser's `confirm()` (I-386):
   `.btn-ghost` "Keep it".
 - **Focus follows the panel** (WCAG 2.4.3, I-391). A panel that opens in
   place of the button that asked for it takes focus: "Keep it" in a
-  two-step, the field in `ConfirmType` or `RestoreNameForm`. Cancel or
-  Keep it puts focus back on that button; a row that goes away passes it
-  to the next row's button. `lib/focus.ts` has the two helpers.
+  two-step, the field in `ConfirmType` or `RestoreNameForm`, the size
+  select of the Disk card's resize panel. Cancel or Keep it puts focus
+  back on that button; a row that goes away passes it to the next row's
+  button. A panel that closes on its own after a wait (a grow that
+  finished) gives focus back only if focus was still inside it.
+  `lib/focus.ts` has the two helpers.
 - **Leaving unsaved edits**: the SvelteKit navigation is cancelled and a
   `.banner--warn` asks in place, with Stay (focused) and Leave.
 
@@ -310,7 +352,9 @@ No modals: the inline panel keeps what is being confirmed on screen.
 A switch that swaps a panel in place without changing the URL is ARIA
 tabs: `tablist`, `tab` with `aria-selected` and a roving tabindex,
 `tabpanel` with `aria-labelledby`; arrows, Home and End move between
-tabs. The current tab looks like the header's current page: ink with a
+tabs. The keys are handled on the tabs, so the tablist needs no
+tabindex. When only the current panel is rendered, only the current tab
+carries `aria-controls`; an id that names nothing is a broken reference. The current tab looks like the header's current page: ink with a
 1px underline, no weight change, no accent (I-388). A switch that changes
 the URL is links with `aria-current`.
 
@@ -318,7 +362,8 @@ the URL is links with `aria-current`.
 
 `svelte-sonner`, `theme="system"`, bottom-right, without `richColors`
 (I-374). From 600px up the toast's right edge is the content column's,
-not the window's; on a phone sonner spans the width. A toast is a banner of its kind: `--surface` and `--ink` for
+not the window's; on a phone it spans the page's 20px gutters
+(`mobileOffset`), so its edges are the column's. A toast is a banner of its kind: `--surface` and `--ink` for
 neutral, the `.banner--ok`, `--error` and `--warn` colours for typed
 ones, 2px corner, a hairline, no shadow. Toasts report the result of
 something the user did, and a failed refresh. A failure that leaves the
@@ -333,6 +378,14 @@ Retrying…" when a request got no answer, "The API is failing right now.
 Retrying…" on a 5xx. A 503 the api gives as an answer
 (`billing_disabled`, `waitlisted`) is not an outage and raises no bar
 (I-390).
+
+## Keyboard
+
+The first tab stop on every page is "Skip to content" (`routes/+layout.svelte`),
+hidden until focused, which moves focus to the page's `<main>` (WCAG
+2.4.1). `<main>` carries `id="main"` and draws no ring when the link
+focuses it. `tests/design.spec.ts` drives it, the resize panel's focus,
+Retry, forced colours and reduced motion (I-392).
 
 ## Forced colours
 
@@ -371,16 +424,26 @@ They use the Foundation and the shared header. Prose is `.doc` in
 `layout.css`: the site's palette over `@tailwindcss/typography`, with the
 plugin's `--tw-prose-*` colours mapped to the ink and rule tokens and no
 `prose-zinc` or `prose-invert`, whose cool greys and white headings are
-off the palette. Every heading is 600, as on the dashboard. Inline code is
-a quiet chip at body weight with no backticks; a span with no space in it
-(a command, a flag, a path) never breaks across lines, and a command
-used as a heading is the heading's own mono text, not a chip. Links are in
+off the palette. Every heading is 600, as on the dashboard, and the h1 is
+the dashboard's `text-3xl` at every width. Inline code is a quiet chip at
+body weight with no backticks; a span with no space in it (a command, a
+flag, a path) of 30 characters or fewer never breaks across lines, and a
+longer one (a URL) wraps, so no chip pushes a phone's page sideways
+(`docs.test.ts` holds the limit). A command used as a heading is the
+heading's own mono text, not a chip. Shell blocks are ink with muted
+prompts and output, and no token hue: in the docs blue is a link (I-388).
+The copy button is 28px tall and says "Copied" to a screen reader through
+a live region as well as on its face. Links are in
 the accent; h2 sections are separated by a rule. The sidebar's "On this
 page" links are at least 28px tall, over the 24px target size (I-391). Running text holds to 33rem;
 the docs column is 68ch so code blocks and tables get the full 70 columns
 I-345 writes to (I-382). The docs list the current page's sections under
 its link in the sidebar from `lg` up and in an "On this page" fold below
-(I-383). Legal pages show their effective date under the title.
+(I-383). The prose's 33rem and the column's 68ch are two measures on
+purpose, so the right edge of a paragraph and of a code block differ by
+design. Legal pages show their effective date under the title and, from
+`lg` up, list their sections in an "On this page" column at the right
+edge of the 5xl column, in the docs sidebar's type and 28px rows (I-392).
 
 # The landing's exception
 

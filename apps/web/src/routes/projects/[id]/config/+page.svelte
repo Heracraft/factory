@@ -243,7 +243,12 @@
 	title="Config"
 	crumbs={[
 		{ label: 'Projects', href: resolve('/projects') },
-		{ label: project?.name ?? '…', href: resolve('/projects/[id]', { id }) }
+		// "…" while the name loads; after a failed load there is no name
+		// coming, so the crumb says what it links to.
+		{
+			label: project?.name ?? (loadFailed ? 'Project' : '…'),
+			href: resolve('/projects/[id]', { id })
+		}
 	]}
 >
 	<LoadState
@@ -255,12 +260,15 @@
 			<!-- The current tab is marked the way the header marks the current
 		     page: ink with a 1px underline, no accent colour and no change of
 		     weight (DESIGN-LANGUAGE.md). -->
+			<!-- The keys are handled on each tab, not on the tablist, so the
+			     list itself needs no tabindex and a click on its empty space
+			     does not focus it. Only the current tab names a panel in
+			     aria-controls: the other panel is not in the DOM, and an id
+			     that points at nothing is a broken reference. -->
 			<div
 				class="flex gap-6 border-b border-rule text-sm"
 				role="tablist"
 				aria-label="Config editor"
-				tabindex="-1"
-				onkeydown={onTabKey}
 			>
 				{#each TABS as [tab, name] (tab)}
 					<button
@@ -268,9 +276,10 @@
 						role="tab"
 						id="config-tab-{tab}"
 						aria-selected={activeTab === tab}
-						aria-controls="config-panel-{tab}"
+						aria-controls={activeTab === tab ? `config-panel-${tab}` : undefined}
 						tabindex={activeTab === tab ? 0 : -1}
 						bind:this={tabButtons[tab]}
+						onkeydown={onTabKey}
 						class="-mb-px cursor-pointer border-b py-2 {activeTab === tab
 							? 'border-current text-ink'
 							: 'border-transparent text-ink-muted hover:text-ink'}"
@@ -310,8 +319,11 @@
 											<span class="block text-sm font-medium">{item.label}</span>
 											<span class="block text-sm text-ink-muted">{item.description}</span>
 											{#if item.options?.length && isSelected(item)}
+												<!-- Inside the row's label, whose control is the
+												     checkbox, so the select is named on its own. -->
 												<select
 													class="field mt-2 w-48"
+													aria-label={`${item.label} ${item.options[0].id}`}
 													value={menuOptions[item.id] ?? item.options[0].default}
 													onchange={(e) => (menuOptions[item.id] = e.currentTarget.value)}
 												>
@@ -340,7 +352,7 @@
 									     back before Apply: the reversible-destructive style. -->
 										<button
 											type="button"
-											class="btn-ghost-danger"
+											class="btn-ghost-danger -mr-2"
 											aria-label={`Remove ${pkg}`}
 											onclick={() => (extraPackages = extraPackages.filter((p) => p !== pkg))}
 											>Remove</button
@@ -425,7 +437,7 @@
 								{#if rev.status !== 'building'}
 									<button
 										type="button"
-										class="btn-ghost"
+										class="btn-ghost -mr-2"
 										disabled={applying}
 										onclick={() => reapply(rev)}
 										>{reapplying === rev.revision_id ? 'Re-applying…' : 'Re-apply'}</button

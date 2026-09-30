@@ -111,14 +111,28 @@ will replace it").
 
 ### 5.5 Errors
 
-Every API error renders as a toast with `message`; `payment_required` on
-Start (and on a resize) renders an inline banner with the api's sentence,
-a link to `/billing` named for `detail.reason` (§5.8), and for
-`plan_limit` a Stop for each machine `detail.projects` names that is this
-user's; `capacity` renders
-"No capacity right now, try again in a few minutes"; `rate_limited` waits and
-retries once. Network failures show a persistent "Cannot reach the API" bar
-until a poll succeeds.
+One failure is said once, in the words `errorText` (`lib/api/errors.ts`)
+gives it: the api's `message`, except for `internal`, whose bare "internal
+error" becomes the caller's sentence plus "The API failed on its side; try
+again shortly." (I-390). Where it is said depends on what the page still
+has:
+
+- A page's first load that fails leaves nothing to show, so the page shows
+  that sentence in a `.banner--error` with a Retry (`LoadState.svelte`,
+  I-385) instead of a toast. Retry re-runs the same load and reads
+  "Retrying…" while it does.
+- A later refresh that fails, and any action that fails, keeps the page
+  as it is and raises a toast with the sentence.
+- `payment_required` on Start (and on a resize) renders an inline banner
+  with the api's sentence, a link to `/billing` named for `detail.reason`
+  (§5.8), and for `plan_limit` a Stop for each machine `detail.projects`
+  names that is this user's; `capacity` renders "No capacity right now, try
+  again in a few minutes"; `rate_limited` waits and retries once.
+
+A request that gets no answer raises a persistent bar, "Cannot reach the
+API. Retrying…"; a 5xx raises it as "The API is failing right now.
+Retrying…". The 503s the api gives as answers (`billing_disabled`,
+`waitlisted`) raise no bar. Any other answer clears it (§6, I-390).
 
 ### 5.6 Deploy
 

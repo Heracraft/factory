@@ -157,6 +157,13 @@ function headingText(html: string): string {
 		.replace(/&amp;/g, '&');
 }
 
+/**
+ * The longest inline code span kept on one line. 30 characters of 14px
+ * JetBrains Mono, with the chip's padding, is 262px: it fits the 320px
+ * column at 360 wide even inside a nested list.
+ */
+export const NOBREAK_MAX = 30;
+
 function render(body: string): { html: string; headings: DocHeading[] } {
 	const headings: DocHeading[] = [];
 	const seen = new Map<string, number>();
@@ -181,11 +188,13 @@ function render(body: string): { html: string; headings: DocHeading[] } {
 				if (!(lang in PARSERS) && lang !== 'text') return false;
 				return codeBlock(lang, token.text);
 			},
-			// A span with no space in it is a command, a flag or a path, and
-			// .doc code.nobreak keeps it on one line; one with spaces (a
-			// quoted message) wraps as prose does.
+			// A short span with no space in it is a command, a flag or a
+			// path, and .doc code.nobreak keeps it on one line; one with
+			// spaces (a quoted message) wraps as prose does. So does a span
+			// longer than NOBREAK_MAX: kept whole, a 44-character ntfy URL
+			// ran 54px past the column at 390 and scrolled the page sideways.
 			codespan(token: Tokens.Codespan) {
-				if (/\s/.test(token.text)) return false;
+				if (/\s/.test(token.text) || token.text.length > NOBREAK_MAX) return false;
 				return `<code class="nobreak">${escapeHTML(token.text)}</code>`;
 			},
 			blockquote(

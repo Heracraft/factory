@@ -17,6 +17,8 @@ never text typed by hand (`docs/LANDING.md`). To take one:
 The hero is no longer a recording: it is anime.js panels (commit `21ff5be`).
 The rest of `ops/dev/hero/` (`rec.py`, `schedule.py`, `typeit.py`,
 `rshell.sh`, `hold.mjs`, and `convert.py` as a whole) recorded the old tmux
-playback for `illustrations/Session.svelte` and its `session.json`, which
-are kept but no longer on the page. Their paths point at the scratch
-directory of that first recording.
+playback for `illustrations/Session.svelte` and its `session.json`. Nothing
+imported that player after the hero changed, and it was deleted with its
+data (DECISIONS I-378, I-392); `git show 21ff5be:apps/web/src/lib/components/illustrations/Session.svelte`
+brings it back. The scripts' paths point at the scratch directory of that
+first recording.

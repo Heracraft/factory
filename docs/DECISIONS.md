@@ -9803,3 +9803,71 @@ left these, found by the verify round and the a11y gate:
 *Rejected:* focusing the danger button of a two-step when it opens
 (Enter would then delete); moving the toast to the top on a phone (it
 would cover the header's links instead of the page's last button).
+
+**I-392. Design repair round 2: ghost buttons show they can be pressed,
+one accent token, pictures keep their tools' colours, and the keyboard
+path is tested.** (design critique repair, 2026-09-30; amends I-374,
+I-376, I-382, I-384) What the second verify round found, and what was
+settled fixing it:
+- Palette layers. DESIGN-LANGUAGE.md allowed no orange or pink anywhere,
+  while LANDING.md prescribes Claude Code's orange mascot and its pink
+  bypass line inside the hero. Both are right about different things. The
+  no-new-hue rule covers what the site draws for itself (text, controls,
+  rules, state, the landing's shapes and bar); a picture of a real tool
+  keeps that tool's colours inside its frame, since it shows what the
+  visitor will see.
+- One accent token. `--accent` (link text), `--accent-strong` (a link
+  under the pointer) and `--selection` join `--focus` on `:root`, with
+  `text-accent` utilities, so no page picks a blue step.
+  `src/lib/app-html.test.ts` holds `app.html`'s first-paint colours equal
+  to `--page` and `--ink`.
+- Ghost buttons. A muted word with no resting mark read as plain text
+  ("Resize…", "Create", "Send test"). It now carries a hairline underline
+  in `--control-edge` that turns to the text colour under the pointer;
+  grey and underlined, it is still distinct from a blue link. Hover and a
+  new pressed state (`active:`, one step past hover) apply to enabled
+  buttons only. Transitions name their properties, because
+  `transition-colors` animated the focus ring in. Choices of equal weight
+  (a question's answers) are `.btn-quiet`, not a row of `.btn`.
+- Retry keeps focus. A page clears its load error only on a load that
+  worked, and LoadState marks Retry `aria-disabled` while it runs rather
+  than `disabled`, since a button that turns disabled drops focus to
+  `<body>`. `aria-disabled` takes the one disabled look.
+- The Disk card's resize panel follows I-391's focus rule: the select
+  takes focus, Cancel gives it back to "Resize…", and a grow that ends
+  after a poll returns focus only if it was still in the panel.
+- Skip link. "Skip to content" is every page's first tab stop, drawn after
+  mount and focusing whichever `<main>` is on screen. The landing's
+  `<main>` is in a file this round could not edit, so the prerender
+  rejected a `#main` link there and Lighthouse's skip-link audit failed
+  it; the root layout gives that `<main>` its id after each navigation.
+- Ligatures. JetBrains Mono's contextual alternates spaced `://` apart;
+  `font-variant-ligatures: no-contextual` is set on `html`, since the
+  landing's pictures set the mono in their own styles.
+- Docs. Only inline code of 30 characters or fewer stays on one line (the
+  44-character ntfy URL scrolled /docs/notifications sideways at 390);
+  longer spans wrap, `docs.test.ts` holds the limit. The docs h1 is the
+  dashboard's `text-3xl` at every width. The copy button is 28px tall and
+  its "Copied" is also said in a live region. The "On this page" chevron
+  does not turn under reduced motion.
+- Legal pages list their sections at the column's right edge from `lg`
+  up. A 33rem policy alone left 450px of the 984px column empty. The text
+  stays flush left under the logo as I-380 has it.
+- Rows and readings. Row-end ghost buttons on secrets and config take
+  `-mr-2`, like the snapshots row. The Disk card reads "X of Y", like
+  billing. The Projects limit on billing is a meter like the other
+  three. Event times sit on the summary's baseline. `.codeblock` lines
+  scroll rather than wrap. Toasts on a phone span the 20px gutters.
+- ARIA tabs on the config page: the keys are handled on the tabs, so the
+  tablist has no tabindex, and only the current tab carries
+  `aria-controls`. The menu's version select has its own `aria-label`.
+- `illustrations/Session.svelte` and `session.json` had no importer and
+  are deleted (I-378); `ops/dev/record-hero.md` says how to get them back.
+- `ops/dev/decisions-index.py` read only the first id after "amends", so
+  I-391's list marked I-370 alone; it now reads a whole list.
+`tests/design.spec.ts` drives the skip link, the resize panel's focus,
+Retry, forced colours, reduced motion, the phone width of five docs pages
+and the ligature setting. *Kept:* the dashboard header's mark without the
+word below `sm` (I-381, I-391); the docs' shell blocks without token
+colour (I-388); the outage bar alongside a page's own banner (I-390); the
+toast at the bottom on a phone (I-391).

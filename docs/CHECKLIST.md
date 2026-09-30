@@ -82,8 +82,9 @@ DECISIONS entry and this list with it. Counts as of 2026-09-30.
 - [ ] Blue is only the palette, links, focus and selection, all in
       `layout.css`. Evidence: `rg -n 'blue-[0-9]' apps/web/src "${L[@]}"
       --glob '!**/routes/layout.css'` prints 0 lines (`layout.css` itself
-      has 18: eleven palette steps, `--sh-accent` twice, `--focus` twice,
-      selection, `.link` and the docs' links).
+      has 21: eleven palette steps, then `--sh-accent`, `--accent`,
+      `--accent-strong`, `--selection` and `--focus` twice each, once per
+      scheme; `.link` and the docs' links use `text-accent`, I-392).
 - [ ] No shadows, and no gradient of more than one colour. Evidence: `rg
       -n 'shadow-|box-shadow: [^n]' apps/web/src "${L[@]}"` prints 0
       lines; `rg -nP 'gradient\((?!(var\([^)]*\)|#[0-9a-fA-F]+|currentColor),
@@ -105,7 +106,7 @@ DECISIONS entry and this list with it. Counts as of 2026-09-30.
       "${L[@]}"` prints 0 lines (use `text-ink-muted`, `border-rule` and
       the other token utilities).
 - [ ] Corners stay at 4px or less, weight stays at semibold, and no
-      stray hue. Evidence: `rg -n 'rounded-(md|lg|xl|2xl|3xl|full)\b|font-bold'
+      stray hue. Evidence: `rg -n 'rounded-(md|lg|xl|2xl|3xl|full)\b|font-bold|<b>|<strong'
       apps/web/src --glob '*.svelte' "${L[@]}"` and `rg -n
       'purple|violet|fuchsia|pink-|orange-|indigo|teal|cyan|lime-'
       apps/web/src --glob '*.{svelte,css}' "${L[@]}"` each print 0 lines.
@@ -117,6 +118,10 @@ DECISIONS entry and this list with it. Counts as of 2026-09-30.
 - [ ] A new component that shows state in a fill or a coloured border has
       a rule in the `forced-colors` block of `layout.css`. Evidence: a
       capture with Chromium's `forcedColors: 'active'`.
+- [ ] The keyboard path, forced colours, reduced motion and the phone
+      column hold. Evidence: `pnpm build`, then `pnpm test:integration
+      tests/design.spec.ts` passes; a panel that opens in place of a
+      button adds its focus check there (I-392).
 - [ ] The accessibility gate passes: `pnpm build`, then `pnpm a11y` in
       `apps/web`, 52 runs (13 pages, light and dark, 1440 and 390), with
       `KNOWN_FAILURES` empty or each entry carrying a reason (DECISIONS

@@ -128,6 +128,8 @@
 	--color-sunken: var(--sunken);
 	--color-rule: var(--rule);
 	--color-rule-strong: var(--rule-strong);
+	--color-accent: var(--accent);
+	--color-accent-strong: var(--accent-strong);
 }
 
 /*
@@ -309,7 +311,13 @@
 		   (WCAG 1.4.11); --rule-strong, at 1.6:1, is for rules and badges,
 		   which nobody has to find to use. */
 		--control-edge: #888883;
-		/* The focus ring's colour, one place for both schemes. */
+		/* The accent, named once for each use so no page picks its own
+		   blue step: link text (7:1 on --page), a link under the pointer,
+		   the text selection, and the focus ring, which needs only 3:1 as
+		   an edge and so sits a step lighter than link text. */
+		--accent: var(--color-blue-700);
+		--accent-strong: var(--color-blue-900);
+		--selection: var(--color-blue-200);
 		--focus: var(--color-blue-600);
 	}
 	@media (prefers-color-scheme: dark) {
@@ -326,6 +334,9 @@
 			--ink-muted: var(--color-zinc-400);
 			--ink-faint: #8f8f8a;
 			--control-edge: #6e6e6a;
+			--accent: var(--color-blue-300);
+			--accent-strong: var(--color-blue-200);
+			--selection: var(--color-blue-800);
 			--focus: var(--color-blue-400);
 			--page: #111110;
 			--surface: #161615;
@@ -333,6 +344,14 @@
 			--rule: #2a2a28;
 			--rule-strong: #3b3b38;
 		}
+	}
+	/* JetBrains Mono draws its programming ligatures as contextual
+	   alternates, and one of them spaces "://" apart, so an install URL
+	   read "https: //". Off for the whole page, not per element, because
+	   the landing's pictures set the mono in their own stylesheets; the
+	   system sans and Noto Serif lose nothing a reader would see. */
+	html {
+		font-variant-ligatures: no-contextual;
 	}
 	body {
 		@apply min-h-dvh text-ink antialiased;
@@ -345,7 +364,7 @@
 		visibility: hidden;
 	}
 	::selection {
-		@apply bg-blue-200 dark:bg-blue-800;
+		background-color: var(--selection);
 	}
 	h1,
 	h2,
@@ -397,6 +416,22 @@
 		}
 	}
 
+	/* The skip link (routes/+layout.svelte): off screen until a keyboard
+	   reaches it, then a quiet button in the top-left corner, over the
+	   header. The page's <main> takes focus from it with tabindex=-1 and
+	   draws no ring of its own: the ring would frame the whole page. */
+	.skip-link {
+		@apply sr-only;
+	}
+	.skip-link:focus {
+		@apply not-sr-only fixed top-2 left-5 z-50 rounded-sm border px-3 py-1.5 text-sm font-medium text-ink;
+		border-color: var(--control-edge);
+		background-color: var(--surface);
+	}
+	main[tabindex='-1']:focus {
+		outline: none;
+	}
+
 	/* Inputs */
 	.field {
 		@apply rounded-sm border px-3 py-2 text-sm text-ink placeholder:text-ink-faint;
@@ -436,28 +471,55 @@
 		@apply mt-0 border-t-0 pt-0;
 	}
 
-	/* Buttons: rectangular, flat. */
+	/* Buttons: rectangular, flat. The transition names its properties:
+	   Tailwind's transition-colors includes outline-color, so the focus
+	   ring faded in from the button's own colour instead of appearing. A
+	   press darkens the fill one step past hover (active:), so a click or
+	   a tap shows it landed; both are for enabled buttons only. */
 	.btn,
 	.btn-quiet,
 	.btn-danger {
-		@apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-sm border px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+		@apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-sm border px-4 py-2 text-sm font-medium whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50;
+		transition-property: color, background-color, border-color, text-decoration-color;
+		transition-duration: 150ms;
+		transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 	}
 	.btn {
-		@apply border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-700 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300;
+		@apply border-zinc-900 bg-zinc-900 text-white enabled:hover:bg-zinc-700 enabled:active:bg-zinc-600 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900 dark:enabled:hover:bg-zinc-300 dark:enabled:active:bg-zinc-400;
 	}
 	.btn-quiet {
-		@apply text-zinc-800 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800;
+		@apply text-zinc-800 enabled:hover:bg-zinc-100 enabled:active:bg-zinc-200 dark:text-zinc-200 dark:enabled:hover:bg-zinc-800 dark:enabled:active:bg-zinc-700;
 		border-color: var(--control-edge);
 		background-color: var(--surface);
 	}
 	.btn-danger {
-		@apply border-red-600 text-red-700 hover:bg-red-50 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-950;
+		@apply border-red-600 text-red-700 enabled:hover:bg-red-50 enabled:active:bg-red-100 dark:border-red-400 dark:text-red-400 dark:enabled:hover:bg-red-950 dark:enabled:active:bg-red-900;
+	}
+	/* Ghost buttons are words, but a word that does something shows it at
+	   rest: a hairline underline in the control edge's grey (3:1, like any
+	   control's edge), which turns to the text's own colour under the
+	   pointer. Grey and underlined, a ghost button cannot be mistaken for
+	   a link, which is blue. The danger kind's underline is its own red at
+	   45%, so the word and its mark stay one colour. Hover and press apply
+	   only while enabled, so a disabled one does not answer the pointer. */
+	.btn-ghost,
+	.btn-ghost-danger {
+		@apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-sm underline decoration-1 underline-offset-4 disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50;
+		text-decoration-color: var(--control-edge);
+		transition-property: color, text-decoration-color;
+		transition-duration: 150ms;
+		transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+	}
+	.btn-ghost:enabled:is(:hover, :active),
+	.btn-ghost-danger:enabled:is(:hover, :active) {
+		text-decoration-color: currentColor;
 	}
 	.btn-ghost {
-		@apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-sm text-ink-muted underline-offset-4 hover:text-ink hover:underline disabled:cursor-not-allowed disabled:opacity-50;
+		@apply text-ink-muted enabled:hover:text-ink enabled:active:text-ink;
 	}
 	.btn-ghost-danger {
-		@apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-sm text-red-700 underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400;
+		@apply text-red-700 dark:text-red-400;
+		text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
 	}
 	/* Sizes. The default suits a form; a row, a toolbar or a header bar
 	   takes the compact one. Pages use it instead of !py-* overrides, so one
@@ -473,9 +535,9 @@
 	   the same way on both, and the faint text still reads at 4.5:1 even
 	   though WCAG exempts disabled controls. After the kinds' own rules, so
 	   their hover fills do not come back on a disabled button. */
-	:is(.btn, .btn-quiet, .btn-danger):disabled,
-	:is(.btn, .btn-quiet, .btn-danger):disabled:hover {
-		@apply opacity-100;
+	:is(.btn, .btn-quiet, .btn-danger):is(:disabled, [aria-disabled='true']),
+	:is(.btn, .btn-quiet, .btn-danger):is(:disabled, [aria-disabled='true']):is(:hover, :active) {
+		@apply cursor-not-allowed opacity-100;
 		color: var(--ink-faint);
 		background-color: var(--surface);
 		border-color: var(--rule-strong);
@@ -531,8 +593,12 @@
 		@apply rounded-sm border p-5;
 		border-color: var(--rule);
 	}
+	/* A command block on a dashboard page. Its lines scroll sideways, as in
+	   a terminal and as the docs' blocks do (I-345), rather than wrap: the
+	   install line wrapped with "| sh" alone on the last line, which reads
+	   as a second command. */
 	.codeblock {
-		@apply overflow-x-auto rounded-sm border p-3 font-mono leading-relaxed whitespace-pre-wrap text-zinc-800 dark:text-zinc-200;
+		@apply overflow-x-auto rounded-sm border p-3 font-mono leading-relaxed whitespace-pre text-zinc-800 dark:text-zinc-200;
 		font-size: var(--text-compact);
 		background-color: var(--sunken);
 		border-color: var(--rule);
@@ -554,7 +620,7 @@
 	}
 
 	.link {
-		@apply cursor-pointer text-blue-700 underline decoration-1 underline-offset-2 hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-200;
+		@apply cursor-pointer text-accent underline decoration-1 underline-offset-2 hover:text-accent-strong;
 	}
 	kbd,
 	.kbd {
@@ -682,20 +748,25 @@
 	@apply opacity-100;
 }
 .doc a:not(.anchor) {
-	@apply text-blue-700 decoration-1 underline-offset-2 dark:text-blue-300;
+	@apply text-accent decoration-1 underline-offset-2 hover:text-accent-strong;
 }
 .doc :not(pre) > code {
 	@apply rounded-xs px-1 py-px font-normal text-zinc-800 before:content-none after:content-none dark:text-zinc-200;
 	background-color: var(--sunken);
 	font-size: 0.88em;
 }
-/* A command, flag or path (inline code with no space in it; lib/docs.ts
-   marks it) never breaks across lines: a line that ended at "--" left the
-   flag's name at the start of the next. The longest such span in the docs
-   is 44 characters, which fits the column at 390. Code with spaces, an
-   error message quoted whole, wraps as prose does. */
+/* A command, flag or path (inline code with no space in it, 30 characters
+   or fewer; lib/docs.ts marks it) never breaks across lines: a line that
+   ended at "--" left the flag's name at the start of the next. 30
+   characters fit the column at 360, and docs.test.ts holds the limit. Code
+   with spaces, an error message quoted whole, wraps as prose does, and so
+   does a longer span such as a URL, at its slashes or, if it has none,
+   anywhere, so no chip pushes the page wider than the phone. */
 .doc code.nobreak {
 	@apply whitespace-nowrap;
+}
+.doc :not(pre) > code:not(.nobreak) {
+	overflow-wrap: anywhere;
 }
 /* A command as a heading (### `repose run [PROMPT]` in cli.md) is the
    heading's own text in mono, not a code chip inside it. */
@@ -747,8 +818,9 @@
 		@apply pt-10;
 	}
 }
+/* 28px tall, over the 24px target size: at py-0.5 it was 22px. */
 .doc .code .copy {
-	@apply absolute top-2 right-2 rounded-xs border px-2 py-0.5 text-xs text-ink-muted hover:text-ink;
+	@apply absolute top-2 right-2 inline-flex h-7 cursor-pointer items-center rounded-xs border px-2 text-xs text-ink-muted hover:text-ink;
 	background-color: var(--page);
 	border-color: var(--control-edge);
 }
@@ -925,9 +997,7 @@
 	.btn {
 		border-color: ButtonText;
 	}
-	.btn:disabled,
-	.btn-quiet:disabled,
-	.btn-danger:disabled {
+	:is(.btn, .btn-quiet, .btn-danger):is(:disabled, [aria-disabled='true']) {
 		border-color: GrayText;
 		color: GrayText;
 	}

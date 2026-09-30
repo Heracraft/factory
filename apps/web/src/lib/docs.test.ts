@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	DOCS,
+	NOBREAK_MAX,
 	SECTIONS,
 	docBySlug,
 	highlightNix,
@@ -149,6 +150,25 @@ describe('user docs', () => {
 		}
 		expect(blocks).toBeGreaterThan(100);
 		expect(long).toEqual([]);
+	});
+
+	// A span that never breaks is only safe while it fits a phone's
+	// column; a longer one must be allowed to wrap, or the page scrolls
+	// sideways (a 44-character URL on notifications did).
+	it('keeps only short inline code spans on one line', () => {
+		const long: string[] = [];
+		let kept = 0;
+		for (const d of DOCS) {
+			for (const [, text] of d.html.matchAll(/<code class="nobreak">([^<]*)<\/code>/g)) {
+				kept++;
+				if (text.length > NOBREAK_MAX) long.push(`${d.slug}: ${text}`);
+			}
+		}
+		expect(kept).toBeGreaterThan(100);
+		expect(long).toEqual([]);
+		expect(docBySlug('notifications')!.html).toContain(
+			'<code>https://user:password@ntfy.example.com/topic</code>'
+		);
 	});
 
 	it('scrolls a code block instead of wrapping it', () => {

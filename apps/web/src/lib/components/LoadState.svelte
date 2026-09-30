@@ -43,6 +43,7 @@
 	let retrying = $state(false);
 
 	async function retry() {
+		if (retrying) return;
 		retrying = true;
 		try {
 			await onretry();
@@ -61,8 +62,15 @@
 		<p>
 			{error ?? 'This page could not be loaded.'}
 		</p>
-		<button type="button" class="btn-quiet btn--sm" disabled={retrying} onclick={retry}
-			>{retrying ? 'Retrying…' : 'Retry'}</button
+		<!-- aria-disabled rather than disabled while the retry runs: a
+		     disabled button loses focus (the browser moves it to <body>), and
+		     the person who pressed Retry with the keyboard would start over
+		     from the top of the page. It looks disabled and ignores presses. -->
+		<button
+			type="button"
+			class="btn-quiet btn--sm"
+			aria-disabled={retrying ? 'true' : undefined}
+			onclick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button
 		>
 	</div>
 {:else}

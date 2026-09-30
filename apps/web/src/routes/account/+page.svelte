@@ -13,10 +13,13 @@
 	let deleting = $state(false);
 	let loadError = $state<string | undefined>(undefined);
 
+	// loadError is cleared only by a load that worked: cleared first, it
+	// flipped LoadState back to "Loading…" mid-retry, which unmounted the
+	// Retry button under the click and dropped focus to <body>.
 	async function load() {
-		loadError = undefined;
 		try {
 			me = await getMe();
+			loadError = undefined;
 		} catch (err) {
 			loadError = loadErrorText(err, 'Could not load your account.');
 		}
@@ -65,11 +68,7 @@
 				</div>
 			</dl>
 
-			<button
-				type="button"
-				class="mt-4 cursor-pointer text-sm text-ink-muted underline-offset-4 hover:text-ink hover:underline"
-				onclick={() => signOut()}>Sign out</button
-			>
+			<button type="button" class="btn-ghost mt-4 -ml-2" onclick={() => signOut()}>Sign out</button>
 
 			<div class="form-section">
 				<h2 class="text-xl font-semibold text-red-700 dark:text-red-400">Delete account</h2>

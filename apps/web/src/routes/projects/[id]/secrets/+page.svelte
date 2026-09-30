@@ -129,7 +129,12 @@
 	width="form"
 	crumbs={[
 		{ label: 'Projects', href: resolve('/projects') },
-		{ label: project?.name ?? '…', href: resolve('/projects/[id]', { id }) }
+		// "…" while the name loads; after a failed load there is no name
+		// coming, so the crumb says what it links to.
+		{
+			label: project?.name ?? (loadFailed ? 'Project' : '…'),
+			href: resolve('/projects/[id]', { id })
+		}
 	]}
 >
 	<LoadState
@@ -152,7 +157,7 @@
 								<button
 									type="button"
 									id={`delete-${s.name}`}
-									class="btn-ghost-danger"
+									class="btn-ghost-danger -mr-2"
 									aria-label={`Delete ${s.name}`}
 									onclick={() => (confirming = s.name)}>Delete</button
 								>

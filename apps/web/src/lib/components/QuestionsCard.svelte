@@ -91,10 +91,13 @@
 					</p>
 					<div class="mt-2 flex flex-wrap items-center gap-2">
 						{#if q.options.length > 0}
+							<!-- The options are equals, so none is the primary: a row
+							     of solid buttons broke "one .btn per view" and gave
+							     every answer the weight of the page's main action. -->
 							{#each q.options as o (o)}
 								<button
 									type="button"
-									class="btn btn--sm"
+									class="btn-quiet btn--sm"
 									disabled={busy === q.id}
 									onclick={() => act(q, o)}>{o}</button
 								>

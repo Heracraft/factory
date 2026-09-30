@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-425 entries.
+426 entries.
 
 ## Scope
 
@@ -368,7 +368,7 @@ pointer, not a summary.
 - **I-287** The landing has a design system of its own, drawn from its pictures — 2026-09-27; amended by I-369; L7519
 - **I-288** Every landing shape names a feature and appears where the feature is; the footer collects them; the logo is an r-mark — 2026-09-27; L7544
 - **I-289** Monthly plans through Paddle: Solo and Pro buy memory that may run at once, disk and egress; a week free with a card; no hourly meter — 2026-09-27; amended by I-362; L7566
-- **I-290** Seats: the waitlist gates checkout, not the first project; a seat is 8 GB running at once; invitations hold a seat 72 hours — 2026-09-27; L7644
+- **I-290** Seats: the waitlist gates checkout, not the first project; a seat is 8 GB running at once; invitations hold a seat 72 hours — 2026-09-27; amended by I-362; L7644
 - **I-291** Every email is HTML with a plain-text twin, from one template, and the account emails exist — 2026-09-27; L7683
 - **I-293** How the plans landed in the code: repose_api_ metric names, the limits an exempt account keeps, stops counted, once-only emails derived from the events table, and a subscriptions-only seat count until I-290 merges — 2026-09-27; L7709
 - **I-294** Seats and emails, the choices the spec left open: one account-event helper, the sentence, a re-queue on a new checkout, no `!` in an email — 2026-09-27; L7766
@@ -407,7 +407,7 @@ pointer, not a summary.
 - **I-299** A first sign-in with no GitHub identity takes its handle from the email address, the part before the `@` and before any `+tag`; `user-<sub>` is left for an address with nothing usable there — 2026-09-28; L8570
 - **I-340** repose and the recruiting app (Job Alerts) share the Logto tenant at `accounts.herakraft.co`; everything a person sees there names the app they came from, and the setup lives in `ops/logto/` — 2026-09-28; L8593
 - **I-344** The docs sidebar is a drawer below `lg` that keeps its state, and the docs are prerendered; the docs stay in-house — 2026-09-28; amended by I-383; L8639
-- **I-345** Docs code blocks scroll; the docs are written to fit the column — 2026-09-28; amended by I-382; L8676
+- **I-345** Docs code blocks scroll; the docs are written to fit the column — 2026-09-28; amended by I-382; amended by I-383; L8676
 - **I-341** On macOS, Cmd+V with an image on the clipboard pastes it, by a watcher that gives an image-only clipboard the path of a copy — 2026-09-28; L8704
 - **I-342** `--worktree` names are `<slug>-worktree-<N>` on branch `worktree-<N>`, numbered apart from the window — 2026-09-28; L8746
 - **I-343** A `--worktree` gets the checkout's gitignored `.env` files — 2026-09-28; L8771
@@ -439,17 +439,17 @@ pointer, not a summary.
 - **I-371** The fonts are self-hosted, and JetBrains Mono is the one monospace — 2026-09-30; L9470
 - **I-372** A focused field shows the house focus ring — 2026-09-30; L9489
 - **I-373** State dots: busy is ink, stopped is hollow, and running and error differ in lightness — 2026-09-30; L9500
-- **I-374** Toasts and docs code highlighting take the house colours — 2026-09-30; L9518
+- **I-374** Toasts and docs code highlighting take the house colours — 2026-09-30; amended by I-392; L9518
 - **I-375** A type scale with two named small steps and one size per heading level — 2026-09-30; L9533
-- **I-376** Buttons come in two sizes: `.btn--sm` and the default — 2026-09-30; L9553
+- **I-376** Buttons come in two sizes: `.btn--sm` and the default — 2026-09-30; amended by I-391; amended by I-392; L9553
 - **I-377** Forced colours are part of the system — 2026-09-30; L9563
 - **I-378** Unused patterns are deleted rather than documented — 2026-09-30; L9579
 - **I-379** In the dark, the landing's small ink details are lit marks — 2026-09-30; L9590
 - **I-380** One header frame for the dashboard, the docs and the legal pages; form pages sit flush left — 2026-09-30; L9598
-- **I-381** The I-363 mark is in every header — 2026-09-30; L9615
-- **I-382** Docs and legal prose hold a readable measure — 2026-09-30; L9629
+- **I-381** The I-363 mark is in every header — 2026-09-30; amended by I-391; L9615
+- **I-382** Docs and legal prose hold a readable measure — 2026-09-30; amended by I-392; L9629
 - **I-383** The docs' right rail moves into the sidebar, and the menu button moves to the right — 2026-09-30; L9640
-- **I-384** Legal pages use the docs' prose styles, show their effective date, and keep a Draft banner that names nothing internal — 2026-09-30; L9650
+- **I-384** Legal pages use the docs' prose styles, show their effective date, and keep a Draft banner that names nothing internal — 2026-09-30; amended by I-391; amended by I-392; L9650
 - **I-385** Only a page's first load can fail to a banner with Retry — 2026-09-30; L9666
 - **I-386** One confirmation pattern per consequence, and no native `confirm()` — 2026-09-30; L9679
 - **I-387** Restore-as-new is one `RestoreNameForm` — 2026-09-30; L9696
@@ -457,3 +457,4 @@ pointer, not a summary.
 - **I-389** The accessibility gate fails on any failed binary audit, audits signed in for real, and covers every page in both schemes at two widths — 2026-09-30; L9715
 - **I-390** A 503 the api gives as an answer is not an outage, a 500 is not "cannot reach", and one failure is said once — 2026-09-30; L9734
 - **I-391** Design critique repair: focus follows in-place panels, one disabled look, and the gaps the first pass left — 2026-09-30; L9757
+- **I-392** Design repair round 2: ghost buttons show they can be pressed, one accent token, pictures keep their tools' colours, and the keyboard path is tested — 2026-09-30; L9807

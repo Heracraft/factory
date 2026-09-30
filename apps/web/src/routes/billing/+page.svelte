@@ -341,7 +341,9 @@
 				</p>
 				{#if billing.waitlist}
 					<p class="mt-4 text-sm" data-testid="waitlist-place">
-						You're number <b>{billing.waitlist.position}</b> on the waitlist. We'll email
+						You're number <span class="font-semibold tabular-nums">{billing.waitlist.position}</span
+						>
+						on the waitlist. We'll email
 						{me?.email ?? 'you'} when a seat frees; you'll have 72 hours to choose a plan.
 					</p>
 				{:else}
@@ -436,12 +438,16 @@
 						? `Over by ${gbs(billing.usage.egress_gb - billing.usage.egress_included_gb)}: ${money(billing.usage.overage_cents)} on the next invoice at $0.05 a GB.`
 						: undefined}
 				/>
-				<p class="text-sm" data-testid="projects-count">
-					<span class="font-medium">Projects</span>
-					<span class="ml-2 font-mono text-compact text-ink-muted tabular-nums"
-						>{billing.usage.projects} of {billing.usage.project_limit}</span
-					>
-				</p>
+				<!-- A meter like the three above, figure right and bar under,
+				     so the four limits read as one list. -->
+				<div data-testid="projects-count">
+					<Meter
+						label="Projects"
+						used={billing.usage.projects}
+						limit={billing.usage.project_limit}
+						format={String}
+					/>
+				</div>
 			</div>
 
 			<div class="mt-6 flex flex-wrap gap-x-5 gap-y-2 border-t pt-4 border-rule">
@@ -496,7 +502,8 @@
 						{@const up = other.seats > plan.seats}
 						<div class="change-row p-4" data-testid="change-to-{other.id}">
 							<p>
-								{up ? 'Upgrade' : 'Downgrade'} to <b>{other.name}</b> ({price(other.price_cents)} a month:
+								{up ? 'Upgrade' : 'Downgrade'} to <span class="font-semibold">{other.name}</span>
+								({price(other.price_cents)} a month:
 								{other.memory_gb} GB running at once, {other.disk_gb} GB disk,
 								{allowance(other.egress_gb)} egress).
 								{#if up}

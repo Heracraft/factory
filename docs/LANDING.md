@@ -257,7 +257,12 @@ and underlined every heading. The page is one system:
   for fills, blue-400 in the dark). No Claude Code orange (owner,
   2026-09-27): the landing's own design is not any AI vendor's. No green,
   amber, pink or purple either; the slide template's hues were tried and
-  dropped, and a new colour needs a reason recorded here.
+  dropped, and a new colour needs a reason recorded here. This rule is for
+  what the landing draws for itself. A picture of a real tool keeps that
+  tool's colours, because it shows what you will see: Claude Code's orange
+  mascot and pink bypass line (above, "The hero"), a terminal's ANSI
+  colours, an editor's theme. Those stay inside the picture's frame
+  (DESIGN-LANGUAGE.md, "Palette"; DECISIONS I-392).
 - **Mostly grey, a spot of colour, even weight.** Each shape has one
   main tone (`tone`: neutral or accent; Shape.svelte); a group carries a
   spot of blue and the rest grey, as the pictures are mostly grey with a

@@ -43,10 +43,13 @@
 			: supported
 	);
 
+	// loadError is cleared only by a load that worked, so a Retry keeps the
+	// banner and its button ("Retrying…") until the answer comes, as on
+	// every other page; cleared first, it swapped in "Loading…" mid-click.
 	async function load() {
-		loadError = undefined;
 		try {
 			me = await getMe();
+			loadError = undefined;
 			tz = me.tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
 			savedTz = tz;
 			loadedTz = tz;
@@ -238,7 +241,7 @@
 
 		<div class="form-section">
 			<h2 class="text-xl font-semibold">Install</h2>
-			<code class="codeblock mt-2 block px-3 py-2 text-sm"
+			<code class="codeblock mt-2 block px-3 py-2"
 				>curl -fsSL https://repose.herakraft.co/install.sh | sh</code
 			>
 			<p class="mt-3 text-sm text-ink-muted">

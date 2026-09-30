@@ -1,7 +1,7 @@
 <script lang="ts">
 	import './layout.css';
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { Toaster } from 'svelte-sonner';
@@ -17,9 +17,32 @@
 		return PUBLIC_PATHS.has(path) || path === '/docs' || path.startsWith('/docs/');
 	}
 
+	// The skip link is drawn once the page runs, not in the prerendered
+	// HTML: the prerender fails on a #main link from a page whose <main>
+	// has no id (the landing's, in routes/+page.svelte).
+	let mounted = $state(false);
 	onMount(() => {
+		mounted = true;
 		void initAuth();
 	});
+
+	// The skip link moves focus to whichever page's <main> is on screen.
+	// The dashboard's, the docs' and the legal pages' carry id="main"; the
+	// landing's has none yet (routes/+page.svelte belongs to the
+	// landing-critique branch), so it is given the id after each
+	// navigation. Without a target the link is broken, and Lighthouse's
+	// skip-link audit fails the landing.
+	afterNavigate(() => {
+		const main = document.querySelector('main');
+		if (main && !main.id) main.id = 'main';
+	});
+	function skipToMain(e: MouseEvent) {
+		const main = document.querySelector('main');
+		if (!main) return;
+		e.preventDefault();
+		main.tabIndex = -1;
+		main.focus();
+	}
 
 	// Signed-out visitors on a private route go to the landing page. A
 	// signed-in visitor may read the landing page too (DECISIONS I-330); its
@@ -36,16 +59,24 @@
 	let showChildren = $derived(authState.authenticated === true || isPublic(page.url.pathname));
 </script>
 
+<!-- The first thing a keyboard reaches on every page: past the header's
+     links to the page's own content (WCAG 2.4.1). Hidden until focused. -->
+{#if mounted}
+	<a href="#main" class="skip-link" onclick={skipToMain}>Skip to content</a>
+{/if}
+
 <!-- No richColors: layout.css gives each toast type its banner's colours.
      From 600px up the toast's right edge is the content column's (the
      header's max-w-5xl with its 20px gutter), not the window's, so at 1440
      it lines up under the header's last link instead of 200px past it. On a
-     phone sonner spans the width at the bottom; a toast there can be swiped
-     away. -->
+     phone it spans the width between the page's 20px gutters (sonner's
+     own 16px missed the column by 4px on each side), at the bottom, where
+     it can be swiped away (DECISIONS I-391 keeps it off the header). -->
 <Toaster
 	theme="system"
 	position="bottom-right"
 	offset={{ right: 'max(24px, calc((100% - 64rem) / 2 + 1.25rem))', bottom: '24px' }}
+	mobileOffset={{ left: '20px', right: '20px', top: '12px', bottom: '20px' }}
 />
 
 {#if !reachability.ok}

@@ -24,7 +24,7 @@
 		<DocPage {doc} />
 	{/key}
 {:else if !moved}
-	<main class="pt-8 pb-24">
+	<main id="main" class="pt-8 pb-24">
 		<h1 class="text-3xl font-semibold">No such page</h1>
 		<p class="mt-3 text-ink-muted">
 			There's no docs page called “{page.params.slug}”.

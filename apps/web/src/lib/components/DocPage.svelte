@@ -10,8 +10,11 @@
 	let toc = $derived(doc.headings.filter((h) => h.depth === 2));
 
 	// The copy buttons come in doc.html, so one listener on the article
-	// handles them all.
+	// handles them all. The button's own word changes for the eye; the
+	// live region below says the same to a screen reader, which does not
+	// announce a change to the text of the button it is on.
 	let article: HTMLElement | undefined = $state();
+	let copyStatus = $state('');
 	$effect(() => {
 		if (!article) return;
 		const el = article;
@@ -21,10 +24,15 @@
 			try {
 				await navigator.clipboard.writeText(button.dataset.copy ?? '');
 				button.textContent = 'Copied';
+				copyStatus = 'Copied to the clipboard.';
 			} catch {
 				button.textContent = 'Copy failed';
+				copyStatus = 'Could not copy to the clipboard.';
 			}
-			setTimeout(() => (button.textContent = 'Copy'), 1500);
+			setTimeout(() => {
+				button.textContent = 'Copy';
+				copyStatus = '';
+			}, 1500);
 		};
 		el.addEventListener('click', onClick);
 		return () => el.removeEventListener('click', onClick);
@@ -52,8 +60,8 @@
      sidebar from lg up, and in the fold below the description under lg:
      a right rail beside the sidebar, in the header's max-w-5xl column,
      would squeeze the code under 70 columns. -->
-<main class="max-w-[68ch] min-w-0 pt-8 pb-24">
-	<h1 class="text-3xl font-semibold sm:text-4xl">{doc.title}</h1>
+<main id="main" class="max-w-[68ch] min-w-0 pt-8 pb-24">
+	<h1 class="text-3xl font-semibold">{doc.title}</h1>
 	{#if doc.description}
 		<p class="mt-3 max-w-[33rem] text-lg text-ink-muted">{doc.description}</p>
 	{/if}
@@ -67,7 +75,7 @@
 				On this page
 				<svg
 					viewBox="0 0 20 20"
-					class="h-4 w-4 text-ink-muted transition-transform group-open:rotate-180"
+					class="h-4 w-4 text-ink-muted transition-transform group-open:rotate-180 motion-reduce:transition-none"
 					aria-hidden="true"
 					fill="none"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="1.5" /></svg
 				>
@@ -89,6 +97,9 @@
 		<!-- eslint-disable-next-line svelte/no-at-html-tags -- doc.html is rendered from this repo's own src/content/docs/*.md at build time, never from a user or the api -->
 		{@html doc.html}
 	</article>
+
+	<!-- Always in the page, so the words that appear in it are announced. -->
+	<p class="sr-only" role="status">{copyStatus}</p>
 
 	<nav
 		class="mt-16 grid gap-4 border-t border-rule pt-6 sm:grid-cols-2"
