@@ -60,7 +60,7 @@ func TestFirstSyncNamesTheCheckoutAfterTheLaptopFolder(t *testing.T) {
 	if got := readGuestFile(t, f, ".repose/checkout"); got != "factory\n" {
 		t.Fatalf("~/.repose/checkout = %q, want factory", got)
 	}
-	if _, err := os.Stat(f.guestRepo()); err == nil {
+	if _, err := os.Stat(filepath.Join(f.guestHome, testSlug)); err == nil {
 		t.Fatalf("~/%s was made too", testSlug)
 	}
 	if !strings.Contains(out.buf.String(), "Checkout: ~/factory on the machine\n") {
