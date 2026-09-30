@@ -59,18 +59,50 @@ test('leaving settings with an unsaved ntfy URL asks first', async ({ page }) =>
 	await page.goto('/settings');
 	await page.getByLabel('ntfy URL').fill('https://ntfy.sh/repose-unsaved');
 
+	// The page asks in place, with the house banner, not a native dialog.
+	let dialogs = 0;
+	page.on('dialog', (d) => {
+		dialogs++;
+		void d.dismiss();
+	});
+
 	const projects = page.getByRole('link', { name: 'Projects', exact: true });
-	let dialog = page.waitForEvent('dialog');
 	await projects.click();
-	await (await dialog).dismiss();
+	const ask = page.getByRole('alert').filter({ hasText: 'The ntfy URL is not saved.' });
+	await expect(ask).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Stay' })).toBeFocused();
+	await page.getByRole('button', { name: 'Stay' }).click();
+	await expect(ask).toHaveCount(0);
 	await expect(page.getByLabel('ntfy URL')).toHaveValue('https://ntfy.sh/repose-unsaved');
 	await expect(page).toHaveURL('/settings');
 
-	dialog = page.waitForEvent('dialog');
 	await projects.click();
-	await (await dialog).accept();
+	await page.getByRole('button', { name: 'Leave' }).click();
 	await expect(page).toHaveURL('/projects');
+	expect(dialogs).toBe(0);
 });
+
+// A failed first load used to leave these pages on "Loading…" for good.
+for (const [path, heading] of [
+	['/settings', 'Timezone'],
+	['/account', 'Delete account']
+] as const) {
+	test(`${path} shows a failed first load and Retry loads it`, async ({ page }) => {
+		// Loaded once first, so the projects page that signIn lands on has
+		// made its own GET /me and cannot take the one failure; the reload
+		// is then the only request for it.
+		await page.goto(path);
+		await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+		await failNext('GET', '/me', 'internal');
+		await page.reload();
+		const failed = page.getByRole('alert');
+		await expect(failed).toBeVisible();
+		await expect(page.getByText('Loading…')).toHaveCount(0);
+		await failed.getByRole('button', { name: 'Retry' }).click();
+		await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+		await expect(failed).toHaveCount(0);
+	});
+}
 
 test('account deletion requires typing the exact handle', async ({ page }) => {
 	await page.goto('/account');

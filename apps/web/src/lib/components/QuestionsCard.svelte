@@ -16,12 +16,17 @@
 	let notes = $state<Record<string, string>>({});
 	let busy = $state<string | undefined>(undefined);
 	let answered = $state<string | undefined>(undefined);
+	// Set while the poll is failing, so an outage raises one toast rather
+	// than one every poll; cleared by the first poll that gets through.
+	let pollFailing = false;
 
 	async function refresh() {
 		try {
 			questions = await listProjectQuestions(projectId);
+			pollFailing = false;
 		} catch (err) {
-			toastApiError(err, 'Could not load questions.');
+			if (!pollFailing) toastApiError(err, 'Could not load questions.');
+			pollFailing = true;
 		}
 	}
 
@@ -71,49 +76,59 @@
 
 {#if questions.length > 0 || answered}
 	<div class="card mt-6" data-testid="questions">
-		<h2 class="font-semibold">Questions</h2>
-		{#if answered}
-			<p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400" role="status">{answered}</p>
-		{/if}
+		<h2 class="text-base font-semibold">Questions</h2>
+		<!-- The live region is always in the page, so the line that appears
+		     inside it is announced; a region inserted with its text already
+		     in it is often read by no screen reader. -->
+		<p class="text-sm text-ink-muted" class:mt-2={answered} role="status">{answered ?? ''}</p>
 		<ul class="mt-2">
 			{#each questions as q (q.id)}
 				<li class="row text-sm" data-testid="question">
 					<p class="font-medium">{q.agent} asks</p>
 					<p class="mt-1 whitespace-pre-wrap">{q.text}</p>
-					<p class="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
+					<p class="mt-1 text-xs text-ink-faint tabular-nums">
 						asked {relativeTime(q.created_at)}, expires in {expiresIn(q.expires_at)}
 					</p>
 					<div class="mt-2 flex flex-wrap items-center gap-2">
 						{#if q.options.length > 0}
 							{#each q.options as o (o)}
-								<button type="button" class="btn" disabled={busy === q.id} onclick={() => act(q, o)}
-									>{o}</button
+								<button
+									type="button"
+									class="btn btn--sm"
+									disabled={busy === q.id}
+									onclick={() => act(q, o)}>{o}</button
 								>
 							{/each}
 						{:else}
 							<label class="sr-only" for={`answer-${q.id}`}>Your answer</label>
 							<input
 								id={`answer-${q.id}`}
-								class="field w-72 py-1"
+								class="field w-full py-1 sm:w-72"
 								placeholder="Your answer"
 								bind:value={drafts[q.id]}
+								aria-invalid={notes[q.id] ? 'true' : undefined}
+								aria-describedby={notes[q.id] ? `answer-note-${q.id}` : undefined}
 								onkeydown={(e) => {
 									if (e.key === 'Enter' && drafts[q.id]?.trim()) void act(q, drafts[q.id]);
 								}}
 							/>
 							<button
 								type="button"
-								class="btn"
+								class="btn btn--sm"
 								disabled={busy === q.id || !drafts[q.id]?.trim()}
 								onclick={() => act(q, drafts[q.id])}>Answer</button
 							>
 						{/if}
-						<button type="button" class="btn-ghost" disabled={busy === q.id} onclick={() => act(q)}
-							>Dismiss</button
+						<button
+							type="button"
+							class="btn-ghost"
+							disabled={busy === q.id}
+							aria-label={`Dismiss the question from ${q.agent}`}
+							onclick={() => act(q)}>Dismiss</button
 						>
 					</div>
 					{#if notes[q.id]}
-						<p class="mt-2 text-sm text-red-700 dark:text-red-400">{notes[q.id]}</p>
+						<p id={`answer-note-${q.id}`} class="field-error">{notes[q.id]}</p>
 					{/if}
 				</li>
 			{/each}

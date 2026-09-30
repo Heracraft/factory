@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { beforeNavigate } from '$app/navigation';
+	import { onMount, tick } from 'svelte';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import { getMe, patchMe, notifyTest } from '$lib/api/client';
 	import { ApiError } from '$lib/api/errors';
 	import { toastApiError } from '$lib/api/toast';
 	import PageShell from '$lib/components/PageShell.svelte';
+	import LoadState, { loadErrorText } from '$lib/components/LoadState.svelte';
 	import type { Me } from '$lib/api/types';
 
 	// The timezone and the email toggle save the moment they change; the
@@ -22,6 +23,12 @@
 	let savingNtfy = $state(false);
 	let testAvailable = $state(true);
 	let testing = $state(false);
+	let loadError = $state<string | undefined>(undefined);
+	// A link followed while the ntfy URL was unsaved: held here, and the
+	// page asks about it in place instead of in a native confirm() box.
+	let heldNavigation = $state<URL | undefined>(undefined);
+	let leaveAnyway = false;
+	let stayButton = $state<HTMLButtonElement | undefined>(undefined);
 
 	let ntfyDirty = $derived(ntfyUrl.trim() !== savedNtfyUrl);
 
@@ -37,6 +44,7 @@
 	);
 
 	async function load() {
+		loadError = undefined;
 		try {
 			me = await getMe();
 			tz = me.tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -46,7 +54,7 @@
 			ntfyUrl = me.notify?.ntfy_url ?? '';
 			savedNtfyUrl = ntfyUrl;
 		} catch (err) {
-			toastApiError(err, 'Could not load settings.');
+			loadError = loadErrorText(err, 'Could not load settings.');
 			return;
 		}
 		// An account that never set a timezone shows this browser's; with
@@ -63,12 +71,30 @@
 
 	onMount(load);
 
-	beforeNavigate(({ cancel, type }) => {
-		if (!ntfyDirty) return;
-		// A tab close or reload gets the browser's own prompt from cancel();
-		// a link inside the dashboard asks here.
-		if (type === 'leave' || !confirm('The ntfy URL is not saved. Leave anyway?')) cancel();
+	beforeNavigate(({ cancel, type, to }) => {
+		if (!ntfyDirty || leaveAnyway) return;
+		// A tab close or reload gets the browser's own prompt from cancel().
+		// A link inside the dashboard is held, and the page asks beside the
+		// field that is unsaved, so the question uses the house banner and
+		// buttons rather than the browser's dialog.
+		cancel();
+		if (type === 'leave' || !to) return;
+		heldNavigation = to.url;
+		void tick().then(() => stayButton?.focus());
 	});
+
+	async function leave() {
+		const url = heldNavigation;
+		heldNavigation = undefined;
+		if (!url) return;
+		leaveAnyway = true;
+		try {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- the URL came from SvelteKit's own navigation, already resolved
+			await goto(url);
+		} finally {
+			leaveAnyway = false;
+		}
+	}
 
 	async function saveTz() {
 		const next = tz;
@@ -101,6 +127,7 @@
 			me = await patchMe({ notify: { ntfy_url: next || null } });
 			ntfyUrl = next;
 			savedNtfyUrl = next;
+			heldNavigation = undefined;
 			toast.success(next ? 'ntfy URL saved.' : 'ntfy turned off.');
 		} catch (err) {
 			toastApiError(err, 'Could not save the ntfy URL.');
@@ -129,11 +156,16 @@
 </svelte:head>
 
 <PageShell title="Settings" width="form">
-	{#if !me}
-		<p class="text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
-	{:else}
-		<div class="form-section">
-			<h2 class="font-display text-xl font-semibold">Timezone</h2>
+	<LoadState
+		status={me ? 'ready' : loadError ? 'failed' : 'loading'}
+		error={loadError}
+		onretry={load}
+	>
+		<!-- The first section draws no rule of its own: the page title's rule
+		     is directly above it, and two hairlines 40px apart read as a gap
+		     where something failed to render. -->
+		<div class="form-section mt-0 border-t-0 pt-0">
+			<h2 class="text-xl font-semibold">Timezone</h2>
 			{#if timezones.length}
 				<select
 					class="field mt-2 w-full sm:w-72"
@@ -156,15 +188,13 @@
 		</div>
 
 		<div class="form-section">
-			<h2 class="font-display text-xl font-semibold">Notifications</h2>
+			<h2 class="text-xl font-semibold">Notifications</h2>
 			<label class="check-row mt-2">
 				<input type="checkbox" bind:checked={emailOn} onchange={saveEmail} />
 				Email notifications
 			</label>
 			<form class="mt-3" onsubmit={saveNtfy}>
-				<label for="ntfy-url" class="mb-1 block text-sm text-zinc-700 dark:text-zinc-300"
-					>ntfy URL</label
-				>
+				<label for="ntfy-url" class="mb-1 block text-sm font-medium text-ink">ntfy URL</label>
 				<div class="flex gap-2">
 					<input
 						id="ntfy-url"
@@ -176,8 +206,24 @@
 						{savingNtfy ? 'Saving…' : 'Save'}
 					</button>
 				</div>
-				{#if ntfyDirty}
-					<p class="mt-1.5 text-sm text-zinc-500 dark:text-zinc-400">Not saved yet.</p>
+				{#if ntfyDirty && heldNavigation}
+					<div
+						class="banner banner--warn mt-3 mb-0 flex flex-wrap items-center justify-between gap-3"
+						role="alert"
+					>
+						<p>The ntfy URL is not saved. Leave this page anyway?</p>
+						<div class="flex items-center gap-2">
+							<button
+								type="button"
+								class="btn-quiet btn--sm"
+								bind:this={stayButton}
+								onclick={() => (heldNavigation = undefined)}>Stay</button
+							>
+							<button type="button" class="btn-ghost" onclick={leave}>Leave</button>
+						</div>
+					</div>
+				{:else if ntfyDirty}
+					<p class="mt-1.5 text-sm text-ink-muted">Not saved yet.</p>
 				{/if}
 			</form>
 			<div class="mt-3">
@@ -186,21 +232,21 @@
 						{testing ? 'Sending…' : 'Send test'}
 					</button>
 				{:else}
-					<span class="text-sm text-zinc-400 dark:text-zinc-500">Test not available yet</span>
+					<span class="text-sm text-ink-faint">Test not available yet</span>
 				{/if}
 			</div>
 		</div>
 
 		<div class="form-section">
-			<h2 class="font-display text-xl font-semibold">Install</h2>
+			<h2 class="text-xl font-semibold">Install</h2>
 			<code class="codeblock mt-2 block px-3 py-2 text-sm"
 				>curl -fsSL https://repose.herakraft.co/install.sh | sh</code
 			>
-			<p class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+			<p class="mt-3 text-sm text-ink-muted">
 				The CLI writes <code class="font-mono">~/.ssh/repose/config</code> and includes it from your
 				main SSH config, so <code class="font-mono">ssh &lt;slug&gt;.repose</code> works once you've
 				run <code class="font-mono">repose login</code>.
 			</p>
 		</div>
-	{/if}
+	</LoadState>
 </PageShell>

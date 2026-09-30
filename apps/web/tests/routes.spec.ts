@@ -37,8 +37,8 @@ test('/projects/[id] renders the project detail cards', async ({ page }) => {
 
 test('/projects/[id]/config renders the Menu and Nix tabs', async ({ page }) => {
 	await page.goto(`/projects/${projectId}/config`);
-	await expect(page.getByRole('button', { name: 'Menu' })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Nix' })).toBeVisible();
+	await expect(page.getByRole('tab', { name: 'Menu' })).toBeVisible();
+	await expect(page.getByRole('tab', { name: 'Nix' })).toBeVisible();
 });
 
 test('/projects/[id]/secrets renders the secrets page', async ({ page }) => {

@@ -3,6 +3,7 @@
 // shows a subscription's status, usage of the plan and its invoices.
 import { test, expect } from '@playwright/test';
 import {
+	failNext,
 	signIn,
 	setBilling,
 	resetBilling,
@@ -44,6 +45,17 @@ test('with billing off the page says so and sells nothing', async ({ page }) => 
 	await expect(page.getByRole('button', { name: /Choose/ })).toHaveCount(0);
 });
 
+test('a failed first load says so and Retry loads the page', async ({ page }) => {
+	await setBilling({ mode: 'none' });
+	await failNext('GET', '/billing', 'internal');
+	await page.goto('/billing');
+	const failed = page.getByRole('alert');
+	await expect(failed).toBeVisible();
+	await failed.getByRole('button', { name: 'Retry' }).click();
+	await expect(page.getByRole('heading', { level: 2, name: 'Solo' })).toBeVisible();
+	await expect(failed).toHaveCount(0);
+});
+
 test('with no plan and seats free, the three plan cards are shown from GET /billing', async ({
 	page
 }) => {
@@ -68,7 +80,9 @@ test('with no plan and seats free, the three plan cards are shown from GET /bill
 	await expect(pro.getByText('500 GB', { exact: true })).toBeVisible();
 	await expect(pro.getByText('1 TB', { exact: true })).toBeVisible();
 	await expect(pro.getByText('50', { exact: true })).toBeVisible();
-	await expect(page.getByRole('list', { name: 'Plans' }).locator('h3')).toHaveText([
+	// h2 under the page's h1: the cards are the page's sections, and an h3
+	// here skipped a level.
+	await expect(page.getByRole('list', { name: 'Plans' }).locator('h2')).toHaveText([
 		'Solo',
 		'Plus',
 		'Pro'

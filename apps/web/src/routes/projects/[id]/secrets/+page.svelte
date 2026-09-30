@@ -8,6 +8,7 @@
 	import { encodeBase64 } from '$lib/base64';
 	import { dateTime } from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
+	import LoadState, { loadErrorText } from '$lib/components/LoadState.svelte';
 	import type { Project, SecretMeta } from '$lib/api/types';
 
 	const id = page.params.id as string;
@@ -30,12 +31,23 @@
 	let valueError = $state<string | undefined>(undefined);
 	let saving = $state(false);
 	let deleting = $state<string | undefined>(undefined);
+	// The secret whose Delete was pressed once: its row asks in place, the
+	// same two-step as Cancel plan on billing, instead of a native confirm().
+	let confirming = $state<string | undefined>(undefined);
+	let loadFailed = $state(false);
+	let loadError = $state<string | undefined>(undefined);
 
 	async function load() {
 		try {
 			[project, secrets] = await Promise.all([getProject(id), listSecrets(id)]);
+			loadFailed = false;
 		} catch (err) {
-			toastApiError(err, 'Could not load secrets.');
+			if (secrets === undefined) {
+				loadFailed = true;
+				loadError = loadErrorText(err, 'Could not load secrets.');
+			} else {
+				toastApiError(err, 'Could not load secrets.');
+			}
 		}
 	}
 
@@ -50,6 +62,7 @@
 
 	async function onAdd() {
 		nameError = validateName(name);
+		valueError = undefined;
 		let base64: string;
 		if (fileInput?.files?.length) {
 			const file = fileInput.files[0];
@@ -81,13 +94,10 @@
 	}
 
 	async function onDelete(n: string) {
-		if (
-			!confirm(`Remove ${n}? Running processes that already read it keep their copy until restart.`)
-		)
-			return;
 		deleting = n;
 		try {
 			await deleteSecret(id, n);
+			confirming = undefined;
 			await load();
 		} catch (err) {
 			toastApiError(err, 'Could not remove the secret.');
@@ -109,60 +119,120 @@
 		{ label: project?.name ?? '…', href: resolve('/projects/[id]', { id }) }
 	]}
 >
-	{#if secrets === undefined}
-		<p class="text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
-	{:else}
-		{#if secrets.length === 0}
-			<p class="text-sm text-zinc-500 dark:text-zinc-400">No secrets yet.</p>
-		{:else}
+	<LoadState
+		status={secrets !== undefined ? 'ready' : loadFailed ? 'failed' : 'loading'}
+		onretry={load}
+		error={loadError}
+	>
+		{#if secrets && secrets.length === 0}
+			<p class="text-sm text-ink-muted">No secrets yet.</p>
+		{:else if secrets}
 			<ul>
 				{#each secrets as s (s.name)}
-					<li class="row flex items-center justify-between gap-4">
-						<span class="font-mono text-sm">{s.name}</span>
+					<li class="row flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+						<span class="min-w-0 font-mono text-sm break-all">{s.name}</span>
 						<span class="flex items-center gap-4">
-							<span class="text-xs text-zinc-400 dark:text-zinc-500"
+							<span class="text-xs text-ink-muted tabular-nums"
 								>updated {dateTime(s.updated_at)}</span
 							>
-							<button
-								type="button"
-								class="btn-ghost-danger"
-								disabled={deleting === s.name}
-								onclick={() => onDelete(s.name)}>Delete</button
-							>
+							{#if confirming !== s.name}
+								<button
+									type="button"
+									class="btn-ghost-danger"
+									aria-label={`Delete ${s.name}`}
+									onclick={() => (confirming = s.name)}>Delete</button
+								>
+							{/if}
 						</span>
+						{#if confirming === s.name}
+							<div class="mt-2 basis-full text-sm" data-testid="confirm-delete-secret">
+								<p class="text-ink-muted">
+									Remove <span class="font-mono break-all text-ink">{s.name}</span>? Running
+									processes that already read it keep their copy until they restart.
+								</p>
+								<div class="mt-2 flex items-center gap-2">
+									<button
+										type="button"
+										class="btn-danger btn--sm"
+										aria-label={`Delete ${s.name} now`}
+										disabled={deleting === s.name}
+										onclick={() => onDelete(s.name)}
+										>{deleting === s.name ? 'Deleting…' : 'Delete'}</button
+									>
+									<button type="button" class="btn-ghost" onclick={() => (confirming = undefined)}
+										>Keep it</button
+									>
+								</div>
+							</div>
+						{/if}
 					</li>
 				{/each}
 			</ul>
 		{/if}
 
-		<div class="form-section">
-			<h2 class="font-display text-xl font-semibold">Add a secret</h2>
-			<div class="mt-3 flex flex-col gap-3">
+		<!-- Each field has a visible label and its error is tied to it with
+		     aria-describedby, so a screen reader hears why Add refused. The
+		     placeholders stay as examples of the shape, not as the labels. -->
+		<form
+			class="form-section"
+			onsubmit={(e) => {
+				e.preventDefault();
+				void onAdd();
+			}}
+		>
+			<h2 class="text-xl font-semibold">Add a secret</h2>
+			<div class="mt-3 flex flex-col gap-4">
 				<div>
+					<label for="secret-name" class="block text-sm font-medium">Name</label>
 					<input
-						class="field w-full font-mono"
+						id="secret-name"
+						class="field mt-1.5 w-full font-mono"
 						placeholder="NAME"
+						autocomplete="off"
+						spellcheck="false"
 						bind:value={name}
+						aria-invalid={nameError ? 'true' : undefined}
+						aria-describedby={nameError ? 'secret-name-error' : undefined}
 						oninput={() => (nameError = undefined)}
 					/>
-					{#if nameError}<p class="field-error">{nameError}</p>{/if}
+					{#if nameError}<p id="secret-name-error" class="field-error">{nameError}</p>{/if}
 				</div>
 				<div>
+					<label for="secret-value" class="block text-sm font-medium">Value</label>
 					<textarea
-						class="field w-full"
+						id="secret-value"
+						class="field mt-1.5 w-full font-mono"
 						placeholder="Value"
+						autocomplete="off"
+						spellcheck="false"
 						bind:value
+						aria-invalid={valueError ? 'true' : undefined}
+						aria-describedby={valueError ? 'secret-value-error' : undefined}
 						oninput={() => (valueError = undefined)}
 					></textarea>
-					<input type="file" bind:this={fileInput} class="mt-2 text-sm" />
-					{#if valueError}<p class="field-error">{valueError}</p>{/if}
+					<label for="secret-file" class="mt-3 block text-sm text-ink-muted"
+						>Or read the value from a file</label
+					>
+					<!-- The file button drawn as a quiet button, so the one
+					     browser-default widget on the dashboard follows the house
+					     edge, radius and weight. -->
+					<input
+						id="secret-file"
+						type="file"
+						bind:this={fileInput}
+						class="mt-1.5 block w-full text-sm text-ink-muted file:mr-3 file:cursor-pointer file:rounded-sm file:border file:border-solid file:border-control file:bg-[var(--surface)] file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink"
+						aria-invalid={valueError ? 'true' : undefined}
+						aria-describedby={valueError ? 'secret-value-error' : undefined}
+						onchange={() => (valueError = undefined)}
+					/>
+					{#if valueError}<p id="secret-value-error" class="field-error">{valueError}</p>{/if}
 				</div>
 				<div>
-					<button type="button" class="btn" disabled={saving || !name} onclick={onAdd}>
+					<button type="submit" class="btn" disabled={saving || !name}>
 						{saving ? 'Storing…' : 'Add'}
 					</button>
 				</div>
 			</div>
-		</div>
-	{/if}
+		</form>
+	</LoadState>
 </PageShell>

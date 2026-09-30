@@ -6,18 +6,23 @@
 	import { signOut } from '$lib/auth.svelte';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import ConfirmType from '$lib/components/ConfirmType.svelte';
+	import LoadState, { loadErrorText } from '$lib/components/LoadState.svelte';
 	import type { Me } from '$lib/api/types';
 
 	let me = $state<Me | undefined>(undefined);
 	let deleting = $state(false);
+	let loadError = $state<string | undefined>(undefined);
 
-	onMount(async () => {
+	async function load() {
+		loadError = undefined;
 		try {
 			me = await getMe();
 		} catch (err) {
-			toastApiError(err, 'Could not load your account.');
+			loadError = loadErrorText(err, 'Could not load your account.');
 		}
-	});
+	}
+
+	onMount(load);
 
 	async function onDelete() {
 		deleting = true;
@@ -37,45 +42,50 @@
 </svelte:head>
 
 <PageShell title="Account" width="form">
-	{#if !me}
-		<p class="text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
-	{:else}
-		<dl class="space-y-2 text-sm">
-			<div class="flex justify-between">
-				<dt class="text-zinc-500 dark:text-zinc-400">Handle</dt>
-				<dd class="font-mono">{me.handle}</dd>
-			</div>
-			<div class="flex justify-between">
-				<dt class="text-zinc-500 dark:text-zinc-400">Email</dt>
-				<dd>{me.email}</dd>
-			</div>
-			<div class="flex justify-between">
-				<dt class="text-zinc-500 dark:text-zinc-400">GitHub</dt>
-				<dd class={me.github_login ? '' : 'text-zinc-500 dark:text-zinc-400'}>
-					{me.github_login ?? 'Not linked'}
-				</dd>
-			</div>
-		</dl>
+	<LoadState
+		status={me ? 'ready' : loadError ? 'failed' : 'loading'}
+		error={loadError}
+		onretry={load}
+	>
+		{#if me}
+			<dl class="space-y-2 text-sm">
+				<div class="flex justify-between">
+					<dt class="text-ink-muted">Handle</dt>
+					<dd class="font-mono">{me.handle}</dd>
+				</div>
+				<div class="flex justify-between">
+					<dt class="text-ink-muted">Email</dt>
+					<dd>{me.email}</dd>
+				</div>
+				<div class="flex justify-between">
+					<dt class="text-ink-muted">GitHub</dt>
+					<dd class={me.github_login ? '' : 'text-ink-muted'}>
+						{me.github_login ?? 'Not linked'}
+					</dd>
+				</div>
+			</dl>
 
-		<button
-			type="button"
-			class="mt-4 cursor-pointer text-sm text-zinc-500 underline-offset-4 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
-			onclick={() => signOut()}>Sign out</button
-		>
+			<button
+				type="button"
+				class="mt-4 cursor-pointer text-sm text-ink-muted underline-offset-4 hover:text-ink hover:underline"
+				onclick={() => signOut()}>Sign out</button
+			>
 
-		<div class="form-section">
-			<h2 class="text-xl font-semibold text-red-700 dark:text-red-400">Delete account</h2>
-			<p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-				Stops every environment at once. Everything, including snapshots, is deleted 30 days later.
-			</p>
-			<div class="mt-3">
-				<ConfirmType
-					word={me.handle}
-					label="Delete account"
-					disabled={deleting}
-					onconfirm={onDelete}
-				/>
+			<div class="form-section">
+				<h2 class="text-xl font-semibold text-red-700 dark:text-red-400">Delete account</h2>
+				<p class="mt-1 text-sm text-ink-muted">
+					Stops every environment at once. Everything, including snapshots, is deleted 30 days
+					later.
+				</p>
+				<div class="mt-3">
+					<ConfirmType
+						word={me.handle}
+						label="Delete account"
+						disabled={deleting}
+						onconfirm={onDelete}
+					/>
+				</div>
 			</div>
-		</div>
-	{/if}
+		{/if}
+	</LoadState>
 </PageShell>
