@@ -66,7 +66,8 @@ here exists in that module under exactly this name.
   `tmux new-window -t <slug> -n <agent> -c /home/dev/<slug> '<agent> ...'`
   then `tmux send-keys -t <slug>:<agent> '<prompt>' Enter` after the TUI is
   up (guestd waits for the pane to be idle 1 s).
-- `/etc/tmux.conf`: `set -g set-clipboard on`, `set -g mouse on`, `set -g
+- `/etc/tmux.conf`: `set -g set-clipboard on`, `set -g mouse off` (DECISIONS I-364;
+  `~/.tmux.conf` may turn it on), `set -g
   history-limit 50000`, `set -g default-terminal tmux-256color`, `set -ga
   terminal-overrides ",*:Tc"`, `set -s escape-time 10`, `set -g
   focus-events on`, `set -g update-environment "DISPLAY SSH_AUTH_SOCK

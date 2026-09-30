@@ -327,7 +327,7 @@ in
           guest.wait_until_succeeds("sudo -u dev tmux ls | grep -q '^todo-app:'", timeout=60)
           win = guest.succeed("sudo -u dev tmux list-windows -t todo-app -F '#{window_name} #{pane_current_path}'").strip()
           assert win == "shell /home/dev/todo-app", win
-          guest.succeed("grep -Eq 'set-clipboard +on' /etc/tmux.conf && grep -Eq 'mouse +on' /etc/tmux.conf && grep -Eq 'history-limit +50000' /etc/tmux.conf")
+          guest.succeed("grep -Eq 'set-clipboard +on' /etc/tmux.conf && grep -Eq 'mouse +off' /etc/tmux.conf && grep -Eq 'history-limit +50000' /etc/tmux.conf")
 
       with subtest("I-264: the running server has extended keys, passthrough and hyperlinks"):
           def opt(scope, name):

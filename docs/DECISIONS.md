@@ -9244,3 +9244,18 @@ blocks 1.5 times larger and a heavier stem (T6, T7: they read better at
 below-left, which the sketch has; three axes with a cube face; product
 metaphors (a whole rest, pause and continue, a lit cursor); off-brand
 hues for the big square.
+
+**I-364. tmux's mouse mode is off in the guest.** (owner, 2026-09-29;
+amends DESIGN.md §guest base "mouse on") With `set -g mouse on`, tmux
+takes every click and drag, so selecting text in the laptop's terminal
+selects inside tmux instead and copying needs tmux's own keys; the owner
+wants the terminal's selection and copy back. `/etc/tmux.conf` now says
+`set -g mouse off`. tmux reads `~/.tmux.conf` after it (checked with tmux
+3.7c: a home file with `mouse on` wins over the system file's `off`), so a
+user who wants the mouse back writes that line there; the home directory
+survives a stop. What a user loses: clicking a window name and wheel
+scrollback through tmux's history (`Ctrl-b [` scrolls). A running tmux
+server keeps its setting until the base is bumped and the guest restarts.
+The `guest-base` VM test greps for `mouse +off`. *Rejected:* a
+`config.toml` or `repose config` switch (one line in `~/.tmux.conf` already
+does it, per machine, without a new key).

@@ -54,7 +54,7 @@ runner using the host's shared store. Everything in
   `default-address-pools` set to `172.20.0.0/14` so container networks never
   collide with `10.64.0.0/12`; `dev` in `docker`; `docker compose` plugin.
 - `nix/guest/base/tmux.nix`: system tmux config at `/etc/tmux.conf` with
-  the settings in guest-conventions (`set -g set-clipboard on`, `mouse on`,
+  the settings in guest-conventions (`set -g set-clipboard on`, `mouse off` since I-364,
   `history-limit 50000`, `default-terminal tmux-256color`, `terminal-
   overrides ",*:Tc"`, `escape-time 10`, `focus-events on`), and a
   `repose-tmux-session.service` (user unit for `dev`, started at boot via

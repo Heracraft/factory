@@ -81,7 +81,7 @@ Each machine has one tmux session. Its first window, `shell`, opens in your chec
 | `c`     | New window with a shell.                        |
 | `[`     | Scroll back. Arrow keys or Page Up; `q` leaves. |
 
-The mouse works too: click a window name to switch, scroll to go back through output.
+tmux leaves the mouse to your terminal, so selecting text and copying work as they do outside tmux. To scroll back through a window's output, use `Ctrl-b [`. If you want tmux's mouse mode instead (click a window name to switch, scroll with the wheel), run `echo 'set -g mouse on' >> ~/.tmux.conf` on the machine, then `tmux source-file ~/.tmux.conf`. The file stays in your home directory across stops.
 
 Shift+Enter starts a new line in Claude Code instead of sending the prompt, when your terminal reports modified keys to tmux (xterm's modifyOtherKeys; Ghostty, WezTerm, iTerm2 and xterm do, Apple's Terminal doesn't). If Shift+Enter still sends the prompt, type `\` and then Enter, or press Ctrl+J. Links an agent prints are clickable in terminals that support links (OSC 8), and a program in the window you're looking at can send escape sequences through tmux to your terminal.
 

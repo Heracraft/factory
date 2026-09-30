@@ -60,7 +60,10 @@ in
     terminal = "tmux-256color";
     extraConfig = ''
       set -g set-clipboard on
-      set -g mouse on
+      # Mouse off (DECISIONS I-364): the laptop terminal's own selection,
+      # copy and scrollback work as they do outside tmux. A user who wants
+      # tmux's mouse puts `set -g mouse on` in ~/.tmux.conf.
+      set -g mouse off
       set -ga terminal-overrides ",*:Tc"
       set -g focus-events on
       # Modified keys reach the program in the pane (DECISIONS I-264):

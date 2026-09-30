@@ -139,7 +139,8 @@ of user config:
   refuses `--dangerously-skip-permissions` as root, so `dev` is not optional.
 - `guestd` (Go) on vsock, no network listener.
 - Docker daemon (rootful), containerd, `docker compose`.
-- tmux with `set -g set-clipboard on` (OSC52 copy-out over SSH), mouse on,
+- tmux with `set -g set-clipboard on` (OSC52 copy-out over SSH), mouse off
+  (DECISIONS I-364),
   256-colour, a session named after the project created at boot.
 - OpenSSH trusting the platform CA, `AuthorizedPrincipalsFile` lists the
   project id; password auth off; only `dev` may log in.
