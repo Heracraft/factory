@@ -405,18 +405,21 @@
 }
 /* The units sit on the name's baseline and grow upward, a row per 8 GB:
    Solo one row, Plus two, Pro four, so each plan reads as a stack of
-   Solos. */
+   Solos. The grid has no text, so its last baseline is its bottom edge,
+   and last-baseline alignment puts that edge on the letters, not on the
+   name's line box 5px below them. */
 .tier-top {
 	display: flex;
-	align-items: flex-end;
+	align-items: last baseline;
 	justify-content: space-between;
 	gap: 0.75rem;
 }
-/* Side by side, tall enough for Pro's four rows of units, so the names
-   and the spec lines of the three cards sit on one line across. */
+/* Side by side, 50px holds Pro's four rows (45px) plus the 5px of the
+   name's line box under its baseline, so the names and the spec lines of
+   the three cards sit on one line across. */
 @media (min-width: 768px) {
 	.tier-top {
-		min-height: 45px;
+		min-height: 50px;
 	}
 }
 .tier-name {
@@ -428,7 +431,10 @@
 	text-transform: uppercase;
 	color: var(--ink);
 }
+/* A flex box, so the grid inside is a block whose last baseline is its
+   bottom row: an inline grid would lend the line its first row instead. */
 .tier-units {
+	display: flex;
 	flex: none;
 	line-height: 0;
 }
