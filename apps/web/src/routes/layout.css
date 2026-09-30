@@ -631,7 +631,8 @@
 	kbd,
 	.kbd {
 		@apply inline-flex items-center rounded-xs border px-1 font-mono text-zinc-700 dark:text-zinc-300;
-		font-size: var(--text-xs);
+		/* 13px: mono under 13px is for badges only (I-395), and a key name is a label. */
+		font-size: var(--text-compact);
 		border-color: var(--rule-strong);
 		background-color: var(--sunken);
 	}

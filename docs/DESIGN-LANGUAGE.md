@@ -121,8 +121,8 @@ URL (I-392).
 | Step | Size | Use |
 |---|---|---|
 | `text-2xs` | 11px | Badges, the landing's uppercase labels. The floor: no text is smaller. |
-| `text-xs` | 12px | Table heads, notes under a meter, kbd. |
-| `text-compact` | 13px | Mono readings beside sans text, code blocks, the dashboard nav on a phone. |
+| `text-xs` | 12px | Table heads, notes under a meter. |
+| `text-compact` | 13px | Mono readings beside sans text, code blocks, kbd, the dashboard nav on a phone. |
 | `text-sm` | 14px | Dashboard body, fields, buttons, banners. |
 | `text-base` | 16px | Docs and legal prose. |
 | `text-xl` | 20px | Every dashboard h2, semibold. |
