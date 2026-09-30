@@ -1,13 +1,15 @@
 ---
 title: Sync
-description: What repose run copies to the machine, what it leaves behind, and how work comes back.
+description: When your checkout is copied to the machine, what travels, what stays behind, and how work comes back.
 section: Using repose
 order: 11
 ---
 
-Each `repose run` copies the current state of your checkout to the machine, once, at the start. Nothing syncs continuously and nothing comes back on its own: the agent commits, and you fetch its commits with `git fetch repose`.
+The first `repose run` for a machine copies your checkout to it. After that, `repose run` attaches to the machine as it is, and your laptop's later work goes over only when you run `repose sync`. Nothing syncs continuously and nothing comes back on its own: the agent commits, and you fetch its commits with `git fetch repose`.
 
-`repose attach` and `repose run --no-sync` leave the machine's checkout alone.
+An agent's uncommitted work on the machine can't block a `repose run`, and you choose when your laptop's work lands on top of it.
+
+`repose attach` and `repose run --no-sync` never touch the machine's checkout, not even on a new machine.
 
 ## What travels
 
@@ -22,9 +24,19 @@ Everything goes over your SSH connection. None of it is stored by repose.
 Synced: 4 modified, 2 untracked, 2 env files (3 new commits)
 ```
 
-When your laptop has nothing new since the last sync, nothing is sent and `repose run` doesn't print that line.
+## Sending later work
 
-To sync without attaching, run `repose sync` (or `repose sync PROJECT`). It does what `repose run --no-attach` does: it creates or starts the machine if needed, copies the checkout, and returns. With nothing new it says `Nothing new to sync: the machine already has this checkout.`
+When the machine already has your checkout and your laptop has work it doesn't, `repose run` attaches without copying it and tells you:
+
+```text
+Not synced: your laptop has work the machine doesn't (3 modified, 1 untracked, 2 commits). `repose sync` sends it.
+```
+
+With nothing new on your laptop, `repose run` says nothing about syncing.
+
+`repose sync` (or `repose sync PROJECT`) copies your laptop's current work over the machine's checkout and returns without attaching. It creates or starts the machine if needed. With nothing new it says `Nothing new to sync: the machine already has this checkout.`
+
+Your tool logins, git identity and Claude Code settings are copied at every `repose run` whether or not the checkout is, so a rotated token reaches the machine on your next run.
 
 ## What doesn't
 
@@ -49,20 +61,20 @@ Git LFS files arrive as their small pointer files, not their contents. Run `repo
 
 ## When the machine has changes of its own
 
-`repose run` only copies your laptop's work onto the machine. It never restarts or rebuilds the machine, so running it again on a machine an agent is working on is safe.
+`repose sync` only copies your laptop's work onto the machine. It never restarts or rebuilds the machine.
 
-If the machine changed since your last sync (usually an agent's edits or commits) and your laptop has nothing new since then, there is nothing to copy. The checkout is left as it is and you're attached:
+If the machine changed since your last sync (usually an agent's edits or commits) and your laptop has nothing new since then, there is nothing to copy, and the checkout is left as it is:
 
 ```text
-The machine has changes your laptop doesn't have (27 files);
-attaching without syncing. `repose run --stash-remote` puts them
-in git stash and syncs your laptop's work.
+Nothing new to sync. The machine has changes your laptop doesn't
+have (27 files); `repose sync --stash-remote` puts them in git
+stash and lays your laptop's work over them.
 ```
 
 If your laptop does have new work, copying it would write over the machine's changes, so the sync stops, changes nothing and exits with code 6:
 
 ```text
-`repose run` copies your laptop's work onto the machine.
+`repose sync` copies your laptop's work onto the machine.
 It doesn't restart or rebuild anything.
 The machine has uncommitted changes your laptop doesn't have
 (27 files), probably an agent's:
@@ -78,9 +90,9 @@ The machine has uncommitted changes your laptop doesn't have
 Your laptop has new work as well, so syncing now would write over
 them. Nothing was changed. Pick one:
   repose attach                  look at the machine first
-  repose run --stash-remote      put the machine's changes in git
+  repose sync --stash-remote     put the machine's changes in git
                                  stash, then sync
-  repose run --discard-remote    throw the machine's changes away,
+  repose sync --discard-remote   throw the machine's changes away,
                                  then sync
 ```
 
@@ -117,7 +129,7 @@ Nothing goes through GitHub, and the agent doesn't need to push. Only commits tr
 
 A branch on the machine appears under `repose/` followed by its name there. The branch of a [`--worktree` agent](/docs/run-and-attach#several-agents-separate-trees), `worktree-1` on the machine, is `repose/worktree-1` on your laptop, and `git pull repose worktree-1` names it as the machine does.
 
-The remote is for fetching. `git push repose` fails with `'this remote is fetch-only; repose run sends your work to the machine' does not appear to be a git repository`: the machine's checkout has a branch checked out, and pushing would move it under the agent. To send your work, run `repose run`. `git fetch --all` skips the remote, so it doesn't try a machine that's stopped.
+The remote is for fetching. `git push repose` fails with `'this remote is fetch-only; repose sync sends your work to the machine' does not appear to be a git repository` (remotes added before this change name `repose run`): the machine's checkout has a branch checked out, and pushing would move it under the agent. To send your work, run `repose sync`. `git fetch --all` skips the remote, so it doesn't try a machine that's stopped.
 
 Details:
 

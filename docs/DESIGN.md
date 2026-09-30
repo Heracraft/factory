@@ -329,7 +329,9 @@ and no `--name` is an error with a one-line fix.
    checked out, and staged and unstaged changes follow as two diffs, with
    untracked files as a tar. If the guest's tree has changes of its own,
    refuse and offer `--stash-remote` or `--discard-remote`
-   (`features/sync-at-launch.md`).
+   (`features/sync-at-launch.md`). Since DECISIONS I-367 `run` does this
+   only into a guest whose checkout has no commit yet; `repose sync` does
+   it on demand.
 5. Sync credential files listed in `features/secrets.md` (gh, Codex,
    opencode). Never `~/.claude/.credentials.json`.
 6. If a prompt was given: open a tmux window named after the agent, start the

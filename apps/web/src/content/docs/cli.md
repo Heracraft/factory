@@ -24,7 +24,7 @@ Global flags: `--project NAME`, `-v`/`--verbose` (debug output to stderr), `--ve
 
 ### `repose run [PROMPT]`
 
-Create or start this checkout's machine, sync, and attach. With a prompt, start an agent and type the prompt into it. See [Run and attach](/docs/run-and-attach).
+Create or start this checkout's machine and attach. A new machine gets a copy of your checkout first; one that already has it is left as it is, and `run` says when your laptop has work to send with `repose sync`. Your tool logins and settings are copied every time. With a prompt, start an agent and type the prompt into it. See [Run and attach](/docs/run-and-attach) and [Sync](/docs/sync).
 
 On your laptop, `run` changes one thing in the checkout: it adds a git remote named `repose` for the machine's checkout, so `git fetch repose` brings the agent's commits back. See [Getting work back](/docs/sync#getting-work-back).
 
@@ -33,9 +33,7 @@ On your laptop, `run` changes one thing in the checkout: it adds a git remote na
 | `--agent NAME`            | `claude`, `codex`, `opencode`, `gemini` or `pi`.                                                                                                                  |
 | `--no-attach`             | Don't attach afterwards.                                                                                                                                          |
 | `--worktree`              | Start the agent in its own git worktree. Needs a prompt.                                                                                                          |
-| `--no-sync`               | Skip the git sync. Your tool logins and git identity are still copied.                                                                                            |
-| `--stash-remote`          | Stash the machine's uncommitted changes before syncing.                                                                                                           |
-| `--discard-remote`        | Discard the machine's uncommitted changes before syncing.                                                                                                         |
+| `--no-sync`               | Don't copy the checkout, even into a new machine. Your tool logins and git identity are still copied.                                                             |
 | `--size small\|large\|xl` | Size of a new project.                                                                                                                                            |
 | `--name NAME`             | The project called NAME, created if there is none: a second machine for this checkout, or a name other than the directory's for one with no remote.               |
 | `--temp [DURATION]`       | A new temporary machine, destroyed with no snapshot after DURATION (`10m` to `24h`, default `24h`). See [Temporary machines](/docs/lifecycle#temporary-machines). |
@@ -52,7 +50,7 @@ While you're attached, a file you drop on the terminal, or an image you paste wi
 
 ### `repose sync [PROJECT]`
 
-Sync this checkout to its machine and don't attach: `repose run --no-attach` under its own name. It creates or starts the machine if needed. See [Sync](/docs/sync).
+Copy this checkout's current work to its machine, over the checkout already there, and don't attach. It creates or starts the machine if needed. It stops with exit code 6 when the machine has uncommitted changes your laptop would write over. See [Sync](/docs/sync). `repose run --stash-remote` and `--discard-remote` moved here, and `run` exits 2 naming this command when given one.
 
 | Flag                      |                                                                    |
 | ------------------------- | ------------------------------------------------------------------ |

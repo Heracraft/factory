@@ -27,7 +27,9 @@ root is the project's `by_dir` entry), `run` and `attach` own the
 `[remote "repose"]` section of `.git/config` when its `url` has the shape
 `<slug>.repose:~/<slug>`: `url` (retargeted when the slug differs),
 git's default `fetch` refspec, `pushurl = this remote is fetch-only;
-repose run sends your work to the machine` and `skipFetchAll = true`.
+repose sync sends your work to the machine` (I-367; a remote added
+before says `repose run` and is left so, since ownership goes by `url`)
+and `skipFetchAll = true`.
 A `repose` remote with any other URL is the user's and is never
 changed; `repose.remoteNoted = true` records that the CLI has said so
 once. `destroy` removes the section (not the fetched `refs/remotes/repose/*`)

@@ -10,13 +10,13 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-400 entries.
+401 entries.
 
 ## Scope
 
 - **R1-1** First release is multi-tenant — L18
 - **R1-2** Unit of environment is one microVM per project on shared hosts — L23
-- **R1-3** Git is the exchange channel, plus a one-shot sync of the uncommitted diff at launch — L29
+- **R1-3** Git is the exchange channel, plus a one-shot sync of the uncommitted diff at launch — partly amended by I-367; L29
 - **R1-4** `run` attaches, `run "prompt"` starts an agent, with a prelisted agent picker defaulting to Claude — L34
 - **R1-5** Guests are always-on until `stop` — L37
 - **R1-6** No Tailscale for user access — superseded by R2-5 and R4-3; L42
@@ -432,3 +432,4 @@ pointer, not a summary.
 - **I-364** tmux's mouse mode is off in the guest — 2026-09-29; L9248
 - **I-365** `repose secrets set` echoes one `*` per character — 2026-09-29; L9263
 - **I-366** `run --no-sync` still copies the tool logins and the carry — 2026-09-29; L9280
+- **I-367** `repose run` syncs the checkout only into a machine that has no commit yet; `repose sync` is the explicit sync — 2026-09-29; L9299

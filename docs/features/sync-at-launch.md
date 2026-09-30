@@ -1,12 +1,16 @@
 # Sync at launch
 
-Git is the exchange channel between the laptop and the guest. `repose run`
-adds one thing on top: the uncommitted work in the laptop's tree is carried
-over once, at launch, so the agent starts from what the user actually sees.
-Work comes back only through git (`git fetch repose`, I-272). Nothing
-syncs continuously.
+Git is the exchange channel between the laptop and the guest. The first
+`repose run` for a machine adds one thing on top: the laptop's tree,
+uncommitted work included, is carried over into the new machine, so the
+agent starts from what the user actually sees. Every later run attaches to
+the machine as it is; the laptop's later work goes over only with `repose
+sync` (DECISIONS I-367). Work comes back only through git (`git fetch
+repose`, I-272). Nothing syncs continuously.
 
 ## What the user sees
+
+The first run, into a new machine:
 
 ```
 $ repose run
@@ -14,10 +18,20 @@ Connected to todo-app (large)
 Synced: 3 modified, 1 untracked
 ```
 
-Local commits not on the remote yet travel anyway, and nothing is pushed:
+A later run, with work on the laptop the machine never took (I-367); the
+checkout is left alone and the run attaches:
 
 ```
 $ repose run
+Connected to todo-app (large)
+Not synced: your laptop has work the machine doesn't (2 modified, 1 commit). `repose sync` sends it.
+```
+
+`repose sync` sends it. Local commits not on the remote yet travel anyway,
+and nothing is pushed:
+
+```
+$ repose sync
 Connected to todo-app (large)
 Synced: 0 modified, 0 untracked (2 new commits)
 ```
@@ -25,7 +39,7 @@ Synced: 0 modified, 0 untracked (2 new commits)
 An agent committed on the guest's branch and the laptop has not pulled:
 
 ```
-$ repose run
+$ repose sync
 Connected to todo-app (large)
 Synced: 1 modified, 0 untracked (1 new commit)
 The guest's main has commits your laptop does not have; it was left as it
@@ -41,15 +55,15 @@ Guest changed since the last sync, laptop has nothing new (DECISIONS
 I-248):
 
 ```
-$ repose run
-The machine has changes your laptop doesn't have (27 files); attaching without syncing. `repose run --stash-remote` puts them in git stash and syncs your laptop's work.
+$ repose sync
+Nothing new to sync. The machine has changes your laptop doesn't have (27 files); `repose sync --stash-remote` puts them in git stash and lays your laptop's work over them.
 ```
 
 Guest changed and the laptop has new work that would land on it:
 
 ```
-$ repose run
-`repose run` copies your laptop's work onto the machine. It doesn't restart or rebuild anything.
+$ repose sync
+`repose sync` copies your laptop's work onto the machine. It doesn't restart or rebuild anything.
 The machine has uncommitted changes your laptop doesn't have (27 files), probably an agent's:
   src/auth.ts
   src/routes/login.ts
@@ -57,14 +71,22 @@ The machine has uncommitted changes your laptop doesn't have (27 files), probabl
   and 19 more
 Your laptop has new work as well, so syncing now would write over them. Nothing was changed. Pick one:
   repose attach                  look at the machine first
-  repose run --stash-remote      put the machine's changes in git stash, then sync
-  repose run --discard-remote    throw the machine's changes away, then sync
+  repose sync --stash-remote     put the machine's changes in git stash, then sync
+  repose sync --discard-remote   throw the machine's changes away, then sync
 ```
 
 ## Behaviour that must hold
 
-- Sync runs only as part of `repose run`, never on `attach`, `start`, or
-  any other command. There is no standalone `repose sync`.
+- The checkout syncs on `repose sync` (I-302), and on `repose run` only
+  when the guest's checkout has no commit yet: a new machine, or one made
+  with `--no-sync` (I-367). A run into a guest with a commit leaves the
+  checkout alone whatever either side has, sends the logins and carry,
+  and, when the laptop has work the guest never took (a sync key that
+  differs, with a modified or untracked file or a commit the guest lacks
+  to show for it), prints the "Not synced" line above. Never on
+  `attach`, `start`, or any other command. `run --stash-remote` and
+  `--discard-remote` exit 2 naming `repose sync` with the same flag.
+  Everything below describes `repose sync` and a run's first sync.
 - The guest checks `git status --porcelain` in `/home/dev/<slug>` first
   (this includes untracked files, so an agent's scratch file counts as
   dirty too). If it is non-empty (and not the last sync's own, below)
@@ -75,7 +97,7 @@ Your laptop has new work as well, so syncing now would write over them. Nothing 
   would send, which the guest shows by still having the commits that
 sync recorded under its key, DECISIONS I-284, even after it pulled past
 every commit the laptop knows), there is nothing to write over: the checkout is left
-  alone, only the logins and carry go, and the run attaches with the
+  alone, only the logins and carry go, and the sync ends with the
   one-line notice above. The same holds when the guest's tree is clean
   but it moved on (an agent's commits, another branch): no detached
   checkout of an older laptop commit. Otherwise the CLI prints the

@@ -326,9 +326,13 @@ func newRunCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 	cmd.Flags().StringVar(&opts.Size, "size", "", "small|large|xl")
 	cmd.Flags().StringVar(&opts.Name, "name", "", "the project with this name, created if there is none (a second machine for a checkout, or one for a directory with no git remote)")
 	addTempFlag(cmd, &tempRaw)
-	cmd.Flags().BoolVar(&opts.StashRemote, "stash-remote", false, "stash the guest's uncommitted changes before syncing")
-	cmd.Flags().BoolVar(&opts.DiscardRemote, "discard-remote", false, "discard the guest's uncommitted changes before syncing")
-	cmd.Flags().BoolVar(&opts.NoSync, "no-sync", false, "skip the git and credential sync")
+	// Moved to `repose sync` (I-367); kept hidden for a release so a
+	// script that passes them hears where they went.
+	cmd.Flags().BoolVar(&opts.StashRemote, "stash-remote", false, "moved to repose sync")
+	cmd.Flags().BoolVar(&opts.DiscardRemote, "discard-remote", false, "moved to repose sync")
+	_ = cmd.Flags().MarkHidden("stash-remote")
+	_ = cmd.Flags().MarkHidden("discard-remote")
+	cmd.Flags().BoolVar(&opts.NoSync, "no-sync", false, "do not sync the checkout, even into a new machine")
 	cmd.Flags().BoolVar(&opts.NoAttach, "no-attach", false, "do not attach after starting/sending the prompt")
 	cmd.Flags().BoolVar(&opts.Worktree, "worktree", false, "start the agent in its own git worktree, ~/<slug>-worktree-<N> on branch worktree-<N>")
 	cmd.Flags().BoolVar(&opts.Bridge, "bridge", false, "also bridge this laptop's Chrome to the machine while attached (repose browser bridge)")
@@ -391,7 +395,7 @@ func newSyncCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			opts.ProjectArg, opts.NoAttach = project, true
+			opts.ProjectArg, opts.NoAttach, opts.Sync = project, true, true
 			return runRun(cmd.Context(), e, opts, false)
 		},
 	}

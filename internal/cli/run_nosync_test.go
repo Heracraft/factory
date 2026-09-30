@@ -23,7 +23,7 @@ func TestRunWithoutSyncStillCopiesToolLogins(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(f.local, "README.md"), []byte("laptop edit\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := runRun(context.Background(), f.env, RunOptions{NoSync: true, NoAttach: true}, false); err != nil {
+	if err := runRun(context.Background(), f.env, RunOptions{Name: testSlug, NoSync: true, NoAttach: true}, false); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(filepath.Join(f.guestHome, ".config", "gh", "hosts.yml")); !strings.Contains(string(b), "gho_test") {

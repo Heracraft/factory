@@ -54,7 +54,7 @@ func TestSyncLeavesTheGuestAloneWhenTheLaptopHasNothingNew(t *testing.T) {
 		t.Fatalf("guestAhead=%v unchanged=%v ssh=%d", s.GuestAhead, s.Unchanged, n)
 	}
 	// git status names the untracked directory once: README.md and gen/.
-	want := "The machine has changes your laptop doesn't have (2 files); attaching without syncing. `repose run --stash-remote` puts them in git stash and syncs your laptop's work."
+	want := "Nothing new to sync. The machine has changes your laptop doesn't have (2 files); `repose sync --stash-remote` puts them in git stash and lays your laptop's work over them."
 	if s.String() != want {
 		t.Fatalf("summary = %q\nwant      %q", s.String(), want)
 	}
@@ -98,7 +98,7 @@ func TestSyncLeavesTheGuestsCommitsAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !s.GuestAhead || s.Detached || !strings.HasPrefix(s.String(), "The machine has commits your laptop doesn't have; attaching without syncing.") {
+	if !s.GuestAhead || s.Detached || s.String() != "Nothing new to sync. The machine has commits your laptop doesn't have; `git fetch repose` brings them to your laptop." {
 		t.Fatalf("summary %+v %q", s, s.String())
 	}
 	if got := mustRun(t, f.guestRepo(), "git", "rev-parse", "HEAD"); got != agentHead {
@@ -109,9 +109,9 @@ func TestSyncLeavesTheGuestsCommitsAlone(t *testing.T) {
 	}
 }
 
-// With new laptop work, the refusal says what `run` does, what is on the
+// With new laptop work, the refusal says what `repose sync` does, what is on the
 // machine (eight names, then a count) and the three ways on.
-func TestSyncRefusalSaysWhatRunDoes(t *testing.T) {
+func TestSyncRefusalSaysWhatSyncDoes(t *testing.T) {
 	f := syncedWithALaptopEdit(t)
 	for i := 0; i < 27; i++ {
 		if err := os.WriteFile(filepath.Join(f.guestRepo(), fmt.Sprintf("agent%02d.txt", i)), []byte("x\n"), 0o644); err != nil {
@@ -124,14 +124,14 @@ func TestSyncRefusalSaysWhatRunDoes(t *testing.T) {
 	_, err := syncGuest(context.Background(), f.target, f.local, testSlug, SyncOptions{})
 	wantDirtyRefusal(t, err)
 	msg := err.(*exitError).msg
-	want := "`repose run` copies your laptop's work onto the machine. It doesn't restart or rebuild anything.\n" +
+	want := "`repose sync` copies your laptop's work onto the machine. It doesn't restart or rebuild anything.\n" +
 		"The machine has uncommitted changes your laptop doesn't have (28 files), probably an agent's:\n" +
 		"  README.md\n  agent00.txt\n  agent01.txt\n  agent02.txt\n  agent03.txt\n  agent04.txt\n  agent05.txt\n  agent06.txt\n" +
 		"  and 20 more\n" +
 		"Your laptop has new work as well, so syncing now would write over them. Nothing was changed. Pick one:\n" +
 		"  repose attach                  look at the machine first\n" +
-		"  repose run --stash-remote      put the machine's changes in git stash, then sync\n" +
-		"  repose run --discard-remote    throw the machine's changes away, then sync"
+		"  repose sync --stash-remote     put the machine's changes in git stash, then sync\n" +
+		"  repose sync --discard-remote   throw the machine's changes away, then sync"
 	if msg != want {
 		t.Fatalf("message:\n%s\nwant:\n%s", msg, want)
 	}
@@ -154,14 +154,15 @@ func TestDirtyTreeErrorShortListHasNoCount(t *testing.T) {
 	}
 }
 
-// End to end through runRun: the second run, from an unchanged laptop,
-// goes through and prints the one line.
-func TestRunAttachesWhenOnlyTheMachineChanged(t *testing.T) {
+// End to end through runRun: a second `repose sync`, from an unchanged
+// laptop, goes through, touches nothing and prints the one line. (A plain
+// run leaves an existing checkout alone and says nothing, I-367.)
+func TestSyncLeavesItAloneWhenOnlyTheMachineChanged(t *testing.T) {
 	fake := fakeapi.New(fakeapi.Options{})
 	defer fake.Close()
 	f := newRunFixture(t, fake)
 	ctx := context.Background()
-	if err := runRun(ctx, f.env, RunOptions{Name: testSlug, NoAttach: true}, false); err != nil {
+	if err := runRun(ctx, f.env, RunOptions{Name: testSlug, NoAttach: true, Sync: true}, false); err != nil {
 		t.Fatalf("first runRun: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(f.guestRepo(), "README.md"), []byte("agent\n"), 0o644); err != nil {
@@ -172,10 +173,10 @@ func TestRunAttachesWhenOnlyTheMachineChanged(t *testing.T) {
 		Dir: f.env.Dir, Cfg: f.env.Cfg, Cache: f.env.Cache, Cwd: f.local, HomeDir: f.env.HomeDir,
 		Client: f.env.Client, Out: &out, ErrOut: &discardWriter{}, TargetFor: f.env.TargetFor,
 	}
-	if err := runRun(ctx, env2, RunOptions{NoAttach: true}, false); err != nil {
+	if err := runRun(ctx, env2, RunOptions{NoAttach: true, Sync: true}, false); err != nil {
 		t.Fatalf("second runRun: %v", err)
 	}
-	if !strings.Contains(out.String(), "The machine has changes your laptop doesn't have (1 file); attaching without syncing.") {
+	if !strings.Contains(out.String(), "Nothing new to sync. The machine has changes your laptop doesn't have (1 file); `repose sync --stash-remote`") {
 		t.Fatalf("output = %q", out.String())
 	}
 	if b, _ := os.ReadFile(filepath.Join(f.guestRepo(), "README.md")); string(b) != "agent\n" {

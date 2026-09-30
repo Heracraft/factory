@@ -52,6 +52,12 @@ type SyncOptions struct {
 	// checkout in the apply's own ssh, unless the guest's marker says it
 	// has exactly these.
 	Env []envFile
+	// FirstOnly is `repose run`'s sync (DECISIONS I-367): the checkout is
+	// synced only into a guest that has no commit yet. A guest with one
+	// is left alone, whatever the laptop has, and only the logins and
+	// the carry go; the summary says whether the laptop had work to
+	// send, for the line that names `repose sync`.
+	FirstOnly bool
 	// EnvLater, when set, is called after the probe for the .env files in
 	// place of Env: `run` lists them (a walk of every ignored file) while
 	// the probe's ssh is in flight rather than before it.
@@ -109,6 +115,52 @@ type SyncSummary struct {
 	// changes on the laptop did not travel (I-263).
 	SubFailed  []string
 	SubNotSent []string
+	// Skipped: FirstOnly found a checkout already there and left it
+	// alone (I-367). LaptopAhead: the laptop has work that checkout
+	// never took (Modified, Untracked and Commits count it).
+	Skipped     bool
+	LaptopAhead bool
+}
+
+// skipCheckout is syncGuest for a run whose guest already has a
+// checkout (FirstOnly, I-367): the checkout is not touched, the logins
+// and the carry go in one ssh (none when nothing changed), and the
+// summary records whether the laptop has work the guest never took.
+func skipCheckout(ctx context.Context, t sshTarget, localRepoDir string, opts SyncOptions, probe guestProbe, wantRefs []string, nothingNew bool, branch, head string, modified, untracked int) (*SyncSummary, error) {
+	s := &SyncSummary{Branch: branch, Head: head, Skipped: true}
+	if !nothingNew {
+		n, err := countCommitsToSend(localRepoDir, wantRefs, probe.tips)
+		if err != nil {
+			return nil, err
+		}
+		s.Commits, s.Modified, s.Untracked = n, modified, untracked
+		// A key that differs with nothing to count is a laptop whose
+		// state matches the guest's by other means (the guest pulled the
+		// same commits): nothing to send, so nothing to say.
+		s.LaptopAhead = n > 0 || modified > 0 || untracked > 0
+	}
+	if opts.BeforeApply != nil {
+		if err := opts.BeforeApply(probe.markers); err != nil {
+			return nil, err
+		}
+	}
+	if opts.Carry == nil {
+		return s, nil
+	}
+	carry, err := opts.Carry(probe.markers)
+	if err != nil {
+		return nil, err
+	}
+	if carry.p.empty() {
+		s.Copied, s.Carried = carry.copied, &carryOutcome{}
+		return s, nil
+	}
+	out, err := carry.p.run(ctx, t)
+	if err != nil {
+		return nil, stepFailed("copy your tool logins to the guest", err, "")
+	}
+	s.Copied, s.Carried = carry.finish(string(out))
+	return s, nil
 }
 
 // dirtyTreeError is 07-cli.md §6's exit 6, carrying the file list for the
@@ -123,7 +175,7 @@ const dirtyListMax = 8
 
 func (e *dirtyTreeError) Error() string {
 	var b strings.Builder
-	b.WriteString("`repose run` copies your laptop's work onto the machine. It doesn't restart or rebuild anything.\n")
+	b.WriteString("`repose sync` copies your laptop's work onto the machine. It doesn't restart or rebuild anything.\n")
 	files := "1 file"
 	if len(e.files) != 1 {
 		files = fmt.Sprintf("%d files", len(e.files))
@@ -138,8 +190,8 @@ func (e *dirtyTreeError) Error() string {
 	}
 	b.WriteString("Your laptop has new work as well, so syncing now would write over them. Nothing was changed. Pick one:\n")
 	b.WriteString("  repose attach                  look at the machine first\n")
-	b.WriteString("  repose run --stash-remote      put the machine's changes in git stash, then sync\n")
-	b.WriteString("  repose run --discard-remote    throw the machine's changes away, then sync")
+	b.WriteString("  repose sync --stash-remote     put the machine's changes in git stash, then sync\n")
+	b.WriteString("  repose sync --discard-remote   throw the machine's changes away, then sync")
 	return b.String()
 }
 
@@ -501,6 +553,9 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 			}
 			nothingNew = n == 0 && subCommits == 0
 		}
+	}
+	if opts.FirstOnly && len(probe.tips) > 0 {
+		return skipCheckout(ctx, t, localRepoDir, opts, probe, wantRefs, nothingNew, branch, head, len(localDirty), len(untracked))
 	}
 	guestChanged := len(probe.dirty) > 0 && !probe.syncedOnly
 	if guestChanged && !nothingNew && !opts.StashRemote && !opts.DiscardRemote {
@@ -1219,9 +1274,9 @@ func (s *SyncSummary) String() string {
 			what = fmt.Sprintf("%d files", s.GuestFiles)
 		}
 		if s.GuestFiles > 0 {
-			return fmt.Sprintf("The machine has changes your laptop doesn't have (%s); attaching without syncing. `repose run --stash-remote` puts them in git stash and syncs your laptop's work.", what)
+			return fmt.Sprintf("Nothing new to sync. The machine has changes your laptop doesn't have (%s); `repose sync --stash-remote` puts them in git stash and lays your laptop's work over them.", what)
 		}
-		return fmt.Sprintf("The machine has %s; attaching without syncing. `git fetch repose` brings them to your laptop, or `repose run --stash-remote` syncs your laptop's work over them.", what)
+		return fmt.Sprintf("Nothing new to sync. The machine has %s; `git fetch repose` brings them to your laptop.", what)
 	}
 	line := fmt.Sprintf("Synced: %d modified, %d untracked", s.Modified, s.Untracked)
 	switch {

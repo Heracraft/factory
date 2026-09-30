@@ -37,11 +37,13 @@ For more detail on any command, add `-v`. `REPOSE_TIMING=1` shows where the time
 
 ## Sync
 
-**`The machine has uncommitted changes your laptop doesn't have`.** Something on the machine, usually an agent, changed files since your last sync, and your laptop has new work that would write over them. `repose attach` to look, or re-run with `--stash-remote` to keep them in `git stash` or `--discard-remote` to drop them. With nothing new on your laptop, `repose run` just attaches. See [Sync](/docs/sync#when-the-machine-has-changes-of-its-own).
+**`The machine has uncommitted changes your laptop doesn't have`.** Something on the machine, usually an agent, changed files since your last sync, and your laptop has new work that would write over them. `repose attach` to look, or run `repose sync --stash-remote` to keep them in `git stash` or `repose sync --discard-remote` to drop them. `repose run` never syncs over a machine that already has your checkout, so it attaches either way. See [Sync](/docs/sync#when-the-machine-has-changes-of-its-own).
 
 **`git fetch repose` fails.** With ``todo-app is stopped; run `repose start todo-app` ``, the machine is stopped: start it and fetch again. With `Permission denied`, see the `ssh todo-app.repose` entry above; anything that works for `ssh` works for the fetch. With `does not appear to be a git repository`, the machine has no checkout yet: `repose run` makes one. If `git remote` doesn't list `repose` at all, run `repose run` or `repose attach` in the checkout, or see [Getting work back](/docs/sync#getting-work-back) for a remote of that name you already had.
 
-**`git push repose` fails with `this remote is fetch-only`.** The remote only brings work back. `repose run` sends your work to the machine.
+**`git push repose` fails with `this remote is fetch-only`.** The remote only brings work back. `repose sync` sends your work to the machine.
+
+**`Not synced: your laptop has work the machine doesn't`.** `repose run` copies your checkout only into a new machine. Run `repose sync` to send the rest.
 
 **`Not sent: web/node_modules`.** Dependency directories never travel. Run your install command on the machine.
 

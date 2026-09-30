@@ -21,10 +21,14 @@ type RunOptions struct {
 	DiscardRemote bool
 	NoSync        bool
 	NoAttach      bool
-	Worktree      bool     // the agent works in its own git worktree (I-253)
-	Bridge        bool     // the laptop's Chrome is bridged in beside the attach (I-296)
-	BridgeAllow   []string // --bridge-allow: the bridge's allowlist (I-311)
-	ProjectArg    string
+	// Sync is `repose sync`: lay the laptop's work over the machine's
+	// checkout. Without it, a run syncs only a machine with no checkout
+	// yet (DECISIONS I-367).
+	Sync        bool
+	Worktree    bool     // the agent works in its own git worktree (I-253)
+	Bridge      bool     // the laptop's Chrome is bridged in beside the attach (I-296)
+	BridgeAllow []string // --bridge-allow: the bridge's allowlist (I-311)
+	ProjectArg  string
 	// Temp is --temp's lifetime, 0 without it: a new temporary project
 	// (DECISIONS I-347).
 	Temp time.Duration
@@ -68,6 +72,13 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			return err
 		}
 	} else {
+		if !opts.Sync && (opts.StashRemote || opts.DiscardRemote) {
+			flag := "--stash-remote"
+			if opts.DiscardRemote {
+				flag = "--discard-remote"
+			}
+			return exitf(ExitUsage, "`repose run` no longer syncs a machine that already has your checkout; `repose sync %s` does.", flag)
+		}
 		if opts.Temp > 0 && opts.ProjectArg != "" {
 			return exitf(ExitUsage, "--temp always creates a new machine; it cannot be used with --project (%s).", opts.ProjectArg)
 		}
@@ -245,7 +256,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			return b.envs
 		}
 		summary, err := syncGuest(ctx, target, repoRoot, project.Slug, SyncOptions{
-			StashRemote: opts.StashRemote, DiscardRemote: opts.DiscardRemote,
+			StashRemote: opts.StashRemote, DiscardRemote: opts.DiscardRemote, FirstOnly: !opts.Sync,
 			Exclude: e.Cfg.SyncExclude, NoRemote: project.RemoteURL == "", RemoteURL: project.RemoteURL,
 			EnvLater: waitEnv,
 			Probe:    early.forProject(),
@@ -378,12 +389,35 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 // say, so they say that.
 func syncResultLine(s *SyncSummary, noAttach bool) string {
 	switch {
+	case s.Skipped && s.LaptopAhead:
+		return laptopAheadLine(s)
+	case s.Skipped:
+		return ""
 	case !s.Unchanged:
 		return s.String()
 	case noAttach:
 		return "Nothing new to sync: the machine already has this checkout."
 	}
 	return ""
+}
+
+// laptopAheadLine is what a run that left the machine's checkout alone
+// says when the laptop has work the machine never took (I-367).
+func laptopAheadLine(s *SyncSummary) string {
+	var parts []string
+	if s.Modified > 0 {
+		parts = append(parts, fmt.Sprintf("%d modified", s.Modified))
+	}
+	if s.Untracked > 0 {
+		parts = append(parts, fmt.Sprintf("%d untracked", s.Untracked))
+	}
+	switch {
+	case s.Commits == 1:
+		parts = append(parts, "1 commit")
+	case s.Commits > 1:
+		parts = append(parts, fmt.Sprintf("%d commits", s.Commits))
+	}
+	return fmt.Sprintf("Not synced: your laptop has work the machine doesn't (%s). `repose sync` sends it.", strings.Join(parts, ", "))
 }
 
 // saveProjectTZ moves the project's stored zone to the laptop's when they

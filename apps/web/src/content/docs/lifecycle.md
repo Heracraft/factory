@@ -200,7 +200,7 @@ from its snapshot of 2026-09-25 14:02 in 48s:
 
 `repose fork` snapshots the project and restores the snapshot into new projects. Each copy starts with the same disk: the code and its uncommitted changes, installed dependencies, Docker images, logins made on the machine. It also gets the project's configuration and [secrets](/docs/secrets). Processes don't carry over; each copy boots fresh. The code is at `~/todo-app-fork-1` in the first copy, which links to `~/todo-app`, so paths inside the project keep working.
 
-`--prompt "..."` starts the agent in every copy with the same prompt. To give each copy its own prompt, attach to it and type it, or run `repose run --project todo-app-fork-2 --no-sync "..."`.
+`--prompt "..."` starts the agent in every copy with the same prompt. To give each copy its own prompt, attach to it and type it, or run `repose run --project todo-app-fork-2 "..."`, which leaves the copy's checkout as it is.
 
 The original keeps running and is still the project `repose run` uses in your checkout. Reach the copies by name: `repose attach todo-app-fork-2`. To keep one copy's work, commit it there and fetch it into your checkout with a remote for that copy:
 

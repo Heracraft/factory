@@ -21,14 +21,14 @@ repose run --name hello
 
 ## What went up
 
-`repose run` copies the state of your checkout, once, at the start:
+The first `repose run` copied the state of your checkout:
 
 - your current branch, including commits you haven't pushed;
 - uncommitted changes to tracked files;
 - untracked files that aren't gitignored;
 - gitignored `.env` files.
 
-It doesn't copy build output, `node_modules` or anything else gitignored, and it never watches your files afterwards. Change something on your laptop and it stays on your laptop until the next `repose run`. [Sync](/docs/sync) has the full list and the size limits.
+It doesn't copy build output, `node_modules` or anything else gitignored, and it never watches your files afterwards. Later runs attach to the machine as it is. Change something on your laptop and it stays there until you run `repose sync`. [Sync](/docs/sync) has the full list and the size limits.
 
 Try it. On your laptop:
 
@@ -38,10 +38,20 @@ repose run
 ```
 
 ```text
-Synced: 1 untracked
+Not synced: your laptop has work the machine doesn't (1 untracked). `repose sync` sends it.
 ```
 
-On the machine, `note.txt` is there, untracked, exactly as on your laptop. `repose run` is safe to repeat: it only copies, it never restarts or rebuilds the machine.
+Detach, then send it:
+
+```
+repose sync
+```
+
+```text
+Synced: 0 modified, 1 untracked
+```
+
+On the machine, `note.txt` is there, untracked, exactly as on your laptop. Neither command restarts or rebuilds the machine.
 
 ## What comes back
 
@@ -50,7 +60,7 @@ Nothing comes back on its own. The agent commits, and you fetch. The first `repo
 ```
 $ git remote -v
 repose  hello.repose:~/hello (fetch)
-repose  'this remote is fetch-only; repose run sends your work to
+repose  'this remote is fetch-only; repose sync sends your work to
 the machine' (push)
 ```
 
@@ -82,10 +92,10 @@ Only commits travel this way. Files the agent changed but didn't commit stay on 
 
 ## When both sides changed
 
-You edited `README.md` on your laptop while the agent was editing it on the machine. Now `repose run`:
+You edited `README.md` on your laptop while the agent was editing it on the machine. `repose run` attaches without touching either copy. `repose sync` would write over the agent's edit, so it stops:
 
 ```text
-`repose run` copies your laptop's work onto the machine.
+`repose sync` copies your laptop's work onto the machine.
 It doesn't restart or rebuild anything.
 The machine has uncommitted changes your laptop doesn't have
 (1 file), probably an agent's:
@@ -93,9 +103,9 @@ The machine has uncommitted changes your laptop doesn't have
 Your laptop has new work as well, so syncing now would write over
 them. Nothing was changed. Pick one:
   repose attach                  look at the machine first
-  repose run --stash-remote      put the machine's changes in git
+  repose sync --stash-remote     put the machine's changes in git
                                  stash, then sync
-  repose run --discard-remote    throw the machine's changes away,
+  repose sync --discard-remote   throw the machine's changes away,
                                  then sync
 ```
 

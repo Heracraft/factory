@@ -86,8 +86,8 @@ paths, `REPOSE=1`).
 repose login [--no-browser]
 repose logout
 repose run [PROMPT...] [--agent claude|opencode|codex|gemini|pi] [--size small|large|xl]
-            [--name NAME] [--temp [DURATION]] [--stash-remote | --discard-remote] [--no-sync] [--no-attach]
-            [--worktree]
+            [--name NAME] [--temp [DURATION]] [--no-sync] [--no-attach] [--worktree]
+            # --stash-remote, --discard-remote: hidden, exit 2 naming `repose sync` (I-367)
 repose attach [PROJECT]
 repose start [PROJECT]
 repose stop [PROJECT] [--no-snapshot]
@@ -290,7 +290,13 @@ $ repose run
    helper (I-150). A gh token kept in the laptop keyring is written into
    the copy of `hosts.yml` that travels. Never the Claude file, never
    Gemini's, never SSH keys.
-6. Sync (unless `--no-sync`), two ssh round trips (DECISIONS I-150):
+6. Sync (unless `--no-sync`), two ssh round trips (DECISIONS I-150). On
+   `run` it is a first sync only (I-367): after step b, a guest whose
+   checkout has any commit is left alone, steps c and d send only the
+   logins and carry, and the run prints `Not synced: your laptop has work
+   the machine doesn't (<counts>). \`repose sync\` sends it.` when the
+   laptop's sync key differs and it has a modified or untracked file or a
+   commit the guest lacks. `repose sync` runs every step:
 
    a. Local: `git rev-parse HEAD` → `H`; `git status --porcelain` → dirty
       list; `git ls-files --others --exclude-standard` → untracked list. A

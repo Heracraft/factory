@@ -9295,3 +9295,50 @@ unchanged. `TestRunWithoutSyncStillCopiesToolLogins` failed before
 (guest `hosts.yml` empty) and passes. *Rejected:* adding the logins to the
 session helper (it does not run with `--no-attach`, and its messages only
 reach tmux's status line).
+
+**I-367. `repose run` syncs the checkout only into a machine that has no
+commit yet; `repose sync` is the explicit sync.** (owner, 2026-09-29;
+amends R1-3's "one-shot sync of the uncommitted diff at launch" to the
+first launch, moves R3-12's refusal and I-248's notice to `repose sync`,
+and ends I-302's "`repose run --no-attach` under its own name") The
+owner ran `repose run` on a machine where an agent had left two
+uncommitted files and got I-248's exit 6 with three choices, and judged
+it the wrong shape: every attach made the user weigh what the machine had
+against what the laptop had, a workflow nobody asked for. `run` should
+mean "give me my machine now". So `run`'s sync is `FirstOnly`: after the
+probe, a guest checkout with any commit (`probe.tips` non-empty) is left
+alone whatever either side holds; the logins and carry still go, in the
+apply's one ssh or none (I-224); nothing is stashed or refused. A guest
+with no commit, which is what guestd's `git init` leaves on a new machine
+(and what `run --no-sync` leaves), takes the full first sync as before.
+When the laptop's sync key differs from the guest's and it has a modified
+or untracked file or a commit the guest lacks, the run prints `Not synced:
+your laptop has work the machine doesn't (2 modified, 1 untracked, 3
+commits). \`repose sync\` sends it.` (zero counts left out) and attaches;
+with nothing new it prints nothing about the sync. `repose sync` runs the
+whole sync as before, refusal included, and its messages now name itself:
+exit 6 says "`repose sync` copies your laptop's work onto the machine" and
+offers `repose sync --stash-remote` / `--discard-remote`; I-248's notice
+becomes "Nothing new to sync. The machine has changes your laptop doesn't
+have (N files); `repose sync --stash-remote` puts them in git stash and
+lays your laptop's work over them." (or, for commits, "... `git fetch
+repose` brings them to your laptop."), since `sync` never attaches. `run
+--stash-remote` and `--discard-remote` are hidden and exit 2 with
+"`repose run` no longer syncs a machine that already has your checkout;
+`repose sync --stash-remote` does." for one release. The `repose`
+remote's push URL text names `repose sync` for remotes added from now on.
+The cost is unchanged: the laptop still computes its sync key (the diffs
+and the untracked tar) to know whether to print the line.
+`TestRunLeavesAnExistingCheckoutAlone` (the owner's case: agent file and
+laptop edit, run exits 0, both untouched, the line printed, gh copied),
+`TestRunNamesLaptopCommitsItDidNotSend`,
+`TestRunIsQuietWhenTheLaptopHasNothingNew`, `TestRunSyncsIntoANewMachine`
+(first run syncs, second leaves it), `TestSyncCommandSyncsAnExistingCheckout`
+(sync lays work over it, refuses over an agent's file naming its own
+flags, `--stash-remote` goes through), `TestRunStashRemoteSaysUseSync`.
+The I-210, I-248 and I-303 tests that went through `run` now go through
+`repose sync` (`Sync: true`), where that machinery lives. *Rejected:*
+syncing on `run` when the guest is clean (a clean guest can still hold an
+agent's commits, and "sometimes it syncs" is the confusion being removed);
+a prompt on `run` (scripts; and I-248 already rejected it); dropping the
+key computation on skipped runs (then the line could not be printed).

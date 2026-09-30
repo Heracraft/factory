@@ -48,6 +48,10 @@ var undocumentedFlags = map[string]string{
 	// help; cli.md names it once as the old name under repose browser.
 	"repose open --desktop": "old name of repose browser",
 	"repose open --stop":    "old name of repose browser --stop",
+	// Moved to `repose sync` (I-367): hidden on run for a release, and
+	// they only print where they went.
+	"repose run --stash-remote":   "moved to repose sync --stash-remote",
+	"repose run --discard-remote": "moved to repose sync --discard-remote",
 }
 
 // internalEnvVars are REPOSE_* names the package reads that no user sets.

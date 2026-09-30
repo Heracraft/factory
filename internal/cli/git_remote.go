@@ -18,10 +18,10 @@ const reposeRemoteName = "repose"
 // reposeRemotePushURL makes the remote fetch-only. The machine's checkout
 // is a working tree with a branch checked out, so a push would be refused
 // (receive.denyCurrentBranch) or move the agent's branch under it; work
-// goes the other way with `repose run`. The text has no colon and no
+// goes the other way with `repose sync` (I-367). The text has no colon and no
 // slash, so git takes it as a local path and prints it back in its error:
 // "fatal: '<this text>' does not appear to be a git repository".
-const reposeRemotePushURL = "this remote is fetch-only; repose run sends your work to the machine"
+const reposeRemotePushURL = "this remote is fetch-only; repose sync sends your work to the machine"
 
 // reposeRemoteNotedKey records, in the checkout's .git/config, that the
 // CLI already said once that a remote named repose points elsewhere.

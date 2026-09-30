@@ -69,7 +69,7 @@ func TestReposeRemoteAddedOnce(t *testing.T) {
 
 	// Pushing to it fails, and git's message says why.
 	out := gitFails(t, dir, "push", "repose", "HEAD")
-	if !strings.Contains(out, "this remote is fetch-only; repose run sends your work to the machine") {
+	if !strings.Contains(out, "this remote is fetch-only; repose sync sends your work to the machine") {
 		t.Fatalf("push output:\n%s", out)
 	}
 

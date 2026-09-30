@@ -11,9 +11,9 @@ order: 10
 repose run "move the date handling to Temporal, fix the tests"
 ```
 
-Quotes are optional; everything after the flags is the prompt. A one-word prompt that is the name of one of your projects is refused as a likely slip (exit code 2); to send it anyway, name the agent: `repose run --agent claude todo-app`. `run` creates or starts the machine, [syncs](/docs/sync) your checkout, opens a new tmux window, starts the agent there, types your prompt and attaches you to it.
+Quotes are optional; everything after the flags is the prompt. A one-word prompt that is the name of one of your projects is refused as a likely slip (exit code 2); to send it anyway, name the agent: `repose run --agent claude todo-app`. `run` creates or starts the machine, copies your checkout into it if the machine is new ([Sync](/docs/sync)), opens a new tmux window, starts the agent there, types your prompt and attaches you to it.
 
-Without a prompt, `repose run` syncs and drops you in the last active window.
+Without a prompt, `repose run` drops you in the last active window.
 
 Pick a different agent for one prompt with `--agent`:
 
@@ -25,7 +25,7 @@ The agent is the normal interactive program, the same as running `claude` yourse
 
 If that agent already has a window, the new one is named `claude-2`, then `claude-3`, and so on, and the CLI warns that the agents share one working tree.
 
-Running `repose run` twice in a row is safe. The second one finds nothing new to copy and doesn't print a `Synced:` line.
+Running `repose run` twice in a row is safe. Only the first run on a new machine copies your checkout; later ones attach to the machine as it is, and say so when your laptop has work to send with `repose sync`.
 
 If the agent exits before you're attached, its window closes with it. `run` then attaches you to the session and says `The claude window closed before the attach`; start the agent again there.
 
@@ -152,8 +152,8 @@ repose paste
 
 ```
 repose run --no-attach "..."  # start it, keep your shell
-repose sync                   # sync only, no agent, no attach
-repose run --no-sync          # skip the sync
+repose sync                   # send your laptop's work, no attach
+repose run --no-sync          # a new machine without your checkout
 repose run --size xl          # size of a new project
 repose run --name scratch     # a project by name, made if missing
 repose run --temp             # a new machine, gone after 24 hours
@@ -187,4 +187,4 @@ A stop ends every process, agents included. After the next start, the tmux sessi
 
 ## Timing
 
-`REPOSE_TIMING=1 repose run` prints how long each step took. A `run` into a running machine with nothing new to sync usually takes about a second; starting a stopped one, about 10.
+`REPOSE_TIMING=1 repose run` prints how long each step took. A `run` into a running machine that already has your checkout usually takes about a second; starting a stopped one, about 10.
