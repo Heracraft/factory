@@ -9083,6 +9083,29 @@ loop's lock. The tick now takes `LockWaitlistTick` to pick one replica;
 now runs the first tick under the loop's lock with a 10 s deadline: under
 1011 it fails with "context deadline exceeded", under 1012 it passes.
 
+**I-358. A plain `repose run` in a directory with no git remote creates a
+project named after the directory; outside a repository it skips the
+sync.** (owner, 2026-09-29; `repose run` in `~/Downloads/job search` said
+"Pass --name NAME", and `--name job` then refused the sync because the
+directory is not a git checkout.) Replaces the exit 2 in 07-cli.md §5.3
+and projects.md's "never named after the directory". That rule's reason,
+that the directory name is not unique and a second checkout could not
+find the project, holds for `--name` too, and `by_dir` already makes such
+a project findable from where it was made. The name is the repository
+root's basename, else the cwd's, with runs of characters outside
+`[A-Za-z0-9._-]` (the api's name rule) made one `-` and trimmed to 64
+(`job search` is `job-search`); a name that ends up empty (`/`) exits 2
+asking for `--name`. A taken name gets the usual `-2` retry. The project
+has no remote and is written to `by_dir`, so the next plain `run` there
+lands on it with "Using job-search, the machine last made in this
+directory." (the I-348 warning, no longer saying "with --name"). A
+directory that is not a git repository now skips the sync for every
+`run`, as I-353 had it do for `--temp` only, and prints `Not a git
+repository, so nothing was synced.`; `repose sync` there still refuses, and
+a repository with no commit or a shallow clone still refuses for both.
+`TestRunWithoutRemoteNamesTheProjectAfterTheDirectory`; the "not a
+repository" case left `TestSyncRefusalComesBeforeCreate`.
+
 **I-359. kanali, the owner's coordinator guest, is WireGuard peer
 10.255.254.1 on the edge hub, with no forward rule.** (owner, 2026-09-29)
 The conductor moved off the Azure dev box into `kanali`, a repose guest on

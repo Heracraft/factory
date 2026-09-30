@@ -149,8 +149,8 @@ The checkout must be a git repository with at least one commit and full history.
 - No repository or no commits: `git init && git add -A && git commit -m init`
 - A shallow clone: `git fetch --unshallow`
 
-It says so before it creates or starts a machine, so a refused run costs nothing. `repose run --temp` in a directory that isn't a repository makes an empty machine instead and says `Not a git repository, so nothing was synced.`
+It says so before it creates or starts a machine, so a refused run costs nothing. `repose run` in a directory that isn't a repository makes a machine without syncing and says `Not a git repository, so nothing was synced.` `repose sync` there refuses.
 
-A directory without a remote needs a name the first time: `repose run --name scratch`.
+A directory without a remote gets a machine named after the directory (`job search` becomes `job-search`); `--name` picks another name.
 
 For a repository on github.com over about 20 MB, the first sync has the machine clone the history from GitHub and sends only what GitHub doesn't have. If that clone fails, the CLI sends everything itself.

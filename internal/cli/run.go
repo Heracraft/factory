@@ -105,9 +105,6 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	if err != nil {
 		return err
 	}
-	if !attachOnly && res.Project == nil && res.Remote == "" && opts.Name == "" && opts.Temp == 0 {
-		return errNoRemoteNoName()
-	}
 	if !attachOnly && opts.Agent == "" && opts.Prompt != "" && !strings.ContainsAny(strings.TrimSpace(opts.Prompt), " \t\n") {
 		if err := refusePromptThatIsASlug(ctx, e, opts.Prompt); err != nil {
 			return err
@@ -115,10 +112,10 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	}
 	skipSync := false
 	if err := <-precheck; err != nil {
-		if opts.Temp == 0 || gitRepoRoot(e.Cwd) != "" {
+		if gitRepoRoot(e.Cwd) != "" {
 			return err
 		}
-		skipSync = true // --temp outside a repository: an empty machine
+		skipSync = true // outside a repository: an empty machine (I-358)
 	}
 
 	endResolve()
@@ -131,9 +128,6 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 	if project == nil {
 		if attachOnly {
 			return errNoProjectFoundFor(res.Remote, e.Command)
-		}
-		if res.Remote == "" && opts.Name == "" && opts.Temp == 0 {
-			return errNoRemoteNoName()
 		}
 		project, err = createProjectForRun(ctx, e, res.CreateRemote(), opts, pr)
 		if err != nil {
@@ -1042,7 +1036,15 @@ func createProjectForRun(ctx context.Context, e *Env, remote string, opts RunOpt
 		name = tempName()
 	}
 	if name == "" {
-		name = basenameFromRemote(remote, e.Cwd)
+		// No remote: the directory's name (the repository root's in a
+		// repository), remembered in by_dir below (I-358).
+		name = basenameFromRemote(remote, syncRoot(e.Cwd))
+		if remote == "" {
+			name = dirProjectName(name)
+			if name == "" {
+				return nil, exitf(ExitUsage, "This directory's name cannot be a project name. Pass --name NAME.")
+			}
+		}
 	}
 	class := opts.Size
 	if class == "" {
@@ -1172,6 +1174,29 @@ func forgetProject(cache *ProjectsCache, id string) {
 			delete(cache.ByDir, k)
 		}
 	}
+}
+
+// dirProjectName makes a directory's name a valid project name
+// ([A-Za-z0-9._-]{1,64}): "job search" becomes "job-search" (I-358).
+func dirProjectName(base string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range base {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			b.WriteRune(r)
+			dash = false
+			continue
+		}
+		if !dash {
+			b.WriteByte('-')
+			dash = true
+		}
+	}
+	s := strings.Trim(b.String(), "-.")
+	if len(s) > 64 {
+		s = strings.TrimRight(s[:64], "-.")
+	}
+	return s
 }
 
 func basenameFromRemote(remote, cwd string) string {

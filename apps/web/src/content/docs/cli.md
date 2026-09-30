@@ -37,7 +37,7 @@ On your laptop, `run` changes one thing in the checkout: it adds a git remote na
 | `--stash-remote`          | Stash the machine's uncommitted changes before syncing.                                                                                                           |
 | `--discard-remote`        | Discard the machine's uncommitted changes before syncing.                                                                                                         |
 | `--size small\|large\|xl` | Size of a new project.                                                                                                                                            |
-| `--name NAME`             | The project called NAME, created if there is none: a second machine for this checkout, or one for a directory with no remote.                                     |
+| `--name NAME`             | The project called NAME, created if there is none: a second machine for this checkout, or a name other than the directory's for one with no remote.               |
 | `--temp [DURATION]`       | A new temporary machine, destroyed with no snapshot after DURATION (`10m` to `24h`, default `24h`). See [Temporary machines](/docs/lifecycle#temporary-machines). |
 | `--bridge`                | Also bridge your Chrome to the machine while attached, see [`repose browser bridge`](#repose-browser-bridge-project).                                             |
 | `--bridge-allow HOST`     | Bridge, and let the agents use only this site in your Chrome. Repeatable; `*.example.com` is `example.com` and its subdomains.                                    |

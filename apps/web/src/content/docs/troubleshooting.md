@@ -13,8 +13,6 @@ For more detail on any command, add `-v`. `REPOSE_TIMING=1` shows where the time
 
 **`No repose project for github.com/you/app`** This checkout has no project yet, or its remote changed. `repose run` creates one; `repose attach NAME` reaches an existing one.
 
-**`This directory has no git remote.`** Give the project a name: `repose run --name scratch`.
-
 **`ssh todo-app.repose` says `Could not resolve hostname`.** If a line before it says ``Not logged in. Run `repose login`.``, log in and connect again. With no other message, ssh isn't reading the file repose writes; see [When it doesn't connect](/docs/ssh-and-editors#when-it-doesnt-connect).
 
 **`ssh todo-app.repose` says `Permission denied`.** The certificate couldn't be renewed, most often because you're logged out: run `repose login`, then connect again. `repose attach todo-app` also renews it.

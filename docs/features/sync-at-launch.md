@@ -168,9 +168,9 @@ every commit the laptop knows), there is nothing to write over: the checkout is 
   (`git init && git add -A && git commit -m init`, `git fetch
   --unshallow`) or `--no-sync`, exit 2, before anything is created or
   started (DECISIONS I-353): `run` and `sync` check the checkout beside
-  the api's first read. With `--temp`, a directory that is not a git
+  the api's first read. For `run`, a directory that is not a git
   repository skips the sync instead (`Not a git repository, so nothing was
-  synced.`).
+  synced.`), temporary or not (I-358); `sync` there still refuses.
 - Size: a file over 100 MB is skipped with a warning rather than sent,
   because an accidental video is the usual cause and the user wants to
   know; past 500 MB of untracked files in one sync the rest is skipped

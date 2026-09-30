@@ -14,9 +14,11 @@ $ repose run
 ```
 
 ```
-$ cd ~/scratch/no-remote
+$ cd "~/Downloads/job search"
 $ repose run
-This directory has no git remote. Pass --name NAME to create a project anyway.
+✓ Created job-search (large)  4s
+Not a git repository, so nothing was synced.
+...
 ```
 
 ```
@@ -55,16 +57,19 @@ Identity:
   copies, I-254), reached by name, and the checkout's own project is still
   what a plain `run` there means. Its first sync sends the whole history.
 - A plain `repose run` in a directory that is not a git repository and
-  has a `by_dir` entry lands on that project, the last one `--name` made
+  has a `by_dir` entry lands on that project, the last one `run` made
   there, and says so on stderr (`Using boxd, the machine last made in
-  this directory with --name. ...`). `repose run --temp` there always
-  makes a new machine.
-- `repose run` in a directory with no remote and no `--name` exits 2 with
-  the one line above. Any other command that finds no project exits 4
-  (`No repose project here, and this directory has no git remote. Name
-  one: ...`). It never creates a project named after the directory, because the
-  directory name is not unique and the project would be unfindable from a
-  second checkout.
+  this directory. ...`). `repose run --temp` there always makes a new
+  machine.
+- `repose run` in a directory with no remote, no `--name` and no
+  `by_dir` entry creates a project named after the directory (the
+  repository root's name inside a repository), characters outside
+  `[A-Za-z0-9._-]` replaced by `-` (`job search` is `job-search`), with the
+  usual `-2` retry on a taken name, and writes `by_dir` so the next plain
+  `run` there finds it (DECISIONS I-358, replacing the exit 2 that asked
+  for `--name`). Any other command that finds no project exits 4 (`No
+  repose project here, and this directory has no git remote. Name one:
+  ...`).
 - The project name becomes the slug: lowercase, `[a-z0-9-]`, other characters
   replaced by `-`, runs collapsed, 1 to 40 characters. `Todo App` and
   `todo-app` collide, and the CLI says so with the existing project's name.

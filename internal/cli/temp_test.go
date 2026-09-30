@@ -131,8 +131,8 @@ func TestTempWithoutRepoSkipsSync(t *testing.T) {
 }
 
 // Every refusal the sync makes of the checkout comes before anything is
-// created: not a repository (without --temp), no commit, a shallow clone
-// (I-353).
+// created: no commit, a shallow clone (I-353). A directory that is not a
+// repository is no longer refused (I-358).
 func TestSyncRefusalComesBeforeCreate(t *testing.T) {
 	fake := fakeapi.New(fakeapi.Options{})
 	defer fake.Close()
@@ -148,7 +148,6 @@ func TestSyncRefusalComesBeforeCreate(t *testing.T) {
 		temp      time.Duration
 		want      string
 	}{
-		{"not a repository", t.TempDir(), 0, "is not a git checkout"},
 		{"no commit", noCommit, 0, "no commits yet"},
 		{"no commit, temporary", noCommit, tempDefault, "no commits yet"},
 		{"shallow", shallow, 0, "shallow clone"},
@@ -163,6 +162,58 @@ func TestSyncRefusalComesBeforeCreate(t *testing.T) {
 		if ps := listed(t, e); len(ps) != 0 {
 			t.Fatalf("%s: created %+v before refusing", c.name, ps)
 		}
+	}
+}
+
+// A plain `repose run` in a directory with no git remote creates a
+// project named after the directory, skips the sync outside a repository,
+// and lands on the same project next time (I-358).
+func TestRunWithoutRemoteNamesTheProjectAfterTheDirectory(t *testing.T) {
+	fake := fakeapi.New(fakeapi.Options{})
+	defer fake.Close()
+	f := newRunFixture(t, fake)
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "job search")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e, out, _ := freshEnv(f.env, dir)
+	if err := runRun(ctx, e, RunOptions{NoAttach: true}, false); err != nil {
+		t.Fatalf("plain run outside a repo: %v", err)
+	}
+	if !strings.Contains(out.buf.String(), "Not a git repository, so nothing was synced.") {
+		t.Fatalf("stdout %q", out.buf.String())
+	}
+	p := bySlug(listed(t, e), "job-search")
+	if p == nil || p.ExpiresAt != nil || p.RemoteURL != "" {
+		t.Fatalf("job-search = %+v in %+v", p, listed(t, e))
+	}
+	e2, _, errOut := freshEnv(e, dir)
+	if err := runRun(ctx, e2, RunOptions{NoAttach: true, NoSync: true}, false); err != nil {
+		t.Fatal(err)
+	}
+	if ps := listed(t, e2); len(ps) != 1 {
+		t.Fatalf("second run made another: %+v", ps)
+	}
+	if !strings.Contains(errOut.buf.String(), "Using job-search, the machine last made in this directory.") {
+		t.Fatalf("stderr %q", errOut.buf.String())
+	}
+
+	// A repository with no remote: the repository root's name, from a
+	// subdirectory too, and the checkout is synced.
+	repo := filepath.Join(t.TempDir(), "notes")
+	mustRun(t, filepath.Dir(repo), "git", "clone", "-q", "file://"+f.bare, "notes")
+	mustRun(t, repo, "git", "remote", "remove", "origin")
+	sub := filepath.Join(repo, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e3, _, _ := freshEnv(e, sub)
+	if err := runRun(ctx, e3, RunOptions{NoAttach: true, NoSync: true}, false); err != nil {
+		t.Fatal(err)
+	}
+	if bySlug(listed(t, e3), "notes") == nil {
+		t.Fatalf("no notes: %+v", listed(t, e3))
 	}
 }
 
@@ -299,7 +350,7 @@ func TestRunNameInHomePicksTheNamedProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stderr, "Using boxd, the machine last made in this directory with --name.") {
+	if !strings.Contains(stderr, "Using boxd, the machine last made in this directory.") {
 		t.Fatalf("stderr %q", stderr)
 	}
 	// --temp: a new machine every time.

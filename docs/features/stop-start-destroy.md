@@ -280,7 +280,7 @@ Sync:
   created. The same check comes before the create for every `run` and
   `sync`, temporary or not (I-353); until then it ran after the machine
   had booted. Without `--temp`, a directory that is not a git repository
-  refuses before the create too.
+  skips the sync the same way (I-358).
 - The checkout gets no `repose` git remote; that name stays with the
   checkout's own project. `git fetch tmp-k3f9.repose:~/tmp-k3f9 BRANCH`
   brings back what an agent did.

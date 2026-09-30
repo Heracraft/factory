@@ -146,7 +146,7 @@ git remote add experiment \
 git fetch experiment
 ```
 
-The same goes for a directory with no git remote, such as your home directory: `repose run --name boxd` makes `boxd` there, or uses it if you have one. A later `repose run` in that directory without `--name` uses the machine `--name` made there last, and says which: `Using boxd, the machine last made in this directory with --name.` For a machine you won't want tomorrow, use `--temp` instead.
+In a directory with no git remote, such as your home directory, a plain `repose run` makes a machine named after the directory, and `repose run --name boxd` makes `boxd` there, or uses it if you have one. A later `repose run` in that directory without `--name` uses the machine last made there, and says which: `Using boxd, the machine last made in this directory.` For a machine you won't want tomorrow, use `--temp` instead.
 
 ## Temporary machines
 

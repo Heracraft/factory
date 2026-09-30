@@ -212,11 +212,9 @@ Order:
    or name one: `repose attach PROJECT`.
    ```
 
-No git remote and no `--name` on `run`: exit 2 with
-
-```
-This directory has no git remote. Pass --name NAME to create a project anyway.
-```
+No git remote and no `--name` on `run`: create a project named after the
+repository root, else the cwd, with characters outside `[A-Za-z0-9._-]`
+replaced by `-`, and write `by_dir` for it (DECISIONS I-358).
 
 ### 5.4 Certificates and SSH files
 

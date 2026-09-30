@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-394 entries.
+395 entries.
 
 ## Scope
 
@@ -423,6 +423,7 @@ pointer, not a summary.
 - **I-355** Tests and evidence for temporary machines — 2026-09-29; L9036
 - **I-356** `run` reports a create that failed at once, instead of starting the project it left behind — 2026-09-29; L9051
 - **I-357** The waitlist's minute tick runs under its own lock, `LockWaitlistTick` (1012), not `LockWaitlist` — 2026-09-29; L9067
-- **I-359** kanali, the owner's coordinator guest, is WireGuard peer 10.255.254.1 on the edge hub, with no forward rule — 2026-09-29; amended by I-360; L9086
-- **I-360** kanali's tunnel carries only packets from 10.255.254.1 — 2026-09-29; L9113
-- **I-361** kanali runs tofu as its own service principal; the Key Vault operator policy is pinned to the owner — 2026-09-29; L9134
+- **I-358** A plain `repose run` in a directory with no git remote creates a project named after the directory; outside a repository it skips the sync — 2026-09-29; L9086
+- **I-359** kanali, the owner's coordinator guest, is WireGuard peer 10.255.254.1 on the edge hub, with no forward rule — 2026-09-29; amended by I-360; L9109
+- **I-360** kanali's tunnel carries only packets from 10.255.254.1 — 2026-09-29; L9136
+- **I-361** kanali runs tofu as its own service principal; the Key Vault operator policy is pinned to the owner — 2026-09-29; L9157

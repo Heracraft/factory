@@ -80,9 +80,9 @@ func resolveForRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool
 	}
 	if explicit == "" && res.Project != nil && res.Remote == "" && deps.RootFor(e.Cwd) == "" {
 		// A directory that is not a repository (the home directory, say)
-		// found its project through by_dir: the last one `run --name`
-		// made here. Say which, and how to get another (I-348).
-		e.warn("Using %s, the machine last made in this directory with --name. `repose run --name NEW` makes another; `repose run --temp` makes a throwaway one.", res.Project.Slug)
+		// found its project through by_dir: the last one `run` made
+		// here. Say which, and how to get another (I-348, I-358).
+		e.warn("Using %s, the machine last made in this directory. `repose run --name NEW` makes another; `repose run --temp` makes a throwaway one.", res.Project.Slug)
 	}
 	return res, nil
 }
@@ -274,10 +274,4 @@ func errNoProjectFoundFor(remote, command string) error {
 		return exitf(ExitProjectNotFound, "No repose project here, and this directory has no git remote. Name one: %s (`repose ls` lists them).", usage)
 	}
 	return exitf(ExitProjectNotFound, "No repose project for %s. Run `repose run` here to create one, or name one: %s.", remote, usage)
-}
-
-// errNoRemoteNoName is `run`'s error when there is no git remote and no
-// --name (07-cli.md §5.3).
-func errNoRemoteNoName() error {
-	return exitf(ExitUsage, "This directory has no git remote. Pass --name NAME to create a project anyway.")
 }
