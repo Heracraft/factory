@@ -124,7 +124,7 @@ $ repose run
 ...
 ```
 
-The name stays taken until the destroy finishes, so a `repose run` started meanwhile waits for it (`Waiting for the old todo-app to finish destroying`), then creates a new project with the same name and syncs your checkout into it. `repose rm --wait && repose run` does the same in one line. The old machine's final snapshot is kept, and `repose ls --destroyed` still lists it. If the destroy fails, `repose run` says so and creates nothing.
+The name stays taken until the destroy finishes, so a `repose run` started meanwhile waits for it (`Waiting for the old todo-app to finish destroying`), then creates a new project with the same name and syncs your checkout into it. It waits the same way when the project being destroyed isn't this checkout's (one you restored without a remote, say) but holds the name `repose run` wants, instead of creating `todo-app-2`. `repose rm --wait && repose run` does the same in one line. The old machine's final snapshot is kept, and `repose ls --destroyed` still lists it. If the destroy fails, `repose run` says so and creates nothing.
 
 ## A second machine for the same repository
 

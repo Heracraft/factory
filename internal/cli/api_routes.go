@@ -131,6 +131,9 @@ type opIDResponse struct {
 type StartResult struct {
 	OpID    string `json:"op_id"`
 	Restart bool   `json:"restart"`
+	// Create: the project had no guest (its create failed before one
+	// was made), so the api runs the create again (I-406).
+	Create bool `json:"create"`
 }
 
 func (c *Client) StartProject(ctx context.Context, id string) (*StartResult, error) {

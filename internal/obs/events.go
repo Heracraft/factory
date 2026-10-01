@@ -59,6 +59,7 @@ const (
 	EventCertRevoke    = "cert_revoke"
 	EventSchedule      = "schedule"
 	EventScheduleFail  = "schedule_fail"
+	EventScheduleWait  = "schedule_wait"
 	EventCommandSend   = "command_send"
 	EventCommandResult = "command_result"
 	EventRollupDone    = "rollup_done"
@@ -107,7 +108,7 @@ var RequiredEvents = map[Component][]string{
 	},
 	ComponentAPI: {
 		EventRequest, EventCertIssue, EventCertRevoke, EventSchedule,
-		EventScheduleFail, EventCommandSend, EventCommandResult, EventRollupDone,
+		EventScheduleFail, EventScheduleWait, EventCommandSend, EventCommandResult, EventRollupDone,
 		EventBillingWebhook, EventNotifySend, EventNotifyFail, EventPartitionDropFail,
 	},
 	ComponentGateway: {

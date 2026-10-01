@@ -479,6 +479,9 @@ func (e *Engine) buildBuild(ctx context.Context, op *store.Op, p *store.Project)
 			_, err := tx.Exec(ctx, "update projects set host_id = $2 where id = $1 and host_id is null", p.ID, picked)
 			return err
 		})
+		if errors.Is(err, scheduler.ErrNoCapacity) && e.placementWaits(ctx, op, p) {
+			return nil, uuid.Nil, false, errPlacementWait
+		}
 		if errors.Is(err, scheduler.ErrNoCapacity) {
 			// docs/workstreams/10-observability.md §5 requires schedule_fail
 			// and counts placements by result; without these two lines a
@@ -679,6 +682,9 @@ func (e *Engine) buildRestore(ctx context.Context, op *store.Op, p *store.Projec
 			hostID = pk.HostID
 			return nil
 		})
+		if errors.Is(err, scheduler.ErrNoCapacity) && e.placementWaits(ctx, op, p) {
+			return nil, uuid.Nil, false, errPlacementWait
+		}
 		if errors.Is(err, scheduler.ErrNoCapacity) {
 			return nil, uuid.Nil, false, errCapacity()
 		}

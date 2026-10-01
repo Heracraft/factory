@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-439 entries.
+442 entries.
 
 ## Scope
 
@@ -471,3 +471,6 @@ pointer, not a summary.
 - **I-403** A restore writes the volume with O_DIRECT, eight writes in flight, and downloads the snapshot as eight ranged GETs at once — 2026-10-01; L10392
 - **I-404** A stop uploads its snapshot while the guest shuts down; the snapshot read itself stays as it was — 2026-10-01; L10467
 - **I-405** hostd caches an evaluation by its inputs and skips `nix eval` when they recur — 2026-10-01; L10508
+- **I-406** `start` on a project with no guest runs its create again — 2026-10-01; L10535
+- **I-407** `repose run` waits for a destroy that holds the name it wants, instead of creating NAME-2 — 2026-10-01; L10558
+- **I-408** Placement waits up to three minutes for a guest being stopped before it answers `capacity` — 2026-10-01; L10571

@@ -10531,3 +10531,63 @@ unchanged); `TestRealNixEvalCache` with real Nix against the test flake:
 the second revision with the same fragment built from the cache in 384
 ms with the closure a fresh eval of its directory gives, and a changed
 fragment evaluated; the real-Nix corpus passes.
+
+**I-406. `start` on a project with no guest runs its create again.**
+(dogfood, 2026-10-01) `repose run` made `recruiting-2`, whose create op
+failed at placement with `capacity`; I-356 reported that, but the project
+stayed in `error` with no `guest_id`, and every later `repose run` and
+`repose start recruiting-2` enqueued a restart whose `start_guest` phase
+answered "project has no guest; create it first", while `repose ls`
+suggested that same `repose start`. No command creates an existing
+project, so the only way out was `repose rm`. `POST /projects/:id/start`
+on a project whose `guest_id` is null now enqueues a `create`
+(`build`, `create_guest`), sets the project `creating` in the same
+transaction, clears `host_id` first when that host is not ready or is
+draining (a guest-less project holds nothing there), and answers
+`{op_id, restart: false, create: true}`. The create's own failure
+(capacity again, a build error) is reported as any create's is. The CLI
+shows "Creating NAME" for it; an older CLI shows "Starting NAME" and
+waits on the op as it always did. Rejected: a `repose create` command or a
+create flag on start (one more thing to learn for a state the user did
+not choose); destroying the project when its create fails (the name and
+any secrets the user set would go with it). api.md's start row gains
+`create`. Tests: `TestStartCreatesAProjectWhoseCreateFailed` (on the old
+code: `restart: true` and the create-it-first error),
+`TestStartOfAProjectWithNoGuestShowsTheCreate`.
+
+**I-407. `repose run` waits for a destroy that holds the name it wants,
+instead of creating NAME-2.** (dogfood, 2026-10-01) `recruiting` had been
+restored with no remote; `repose rm recruiting` and, five seconds later,
+`repose run` in the checkout: resolve matches by remote, so it did not
+find `recruiting`, the create met the unique slug index (live until the
+destroy ends) and run went on to `recruiting-2`. I-301 already waits when
+the resolved project is the one being destroyed. On a `conflict` from
+`POST /projects`, run now looks the name up (`findByName`) and, when that
+project is `destroying`, waits for it with I-301's wait (same phase line,
+same 10-minute bound) and creates the same name; each project is waited on
+once. A live project with the name still gets NAME-2. Test:
+`TestRunWaitsForANameHeldByADestroy` (the old code made recruiting-2).
+
+**I-408. Placement waits up to three minutes for a guest being stopped
+before it answers `capacity`.** (dogfood, 2026-10-01) The same
+`recruiting-2` create came 5 s after `recruiting`'s destroy began, on
+host-01 (62 GB, five other guests). hostd counts a guest in `stopping`
+in `free_mem_bytes` (class RAM plus 512 MiB), so free memory read about
+7.8 GB until the stop ended, and the large create failed at once; 6 s
+later host-01 had 16 GB free. Placement (`build` of a create, `restore`)
+that finds no host now asks `scheduler.Freeing`: is there a host
+`PickHost` could choose that fits the class once the guests on it in
+`stopping` or `destroying` are down (their class RAM back in
+`free_mem_bytes`, and in the reservations for `stopping`; `destroying` is
+already out of `host_reservations`)? If so, and the op is younger than
+`ops.Config.PlacementWait` (3 min: a stop's 60 s timeout plus heartbeats),
+the phase is not failed and the next engine tick places again; the first
+wait logs `schedule_wait` (registered in obs). Otherwise `capacity` as
+before, with `schedule_fail`. Rejected: counting `destroying` guests in
+`host_reservations` (it makes the host look fuller, the opposite of what
+the create needs); retrying in the CLI (every client would need it, the
+dashboard too). Tests: `TestPlacementWaitsForAGuestBeingStopped` (the
+create waits while the old guest is `stopping`, places once it is
+`stopped`; with a 1 s wait and a guest that stays `stopping`, `capacity`
+after the wait; on the old code `capacity` at once); `TestCapacityError`
+unchanged.

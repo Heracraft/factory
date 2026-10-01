@@ -685,3 +685,55 @@ func TestCreateReusesAClosureOnTheSameHost(t *testing.T) {
 		t.Fatalf("a create after the destroys sent %d Build commands, want 1", n)
 	}
 }
+
+// TestPlacementWaitsForAGuestBeingStopped is I-408: a create on a host
+// whose memory is held by a guest being stopped (`repose rm` a moment
+// before `repose run`) waits for that guest instead of failing with
+// capacity at once, and fails as before once PlacementWait has passed.
+func TestPlacementWaitsForAGuestBeingStopped(t *testing.T) {
+	h := apitest.New(t, apitest.Options{})
+	// Room for one large guest below the 8 GiB host reserve.
+	if _, err := h.Pool.Exec(h.Ctx, "update hosts set mem_bytes = 16::bigint<<30"); err != nil {
+		t.Fatal(err)
+	}
+	u := h.NewUser("dora")
+	old := h.CreateRunning(u, "recruiting")
+	if _, err := h.Pool.Exec(h.Ctx, "update projects set state = 'stopping' where id = $1", old.ID); err != nil {
+		t.Fatal(err)
+	}
+	p := h.NewProject(u, "recruiting-2", "large")
+	pid := p.ID
+	id := h.Enqueue(ops.NewOp{Kind: ops.KindCreate, ProjectID: &pid, Phases: ops.PlanCreate()})
+	time.Sleep(1500 * time.Millisecond)
+	if op, _ := store.GetOp(h.Ctx, h.Pool, id); op.State == "error" || op.State == "done" {
+		t.Fatalf("create while the old guest stops: %s %+v", op.State, op.Error)
+	}
+	// The old guest is down: its reservation goes, the create places.
+	if _, err := h.Pool.Exec(h.Ctx, "update projects set state = 'stopped' where id = $1", old.ID); err != nil {
+		t.Fatal(err)
+	}
+	h.Engine.Kick()
+	if op := h.WaitOp(id); op.State != "done" {
+		t.Fatalf("create after the stop: %+v", op.Error)
+	}
+	if p := h.Project(pid); p.State != "running" {
+		t.Fatalf("after create: %s", p.State)
+	}
+
+	// A guest that stays stopping: the wait ends and the create fails
+	// with capacity, as it did before I-408.
+	h.StartEngine(ops.Config{BaseRef: "deadbeef", PlacementWait: time.Second})
+	if _, err := h.Pool.Exec(h.Ctx, "update projects set state = 'stopping' where id = $1", pid); err != nil {
+		t.Fatal(err)
+	}
+	q := h.NewProject(u, "recruiting-3", "large")
+	qid := q.ID
+	start := time.Now()
+	op := h.WaitOp(h.Enqueue(ops.NewOp{Kind: ops.KindCreate, ProjectID: &qid, Phases: ops.PlanCreate()}))
+	if op.State != "error" || op.Error["code"] != "capacity" {
+		t.Fatalf("create past the wait: %s %+v", op.State, op.Error)
+	}
+	if d := time.Since(start); d < 900*time.Millisecond {
+		t.Fatalf("failed after %s, before the wait ended", d)
+	}
+}

@@ -92,6 +92,7 @@ component must emit:
   `interfaces/vsock-guestd.md`).
 - api: `request` (method, route, status, duration_ms), `cert_issue`,
   `cert_revoke`, `schedule` (host chosen, free memory), `schedule_fail`,
+  `schedule_wait` (no host fits until a guest being stopped is down, I-408),
   `command_send`, `command_result`, `build_reused` (a create whose closure
   was already on the host, DECISIONS I-160), `rollup_done`, `webhook_received`,
   `overage_charged`, `gate_refused` (I-289),
