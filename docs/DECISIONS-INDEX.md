@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-429 entries.
+430 entries.
 
 ## Scope
 
@@ -445,10 +445,10 @@ pointer, not a summary.
 - **I-377** Forced colours are part of the system — 2026-09-30; L9563
 - **I-378** Unused patterns are deleted rather than documented — 2026-09-30; L9579
 - **I-379** In the dark, the landing's small ink details are lit marks — 2026-09-30; L9590
-- **I-380** One header frame for the dashboard, the docs and the legal pages; form pages sit flush left — 2026-09-30; L9598
+- **I-380** One header frame for the dashboard, the docs and the legal pages; form pages sit flush left — 2026-09-30; amended by I-396; L9598
 - **I-381** The I-363 mark is in every header — 2026-09-30; amended by I-391; amended by I-393; L9615
 - **I-382** Docs and legal prose hold a readable measure — 2026-09-30; amended by I-392; L9629
-- **I-383** The docs' right rail moves into the sidebar, and the menu button moves to the right — 2026-09-30; L9640
+- **I-383** The docs' right rail moves into the sidebar, and the menu button moves to the right — 2026-09-30; amended by I-396; L9640
 - **I-384** Legal pages use the docs' prose styles, show their effective date, and keep a Draft banner that names nothing internal — 2026-09-30; amended by I-391; amended by I-392; L9650
 - **I-385** Only a page's first load can fail to a banner with Retry — 2026-09-30; amended by I-393; L9666
 - **I-386** One confirmation pattern per consequence, and no native `confirm()` — 2026-09-30; L9679
@@ -461,3 +461,4 @@ pointer, not a summary.
 - **I-393** Design repair round 3: one failure is reported once, 503 answers come from one list, and links drawn as buttons answer the pointer — 2026-09-30; amended by I-394; amended by I-395; L9875
 - **I-394** Design repair round 4: a quiet poll failure does not latch, billing opens one panel at a time, and code wraps where it should — 2026-09-30; amended by I-395; L9941
 - **I-395** Design repair round 5: a scroll edge is a one-colour bar, and polls on one page share one toast — 2026-09-30; L9968
+- **I-396** The docs take a wider frame, with the "On this page" rail back at the right and a sidebar that lists pages only — 2026-10-01; L9999

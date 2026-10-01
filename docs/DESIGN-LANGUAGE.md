@@ -157,6 +157,7 @@ Motion is for state, and only on colour, opacity and transform.
 | Docs drawer | Slides in from the left | 200ms ease-out | None (`motion-reduce:transition-none`) |
 | Docs heading anchor | Fades in on hover | 150ms | Stays (opacity only) |
 | Docs "On this page" fold | Chevron turns half a turn | 150ms | None (`motion-reduce:transition-none`) |
+| Docs "On this page" rail | A link scrolls the page to its section | The browser's smooth scroll | Jumps (`prefers-reduced-motion: reduce` checked on click) |
 | Landing | Rails, ticks, the hero's bar, shapes landing, the snapshot mark, the pictures | `LANDING.md`, "Motion" | Every shape still and whole |
 
 Anything that travels, turns or loops runs only under
@@ -201,14 +202,18 @@ The mark is in every header (I-381):
 `HeaderFrame.svelte` is the header of the dashboard, the docs and the
 legal pages (I-380): 56px tall over a `--rule` hairline, its content on
 `mx-auto max-w-5xl px-5`, so the logo sits at x=228 at 1440 and x=20 at
-390 on every page. The docs keep it sticky; the others scroll it away.
+390 on the dashboard and the legal pages. The docs pass `width="docs"`
+and put it on `max-w-7xl`, the column of their three tracks, so on the
+docs the logo sits at x=100 at 1440 by design (I-396); at 390 it is x=20
+everywhere. The docs keep it sticky; the others scroll it away.
 The right side holds plain text links in `--ink-muted`; the current page
 is ink with a 1px underline, no bold shift and no accent colour. No
 hamburger on the dashboard; the docs' menu button sits at the right end
 below `lg`. The landing's 60px top bar on a 1120px measure is the one
 exception, until the landing-critique branch lands.
 
-Every page's content column is `max-w-5xl` under that header. A narrower
+Every page's content column is the header's column: `max-w-5xl`, and
+`max-w-7xl` on the docs. A narrower
 column (`max-w-2xl` for forms, 33rem for prose) sits flush left inside it,
 starting under the logo, so nothing shifts sideways between pages.
 
@@ -470,16 +475,26 @@ layer. On a phone a command in a table wraps at its spaces,
 so the description beside it keeps its width.
 The copy button is 28px tall and says "Copied" to a screen reader through
 a live region as well as on its face. Links are in
-the accent; h2 sections are separated by a rule. The sidebar's "On this
-page" links are at least 28px tall, over the 24px target size (I-391). Running text holds to 33rem;
+the accent; h2 sections are separated by a rule. Running text holds to 33rem;
 the docs column is 68ch so code blocks and tables get the full 70 columns
-I-345 writes to (I-382). The docs list the current page's sections under
-its link in the sidebar from `lg` up and in an "On this page" fold below
-(I-383). The prose's 33rem and the column's 68ch are two measures on
+I-345 writes to (I-382). The docs frame is three tracks on `max-w-7xl`
+(I-396): the 240px sidebar, which lists pages and nothing else, so its
+height is the same on every page; the text, starting at x=380 at 1440;
+and from `xl` up a 224px "On this page" rail at the frame's right edge.
+The rail's column is drawn on every page, empty when a page has one h2
+or none, so the sidebar, the text and the rail sit at the same x on
+every page. The rail and the sidebar stick at 57px, under the header and
+its hairline, and a long rail scrolls on its own. The section you are
+reading is ink with a 1px ink edge on the rail's hairline (an underline
+in forced colours), `aria-current="true"`; the others are `--ink-muted`.
+A rail link scrolls smoothly, or jumps under reduced motion. Its links
+are 28px tall, over the 24px target size (I-391). Below `xl` the
+sections fold under the description in "On this page".
+The prose's 33rem and the column's 68ch are two measures on
 purpose, so the right edge of a paragraph and of a code block differ by
 design. Legal pages show their effective date under the title and, from
 `lg` up, list their sections in an "On this page" column 64px to the
-right of the text, in the docs sidebar's type and 28px rows (I-392,
+right of the text, in the docs rail's type and 28px rows (I-392,
 I-393).
 
 # The landing's exception

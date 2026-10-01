@@ -36,3 +36,68 @@ test('a code block copies its commands', async ({ page, context }) => {
 		'repose stop todo-app\nrepose start todo-app'
 	);
 });
+
+// The sidebar lists pages only, and from xl up the page's sections are in a
+// rail whose column is drawn on every page, so following a link between
+// pages moves neither the sidebar, the text nor the rail (I-396).
+test('the docs columns hold still between pages, and the rail marks the section', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const boxes = () =>
+		page.evaluate(() => {
+			const r = (el: Element | null | undefined) => {
+				const b = el!.getBoundingClientRect();
+				return [b.x, b.y + scrollY, b.width].map(Math.round).join(',');
+			};
+			const main = document.querySelector('main');
+			return {
+				sidebar: r(document.getElementById('docs-nav')),
+				main: r(main),
+				rail: r(main?.nextElementSibling)
+			};
+		});
+
+	await page.goto('/docs');
+	await expect(page.getByRole('heading', { level: 1, name: 'Quickstart' })).toBeVisible();
+	const first = await boxes();
+	expect(first).toEqual({ sidebar: '100,57,240', main: '380,57,622', rail: '1116,57,224' });
+	// Layout shifts during the client navigations. The links are clicked
+	// from script: a shift within 500ms of real input is left out of the
+	// entries' sum (hadRecentInput), and the point is to see every shift.
+	await page.evaluate(() => {
+		const w = window as unknown as { shifts: number[] };
+		w.shifts = [];
+		new PerformanceObserver((list) => {
+			for (const e of list.getEntries()) w.shifts.push((e as unknown as { value: number }).value);
+		}).observe({ type: 'layout-shift' });
+	});
+	for (const [slug, h1] of [
+		['cli', 'CLI reference'],
+		['secrets', 'Secrets and security']
+	]) {
+		await page.evaluate(
+			(slug) =>
+				document.querySelector<HTMLAnchorElement>(`#docs-nav a[href$="/docs/${slug}"]`)!.click(),
+			slug
+		);
+		await expect(page.getByRole('heading', { level: 1, name: h1 })).toBeVisible();
+		expect(await boxes(), slug).toEqual(first);
+		// The sidebar holds no section links of the open page.
+		await expect(
+			page
+				.getByRole('complementary', { name: 'Docs menu' })
+				.getByRole('list', { name: 'On this page' })
+		).toHaveCount(0);
+	}
+
+	expect(await page.evaluate(() => (window as unknown as { shifts: number[] }).shifts)).toEqual([]);
+
+	const rail = page.getByRole('navigation', { name: 'On this page' });
+	await expect(rail).toBeVisible();
+	await rail.getByRole('link', { name: 'What repose stores' }).click();
+	await expect(page).toHaveURL('/docs/secrets#what-repose-stores');
+	await expect(rail.locator('[aria-current="true"]')).toHaveText('What repose stores');
+	await page.evaluate(() => scrollTo(0, 0));
+	await expect(rail.locator('[aria-current="true"]')).toHaveText('Store an API key');
+});

@@ -3,7 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { authState, signIn } from '$lib/auth.svelte';
-	import { docBySlug, docsBySection, search } from '$lib/docs';
+	import { docsBySection, search } from '$lib/docs';
 	import HeaderFrame from '$lib/components/HeaderFrame.svelte';
 
 	let { children } = $props();
@@ -15,11 +15,9 @@
 	let nav: HTMLElement | undefined = $state();
 	let menuButton: HTMLButtonElement | undefined = $state();
 
+	// The sidebar lists pages and nothing else, so its height is the same on
+	// every page; the open page's sections are in DocPage's rail (I-396).
 	let current = $derived(page.params.slug ?? 'index');
-	// The open page's sections, listed under its link in the sidebar. They
-	// took a right rail before; in the header's max-w-5xl column a rail
-	// would leave the text too narrow for the docs' 70-column code.
-	let sections = $derived((docBySlug(current)?.headings ?? []).filter((h) => h.depth === 2));
 
 	function href(slug: string): string {
 		return slug === 'index' ? resolve('/docs') : resolve('/docs/[slug]', { slug });
@@ -108,11 +106,13 @@
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -- every internal href here comes from href(), which builds it with resolve() -->
 
-<!-- The shared header frame, kept in view while you read. The menu button
-     sits at the right end so the logo is at the same x as on the dashboard
-     and the legal pages; the drawer it opens still comes from the left, where
-     the sidebar lives from lg up. -->
-<HeaderFrame home={resolve('/')} label="repose, home" sticky>
+<!-- The shared header frame, kept in view while you read, on the docs'
+     wider max-w-7xl column: the sidebar, the text and the "On this page"
+     rail do not fit in the dashboard's max-w-5xl with the text wide enough
+     for 70 columns of code (I-396). The menu button sits at the right end;
+     the drawer it opens still comes from the left, where the sidebar lives
+     from lg up. -->
+<HeaderFrame home={resolve('/')} label="repose, home" sticky width="docs">
 	{#snippet lead()}
 		<a href={resolve('/docs')} class="text-sm text-ink-muted hover:text-ink">Docs</a>
 	{/snippet}
@@ -155,7 +155,12 @@
 	></div>
 {/if}
 
-<div class="mx-auto flex max-w-5xl gap-10 px-5">
+<!-- Same column as the header. Three fixed tracks from xl up: the 240px
+     sidebar, the text, and DocPage's 224px rail, which is drawn on every
+     page, empty or not, so nothing moves sideways between pages (I-396). -->
+<!-- The sidebar sticks at 57px, the header's 56px row plus its hairline,
+     so it rests where it starts and does not move 1px on the first scroll. -->
+<div class="mx-auto flex max-w-7xl gap-10 px-5">
 	<aside
 		id="docs-nav"
 		bind:this={nav}
@@ -164,7 +169,7 @@
 		aria-label="Docs menu"
 		class="fixed top-14 bottom-0 left-0 z-20 w-[min(20rem,85vw)] overflow-y-auto overscroll-contain border-r border-rule bg-page px-5 pb-10 duration-200 ease-out outline-none motion-reduce:transition-none {menuOpen
 			? 'visible translate-x-0 transition-[translate]'
-			: 'invisible -translate-x-full transition-[translate,visibility]'} lg:visible lg:sticky lg:top-14 lg:bottom-auto lg:z-auto lg:h-[calc(100dvh-3.5rem)] lg:w-60 lg:shrink-0 lg:translate-x-0 lg:border-r-0 lg:bg-transparent lg:px-0 lg:transition-none"
+			: 'invisible -translate-x-full transition-[translate,visibility]'} lg:visible lg:sticky lg:top-[57px] lg:bottom-auto lg:z-auto lg:h-[calc(100dvh-57px)] lg:w-60 lg:shrink-0 lg:translate-x-0 lg:border-r-0 lg:bg-transparent lg:px-0 lg:transition-none"
 	>
 		<div class="pt-6">
 			<label for="docs-search" class="sr-only">Search the docs</label>
@@ -214,19 +219,6 @@
 										? 'bg-sunken font-medium text-ink'
 										: 'text-ink-muted hover:text-ink'}">{doc.title}</a
 								>
-								{#if current === doc.slug && sections.length > 1}
-									<ul class="mt-1 mb-2 ml-2 border-l border-rule pl-3" aria-label="On this page">
-										{#each sections as h (h.id)}
-											<li>
-												<a
-													href={`#${h.id}`}
-													class="block py-1 text-compact leading-5 text-ink-muted hover:text-ink"
-													>{h.text}</a
-												>
-											</li>
-										{/each}
-									</ul>
-								{/if}
 							</li>
 						{/each}
 					</ul>

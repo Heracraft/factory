@@ -9995,3 +9995,32 @@ verify round found, and what was settled fixing it:
   4.8:1).
 - DESIGN-LANGUAGE "Type" now matches the CHECKLIST: mono under 13px is a
   badge and nothing else; the landing's labels are its own.
+
+**I-396. The docs take a wider frame, with the "On this page" rail back
+at the right and a sidebar that lists pages only.** (owner's review,
+2026-10-01; amends I-380 and I-383) I-383 listed the open page's
+sections under its link in the sidebar, so the sidebar grew and shrank
+from page to page and moved what was under it, and at 1440 the right
+third of the page was empty. The owner called it a downgrade. The docs
+now pass `width="docs"` to `HeaderFrame` and put header and body on
+`max-w-7xl px-5`: a 240px sidebar of pages only, the text column, and
+from `xl` up a 224px rail at the frame's right edge. Inside the 1240px
+frame that leaves the text track 696px, over the 622px (68ch) column
+I-382 needs for I-345's 70 columns of 13px mono. The rail's column is
+drawn on every page, empty when a page has fewer than two h2s, so
+nothing moves sideways between pages: at 1440 the sidebar is at x=100,
+the text at x=380 (622 wide), the rail at x=1116 on `/docs`, `/docs/cli`
+and `/docs/secrets` alike, loaded or reached by a client navigation,
+with no layout-shift entries (`tests/docs.spec.ts`). The rail sticks at
+57px, under the header and its hairline, scrolls on its own when long,
+and marks the section being read (an `IntersectionObserver` on the h2s,
+`aria-current="true"`, ink, not the accent). Below `xl` the sections
+fold under the description as before. On the docs the logo sits at x=100
+at 1440 instead of the dashboard's 228: three columns do not fit the
+dashboard's 1024px frame without squeezing the code, and a logo that
+moves when you cross from the dashboard to the docs costs less than
+either. At 390 it is x=20 on every page, as I-380 has it. *Rejected:*
+widening the dashboard to match (its lists and forms would run long
+lines for nothing); hiding the rail's column on pages with no sections
+(the text would keep its x, but the frame would change from page to
+page for no reader's gain, and the column costs nothing when empty).
