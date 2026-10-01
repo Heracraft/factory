@@ -140,7 +140,11 @@ Frames of it for reference: record them from the live page before starting.
 
 The owner chose the animated version (anime.js): the laptop's commits and
 changed files copy across into the cloud machine panel when `repose run`
-fires; `node_modules/` stays behind, struck. Keep it animated.
+fires; `node_modules/` stays behind, struck. Keep it animated. The
+machine shows no `node_modules/`, since sync leaves it behind
+(`content/docs/sync.md`), and the chip reads "Ready in 14s", the docs
+quickstart's figure (I-367, I-398). On a phone, where
+the panels stack, the copies travel only through the gap between them.
 
 ## Copy
 
@@ -171,6 +175,9 @@ fires; `node_modules/` stays behind, struck. Keep it animated.
   deleted source files; a snapshot is the whole disk (the root overlay's
   writable layer and /home, DESIGN.md §6): databases and Docker volumes,
   installed tools and PATH, logins made on the machine, uncommitted work.
+  Not the Claude Code login: it lives on the user's login share, which a
+  snapshot does not hold (I-278), so the snapshot card's logins row is gh
+  and Codex (I-398).
   Show damage git can't undo, and the machine back in minutes (a restore
   took about two minutes in real runs; never claim "a minute"). The hero's
   wreck and the snapshot card tell this same story.
@@ -263,6 +270,20 @@ and underlined every heading. The page is one system:
   mascot and pink bypass line (above, "The hero"), a terminal's ANSI
   colours, an editor's theme. Those stay inside the picture's frame
   (DESIGN-LANGUAGE.md, "Palette"; DECISIONS I-392).
+- **The drawn pictures have one palette too**, beside the shapes' `--sh-*`
+  in `layout.css` (I-397). The pictures the page draws for itself (the
+  hero, "Your working state", "Break it and roll it back", and the rows,
+  chips and wires around the captures) take their lines, text and marks
+  from six `--pic-*` tokens, and none picks its own step:
+  `--pic-accent` (blue-600, blue-400 in the dark) for what moves and the
+  chips; `--pic-ink` (zinc-800, zinc-200) for a row's name;
+  `--pic-dim` (zinc-500, zinc-400) for a line or an icon at rest;
+  `--pic-faint`, which is `--ink-faint` itself, for the muted rows "Less
+  is more" asks for; `--pic-stop` (red-600, red-400) for what is blocked
+  or deleted; `--pic-add` (emerald-600, emerald-400) for a line count
+  added. The last two are a diff stat's own red and green, the only hues
+  besides the blue a drawn picture uses. The captures keep their tool's
+  colours and do not use these.
 - **Mostly grey, a spot of colour, even weight.** Each shape has one
   main tone (`tone`: neutral or accent; Shape.svelte); a group carries a
   spot of blue and the rest grey, as the pictures are mostly grey with a
@@ -301,7 +322,22 @@ and underlined every heading. The page is one system:
 
 Everything that moves on the landing. Each runs only under
 `prefers-reduced-motion: no-preference`; with reduced motion the page is
-drawn in its final state.
+drawn in its final state. The setting is followed while the page is open:
+a visitor who turns reduced motion on mid-loop sees every picture stop on
+its final frame and every waiting shape group land at once
+(`watchReducedMotion` in `landing/inview.ts`, I-397). The hero's still
+frame, with reduced motion and with scripts off, is its end state: the
+machine restored with the good work on it, and the stop cross with the lit
+wall where the skill was turned back; the skill chip itself is not in it,
+since inside a restored machine it would read as still infected. With
+scripts on and motion allowed, the first paint is the empty machine the
+loop starts from, drawn in CSS under `html.js` (set by `app.html`'s one
+inline script), so the wreck never flashes before the story (I-398).
+
+The pictures move only by `translate`, `scale`, `opacity`, `clip-path`
+and colour: nothing they animate changes layout, so a loop adds no layout
+shift (the Browser picture's ring is four edges scaled to size, and the
+snapshot tile folds by a clip, its box keeping its height).
 
 - **The chrome, once on load**: the rails draw from the top down (1.1s,
   `--land-ease`, `cubic-bezier(0.65, 0, 0.35, 1)`); the ticks fade in
@@ -316,7 +352,32 @@ drawn in its final state.
   full turn back when one is restored.
 - **The pictures** loop in anime.js, the calm motion of "Your working
   state" as the top of this file defines it: stagger, travel, settle, rest,
-  loop, each move 120ms to 1.1s.
+  loop, each move 120ms to 1.1s. By kind:
+  - *Travel* (a row, a chip, a snapshot miniature, the malicious skill,
+    the Browser picture's pan and pointer): 520ms to 1s, `inOutCubic`.
+  - *Reveals* (a row, a count, a time, a page fading in): 200ms to 500ms,
+    `outQuad`, anime.js's default, so a reveal that names no ease is one.
+    The Localhost picture's URL in the address bar is one of these, a
+    300ms `outQuad` fade. A row that drops in as it appears (the hero's
+    work rows) takes 320ms `outCubic`, opacity with a 6px drop.
+  - *Strikes and wires drawing*: 260ms to 380ms, `outCubic`.
+  - *Exits* (a loop's last frame fading before the rest): 300ms to 700ms,
+    `inQuad`.
+  - *Arrivals* (a chip, a cross, a tick landing): 250ms to 380ms,
+    `outBack`, the one overshoot.
+  - *The agent's bob* in the hero, while it works: two 2px lifts in
+    1.1s, `inOutCubic`.
+  - *The rogue agent's shake* in the hero, when it turns red: 2px either
+    way in 480ms, four moves of 120ms, `inOutCubic`.
+  - *The crosses' pulse* in "Break it and roll it back", on what git
+    cannot bring back: each grows to 1.35 and back in 420ms, `inOutCubic`,
+    60ms apart.
+  - *The snapshot tile's fold* in "Break it and roll it back": the older
+    tile clips up to its head in 550ms `inOutCubic` as the newer one lands.
+  - *Struck names greying* in the hero's wreck: a 200ms ease-out colour
+    transition in CSS, to `--pic-faint`.
+  - *The snapshot mark* is above: a quarter turn in 420ms `outQuad`, a
+    full turn back in 1s `inOutCubic`.
 
 Nothing else moves. A new motion is added to this list with its duration
 and easing, or it does not ship.
@@ -391,8 +452,14 @@ by `+page.svelte` alone; the house tokens stay in `layout.css`):
   Eight cells in one row at every width, a phone included.
 - **Type.** Display `clamp(2.75rem, 6.6vw, 5.25rem)`; section titles
   `clamp(1.9rem, 3.4vw, 2.5rem)`; cell and step titles 1.125rem serif
-  600; lead `clamp(1rem, 1.3vw, 1.125rem)`; labels 11px JetBrains Mono,
-  0.12em tracking, uppercase (the price's "a month"). Text takes the
+  600; a cell's sentence 1rem and a step's 0.9375rem; lead
+  `clamp(1rem, 1.3vw, 1.125rem)`; a command row (`.cmd`) `--text-compact`
+  mono; a size's name 2.25rem serif 700 uppercase and its price 2.75rem
+  serif 700; labels 11px JetBrains Mono, 0.12em tracking, uppercase (the
+  price's "a month"). A captured picture draws at the scale that fits the
+  capture in its frame, under the 11px floor where it must (the Editor's
+  screen at 8.4px on a phone), as it keeps its tool's colours
+  (`DESIGN-LANGUAGE.md`, "Type", I-397). Text takes the
   Foundation's three ink steps (`--ink`, `--ink-muted`, `--ink-faint`,
   `DESIGN-LANGUAGE.md`, "Tokens"), set in `layout.css` so they apply
   before `landing.css` arrives (I-331).

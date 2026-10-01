@@ -131,7 +131,12 @@ URL (I-392).
 
 The landing sets its own display sizes (`LANDING.md`, "Type"). Mono under
 13px is a badge and nothing else: no label, no running text. The
-landing's uppercase labels are its own (I-395).
+landing's uppercase labels are its own (I-395). A picture of a real tool
+on the landing (the Editor's LazyVim screen, the Browser's log, Ready's
+terminal, Localhost's tmux bar) is exempt from the 11px floor and the
+13px mono rule, as it is from the palette: it is drawn at the scale that
+fits the whole capture in its frame, and on a phone the Editor's screen
+draws at 8.4px so 69 columns fit (I-397).
 Pages write no `text-[13px]`; a size that is missing becomes a step here.
 Figures that change or line up in columns (sizes, counts, times, prices)
 use `tabular-nums`. Page markup uses no `font-bold`; emphasis in body text
@@ -181,14 +186,12 @@ grey, light grey and the accent) followed by "repose" in Noto Serif 600.
 The mark is in every header (I-381):
 
 - 28px tall with the word from `sm` up, on every page.
-- Below `sm`: the 24px `sm` cut alone in every `HeaderFrame` header
-  (dashboard, docs, legal). The dashboard's five links leave no room for
-  the word, and the docs and legal headers drop it too, so the header is
-  the same from one of those pages to the next on a phone (I-391, I-393).
-  The link around it carries the name. The landing is the exception: its
-  own header keeps the 28px mark with the word at 390, and its footer a
-  `sm` mark with the word. The landing-critique branch owns those files
-  (I-394).
+- Below `sm`: the 24px `sm` cut alone in every header, all drawn by
+  `HeaderFrame` (dashboard, docs, legal, landing). The dashboard's five
+  links leave no room for the word, and the other headers drop it too, so
+  the header is the same from one page to the next on a phone (I-391,
+  I-393, I-397). The link around it carries the name. The landing's footer
+  shows the `sm` mark with the word at every width.
 - Never under 24px. At 16px (the tab) use the favicon, a heavier cut of
   the same drawing (`static/favicon.svg`, `favicon.png`).
 - The mark's grey blocks have their own greys so they hold 3:1 at header
@@ -206,11 +209,15 @@ legal pages (I-380): 56px tall over a `--rule` hairline, its content on
 and put it on `max-w-7xl`, the column of their three tracks, so on the
 docs the logo sits at x=100 at 1440 by design (I-396); at 390 it is x=20
 everywhere. The docs keep it sticky; the others scroll it away.
+The landing passes `width="landing"`: the frame takes the landing's
+1120px measure (`--land-w`) and its text inset (`--land-x`), so its logo
+stands over the headline at x=216 at 1440 and at x=20 at 390 (I-397). Its
+links are Docs and Pricing at every width, GitHub from `sm` up, and the
+sign-in button; Pricing is in the footer too.
 The right side holds plain text links in `--ink-muted`; the current page
 is ink with a 1px underline, no bold shift and no accent colour. No
 hamburger on the dashboard; the docs' menu button sits at the right end
-below `lg`. The landing's 60px top bar on a 1120px measure is the one
-exception, until the landing-critique branch lands.
+below `lg`.
 
 Every page's content column is the header's column: `max-w-5xl`, and
 `max-w-7xl` on the docs. A narrower
@@ -262,7 +269,9 @@ I-395).
 Visual weight tracks consequence. Choices of equal weight (a question's
 answers) are all `.btn-quiet`, never a row of primaries. Sizes (I-376):
 the default suits a form; `.btn--sm` (`px-3 py-1.5`) is for rows, toolbars
-and header bars. No `!py-*` or `!px-*` overrides. Hover and press
+and header bars; `.btn--lg` (`px-5 py-2.5`) is for a call to action that
+stands alone on its row, the landing's "Get started" and "Start a free
+week" and nothing else (I-397). No `!py-*` or `!px-*` overrides. Hover and press
 (`active:`, one step darker than hover) apply to every button and to a
 link drawn as one; a disabled button does not answer them. Never gate
 them with `enabled:`, which no `<a>` matches (I-393). A

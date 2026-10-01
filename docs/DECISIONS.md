@@ -10024,3 +10024,125 @@ widening the dashboard to match (its lists and forms would run long
 lines for nothing); hiding the rail's column on pages with no sections
 (the text would keep its x, but the frame would change from page to
 page for no reader's gain, and the column costs nothing when empty).
+
+**I-397. Landing repair round: the landing-critique branch is abandoned,
+so the landing joins the house header, one picture palette, one large
+button and the a11y gate, and its pictures stop when motion is turned
+off.** (owner, 2026-10-01; closes the items I-393 and I-394 kept for
+that branch; amends I-380, I-389 and I-392) The owner abandoned the
+landing-critique branch; the landing on main is the base, and nothing of
+that branch is merged or read. What I-393 and I-394 kept for it is
+settled here:
+- The landing's header is `HeaderFrame`, 56px over a `--rule` hairline
+  like every other page, with `width="landing"`: the 1120px measure
+  (`--land-w`) and the text inset (`--land-x`), so the logo stands over
+  the headline at x=216 at 1440 and x=20 at 390. Below `sm` it shows the
+  mark alone, as every header does (I-393). Docs and Pricing are visible
+  at every width, GitHub from `sm` up, then the sign-in button; Pricing
+  is in the footer too. The 60px top bar and its own logo rule go.
+- The drawn pictures take their colours from six `--pic-*` tokens in
+  `layout.css`, beside `--sh-*`: `--pic-accent`, `--pic-ink`,
+  `--pic-dim`, `--pic-faint` (which is `--ink-faint`), `--pic-stop` and
+  `--pic-add`. Each picture had picked its own steps, and the muted rows
+  in zinc-400 (light) and zinc-600 (dark) held under 4.5:1 on `--sunken`.
+  Red and green are a diff stat's, for deleted and added; I-392's
+  exemption for real tools' colours is unchanged and does not reach these.
+- `.btn--lg` (`px-5 py-2.5`) is the large button step, for the hero's
+  "Get started" and pricing's "Start a free week", which used `!px-5
+  !py-2.5` against I-376's no-override rule.
+- Pictures follow `prefers-reduced-motion` while the page is open
+  (`watchReducedMotion` in `landing/inview.ts`): turned on mid-loop, each
+  picture stops on its final frame and each waiting shape group lands.
+  Read once at mount, as before, the setting was missed until a reload.
+- The hero's still frame (reduced motion, and before its loop starts) is
+  its end state: the machine restored from the newest snapshot with the
+  good work on it, the story's last beat, not its first.
+- The a11y gate audits the landing under `prefers-reduced-motion:
+  reduce`, in a Chromium of its own on the next CDP port (Playwright sets
+  reduced motion per context, and applies it to the tab Lighthouse opens
+  as it does the colour scheme). With motion on, Lighthouse sampled a
+  different moment of each loop, and a row mid-fade failed contrast in
+  one run and passed in the next. The landing's `color-contrast` entry
+  in `KNOWN_FAILURES` now names what stays: the Editor capture's line
+  numbers (`span.ln`), Tokyo Night's own grey.
+- CHECKLIST.md runs the design greps over the landing too, with one
+  named allow-list: `Editor.svelte`, `Browser.svelte`, `Ready.svelte` and
+  `Localhost.svelte` keep their tool's hex and ANSI colours, and the
+  hero's Claude Code colours are the only hex left outside them.
+- A picture of a real tool may draw under the 11px floor and the 13px
+  mono rule, as I-392 lets it keep its colours: it is drawn at the scale
+  that fits the whole capture in its frame (the Editor's LazyVim screen
+  is 8.4px on a phone, so 69 columns fit). A drawn picture keeps the
+  floor.
+*Rejected:* keeping a landing-only header (two headers drift, as the
+logo rule did between I-381 and I-393); auditing every page under
+reduced motion (the dashboard's only motion is the busy dot's pulse, and
+the gate should see the pages as most visitors do); taking the drawn
+pictures' colours from the Foundation's `--ink*` and `--accent` alone
+(those are for text and links, and a picture needs a line colour and a
+stop colour the text tokens do not have).
+
+**I-398. Landing repair round, the details: the landing is prerendered,
+`html.js` marks a scripted page, the hero's first paint is the empty
+machine, captures move without layout, and every picture says only what
+the product does.** (implementation, 2026-10-01; amends I-397's still
+frame, I-392 and I-367's landing figure) Settled while the I-397 bundles
+landed:
+- The landing is prerendered (`routes/+page.ts`, `ssr` and `prerender`),
+  as the docs and legal pages are: the headline, lead and plans come in
+  the first response. Its sign-in buttons render signed out and swap in
+  place; both labels share one grid cell, so "Get started" and "Start a
+  free week" are as wide as "Open the dashboard" and the swap moves
+  nothing. `<main id="main">` is in its markup, so the layout's skip link
+  is prerendered on every page and the `afterNavigate` id patch is gone.
+  An old docs slug's page now holds a `<main id="main">` with the new
+  page's link, since the prerender rejects a `#main` link to a page with
+  no target.
+- `app.html` carries one inline script that adds `js` to `<html>` before
+  the first paint; `svelte.config.js` allows it by its sha256 in
+  `script-src`, and editing the script changes the hash.
+- The hero has two still states. With reduced motion or scripts off it
+  is the end of the loop: the machine restored, the stop cross and lit
+  wall where the skill was turned back, no skill chip (in a restored
+  machine it would read as still infected). With scripts on and motion
+  allowed, the first paint is the empty machine the loop starts from, so
+  the wreck never flashes. This replaces I-397's "before its loop starts"
+  half.
+- Every picture follows a mid-session reduced-motion change through
+  `watchReducedMotion`, the hero included.
+- Drawn-picture text that names context (paths, struck names, the
+  `node_modules/` row) is `--pic-faint`, 4.5:1 or better on its row in
+  both schemes; the strike and the stop sign carry the meaning without
+  colour.
+- Captures move by `translate`, `scale` and `opacity` only: the Browser
+  page pans by `translate`, its ring is four 2px edges scaled to size.
+  The captured log rows rest at 0.7 opacity, not 0.45 (5.0:1 at the
+  least); the prompt's `❯` glyph keeps the tool's own 3.3:1 under I-392.
+  The Browser picture's chip keeps `blue-600` in both schemes, since it
+  sits on the captured page, which is white in both.
+- The tmux status bars are cropped by the session name's ten columns,
+  and Ready drops the first line of each two-line prompt as whole rows,
+  so no capture shows `recruiting` there; nothing is retyped. Ready's
+  rows crop on the right on a phone instead of re-flowing.
+- OneCommand reads "Ready in 14s", the docs quickstart's figure, and the
+  machine shows no `node_modules/`, since sync leaves dependency
+  directories behind (`content/docs/sync.md`). Stacked on a phone, the
+  copies travel only through the gap between the panels, and the chip's
+  label wraps inside the frame at 320px.
+- ComesBack's logins row is gh and Codex: the Claude Code login lives on
+  the user's login share, which a snapshot does not hold (I-278). The
+  Codex half is from `content/docs/agents.md`, not read on the owner's
+  machine. The older tile folds by `clip-path`, its box keeping its
+  height.
+- Every step in "Three commands" has a Copy button; below `md` the
+  commands wrap instead of ending in an ellipsis. With scripts off the
+  buttons show and do nothing; hiding them waits on a rule under
+  `html.js`.
+- The hero's lead is `text-wrap: balance`; `pretty` left a lone "A" at
+  1440. The sphere is drawn flat, with a `meridians` prop the footer's
+  frieze uses.
+- `landing/Sandbox.svelte` is deleted; nothing imported it.
+*Rejected:* a hydrated landing with an SPA shell (the lead and plans
+painted only after the bundle ran); cropping the Editor capture on a phone (no
+left crop leaves the explorer whole; it is scaled to 8.4px, I-397);
+showing the skill chip in the still frame.
