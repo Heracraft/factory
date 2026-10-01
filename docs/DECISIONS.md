@@ -9415,7 +9415,7 @@ names for one directory in `ls ~`); recording the name in `project.json`
 (guestd rewrites that file at every start from the api's record); the
 laptop's projects cache (a second laptop or a fork would not have it).
 
-**I-369. A restore writes the volume with O_DIRECT, eight writes in
+**I-403. A restore writes the volume with O_DIRECT, eight writes in
 flight, and downloads the snapshot as eight ranged GETs at once.**
 (owner, 2026-10-01; amends the restore steps of 03-hostd.md §5.9 and the
 raw path of I-164) The owner's `repose restore job` took 2m17s. The
@@ -9490,7 +9490,7 @@ path already runs at the disk's rate); azcopy
 snapshot side still reads through the page cache (11.4 s for this
 volume), and Build still runs before Restore rather than beside it.
 
-**I-370. A stop uploads its snapshot while the guest shuts down; the
+**I-404. A stop uploads its snapshot while the guest shuts down; the
 snapshot read itself stays as it was.** (owner, 2026-10-01: "work on the
 optimizations for snapshotting") Measured on host-01 against scratch
 volumes holding the `job`, `unwrap` and a 19.4 GB-used snapshot: dumpe2fs
@@ -9531,7 +9531,7 @@ tests that were there pass unchanged. `MemBlob` gained `FailNext` and
 change of the blob format and of restore) and a faster data disk (an
 infra cost: the owner's call).
 
-**I-371. hostd caches an evaluation by its inputs and skips `nix eval`
+**I-405. hostd caches an evaluation by its inputs and skips `nix eval`
 when they recur.** (owner, 2026-10-01: "faster restores") A restore of a
 destroyed project runs Build before Restore (I-115), and on host-01 that
 Build was 5.3 s of `nix eval` and 0.35 s of `nix build` for the

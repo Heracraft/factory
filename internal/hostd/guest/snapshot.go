@@ -249,7 +249,7 @@ func (m *Manager) restore(ctx context.Context, c *hostdv1.Restore) (*hostdv1.Cre
 		return fail(errf(CodeInternal, "filesystem check failed after restore (e2fsck exit %d)", code))
 	}
 	// The stages a slow restore spent its time on: the download and the
-	// write overlap, the check follows (I-369).
+	// write overlap, the check follows (I-403).
 	log.Info("restore done", "event", "restore_done", "bytes", uint64(downloaded), "duration_ms", m.d.Now().Sub(start).Milliseconds(),
 		"write_ms", written.Sub(start).Milliseconds(), "fsck_ms", m.d.Now().Sub(written).Milliseconds(), "volume_bytes", g.VolumeBytes)
 	if g.SystemClosure != "" {

@@ -11,7 +11,7 @@ import (
 // of a 5 GB volume went dirty in a second and then drained into the new
 // thin volume at 34 MB/s: 126 s of fsync on host-01, whose data disk takes
 // 600 MB/s. With O_DIRECT and several writes in flight the same stream
-// took 5 to 8 s (DECISIONS I-369).
+// took 5 to 8 s (DECISIONS I-403).
 const (
 	// restoreWriters is how many records are written at once: on host-01
 	// one took 8.0 s, four 5.6 s, sixteen 5.0 s, sixty-four 6.7 s.

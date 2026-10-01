@@ -218,7 +218,7 @@ func TestRealNixFixedOutputFetch(t *testing.T) {
 // TestRealNixEvalCache: with real Nix, the same fragment under another
 // revision directory (a restore's copy) is a cache hit and lands on the
 // closure a fresh evaluation gives; a changed fragment is evaluated
-// (I-371).
+// (I-405).
 func TestRealNixEvalCache(t *testing.T) {
 	b := realNix(t)
 	frag := `{ pkgs, ... }: { home.packages = [ pkgs.ripgrep ]; }`

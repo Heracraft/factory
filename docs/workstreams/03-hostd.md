@@ -242,7 +242,7 @@ to `error` with the step named: `create: step 9 (cloud-hypervisor) failed:
 
 `StopGuest`: if `snapshot_first`, freeze, take the LVM snapshot and thaw
 (Snapshot steps 1 to 3), then upload it while the guest shuts down, and
-return when both are done (DECISIONS I-370). An upload that fails is
+return when both are done (DECISIONS I-404). An upload that fails is
 taken again from the stopped volume; a freeze that fails stops nothing.
 The shutdown is `guestd Shutdown(timeout_s)`; wait for the `guest@<id>` unit to exit; after
 `timeout_s` (default 60) send `shutdown` via the CH API; after a further 15
@@ -363,7 +363,7 @@ Restore:
    before I-164) is written 4 MiB at a time, skipping chunks that are all
    zero. Both go around the page cache (O_DIRECT, eight writes in
    flight), then `fsync`: written through it, the writeback drained into
-   the thin volume at 34 MB/s (DECISIONS I-369).
+   the thin volume at 34 MB/s (DECISIONS I-403).
 3. `e2fsck -fp` on the volume; a non-zero exit above 1 fails the restore
    with `internal: filesystem check failed after restore`.
 4. Continue as CreateGuest from step 4 with the closure the api passed

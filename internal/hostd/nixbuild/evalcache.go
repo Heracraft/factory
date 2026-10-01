@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// The eval cache (DECISIONS I-371). Evaluating a guest system took 5.3 s
+// The eval cache (DECISIONS I-405). Evaluating a guest system took 5.3 s
 // of the 5.7 s Build that a restore of a destroyed project runs, for a
 // configuration evaluated before: the evaluation is pure (pure-eval,
 // restrict-eval, no import-from-derivation, inputs locked by the base's

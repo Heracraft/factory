@@ -434,6 +434,6 @@ pointer, not a summary.
 - **I-366** `run --no-sync` still copies the tool logins and the carry — 2026-09-29; L9280
 - **I-367** `repose run` syncs the checkout only into a machine that has no commit yet; `repose sync` is the explicit sync — 2026-09-29; L9299
 - **I-368** The machine's checkout is named after the laptop folder of its first sync; a machine with no checkout works in the home directory — 2026-09-29; L9346
-- **I-369** A restore writes the volume with O_DIRECT, eight writes in flight, and downloads the snapshot as eight ranged GETs at once — 2026-10-01; L9418
-- **I-370** A stop uploads its snapshot while the guest shuts down; the snapshot read itself stays as it was — 2026-10-01; L9493
-- **I-371** hostd caches an evaluation by its inputs and skips `nix eval` when they recur — 2026-10-01; L9534
+- **I-403** A restore writes the volume with O_DIRECT, eight writes in flight, and downloads the snapshot as eight ranged GETs at once — 2026-10-01; L9418
+- **I-404** A stop uploads its snapshot while the guest shuts down; the snapshot read itself stays as it was — 2026-10-01; L9493
+- **I-405** hostd caches an evaluation by its inputs and skips `nix eval` when they recur — 2026-10-01; L9534

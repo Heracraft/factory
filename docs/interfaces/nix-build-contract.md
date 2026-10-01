@@ -84,7 +84,7 @@ L, in order:
    `error:` line, else the last one in the trace, and the verbatim stderr
    (last 32 KB) after a blank line.
    Before evaluating, hostd looks the inputs up in its eval cache
-   (`/var/lib/repose/builds/.evalcache/<key>`, DECISIONS I-371). The key
+   (`/var/lib/repose/builds/.evalcache/<key>`, DECISIONS I-405). The key
    is a SHA-256 over B, the flake's subdirectory and scheme, the eval
    attribute, the `base_version` label and F, which with `pure-eval`,
    `restrict-eval` and no import-from-derivation is all the evaluation

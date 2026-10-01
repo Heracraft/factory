@@ -26,7 +26,7 @@ type Streamer interface {
 // used, non-zero blocks, framed and piped through zstd -T4 -3. Anything
 // else goes out raw, dd if=dev bs=4M | zstd -T4 -3, which reads the whole
 // device. On the way in, zstd -d feeds an extent stream's records, or a
-// raw image's non-zero pieces, to O_DIRECT writes (direct.go, I-369).
+// raw image's non-zero pieces, to O_DIRECT writes (direct.go, I-403).
 type Pipeline struct {
 	R shell.Runner
 }

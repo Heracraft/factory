@@ -355,7 +355,7 @@ func TestEnsureBaseClonesOnceUnderConcurrency(t *testing.T) {
 }
 
 // TestEvalCache: a second build of the same configuration skips `nix eval`
-// and builds the derivation the first one evaluated (I-371); anything that
+// and builds the derivation the first one evaluated (I-405); anything that
 // changes the evaluation's inputs evaluates again; a cached derivation no
 // longer in the store, or one that fails to build, falls back to an eval;
 // a build that fails is never cached.

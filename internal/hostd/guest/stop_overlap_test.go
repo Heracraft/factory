@@ -19,7 +19,7 @@ func noSnapLeft(t *testing.T, h *harness) {
 }
 
 // TestStopUploadsWhileTheGuestShutsDown: a stop with snapshot_first
-// uploads the snapshot it froze while the guest powers off (I-370). The
+// uploads the snapshot it froze while the guest powers off (I-404). The
 // upload here waits until the guest has left running; with the old order
 // (upload, then stop) it would wait out its timeout.
 func TestStopUploadsWhileTheGuestShutsDown(t *testing.T) {
@@ -106,7 +106,7 @@ func TestStopReportsASnapshotThatFailsTwice(t *testing.T) {
 }
 
 // TestStopWithAFailedFreezeStopsNothing: a freeze guestd refuses fails
-// the stop before anything shuts down, as before I-370; the api's
+// the stop before anything shuts down, as before I-404; the api's
 // recovery (I-157) then stops without a snapshot and snapshots after.
 func TestStopWithAFailedFreezeStopsNothing(t *testing.T) {
 	h := newHarness(t, nil)

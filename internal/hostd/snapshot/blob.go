@@ -165,7 +165,7 @@ func (a *AzureBlob) Upload(ctx context.Context, path string, r io.Reader, meta m
 // downloadParallel at once, written to w in order (parallelRanges). One
 // GET of a 902 MB snapshot from host-01 ran at 104 MB/s (8.7 s); eight
 // ranges at once took 1.4 s, and once a restore's writes went direct the
-// single stream was what a restore waited on (DECISIONS I-369). Every
+// single stream was what a restore waited on (DECISIONS I-403). Every
 // range is pinned to the ETag the size came from, so a blob replaced
 // mid-restore fails it instead of mixing two snapshots.
 func (a *AzureBlob) Download(ctx context.Context, path string, w io.Writer) error {

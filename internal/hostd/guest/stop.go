@@ -32,7 +32,7 @@ func (m *Manager) stopCmd(ctx context.Context, c *hostdv1.StopGuest) (*hostdv1.S
 	// The snapshot is fixed once taken, so the guest shuts down while it
 	// uploads: the stop waits for the longer of the two, not their sum,
 	// and the guest's hours end at the freeze instead of after the upload
-	// (DECISIONS I-370). A freeze that fails stops nothing, as before.
+	// (DECISIONS I-404). A freeze that fails stops nothing, as before.
 	t, err := m.takeSnapshot(ctx, g, "stop")
 	if err != nil {
 		return nil, err

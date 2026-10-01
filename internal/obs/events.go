@@ -22,7 +22,7 @@ const (
 	EventSnapshotDone  = "snapshot_done"
 	EventSnapshotFail  = "snapshot_fail"
 	// EventRestoreDone carries the download bytes and the write and fsck
-	// times, so a slow restore says where it went (I-369).
+	// times, so a slow restore says where it went (I-403).
 	EventRestoreDone      = "restore_done"
 	EventRestoreFail      = "restore_fail"
 	EventStreamConnect    = "stream_connect"
