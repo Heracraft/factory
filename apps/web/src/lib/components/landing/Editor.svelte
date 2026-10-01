@@ -481,9 +481,7 @@
 	.screen {
 		height: 100%;
 		background: #222436;
-		font-family:
-			'Editor Nerd Symbols', 'JetBrains Mono', 'SF Mono', Menlo, 'DejaVu Sans Mono', Consolas,
-			monospace;
+		font-family: 'Editor Nerd Symbols', var(--font-mono);
 		font-size: 10px;
 		font-variant-ligatures: none;
 		color: #c8d3f5;
@@ -493,6 +491,18 @@
 		line-height: 11.9px;
 		white-space: pre;
 		overflow: hidden;
+	}
+	/* On a phone, at 10px, the 20-column explorer took a third of the
+	   frame and the code stopped at about 20 characters. Below sm the
+	   whole capture is drawn at 8.4px instead, so the frame's 348px hold
+	   69 columns and the code keeps 40 of them (I-397). A crop from the
+	   left was tried and dropped: no crop leaves only the explorer's
+	   icons, since the top folders' icons sit in its first columns, and
+	   cutting through them left name fragments. */
+	@media (max-width: 639px) {
+		.screen {
+			font-size: 8.4px;
+		}
 	}
 	/* One terminal cell: keeps the grid whatever font draws the glyph. */
 	.c {
