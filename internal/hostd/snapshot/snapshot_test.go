@@ -77,6 +77,10 @@ func TestPipelineWithRealTools(t *testing.T) {
 	if compressed.Len() >= len(payload)/10 {
 		t.Fatalf("zstd did not compress: %d bytes", compressed.Len())
 	}
+	// A restore writes onto a volume it has just created, never a new file.
+	if err := os.WriteFile(dst, make([]byte, len(payload)), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := p.Write(ctx, dst, &compressed); err != nil {
 		t.Fatal(err)
 	}

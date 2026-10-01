@@ -23,16 +23,44 @@ func (m *Manager) stopCmd(ctx context.Context, c *hostdv1.StopGuest) (*hostdv1.S
 	default:
 		return nil, errf(CodeInvalidArgument, "guest is %s; stop needs running", g.State)
 	}
-	if c.SnapshotFirst && g.State == StateRunning {
-		sr, err := m.snapshotGuest(ctx, g, "stop")
-		if err != nil {
+	if !c.SnapshotFirst || g.State != StateRunning {
+		if err := m.stopGuest(ctx, g, c.TimeoutS); err != nil {
 			return nil, err
 		}
-		res.SnapshotId, res.BlobPath, res.Bytes = sr.SnapshotId, sr.BlobPath, sr.Bytes
+		return res, nil
 	}
-	if err := m.stopGuest(ctx, g, c.TimeoutS); err != nil {
+	// The snapshot is fixed once taken, so the guest shuts down while it
+	// uploads: the stop waits for the longer of the two, not their sum,
+	// and the guest's hours end at the freeze instead of after the upload
+	// (DECISIONS I-404). A freeze that fails stops nothing, as before.
+	t, err := m.takeSnapshot(ctx, g, "stop")
+	if err != nil {
 		return nil, err
 	}
+	type upload struct {
+		sr  *hostdv1.SnapshotResult
+		err *Error
+	}
+	up := make(chan upload, 1)
+	go func() {
+		sr, err := m.uploadSnapshot(ctx, g, t)
+		up <- upload{sr, err}
+	}()
+	stopErr := m.stopGuest(ctx, g, c.TimeoutS)
+	u := <-up
+	if u.err != nil && stopErr == nil {
+		// The guest is down now: snapshot the stopped volume instead, the
+		// path a stop takes when guestd cannot freeze (I-158).
+		m.log(g).Warn("snapshot during stop failed; snapshotting the stopped volume", "event", "snapshot_fail", "code", u.err.Code)
+		u.sr, u.err = m.snapshotGuest(ctx, g, "stop")
+	}
+	if stopErr != nil {
+		return nil, stopErr
+	}
+	if u.err != nil {
+		return nil, u.err
+	}
+	res.SnapshotId, res.BlobPath, res.Bytes = u.sr.SnapshotId, u.sr.BlobPath, u.sr.Bytes
 	return res, nil
 }
 
