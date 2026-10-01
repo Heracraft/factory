@@ -25,8 +25,8 @@ type Streamer interface {
 // trusted goes out in the extent format (extents.go, DECISIONS I-164): its
 // used, non-zero blocks, framed and piped through zstd -T4 -3. Anything
 // else goes out raw, dd if=dev bs=4M | zstd -T4 -3, which reads the whole
-// device. On the way in, an extent stream is written record by record and
-// a raw one through zstd -d | dd of=dev bs=4M conv=sparse.
+// device. On the way in, zstd -d feeds an extent stream's records, or a
+// raw image's non-zero pieces, to O_DIRECT writes (direct.go, I-369).
 type Pipeline struct {
 	R shell.Runner
 }
@@ -128,7 +128,8 @@ func (p *Pipeline) readRaw(ctx context.Context, dev, why string) (io.ReadCloser,
 
 // Write implements Streamer: an extent stream is applied record by record,
 // a raw image (every snapshot taken before I-164, and any volume that was
-// not a clean ext4) goes through dd.
+// not a clean ext4) is written piece by piece, its zero pieces skipped.
+// Both go around the page cache where the device allows it (direct.go).
 func (p *Pipeline) Write(ctx context.Context, dev string, r io.Reader) error {
 	zs, err := p.R.Start(ctx, r, "zstd", "-d", "-q", "-c")
 	if err != nil {
@@ -152,33 +153,58 @@ func (p *Pipeline) Write(ctx context.Context, dev string, r io.Reader) error {
 		}
 		return nil
 	}
-	dd, err := p.R.Start(ctx, br, "dd", "of="+dev, "bs=4M", "conv=sparse,fsync", "status=none")
-	if err != nil {
-		_ = zs.Kill() // dd failed to start
-		return fmt.Errorf("dd: %w", err)
+	werr := writeRawStream(dev, br)
+	if werr != nil {
+		_ = zs.Kill() // stop decompressing what will not be written
 	}
-	go func() { _, _ = io.Copy(io.Discard, dd.Stdout()) }() // dd writes nothing to stdout; drained anyway
-	go func() { _, _ = io.Copy(io.Discard, dd.Stderr()) }() // status=none keeps it empty
-	ddErr := dd.Wait()
+	_, _ = io.Copy(io.Discard, br) // let zstd finish so Wait returns
 	zsErr := zs.Wait()
+	if werr != nil {
+		return werr
+	}
 	if zsErr != nil {
 		return fmt.Errorf("zstd -d: %w", zsErr)
-	}
-	if ddErr != nil {
-		return fmt.Errorf("dd: %w", ddErr)
 	}
 	return nil
 }
 
 func (p *Pipeline) writeExtentStream(dev string, r io.Reader) error {
+	return withDevice(dev, func(f, d *os.File) error {
+		if err := readExtents(r, f, d); err != nil {
+			return fmt.Errorf("restore extents: %w", err)
+		}
+		return nil
+	})
+}
+
+// writeRawStream writes a raw image onto dev the way `dd conv=sparse`
+// did: every piece that is not all zero, in order, through the same
+// writer as an extent stream.
+func writeRawStream(dev string, r io.Reader) error {
+	return withDevice(dev, func(f, d *os.File) error {
+		if err := readRaw(r, f, d); err != nil {
+			return fmt.Errorf("restore raw image: %w", err)
+		}
+		return nil
+	})
+}
+
+// withDevice opens dev for writing, buffered and (where it can) direct.
+func withDevice(dev string, fn func(f, d *os.File) error) error {
 	f, err := os.OpenFile(dev, os.O_WRONLY, 0)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", dev, err)
 	}
-	werr := readExtents(r, f)
+	d := openDirect(dev)
+	werr := fn(f, d)
 	cerr := f.Close()
+	if d != nil {
+		if err := d.Close(); err != nil && cerr == nil {
+			cerr = err
+		}
+	}
 	if werr != nil {
-		return fmt.Errorf("restore extents: %w", werr)
+		return werr
 	}
 	return cerr
 }

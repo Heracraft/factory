@@ -9,18 +9,22 @@ import "sort"
 // list is longer), but it must emit all of its own.
 const (
 	// hostd
-	EventGuestCreate      = "guest_create"
-	EventGuestStart       = "guest_start"
-	EventGuestStop        = "guest_stop"
-	EventGuestDestroy     = "guest_destroy"
-	EventGuestState       = "guest_state"
-	EventBuildStart       = "build_start"
-	EventBuildDone        = "build_done"
-	EventBuildFail        = "build_fail"
-	EventSwitchDone       = "switch_done"
-	EventSnapshotStart    = "snapshot_start"
-	EventSnapshotDone     = "snapshot_done"
-	EventSnapshotFail     = "snapshot_fail"
+	EventGuestCreate   = "guest_create"
+	EventGuestStart    = "guest_start"
+	EventGuestStop     = "guest_stop"
+	EventGuestDestroy  = "guest_destroy"
+	EventGuestState    = "guest_state"
+	EventBuildStart    = "build_start"
+	EventBuildDone     = "build_done"
+	EventBuildFail     = "build_fail"
+	EventSwitchDone    = "switch_done"
+	EventSnapshotStart = "snapshot_start"
+	EventSnapshotDone  = "snapshot_done"
+	EventSnapshotFail  = "snapshot_fail"
+	// EventRestoreDone carries the download bytes and the write and fsck
+	// times, so a slow restore says where it went (I-369).
+	EventRestoreDone      = "restore_done"
+	EventRestoreFail      = "restore_fail"
 	EventStreamConnect    = "stream_connect"
 	EventStreamDisconnect = "stream_disconnect"
 	EventGuestdLost       = "guestd_lost"
@@ -92,7 +96,7 @@ var RequiredEvents = map[Component][]string{
 		EventGuestCreate, EventGuestStart, EventGuestStop, EventGuestDestroy,
 		EventGuestState, EventBuildStart, EventBuildDone, EventBuildFail,
 		EventSwitchDone, EventSnapshotStart, EventSnapshotDone, EventSnapshotFail,
-		EventStreamConnect, EventStreamDisconnect, EventGuestdLost,
+		EventRestoreDone, EventRestoreFail, EventStreamConnect, EventStreamDisconnect, EventGuestdLost,
 		EventGuestdRegained, EventPoolWarning, EventStoreWarning,
 	},
 	ComponentGuestd: {

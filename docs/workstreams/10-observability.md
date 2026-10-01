@@ -77,7 +77,8 @@ component must emit:
 
 - hostd: `guest_create`, `guest_start`, `guest_stop`, `guest_destroy`,
   `guest_state`, `build_start`, `build_done`, `build_fail`, `switch_done`,
-  `snapshot_start`, `snapshot_done`, `snapshot_fail`, `stream_connect`,
+  `snapshot_start`, `snapshot_done`, `snapshot_fail`, `restore_done`,
+  `restore_fail` (I-369), `stream_connect`,
   `stream_disconnect`, `guestd_lost`, `guestd_regained`, `pool_warning`,
   `store_warning`, `egress_blocked` (a guest over a block's threshold,
   DECISIONS I-238..I-240).

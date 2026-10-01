@@ -9414,3 +9414,78 @@ what the user already knows); a symlink `~/<folder>` to `~/<slug>` (two
 names for one directory in `ls ~`); recording the name in `project.json`
 (guestd rewrites that file at every start from the api's record); the
 laptop's projects cache (a second laptop or a fork would not have it).
+
+**I-369. A restore writes the volume with O_DIRECT, eight writes in
+flight, and downloads the snapshot as eight ranged GETs at once.**
+(owner, 2026-10-01; amends the restore steps of 03-hostd.md §5.9 and the
+raw path of I-164) The owner's `repose restore job` took 2m17s. The
+Restore command on host-01 took 124 s of that (04:07:27 to 04:09:31Z),
+for a snapshot of 902 MB compressed, 5.0 GB used on a 40 GB volume, which
+took 11.4 s to make. Measured stage by stage on host-01 against that
+blob and a scratch thin volume: the download 8.7 s on one GET, `zstd -d`
+2.5 s, the 1,796 `pwrite`s 1.0 s, `e2fsck -fp` 0.6 s, and the `fsync`
+125.6 s. The 4.3 GB of records went into the page cache at once and the
+kernel's writeback drained them into the new thin volume at 34 MB/s; the
+data disk is Premium SSD v2 at 16,000 IOPS and 600 MB/s. Sixteen
+buffered writers made no difference (42 MB/s). With O_DIRECT the same
+stream took 8.0 s on one writer, 5.6 s on four, 5.0 s on sixteen and
+6.7 s on sixty-four, `e2fsck -fn` clean every time. How:
+
+- *Direct writes* (`internal/hostd/snapshot/direct.go`). The restore
+  opens the volume twice, once with O_DIRECT. Records go to eight
+  goroutines from a pool of ten 4 MiB buffers aligned to 4096, so a
+  restore holds 40 MiB however large the volume. A record whose offset,
+  length or start in its buffer is off a 4096 boundary waits for the
+  writes in flight to land and switches the rest of the restore to the
+  page cache, which would otherwise read the record's partial page from
+  the device under a direct write to the rest of it. A record that
+  overlaps one in flight waits for it, so the result is what one writer
+  in stream order gives (the stream's records are ordered and disjoint,
+  so neither happens on an ext4 snapshot). A filesystem without O_DIRECT
+  falls back to the page cache. The final `fsync` stays: it is the flush
+  that commits the thin pool's mappings.
+- *Raw images too.* The raw path was `zstd -d | dd bs=4M
+  conv=sparse,fsync`, which has the same writeback. It is now the same
+  writer: each 4 MiB chunk that is all zero is skipped and any other is
+  written from its first non-zero 64 KiB piece to its last, never less
+  sparse than dd was. An image longer than the device is refused, as dd's
+  write past the end was. dd is no longer used on the way in.
+- *Ranged download* (`AzureBlob.Download`, `parallelRanges`). Once the
+  writes took 5 s the single GET (104 MB/s) was the floor. The blob's
+  length and ETag come from one `GetProperties`; then 8 MiB ranges, eight
+  in flight and each pinned to that ETag with If-Match, are written to the
+  pipe in order. Memory is nine blocks, 72 MiB. The first error, from a
+  range or from the pipe, cancels the rest. The 902 MB blob downloads in
+  1.2 to 1.6 s (8.7 s before), the 4.0 GB one in 5.7 s.
+
+Measured on host-01 with the real `AzureBlob.Download` and
+`Pipeline.Write` built from this change, onto scratch thin volumes
+(`bench-*`, removed after): the `job` snapshot in 5.4 and 6.1 s (124 s
+before); the same snapshot restored by the old path onto a second volume
+in 135 s, and `cmp` of the two 40 GB volumes found them identical; the
+largest snapshot on the host (4.0 GB compressed, 19.4 GB used) in 29.2 s,
+which is the disk's 600 MB/s, then `e2fsck -fp` 3.5 s; and a raw image
+(a 4 GiB volume with no filesystem and 1 GiB of scattered random runs,
+read by `Pipeline.Read`) written back in 3.0 s, `cmp` identical and both
+volumes at 25.00% of their thin allocation. hostd now logs `restore done`
+(`restore_done`: bytes downloaded, `duration_ms`, `write_ms`, `fsck_ms`)
+and `restore failed` (`restore_fail`), so the next slow restore says where
+its time went without a benchmark. A restore now
+takes about the Build phase (5.7 s of eval for a destroyed project,
+I-115), the write, and the start (6 s). Tests: `TestDirectRestoreMatchesBuffered`,
+`TestUnalignedRecordGoesBuffered`, `TestOverlappingRecordsLaterWins`,
+`TestDirectWriteErrorIsReturned`, `TestRestoreRefusalsStillHoldWithWriters`,
+`TestRawRestoreIsSparseAndExact`, `TestRawRestoreRefusesALongerImage`,
+`TestRawThroughPipelineIsDirect`, `TestOpenDirectFallsBack`,
+`TestParallelRangesOrderAndSizes` (which caught a ninth fetch in flight
+with eight allowed), `TestParallelRangesErrors`; the existing round trips
+now run on the direct path. *Rejected:* `dd oflag=direct` for the raw
+path (a short read from the pipe makes an unaligned write unless
+`iflag=fullblock`, and it would still be one write at a time);
+`sync_file_range` to push writeback along (the drain rate, not its start,
+was the problem); turning off the thin pool's zeroing (not measured: it is a
+pool-wide setting that changes every guest's first writes, and the direct
+path already runs at the disk's rate); azcopy
+(it cannot write to a pipe, as I-164 found for upload). *Not done:* the
+snapshot side still reads through the page cache (11.4 s for this
+volume), and Build still runs before Restore rather than beside it.

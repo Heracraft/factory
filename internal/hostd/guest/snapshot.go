@@ -185,8 +185,11 @@ func (m *Manager) restore(ctx context.Context, c *hostdv1.Restore) (*hostdv1.Cre
 	if err := m.setState(g, StateRestoring, ""); err != nil {
 		return nil, errf(CodeInternal, "%v", err)
 	}
-	m.log(g).Info("restoring guest", "event", "guest_create", "class", g.Class)
+	log := m.log(g)
+	log.Info("restoring guest", "event", "guest_create", "class", g.Class)
+	start := m.d.Now()
 	fail := func(e *Error) (*hostdv1.CreateResult, *Error) {
+		log.Error("restore failed", "event", "restore_fail", "code", e.Code, "reason", e.Message, "duration_ms", m.d.Now().Sub(start).Milliseconds())
 		_ = m.setState(g, StateError, "restore: "+e.Message) // e is what the api sees; the state write is logged inside
 		return nil, e
 	}
@@ -196,8 +199,9 @@ func (m *Manager) restore(ctx context.Context, c *hostdv1.Restore) (*hostdv1.Cre
 	}
 	pr, pw := io.Pipe()
 	dlErr := make(chan error, 1)
+	var downloaded countingWriter
 	go func() {
-		err := m.d.Blob.Download(ctx, c.BlobPath, pw)
+		err := m.d.Blob.Download(ctx, c.BlobPath, io.MultiWriter(pw, &downloaded))
 		_ = pw.CloseWithError(err) // the reader sees err; CloseWithError itself cannot fail
 		dlErr <- err
 	}()
@@ -209,6 +213,7 @@ func (m *Manager) restore(ctx context.Context, c *hostdv1.Restore) (*hostdv1.Cre
 	if werr != nil {
 		return fail(errf(CodeInternal, "restore stream: %v", werr))
 	}
+	written := m.d.Now()
 	code, err := m.d.LVM.Fsck(ctx, vol)
 	if err != nil {
 		return fail(errf(CodeInternal, "e2fsck: %v", err))
@@ -216,6 +221,10 @@ func (m *Manager) restore(ctx context.Context, c *hostdv1.Restore) (*hostdv1.Cre
 	if code > 1 {
 		return fail(errf(CodeInternal, "filesystem check failed after restore (e2fsck exit %d)", code))
 	}
+	// The stages a slow restore spent its time on: the download and the
+	// write overlap, the check follows (I-369).
+	log.Info("restore done", "event", "restore_done", "bytes", uint64(downloaded), "duration_ms", m.d.Now().Sub(start).Milliseconds(),
+		"write_ms", written.Sub(start).Milliseconds(), "fsck_ms", m.d.Now().Sub(written).Milliseconds(), "volume_bytes", g.VolumeBytes)
 	if g.SystemClosure != "" {
 		if err := m.d.Roots.Set(g.GuestID, g.SystemClosure); err != nil {
 			return fail(errf(CodeInternal, "gcroot: %v", err))
@@ -228,4 +237,12 @@ func (m *Manager) restore(ctx context.Context, c *hostdv1.Restore) (*hostdv1.Cre
 		return nil, errf(CodeInternal, "%v", err)
 	}
 	return &hostdv1.CreateResult{GuestIp: g.IP, VsockCid: g.CID}, nil
+}
+
+// countingWriter counts the bytes written through it.
+type countingWriter uint64
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	*c += countingWriter(len(p))
+	return len(p), nil
 }

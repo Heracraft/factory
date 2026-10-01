@@ -265,8 +265,11 @@ func writeExtents(dev *os.File, size uint64, l *usedLayout, w io.Writer) (uint64
 
 // readExtents applies an extent stream (magic already peeked, not
 // consumed) to dev, which must read as zeros wherever the stream has no
-// record: restore always writes into a volume it has just created.
-func readExtents(r io.Reader, dev *os.File) error {
+// record: restore always writes into a volume it has just created. When
+// direct is an O_DIRECT handle on the same device, the records go through
+// it, restoreWriters at a time (direct.go); otherwise, or from the first
+// record O_DIRECT cannot take, they go through dev and the page cache.
+func readExtents(r io.Reader, dev, direct *os.File) error {
 	var hdr [16]byte
 	if _, err := io.ReadFull(r, hdr[:]); err != nil {
 		return fmt.Errorf("extent header: %w", err)
@@ -279,7 +282,8 @@ func readExtents(r io.Reader, dev *os.File) error {
 	if err != nil {
 		return fmt.Errorf("device size: %w", err)
 	}
-	buf := make([]byte, extentChunk)
+	w := newExtentWriter(dev, direct)
+	defer func() { _ = w.close() }() // the error that ended the restore is returned below; this only stops the writers
 	var data uint64
 	for {
 		var h [16]byte
@@ -295,19 +299,80 @@ func readExtents(r io.Reader, dev *os.File) error {
 			if _, err := io.ReadFull(r, make([]byte, 1)); !errors.Is(err, io.EOF) {
 				return errors.New("extent stream has bytes after its trailer")
 			}
-			return dev.Sync()
+			if err := w.close(); err != nil {
+				return err
+			}
+			return dev.Sync() // also the flush that commits the thin pool's mappings
 		}
 		if n == 0 || n > extentChunk || off+n > want || off+n > uint64(size) {
 			return fmt.Errorf("extent %d+%d does not fit the %d-byte device (snapshot of %d bytes)", off, n, size, want)
 		}
+		buf, err := w.buffer()
+		if err != nil {
+			return err
+		}
 		if _, err := io.ReadFull(r, buf[:n]); err != nil {
+			w.release(buf)
 			return fmt.Errorf("extent data cut short: %w", err)
 		}
-		if _, err := dev.WriteAt(buf[:n], int64(off)); err != nil {
-			return fmt.Errorf("write at %d: %w", off, err)
+		if err := w.write(off, buf, 0, int(n)); err != nil {
+			return err
 		}
 		data += n
 	}
+}
+
+// readRaw writes a raw image onto dev, which reads as zeros, like
+// `dd bs=4M conv=sparse`: an extentChunk that is all zero is skipped, and
+// any other is written from its first non-zero extentPiece to its last.
+// An image longer than the device is refused, as dd's write would have
+// been.
+func readRaw(r io.Reader, dev, direct *os.File) error {
+	size, err := dev.Seek(0, io.SeekEnd)
+	if err != nil {
+		return fmt.Errorf("device size: %w", err)
+	}
+	w := newExtentWriter(dev, direct)
+	defer func() { _ = w.close() }() // the error that ended the restore is returned below; this only stops the writers
+	zero := make([]byte, extentPiece)
+	for off := uint64(0); ; {
+		buf, err := w.buffer()
+		if err != nil {
+			return err
+		}
+		n, rerr := io.ReadFull(r, buf)
+		last := errors.Is(rerr, io.EOF) || errors.Is(rerr, io.ErrUnexpectedEOF)
+		if rerr != nil && !last {
+			w.release(buf)
+			return fmt.Errorf("reading the image: %w", rerr)
+		}
+		if off+uint64(n) > uint64(size) {
+			w.release(buf)
+			return fmt.Errorf("image is longer than the %d-byte device", size)
+		}
+		lo, hi := n, 0
+		for p := 0; p < n; p += extentPiece {
+			q := min(p+extentPiece, n)
+			if !bytes.Equal(buf[p:q], zero[:q-p]) {
+				lo, hi = min(lo, p), q
+			}
+		}
+		if lo < hi {
+			if err := w.write(off+uint64(lo), buf, lo, hi); err != nil {
+				return err
+			}
+		} else {
+			w.release(buf)
+		}
+		off += uint64(n)
+		if last {
+			break
+		}
+	}
+	if err := w.close(); err != nil {
+		return err
+	}
+	return dev.Sync()
 }
 
 // layout runs dumpe2fs on dev and returns its used ranges, or why the

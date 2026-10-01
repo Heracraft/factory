@@ -353,11 +353,14 @@ bytes are reported in the Result so the cost stays visible.
 Restore:
 
 1. `lvcreate -V <volume_bytes>b -T vg-guests/thin -n g-<new guest_id>`.
-2. Download the blob as a stream through `zstd -d`. An extent stream
-   (magic `RPSXT001`) is written record by record with `pwrite` into the
-   new volume, which reads as zeros everywhere else, then `fsync`; a raw
-   stream (every snapshot from before I-164) goes into `dd
-   of=/dev/vg-guests/g-<id> bs=4M conv=sparse`.
+2. Download the blob as 8 MiB ranged GETs, eight at once and pinned to
+   its ETag, in order through `zstd -d`. An extent stream (magic
+   `RPSXT001`) is written record by record into the new volume, which
+   reads as zeros everywhere else; a raw stream (every snapshot from
+   before I-164) is written 4 MiB at a time, skipping chunks that are all
+   zero. Both go around the page cache (O_DIRECT, eight writes in
+   flight), then `fsync`: written through it, the writeback drained into
+   the thin volume at 34 MB/s (DECISIONS I-369).
 3. `e2fsck -fp` on the volume; a non-zero exit above 1 fails the restore
    with `internal: filesystem check failed after restore`.
 4. Continue as CreateGuest from step 4 with the closure the api passed
