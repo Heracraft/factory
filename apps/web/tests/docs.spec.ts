@@ -60,8 +60,16 @@ test('the docs columns hold still between pages, and the rail marks the section'
 
 	await page.goto('/docs');
 	await expect(page.getByRole('heading', { level: 1, name: 'Quickstart' })).toBeVisible();
+	// The text column is max-w-[68ch], and ch is the font's "0": measured
+	// before the self-hosted font loads it is the fallback's (605 px on CI
+	// instead of 622), so the boxes are read once the fonts are in.
+	// document.fonts.ready resolves at once when no load has started yet,
+	// which is how the merge of restore-fast failed on CI (2026-10-01), so
+	// the boxes are polled until the font has applied.
+	await expect
+		.poll(boxes)
+		.toEqual({ sidebar: '100,57,240', main: '380,57,622', rail: '1116,57,224' });
 	const first = await boxes();
-	expect(first).toEqual({ sidebar: '100,57,240', main: '380,57,622', rail: '1116,57,224' });
 	// Layout shifts during the client navigations. The links are clicked
 	// from script: a shift within 500ms of real input is left out of the
 	// entries' sum (hadRecentInput), and the point is to see every shift.
