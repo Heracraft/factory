@@ -537,14 +537,6 @@
 	text-transform: uppercase;
 	color: var(--ink-faint);
 }
-/* How many agents the plan runs at once: the line a visitor compares, so
-   in ink at the house emphasis weight (DESIGN-LANGUAGE.md, "Type"). */
-.tier-cap {
-	margin-top: 0.75rem;
-	font-size: 0.875rem;
-	font-weight: 500;
-	color: var(--ink);
-}
 .cta-row {
 	display: flex;
 	flex-wrap: wrap;

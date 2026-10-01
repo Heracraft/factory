@@ -113,7 +113,7 @@ test('plan_limit names the machines using the memory, each with a Stop', async (
 	const refusal = page.getByTestId('refusal');
 	await expect(refusal).toHaveAttribute('data-reason', 'plan_limit');
 	await expect(refusal).toContainText(
-		`would pass Solo's 8 GB running at once; ${using.slug} is using it. Stop one or upgrade.`
+		`would pass the 8 GB of memory Solo gives running machines; ${using.slug} is using it. Stop one or upgrade.`
 	);
 	await expect(refusal.getByRole('link', { name: 'Upgrade' })).toHaveAttribute('href', '/billing');
 	await refusal.getByRole('button', { name: `Stop ${using.slug}` }).click();

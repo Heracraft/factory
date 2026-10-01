@@ -10367,3 +10367,25 @@ cut at a shorter window would still move the list); resetting the hero's
 mark with a 180-degree turn (a motion LANDING.md does not list); copying
 the shown command and leaving the path to the visitor (the copied text
 would fail as pasted).
+
+**I-402. Pricing says "memory" and counts no agents.** (implementation,
+2026-10-01; amends I-397, I-290's wording)
+The landing's pricing captions ("One agent at a time", "Two agents at
+once", "Four agents at once", I-397) read to the owner as a cap on what
+repose does, when the plan caps memory and nothing else. And "8 GB
+running at once", the phrase the billing page, the waitlist and plan
+emails, the docs and the fake api's refusals used, does not say it is
+memory. The cards now drop the caption and read "N GB of memory · disk ·
+egress"; the pricing sentence adds "A plan's memory is shared by the
+machines you have running; a stopped machine uses none." Everywhere a
+user reads the limit it is "N GB of memory for running machines": the
+billing page's change rows, the waitlist_joined and plan_changed emails,
+`limits.md`, the terms, the fake api's over_plan and payment_required
+messages, and the Paddle product description that `billing bootstrap`
+creates. Bootstrap only creates products, so products already in Paddle
+keep the old description until it is edited in Paddle's dashboard.
+Internal docs (DESIGN.md, RUNBOOK, OBSERVABILITY, PRICING's prose) keep
+"may run at once", which their readers know means memory.
+*Rejected:* counting machines by size class ("one large, or two
+small"): a visitor has not met the classes, and a count is still a
+ceiling.

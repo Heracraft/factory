@@ -85,7 +85,7 @@ We record process names and network volumes to notice these things; the
 privacy policy says exactly what we record and what we never record.
 
 Each project has a bandwidth ceiling and build limits; the plan sets the
-egress allowance, the disk, what may run at once and the number of
+egress allowance, the disk, the memory running machines may use and the number of
 projects. When every seat on our servers is taken, new plans wait on a
 waitlist and are offered in order as seats free.
 

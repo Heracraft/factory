@@ -95,16 +95,15 @@
 		}
 	];
 	// docs/PRICING.md's three plans, with internal/billing/plans.go's
-	// figures. The Units count is the memory that may run at once, one
-	// square per GB, so the plans compare at a glance; the caption says it
-	// in agents (PRICING.md: one agent needs 8 GB), not in size classes,
-	// which a visitor has not met yet (LANDING.md, "Names a stranger
-	// understands").
+	// figures. The Units count is the plan's memory, one square per GB, so
+	// the plans compare at a glance. The cards say "memory" in words and
+	// count no agents or machines: a count reads as a ceiling on what the
+	// product does, and the memory is shared by whatever is running
+	// (I-402).
 	const plans: {
 		name: string;
 		price: string;
 		memory: number;
-		agents: string;
 		disk: string;
 		egress: string;
 	}[] = [
@@ -112,7 +111,6 @@
 			name: 'Solo',
 			price: '$29',
 			memory: 8,
-			agents: 'One agent at a time',
 			disk: '100 GB',
 			egress: '250 GB'
 		},
@@ -120,7 +118,6 @@
 			name: 'Plus',
 			price: '$59',
 			memory: 16,
-			agents: 'Two agents at once',
 			disk: '250 GB',
 			egress: '500 GB'
 		},
@@ -128,7 +125,6 @@
 			name: 'Pro',
 			price: '$99',
 			memory: 32,
-			agents: 'Four agents at once',
 			disk: '500 GB',
 			egress: '1 TB'
 		}
@@ -318,7 +314,7 @@
 
 		<section class="sec">
 			<SectionHead id="pricing" title="Pricing">
-				Seven days free, card at checkout. Prices in USD, before tax.
+				Seven days free, card at checkout. Prices in USD, before tax. A plan's memory is shared by the machines you have running; a stopped machine uses none.
 			</SectionHead>
 			<ul class="tiers" use:landOnView>
 				{#each plans as t, i (t.name)}
@@ -330,14 +326,13 @@
 							>
 						</div>
 						<p class="tier-spec">
-							<span>{t.memory} GB of memory at once ·</span> <span>{t.disk} disk ·</span>
+							<span>{t.memory} GB of memory ·</span> <span>{t.disk} disk ·</span>
 							<span>{t.egress} egress</span>
 						</p>
 						<p class="tier-price">
 							<span class="n">{t.price}</span>
 							<span class="per">a month</span>
 						</p>
-						<p class="tier-cap">{t.agents}</p>
 					</li>
 				{/each}
 			</ul>

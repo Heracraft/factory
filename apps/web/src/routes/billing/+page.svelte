@@ -538,7 +538,7 @@
 							<p>
 								{up ? 'Upgrade' : 'Downgrade'} to <span class="font-semibold">{other.name}</span>
 								({price(other.price_cents)} a month:
-								{other.memory_gb} GB running at once, {other.disk_gb} GB disk,
+								{other.memory_gb} GB of memory for running machines, {other.disk_gb} GB disk,
 								{allowance(other.egress_gb)} egress).
 								{#if up}
 									Takes effect at once; Paddle prorates the rest of this period.

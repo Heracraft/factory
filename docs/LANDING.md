@@ -205,8 +205,8 @@ and underlined every heading. The page is one system:
   - *Progress* (`Gauge.svelte`): each of the three steps is a circle
     filled a third, two thirds, then whole; grey, and the blue accent for
     the last, "done".
-  - *Capacity* (`Units.svelte`): each pricing card counts the memory
-    that may run at once in small squares, one per GB (8, 16, 32, in rows
+  - *Capacity* (`Units.svelte`): each pricing card counts the plan's
+    memory in small squares, one per GB (8, 16, 32, in rows
     of eight), Isotype's own form for a quantity, so the plans compare at
     a glance.
   The rest each name one feature and appear where that feature is, so
@@ -366,11 +366,13 @@ reviewed them yet (STATUS.md). Each holds until the owner says otherwise.
   command would fail on (I-401).
 - **Pricing's sentence and spec line** (I-397, recorded in I-401). The
   head sentence is "Seven days free, card at checkout. Prices in USD,
-  before tax." (it was "Three plans. Seven days free, card at
-  checkout."): the three cards show there are three, and the currency
-  and tax are `docs/PRICING.md`'s, a fact the cards do not show. Each
-  card's spec reads "N GB of memory at once" (it was "N GB running at
-  once"), naming what the units count.
+  before tax. A plan's memory is shared by the machines you have
+  running; a stopped machine uses none." (it was "Three plans. Seven
+  days free, card at checkout."): the three cards show there are three,
+  and the currency, tax and how memory is counted are
+  `docs/PRICING.md`'s, facts the cards do not show. Each card's spec
+  reads "N GB of memory" (it was "N GB running at once", which did not
+  say it was memory), naming what the units count (I-402).
 - **The meta description** (I-397, recorded in I-401): "A cloud dev
   machine for your repo in one command, with your code, tools and logins
   on it, so coding agents can run with full permissions and your laptop
@@ -384,10 +386,11 @@ reviewed them yet (STATUS.md). Each holds until the owner says otherwise.
   right instead of re-flowing, as a terminal would, and the hint's last
   words ("install it on this machine", "keep it on every rebuild") are
   cut: open for the owner (STATUS.md).
-- **The pricing caption counts agents** (I-397): "One agent at a time",
-  "Two agents at once", "Four agents at once", from PRICING.md's 8 GB per
-  agent, in place of the size classes ("one large, or two small"), which
-  a visitor has not met yet.
+- **The pricing cards count no agents** (I-402, reversing I-397's
+  caption): "One agent at a time", "Two agents at once" read as a
+  ceiling on the product, so the cards have no caption. Memory, disk and
+  egress are the plan; the head sentence says the memory is shared by
+  whatever is running.
 - **The hero's laptop panel hugs its rows** (I-398): from 768 wide it
   ends under its last row (y=748 at 1440) instead of stretching to the
   machine's height (y=867). Before, both panels ended at y=870.

@@ -273,8 +273,8 @@ test('upgrading takes effect at once; a downgrade the machines do not fit is ref
 	await expect(page.getByTestId('change-plan')).toContainText('Downgrade to Solo ($29 a month');
 	await page.getByRole('button', { name: 'Downgrade to Solo' }).click();
 	const err = page.getByTestId('change-error');
-	await expect(err).toContainText('Solo holds 8 GB running at once and 100 GB of disk');
-	await expect(err).toContainText('you have 16 GB running');
+	await expect(err).toContainText('Solo holds 8 GB of memory for running machines and 100 GB of disk');
+	await expect(err).toContainText('you have 16 GB of memory running');
 	await expect(err).toContainText('Stop machines or destroy projects first.');
 });
 
@@ -299,8 +299,8 @@ test('on Pro both other plans are downgrades, and Plus is refused while three la
 	await expect(page.getByRole('button', { name: /Upgrade/ })).toHaveCount(0);
 	await page.getByRole('button', { name: 'Downgrade to Plus' }).click();
 	const err = page.getByTestId('change-error');
-	await expect(err).toContainText('Plus holds 16 GB running at once and 250 GB of disk');
-	await expect(err).toContainText('you have 24 GB running');
+	await expect(err).toContainText('Plus holds 16 GB of memory for running machines and 250 GB of disk');
+	await expect(err).toContainText('you have 24 GB of memory running');
 	await stopAll();
 });
 
