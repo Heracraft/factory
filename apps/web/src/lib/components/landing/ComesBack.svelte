@@ -111,7 +111,7 @@
 		const row = (k: string) => pic.querySelector<HTMLElement>(`.m-row[data-k="${k}"]`)!;
 		const valOf = (k: string) => row(k).querySelector<HTMLElement>('.vt')!;
 		const fmt = (n: number, unit: string) => `${n.toLocaleString('en-US')} ${unit}`;
-		const STATE = ['hit', 'lit', 'fire', 'ok', 'gone', 'fix', 'fresh'];
+		const STATE = ['hit', 'lit', 'rewind', 'fire', 'ok', 'gone', 'fix', 'fresh'];
 		// The old tile folds by a clip from below, so its box keeps its
 		// height and nothing around it is laid out again each frame.
 		const clip = (px: number) => `inset(0px 0px ${px}px 0px round 3px)`;
@@ -155,8 +155,8 @@
 					utils.set(q('.tile.old'), { opacity: 1, y: -lift, clipPath: clip(0) });
 					utils.set(q('.m-row .strike'), { scaleX: 0 });
 					utils.set(q('.m-row .bad, .m-row .tick'), { opacity: 0, scale: 0.6 });
-					for (const el of q('.hit, .lit, .fire, .ok, .gone, .fix'))
-						el.classList.remove('hit', 'lit', 'fire', 'ok', 'gone', 'fix');
+					for (const el of q('.hit, .lit, .rewind, .fire, .ok, .gone, .fix'))
+						el.classList.remove('hit', 'lit', 'rewind', 'fire', 'ok', 'gone', 'fix');
 					for (const el of q('.tile.old')) el.classList.add('fresh');
 					return fold;
 				}
@@ -250,8 +250,9 @@
 						.set(take, { opacity: 1, x: 0, y: 0, scale: 1 }, s0 + 150)
 						.add(take, { x: dx, y: dy, scale, duration: dur, ease: 'inOutCubic' }, s0 + 150)
 						.add(newT, { opacity: [0, 1], duration: 250 }, s0 + 150 + dur - 200)
-						// The mark's quarter turn, as the new tile shows. It adds up
-						// and never turns back, as the hero's does (LANDING.md, "Motion").
+						// The mark's quarter turn, as the new tile shows. It adds up,
+						// and only the restore's full turn takes it back (LANDING.md,
+						// "Motion").
 						.call(
 							() => {
 								turn += 90;
@@ -319,6 +320,7 @@
 					// 4. the restore: 21:25 lights, its rows grow back into the machine
 					const b0 = T.back;
 					t.call(cls([newT], 'lit', true), b0 - 350)
+						.call(cls([newT], 'rewind', true), b0 - 350)
 						.add(q('.give'), { opacity: [0, 1], duration: 250 }, b0 - 350)
 						.set(give, { opacity: 1, x: dx, y: dy, scale }, b0)
 						.add(give, { x: 0, y: 0, scale: 1, duration: dur, ease: 'inOutCubic' }, b0)
@@ -343,6 +345,7 @@
 					const done = land + heal.length * 70 + 400;
 					t.call(cls(q('.m-row'), 'ok', false), done + 900)
 						.call(cls([newT], 'lit', false), done + 1600)
+						.call(cls([newT], 'rewind', false), done + 1600)
 						.add(q('.give'), { opacity: 0, duration: 400, ease: 'inQuad' }, done + 1600)
 						// rest on the restored machine, then clear and go again
 						.add(
@@ -775,16 +778,17 @@
 	   adds 90deg to --turn per snapshot and never takes it off: a class
 	   that set the angle would transition back when it came off, a
 	   quarter turn the other way that LANDING.md does not list. The
-	   rewind ends where it began, a full turn on. Only with motion
-	   allowed: the still frame renders the new tile lit, and the rewind
-	   would otherwise spin there. */
+	   rewind ends where it began, a full turn on. It hangs on .rewind,
+	   which only the loop's restore sets, and not on .lit: the still
+	   frame renders the new tile lit, and the rewind spun there on load
+	   and whenever still() ran with motion allowed. */
 	@media (prefers-reduced-motion: no-preference) {
 		/* 420ms out-quad, the hero's quarter turn (LANDING.md, "Motion"). */
 		.cam svg {
 			transform: rotate(var(--turn, 0deg));
 			transition: transform 420ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
 		}
-		.tile:global(.lit) .cam svg {
+		.tile:global(.rewind) .cam svg {
 			animation: rewind 1s cubic-bezier(0.65, 0, 0.35, 1) both;
 		}
 		@keyframes rewind {

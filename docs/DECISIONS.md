@@ -10283,8 +10283,9 @@ and I-399) A review of the I-399 round found:
   (they were 650ms). Its snapshot mark no longer turns back a quarter
   when the shot is done: a class set the angle and its transition played
   in reverse when the class came off. The loop adds 90deg to a `--turn`
-  per snapshot and the restore's full turn runs from that angle, as the
-  hero's mark adds `+=90` and never turns back.
+  per snapshot and the restore's full turn runs from that angle. (The
+  hero's mark did not, as this said it did: it was set back to 0 at each
+  loop's start, a half-turn cut; I-401.)
 - The hero's reach wire to the internet is stroked `--pic-stop`, not
   `--rogue`: it is a drawn wire, and `--rogue` is the mascot's own red.
 - The docs drawer scrolls the least that shows the current page's link,
@@ -10307,3 +10308,62 @@ the same text to axe); hiding the text from axe with CSS `content` (it
 would quiet the audit and say nothing true about the page); renumbering
 the I-369 collision with restore-fast here (whichever branch merges
 second renumbers, STATUS.md).
+
+**I-401. Landing repair round 4: the snapshot marks only turn as listed,
+the hero's lead wraps inside a sentence before it scrolls, the docs
+sidebar scrolls only for a cut link, and the dashboard's command block
+shows where its line runs on.** (implementation, 2026-10-01; amends
+I-400) A review of the I-400 round found:
+- The hero's snapshot mark cut a half turn at each loop's start. Two
+  quarter turns and the full turn back leave it at -180deg, and `pre()`
+  set it to 0 with no motion while the panel title's pinwheel was in
+  view, its two quarters (full and 0.45 opacity) swapping places. `pre()`
+  now keeps the angle, folded into 0 to 360. ComesBack's comment and
+  I-400 said the hero's mark never turned back; both are corrected.
+- ComesBack's rewind hung on `.lit`, which the still frame (markup and
+  `still()`) also sets, so with motion allowed the mark spun a full turn
+  on the still frame at load and when reduced motion was turned off
+  again. It now hangs on `.rewind`, set only by the loop's restore.
+- The hero lead's sentences were `white-space: nowrap`: at 320px under
+  WCAG 1.4.12 text spacing the first ran to x=366 and the page scrolled
+  sideways (scrollWidth 366). Each is now an inline block no wider than
+  the column, whole where it fits and wrapping inside itself where it
+  does not.
+- The docs sidebar scrolled whenever the current link sat within 16px of
+  an edge, so at 1440x900 /docs/troubleshooting moved the list up 15px,
+  and the scroll stayed for the next page. A link that shows whole now
+  moves nothing. A cut one is scrolled to with 16px to spare, and going
+  down the next link shows whole too, or the list's end for the last
+  link: the 390 drawer on /docs/cli cut "Troubleshooting" at the bottom
+  edge (I-400's "least scroll").
+- `.codeblock` scrolls sideways as the docs' blocks do but showed neither
+  their edge bars nor a tab stop: at 390 the /projects install line was
+  cut at ".../inst". It now takes the same `--edge-*` layers, and the
+  /projects block takes a tab stop while it overflows
+  (`tabStopWhenScrolls`, `lib/scroller.ts`). DESIGN-LANGUAGE.md says so.
+- Localhost's card line said a server is on your localhost "within a
+  second", where the docs say "within a second or so" and ports below
+  1024 are not forwarded, and it explained the picture, which the
+  owner's Copy rule rules out for a card. It is now "Ports from 1024 up,
+  while `repose run` is open. Cookies and OAuth redirects behave as they
+  do locally.", facts the picture does not show.
+- Step 3's Copy button copied `cd ~/code/job-alerts && repose run`, a
+  path a visitor's laptop does not have. It copies `repose run`; the row
+  still shows the example, and the button's name says what it copies.
+- The pricing sentence, the spec line and the meta description changed
+  in I-397 without a line in LANDING.md "Since the owner's notes"; they
+  have one now.
+- The Editor comment gave the capture's failing contrast as 3.1 to 4.27;
+  the colours it names (#545c7e, #636da6, #82aaff on their grounds) run
+  2.46 to 4.27, as I-400 says. The comment now agrees.
+- LANDING.md "Motion" said every listed motion runs only without reduced
+  motion; the colour transitions on hover and on a class change are
+  unconditional CSS. The intro now says so. `app.html`'s comment said
+  the app renders only in the browser; the landing, docs and legal pages
+  are prerendered.
+*Rejected:* fitting the docs list into 843px at 1440 by trimming the
+sidebar's padding (it fits only at that height, and a link one pixel
+cut at a shorter window would still move the list); resetting the hero's
+mark with a 180-degree turn (a motion LANDING.md does not list); copying
+the shown command and leaving the path to the visitor (the copied text
+would fail as pasted).

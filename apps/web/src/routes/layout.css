@@ -630,11 +630,16 @@
 	/* A command block on a dashboard page. Its lines scroll sideways, as in
 	   a terminal and as the docs' blocks do (I-345), rather than wrap: the
 	   install line wrapped with "| sh" alone on the last line, which reads
-	   as a second command. */
+	   as a second command. Like a docs block it shows the 2px edge bars
+	   (below, with .doc pre) while a line runs past its box, and a block
+	   that scrolls takes a tab stop (tabStopWhenScrolls, lib/scroller.ts):
+	   at 390 the /projects install line was cut at ".../inst" with no sign
+	   it went on. */
 	.codeblock {
 		@apply overflow-x-auto rounded-sm border p-3 font-mono leading-relaxed whitespace-pre text-zinc-800 dark:text-zinc-200;
 		font-size: var(--text-compact);
-		background-color: var(--sunken);
+		--edge-fill: var(--sunken);
+		background: var(--edge-covers), var(--edge-bars), var(--sunken);
 		border-color: var(--rule);
 	}
 
@@ -862,7 +867,8 @@
 /* The layers behind both. A custom property holding a layer list
    resolves per element, so --edge-fill is the element's own fill. */
 .doc pre,
-.doc .table-wrap {
+.doc .table-wrap,
+.codeblock {
 	--edge-covers:
 		linear-gradient(var(--edge-fill), var(--edge-fill)) left / 0.75rem 100% no-repeat local,
 		linear-gradient(var(--edge-fill), var(--edge-fill)) right / 0.75rem 100% no-repeat local;

@@ -350,16 +350,34 @@ reviewed them yet (STATUS.md). Each holds until the owner says otherwise.
   hero globe's meridians in paper (`meridians` on `Shape.svelte`), so the
   two are one drawing, as "Shape language" describes the hero's.
 - **The grid cards' lines** (I-397) say what the product does, in the
-  docs' terms: Localhost's is "A server that starts on the machine is on
-  your laptop's localhost within a second, while `repose run` is open"
-  (it was "Every port the machine listens on, on your laptop. Cookies and
-  OAuth redirects included."), and Browser's is "`repose browser` shows
+  docs' terms: Localhost's is "Ports from 1024 up, while `repose run` is
+  open. Cookies and OAuth redirects behave as they do locally." (it was
+  "Every port the machine listens on, on your laptop. Cookies and OAuth
+  redirects included.", and ports below 1024 are not forwarded,
+  `content/docs/machine.md`; I-401), and Browser's is "`repose browser` shows
   the agent's Chromium on your laptop; click in it to take over" (it was
   "puts you in the same window. Take over any time."). "Back in minutes"
   is kept whole on one line.
 - **Every step's command has a Copy button** (I-398), as the install
   command beside the hero's button does. "Copy" says a step is its title
   and its command; the button is the command row's, not a third part.
+  The last step shows `cd ~/code/job-alerts && repose run` and its button
+  copies `repose run` alone, since the path is an example that a pasted
+  command would fail on (I-401).
+- **Pricing's sentence and spec line** (I-397, recorded in I-401). The
+  head sentence is "Seven days free, card at checkout. Prices in USD,
+  before tax." (it was "Three plans. Seven days free, card at
+  checkout."): the three cards show there are three, and the currency
+  and tax are `docs/PRICING.md`'s, a fact the cards do not show. Each
+  card's spec reads "N GB of memory at once" (it was "N GB running at
+  once"), naming what the units count.
+- **The meta description** (I-397, recorded in I-401): "A cloud dev
+  machine for your repo in one command, with your code, tools and logins
+  on it, so coding agents can run with full permissions and your laptop
+  stays out of reach." It was "A disposable dev machine per project with
+  your code, tools and secrets on it in 15 seconds, ...": the machine
+  is persistent, not disposable, and 15 seconds was not the docs
+  quickstart's 14s (I-398).
 - **Ready drops the first line of each two-line prompt** (I-398), as
   whole rows, so the capture does not show the machine's old name
   (`recruiting`); nothing is retyped. On a phone Ready's rows crop on the
@@ -374,13 +392,17 @@ reviewed them yet (STATUS.md). Each holds until the owner says otherwise.
   ends under its last row (y=748 at 1440) instead of stretching to the
   machine's height (y=867). Before, both panels ended at y=870.
 - **The hero's lead keeps each sentence whole** (I-400): the line
-  breaks between sentences, never after a sentence's first word.
+  breaks between sentences, never after a sentence's first word. A
+  sentence wider than the column wraps inside its own box (I-401), so
+  320px with WCAG 1.4.12 text spacing does not scroll sideways.
 
 ## Motion
 
 Everything that moves on the landing. Each runs only under
-`prefers-reduced-motion: no-preference`; with reduced motion the page is
-drawn in its final state. The setting is followed while the page is open:
+`prefers-reduced-motion: no-preference`, except the two colour changes at
+the end of the list (a class change's colour, hover and press), which are
+plain CSS transitions and move nothing; with reduced motion the page is
+drawn in its final state, so no class changes in a picture either. The setting is followed while the page is open:
 a visitor who turns reduced motion on mid-loop sees every picture stop on
 its final frame and every waiting shape group land at once
 (`watchReducedMotion` in `landing/inview.ts`, I-397). The hero's still
@@ -415,7 +437,8 @@ at 1280 to 1920 wide, so hydration does not resize it either (I-399).
   transform 0.7s `cubic-bezier(0.34, 1.56, 0.64, 1)`, a small overshoot,
   each shape delayed by its `--d`).
 - **The snapshot mark** turns a quarter when a snapshot is taken and a
-  full turn back when one is restored.
+  full turn back when one is restored. Between loops it keeps the angle
+  it was left at, so it never cuts to another angle (I-401).
 - **The pictures** loop in anime.js, the calm motion of "Your working
   state" as the top of this file defines it: stagger, travel, settle, rest,
   loop, each move 120ms to 1.1s. By kind:

@@ -81,14 +81,17 @@
 	// `what` finishes each Copy button's name for a screen reader ("Copy
 	// the sign-in command"), so the three buttons are not three "Copy"s.
 	// The checkout in the last one is named after its laptop folder (I-368),
-	// the hero picture's job-alerts/.
-	const steps = [
+	// the hero picture's job-alerts/. That path is an example, so its Copy
+	// button copies `repose run` alone (`copy`): a pasted
+	// `cd ~/code/job-alerts` fails on a visitor's laptop.
+	const steps: { title: string; command: string; copy?: string; what: string }[] = [
 		{ title: 'Install the CLI', command: INSTALL_COMMAND, what: 'the install command' },
 		{ title: 'Sign in', command: 'repose login', what: 'the sign-in command' },
 		{
 			title: 'Run in any checkout',
 			command: 'cd ~/code/job-alerts && repose run',
-			what: 'the run command'
+			copy: 'repose run',
+			what: 'repose run, to run in your checkout'
 		}
 	];
 	// docs/PRICING.md's three plans, with internal/billing/plans.go's
@@ -182,14 +185,14 @@
      after a path's slash (breakable), not inside a filename. The button's name
      is its visible word and what it copies; the result is said in the
      page's one status region below. -->
-{#snippet cmdRow(command: string, what: string, prompt: boolean)}
+{#snippet cmdRow(command: string, what: string, prompt: boolean, copy: string = command)}
 	<div class="cmd">
 		<span class="text"
 			>{prompt ? '$ ' : ''}{#each breakable(command) as part, i (i)}{part}<wbr />{/each}</span
 		>
-		<button type="button" class="copy" onclick={() => copyCommand(command, what)}>
+		<button type="button" class="copy" onclick={() => copyCommand(copy, what)}>
 			{@render copyIcon()}
-			{copied === command ? 'Copied' : 'Copy'}<span class="sr-only">{` ${what}`}</span>
+			{copied === copy ? 'Copied' : 'Copy'}<span class="sr-only">{` ${what}`}</span>
 		</button>
 	</div>
 {/snippet}
@@ -265,9 +268,8 @@
 					<Localhost />
 					<h3>{@render cellMark('halves')}Your dev server on your localhost</h3>
 					<p>
-						A server that starts on the machine is on your laptop's localhost within a second, while <code
-							>repose run</code
-						> is open.
+						Ports from 1024 up, while <code>repose run</code> is open. Cookies and OAuth redirects behave
+						as they do locally.
 					</p>
 				</li>
 				<li class="cell">
@@ -308,7 +310,7 @@
 								>{step.title}
 							</h3>
 						</div>
-						{@render cmdRow(step.command, step.what, true)}
+						{@render cmdRow(step.command, step.what, true, step.copy)}
 					</li>
 				{/each}
 			</ol>

@@ -247,14 +247,19 @@
 /* Three sentences, each kept whole, so a line breaks between sentences
    and never ends on the next one's first word: balance alone left a lone
    "A", then a lone "The", at the end of line 1. Balanced, the three break
-   as one, then two at 1440, and one to a line on a phone. */
+   as one, then two at 1440, and one to a line on a phone. Each is an
+   inline block no wider than the column, not nowrap: a sentence wider
+   than the column wraps inside its own box. With nowrap, the first one
+   ran 46px past a 320px phone under WCAG 1.4.12 text spacing and the
+   page scrolled sideways. */
 .hero-grid .lead {
 	max-width: 34rem;
 	text-wrap: balance;
 	margin-top: 1.75rem;
 }
 .hero-grid .lead > span {
-	white-space: nowrap;
+	display: inline-block;
+	max-width: 100%;
 }
 .hero-ctas {
 	display: flex;

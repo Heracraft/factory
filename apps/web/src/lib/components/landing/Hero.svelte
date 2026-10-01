@@ -246,7 +246,14 @@
 						utils.set(q('.skill-in'), { opacity: 0, x: 0, y: 0 });
 						utils.set(q('.priv .tg'), { opacity: 0 });
 						utils.set(q('.lines path'), { strokeDashoffset: 1, opacity: 1 });
-						utils.set(q('.rail .cam'), { rotate: 0 });
+						// The snapshot mark keeps the angle the last loop left it at,
+						// folded into 0 to 360. Two quarter turns and the full turn
+						// back leave it at -180deg; setting 0 here cut it a half turn
+						// with no motion at each restart, a move LANDING.md does not
+						// list, and the panel title's pinwheel is in view throughout.
+						const cam = q('.rail .cam');
+						const deg = cam.length ? Number(utils.get(cam[0], 'rotate', false)) || 0 : 0;
+						utils.set(cam, { rotate: ((deg % 360) + 360) % 360 });
 						fire = false;
 						pic.classList.remove('wrecked');
 					}

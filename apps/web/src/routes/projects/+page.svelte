@@ -11,6 +11,7 @@
 	import RecentlyDestroyed from '$lib/components/RecentlyDestroyed.svelte';
 	import LoadState, { loadErrorText } from '$lib/components/LoadState.svelte';
 	import type { DestroyedProject, Me, Project } from '$lib/api/types';
+	import { tabStopWhenScrolls } from '$lib/scroller';
 
 	let projects = $state<Project[] | undefined>(undefined);
 	/** The first load failed; the poll keeps trying, and Retry asks now. */
@@ -123,7 +124,9 @@
 					Projects are created from the CLI, in a git checkout. Install it, then run
 					<code>repose run</code> in the project’s directory.
 				</p>
-				<pre class="codeblock mt-5">curl -fsSL https://repose.herakraft.co/install.sh | sh
+				<pre
+					class="codeblock mt-5"
+					use:tabStopWhenScrolls>curl -fsSL https://repose.herakraft.co/install.sh | sh
 repose login
 cd ~/code/your-project && repose run</pre>
 			</div>

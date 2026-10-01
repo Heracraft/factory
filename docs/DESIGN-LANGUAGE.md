@@ -324,7 +324,10 @@ content edge, as on secrets, config revisions and snapshots.
   card, never "X / Y".
 - `.codeblock`: a command block on a dashboard page, 13px mono on
   `--sunken`. Its lines scroll sideways, as the docs' blocks do; a
-  wrapped install line left "| sh" alone on the last line.
+  wrapped install line left "| sh" alone on the last line. As the docs'
+  blocks do, it shows a 2px `--ink-faint` bar at an edge where a line
+  runs on, and a block wider than its box takes a tab stop
+  (`tabStopWhenScrolls`, I-401).
 
 ## States
 

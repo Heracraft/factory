@@ -39,15 +39,28 @@
 		const at = link.getBoundingClientRect();
 		// The list shows below the sticky search.
 		const top = searchBox ? searchBox.getBoundingClientRect().bottom : box.top;
-		// The least scroll that shows the link, with 16px to spare. Putting
-		// it a third of the way down, as this did, scrolled the search and
-		// "Start here" off a phone's drawer for a link near the end of the
-		// list (/docs/cli at 390).
+		// A link that shows whole moves nothing. At 1440x900 every link
+		// does, so the list sits at the same y on every page; scrolling for
+		// a 16px margin moved it 15px on /docs/troubleshooting and left it
+		// there for the next page.
+		if (at.top >= top && at.bottom <= box.bottom) return;
+		// Otherwise the least scroll that shows it, 16px clear of the edge.
+		// Putting it a third of the way down scrolled the search and "Start
+		// here" off a phone's drawer for a link near the end of the list
+		// (/docs/cli at 390). Going down, the next link shows whole too, or
+		// the end of the list for the last one, so the drawer does not open
+		// on a row cut at its bottom edge.
 		const pad = 16;
-		if (at.top < top + pad) {
+		if (at.top < top) {
 			nav.scrollTop -= top + pad - at.top;
-		} else if (at.bottom > box.bottom - pad) {
-			nav.scrollTop += at.bottom - (box.bottom - pad);
+			return;
+		}
+		const links = [...nav.querySelectorAll<HTMLElement>('nav[aria-label="Docs"] a')];
+		const next = links[links.indexOf(link) + 1];
+		if (next) {
+			nav.scrollTop += next.getBoundingClientRect().bottom - (box.bottom - pad);
+		} else {
+			nav.scrollTop = nav.scrollHeight;
 		}
 	}
 

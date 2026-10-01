@@ -24,7 +24,7 @@
   role="img" with its own label, and each row is aria-hidden and inert, so
   it is out of the tab order, find in page and selection as a screenshot
   would be. Tokyo Night's comment grey, explorer grey and statusline blue
-  sit under 4.5:1 on its grounds (3.1 to 4.27); a picture's incidental
+  sit under 4.5:1 on its grounds (2.46 to 4.27); a picture's incidental
   text is outside WCAG 1.4.3, and inert is what tells the a11y gate's
   contrast check (axe skips inert nodes) that this is a picture. The
   colours stay the tool's own (LANDING.md, "Real, and whole, or not at

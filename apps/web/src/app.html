@@ -7,10 +7,12 @@
 		<link rel="icon" type="image/svg+xml" href="%sveltekit.assets%/favicon.svg?v=2" />
 		<link rel="icon" type="image/png" href="%sveltekit.assets%/favicon.png?v=2" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<!-- The app renders in the browser (ssr = false), so until the bundle's
-		     CSS arrives the page would paint the browser's default white, and a
-		     dark-mode visitor sees a white flash. These match --page in
-		     routes/layout.css so the first paint is already the right colour. -->
+		<!-- The dashboard renders in the browser (ssr = false), and the
+		     prerendered pages (the landing, I-398, the docs and the legal
+		     pages) link their CSS as a file. Until that CSS arrives the page
+		     would paint the browser's default white, and a dark-mode visitor
+		     sees a white flash. These match --page in routes/layout.css so the
+		     first paint is already the right colour. -->
 		<meta name="color-scheme" content="light dark" />
 		<meta name="theme-color" content="#fbfbfa" media="(prefers-color-scheme: light)" />
 		<meta name="theme-color" content="#111110" media="(prefers-color-scheme: dark)" />
