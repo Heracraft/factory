@@ -240,8 +240,11 @@ to `error` with the step named: `create: step 9 (cloud-hypervisor) failed:
 
 ### 5.6 Stop, Start, Destroy, Resize
 
-`StopGuest`: if `snapshot_first`, run the Snapshot procedure first. Then
-`guestd Shutdown(timeout_s)`; wait for the `guest@<id>` unit to exit; after
+`StopGuest`: if `snapshot_first`, freeze, take the LVM snapshot and thaw
+(Snapshot steps 1 to 3), then upload it while the guest shuts down, and
+return when both are done (DECISIONS I-370). An upload that fails is
+taken again from the stopped volume; a freeze that fails stops nothing.
+The shutdown is `guestd Shutdown(timeout_s)`; wait for the `guest@<id>` unit to exit; after
 `timeout_s` (default 60) send `shutdown` via the CH API; after a further 15
 seconds `systemctl kill guest@<id>`. Tear down tap, tc, nft membership,
 virtiofsd unit. State `stopped`. The volume, GC root and IP allocation

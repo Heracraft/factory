@@ -63,6 +63,9 @@ type Result struct {
 	// fragment problem, a slow build is a substituter or a source build.
 	EvalDuration  time.Duration
 	BuildDuration time.Duration
+	// EvalCached is set when the derivation came from the eval cache
+	// (evalcache.go) instead of `nix eval`.
+	EvalCached bool
 }
 
 // CacheUnreachable recognises Nix's substituter failure lines.
@@ -355,6 +358,27 @@ func (b *Real) chownTree(dir string) error {
 
 // Build implements Builder.
 func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Result, error) {
+	res, err := b.build(ctx, req, log, true)
+	var retry *staleEval
+	if errors.As(err, &retry) {
+		// A cached derivation that did not build is forgotten and the
+		// configuration evaluated afresh, so the cache can cost a build
+		// time but never its result.
+		b.forgetDrv(retry.key)
+		return b.build(ctx, req, log, false)
+	}
+	return res, err
+}
+
+// staleEval is a build of a cached derivation that failed.
+type staleEval struct {
+	key string
+	err error
+}
+
+func (s *staleEval) Error() string { return "build of a cached evaluation: " + s.err.Error() }
+
+func (b *Real) build(ctx context.Context, req Request, log func(string), useCache bool) (*Result, error) {
 	if !validRef(req.RevisionID) {
 		return nil, &Error{Code: "invalid_argument", Message: "revision_id required"}
 	}
@@ -383,6 +407,35 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 	unit := "repose-build-" + req.RevisionID
 
 	log("evaluating configuration")
+	key := b.evalKey(req)
+	cached := ""
+	if useCache {
+		cached = b.cachedDrv(ctx, key)
+	}
+	start := time.Now()
+	drv, err := cached, error(nil)
+	if cached == "" {
+		drv, err = b.eval(ctx, req, checkout, dir, allowed, unit)
+		if err != nil {
+			return nil, err
+		}
+	}
+	evalDuration := time.Since(start)
+
+	res, err := b.buildDrv(ctx, req, drv, unit, log)
+	if err != nil {
+		if cached != "" {
+			return nil, &staleEval{key: key, err: err}
+		}
+		return nil, err
+	}
+	res.EvalDuration, res.EvalCached = evalDuration, cached != ""
+	b.rememberDrv(key, drv)
+	return res, nil
+}
+
+// eval runs `nix eval` of the system's derivation path.
+func (b *Real) eval(ctx context.Context, req Request, checkout, dir string, allowed []string, unit string) (string, error) {
 	evalArgv := b.wrap(unit+"-eval", req.Limits.EvalS, req.Limits.Cores, []string{
 		"nix", "eval", "--raw", "--no-write-lock-file", "--show-trace",
 		"--option", "restrict-eval", "true",
@@ -398,20 +451,23 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 	res, err := b.R.Run(ctx, evalArgv...)
 	if err != nil {
 		if isTimeout(err, time.Since(start), req.Limits.EvalS) {
-			return nil, EvalTimeout(req.Limits.EvalS)
+			return "", EvalTimeout(req.Limits.EvalS)
 		}
 		var ee *shell.ExitError
 		if errors.As(err, &ee) {
-			return nil, MapEvalError(string(ee.Result.Stderr))
+			return "", MapEvalError(string(ee.Result.Stderr))
 		}
-		return nil, fmt.Errorf("nix eval: %w", err)
+		return "", fmt.Errorf("nix eval: %w", err)
 	}
-	evalDuration := time.Since(start)
 	drv := strings.TrimSpace(string(res.Stdout))
 	if !strings.HasPrefix(drv, "/nix/store/") || !strings.HasSuffix(drv, ".drv") {
-		return nil, &Error{Code: "internal", Message: "nix eval did not return a derivation path: " + shell.Tail([]byte(drv), 200)}
+		return "", &Error{Code: "internal", Message: "nix eval did not return a derivation path: " + shell.Tail([]byte(drv), 200)}
 	}
+	return drv, nil
+}
 
+// buildDrv builds drv's outputs, checks the closure and roots it.
+func (b *Real) buildDrv(ctx context.Context, req Request, drv, unit string, log func(string)) (*Result, error) {
 	log("building " + drvName(drv))
 	buildArgv := b.wrap(unit, req.Limits.BuildS, req.Limits.Cores, []string{
 		"nix", "build", "--no-link", "--print-out-paths", "--print-build-logs",
@@ -426,7 +482,7 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 		"--option", "substituters", b.Substituters,
 		drv + "^*",
 	})
-	start = time.Now()
+	start := time.Now()
 	out, tail, err := b.stream(ctx, buildArgv, log)
 	buildDuration := time.Since(start)
 	if err != nil {
@@ -476,7 +532,7 @@ func (b *Real) Build(ctx context.Context, req Request, log func(string)) (*Resul
 	return &Result{
 		SystemClosure: outPath, ClosureBytes: size, Kernel: info.Kernel, Initrd: info.Initrd,
 		CacheUnreachable: CacheUnreachable(tail),
-		EvalDuration:     evalDuration, BuildDuration: buildDuration,
+		BuildDuration:    buildDuration,
 	}, nil
 }
 

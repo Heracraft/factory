@@ -214,3 +214,37 @@ func TestRealNixFixedOutputFetch(t *testing.T) {
 	}
 	t.Logf("fetched: %s\n%s", res.SystemClosure, strings.Join(lines, "\n"))
 }
+
+// TestRealNixEvalCache: with real Nix, the same fragment under another
+// revision directory (a restore's copy) is a cache hit and lands on the
+// closure a fresh evaluation gives; a changed fragment is evaluated
+// (I-371).
+func TestRealNixEvalCache(t *testing.T) {
+	b := realNix(t)
+	frag := `{ pkgs, ... }: { home.packages = [ pkgs.ripgrep ]; }`
+	first, ne, _ := realBuild(t, b, "cache-1", frag, realLimits)
+	if ne != nil {
+		t.Fatalf("cache-1: %s", ne.Message)
+	}
+	if first.EvalCached {
+		t.Fatal("first build came from the cache")
+	}
+	start := time.Now()
+	second, ne, lines := realBuild(t, b, "cache-2", frag, realLimits)
+	if ne != nil {
+		t.Fatalf("cache-2: %s", ne.Message)
+	}
+	t.Logf("cached build in %s (eval %s), log: %s", time.Since(start).Round(time.Millisecond), second.EvalDuration, strings.Join(lines, " | "))
+	if !second.EvalCached || second.SystemClosure != first.SystemClosure {
+		t.Fatalf("second build: cached=%v %s vs %s", second.EvalCached, second.SystemClosure, first.SystemClosure)
+	}
+	// What a fresh evaluation of cache-2's directory gives: the same.
+	fresh, err := b.build(context.Background(), Request{ProjectID: "p1", RevisionID: "cache-2", Fragment: []byte(frag), BaseRef: "testref", Limits: realLimits}, func(string) {}, false)
+	if err != nil || fresh.EvalCached || fresh.SystemClosure != first.SystemClosure {
+		t.Fatalf("fresh eval: %+v %v", fresh, err)
+	}
+	other, ne, _ := realBuild(t, b, "cache-3", `{ pkgs, ... }: { home.packages = [ pkgs.ripgrep pkgs.hello ]; }`, realLimits)
+	if ne != nil || other.EvalCached || other.SystemClosure == first.SystemClosure {
+		t.Fatalf("changed fragment: %+v %v", other, ne)
+	}
+}

@@ -9489,3 +9489,71 @@ path already runs at the disk's rate); azcopy
 (it cannot write to a pipe, as I-164 found for upload). *Not done:* the
 snapshot side still reads through the page cache (11.4 s for this
 volume), and Build still runs before Restore rather than beside it.
+
+**I-370. A stop uploads its snapshot while the guest shuts down; the
+snapshot read itself stays as it was.** (owner, 2026-10-01: "work on the
+optimizations for snapshotting") Measured on host-01 against scratch
+volumes holding the `job`, `unwrap` and a 19.4 GB-used snapshot: dumpe2fs
+25 ms; reading the used blocks 5.4 to 7.2 s, 9.1 to 9.6 s and 28.6 to
+30.8 s, which is the data disk's provisioned rate (600 MB/s, read at 650
+to 700); `zstd -T4 -3` keeps up (the whole read plus compress took the
+same time at -T4, -T8 and -T16, and at -1, -2 and --fast=3, which only
+made the blob 7 to 40% larger); the upload added about 0.2 s whether 4,
+8 or 16 blocks of 8 or 16 MiB were in flight; `lvcreate -s`, `lvchange
+-ay -K` and `lvremove` 50 to 100 ms each. Reading with O_DIRECT, eight
+chunks in flight, took the same time as the page cache (5.5 vs 5.5 s,
+9.3 vs 9.1 s, 30.2 vs 28.6 s) and showed no page-cache difference in
+`/proc/meminfo`, so it was not kept. A snapshot is the disk's speed;
+reading less (an incremental snapshot) or a faster disk is what would
+change it.
+
+What the user waits for can change. A `repose stop` froze, took the LVM
+snapshot, thawed, read and uploaded the whole snapshot with the guest
+still running and billed, and only then shut the guest down (5 s for
+`job`). Since the LVM snapshot is a fixed point in time once taken,
+`StopGuest` with `snapshot_first` now takes it (`takeSnapshot`), starts
+the upload (`uploadSnapshot`) and shuts the guest down at the same time,
+returning when both are done: the stop waits for the longer of the two,
+and the guest's hours and sessions end right after the freeze. A freeze
+that fails returns before anything shuts down, as before, so the api's
+I-157 recovery is unchanged. An upload that fails while the guest stops
+is taken again from the stopped volume (the I-158 path); if that fails
+too the stop reports the upload failure with the guest down and its
+volume kept, the project goes to `error`, and `repose start` boots it
+(PlanRestart), as for any failed stop. Tests:
+`TestStopUploadsWhileTheGuestShutsDown` (the upload waits for the guest
+to leave `running`; with the old order it times out, checked by running
+it against the old `stop.go`), `TestStopRetriesTheSnapshotFromTheStoppedVolume`
+(also fails on the old order), `TestStopReportsASnapshotThatFailsTwice`,
+`TestStopWithAFailedFreezeStopsNothing`; the snapshot, restore and stop
+tests that were there pass unchanged. `MemBlob` gained `FailNext` and
+`BeforeUpload` for them. *Not done:* incremental snapshots (a design
+change of the blob format and of restore) and a faster data disk (an
+infra cost: the owner's call).
+
+**I-371. hostd caches an evaluation by its inputs and skips `nix eval`
+when they recur.** (owner, 2026-10-01: "faster restores") A restore of a
+destroyed project runs Build before Restore (I-115), and on host-01 that
+Build was 5.3 s of `nix eval` and 0.35 s of `nix build` for the
+`job` restore: the configuration was the one evaluated when the project
+was made. With `pure-eval`, `restrict-eval`, no import-from-derivation
+and inputs locked by the base's `flake.lock`, the evaluation reads the
+base checkout (a git revision, checked out once), the flake attribute,
+the fragment and the `base_version` label, nothing else.
+`internal/hostd/nixbuild/evalcache.go` hashes those into a key and keeps
+`/var/lib/repose/builds/.evalcache/<key>` holding the derivation of a
+build that succeeded. A hit whose `.drv` is still in the store
+(`keep-derivations = true` on hosts keeps it while the closure is
+rooted) goes straight to `nix build`; a hit whose build fails is removed
+and the build runs again with a fresh eval, so the cache can cost time
+and never change a result. The build log lines are unchanged (the CLI
+reads them, I-320); `build done` gains `eval_cached`.
+nix-build-contract.md "What hostd runs" says so. Running Build beside
+Restore was rejected for now: an op holds one command at a time
+(`ops.command_id`), so it needs a migration and engine change for 5 s.
+Tests: `TestEvalCache` (hit, each input missing, a collected `.drv`, a
+stale hit rebuilt from a fresh eval, a failed build not cached, log lines
+unchanged); `TestRealNixEvalCache` with real Nix against the test flake:
+the second revision with the same fragment built from the cache in 384
+ms with the closure a fresh eval of its directory gives, and a changed
+fragment evaluated; the real-Nix corpus passes.

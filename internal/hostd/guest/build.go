@@ -89,7 +89,7 @@ func (m *Manager) build(ctx context.Context, commandID string, c *hostdv1.Build)
 	}
 	log.Info("build done", "event", "build_done", "duration_ms", dur.Milliseconds(),
 		"eval_ms", res.EvalDuration.Milliseconds(), "build_ms", res.BuildDuration.Milliseconds(),
-		"closure_bytes", res.ClosureBytes)
+		"closure_bytes", res.ClosureBytes, "eval_cached", res.EvalCached)
 	return &hostdv1.BuildResult{SystemClosure: res.SystemClosure, ClosureBytes: res.ClosureBytes, KernelChanged: m.kernelChanged(c.ProjectId, res)}, nil
 }
 

@@ -298,6 +298,11 @@ type MemBlob struct {
 	Blobs map[string][]byte
 	Meta  map[string]map[string]string
 	Fail  error
+	// FailNext fails that many uploads with "injected upload failure",
+	// then lets them through.
+	FailNext int
+	// BeforeUpload, when set, runs at the start of every Upload.
+	BeforeUpload func(path string)
 }
 
 // NewMemBlob returns an empty store.
@@ -306,6 +311,17 @@ func NewMemBlob() *MemBlob {
 }
 
 func (m *MemBlob) Upload(_ context.Context, path string, r io.Reader, meta map[string]string) (uint64, error) {
+	if m.BeforeUpload != nil {
+		m.BeforeUpload(path)
+	}
+	m.mu.Lock()
+	if m.FailNext > 0 {
+		m.FailNext--
+		m.mu.Unlock()
+		_, _ = io.Copy(io.Discard, r) // drain as a failed upload would
+		return 0, errors.New("injected upload failure")
+	}
+	m.mu.Unlock()
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return 0, err
