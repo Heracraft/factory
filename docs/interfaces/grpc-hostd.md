@@ -61,7 +61,10 @@ reconcile after a hostd restart), free memory, pool free bytes.
 
 **Heartbeat** every 15 seconds: `free_mem_bytes`, `pool_free_bytes`,
 `load1`, `running_guests`, `draining` (bool; set after `Drain`, the scheduler
-places nothing on a draining host).
+places nothing on a draining host). A Heartbeat also goes right before
+every Result, so `free_mem_bytes` already counts a guest the command
+stopped, destroyed or created when the api places the next one
+(DECISIONS I-409).
 
 **Command** carries `command_id` (UUIDv7, idempotency key; a repeated
 command_id returns the stored result) and one of:

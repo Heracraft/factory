@@ -10591,3 +10591,19 @@ create waits while the old guest is `stopping`, places once it is
 `stopped`; with a 1 s wait and a guest that stays `stopping`, `capacity`
 after the wait; on the old code `capacity` at once); `TestCapacityError`
 unchanged.
+
+**I-409. hostd sends a heartbeat ahead of every command result.** (owner,
+2026-10-01, the live check of I-403..I-405) On host-01, `repose rm
+e2e-giftbox --wait` then `repose restore e2e-giftbox` spent 7 s before the
+restore's Build was sent: the destroy finished at 20:19:04Z and the api
+logged `schedule_wait` (I-408's placement wait), placing the project at
+20:19:11Z. The host was near its memory, and the api places from
+`hosts.free_mem_bytes`, which hostd refreshed only in its 15 s heartbeat,
+so the memory the destroy had just freed was not seen until the next one.
+hostd's stream now sends a Heartbeat right before each Result
+(`internal/hostd/stream`), and the api handles a session's messages in
+order, so `free_mem_bytes` is current when the engine (500 ms tick) next
+tries the placement. A heartbeat is one `update hosts`; one per command is
+nothing next to the command. grpc-hostd.md says so. Test:
+`TestHeartbeatAheadOfEveryResult` (two commands give `hb,result,hb,result`;
+`result,result` against the old sender).

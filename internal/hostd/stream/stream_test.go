@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -26,6 +27,7 @@ type apiStub struct {
 	events   []*hostdv1.Event
 	logs     []*hostdv1.BuildLog
 	hbs      int
+	order    []string // "hb" and "result", as received
 	toSend   chan *hostdv1.ApiMessage
 	dropNext chan struct{}
 	sessions chan struct{}
@@ -63,6 +65,7 @@ func (a *apiStub) Session(srv hostdv1.HostService_SessionServer) error {
 			a.hellos++
 		case *hostdv1.HostMessage_Result:
 			a.results = append(a.results, m.Result)
+			a.order = append(a.order, "result")
 		case *hostdv1.HostMessage_Samples:
 			a.samples = append(a.samples, m.Samples)
 		case *hostdv1.HostMessage_Event:
@@ -72,6 +75,7 @@ func (a *apiStub) Session(srv hostdv1.HostService_SessionServer) error {
 			a.logs = append(a.logs, m.Log)
 		case *hostdv1.HostMessage_Heartbeat:
 			a.hbs++
+			a.order = append(a.order, "hb")
 		}
 		a.mu.Unlock()
 		if ctx.Err() != nil {
@@ -216,5 +220,34 @@ func TestBackoffSchedule(t *testing.T) {
 	}
 	if !errors.Is(context.Canceled, context.Canceled) {
 		t.Fatal("unreachable")
+	}
+}
+
+// TestHeartbeatAheadOfEveryResult: each result is preceded by a fresh
+// heartbeat, so the api reads the memory a stop or destroy freed before it
+// places the next guest, not up to HeartbeatInterval later (I-409).
+func TestHeartbeatAheadOfEveryResult(t *testing.T) {
+	ln := bufconn.Listen(1 << 20)
+	stub := newStub()
+	gs := grpc.NewServer()
+	hostdv1.RegisterHostServiceServer(gs, stub)
+	go func() { _ = gs.Serve(ln) }()
+	defer gs.Stop()
+	host := &hostStub{}
+	s := New(Config{HeartbeatInterval: time.Hour}, bufDialer{ln}, host, nil, nil)
+	host.s = s
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.Run(ctx)
+	<-stub.sessions
+	waitFor(t, "hello", func() bool { stub.mu.Lock(); defer stub.mu.Unlock(); return stub.hellos == 1 })
+	for _, id := range []string{"c1", "c2"} {
+		stub.toSend <- &hostdv1.ApiMessage{Msg: &hostdv1.ApiMessage_Command{Command: &hostdv1.Command{CommandId: id, Cmd: &hostdv1.Command_Drain{Drain: &hostdv1.Drain{}}}}}
+	}
+	waitFor(t, "two results", func() bool { stub.mu.Lock(); defer stub.mu.Unlock(); return len(stub.results) == 2 })
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	if got := strings.Join(stub.order, ","); got != "hb,result,hb,result" {
+		t.Fatalf("order %s, want a heartbeat before each result", got)
 	}
 }

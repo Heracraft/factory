@@ -141,7 +141,7 @@ replies with any commands it considers unfinished; hostd looks each
   idempotent), else return `internal: command interrupted` for `Exec`;
 - unknown: execute normally.
 
-Heartbeats every 15 seconds. Reconnect on any stream error with backoff 1,
+Heartbeats every 15 seconds, and one ahead of every Result (I-409). Reconnect on any stream error with backoff 1,
 2, 4, 8, 16, 30, 30... seconds and jitter. Commands received while a
 previous instance of the same `command_id` is still executing are
 acknowledged and ignored (the result will be sent when the first finishes).
