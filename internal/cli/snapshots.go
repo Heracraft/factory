@@ -115,12 +115,18 @@ func SnapshotsRestoreCmd(ctx context.Context, e *Env, projectArg, snapshotID, as
 	}
 	pr := e.newProgress()
 	defer pr.Fail()
-	opID, err := e.Client.RestoreSnapshot(ctx, project.ID, snapshotID, asNew)
+	opID, owner, err := e.Client.RestoreSnapshot(ctx, project.ID, snapshotID, asNew)
 	if err != nil {
 		return err
 	}
 	pr.Phase("Restoring "+snapshotID, "")
-	op, err := waitOpPhased(ctx, e, project, opID, pr, false)
+	// With --as-new the op belongs to the new project; asked under the
+	// source it is not_found.
+	waitOn := project
+	if owner != project.ID {
+		waitOn = &Project{ID: owner, Slug: asNew}
+	}
+	op, err := waitOpPhased(ctx, e, waitOn, opID, pr, false)
 	if err != nil {
 		return err
 	}
