@@ -17,6 +17,13 @@
 // that was bounced to the landing page fails instead of scoring the wrong
 // page.
 //
+// The landing is audited under prefers-reduced-motion: reduce, in a browser
+// of its own (auditLanding below), so every run scores the same still frame
+// instead of whichever moment of the pictures' loops Lighthouse happened to
+// sample. Playwright applies a context's reducedMotion the way it applies
+// colorScheme: with Emulation.setEmulatedMedia on every tab of the context,
+// the one Lighthouse opens with --port included, before that tab runs.
+//
 // It audits the same bundle production serves (`pnpm build` output, run by
 // tests/fixtures.ts), against internal/fakes/api rather than the deployed
 // api. Accessibility is a property of the markup, which the api does not
@@ -24,6 +31,7 @@
 // text lengths and colours, which the fake's fixtures already mirror.
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { Page } from '@playwright/test';
@@ -53,10 +61,11 @@ const KNOWN_FAILURES: Record<string, { pages: string[]; reason: string }> = {
 	'color-contrast': {
 		pages: ['/'],
 		reason:
-			'The landing pictures at 390: span.who and span.fname in the hero snapshot miniature ' +
-			'(light) and the terminal lines in the Editor screenshot (dark) are under 4.5:1. Their ' +
-			'colours are set inside components/landing/*.svelte, which the unmerged landing-critique ' +
-			'branch rewrites; delete this entry when that branch lands with them fixed.'
+			'The line numbers (span.ln) in the Editor picture, a capture of LazyVim in its ' +
+			"Tokyo Night theme, are that theme's own grey and under 4.5:1 on its ground. " +
+			'A picture of a real tool keeps the tool\'s colours (LANDING.md, "Real, and ' +
+			'whole, or not at all"; DECISIONS I-392, I-397), so this stays while the ' +
+			'capture does.'
 	}
 };
 
@@ -181,13 +190,18 @@ interface Result {
  * accessibility score out of 100 and the failed binary audits, leaving the
  * HTML and JSON reports on disk as the evidence 08 §9 asks for.
  */
-async function audit(file: string, url: string, width: keyof typeof WIDTHS): Promise<Result> {
+async function audit(
+	file: string,
+	url: string,
+	width: keyof typeof WIDTHS,
+	port = CDP_PORT
+): Promise<Result> {
 	const out = path.join(OUT_DIR, file);
 	await run(
 		'lighthouse',
 		[
 			url,
-			`--port=${CDP_PORT}`,
+			`--port=${port}`,
 			'--only-categories=accessibility',
 			'--output=json',
 			'--output=html',
@@ -242,12 +256,103 @@ test.beforeAll(async () => {
 	projectId = p.id;
 });
 
+/** Fails the test on a bounce, a low score or a binary audit KNOWN_FAILURES does not name. */
+function judge(target: Target, pathname: string, result: Result): void {
+	// A bounce to the landing page (signed out) would otherwise be scored as
+	// if it were this page.
+	expect(new URL(result.finalUrl).pathname, 'the page Lighthouse audited').toBe(pathname);
+	expect(result.score).toBeGreaterThanOrEqual(MINIMUM);
+
+	const unexpected = result.failed.filter((f) => {
+		const known = KNOWN_FAILURES[f.id];
+		return !known || !(known.pages.includes('*') || known.pages.includes(target.name));
+	});
+	expect(
+		unexpected.map((f) => f.line),
+		'failed binary audits'
+	).toEqual([]);
+}
+
+/** The landing's browser listens here, beside the shared one on CDP_PORT. */
+const LANDING_CDP_PORT = CDP_PORT + 1;
+
+const slugOf = (target: Target) =>
+	target.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'landing';
+
 for (const target of PAGES) {
 	for (const width of Object.keys(WIDTHS) as (keyof typeof WIDTHS)[]) {
-		test(`${target.name} at ${width} width passes every accessibility audit`, async ({
-			page,
-			scheme
-		}) => {
+		const title = `${target.name} at ${width} width passes every accessibility audit`;
+
+		if (target.name === '/') {
+			// The landing's pictures loop, so an audit with motion on samples
+			// a different frame each run: a row mid-fade has a different
+			// contrast from the same row at rest, and the result changed from
+			// one run to the next. Under reduced motion every picture draws
+			// its final frame and stops (LANDING.md, "Motion"), so each run
+			// scores the same page. The shared browser's context was made
+			// without reducedMotion and Playwright sets it per context, so
+			// the landing gets a browser of its own, signed out on a fresh
+			// profile as a visitor is, on a port of its own.
+			test(title, async ({ playwright, launchOptions, scheme }) => {
+				const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'repose-a11y-landing-'));
+				const context = await playwright.chromium.launchPersistentContext(dir, {
+					...launchOptions,
+					args: (launchOptions.args ?? []).map((a) =>
+						a.startsWith('--remote-debugging-port=')
+							? `--remote-debugging-port=${LANDING_CDP_PORT}`
+							: a
+					),
+					baseURL: BASE_URL,
+					colorScheme: scheme,
+					reducedMotion: 'reduce',
+					viewport: null
+				});
+				// What the tab Lighthouse opens reports for the media query:
+				// the evidence that the emulation reached it, not only this
+				// test's own tab.
+				const seen: boolean[] = [];
+				context.on('page', async (tab) => {
+					for (let i = 0; i < 50 && !tab.isClosed(); i++) {
+						try {
+							seen.push(
+								await tab.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
+							);
+							return;
+						} catch {
+							// Mid-navigation: the document went away under the call.
+							await new Promise((r) => setTimeout(r, 100));
+						}
+					}
+				});
+				try {
+					const page = context.pages()[0] ?? (await context.newPage());
+					const pathname = target.url();
+					await page.goto(pathname);
+					await target.ready(page);
+					expect(
+						await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches),
+						'reduced motion in the test tab'
+					).toBe(true);
+
+					const result = await audit(
+						`${slugOf(target)}-${scheme}-${width}`,
+						`${BASE_URL}${pathname}`,
+						width,
+						LANDING_CDP_PORT
+					);
+					console.log(`${target.name} ${scheme} ${width}: ${result.score}`);
+					// One tab, so one reading: [true] (a probe run printed exactly that).
+					expect(seen, 'reduced motion in the tab Lighthouse audited').toEqual([true]);
+					judge(target, pathname, result);
+				} finally {
+					await context.close();
+					fs.rmSync(dir, { recursive: true, force: true });
+				}
+			});
+			continue;
+		}
+
+		test(title, async ({ page, scheme }) => {
 			if (target.signedIn) await ensureSignedIn(page);
 			await target.setup?.();
 			try {
@@ -255,23 +360,13 @@ for (const target of PAGES) {
 				await page.goto(pathname);
 				await target.ready(page);
 
-				const slug = target.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'landing';
-				const result = await audit(`${slug}-${scheme}-${width}`, `${BASE_URL}${pathname}`, width);
+				const result = await audit(
+					`${slugOf(target)}-${scheme}-${width}`,
+					`${BASE_URL}${pathname}`,
+					width
+				);
 				console.log(`${target.name} ${scheme} ${width}: ${result.score}`);
-
-				// A bounce to the landing page (signed out) would otherwise be
-				// scored as if it were this page.
-				expect(new URL(result.finalUrl).pathname, 'the page Lighthouse audited').toBe(pathname);
-				expect(result.score).toBeGreaterThanOrEqual(MINIMUM);
-
-				const unexpected = result.failed.filter((f) => {
-					const known = KNOWN_FAILURES[f.id];
-					return !known || !(known.pages.includes('*') || known.pages.includes(target.name));
-				});
-				expect(
-					unexpected.map((f) => f.line),
-					'failed binary audits'
-				).toEqual([]);
+				judge(target, pathname, result);
 			} finally {
 				await target.teardown?.();
 			}
