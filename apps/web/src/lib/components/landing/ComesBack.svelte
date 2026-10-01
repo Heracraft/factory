@@ -9,8 +9,11 @@
   three "Your working state" shows; `select count(*) from roles` in the
   app's Postgres (recruiting-postgres-1, data in the gitignored pgdata/)
   3532; `pnpm --version` 10.30.3 (packageManager pnpm@10.30.3); the login
-  shell's PATH has 28 entries; `gh auth status` logged in and a Claude Code
-  login made on the machine. The snapshot times are the two from
+  shell's PATH has 28 entries; `gh auth status` logged in. The logins row
+  names gh and Codex: both are kept on the machine's disk and so are in a
+  snapshot (docs agents.md "Log in"). Claude Code's login is kept on the
+  host, not in snapshots (I-278), so the row does not name it (I-397).
+  The snapshot times are the two from
   `repose snapshots list --project wira` on 2026-09-25: 21:22 and 21:25.
   A snapshot holds the whole disk (docs lifecycle.md, "Snapshots";
   DESIGN.md §6: the root overlay's upper dir and /home).
@@ -23,18 +26,22 @@
   files; the rest stays red. Then 21:25 lights and its rows grow back into
   the machine, and every row goes green, 3,532 rows and the edits included.
   Rest, again. Under prefers-reduced-motion, or before anime.js loads, the
-  restored state is shown still.
+  restored state is shown still, with nothing moving; a visitor who turns
+  reduced motion on mid-loop gets that still frame at once. The loop's
+  first frame is set when the picture first enters the viewport, not at
+  mount, so an offscreen picture costs no layout reads.
 
   Marks: pnpm from marks.ts; git, GitHub and PostgreSQL from simple-icons
-  (CC0, 16.32.0), Claude Code from lobe-icons via marks.ts. Each belongs to
+  (CC0, 16.32.0), Codex from lobe-icons via marks.ts. Each belongs to
   its owner and is shown only to say the tool is on the machine.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { agentMarks, toolMarks } from '$lib/components/illustrations/marks';
+	import { watchReducedMotion } from './inview';
 
 	const pnpmPaths = toolMarks.find((m) => m.name === 'pnpm')!.paths;
-	const claude = agentMarks.find((m) => m.name === 'Claude Code')!;
+	const codex = agentMarks.find((m) => m.name === 'Codex')!;
 	const gitPath =
 		'M13.09 23.549a1.54 1.54 0 0 1-2.18 0L.451 13.089a1.54 1.54 0 0 1 0-2.179l7.191-7.19 2.733 2.733a1.85 1.85 0 0 0 .964 2.326v6.66a1.849 1.849 0 1 0 1.54 0V8.957l2.508 2.508a1.85 1.85 0 1 0 1.09-1.09l-2.634-2.634a1.85 1.85 0 0 0-2.378-2.377L8.73 2.63 10.91.451a1.54 1.54 0 0 1 2.179 0l10.459 10.46a1.54 1.54 0 0 1 0 2.179z';
 	const githubPath =
@@ -59,15 +66,17 @@
 		{ k: 'db', name: 'roles', val: '3,532 rows', n: 3532, unit: 'rows' },
 		{ k: 'pnpm', name: 'pnpm', val: '10.30.3', lost: 'not found' },
 		{ k: 'path', name: 'PATH', val: '28 dirs' },
-		{ k: 'login', name: 'gh, claude', val: 'logged in' }
+		{ k: 'login', name: 'gh, codex', val: 'logged in' }
 	];
 
-	const label =
+	const label = 'Your cloud machine broken and brought back from a snapshot';
+	const story =
 		'Your cloud machine holds more than the repo: 578 tracked files in apps and packages, 3 files of uncommitted edits, ' +
-		'a Postgres roles table with 3,532 rows, pnpm 10.30.3, a PATH of 28 directories, and gh and Claude Code logged in. ' +
+		'a Postgres roles table with 3,532 rows, pnpm 10.30.3, a PATH of 28 directories, and gh and Codex logged in. ' +
 		'A snapshot is taken at 21:25. The agent wrecks the machine: the files, the edits and the table drop to zero, ' +
 		'pnpm is not found, PATH is broken and the logins are gone. git brings back only the 578 tracked files. ' +
 		'Restoring the 21:25 snapshot brings back everything else: the uncommitted edits, all 3,532 rows, pnpm, PATH and the logins.';
+	const descId = 'comes-back-desc';
 
 	let pic: HTMLDivElement;
 	let fly: HTMLDivElement;
@@ -84,228 +93,279 @@
 			tw = (pic.querySelector('.stack') as HTMLElement).offsetWidth - 2;
 		});
 		ro.observe(pic);
-		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return () => ro.disconnect();
 
 		let dead = false;
 		let visible = false;
 		let tl: { pause(): unknown; play(): unknown } | null = null;
 		let io: IntersectionObserver | undefined;
+		// Bumped on each start and stop, so an anime.js import that resolves
+		// after a stop does not start a loop.
+		let run = 0;
 
 		const q = (sel: string) => Array.from(pic.querySelectorAll<HTMLElement>(sel));
 		const row = (k: string) => pic.querySelector<HTMLElement>(`.m-row[data-k="${k}"]`)!;
 		const valOf = (k: string) => row(k).querySelector<HTMLElement>('.vt')!;
 		const fmt = (n: number, unit: string) => `${n.toLocaleString('en-US')} ${unit}`;
+		const STATE = ['hit', 'lit', 'fire', 'ok', 'gone', 'fix', 'fresh'];
+		// The old tile folds by a clip from below, so its box keeps its
+		// height and nothing around it is laid out again each frame.
+		const clip = (px: number) => `inset(0px 0px ${px}px 0px round 3px)`;
 
-		// Before anything: the machine is whole, 21:22 is the only snapshot.
-		function pre(utils: typeof import('animejs').utils) {
+		// Stop the loop and show the restored machine still: the markup's own
+		// state, with every class and inline style the loop wrote taken off.
+		function still() {
+			run++;
+			io?.disconnect();
+			io = undefined;
+			tl?.pause();
+			tl = null;
+			visible = false;
+			// eslint-disable-next-line svelte/no-dom-manipulating
+			fly.replaceChildren();
 			for (const r of rows) valOf(r.k).textContent = r.val;
-			utils.set(q('.tile.new, .arr'), { opacity: 0 });
-			const newT = q('.tile.new')[0];
-			utils.set(q('.tile.old'), { opacity: 1, y: -(newT.offsetHeight + 6) });
-			utils.set(q('.old .mini')[0], {
-				height: newT.querySelector<HTMLElement>('.mini')!.offsetHeight
-			});
-			utils.set(q('.m-row .strike'), { scaleX: 0 });
-			utils.set(q('.m-row .bad, .m-row .tick'), { opacity: 0, scale: 0.6 });
-			for (const el of q('.hit, .lit, .fire, .ok, .gone, .fix'))
-				el.classList.remove('hit', 'lit', 'fire', 'ok', 'gone', 'fix');
-			for (const el of q('.tile.old')) el.classList.add('fresh');
+			for (const el of q('.tile, .arr, .m-row .strike, .m-row .bad, .m-row .tick'))
+				el.removeAttribute('style');
+			for (const el of q(STATE.map((c) => '.' + c).join(', '))) el.classList.remove(...STATE);
+			q('.tile.new')[0].classList.add('lit');
 		}
 
-		import('animejs').then(({ createTimeline, utils, stagger }) => {
-			if (dead) return;
-			pre(utils);
+		function start() {
+			const me = ++run;
+			import('animejs').then(({ createTimeline, utils, stagger }) => {
+				if (dead || me !== run) return;
 
-			function cycle() {
-				if (dead) return;
-				if (!visible) {
-					tl = null;
-					return;
-				}
-				// .fly is an empty layer Svelte never renders into; only
-				// throwaway copies of the rows live in it.
-				// eslint-disable-next-line svelte/no-dom-manipulating
-				fly.replaceChildren();
-				pre(utils);
-
-				const base = pic.getBoundingClientRect();
-				const cls = (els: HTMLElement[], c: string, on: boolean) => () => {
-					for (const el of els) el.classList.toggle(c, on);
-				};
-				const at = (el: Element) => {
-					const r = el.getBoundingClientRect();
-					return { x: r.left - base.left, y: r.top - base.top, w: r.width, h: r.height };
-				};
-				const mBox = at(mRows);
-				// the machine's rows, whole, as a copy that travels
-				function copy() {
-					const c = mRows.cloneNode(true) as HTMLElement;
-					for (const li of [c, ...c.querySelectorAll('li')]) li.classList.remove('m-row');
-					c.classList.add('clone');
-					Object.assign(c.style, {
-						left: `${mBox.x}px`,
-						top: `${mBox.y}px`,
-						width: `${mBox.w}px`,
-						opacity: '0'
-					});
-					// eslint-disable-next-line svelte/no-dom-manipulating
-					fly.appendChild(c);
-					return c;
-				}
-				const newT = q('.tile.new')[0];
-				const oldT = q('.tile.old')[0];
-				const to = at(newT.querySelector('.mini ul')!);
-				const dx = to.x - mBox.x;
-				const dy = to.y - mBox.y;
-				const take = copy();
-				const give = copy();
-				const scale = s;
-
-				// Counts that fall and rise, written into the row's value.
-				function count(k: string, from: number, too: number, unit: string, at0: number, d: number) {
-					const o = { v: from };
-					t.add(
-						o,
-						{
-							v: too,
-							duration: d,
-							ease: 'outQuad',
-							onUpdate: () => {
-								valOf(k).textContent = fmt(Math.round(o.v), unit);
-							}
-						},
-						at0
-					);
+				// Before anything: the machine is whole, 21:22 is the only
+				// snapshot, unfolded where 21:25 will land. Layout is read
+				// first, then every write, so the browser lays out once.
+				// Returns the clip that folds the old tile to its head.
+				function pre(): number {
+					const newT = q('.tile.new')[0];
+					const lift = newT.offsetHeight + 6;
+					const fold = newT.querySelector<HTMLElement>('.mini')!.offsetHeight - 1;
+					for (const r of rows) valOf(r.k).textContent = r.val;
+					utils.set(q('.tile.new, .arr'), { opacity: 0 });
+					utils.set(q('.tile.old'), { opacity: 1, y: -lift, clipPath: clip(0) });
+					utils.set(q('.m-row .strike'), { scaleX: 0 });
+					utils.set(q('.m-row .bad, .m-row .tick'), { opacity: 0, scale: 0.6 });
+					for (const el of q('.hit, .lit, .fire, .ok, .gone, .fix'))
+						el.classList.remove('hit', 'lit', 'fire', 'ok', 'gone', 'fix');
+					for (const el of q('.tile.old')) el.classList.add('fresh');
+					return fold;
 				}
 
-				const T = { snap: 500, wreck: 2500, git: 5200, back: 7600 };
-				const dur = 850;
-				const t = createTimeline({ autoplay: false, onComplete: () => cycle() });
-
-				// 1. snapshot 21:25: the rows shrink into its tile; 21:22 folds behind
-				const cams = [q('.machine')[0], newT.querySelector('.cam') as HTMLElement];
-				const s0 = T.snap;
-				t.call(cls(cams, 'fire', true), s0)
-					.add(q('.take'), { opacity: [0, 1], duration: 250 }, s0)
-					.call(cls([oldT], 'fresh', false), s0 + 150)
-					.add(
-						oldT.querySelector('.mini')!,
-						{ height: 0, duration: 550, ease: 'inOutCubic' },
-						s0 + 150
-					)
-					.add(oldT, { y: 0, duration: 700, ease: 'inOutCubic' }, s0 + 150)
-					.set(take, { opacity: 1, x: 0, y: 0, scale: 1 }, s0 + 150)
-					.add(take, { x: dx, y: dy, scale, duration: dur, ease: 'inOutCubic' }, s0 + 150)
-					.add(newT, { opacity: [0, 1], duration: 250 }, s0 + 150 + dur - 200)
-					.add(take, { opacity: 0, duration: 200 }, s0 + 150 + dur)
-					.add(q('.take'), { opacity: 0, duration: 400 }, s0 + 150 + dur + 300)
-					.call(cls(cams, 'fire', false), s0 + 150 + dur + 300);
-
-				// 2. the wreck, row by row: counts fall, pnpm is gone, the rest struck
-				const order = ['wip', 'src', 'db', 'path', 'pnpm', 'login'];
-				order.forEach((k, i) => {
-					const r = rows.find((x) => x.k === k)!;
-					const at0 = T.wreck + i * 230;
-					t.call(cls([row(k)], 'hit', true), at0);
-					if (r.n !== undefined) count(k, r.n, 0, r.unit!, at0 + 60, r.n > 100 ? 650 : 300);
-					else if (r.lost)
-						t.call(() => (valOf(k).textContent = r.lost!), at0 + 120).call(
-							cls([row(k)], 'gone', true),
-							at0 + 120
-						);
-					else
-						t.add(
-							row(k).querySelector('.strike')!,
-							{ scaleX: [0, 1], duration: 360, ease: 'outCubic' },
-							at0 + 60
-						);
-					t.add(
-						row(k).querySelector('.bad')!,
-						{ opacity: [0, 1], scale: [0.6, 1], duration: 280, ease: 'outBack' },
-						at0 + 200
-					);
-				});
-
-				// 3. git first: its mark lights, the tracked files come back, nothing else
-				const src = row('src');
-				const gitMark = src.querySelector<HTMLElement>('.gm')!;
-				t.call(cls([gitMark], 'fire', true), T.git)
-					.call(cls([src], 'hit', false), T.git + 300)
-					.call(cls([src], 'fix', true), T.git + 300)
-					.call(cls([src], 'fix', false), T.git + 950)
-					.call(cls([src], 'ok', true), T.git + 950)
-					.add(src.querySelector('.bad')!, { opacity: 0, duration: 150 }, T.git + 300);
-				count('src', 0, 578, 'files', T.git + 300, 650);
-				t.add(
-					src.querySelector('.tick')!,
-					{ opacity: [0, 1], scale: [0.6, 1], duration: 300, ease: 'outBack' },
-					T.git + 950
-				)
-					.call(cls([gitMark], 'fire', false), T.git + 1300)
-					// the rest stays broken
-					.add(
-						q('.m-row:not([data-k="src"]) .bad'),
-						{ scale: [1, 1.35, 1], duration: 420, delay: stagger(60), ease: 'inOutQuad' },
-						T.git + 1400
-					);
-
-				// 4. the restore: 21:25 lights, its rows grow back into the machine
-				const b0 = T.back;
-				t.call(cls([newT], 'lit', true), b0 - 350)
-					.add(q('.give'), { opacity: [0, 1], duration: 250 }, b0 - 350)
-					.set(give, { opacity: 1, x: dx, y: dy, scale }, b0)
-					.add(give, { x: 0, y: 0, scale: 1, duration: dur, ease: 'inOutCubic' }, b0)
-					.set(give, { opacity: 0 }, b0 + dur + 16);
-				const land = b0 + dur;
-				const heal = rows.filter((r) => r.k !== 'src');
-				heal.forEach((r, i) => {
-					const el = row(r.k);
-					const at0 = land;
-					t.call(cls([el], 'hit', false), at0)
-						.call(cls([el], 'gone', false), at0)
-						.call(cls([el], 'ok', true), at0)
-						.set(el.querySelector('.bad')!, { opacity: 0 }, at0)
-						.set(el.querySelector('.strike')!, { scaleX: 0 }, at0)
-						.add(
-							el.querySelector('.tick')!,
-							{ opacity: [0, 1], scale: [0.6, 1], duration: 300, ease: 'outBack' },
-							at0 + 60 + i * 70
-						)
-						.call(() => (valOf(r.k).textContent = r.val), at0);
-				});
-				const done = land + heal.length * 70 + 400;
-				t.call(cls(q('.m-row'), 'ok', false), done + 900)
-					.call(cls([newT], 'lit', false), done + 1600)
-					.add(q('.give'), { opacity: 0, duration: 400 }, done + 1600)
-					// rest on the restored machine, then clear and go again
-					.add(
-						q('.tile.new, .m-row .tick'),
-						{ opacity: 0, duration: 450, ease: 'inQuad' },
-						done + 4600
-					)
-					.add({ duration: 600 }, done + 5050);
-
-				tl = t;
-				t.play();
-			}
-
-			io = new IntersectionObserver(
-				([e]) => {
-					visible = e.isIntersecting;
-					if (visible) {
-						if (tl) tl.play();
-						else cycle();
-					} else {
-						tl?.pause();
+				function cycle() {
+					if (dead || me !== run) return;
+					if (!visible) {
+						tl = null;
+						return;
 					}
-				},
-				{ threshold: 0.6 }
-			);
-			io.observe(pic);
+					// .fly is an empty layer Svelte never renders into; only
+					// throwaway copies of the rows live in it.
+					// eslint-disable-next-line svelte/no-dom-manipulating
+					fly.replaceChildren();
+					const fold = pre();
+
+					const base = pic.getBoundingClientRect();
+					const cls = (els: HTMLElement[], c: string, on: boolean) => () => {
+						for (const el of els) el.classList.toggle(c, on);
+					};
+					const at = (el: Element) => {
+						const r = el.getBoundingClientRect();
+						return { x: r.left - base.left, y: r.top - base.top, w: r.width, h: r.height };
+					};
+					const mBox = at(mRows);
+					const newT = q('.tile.new')[0];
+					const oldT = q('.tile.old')[0];
+					const to = at(newT.querySelector('.mini ul')!);
+					// the machine's rows, whole, as a copy that travels
+					function copy() {
+						const c = mRows.cloneNode(true) as HTMLElement;
+						for (const li of [c, ...c.querySelectorAll('li')]) li.classList.remove('m-row');
+						c.classList.add('clone');
+						Object.assign(c.style, {
+							left: `${mBox.x}px`,
+							top: `${mBox.y}px`,
+							width: `${mBox.w}px`,
+							opacity: '0'
+						});
+						// eslint-disable-next-line svelte/no-dom-manipulating
+						fly.appendChild(c);
+						return c;
+					}
+					const dx = to.x - mBox.x;
+					const dy = to.y - mBox.y;
+					const take = copy();
+					const give = copy();
+					const scale = s;
+
+					// Counts that fall and rise, written into the row's value.
+					function count(
+						k: string,
+						from: number,
+						too: number,
+						unit: string,
+						at0: number,
+						d: number
+					) {
+						const o = { v: from };
+						t.add(
+							o,
+							{
+								v: too,
+								duration: d,
+								ease: 'outQuad',
+								onUpdate: () => {
+									valOf(k).textContent = fmt(Math.round(o.v), unit);
+								}
+							},
+							at0
+						);
+					}
+
+					const T = { snap: 500, wreck: 2500, git: 5200, back: 7600 };
+					const dur = 850;
+					const t = createTimeline({ autoplay: false, onComplete: () => cycle() });
+
+					// 1. snapshot 21:25: the rows shrink into its tile; 21:22 folds behind
+					const cams = [q('.machine')[0], newT.querySelector('.cam') as HTMLElement];
+					const s0 = T.snap;
+					t.call(cls(cams, 'fire', true), s0)
+						.add(q('.take'), { opacity: [0, 1], duration: 250 }, s0)
+						.call(cls([oldT], 'fresh', false), s0 + 150)
+						.add(
+							oldT,
+							{ clipPath: [clip(0), clip(fold)], duration: 550, ease: 'inOutCubic' },
+							s0 + 150
+						)
+						.add(oldT, { y: 0, duration: 700, ease: 'inOutCubic' }, s0 + 150)
+						.set(take, { opacity: 1, x: 0, y: 0, scale: 1 }, s0 + 150)
+						.add(take, { x: dx, y: dy, scale, duration: dur, ease: 'inOutCubic' }, s0 + 150)
+						.add(newT, { opacity: [0, 1], duration: 250 }, s0 + 150 + dur - 200)
+						.add(take, { opacity: 0, duration: 200 }, s0 + 150 + dur)
+						.add(q('.take'), { opacity: 0, duration: 400 }, s0 + 150 + dur + 300)
+						.call(cls(cams, 'fire', false), s0 + 150 + dur + 300);
+
+					// 2. the wreck, row by row: counts fall, pnpm is gone, the rest struck
+					const order = ['wip', 'src', 'db', 'path', 'pnpm', 'login'];
+					order.forEach((k, i) => {
+						const r = rows.find((x) => x.k === k)!;
+						const at0 = T.wreck + i * 230;
+						t.call(cls([row(k)], 'hit', true), at0);
+						if (r.n !== undefined) count(k, r.n, 0, r.unit!, at0 + 60, r.n > 100 ? 650 : 300);
+						else if (r.lost)
+							t.call(() => (valOf(k).textContent = r.lost!), at0 + 120).call(
+								cls([row(k)], 'gone', true),
+								at0 + 120
+							);
+						else
+							t.add(
+								row(k).querySelector('.strike')!,
+								{ scaleX: [0, 1], duration: 360, ease: 'outCubic' },
+								at0 + 60
+							);
+						t.add(
+							row(k).querySelector('.bad')!,
+							{ opacity: [0, 1], scale: [0.6, 1], duration: 280, ease: 'outBack' },
+							at0 + 200
+						);
+					});
+
+					// 3. git first: its mark lights, the tracked files come back, nothing else
+					const src = row('src');
+					const gitMark = src.querySelector<HTMLElement>('.gm')!;
+					t.call(cls([gitMark], 'fire', true), T.git)
+						.call(cls([src], 'hit', false), T.git + 300)
+						.call(cls([src], 'fix', true), T.git + 300)
+						.call(cls([src], 'fix', false), T.git + 950)
+						.call(cls([src], 'ok', true), T.git + 950)
+						.add(src.querySelector('.bad')!, { opacity: 0, duration: 150 }, T.git + 300);
+					count('src', 0, 578, 'files', T.git + 300, 650);
+					t.add(
+						src.querySelector('.tick')!,
+						{ opacity: [0, 1], scale: [0.6, 1], duration: 300, ease: 'outBack' },
+						T.git + 950
+					)
+						.call(cls([gitMark], 'fire', false), T.git + 1300)
+						// the rest stays broken: each cross pulses once, to 1.35
+						// and back in 420ms, 60ms apart
+						.add(
+							q('.m-row:not([data-k="src"]) .bad'),
+							{ scale: [1, 1.35, 1], duration: 420, delay: stagger(60), ease: 'inOutCubic' },
+							T.git + 1400
+						);
+
+					// 4. the restore: 21:25 lights, its rows grow back into the machine
+					const b0 = T.back;
+					t.call(cls([newT], 'lit', true), b0 - 350)
+						.add(q('.give'), { opacity: [0, 1], duration: 250 }, b0 - 350)
+						.set(give, { opacity: 1, x: dx, y: dy, scale }, b0)
+						.add(give, { x: 0, y: 0, scale: 1, duration: dur, ease: 'inOutCubic' }, b0)
+						.set(give, { opacity: 0 }, b0 + dur + 16);
+					const land = b0 + dur;
+					const heal = rows.filter((r) => r.k !== 'src');
+					heal.forEach((r, i) => {
+						const el = row(r.k);
+						const at0 = land;
+						t.call(cls([el], 'hit', false), at0)
+							.call(cls([el], 'gone', false), at0)
+							.call(cls([el], 'ok', true), at0)
+							.set(el.querySelector('.bad')!, { opacity: 0 }, at0)
+							.set(el.querySelector('.strike')!, { scaleX: 0 }, at0)
+							.add(
+								el.querySelector('.tick')!,
+								{ opacity: [0, 1], scale: [0.6, 1], duration: 300, ease: 'outBack' },
+								at0 + 60 + i * 70
+							)
+							.call(() => (valOf(r.k).textContent = r.val), at0);
+					});
+					const done = land + heal.length * 70 + 400;
+					t.call(cls(q('.m-row'), 'ok', false), done + 900)
+						.call(cls([newT], 'lit', false), done + 1600)
+						.add(q('.give'), { opacity: 0, duration: 400 }, done + 1600)
+						// rest on the restored machine, then clear and go again
+						.add(
+							q('.tile.new, .m-row .tick'),
+							{ opacity: 0, duration: 450, ease: 'inQuad' },
+							done + 4600
+						)
+						.add({ duration: 600 }, done + 5050);
+
+					tl = t;
+					t.play();
+				}
+
+				// Two thresholds: the first frame is set as soon as a pixel of
+				// the picture shows, so the still frame never jumps in view,
+				// and the loop plays once most of it does.
+				let ready = false;
+				io = new IntersectionObserver(
+					([e]) => {
+						if (e.isIntersecting && !ready) {
+							ready = true;
+							pre();
+						}
+						visible = e.isIntersecting && e.intersectionRatio >= 0.6;
+						if (visible) {
+							if (tl) tl.play();
+							else cycle();
+						} else {
+							tl?.pause();
+						}
+					},
+					{ threshold: [0, 0.6] }
+				);
+				io.observe(pic);
+			});
+		}
+
+		const unwatch = watchReducedMotion((reduce) => {
+			if (reduce) still();
+			else start();
 		});
 
 		return () => {
 			dead = true;
+			unwatch();
 			ro.disconnect();
 			io?.disconnect();
 			tl?.pause();
@@ -361,7 +421,7 @@
 		{:else}{@render glyph(githubPath, 13)}
 		{/if}
 	</span>
-	{#if k === 'login'}<span class="ic ic2">{@render glyph(claude.paths, 13, claude.evenodd)}</span
+	{#if k === 'login'}<span class="ic ic2">{@render glyph(codex.paths, 13, codex.evenodd)}</span
 		>{/if}
 {/snippet}
 
@@ -409,7 +469,8 @@
 	</div>
 {/snippet}
 
-<div class="shot" role="img" aria-label={label}>
+<p id={descId} class="sr-only">{story}</p>
+<div class="shot" role="img" aria-label={label} aria-describedby={descId}>
 	<div class="pic" bind:this={pic} aria-hidden="true" style:--s={s}>
 		<div class="win machine">
 			<div class="title">
@@ -458,13 +519,9 @@
 </div>
 
 <style>
+	/* Colours are the picture tokens (--pic-*, routes/layout.css), which
+	   carry their own dark values; a restored row is --pic-add. */
 	.pic {
-		--accent: var(--color-blue-600);
-		--ink: var(--color-zinc-800);
-		--dim: var(--color-zinc-500);
-		--faint: var(--color-zinc-400);
-		--stop: var(--color-red-600);
-		--ok: var(--color-emerald-600);
 		--row: 24px;
 		--rows-h: calc(var(--row) * 6 + 10px);
 		--win-h: calc(var(--rows-h) + 34px + 2px);
@@ -476,7 +533,7 @@
 		align-items: center;
 		padding: 0 22px;
 		font-size: 13px;
-		color: var(--ink);
+		color: var(--pic-ink);
 	}
 
 	.win {
@@ -490,7 +547,7 @@
 		transition: border-color 0.3s;
 	}
 	.win:global(.fire) {
-		border-color: var(--accent);
+		border-color: var(--pic-accent);
 	}
 	.title {
 		display: flex;
@@ -504,7 +561,7 @@
 	}
 	.tm {
 		flex: none;
-		color: var(--ink);
+		color: var(--pic-ink);
 	}
 	.who {
 		font-weight: 600;
@@ -542,7 +599,7 @@
 		flex: none;
 		width: 14px;
 		justify-content: center;
-		color: var(--dim);
+		color: var(--pic-dim);
 	}
 	.ic2 {
 		margin-left: -3px;
@@ -552,7 +609,7 @@
 		transition: color 0.2s;
 	}
 	.gm:global(.fire) {
-		color: var(--accent);
+		color: var(--pic-accent);
 	}
 	.nm {
 		flex: 0 1 auto;
@@ -568,29 +625,29 @@
 		margin-left: auto;
 		font-family: var(--font-mono);
 		font-size: 12px;
-		color: var(--dim);
+		color: var(--pic-dim);
 		font-variant-numeric: tabular-nums;
 		transition: color 0.25s;
 	}
 	.fr:global(.hit) {
-		background: color-mix(in oklab, var(--stop) 9%, var(--surface));
+		background: color-mix(in oklab, var(--pic-stop) 9%, var(--surface));
 	}
 	.fr:global(.hit) .val {
-		color: var(--stop);
+		color: var(--pic-stop);
 	}
 	.fr:global(.fix) {
-		background: color-mix(in oklab, var(--accent) 9%, var(--surface));
-		box-shadow: inset 2px 0 0 var(--accent);
+		background: color-mix(in oklab, var(--pic-accent) 9%, var(--surface));
+		box-shadow: inset 2px 0 0 var(--pic-accent);
 	}
 	.fr:global(.ok) {
-		background: color-mix(in oklab, var(--ok) 8%, var(--surface));
+		background: color-mix(in oklab, var(--pic-add) 8%, var(--surface));
 	}
 	.strike {
 		position: absolute;
 		left: -2px;
 		right: -2px;
 		top: calc(50% - 1px);
-		border-top: 1.5px solid var(--stop);
+		border-top: 1.5px solid var(--pic-stop);
 		transform: scaleX(0);
 		transform-origin: left center;
 	}
@@ -608,10 +665,10 @@
 	}
 	.bad {
 		opacity: 0;
-		color: var(--stop);
+		color: var(--pic-stop);
 	}
 	.tick {
-		color: var(--ok);
+		color: var(--pic-add);
 	}
 
 	/* Between the machine and its snapshots: which way the copy goes. */
@@ -628,10 +685,10 @@
 	}
 	.take {
 		opacity: 0;
-		color: var(--dim);
+		color: var(--pic-dim);
 	}
 	.give {
-		color: var(--accent);
+		color: var(--pic-accent);
 	}
 
 	/* The snapshots: small tiles, the newest on top with the machine's rows
@@ -657,14 +714,21 @@
 		z-index: 0;
 		top: calc(var(--top) + var(--full) + 6px);
 	}
+	/* Folded: the mini keeps its height and the tile is clipped to its
+	   head, so folding is a clip, never a change of layout. The cut falls
+	   on the mini's top rule, which stands in for the tile's bottom
+	   border, so it takes the border's colour. */
+	.tile.old {
+		clip-path: inset(0 0 calc(var(--rows-h) * var(--s) - 1px) 0 round 3px);
+	}
 	.old .mini {
-		height: 0;
+		border-top-color: var(--rule-strong);
 	}
 	.tile.new {
 		z-index: 1;
 	}
 	.tile:global(.lit) {
-		border-color: var(--accent);
+		border-color: var(--pic-accent);
 	}
 	.t-head {
 		display: flex;
@@ -676,27 +740,31 @@
 	}
 	.cam {
 		display: flex;
-		color: var(--dim);
+		color: var(--pic-dim);
 		transition: color 0.2s;
 	}
 	.cam:global(.fire),
 	.tile:global(.lit) .cam {
-		color: var(--accent);
+		color: var(--pic-accent);
 	}
 	/* The mark clicks a quarter turn when the snapshot is taken, and
-	   rewinds a full turn when it is restored. */
-	.cam svg {
-		transition: transform 0.4s cubic-bezier(0.65, 0, 0.35, 1);
-	}
-	.cam:global(.fire) svg {
-		transform: rotate(90deg);
-	}
-	.tile:global(.lit) .cam svg {
-		animation: rewind 1s cubic-bezier(0.65, 0, 0.35, 1) both;
-	}
-	@keyframes rewind {
-		to {
-			transform: rotate(-360deg);
+	   rewinds a full turn when it is restored. Only with motion allowed:
+	   the still frame renders the new tile lit, and the rewind would
+	   otherwise spin there. */
+	@media (prefers-reduced-motion: no-preference) {
+		.cam svg {
+			transition: transform 0.4s cubic-bezier(0.65, 0, 0.35, 1);
+		}
+		.cam:global(.fire) svg {
+			transform: rotate(90deg);
+		}
+		.tile:global(.lit) .cam svg {
+			animation: rewind 1s cubic-bezier(0.65, 0, 0.35, 1) both;
+		}
+		@keyframes rewind {
+			to {
+				transform: rotate(-360deg);
+			}
 		}
 	}
 	.t-time {
@@ -706,7 +774,7 @@
 		transition: color 0.4s;
 	}
 	.old:not(:global(.fresh)) .t-time {
-		color: var(--dim);
+		color: var(--pic-dim);
 	}
 	.mini {
 		height: calc(var(--rows-h) * var(--s));
@@ -721,7 +789,7 @@
 		flex: none;
 		height: 8px;
 		border-radius: 2px;
-		background: var(--faint);
+		background: var(--pic-faint);
 	}
 	.bar.vb {
 		margin-left: auto;
@@ -739,8 +807,8 @@
 		position: absolute;
 		margin: 0;
 		transform-origin: 0 0;
-		background: color-mix(in oklab, var(--accent) 9%, var(--surface));
-		box-shadow: inset 2px 0 0 var(--accent);
+		background: color-mix(in oklab, var(--pic-accent) 9%, var(--surface));
+		box-shadow: inset 2px 0 0 var(--pic-accent);
 		will-change: transform;
 	}
 	.fly :global(.clone .mark) {
@@ -767,7 +835,7 @@
 			font-size: 11px;
 		}
 		.val {
-			font-size: 10.5px;
+			font-size: 11px;
 		}
 		.arr {
 			width: 14px;
@@ -778,13 +846,5 @@
 		}
 	}
 	@media (prefers-color-scheme: dark) {
-		.pic {
-			--accent: var(--color-blue-400);
-			--ink: var(--color-zinc-200);
-			--dim: var(--color-zinc-400);
-			--faint: var(--color-zinc-600);
-			--stop: var(--color-red-400);
-			--ok: var(--color-emerald-400);
-		}
 	}
 </style>
