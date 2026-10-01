@@ -1,7 +1,7 @@
 <script lang="ts">
 	import './layout.css';
 	import { onMount } from 'svelte';
-	import { afterNavigate, goto } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { Toaster } from 'svelte-sonner';
@@ -17,25 +17,13 @@
 		return PUBLIC_PATHS.has(path) || path === '/docs' || path.startsWith('/docs/');
 	}
 
-	// The skip link is drawn once the page runs, not in the prerendered
-	// HTML: the prerender fails on a #main link from a page whose <main>
-	// has no id (the landing's, in routes/+page.svelte).
-	let mounted = $state(false);
 	onMount(() => {
-		mounted = true;
 		void initAuth();
 	});
 
-	// The skip link moves focus to whichever page's <main> is on screen.
-	// The dashboard's, the docs' and the legal pages' carry id="main"; the
-	// landing's has none yet (routes/+page.svelte belongs to the
-	// landing-critique branch), so it is given the id after each
-	// navigation. Without a target the link is broken, and Lighthouse's
-	// skip-link audit fails the landing.
-	afterNavigate(() => {
-		const main = document.querySelector('main');
-		if (main && !main.id) main.id = 'main';
-	});
+	// The skip link moves focus to the page's <main>, which carries
+	// id="main" on every page (the landing, the dashboard, the docs and
+	// the legal pages), so the link is in the prerendered HTML too.
 	function skipToMain(e: MouseEvent) {
 		const main = document.querySelector('main');
 		if (!main) return;
@@ -61,9 +49,7 @@
 
 <!-- The first thing a keyboard reaches on every page: past the header's
      links to the page's own content (WCAG 2.4.1). Hidden until focused. -->
-{#if mounted}
-	<a href="#main" class="skip-link" onclick={skipToMain}>Skip to content</a>
-{/if}
+<a href="#main" class="skip-link" onclick={skipToMain}>Skip to content</a>
 
 <!-- No richColors: layout.css gives each toast type its banner's colours.
      From 600px up the toast's right edge is the content column's (the

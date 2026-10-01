@@ -297,6 +297,21 @@
 		--sh-light: var(--color-zinc-300);
 		--sh-ink: var(--color-zinc-700);
 		--sh-paper: var(--surface);
+		/* The drawn pictures' palette (Hero, OneCommand, ComesBack and the
+		   rest of components/landing): named once here so every picture
+		   draws its lines, text and marks from the same six values and none
+		   picks its own step. --accent and --ink stay the Foundation's (link
+		   text, body text); these are for what a picture draws. --pic-faint
+		   is --ink-faint itself: the zinc-400 (light) and zinc-600 (dark)
+		   the pictures used for muted rows held under 4.5:1 on --sunken.
+		   --pic-stop marks what is blocked or deleted, --pic-add a line
+		   count added, as a diff stat draws them. */
+		--pic-accent: var(--color-blue-600);
+		--pic-ink: var(--color-zinc-800);
+		--pic-dim: var(--color-zinc-500);
+		--pic-faint: var(--ink-faint);
+		--pic-stop: var(--color-red-600);
+		--pic-add: var(--color-emerald-600);
 
 		/* The text colours, for every page (text-ink, text-ink-muted,
 		   text-ink-faint). Here rather than in landing.css so they are set
@@ -330,6 +345,12 @@
 			   1.02:1 on the paper ring and erased both; zinc-400 holds 7:1
 			   on it and stays a mid value beside the zinc-500 shapes. */
 			--sh-ink: var(--color-zinc-400);
+			--pic-accent: var(--color-blue-400);
+			--pic-ink: var(--color-zinc-200);
+			--pic-dim: var(--color-zinc-400);
+			--pic-faint: var(--ink-faint);
+			--pic-stop: var(--color-red-400);
+			--pic-add: var(--color-emerald-400);
 			--ink: var(--color-zinc-100);
 			--ink-muted: var(--color-zinc-400);
 			--ink-faint: #8f8f8a;
@@ -532,6 +553,13 @@
 	   change here resizes every compact button at once. */
 	.btn--sm {
 		@apply px-3 py-1.5;
+	}
+	/* The large step: the landing's calls to action (the hero's "Get
+	   started", pricing's "Start a free week"), which stand alone on their
+	   row and carry the page's one decision, so they get more room than a
+	   form's button. In place of the !px-5 !py-2.5 overrides they used. */
+	.btn--lg {
+		@apply px-5 py-2.5;
 	}
 
 	/* Disabled, one look for every kind: a quiet outline with faint text.

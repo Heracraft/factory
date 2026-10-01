@@ -1,17 +1,17 @@
 <!--
   One tile of the landing's shape language: flat geometric forms in a
-  100 x 100 box, and a sphere textured with SVG noise so no image is
-  fetched. Each names a feature and appears where that feature is on the
+  100 x 100 box. Each names a feature and appears where that feature is on the
   page; the footer's row collects them in the page's order. Colours are the pictures' own, by role
   (the --sh-* tokens in routes/layout.css): two greys, ink and the blue
   accent, nothing else. Each shape has one main tone (neutral or accent); its other parts stay grey or ink, so a
   group is mostly grey with a spot of colour, the way the pictures are
   (docs/LANDING.md, "Shape language"). The star is Gemini's
   sparkle (marks.ts), so the one form is both a shape and an agent's
-  mark. Always decorative, so always aria-hidden.
+  mark. The sphere is the internet, flat like the rest; with meridians it
+  carries the hero globe's lines in paper, so the footer's sphere and the
+  hero's globe are one drawing. Always decorative, so always aria-hidden.
 -->
 <script lang="ts" module>
-	let next = 0;
 	export type Kind =
 		| 'pill'
 		| 'halves'
@@ -49,8 +49,19 @@
 <script lang="ts">
 	import { SPARKLE } from '$lib/components/illustrations/marks';
 
-	let { kind, tone, class: klass = '' }: { kind: Kind; tone?: Tone; class?: string } = $props();
-	const id = `sh${next++}`;
+	let {
+		kind,
+		tone,
+		meridians = false,
+		class: klass = ''
+	}: {
+		kind: Kind;
+		tone?: Tone;
+		/** The sphere only: draw the globe's meridians over it. Off by default
+		    because the hero draws its own on top (Hero.svelte, .meridians). */
+		meridians?: boolean;
+		class?: string;
+	} = $props();
 	let main = $derived(MAIN[tone ?? TONE[kind]]);
 </script>
 
@@ -80,20 +91,22 @@
 		<path d="M8 100 V44 A42 42 0 0 1 92 44 V100 Z" fill="var(--main)" />
 		<path d="M29 100 V46 A21 21 0 0 1 71 46 V100 Z" fill="var(--sh-ink)" />
 	{:else if kind === 'sphere'}
-		<defs>
-			<radialGradient id="{id}g" cx="0.34" cy="0.3" r="0.8">
-				<stop offset="0" style="stop-color: color-mix(in oklab, var(--main) 55%, white)" />
-				<stop offset="0.45" style="stop-color: var(--main)" />
-				<stop offset="1" style="stop-color: color-mix(in oklab, var(--main) 75%, black)" />
-			</radialGradient>
-			<filter id="{id}n" x="0" y="0" width="100%" height="100%">
-				<feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="3" />
-				<feColorMatrix values="0 0 0 0 1  0 0 0 0 0.85  0 0 0 0 0.8  0 0 0 -1.6 1.05" />
-				<feComposite in2="SourceGraphic" operator="in" />
-			</filter>
-		</defs>
-		<circle cx="50" cy="50" r="50" fill="url(#{id}g)" />
-		<circle cx="50" cy="50" r="50" fill="#000" filter="url(#{id}n)" opacity="0.28" />
+		<circle cx="50" cy="50" r="50" fill="var(--main)" />
+		{#if meridians}
+			<!-- The hero's meridians, its 24-unit drawing scaled to 100. The
+			     two parallels end on the disc's edge (the hero clips them with
+			     overflow: hidden; this svg draws past its box). -->
+			<g
+				fill="none"
+				stroke="var(--sh-paper)"
+				stroke-width="0.9"
+				opacity="0.8"
+				transform="scale(4.1667)"
+			>
+				<ellipse cx="12" cy="12" rx="4.2" ry="11.6" />
+				<path d="M0.69 8H23.31M0.69 16H23.31" />
+			</g>
+		{/if}
 	{:else if kind === 'leaf'}
 		<path d="M100 0 V100 H0 A100 100 0 0 1 100 0 Z" fill="var(--main)" />
 	{:else if kind === 'sun'}

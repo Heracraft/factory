@@ -7,6 +7,7 @@
 	import { publicSeats } from '$lib/api/client';
 	import type { PublicSeats } from '$lib/api/types';
 	import Logo from '$lib/components/Logo.svelte';
+	import HeaderFrame from '$lib/components/HeaderFrame.svelte';
 	import Hero from '$lib/components/landing/Hero.svelte';
 	import Gauge from '$lib/components/landing/Gauge.svelte';
 	import Units from '$lib/components/landing/Units.svelte';
@@ -24,7 +25,12 @@
 	const SOURCE_URL = 'https://github.com/Heracraft/repose';
 
 	let signingIn = $state(false);
-	let copied = $state(false);
+	/** The command whose Copy was pressed last, for 1.5s; null otherwise. */
+	let copied = $state<string | null>(null);
+	/** The page's one live region for the copy buttons (I-393): always in
+	    the page, only its text changes, so a screen reader hears it. */
+	let copyStatus = $state('');
+	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 	/** GET /public/seats (I-290): the launch's gauge; undefined until it answers, and if it never does. */
 	let seats = $state<PublicSeats | undefined>(undefined);
 
@@ -53,28 +59,45 @@
 		}
 	}
 
-	async function copyInstall() {
+	async function copyCommand(command: string, what: string) {
 		try {
-			await navigator.clipboard.writeText(INSTALL_COMMAND);
-			copied = true;
-			setTimeout(() => (copied = false), 1500);
+			await navigator.clipboard.writeText(command);
+			copied = command;
+			copyStatus = `Copied ${what}`;
+			clearTimeout(copiedTimer);
+			copiedTimer = setTimeout(() => {
+				copied = null;
+				copyStatus = '';
+			}, 1500);
 		} catch {
 			toast.error('Could not copy. Select the command instead.');
 		}
 	}
 
+	// `what` finishes each Copy button's name for a screen reader ("Copy
+	// the sign-in command"), so the three buttons are not three "Copy"s.
+	// The checkout in the last one is named after its laptop folder (I-368),
+	// the hero picture's job-alerts/.
 	const steps = [
-		{ title: 'Install the CLI', command: INSTALL_COMMAND },
-		{ title: 'Sign in', command: 'repose login' },
-		{ title: 'Run in any checkout', command: 'cd ~/code/recruiting && repose run' }
+		{ title: 'Install the CLI', command: INSTALL_COMMAND, what: 'the install command' },
+		{ title: 'Sign in', command: 'repose login', what: 'the sign-in command' },
+		{
+			title: 'Run in any checkout',
+			command: 'cd ~/code/job-alerts && repose run',
+			what: 'the run command'
+		}
 	];
-	// docs/PRICING.md's three plans. The Units count is the memory that may
-	// run at once, one square per GB, so the plans compare at a glance.
+	// docs/PRICING.md's three plans, with internal/billing/plans.go's
+	// figures. The Units count is the memory that may run at once, one
+	// square per GB, so the plans compare at a glance; the caption says it
+	// in agents (PRICING.md: one agent needs 8 GB), not in size classes,
+	// which a visitor has not met yet (LANDING.md, "Names a stranger
+	// understands").
 	const plans: {
 		name: string;
 		price: string;
 		memory: number;
-		runs: string;
+		agents: string;
 		disk: string;
 		egress: string;
 	}[] = [
@@ -82,7 +105,7 @@
 			name: 'Solo',
 			price: '$29',
 			memory: 8,
-			runs: 'one large, or two small',
+			agents: 'One agent at work',
 			disk: '100 GB',
 			egress: '250 GB'
 		},
@@ -90,7 +113,7 @@
 			name: 'Plus',
 			price: '$59',
 			memory: 16,
-			runs: 'one xl, two large, or any mix',
+			agents: 'Two agents at once',
 			disk: '250 GB',
 			egress: '500 GB'
 		},
@@ -98,7 +121,7 @@
 			name: 'Pro',
 			price: '$99',
 			memory: 32,
-			runs: 'two xl, four large, or any mix',
+			agents: 'Four agents at once',
 			disk: '500 GB',
 			egress: '1 TB'
 		}
@@ -122,12 +145,46 @@
 	<title>repose: let your agents run with full permissions</title>
 	<meta
 		name="description"
-		content="A disposable dev machine per project with your code, tools and secrets on it in 15 seconds, so coding agents can run with full permissions and your laptop stays out of reach."
+		content="A cloud dev machine for your repo in one command, with your code, tools and logins on it, so coding agents can run with full permissions and your laptop stays out of reach."
 	/>
 </svelte:head>
 
 {#snippet cellMark(kind: Kind)}
 	<span class="cell-mark" aria-hidden="true"><Shape {kind} /></span>
+{/snippet}
+
+<!-- A sign-in button, or the dashboard link once signed in. The page is
+     prerendered signed out and learns who you are after it mounts, so
+     both labels share one grid cell and the box is as wide as the longer
+     one from the first paint: the swap moves nothing (CLS 0). The hidden
+     label is out of the accessibility tree. -->
+{#snippet authLabel(shown: string, other: string)}
+	<span class="swap"><span>{shown}</span><span aria-hidden="true">{other}</span></span>
+{/snippet}
+
+{#snippet authAction(klass: string, signedOut: string, signedIn: string)}
+	{#if authState.authenticated}
+		<a href={resolve('/projects')} class={klass}>{@render authLabel(signedIn, signedOut)}</a>
+	{:else}
+		<button type="button" class={klass} disabled={signingIn} onclick={onSignIn}
+			>{@render authLabel(signedOut, signedIn)}</button
+		>
+	{/if}
+{/snippet}
+
+<!-- A command row with its Copy button: the hero's install command and
+     each step's. Below md the command wraps instead of being cut off, so
+     the whole of it can be read at 320px (WCAG 1.4.10). The button's name
+     is its visible word and what it copies; the result is said in the
+     page's one status region below. -->
+{#snippet cmdRow(command: string, what: string, prompt: boolean)}
+	<div class="cmd">
+		<span class="text">{prompt ? '$ ' : ''}{command}</span>
+		<button type="button" class="copy" onclick={() => copyCommand(command, what)}>
+			{@render copyIcon()}
+			{copied === command ? 'Copied' : 'Copy'}<span class="sr-only">{` ${what}`}</span>
+		</button>
+	</div>
 {/snippet}
 
 {#snippet copyIcon()}
@@ -143,23 +200,21 @@
 {/snippet}
 
 <div class="rails">
-	<header class="topbar inset">
-		<a href={resolve('/')} aria-label="repose, home"><Logo mark /></a>
-		<nav class="flex items-center gap-6" aria-label="Main">
-			<a href={resolve('/docs')} class="hidden sm:inline">Docs</a>
-			<a href="#pricing" class="hidden sm:inline">Pricing</a>
-			<a href={SOURCE_URL} class="hidden sm:inline">GitHub</a>
-			{#if authState.authenticated}
-				<a href={resolve('/projects')} class="btn-quiet !py-1.5">Dashboard</a>
-			{:else}
-				<button type="button" class="btn-quiet !py-1.5" disabled={signingIn} onclick={onSignIn}
-					>Sign in</button
-				>
-			{/if}
-		</nav>
-	</header>
+	<!-- The house header (HeaderFrame), on the landing's 1120px measure
+	     with the logo over the headline; the wrapper carries the ticks
+	     where its rule meets the rails. -->
+	<div class="topbar">
+		<HeaderFrame home={resolve('/')} label="repose, home" width="landing">
+			<nav class="flex items-center gap-4 sm:gap-6" aria-label="Main">
+				<a href={resolve('/docs')} class="navlink">Docs</a>
+				<a href="#pricing" class="navlink">Pricing</a>
+				<a href={SOURCE_URL} class="navlink hidden sm:inline">GitHub</a>
+				{@render authAction('btn-quiet btn--sm', 'Sign in', 'Dashboard')}
+			</nav>
+		</HeaderFrame>
+	</div>
 
-	<main>
+	<main id="main">
 		<section class="sec">
 			<div class="hero-grid inset">
 				<h1 class="hero-h">
@@ -170,25 +225,8 @@
 					Your work on a machine of its own. The agent can wreck it. A snapshot puts it back.
 				</p>
 				<div class="hero-ctas">
-					{#if authState.authenticated}
-						<a href={resolve('/projects')} class="btn !px-5 !py-2.5">Open the dashboard</a>
-					{:else}
-						<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
-							Get started
-						</button>
-					{/if}
-					<div class="cmd">
-						<span class="text">{INSTALL_COMMAND}</span>
-						<button
-							type="button"
-							class="copy"
-							onclick={copyInstall}
-							aria-label="Copy the install command"
-						>
-							{@render copyIcon()}
-							{copied ? 'Copied' : 'Copy'}
-						</button>
-					</div>
+					{@render authAction('btn btn--lg', 'Get started', 'Open the dashboard')}
+					{@render cmdRow(INSTALL_COMMAND, 'the install command', false)}
 				</div>
 			</div>
 			<div class="landing-stage">
@@ -215,13 +253,17 @@
 					<Localhost />
 					<h3>{@render cellMark('halves')}Your dev server on your localhost</h3>
 					<p>
-						Every port the machine listens on, on your laptop. Cookies and OAuth redirects included.
+						Ports the machine listens on open on your laptop's localhost while you're attached, so
+						cookies and OAuth redirects work.
 					</p>
 				</li>
 				<li class="cell">
 					<Browser />
 					<h3>{@render cellMark('ring')}Watch the agent use the browser</h3>
-					<p><code>repose browser</code> puts you in the same window. Take over any time.</p>
+					<p>
+						<code>repose browser</code> shows the agent's Chromium on your laptop; click in it to take
+						over.
+					</p>
 				</li>
 				<li class="cell">
 					<Editor />
@@ -253,7 +295,7 @@
 								>{step.title}
 							</h3>
 						</div>
-						<div class="cmd"><span class="text">$ {step.command}</span></div>
+						{@render cmdRow(step.command, step.what, true)}
 					</li>
 				{/each}
 			</ol>
@@ -261,7 +303,7 @@
 
 		<section class="sec">
 			<SectionHead id="pricing" title="Pricing">
-				Three plans. Seven days free, card at checkout.
+				Seven days free, card at checkout. Prices in USD, before tax.
 			</SectionHead>
 			<ul class="tiers" use:landOnView>
 				{#each plans as t, i (t.name)}
@@ -273,24 +315,20 @@
 							>
 						</div>
 						<p class="tier-spec">
-							<span>{t.memory} GB running at once</span> · <span>{t.disk} disk</span> ·
+							<span>{t.memory} GB memory at once</span> · <span>{t.disk} disk</span> ·
 							<span>{t.egress} egress</span>
 						</p>
 						<p class="tier-price">
 							<span class="n">{t.price}</span>
 							<span class="per">a month</span>
 						</p>
-						<p class="tier-cap"><b>{t.memory} GB</b> is {t.runs}</p>
+						<p class="tier-cap">{t.agents}</p>
 					</li>
 				{/each}
 			</ul>
 			<div class="cta-row">
-				{#if authState.authenticated}
-					<a href={resolve('/projects')} class="btn !px-5 !py-2.5">Open the dashboard</a>
-				{:else}
-					<button type="button" class="btn !px-5 !py-2.5" disabled={signingIn} onclick={onSignIn}>
-						Start a free week
-					</button>
+				{@render authAction('btn btn--lg', 'Start a free week', 'Open the dashboard')}
+				{#if !authState.authenticated}
 					{#if seats}
 						<p class="seats" data-testid="seats-line">
 							{#if seats.free > 0}
@@ -310,15 +348,18 @@
 			{#each frieze as [k, tone], i (i)}
 				<li>
 					<span class="land block h-full w-full" style="--d: {i * 60}ms"
-						><Shape kind={k} {tone} /></span
+						><Shape kind={k} {tone} meridians={k === 'sphere'} /></span
 					>
 				</li>
 			{/each}
 		</ul>
 		<div class="foot inset">
-			<Logo size="sm" mark />
+			<!-- The mark's cross is drawn in currentColor; the footer's text is
+			     muted, and the logo is the same on every page (ink). -->
+			<span class="text-ink"><Logo size="sm" mark /></span>
 			<nav aria-label="Footer">
 				<a href={resolve('/docs')}>Docs</a>
+				<a href="#pricing">Pricing</a>
 				<a href={SOURCE_URL}>GitHub</a>
 				<a href={resolve('/terms')}>Terms</a>
 				<a href={resolve('/privacy')}>Privacy</a>
@@ -327,3 +368,6 @@
 		</div>
 	</footer>
 </div>
+
+<!-- The copy buttons' result, for a screen reader; drawn nowhere. -->
+<p class="sr-only" role="status">{copyStatus}</p>

@@ -24,7 +24,15 @@ const config = {
 			mode: 'auto',
 			directives: {
 				'default-src': ['self'],
-				'script-src': ['self', 'https://cdn.paddle.com', 'https://*.paddle.com'],
+				// The hash is app.html's one inline script, which sets html.js
+				// before the first paint (DECISIONS I-397); editing that script
+				// changes it.
+				'script-src': [
+					'self',
+					'sha256-aL3Pv6ygSyucrLwgv7XagHcNUqYEpcwpRZTImp8W7/g=',
+					'https://cdn.paddle.com',
+					'https://*.paddle.com'
+				],
 				'style-src': ['self', 'unsafe-inline'],
 				'font-src': ['self'],
 				'img-src': ['self', 'data:', 'https:'],

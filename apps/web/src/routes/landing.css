@@ -7,8 +7,8 @@
  * rails (the walls) that run from the header to the footer; every rule
  * runs wall to wall and is ticked with a small cross where it meets a
  * rail, the way a technical drawing marks an intersection; each section
- * is a numbered head on paper and then its picture on a sunken stage that
- * fills the width between the rails. Features, steps and sizes are cells
+ * is a head on paper (the bold serif title), then its picture on a sunken
+ * stage that fills the width between the rails. Features, steps and sizes are cells
  * cut by the same hairlines, never floating cards. The serif, the one blue
  * and the shape set stay what layout.css and docs/LANDING.md say they are.
  *
@@ -83,21 +83,22 @@
 	padding-inline: var(--land-x);
 }
 
-/* The top bar: the wordmark and the way in. */
+/* The top bar is the house header (HeaderFrame, width="landing": 56px
+   over its --rule hairline); this wrapper only carries the ticks where
+   that rule meets the rails. Its links are the muted ink and turn to ink
+   under the pointer over 150ms, as a button's colours do. */
 .topbar {
 	position: relative;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 1.5rem;
-	height: 3.75rem;
-	border-bottom: 1px solid var(--rule);
 }
-.topbar nav a {
+.navlink,
+.foot a {
+	transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.navlink {
 	color: var(--ink-muted);
 	font-size: 0.875rem;
 }
-.topbar nav a:hover {
+.navlink:hover {
 	color: var(--ink);
 }
 
@@ -144,9 +145,17 @@
 	}
 }
 
-/* A section's head: the serif title and one sentence. */
+/* A section's head: the serif title and one sentence. From lg the
+   padding is less below than above, so the title sits nearer the stage it
+   names than the rule it follows: at --land-y both ways (84px) it floated
+   halfway between them. */
 .sec-head {
 	padding-block: var(--land-y);
+}
+@media (min-width: 1024px) {
+	.sec-head {
+		padding-block: 3.5rem 2.5rem;
+	}
 }
 /* A feature's shape before its title, as tall as the title's letters. */
 .head-mark,
@@ -165,6 +174,7 @@
 	line-height: 1.1;
 	letter-spacing: -0.02em;
 	text-wrap: balance;
+	overflow-wrap: break-word;
 	color: var(--ink);
 }
 .lead {
@@ -206,6 +216,10 @@
 	line-height: 1;
 	letter-spacing: -0.025em;
 	text-wrap: balance;
+	/* A word wider than the screen breaks rather than pushing the page
+	   sideways: "permissions" does at 320 under WCAG 1.4.12's letter
+	   spacing. At the page's own spacing nothing breaks. */
+	overflow-wrap: break-word;
 	color: var(--ink);
 }
 .hero-h .line {
@@ -232,6 +246,9 @@
 }
 .hero-grid .lead {
 	max-width: 34rem;
+	/* Balanced, not pretty: pretty only lengthens a short last line, and
+	   at 1440 the lead still ended its first line on a lone "A". */
+	text-wrap: balance;
 	margin-top: 1.75rem;
 }
 .hero-ctas {
@@ -255,7 +272,7 @@
 	border-radius: 3px;
 	background: var(--sunken);
 	font-family: var(--font-mono);
-	font-size: 13px;
+	font-size: var(--text-compact);
 	color: var(--ink);
 }
 .cmd .text {
@@ -265,23 +282,61 @@
 	white-space: nowrap;
 	user-select: all;
 }
+/* Below md a command wraps instead of ending in an ellipsis: cut off at
+   390 or 320, the install URL could not be read, and a reader who cannot
+   copy has to read it (WCAG 1.4.10). It breaks anywhere, since a URL has
+   no spaces to break at. */
+@media (max-width: 767px) {
+	.cmd .text {
+		overflow: visible;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+}
+/* Copy is a quiet button: the control edge (3:1, where --rule-strong
+   was 1.6:1 and nobody could find the button's edge), the body sans,
+   and the house buttons' 150ms colour change and a press one step past
+   hover. */
 .cmd .copy {
 	display: inline-flex;
 	flex: none;
 	align-items: center;
 	gap: 0.375rem;
+	/* At the row's right end: a step's row is wider than its command. */
+	margin-left: auto;
 	padding: 0.25rem 0.5rem;
-	border: 1px solid var(--rule-strong);
-	border-radius: 2px;
+	border: 1px solid var(--control-edge);
+	border-radius: var(--radius-xs);
 	background: var(--surface);
-	font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+	font-family: var(--font-sans);
 	font-size: 0.75rem;
 	color: var(--ink-muted);
 	cursor: pointer;
+	transition-property: color, background-color, border-color;
+	transition-duration: 150ms;
+	transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 .cmd .copy:hover {
 	color: var(--ink);
 	border-color: var(--ink-faint);
+}
+.cmd .copy:active {
+	color: var(--ink);
+	background: var(--sunken);
+}
+
+/* A sign-in button's two labels (signed out, signed in) stacked in one
+   cell: the box takes the longer one's width before auth is known, so the
+   swap after mount moves nothing. The label not in use is hidden. */
+.swap {
+	display: inline-grid;
+}
+.swap > * {
+	grid-area: 1 / 1;
+	text-align: center;
+}
+.swap > :last-child {
+	visibility: hidden;
 }
 
 /* Cells: the features, cut by hairlines, two across from md. */
@@ -316,7 +371,8 @@
 }
 .cell p {
 	margin-top: 0.375rem;
-	font-size: 0.9375rem;
+	font-size: 1rem;
+	text-wrap: pretty;
 	line-height: 1.55;
 	color: var(--ink-muted);
 }
@@ -470,13 +526,12 @@
 	text-transform: uppercase;
 	color: var(--ink-faint);
 }
+/* How many agents the plan runs at once: the line a visitor compares, so
+   in ink at the house emphasis weight (DESIGN-LANGUAGE.md, "Type"). */
 .tier-cap {
 	margin-top: 0.75rem;
 	font-size: 0.875rem;
-	color: var(--ink-muted);
-}
-.tier-cap b {
-	font-weight: 600;
+	font-weight: 500;
 	color: var(--ink);
 }
 .cta-row {
@@ -491,7 +546,7 @@
    in the muted ink, the reading of the launch's gauge. */
 .cta-row .seats {
 	margin: 0;
-	font-size: 0.9375rem;
+	font-size: 1rem;
 	color: var(--ink-muted);
 }
 
@@ -511,6 +566,13 @@
 .frieze li:first-child {
 	border-left: 0;
 }
+/* Without the rails (below md) the row stands in the page's 20px gutter
+   like the text above it; edge to edge it read as cut off by the screen. */
+@media (max-width: 767px) {
+	.frieze {
+		margin-inline: 1.25rem;
+	}
+}
 .foot {
 	display: flex;
 	flex-wrap: wrap;
@@ -522,9 +584,12 @@
 	font-size: 0.875rem;
 	color: var(--ink-muted);
 }
+/* The links wrap at 320px (and with WCAG 1.4.12's text spacing) rather
+   than push the page sideways. */
 .foot nav {
 	display: flex;
-	gap: 1.5rem;
+	flex-wrap: wrap;
+	gap: 0.5rem 1.5rem;
 }
 .foot a:hover {
 	color: var(--ink);

@@ -4,7 +4,9 @@
   a quantity: the steps count up with it (a third, two thirds, done). Grey
   by default; the page gives the blue accent only to the one that says
   "done". A
-  hairline ring marks the whole, so a third reads as a third. Always
+  ring in --sh-light marks the whole, so a third reads as a third; the
+  ring is part of the shape, so it takes the shapes' palette and not the
+  page's rules (LANDING.md, "Shape language"). Always
   decorative: the number it shows is also in the text beside it.
 -->
 <script lang="ts">
@@ -27,7 +29,7 @@
 </script>
 
 <svg viewBox="0 0 100 100" class="block h-full w-full" aria-hidden="true">
-	<circle cx="50" cy="50" r="48" fill="none" stroke="var(--rule-strong)" stroke-width="3" />
+	<circle cx="50" cy="50" r="48" fill="none" stroke="var(--sh-light)" stroke-width="3" />
 	{#if fraction >= 1}
 		<circle cx="50" cy="50" r="46" fill={FILL[tone]} />
 	{:else if fraction > 0}

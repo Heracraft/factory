@@ -14,6 +14,17 @@
 		<meta name="color-scheme" content="light dark" />
 		<meta name="theme-color" content="#fbfbfa" media="(prefers-color-scheme: light)" />
 		<meta name="theme-color" content="#111110" media="(prefers-color-scheme: dark)" />
+		<!-- Marks the page as scripted before the first paint, so a style can
+		     tell "the bundle is on its way" from "scripts are off": the
+		     landing's hero draws its pre-run frame under html.js and stays
+		     whole without it. The CSP (svelte.config.js) allows no inline
+		     script it has no hash for, so script-src carries this one's
+		     sha256 ('sha256-aL3Pv6ygSyucrLwgv7XagHcNUqYEpcwpRZTImp8W7/g=');
+		     the hash covers the text between the tags, its tabs and
+		     newlines included, so any change to it changes the hash. -->
+		<script>
+			document.documentElement.classList.add('js');
+		</script>
 		<style>
 			html {
 				background: #fbfbfa;
@@ -33,9 +44,10 @@
 			}
 		</style>
 		<!-- The fonts are self-hosted (static/fonts, @font-face in
-		     routes/layout.css). The two heading cuts are fetched before the CSS
-		     that names them arrives: 700 is the landing's headline, 600 every
-		     dashboard title. -->
+		     routes/layout.css). Three cuts are fetched before the CSS that
+		     names them arrives: Noto Serif 700 is the landing's headline, 600
+		     every dashboard title, and JetBrains Mono 400 the landing's
+		     install command and its pictures' rows, all above the fold. -->
 		<link
 			rel="preload"
 			href="%sveltekit.assets%/fonts/noto-serif-latin-700-normal.woff2"
@@ -46,6 +58,13 @@
 		<link
 			rel="preload"
 			href="%sveltekit.assets%/fonts/noto-serif-latin-600-normal.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin="anonymous"
+		/>
+		<link
+			rel="preload"
+			href="%sveltekit.assets%/fonts/jetbrains-mono-latin-400-normal.woff2"
 			as="font"
 			type="font/woff2"
 			crossorigin="anonymous"
