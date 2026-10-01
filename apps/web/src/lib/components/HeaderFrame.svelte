@@ -34,11 +34,11 @@
 	} as const;
 </script>
 
-<!-- The one header frame for the dashboard, the docs and the legal pages:
-     56px tall over a --rule hairline, its content on the same max-w-5xl
-     column as PageShell, so the logo sits at the same x on every page and
-     does not jump when you follow a link between them. The logo carries the
-     I-363 mark here as it does on the landing. Below sm the logo is the
+<!-- The one header frame for every page (the dashboard, the docs, the
+     legal pages and the landing): 56px tall over a --rule hairline, its
+     content by default on the same max-w-5xl column as PageShell, so the
+     logo sits at the same x on every page and does not jump when you
+     follow a link between them. The logo carries the I-363 mark. Below sm the logo is the
      24px mark alone, on every page: the dashboard's five links leave no
      room for the word (mark and word left them 16px short at 390 and 46px
      short at 360), and the docs and legal headers drop it too, so the

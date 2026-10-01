@@ -136,7 +136,11 @@ on the landing (the Editor's LazyVim screen, the Browser's log, Ready's
 terminal, Localhost's tmux bar) is exempt from the 11px floor and the
 13px mono rule, as it is from the palette: it is drawn at the scale that
 fits the whole capture in its frame, and on a phone the Editor's screen
-draws at 8.4px so 69 columns fit (I-397).
+draws at 8.4px so 69 columns fit (I-397). A picture the landing draws
+for itself keeps the 11px floor, and its rows (a file name, a diff
+stat, a time) are mono at 12px to 12.5px, 11px on a phone: a picture's
+labels at the picture's scale, as "Your working state" drew them when
+the owner chose it (I-399).
 Pages write no `text-[13px]`; a size that is missing becomes a step here.
 Figures that change or line up in columns (sizes, counts, times, prices)
 use `tabular-nums`. Page markup uses no `font-bold`; emphasis in body text
@@ -509,9 +513,11 @@ I-393).
 # The landing's exception
 
 The landing adds a shape set in the `--sh-*` tokens (zinc greys, ink and
-the blue accent), a blue bar under its headline and prices, a sphere
-drawn with SVG noise and a gradient, its own display sizes, and its own
-page grammar (rails, ticked rules, stages, cells) in
+the blue accent), a palette for the pictures it draws in the `--pic-*`
+tokens (the blue, three greys, and a diff stat's red and green; I-397),
+a blue bar under its headline and prices, a sphere drawn as a flat disc
+with a globe's meridians over it where it stands for the internet, its
+own display sizes, and its own page grammar (rails, ticked rules, stages, cells) in
 `apps/web/src/routes/landing.css`. Those exist only on `/`, save the
 logo's `--sh-accent` square in every header (see Logo), and are
 described in `LANDING.md`. Every other page follows this document with no

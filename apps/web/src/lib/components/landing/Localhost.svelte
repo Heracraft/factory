@@ -147,7 +147,7 @@
 						.add(q('.ports'), { opacity: [0, 1], duration: 350 }, 1100)
 						.set(chip, { x: dx, y: dy }, 1700)
 						.call(() => (fire = true), 1700)
-						.add(chip, { opacity: [0, 1], scale: [0.85, 1], duration: 250 }, 1700)
+						.add(chip, { opacity: [0, 1], scale: [0.85, 1], duration: 250, ease: 'outBack' }, 1700)
 						.add(chip, { x: [dx, 0], y: [dy, 0], duration: 900, ease: 'inOutCubic' }, 1950)
 						.add(q('.wire'), { scaleY: [0, 1], duration: 260, ease: 'outCubic' }, 2800)
 						.call(() => (fire = false), 3100)

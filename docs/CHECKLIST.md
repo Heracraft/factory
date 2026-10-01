@@ -75,7 +75,7 @@ out the landing (`routes/+page.svelte`, `routes/landing.css`,
 below checks:
 `L=(--glob '!**/landing/**' --glob '!**/routes/+page.svelte' --glob
 '!**/routes/landing.css')`. A hit is fixed, or the rule changes through a
-DECISIONS entry and this list with it. Counts as of 2026-09-30.
+DECISIONS entry and this list with it. Counts as of 2026-10-01.
 
 - [ ] Text colours come from the ink tokens, and zinc-400 and lighter is
       never text. Evidence: `rg -n 'text-zinc-[3-6]00' apps/web/src --glob
@@ -83,9 +83,10 @@ DECISIONS entry and this list with it. Counts as of 2026-09-30.
 - [ ] Blue is only the palette, links, focus and selection, all in
       `layout.css`. Evidence: `rg -n 'blue-[0-9]' apps/web/src "${L[@]}"
       --glob '!**/routes/layout.css'` prints 0 lines (`layout.css` itself
-      has 21: eleven palette steps, then `--sh-accent`, `--accent`,
-      `--accent-strong`, `--selection` and `--focus` twice each, once per
-      scheme; `.link` and the docs' links use `text-accent`, I-392).
+      has 23: eleven palette steps, then `--sh-accent`, `--pic-accent`,
+      `--accent`, `--accent-strong`, `--selection` and `--focus` twice
+      each, once per scheme; `.link` and the docs' links use
+      `text-accent`, I-392, I-397).
 - [ ] No shadows, and no gradient of more than one colour. Evidence: `rg
       -n 'shadow-|box-shadow: [^n]' apps/web/src "${L[@]}"` prints 0
       lines; `rg -nP 'gradient\((?!(var\([^)]*\)|#[0-9a-fA-F]+|currentColor),
@@ -129,9 +130,10 @@ DECISIONS entry and this list with it. Counts as of 2026-09-30.
       button adds its focus check there (I-392).
 - [ ] The accessibility gate passes: `pnpm build`, then `pnpm a11y` in
       `apps/web`, 56 runs (14 pages, light and dark, 1440 and 390), with
-      `KNOWN_FAILURES` empty or each entry carrying a reason (DECISIONS
-      I-389). The landing's four are audited under reduced motion, so two
-      runs give the same result (I-397).
+      `KNOWN_FAILURES` empty or each entry carrying a reason and, where it
+      fails at one width only, that width (DECISIONS I-389, I-399). The
+      landing's four are audited under reduced motion, so two runs give
+      the same result (I-397).
 - [ ] Judged at real size: viewport captures or crops at 1x, 1440 and
       390 wide, light and dark, of every changed page (CLAUDE.md "Judge
       visuals at real size").
@@ -157,7 +159,11 @@ Counts as of 2026-10-01.
 - [ ] Blue and every other hue come from the tokens: `--sh-*` for shapes,
       `--pic-*` for drawn pictures, the Foundation's for text. Evidence:
       `rg -n 'blue-[0-9]|purple|violet|fuchsia|pink-|orange-|indigo|teal|cyan|lime-'
-      "${P[@]}" "${C[@]}"` prints 0 lines; `rg -n ':\s*#[0-9a-fA-F]{3,8}\b|="#[0-9a-fA-F]'
+      "${P[@]}" "${C[@]}"` prints 0 lines; `rg -n
+      'amber|emerald|green-|yellow|red-[0-9]|zinc-[0-9]|rose-|sky-|slate-|gray-|stone-'
+      "${P[@]}" "${C[@]}"` prints only the green running dots
+      (`emerald-500`, open for the owner in STATUS.md), 4 lines; `rg -n
+      ':\s*#[0-9a-fA-F]{3,8}\b|="#[0-9a-fA-F]'
       "${P[@]}" "${C[@]}"` prints only the hero's Claude Code colours
       (`--claude`, `--mode`, and `--rogue`, the mascot turned red), 5
       lines.

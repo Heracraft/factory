@@ -278,7 +278,11 @@
 						.call(cls([src], 'fix', true), T.git + 300)
 						.call(cls([src], 'fix', false), T.git + 950)
 						.call(cls([src], 'ok', true), T.git + 950)
-						.add(src.querySelector('.bad')!, { opacity: 0, duration: 150 }, T.git + 300);
+						.add(
+							src.querySelector('.bad')!,
+							{ opacity: 0, duration: 300, ease: 'inQuad' },
+							T.git + 300
+						);
 					count('src', 0, 578, 'files', T.git + 300, 650);
 					t.add(
 						src.querySelector('.tick')!,
@@ -752,8 +756,9 @@
 	   the still frame renders the new tile lit, and the rewind would
 	   otherwise spin there. */
 	@media (prefers-reduced-motion: no-preference) {
+		/* 420ms out-quad, the hero's quarter turn (LANDING.md, "Motion"). */
 		.cam svg {
-			transition: transform 0.4s cubic-bezier(0.65, 0, 0.35, 1);
+			transition: transform 420ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
 		}
 		.cam:global(.fire) svg {
 			transform: rotate(90deg);

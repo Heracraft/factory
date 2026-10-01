@@ -10028,8 +10028,11 @@ page for no reader's gain, and the column costs nothing when empty).
 **I-397. Landing repair round: the landing-critique branch is abandoned,
 so the landing joins the house header, one picture palette, one large
 button and the a11y gate, and its pictures stop when motion is turned
-off.** (owner, 2026-10-01; closes the items I-393 and I-394 kept for
-that branch; amends I-380, I-389 and I-392) The owner abandoned the
+off.** (implementation, 2026-10-01: the owner's act is abandoning the
+landing-critique branch, and the rest is implementation the owner has
+not reviewed, LANDING.md "Since the owner's notes"; closes the items
+I-393 to I-395 kept for that branch; amends I-380, I-389 and I-392) The
+owner abandoned the
 landing-critique branch; the landing on main is the base, and nothing of
 that branch is merged or read. What I-393 and I-394 kept for it is
 settled here:
@@ -10146,3 +10149,66 @@ landed:
 painted only after the bundle ran); cropping the Editor capture on a phone (no
 left crop leaves the explorer whole; it is scaled to 8.4px, I-397);
 showing the skill chip in the still frame.
+
+**I-399. Landing repair round 2: the drawn pictures' rows are 12px
+mono, every picture motion is in LANDING.md's list, OneCommand takes the
+picture palette, the repair round's notes leave the owner's sections,
+and the a11y gate's landing allowance is phone width only.**
+(implementation, 2026-10-01; amends I-397 and I-398) A review of the
+I-397/I-398 round found the docs and the code apart:
+- A drawn picture's rows (a file name, a diff stat, a time, a git
+  letter) are mono at 12px to 12.5px, 11px on a phone. I-397 said a
+  drawn picture keeps the 13px mono rule, but the pictures never did:
+  "Your working state" drew its rows at 12px when the owner chose it,
+  and the hero and "Break it and roll it back" match it. The 11px floor
+  holds; the 13px rule stays for the page's own text.
+- Every motion the pictures run is in LANDING.md's "Motion" list or was
+  brought to a listed kind: the skill's lunge is travel (`inOutCubic`),
+  the wall's light and the Browser's typed lines are 200ms reveals, the
+  Browser's log scrolls as travel, fades out are `inQuad` exits, the
+  Localhost chip arrives with `outBack`, and ComesBack's snapshot mark
+  turns a quarter in 420ms out-quad like the hero's. Three motions are
+  added to the list with their timing: the hero's shutter, the skill's
+  knock off the wall, and the Browser pointer's press. A wire's
+  `stroke-dashoffset` joins the properties the pictures may animate; it
+  is paint, not layout.
+- OneCommand's git letters and "Ready" line drop amber, emerald and
+  zinc steps of their own: `M` is `--pic-dim`, `U` is `--pic-add`, and
+  the line beside the picture is `--ink-muted`. The Browser picture's
+  ring and log bar are named for the ground they sit on (`--chip`,
+  blue-600 on the white page; `--on-log`, blue-400 on the dark log). The
+  green running dots stay open for the owner. CHECKLIST's landing hue
+  grep now catches amber, emerald, zinc and the other Tailwind hues.
+- The repair round had written its own rules into LANDING.md sections
+  marked as the owner's direction (the picture palette in "Shape
+  language", the logins row in "The grid cards", the "Ready in 14s"
+  figure in "Your working state"). They move to a section of their own,
+  "Since the owner's notes", which says they wait for the owner's review;
+  the owner's sections read as the owner wrote them. I-397's heading
+  said "owner", and the owner's only act in it is abandoning the branch.
+- The a11y gate's `KNOWN_FAILURES` entries may name the widths they hold
+  at. The landing's colour-contrast entry is phone width only: at 1440
+  the Editor capture draws large enough to pass, and the desktop runs
+  score 100 in both schemes.
+- The hero's snapshot slot is server-rendered at the size measure()
+  finds from 1280 to 1920 wide (an 84px miniature of a 344 by 296
+  machine). The default had been 360 by 236, so hydration grew the slot
+  and pushed the globe down, one 0.0002 layout shift at 1440. The hero
+  hands over from its CSS first paint to the timeline (`.live`) when the
+  first cycle runs, not when anime.js arrives: a picture under the
+  observer's threshold at load drew the restored machine until it
+  scrolled into view.
+- The docs rail picks its section on scroll, once a frame, besides the
+  observers: one jump past a heading (a wheel fling, `scrollTo`) left it
+  stale or empty.
+- The test fixtures start `go run` in a process group of its own and
+  stop the group: a SIGTERM to `go run` never reached the binary it ran,
+  and every suite left fakeapi and fake-logto running.
+*Rejected:* setting the drawn pictures' rows at 13px (it changes the
+picture the owner chose); masking `recruiting` in the Editor capture's explorer (no crop
+removes it, and a blanked cell is an edit of a capture; a re-capture on
+a machine named job-alerts is open for the owner, STATUS.md); auditing
+the landing with motion on as well (a loop samples a different frame
+each run, I-397; the gate checks the end state, and the first paint and
+mid-loop frames are judged on captures, which is a gap the gate does not
+close).

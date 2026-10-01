@@ -4,7 +4,7 @@
 // browser with scripts off reads them. The pictures start in onMount,
 // and the sign-in buttons render signed out and swap in place once auth
 // is known (+page.svelte, authAction), so nothing moves when the page
-// hydrates (I-397). The rest of the app stays a client-rendered SPA
+// hydrates (I-398). The rest of the app stays a client-rendered SPA
 // (+layout.ts).
 export const ssr = true;
 export const prerender = true;

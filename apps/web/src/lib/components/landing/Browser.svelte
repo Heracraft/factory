@@ -206,7 +206,7 @@
 							rowEls.forEach((r) => r.classList.remove('new'));
 							rowEls[first].classList.add('new');
 						}, at)
-							.add(list, { y: offset(first + 1), duration: 520, ease: 'outCubic' }, at)
+							.add(list, { y: offset(first + 1), duration: 520, ease: 'inOutCubic' }, at)
 							.add(rowEls.slice(0, first), { opacity: REST, duration: 400 }, at)
 							.add([rowEls[first], rowEls[first + 1]], { opacity: [0, 1], duration: 380 }, at + 60);
 					};
@@ -276,14 +276,14 @@
 							{ '--px': ex, '--py': ey, duration: 900, ease: 'inOutCubic' },
 							10050
 						)
-						.add(one('.pointer'), { scale: [1, 0.86, 1], duration: 220 }, 11000);
-					show('.l-t0', 11080, 120);
-					show('.l-t1', 11700, 160);
-					show('.l-t2', 12400, 160);
+						.add(one('.pointer'), { scale: [1, 0.86, 1], duration: 220, ease: 'outQuad' }, 11000);
+					show('.l-t0', 11080, 200);
+					show('.l-t1', 11700, 200);
+					show('.l-t2', 12400, 200);
 
 					// Rest on it, then clear and go again.
 					t.add(q('.layer, .chip, .pointer'), { opacity: 0, duration: 450, ease: 'inQuad' }, 17200)
-						.add(rowEls, { opacity: 0, duration: 450 }, 17200)
+						.add(rowEls, { opacity: 0, duration: 450, ease: 'inQuad' }, 17200)
 						.add({ duration: 300 }, 17700);
 
 					tl = t;
@@ -438,6 +438,11 @@
 		   scheme, so it keeps the light scheme's --pic-accent value: the
 		   dark one (blue-400) is 2.5:1 on #fff. */
 		--chip: var(--color-blue-600);
+		/* The log is dark in either scheme, so its acting row's bar keeps
+		   the dark scheme's --pic-accent value; the ring, on the white
+		   page, takes --chip's. A mark over a capture follows the
+		   capture's ground, not the page's scheme. */
+		--on-log: var(--color-blue-400);
 		/* one capture pixel, at this frame's width */
 		--k: calc(100cqw / 574);
 		--pan: 150;
@@ -515,7 +520,7 @@
 		top: 0;
 		width: 2px;
 		height: 2px;
-		background: var(--color-blue-500);
+		background: var(--chip);
 		transform-origin: 0 0;
 	}
 	.ring .rt,
@@ -631,7 +636,7 @@
 		left: 0;
 		top: 0;
 		bottom: 0;
-		border-left: 2px solid var(--color-blue-400);
+		border-left: 2px solid var(--on-log);
 		opacity: 0;
 		transition: opacity 0.3s;
 	}

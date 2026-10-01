@@ -284,13 +284,14 @@
 }
 /* Below md a command wraps instead of ending in an ellipsis: cut off at
    390 or 320, the install URL could not be read, and a reader who cannot
-   copy has to read it (WCAG 1.4.10). It breaks anywhere, since a URL has
-   no spaces to break at. */
+   copy has to read it (WCAG 1.4.10). It breaks at a space or at the <wbr>
+   after a path's slash; with overflow-wrap: anywhere it broke inside
+   install.sh. break-word only splits a part wider than the whole row. */
 @media (max-width: 767px) {
 	.cmd .text {
 		overflow: visible;
 		white-space: pre-wrap;
-		overflow-wrap: anywhere;
+		overflow-wrap: break-word;
 	}
 }
 /* Copy is a quiet button: the control edge (3:1, where --rule-strong
@@ -375,6 +376,15 @@
 	text-wrap: pretty;
 	line-height: 1.55;
 	color: var(--ink-muted);
+}
+/* A sentence that ends on a short one keeps that one whole, so the line
+   breaks between them and not inside it ("Back / in minutes." at 1440).
+   Plain wrapping here: pretty moved "work." down beside it instead. */
+.cell p.whole {
+	text-wrap: wrap;
+}
+.cell p.whole > span {
+	white-space: nowrap;
 }
 /* A captured picture in a cell: a fixed-height frame it is cropped to. */
 .shot {
@@ -585,11 +595,19 @@
 	color: var(--ink-muted);
 }
 /* The links wrap at 320px (and with WCAG 1.4.12's text spacing) rather
-   than push the page sideways. */
+   than push the page sideways. Below md six links do not fit one line,
+   and a free wrap left "Refunds" alone on the second; there they stand in
+   two rows of three, the product's links over the legal ones. */
 .foot nav {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0.5rem 1.5rem;
+}
+@media (max-width: 767px) {
+	.foot nav {
+		display: grid;
+		grid-template-columns: repeat(3, max-content);
+	}
 }
 .foot a:hover {
 	color: var(--ink);

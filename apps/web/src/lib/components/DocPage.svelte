@@ -63,9 +63,13 @@
 
 	// The rail marks the section you are reading: the last h2 whose top has
 	// passed the reading line, a quarter of the way down the window.
-	// The observer only says when a heading crosses that line; the pass over
-	// the h2s then picks the current one, so a fast scroll that skips a
-	// section still lands on the right link. At the page's end the last
+	// The pass over the h2s picks the current one. It runs on scroll, at
+	// most once a frame: an observer alone stays silent when one jump (a
+	// wheel fling, a scrollbar drag, scrollTo) carries a heading from below
+	// the reading band to above it without landing inside, and the rail
+	// went stale or empty. The observers still call it for what a scroll
+	// does not report: the pager arriving on a resize, a heading moving
+	// when a code block above it reflows. At the page's end the last
 	// section that shows is current, since a short one never reaches the line.
 	let active = $state<string | undefined>();
 	let rail: HTMLElement | undefined = $state();
@@ -92,10 +96,21 @@
 		for (const el of heads) io.observe(el);
 		const bottom = new IntersectionObserver(pick);
 		if (pager) bottom.observe(pager);
+		let frame = 0;
+		const onScroll = () => {
+			if (frame) return;
+			frame = requestAnimationFrame(() => {
+				frame = 0;
+				pick();
+			});
+		};
+		window.addEventListener('scroll', onScroll, { passive: true });
 		pick();
 		return () => {
 			io.disconnect();
 			bottom.disconnect();
+			window.removeEventListener('scroll', onScroll);
+			cancelAnimationFrame(frame);
 		};
 	});
 

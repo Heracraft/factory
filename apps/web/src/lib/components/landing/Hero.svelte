@@ -109,7 +109,11 @@
 	};
 	let geo: Geo | null = $state(null);
 	// The snapshot miniature: the machine's size and the scale it shrinks by.
-	let mini = $state({ w: 360, h: 236, s: 0.26 });
+	// The server-rendered value is what measure() finds at 1280 to 1920
+	// wide (the machine 344 by 296, an 84px miniature), so hydration does
+	// not resize the slot there: a taller slot pushed the globe below it
+	// down, a layout shift at load.
+	let mini = $state({ w: 344, h: 296, s: 84 / 344 });
 
 	function measure() {
 		const box = pic.getBoundingClientRect();
@@ -209,7 +213,6 @@
 			import('animejs')
 				.then(({ createTimeline, utils, stagger }) => {
 					if (dead || my !== gen) return;
-					pic.classList.add('live');
 
 					// Before the run: the machine is empty, nothing is struck, the
 					// agent is itself, no work, no snapshot, no skill anywhere.
@@ -264,7 +267,14 @@
 					}
 
 					function run() {
+						// .live hands the picture from the CSS first paint (the
+						// empty machine) to the inline styles pre() writes, in the
+						// same frame. Set here, not when anime.js arrives: a picture
+						// under the observer's threshold at load (stacked, on a
+						// phone) would otherwise drop the first-paint rule and draw
+						// the restored machine until it scrolled into view.
 						pre();
+						pic.classList.add('live');
 						const wide = window.matchMedia('(min-width: 768px)').matches;
 
 						const box = pic.getBoundingClientRect();
@@ -449,7 +459,11 @@
 								T.reach + 300
 							)
 							.add(q('.skill-in'), { ...dock, duration: 1000, ease: 'inOutCubic' }, T.pull)
-							.add(q('.lines .reach'), { opacity: [1, 0], duration: 300 }, T.pull + 1000)
+							.add(
+								q('.lines .reach'),
+								{ opacity: [1, 0], duration: 300, ease: 'inQuad' },
+								T.pull + 1000
+							)
 							// The agent turns rogue and deletes its own work.
 							.add(q('.mwin .agent .red'), { opacity: [0, 1], duration: 350 }, T.rogue)
 							// A shake: four moves of 120ms.
@@ -488,18 +502,22 @@
 							)
 							// The skill goes for the laptop's private things and stops at the wall.
 							.add(q('.priv .tg'), { opacity: [0, 1], duration: 300, delay: stagger(60) }, T.lunge)
-							.add(q('.skill-in'), { x: 0, y: 0, duration: 700, ease: 'inQuad' }, T.lunge)
-							.add(q('.wallhit'), { opacity: [0, 1], duration: 120 }, T.hit)
+							.add(q('.skill-in'), { x: 0, y: 0, duration: 700, ease: 'inOutCubic' }, T.lunge)
+							.add(q('.wallhit'), { opacity: [0, 1], duration: 200, ease: 'outQuad' }, T.hit)
 							.add(
 								q('.stopper'),
 								{ opacity: [0, 1], scale: [0.6, 1], duration: 300, ease: 'outBack' },
 								T.hit
 							)
 							.add(q('.skill-in'), { ...knock, duration: 380, ease: 'outQuad' }, T.hit)
-							.add(q('.priv .tg'), { opacity: 0, duration: 500 }, T.hit + 700)
+							.add(q('.priv .tg'), { opacity: 0, duration: 500, ease: 'inQuad' }, T.hit + 700)
 							// The newest snapshot comes back over the machine, work included;
 							// the snapshot mark rewinds a full turn as it does.
-							.add(q('.lines .ret'), { strokeDashoffset: [1, 0], duration: 300 }, T.restore)
+							.add(
+								q('.lines .ret'),
+								{ strokeDashoffset: [1, 0], duration: 300, ease: 'outCubic' },
+								T.restore
+							)
 							.add(
 								q('.rail .cam'),
 								{ rotate: '-=360', duration: 1000, ease: 'inOutCubic' },
@@ -507,7 +525,7 @@
 							)
 							.set(q('.back'), { opacity: 1 }, T.restore + 250)
 							.add(q('.back'), { ...cover, duration: 800, ease: 'inOutCubic' }, T.restore + 280)
-							.add(q('.lines .ret'), { opacity: [1, 0], duration: 250 }, T.back)
+							.add(q('.lines .ret'), { opacity: [1, 0], duration: 300, ease: 'inQuad' }, T.back)
 							.call(() => pic.classList.remove('wrecked'), T.back + 100)
 							.set(q('.mwin .strike'), { scaleX: 0 }, T.back + 100)
 							.set(
@@ -1543,7 +1561,7 @@
 			--mode: #ff87af;
 		}
 		.mwin > .win {
-			border-color: var(--color-zinc-400);
+			border-color: var(--pic-dim);
 		}
 	}
 </style>

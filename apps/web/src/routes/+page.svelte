@@ -74,6 +74,10 @@
 		}
 	}
 
+	/** A command cut after each single "/" (not inside "//"), so a <wbr>
+	    there lets a wrapped command break between path parts. */
+	const breakable = (command: string) => command.split(/(?<=[^/]\/)(?!\/)/);
+
 	// `what` finishes each Copy button's name for a screen reader ("Copy
 	// the sign-in command"), so the three buttons are not three "Copy"s.
 	// The checkout in the last one is named after its laptop folder (I-368),
@@ -105,7 +109,7 @@
 			name: 'Solo',
 			price: '$29',
 			memory: 8,
-			agents: 'One agent at work',
+			agents: 'One agent at a time',
 			disk: '100 GB',
 			egress: '250 GB'
 		},
@@ -174,12 +178,15 @@
 
 <!-- A command row with its Copy button: the hero's install command and
      each step's. Below md the command wraps instead of being cut off, so
-     the whole of it can be read at 320px (WCAG 1.4.10). The button's name
+     the whole of it can be read at 320px (WCAG 1.4.10), at a space or
+     after a path's slash (breakable), not inside a filename. The button's name
      is its visible word and what it copies; the result is said in the
      page's one status region below. -->
 {#snippet cmdRow(command: string, what: string, prompt: boolean)}
 	<div class="cmd">
-		<span class="text">{prompt ? '$ ' : ''}{command}</span>
+		<span class="text"
+			>{prompt ? '$ ' : ''}{#each breakable(command) as part, i (i)}{part}<wbr />{/each}</span
+		>
 		<button type="button" class="copy" onclick={() => copyCommand(command, what)}>
 			{@render copyIcon()}
 			{copied === command ? 'Copied' : 'Copy'}<span class="sr-only">{` ${what}`}</span>
@@ -247,14 +254,19 @@
 				<li class="cell">
 					<ComesBack />
 					<h3>{@render cellMark('pinwheel')}Let it break the whole machine</h3>
-					<p>Databases, tools, logins, uncommitted work. Back in minutes.</p>
+					<!-- The line breaks between the two sentences (.whole): at 1440 it
+					     broke as "Back / in minutes." -->
+					<p class="whole">
+						Databases, tools, logins, uncommitted work. <span>Back in minutes.</span>
+					</p>
 				</li>
 				<li class="cell">
 					<Localhost />
 					<h3>{@render cellMark('halves')}Your dev server on your localhost</h3>
 					<p>
-						Ports the machine listens on open on your laptop's localhost while you're attached, so
-						cookies and OAuth redirects work.
+						A server that starts on the machine is on your laptop's localhost within a second, while <code
+							>repose run</code
+						> is open.
 					</p>
 				</li>
 				<li class="cell">
@@ -315,7 +327,7 @@
 							>
 						</div>
 						<p class="tier-spec">
-							<span>{t.memory} GB memory at once</span> · <span>{t.disk} disk</span> ·
+							<span>{t.memory} GB of memory at once</span> · <span>{t.disk} disk</span> ·
 							<span>{t.egress} egress</span>
 						</p>
 						<p class="tier-price">

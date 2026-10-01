@@ -140,11 +140,7 @@ Frames of it for reference: record them from the live page before starting.
 
 The owner chose the animated version (anime.js): the laptop's commits and
 changed files copy across into the cloud machine panel when `repose run`
-fires; `node_modules/` stays behind, struck. Keep it animated. The
-machine shows no `node_modules/`, since sync leaves it behind
-(`content/docs/sync.md`), and the chip reads "Ready in 14s", the docs
-quickstart's figure (I-367, I-398). On a phone, where
-the panels stack, the copies travel only through the gap between them.
+fires; `node_modules/` stays behind, struck. Keep it animated.
 
 ## Copy
 
@@ -175,9 +171,6 @@ the panels stack, the copies travel only through the gap between them.
   deleted source files; a snapshot is the whole disk (the root overlay's
   writable layer and /home, DESIGN.md §6): databases and Docker volumes,
   installed tools and PATH, logins made on the machine, uncommitted work.
-  Not the Claude Code login: it lives on the user's login share, which a
-  snapshot does not hold (I-278), so the snapshot card's logins row is gh
-  and Codex (I-398).
   Show damage git can't undo, and the machine back in minutes (a restore
   took about two minutes in real runs; never claim "a minute"). The hero's
   wreck and the snapshot card tell this same story.
@@ -270,20 +263,6 @@ and underlined every heading. The page is one system:
   mascot and pink bypass line (above, "The hero"), a terminal's ANSI
   colours, an editor's theme. Those stay inside the picture's frame
   (DESIGN-LANGUAGE.md, "Palette"; DECISIONS I-392).
-- **The drawn pictures have one palette too**, beside the shapes' `--sh-*`
-  in `layout.css` (I-397). The pictures the page draws for itself (the
-  hero, "Your working state", "Break it and roll it back", and the rows,
-  chips and wires around the captures) take their lines, text and marks
-  from six `--pic-*` tokens, and none picks its own step:
-  `--pic-accent` (blue-600, blue-400 in the dark) for what moves and the
-  chips; `--pic-ink` (zinc-800, zinc-200) for a row's name;
-  `--pic-dim` (zinc-500, zinc-400) for a line or an icon at rest;
-  `--pic-faint`, which is `--ink-faint` itself, for the muted rows "Less
-  is more" asks for; `--pic-stop` (red-600, red-400) for what is blocked
-  or deleted; `--pic-add` (emerald-600, emerald-400) for a line count
-  added. The last two are a diff stat's own red and green, the only hues
-  besides the blue a drawn picture uses. The captures keep their tool's
-  colours and do not use these.
 - **Mostly grey, a spot of colour, even weight.** Each shape has one
   main tone (`tone`: neutral or accent; Shape.svelte); a group carries a
   spot of blue and the rest grey, as the pictures are mostly grey with a
@@ -318,6 +297,51 @@ and underlined every heading. The page is one system:
   logo's big square is `--sh-accent`, and the logo is in every header
   (I-363, I-381, I-393).
 
+## Since the owner's notes (implementation, awaiting the owner)
+
+Changes made in the 2026-10-01 repair round on top of the owner's
+sections above, recorded here and not in them, since the owner has not
+reviewed them yet (STATUS.md). Each holds until the owner says otherwise.
+
+- **"Your working state", the figures** (I-398). The machine shows no
+  `node_modules/`, since sync leaves dependency directories behind
+  (`content/docs/sync.md`), and the chip reads "Ready in 14s", the docs
+  quickstart's figure: since I-367 `repose run` syncs only into a new
+  machine, so the captured "Ready in 0.6s" of a re-sync no longer happens.
+  On a phone, where the panels stack, the copies travel only through the
+  gap between them.
+- **The snapshot card's logins** (I-398). The Claude Code login lives on
+  the user's login share, which a snapshot does not hold (I-278), so the
+  card's logins row is gh and Codex.
+- **The drawn pictures have one palette**, beside the shapes' `--sh-*` in
+  `layout.css` (I-397). The pictures the page draws for itself (the hero,
+  "Your working state", "Break it and roll it back", and the rows, chips
+  and wires around the captures) take their lines, text and marks from
+  six `--pic-*` tokens, and none picks its own step: `--pic-accent`
+  (blue-600, blue-400 in the dark) for what moves and the chips;
+  `--pic-ink` (zinc-800, zinc-200) for a row's name; `--pic-dim`
+  (zinc-500, zinc-400) for a line, an icon or a letter at rest;
+  `--pic-faint`, which is `--ink-faint` itself, for the muted rows "Less
+  is more" asks for; `--pic-stop` (red-600, red-400) for what is blocked
+  or deleted; `--pic-add` (emerald-600, emerald-400) for a line count
+  added or a new file. The last two are a diff stat's own red and green,
+  the hues a drawn picture uses besides the blue; amber, a source
+  control panel's colour for a changed file, is not one of them
+  (OneCommand's `M` is `--pic-dim`). Text beside a picture, like
+  OneCommand's "Ready in 14s", is the Foundation's `--ink-muted`. A mark
+  laid over a capture follows the capture's ground, not the page's
+  scheme: the Browser picture's ring, on the white page, is blue-600 in
+  both schemes (`--chip`), and the bar on its dark log is blue-400
+  (`--on-log`). The green running dot in the drawn title bars
+  (emerald-500) is the one hue still open, waiting on the owner
+  (STATUS.md). The captures keep their tool's colours and do not use
+  these.
+- **The drawn pictures' rows are 12px to 12.5px mono** (I-399): a file
+  name, a diff stat, a time, a git letter, as "Your working state" drew
+  them when the owner chose it, and 11px on a phone. They are a
+  picture's labels, drawn at the picture's scale; the Foundation's 13px
+  mono rule is for the page's own text, and the 11px floor holds.
+
 ## Motion
 
 Everything that moves on the landing. Each runs only under
@@ -334,10 +358,13 @@ scripts on and motion allowed, the first paint is the empty machine the
 loop starts from, drawn in CSS under `html.js` (set by `app.html`'s one
 inline script), so the wreck never flashes before the story (I-398).
 
-The pictures move only by `translate`, `scale`, `opacity`, `clip-path`
-and colour: nothing they animate changes layout, so a loop adds no layout
-shift (the Browser picture's ring is four edges scaled to size, and the
-snapshot tile folds by a clip, its box keeping its height).
+The pictures move only by `translate`, `scale`, `opacity`, `clip-path`,
+colour and a wire's `stroke-dashoffset` (the hero's connectors draw
+along their length): nothing they animate changes layout, so a loop adds
+no layout shift (the Browser picture's ring is four edges scaled to size,
+and the snapshot tile folds by a clip, its box keeping its height). The
+hero's snapshot slot is server-rendered at the size the script measures
+at 1280 to 1920 wide, so hydration does not resize it either (I-399).
 
 - **The chrome, once on load**: the rails draw from the top down (1.1s,
   `--land-ease`, `cubic-bezier(0.65, 0, 0.35, 1)`); the ticks fade in
@@ -361,8 +388,8 @@ snapshot tile folds by a clip, its box keeping its height).
     300ms `outQuad` fade. A row that drops in as it appears (the hero's
     work rows) takes 320ms `outCubic`, opacity with a 6px drop.
   - *Strikes and wires drawing*: 260ms to 380ms, `outCubic`.
-  - *Exits* (a loop's last frame fading before the rest): 300ms to 700ms,
-    `inQuad`.
+  - *Exits* (a loop's last frame fading before the rest, a wire or a
+    mark going once its part is played): 300ms to 700ms, `inQuad`.
   - *Arrivals* (a chip, a cross, a tick landing): 250ms to 380ms,
     `outBack`, the one overshoot.
   - *The agent's bob* in the hero, while it works: two 2px lifts in
@@ -378,6 +405,12 @@ snapshot tile folds by a clip, its box keeping its height).
     transition in CSS, to `--pic-faint`.
   - *The snapshot mark* is above: a quarter turn in 420ms `outQuad`, a
     full turn back in 1s `inOutCubic`.
+  - *The shutter* in the hero, as a snapshot is taken: an accent wash
+    over the machine rises to 0.9 and clears in 460ms, `outQuad`.
+  - *The knock* in the hero: the malicious skill bounces 7px back off the
+    wall and returns, 380ms `outQuad`, as the stop cross lands.
+  - *The pointer's press* in the Browser picture: it scales to 0.86 and
+    back in 220ms, `outQuad`, as your click lands.
 
 Nothing else moves. A new motion is added to this list with its duration
 and easing, or it does not ship.
@@ -456,7 +489,8 @@ by `+page.svelte` alone; the house tokens stay in `layout.css`):
   `clamp(1rem, 1.3vw, 1.125rem)`; a command row (`.cmd`) `--text-compact`
   mono; a size's name 2.25rem serif 700 uppercase and its price 2.75rem
   serif 700; labels 11px JetBrains Mono, 0.12em tracking, uppercase (the
-  price's "a month"). A captured picture draws at the scale that fits the
+  price's "a month"); a drawn picture's rows 12px to 12.5px mono, 11px on
+  a phone (I-399). A captured picture draws at the scale that fits the
   capture in its frame, under the 11px floor where it must (the Editor's
   screen at 8.4px on a phone), as it keeps its tool's colours
   (`DESIGN-LANGUAGE.md`, "Type", I-397). Text takes the

@@ -100,4 +100,14 @@ test('the docs columns hold still between pages, and the rail marks the section'
 	await expect(rail.locator('[aria-current="true"]')).toHaveText('What repose stores');
 	await page.evaluate(() => scrollTo(0, 0));
 	await expect(rail.locator('[aria-current="true"]')).toHaveText('Store an API key');
+
+	// One jump that carries a heading from below the reading band to above
+	// it, never inside (a wheel fling, a scrollbar drag): the observer alone
+	// left the rail empty here.
+	await page.goto('/docs/cli');
+	await page.evaluate(() => {
+		const h = document.getElementById('projects')!;
+		scrollTo({ top: h.getBoundingClientRect().top + scrollY + 500, behavior: 'instant' });
+	});
+	await expect(rail.locator('[aria-current="true"]')).toHaveText('Projects');
 });

@@ -53,13 +53,21 @@ const OUT_DIR = path.resolve(import.meta.dirname, '../test-results/lighthouse');
 
 /**
  * Binary audits allowed to fail, by Lighthouse audit id, each with the pages
- * it may fail on (paths as in PAGES, or '*') and why it is tolerated. An
- * entry is a debt with a reason, never a way to quiet a run: delete it when
- * the fix lands. Empty means every binary audit must pass everywhere.
+ * it may fail on (paths as in PAGES, or '*'), the widths it may fail at
+ * (all when absent) and why it is tolerated. An entry is a debt with a
+ * reason, never a way to quiet a run: delete it when the fix lands. Empty
+ * means every binary audit must pass everywhere.
  */
-const KNOWN_FAILURES: Record<string, { pages: string[]; reason: string }> = {
+const KNOWN_FAILURES: Record<
+	string,
+	{ pages: string[]; widths?: (keyof typeof WIDTHS)[]; reason: string }
+> = {
 	'color-contrast': {
 		pages: ['/'],
+		// At 1440 the capture draws large enough to pass (100 in both
+		// schemes); only the phone's 8.4px scale fails, so the desktop run
+		// is held to the full rule.
+		widths: ['mobile'],
 		reason:
 			'The line numbers (span.ln) in the Editor picture, a capture of LazyVim in its ' +
 			"Tokyo Night theme, are that theme's own grey and under 4.5:1 on its ground. " +
@@ -257,7 +265,7 @@ test.beforeAll(async () => {
 });
 
 /** Fails the test on a bounce, a low score or a binary audit KNOWN_FAILURES does not name. */
-function judge(target: Target, pathname: string, result: Result): void {
+function judge(target: Target, pathname: string, width: keyof typeof WIDTHS, result: Result): void {
 	// A bounce to the landing page (signed out) would otherwise be scored as
 	// if it were this page.
 	expect(new URL(result.finalUrl).pathname, 'the page Lighthouse audited').toBe(pathname);
@@ -265,7 +273,8 @@ function judge(target: Target, pathname: string, result: Result): void {
 
 	const unexpected = result.failed.filter((f) => {
 		const known = KNOWN_FAILURES[f.id];
-		return !known || !(known.pages.includes('*') || known.pages.includes(target.name));
+		if (!known || !(known.widths ?? [width]).includes(width)) return true;
+		return !(known.pages.includes('*') || known.pages.includes(target.name));
 	});
 	expect(
 		unexpected.map((f) => f.line),
@@ -343,7 +352,7 @@ for (const target of PAGES) {
 					console.log(`${target.name} ${scheme} ${width}: ${result.score}`);
 					// One tab, so one reading: [true] (a probe run printed exactly that).
 					expect(seen, 'reduced motion in the tab Lighthouse audited').toEqual([true]);
-					judge(target, pathname, result);
+					judge(target, pathname, width, result);
 				} finally {
 					await context.close();
 					fs.rmSync(dir, { recursive: true, force: true });
@@ -366,7 +375,7 @@ for (const target of PAGES) {
 					width
 				);
 				console.log(`${target.name} ${scheme} ${width}: ${result.score}`);
-				judge(target, pathname, result);
+				judge(target, pathname, width, result);
 			} finally {
 				await target.teardown?.();
 			}

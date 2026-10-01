@@ -19,12 +19,14 @@ test('the pricing section shows the three plans and the seats left', async ({ pa
 	await expect(pricing.getByText('$59')).toBeVisible();
 	await expect(pricing.getByText('$99')).toBeVisible();
 	await expect(
-		pricing.getByText('8 GB memory at once · 100 GB disk · 250 GB egress')
+		pricing.getByText('8 GB of memory at once · 100 GB disk · 250 GB egress')
 	).toBeVisible();
 	await expect(
-		pricing.getByText('16 GB memory at once · 250 GB disk · 500 GB egress')
+		pricing.getByText('16 GB of memory at once · 250 GB disk · 500 GB egress')
 	).toBeVisible();
-	await expect(pricing.getByText('32 GB memory at once · 500 GB disk · 1 TB egress')).toBeVisible();
+	await expect(
+		pricing.getByText('32 GB of memory at once · 500 GB disk · 1 TB egress')
+	).toBeVisible();
 	await expect(pricing.getByText('per hour')).toHaveCount(0);
 	await expect(page.getByTestId('seats-line')).toHaveText('18 seats left');
 	await expect(pricing.getByRole('button', { name: 'Start a free week' })).toBeVisible();

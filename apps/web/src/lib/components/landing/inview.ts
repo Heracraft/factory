@@ -1,15 +1,4 @@
-import { readable, type Readable } from 'svelte/store';
-
 const QUERY = '(prefers-reduced-motion: reduce)';
-
-/**
- * Whether the visitor asks for less motion right now; false during SSR.
- * It reads the setting on each call, so a picture that calls it once at
- * mount misses a change made while the page is open: use
- * watchReducedMotion or reducedMotionStore to follow the setting.
- */
-export const reducedMotion = (): boolean =>
-	typeof window !== 'undefined' && window.matchMedia(QUERY).matches;
 
 /**
  * Calls onChange with the setting at once and again each time the visitor
@@ -25,11 +14,6 @@ export function watchReducedMotion(onChange: (reduce: boolean) => void): () => v
 	mq.addEventListener('change', listener);
 	return () => mq.removeEventListener('change', listener);
 }
-
-/** The same setting as a store, for markup: $reducedMotionStore. */
-export const reducedMotionStore: Readable<boolean> = readable(false, (set) =>
-	watchReducedMotion(set)
-);
 
 /**
  * Marks a group of shapes as landed (data-land="in") the first time it

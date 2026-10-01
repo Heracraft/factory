@@ -600,11 +600,15 @@
 		font-size: 12px;
 		font-weight: 600;
 	}
+	/* The git letters take the picture palette (LANDING.md, "The drawn
+	   pictures have one palette too"): a new file is a line count's green,
+	   a changed one the grey of a line at rest. Amber, a source control
+	   panel's own colour for M, is not the landing's to use. */
 	.st-M {
-		color: var(--color-amber-600);
+		color: var(--pic-dim);
 	}
 	.st-U {
-		color: var(--color-emerald-600);
+		color: var(--pic-add);
 	}
 	.ign .fname {
 		color: var(--pic-dim);
@@ -682,7 +686,7 @@
 		position: absolute;
 		font-family: var(--font-mono);
 		font-size: 12px;
-		color: var(--color-zinc-600);
+		color: var(--ink-muted);
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
@@ -773,17 +777,6 @@
 		.st,
 		.ready {
 			font-size: 11px;
-		}
-	}
-	@media (prefers-color-scheme: dark) {
-		.st-M {
-			color: var(--color-amber-400);
-		}
-		.st-U {
-			color: var(--color-emerald-400);
-		}
-		.ready {
-			color: var(--color-zinc-400);
 		}
 	}
 </style>
