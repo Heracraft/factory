@@ -308,7 +308,9 @@ reviewed them yet (STATUS.md). Each holds until the owner says otherwise.
   (`content/docs/sync.md`), and the chip reads "Ready in 14s", the docs
   quickstart's figure: since I-367 `repose run` syncs only into a new
   machine, so the captured "Ready in 0.6s" of a re-sync no longer happens.
-  On a phone, where the panels stack, the copies travel only through the
+  The picture is that first run: the machine starts with no commit, and
+  every commit travels into it, master's `7ea43a8` with the branch's two
+  (I-400). On a phone, where the panels stack, the copies travel only through the
   gap between them.
 - **The snapshot card's logins** (I-398). The Claude Code login lives on
   the user's login share, which a snapshot does not hold (I-278), so the
@@ -324,7 +326,9 @@ reviewed them yet (STATUS.md). Each holds until the owner says otherwise.
   `--pic-faint`, which is `--ink-faint` itself, for the muted rows "Less
   is more" asks for; `--pic-stop` (red-600, red-400) for what is blocked
   or deleted; `--pic-add` (emerald-600, emerald-400) for a line count
-  added or a new file. The last two are a diff stat's own red and green,
+  added or a new file, and nothing else: a row "Break it and roll it
+  back" restores takes the accent's tint and tick, not green (I-400).
+  The last two are a diff stat's own red and green,
   the hues a drawn picture uses besides the blue; amber, a source
   control panel's colour for a changed file, is not one of them
   (OneCommand's `M` is `--pic-dim`). Text beside a picture, like
@@ -332,15 +336,45 @@ reviewed them yet (STATUS.md). Each holds until the owner says otherwise.
   laid over a capture follows the capture's ground, not the page's
   scheme: the Browser picture's ring, on the white page, is blue-600 in
   both schemes (`--chip`), and the bar on its dark log is blue-400
-  (`--on-log`). The green running dot in the drawn title bars
-  (emerald-500) is the one hue still open, waiting on the owner
-  (STATUS.md). The captures keep their tool's colours and do not use
-  these.
+  (`--on-log`). The green running dot in the drawn title bars and
+  beside OneCommand's "Ready" (emerald-500) is the one hue still open,
+  waiting on the owner (STATUS.md). The captures keep their tool's
+  colours and do not use these.
 - **The drawn pictures' rows are 12px to 12.5px mono** (I-399): a file
   name, a diff stat, a time, a git letter, as "Your working state" drew
   them when the owner chose it, and 11px on a phone. They are a
   picture's labels, drawn at the picture's scale; the Foundation's 13px
   mono rule is for the page's own text, and the 11px floor holds.
+- **The sphere is flat** (I-398), like every other shape: the noise and
+  radial-gradient texture it had is gone. The footer's sphere carries the
+  hero globe's meridians in paper (`meridians` on `Shape.svelte`), so the
+  two are one drawing, as "Shape language" describes the hero's.
+- **The grid cards' lines** (I-397) say what the product does, in the
+  docs' terms: Localhost's is "A server that starts on the machine is on
+  your laptop's localhost within a second, while `repose run` is open"
+  (it was "Every port the machine listens on, on your laptop. Cookies and
+  OAuth redirects included."), and Browser's is "`repose browser` shows
+  the agent's Chromium on your laptop; click in it to take over" (it was
+  "puts you in the same window. Take over any time."). "Back in minutes"
+  is kept whole on one line.
+- **Every step's command has a Copy button** (I-398), as the install
+  command beside the hero's button does. "Copy" says a step is its title
+  and its command; the button is the command row's, not a third part.
+- **Ready drops the first line of each two-line prompt** (I-398), as
+  whole rows, so the capture does not show the machine's old name
+  (`recruiting`); nothing is retyped. On a phone Ready's rows crop on the
+  right instead of re-flowing, as a terminal would, and the hint's last
+  words ("install it on this machine", "keep it on every rebuild") are
+  cut: open for the owner (STATUS.md).
+- **The pricing caption counts agents** (I-397): "One agent at a time",
+  "Two agents at once", "Four agents at once", from PRICING.md's 8 GB per
+  agent, in place of the size classes ("one large, or two small"), which
+  a visitor has not met yet.
+- **The hero's laptop panel hugs its rows** (I-398): from 768 wide it
+  ends under its last row (y=748 at 1440) instead of stretching to the
+  machine's height (y=867). Before, both panels ended at y=870.
+- **The hero's lead keeps each sentence whole** (I-400): the line
+  breaks between sentences, never after a sentence's first word.
 
 ## Motion
 
@@ -356,7 +390,12 @@ wall where the skill was turned back; the skill chip itself is not in it,
 since inside a restored machine it would read as still infected. With
 scripts on and motion allowed, the first paint is the empty machine the
 loop starts from, drawn in CSS under `html.js` (set by `app.html`'s one
-inline script), so the wreck never flashes before the story (I-398).
+inline script), so the wreck never flashes before the story (I-398). If
+the app's script never mounts the picture (a bundle that fails to load
+or throws), the still frame replaces the empty machine after 4s, a cut
+with no motion (I-400). The connectors, the newest snapshot's arrow back
+into the machine among them, are measured by the script, so the no-JS
+frame has none.
 
 The pictures move only by `translate`, `scale`, `opacity`, `clip-path`,
 colour and a wire's `stroke-dashoffset` (the hero's connectors draw
@@ -389,7 +428,12 @@ at 1280 to 1920 wide, so hydration does not resize it either (I-399).
     work rows) takes 320ms `outCubic`, opacity with a 6px drop.
   - *Strikes and wires drawing*: 260ms to 380ms, `outCubic`.
   - *Exits* (a loop's last frame fading before the rest, a wire or a
-    mark going once its part is played): 300ms to 700ms, `inQuad`.
+    mark going once its part is played): 300ms to 700ms, `inQuad`. Every
+    fade to 0 in the pictures names `inQuad` (I-400).
+  - *Dimming to rest*: the Browser picture's older log rows fall to 0.7
+    as a newer call lands, 400ms or 500ms, `outQuad`.
+  - *A file being written* in the hero: the row's light rises and falls
+    once in 1s, `inOutCubic`, as its diff stat pops in.
   - *Arrivals* (a chip, a cross, a tick landing): 250ms to 380ms,
     `outBack`, the one overshoot.
   - *The agent's bob* in the hero, while it works: two 2px lifts in
@@ -411,6 +455,16 @@ at 1280 to 1920 wide, so hydration does not resize it either (I-399).
     wall and returns, 380ms `outQuad`, as the stop cross lands.
   - *The pointer's press* in the Browser picture: it scales to 0.86 and
     back in 220ms, `outQuad`, as your click lands.
+  - *Colour as a class changes* (CSS transitions, the CSS `ease` unless
+    named): the `repose run` chip filling as it fires, 180ms (Hero,
+    OneCommand, Localhost, Browser); the Localhost address bar's edge
+    turning blue as the URL is typed, 180ms; the Browser log's bar on the
+    acting call, 300ms opacity; in "Break it and roll it back", the
+    machine's and a tile's edge turning blue (300ms), a row's tint (250ms),
+    a value's colour (250ms), git's mark and the snapshot mark (200ms) and
+    the older tile's time greying (400ms).
+  - *Hover and press* on the page's links and buttons: the Foundation's
+    150ms colour change (`DESIGN-LANGUAGE.md`, "Motion").
 
 Nothing else moves. A new motion is added to this list with its duration
 and easing, or it does not ship.
@@ -485,7 +539,7 @@ by `+page.svelte` alone; the house tokens stay in `layout.css`):
   Eight cells in one row at every width, a phone included.
 - **Type.** Display `clamp(2.75rem, 6.6vw, 5.25rem)`; section titles
   `clamp(1.9rem, 3.4vw, 2.5rem)`; cell and step titles 1.125rem serif
-  600; a cell's sentence 1rem and a step's 0.9375rem; lead
+  600; a cell's sentence 1rem (a step has none, "Copy"); lead
   `clamp(1rem, 1.3vw, 1.125rem)`; a command row (`.cmd`) `--text-compact`
   mono; a size's name 2.25rem serif 700 uppercase and its price 2.75rem
   serif 700; labels 11px JetBrains Mono, 0.12em tracking, uppercase (the

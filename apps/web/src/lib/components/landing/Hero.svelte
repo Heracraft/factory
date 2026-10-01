@@ -45,11 +45,15 @@
   frame shows how the story ends (docs/LANDING.md, "Motion": the final
   state): the repo on both sides, the edits back with their counts, the
   database at 3,532 rows and node v24.20.0, the agent orange, two
-  snapshots stacked with the newest lit and its arrow back into the
-  machine, and the skill stopped at the machine's wall as the cross,
-  with the laptop's private rows untouched. With motion allowed, the first
+  snapshots stacked with the newest lit, and the skill stopped at the
+  machine's wall as the cross, with the laptop's private rows untouched.
+  The connectors, the newest snapshot's arrow back into the machine among
+  them, are drawn from measure() once the script has mounted, so the
+  server-rendered and no-JS frame has none. With motion allowed, the first
   paint is already the start of the story (the empty machine, drawn in
   CSS under html.js), so the restored frame never flashes before the loop.
+  If the app's script never mounts the picture (the bundle failed to load
+  or threw), that empty machine gives way to the still frame after 4s.
   Playback pauses off screen, and stops on the still frame if the visitor
   asks for less motion while the page is open.
 -->
@@ -161,6 +165,9 @@
 		'.lines path, .rail .cam';
 
 	onMount(() => {
+		// The script has mounted the picture: the CSS fallback that shows
+		// the still frame when it never does is cancelled.
+		pic.classList.add('mounted');
 		measure();
 		let dead = false;
 		let visible = false;
@@ -492,7 +499,7 @@
 							)
 							.add(
 								q('.mwin .sys .ok'),
-								{ opacity: [1, 0], duration: 200, delay: stagger(160) },
+								{ opacity: [1, 0], duration: 300, delay: stagger(160), ease: 'inQuad' },
 								T.strike + 420
 							)
 							.add(
@@ -1350,9 +1357,12 @@
 		stroke-dasharray: 1;
 		stroke-dashoffset: 0;
 	}
+	/* The agent's reach out to the internet is a drawn wire, so it takes
+	   the picture palette's red for what is blocked (--pic-stop); --rogue
+	   is the mascot's own red and colours the mascot alone. */
 	.lines .reach {
 		opacity: 0;
-		stroke: var(--rogue);
+		stroke: var(--pic-stop);
 	}
 	.lines .ret {
 		stroke: var(--pic-accent);
@@ -1403,6 +1413,33 @@
 		:global(html.js) .hero-pic:not(.live):not(.still) .stopper,
 		:global(html.js) .hero-pic:not(.live):not(.still) .lines path {
 			opacity: 0;
+		}
+		/* The empty machine is only a promise that the loop is coming. If
+		   the app's script never mounts the picture (.mounted, set first
+		   thing in onMount), the bundle failed to load or threw, and after
+		   4s the still frame shows, as it does with scripts off. Animations
+		   win over the opacity above; the fill holds until a class change
+		   drops the rule. A mount later than 4s draws the still frame
+		   and then the empty machine again, which beats a blank one. */
+		:global(html.js) .hero-pic:not(.live):not(.still):not(.mounted) .m-in,
+		:global(html.js) .hero-pic:not(.live):not(.still):not(.mounted) .m-kid,
+		:global(html.js) .hero-pic:not(.live):not(.still):not(.mounted) .m-sys,
+		:global(html.js) .hero-pic:not(.live):not(.still):not(.mounted) .m-late,
+		:global(html.js) .hero-pic:not(.live):not(.still):not(.mounted) .mwin .kid.nu,
+		:global(html.js) .hero-pic:not(.live):not(.still):not(.mounted) .mwin .crew,
+		:global(html.js) .hero-pic:not(.live):not(.still):not(.mounted) .mwin .mode,
+		:global(html.js) .hero-pic:not(.live):not(.still):not(.mounted) .thumb,
+		:global(html.js) .hero-pic:not(.live):not(.still):not(.mounted) .older,
+		:global(html.js) .hero-pic:not(.live):not(.still):not(.mounted) .t-time,
+		:global(html.js) .hero-pic:not(.live):not(.still):not(.mounted) .wallhit,
+		:global(html.js) .hero-pic:not(.live):not(.still):not(.mounted) .stopper,
+		:global(html.js) .hero-pic:not(.live):not(.still):not(.mounted) .lines path {
+			animation: hero-unhold 0s linear 4s forwards;
+		}
+		@keyframes hero-unhold {
+			to {
+				opacity: 1;
+			}
 		}
 	}
 

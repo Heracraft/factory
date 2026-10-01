@@ -244,12 +244,17 @@
 		background-size: 0% 0.12em;
 	}
 }
+/* Three sentences, each kept whole, so a line breaks between sentences
+   and never ends on the next one's first word: balance alone left a lone
+   "A", then a lone "The", at the end of line 1. Balanced, the three break
+   as one, then two at 1440, and one to a line on a phone. */
 .hero-grid .lead {
 	max-width: 34rem;
-	/* Balanced, not pretty: pretty only lengthens a short last line, and
-	   at 1440 the lead still ended its first line on a lone "A". */
 	text-wrap: balance;
 	margin-top: 1.75rem;
+}
+.hero-grid .lead > span {
+	white-space: nowrap;
 }
 .hero-ctas {
 	display: flex;
@@ -432,17 +437,6 @@
 	height: 1.5rem;
 	flex: none;
 }
-.step p {
-	margin-top: 0.25rem;
-	padding-left: 2.25rem;
-	font-size: 0.9375rem;
-	color: var(--ink-muted);
-}
-@media (max-width: 767px) {
-	.step p {
-		padding-left: 0;
-	}
-}
 .step .cmd {
 	padding: 0.625rem 0.875rem;
 }
@@ -509,7 +503,9 @@
 	font-size: 0.875rem;
 	color: var(--ink-muted);
 }
-/* A fact stays on one line; the line breaks between facts, at a dot. */
+/* A fact stays on one line with the dot after it, so the line breaks
+   after a dot and never starts with one: at 1440 the bare dots between
+   spans fell to the head of line 2 on two cards and not the third. */
 .tier-spec span {
 	white-space: nowrap;
 }

@@ -111,3 +111,19 @@ test('the docs columns hold still between pages, and the rail marks the section'
 	});
 	await expect(rail.locator('[aria-current="true"]')).toHaveText('Projects');
 });
+
+// On a phone the drawer opens scrolled the least that shows the current
+// page's link, with the search held at its top: a link near the end of the
+// list once put itself a third of the way down and scrolled the search away
+// (/docs/cli at 390, I-400).
+test("the phone drawer shows the search and the current page's link", async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto('/docs/cli');
+	await page.getByRole('button', { name: 'Open the docs menu' }).click();
+	const drawer = page.getByRole('complementary', { name: 'Docs menu' });
+	await expect(drawer.getByRole('link', { name: 'CLI reference' })).toBeInViewport({ ratio: 1 });
+	const search = drawer.getByLabel('Search the docs');
+	await expect(search).toBeInViewport({ ratio: 1 });
+	// The search is not under the header, which ends at 57px.
+	expect((await search.boundingBox())!.y).toBeGreaterThanOrEqual(57);
+});

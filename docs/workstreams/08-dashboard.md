@@ -360,9 +360,9 @@ suites back most of it: `apps/web/tests/` against `internal/fakes/api`
       and `/projects/[id]/config` score **100** in all four runs each, with
       no failed binary audit; the config runs first had to find the Menu
       tab (I-388) and then an unnamed CodeMirror textbox, both fixed
-      (I-391). The one tolerated failure is colour contrast on `/` at 390
-      (score 96), named in `KNOWN_FAILURES` until the landing-critique
-      branch lands. The audit runs in CI with its reports uploaded, because
+      (I-391). The one tolerated failure was colour contrast on `/` at 390
+      (score 96), named in `KNOWN_FAILURES`; the Editor capture's rows
+      are inert since I-400, and the list is empty. The audit runs in CI with its reports uploaded, because
       a score checked once by hand drifts.
 - [x] `features/config.md`, `features/secrets.md`, `features/snapshots.md`
       match what the pages do. Evidence: re-read; and two *other* feature

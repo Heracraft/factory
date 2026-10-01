@@ -2,19 +2,20 @@
   One command, your working state. Two source-control panels, drawn (no
   vendor's chrome), listing real data from 2026-09-25: the laptop checkout
   of the owner's job-alerts app (git -C .../landing/recruiting log/status)
-  and its machine after `repose run --no-attach`, whose real output was
-  "Synced: 2 modified, 1 untracked, 1 env file (2 new commits)". On the
-  machine the edits sit under Changes exactly as on the laptop: the sync
-  sends staged and unstaged work as two patches and keeps the split (I-258,
-  internal/cli/sync.go); the untracked test file stays untracked.
+  and the machine `repose run` creates for it. Since I-367 run syncs only
+  into a machine with no commit yet, so the picture is that first run: the
+  machine starts empty and every commit travels, master's 7ea43a8 with the
+  branch's two, and the chip reads the quickstart's "Ready in 14s" (docs
+  index.md), the time of a run that creates the machine (I-397, I-400). On
+  the machine the edits sit under Changes exactly as on the laptop: the
+  sync sends staged and unstaged work as two patches and keeps the split
+  (I-258, internal/cli/sync.go); the untracked test file stays untracked.
   Dependency directories never travel (docs sync.md "What doesn't"), so the
   laptop's node_modules/ is struck and stays behind, and the machine shows
-  none: the run gives it no node_modules of its own. Since I-367 run syncs
-  only into a new machine, so the chip reads the quickstart's "Ready in 14s"
-  (docs index.md), the time of a run that creates the machine (I-397).
+  none: the run gives it no node_modules of its own.
 
   `animated` (set by routes/+page.svelte) plays the sync with anime.js: the
-  laptop's new commits and changed files lift off and travel into the
+  laptop's commits and changed files lift off and travel into the
   machine's panel, staggered, then it rests on the synced state. Without
   it, or under prefers-reduced-motion, the synced state is shown still; a
   visitor who turns reduced motion on mid-loop gets the still frame at
@@ -96,7 +97,7 @@
 			import('animejs').then(({ createTimeline, utils, stagger }) => {
 				if (dead || me !== run) return;
 
-				// Before the sync: the machine has no branch work yet, the
+				// Before the sync: the machine has no commit yet, the
 				// laptop's node_modules is not yet marked, nothing is ready.
 				function pre() {
 					utils.set([...arrivals(), ...later()], { opacity: 0 });
@@ -197,7 +198,7 @@
 							landed + 7700
 						)
 						.add(q('.l-stop .strike'), { scaleX: 0, duration: 300, ease: 'inQuad' }, landed + 7750)
-						.add(q('.l-stop .stop'), { opacity: 0, duration: 250 }, landed + 7750)
+						.add(q('.l-stop .stop'), { opacity: 0, duration: 300, ease: 'inQuad' }, landed + 7750)
 						.add({ duration: 400 }, landed + 8150);
 
 					tl = t;
@@ -339,8 +340,8 @@
 					<li
 						class="commit"
 						class:base={c.base}
-						data-from={!m && !c.base ? c.hash : undefined}
-						data-to={m && !c.base ? c.hash : undefined}
+						data-from={!m ? c.hash : undefined}
+						data-to={m ? c.hash : undefined}
 					>
 						<i class="node"></i>
 						<span class="msg">{c.msg}</span>
@@ -601,7 +602,7 @@
 		font-weight: 600;
 	}
 	/* The git letters take the picture palette (LANDING.md, "The drawn
-	   pictures have one palette too"): a new file is a line count's green,
+	   pictures have one palette"): a new file is a line count's green,
 	   a changed one the grey of a line at rest. Amber, a source control
 	   panel's own colour for M, is not the landing's to use. */
 	.st-M {

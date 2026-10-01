@@ -229,7 +229,8 @@
 					<span class="line">with <span class="bar">full permissions</span></span>
 				</h1>
 				<p class="lead">
-					Your work on a machine of its own. The agent can wreck it. A snapshot puts it back.
+					<span>Your work on a machine of its own.</span> <span>The agent can wreck it.</span>
+					<span>A snapshot puts it back.</span>
 				</p>
 				<div class="hero-ctas">
 					{@render authAction('btn btn--lg', 'Get started', 'Open the dashboard')}
@@ -327,7 +328,7 @@
 							>
 						</div>
 						<p class="tier-spec">
-							<span>{t.memory} GB of memory at once</span> · <span>{t.disk} disk</span> ·
+							<span>{t.memory} GB of memory at once ·</span> <span>{t.disk} disk ·</span>
 							<span>{t.egress} egress</span>
 						</p>
 						<p class="tier-price">

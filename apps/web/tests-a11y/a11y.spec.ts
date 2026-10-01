@@ -61,21 +61,7 @@ const OUT_DIR = path.resolve(import.meta.dirname, '../test-results/lighthouse');
 const KNOWN_FAILURES: Record<
 	string,
 	{ pages: string[]; widths?: (keyof typeof WIDTHS)[]; reason: string }
-> = {
-	'color-contrast': {
-		pages: ['/'],
-		// At 1440 the capture draws large enough to pass (100 in both
-		// schemes); only the phone's 8.4px scale fails, so the desktop run
-		// is held to the full rule.
-		widths: ['mobile'],
-		reason:
-			'The line numbers (span.ln) in the Editor picture, a capture of LazyVim in its ' +
-			"Tokyo Night theme, are that theme's own grey and under 4.5:1 on its ground. " +
-			'A picture of a real tool keeps the tool\'s colours (LANDING.md, "Real, and ' +
-			'whole, or not at all"; DECISIONS I-392, I-397), so this stays while the ' +
-			'capture does.'
-	}
-};
+> = {};
 
 /** The two widths docs/LANDING.md judges a page at. */
 const WIDTHS = {

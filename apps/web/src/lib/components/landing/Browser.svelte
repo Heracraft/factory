@@ -207,7 +207,7 @@
 							rowEls[first].classList.add('new');
 						}, at)
 							.add(list, { y: offset(first + 1), duration: 520, ease: 'inOutCubic' }, at)
-							.add(rowEls.slice(0, first), { opacity: REST, duration: 400 }, at)
+							.add(rowEls.slice(0, first), { opacity: REST, duration: 400, ease: 'outQuad' }, at)
 							.add([rowEls[first], rowEls[first + 1]], { opacity: [0, 1], duration: 380 }, at + 60);
 					};
 					const box = (
@@ -236,7 +236,7 @@
 
 					// 3. Read the console: nothing on the page moves.
 					log(5, 4900);
-					t.add(one('.ring'), { opacity: 0, duration: 300 }, 5000);
+					t.add(one('.ring'), { opacity: 0, duration: 300, ease: 'inQuad' }, 5000);
 
 					// 4. Click Bug.
 					log(7, 6600);
@@ -250,9 +250,9 @@
 
 					// 5. You, from the laptop: the desktop view opens on the same
 					// window and your pointer types into it.
-					t.add(one('.ring'), { opacity: 0, duration: 300 }, 8800);
+					t.add(one('.ring'), { opacity: 0, duration: 300, ease: 'inQuad' }, 8800);
 					rowEls.forEach((r) => t.call(() => r.classList.remove('new'), 8800));
-					t.add(rowEls, { opacity: REST, duration: 500 }, 8800);
+					t.add(rowEls, { opacity: REST, duration: 500, ease: 'outQuad' }, 8800);
 					t.add(
 						one('.chip'),
 						{ opacity: [0, 1], scale: [0.85, 1], duration: 320, ease: 'outBack' },
@@ -436,7 +436,7 @@
 	.stage {
 		/* The chip sits on the captured page, which is white in either
 		   scheme, so it keeps the light scheme's --pic-accent value: the
-		   dark one (blue-400) is 2.5:1 on #fff. */
+		   dark scheme's is 2.5:1 on #fff. */
 		--chip: var(--color-blue-600);
 		/* The log is dark in either scheme, so its acting row's bar keeps
 		   the dark scheme's --pic-accent value; the ring, on the white

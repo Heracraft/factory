@@ -143,14 +143,18 @@ DECISIONS entry and this list with it. Counts as of 2026-10-01.
 The same rules over the landing's own files (I-397), with one allow-list:
 the pictures of real tools keep their tool's colours and sizes
 (`LANDING.md`, "Real, and whole, or not at all"; I-392). `$P` is the
-landing, and `$C` leaves out those captures' internals, which are
-`Editor.svelte` (LazyVim's Tokyo Night), `Browser.svelte` (the agent's
-browser and its log), `Ready.svelte` (the terminal's ANSI colours) and
-`Localhost.svelte` (tmux's bar): `P=(apps/web/src/routes/+page.svelte
+landing. `$C` leaves out the two files that are a capture and nothing
+else, `Editor.svelte` (LazyVim's Tokyo Night) and `Ready.svelte` (the
+terminal's ANSI colours). `Browser.svelte` and `Localhost.svelte` hold
+drawn parts too (chips, a ring, a title bar's dot), so the hue greps
+read them; the hex and size greps take `$X`, which also leaves them
+out, since their captured parts (the agent's white page and its log,
+tmux's bar) are written in hex and drawn at the capture's scale (the
+log at 10px in a narrow frame): `P=(apps/web/src/routes/+page.svelte
 apps/web/src/routes/landing.css apps/web/src/lib/components/landing)`,
-`C=(--glob '!**/landing/Editor.svelte' --glob '!**/landing/Browser.svelte'
---glob '!**/landing/Ready.svelte' --glob '!**/landing/Localhost.svelte')`.
-Counts as of 2026-10-01.
+`C=(--glob '!**/landing/Editor.svelte' --glob '!**/landing/Ready.svelte')`,
+`X=("${C[@]}" --glob '!**/landing/Browser.svelte' --glob
+'!**/landing/Localhost.svelte')`. Counts as of 2026-10-01 (I-400).
 
 - [ ] Text is never zinc-300 to zinc-600, weight stops at semibold for
       markup, and sizes take no overrides. Evidence: `rg -n
@@ -159,12 +163,16 @@ Counts as of 2026-10-01.
 - [ ] Blue and every other hue come from the tokens: `--sh-*` for shapes,
       `--pic-*` for drawn pictures, the Foundation's for text. Evidence:
       `rg -n 'blue-[0-9]|purple|violet|fuchsia|pink-|orange-|indigo|teal|cyan|lime-'
-      "${P[@]}" "${C[@]}"` prints 0 lines; `rg -n
+      "${P[@]}" "${C[@]}"` prints only the Browser picture's two marks
+      over its capture (`--chip` and `--on-log`, `LANDING.md`, "Since the
+      owner's notes"), 2 lines; `rg -n
       'amber|emerald|green-|yellow|red-[0-9]|zinc-[0-9]|rose-|sky-|slate-|gray-|stone-'
       "${P[@]}" "${C[@]}"` prints only the green running dots
-      (`emerald-500`, open for the owner in STATUS.md), 4 lines; `rg -n
+      (`emerald-500`, open for the owner in STATUS.md): the drawn title
+      bars of Hero, OneCommand, ComesBack and Localhost, and OneCommand's
+      "Ready" dot, 5 lines; `rg -n
       ':\s*#[0-9a-fA-F]{3,8}\b|="#[0-9a-fA-F]'
-      "${P[@]}" "${C[@]}"` prints only the hero's Claude Code colours
+      "${P[@]}" "${X[@]}"` prints only the hero's Claude Code colours
       (`--claude`, `--mode`, and `--rogue`, the mascot turned red), 5
       lines.
 - [ ] No shadows: an inset edge with no blur is a bar, and is the only
@@ -180,7 +188,7 @@ Counts as of 2026-10-01.
       captures. Evidence: `rg -n "font-family:[^;]*(Menlo|Consolas|SF
       Mono|Courier|monospace)|font-\[" "${P[@]}"` prints 0 lines (a picture
       names `var(--font-mono)`); `rg -nP 'font-size:
-      *(\d|10)(\.\d+)?px' "${P[@]}" "${C[@]}"` prints 0 lines.
+      *(\d|10)(\.\d+)?px' "${P[@]}" "${X[@]}"` prints 0 lines.
 - [ ] Every picture stops on its final frame when reduced motion turns on
       mid-session. Evidence: `rg --files-without-match watchReducedMotion
       apps/web/src/lib/components/landing/{Hero,OneCommand,ComesBack,Browser,Localhost}.svelte`

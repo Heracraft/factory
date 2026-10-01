@@ -159,8 +159,13 @@ cd ~/code/your-project && repose run</pre>
 										<span class="badge ml-1.5 align-middle">temporary</span>
 									{/if}
 									{#if p.remote_url}
+										<!-- A phone breaks the URL after a slash or a hyphen
+										     ("github.com/", "heracraft/job-", "alerts" at 390), not
+										     mid-word as "herac/raft" did; wrap-anywhere is left for a
+										     segment longer than the column. -->
 										<div class="mt-0.5 font-mono text-compact wrap-anywhere text-ink-muted">
-											{normalizeRemoteDisplay(p.remote_url)}
+											{#each normalizeRemoteDisplay(p.remote_url).split('/') as part, i (i)}{#if i}/<wbr
+													/>{/if}{part}{/each}
 										</div>
 									{/if}
 								</td>

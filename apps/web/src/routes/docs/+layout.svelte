@@ -13,6 +13,7 @@
 	let hits = $derived(search(query));
 	let menuOpen = $state(false);
 	let nav: HTMLElement | undefined = $state();
+	let searchBox: HTMLElement | undefined = $state();
 	let menuButton: HTMLButtonElement | undefined = $state();
 
 	// The sidebar lists pages and nothing else, so its height is the same on
@@ -36,8 +37,17 @@
 		if (!nav || !link) return;
 		const box = nav.getBoundingClientRect();
 		const at = link.getBoundingClientRect();
-		if (at.top < box.top || at.bottom > box.bottom) {
-			nav.scrollTop += at.top - box.top - nav.clientHeight / 3;
+		// The list shows below the sticky search.
+		const top = searchBox ? searchBox.getBoundingClientRect().bottom : box.top;
+		// The least scroll that shows the link, with 16px to spare. Putting
+		// it a third of the way down, as this did, scrolled the search and
+		// "Start here" off a phone's drawer for a link near the end of the
+		// list (/docs/cli at 390).
+		const pad = 16;
+		if (at.top < top + pad) {
+			nav.scrollTop -= top + pad - at.top;
+		} else if (at.bottom > box.bottom - pad) {
+			nav.scrollTop += at.bottom - (box.bottom - pad);
 		}
 	}
 
@@ -171,7 +181,13 @@
 			? 'visible translate-x-0 transition-[translate]'
 			: 'invisible -translate-x-full transition-[translate,visibility]'} lg:visible lg:sticky lg:top-[57px] lg:bottom-auto lg:z-auto lg:h-[calc(100dvh-57px)] lg:w-60 lg:shrink-0 lg:translate-x-0 lg:border-r-0 lg:bg-transparent lg:px-0 lg:transition-none"
 	>
-		<div class="pt-6">
+		<!-- The search sticks to the top of the sidebar, so a list taller
+		     than a phone's drawer scrolls under it and the search stays in
+		     reach however far the current page's link sits down the list. -->
+		<div
+			bind:this={searchBox}
+			class="sticky top-0 z-10 -mx-5 bg-page px-5 pt-6 pb-1 lg:mx-0 lg:px-0"
+		>
 			<label for="docs-search" class="sr-only">Search the docs</label>
 			<input
 				id="docs-search"
@@ -204,7 +220,7 @@
 				{/each}
 			</ul>
 		{:else}
-			<nav class="mt-5" aria-label="Docs">
+			<nav class="mt-4" aria-label="Docs">
 				{#each groups as group (group.section)}
 					<p class="mt-5 mb-1 px-2 text-sm font-medium text-ink first:mt-0">
 						{group.section}

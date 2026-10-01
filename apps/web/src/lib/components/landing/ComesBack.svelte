@@ -2,8 +2,9 @@
   Let it break the whole machine, drawn in the working-state section's style
   (OneCommand.svelte): a light panel with hairline borders, rows, the blue
   accent for what moves. The panel lists the machine, not the repo: things
-  git doesn't hold. Every value was read on the real machine of the owner's
-  job-alerts app (ssh recruiting.repose, 2026-09-26, read-only):
+  git doesn't hold. Every value but the Codex login was read on the real
+  machine of the owner's job-alerts app (ssh recruiting.repose, 2026-09-26,
+  read-only):
   `git ls-files apps packages | wc -l` 578; `git status --short` 3 changes
   (.env.example and poller.ts staged, timeout.test.ts untracked), the same
   three "Your working state" shows; `select count(*) from roles` in the
@@ -11,8 +12,10 @@
   3532; `pnpm --version` 10.30.3 (packageManager pnpm@10.30.3); the login
   shell's PATH has 28 entries; `gh auth status` logged in. The logins row
   names gh and Codex: both are kept on the machine's disk and so are in a
-  snapshot (docs agents.md "Log in"). Claude Code's login is kept on the
-  host, not in snapshots (I-278), so the row does not name it (I-397).
+  snapshot (docs agents.md "Log in"). The Codex half is from those docs,
+  not read on that machine (I-398). Claude Code's login lives on the
+  user's login share, which a snapshot does not hold (I-278), so the row
+  does not name it (I-398).
   The snapshot times are the two from
   `repose snapshots list --project wira` on 2026-09-25: 21:22 and 21:25.
   A snapshot holds the whole disk (docs lifecycle.md, "Snapshots";
@@ -24,7 +27,9 @@
   and the table count down to 0, pnpm is not found, PATH and the logins are
   struck. git acts first (its mark lights) and brings back only the tracked
   files; the rest stays red. Then 21:25 lights and its rows grow back into
-  the machine, and every row goes green, 3,532 rows and the edits included.
+  the machine, and every row takes the accent tint and a tick, 3,532 rows
+  and the edits included (blue for what came back: the landing draws no
+  green but a diff stat's, LANDING.md, I-400).
   Rest, again. Under prefers-reduced-motion, or before anime.js loads, the
   restored state is shown still, with nothing moving; a visitor who turns
   reduced motion on mid-loop gets that still frame at once. The loop's
@@ -110,6 +115,8 @@
 		// The old tile folds by a clip from below, so its box keeps its
 		// height and nothing around it is laid out again each frame.
 		const clip = (px: number) => `inset(0px 0px ${px}px 0px round 3px)`;
+		// The snapshot mark's angle: a quarter turn more per snapshot.
+		let turn = 0;
 
 		// Stop the loop and show the restored machine still: the markup's own
 		// state, with every class and inline style the loop wrote taken off.
@@ -123,8 +130,9 @@
 			// eslint-disable-next-line svelte/no-dom-manipulating
 			fly.replaceChildren();
 			for (const r of rows) valOf(r.k).textContent = r.val;
-			for (const el of q('.tile, .arr, .m-row .strike, .m-row .bad, .m-row .tick'))
+			for (const el of q('.tile, .arr, .cam, .m-row .strike, .m-row .bad, .m-row .tick'))
 				el.removeAttribute('style');
+			turn = 0;
 			for (const el of q(STATE.map((c) => '.' + c).join(', '))) el.classList.remove(...STATE);
 			q('.tile.new')[0].classList.add('lit');
 		}
@@ -227,7 +235,8 @@
 					const t = createTimeline({ autoplay: false, onComplete: () => cycle() });
 
 					// 1. snapshot 21:25: the rows shrink into its tile; 21:22 folds behind
-					const cams = [q('.machine')[0], newT.querySelector('.cam') as HTMLElement];
+					const mark = newT.querySelector('.cam') as HTMLElement;
+					const cams = [q('.machine')[0], mark];
 					const s0 = T.snap;
 					t.call(cls(cams, 'fire', true), s0)
 						.add(q('.take'), { opacity: [0, 1], duration: 250 }, s0)
@@ -241,8 +250,17 @@
 						.set(take, { opacity: 1, x: 0, y: 0, scale: 1 }, s0 + 150)
 						.add(take, { x: dx, y: dy, scale, duration: dur, ease: 'inOutCubic' }, s0 + 150)
 						.add(newT, { opacity: [0, 1], duration: 250 }, s0 + 150 + dur - 200)
-						.add(take, { opacity: 0, duration: 200 }, s0 + 150 + dur)
-						.add(q('.take'), { opacity: 0, duration: 400 }, s0 + 150 + dur + 300)
+						// The mark's quarter turn, as the new tile shows. It adds up
+						// and never turns back, as the hero's does (LANDING.md, "Motion").
+						.call(
+							() => {
+								turn += 90;
+								mark.style.setProperty('--turn', `${turn}deg`);
+							},
+							s0 + 150 + dur - 200
+						)
+						.add(take, { opacity: 0, duration: 300, ease: 'inQuad' }, s0 + 150 + dur)
+						.add(q('.take'), { opacity: 0, duration: 400, ease: 'inQuad' }, s0 + 150 + dur + 300)
 						.call(cls(cams, 'fire', false), s0 + 150 + dur + 300);
 
 					// 2. the wreck, row by row: counts fall, pnpm is gone, the rest struck
@@ -251,7 +269,7 @@
 						const r = rows.find((x) => x.k === k)!;
 						const at0 = T.wreck + i * 230;
 						t.call(cls([row(k)], 'hit', true), at0);
-						if (r.n !== undefined) count(k, r.n, 0, r.unit!, at0 + 60, r.n > 100 ? 650 : 300);
+						if (r.n !== undefined) count(k, r.n, 0, r.unit!, at0 + 60, r.n > 100 ? 500 : 300);
 						else if (r.lost)
 							t.call(() => (valOf(k).textContent = r.lost!), at0 + 120).call(
 								cls([row(k)], 'gone', true),
@@ -283,7 +301,7 @@
 							{ opacity: 0, duration: 300, ease: 'inQuad' },
 							T.git + 300
 						);
-					count('src', 0, 578, 'files', T.git + 300, 650);
+					count('src', 0, 578, 'files', T.git + 300, 500);
 					t.add(
 						src.querySelector('.tick')!,
 						{ opacity: [0, 1], scale: [0.6, 1], duration: 300, ease: 'outBack' },
@@ -325,7 +343,7 @@
 					const done = land + heal.length * 70 + 400;
 					t.call(cls(q('.m-row'), 'ok', false), done + 900)
 						.call(cls([newT], 'lit', false), done + 1600)
-						.add(q('.give'), { opacity: 0, duration: 400 }, done + 1600)
+						.add(q('.give'), { opacity: 0, duration: 400, ease: 'inQuad' }, done + 1600)
 						// rest on the restored machine, then clear and go again
 						.add(
 							q('.tile.new, .m-row .tick'),
@@ -524,7 +542,8 @@
 
 <style>
 	/* Colours are the picture tokens (--pic-*, routes/layout.css), which
-	   carry their own dark values; a restored row is --pic-add. */
+	   carry their own dark values. A restored row is --pic-accent, what
+	   moves and comes back: --pic-add is a diff stat's green alone. */
 	.pic {
 		--row: 24px;
 		--rows-h: calc(var(--row) * 6 + 10px);
@@ -644,7 +663,7 @@
 		box-shadow: inset 2px 0 0 var(--pic-accent);
 	}
 	.fr:global(.ok) {
-		background: color-mix(in oklab, var(--pic-add) 8%, var(--surface));
+		background: color-mix(in oklab, var(--pic-accent) 8%, var(--surface));
 	}
 	.strike {
 		position: absolute;
@@ -672,7 +691,7 @@
 		color: var(--pic-stop);
 	}
 	.tick {
-		color: var(--pic-add);
+		color: var(--pic-accent);
 	}
 
 	/* Between the machine and its snapshots: which way the copy goes. */
@@ -752,23 +771,25 @@
 		color: var(--pic-accent);
 	}
 	/* The mark clicks a quarter turn when the snapshot is taken, and
-	   rewinds a full turn when it is restored. Only with motion allowed:
-	   the still frame renders the new tile lit, and the rewind would
-	   otherwise spin there. */
+	   rewinds a full turn when it is restored, and nothing else. The loop
+	   adds 90deg to --turn per snapshot and never takes it off: a class
+	   that set the angle would transition back when it came off, a
+	   quarter turn the other way that LANDING.md does not list. The
+	   rewind ends where it began, a full turn on. Only with motion
+	   allowed: the still frame renders the new tile lit, and the rewind
+	   would otherwise spin there. */
 	@media (prefers-reduced-motion: no-preference) {
 		/* 420ms out-quad, the hero's quarter turn (LANDING.md, "Motion"). */
 		.cam svg {
+			transform: rotate(var(--turn, 0deg));
 			transition: transform 420ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
-		}
-		.cam:global(.fire) svg {
-			transform: rotate(90deg);
 		}
 		.tile:global(.lit) .cam svg {
 			animation: rewind 1s cubic-bezier(0.65, 0, 0.35, 1) both;
 		}
 		@keyframes rewind {
 			to {
-				transform: rotate(-360deg);
+				transform: rotate(calc(var(--turn, 0deg) - 360deg));
 			}
 		}
 	}
@@ -849,7 +870,5 @@
 			padding: 0 6px;
 			gap: 5px;
 		}
-	}
-	@media (prefers-color-scheme: dark) {
 	}
 </style>

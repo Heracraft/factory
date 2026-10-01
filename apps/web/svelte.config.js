@@ -25,7 +25,7 @@ const config = {
 			directives: {
 				'default-src': ['self'],
 				// The hash is app.html's one inline script, which sets html.js
-				// before the first paint (DECISIONS I-397); editing that script
+				// before the first paint (DECISIONS I-398); editing that script
 				// changes it.
 				'script-src': [
 					'self',

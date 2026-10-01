@@ -22,8 +22,9 @@
 	});
 
 	// The skip link moves focus to the page's <main>, which carries
-	// id="main" on every page (the landing, the dashboard, the docs and
-	// the legal pages), so the link is in the prerendered HTML too.
+	// id="main" on every page (the landing, the dashboard, the docs, the
+	// legal pages and /callback's "Signing in"), so the link is in the
+	// prerendered HTML too. src/lib/skip-target.test.ts holds every route to it.
 	function skipToMain(e: MouseEvent) {
 		const main = document.querySelector('main');
 		if (!main) return;

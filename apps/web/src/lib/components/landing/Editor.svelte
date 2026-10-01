@@ -19,6 +19,16 @@
   static/landing/editor-nerd-symbols.woff2 and used by the capture alone.
   Every non-ASCII character sits in a one-cell box so the grid holds in any
   monospace font.
+
+  The rows are the picture's pixels, not text to read: the screen is one
+  role="img" with its own label, and each row is aria-hidden and inert, so
+  it is out of the tab order, find in page and selection as a screenshot
+  would be. Tokyo Night's comment grey, explorer grey and statusline blue
+  sit under 4.5:1 on its grounds (3.1 to 4.27); a picture's incidental
+  text is outside WCAG 1.4.3, and inert is what tells the a11y gate's
+  contrast check (axe skips inert nodes) that this is a picture. The
+  colours stay the tool's own (LANDING.md, "Real, and whole, or not at
+  all"; I-400).
 -->
 <script lang="ts">
 	// Verbatim capture: one inline style per distinct SGR state, and each row
@@ -459,7 +469,7 @@
 		aria-label="Neovim with LazyVim running on the machine, full screen: a narrow file explorer of the repo on the left, two of the worker's files open in tabs, and its TypeScript config in the editor."
 	>
 		{#each lines as line, y (y)}
-			<div class="ln" aria-hidden="true">
+			<div class="ln" aria-hidden="true" inert>
 				{#each line as p, i (i)}<span
 						class:c={p.cell}
 						class:cur={p.cursor}

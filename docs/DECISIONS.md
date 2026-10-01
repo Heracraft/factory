@@ -10212,3 +10212,98 @@ the landing with motion on as well (a loop samples a different frame
 each run, I-397; the gate checks the end state, and the first paint and
 mid-loop frames are judged on captures, which is a gap the gate does not
 close).
+
+**I-400. Landing repair round 3: the Editor capture's rows are inert,
+so the a11y gate has no allowance left; a restored row is blue, every
+fade out names its ease, and the hero shows its still frame when the
+app never mounts.** (implementation, 2026-10-01; amends I-397, I-398
+and I-399) A review of the I-399 round found:
+- The landing scored 96 at 390 in both schemes on colour contrast, all
+  six nodes in the Editor capture: the explorer's file name and count,
+  two comment lines, the branch and the position in the statusline
+  (Tokyo Night's own #636da6, #545c7e and #82aaff on its grounds, 2.46
+  to 4.27). I-399's `KNOWN_FAILURES` reason called them line numbers;
+  they were not. Its claim that the capture "draws large enough to
+  pass" at 1440 was also wrong: axe could not decide there
+  (`pseudoContent`) and passed nothing in the frame. Each row of the
+  capture is now `inert` beside its `aria-hidden`: the screen is one
+  `role="img"` with its own label, its text is a picture's, which WCAG
+  1.4.3 exempts as incidental, and `inert` takes it out of the tab
+  order, find in page and selection as a screenshot would be. axe skips
+  inert nodes, so the landing scores 100 at both widths and
+  `KNOWN_FAILURES` is empty. The colours are the tool's, unchanged.
+- "Break it and roll it back" no longer turns a restored row green or
+  draws its tick green: both take `--pic-accent`, what moves and comes
+  back. `--pic-add` is a diff stat's added count and nothing else.
+- Every fade to 0 in the pictures names `inQuad` and lasts 300ms or
+  more (ComesBack's travelling copy and arrows, the Browser ring, the
+  OneCommand stop mark, the hero's database and node values). The
+  motions I-399 left out of LANDING.md's list are in it: the Browser
+  log's rows dimming to rest (`outQuad`, now named), the hero's file
+  row lighting as it is written, the class-driven colour transitions
+  (the `repose run` chip's fill, the address bar's edge, the log's bar,
+  ComesBack's edges, tints and marks), and hover on links and buttons,
+  which the Foundation already lists.
+- The hero's first paint hides its rows under `html.js` until the loop
+  runs. If the app's script never mounts the picture (a bundle that
+  fails to load or throws), a 0s CSS animation with a 4s delay shows the
+  still frame; onMount sets `.mounted` first thing, which drops it. The
+  header comment no longer says the still frame shown before the script
+  carries the return arrow: the connectors are measured by script.
+- `/callback` had no `<main>`, so the layout's skip link pointed at
+  nothing there. It has one, and `src/lib/skip-target.test.ts` holds
+  every `+page.svelte` to a `<main id="main">` of its own or a shell
+  that draws one.
+- The hero's lead keeps each sentence whole (balance alone ended line 1
+  on "The"); the pricing spec line keeps each dot with the fact before
+  it, so no line starts with one. /projects breaks a remote URL after a
+  slash or a hyphen, not mid-word.
+- CHECKLIST's landing allow-list leaves out only the files that are a
+  capture whole (Editor, Ready) for the hue greps; Browser and Localhost
+  hold drawn marks and are read, with their counts (the Browser's two
+  marks; five green dots, Localhost's and OneCommand's "Ready" dot
+  among them). The hex and size greps still leave the two out for their
+  captured parts.
+- LANDING.md "Since the owner's notes" lists the rest of the repair
+  rounds' changes to what the owner's sections govern: the flat sphere
+  and the footer's meridians, the grid cards' lines, Copy on every step,
+  Ready's dropped prompt rows and its crop on a phone, and the pricing
+  caption in agents. The dead `.step p` rule and its documented size
+  are gone; a step has no sentence.
+- I-399 said OneCommand's "Ready" line dropped emerald. Its text did;
+  the dot before it is still the green running dot (emerald-500), the
+  fifth under STATUS.md's open item, and CHECKLIST counts it.
+- "Your working state" drew a re-sync, which `repose run` no longer does
+  (I-367): master's `7ea43a8` sat on the machine before the run and only
+  the branch's two commits travelled, beside a "Ready in 14s" that only
+  a new machine takes. The picture is now that first run: the machine
+  starts with no commit and all three travel. The header comment no
+  longer quotes the pre-I-367 "Synced: ... (2 new commits)" output.
+- ComesBack's counts last 500ms, the top of the reveals' 200ms to 500ms
+  (they were 650ms). Its snapshot mark no longer turns back a quarter
+  when the shot is done: a class set the angle and its transition played
+  in reverse when the class came off. The loop adds 90deg to a `--turn`
+  per snapshot and the restore's full turn runs from that angle, as the
+  hero's mark adds `+=90` and never turns back.
+- The hero's reach wire to the internet is stroked `--pic-stop`, not
+  `--rogue`: it is a drawn wire, and `--rogue` is the mascot's own red.
+- The docs drawer scrolls the least that shows the current page's link,
+  16px clear of the edge. It put that link a third of the way down, so
+  on a phone /docs/cli opened with the search and "Start here" scrolled
+  away while CLI reference was already on screen.
+- Above a docs page's first h2 the "On this page" rail marks no section:
+  the intro is no section. That was the code's behaviour;
+  DESIGN-LANGUAGE.md now says so.
+- `nix/guest/base/agent-guide.md` lists the three plans of I-362 (Solo
+  8 GB and 250 GB, Plus 16 GB and 500 GB, Pro 32 GB and 1 TB, as
+  `internal/billing/plans.go`); I-362 left the guide at the two-plan
+  figures, and fb3995a fixed it without an entry. It is guest behaviour
+  (`/etc/repose/agent-guide.md`, `nix/guest/tests` `guest-agent-guide`),
+  so guests carry the new figures from the next base image, not before.
+*Rejected:* recolouring the capture's text to 4.5:1 (it would no longer
+be the tool's screen); rendering the capture as an image (a raster loses
+the font and the crispness at every scale, and an SVG `<text>` grid is
+the same text to axe); hiding the text from axe with CSS `content` (it
+would quiet the audit and say nothing true about the page); renumbering
+the I-369 collision with restore-fast here (whichever branch merges
+second renumbers, STATUS.md).

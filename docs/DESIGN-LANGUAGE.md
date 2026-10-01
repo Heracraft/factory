@@ -492,14 +492,19 @@ the accent; h2 sections are separated by a rule. Running text holds to 33rem;
 the docs column is 68ch so code blocks and tables get the full 70 columns
 I-345 writes to (I-382). The docs frame is three tracks on `max-w-7xl`
 (I-396): the 240px sidebar, which lists pages and nothing else, so its
-height is the same on every page; the text, starting at x=380 at 1440;
+height is the same on every page, under a search that sticks to its top
+(on a phone the drawer opens scrolled the least that shows the current
+page's link, and the list scrolls under the search, I-400); the text, starting at x=380 at 1440;
 and from `xl` up a 224px "On this page" rail at the frame's right edge.
 The rail's column is drawn on every page, empty when a page has one h2
 or none, so the sidebar, the text and the rail sit at the same x on
 every page. The rail and the sidebar stick at 57px, under the header and
 its hairline, and a long rail scrolls on its own. The section you are
-reading is ink with a 1px ink edge on the rail's hairline (an underline
-in forced colours), `aria-current="true"`; the others are `--ink-muted`.
+reading, the last h2 above a line a quarter of the way down the window,
+is ink with a 1px ink edge on the rail's hairline (an underline in
+forced colours), `aria-current="true"`; the others are `--ink-muted`.
+Above the first h2 you are reading the page's intro, which is no
+section, so no link is marked (I-400).
 A rail link scrolls smoothly, or jumps under reduced motion. Its links
 are 28px tall, over the 24px target size (I-391). Below `xl` the
 sections fold under the description in "On this page".
