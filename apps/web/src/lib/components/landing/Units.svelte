@@ -1,8 +1,8 @@
 <!--
   A count as a row of squares, one per unit: Isotype's own form for a
-  quantity. The pricing cards show their vCPUs with it (2, 4, 8), so the
-  sizes compare at a glance and the count is the count, not a share of
-  something. Rows hold eight, so 32 reads as a block of four rows and
+  quantity. The pricing cards show the memory that may run at once with
+  it, one square per GB (8, 16, 32), so the plans compare at a glance and
+  the count is the count, not a share of something. Rows hold eight, so 32 reads as a block of four rows and
   still fits a narrow card. Decorative: the number is in the text beside it.
 -->
 <script lang="ts">
@@ -25,7 +25,7 @@
 		display: block;
 		width: 9px;
 		height: 9px;
-		border-radius: 1px;
+		border-radius: var(--radius-xs);
 		background: var(--sh-grey);
 	}
 </style>

@@ -23,6 +23,7 @@
 	} from '$lib/menuSelection';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import NixEditor from '$lib/components/NixEditor.svelte';
+	import LoadState, { loadErrorText } from '$lib/components/LoadState.svelte';
 	import type { CatalogItem, Config, Project, Revision } from '$lib/api/types';
 
 	const id = page.params.id as string;
@@ -31,8 +32,17 @@
 	let config = $state<Config | undefined>(undefined);
 	let catalog = $state<CatalogItem[]>([]);
 	let revisions = $state<Revision[]>([]);
+	const TABS = [
+		['menu', 'Menu'],
+		['nix', 'Nix']
+	] as const;
 	let activeTab = $state<'menu' | 'nix'>('nix');
 	let search = $state('');
+	let loadFailed = $state(false);
+	let loadError = $state<string | undefined>(undefined);
+	/** The revision a Re-apply was sent for, until its build starts. */
+	let reapplying = $state<string | undefined>(undefined);
+	let holdSaving = $state(false);
 
 	// Menu tab state.
 	let selectedPackages = $state<Set<string>>(new Set());
@@ -77,12 +87,35 @@
 			selectedServices = new Set(menu.ids.filter((i) => services.has(i)));
 			menuOptions = menu.options;
 			extraPackages = menu.packages;
+			loadFailed = false;
 		} catch (err) {
-			toastApiError(err, 'Could not load the config.');
+			if (!project || !config) {
+				loadFailed = true;
+				loadError = loadErrorText(err, 'Could not load the config.');
+			} else {
+				toastApiError(err, 'Could not load the config.');
+			}
 		}
 	}
 
 	onMount(load);
+
+	// The two tabs switch a panel in place (the URL stays), so they are
+	// ARIA tabs: one tab stop for the pair, and the arrow keys, Home and
+	// End move between them and show the panel at once.
+	const tabButtons: Record<string, HTMLButtonElement | undefined> = {};
+	function onTabKey(e: KeyboardEvent) {
+		const i = TABS.findIndex(([t]) => t === activeTab);
+		let next: number;
+		if (e.key === 'ArrowRight') next = (i + 1) % TABS.length;
+		else if (e.key === 'ArrowLeft') next = (i - 1 + TABS.length) % TABS.length;
+		else if (e.key === 'Home') next = 0;
+		else if (e.key === 'End') next = TABS.length - 1;
+		else return;
+		e.preventDefault();
+		activeTab = TABS[next][0];
+		tabButtons[activeTab]?.focus();
+	}
 	onDestroy(() => eventSource?.close());
 
 	let groups = $derived(groupCatalog(catalog, search));
@@ -162,12 +195,20 @@
 		}
 	}
 
+	// Disabled and relabelled while it is sent, and held with the Apply
+	// buttons until the build ends, so a second click cannot start a second
+	// build.
 	async function reapply(rev: Revision) {
+		applying = true;
+		reapplying = rev.revision_id;
 		try {
 			const { op_id } = await applyRevision(id, rev.revision_id);
 			startBuild(op_id);
 		} catch (err) {
+			applying = false;
 			toastApiError(err, 'Could not re-apply that revision.');
+		} finally {
+			reapplying = undefined;
 		}
 	}
 
@@ -176,13 +217,20 @@
 		activeTab = 'nix';
 	}
 
-	async function toggleHold() {
+	// The checkbox follows the project, not the click: on a refusal it is
+	// put back to what the server holds, so it never shows a hold that
+	// was not saved.
+	async function toggleHold(box: HTMLInputElement) {
 		if (!project) return;
-		const next = !project.hold_base_updates;
+		const next = box.checked;
+		holdSaving = true;
 		try {
 			project = await patchProject(id, { hold_base_updates: next });
 		} catch (err) {
+			box.checked = project.hold_base_updates;
 			toastApiError(err, 'Could not change the hold flag.');
+		} finally {
+			holdSaving = false;
 		}
 	}
 </script>
@@ -195,171 +243,211 @@
 	title="Config"
 	crumbs={[
 		{ label: 'Projects', href: resolve('/projects') },
-		{ label: project?.name ?? '…', href: resolve('/projects/[id]', { id }) }
+		// "…" while the name loads; after a failed load there is no name
+		// coming, so the crumb says what it links to.
+		{
+			label: project?.name ?? (loadFailed ? 'Project' : '…'),
+			href: resolve('/projects/[id]', { id })
+		}
 	]}
 >
-	{#if !project || !config}
-		<p class="text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
-	{:else}
-		<div class="flex gap-6 border-b border-zinc-200 text-sm dark:border-zinc-800">
-			<button
-				type="button"
-				class="border-b-2 py-2 {activeTab === 'menu'
-					? 'border-blue-700 font-medium text-blue-700 dark:border-blue-400 dark:text-blue-400'
-					: 'border-transparent text-zinc-500 dark:text-zinc-400'}"
-				onclick={() => (activeTab = 'menu')}>Menu</button
+	<LoadState
+		status={project && config ? 'ready' : loadFailed ? 'failed' : 'loading'}
+		onretry={load}
+		error={loadError}
+	>
+		{#if project && config}
+			<!-- The current tab is marked the way the header marks the current
+		     page: ink with a 1px underline, no accent colour and no change of
+		     weight (DESIGN-LANGUAGE.md). -->
+			<!-- The keys are handled on each tab, not on the tablist, so the
+			     list itself needs no tabindex and a click on its empty space
+			     does not focus it. Only the current tab names a panel in
+			     aria-controls: the other panel is not in the DOM, and an id
+			     that points at nothing is a broken reference. -->
+			<div
+				class="flex gap-6 border-b border-rule text-sm"
+				role="tablist"
+				aria-label="Config editor"
 			>
-			<button
-				type="button"
-				class="border-b-2 py-2 {activeTab === 'nix'
-					? 'border-blue-700 font-medium text-blue-700 dark:border-blue-400 dark:text-blue-400'
-					: 'border-transparent text-zinc-500 dark:text-zinc-400'}"
-				onclick={() => (activeTab = 'nix')}>Nix</button
-			>
-		</div>
-
-		{#if activeTab === 'menu'}
-			<div class="mt-4">
-				{#if config.menu === null || config.menu === undefined}
-					<p class="banner banner--warn">
-						This project's config was edited by hand; applying from the menu will replace it.
-					</p>
-				{/if}
-				<input
-					type="search"
-					class="field w-full"
-					placeholder="Search packages and services…"
-					bind:value={search}
-				/>
-				{#each [...groups.entries()] as [group, items] (group)}
-					<div class="form-section">
-						<h2 class="font-display text-xl font-semibold">{group}</h2>
-						{#each items as item (item.id)}
-							<label class="check-list-row">
-								<input
-									type="checkbox"
-									checked={isSelected(item)}
-									onchange={(e) => toggleItem(item, e.currentTarget.checked)}
-								/>
-								<span class="flex-1">
-									<span class="block text-sm font-medium">{item.label}</span>
-									<span class="block text-sm text-zinc-500 dark:text-zinc-400"
-										>{item.description}</span
-									>
-									{#if item.options?.length && isSelected(item)}
-										<select
-											class="field mt-2 w-48"
-											value={menuOptions[item.id] ?? item.options[0].default}
-											onchange={(e) => (menuOptions[item.id] = e.currentTarget.value)}
-										>
-											{#each item.options[0].values as v (v)}
-												<option value={v}>{v}</option>
-											{/each}
-										</select>
-									{/if}
-								</span>
-							</label>
-						{/each}
-					</div>
+				{#each TABS as [tab, name] (tab)}
+					<button
+						type="button"
+						role="tab"
+						id="config-tab-{tab}"
+						aria-selected={activeTab === tab}
+						aria-controls={activeTab === tab ? `config-panel-${tab}` : undefined}
+						tabindex={activeTab === tab ? 0 : -1}
+						bind:this={tabButtons[tab]}
+						onkeydown={onTabKey}
+						class="-mb-px cursor-pointer border-b py-2 {activeTab === tab
+							? 'border-current text-ink'
+							: 'border-transparent text-ink-muted hover:text-ink'}"
+						onclick={() => (activeTab = tab)}>{name}</button
+					>
 				{/each}
-				{#if extraPackages.length}
-					<div class="form-section">
-						<h2 class="font-display text-xl font-semibold">Extra packages</h2>
-						<p class="text-sm text-zinc-500 dark:text-zinc-400">
-							Added from nixpkgs with <code>repose config add</code>.
+			</div>
+
+			{#if activeTab === 'menu'}
+				<div class="mt-4" role="tabpanel" id="config-panel-menu" aria-labelledby="config-tab-menu">
+					{#if config.menu === null || config.menu === undefined}
+						<p class="banner banner--warn">
+							This project's config was edited by hand; applying from the menu will replace it.
 						</p>
-						<ul class="mt-2">
-							{#each extraPackages as pkg (pkg)}
-								<li class="check-list-row">
-									<span class="flex-1 font-mono text-sm">{pkg}</span>
+					{/if}
+					<input
+						type="search"
+						class="field w-full"
+						placeholder="Search packages and services…"
+						aria-label="Search packages and services"
+						bind:value={search}
+					/>
+					{#each [...groups.entries()] as [group, items] (group)}
+						<div class="form-section">
+							<h2 class="text-xl font-semibold">{group}</h2>
+							<!-- Their own box, so the first row is :first-child and draws
+						     no rule straight under the heading. -->
+							<div class="mt-2">
+								{#each items as item (item.id)}
+									<label class="check-list-row">
+										<input
+											type="checkbox"
+											checked={isSelected(item)}
+											onchange={(e) => toggleItem(item, e.currentTarget.checked)}
+										/>
+										<span class="flex-1">
+											<span class="block text-sm font-medium">{item.label}</span>
+											<span class="block text-sm text-ink-muted">{item.description}</span>
+											{#if item.options?.length && isSelected(item)}
+												<!-- Inside the row's label, whose control is the
+												     checkbox, so the select is named on its own. -->
+												<select
+													class="field mt-2 w-48"
+													aria-label={`${item.label} ${item.options[0].id}`}
+													value={menuOptions[item.id] ?? item.options[0].default}
+													onchange={(e) => (menuOptions[item.id] = e.currentTarget.value)}
+												>
+													{#each item.options[0].values as v (v)}
+														<option value={v}>{v}</option>
+													{/each}
+												</select>
+											{/if}
+										</span>
+									</label>
+								{/each}
+							</div>
+						</div>
+					{/each}
+					{#if extraPackages.length}
+						<div class="form-section">
+							<h2 class="text-xl font-semibold">Extra packages</h2>
+							<p class="mt-1 text-sm text-ink-muted">
+								Added from nixpkgs with <code>repose config add</code>.
+							</p>
+							<ul class="mt-2">
+								{#each extraPackages as pkg (pkg)}
+									<li class="check-list-row">
+										<span class="flex-1 font-mono text-sm">{pkg}</span>
+										<!-- Removal from the list, undone by adding the package
+									     back before Apply: the reversible-destructive style. -->
+										<button
+											type="button"
+											class="btn-ghost-danger -mr-2"
+											aria-label={`Remove ${pkg}`}
+											onclick={() => (extraPackages = extraPackages.filter((p) => p !== pkg))}
+											>Remove</button
+										>
+									</li>
+								{/each}
+							</ul>
+						</div>
+					{/if}
+					<div class="form-section">
+						<button type="button" class="btn" disabled={applying} onclick={applyMenu}>
+							{applying ? 'Applying…' : 'Apply'}
+						</button>
+					</div>
+				</div>
+			{:else}
+				<div class="mt-4" role="tabpanel" id="config-panel-nix" aria-labelledby="config-tab-nix">
+					{#if nixReadonly}
+						<p class="banner banner--warn">
+							This project is managed by the menu. Editing here takes over from the menu.
+							<button type="button" class="link" onclick={editAsNix}>Edit as Nix</button>
+						</p>
+					{/if}
+					<NixEditor
+						bind:value={fragmentText}
+						readonly={nixReadonly}
+						errorLine={fragmentErrorLine(buildError)}
+					/>
+					<div class="form-section">
+						<button type="button" class="btn" disabled={applying || nixReadonly} onclick={applyNix}>
+							{applying ? 'Applying…' : 'Apply'}
+						</button>
+					</div>
+				</div>
+			{/if}
+
+			{#if currentOpId}
+				<div class="form-section">
+					<h2 class="text-xl font-semibold">Build log</h2>
+					<pre class="codeblock mt-2 h-56 overflow-y-auto" bind:this={logEl}>{buildLines.join(
+							'\n'
+						)}</pre>
+					{#if buildDone && buildError}
+						<div class="banner banner--error mt-3">
+							<p class="font-mono text-compact whitespace-pre-wrap">{buildError}</p>
+						</div>
+					{:else if buildDone}
+						<p class="mt-3 text-sm text-emerald-700 dark:text-emerald-400">Applied.</p>
+					{/if}
+				</div>
+			{/if}
+
+			<div class="form-section">
+				<h2 class="text-xl font-semibold">Base updates</h2>
+				<label class="check-row mt-2">
+					<input
+						type="checkbox"
+						checked={project.hold_base_updates}
+						disabled={holdSaving}
+						onchange={(e) => void toggleHold(e.currentTarget)}
+					/>
+					Hold base updates (currently on {project.base_version})
+				</label>
+			</div>
+
+			<div class="form-section">
+				<h2 class="text-xl font-semibold">Revisions</h2>
+				{#if revisions.length === 0}
+					<p class="mt-2 text-sm text-ink-muted">No revisions yet.</p>
+				{:else}
+					<ul class="mt-2">
+						{#each revisions as rev (rev.revision_id)}
+							<li class="row flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
+								<span class="tabular-nums">
+									{dateTime(rev.created_at)}
+									<span
+										class="badge ml-2"
+										class:badge--new={rev.status === 'applied'}
+										class:badge--error={rev.status === 'failed'}>{rev.status}</span
+									>
+								</span>
+								{#if rev.status !== 'building'}
 									<button
 										type="button"
-										class="link"
-										aria-label={`Remove ${pkg}`}
-										onclick={() => (extraPackages = extraPackages.filter((p) => p !== pkg))}
-										>Remove</button
+										class="btn-ghost -mr-2"
+										disabled={applying}
+										onclick={() => reapply(rev)}
+										>{reapplying === rev.revision_id ? 'Re-applying…' : 'Re-apply'}</button
 									>
-								</li>
-							{/each}
-						</ul>
-					</div>
-				{/if}
-				<div class="form-section">
-					<button type="button" class="btn" disabled={applying} onclick={applyMenu}>
-						{applying ? 'Applying…' : 'Apply'}
-					</button>
-				</div>
-			</div>
-		{:else}
-			<div class="mt-4">
-				{#if nixReadonly}
-					<p class="banner banner--warn">
-						This project is managed by the menu. Editing here takes over from the menu.
-						<button type="button" class="link" onclick={editAsNix}>Edit as Nix</button>
-					</p>
-				{/if}
-				<NixEditor
-					bind:value={fragmentText}
-					readonly={nixReadonly}
-					errorLine={fragmentErrorLine(buildError)}
-				/>
-				<div class="form-section">
-					<button type="button" class="btn" disabled={applying || nixReadonly} onclick={applyNix}>
-						{applying ? 'Applying…' : 'Apply'}
-					</button>
-				</div>
-			</div>
-		{/if}
-
-		{#if currentOpId}
-			<div class="form-section">
-				<h2 class="font-display text-xl font-semibold">Build log</h2>
-				<pre class="codeblock mt-2 h-56 overflow-y-auto" bind:this={logEl}>{buildLines.join(
-						'\n'
-					)}</pre>
-				{#if buildDone && buildError}
-					<div class="banner banner--error mt-3">
-						<p class="font-mono text-xs whitespace-pre-wrap">{buildError}</p>
-					</div>
-				{:else if buildDone}
-					<p class="mt-3 text-sm text-emerald-700 dark:text-emerald-400">Applied.</p>
+								{/if}
+							</li>
+						{/each}
+					</ul>
 				{/if}
 			</div>
 		{/if}
-
-		<div class="form-section">
-			<h2 class="font-display text-xl font-semibold">Base updates</h2>
-			<label class="check-row mt-2">
-				<input type="checkbox" checked={project.hold_base_updates} onchange={toggleHold} />
-				Hold base updates (currently on {project.base_version})
-			</label>
-		</div>
-
-		<div class="form-section">
-			<h2 class="font-display text-xl font-semibold">Revisions</h2>
-			{#if revisions.length === 0}
-				<p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">No revisions yet.</p>
-			{:else}
-				<ul class="mt-2">
-					{#each revisions as rev (rev.revision_id)}
-						<li class="row flex items-center justify-between gap-4 text-sm">
-							<span>
-								{dateTime(rev.created_at)}
-								<span
-									class="badge ml-2"
-									class:badge--new={rev.status === 'applied'}
-									class:badge--error={rev.status === 'failed'}>{rev.status}</span
-								>
-							</span>
-							{#if rev.status !== 'building'}
-								<button type="button" class="btn-ghost" onclick={() => reapply(rev)}
-									>Re-apply</button
-								>
-							{/if}
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</div>
-	{/if}
+	</LoadState>
 </PageShell>

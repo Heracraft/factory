@@ -139,7 +139,7 @@ The machine's checkout has the same `origin` as yours. If you're logged in to th
 
 ## Git and snapshots
 
-Git protects tracked source. A [snapshot](/docs/lifecycle#snapshots) protects the whole machine: the database, installed tools, uncommitted work, logins. Take one before letting an agent loose on something destructive, and you can put everything back in a minute, git included.
+Git protects tracked source. A [snapshot](/docs/lifecycle#snapshots) protects the whole machine: the database, installed tools, uncommitted work, logins. Take one before letting an agent loose on something destructive, and you can put everything back in a few minutes, git included.
 
 ## Clean up
 

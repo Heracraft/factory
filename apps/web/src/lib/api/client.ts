@@ -3,7 +3,7 @@
 // a function when a route is added there, not before.
 import { env } from '$env/dynamic/public';
 import { getAccessToken } from '$lib/auth.svelte';
-import { ApiError, NetworkError } from './errors';
+import { ApiError, NetworkError, isOutage } from './errors';
 import { reachability } from './reachability.svelte';
 import type {
 	ApiErrorBody,
@@ -54,23 +54,26 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 			headers,
 			body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined
 		});
-		// A 5xx counts as "cannot reach the api" for the persistent bar
-		// (08-dashboard.md 6), same as a network-level failure below.
-		reachability.ok = res.status < 500;
 	} catch (err) {
-		reachability.ok = false;
+		reachability.down('network');
 		throw new NetworkError(err);
 	}
 
 	const requestId = res.headers.get('X-Request-Id');
 
-	if (res.status === 204) return undefined as T;
+	if (res.status === 204) {
+		reachability.up();
+		return undefined as T;
+	}
 
 	let json: unknown;
 	const text = await res.text();
 	try {
 		json = text ? JSON.parse(text) : undefined;
 	} catch {
+		// A proxy's HTML error page: the api itself did not answer.
+		if (res.status >= 500) reachability.down('server');
+		else reachability.up();
 		throw new ApiError(
 			{ code: 'internal', message: 'the api sent a response that was not JSON' },
 			res.status,
@@ -78,8 +81,14 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 		);
 	}
 
+	const errBody = (json as { error?: ApiErrorBody } | undefined)?.error;
+	// A 5xx raises the persistent bar (08-dashboard.md 6), except the 503s
+	// the api gives as answers (isOutage); anything else clears it.
+	if (isOutage(res.status, errBody?.code)) reachability.down('server');
+	else reachability.up();
+
 	if (!res.ok) {
-		const body = (json as { error?: ApiErrorBody } | undefined)?.error ?? {
+		const body = errBody ?? {
 			code: 'internal',
 			message: `unexpected ${res.status} response`
 		};

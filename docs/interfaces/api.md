@@ -8,6 +8,11 @@ shared mTLS client certificate. Errors: `{ "error": { "code": "...",
 "message": "...", "detail": {...} } }` with codes `unauthenticated`,
 `forbidden`, `not_found`, `invalid`, `conflict`, `payment_required`,
 `capacity`, `waitlisted`, `rate_limited`, `billing_disabled`, `internal`.
+Three codes come with a 503 and are answers, not outages: `capacity` (no
+host can take the machine), `waitlisted` and `billing_disabled`; any other
+5xx is the api failing. This is the one list; the dashboard's outage bar
+(`ANSWER_503` in `apps/web/src/lib/api/errors.ts`) and its docs point here
+(I-393).
 `waitlisted` (503) refuses a plan's checkout while the fleet has no free
 seat and puts the user on the waitlist; `detail` is `{position, joined_at,
 email}` and `message` is the whole sentence (DECISIONS I-269, I-290).

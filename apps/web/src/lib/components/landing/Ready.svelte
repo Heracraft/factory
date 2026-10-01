@@ -4,7 +4,7 @@
   under them; the aria-label names them);
   below them the toolchain, and a shell on the machine where a missing
   command prints the real command-not-found hint (nix/guest/base/devtools.nix,
-  captured for real on the recruiting machine).
+  captured for real on a repose machine).
 -->
 <script lang="ts">
 	import { agentMarks, toolMarks, type Mark } from '$lib/components/illustrations/marks';
@@ -18,21 +18,16 @@
 
 	const everyday = 'uv gcc make cmake git gh tmux jq ripgrep psql neovim Chromium';
 
-	// A real capture from the `recruiting` machine (tmux capture-pane -p -e -J,
+	// A real capture from a repose machine (tmux capture-pane -p -e -J,
 	// 2026-09-25): pgcli typed in the checkout, the command-not-found hint, the
-	// suggested install, the tool running. Prompt rows are cropped after the
-	// directory (the rest is Nerd Font glyphs); colours as the capture set them,
-	// mapped as ops/dev/hero/convert.py maps them.
+	// suggested install, the tool running. Colours as the capture set them,
+	// mapped as ops/dev/hero/convert.py maps them. The first line of each
+	// two-line starship prompt ('dev in repose-guest in' and the checkout's
+	// folder, an internal name) is cropped out, as rows are cropped out of
+	// the browser card's log; each command keeps its ❯ line, and the status
+	// bar still names the machine (I-397).
 	type Row = [string, string][];
-	const prompt: Row = [
-		['dev', 'y b'],
-		[' in ', ''],
-		['🌐 repose-guest', 'g b dim'],
-		[' in ', ''],
-		['recruiting', 'c b']
-	];
 	const rows: (Row | 'hint')[] = [
-		prompt,
 		[
 			['❯', 'g b'],
 			[' pgcli -p 5433', '']
@@ -41,20 +36,20 @@
 		'hint',
 		[['Other packages with pgcli: python314Packages.pgcli, python313Packages.pgcli', '']],
 		[],
-		prompt,
 		[
 			['❯', 'r'],
 			[' nix profile add nixpkgs#pgcli', '']
 		],
 		[],
-		prompt,
 		[
 			['❯', 'g b'],
 			[' pgcli --version', '']
 		],
 		[['Version: 4.6.0', '']]
 	];
-	// The status bar as a client on that window drew it (the mode flag cropped).
+	// The status bar as a client on that window drew it (the mode flag
+	// cropped, and its first 10 columns, the session name, cropped off the
+	// left so it starts at the window list).
 	const barHost = '"repose-guest" ';
 	const barDate = ' 25-Sep-26';
 	const hint = [
@@ -112,7 +107,7 @@
 					{#if row === 'hint'}
 						{#each hint as [cmd, what] (cmd)}
 							<div class="hint">
-								<span>{cmd}</span><span class="sp">&nbsp;&nbsp;</span><span class="d">{what}</span>
+								<span>{cmd}</span><span>&nbsp;&nbsp;</span><span>{what}</span>
 							</div>
 						{/each}
 					{:else}
@@ -124,7 +119,7 @@
 				{/each}
 			</div>
 			<div class="bar">
-				<span class="pre">[recruitin0:shell- 1:dev&nbsp; 2:ready*</span><span class="clock"
+				<span class="pre">0:shell- 1:dev&nbsp; 2:ready*</span><span class="clock"
 					><span class="long">{barHost}</span>19:49<span class="long">{barDate}</span></span
 				>
 			</div>
@@ -145,8 +140,10 @@
 		align-items: center;
 		text-align: center;
 	}
+	/* The landing's own chrome around the capture: text tokens, so the
+	   two schemes are paired once in layout.css, not here. */
 	.am {
-		color: var(--color-zinc-900);
+		color: var(--ink);
 	}
 	.below {
 		display: grid;
@@ -165,14 +162,14 @@
 		align-items: center;
 		gap: 10px;
 		font-size: 14px;
-		color: var(--color-zinc-700);
+		color: var(--pic-ink);
 	}
 	.more {
 		margin-top: 16px;
 		font-family: var(--font-mono);
 		font-size: 12px;
 		line-height: 20px;
-		color: var(--color-zinc-500);
+		color: var(--ink-faint);
 	}
 	@media (min-width: 640px) {
 		.agents {
@@ -189,17 +186,6 @@
 			gap: 32px;
 		}
 	}
-	@media (prefers-color-scheme: dark) {
-		.am {
-			color: var(--color-zinc-100);
-		}
-		.more {
-			color: var(--color-zinc-400);
-		}
-		.tools li {
-			color: var(--color-zinc-300);
-		}
-	}
 
 	.term {
 		display: flex;
@@ -213,17 +199,13 @@
 		font-size: 12px;
 		line-height: 19px;
 	}
+	/* A terminal does not re-flow: rows keep white-space: pre and a narrow
+	   frame crops them on the right, as the editor and browser captures
+	   are cropped (I-397). */
 	.lines {
 		flex: 1;
 		padding: 12px 14px 14px;
-	}
-	.lines > div {
-		overflow-wrap: anywhere;
-	}
-	.lines span {
-		white-space: pre-wrap;
-	}
-	.hint span {
+		overflow: hidden;
 		white-space: pre;
 	}
 	.y {
@@ -244,9 +226,6 @@
 	}
 	.b {
 		font-weight: 700;
-	}
-	.dim {
-		opacity: 0.7;
 	}
 	.bar {
 		display: flex;
@@ -271,17 +250,6 @@
 		}
 		.bar {
 			padding: 1px 10px;
-		}
-		.hint {
-			display: flex;
-			flex-direction: column;
-		}
-		.hint .sp {
-			display: none;
-		}
-		.hint .d {
-			padding-left: 4ch;
-			white-space: pre-wrap;
 		}
 		.agents {
 			display: flex;

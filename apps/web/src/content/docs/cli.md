@@ -28,7 +28,7 @@ Create or start this checkout's machine and attach. A new machine gets a copy of
 
 On your laptop, `run` changes one thing in the checkout: it adds a git remote named `repose` for the machine's checkout, so `git fetch repose` brings the agent's commits back. See [Getting work back](/docs/sync#getting-work-back).
 
-| Flag                      |                                                                                                                                                                   |
+| Flag                      | What it does                                                                                                                                                      |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--agent NAME`            | `claude`, `codex`, `opencode`, `gemini` or `pi`.                                                                                                                  |
 | `--no-attach`             | Don't attach afterwards.                                                                                                                                          |
@@ -52,7 +52,7 @@ While you're attached, a file you drop on the terminal, or an image you paste wi
 
 Copy this checkout's current work to its machine, over the checkout already there, and don't attach. It creates or starts the machine if needed. It stops with exit code 6 when the machine has uncommitted changes your laptop would write over. See [Sync](/docs/sync). `repose run --stash-remote` and `--discard-remote` moved here, and `run` exits 2 naming this command when given one.
 
-| Flag                      |                                                                    |
+| Flag                      | What it does                                                       |
 | ------------------------- | ------------------------------------------------------------------ |
 | `--stash-remote`          | Stash the machine's uncommitted changes before syncing.            |
 | `--discard-remote`        | Discard the machine's uncommitted changes before syncing.          |
@@ -98,7 +98,7 @@ $ repose code todo-app
 Opening todo-app.repose:/home/dev/todo-app in VS Code
 ```
 
-| Flag              |                                                                            |
+| Flag              | What it does                                                               |
 | ----------------- | -------------------------------------------------------------------------- |
 | `--editor EDITOR` | `code`, `cursor` or `zed`. Default: `REPOSE_EDITOR`, else the first found. |
 
@@ -108,7 +108,7 @@ Other editors: see [SSH and editors](/docs/ssh-and-editors).
 
 Forward one port to your laptop and open it in the browser, until `Ctrl-C`. Works for servers on `127.0.0.1`, `0.0.0.0` or `::1`.
 
-| Flag             |                                                                     |
+| Flag             | What it does                                                        |
 | ---------------- | ------------------------------------------------------------------- |
 | `--local-port N` | Port on the laptop. Default: the same, or a free one if it's taken. |
 | `--no-browser`   | Print the URL only.                                                 |
@@ -117,7 +117,7 @@ Forward one port to your laptop and open it in the browser, until `Ctrl-C`. Work
 
 Watch the agent's browser on the machine and take it over: starts the machine's desktop view if needed, forwards it to laptop port 6080 (or a free one) in the background, and opens the link in your browser. The password is in the link after `#`; nothing to type. The view is the size of your tab and sleeps after 30 idle minutes; opening the page again wakes it. [Browser](/docs/machine#browser) has the details.
 
-| Flag        |                                                    |
+| Flag        | What it does                                       |
 | ----------- | -------------------------------------------------- |
 | `--no-open` | Print the link only.                               |
 | `--stop`    | Stop the view on the machine and the forward here. |
@@ -140,7 +140,7 @@ An agent on todo-app is in your Chrome.
 
 Needs the machine running (it doesn't start it) and Chrome 144 or newer with remote debugging turned on at `chrome://inspect/#remote-debugging`. When it's off, the command opens that page and waits up to 5 minutes for you to turn it on.
 
-| Flag                  |                                                                                                                                                                               |
+| Flag                  | What it does                                                                                                                                                                  |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--allow HOST`        | Let the agents use only this site: other tabs are hidden from them and other sites fail. Repeatable, or comma-separated; `*.example.com` is `example.com` and its subdomains. |
 | `--cdp URL`           | Bridge a browser started with a remote debugging port instead (`http://127.0.0.1:9222`): any Chromium, no switch, no dialogs.                                                 |
@@ -157,7 +157,7 @@ Copy files with `scp`. One side is `PROJECT:PATH`, or `:PATH` for this checkout'
 
 Copy the image on your clipboard to `/tmp/repose-paste/` on the machine and paste its path into the tmux session's current pane, where Claude Code attaches it. Nothing is sent with it; you press Enter. While you're attached, `Ctrl+V` does the same; `repose paste` is for scripts and other windows. See [Drop a file or paste an image](/docs/run-and-attach#drop-a-file-or-paste-an-image).
 
-| Flag            |                                                                  |
+| Flag            | What it does                                                     |
 | --------------- | ---------------------------------------------------------------- |
 | `--window NAME` | Paste into this tmux window (name or number) instead.            |
 | `--print`       | Copy the image and print its path on the machine; paste nothing. |
@@ -232,7 +232,7 @@ Answer a waiting question: `repose reply todo-app yes`. The first word is the pr
 
 ## Snapshots
 
-| Command                                |                                                                                                                    |
+| Command                                | What it does                                                                                                       |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `repose snapshots list`                | Alias `ls`. `--json` for JSON, `-q`/`--quiet` for the ids only.                                                    |
 | `repose snapshots create`              | Take one now.                                                                                                      |
@@ -240,7 +240,7 @@ Answer a waiting question: `repose reply todo-app yes`. The first word is the pr
 
 ## Secrets
 
-| Command                        |                                                                                                                           |
+| Command                        | What it does                                                                                                              |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
 | `repose secrets set NAME`      | Asks for the value. `--from-file PATH` or `--from-env` instead.                                                           |
 | `repose secrets import [FILE]` | Set every `NAME=VALUE` in a `.env` file (default `./.env`, `-` for stdin). `--dry-run` lists the names and sends nothing. |
@@ -249,7 +249,7 @@ Answer a waiting question: `repose reply todo-app yes`. The first word is the pr
 
 ## Configuration
 
-| Command                           |                                                                                            |
+| Command                           | What it does                                                                               |
 | --------------------------------- | ------------------------------------------------------------------------------------------ |
 | `repose config add PACKAGE...`    | Add menu entries or nixpkgs packages, build and apply.                                     |
 | `repose config remove PACKAGE...` | Remove them again. Alias `rm`.                                                             |
@@ -259,7 +259,7 @@ Answer a waiting question: `repose reply todo-app yes`. The first word is the pr
 
 ## Account
 
-| Command                             |                                                                                                                  |
+| Command                             | What it does                                                                                                     |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `repose login`                      | Log in with a code in any browser. `--no-browser` is the same; `--browser`, see [Other servers](#other-servers). |
 | `repose logout`                     | Log out and revoke SSH certificates. `--purge` removes the CLI's files.                                          |
@@ -282,7 +282,7 @@ default_agent = "codex"
 exclude = ["dist", "*.mp4"]
 ```
 
-| Key               | Default  |                                                                      |
+| Key               | Default  | What it does                                                         |
 | ----------------- | -------- | -------------------------------------------------------------------- |
 | `default_class`   | `large`  | Size of new projects.                                                |
 | `default_agent`   | `claude` | Agent for new projects.                                              |
@@ -293,7 +293,7 @@ exclude = ["dist", "*.mp4"]
 
 ## Environment variables
 
-| Variable                  |                                                                                                                                                  |
+| Variable                  | What it sets                                                                                                                                     |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `REPOSE_PROJECT`          | The project to act on, like `--project`.                                                                                                         |
 | `REPOSE_NO_FORWARD=1`     | Don't forward ports automatically while attached.                                                                                                |
@@ -318,7 +318,7 @@ For a test or self-hosted repose server rather than the hosted one: `--api-url U
 
 ## Files on your laptop
 
-| Path                |                                                                                                                                                                                                                                                                                                                        |
+| Path                | What it holds                                                                                                                                                                                                                                                                                                          |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `~/.config/repose/` | Your login (mode 0600; on macOS the token is in the keychain), `config.toml`, and caches that are safe to delete.                                                                                                                                                                                                      |
 | `~/.ssh/repose/`    | The CLI's own SSH key and 24-hour certificate, `hosts` with one `Host` block per project, and `config`, which has `ssh` run `repose ssh-prepare` before connecting to a `.repose` host, so the certificate is renewed and a new project's block written first ([SSH and editors](/docs/ssh-and-editors#how-it-works)). |

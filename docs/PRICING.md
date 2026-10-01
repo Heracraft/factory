@@ -11,7 +11,7 @@ I-77, I-179 to I-185 and I-205; the hourly design is kept in
 
 ## Plans
 
-| Plan | Price | Running at once | Disk | Egress a month | Seats |
+| Plan | Price | Memory for running machines | Disk | Egress a month | Seats |
 |---|---|---|---|---|---|
 | Solo | $29 a month | 8 GB: one `large`, or two `small` | 100 GB | 250 GB | 1 |
 | Plus | $59 a month | 16 GB: one `xl`, two `large`, any mix | 250 GB | 500 GB | 2 |

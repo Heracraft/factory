@@ -513,8 +513,8 @@ func (f *Fake) gate(u *userRec, class string, addDiskBytes int64, exclude *proje
 			if len(slugs) > 0 {
 				using = strings.Join(slugs, ", ") + " " + pluralIs(len(slugs)) + " using it"
 			}
-			return errf("payment_required", "A %s (%d GB) would pass %s's %d GB running at once; %s. Stop one or upgrade.",
-				class, classGB[class], plan.Name, plan.MemoryGB, using).
+			return errf("payment_required", "A %s (%d GB) would pass the %d GB of memory %s gives running machines; %s. Stop one or upgrade.",
+				class, classGB[class], plan.MemoryGB, plan.Name, using).
 				withDetail(map[string]any{"reason": "plan_limit", "plan": plan.ID, "limit_gb": plan.MemoryGB, "used_gb": used, "projects": slugs})
 		}
 	}
@@ -648,7 +648,7 @@ func (f *Fake) meLimits() limitsView {
 	if plan == nil {
 		return limitsView{}
 	}
-	// An xl fits any plan that holds 16 GB running at once (Plus and Pro).
+	// An xl fits any plan that holds 16 GB of memory for running machines (Plus and Pro).
 	xl := 0
 	if plan.MemoryGB >= classGB["xl"] {
 		xl = 1
@@ -778,7 +778,7 @@ func (f *Fake) billingPlan(w http.ResponseWriter, r *http.Request) *apiError {
 	default:
 		running, disk := f.runningGB(u, nil), f.diskAllocatedGB(u)
 		if running > to.MemoryGB || disk > float64(to.DiskGB) {
-			return errf("conflict", "%s holds %d GB running at once and %d GB of disk; you have %d GB running and %.0f GB allocated. Stop machines or destroy projects first.",
+			return errf("conflict", "%s holds %d GB of memory for running machines and %d GB of disk; you have %d GB of memory running and %.0f GB allocated. Stop machines or destroy projects first.",
 				to.Name, to.MemoryGB, to.DiskGB, running, disk).
 				withDetail(map[string]any{"reason": "over_plan", "running_gb": running, "disk_allocated_gb": disk})
 		}

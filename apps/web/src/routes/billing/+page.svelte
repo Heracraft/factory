@@ -15,16 +15,19 @@
 	} from '$lib/api/client';
 	import { ApiError } from '$lib/api/errors';
 	import { toastApiError } from '$lib/api/toast';
+	import { reachability } from '$lib/api/reachability.svelte';
 	import { openCheckout, pageTheme } from '$lib/paddle';
 	import { money, price, gbs, dateOnly, dateTime, timeUntil } from '$lib/format';
 	import PageShell from '$lib/components/PageShell.svelte';
 	import Meter from '$lib/components/Meter.svelte';
+	import LoadState, { loadErrorText } from '$lib/components/LoadState.svelte';
+	import { focusAfterRender, focusOnMount } from '$lib/focus';
 	import type { Billing, Invoice, Me, Plan, PlanId } from '$lib/api/types';
 
 	let me = $state<Me | undefined>(undefined);
 	let billing = $state<Billing | undefined>(undefined);
 	let billingDisabled = $state(false);
-	let loadFailed = $state(false);
+	let loadError = $state<string | undefined>(undefined);
 	let invoices = $state<Invoice[]>([]);
 
 	// After Paddle's overlay reports the checkout done (or the user comes
@@ -64,20 +67,36 @@
 	let accountStatus = $derived(me?.billing.status);
 
 	async function load() {
+		// One failure, one report (DESIGN-LANGUAGE "Toasts", I-395): an
+		// account that did not load is toasted only when the billing call
+		// answered, since an outage fails both and the load banner or the
+		// outage bar already says so.
+		let meError: unknown;
+		const reportMe = () => {
+			if (meError !== undefined && reachability.ok) {
+				toastApiError(meError, 'Could not load the account.');
+			}
+		};
 		try {
 			me = await getMe();
 		} catch (err) {
-			toastApiError(err, 'Could not load the account.');
+			meError = err;
 		}
 		try {
 			billing = await getBilling();
 			billingDisabled = false;
-			loadFailed = false;
+			loadError = undefined;
+			reportMe();
 		} catch (err) {
-			if (err instanceof ApiError && err.code === 'billing_disabled') billingDisabled = true;
-			else {
-				loadFailed = true;
+			if (err instanceof ApiError && err.code === 'billing_disabled') {
+				billingDisabled = true;
+				reportMe();
+			} else if (billing) {
+				// A refresh after an action: what is on screen stays, and the
+				// toast says the refresh failed.
 				toastApiError(err, 'Could not load billing.');
+			} else {
+				loadError = loadErrorText(err, 'Could not load billing.');
 			}
 			return;
 		}
@@ -184,6 +203,9 @@
 			await billingCancel();
 			confirmCancel = false;
 			await load();
+			// Cancel plan is gone once the plan is cancelled; Resume plan
+			// takes its place and the focus with it.
+			void focusAfterRender('resume-plan', 'cancel-plan');
 		} catch (err) {
 			toastApiError(err, 'Could not cancel the plan.');
 		} finally {
@@ -196,6 +218,9 @@
 		try {
 			await billingResume();
 			await load();
+			// The mirror of cancel(): Resume plan is gone once cancel_at
+			// clears, so Cancel plan takes the focus.
+			void focusAfterRender('cancel-plan');
 		} catch (err) {
 			toastApiError(err, 'Could not resume the plan.');
 		} finally {
@@ -239,38 +264,40 @@
 		{#each plans as p (p.id)}
 			<li class="card flex flex-col" data-testid="plan-{p.id}">
 				<div class="flex items-baseline justify-between gap-3">
-					<h3 class="text-xl font-semibold">{p.name}</h3>
+					<h2 class="text-xl font-semibold">{p.name}</h2>
 					<p class="text-sm">
-						<span class="font-display text-2xl font-semibold">{price(p.price_cents)}</span>
-						<span class="text-zinc-500 dark:text-zinc-400"> a month</span>
+						<span class="font-display text-2xl font-semibold tabular-nums"
+							>{price(p.price_cents)}</span
+						>
+						<span class="text-ink-muted"> a month</span>
 					</p>
 				</div>
-				<dl class="mt-4 space-y-1.5 text-sm">
+				<dl class="mt-4 space-y-1.5 text-sm tabular-nums">
 					<div class="flex justify-between gap-4">
-						<dt class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">Running at once</dt>
+						<dt class="whitespace-nowrap text-ink-muted">Running at once</dt>
 						<dd class="text-right text-balance">{p.memory_gb} GB: {runsAtOnce(p)}</dd>
 					</div>
 					<div class="flex justify-between gap-4">
-						<dt class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">Disk</dt>
+						<dt class="whitespace-nowrap text-ink-muted">Disk</dt>
 						<dd>{p.disk_gb} GB</dd>
 					</div>
 					<div class="flex justify-between gap-4">
-						<dt class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">Egress a month</dt>
+						<dt class="whitespace-nowrap text-ink-muted">Egress a month</dt>
 						<dd>{allowance(p.egress_gb)}</dd>
 					</div>
 					<div class="flex justify-between gap-4">
-						<dt class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">Projects</dt>
+						<dt class="whitespace-nowrap text-ink-muted">Projects</dt>
 						<dd>{p.project_limit}</dd>
 					</div>
 				</dl>
-				<p class="mt-4 text-sm text-pretty text-zinc-500 dark:text-zinc-400">
+				<p class="mt-4 text-sm text-pretty text-ink-muted">
 					{p.trial_days} days free, card at checkout, cancel any time.
 				</p>
 				<!-- The note sits above the button so the buttons line up across
 				     the cards whether or not one has a note. -->
 				<div class="mt-auto pt-5">
 					{#if !p.available && billing}
-						<p class="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+						<p class="mb-2 text-xs text-ink-muted">
 							Needs {p.seats} seats; {billing.seats.free} free.
 						</p>
 					{/if}
@@ -290,19 +317,15 @@
 
 <PageShell title="Billing" width={showCards ? 'list' : 'form'}>
 	{#if billingDisabled}
-		<p class="text-sm text-zinc-500 dark:text-zinc-400" data-testid="billing-disabled">
+		<p class="text-sm text-ink-muted" data-testid="billing-disabled">
 			Billing is not switched on yet.
 		</p>
-	{:else if loadFailed}
-		<p class="text-sm text-zinc-500 dark:text-zinc-400">
-			Could not load billing. Try again in a moment.
-		</p>
 	{:else if !billing}
-		<p class="text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
+		<LoadState status={loadError ? 'failed' : 'loading'} error={loadError} onretry={load} />
 	{:else if settingUp}
 		<div class="card" data-testid="setting-up" aria-live="polite">
-			<h2 class="text-lg font-semibold">Setting up your plan</h2>
-			<p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+			<h2 class="text-xl font-semibold">Setting up your plan</h2>
+			<p class="mt-2 text-sm text-ink-muted">
 				Your payment went through. The plan appears here in a few seconds.
 			</p>
 		</div>
@@ -324,22 +347,24 @@
 			</div>
 			{@render planCards(billing.plans)}
 		{:else if anyAvailable}
-			<p class="mb-5 text-sm text-zinc-500 dark:text-zinc-400" data-testid="seats-line">
+			<p class="mb-5 text-sm text-ink-muted tabular-nums" data-testid="seats-line">
 				{billing.seats.free}
 				{billing.seats.free === 1 ? 'seat' : 'seats'} left.
 			</p>
 			{@render planCards(billing.plans)}
 		{:else}
 			<div class="card" data-testid="full">
-				<h2 class="text-lg font-semibold">repose is full</h2>
-				<p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+				<h2 class="text-xl font-semibold">repose is full</h2>
+				<p class="mt-2 text-sm text-ink-muted">
 					Every seat is taken and {billing.seats.waiting}
 					{billing.seats.waiting === 1 ? 'person is' : 'people are'} waiting. A seat frees when a plan
 					ends.
 				</p>
 				{#if billing.waitlist}
 					<p class="mt-4 text-sm" data-testid="waitlist-place">
-						You're number <b>{billing.waitlist.position}</b> on the waitlist. We'll email
+						You're number <span class="font-semibold tabular-nums">{billing.waitlist.position}</span
+						>
+						on the waitlist. We'll email
 						{me?.email ?? 'you'} when a seat frees; you'll have 72 hours to choose a plan.
 					</p>
 				{:else}
@@ -355,7 +380,7 @@
 				{/if}
 			</div>
 		{/if}
-		<p class="mt-8 text-xs text-zinc-500 dark:text-zinc-400">
+		<p class="mt-8 text-xs text-ink-muted">
 			Prices in USD before tax; Paddle adds the tax for your country at checkout.
 			<a href={resolve('/refunds')} class="link">Refunds</a>.
 		</p>
@@ -388,11 +413,13 @@
 			<div class="flex flex-wrap items-baseline justify-between gap-3">
 				<h2 class="text-xl font-semibold">{plan.name}</h2>
 				<p class="text-sm">
-					<span class="font-display text-2xl font-semibold">{price(plan.price_cents)}</span>
-					<span class="text-zinc-500 dark:text-zinc-400"> a month</span>
+					<span class="font-display text-2xl font-semibold tabular-nums"
+						>{price(plan.price_cents)}</span
+					>
+					<span class="text-ink-muted"> a month</span>
 				</p>
 			</div>
-			<p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400" data-testid="plan-status">
+			<p class="mt-2 text-sm text-ink-muted" data-testid="plan-status">
 				{#if sub.cancel_at}
 					Cancelled. Ends {dateOnly(sub.cancel_at)}; machines stop then and snapshots stay 30 days.
 				{:else if sub.status === 'trialing' && sub.trial_end}
@@ -432,20 +459,21 @@
 						? `Over by ${gbs(billing.usage.egress_gb - billing.usage.egress_included_gb)}: ${money(billing.usage.overage_cents)} on the next invoice at $0.05 a GB.`
 						: undefined}
 				/>
-				<p class="text-sm" data-testid="projects-count">
-					<span class="font-medium">Projects</span>
-					<span class="ml-2 font-mono text-[13px] text-zinc-600 dark:text-zinc-400"
-						>{billing.usage.projects} of {billing.usage.project_limit}</span
-					>
-				</p>
+				<!-- A meter like the three above, figure right and bar under,
+				     so the four limits read as one list. -->
+				<div data-testid="projects-count">
+					<Meter
+						label="Projects"
+						used={billing.usage.projects}
+						limit={billing.usage.project_limit}
+						format={String}
+					/>
+				</div>
 			</div>
 
-			<div
-				class="mt-6 flex flex-wrap gap-x-5 gap-y-2 border-t pt-4"
-				style="border-color: var(--rule)"
-			>
+			<div class="mt-6 flex flex-wrap gap-x-5 gap-y-2 border-t pt-4 border-rule">
 				{#if sub.cancel_at}
-					<button type="button" class="btn" disabled={!!busy} onclick={resume}>
+					<button type="button" id="resume-plan" class="btn" disabled={!!busy} onclick={resume}>
 						{busy === 'resume' ? 'Resuming…' : 'Resume plan'}
 					</button>
 				{:else}
@@ -456,14 +484,27 @@
 						onclick={() => {
 							changing = !changing;
 							changeError = undefined;
+							confirmCancel = false;
 						}}>Change plan</button
 					>
-					<button
-						type="button"
-						class="btn-ghost-danger"
-						disabled={!!busy}
-						onclick={() => (confirmCancel = true)}>Cancel plan</button
-					>
+					<!-- The documented two-step (DESIGN-LANGUAGE.md, "Confirmation"):
+					     the button turns into the question below, and Keep it
+					     brings it back with the focus on it (I-393). One panel at a
+					     time: opening the question closes Change plan and the reverse,
+					     so the question sits right under the row, not under the plan
+					     list. -->
+					{#if !confirmCancel}
+						<button
+							type="button"
+							id="cancel-plan"
+							class="btn-ghost-danger"
+							disabled={!!busy}
+							onclick={() => {
+								changing = false;
+								confirmCancel = true;
+							}}>Cancel plan</button
+						>
+					{/if}
 				{/if}
 				<button
 					type="button"
@@ -474,11 +515,7 @@
 			</div>
 
 			{#if changing && otherPlans.length}
-				<div
-					class="mt-4 rounded-sm border text-sm"
-					style="border-color: var(--rule)"
-					data-testid="change-plan"
-				>
+				<div class="mt-4 rounded-sm border text-sm border-rule" data-testid="change-plan">
 					{#if scheduledPlan}
 						<div class="change-row p-4" data-testid="change-keep">
 							<p>
@@ -499,8 +536,9 @@
 						{@const up = other.seats > plan.seats}
 						<div class="change-row p-4" data-testid="change-to-{other.id}">
 							<p>
-								{up ? 'Upgrade' : 'Downgrade'} to <b>{other.name}</b> ({price(other.price_cents)} a month:
-								{other.memory_gb} GB running at once, {other.disk_gb} GB disk,
+								{up ? 'Upgrade' : 'Downgrade'} to <span class="font-semibold">{other.name}</span>
+								({price(other.price_cents)} a month:
+								{other.memory_gb} GB of memory for running machines, {other.disk_gb} GB disk,
 								{allowance(other.egress_gb)} egress).
 								{#if up}
 									Takes effect at once; Paddle prorates the rest of this period.
@@ -530,23 +568,26 @@
 			{/if}
 
 			{#if confirmCancel}
-				<div
-					class="mt-4 rounded-sm border p-4 text-sm"
-					style="border-color: var(--rule)"
-					data-testid="confirm-cancel"
-				>
-					<p>
-						Your plan ends on {dateOnly(
+				<div class="mt-4 text-sm" data-testid="confirm-cancel">
+					<p class="text-ink-muted">
+						Cancel the plan? It ends on {dateOnly(
 							sub.status === 'trialing' && sub.trial_end ? sub.trial_end : sub.period_end
 						)}. Machines run until then and stop at it; snapshots are kept 30 days after. Nothing is
 						charged after that.
 					</p>
-					<div class="mt-3 flex gap-2">
-						<button type="button" class="btn-danger" disabled={!!busy} onclick={cancel}>
+					<div class="mt-2 flex items-center gap-2">
+						<button type="button" class="btn-danger btn--sm" disabled={!!busy} onclick={cancel}>
 							{busy === 'cancel' ? 'Cancelling…' : 'Cancel plan'}
 						</button>
-						<button type="button" class="btn-ghost" onclick={() => (confirmCancel = false)}
-							>Keep it</button
+						<!-- Focus lands on the safe choice when the question opens. -->
+						<button
+							type="button"
+							class="btn-ghost"
+							use:focusOnMount
+							onclick={() => {
+								confirmCancel = false;
+								void focusAfterRender('cancel-plan');
+							}}>Keep it</button
 						>
 					</div>
 				</div>
@@ -554,15 +595,17 @@
 		</section>
 
 		<div class="form-section">
-			<h2 class="font-display text-xl font-semibold">Invoices</h2>
+			<h2 class="text-xl font-semibold">Invoices</h2>
 			{#if invoices.length === 0}
-				<p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+				<p class="mt-2 text-sm text-ink-muted">
 					No invoices yet. The first comes with the first charge.
 				</p>
 			{:else}
 				<ul class="mt-2" aria-label="Invoices">
 					{#each invoices as inv (inv.id)}
-						<li class="row flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
+						<li
+							class="row flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm tabular-nums"
+						>
 							<span>
 								{dateOnly(inv.created_at)}
 								{#if inv.number}· {inv.number}{/if}
@@ -571,7 +614,7 @@
 							<span>
 								{money(inv.amount_cents)}
 								{#if inv.tax_cents > 0}
-									<span class="text-zinc-500 dark:text-zinc-400">(tax {money(inv.tax_cents)})</span>
+									<span class="text-ink-muted">(tax {money(inv.tax_cents)})</span>
 								{/if}
 								{#if inv.pdf_url}
 									<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- Paddle's invoice PDF, not an app route -->
@@ -585,7 +628,7 @@
 					{/each}
 				</ul>
 			{/if}
-			<p class="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
+			<p class="mt-4 text-xs text-ink-muted">
 				Paddle is the merchant of record: receipts and tax come from Paddle.
 				<a href={resolve('/refunds')} class="link">Refunds</a>.
 			</p>

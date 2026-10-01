@@ -4,7 +4,7 @@
 </script>
 
 <svelte:head>
-	<title>Terms — repose</title>
+	<title>Terms · repose</title>
 </svelte:head>
 
 <LegalPage {raw} />

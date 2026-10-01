@@ -1,7 +1,7 @@
 // Checklist: "Secrets: add via text and via file, list, delete; values
 // never appear in the DOM after save."
 import { test, expect } from '@playwright/test';
-import { signIn, createProject, apiURLFromEnv } from './helpers';
+import { signIn, createProject, apiURLFromEnv, failNext } from './helpers';
 
 test.beforeEach(async ({ page }) => {
 	await signIn(page);
@@ -22,14 +22,26 @@ test('add via text, list, and delete; the value never reaches the DOM', async ({
 	await expect(secretRow).toBeVisible({ timeout: 5_000 });
 	expect(await page.content()).not.toContain('hunter2');
 
-	page.once('dialog', (d) => d.accept());
-	await page.getByRole('button', { name: 'Delete' }).click();
+	// Delete asks in the row first; Keep it backs out with nothing sent.
+	// Focus follows the panel: into it on open, back to Delete on Keep it,
+	// so a keyboard user is never dropped to the top of the page (I-391).
+	await page.getByRole('button', { name: 'Delete DATABASE_URL' }).click();
+	const ask = page.getByTestId('confirm-delete-secret');
+	await expect(ask).toContainText('keep their copy until they restart');
+	await expect(ask.getByRole('button', { name: 'Keep it' })).toBeFocused();
+	await ask.getByRole('button', { name: 'Keep it' }).click();
+	await expect(ask).toHaveCount(0);
+	await expect(secretRow).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Delete DATABASE_URL' })).toBeFocused();
+
+	await page.getByRole('button', { name: 'Delete DATABASE_URL' }).click();
+	await page.getByRole('button', { name: 'Delete DATABASE_URL now' }).click();
 	await expect(secretRow).toHaveCount(0, { timeout: 5_000 });
+	// The last row went, so focus lands on the Add form's first field.
+	await expect(page.getByLabel('Name', { exact: true })).toBeFocused();
 });
 
-test('a name that does not match the allowed pattern is rejected client-side', async ({
-	page
-}) => {
+test('a name that does not match the allowed pattern is rejected client-side', async ({ page }) => {
 	const p = await createProject(apiURLFromEnv(), {
 		name: 'secrets-invalid-app',
 		remote_url: 'github.com/heracraft/secrets-invalid-app'
@@ -116,4 +128,18 @@ test('a file over 64 KB is rejected client-side', async ({ page }) => {
 
 	await expect(page.getByText('Secret values are limited to 64 KB.')).toBeVisible();
 	await expect(page.getByText('BIG_FILE', { exact: true })).toHaveCount(0);
+});
+
+test('a failed first load shows the error and Retry loads the list', async ({ page }) => {
+	const p = await createProject(apiURLFromEnv(), {
+		name: 'secrets-retry-app',
+		remote_url: 'github.com/heracraft/secrets-retry-app'
+	});
+	await failNext('GET', `/projects/${p.id}/secrets`, 'internal');
+	await page.goto(`/projects/${p.id}/secrets`);
+	const failed = page.getByRole('alert');
+	await expect(failed).toBeVisible();
+	await failed.getByRole('button', { name: 'Retry' }).click();
+	await expect(page.getByRole('heading', { level: 2, name: 'No secrets yet' })).toBeVisible();
+	await expect(failed).toHaveCount(0);
 });

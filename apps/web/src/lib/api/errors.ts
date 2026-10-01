@@ -29,3 +29,41 @@ export class NetworkError extends Error {
 export function isApiError(e: unknown, code?: ErrorCode): e is ApiError {
 	return e instanceof ApiError && (code === undefined || e.code === code);
 }
+
+/**
+ * The sentence a failure is shown with, in a toast or a page's load banner,
+ * so one failure reads the same in both. The api's own message is a whole
+ * sentence for the codes a person can act on; `internal` carries only
+ * "internal error", which says nothing to the reader, so it gets the
+ * caller's sentence and what happened instead.
+ */
+export function errorText(err: unknown, fallback: string): string {
+	if (err instanceof ApiError) {
+		if (err.code === 'internal')
+			return `${fallback} The API failed on its side; try again shortly.`;
+		return err.message;
+	}
+	if (err instanceof NetworkError) return 'Cannot reach the API.';
+	return fallback;
+}
+
+/**
+ * The codes the api sends with a 503 on purpose (api.md, "Errors";
+ * statusOf in internal/api/http/server.go). Each is an answer the page
+ * shows in its own words, not an outage: `capacity` (no host can take the
+ * machine; Start shows its capacity banner), `waitlisted` (no free seat)
+ * and `billing_disabled` (billing is not switched on). Counting them put
+ * the outage bar over /billing whenever billing was off (I-390) and over a
+ * refused Start next to its capacity banner (I-393).
+ */
+export const ANSWER_503: readonly ErrorCode[] = ['capacity', 'waitlisted', 'billing_disabled'];
+
+/**
+ * Whether a response means the api is in trouble, for the persistent bar
+ * (08-dashboard.md 6, "API 5xx or unreachable"): any 5xx except a 503 that
+ * carries one of the ANSWER_503 codes.
+ */
+export function isOutage(status: number, code: ErrorCode | undefined): boolean {
+	if (status < 500) return false;
+	return !(status === 503 && code !== undefined && ANSWER_503.includes(code));
+}

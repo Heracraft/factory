@@ -7,7 +7,7 @@ order: 31
 
 ## Your plan
 
-A plan buys memory that may run at once, disk that may be allocated, and egress for the month ([Pricing](/docs/billing)). Solo runs 8 GB at once (one `large`, or two `small`), Plus 16 GB (one `xl`, two `large`, any mix), Pro 32 GB (two `xl`, four `large`, any mix). Starting a machine that would pass it is refused with exit code 7 and a message that names the machine using the memory; stop it, or upgrade. An `xl` needs Plus or Pro.
+A plan buys memory for running machines, disk that may be allocated, and egress for the month ([Pricing](/docs/billing)). Solo gives running machines 8 GB of memory (one `large`, or two `small`), Plus 16 GB (one `xl`, two `large`, any mix), Pro 32 GB (two `xl`, four `large`, any mix). Starting a machine that would pass it is refused with exit code 7 and a message that names the machine using the memory; stop it, or upgrade. An `xl` needs Plus or Pro.
 
 ## Projects
 
@@ -15,7 +15,7 @@ Solo allows 10 projects, Plus 25 and Pro 50, running or stopped. Destroyed proje
 
 ## When repose is full
 
-Machines never share memory, so there's room for a fixed number of them. A seat is 8 GB running at once: Solo takes one, Plus two, Pro four. When no seat is free, choosing a plan puts you on the waitlist instead: `repose is full right now. You're number 3 on the waitlist; we'll email you@example.com when there's a seat.` The Billing page and the landing page show the seats left and the number waiting.
+Machines never share memory, so there's room for a fixed number of them. A seat is 8 GB of memory for running machines: Solo takes one, Plus two, Pro four. When no seat is free, choosing a plan puts you on the waitlist instead: `repose is full right now. You're number 3 on the waitlist; we'll email you@example.com when there's a seat.` The Billing page and the landing page show the seats left and the number waiting.
 
 We let people in, in the order they joined, as seats free up or we add a server. You get one email when it's your turn, sent even if you've turned notification emails off, and the seat is held for you for 72 hours. Choose your plan within them; a hold that runs out moves you to the back of the queue, and the email says so.
 

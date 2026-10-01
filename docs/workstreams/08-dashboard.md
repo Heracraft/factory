@@ -111,14 +111,30 @@ will replace it").
 
 ### 5.5 Errors
 
-Every API error renders as a toast with `message`; `payment_required` on
-Start (and on a resize) renders an inline banner with the api's sentence,
-a link to `/billing` named for `detail.reason` (§5.8), and for
-`plan_limit` a Stop for each machine `detail.projects` names that is this
-user's; `capacity` renders
-"No capacity right now, try again in a few minutes"; `rate_limited` waits and
-retries once. Network failures show a persistent "Cannot reach the API" bar
-until a poll succeeds.
+One failure is said once, in the words `errorText` (`lib/api/errors.ts`)
+gives it: the api's `message`, except for `internal`, whose bare "internal
+error" becomes the caller's sentence plus "The API failed on its side; try
+again shortly." (I-390). Where it is said depends on what the page still
+has:
+
+- A page's first load that fails leaves nothing to show, so the page shows
+  that sentence in a `.banner--error` with a Retry (`LoadState.svelte`,
+  I-385) instead of a toast. Retry re-runs the same load and reads
+  "Retrying…" while it does.
+- A later refresh that fails, and any action that fails, keeps the page
+  as it is and raises a toast with the sentence. A poll raises it once,
+  when it starts failing, and not while the load banner or the outage bar
+  already says it; the first tick that gets through dismisses it (I-393).
+- `payment_required` on Start (and on a resize) renders an inline banner
+  with the api's sentence, a link to `/billing` named for `detail.reason`
+  (§5.8), and for `plan_limit` a Stop for each machine `detail.projects`
+  names that is this user's; `capacity` renders "No capacity right now, try
+  again in a few minutes"; `rate_limited` waits and retries once.
+
+A request that gets no answer raises a persistent bar, "Cannot reach the
+API. Retrying…"; a 5xx raises it as "The API is failing right now.
+Retrying…". A 503 with one of the codes api.md lists as answers
+("Errors") raises no bar. Any other answer clears it (§6, I-390, I-393).
 
 ### 5.6 Deploy
 
@@ -183,7 +199,7 @@ running"; the list has no cost columns.
 |---|---|
 | Logto sign-in fails or is cancelled | back to landing with a toast `Sign-in was cancelled or failed; try again.` |
 | Access token refresh fails | sign out, redirect to landing, toast `Session expired, sign in again.` |
-| API 5xx or unreachable | persistent bar, polling continues with backoff to 60 s |
+| API 5xx or unreachable | persistent bar, polling continues with backoff to 60 s; a 503 with a code api.md lists as an answer is not an outage, and a 5xx says the api is failing rather than unreachable (I-390) |
 | Build fails | error block under the editor, fragment line highlighted, revision marked failed, Apply re-enabled |
 | Start refused for a billing reason | inline banner with the api's sentence and the link the reason wants (§5.8); button stays enabled |
 | Destroy typed wrong | button disabled until the slug matches exactly |
@@ -335,15 +351,19 @@ suites back most of it: `apps/web/tests/` against `internal/fakes/api`
       screenshot attached to the run. `/install.sh` is asserted to return
       the real script (I-98).
 - [x] Lighthouse accessibility score 90 or higher on `/projects` and
-      `/projects/[id]/config`. Evidence: **100 on both**, and 100 on the
-      landing page, via `playwright.a11y.config.ts` (Lighthouse attaches
-      to the browser Playwright has already signed in, so the audited
-      pages have a session). The first run scored 98 on every page,
-      failing `landmark-one-main`: every page was a `<div>`, so "skip to
-      main content" had nothing to jump to. Fixed in `PageShell`,
-      `LegalPage` and the landing page. The live landing page scores 100
-      on the deployed image. The audit now runs in CI with its reports
-      uploaded on every run, because a score checked once by hand drifts.
+      `/projects/[id]/config`. Evidence (re-run 2026-09-30 under I-389; the
+      earlier "100 on both" came from the signed-out landing page the
+      dashboard redirected Lighthouse to, so it proved nothing about these
+      two pages): `pnpm a11y` with Lighthouse 13.5.0, in a Playwright
+      persistent context that is signed in, asserting each audited path:
+      **52 passed** (13 pages x light and dark x 1440 and 390). `/projects`
+      and `/projects/[id]/config` score **100** in all four runs each, with
+      no failed binary audit; the config runs first had to find the Menu
+      tab (I-388) and then an unnamed CodeMirror textbox, both fixed
+      (I-391). The one tolerated failure was colour contrast on `/` at 390
+      (score 96), named in `KNOWN_FAILURES`; the Editor capture's rows
+      are inert since I-400, and the list is empty. The audit runs in CI with its reports uploaded, because
+      a score checked once by hand drifts.
 - [x] `features/config.md`, `features/secrets.md`, `features/snapshots.md`
       match what the pages do. Evidence: re-read; and two *other* feature
       docs did not match and were corrected rather than left

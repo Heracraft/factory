@@ -87,7 +87,7 @@ func Bootstrap(ctx context.Context, p *Paddle, o BootstrapOptions) (*BootstrapRe
 		return pr.ID, nil
 	}
 	for _, plan := range Plans {
-		id, err := product(plan.ID, "repose "+plan.Name, fmt.Sprintf("%d GB running at once, %d GB disk, %d GB egress a month", plan.MemoryGB, plan.DiskGB, plan.EgressGB))
+		id, err := product(plan.ID, "repose "+plan.Name, fmt.Sprintf("%d GB of memory for running machines, %d GB disk, %d GB egress a month", plan.MemoryGB, plan.DiskGB, plan.EgressGB))
 		if err != nil {
 			return nil, err
 		}

@@ -66,6 +66,134 @@ written so they cannot happen quietly.
       names is not in the guest), and for a new command the
       `guest-agent-guide` VM test output is pasted.
 
+## For every change to the web app's look
+
+`docs/DESIGN-LANGUAGE.md` is the spec (DECISIONS I-369). Run these from
+the repository root; each prints nothing when the rule holds. `$L` leaves
+out the landing (`routes/+page.svelte`, `routes/landing.css`,
+`lib/components/landing/`), which `LANDING.md` governs and "The landing"
+below checks:
+`L=(--glob '!**/landing/**' --glob '!**/routes/+page.svelte' --glob
+'!**/routes/landing.css')`. A hit is fixed, or the rule changes through a
+DECISIONS entry and this list with it. Counts as of 2026-10-01.
+
+- [ ] Text colours come from the ink tokens, and zinc-400 and lighter is
+      never text. Evidence: `rg -n 'text-zinc-[3-6]00' apps/web/src --glob
+      '*.svelte' "${L[@]}"` prints 0 lines.
+- [ ] Blue is only the palette, links, focus and selection, all in
+      `layout.css`. Evidence: `rg -n 'blue-[0-9]' apps/web/src "${L[@]}"
+      --glob '!**/routes/layout.css'` prints 0 lines (`layout.css` itself
+      has 23: eleven palette steps, then `--sh-accent`, `--pic-accent`,
+      `--accent`, `--accent-strong`, `--selection` and `--focus` twice
+      each, once per scheme; `.link` and the docs' links use
+      `text-accent`, I-392, I-397).
+- [ ] No shadows, and no gradient of more than one colour. Evidence: `rg
+      -n 'shadow-|box-shadow: [^n]' apps/web/src "${L[@]}"` prints 0
+      lines; `rg -nP 'gradient\((?!(var\([^)]*\)|#[0-9a-fA-F]+|currentColor),
+      \1\))' apps/web/src` prints 0 lines.
+- [ ] Toasts are house banners. Evidence: `rg -n 'richColors' apps/web/src
+      --glob '*.svelte' | rg -v '<!--'` prints 0 lines.
+- [ ] No page asks a third party for a font, and the CSP allows none.
+      Evidence: `rg -n 'fonts\.(googleapis|gstatic)' apps/web/src
+      apps/web/static apps/web/svelte.config.js` prints 0 lines, and a page
+      load's network panel shows only the site's host.
+- [ ] No native dialogs. Evidence: `rg -n 'window\.confirm|[^.\w/]confirm\('
+      apps/web/src --glob '*.{svelte,ts}' | rg -v '//|onconfirm'` prints 0
+      lines.
+- [ ] Sizes come from the scale, not overrides or hand-written values.
+      Evidence: `rg -n '![pm][xytrbl]?-' apps/web/src --glob '*.svelte'
+      "${L[@]}"` prints 0 lines (a compact button uses `.btn--sm`);
+      `rg -n 'text-\[[0-9.]+(px|rem|em)\]' apps/web/src --glob '*.svelte'`
+      prints 0 lines; `rg -n '\[var\(--' apps/web/src --glob '*.svelte'
+      "${L[@]}"` prints 0 lines (use `text-ink-muted`, `border-rule` and
+      the other token utilities).
+- [ ] Mono under 13px is only a badge. Evidence: `rg -n
+      'font-mono[^"]*text-x?xs|text-x?xs[^"]*font-mono|font-mono[^"]*text-2xs|text-2xs[^"]*font-mono'
+      apps/web/src --glob '*.svelte' "${L[@]}"` prints 0 lines (running
+      mono is `text-compact` or larger; a badge is `.badge`, I-393).
+- [ ] Corners stay at 4px or less, weight stays at semibold, and no
+      stray hue. Evidence: `rg -n 'rounded-(md|lg|xl|2xl|3xl|full)\b|font-bold|<b>|<strong'
+      apps/web/src --glob '*.svelte' "${L[@]}"` and `rg -n
+      'purple|violet|fuchsia|pink-|orange-|indigo|teal|cyan|lime-'
+      apps/web/src --glob '*.{svelte,css}' "${L[@]}"` each print 0 lines.
+- [ ] One scheme mechanism and a visible focus ring. Evidence: `rg -n
+      'data-theme|class="dark' apps/web/src` prints 0 lines; `rg -n
+      'outline-none' apps/web/src "${L[@]}"` prints only the docs drawer
+      (`routes/docs/+layout.svelte`, which is focused by script, not by
+      the keyboard).
+- [ ] A new component that shows state in a fill or a coloured border has
+      a rule in the `forced-colors` block of `layout.css`. Evidence: a
+      capture with Chromium's `forcedColors: 'active'`.
+- [ ] The keyboard path, forced colours, reduced motion and the phone
+      column hold. Evidence: `pnpm build`, then `pnpm test:integration
+      tests/design.spec.ts` passes; a panel that opens in place of a
+      button adds its focus check there (I-392).
+- [ ] The accessibility gate passes: `pnpm build`, then `pnpm a11y` in
+      `apps/web`, 56 runs (14 pages, light and dark, 1440 and 390), with
+      `KNOWN_FAILURES` empty or each entry carrying a reason and, where it
+      fails at one width only, that width (DECISIONS I-389, I-399). The
+      landing's four are audited under reduced motion, so two runs give
+      the same result (I-397).
+- [ ] Judged at real size: viewport captures or crops at 1x, 1440 and
+      390 wide, light and dark, of every changed page (CLAUDE.md "Judge
+      visuals at real size").
+
+### The landing
+
+The same rules over the landing's own files (I-397), with one allow-list:
+the pictures of real tools keep their tool's colours and sizes
+(`LANDING.md`, "Real, and whole, or not at all"; I-392). `$P` is the
+landing. `$C` leaves out the two files that are a capture and nothing
+else, `Editor.svelte` (LazyVim's Tokyo Night) and `Ready.svelte` (the
+terminal's ANSI colours). `Browser.svelte` and `Localhost.svelte` hold
+drawn parts too (chips, a ring, a title bar's dot), so the hue greps
+read them; the hex and size greps take `$X`, which also leaves them
+out, since their captured parts (the agent's white page and its log,
+tmux's bar) are written in hex and drawn at the capture's scale (the
+log at 10px in a narrow frame): `P=(apps/web/src/routes/+page.svelte
+apps/web/src/routes/landing.css apps/web/src/lib/components/landing)`,
+`C=(--glob '!**/landing/Editor.svelte' --glob '!**/landing/Ready.svelte')`,
+`X=("${C[@]}" --glob '!**/landing/Browser.svelte' --glob
+'!**/landing/Localhost.svelte')`. Counts as of 2026-10-01 (I-400).
+
+- [ ] Text is never zinc-300 to zinc-600, weight stops at semibold for
+      markup, and sizes take no overrides. Evidence: `rg -n
+      'text-zinc-[3-6]00|font-bold|<b>|<strong|![pm][xytrbl]?-|text-\[[0-9.]+(px|rem|em)\]'
+      "${P[@]}"` prints 0 lines (a large call to action is `.btn--lg`).
+- [ ] Blue and every other hue come from the tokens: `--sh-*` for shapes,
+      `--pic-*` for drawn pictures, the Foundation's for text. Evidence:
+      `rg -n 'blue-[0-9]|purple|violet|fuchsia|pink-|orange-|indigo|teal|cyan|lime-'
+      "${P[@]}" "${C[@]}"` prints only the Browser picture's two marks
+      over its capture (`--chip` and `--on-log`, `LANDING.md`, "Since the
+      owner's notes"), 2 lines; `rg -n
+      'amber|emerald|green-|yellow|red-[0-9]|zinc-[0-9]|rose-|sky-|slate-|gray-|stone-'
+      "${P[@]}" "${C[@]}"` prints only the green running dots
+      (`emerald-500`, open for the owner in STATUS.md): the drawn title
+      bars of Hero, OneCommand, ComesBack and Localhost, and OneCommand's
+      "Ready" dot, 5 lines; `rg -n
+      ':\s*#[0-9a-fA-F]{3,8}\b|="#[0-9a-fA-F]'
+      "${P[@]}" "${X[@]}"` prints only the hero's Claude Code colours
+      (`--claude`, `--mode`, and `--rogue`, the mascot turned red), 5
+      lines.
+- [ ] No shadows: an inset edge with no blur is a bar, and is the only
+      `box-shadow`. Evidence: `rg -nP 'shadow-|box-shadow:
+      (?!none|inset -?[\d.]+(px)? -?[\d.]+(px)? 0 )' "${P[@]}"` prints 0
+      lines.
+- [ ] Corners stay at 4px or less; `50%` draws a circle (a dot, a node,
+      the globe), not a corner. Evidence: `rg -n
+      'rounded-(md|lg|xl|2xl|3xl|full)\b|border-radius:
+      *([5-9]|[1-9][0-9]+)(\.[0-9]+)?px|border-radius: *[0-9.]+(rem|em)'
+      "${P[@]}"` prints 0 lines.
+- [ ] One mono, and nothing a visitor reads under 11px outside the
+      captures. Evidence: `rg -n "font-family:[^;]*(Menlo|Consolas|SF
+      Mono|Courier|monospace)|font-\[" "${P[@]}"` prints 0 lines (a picture
+      names `var(--font-mono)`); `rg -nP 'font-size:
+      *(\d|10)(\.\d+)?px' "${P[@]}" "${X[@]}"` prints 0 lines.
+- [ ] Every picture stops on its final frame when reduced motion turns on
+      mid-session. Evidence: `rg --files-without-match watchReducedMotion
+      apps/web/src/lib/components/landing/{Hero,OneCommand,ComesBack,Browser,Localhost}.svelte`
+      prints 0 lines.
+
 ## For every workstream, before it is called done
 
 - [ ] Every command, flag, endpoint, message, table and field named in the

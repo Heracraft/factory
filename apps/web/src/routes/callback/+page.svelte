@@ -20,4 +20,8 @@
 	<title>Signing in… — repose</title>
 </svelte:head>
 
-<p class="p-16 text-center text-zinc-500 dark:text-zinc-400">Signing in…</p>
+<!-- A <main> like every other page's, so the layout's skip link has its
+     target here too. -->
+<main id="main">
+	<p class="p-16 text-center text-ink-muted" role="status">Signing in…</p>
+</main>

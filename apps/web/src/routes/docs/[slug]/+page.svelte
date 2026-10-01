@@ -23,10 +23,21 @@
 	{#key doc.slug}
 		<DocPage {doc} />
 	{/key}
-{:else if !moved}
-	<main class="pt-8 pb-24">
+{:else if moved}
+	<!-- An old slug's page holds the target's link, not nothing: the
+	     prerendered HTML is what a reader with scripts off gets, and the
+	     layout's skip link (#main) needs a target on every page. -->
+	<main id="main" class="pt-8 pb-24">
+		<p class="text-ink-muted">
+			This page moved to <a href={resolve('/docs/[slug]', { slug: moved })} class="link"
+				>{docBySlug(moved)?.title ?? moved}</a
+			>.
+		</p>
+	</main>
+{:else}
+	<main id="main" class="pt-8 pb-24">
 		<h1 class="text-3xl font-semibold">No such page</h1>
-		<p class="mt-3 text-zinc-600 dark:text-zinc-400">
+		<p class="mt-3 text-ink-muted">
 			There's no docs page called “{page.params.slug}”.
 			<a href={resolve('/docs')} class="link">The overview</a> lists everything.
 		</p>

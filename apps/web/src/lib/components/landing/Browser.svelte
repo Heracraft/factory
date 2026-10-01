@@ -24,10 +24,13 @@
   The pan of the page, the blue focus box, the command chip and the pointer
   are the illustration; everything inside the page and terminal is captured.
   anime.js plays it when the card is on screen; without JS, or under
-  prefers-reduced-motion, the last beat is shown still.
+  prefers-reduced-motion, the last beat is shown still, and turning reduced
+  motion on while the page is open stops the loop there. Everything moves
+  by translate, scale and opacity (I-397).
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { watchReducedMotion } from './inview';
 
 	const ROWS = [
 		'\u001b[38;5;239m\u001b[48;5;237m❯ \u001b[38;5;231mTest the feedback form at http://localhost:5173/feedback with the playwright browser tools, in the browser window that is already open. Choose Bug, type a one-line bug report into the text box, and\u001b[39m',
@@ -103,179 +106,214 @@
 	// click, at y 350, sits below the frame's crop).
 	const POINTER = { x: 330, y: 285 };
 	const PAN = { nav: 150, typed: 150, bug: 0, you: 150 };
+	// The opacity an older log row rests at. At 0.7 the dimmest captured
+	// text colour (#8fb3ff) holds 5.0:1 on #0d0d0c and the prompt's white
+	// 6.9:1 on its own #3a3a3a; 0.45 left rows at 2.7 to 4.2:1 (I-397).
+	// Only the prompt's ❯ glyph (#8a8a8a on #3a3a3a, 3.3:1 at full
+	// opacity) stays under 4.5:1: the capture's colour, kept (I-392).
+	const REST = 0.7;
 
 	const label =
-		"The agent's browser on a cloud machine, next to the agent's log. The agent opens the app's feedback page, " +
-		'types a bug report into the text box, reads the console (0 errors, 0 warnings) and clicks Bug; each Playwright ' +
-		'call in the log changes the page above it. Then repose browser shows the same browser on your laptop, ' +
-		'and your pointer clicks into the text box and adds a sentence.';
+		"The agent's browser on a cloud machine above the agent's log, and your pointer taking over through repose browser.";
+	const story =
+		"The agent opens the app's feedback page, types a bug report into the text box, reads the console (0 errors, 0 warnings) " +
+		'and clicks Bug; each Playwright call in the log changes the page above it. Then repose browser shows the same browser ' +
+		'on your laptop, and your pointer clicks into the text box and adds a sentence.';
+	const descId = $props.id();
+
+	// The focus ring, padded 4 capture pixels round what it marks.
+	const ring = (r: { x: number; y: number; w: number; h: number }, pan: number) => ({
+		'--rx': r.x - 4,
+		'--ry': TB + r.y - pan - 4,
+		'--rw': r.w + 8,
+		'--rh': r.h + 8
+	});
 
 	let pic: HTMLDivElement;
 
 	onMount(() => {
-		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
 		let dead = false;
 		let visible = false;
 		let tl: { pause(): unknown; play(): unknown } | null = null;
 		let io: IntersectionObserver | undefined;
+		// Bumped on each start and stop, so an anime.js import that resolves
+		// after a stop does not start a loop.
+		let run = 0;
 
 		const q = (s: string) => Array.from(pic.querySelectorAll<HTMLElement>(s));
 		const one = (s: string) => pic.querySelector<HTMLElement>(s)!;
+		const moved = () => [pic, ...q('.layer, .ring, .chip, .pointer, .rows, .tr')];
+		// The style attributes the markup gave them (a row's captured
+		// background), so a stop puts back exactly those.
+		const markup = new Map(moved().map((el) => [el, el.getAttribute('style')]));
 
-		import('animejs').then(({ createTimeline, utils }) => {
-			if (dead) return;
-
-			const rowEls = q('.tr');
-			const list = one('.rows');
-			const rowH = () => rowEls[0].getBoundingClientRect().height;
-			// Keep row `last` at the bottom of the terminal.
-			const offset = (last: number) => (rowEls.length - 1 - last) * rowH();
-
-			function pre() {
-				utils.set(q('.layer'), { opacity: 0 });
-				utils.set(q('.l-blank, .tb-blank'), { opacity: 1 });
-				utils.set(pic, { '--pan': PAN.nav });
-				utils.set(one('.ring'), {
-					opacity: 0,
-					'--rx': URLBAR.x,
-					'--ry': URLBAR.y,
-					'--rw': URLBAR.w,
-					'--rh': URLBAR.h
-				});
-				utils.set(one('.chip'), { opacity: 0, scale: 0.85 });
-				one('.chip').classList.remove('fire');
-				utils.set(one('.pointer'), { opacity: 0 });
-				utils.set(rowEls, { opacity: 0 });
-				utils.set(rowEls[0], { opacity: 1 });
-				utils.set(list, { y: offset(0) });
-				rowEls.forEach((r) => r.classList.remove('new'));
+		// Stop the loop and show the last beat still: the markup's own state,
+		// so every inline style anime.js wrote comes off.
+		function still() {
+			run++;
+			io?.disconnect();
+			io = undefined;
+			tl?.pause();
+			tl = null;
+			visible = false;
+			for (const [el, style] of markup) {
+				if (style === null) el.removeAttribute('style');
+				else el.setAttribute('style', style);
 			}
+			one('.chip').classList.remove('fire');
+			q('.tr').forEach((r) => r.classList.remove('new'));
+		}
 
-			function cycle() {
-				if (dead) return;
-				if (!visible) {
-					tl = null;
-					return;
+		function start() {
+			const me = ++run;
+			import('animejs').then(({ createTimeline, utils }) => {
+				if (dead || me !== run) return;
+
+				const rowEls = q('.tr');
+				const list = one('.rows');
+				const rowH = () => rowEls[0].getBoundingClientRect().height;
+				// Keep row `last` at the bottom of the terminal.
+				const offset = (last: number) => (rowEls.length - 1 - last) * rowH();
+
+				function pre() {
+					utils.set(q('.layer'), { opacity: 0 });
+					utils.set(q('.l-blank, .tb-blank'), { opacity: 1 });
+					utils.set(pic, { '--pan': PAN.nav });
+					utils.set(one('.ring'), { opacity: 0, ...ring(URLBAR, TB) });
+					utils.set(one('.chip'), { opacity: 0, scale: 0.85 });
+					one('.chip').classList.remove('fire');
+					utils.set(one('.pointer'), { opacity: 0 });
+					utils.set(rowEls, { opacity: 0 });
+					utils.set(rowEls[0], { opacity: 1 });
+					utils.set(list, { y: offset(0) });
+					rowEls.forEach((r) => r.classList.remove('new'));
 				}
-				pre();
 
-				const t = createTimeline({ autoplay: false, onComplete: () => cycle() });
-
-				// A browser call lands in the log: its two rows rise in, the
-				// older rows dim, the call row is marked while it acts.
-				const log = (first: number, at: number) => {
-					t.call(() => {
-						rowEls.forEach((r) => r.classList.remove('new'));
-						rowEls[first].classList.add('new');
-					}, at)
-						.add(list, { y: offset(first + 1), duration: 520, ease: 'outCubic' }, at)
-						.add(rowEls.slice(0, first), { opacity: 0.45, duration: 400 }, at)
-						.add([rowEls[first], rowEls[first + 1]], { opacity: [0, 1], duration: 380 }, at + 60);
-				};
-				const box = (r: { x: number; y: number; w: number; h: number }, pan: number, at: number) =>
-					t.add(
-						one('.ring'),
-						{
-							'--rx': r.x,
-							'--ry': TB + r.y - pan,
-							'--rw': r.w,
-							'--rh': r.h,
-							duration: 700,
-							ease: 'inOutCubic'
-						},
-						at
-					);
-				const show = (sel: string, at: number, duration = 300) =>
-					t.add(q(sel), { opacity: [0, 1], duration, ease: 'linear' }, at);
-				const pan = (to: number, at: number, duration = 800) =>
-					t.add(pic, { '--pan': to, duration, ease: 'inOutCubic' }, at);
-
-				// 1. Navigate.
-				log(1, 700);
-				t.add(one('.ring'), { opacity: [0, 1], duration: 250 }, 800);
-				show('.tb-live', 1150, 200);
-				show('.l-nav', 1150, 350);
-
-				// 2. Type into the text box (the page scrolled it into view).
-				log(3, 2900);
-				box(TEXTBOX, PAN.typed, 3000);
-				pan(PAN.typed, 3100, 10);
-				show('.l-typed', 3100, 300);
-
-				// 3. Read the console: nothing on the page moves.
-				log(5, 4900);
-				t.add(one('.ring'), { opacity: 0, duration: 300 }, 5000);
-
-				// 4. Click Bug.
-				log(7, 6600);
-				pan(PAN.bug, 6700, 800);
-				t.set(
-					one('.ring'),
-					{ '--rx': BUG.x, '--ry': TB + BUG.y - PAN.bug, '--rw': BUG.w, '--rh': BUG.h },
-					7500
-				).add(one('.ring'), { opacity: [0, 1], duration: 250 }, 7520);
-				show('.l-bug', 7800, 220);
-
-				// 5. You, from the laptop: the desktop view opens on the same
-				// window and your pointer types into it.
-				t.add(one('.ring'), { opacity: 0, duration: 300 }, 8800);
-				rowEls.forEach((r) => t.call(() => r.classList.remove('new'), 8800));
-				t.add(rowEls, { opacity: 0.45, duration: 500 }, 8800);
-				t.add(
-					one('.chip'),
-					{ opacity: [0, 1], scale: [0.85, 1], duration: 320, ease: 'outBack' },
-					9000
-				);
-				t.call(() => one('.chip').classList.add('fire'), 9450);
-				t.call(() => one('.chip').classList.remove('fire'), 9950);
-				pan(PAN.you, 9300, 900);
-
-				const k = pic.querySelector('.br')!.getBoundingClientRect().width / 574;
-				const c = one('.chip').getBoundingClientRect();
-				const b = pic.querySelector('.br')!.getBoundingClientRect();
-				const sx = (c.left - b.left + c.width * 0.3) / k;
-				const sy = (c.bottom - b.top - 4) / k;
-				const ex = POINTER.x;
-				const ey = TB + POINTER.y - PAN.you;
-				t.set(one('.pointer'), { '--px': sx, '--py': sy }, 0)
-					.add(one('.pointer'), { opacity: [0, 1], duration: 200 }, 10000)
-					.add(
-						one('.pointer'),
-						{ '--px': ex, '--py': ey, duration: 900, ease: 'inOutCubic' },
-						10050
-					)
-					.add(one('.pointer'), { scale: [1, 0.86, 1], duration: 220 }, 11000);
-				show('.l-t0', 11080, 120);
-				show('.l-t1', 11700, 160);
-				show('.l-t2', 12400, 160);
-
-				// Rest on it, then clear and go again.
-				t.add(q('.layer, .chip, .pointer'), { opacity: 0, duration: 450, ease: 'inQuad' }, 17200)
-					.add(rowEls, { opacity: 0, duration: 450 }, 17200)
-					.add({ duration: 300 }, 17700);
-
-				tl = t;
-				t.play();
-			}
-
-			io = new IntersectionObserver(
-				([e]) => {
-					visible = e.isIntersecting;
-					if (visible) {
-						if (tl) tl.play();
-						else cycle();
-					} else {
-						tl?.pause();
+				function cycle() {
+					if (dead || me !== run) return;
+					if (!visible) {
+						tl = null;
+						return;
 					}
-				},
-				{ threshold: 0.5 }
-			);
-			io.observe(pic);
+					pre();
+
+					const t = createTimeline({ autoplay: false, onComplete: () => cycle() });
+
+					// A browser call lands in the log: its two rows rise in, the
+					// older rows dim, the call row is marked while it acts.
+					const log = (first: number, at: number) => {
+						t.call(() => {
+							rowEls.forEach((r) => r.classList.remove('new'));
+							rowEls[first].classList.add('new');
+						}, at)
+							.add(list, { y: offset(first + 1), duration: 520, ease: 'inOutCubic' }, at)
+							.add(rowEls.slice(0, first), { opacity: REST, duration: 400, ease: 'outQuad' }, at)
+							.add([rowEls[first], rowEls[first + 1]], { opacity: [0, 1], duration: 380 }, at + 60);
+					};
+					const box = (
+						r: { x: number; y: number; w: number; h: number },
+						pan: number,
+						at: number
+					) => t.add(one('.ring'), { ...ring(r, pan), duration: 700, ease: 'inOutCubic' }, at);
+					const show = (sel: string, at: number, duration = 300) =>
+						t.add(q(sel), { opacity: [0, 1], duration, ease: 'outQuad' }, at);
+					const pan = (to: number, at: number, duration = 800) =>
+						t.add(pic, { '--pan': to, duration, ease: 'inOutCubic' }, at);
+
+					// 1. Navigate.
+					log(1, 700);
+					t.add(one('.ring'), { opacity: [0, 1], duration: 250 }, 800);
+					show('.tb-live', 1150, 200);
+					show('.l-nav', 1150, 350);
+
+					// 2. Type into the text box (the page scrolled it into view;
+					// PAN.typed is where /feedback already sat, so the pan moves
+					// with the ring and lands where it started).
+					log(3, 2900);
+					box(TEXTBOX, PAN.typed, 3000);
+					pan(PAN.typed, 3000, 700);
+					show('.l-typed', 3100, 300);
+
+					// 3. Read the console: nothing on the page moves.
+					log(5, 4900);
+					t.add(one('.ring'), { opacity: 0, duration: 300, ease: 'inQuad' }, 5000);
+
+					// 4. Click Bug.
+					log(7, 6600);
+					pan(PAN.bug, 6700, 800);
+					t.set(one('.ring'), ring(BUG, PAN.bug), 7500).add(
+						one('.ring'),
+						{ opacity: [0, 1], duration: 250 },
+						7520
+					);
+					show('.l-bug', 7800, 220);
+
+					// 5. You, from the laptop: the desktop view opens on the same
+					// window and your pointer types into it.
+					t.add(one('.ring'), { opacity: 0, duration: 300, ease: 'inQuad' }, 8800);
+					rowEls.forEach((r) => t.call(() => r.classList.remove('new'), 8800));
+					t.add(rowEls, { opacity: REST, duration: 500, ease: 'outQuad' }, 8800);
+					t.add(
+						one('.chip'),
+						{ opacity: [0, 1], scale: [0.85, 1], duration: 320, ease: 'outBack' },
+						9000
+					);
+					t.call(() => one('.chip').classList.add('fire'), 9450);
+					t.call(() => one('.chip').classList.remove('fire'), 9950);
+					pan(PAN.you, 9300, 900);
+
+					const k = pic.querySelector('.br')!.getBoundingClientRect().width / 574;
+					const c = one('.chip').getBoundingClientRect();
+					const b = pic.querySelector('.br')!.getBoundingClientRect();
+					const sx = (c.left - b.left + c.width * 0.3) / k;
+					const sy = (c.bottom - b.top - 4) / k;
+					const ex = POINTER.x;
+					const ey = TB + POINTER.y - PAN.you;
+					t.set(one('.pointer'), { '--px': sx, '--py': sy }, 0)
+						.add(one('.pointer'), { opacity: [0, 1], duration: 200 }, 10000)
+						.add(
+							one('.pointer'),
+							{ '--px': ex, '--py': ey, duration: 900, ease: 'inOutCubic' },
+							10050
+						)
+						.add(one('.pointer'), { scale: [1, 0.86, 1], duration: 220, ease: 'outQuad' }, 11000);
+					show('.l-t0', 11080, 200);
+					show('.l-t1', 11700, 200);
+					show('.l-t2', 12400, 200);
+
+					// Rest on it, then clear and go again.
+					t.add(q('.layer, .chip, .pointer'), { opacity: 0, duration: 450, ease: 'inQuad' }, 17200)
+						.add(rowEls, { opacity: 0, duration: 450, ease: 'inQuad' }, 17200)
+						.add({ duration: 300 }, 17700);
+
+					tl = t;
+					t.play();
+				}
+
+				io = new IntersectionObserver(
+					([e]) => {
+						visible = e.isIntersecting;
+						if (visible) {
+							if (tl) tl.play();
+							else cycle();
+						} else {
+							tl?.pause();
+						}
+					},
+					{ threshold: 0.5 }
+				);
+				io.observe(pic);
+			});
+		}
+
+		const unwatch = watchReducedMotion((reduce) => {
+			if (reduce) still();
+			else start();
 		});
 
 		return () => {
 			dead = true;
+			unwatch();
 			io?.disconnect();
 			tl?.pause();
 		};
@@ -283,7 +321,8 @@
 </script>
 
 <div class="shot frame">
-	<div class="stage" role="img" aria-label={label} bind:this={pic}>
+	<p id={descId} class="sr-only">{story}</p>
+	<div class="stage" role="img" aria-label={label} aria-describedby={descId} bind:this={pic}>
 		<div class="br" aria-hidden="true">
 			<div class="tb">
 				<img
@@ -291,6 +330,8 @@
 					src="/landing/browser-tb-blank.webp"
 					width="574"
 					height="48"
+					loading="lazy"
+					decoding="async"
 					alt=""
 				/>
 				<img
@@ -298,6 +339,8 @@
 					src="/landing/browser-tb.webp"
 					width="574"
 					height="48"
+					loading="lazy"
+					decoding="async"
 					alt=""
 				/>
 			</div>
@@ -309,6 +352,8 @@
 						src="/landing/browser-p-nav.webp"
 						width="574"
 						height="536"
+						loading="lazy"
+						decoding="async"
 						alt=""
 					/>
 					<img
@@ -316,6 +361,8 @@
 						src="/landing/browser-p-typed.webp"
 						width="574"
 						height="536"
+						loading="lazy"
+						decoding="async"
 						alt=""
 					/>
 					<img
@@ -323,6 +370,8 @@
 						src="/landing/browser-p-bug.webp"
 						width="574"
 						height="536"
+						loading="lazy"
+						decoding="async"
 						alt=""
 					/>
 					<img
@@ -330,6 +379,8 @@
 						src="/landing/browser-p-t0.webp"
 						width="574"
 						height="536"
+						loading="lazy"
+						decoding="async"
 						alt=""
 					/>
 					<img
@@ -337,6 +388,8 @@
 						src="/landing/browser-p-t1.webp"
 						width="574"
 						height="536"
+						loading="lazy"
+						decoding="async"
 						alt=""
 					/>
 					<img
@@ -344,11 +397,13 @@
 						src="/landing/browser-p-t2.webp"
 						width="574"
 						height="536"
+						loading="lazy"
+						decoding="async"
 						alt=""
 					/>
 				</div>
 			</div>
-			<i class="ring"></i>
+			<i class="ring"><i class="rt"></i><i class="rb"></i><i class="rl"></i><i class="rr"></i></i>
 			<span class="chip">repose browser</span>
 			<svg class="pointer" viewBox="0 0 12 18" aria-hidden="true">
 				<path
@@ -379,8 +434,15 @@
 		container-type: inline-size;
 	}
 	.stage {
-		/* the chip and ring sit on the (light) page, in either scheme */
-		--accent: var(--color-blue-600);
+		/* The chip sits on the captured page, which is white in either
+		   scheme, so it keeps the light scheme's --pic-accent value: the
+		   dark scheme's is 2.5:1 on #fff. */
+		--chip: var(--color-blue-600);
+		/* The log is dark in either scheme, so its acting row's bar keeps
+		   the dark scheme's --pic-accent value; the ring, on the white
+		   page, takes --chip's. A mark over a capture follows the
+		   capture's ground, not the page's scheme. */
+		--on-log: var(--color-blue-400);
 		/* one capture pixel, at this frame's width */
 		--k: calc(100cqw / 574);
 		--pan: 150;
@@ -412,12 +474,15 @@
 		flex: 1;
 		overflow: hidden;
 	}
+	/* Panned with translate, not top: a pan moves no layout box, so it
+	   counts for nothing in CLS (I-397). */
 	.pg {
 		position: absolute;
 		left: 0;
 		right: 0;
-		top: calc(var(--k) * var(--pan) * -1);
+		top: 0;
 		height: calc(var(--k) * 536);
+		translate: 0 calc(var(--k) * var(--pan) * -1);
 	}
 	.layer {
 		position: absolute;
@@ -434,21 +499,56 @@
 		background: #fff;
 	}
 
-	/* The agent's focus, travelling to what it acts on. */
+	/* The agent's focus, travelling to what it acts on. Four 2px edges,
+	   each a fixed 100-capture-pixel bar moved by translate and stretched
+	   along its length by scale, so the ring changes place and size with
+	   no layout (left/top/width/height cost CLS, I-397) and the edges stay
+	   2px thick at any size. --rx/--ry/--rw/--rh are capture pixels. */
 	.ring {
-		--rx: 29;
+		--rx: 25;
 		--ry: 0;
-		--rw: 511;
-		--rh: 209;
+		--rw: 519;
+		--rh: 217;
 		position: absolute;
-		left: calc(var(--k) * var(--rx) - 3px);
-		top: calc(var(--k) * var(--ry) - 3px);
-		width: calc(var(--k) * var(--rw) + 6px);
-		height: calc(var(--k) * var(--rh) + 6px);
-		border: 2px solid var(--color-blue-500);
-		border-radius: 3px;
+		inset: 0 auto auto 0;
 		opacity: 0;
 		pointer-events: none;
+	}
+	.ring > i {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 2px;
+		height: 2px;
+		background: var(--chip);
+		transform-origin: 0 0;
+	}
+	.ring .rt,
+	.ring .rb {
+		width: calc(var(--k) * 100);
+		scale: calc(var(--rw) / 100) 1;
+	}
+	.ring .rl,
+	.ring .rr {
+		height: calc(var(--k) * 100);
+		scale: 1 calc(var(--rh) / 100);
+	}
+	.ring .rt,
+	.ring .rl {
+		translate: calc(var(--k) * var(--rx)) calc(var(--k) * var(--ry));
+	}
+	.ring .rb {
+		translate: calc(var(--k) * var(--rx)) calc(var(--k) * (var(--ry) + var(--rh)) - 2px);
+	}
+	.ring .rr {
+		translate: calc(var(--k) * (var(--rx) + var(--rw)) - 2px) calc(var(--k) * var(--ry));
+	}
+	@media (forced-colors: active) {
+		/* a background is dropped in forced colours; the edges are the ring */
+		.ring > i {
+			background: Highlight;
+			forced-color-adjust: none;
+		}
 	}
 
 	/* You: the command, and your pointer in the same window. */
@@ -457,29 +557,32 @@
 		right: 10px;
 		top: calc(var(--k) * 48 + 10px);
 		padding: 2px 8px;
-		border: 1px solid var(--accent);
+		border: 1px solid var(--chip);
 		border-radius: 3px;
 		background: #fff;
 		font-family: var(--font-mono);
 		font-size: 12px;
 		font-weight: 600;
 		line-height: 18px;
-		color: var(--accent);
+		color: var(--chip);
 		white-space: nowrap;
 		transition:
 			background-color 0.18s,
 			color 0.18s;
 	}
 	.chip:global(.fire) {
-		background: var(--accent);
+		background: var(--chip);
 		color: #fff;
 	}
+	/* Placed with translate, so anime.js's scale (the click) composes with
+	   it and the pointer's travel moves no layout box. */
 	.pointer {
 		--px: 330;
 		--py: 183;
 		position: absolute;
-		left: calc(var(--k) * var(--px) - 1px);
-		top: calc(var(--k) * var(--py) - 1px);
+		left: 0;
+		top: 0;
+		translate: calc(var(--k) * var(--px) - 1px) calc(var(--k) * var(--py) - 1px);
 		width: 13px;
 		height: 19px;
 		transform-origin: 1px 1px;
@@ -494,7 +597,7 @@
 		border-top: 1px solid #2a2a28;
 		background: #0d0d0c;
 		color: #d4d4d0;
-		font-family: 'JetBrains Mono', 'SF Mono', Menlo, 'DejaVu Sans Mono', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 11px;
 		line-height: 14px;
 		font-variant-ligatures: none;
@@ -514,16 +617,31 @@
 		bottom: 0;
 	}
 	.tr {
+		position: relative;
 		padding: 0 12px;
 		white-space: pre;
 		overflow: hidden;
-		transition: box-shadow 0.3s;
 	}
+	/* Older rows rest dimmed, at REST in the script: 0.7 keeps every
+	   captured text colour at 5:1 or more on #0d0d0c. */
 	.tr:not(:nth-last-child(-n + 3)) {
-		opacity: 0.45;
+		opacity: 0.7;
 	}
-	.tr:global(.new) {
-		box-shadow: inset 2px 0 0 var(--color-blue-400);
+	/* The call that is acting: a 2px bar at the row's left. A border on a
+	   pseudo-element, not an inset box-shadow, so it fades by opacity alone
+	   and forced colours still draw it (as CanvasText). */
+	.tr::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		border-left: 2px solid var(--on-log);
+		opacity: 0;
+		transition: opacity 0.3s;
+	}
+	.tr:global(.new)::before {
+		opacity: 1;
 	}
 
 	@container (max-width: 400px) {

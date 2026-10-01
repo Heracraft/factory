@@ -346,6 +346,9 @@ to run if a host ever needs to be compared.
 non-text controls.** (08) `DESIGN-LANGUAGE.md` lists what to copy (Noto Serif
 headings, zinc palette, single blue accent, borders not boxes, button and
 field classes) and what to replace (chip and segmented and card radios).
+*Superseded by I-369 (2026-09-30): the dashboard's design language is
+repose's own, one foundation under every page, and no longer follows the
+recruiting app.*
 
 **I-14. Pre-launch host is `Standard_D16s_v5`; the host size is a variable,
 not a constant.** (owner, 2026-09-17) The owner will test alone for about a
@@ -9414,3 +9417,975 @@ what the user already knows); a symlink `~/<folder>` to `~/<slug>` (two
 names for one directory in `ls ~`); recording the name in `project.json`
 (guestd rewrites that file at every start from the api's record); the
 laptop's projects cache (a second laptop or a fork would not have it).
+
+**I-369. One design foundation under every page; the dashboard no longer
+follows the recruiting app.** (owner asked for the design critique's
+fixes, 2026-09-30; supersedes I-13, amends I-287) The critique found two
+specs with nothing under them: `DESIGN-LANGUAGE.md` for the dashboard and
+`LANDING.md` for `/`, with four headers, two "muted" greys, two monospace
+faces and no type scale between them. `DESIGN-LANGUAGE.md` now opens with
+a Foundation (tokens, palette, contrast floor, radii, faces and type
+steps, spacing, motion, icons, the logo, the page frame and header) that
+the dashboard, the docs, the legal pages and the landing all stand on.
+The Dashboard part follows it, and `LANDING.md` points at the Foundation
+for shared tokens instead of restating them, so the landing's grammar
+(I-287) is a layer over the Foundation rather than a system beside it.
+I-13's "copy the recruiting app" had been false since the restrained
+redesign (630cde8) and still steered readers of `docs/README.md` to that
+app. `CHECKLIST.md` gains design greps with their expected counts, so the
+rules have something that fails when they drift. *Rejected:* a third
+document for the foundation (the dashboard rules are short, and a reader
+building a screen needs both parts at once); leaving the landing's tokens
+in `LANDING.md` (the same `--ink*` values were then specified twice).
+
+**I-370. Shared text and edge tokens with a contrast floor: 4.5:1 for
+text, 3:1 for control edges and state marks.** (design critique,
+2026-09-30; amends I-331's placing of `--ink*` for the landing alone)
+`--ink`, `--ink-muted` and `--ink-faint` are every page's text colours,
+exposed as `text-ink`, `text-ink-muted` and `text-ink-faint` through
+`@theme inline` so each utility follows the scheme switch. Values: ink
+zinc-900 / zinc-100; muted zinc-600 / zinc-400 on every page, which
+settles the two greys the dashboard and the landing called "muted"; faint
+`#6b6b66` / `#8f8f8a`. Each holds 4.5:1 on `--page`, `--surface` and
+`--sunken` in its scheme (faint: 4.86 on light `--sunken`, 5.31 on dark).
+The old faint, zinc-500 in both schemes, was 4.14:1 on dark `--page`,
+and zinc-400 text at 2.56:1 carried the dashboard's 12px metadata. A new
+`--control-edge` (`#888883` / `#6e6e6a`, 3.2:1 or better on page,
+surface and sunken, WCAG 1.4.11; the dark value was `#6a6a66` until I-391
+found it at 3.17:1 on `--sunken`) edges fields, quiet buttons and the
+hollow state dot; the old field edge, `--rule-strong`, was 1.56:1 and
+stays for rules, badges and table heads, which nobody has to find to use.
+`--color-zinc-500` is re-toned from `#767671` to `#70706b` so the darkest
+grey pages still use for small text reaches 4.52:1 on light `--sunken`
+(was 4.15). In the dark it is 3.5 to 3.8:1 and is never text there. `--radius-xs` is 2px (was 1px), so `rounded-xs` on badges, dots
+and keys is a real corner and "2 to 4px" is true of the whole scale.
+`.card` lost its fill to match the doc's "no fill or shadow";
+`.btn-quiet` and `.banner` keep their `--surface` fill, which lifts them
+off `--page` by one step and is written into `DESIGN-LANGUAGE.md`.
+Ratios for every pair are in commit 3a38564. *Rejected:* darkening
+`--rule-strong` itself (every hairline on the site would get heavier to
+fix fields); keeping hand-paired `text-zinc-500 dark:text-zinc-400` with
+new values (76 strings to keep in step by hand).
+
+**I-371. The fonts are self-hosted, and JetBrains Mono is the one
+monospace.** (design critique, 2026-09-30) Google Fonts served Noto Serif
+and JetBrains Mono on every route, so each visitor's IP reached a
+processor `privacy.md` does not list. The faces now come from
+`static/fonts`: Noto Serif 400, 600 and 700, JetBrains Mono 400 and 600
+and 400 italic (the docs' code comments), latin plus latin-ext, from
+@fontsource 5.3.0, with their OFL texts. `app.html` preloads the heading
+cuts 600 and 700; metric-matched local fallbacks (`Noto Serif Fallback`
+over Georgia, `JetBrains Mono Fallback` over Courier New, sizes from
+@capsizecss/metrics) keep a heading from reflowing when the webfont
+arrives. `--font-mono` leads with JetBrains Mono. Before, it left the
+face out, so the hero's `.cmd` rendered in Liberation Mono beside
+pictures drawn in JetBrains Mono. `--font-sans` is written out as
+Tailwind 4.3's default stack, so a Tailwind upgrade cannot change the
+body face unnoticed. *Rejected:* keeping Google Fonts and naming Google
+in the privacy policy (a processor for a font is not worth a policy
+change); "system mono" as the doc had it (the landing's pictures are
+drawn in JetBrains Mono, and two faces for one role showed side by side).
+
+**I-372. A focused field shows the house focus ring.** (design critique,
+2026-09-30; supersedes `DESIGN-LANGUAGE.md`'s "focus turns the border
+zinc-900 with no ring") `.field` had `focus:outline-none` and marked
+focus by darkening its border, the same border `.field--set` draws for a
+field holding a value, so a focused field and a set one looked alike,
+and in forced colours focused and blurred were identical. Fields now get
+the global `:focus-visible` ring: 2px, `--focus` (blue-600 / blue-400),
+offset 2px. The CodeMirror editor's focus shows the same ring.
+*Rejected:* a distinct focus border colour (a 1px change is the thing
+that failed; forced colours flattens every border to one colour).
+
+**I-373. State dots: busy is ink, stopped is hollow, and running and
+error differ in lightness.** (design critique, 2026-09-30) `.dot--busy`
+was the accent blue, pulsing without a reduced-motion check, on six
+states. Blue is for links, focus and selection, and blue on `destroying`
+made the link colour also mean "something is happening". Busy is now ink
+(zinc-700 / zinc-300) and pulses only under `prefers-reduced-motion:
+no-preference`; the state word beside the dot carries the meaning. A
+plain `.dot` (stopped, destroyed) is a hollow square edged in
+`--control-edge`: the old zinc-400 / zinc-600 fill sat at 2.5:1 and
+nearly vanished, and hollow reads as "off" without colour. Filled dots
+are running (emerald-500 / emerald-300), error (red-600 / red-500) and
+busy. In the dark, running moved from emerald-400 to emerald-300 and
+error from red-400 to red-500, because the old pair had nearly the same
+lightness and a red-green colour-blind eye could not tell them apart.
+`StateDot.svelte` hides the square from assistive tech and always prints
+the word. *Rejected:* amber for busy (amber means "needs attention" on
+badges and banners, and a starting machine needs none).
+
+**I-374. Toasts and docs code highlighting take the house colours.**
+(design critique, 2026-09-30) `<Toaster richColors />` drew sonner's own
+look: 8px corners, a drop shadow and `#e60000` text, with light success
+and error text at 4.26 and 4.35:1, on the feedback users see most (21
+call sites). The Toaster now mounts without `richColors`, and
+`layout.css` maps sonner's variables to the `.banner--ok`, `--error` and
+`--warn` pairs (9:1 or better in both schemes), with a 2px corner, a
+hairline, no shadow and the house focus ring. Docs code highlighting
+drops the stock purple and blue: keywords are ink at weight 600, names
+full ink, strings and URLs emerald-700 / emerald-300, literals amber-700
+/ amber-300, comments and punctuation `--ink-faint`, each 4.5:1 or better
+on `--sunken`. In the docs, blue is a link. *Rejected:* a separate toast
+palette (a toast and a banner say the same kind of thing and should look
+alike).
+
+**I-375. A type scale with two named small steps and one size per
+heading level.** (design critique, 2026-09-30) Pages had written
+`text-[13px]`, `text-[0.8rem]`, `text-[0.7rem]` and `text-[0.75rem]` by
+hand, and an h2 rendered at 16, 18 or 20px for the same role. `@theme`
+adds `--text-compact` (0.8125rem, 13px: a mono reading beside sans text,
+a code block, the dashboard nav on a phone) and `--text-2xs` (0.6875rem,
+11px: a badge, a landing label, and the floor for any text). Neither sets
+a line height, so each keeps the leading of the text around it. Every
+dashboard h2, card titles and billing's plan cards included, is `text-xl
+font-semibold`; the danger zone's h2 is the same size in red on the
+project and account pages. Billing's plan cards were h3 directly under
+the h1 and are h2. The serif comes from the base style on every heading,
+so pages drop a redundant `font-display` on headings. The first
+`.form-section` on a page draws no top rule (`layout.css`), since the
+title rule sits directly above it and two hairlines 40px apart read as a
+gap where something failed to render. *Rejected:* a separate
+`text-base` role for card titles, tried in the project pass (billing's
+plan cards were already `text-xl` h2, and two sizes for one level is the
+drift the critique flagged).
+
+**I-376. Buttons come in two sizes: `.btn--sm` and the default.** (design
+critique, 2026-09-30) Seventeen `!py-*` and `!px-*` overrides resized
+buttons one page at a time. `.btn--sm` (`px-3 py-1.5`) is for rows,
+toolbars and header bars. A `.btn--lg` for a page's single call to action
+was added with it and deleted under I-378 when nothing used it (I-391);
+it comes back with its first user. `.btn--sm` replaces the overrides, so one change
+in `layout.css` resizes every compact button. The landing's
+`+page.svelte` still carries six overrides, left to the landing-critique
+branch that rewrites that file.
+
+**I-377. Forced colours are part of the system.** (design critique,
+2026-09-30) No `forced-colors` rule existed, so the state dots, the meter
+fill and the current nav item vanished in Windows High Contrast. An
+unlayered `@media (forced-colors: active)` block in `layout.css` puts
+each state back in a system colour: dots filled or hollow in
+`CanvasText`, the current nav link a 2px underline the others lack,
+selects back to the native arrow (the drawn chevron was a fixed grey),
+the search glass dropped, button edges `ButtonText` and disabled buttons
+`GrayText`, badge and key edges `CanvasText`. `Meter.svelte` fills with
+`CanvasText`, and `Highlight` past the limit. The meter's track also
+gained a 1px `--control-edge` border (it sat at 1.05 to 1.10:1 on its
+card), and past the limit the reading adds the word "over" and
+`aria-valuetext` says "over the limit", so the state never depends on
+amber alone. A new component that carries state in a fill or a border
+colour adds its rule to that block.
+
+**I-378. Unused patterns are deleted rather than documented.** (design
+critique, 2026-09-30) `.switch`, `.radio-row*`, `.badge--warn`,
+`.badge--info`, `.dot--warn`, `.row--group`, `--sh-stop` and
+`UsageChart.svelte` had no user. UsageChart carried an orange and green
+palette, `shadow-sm` and `[data-theme]` selectors, and `.switch` had the
+one focus ring with no dark variant; left in place, either would bring
+those back the day someone reused it. `DESIGN-LANGUAGE.md` no longer
+offers `.switch` or `.radio-row`. A page that needs a switch or a list of
+radios with help text builds it again with forced-colour states and adds
+it to the doc.
+
+**I-379. In the dark, the landing's small ink details are lit marks.**
+(design critique, 2026-09-30) Dark `--sh-ink` was zinc-900 on
+`--sh-paper` `#161615`, 1.02:1, which erased the ring's pupil and the
+arch's door, the details `LANDING.md` says the shapes mean. Dark
+`--sh-ink` is zinc-400 (7.06:1): a hole in the light scheme, a lit mark
+in the dark one, still a mid value beside the zinc-500 shapes.
+`LANDING.md` "Shape language" says so.
+
+**I-380. One header frame for the dashboard, the docs and the legal
+pages; form pages sit flush left.** (design critique, 2026-09-30) Four
+headers at four widths put the logo at x=164, 216, 228 and 356 at 1440,
+so it jumped as you clicked between pages. `HeaderFrame.svelte` is now
+the header of the dashboard, the docs and the legal pages: 56px tall
+over a `--rule` hairline, its content on `max-w-5xl px-5`, the logo at
+x=228 at 1440 and x=20 at 390. The docs keep theirs sticky. The landing's
+60px, 1120px top bar is the one exception until the landing-critique
+branch lands. `PageShell` keeps `max-w-2xl` for forms but places that
+column flush left inside the `max-w-5xl` frame, so a form's title starts
+under the logo (x=228) instead of centred (x=404);
+`DESIGN-LANGUAGE.md` gave the widths without saying the narrow column was
+centred on purpose, and a centred column under a left-aligned header
+made the page shift sideways between list and form pages. The
+breadcrumb separator is `·`, as the doc said; the code's `/` was the
+drift.
+
+**I-381. The I-363 mark is in every header.** (design critique,
+2026-09-30; amends I-363) `Logo.svelte` defaulted to the word alone, so
+the mark appeared only on `/`. Every header now shows it: the 28px mark
+and word from `sm` up; below `sm`, the 24px `sm` cut on the docs and
+legal pages, and the 28px mark alone on the dashboard, whose five links
+left 16px too little at 390 and 46px at 360 for both. The favicon is the
+mark alone already, so a mark-only phone header matches the tab. In the
+dark, the mark's two grey blocks take zinc-400 and zinc-500 (7.4 and
+3.8:1 on `--page`) instead of `--sh-grey` and `--sh-light`, which left
+the small blocks at 2.7:1 at 24 and 28px; the light block stays the
+fainter of the two. The landing's large shapes keep their darker greys.
+The mark is never drawn under 24px tall; below that the favicon's
+heavier cut is the one to use.
+
+**I-382. Docs and legal prose hold a readable measure.** (design
+critique, 2026-09-30; amends I-345) `DocPage` and `LegalPage` set
+`max-w-none`, so prose ran 94 to 114 characters a line, against I-345's
+own reasoning about measure. Running text is now held to 33rem (a median
+66 to 67 characters of the body sans a line at 1440). The docs column is
+68ch (622px), and code blocks, tables and h2 rules use all of it, so
+I-345's 70 columns of 13px mono fit with no scroll. The legal pages have
+no wide content and hold their whole column to 33rem. *Rejected:* a flat
+68ch for prose (68ch is measured on the "0" glyph, and at 68ch the body
+sans set 79 to 81 real characters a line).
+
+**I-383. The docs' right rail moves into the sidebar, and the menu button
+moves to the right.** (design critique, 2026-09-30; amends I-344 and
+I-345) In the shared 1024px frame, a rail beside the 240px sidebar left
+a 456px column, under the 582px I-345 needs for 70 columns. The current
+page's sections are listed under its link in the sidebar from `lg` up,
+and in the "On this page" fold below `lg`. Below `lg` the menu button
+sits at the right end of the header, so the logo is at x=20 as on the
+dashboard and legal pages; the drawer still opens from the left, with
+everything else I-344 describes.
+
+**I-384. Legal pages use the docs' prose styles, show their effective
+date, and keep a Draft banner that names nothing internal.** (design
+critique, 2026-09-30) The legal pages showed literal backticks in
+600-weight mono around inline code and a public banner quoting
+`docs/SECURITY.md, test/isolation`. They now use `.doc`: inline code is a
+quiet chip at body weight with no backticks, links take the docs' colour,
+and h2 sections are separated by a rule. Each shows its frontmatter
+effective date under the title. The Draft banner stays, since no entry
+here says the policies are final; privacy's reads "this policy is under
+review before launch. The two sentences in bold under "Process samples"
+already bind the service today." (the policy's own opening claim, which
+names them the same way; "the sentences in bold" also took in every
+section's bold lead-in, I-391), and terms' reads "these terms
+are under review before launch." Page titles read "Privacy · repose" and
+the like, without an em dash.
+
+**I-385. Only a page's first load can fail to a banner with Retry.**
+(design critique, 2026-09-30) Account, settings, secrets and config sat
+on "Loading…" for good when their first fetch failed, since the toast
+that named the error was gone after a few seconds; only billing had a
+failed state, and it was a dead end. `LoadState.svelte` wraps a page's
+first load: "Loading…" (`role=status`) while it runs, then either the
+content or the error in a `.banner--error` (`role=alert`) with a Retry
+button that re-runs the same load and reads "Retrying…". A later refresh
+that fails keeps the content on screen and reports through a toast.
+`loadErrorText` gives the banner the sentence `toastApiError` would
+show. *Rejected:* sending every failed refresh to the banner (blanking a
+page someone is reading loses their place for a failure they can ignore).
+
+**I-386. One confirmation pattern per consequence, and no native
+`confirm()`.** (design critique, 2026-09-30) The dashboard had four
+patterns, and restoring a snapshot over the disk, as irreversible as
+Destroy, sat behind `window.confirm()` and a plain `.btn-ghost`. Now: an
+action that cannot be undone (Destroy, Delete account, Restore over the
+disk) uses `ConfirmType`, typing the slug or handle; a single deletion
+whose cost is recoverable (a secret) is an inline two-step in its row,
+as Cancel plan already was; an unsaved edit guard cancels the SvelteKit
+navigation and asks in an inline `.banner--warn` with Stay (focused) and
+Leave. The snapshot panel's **Restore…** is `.btn-ghost-danger` and
+opens `ConfirmType`, which refuses while the project is not stopped and
+says to stop it or restore as new, mirroring `features/snapshots.md`.
+`ConfirmType` is a form (Enter confirms once the word matches) with an
+optional busy label and Cancel. *Rejected:* the native dialog (it
+ignores the house type, colour and scheme); a modal (the inline panel
+keeps the thing being confirmed on screen).
+
+**I-387. Restore-as-new is one `RestoreNameForm`.** (design critique,
+2026-09-30) The snapshot list and "Recently destroyed" each built the
+restore-as-new form, and the copy in `RecentlyDestroyed.svelte` had
+drifted: no label, no error text, no wrapping, and at 390px it pushed the
+page to 452px wide. `RestoreNameForm.svelte` is the one form: a visible
+label, `.field-error` tied by `aria-describedby` and `aria-invalid`, a
+submit with a busy label, Cancel, and wrapping rows.
+
+**I-388. The config editor's Menu and Nix switch is ARIA tabs styled like
+the header's current page.** (design critique, 2026-09-30) The switch was
+blue with a 2px underline and bold text, one of three places blue broke
+its rule, and had no tab semantics. It swaps a panel in place without
+changing the URL, so it is `tablist`, `tab` and `tabpanel` with a roving
+tabindex and the arrow, Home and End keys. The current tab is ink with a
+1px underline, the others `--ink-muted`, with no accent and no weight
+change, as the header marks the current page. *Rejected:* buttons with
+`aria-pressed`, proposed in the project pass (they announce a toggle,
+and the control selects one of two panels); links (nothing navigates).
+
+**I-389. The accessibility gate fails on any failed binary audit, audits
+signed in for real, and covers every page in both schemes at two
+widths.** (design critique, 2026-09-30; widens `08-dashboard.md` §9)
+`tests-a11y/a11y.spec.ts` passed at a Lighthouse score of 90 or more and
+only logged failed audits, and one colour-contrast failure still scores
+above 90, which is how sub-4.5:1 muted text shipped. It now also fails
+on any binary audit scoring 0 on any audited page, unless
+`KNOWN_FAILURES` names that audit on that page with a reason (it starts
+empty). It audits in a Playwright persistent context: Lighthouse's CLI
+tab opens in the browser's default context, and only a persistent
+context shares the Logto localStorage session with it and gets
+Playwright's `colorScheme` emulation (checked with a probe against
+Lighthouse 13.5.0). So the earlier "/projects and config score 100"
+evidence in `08-dashboard.md` §9 came from the signed-out landing the
+dashboard redirected to. Each run asserts the audited URL's path, so a
+bounced audit fails. The gate covers every routable page but `/callback`
+(13), light and dark, at 1440x900 and 390x844, the sizes of CLAUDE.md's
+"Judge visuals at real size": 52 runs.
+
+**I-390. A 503 the api gives as an answer is not an outage, a 500 is not
+"cannot reach", and one failure is said once.** (design critique repair,
+2026-09-30; narrows `08-dashboard.md` §6 "API 5xx or unreachable") The
+client set the outage bar on every status of 500 or more, and the api
+answers `billing_disabled` and `waitlisted` with a 503 on purpose, so
+/billing showed "Cannot reach the API. Retrying…" over "Billing is not
+switched on yet." whenever billing was off. `isOutage` in
+`lib/api/errors.ts` now leaves those two codes out; any other 5xx, and a
+5xx whose body is not the api's JSON (a proxy's page), still raises the
+bar. The bar has two wordings: "Cannot reach the API. Retrying…" when a
+request got no answer, and "The API is failing right now. Retrying…" on a
+5xx, since an api that answered 500 was reached. A failed first load
+said one failure three times (the bar, the LoadState banner and a toast
+with the same text); the projects list and the project page now raise the
+banner alone before their first load, as the other four pages already
+did, and the bar says something different. `errorText`, shared by the
+toast and the banner, replaces the api's bare "internal error" with the
+caller's sentence and "The API failed on its side; try again shortly."
+Pinned by `errors.test.ts` and by `failure-modes.spec.ts` and
+`billing.spec.ts`. *Rejected:* hiding the bar whenever a page shows its
+own banner (the bar is the only signal that polling has backed off to
+60s).
+
+**I-391. Design critique repair: focus follows in-place panels, one
+disabled look, and the gaps the first pass left.** (design critique
+repair, 2026-09-30; amends I-370, I-376, I-381, I-384) The first pass
+left these, found by the verify round and the a11y gate:
+- Focus. A panel that opens in place of the button that asked for it (a
+  secret's two-step delete, a snapshot's Restore and Restore as new, a
+  destroyed project's Restore) removed that button, and focus fell to
+  `<body>` (WCAG 2.4.3). The panel now takes focus ("Keep it", or the
+  field of `ConfirmType` or `RestoreNameForm`), Cancel and Keep it give it
+  back to the button, and a deleted row passes it to the next row's
+  Delete (`lib/focus.ts`).
+- `ConfirmType` has a visible label, "Type `slug` to confirm", where it
+  had only a placeholder and an `aria-label`, which broke the Fields rule
+  it is the main user of.
+- Disabled buttons have one look: a `--rule-strong` outline on
+  `--surface` with `--ink-faint` text. At `opacity-50` a primary button
+  was a grey block (dark text on mid grey in the dark) and a danger
+  button a pale red outline.
+- Edges: the Nix editor (1.56:1) and the docs' copy button (1.2:1) take
+  `--control-edge`; dark `--control-edge` is `#6e6e6a` (3.37:1 on
+  `--sunken`, was 3.17). The Nix editor's content gets an `aria-label`,
+  which the gate found missing once it audited the config page for real.
+- The mark's grey blocks in the light are zinc-500 and `#888883` (4.8 and
+  3.4:1), where the landing's shape greys were 2.5 and 1.5:1. Below `sm`
+  the dashboard's mark alone is the 24px cut the docs use, not 28px.
+- Docs and legal prose map the typography plugin's `--tw-prose-*` colours
+  to the ink and rule tokens (its `prose-zinc` is Tailwind's stock cool
+  zinc, and `prose-invert` made the dark h2 pure white); every heading is
+  600. Inline code with no space in it (a command, a flag, a path) does
+  not break across lines, and a command used as a docs heading is mono
+  text, not a chip. The sidebar's "On this page" links are 28px tall
+  (the gate's target-size audit failed at 22px).
+- The breadcrumb spaces its `·` with a flex gap (template whitespace put
+  4px before it and 10px after). The projects table's size sits on the
+  state's baseline; a destroyed row shows its size as mono text in its
+  meta line, not a badge, so a size looks the same in both lists. The
+  outage bar uses the `.banner--error` class. Toasts line up with the
+  content column from 600px up.
+- `.field--set` and `.btn--lg` had no user and are deleted (I-378). The
+  CSP no longer allows Google Fonts, and the CHECKLIST grep for font
+  hosts covers `svelte.config.js`.
+- The a11y gate's config target waits for the Menu tab, not a button
+  (I-388 made it a tab). `KNOWN_FAILURES` names colour contrast on `/`:
+  the landing pictures at 390 set their own greys inside
+  `components/landing/*.svelte`, which the landing-critique branch
+  rewrites; the entry goes when that branch lands.
+*Rejected:* focusing the danger button of a two-step when it opens
+(Enter would then delete); moving the toast to the top on a phone (it
+would cover the header's links instead of the page's last button).
+
+**I-392. Design repair round 2: ghost buttons show they can be pressed,
+one accent token, pictures keep their tools' colours, and the keyboard
+path is tested.** (design critique repair, 2026-09-30; amends I-374,
+I-376, I-382, I-384) What the second verify round found, and what was
+settled fixing it:
+- Palette layers. DESIGN-LANGUAGE.md allowed no orange or pink anywhere,
+  while LANDING.md prescribes Claude Code's orange mascot and its pink
+  bypass line inside the hero. Both are right about different things. The
+  no-new-hue rule covers what the site draws for itself (text, controls,
+  rules, state, the landing's shapes and bar); a picture of a real tool
+  keeps that tool's colours inside its frame, since it shows what the
+  visitor will see.
+- One accent token. `--accent` (link text), `--accent-strong` (a link
+  under the pointer) and `--selection` join `--focus` on `:root`, with
+  `text-accent` utilities, so no page picks a blue step.
+  `src/lib/app-html.test.ts` holds `app.html`'s first-paint colours equal
+  to `--page` and `--ink`.
+- Ghost buttons. A muted word with no resting mark read as plain text
+  ("Resize…", "Create", "Send test"). It now carries a hairline underline
+  in `--control-edge` that turns to the text colour under the pointer;
+  grey and underlined, it is still distinct from a blue link. Hover and a
+  new pressed state (`active:`, one step past hover) apply to enabled
+  buttons only. Transitions name their properties, because
+  `transition-colors` animated the focus ring in. Choices of equal weight
+  (a question's answers) are `.btn-quiet`, not a row of `.btn`.
+- Retry keeps focus. A page clears its load error only on a load that
+  worked, and LoadState marks Retry `aria-disabled` while it runs rather
+  than `disabled`, since a button that turns disabled drops focus to
+  `<body>`. `aria-disabled` takes the one disabled look.
+- The Disk card's resize panel follows I-391's focus rule: the select
+  takes focus, Cancel gives it back to "Resize…", and a grow that ends
+  after a poll returns focus only if it was still in the panel.
+- Skip link. "Skip to content" is every page's first tab stop, drawn after
+  mount and focusing whichever `<main>` is on screen. The landing's
+  `<main>` is in a file this round could not edit, so the prerender
+  rejected a `#main` link there and Lighthouse's skip-link audit failed
+  it; the root layout gives that `<main>` its id after each navigation.
+- Ligatures. JetBrains Mono's contextual alternates spaced `://` apart;
+  `font-variant-ligatures: no-contextual` is set on `html`, since the
+  landing's pictures set the mono in their own styles.
+- Docs. Only inline code of 30 characters or fewer stays on one line (the
+  44-character ntfy URL scrolled /docs/notifications sideways at 390);
+  longer spans wrap, `docs.test.ts` holds the limit. The docs h1 is the
+  dashboard's `text-3xl` at every width. The copy button is 28px tall and
+  its "Copied" is also said in a live region. The "On this page" chevron
+  does not turn under reduced motion.
+- Legal pages list their sections at the column's right edge from `lg`
+  up. A 33rem policy alone left 450px of the 984px column empty. The text
+  stays flush left under the logo as I-380 has it.
+- Rows and readings. Row-end ghost buttons on secrets and config take
+  `-mr-2`, like the snapshots row. The Disk card reads "X of Y", like
+  billing. The Projects limit on billing is a meter like the other
+  three. Event times sit on the summary's baseline. `.codeblock` lines
+  scroll rather than wrap. Toasts on a phone span the 20px gutters.
+- ARIA tabs on the config page: the keys are handled on the tabs, so the
+  tablist has no tabindex, and only the current tab carries
+  `aria-controls`. The menu's version select has its own `aria-label`.
+- `illustrations/Session.svelte` and `session.json` had no importer and
+  are deleted (I-378); `ops/dev/record-hero.md` says how to get them back.
+- `ops/dev/decisions-index.py` read only the first id after "amends", so
+  I-391's list marked I-370 alone; it now reads a whole list.
+`tests/design.spec.ts` drives the skip link, the resize panel's focus,
+Retry, forced colours, reduced motion, the phone width of five docs pages
+and the ligature setting. *Kept:* the dashboard header's mark without the
+word below `sm` (I-381, I-391); the docs' shell blocks without token
+colour (I-388); the outage bar alongside a page's own banner (I-390); the
+toast at the bottom on a phone (I-391).
+
+**I-393. Design repair round 3: one failure is reported once, 503
+answers come from one list, and links drawn as buttons answer the
+pointer.** (design critique repair, 2026-09-30; amends I-363, I-381,
+I-385, I-390, I-391, I-392) What the third verify round found, and what
+was settled fixing it:
+- Button links. I-392 gated the hover and press fills behind Tailwind's
+  `enabled:`, and `:enabled` never matches an `<a>`, so the docs header's
+  Dashboard and the landing's three button links lost both. The kinds use
+  plain `hover:` and `active:` again, and the disabled rule, which already
+  outranks them, keeps a disabled button inert. Ghost buttons use
+  `:not(:disabled, [aria-disabled='true'])` for the same reason.
+- 503 answers. `capacity` is a 503 the api gives on purpose, like
+  `waitlisted` and `billing_disabled` (`statusOf` in
+  `internal/api/http/server.go`), and it raised the outage bar beside
+  Start's capacity banner. api.md's "Errors" paragraph now lists the
+  three, `ANSWER_503` in `lib/api/errors.ts` holds them, and
+  DESIGN-LANGUAGE.md and 08-dashboard.md point to api.md instead of
+  repeating the list. Only a 503 is an answer: a 500 with any code is
+  still an outage.
+- One failure, one report. The project page's events and snapshots polls
+  each toasted on every failed tick, beside the load banner; the projects
+  list toasted on every failed refresh. `PollFailure` (`lib/api/toast.ts`)
+  toasts on the first failure only, not at all while the load banner or
+  the outage bar says it, and dismisses its toast when a tick gets
+  through. The projects list, the project page's three polls and
+  QuestionsCard use it; `toast.test.ts` holds it.
+- The outage bar is said in a `role=status` region (`#outage`) that is
+  always in the layout, so a screen reader announces the text when it
+  arrives; inserted with its text, the region was often not read.
+- Focus. Billing's Cancel plan now follows the documented two-step: the
+  button turns into the question, the danger button is `.btn--sm`, Keep
+  it takes focus when it opens and gives it back to Cancel plan, and a
+  cancel that goes through puts it on Resume plan. Settings' Stay gives
+  focus back to the link that asked to leave, or to the ntfy field when
+  the browser's Back asked.
+- Type. A legal page's h1, from its markdown, was the typography plugin's
+  36px; `.doc h1` is `text-3xl` like every other page title. Running mono
+  (a build error, a remote URL) was 12px against the 13px floor for mono
+  that is more than a label; it is `text-compact`, and CHECKLIST.md has a
+  grep for it.
+- Forced colours mark the current config tab with a 3px `Highlight`
+  edge; the others' edges are Canvas.
+- Logo. The mark's middle block is `--control-edge` in both schemes
+  rather than its light hex. The docs said the blocks were `--sh-grey` and
+  `--sh-light` and that `--sh-*` never leaves `/`; the code, which I-381
+  and I-391 settled, gives the mark its own greys and its big square
+  `--sh-accent` in every header. LANDING.md and DESIGN-LANGUAGE.md now
+  say so, naming the square as the one `--sh-*` token off the landing.
+- Headers below `sm` show the mark alone on every page. The dashboard
+  needs the room, and the docs and legal headers keeping the word made
+  the header change between pages on a phone (amends I-391's "with the
+  word on the docs and legal pages").
+- Docs code with spaces (`--api-url URL`) breaks only at its spaces:
+  each word of 30 characters or fewer is a `.nobreak` span, so a line no
+  longer ends at `--`.
+- The legal pages' "On this page" list sits 64px right of the text, not
+  at the column's edge 230px away (amends I-392).
+- The Nix editor is on `--sunken`, where code sits everywhere else, with
+  the current line on `--surface`; on `--surface` it was a pure white
+  block on the warm page in the light.
+- The secrets page's empty state is an h2 and a sentence naming the form
+  and `repose secrets set`, as "States" asks. DESIGN-LANGUAGE.md's
+  "Replace" heading, left from the I-13 framing, is "Controls".
+*Kept:* the landing header's 60px height and 216px inset (landing files
+belong to the landing-critique branch).
+
+**I-394. Design repair round 4: a quiet poll failure does not latch,
+billing opens one panel at a time, and code wraps where it should.**
+(design critique repair, 2026-09-30; amends I-393) What the fourth verify
+round found, and what was settled fixing it:
+- `PollFailure` latched a failure it kept quiet. A project's events poll
+  whose first tick failed under the load banner never toasted after
+  Retry loaded the project, however long it kept failing. Only a toast
+  latches now; a quiet failure is looked at again on the next tick.
+- Billing. Resume plan gives focus to Cancel plan, the mirror of what
+  cancel does (WCAG 2.4.3). Change plan and the Cancel plan question
+  close each other, so the question renders right under the action row,
+  where its button was, and not under the plan list.
+- Wrapping. The project page's remote URL uses `wrap-anywhere`, not
+  `break-all`, so it breaks at a hyphen or a slash before mid-word. The
+  legal pages render inline code with the docs' renderer, moved to
+  `lib/codespan.ts`, so `repose-notify` no longer splits at its hyphen.
+- Docs code blocks wider than their box take `tabindex=0` (set in
+  DocPage, rechecked on resize, so a block that fits is no tab stop) and
+  show a shade at the hidden edge; axe's scrollable-region-focusable
+  would flag them in engines that do not focus a scroller on their own.
+- DESIGN-LANGUAGE.md: the Nix editor's `--sunken` fill (I-393) is in
+  the token table and under "Hairlines, not boxes"; the mark-alone rule
+  below `sm` covers the `HeaderFrame` headers and names the landing, whose
+  files the landing-critique branch owns, as the exception.
+*Kept:* the landing's header and footer logos as they are, for that
+branch to settle.
+
+**I-395. Design repair round 5: a scroll edge is a one-colour bar, and
+polls on one page share one toast.**
+(design critique repair, 2026-09-30; amends I-393, I-394) What the fifth
+verify round found, and what was settled fixing it:
+- The docs code blocks' scroll shade (I-394) was two two-colour linear
+  gradients and two radial ones, against DESIGN-LANGUAGE "Corners" and
+  its CHECKLIST grep, and the radial layer read as a shadow. It is now a
+  2px `--ink-faint` bar at each edge, drawn with one-colour
+  `linear-gradient(c, c)` layers; two covers in the box's own fill
+  scroll with the text and hide a bar once its edge is reached. The rule
+  and the grep stay as they were.
+- Docs tables get the same bar and the same tab stop as code blocks. At
+  390, four `/docs/cli` tables were wider than their box, and axe flagged
+  two as scrollable-region-focusable. Below `sm` a command in a table
+  wraps at its spaces, which leaves one table (the environment
+  variables, 15px over) that scrolls. The a11y gate now covers
+  `/docs/cli`, and its tables' empty heads are labelled ("What it
+  does").
+- One failure, one report reaches the rest of the dashboard. The project
+  page's polls and its questions card share a `PollGroup`: a 429 or a
+  403 on one tick is one toast, gone when every poll it covers gets
+  through. Billing toasts a failed account load only when the billing
+  call answered; if billing failed too, its banner or the outage bar
+  says it.
+- The Nix editor's current line lifts in the dark as well: there
+  `--surface` is darker than `--sunken`, so the line is `--sunken` with
+  5% `--ink` mixed in (`#242423`; `--ink-faint` line numbers on it hold
+  4.8:1).
+- DESIGN-LANGUAGE "Type" now matches the CHECKLIST: mono under 13px is a
+  badge and nothing else; the landing's labels are its own.
+
+**I-396. The docs take a wider frame, with the "On this page" rail back
+at the right and a sidebar that lists pages only.** (owner's review,
+2026-10-01; amends I-380 and I-383) I-383 listed the open page's
+sections under its link in the sidebar, so the sidebar grew and shrank
+from page to page and moved what was under it, and at 1440 the right
+third of the page was empty. The owner called it a downgrade. The docs
+now pass `width="docs"` to `HeaderFrame` and put header and body on
+`max-w-7xl px-5`: a 240px sidebar of pages only, the text column, and
+from `xl` up a 224px rail at the frame's right edge. Inside the 1240px
+frame that leaves the text track 696px, over the 622px (68ch) column
+I-382 needs for I-345's 70 columns of 13px mono. The rail's column is
+drawn on every page, empty when a page has fewer than two h2s, so
+nothing moves sideways between pages: at 1440 the sidebar is at x=100,
+the text at x=380 (622 wide), the rail at x=1116 on `/docs`, `/docs/cli`
+and `/docs/secrets` alike, loaded or reached by a client navigation,
+with no layout-shift entries (`tests/docs.spec.ts`). The rail sticks at
+57px, under the header and its hairline, scrolls on its own when long,
+and marks the section being read (an `IntersectionObserver` on the h2s,
+`aria-current="true"`, ink, not the accent). Below `xl` the sections
+fold under the description as before. On the docs the logo sits at x=100
+at 1440 instead of the dashboard's 228: three columns do not fit the
+dashboard's 1024px frame without squeezing the code, and a logo that
+moves when you cross from the dashboard to the docs costs less than
+either. At 390 it is x=20 on every page, as I-380 has it. *Rejected:*
+widening the dashboard to match (its lists and forms would run long
+lines for nothing); hiding the rail's column on pages with no sections
+(the text would keep its x, but the frame would change from page to
+page for no reader's gain, and the column costs nothing when empty).
+
+**I-397. Landing repair round: the landing-critique branch is abandoned,
+so the landing joins the house header, one picture palette, one large
+button and the a11y gate, and its pictures stop when motion is turned
+off.** (implementation, 2026-10-01: the owner's act is abandoning the
+landing-critique branch, and the rest is implementation the owner has
+not reviewed, LANDING.md "Since the owner's notes"; closes the items
+I-393 to I-395 kept for that branch; amends I-380, I-389 and I-392) The
+owner abandoned the
+landing-critique branch; the landing on main is the base, and nothing of
+that branch is merged or read. What I-393 and I-394 kept for it is
+settled here:
+- The landing's header is `HeaderFrame`, 56px over a `--rule` hairline
+  like every other page, with `width="landing"`: the 1120px measure
+  (`--land-w`) and the text inset (`--land-x`), so the logo stands over
+  the headline at x=216 at 1440 and x=20 at 390. Below `sm` it shows the
+  mark alone, as every header does (I-393). Docs and Pricing are visible
+  at every width, GitHub from `sm` up, then the sign-in button; Pricing
+  is in the footer too. The 60px top bar and its own logo rule go.
+- The drawn pictures take their colours from six `--pic-*` tokens in
+  `layout.css`, beside `--sh-*`: `--pic-accent`, `--pic-ink`,
+  `--pic-dim`, `--pic-faint` (which is `--ink-faint`), `--pic-stop` and
+  `--pic-add`. Each picture had picked its own steps, and the muted rows
+  in zinc-400 (light) and zinc-600 (dark) held under 4.5:1 on `--sunken`.
+  Red and green are a diff stat's, for deleted and added; I-392's
+  exemption for real tools' colours is unchanged and does not reach these.
+- `.btn--lg` (`px-5 py-2.5`) is the large button step, for the hero's
+  "Get started" and pricing's "Start a free week", which used `!px-5
+  !py-2.5` against I-376's no-override rule.
+- Pictures follow `prefers-reduced-motion` while the page is open
+  (`watchReducedMotion` in `landing/inview.ts`): turned on mid-loop, each
+  picture stops on its final frame and each waiting shape group lands.
+  Read once at mount, as before, the setting was missed until a reload.
+- The hero's still frame (reduced motion, and before its loop starts) is
+  its end state: the machine restored from the newest snapshot with the
+  good work on it, the story's last beat, not its first.
+- The a11y gate audits the landing under `prefers-reduced-motion:
+  reduce`, in a Chromium of its own on the next CDP port (Playwright sets
+  reduced motion per context, and applies it to the tab Lighthouse opens
+  as it does the colour scheme). With motion on, Lighthouse sampled a
+  different moment of each loop, and a row mid-fade failed contrast in
+  one run and passed in the next. The landing's `color-contrast` entry
+  in `KNOWN_FAILURES` now names what stays: the Editor capture's line
+  numbers (`span.ln`), Tokyo Night's own grey.
+- CHECKLIST.md runs the design greps over the landing too, with one
+  named allow-list: `Editor.svelte`, `Browser.svelte`, `Ready.svelte` and
+  `Localhost.svelte` keep their tool's hex and ANSI colours, and the
+  hero's Claude Code colours are the only hex left outside them.
+- A picture of a real tool may draw under the 11px floor and the 13px
+  mono rule, as I-392 lets it keep its colours: it is drawn at the scale
+  that fits the whole capture in its frame (the Editor's LazyVim screen
+  is 8.4px on a phone, so 69 columns fit). A drawn picture keeps the
+  floor.
+*Rejected:* keeping a landing-only header (two headers drift, as the
+logo rule did between I-381 and I-393); auditing every page under
+reduced motion (the dashboard's only motion is the busy dot's pulse, and
+the gate should see the pages as most visitors do); taking the drawn
+pictures' colours from the Foundation's `--ink*` and `--accent` alone
+(those are for text and links, and a picture needs a line colour and a
+stop colour the text tokens do not have).
+
+**I-398. Landing repair round, the details: the landing is prerendered,
+`html.js` marks a scripted page, the hero's first paint is the empty
+machine, captures move without layout, and every picture says only what
+the product does.** (implementation, 2026-10-01; amends I-397's still
+frame, I-392 and I-367's landing figure) Settled while the I-397 bundles
+landed:
+- The landing is prerendered (`routes/+page.ts`, `ssr` and `prerender`),
+  as the docs and legal pages are: the headline, lead and plans come in
+  the first response. Its sign-in buttons render signed out and swap in
+  place; both labels share one grid cell, so "Get started" and "Start a
+  free week" are as wide as "Open the dashboard" and the swap moves
+  nothing. `<main id="main">` is in its markup, so the layout's skip link
+  is prerendered on every page and the `afterNavigate` id patch is gone.
+  An old docs slug's page now holds a `<main id="main">` with the new
+  page's link, since the prerender rejects a `#main` link to a page with
+  no target.
+- `app.html` carries one inline script that adds `js` to `<html>` before
+  the first paint; `svelte.config.js` allows it by its sha256 in
+  `script-src`, and editing the script changes the hash.
+- The hero has two still states. With reduced motion or scripts off it
+  is the end of the loop: the machine restored, the stop cross and lit
+  wall where the skill was turned back, no skill chip (in a restored
+  machine it would read as still infected). With scripts on and motion
+  allowed, the first paint is the empty machine the loop starts from, so
+  the wreck never flashes. This replaces I-397's "before its loop starts"
+  half.
+- Every picture follows a mid-session reduced-motion change through
+  `watchReducedMotion`, the hero included.
+- Drawn-picture text that names context (paths, struck names, the
+  `node_modules/` row) is `--pic-faint`, 4.5:1 or better on its row in
+  both schemes; the strike and the stop sign carry the meaning without
+  colour.
+- Captures move by `translate`, `scale` and `opacity` only: the Browser
+  page pans by `translate`, its ring is four 2px edges scaled to size.
+  The captured log rows rest at 0.7 opacity, not 0.45 (5.0:1 at the
+  least); the prompt's `❯` glyph keeps the tool's own 3.3:1 under I-392.
+  The Browser picture's chip keeps `blue-600` in both schemes, since it
+  sits on the captured page, which is white in both.
+- The tmux status bars are cropped by the session name's ten columns,
+  and Ready drops the first line of each two-line prompt as whole rows,
+  so no capture shows `recruiting` there; nothing is retyped. Ready's
+  rows crop on the right on a phone instead of re-flowing.
+- OneCommand reads "Ready in 14s", the docs quickstart's figure, and the
+  machine shows no `node_modules/`, since sync leaves dependency
+  directories behind (`content/docs/sync.md`). Stacked on a phone, the
+  copies travel only through the gap between the panels, and the chip's
+  label wraps inside the frame at 320px.
+- ComesBack's logins row is gh and Codex: the Claude Code login lives on
+  the user's login share, which a snapshot does not hold (I-278). The
+  Codex half is from `content/docs/agents.md`, not read on the owner's
+  machine. The older tile folds by `clip-path`, its box keeping its
+  height.
+- Every step in "Three commands" has a Copy button; below `md` the
+  commands wrap instead of ending in an ellipsis. With scripts off the
+  buttons show and do nothing; hiding them waits on a rule under
+  `html.js`.
+- The hero's lead is `text-wrap: balance`; `pretty` left a lone "A" at
+  1440. The sphere is drawn flat, with a `meridians` prop the footer's
+  frieze uses.
+- `landing/Sandbox.svelte` is deleted; nothing imported it.
+*Rejected:* a hydrated landing with an SPA shell (the lead and plans
+painted only after the bundle ran); cropping the Editor capture on a phone (no
+left crop leaves the explorer whole; it is scaled to 8.4px, I-397);
+showing the skill chip in the still frame.
+
+**I-399. Landing repair round 2: the drawn pictures' rows are 12px
+mono, every picture motion is in LANDING.md's list, OneCommand takes the
+picture palette, the repair round's notes leave the owner's sections,
+and the a11y gate's landing allowance is phone width only.**
+(implementation, 2026-10-01; amends I-397 and I-398) A review of the
+I-397/I-398 round found the docs and the code apart:
+- A drawn picture's rows (a file name, a diff stat, a time, a git
+  letter) are mono at 12px to 12.5px, 11px on a phone. I-397 said a
+  drawn picture keeps the 13px mono rule, but the pictures never did:
+  "Your working state" drew its rows at 12px when the owner chose it,
+  and the hero and "Break it and roll it back" match it. The 11px floor
+  holds; the 13px rule stays for the page's own text.
+- Every motion the pictures run is in LANDING.md's "Motion" list or was
+  brought to a listed kind: the skill's lunge is travel (`inOutCubic`),
+  the wall's light and the Browser's typed lines are 200ms reveals, the
+  Browser's log scrolls as travel, fades out are `inQuad` exits, the
+  Localhost chip arrives with `outBack`, and ComesBack's snapshot mark
+  turns a quarter in 420ms out-quad like the hero's. Three motions are
+  added to the list with their timing: the hero's shutter, the skill's
+  knock off the wall, and the Browser pointer's press. A wire's
+  `stroke-dashoffset` joins the properties the pictures may animate; it
+  is paint, not layout.
+- OneCommand's git letters and "Ready" line drop amber, emerald and
+  zinc steps of their own: `M` is `--pic-dim`, `U` is `--pic-add`, and
+  the line beside the picture is `--ink-muted`. The Browser picture's
+  ring and log bar are named for the ground they sit on (`--chip`,
+  blue-600 on the white page; `--on-log`, blue-400 on the dark log). The
+  green running dots stay open for the owner. CHECKLIST's landing hue
+  grep now catches amber, emerald, zinc and the other Tailwind hues.
+- The repair round had written its own rules into LANDING.md sections
+  marked as the owner's direction (the picture palette in "Shape
+  language", the logins row in "The grid cards", the "Ready in 14s"
+  figure in "Your working state"). They move to a section of their own,
+  "Since the owner's notes", which says they wait for the owner's review;
+  the owner's sections read as the owner wrote them. I-397's heading
+  said "owner", and the owner's only act in it is abandoning the branch.
+- The a11y gate's `KNOWN_FAILURES` entries may name the widths they hold
+  at. The landing's colour-contrast entry is phone width only: at 1440
+  the Editor capture draws large enough to pass, and the desktop runs
+  score 100 in both schemes.
+- The hero's snapshot slot is server-rendered at the size measure()
+  finds from 1280 to 1920 wide (an 84px miniature of a 344 by 296
+  machine). The default had been 360 by 236, so hydration grew the slot
+  and pushed the globe down, one 0.0002 layout shift at 1440. The hero
+  hands over from its CSS first paint to the timeline (`.live`) when the
+  first cycle runs, not when anime.js arrives: a picture under the
+  observer's threshold at load drew the restored machine until it
+  scrolled into view.
+- The docs rail picks its section on scroll, once a frame, besides the
+  observers: one jump past a heading (a wheel fling, `scrollTo`) left it
+  stale or empty.
+- The test fixtures start `go run` in a process group of its own and
+  stop the group: a SIGTERM to `go run` never reached the binary it ran,
+  and every suite left fakeapi and fake-logto running.
+*Rejected:* setting the drawn pictures' rows at 13px (it changes the
+picture the owner chose); masking `recruiting` in the Editor capture's explorer (no crop
+removes it, and a blanked cell is an edit of a capture; a re-capture on
+a machine named job-alerts is open for the owner, STATUS.md); auditing
+the landing with motion on as well (a loop samples a different frame
+each run, I-397; the gate checks the end state, and the first paint and
+mid-loop frames are judged on captures, which is a gap the gate does not
+close).
+
+**I-400. Landing repair round 3: the Editor capture's rows are inert,
+so the a11y gate has no allowance left; a restored row is blue, every
+fade out names its ease, and the hero shows its still frame when the
+app never mounts.** (implementation, 2026-10-01; amends I-397, I-398
+and I-399) A review of the I-399 round found:
+- The landing scored 96 at 390 in both schemes on colour contrast, all
+  six nodes in the Editor capture: the explorer's file name and count,
+  two comment lines, the branch and the position in the statusline
+  (Tokyo Night's own #636da6, #545c7e and #82aaff on its grounds, 2.46
+  to 4.27). I-399's `KNOWN_FAILURES` reason called them line numbers;
+  they were not. Its claim that the capture "draws large enough to
+  pass" at 1440 was also wrong: axe could not decide there
+  (`pseudoContent`) and passed nothing in the frame. Each row of the
+  capture is now `inert` beside its `aria-hidden`: the screen is one
+  `role="img"` with its own label, its text is a picture's, which WCAG
+  1.4.3 exempts as incidental, and `inert` takes it out of the tab
+  order, find in page and selection as a screenshot would be. axe skips
+  inert nodes, so the landing scores 100 at both widths and
+  `KNOWN_FAILURES` is empty. The colours are the tool's, unchanged.
+- "Break it and roll it back" no longer turns a restored row green or
+  draws its tick green: both take `--pic-accent`, what moves and comes
+  back. `--pic-add` is a diff stat's added count and nothing else.
+- Every fade to 0 in the pictures names `inQuad` and lasts 300ms or
+  more (ComesBack's travelling copy and arrows, the Browser ring, the
+  OneCommand stop mark, the hero's database and node values). The
+  motions I-399 left out of LANDING.md's list are in it: the Browser
+  log's rows dimming to rest (`outQuad`, now named), the hero's file
+  row lighting as it is written, the class-driven colour transitions
+  (the `repose run` chip's fill, the address bar's edge, the log's bar,
+  ComesBack's edges, tints and marks), and hover on links and buttons,
+  which the Foundation already lists.
+- The hero's first paint hides its rows under `html.js` until the loop
+  runs. If the app's script never mounts the picture (a bundle that
+  fails to load or throws), a 0s CSS animation with a 4s delay shows the
+  still frame; onMount sets `.mounted` first thing, which drops it. The
+  header comment no longer says the still frame shown before the script
+  carries the return arrow: the connectors are measured by script.
+- `/callback` had no `<main>`, so the layout's skip link pointed at
+  nothing there. It has one, and `src/lib/skip-target.test.ts` holds
+  every `+page.svelte` to a `<main id="main">` of its own or a shell
+  that draws one.
+- The hero's lead keeps each sentence whole (balance alone ended line 1
+  on "The"); the pricing spec line keeps each dot with the fact before
+  it, so no line starts with one. /projects breaks a remote URL after a
+  slash or a hyphen, not mid-word.
+- CHECKLIST's landing allow-list leaves out only the files that are a
+  capture whole (Editor, Ready) for the hue greps; Browser and Localhost
+  hold drawn marks and are read, with their counts (the Browser's two
+  marks; five green dots, Localhost's and OneCommand's "Ready" dot
+  among them). The hex and size greps still leave the two out for their
+  captured parts.
+- LANDING.md "Since the owner's notes" lists the rest of the repair
+  rounds' changes to what the owner's sections govern: the flat sphere
+  and the footer's meridians, the grid cards' lines, Copy on every step,
+  Ready's dropped prompt rows and its crop on a phone, and the pricing
+  caption in agents. The dead `.step p` rule and its documented size
+  are gone; a step has no sentence.
+- I-399 said OneCommand's "Ready" line dropped emerald. Its text did;
+  the dot before it is still the green running dot (emerald-500), the
+  fifth under STATUS.md's open item, and CHECKLIST counts it.
+- "Your working state" drew a re-sync, which `repose run` no longer does
+  (I-367): master's `7ea43a8` sat on the machine before the run and only
+  the branch's two commits travelled, beside a "Ready in 14s" that only
+  a new machine takes. The picture is now that first run: the machine
+  starts with no commit and all three travel. The header comment no
+  longer quotes the pre-I-367 "Synced: ... (2 new commits)" output.
+- ComesBack's counts last 500ms, the top of the reveals' 200ms to 500ms
+  (they were 650ms). Its snapshot mark no longer turns back a quarter
+  when the shot is done: a class set the angle and its transition played
+  in reverse when the class came off. The loop adds 90deg to a `--turn`
+  per snapshot and the restore's full turn runs from that angle. (The
+  hero's mark did not, as this said it did: it was set back to 0 at each
+  loop's start, a half-turn cut; I-401.)
+- The hero's reach wire to the internet is stroked `--pic-stop`, not
+  `--rogue`: it is a drawn wire, and `--rogue` is the mascot's own red.
+- The docs drawer scrolls the least that shows the current page's link,
+  16px clear of the edge. It put that link a third of the way down, so
+  on a phone /docs/cli opened with the search and "Start here" scrolled
+  away while CLI reference was already on screen.
+- Above a docs page's first h2 the "On this page" rail marks no section:
+  the intro is no section. That was the code's behaviour;
+  DESIGN-LANGUAGE.md now says so.
+- `nix/guest/base/agent-guide.md` lists the three plans of I-362 (Solo
+  8 GB and 250 GB, Plus 16 GB and 500 GB, Pro 32 GB and 1 TB, as
+  `internal/billing/plans.go`); I-362 left the guide at the two-plan
+  figures, and fb3995a fixed it without an entry. It is guest behaviour
+  (`/etc/repose/agent-guide.md`, `nix/guest/tests` `guest-agent-guide`),
+  so guests carry the new figures from the next base image, not before.
+*Rejected:* recolouring the capture's text to 4.5:1 (it would no longer
+be the tool's screen); rendering the capture as an image (a raster loses
+the font and the crispness at every scale, and an SVG `<text>` grid is
+the same text to axe); hiding the text from axe with CSS `content` (it
+would quiet the audit and say nothing true about the page); renumbering
+the I-369 collision with restore-fast here (whichever branch merges
+second renumbers, STATUS.md).
+
+**I-401. Landing repair round 4: the snapshot marks only turn as listed,
+the hero's lead wraps inside a sentence before it scrolls, the docs
+sidebar scrolls only for a cut link, and the dashboard's command block
+shows where its line runs on.** (implementation, 2026-10-01; amends
+I-400) A review of the I-400 round found:
+- The hero's snapshot mark cut a half turn at each loop's start. Two
+  quarter turns and the full turn back leave it at -180deg, and `pre()`
+  set it to 0 with no motion while the panel title's pinwheel was in
+  view, its two quarters (full and 0.45 opacity) swapping places. `pre()`
+  now keeps the angle, folded into 0 to 360. ComesBack's comment and
+  I-400 said the hero's mark never turned back; both are corrected.
+- ComesBack's rewind hung on `.lit`, which the still frame (markup and
+  `still()`) also sets, so with motion allowed the mark spun a full turn
+  on the still frame at load and when reduced motion was turned off
+  again. It now hangs on `.rewind`, set only by the loop's restore.
+- The hero lead's sentences were `white-space: nowrap`: at 320px under
+  WCAG 1.4.12 text spacing the first ran to x=366 and the page scrolled
+  sideways (scrollWidth 366). Each is now an inline block no wider than
+  the column, whole where it fits and wrapping inside itself where it
+  does not.
+- The docs sidebar scrolled whenever the current link sat within 16px of
+  an edge, so at 1440x900 /docs/troubleshooting moved the list up 15px,
+  and the scroll stayed for the next page. A link that shows whole now
+  moves nothing. A cut one is scrolled to with 16px to spare, and going
+  down the next link shows whole too, or the list's end for the last
+  link: the 390 drawer on /docs/cli cut "Troubleshooting" at the bottom
+  edge (I-400's "least scroll").
+- `.codeblock` scrolls sideways as the docs' blocks do but showed neither
+  their edge bars nor a tab stop: at 390 the /projects install line was
+  cut at ".../inst". It now takes the same `--edge-*` layers, and the
+  /projects block takes a tab stop while it overflows
+  (`tabStopWhenScrolls`, `lib/scroller.ts`). DESIGN-LANGUAGE.md says so.
+- Localhost's card line said a server is on your localhost "within a
+  second", where the docs say "within a second or so" and ports below
+  1024 are not forwarded, and it explained the picture, which the
+  owner's Copy rule rules out for a card. It is now "Ports from 1024 up,
+  while `repose run` is open. Cookies and OAuth redirects behave as they
+  do locally.", facts the picture does not show.
+- Step 3's Copy button copied `cd ~/code/job-alerts && repose run`, a
+  path a visitor's laptop does not have. It copies `repose run`; the row
+  still shows the example, and the button's name says what it copies.
+- The pricing sentence, the spec line and the meta description changed
+  in I-397 without a line in LANDING.md "Since the owner's notes"; they
+  have one now.
+- The Editor comment gave the capture's failing contrast as 3.1 to 4.27;
+  the colours it names (#545c7e, #636da6, #82aaff on their grounds) run
+  2.46 to 4.27, as I-400 says. The comment now agrees.
+- LANDING.md "Motion" said every listed motion runs only without reduced
+  motion; the colour transitions on hover and on a class change are
+  unconditional CSS. The intro now says so. `app.html`'s comment said
+  the app renders only in the browser; the landing, docs and legal pages
+  are prerendered.
+*Rejected:* fitting the docs list into 843px at 1440 by trimming the
+sidebar's padding (it fits only at that height, and a link one pixel
+cut at a shorter window would still move the list); resetting the hero's
+mark with a 180-degree turn (a motion LANDING.md does not list); copying
+the shown command and leaving the path to the visitor (the copied text
+would fail as pasted).
+
+**I-402. Pricing says "memory" and counts no agents.** (implementation,
+2026-10-01; amends I-397, I-290's wording)
+The landing's pricing captions ("One agent at a time", "Two agents at
+once", "Four agents at once", I-397) read to the owner as a cap on what
+repose does, when the plan caps memory and nothing else. And "8 GB
+running at once", the phrase the billing page, the waitlist and plan
+emails, the docs and the fake api's refusals used, does not say it is
+memory. The cards now drop the caption and read "N GB of memory · disk ·
+egress"; the pricing sentence adds "A plan's memory is shared by the
+machines you have running; a stopped machine uses none." Everywhere a
+user reads the limit it is "N GB of memory for running machines": the
+billing page's change rows, the waitlist_joined and plan_changed emails,
+`limits.md`, the terms, the fake api's over_plan and payment_required
+messages, and the Paddle product description that `billing bootstrap`
+creates. Bootstrap only creates products, so products already in Paddle
+keep the old description until it is edited in Paddle's dashboard.
+Internal docs (DESIGN.md, RUNBOOK, OBSERVABILITY, PRICING's prose) keep
+"may run at once", which their readers know means memory.
+*Rejected:* counting machines by size class ("one large, or two
+small"): a visitor has not met the classes, and a count is still a
+ceiling.

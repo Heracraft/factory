@@ -15,7 +15,7 @@ test('menu tab renders catalog groups and search filters them', async ({ page })
 		remote_url: 'github.com/heracraft/menu-app'
 	});
 	await page.goto(`/projects/${p.id}/config`);
-	await page.getByRole('button', { name: 'Menu' }).click();
+	await page.getByRole('tab', { name: 'Menu' }).click();
 
 	await expect(page.getByText('runtimes')).toBeVisible();
 	await expect(page.getByText('Services')).toBeVisible();
@@ -32,13 +32,13 @@ test('applying a menu selection shows the generated fragment on the Nix tab', as
 		remote_url: 'github.com/heracraft/menu-apply-app'
 	});
 	await page.goto(`/projects/${p.id}/config`);
-	await page.getByRole('button', { name: 'Menu' }).click();
+	await page.getByRole('tab', { name: 'Menu' }).click();
 	await page.getByText('Zig', { exact: true }).click();
 	await page.getByRole('button', { name: 'Apply', exact: true }).click();
 
 	await expect(page.getByText('Applied.')).toBeVisible({ timeout: 10_000 });
 
-	await page.getByRole('button', { name: 'Nix' }).click();
+	await page.getByRole('tab', { name: 'Nix' }).click();
 	await expect(page.locator('.cm-content')).toContainText('pkgs.zig');
 });
 
@@ -59,7 +59,7 @@ test('menu tab lists extra nixpkgs packages and keeps them on apply', async ({ p
 	expect(put.status).toBe(202);
 
 	await page.goto(`/projects/${p.id}/config`);
-	await page.getByRole('button', { name: 'Menu' }).click();
+	await page.getByRole('tab', { name: 'Menu' }).click();
 	await expect(page.getByRole('heading', { name: 'Extra packages' })).toBeVisible();
 	await expect(page.getByText('gcc', { exact: true })).toBeVisible();
 	await expect(page.getByText('air', { exact: true })).toBeVisible();
@@ -69,7 +69,7 @@ test('menu tab lists extra nixpkgs packages and keeps them on apply', async ({ p
 	await page.getByRole('button', { name: 'Apply', exact: true }).click();
 	await expect(page.getByText('Applied.')).toBeVisible({ timeout: 10_000 });
 
-	await page.getByRole('button', { name: 'Nix' }).click();
+	await page.getByRole('tab', { name: 'Nix' }).click();
 	await expect(page.locator('.cm-content')).toContainText('"gcc"');
 	await expect(page.locator('.cm-content')).not.toContainText('"air"');
 	await expect(page.locator('.cm-content')).toContainText('pkgs.bun');
@@ -83,7 +83,7 @@ test('a failing fragment shows the error block with the fragment line highlighte
 		remote_url: 'github.com/heracraft/broken-fragment-app'
 	});
 	await page.goto(`/projects/${p.id}/config`);
-	await page.getByRole('button', { name: 'Nix' }).click();
+	await page.getByRole('tab', { name: 'Nix' }).click();
 
 	await page.locator('.cm-content').click();
 	await page.keyboard.press('Control+A');
@@ -111,4 +111,25 @@ test('hold base updates toggle round-trips', async ({ page }) => {
 
 	await page.reload();
 	await expect(page.getByRole('checkbox', { name: /Hold base updates/ })).toBeChecked();
+});
+
+test('the Menu and Nix tabs are ARIA tabs the arrow keys move between', async ({ page }) => {
+	const p = await createProject(apiURLFromEnv(), {
+		name: 'tabs-app',
+		remote_url: 'github.com/heracraft/tabs-app'
+	});
+	await page.goto(`/projects/${p.id}/config`);
+	const menu = page.getByRole('tab', { name: 'Menu' });
+	const nix = page.getByRole('tab', { name: 'Nix' });
+	await menu.click();
+	await expect(menu).toHaveAttribute('aria-selected', 'true');
+	await expect(page.getByRole('tabpanel', { name: 'Menu' })).toBeVisible();
+	await page.keyboard.press('ArrowRight');
+	await expect(nix).toBeFocused();
+	await expect(nix).toHaveAttribute('aria-selected', 'true');
+	await expect(menu).toHaveAttribute('tabindex', '-1');
+	await expect(page.getByRole('tabpanel', { name: 'Nix' })).toBeVisible();
+	await page.keyboard.press('Home');
+	await expect(menu).toBeFocused();
+	await expect(page.getByRole('tabpanel', { name: 'Menu' })).toBeVisible();
 });

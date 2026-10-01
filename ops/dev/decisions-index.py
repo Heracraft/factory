@@ -26,14 +26,19 @@ ID_GROUP = ID + r"(?:\.\." + ID + r")?(?: \+ " + ID + r")*"
 ENTRY_START = re.compile(r"^\*\*(" + ID_GROUP + r")\b")
 DATE = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
 
+# The ids after a verb may be a list: "amends I-370, I-376, I-381, I-384"
+# or "amends I-5 and I-6". Only the first id used to be read, so an entry
+# that amended four others marked one of them (I-391).
+LIST_TAIL = r"((?:(?:,? and |, )" + ID + r"(?:'s)?)*)"
 # Statements an entry makes about an earlier entry: (pattern, verb for target).
 BACKREFS = [
-    (re.compile(r"\bSupersedes (?:what is left of )?(" + ID + r")('s)?", re.I), "superseded"),
-    (re.compile(r"\breplaces (" + ID + r")('s)?", re.I), "superseded"),
-    (re.compile(r"\bamends (" + ID + r")('s)?", re.I), "amended"),
-    (re.compile(r"\breverses (" + ID + r")('s)?", re.I), "reversed"),
+    (re.compile(r"\bSupersedes (?:what is left of )?(" + ID + r")('s)?" + LIST_TAIL, re.I), "superseded"),
+    (re.compile(r"\breplaces (" + ID + r")('s)?" + LIST_TAIL, re.I), "superseded"),
+    (re.compile(r"\bamends (" + ID + r")('s)?" + LIST_TAIL, re.I), "amended"),
+    (re.compile(r"\breverses (" + ID + r")('s)?" + LIST_TAIL, re.I), "reversed"),
     (re.compile(r"(" + ID + r")('s)? text; superseded here", re.I), "superseded"),
 ]
+TAIL_ID = re.compile(r"(" + ID + r")('s)?")
 # Statements an entry makes about itself.
 SELF = [
     (re.compile(r"\*?(?:Replaced|Superseded) by:?\*?:? ?(" + ID + r"(?: \([^)]*\))?(?: and " + ID + r")?)", re.I), "superseded"),
@@ -94,16 +99,20 @@ def statuses(entries):
     for src in entries:
         for pat, verb in BACKREFS:
             for m in pat.finditer(src["flat"]):
-                tgt = by_id.get(m.group(1))
-                if not tgt or tgt is src:
-                    continue
-                # "amends R4-8's $10" or an id that is one of several in a
-                # grouped entry touches part of that entry, not all of it.
-                partly = "partly " if (m.group(2) or len(tgt["aliases"]) > 1) else ""
-                note = f"{partly}{verb} by {src['id']}"
-                if f"{verb} by {src['id']}" in tgt["status"] or note in tgt["status"]:
-                    continue
-                tgt["status"].append(note)
+                named = [(m.group(1), m.group(2))]
+                if m.lastindex and m.lastindex >= 3 and m.group(3):
+                    named += [(t.group(1), t.group(2)) for t in TAIL_ID.finditer(m.group(3))]
+                for ref, possessive in named:
+                    tgt = by_id.get(ref)
+                    if not tgt or tgt is src:
+                        continue
+                    # "amends R4-8's $10" or an id that is one of several in a
+                    # grouped entry touches part of that entry, not all of it.
+                    partly = "partly " if (possessive or len(tgt["aliases"]) > 1) else ""
+                    note = f"{partly}{verb} by {src['id']}"
+                    if f"{verb} by {src['id']}" in tgt["status"] or note in tgt["status"]:
+                        continue
+                    tgt["status"].append(note)
 
 
 def render(entries):

@@ -230,12 +230,14 @@ jobs:
       - name: playwright browsers
         run: pnpm --filter web exec playwright install --with-deps chromium
       - run: pnpm --filter web exec playwright test
-      # Accessibility, against the same fixtures: Lighthouse attaches to the
-      # browser Playwright has already signed in, so it audits /projects and
-      # the config page with a session and real markup (08-dashboard.md §9,
-      # score 90 or higher). It is here because the audit it enforces,
-      # landmark-one-main, is the kind that comes back the next time
-      # somebody wraps a page in a div.
+      # Accessibility, against the same fixtures: Lighthouse audits every
+      # routable page but /callback, 13 of them, light and dark, at 1440 and
+      # 390, 52 runs (DECISIONS I-389). It runs in a Playwright persistent
+      # context, so the signed-in pages are audited with a real session and
+      # a bounced audit fails on its path. A run fails on a score under 90
+      # or on any binary audit that scores 0 (colour contrast, target size,
+      # landmark-one-main and the rest), since one contrast failure still
+      # scores above 90.
       - name: lighthouse accessibility
         run: |
           npm i -g lighthouse@13

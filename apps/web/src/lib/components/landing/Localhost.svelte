@@ -6,9 +6,11 @@
   showing the app the machine serves.
 
   LOCAL and BAR are verbatim `tmux capture-pane -p -e` output (2026-09-25):
-  LOCAL from `recruiting:dev` on the machine (its 21-column turbo prefix
+  LOCAL from the dev window on the machine (its 21-column turbo prefix
   cropped), BAR the last row of the attached client on the laptop, its
-  padding spaces replaced by a flexible gap. The browser images are
+  padding spaces replaced by a flexible gap and its first 10 columns (the
+  session name, an internal name that tells a visitor nothing) cropped off
+  the left, so it starts at the window list (I-397). The browser images are
   http://localhost:5173/ on this box while `repose attach recruiting` ran
   (2026-09-26), captured at 2x in light and dark: 720px viewport for the
   card, 640px for phones (static/landing/localhost-home-*.webp).
@@ -17,14 +19,16 @@
   bar lists the forwarded ports, `⇄ 5173` lifts out of the bar and travels
   down to the laptop, the address bar fills and the page loads; it rests,
   then goes again. Paused off-screen. Without JS, or under
-  prefers-reduced-motion, the final state is shown still.
+  prefers-reduced-motion, the final state is shown still; turning reduced
+  motion on while the page is open stops the loop there.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { watchReducedMotion } from './inview';
 
 	const LOCAL =
 		'\u001b[35m@job-alerts/web:dev: \u001b[39m  \u001b[32m➜\u001b[39m  \u001b[1mLocal\u001b[0m:   \u001b[36mhttp://localhost:\u001b[1m5173\u001b[0m\u001b[36m/\u001b[39m';
-	const BAR_LEFT = '[recruitin0:shell- 1:dev*';
+	const BAR_LEFT = '0:shell- 1:dev*';
 	// '⇄ 5173 5433 9101 │ "repose-guest" 19:38 25-Sep-26', split at the
 	// forward that travels.
 	const BAR_PORT = ' 5173';
@@ -81,88 +85,115 @@
 	let typing = $state(false);
 
 	onMount(() => {
-		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
 		let dead = false;
 		let visible = false;
 		let tl: { pause(): unknown; play(): unknown } | null = null;
 		let io: IntersectionObserver | undefined;
+		// Bumped on each start and stop, so an anime.js import that resolves
+		// after a stop does not start a loop.
+		let run = 0;
 
 		const q = (s: string) => Array.from(pic.querySelectorAll<HTMLElement>(s));
+		const moved = () => q('.tr, .ports, .chip, .addr, .page, .wire');
 
-		import('animejs').then(({ createTimeline, utils, stagger }) => {
-			if (dead) return;
+		// Stop the loop and show the final state still: the markup's own
+		// state, so every inline style anime.js wrote comes off.
+		function still() {
+			run++;
+			io?.disconnect();
+			io = undefined;
+			tl?.pause();
+			tl = null;
+			visible = false;
+			for (const el of moved()) el.removeAttribute('style');
+			fire = false;
+			typing = false;
+		}
 
-			// Before the dev server starts: no Local line, no forwards, an
-			// empty browser.
-			function pre() {
-				utils.set(q('.tr, .ports, .chip, .ch, .page'), { opacity: 0 });
-				utils.set(q('.chip'), { x: 0, y: 0, scale: 1 });
-				utils.set(q('.wire'), { scaleY: 0 });
-				fire = false;
-				typing = false;
-			}
-			pre();
+		function start() {
+			const me = ++run;
+			import('animejs').then(({ createTimeline, utils }) => {
+				if (dead || me !== run) return;
 
-			function cycle() {
-				if (dead) return;
-				if (!visible) {
-					tl = null;
-					return;
+				// Before the dev server starts: no Local line, no forwards, an
+				// empty browser.
+				function pre() {
+					utils.set(q('.tr, .ports, .chip, .addr, .page'), { opacity: 0 });
+					utils.set(q('.chip'), { x: 0, y: 0, scale: 1 });
+					utils.set(q('.wire'), { scaleY: 0 });
+					fire = false;
+					typing = false;
 				}
 				pre();
 
-				// The chip starts over the bar's ⇄ 5173 and travels to its place.
-				const chip = pic.querySelector<HTMLElement>('.chip')!;
-				const port = pic.querySelector<HTMLElement>('.port')!;
-				const a = port.getBoundingClientRect();
-				const b = chip.getBoundingClientRect();
-				const dx = a.left + a.width / 2 - (b.left + b.width / 2);
-				const dy = a.top + a.height / 2 - (b.top + b.height / 2);
-
-				const t = createTimeline({ autoplay: false, onComplete: () => cycle() })
-					.add(q('.tr'), { opacity: [0, 1], duration: 350 }, 500)
-					.add(q('.ports'), { opacity: [0, 1], duration: 350 }, 1100)
-					.set(chip, { x: dx, y: dy }, 1700)
-					.call(() => (fire = true), 1700)
-					.add(chip, { opacity: [0, 1], scale: [0.85, 1], duration: 250 }, 1700)
-					.add(chip, { x: [dx, 0], y: [dy, 0], duration: 900, ease: 'inOutCubic' }, 1950)
-					.add(q('.wire'), { scaleY: [0, 1], duration: 260, ease: 'outCubic' }, 2800)
-					.call(() => (fire = false), 3100)
-					.call(() => (typing = true), 2950)
-					.call(() => (typing = false), 3750)
-					.add(q('.ch'), { opacity: [0, 1], duration: 1, delay: stagger(38) }, 3000)
-					.add(q('.page'), { opacity: [0, 1], duration: 500, ease: 'outQuad' }, 3700)
-					// rest on the loaded page, then clear and go again
-					.add(
-						q('.tr, .ports, .chip, .ch, .page'),
-						{ opacity: 0, duration: 450, ease: 'inQuad' },
-						10700
-					)
-					.add(q('.wire'), { scaleY: 0, duration: 300, ease: 'inQuad' }, 10700)
-					.add({ duration: 400 }, 11150);
-
-				tl = t;
-				t.play();
-			}
-
-			io = new IntersectionObserver(
-				([e]) => {
-					visible = e.isIntersecting;
-					if (visible) {
-						if (tl) tl.play();
-						else cycle();
-					} else {
-						tl?.pause();
+				function cycle() {
+					if (dead || me !== run) return;
+					if (!visible) {
+						tl = null;
+						return;
 					}
-				},
-				{ threshold: 0.5 }
-			);
-			io.observe(pic);
+					pre();
+
+					// The chip starts over the bar's ⇄ 5173 and travels to its place.
+					const chip = pic.querySelector<HTMLElement>('.chip')!;
+					const port = pic.querySelector<HTMLElement>('.port')!;
+					const a = port.getBoundingClientRect();
+					const b = chip.getBoundingClientRect();
+					const dx = a.left + a.width / 2 - (b.left + b.width / 2);
+					const dy = a.top + a.height / 2 - (b.top + b.height / 2);
+
+					const t = createTimeline({ autoplay: false, onComplete: () => cycle() })
+						.add(q('.tr'), { opacity: [0, 1], duration: 350 }, 500)
+						.add(q('.ports'), { opacity: [0, 1], duration: 350 }, 1100)
+						.set(chip, { x: dx, y: dy }, 1700)
+						.call(() => (fire = true), 1700)
+						.add(chip, { opacity: [0, 1], scale: [0.85, 1], duration: 250, ease: 'outBack' }, 1700)
+						.add(chip, { x: [dx, 0], y: [dy, 0], duration: 900, ease: 'inOutCubic' }, 1950)
+						.add(q('.wire'), { scaleY: [0, 1], duration: 260, ease: 'outCubic' }, 2800)
+						.call(() => (fire = false), 3100)
+						.call(() => (typing = true), 2950)
+						.call(() => (typing = false), 3750)
+						// The address arrives as one fade: a character a frame was
+						// a flicker, not typing (I-397).
+						.add(q('.addr'), { opacity: [0, 1], duration: 300, ease: 'outQuad' }, 3000)
+						.add(q('.page'), { opacity: [0, 1], duration: 500, ease: 'outQuad' }, 3700)
+						// rest on the loaded page, then clear and go again
+						.add(
+							q('.tr, .ports, .chip, .addr, .page'),
+							{ opacity: 0, duration: 450, ease: 'inQuad' },
+							10700
+						)
+						.add(q('.wire'), { scaleY: 0, duration: 300, ease: 'inQuad' }, 10700)
+						.add({ duration: 400 }, 11150);
+
+					tl = t;
+					t.play();
+				}
+
+				io = new IntersectionObserver(
+					([e]) => {
+						visible = e.isIntersecting;
+						if (visible) {
+							if (tl) tl.play();
+							else cycle();
+						} else {
+							tl?.pause();
+						}
+					},
+					{ threshold: 0.5 }
+				);
+				io.observe(pic);
+			});
+		}
+
+		const unwatch = watchReducedMotion((reduce) => {
+			if (reduce) still();
+			else start();
 		});
 
 		return () => {
 			dead = true;
+			unwatch();
 			io?.disconnect();
 			tl?.pause();
 		};
@@ -227,22 +258,34 @@
 					</g>
 				</svg>
 				<span class="who">your laptop</span>
-				<span class="url" class:typing
-					>{#each ADDR as c, i (i)}<span class="ch">{c}</span>{/each}</span
-				>
+				<span class="url" class:typing><span class="addr">{ADDR}</span></span>
 			</div>
 			<div class="page">
 				<picture>
 					<source
 						srcset="/landing/localhost-home-narrow-dark.webp"
 						media="(max-width: 479px) and (prefers-color-scheme: dark)"
+						width="640"
+						height="280"
 					/>
-					<source srcset="/landing/localhost-home-narrow-light.webp" media="(max-width: 479px)" />
-					<source srcset="/landing/localhost-home-dark.webp" media="(prefers-color-scheme: dark)" />
+					<source
+						srcset="/landing/localhost-home-narrow-light.webp"
+						media="(max-width: 479px)"
+						width="640"
+						height="280"
+					/>
+					<source
+						srcset="/landing/localhost-home-dark.webp"
+						media="(prefers-color-scheme: dark)"
+						width="720"
+						height="300"
+					/>
 					<img
 						src="/landing/localhost-home-light.webp"
 						width="720"
 						height="300"
+						loading="lazy"
+						decoding="async"
 						alt="The app's home page: Get to new roles on time."
 					/>
 				</picture>
@@ -256,9 +299,6 @@
 		container-type: inline-size;
 	}
 	.lh {
-		--accent: var(--color-blue-600);
-		--ink: var(--color-zinc-800);
-		--dim: var(--color-zinc-500);
 		position: relative;
 		display: flex;
 		flex-direction: column;
@@ -276,7 +316,7 @@
 		background: var(--surface);
 		overflow: hidden;
 		font-size: 12px;
-		color: var(--ink);
+		color: var(--pic-ink);
 	}
 	.laptop {
 		flex: 1;
@@ -296,7 +336,7 @@
 	}
 	.mark {
 		flex: none;
-		color: var(--ink);
+		color: var(--pic-ink);
 	}
 	.who {
 		flex: none;
@@ -323,13 +363,13 @@
 		font-family: var(--font-mono);
 		font-size: 12px;
 		line-height: 18px;
-		color: var(--ink);
+		color: var(--pic-ink);
 		white-space: nowrap;
 		overflow: hidden;
 		transition: border-color 0.18s;
 	}
 	.url.typing {
-		border-color: var(--accent);
+		border-color: var(--pic-accent);
 	}
 	.page {
 		flex: 1;
@@ -361,7 +401,7 @@
 	.wire {
 		flex: 1;
 		width: 0;
-		border-left: 1.5px solid var(--accent);
+		border-left: 1.5px solid var(--pic-accent);
 		transform-origin: center top;
 	}
 	.wire.arrow {
@@ -373,7 +413,7 @@
 		left: -5.5px;
 		bottom: 0;
 		border: 5px solid transparent;
-		border-top: 6px solid var(--accent);
+		border-top: 6px solid var(--pic-accent);
 		border-bottom: 0;
 	}
 	.chip {
@@ -381,21 +421,21 @@
 		z-index: 2;
 		flex: none;
 		padding: 0 7px;
-		border: 1px solid var(--accent);
+		border: 1px solid var(--pic-accent);
 		border-radius: 3px;
 		background: var(--surface);
 		font-family: var(--font-mono);
 		font-size: 12px;
 		font-weight: 600;
 		line-height: 18px;
-		color: var(--accent);
+		color: var(--pic-accent);
 		white-space: pre;
 		transition:
 			background-color 0.18s,
 			color 0.18s;
 	}
 	.chip.fire {
-		background: var(--accent);
+		background: var(--pic-accent);
 		color: var(--surface);
 	}
 
@@ -403,7 +443,7 @@
 	.term {
 		background: #0d0d0c;
 		color: #d4d4d0;
-		font-family: 'JetBrains Mono', 'SF Mono', Menlo, 'DejaVu Sans Mono', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 11px;
 		font-variant-ligatures: none;
 		line-height: 16px;
@@ -468,13 +508,5 @@
 	.chip .fw {
 		height: 18px;
 		stroke-width: 1.5;
-	}
-
-	@media (prefers-color-scheme: dark) {
-		.lh {
-			--accent: var(--color-blue-400);
-			--ink: var(--color-zinc-200);
-			--dim: var(--color-zinc-400);
-		}
 	}
 </style>

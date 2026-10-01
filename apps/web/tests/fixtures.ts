@@ -68,12 +68,19 @@ async function waitForHealthz(url: string, timeoutMs = 20_000): Promise<void> {
 }
 
 export async function startAll(): Promise<void> {
-	const fakeapi = spawn('go', ['run', './cmd/fakeapi'], { cwd: REPO_ROOT });
+	// `go run` builds a binary and runs it as its own child, and a SIGTERM to
+	// `go run` does not reach that child: the fixtures outlived every suite.
+	// Each fixture is started as the leader of a process group of its own
+	// (detached), so stopAll can signal the whole group.
+	const fakeapi = spawn('go', ['run', './cmd/fakeapi'], { cwd: REPO_ROOT, detached: true });
 	const fakeapiLines = await readLines(fakeapi, ['FAKEAPI_URL=', 'FAKEAPI_ADMIN_URL=']);
 	const fakeApiURL = fakeapiLines['FAKEAPI_URL='];
 	fakeApiAdminURL = fakeapiLines['FAKEAPI_ADMIN_URL='];
 
-	const fakeLogto = spawn('go', ['run', './cmd/fake-logto'], { cwd: REPO_ROOT });
+	const fakeLogto = spawn('go', ['run', './cmd/fake-logto'], {
+		cwd: REPO_ROOT,
+		detached: true
+	});
 	const fakeLogtoURL = (await readLines(fakeLogto, ['FAKELOGTO_URL=']))['FAKELOGTO_URL='];
 
 	// Test files run in worker processes forked after globalSetup returns,
@@ -103,8 +110,14 @@ export async function startAll(): Promise<void> {
 
 export async function stopAll(): Promise<void> {
 	if (!running) return;
-	for (const child of [running.web, running.fakeLogto, running.fakeapi]) {
-		child.kill('SIGTERM');
+	running.web.kill('SIGTERM');
+	for (const child of [running.fakeLogto, running.fakeapi]) {
+		// The negative pid names the group: `go run` and the binary it built.
+		try {
+			if (child.pid) process.kill(-child.pid, 'SIGTERM');
+		} catch {
+			// The group has already exited.
+		}
 	}
 	running = undefined;
 }

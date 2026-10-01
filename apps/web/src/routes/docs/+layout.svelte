@@ -4,7 +4,7 @@
 	import { page } from '$app/state';
 	import { authState, signIn } from '$lib/auth.svelte';
 	import { docsBySection, search } from '$lib/docs';
-	import Logo from '$lib/components/Logo.svelte';
+	import HeaderFrame from '$lib/components/HeaderFrame.svelte';
 
 	let { children } = $props();
 
@@ -13,8 +13,11 @@
 	let hits = $derived(search(query));
 	let menuOpen = $state(false);
 	let nav: HTMLElement | undefined = $state();
+	let searchBox: HTMLElement | undefined = $state();
 	let menuButton: HTMLButtonElement | undefined = $state();
 
+	// The sidebar lists pages and nothing else, so its height is the same on
+	// every page; the open page's sections are in DocPage's rail (I-396).
 	let current = $derived(page.params.slug ?? 'index');
 
 	function href(slug: string): string {
@@ -34,8 +37,30 @@
 		if (!nav || !link) return;
 		const box = nav.getBoundingClientRect();
 		const at = link.getBoundingClientRect();
-		if (at.top < box.top || at.bottom > box.bottom) {
-			nav.scrollTop += at.top - box.top - nav.clientHeight / 3;
+		// The list shows below the sticky search.
+		const top = searchBox ? searchBox.getBoundingClientRect().bottom : box.top;
+		// A link that shows whole moves nothing. At 1440x900 every link
+		// does, so the list sits at the same y on every page; scrolling for
+		// a 16px margin moved it 15px on /docs/troubleshooting and left it
+		// there for the next page.
+		if (at.top >= top && at.bottom <= box.bottom) return;
+		// Otherwise the least scroll that shows it, 16px clear of the edge.
+		// Putting it a third of the way down scrolled the search and "Start
+		// here" off a phone's drawer for a link near the end of the list
+		// (/docs/cli at 390). Going down, the next link shows whole too, or
+		// the end of the list for the last one, so the drawer does not open
+		// on a row cut at its bottom edge.
+		const pad = 16;
+		if (at.top < top) {
+			nav.scrollTop -= top + pad - at.top;
+			return;
+		}
+		const links = [...nav.querySelectorAll<HTMLElement>('nav[aria-label="Docs"] a')];
+		const next = links[links.indexOf(link) + 1];
+		if (next) {
+			nav.scrollTop += next.getBoundingClientRect().bottom - (box.bottom - pad);
+		} else {
+			nav.scrollTop = nav.scrollHeight;
 		}
 	}
 
@@ -104,47 +129,45 @@
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -- every internal href here comes from href(), which builds it with resolve() -->
 
-<header class="sticky top-0 z-30 border-b border-[var(--rule)] bg-[var(--page)]">
-	<div class="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-5">
-		<div class="flex items-center gap-3">
-			<button
-				bind:this={menuButton}
-				type="button"
-				class="-ml-2 rounded-sm p-2 text-zinc-700 hover:bg-[var(--sunken)] hover:text-zinc-950 lg:hidden dark:text-zinc-300 dark:hover:text-zinc-50"
-				aria-label={menuOpen ? 'Close the docs menu' : 'Open the docs menu'}
-				aria-expanded={menuOpen}
-				aria-controls="docs-nav"
-				onclick={() => (menuOpen ? closeMenu() : openMenu())}
-			>
-				<svg viewBox="0 0 20 20" class="h-5 w-5" aria-hidden="true" fill="none">
-					{#if menuOpen}
-						<path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" />
-					{:else}
-						<path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="currentColor" stroke-width="1.5" />
-					{/if}
-				</svg>
-			</button>
-			<a href={resolve('/')} aria-label="repose, home"><Logo /></a>
-			<a
-				href={resolve('/docs')}
-				class="text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-				>Docs</a
-			>
-		</div>
-		<nav class="flex items-center gap-5 text-sm" aria-label="Site">
-			<a
-				href="https://github.com/Heracraft/repose"
-				class="hidden text-zinc-600 hover:text-zinc-900 sm:inline dark:text-zinc-400 dark:hover:text-zinc-100"
-				>GitHub</a
-			>
-			{#if authState.authenticated}
-				<a href={resolve('/projects')} class="btn-quiet !py-1.5">Dashboard</a>
-			{:else}
-				<button type="button" class="btn-quiet !py-1.5" onclick={() => signIn()}>Sign in</button>
-			{/if}
-		</nav>
-	</div>
-</header>
+<!-- The shared header frame, kept in view while you read, on the docs'
+     wider max-w-7xl column: the sidebar, the text and the "On this page"
+     rail do not fit in the dashboard's max-w-5xl with the text wide enough
+     for 70 columns of code (I-396). The menu button sits at the right end;
+     the drawer it opens still comes from the left, where the sidebar lives
+     from lg up. -->
+<HeaderFrame home={resolve('/')} label="repose, home" sticky width="docs">
+	{#snippet lead()}
+		<a href={resolve('/docs')} class="text-sm text-ink-muted hover:text-ink">Docs</a>
+	{/snippet}
+	<nav class="flex items-center gap-4 text-sm sm:gap-5" aria-label="Site">
+		<a
+			href="https://github.com/Heracraft/repose"
+			class="hidden text-ink-muted hover:text-ink sm:inline">GitHub</a
+		>
+		{#if authState.authenticated}
+			<a href={resolve('/projects')} class="btn-quiet btn--sm">Dashboard</a>
+		{:else}
+			<button type="button" class="btn-quiet btn--sm" onclick={() => signIn()}>Sign in</button>
+		{/if}
+		<button
+			bind:this={menuButton}
+			type="button"
+			class="-mr-2 rounded-sm p-2 text-ink-muted hover:bg-sunken hover:text-ink lg:hidden"
+			aria-label={menuOpen ? 'Close the docs menu' : 'Open the docs menu'}
+			aria-expanded={menuOpen}
+			aria-controls="docs-nav"
+			onclick={() => (menuOpen ? closeMenu() : openMenu())}
+		>
+			<svg viewBox="0 0 20 20" class="h-5 w-5" aria-hidden="true" fill="none">
+				{#if menuOpen}
+					<path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" />
+				{:else}
+					<path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="currentColor" stroke-width="1.5" />
+				{/if}
+			</svg>
+		</button>
+	</nav>
+</HeaderFrame>
 
 {#if menuOpen}
 	<!-- The backdrop is a pointer target only; Escape and the menu button close the drawer from the keyboard. -->
@@ -155,18 +178,29 @@
 	></div>
 {/if}
 
-<div class="mx-auto flex max-w-6xl gap-10 px-5">
+<!-- Same column as the header. Three fixed tracks from xl up: the 240px
+     sidebar, the text, and DocPage's 224px rail, which is drawn on every
+     page, empty or not, so nothing moves sideways between pages (I-396). -->
+<!-- The sidebar sticks at 57px, the header's 56px row plus its hairline,
+     so it rests where it starts and does not move 1px on the first scroll. -->
+<div class="mx-auto flex max-w-7xl gap-10 px-5">
 	<aside
 		id="docs-nav"
 		bind:this={nav}
 		onscroll={onNavScroll}
 		tabindex="-1"
 		aria-label="Docs menu"
-		class="fixed top-14 bottom-0 left-0 z-20 w-[min(20rem,85vw)] overflow-y-auto overscroll-contain border-r border-[var(--rule)] bg-[var(--page)] px-5 pb-10 duration-200 ease-out outline-none motion-reduce:transition-none {menuOpen
+		class="fixed top-14 bottom-0 left-0 z-20 w-[min(20rem,85vw)] overflow-y-auto overscroll-contain border-r border-rule bg-page px-5 pb-10 duration-200 ease-out outline-none motion-reduce:transition-none {menuOpen
 			? 'visible translate-x-0 transition-[translate]'
-			: 'invisible -translate-x-full transition-[translate,visibility]'} lg:visible lg:sticky lg:top-14 lg:bottom-auto lg:z-auto lg:h-[calc(100dvh-3.5rem)] lg:w-60 lg:shrink-0 lg:translate-x-0 lg:border-r-0 lg:bg-transparent lg:px-0 lg:transition-none"
+			: 'invisible -translate-x-full transition-[translate,visibility]'} lg:visible lg:sticky lg:top-[57px] lg:bottom-auto lg:z-auto lg:h-[calc(100dvh-57px)] lg:w-60 lg:shrink-0 lg:translate-x-0 lg:border-r-0 lg:bg-transparent lg:px-0 lg:transition-none"
 	>
-		<div class="pt-6">
+		<!-- The search sticks to the top of the sidebar, so a list taller
+		     than a phone's drawer scrolls under it and the search stays in
+		     reach however far the current page's link sits down the list. -->
+		<div
+			bind:this={searchBox}
+			class="sticky top-0 z-10 -mx-5 bg-page px-5 pt-6 pb-1 lg:mx-0 lg:px-0"
+		>
 			<label for="docs-search" class="sr-only">Search the docs</label>
 			<input
 				id="docs-search"
@@ -184,26 +218,24 @@
 					<li>
 						<a
 							href={href(hit.doc.slug) + (hit.heading ? `#${hit.heading.id}` : '')}
-							class="block rounded-sm px-2 py-1.5 hover:bg-[var(--sunken)]"
+							class="block rounded-sm px-2 py-1.5 hover:bg-sunken"
 						>
 							<span class="block text-sm font-medium">
-								{hit.doc.title}{#if hit.heading}<span class="text-zinc-600 dark:text-zinc-400">
+								{hit.doc.title}{#if hit.heading}<span class="text-ink-muted">
 										› {hit.heading.text}</span
 									>{/if}
 							</span>
-							<span class="mt-0.5 block text-xs text-zinc-600 dark:text-zinc-400"
-								>{hit.snippet}</span
-							>
+							<span class="mt-0.5 block text-xs text-ink-muted">{hit.snippet}</span>
 						</a>
 					</li>
 				{:else}
-					<li class="px-2 py-1.5 text-sm text-zinc-600 dark:text-zinc-400">Nothing matches.</li>
+					<li class="px-2 py-1.5 text-sm text-ink-muted">Nothing matches.</li>
 				{/each}
 			</ul>
 		{:else}
-			<nav class="mt-5" aria-label="Docs">
+			<nav class="mt-4" aria-label="Docs">
 				{#each groups as group (group.section)}
-					<p class="mt-5 mb-1 px-2 text-sm font-medium text-zinc-950 first:mt-0 dark:text-zinc-50">
+					<p class="mt-5 mb-1 px-2 text-sm font-medium text-ink first:mt-0">
 						{group.section}
 					</p>
 					<ul>
@@ -213,9 +245,8 @@
 									href={href(doc.slug)}
 									aria-current={current === doc.slug ? 'page' : undefined}
 									class="block rounded-sm px-2 py-1 text-sm {current === doc.slug
-										? 'bg-[var(--sunken)] font-medium text-zinc-950 dark:text-zinc-50'
-										: 'text-zinc-700 hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50'}"
-									>{doc.title}</a
+										? 'bg-sunken font-medium text-ink'
+										: 'text-ink-muted hover:text-ink'}">{doc.title}</a
 								>
 							</li>
 						{/each}

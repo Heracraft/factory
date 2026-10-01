@@ -3,6 +3,7 @@
 // shows a subscription's status, usage of the plan and its invoices.
 import { test, expect } from '@playwright/test';
 import {
+	failNext,
 	signIn,
 	setBilling,
 	resetBilling,
@@ -42,6 +43,20 @@ test('with billing off the page says so and sells nothing', async ({ page }) => 
 	await page.goto('/billing');
 	await expect(page.getByTestId('billing-disabled')).toHaveText('Billing is not switched on yet.');
 	await expect(page.getByRole('button', { name: /Choose/ })).toHaveCount(0);
+	// billing_disabled is a 503 the api gives as an answer, not an outage,
+	// so no outage bar sits over the page (I-390).
+	await expect(page.getByText(/Retrying…/)).toHaveCount(0);
+});
+
+test('a failed first load says so and Retry loads the page', async ({ page }) => {
+	await setBilling({ mode: 'none' });
+	await failNext('GET', '/billing', 'internal');
+	await page.goto('/billing');
+	const failed = page.getByRole('alert');
+	await expect(failed).toBeVisible();
+	await failed.getByRole('button', { name: 'Retry' }).click();
+	await expect(page.getByRole('heading', { level: 2, name: 'Solo' })).toBeVisible();
+	await expect(failed).toHaveCount(0);
 });
 
 test('with no plan and seats free, the three plan cards are shown from GET /billing', async ({
@@ -68,7 +83,9 @@ test('with no plan and seats free, the three plan cards are shown from GET /bill
 	await expect(pro.getByText('500 GB', { exact: true })).toBeVisible();
 	await expect(pro.getByText('1 TB', { exact: true })).toBeVisible();
 	await expect(pro.getByText('50', { exact: true })).toBeVisible();
-	await expect(page.getByRole('list', { name: 'Plans' }).locator('h3')).toHaveText([
+	// h2 under the page's h1: the cards are the page's sections, and an h3
+	// here skipped a level.
+	await expect(page.getByRole('list', { name: 'Plans' }).locator('h2')).toHaveText([
 		'Solo',
 		'Plus',
 		'Pro'
@@ -256,8 +273,8 @@ test('upgrading takes effect at once; a downgrade the machines do not fit is ref
 	await expect(page.getByTestId('change-plan')).toContainText('Downgrade to Solo ($29 a month');
 	await page.getByRole('button', { name: 'Downgrade to Solo' }).click();
 	const err = page.getByTestId('change-error');
-	await expect(err).toContainText('Solo holds 8 GB running at once and 100 GB of disk');
-	await expect(err).toContainText('you have 16 GB running');
+	await expect(err).toContainText('Solo holds 8 GB of memory for running machines and 100 GB of disk');
+	await expect(err).toContainText('you have 16 GB of memory running');
 	await expect(err).toContainText('Stop machines or destroy projects first.');
 });
 
@@ -282,8 +299,8 @@ test('on Pro both other plans are downgrades, and Plus is refused while three la
 	await expect(page.getByRole('button', { name: /Upgrade/ })).toHaveCount(0);
 	await page.getByRole('button', { name: 'Downgrade to Plus' }).click();
 	const err = page.getByTestId('change-error');
-	await expect(err).toContainText('Plus holds 16 GB running at once and 250 GB of disk');
-	await expect(err).toContainText('you have 24 GB running');
+	await expect(err).toContainText('Plus holds 16 GB of memory for running machines and 250 GB of disk');
+	await expect(err).toContainText('you have 24 GB of memory running');
 	await stopAll();
 });
 
@@ -311,16 +328,32 @@ test('cancelling asks first, then shows the end date and a Resume that undoes it
 }) => {
 	await setBilling({ mode: 'active', plan: 'solo' });
 	await page.goto('/billing');
+	// One panel at a time: the question closes Change plan and the reverse.
+	await page.getByRole('button', { name: 'Change plan' }).click();
+	await expect(page.getByTestId('change-plan')).toBeVisible();
+	await page.getByRole('button', { name: 'Cancel plan' }).click();
+	await expect(page.getByTestId('change-plan')).toHaveCount(0);
+	await page.getByRole('button', { name: 'Change plan' }).click();
+	await expect(page.getByTestId('confirm-cancel')).toHaveCount(0);
+	await page.getByRole('button', { name: 'Change plan' }).click();
+	await expect(page.getByTestId('change-plan')).toHaveCount(0);
 	await page.getByRole('button', { name: 'Cancel plan' }).click();
 	const confirm = page.getByTestId('confirm-cancel');
-	await expect(confirm).toContainText('Your plan ends on');
+	await expect(confirm).toContainText('It ends on');
 	await expect(confirm).toContainText('snapshots are kept 30 days after');
+	// The documented two-step (I-393): the button turns into the question,
+	// focus goes to Keep it, and Keep it gives it back to Cancel plan.
+	await expect(confirm.getByRole('button', { name: 'Keep it' })).toBeFocused();
+	await expect(page.getByRole('button', { name: 'Cancel plan' })).toHaveCount(1);
 	await page.getByRole('button', { name: 'Keep it' }).click();
 	await expect(page.getByTestId('confirm-cancel')).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Cancel plan' })).toBeFocused();
 	await page.getByRole('button', { name: 'Cancel plan' }).click();
 	await page.getByTestId('confirm-cancel').getByRole('button', { name: 'Cancel plan' }).click();
 	await expect(page.getByTestId('plan-status')).toContainText('Cancelled. Ends');
 	await expect(page.getByRole('button', { name: 'Change plan' })).toHaveCount(0);
 	await page.getByRole('button', { name: 'Resume plan' }).click();
 	await expect(page.getByTestId('plan-status')).toContainText('Active. Renews');
+	// Resume plan is gone; focus goes to Cancel plan, not <body>.
+	await expect(page.getByRole('button', { name: 'Cancel plan' })).toBeFocused();
 });

@@ -8,6 +8,7 @@ import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { toml } from '@codemirror/legacy-modes/mode/toml';
 import { classHighlighter, highlightCode, tags } from '@lezer/highlight';
 import { nixLanguage } from '@replit/codemirror-lang-nix';
+import { codespan } from './codespan';
 
 export interface DocHeading {
 	depth: number;
@@ -157,6 +158,8 @@ function headingText(html: string): string {
 		.replace(/&amp;/g, '&');
 }
 
+export { NOBREAK_MAX } from './codespan';
+
 function render(body: string): { html: string; headings: DocHeading[] } {
 	const headings: DocHeading[] = [];
 	const seen = new Map<string, number>();
@@ -181,6 +184,7 @@ function render(body: string): { html: string; headings: DocHeading[] } {
 				if (!(lang in PARSERS) && lang !== 'text') return false;
 				return codeBlock(lang, token.text);
 			},
+			codespan,
 			blockquote(
 				this: { parser: { parse(t: Tokens.Generic[]): string } },
 				token: Tokens.Blockquote

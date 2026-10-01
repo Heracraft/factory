@@ -7,13 +7,26 @@
 		<link rel="icon" type="image/svg+xml" href="%sveltekit.assets%/favicon.svg?v=2" />
 		<link rel="icon" type="image/png" href="%sveltekit.assets%/favicon.png?v=2" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<!-- The app renders in the browser (ssr = false), so until the bundle's
-		     CSS arrives the page would paint the browser's default white, and a
-		     dark-mode visitor sees a white flash. These match --page in
-		     routes/layout.css so the first paint is already the right colour. -->
+		<!-- The dashboard renders in the browser (ssr = false), and the
+		     prerendered pages (the landing, I-398, the docs and the legal
+		     pages) link their CSS as a file. Until that CSS arrives the page
+		     would paint the browser's default white, and a dark-mode visitor
+		     sees a white flash. These match --page in routes/layout.css so the
+		     first paint is already the right colour. -->
 		<meta name="color-scheme" content="light dark" />
 		<meta name="theme-color" content="#fbfbfa" media="(prefers-color-scheme: light)" />
 		<meta name="theme-color" content="#111110" media="(prefers-color-scheme: dark)" />
+		<!-- Marks the page as scripted before the first paint, so a style can
+		     tell "the bundle is on its way" from "scripts are off": the
+		     landing's hero draws its pre-run frame under html.js and stays
+		     whole without it. The CSP (svelte.config.js) allows no inline
+		     script it has no hash for, so script-src carries this one's
+		     sha256 ('sha256-aL3Pv6ygSyucrLwgv7XagHcNUqYEpcwpRZTImp8W7/g=');
+		     the hash covers the text between the tags, its tabs and
+		     newlines included, so any change to it changes the hash. -->
+		<script>
+			document.documentElement.classList.add('js');
+		</script>
 		<style>
 			html {
 				background: #fbfbfa;
@@ -32,11 +45,31 @@
 				visibility: hidden;
 			}
 		</style>
-		<link rel="preconnect" href="https://fonts.googleapis.com" />
-		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+		<!-- The fonts are self-hosted (static/fonts, @font-face in
+		     routes/layout.css). Three cuts are fetched before the CSS that
+		     names them arrives: Noto Serif 700 is the landing's headline, 600
+		     every dashboard title, and JetBrains Mono 400 the landing's
+		     install command and its pictures' rows, all above the fold. -->
 		<link
-			href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Serif:wght@400;600;700&display=swap"
-			rel="stylesheet"
+			rel="preload"
+			href="%sveltekit.assets%/fonts/noto-serif-latin-700-normal.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin="anonymous"
+		/>
+		<link
+			rel="preload"
+			href="%sveltekit.assets%/fonts/noto-serif-latin-600-normal.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin="anonymous"
+		/>
+		<link
+			rel="preload"
+			href="%sveltekit.assets%/fonts/jetbrains-mono-latin-400-normal.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin="anonymous"
 		/>
 		%sveltekit.head%
 	</head>

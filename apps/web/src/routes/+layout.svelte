@@ -21,6 +21,18 @@
 		void initAuth();
 	});
 
+	// The skip link moves focus to the page's <main>, which carries
+	// id="main" on every page (the landing, the dashboard, the docs, the
+	// legal pages and /callback's "Signing in"), so the link is in the
+	// prerendered HTML too. src/lib/skip-target.test.ts holds every route to it.
+	function skipToMain(e: MouseEvent) {
+		const main = document.querySelector('main');
+		if (!main) return;
+		e.preventDefault();
+		main.tabIndex = -1;
+		main.focus();
+	}
+
 	// Signed-out visitors on a private route go to the landing page. A
 	// signed-in visitor may read the landing page too (DECISIONS I-330); its
 	// header offers the dashboard instead of sign-in, and signing in itself
@@ -36,15 +48,43 @@
 	let showChildren = $derived(authState.authenticated === true || isPublic(page.url.pathname));
 </script>
 
-<Toaster theme="system" position="bottom-right" richColors />
+<!-- The first thing a keyboard reaches on every page: past the header's
+     links to the page's own content (WCAG 2.4.1). Hidden until focused. -->
+<a href="#main" class="skip-link" onclick={skipToMain}>Skip to content</a>
 
-{#if !reachability.ok}
-	<div
-		class="border-b border-red-200 bg-red-100 px-4 py-2 text-center text-sm font-medium text-red-700 dark:border-red-500/20 dark:bg-red-500/15 dark:text-red-400"
-	>
-		Cannot reach the API. Retrying…
-	</div>
-{/if}
+<!-- No richColors: layout.css gives each toast type its banner's colours.
+     From 600px up the toast's right edge is the content column's (the
+     header's max-w-5xl with its 20px gutter), not the window's, so at 1440
+     it lines up under the header's last link instead of 200px past it. On a
+     phone it spans the width between the page's 20px gutters (sonner's
+     own 16px missed the column by 4px on each side), at the bottom, where
+     it can be swiped away (DECISIONS I-391 keeps it off the header). -->
+<Toaster
+	theme="system"
+	position="bottom-right"
+	offset={{ right: 'max(24px, calc((100% - 64rem) / 2 + 1.25rem))', bottom: '24px' }}
+	mobileOffset={{ left: '20px', right: '20px', top: '12px', bottom: '20px' }}
+/>
+
+<!-- The live region is always in the page and only its contents change:
+     a role=status inserted with its text already in it is often read by
+     no screen reader (I-393). It appears after the page has loaded, and a
+     screen reader should hear it without losing its place. Empty, it
+     draws nothing. -->
+<div id="outage" role="status">
+	{#if !reachability.ok}
+		<!-- The .banner--error colours, as a strip across the top: square,
+		     no side edges and no margin, since it is the page's edge and
+		     not a box in the column. -->
+		<div
+			class="banner banner--error mb-0 rounded-none border-x-0 border-t-0 py-2 text-center font-medium"
+		>
+			{reachability.reason === 'network'
+				? 'Cannot reach the API. Retrying…'
+				: 'The API is failing right now. Retrying…'}
+		</div>
+	{/if}
+</div>
 
 {#if showHeader}
 	<Header />
