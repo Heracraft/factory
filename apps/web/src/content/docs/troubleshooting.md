@@ -90,3 +90,7 @@ For more detail on any command, add `-v`. `REPOSE_TIMING=1` shows where the time
 ## Notifications
 
 **Nothing arrives.** Run `repose notify test`. An `error` means that channel's settings are wrong. If both are `ok`, `repose events` shows whether the event happened; a project sends at most 30 notifications an hour.
+
+## Something else
+
+Post a bug or an idea on the [feedback board](https://repose.fider.io), or vote on one that's already there. Sign in with **repose account**, the same email or GitHub login you use for `repose login`. What you post is public, so leave out secrets, tokens and private code.
