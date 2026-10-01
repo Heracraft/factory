@@ -41,16 +41,23 @@
   is not; the picture shows the attack failing against the laptop only,
   never the machine's own files as safe.
 
-  Without JS, and under prefers-reduced-motion, one still frame tells the
-  whole story: the repo on both sides, the work with its counts, two
-  snapshots on the rail with an arrow back up, the edits struck, the database
-  at 0 rows and node not found,
-  the agent red, the skill stopped at the wall. Playback pauses off screen.
+  Under prefers-reduced-motion, and until the script has run, one still
+  frame shows how the story ends (docs/LANDING.md, "Motion": the final
+  state): the repo on both sides, the edits back with their counts, the
+  database at 3,532 rows and node v24.20.0, the agent orange, two
+  snapshots stacked with the newest lit and its arrow back into the
+  machine, and the skill stopped at the machine's wall as the cross,
+  with the laptop's private rows untouched. With motion allowed, the first
+  paint is already the start of the story (the empty machine, drawn in
+  CSS under html.js), so the restored frame never flashes before the loop.
+  Playback pauses off screen, and stops on the still frame if the visitor
+  asks for less motion while the page is open.
 -->
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { agentMarks } from '$lib/components/illustrations/marks';
 	import Shape from '$lib/components/landing/Shape.svelte';
+	import { watchReducedMotion } from './inview';
 
 	const agent = agentMarks[0];
 
@@ -78,7 +85,9 @@
 	];
 	const times = ['21:22', '21:25'];
 
-	const label =
+	// The role=img's name is the gist; the whole story is its description.
+	const label = 'The agent wrecks your cloud machine; a snapshot restores it';
+	const story =
 		'Your laptop holds your repo and your private things: SSH keys, cat.jpg and a tax return. ' +
 		'repose run copies only the repo to your cloud machine. There the agent, in bypass permissions mode, ' +
 		'edits fetcher.ts and config.ts and writes a test, next to the app’s Postgres database (3,532 rows in the roles table) ' +
@@ -138,6 +147,15 @@
 		geo = { reach, back, backHead, w: box.width, h: box.height };
 	}
 
+	// Everything the timeline writes inline styles on. Going back to the
+	// still frame strips these, so the CSS still frame shows again; .slot
+	// and .mini are left alone because Svelte owns their style.
+	const MOVED =
+		'.m-in, .m-kid, .m-sys, .m-late, .mwin .crew, .mwin .mode, .mwin .agent, .thumb, .older, ' +
+		'.t-time, .back, .mwin .stat b, .kid.nu, .mwin .strike, .mwin .xbg, .mwin .wk, .mwin .red, ' +
+		'.wallhit, .stopper, .mwin .shutter, .mwin .sys .ok, .mwin .sys .bad, .skill-in, .priv .tg, ' +
+		'.lines path, .rail .cam';
+
 	onMount(() => {
 		measure();
 		let dead = false;
@@ -145,11 +163,19 @@
 		let tl: { pause(): unknown; play(): unknown; revert(): unknown } | null = null;
 		let io: IntersectionObserver | undefined;
 		let raf = 0;
-		const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		let go: (() => void) | undefined;
+		let fresh = true;
+		// Bumped on every start and stop, so an import that resolves after
+		// the visitor switched motion off does not start anything.
+		let gen = 0;
+		// Set by watchReducedMotion below, before anything reads it.
+		let reduce = false;
+		const q = (s: string) => Array.from(pic.querySelectorAll<HTMLElement>(s));
+
 		const onResize = () => {
 			cancelAnimationFrame(raf);
 			raf = requestAnimationFrame(() => {
-				if (still || !tl) return measure();
+				if (reduce || !tl) return measure();
 				tl.pause();
 				tl = null;
 				fresh = true;
@@ -157,341 +183,392 @@
 			});
 		};
 		window.addEventListener('resize', onResize);
-		let go: (() => void) | undefined;
-		let fresh = true;
 
-		if (!still) {
-			const q = (s: string) => Array.from(pic.querySelectorAll<HTMLElement>(s));
-			import('animejs').then(({ createTimeline, utils, stagger }) => {
-				if (dead) return;
-				pic.classList.add('live');
+		// Back to the still frame: no timeline, no observer, no inline
+		// styles, so the CSS draws the restored machine.
+		function stop() {
+			gen++;
+			io?.disconnect();
+			io = undefined;
+			tl?.pause();
+			tl = null;
+			go = undefined;
+			fresh = true;
+			visible = false;
+			for (const e of q(MOVED)) e.removeAttribute('style');
+			pic.querySelector<HTMLElement>('.mwin .win')?.style.removeProperty('min-height');
+			// eslint-disable-next-line svelte/no-dom-manipulating
+			fly.replaceChildren();
+			fire = false;
+			pic.classList.remove('live', 'wrecked');
+			measure();
+		}
 
-				// Before the run: the machine is empty, nothing is struck, the
-				// agent is itself, no work, no snapshot, no skill anywhere.
-				function pre() {
-					utils.set(
-						q(
-							'.m-in, .m-kid, .m-sys, .m-late, .mwin .crew, .mwin .mode, .thumb, .older, .t-time, .back'
-						),
-						{
-							opacity: 0,
-							x: 0,
-							y: 0,
-							scale: 1
-						}
-					);
-					utils.set(q('.mwin .stat b'), { opacity: 0, scale: 1 });
-					utils.set(q('.mwin .kid.nu'), { opacity: 0, height: 0 });
-					utils.set(q('.mwin .strike'), { scaleX: 0 });
-					utils.set(q('.mwin .xbg, .mwin .wk, .mwin .red, .wallhit, .stopper, .mwin .shutter'), {
-						opacity: 0
-					});
-					utils.set(q('.mwin .kid.x .dim'), { opacity: 1 });
-					utils.set(q('.mwin .sys .ok'), { opacity: 1 });
-					utils.set(q('.mwin .sys .bad'), { opacity: 0 });
-					utils.set(q('.thumb .kid.nu'), { opacity: 0, height: 0 });
-					utils.set(q('.skill-in'), { opacity: 0, x: 0, y: 0 });
-					utils.set(q('.priv .tg'), { opacity: 0 });
-					utils.set(q('.lines path'), { strokeDashoffset: 1, opacity: 1 });
-					utils.set(q('.rail .cam'), { rotate: 0 });
-					fire = false;
-					pic.classList.remove('wrecked');
-				}
-
-				function cycle() {
-					if (dead) return;
-					if (!visible) {
-						tl = null;
-						return;
-					}
-					// .fly is an empty layer Svelte never renders into; only a
-					// throwaway copy of the laptop's repo row lives in it.
-					// eslint-disable-next-line svelte/no-dom-manipulating
-					fly.replaceChildren();
-					utils.set(q('.thumb, .back, .older, .skill-in'), { x: 0, y: 0, scale: 1 });
-					pic.classList.remove('live');
-					// The machine keeps its full height while the test file's
-					// row is folded away, so nothing below it moves.
-					const mw = pic.querySelector<HTMLElement>('.mwin .win')!;
-					mw.style.minHeight = '';
-					for (const e of q('.kid.nu')) e.style.height = '';
-					measure();
-					mw.style.minHeight = `${mw.offsetHeight}px`;
+		function start() {
+			const my = ++gen;
+			import('animejs')
+				.then(({ createTimeline, utils, stagger }) => {
+					if (dead || my !== gen) return;
 					pic.classList.add('live');
-					// Let the miniature and connectors re-render for the new
-					// geometry, then measure once more against that.
-					tick()
-						.then(() => {
-							measure();
-							return tick();
-						})
-						.then(() => !dead && run());
-				}
 
-				function run() {
-					pre();
+					// Before the run: the machine is empty, nothing is struck, the
+					// agent is itself, no work, no snapshot, no skill anywhere.
+					function pre() {
+						utils.set(
+							q(
+								'.m-in, .m-kid, .m-sys, .m-late, .mwin .kid.nu, .mwin .crew, .mwin .mode, .thumb, .older, .t-time, .back'
+							),
+							{
+								opacity: 0,
+								x: 0,
+								y: 0,
+								scale: 1
+							}
+						);
+						utils.set(q('.mwin .stat b'), { opacity: 0, scale: 1 });
+						utils.set(q('.mwin .strike'), { scaleX: 0 });
+						utils.set(q('.mwin .xbg, .mwin .wk, .mwin .red, .wallhit, .stopper, .mwin .shutter'), {
+							opacity: 0
+						});
+						utils.set(q('.mwin .sys .ok'), { opacity: 1 });
+						utils.set(q('.mwin .sys .bad'), { opacity: 0 });
+						utils.set(q('.thumb .kid.nu'), { opacity: 0 });
+						utils.set(q('.skill-in'), { opacity: 0, x: 0, y: 0 });
+						utils.set(q('.priv .tg'), { opacity: 0 });
+						utils.set(q('.lines path'), { strokeDashoffset: 1, opacity: 1 });
+						utils.set(q('.rail .cam'), { rotate: 0 });
+						fire = false;
+						pic.classList.remove('wrecked');
+					}
 
-					const box = pic.getBoundingClientRect();
-					const rel = (el: Element) => {
-						const b = el.getBoundingClientRect();
-						return { l: b.left - box.left, t: b.top - box.top, w: b.width, h: b.height };
-					};
-					// The repo row's copy, flying from the laptop to the machine.
-					const from = pic.querySelector<HTMLElement>('[data-from]')!;
-					const to = pic.querySelector<HTMLElement>('[data-to]')!;
-					const a = rel(from);
-					const b = rel(to);
-					const c = from.cloneNode(true) as HTMLElement;
-					c.removeAttribute('data-from');
-					c.classList.add('clone');
-					Object.assign(c.style, {
-						left: `${a.l}px`,
-						top: `${a.t}px`,
-						width: `${a.w}px`,
-						opacity: '0'
-					});
-					// eslint-disable-next-line svelte/no-dom-manipulating
-					fly.appendChild(c);
+					function cycle() {
+						if (dead || my !== gen) return;
+						if (!visible) {
+							tl = null;
+							return;
+						}
+						// .fly is an empty layer Svelte never renders into; only a
+						// throwaway copy of the laptop's repo row lives in it.
+						// eslint-disable-next-line svelte/no-dom-manipulating
+						fly.replaceChildren();
+						utils.set(q('.thumb, .back, .older, .skill-in'), { x: 0, y: 0, scale: 1 });
+						measure();
+						// Let the miniature and connectors re-render for the new
+						// geometry, then measure once more against that.
+						tick()
+							.then(() => {
+								measure();
+								return tick();
+							})
+							.then(() => !dead && my === gen && run());
+					}
 
-					// The miniature: from covering the machine to its slot.
-					const win = rel(pic.querySelector('.mwin .win')!);
-					const slot = rel(pic.querySelector('.rail .slot')!);
-					const k = win.w / slot.w;
-					const cover = { x: win.l - slot.l, y: win.t - slot.t, scale: k };
-					const peek = -(parseFloat(getComputedStyle(pic).getPropertyValue('--peek')) || 64);
+					function run() {
+						pre();
+						const wide = window.matchMedia('(min-width: 768px)').matches;
 
-					// The skill: from the internet, to the agent, to the wall.
-					const home = rel(pic.querySelector('.skill-in')!);
-					const src = rel(pic.querySelector('.net .skill')!);
-					const ag = rel(pic.querySelector('.mwin .agent')!);
-					const at = { x: src.l - home.l, y: src.t - home.t };
-					// It docks beside the agent, then runs left at the wall.
-					const dock = { x: ag.l - 12 - home.w - home.l, y: 0 };
+						const box = pic.getBoundingClientRect();
+						const rel = (el: Element) => {
+							const b = el.getBoundingClientRect();
+							return { l: b.left - box.left, t: b.top - box.top, w: b.width, h: b.height };
+						};
+						// The repo row's copy, flying from the laptop to the machine.
+						const from = pic.querySelector<HTMLElement>('[data-from]')!;
+						const to = pic.querySelector<HTMLElement>('[data-to]')!;
+						const a = rel(from);
+						const b = rel(to);
+						const c = from.cloneNode(true) as HTMLElement;
+						c.removeAttribute('data-from');
+						c.classList.add('clone');
+						Object.assign(c.style, {
+							left: `${a.l}px`,
+							top: `${a.t}px`,
+							width: `${a.w}px`,
+							opacity: '0'
+						});
+						// eslint-disable-next-line svelte/no-dom-manipulating
+						fly.appendChild(c);
 
-					const T = {
-						run: 600,
-						fly: 800,
-						open: 1750,
-						agent: 2300,
-						work: 2900,
-						shot1: 4100,
-						write: 5500,
-						shot2: 6600,
-						reach: 8600,
-						pull: 9100,
-						rogue: 10200,
-						strike: 10700,
-						lunge: 12000,
-						hit: 12700,
-						restore: 13800,
-						back: 14600,
-						out: 18200
-					};
-					const snap = (t: ReturnType<typeof createTimeline>, at: number) =>
-						t
-							// The snapshot mark clicks a quarter turn: one more state kept.
-							.add(q('.rail .cam'), { rotate: '+=90', duration: 420, ease: 'outQuad' }, at)
+						// The miniature: from covering the machine to its slot.
+						const win = rel(pic.querySelector('.mwin .win')!);
+						const slot = rel(pic.querySelector('.rail .slot')!);
+						const k = win.w / slot.w;
+						const cover = { x: win.l - slot.l, y: win.t - slot.t, scale: k };
+						const peek = -(parseFloat(getComputedStyle(pic).getPropertyValue('--peek')) || 64);
+
+						// The skill: from the internet, to the agent, to the wall.
+						// Its home is where it is stopped: the left wall beside the
+						// laptop, or the top edge under it on a phone.
+						const home = rel(pic.querySelector('.skill-in')!);
+						const src = rel(pic.querySelector('.net .skill')!);
+						const ag = rel(pic.querySelector('.mwin .agent')!);
+						const at = { x: src.l - home.l, y: src.t - home.t };
+						// It docks beside the agent, then runs at the wall.
+						const dock = {
+							x: ag.l - 12 - home.w - home.l,
+							y: ag.t + ag.h / 2 - (home.t + home.h / 2)
+						};
+						// Its knock back off the wall: right on a wide screen, down on a phone.
+						const knock: Record<string, number[]> = wide ? { x: [0, 7, 0] } : { y: [0, 7, 0] };
+
+						const T = {
+							run: 600,
+							fly: 800,
+							open: 1750,
+							agent: 2300,
+							work: 2900,
+							shot1: 4100,
+							write: 5500,
+							shot2: 6600,
+							reach: 8600,
+							pull: 9100,
+							rogue: 10200,
+							strike: 10700,
+							lunge: 12000,
+							hit: 12700,
+							restore: 13800,
+							back: 14600,
+							out: 18200
+						};
+						const snap = (t: ReturnType<typeof createTimeline>, at: number) =>
+							t
+								// The snapshot mark clicks a quarter turn: one more state kept.
+								.add(q('.rail .cam'), { rotate: '+=90', duration: 420, ease: 'outQuad' }, at)
+								.add(
+									q('.mwin .shutter'),
+									{ opacity: [0, 0.9, 0], duration: 460, ease: 'outQuad' },
+									at
+								)
+								.set(q('.thumb'), { opacity: 1, ...cover }, at + 120)
+								.add(
+									q('.thumb'),
+									{ x: 0, y: 0, scale: 1, duration: 850, ease: 'inOutCubic' },
+									at + 220
+								);
+						// A file being written: the row lights, its diff stat pops in.
+						const work = (t: ReturnType<typeof createTimeline>, sel: string, at: number) =>
+							t
+								.add(
+									q(`${sel} .wk`),
+									{ opacity: [0, 1, 0], duration: 1000, ease: 'inOutCubic' },
+									at
+								)
+								.add(
+									q(`${sel} .stat b`),
+									{
+										opacity: [0, 1],
+										scale: [0.6, 1],
+										duration: 380,
+										delay: stagger(140),
+										ease: 'outBack'
+									},
+									at + 250
+								);
+
+						const t = createTimeline({ autoplay: false, onComplete: () => cycle() })
+							// repose run: the repo row travels, the machine opens it.
+							.call(() => (fire = true), T.run)
+							.call(() => (fire = false), T.run + 520)
+							.set(c, { opacity: 1 }, T.fly)
+							.add(c, { x: b.l - a.l, y: b.t - a.t, duration: 900, ease: 'inOutCubic' }, T.fly)
+							.set(q('.m-in'), { opacity: 1 }, T.fly + 900)
+							.set(c, { opacity: 0 }, T.fly + 916)
 							.add(
-								q('.mwin .shutter'),
-								{ opacity: [0, 0.9, 0], duration: 460, ease: 'outQuad' },
-								at
-							)
-							.set(q('.thumb'), { opacity: 1, ...cover }, at + 120)
-							.add(
-								q('.thumb'),
-								{ x: 0, y: 0, scale: 1, duration: 850, ease: 'inOutCubic' },
-								at + 220
-							);
-					// A file being written: the row lights, its diff stat pops in.
-					const work = (t: ReturnType<typeof createTimeline>, sel: string, at: number) =>
-						t
-							.add(q(`${sel} .wk`), { opacity: [0, 1, 0], duration: 1000, ease: 'inOutQuad' }, at)
-							.add(
-								q(`${sel} .stat b`),
+								q('.m-kid'),
 								{
 									opacity: [0, 1],
-									scale: [0.6, 1],
-									duration: 380,
-									delay: stagger(140),
-									ease: 'outBack'
+									y: [-6, 0],
+									duration: 320,
+									delay: stagger(90),
+									ease: 'outCubic'
 								},
-								at + 250
+								T.open
+							)
+							.add(q('.m-late'), { opacity: [0, 1], duration: 300 }, T.open + 200)
+							.add(
+								q('.m-sys'),
+								{
+									opacity: [0, 1],
+									y: [-6, 0],
+									duration: 320,
+									delay: stagger(90),
+									ease: 'outCubic'
+								},
+								T.open + 380
+							)
+							.add(
+								q('.mwin .crew'),
+								{ opacity: [0, 1], scale: [0.85, 1], duration: 380, ease: 'outBack' },
+								T.agent
+							)
+							.add(q('.mwin .mode'), { opacity: [0, 1], duration: 300 }, T.agent + 150)
+							// Good work: the agent edits two files; each gains its diff stat.
+							.add(
+								q('.mwin .agent'),
+								{ y: [0, -2, 0, -2, 0], duration: 1100, ease: 'inOutCubic' },
+								T.work
 							);
+						work(t, '.mwin .kid.k0', T.work);
+						work(t, '.mwin .kid.k1', T.work + 650);
+						// First snapshot, 21:22.
+						snap(t, T.shot1)
+							.set(q('.t-time.n0'), { opacity: 0 }, T.shot1)
+							.add(q('.t-time.n0'), { opacity: [0, 1], duration: 300 }, T.shot1 + 1000)
+							// It writes a test: a new file row opens in the room its
+							// row has kept all along, so nothing below it moves.
+							.add(
+								q('.mwin .agent'),
+								{ y: [0, -2, 0, -2, 0], duration: 1100, ease: 'inOutCubic' },
+								T.write
+							)
+							.add(
+								q('.mwin .kid.nu'),
+								{ opacity: [0, 1], y: [-6, 0], duration: 320, ease: 'outCubic' },
+								T.write
+							);
+						work(t, '.mwin .kid.k2', T.write + 200);
+						// Second snapshot, 21:25: the 21:22 one steps behind it.
+						t.set(q('.older'), { opacity: 1, x: 0 }, T.shot2)
+							.set(q('.thumb, .t-time.n0'), { opacity: 0 }, T.shot2)
+							.add(q('.older'), { x: peek, duration: 520, ease: 'inOutCubic' }, T.shot2 + 60)
+							.set(q('.thumb .kid.nu'), { opacity: 1 }, T.shot2);
+						snap(t, T.shot2 + 300)
+							.add(q('.t-time.n1'), { opacity: [0, 1], duration: 300 }, T.shot2 + 1300)
+							// Only now: it reaches the internet, and the malicious skill comes in.
+							.add(
+								q('.lines .reach'),
+								{ strokeDashoffset: [1, 0], duration: 380, ease: 'outCubic' },
+								T.reach
+							)
+							// The one skill chip comes out of the internet and travels in,
+							// under the agent (.crew sits above it) to its side.
+							.set(q('.skill-in'), { ...at }, T.reach + 300)
+							.add(
+								q('.skill-in'),
+								{ opacity: [0, 1], scale: [0.6, 1], duration: 300, ease: 'outBack' },
+								T.reach + 300
+							)
+							.add(q('.skill-in'), { ...dock, duration: 1000, ease: 'inOutCubic' }, T.pull)
+							.add(q('.lines .reach'), { opacity: [1, 0], duration: 300 }, T.pull + 1000)
+							// The agent turns rogue and deletes its own work.
+							.add(q('.mwin .agent .red'), { opacity: [0, 1], duration: 350 }, T.rogue)
+							// A shake: four moves of 120ms.
+							.add(
+								q('.mwin .agent'),
+								{ x: [0, -2, 2, -1, 0], duration: 480, ease: 'inOutCubic' },
+								T.rogue + 200
+							)
+							// .wrecked greys the struck names and stats (a 200ms colour change).
+							.call(() => pic.classList.add('wrecked'), T.strike)
+							.add(
+								q('.mwin .kid.x .xbg'),
+								{ opacity: [0, 1], duration: 250, delay: stagger(120) },
+								T.strike
+							)
+							.add(
+								q('.mwin .kid.x .strike'),
+								{ scaleX: [0, 1], duration: 380, delay: stagger(120), ease: 'outCubic' },
+								T.strike + 80
+							)
+							// The machine itself: the database emptied, the toolchain gone.
+							.add(
+								q('.mwin .sys .xbg'),
+								{ opacity: [0, 1], duration: 250, delay: stagger(160) },
+								T.strike + 420
+							)
+							.add(
+								q('.mwin .sys .ok'),
+								{ opacity: [1, 0], duration: 200, delay: stagger(160) },
+								T.strike + 420
+							)
+							.add(
+								q('.mwin .sys .bad'),
+								{ opacity: [0, 1], duration: 260, delay: stagger(160) },
+								T.strike + 560
+							)
+							// The skill goes for the laptop's private things and stops at the wall.
+							.add(q('.priv .tg'), { opacity: [0, 1], duration: 300, delay: stagger(60) }, T.lunge)
+							.add(q('.skill-in'), { x: 0, y: 0, duration: 700, ease: 'inQuad' }, T.lunge)
+							.add(q('.wallhit'), { opacity: [0, 1], duration: 120 }, T.hit)
+							.add(
+								q('.stopper'),
+								{ opacity: [0, 1], scale: [0.6, 1], duration: 300, ease: 'outBack' },
+								T.hit
+							)
+							.add(q('.skill-in'), { ...knock, duration: 380, ease: 'outQuad' }, T.hit)
+							.add(q('.priv .tg'), { opacity: 0, duration: 500 }, T.hit + 700)
+							// The newest snapshot comes back over the machine, work included;
+							// the snapshot mark rewinds a full turn as it does.
+							.add(q('.lines .ret'), { strokeDashoffset: [1, 0], duration: 300 }, T.restore)
+							.add(
+								q('.rail .cam'),
+								{ rotate: '-=360', duration: 1000, ease: 'inOutCubic' },
+								T.restore + 150
+							)
+							.set(q('.back'), { opacity: 1 }, T.restore + 250)
+							.add(q('.back'), { ...cover, duration: 800, ease: 'inOutCubic' }, T.restore + 280)
+							.add(q('.lines .ret'), { opacity: [1, 0], duration: 250 }, T.back)
+							.call(() => pic.classList.remove('wrecked'), T.back + 100)
+							.set(q('.mwin .strike'), { scaleX: 0 }, T.back + 100)
+							.set(
+								q('.mwin .xbg, .mwin .agent .red, .mwin .sys .bad, .wallhit, .stopper, .skill-in'),
+								{ opacity: 0 },
+								T.back + 100
+							)
+							.set(q('.mwin .sys .ok'), { opacity: 1 }, T.back + 100)
+							.add(q('.back'), { opacity: [1, 0], duration: 500, ease: 'inQuad' }, T.back + 150)
+							// Rest on the restored machine, then clear it and go again.
+							.add(
+								q(
+									'.m-in, .m-kid, .m-sys, .mwin .kid.nu, .m-late, .mwin .crew, .mwin .mode, .thumb, .older, .t-time'
+								),
+								{ opacity: 0, duration: 450, ease: 'inQuad' },
+								T.out
+							)
+							.add({ duration: 500 }, T.out + 450);
 
-					const t = createTimeline({ autoplay: false, onComplete: () => cycle() })
-						// repose run: the repo row travels, the machine opens it.
-						.call(() => (fire = true), T.run)
-						.call(() => (fire = false), T.run + 520)
-						.set(c, { opacity: 1 }, T.fly)
-						.add(c, { x: b.l - a.l, y: b.t - a.t, duration: 900, ease: 'inOutCubic' }, T.fly)
-						.set(q('.m-in'), { opacity: 1 }, T.fly + 900)
-						.set(c, { opacity: 0 }, T.fly + 916)
-						.add(
-							q('.m-kid'),
-							{ opacity: [0, 1], y: [-6, 0], duration: 320, delay: stagger(90), ease: 'outCubic' },
-							T.open
-						)
-						.add(q('.m-late'), { opacity: [0, 1], duration: 300 }, T.open + 200)
-						.add(
-							q('.m-sys'),
-							{ opacity: [0, 1], y: [-6, 0], duration: 320, delay: stagger(90), ease: 'outCubic' },
-							T.open + 380
-						)
-						.add(
-							q('.mwin .crew'),
-							{ opacity: [0, 1], scale: [0.85, 1], duration: 380, ease: 'outBack' },
-							T.agent
-						)
-						.add(q('.mwin .mode'), { opacity: [0, 1], duration: 300 }, T.agent + 150)
-						// Good work: the agent edits two files; each gains its diff stat.
-						.add(
-							q('.mwin .agent'),
-							{ y: [0, -2, 0, -2, 0], duration: 1100, ease: 'inOutSine' },
-							T.work
-						);
-					work(t, '.mwin .kid.k0', T.work);
-					work(t, '.mwin .kid.k1', T.work + 650);
-					// First snapshot, 21:22.
-					snap(t, T.shot1)
-						.set(q('.t-time.n0'), { opacity: 0 }, T.shot1)
-						.add(q('.t-time.n0'), { opacity: [0, 1], duration: 300 }, T.shot1 + 1000)
-						// It writes a test: a new file row opens.
-						.add(
-							q('.mwin .agent'),
-							{ y: [0, -2, 0, -2, 0], duration: 1100, ease: 'inOutSine' },
-							T.write
-						)
-						.add(q('.mwin .kid.nu'), { height: [0, 28], duration: 320, ease: 'outCubic' }, T.write)
-						.add(
-							q('.mwin .kid.nu'),
-							{ opacity: [0, 1], y: [-6, 0], duration: 320, ease: 'outCubic' },
-							T.write + 160
-						);
-					work(t, '.mwin .kid.k2', T.write + 200);
-					// Second snapshot, 21:25: the 21:22 one steps behind it.
-					t.set(q('.older'), { opacity: 1, x: 0 }, T.shot2)
-						.set(q('.thumb, .t-time.n0'), { opacity: 0 }, T.shot2)
-						.add(q('.older'), { x: peek, duration: 520, ease: 'inOutCubic' }, T.shot2 + 60)
-						.set(q('.thumb .kid.nu'), { opacity: 1, height: 28 }, T.shot2);
-					snap(t, T.shot2 + 300)
-						.add(q('.t-time.n1'), { opacity: [0, 1], duration: 300 }, T.shot2 + 1300)
-						// Only now: it reaches the internet, and the malicious skill comes in.
-						.add(
-							q('.lines .reach'),
-							{ strokeDashoffset: [1, 0], duration: 380, ease: 'outCubic' },
-							T.reach
-						)
-						// The one skill chip comes out of the internet and travels in.
-						.set(q('.skill-in'), { ...at }, T.reach + 300)
-						.add(
-							q('.skill-in'),
-							{ opacity: [0, 1], scale: [0.6, 1], duration: 300, ease: 'outBack' },
-							T.reach + 300
-						)
-						.add(q('.skill-in'), { ...dock, duration: 1000, ease: 'inOutCubic' }, T.pull)
-						.add(q('.lines .reach'), { opacity: [1, 0], duration: 300 }, T.pull + 1000)
-						// The agent turns rogue and deletes its own work.
-						.add(q('.mwin .agent .red'), { opacity: [0, 1], duration: 350 }, T.rogue)
-						.add(
-							q('.mwin .agent'),
-							{ x: [0, -2, 2, -1, 0], duration: 360, ease: 'linear' },
-							T.rogue + 200
-						)
-						.call(() => pic.classList.add('wrecked'), T.strike)
-						.add(
-							q('.mwin .kid.x .xbg'),
-							{ opacity: [0, 1], duration: 250, delay: stagger(120) },
-							T.strike
-						)
-						.add(
-							q('.mwin .kid.x .strike'),
-							{ scaleX: [0, 1], duration: 380, delay: stagger(120), ease: 'outCubic' },
-							T.strike + 80
-						)
-						.add(q('.mwin .kid.x .dim'), { opacity: [1, 0.45], duration: 400 }, T.strike + 500)
-						// The machine itself: the database emptied, the toolchain gone.
-						.add(
-							q('.mwin .sys .xbg'),
-							{ opacity: [0, 1], duration: 250, delay: stagger(160) },
-							T.strike + 420
-						)
-						.add(
-							q('.mwin .sys .ok'),
-							{ opacity: [1, 0], duration: 200, delay: stagger(160) },
-							T.strike + 420
-						)
-						.add(
-							q('.mwin .sys .bad'),
-							{ opacity: [0, 1], duration: 260, delay: stagger(160) },
-							T.strike + 560
-						)
-						// The skill goes for the laptop's private things and stops at the wall.
-						.add(q('.priv .tg'), { opacity: [0, 1], duration: 300, delay: stagger(60) }, T.lunge)
-						.add(q('.skill-in'), { x: 0, y: 0, duration: 700, ease: 'inQuad' }, T.lunge)
-						.add(q('.wallhit'), { opacity: [0, 1], duration: 120 }, T.hit)
-						.add(
-							q('.stopper'),
-							{ opacity: [0, 1], scale: [0.6, 1], duration: 300, ease: 'outBack' },
-							T.hit
-						)
-						.add(q('.skill-in'), { x: [0, 7, 0], duration: 380, ease: 'outQuad' }, T.hit)
-						.add(q('.priv .tg'), { opacity: 0, duration: 500 }, T.hit + 700)
-						// The newest snapshot comes back over the machine, work included;
-						// the snapshot mark rewinds a full turn as it does.
-						.add(q('.lines .ret'), { strokeDashoffset: [1, 0], duration: 300 }, T.restore)
-						.add(
-							q('.rail .cam'),
-							{ rotate: '-=360', duration: 1000, ease: 'inOutCubic' },
-							T.restore + 150
-						)
-						.set(q('.back'), { opacity: 1 }, T.restore + 250)
-						.add(q('.back'), { ...cover, duration: 800, ease: 'inOutCubic' }, T.restore + 280)
-						.add(q('.lines .ret'), { opacity: [1, 0], duration: 250 }, T.back)
-						.call(() => pic.classList.remove('wrecked'), T.back + 100)
-						.set(q('.mwin .strike'), { scaleX: 0 }, T.back + 100)
-						.set(
-							q('.mwin .xbg, .mwin .agent .red, .mwin .sys .bad, .wallhit, .stopper, .skill-in'),
-							{ opacity: 0 },
-							T.back + 100
-						)
-						.set(q('.mwin .kid.x .dim, .mwin .sys .ok'), { opacity: 1 }, T.back + 100)
-						.add(q('.back'), { opacity: [1, 0], duration: 500, ease: 'inQuad' }, T.back + 150)
-						// Rest on the restored machine, then clear it and go again.
-						.add(
-							q(
-								'.m-in, .m-kid, .m-sys, .mwin .kid.nu, .m-late, .mwin .crew, .mwin .mode, .thumb, .older, .t-time'
-							),
-							{ opacity: 0, duration: 450, ease: 'inQuad' },
-							T.out
-						)
-						.add({ duration: 500 }, T.out + 450);
+						tl = t;
+						fresh = false;
+						t.play();
+					}
+					go = cycle;
 
-					tl = t;
-					fresh = false;
-					t.play();
-				}
-				go = cycle;
-
-				io = new IntersectionObserver(
-					([e]) => {
-						visible = e.isIntersecting;
-						if (visible) {
-							if (tl && !fresh) tl.play();
-							else cycle();
-						} else {
-							tl?.pause();
-						}
-					},
-					{ threshold: 0.35 }
-				);
-				io.observe(pic);
-			});
+					io = new IntersectionObserver(
+						([e]) => {
+							visible = e.isIntersecting;
+							if (visible) {
+								if (tl && !fresh) tl.play();
+								else cycle();
+							} else {
+								tl?.pause();
+							}
+						},
+						{ threshold: 0.35 }
+					);
+					io.observe(pic);
+				})
+				// No anime.js, no story: the still frame, not an empty machine.
+				.catch(() => !dead && my === gen && pic.classList.add('still'));
 		}
+
+		// A visitor can ask for less motion while the page is open: stop on
+		// the still frame then, and start the story if they allow it again.
+		// The first call is the setting at mount: start unless it is reduce.
+		let first = true;
+		const unwatch = watchReducedMotion((r) => {
+			reduce = r;
+			if (first) {
+				first = false;
+				if (!r) start();
+			} else if (r) stop();
+			else start();
+		});
 
 		return () => {
 			dead = true;
 			io?.disconnect();
 			tl?.pause();
+			unwatch();
 			window.removeEventListener('resize', onResize);
 			cancelAnimationFrame(raf);
 		};
@@ -673,7 +750,8 @@
 	</div>
 {/snippet}
 
-<div class="hero-pic" role="img" aria-label={label} bind:this={pic}>
+<div class="hero-pic" role="img" aria-label={label} aria-describedby="hero-story" bind:this={pic}>
+	<p id="hero-story" hidden>{story}</p>
 	<div class="side laptop" aria-hidden="true">
 		<div class="win">
 			<div class="title">{@render laptopMark()}<span class="who">your laptop</span></div>
@@ -753,12 +831,8 @@
 
 <style>
 	.hero-pic {
-		--accent: var(--color-blue-600);
-		--ink: var(--color-zinc-800);
-		--dim: var(--color-zinc-500);
-		--faint: var(--color-zinc-400);
-		--stop: var(--color-red-600);
-		--add: var(--color-emerald-600);
+		/* The picture's colours are the --pic-* tokens in layout.css; only
+		   the real tools' own colours are set here. */
 		--claude: #d97757;
 		/* Claude Code's colour 211 (#ff87af) on its dark theme; deepened on
 		   paper so it reads. */
@@ -769,7 +843,7 @@
 		grid-template-columns: minmax(0, 1fr);
 		min-width: 0;
 		font-size: 13px;
-		color: var(--ink);
+		color: var(--pic-ink);
 	}
 	.side,
 	.mwin {
@@ -787,12 +861,12 @@
 		border: 1px solid var(--rule-strong);
 		border-radius: 3px;
 		background: var(--surface);
-		color: var(--ink);
+		color: var(--pic-ink);
 		font-size: 13px;
 	}
 	/* The machine's wall. */
 	.mwin > .win {
-		border-color: var(--ink);
+		border-color: var(--pic-ink);
 	}
 	.title {
 		display: flex;
@@ -838,13 +912,13 @@
 	}
 	.chev {
 		flex: none;
-		color: var(--dim);
+		color: var(--pic-dim);
 	}
 	.fi {
 		position: relative;
 		flex: none;
 		display: block;
-		color: var(--dim);
+		color: var(--pic-dim);
 	}
 	.dim {
 		position: relative;
@@ -860,7 +934,7 @@
 		font-weight: 600;
 	}
 	.head .fi {
-		color: var(--accent);
+		color: var(--pic-accent);
 	}
 	/* The folder a file sits in, as in "Your working state". */
 	.path {
@@ -870,7 +944,9 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		font-size: 12px;
-		color: var(--dim);
+		/* Context, muted: --pic-faint holds 4.5:1 on the surface and on a
+		   red row; --pic-dim fell to 4.3:1 on the red in light. */
+		color: var(--pic-faint);
 	}
 	/* The diff stat. */
 	.stat {
@@ -887,26 +963,27 @@
 		font-weight: 600;
 	}
 	.plus {
-		color: var(--add);
+		color: var(--pic-add);
 	}
 	.minus {
-		color: var(--stop);
+		color: var(--pic-stop);
 	}
 	/* A file being written: the row lights in the accent. */
 	.wk {
 		position: absolute;
 		inset: 0;
 		opacity: 0;
-		background: color-mix(in oklab, var(--accent) 9%, var(--surface));
-		box-shadow: inset 2px 0 0 var(--accent);
+		background: color-mix(in oklab, var(--pic-accent) 9%, var(--surface));
+		box-shadow: inset 2px 0 0 var(--pic-accent);
 	}
 
 	/* The laptop's private things: targeted, never reached. */
 	.tg {
 		position: absolute;
 		inset: 0;
-		background: color-mix(in oklab, var(--stop) 10%, var(--surface));
-		box-shadow: inset 2px 0 0 var(--stop);
+		opacity: 0;
+		background: color-mix(in oklab, var(--pic-stop) 10%, var(--surface));
+		box-shadow: inset 2px 0 0 var(--pic-stop);
 	}
 	.laptop .rows {
 		padding-bottom: 10px;
@@ -956,46 +1033,49 @@
 	}
 	.bad {
 		font-weight: 600;
-		color: var(--stop);
+		color: var(--pic-stop);
 	}
-	.hero-pic.live .bad,
-	.mini .bad {
+	/* The still frame is the restored machine: the wreck's values and
+	   marks are drawn only by the timeline, which sets them inline. */
+	.bad {
 		opacity: 0;
-	}
-	.hero-pic:not(.live) .ok {
-		opacity: 0;
-	}
-	.hero-pic .slot .mini .ok {
-		opacity: 1;
 	}
 
 	/* Lost on the machine */
 	.xbg {
 		position: absolute;
 		inset: 0;
-		background: color-mix(in oklab, var(--stop) 9%, var(--surface));
-	}
-	.hero-pic:not(.live) .x .dim {
-		opacity: 0.45;
+		opacity: 0;
+		background: color-mix(in oklab, var(--pic-stop) 9%, var(--surface));
 	}
 	.strike {
 		position: absolute;
 		left: -2px;
 		right: -2px;
 		top: calc(50% - 1px);
-		border-top: 1.5px solid var(--stop);
+		border-top: 1.5px solid var(--pic-stop);
+		transform: scaleX(0);
 		transform-origin: left center;
 	}
 	.stat .strike {
 		left: 5px;
 	}
-	.hero-pic:not(.live) .x .stat b,
-	.hero-pic.wrecked .x .stat b {
-		color: var(--dim);
+	/* Struck work greys to --pic-faint at full opacity, which holds 4.5:1
+	   on the red row; the strike and the red row say "lost" without the
+	   colour. A colour change of 200ms, which DESIGN-LANGUAGE "Motion"
+	   lets stay for everyone. */
+	.mwin .x .fname,
+	.mwin .x .path,
+	.mwin .x .stat b {
+		transition: color 0.2s ease-out;
 	}
-	.hero-pic:not(.live) .sys .fi,
-	.hero-pic.wrecked .sys .fi {
-		color: var(--stop);
+	.hero-pic:global(.wrecked) .mwin .x .fname,
+	.hero-pic:global(.wrecked) .mwin .x .path,
+	.hero-pic:global(.wrecked) .mwin .x .stat b {
+		color: var(--pic-faint);
+	}
+	.hero-pic:global(.wrecked) .mwin .sys .fi {
+		color: var(--pic-stop);
 	}
 
 	/* The lane: where the agent sits and the skill runs at the wall. */
@@ -1016,7 +1096,10 @@
 		color: var(--mode);
 		white-space: nowrap;
 	}
+	/* Above the skill chip, which passes under the agent on its way in. */
 	.crew {
+		position: relative;
+		z-index: 4;
 		display: flex;
 		align-items: center;
 		gap: 8px;
@@ -1033,6 +1116,7 @@
 		fill: currentColor;
 	}
 	.agent .red {
+		opacity: 0;
 		color: var(--rogue);
 	}
 	.skill {
@@ -1040,27 +1124,30 @@
 		align-items: center;
 		gap: 5px;
 		padding: 2px 7px;
-		border: 1px solid var(--stop);
+		border: 1px solid var(--pic-stop);
 		border-radius: 3px;
 		background: var(--surface);
 		font-family: var(--font-mono);
 		font-size: 12px;
-		color: var(--stop);
+		color: var(--pic-stop);
 		white-space: nowrap;
 	}
+	/* The skill's home is where it is stopped. In the still frame only the
+	   cross and the lit wall stay to say it was. */
 	.skill-in {
 		position: absolute;
 		left: 8px;
 		top: 50%;
 		translate: 0 -50%;
 		z-index: 3;
+		opacity: 0;
 	}
 	.wallhit {
 		position: absolute;
 		left: -1.5px;
 		top: 6px;
 		bottom: 6px;
-		border-left: 2px solid var(--stop);
+		border-left: 2px solid var(--pic-stop);
 	}
 	.stopper {
 		position: absolute;
@@ -1069,14 +1156,14 @@
 		translate: 0 -50%;
 		z-index: 4;
 		display: grid;
-		color: var(--stop);
+		color: var(--pic-stop);
 	}
 	.shutter {
 		position: absolute;
 		inset: 0;
 		opacity: 0;
-		background: color-mix(in oklab, var(--accent) 14%, transparent);
-		box-shadow: inset 0 0 0 2px var(--accent);
+		background: color-mix(in oklab, var(--pic-accent) 14%, transparent);
+		box-shadow: inset 0 0 0 2px var(--pic-accent);
 		pointer-events: none;
 	}
 
@@ -1100,7 +1187,7 @@
 		justify-content: center;
 		gap: 10px;
 		padding: 14px;
-		color: var(--ink);
+		color: var(--pic-ink);
 	}
 	/* The internet is the sphere of the shape set, with a globe's meridians
 	   drawn over it in paper so it reads as the world and not a stone. */
@@ -1139,7 +1226,7 @@
 		inset: 0;
 		overflow: hidden;
 		border-radius: 2px;
-		outline: 1.5px solid var(--accent);
+		outline: 1.5px solid var(--pic-accent);
 		background: var(--surface);
 		transform-origin: 0 0;
 	}
@@ -1155,7 +1242,7 @@
 		padding-left: 7px;
 		outline-color: var(--rule-strong);
 		background: var(--sunken);
-		color: var(--dim);
+		color: var(--pic-dim);
 		translate: calc(-1 * var(--peek)) 0;
 	}
 	.hero-pic.live .older {
@@ -1179,7 +1266,7 @@
 		top: calc(100% + 4px);
 		font-family: var(--font-mono);
 		font-size: 12px;
-		color: var(--dim);
+		color: var(--pic-dim);
 	}
 	.hero-pic:not(.live) .t-time.n0 {
 		display: none;
@@ -1197,7 +1284,7 @@
 	.wire {
 		width: 0;
 		height: 16px;
-		border-left: 1.5px solid var(--accent);
+		border-left: 1.5px solid var(--pic-accent);
 	}
 	.wire.arrow {
 		position: relative;
@@ -1208,25 +1295,25 @@
 		left: -5.5px;
 		bottom: -1px;
 		border: 5px solid transparent;
-		border-top: 6px solid var(--accent);
+		border-top: 6px solid var(--pic-accent);
 		border-bottom: 0;
 	}
 	.chip {
 		padding: 3px 9px;
-		border: 1px solid var(--accent);
+		border: 1px solid var(--pic-accent);
 		border-radius: 3px;
 		background: var(--surface);
 		font-family: var(--font-mono);
 		font-size: 13px;
 		font-weight: 600;
-		color: var(--accent);
+		color: var(--pic-accent);
 		white-space: nowrap;
 		transition:
 			background-color 0.18s,
 			color 0.18s;
 	}
 	.chip.fire {
-		background: var(--accent);
+		background: var(--pic-accent);
 		color: var(--surface);
 	}
 
@@ -1246,10 +1333,11 @@
 		stroke-dashoffset: 0;
 	}
 	.lines .reach {
+		opacity: 0;
 		stroke: var(--rogue);
 	}
 	.lines .ret {
-		stroke: var(--accent);
+		stroke: var(--pic-accent);
 	}
 
 	/* The repo row in flight (animated only). */
@@ -1259,35 +1347,45 @@
 		z-index: 3;
 		pointer-events: none;
 		font-size: 13px;
-		color: var(--ink);
+		color: var(--pic-ink);
 	}
 	.fly :global(.clone) {
 		position: absolute;
 		margin: 0;
 		list-style: none;
-		background: color-mix(in oklab, var(--accent) 9%, var(--surface));
-		box-shadow: inset 2px 0 0 var(--accent);
+		background: color-mix(in oklab, var(--pic-accent) 9%, var(--surface));
+		box-shadow: inset 2px 0 0 var(--pic-accent);
 		will-change: transform;
 	}
 
 	/* The miniature is the machine as the snapshot took it: whole. */
-	.hero-pic .slot .mini .x .dim {
-		opacity: 1;
-	}
-	.hero-pic .slot .mini .x .plus {
-		color: var(--add);
-	}
-	.hero-pic .slot .mini .x .minus {
-		color: var(--stop);
-	}
-	.hero-pic .slot .mini .sys .fi {
-		color: var(--dim);
-	}
 	.mini .xbg,
 	.mini .wk,
 	.mini .strike,
 	.mini .agent .red {
 		display: none;
+	}
+
+	/* With motion allowed and the script coming, the first paint is the
+	   start of the story, the empty machine, so the restored still frame
+	   does not flash before the timeline takes over (.live). .still is set
+	   if anime.js fails to load, and shows the still frame instead. */
+	@media (prefers-reduced-motion: no-preference) {
+		:global(html.js) .hero-pic:not(.live):not(.still) .m-in,
+		:global(html.js) .hero-pic:not(.live):not(.still) .m-kid,
+		:global(html.js) .hero-pic:not(.live):not(.still) .m-sys,
+		:global(html.js) .hero-pic:not(.live):not(.still) .m-late,
+		:global(html.js) .hero-pic:not(.live):not(.still) .mwin .kid.nu,
+		:global(html.js) .hero-pic:not(.live):not(.still) .mwin .crew,
+		:global(html.js) .hero-pic:not(.live):not(.still) .mwin .mode,
+		:global(html.js) .hero-pic:not(.live):not(.still) .thumb,
+		:global(html.js) .hero-pic:not(.live):not(.still) .older,
+		:global(html.js) .hero-pic:not(.live):not(.still) .t-time,
+		:global(html.js) .hero-pic:not(.live):not(.still) .wallhit,
+		:global(html.js) .hero-pic:not(.live):not(.still) .stopper,
+		:global(html.js) .hero-pic:not(.live):not(.still) .lines path {
+			opacity: 0;
+		}
 	}
 
 	/* Phone: stacked; the internet and the snapshots share a row under
@@ -1318,7 +1416,70 @@
 	.side.right .rail.win {
 		flex: 1;
 	}
+	/* The globe sits level with the newest snapshot beside it, not
+	   floating in the middle of its half. */
+	.net {
+		justify-content: flex-start;
+		padding-top: 56px;
+	}
+	/* The laptop is above the machine here, so the skill is stopped at
+	   the machine's top edge: the lane lets go of its children, which
+	   then sit against the window itself. */
+	.lane {
+		position: static;
+	}
+	.skill-in {
+		left: auto;
+		right: 34px;
+		top: 18px;
+	}
+	.wallhit {
+		left: auto;
+		right: 24px;
+		top: -1.5px;
+		bottom: auto;
+		width: 140px;
+		border-left: 0;
+		border-top: 2px solid var(--pic-stop);
+	}
+	.stopper {
+		left: auto;
+		right: 85px;
+		top: -9px;
+		translate: none;
+	}
 	@media (min-width: 768px) {
+		.net {
+			justify-content: center;
+			padding-top: 14px;
+		}
+		.lane {
+			position: relative;
+		}
+		.skill-in {
+			left: 8px;
+			right: auto;
+			top: 50%;
+		}
+		.wallhit {
+			left: -1.5px;
+			right: auto;
+			top: 6px;
+			bottom: 6px;
+			width: auto;
+			border-top: 0;
+			border-left: 2px solid var(--pic-stop);
+		}
+		.stopper {
+			left: -9px;
+			right: auto;
+			top: 50%;
+			translate: 0 -50%;
+		}
+		/* The laptop hugs its rows instead of stretching to the machine. */
+		.laptop {
+			align-self: start;
+		}
 		.hero-pic {
 			--peek: 64px;
 			grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.45fr) 56px minmax(0, 0.95fr);
@@ -1342,7 +1503,7 @@
 			width: 16px;
 			height: 0;
 			border-left: 0;
-			border-top: 1.5px solid var(--accent);
+			border-top: 1.5px solid var(--pic-accent);
 		}
 		.wire.arrow::after {
 			left: auto;
@@ -1350,7 +1511,7 @@
 			bottom: auto;
 			top: -6.25px;
 			border: 5px solid transparent;
-			border-left: 6px solid var(--accent);
+			border-left: 6px solid var(--pic-accent);
 			border-right: 0;
 		}
 	}
@@ -1378,12 +1539,6 @@
 	}
 	@media (prefers-color-scheme: dark) {
 		.hero-pic {
-			--accent: var(--color-blue-400);
-			--ink: var(--color-zinc-200);
-			--dim: var(--color-zinc-400);
-			--faint: var(--color-zinc-600);
-			--stop: var(--color-red-400);
-			--add: var(--color-emerald-400);
 			--rogue: #ff4b3e;
 			--mode: #ff87af;
 		}
