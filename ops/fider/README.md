@@ -49,8 +49,10 @@ the stored secret when you save the form without touching that field.
 
 ## Still at their defaults
 
-- Fider's own sign-ins: email, Facebook, Google and GitHub are enabled.
-  Admins can always use email, whatever the switch says.
+- Fider's email sign-in is on, so the dialog offers "Continue with repose
+  account" and "Continue with Email". Admins can always use email,
+  whatever the switch says. Facebook, Google and GitHub were turned off
+  on 2026-10-01 so each person has one identity on the board.
 - General: no welcome header or message, no invitation text, no logo
   (Fider wants 200 x 200 or more; the mark PNG is 128).
 - The Logto app has app-level branding with the mark as its logo and

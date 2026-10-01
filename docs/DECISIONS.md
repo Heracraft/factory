@@ -10415,7 +10415,7 @@ the host that receives a poster's name and email. The footer's seven
 links stand four over three below md, and wrap freely below 360px, where
 four with WCAG 1.4.12's spacing are 341px wide. `ops/fider/README.md`
 has every setting.
-Fider's built-in sign-ins (email, Facebook, Google, GitHub) are still
-on; turning them off is the owner's call.
+Fider's Facebook, Google and GitHub sign-ins are off (owner), so a
+person has one identity on the board; Fider's email sign-in stays on.
 *Rejected:* a Feedback link in the dashboard header (five items already
 share 350px at phone width).
