@@ -11,17 +11,28 @@
 	import { ApiError } from '$lib/api/errors';
 	import { toastApiError } from '$lib/api/toast';
 	import { dateTime, relativeTime } from '$lib/format';
-	import { DESTROYED_FIRST, defaultRestoreName, moreToShow, timeLeft } from '$lib/destroyed';
+	import {
+		DESTROYED_FIRST,
+		DESTROYED_STEP,
+		defaultRestoreName,
+		moreToShow,
+		timeLeft
+	} from '$lib/destroyed';
 	import type { DestroyedProject } from '$lib/api/types';
 	import RestoreNameForm from '$lib/components/RestoreNameForm.svelte';
 	import { focusAfterRender } from '$lib/focus';
 
 	let {
 		destroyed,
+		hasMore = false,
+		onmore,
 		liveSlugs,
 		onrestored
 	}: {
 		destroyed: DestroyedProject[];
+		/** The api has rows past `destroyed`; onmore fetches the next page (I-420). */
+		hasMore?: boolean;
+		onmore?: () => Promise<void>;
 		liveSlugs: string[];
 		onrestored?: () => void;
 	} = $props();
@@ -38,6 +49,22 @@
 	let shown = $state(DESTROYED_FIRST);
 	let visible = $derived(destroyed.slice(0, shown));
 	let more = $derived(moreToShow(shown, destroyed.length));
+	let loadingMore = $state(false);
+
+	async function showMore() {
+		if (more < DESTROYED_STEP && hasMore && onmore) {
+			loadingMore = true;
+			try {
+				await onmore();
+			} catch (err) {
+				toastApiError(err, 'Could not load more destroyed projects.');
+				return;
+			} finally {
+				loadingMore = false;
+			}
+		}
+		shown += DESTROYED_STEP;
+	}
 
 	function open(d: DestroyedProject) {
 		openFor = d.id;
@@ -141,12 +168,16 @@
 				</li>
 			{/each}
 		</ul>
-		{#if more > 0}
+		{#if more > 0 || hasMore}
 			<div class="mt-3 flex items-baseline gap-3">
-				<button type="button" class="btn-ghost px-0" onclick={() => (shown += more)}
-					>Show {more} more</button
+				<button type="button" class="btn-ghost px-0" disabled={loadingMore} onclick={showMore}
+					>{loadingMore ? 'Loading…' : hasMore ? 'Show more' : `Show ${more} more`}</button
 				>
-				<span class="text-sm text-ink-muted tabular-nums">{shown} of {destroyed.length} shown</span>
+				<span class="text-sm text-ink-muted tabular-nums"
+					>{hasMore
+						? `${visible.length} shown`
+						: `${visible.length} of ${destroyed.length} shown`}</span
+				>
 			</div>
 		{/if}
 	</section>

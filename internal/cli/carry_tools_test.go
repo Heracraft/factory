@@ -56,17 +56,6 @@ func fakeLaptop(t *testing.T) (toolEnv, string) {
 	writeFile(t, filepath.Join(uv, "lib", "python3.12", "site-packages", "ruff-0.6.9.dist-info", "METADATA"), "")
 	// pipx
 	writeFile(t, filepath.Join(home, ".local", "share", "pipx", "venvs", "black", "pipx_metadata.json"), `{"main_package":{"package":"black","package_version":"24.8.0","apps":["black","blackd"]}}`)
-	// Homebrew (I-413): asked for, a dependency, one the base has, one npm
-	// already claimed
-	cellar := filepath.Join(home, ".linuxbrew", "Cellar")
-	writeFile(t, filepath.Join(cellar, "azure-cli", "2.67.0_1", "INSTALL_RECEIPT.json"), `{"installed_on_request":true}`)
-	writeFile(t, filepath.Join(cellar, "azure-cli", "2.67.0_1", "bin", "az"), "")
-	writeFile(t, filepath.Join(cellar, "c-ares", "1.34.0", "INSTALL_RECEIPT.json"), `{"installed_on_request":false}`)
-	writeFile(t, filepath.Join(cellar, "c-ares", "1.34.0", "bin", "adig"), "")
-	writeFile(t, filepath.Join(cellar, "jq", "1.7.1", "INSTALL_RECEIPT.json"), `{"installed_on_request":true}`)
-	writeFile(t, filepath.Join(cellar, "jq", "1.7.1", "bin", "jq"), "")
-	writeFile(t, filepath.Join(cellar, "typescript", "5.6.2", "INSTALL_RECEIPT.json"), `{"installed_on_request":true}`)
-	writeFile(t, filepath.Join(cellar, "typescript", "5.6.2", "bin", "tsc"), "")
 	env := map[string]string{}
 	te := toolEnv{Home: home, GOOS: "linux", Getenv: func(k string) string { return env[k] }, LookPath: func(string) (string, error) { return "", os.ErrNotExist }}
 	return te, home
@@ -82,8 +71,6 @@ func TestReadGlobalTools(t *testing.T) {
 	}
 	want := []row{
 		{"@scope/thing", "npm", "@scope/thing", "1.0.0", "thing"},
-		// c-ares is a dependency, jq is in the base, typescript is npm's
-		{"azure-cli", "brew", "", "", "az"},
 		{"black", "pipx", "black", "24.8.0", "black,blackd"},
 		{"cargo-nextest", "cargo", "cargo-nextest", "0.9.72", "cargo-nextest"},
 		{"portless", "npm", "portless", "0.15.6", "portless"},

@@ -78,6 +78,10 @@ to `tmux attach`, so new windows open there.
   `gemini`, `pi`. Further instances get the lowest free `claude-N`, N >= 2,
   with no upper limit (DECISIONS I-253); anything reading window names
   accepts any number of digits (guestd's `sample.AgentOf` always did).
+  A window with any other name counts as an agent window while an agent's
+  program is its foreground process (`sample.AgentByCommand`, I-421:
+  `claude` typed in the `shell` window), except gemini, whose process is
+  `node`; hooks from it carry that window's name.
 - `repose run --worktree "prompt"` (I-253, I-342) first runs `git -C
   /home/dev/<checkout> worktree add -b worktree-<N>
   /home/dev/<checkout>-worktree-<N> <HEAD>`, copies the checkout's
@@ -297,8 +301,7 @@ state and is named once.
 `{"v":1, "hash":"<32 hex>", "items":[{"name", "bins":[...], "manager",
 "pkg", "version", "from":"laptop"|"project"}], "node":"<major>",
 "ruby":"<x.y>", "java":"<major>"}`.
-`manager` is `npm`, `pnpm`, `bun`, `go`, `cargo`, `uv`, `pipx`, `brew`
-(DECISIONS I-413: nixpkgs only, no `pkg` or `version`) or absent
+`manager` is `npm`, `pnpm`, `bun`, `go`, `cargo`, `uv`, `pipx` or absent
 (nixpkgs only); `pkg` is the manager's name (the Go package path for
 `go`); names, versions and commands are restricted to
 `[A-Za-z0-9@/._+-]` by the CLI. `node` is absent when the project pins no

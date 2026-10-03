@@ -250,7 +250,12 @@ func (w *Watcher) refreshTmux(ctx context.Context) {
 	for _, win := range windows {
 		agent := AgentOf(win.Name)
 		if agent == "" {
-			continue
+			// A window with another name counts while an agent is its
+			// foreground program: `claude` typed in the shell window
+			// (I-421). It stops counting when the agent exits.
+			if agent = AgentByCommand(win.PaneCommand); agent == "" {
+				continue
+			}
 		}
 		if !w.procs.treeHasAnyComm(children, win.PanePID, binaries[agent]) {
 			// A window named after an agent whose process is not running is

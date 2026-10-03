@@ -1380,7 +1380,28 @@ func (f *Fake) listDestroyed(w http.ResponseWriter, r *http.Request) *apiError {
 		out = append(out, DestroyedProject{ID: p.ID, Name: p.Name, Slug: p.Slug, Class: p.Class, RemoteURL: p.RemoteURL,
 			VolumeBytes: p.VolumeBytes, DestroyedAt: p.destroyedAt, NameFree: !live[p.Slug], RestorableUntil: s.ExpiresAt, Snapshot: *s})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].DestroyedAt.After(out[j].DestroyedAt) })
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].DestroyedAt.Equal(out[j].DestroyedAt) {
+			return out[i].DestroyedAt.After(out[j].DestroyedAt)
+		}
+		return out[i].ID > out[j].ID
+	})
+	// limit (default 100) and before page as the api does (I-420).
+	if b := r.URL.Query().Get("before"); b != "" {
+		i := slices.IndexFunc(out, func(d DestroyedProject) bool { return d.ID == b })
+		if i < 0 {
+			out = []DestroyedProject{}
+		} else {
+			out = out[i+1:]
+		}
+	}
+	limit := 100
+	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n >= 1 && n <= 200 {
+		limit = n
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
 	writeJSON(w, http.StatusOK, out)
 	return nil
 }
