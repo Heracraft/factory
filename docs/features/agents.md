@@ -95,6 +95,11 @@ snapshot restores it; `dev` is not root, which bypass mode requires.
   brings the default back at the next start.
 - These are user settings, never managed settings
   (`/etc/claude-code/managed-settings.json`), which would outrank the user.
+- The same file carries `tui: "fullscreen"`, added where the user's file
+  has no `tui` (I-425), so Claude Code draws in the alternate screen of
+  its tmux pane from a machine's first start. Without it, the renderer
+  follows a server-side flag a new machine has not cached yet. A user's
+  `"default"`, from the guest or the laptop, is kept.
 - Deny rules, explicit ask rules and removals of critical paths still
   prompt or block in this mode (Claude Code's own rules).
 - Codex, opencode, Gemini CLI and pi keep their own defaults; the user docs
