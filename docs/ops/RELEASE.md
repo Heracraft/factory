@@ -69,10 +69,16 @@ reaches. Go packages count through `go list -deps`: a change to
    - always: `python3 ops/dev/decisions-index.py --check`; `go build ./...`,
      `go vet ./...`, `golangci-lint run ./...`; `go test -race ./...`
      with a real Postgres for the api packages (on a repose guest, unset
-     `REPOSE_PROJECT REPOSE REPOSE_HOOK_AGENT` first); `go test ./internal/cli
+     `REPOSE_PROJECT REPOSE REPOSE_HOOK_AGENT` first, and keep `TMPDIR`
+     at `/tmp`: a longer one pushes the hostd fakes' unix sockets past the
+     108-byte limit); `go test ./internal/cli
      -run TestDocs`; the `docs/CHECKLIST.md` greps;
    - `web`: `pnpm --filter web exec vitest run`, `svelte-check`, `eslint .`,
-     `build`, and the playwright suites;
+     `build`, and the playwright suites (on a repose guest, set
+     `PLAYWRIGHT_CHROMIUM_PATH` to the base's
+     `~/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell`,
+     and run them alone: they serve on 127.0.0.1:4173, and another
+     session's preview or a parallel `go test` there fails them all);
    - `base`: `nix build ./nix#guest-system` and the `guest-closure-size`
      check; the VM checks the merged change touches, on a box that boots
      them (they do not boot on a repose guest);
