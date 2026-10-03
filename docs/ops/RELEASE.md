@@ -55,6 +55,13 @@ reaches. Go packages count through `go list -deps`: a change to
 
 ## For the conductor: cutting a release
 
+A release is cut when the owner asks for one, not each time a branch is
+queued: every release costs a full verification, a deploy and a live
+check, so the queue is meant to fill. A fix for something broken in
+production (main red, a regression live) is the exception; say so when
+asking. `ops/dev/release-queue abandon <release>` undoes a cut that
+should wait, and puts its branches back in the queue.
+
 1. **See what is waiting.** `ops/dev/release-queue ls`. Ask each agent
    with a branch in flight (`ListAgents`, `SendMessage`) whether it is
    about to queue; a release that leaves out a branch five minutes from
