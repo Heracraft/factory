@@ -26,7 +26,7 @@ git clone todo-app.repose:todo-app todo-app-from-machine
 git ls-remote todo-app.repose:todo-app
 ```
 
-In a checkout you've used `repose run` in, you don't need these: the `repose` remote already points at the machine, and `git fetch repose` brings the agent's commits ([Getting work back](/docs/sync#getting-work-back)). To run one command, `repose exec -- npm test` is shorter than `ssh` with a `cd` ([See what's running, run one command](/docs/run-and-attach#see-whats-running-run-one-command)).
+In a checkout you've used `repose run` in, you don't need these: the `repose` remote already points at the machine, and `git fetch repose` brings the agent's commits ([Getting work back](/docs/sync#getting-work-back)). To run one command, `repose exec npm test` is shorter than `ssh` with a `cd` ([See what's running, run one command](/docs/run-and-attach#see-whats-running-run-one-command)).
 
 ## VS Code and Cursor
 

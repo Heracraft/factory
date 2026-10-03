@@ -23,6 +23,7 @@
 
 	const INSTALL_COMMAND = 'curl -fsSL https://repose.herakraft.co/install.sh | sh';
 	const SOURCE_URL = 'https://github.com/Heracraft/repose';
+	const FEEDBACK_URL = 'https://repose.fider.io';
 
 	let signingIn = $state(false);
 	/** The command whose Copy was pressed last, for 1.5s; null otherwise. */
@@ -371,6 +372,7 @@
 				<a href={resolve('/docs')}>Docs</a>
 				<a href="#pricing">Pricing</a>
 				<a href={SOURCE_URL}>GitHub</a>
+				<a href={FEEDBACK_URL}>Feedback</a>
 				<a href={resolve('/terms')}>Terms</a>
 				<a href={resolve('/privacy')}>Privacy</a>
 				<a href={resolve('/refunds')}>Refunds</a>

@@ -97,7 +97,7 @@ repose browser [PROJECT] [--stop] [--no-open]   # I-292; `open --desktop [--stop
 repose cp [-r] SRC DST        # PROJECT:PATH, or :PATH for this checkout's (I-201)
 repose paste [PROJECT] [--window NAME] [--print]   # clipboard image to the guest (I-252)
 repose ps [PROJECT] [-q|--quiet] [--json]      # the tmux windows (I-274)
-repose exec [PROJECT] [-i] [-t] -- CMD [ARG...]  # one command in the checkout, its exit code (I-275)
+repose exec [-i] [-t] [PROJECT] [--] CMD [ARG...]  # one command in the checkout, its exit code (I-275, I-411)
 repose ssh [PROJECT]           # login shell in the checkout, outside tmux (I-275)
 repose secrets set NAME [--from-file PATH] [--from-env]
 repose secrets import [FILE|-] [--dry-run]   # dotenv, default ./.env (I-277)

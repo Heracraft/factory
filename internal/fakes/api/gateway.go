@@ -141,3 +141,24 @@ func itoa(n int) string {
 	}
 	return string(b[i:])
 }
+
+// AddEvent records an event on a project at ts, as a guest's hook would.
+func (f *Fake) AddEvent(projectID string, ts time.Time, kind, summary string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if p, ok := f.projects[projectID]; ok {
+		p.events = append(p.events, &Event{ID: f.nextID(), TS: ts, Kind: kind, Summary: summary})
+	}
+}
+
+// SetAgents sets the agents a running project's signals report.
+func (f *Fake) SetAgents(projectID string, agents []AgentSignal) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if p, ok := f.projects[projectID]; ok {
+		if p.Signals == nil {
+			p.Signals = &Signals{GuestdOK: true}
+		}
+		p.Signals.Agents = agents
+	}
+}

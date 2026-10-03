@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 )
 
@@ -84,19 +85,34 @@ func sleepOrDone(ctx context.Context, d time.Duration) error {
 	}
 }
 
+// eventsPage is how many events each page back asks for (the api's
+// most, I-414).
+const eventsPage = 200
+
 // EventsCmd implements `repose events [--since 24h] [--follow]`
-// (07-cli.md's I-8 addition).
+// (07-cli.md's I-8 addition). Events print oldest first. The api answers
+// newest first and at most 50 at a time, so a --since that reaches
+// further pages back with before (I-414); --follow then asks for what
+// came after the newest event printed.
 func EventsCmd(ctx context.Context, e *Env, projectArg, since string, follow bool, poll func()) error {
 	project, err := requireProject(ctx, e, projectArg)
 	if err != nil {
 		return err
 	}
 	cur := sinceArg(since, time.Now())
+	first := true
 	for {
 		events, err := e.Client.ListEvents(ctx, project.ID, cur)
 		if err != nil {
 			return err
 		}
+		if first && cur != "" {
+			if events, err = eventsBackTo(ctx, e, project.ID, cur, events); err != nil {
+				return err
+			}
+		}
+		first = false
+		sort.SliceStable(events, func(i, j int) bool { return events[i].TS.Before(events[j].TS) })
 		for _, ev := range events {
 			if e.JSON {
 				if err := writeJSONOut(e.Out, ev); err != nil {
@@ -110,7 +126,7 @@ func EventsCmd(ctx context.Context, e *Env, projectArg, since string, follow boo
 			return nil
 		}
 		if len(events) > 0 {
-			cur = events[len(events)-1].TS.Format(time.RFC3339)
+			cur = events[len(events)-1].TS.Format(time.RFC3339Nano)
 		}
 		if poll != nil {
 			poll()
@@ -118,4 +134,45 @@ func EventsCmd(ctx context.Context, e *Env, projectArg, since string, follow boo
 			return err
 		}
 	}
+}
+
+// eventsBackTo pages back from the oldest of got until the events reach
+// since, and returns them all. A page with nothing new ends it, which is
+// what an api older than I-414 answers.
+func eventsBackTo(ctx context.Context, e *Env, projectID, since string, got []Event) ([]Event, error) {
+	limit, err := time.Parse(time.RFC3339Nano, since)
+	if err != nil {
+		return got, nil
+	}
+	seen := map[string]bool{}
+	for _, ev := range got {
+		seen[ev.ID] = true
+	}
+	for len(got) > 0 {
+		oldest := got[0]
+		for _, ev := range got {
+			if ev.TS.Before(oldest.TS) {
+				oldest = ev
+			}
+		}
+		if !oldest.TS.After(limit) {
+			break
+		}
+		page, err := e.Client.ListEventsBefore(ctx, projectID, oldest.ID, eventsPage)
+		if err != nil {
+			return nil, err
+		}
+		added := false
+		for _, ev := range page {
+			if seen[ev.ID] || !ev.TS.After(limit) {
+				continue
+			}
+			seen[ev.ID], added = true, true
+			got = append(got, ev)
+		}
+		if !added {
+			break
+		}
+	}
+	return got, nil
 }

@@ -10,6 +10,7 @@ on the machine. Keep it short and factual; the user reads it too. -->
 This is a repose machine: a NixOS virtual machine for one project, where agents keep working after the user's laptop closes. <!-- /docs/machine -->
 The user works from their laptop. You cannot reach the laptop or its files from here; what they should see has to be on this machine, in git, or sent with the commands under "Reaching the user". <!-- /docs/secrets#what-an-agent-on-the-machine-can-reach -->
 The user can also work in this checkout from their laptop without attaching: in their editor over SSH (`repose code`), or one command at a time (`repose exec`), so files here can change while you work. <!-- /docs/ssh-and-editors -->
+Before you tell the user to run a `repose` command, read its page: https://repose.herakraft.co/llms.txt lists every docs page as plain markdown. The docs describe the latest release. `~/.repose/cli-version` holds the version on the user's laptop as of their last `repose run` or `repose attach`; when it is older, a command may not work as the docs show, so tell them to update by running the install command again. <!-- /docs/cli -->
 You are `dev`, with passwordless `sudo`. The checkout is under `/home/dev`, and everything in `/home/dev` survives a stop. <!-- /docs/machine -->
 The checkout is named after the folder on the user's laptop it came from, not after the project, and `repose-checkout` prints its path; before the first sync there is none and work happens in `/home/dev`. <!-- /docs/sync#where-the-checkout-is --> <!-- needs: repose-checkout -->
 

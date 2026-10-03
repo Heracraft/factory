@@ -35,8 +35,8 @@ type toolItem struct {
 	// looked up in nixpkgs. The guest has the tool when any is on PATH.
 	Bins []string `json:"bins"`
 	// Manager is how the laptop installed it (npm, pnpm, bun, go, cargo,
-	// uv, pipx), or "" for a command only a project script names: nixpkgs
-	// or nothing.
+	// uv, pipx, brew), or "" for a command only a project script names:
+	// nixpkgs or nothing. brew items come only from nixpkgs (I-413).
 	Manager string `json:"manager,omitempty"`
 	// Pkg is the manager's name for it: the npm package, the Go package
 	// path, the crate, the Python distribution.
@@ -143,6 +143,8 @@ func readGlobalTools(te toolEnv) []toolItem {
 	all = append(all, readCargoInstalls(te)...)
 	all = append(all, readUvTools(te)...)
 	all = append(all, readPipxVenvs(te)...)
+	// Last: a command another manager installed is that manager's.
+	all = append(all, readBrewFormulae(te)...)
 	return dedupeTools(all)
 }
 
@@ -620,6 +622,70 @@ func readPipxVenvs(te toolEnv) []toolItem {
 				bins = append(bins, strings.TrimSuffix(a, ".exe"))
 			}
 			out = append(out, toolItem{Name: m.Main.Package, Bins: primaryFirst(bins, m.Main.Package), Manager: "pipx", Pkg: m.Main.Package, Version: m.Main.Version, From: "laptop", Why: "pipx install"})
+		}
+		return out
+	}
+	return nil
+}
+
+// ---- Homebrew (I-413) ----
+
+// brewPrefixes are where Homebrew may live: $HOMEBREW_PREFIX, else the
+// installer's defaults for the laptop's OS.
+func brewPrefixes(te toolEnv) []string {
+	if p := te.getenv("HOMEBREW_PREFIX"); p != "" {
+		return []string{p}
+	}
+	switch te.GOOS {
+	case "darwin":
+		return []string{"/opt/homebrew", "/usr/local"}
+	case "linux":
+		return []string{"/home/linuxbrew/.linuxbrew", filepath.Join(te.Home, ".linuxbrew")}
+	}
+	return nil
+}
+
+// readBrewFormulae lists the formulae the user asked Homebrew for (an
+// INSTALL_RECEIPT.json with installed_on_request, so no dependency
+// travels) with the commands in their bin directory. Casks are apps, not
+// commands, and are not read. The guest installs each from nixpkgs by its
+// command (az is azure-cli there); the formula's own name and version
+// mean nothing to nix and are not sent.
+func readBrewFormulae(te toolEnv) []toolItem {
+	var out []toolItem
+	for _, prefix := range brewPrefixes(te) {
+		cellar := filepath.Join(prefix, "Cellar")
+		formulae, err := os.ReadDir(cellar)
+		if err != nil {
+			continue
+		}
+		for _, f := range formulae {
+			versions, _ := os.ReadDir(filepath.Join(cellar, f.Name()))
+			for _, v := range versions {
+				dir := filepath.Join(cellar, f.Name(), v.Name())
+				b, err := os.ReadFile(filepath.Join(dir, "INSTALL_RECEIPT.json"))
+				if err != nil {
+					continue
+				}
+				var r struct {
+					OnRequest bool `json:"installed_on_request"`
+				}
+				if json.Unmarshal(b, &r) != nil || !r.OnRequest {
+					continue
+				}
+				ents, _ := os.ReadDir(filepath.Join(dir, "bin"))
+				var bins []string
+				for _, e := range ents {
+					if !e.IsDir() {
+						bins = append(bins, e.Name())
+					}
+				}
+				if len(bins) == 0 {
+					continue
+				}
+				out = append(out, toolItem{Name: f.Name(), Bins: primaryFirst(bins, f.Name()), Manager: "brew", From: "laptop", Why: "brew install"})
+				break
+			}
 		}
 		return out
 	}

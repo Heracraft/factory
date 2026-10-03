@@ -201,6 +201,12 @@ func addCarry(p *guestPayload, opts carryOptions) ([]string, error) {
 		}
 		sent = append(sent, "tz")
 	}
+	if v := cliVersion; v != "" && !opts.unchanged("cli-version", carryHash([]byte(v))) {
+		if err := p.part("cli version", cliVersionPart(v)+setMarker("cli-version", carryHash([]byte(v)))); err != nil {
+			return nil, err
+		}
+		sent = append(sent, "cli-version")
+	}
 	if ok, err := addGitPart(p, opts.Git, opts); err != nil {
 		return nil, err
 	} else if ok {
@@ -287,6 +293,18 @@ var ianaZone = regexp.MustCompile(`^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$`)
 // started with. Shells already running keep the zone they started with.
 // sudo is the guest's passwordless one (dev is in wheel); the file stays
 // root's, 0644, replaced by a rename.
+// cliVersion is this binary's version, set by Execute; "" in tests,
+// which then send no cli-version part.
+var cliVersion string
+
+// cliVersionPart writes the laptop's repose version where the machine
+// guide tells an agent to look (I-412): the public docs describe the
+// latest release, and an agent that suggests a command should know when
+// the user's CLI is older.
+func cliVersionPart(v string) string {
+	return fmt.Sprintf("mkdir -p ~/.repose && printf '%%s\\n' %s > ~/.repose/cli-version.new && mv -f ~/.repose/cli-version.new ~/.repose/cli-version\n", shQuote(v))
+}
+
 func tzPart(zone string) string {
 	return fmt.Sprintf(`z=%s
 f=/etc/repose/env

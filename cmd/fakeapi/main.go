@@ -125,6 +125,23 @@ func newAdminServer(f *api.Fake) (*adminServer, error) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(q)
 	})
+	// count events on a project, one minute apart ending now, summaries
+	// e000.. oldest first (I-414's Show older).
+	mux.HandleFunc("POST /events", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ProjectID string `json:"project_id"`
+			Count     int    `json:"count"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		now := time.Now()
+		for i := 0; i < body.Count; i++ {
+			f.AddEvent(body.ProjectID, now.Add(time.Duration(i-body.Count)*time.Minute), "agent_message", fmt.Sprintf("e%03d", i))
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /fail-next", func(w http.ResponseWriter, r *http.Request) {
 		if body, ok := decode(w, r); ok {
 			f.FailNext(body.Method, body.Path, body.Code)

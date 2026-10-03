@@ -55,7 +55,6 @@ func TestMapClaudeNotifications(t *testing.T) {
 		summary string
 	}{
 		{"claude/notification-permission-prompt.json", "Claude needs your permission to use Bash"},
-		{"claude/notification-idle-prompt.json", "Claude is waiting for your input"},
 		{"claude/notification-agent-needs-input.json", "The agent is waiting for an answer"},
 		{"claude/notification-untyped.json", "Claude needs your permission to use Write"},
 	}
@@ -75,7 +74,8 @@ func TestMapClaudeNotifications(t *testing.T) {
 }
 
 func TestMapClaudeIgnoresUnreportableHooks(t *testing.T) {
-	for _, file := range []string{"claude/subagent-stop.json", "claude/notification-unrelated.json"} {
+	// I-418: idle_prompt, typed or classified from its message, is no event.
+	for _, file := range []string{"claude/subagent-stop.json", "claude/notification-unrelated.json", "claude/notification-idle-prompt.json", "claude/notification-idle-untyped.json"} {
 		if _, err := Map("claude", fixture(t, file)); !errors.Is(err, ErrNoEvent) {
 			t.Errorf("%s: err = %v, want ErrNoEvent", file, err)
 		}

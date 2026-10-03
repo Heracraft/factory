@@ -99,7 +99,11 @@ Paddle's identifiers for your customer and subscription, your plan and
 its status, the dates of the period and the invoice totals, never card
 numbers. Email notifications are sent through Resend;
 push notifications go to the ntfy endpoint you configure, which may be a
-third party of your choosing.
+third party of your choosing. Our feedback board at
+[repose.fider.io](https://repose.fider.io) is hosted by Fider: when you
+sign in there with your repose account, Fider receives your name and
+email address, and what you post there is public and held under
+[Fider's privacy policy](https://fider.io/privacy).
 
 Coding agents such as Claude Code, Codex, opencode, Gemini CLI and pi run
 inside your environment under your own account with each agent's provider.

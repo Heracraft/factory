@@ -139,6 +139,16 @@ from the wave cycle, it wins.
 - **Workers and integration sessions never** force-unlock state, use the
   Coolify UI, or put anything about the owner's personal server in a file.
 
+## The release queue (since 2026-10-03)
+
+Every session, worker or not, now builds in its own worktree by default
+and hands its branch over by queueing it (`ops/dev/release-queue add`);
+the conductor merges only what is queued, as a release cut from the queue
+onto a `release/<id>` worktree, and ships it. Decision ids come from
+`ops/dev/release-queue id` instead of a range in the launch prompt.
+`docs/ops/RELEASE.md` is the procedure; where it differs from "Merging"
+and "Rounds" above, it wins.
+
 ## When a worker stalls
 
 - Its STATUS line says `progress` and its pane is idle: message it with the

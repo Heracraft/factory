@@ -110,3 +110,62 @@ func TestReplyListsWhenAmbiguousAndPrompts(t *testing.T) {
 		t.Fatalf("questions --json with none waiting: %v %q", err, out.buf.String())
 	}
 }
+
+// TestQuestionsSaysWhereItLooked: with no PROJECT the empty answer says it
+// covered every project (it does not use the checkout's), with one it
+// names it, and an agent at a terminal prompt is listed apart from the
+// questions, with how to reach it.
+func TestQuestionsSaysWhereItLooked(t *testing.T) {
+	e, p, fake, out, _ := questionEnv(t)
+	ctx := context.Background()
+	if err := QuestionsCmd(ctx, e, ""); err != nil {
+		t.Fatal(err)
+	}
+	if s := out.buf.String(); s != "No questions are waiting in any of your projects.\n" {
+		t.Fatalf("all projects: %q", s)
+	}
+	out.buf.Reset()
+	if err := QuestionsCmd(ctx, e, "todo-app"); err != nil {
+		t.Fatal(err)
+	}
+	if s := out.buf.String(); s != "No questions are waiting on todo-app.\n" {
+		t.Fatalf("one project: %q", s)
+	}
+	fake.SetState(p.ID, "running")
+	fake.SetAgents(p.ID, []fakeapi.AgentSignal{{Agent: "claude", Window: "claude", State: "needs_input"}, {Agent: "codex", Window: "codex", State: "idle"}})
+	out.buf.Reset()
+	if err := QuestionsCmd(ctx, e, ""); err != nil {
+		t.Fatal(err)
+	}
+	want := "No questions are waiting in any of your projects.\n" +
+		"Waiting at a prompt in their terminal, which `repose reply` can't answer:\n" +
+		"  claude on todo-app: `repose attach todo-app`\n"
+	if s := out.buf.String(); s != want {
+		t.Fatalf("terminal wait:\n%s\nwant\n%s", s, want)
+	}
+}
+
+// The project's own list is asked for, so a project's questions are not
+// lost behind 50 newer ones from other projects.
+func TestQuestionsForOneProjectPastTheCap(t *testing.T) {
+	e, p, fake, out, _ := questionEnv(t)
+	ctx := context.Background()
+	other, err := e.Client.CreateProject(ctx, CreateProjectRequest{Name: "noisy", Class: "large"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fake.AddQuestion(p.ID, "claude", "Keep me?", nil, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 55; i++ {
+		if _, err := fake.AddQuestion(other.ID, "claude", "noise", nil, time.Hour); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := QuestionsCmd(ctx, e, "todo-app"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.buf.String(), "Keep me?") {
+		t.Fatalf("todo-app's question was lost:\n%s", out.buf.String())
+	}
+}

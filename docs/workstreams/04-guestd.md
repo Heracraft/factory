@@ -144,8 +144,8 @@ restarts and belongs to `dev`'s tmux server.
   the last 5 s, `needs_input` if the last hook event for that window was
   `needs_input` and no `Stop`/`completed` since, `idle` if the process is
   alive and no CPU for 30 s, `unknown` otherwise. The hook events refine
-  this (Claude Code's `Notification` with `permission_prompt` or
-  `idle_prompt` sets `needs_input`; `Stop` sets `idle` then `completed`).
+  this (Claude Code's `Notification` with `permission_prompt` sets
+  `needs_input`, and `idle_prompt` is ignored since I-418; `Stop` sets `idle` then `completed`).
 - `docker_containers`: `docker ps -q | wc -l` via the socket, 2 s timeout.
 - `procs`: from `/proc/*/stat`, keyed by `comm`, summing `utime+stime`
   deltas since the previous sample and RSS; capped at the top 50 by CPU

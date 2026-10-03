@@ -10389,6 +10389,7 @@ Internal docs (DESIGN.md, RUNBOOK, OBSERVABILITY, PRICING's prose) keep
 *Rejected:* counting machines by size class ("one large, or two
 small"): a visitor has not met the classes, and a count is still a
 ceiling.
+
 **I-403. A restore writes the volume with O_DIRECT, eight writes in
 flight, and downloads the snapshot as eight ranged GETs at once.**
 (owner, 2026-10-01; amends the restore steps of 03-hostd.md §5.9 and the
@@ -10673,3 +10674,222 @@ logged in to); an allow list (`only = [...]`; a login type added later
 would be off by default, against the convenience default of the proposal;
 it can be added beside `skip` if asked for); a prompt at the first `run`
 (it would stop scripts and `--no-attach` runs).
+**I-416. Work happens in worktrees and reaches main through a release
+queue.** (owner, 2026-10-03: "start a release queue so multiple agents can
+work on features and queue and coordinate a full release. Also the default
+should be working in a worktree.") Four agent sessions were working in
+this checkout at once, on their own branches and on main. CLAUDE.md said to
+work on main and ask before branching, so a session either edited the main
+checkout under the others or asked first. Decision ids collided: on
+2026-10-03 feedback-batch and start-fast had both written I-410, as
+restore-fast and the design round had both written I-369 two days before.
+Merges and deploys happened from whichever session finished, so a release
+was never a known set of branches.
+
+Now every change starts in `~/<checkout>-<slug>` on its own branch with no
+need to ask, and the main checkout stays on main. `ops/dev/release-queue`
+(bash, state in the common git dir under one flock, on no branch) does
+four things: `id` reserves decision ids after reading every local branch,
+every worktree's uncommitted DECISIONS.md and earlier reservations; `add`
+queues a clean branch that merges into main (a conflict only in the
+generated DECISIONS-INDEX.md is allowed) and names its deploy targets from
+its diff (Go through `go list -deps`, so a shared package counts for each
+binary that imports it); `cut` and `resume` merge the queue in order into
+a `release/<id>` worktree, regenerating the index when that is the only
+conflict; `done` refuses until main holds the release, then removes its
+worktree. One conductor session verifies the merge, asks the owner once
+per release, fast-forwards and pushes main, publishes the base and tags
+the CLI as the targets need, runs each branch's live check and records the
+release in STATUS. `docs/ops/RELEASE.md` is the procedure; host and edge
+switches stay the owner's.
+
+*Rejected:* a queue file committed on main (every `add` would be a commit
+on main from a worktree, racing the conductor's merges); per-branch queue
+files union-merged into the repository (the conductor would have to scan
+every branch to learn what is queued); a GitHub merge queue (pull requests
+are not used here, and agents do not push).
+**I-415. The feedback board is Fider's hosted `repose.fider.io`, and you
+sign in there with your repose account through Logto.** (owner,
+2026-10-01)
+The owner opened a free Fider board for bugs and ideas. Fider's custom
+OAuth provider "repose account" points at the shared Logto tenant
+(I-340) through a fourth repose application, `repose feedback`
+(Traditional web, `wc2np1n3r9z4acp2wutev`), so a person posts with the
+login they already have and Fider never asks for a password. The
+application's name is what Logto's emails say ("... is your repose
+feedback sign-in code"); the owner asked for a name that tells it apart
+from the dashboard and CLI apps, which are both `repose`. Fider reads the
+profile from `/oidc/me` with the scope `openid profile email`: id `sub`,
+name `name, username`, email `email`. The name path stops before
+`email`: an account made with an email code has neither name nor
+username, and Fider shows names publicly, so Fider's own fallback (the
+part before the @) is what such a person shows until they change it in
+Fider. Sign-up does not start collecting given, family or user names for
+this: Logto's profile collection is tenant-wide, so it would add a step
+to every repose and Job Alerts sign-up for a display name on one board.
+The site links the board from the landing footer and from
+Troubleshooting's last section, and the privacy policy names Fider as
+the host that receives a poster's name and email. The footer's seven
+links stand four over three below md, and wrap freely below 360px, where
+four with WCAG 1.4.12's spacing are 341px wide. `ops/fider/README.md`
+has every setting.
+Fider's Facebook, Google and GitHub sign-ins are off (owner), so a
+person has one identity on the board; Fider's email sign-in stays on.
+*Rejected:* a Feedback link in the dashboard header (five items already
+share 350px at phone width).
+**I-417. A boot sets the old /tmp aside in one rename and deletes it after
+the boot.** (owner, 2026-10-02: "starting a stopped project is taking 27
+seconds") On host-01, StartGuest for a stopped large guest ran 01:32:13Z
+to 01:32:40Z. hostd had Cloud Hypervisor up within 0.1 s; the guest's
+console showed systemd-tmpfiles-setup ("Create System Files and
+Directories") running for 20 s before sysinit.target, and guestd, sshd and
+the ready signal all wait for sysinit. kanali's own boot measured the same:
+19.7 s in that unit, 18 s of it between two entries of /tmp. The cause was
+`boot.tmp.cleanOnBoot`, whose `D! /tmp` rule deletes the last boot's /tmp
+file by file, and a guest's /tmp is on its persistent volume, where a day
+of go test, browsers and builds leaves hundreds of thousands of files.
+
+/tmp still starts every boot empty. `repose-tmp-rotate` (before
+systemd-tmpfiles-setup, no default dependencies) renames a non-empty /tmp
+into `/var/lib/repose/tmp-old/<random>/tmp` and makes a new 1777 /tmp; the
+rename is one syscall (0.07 s for 200,000 files on kanali, where deleting
+them took 2.9 s on a quiet disk and 18 s at boot).
+`repose-tmp-purge.timer` deletes the set-aside trees a minute after the
+boot at Nice 19 and idle I/O class, and nothing a boot waits for depends
+on it. A /tmp that is a mount point (a tmpfs a user configured) is left
+alone. The rotate runs once a boot (RemainAfterExit; on host-01 a second
+start request ran it again 0.24 s after the first) and exits once
+systemd-tmpfiles-setup is active: a base
+applied without a reboot restarts the active targets, and sysinit.target
+would otherwise start it on a running machine, under its tmux and
+browsers. A stop before the purge snapshots the set-aside tree, the same
+bytes the old /tmp held.
+
+*Rejected:* /tmp on a tmpfs (a guest's large builds and browser profiles
+in /tmp would then take its memory); clearing /tmp at stop instead (a stop
+is waited on too, and a guest that crashes skips it).
+No public doc changes: /tmp's behaviour is the same, and the docs already
+say a start takes about 10 seconds (`/docs`, index). Test: guest-tools-carry
+subtest "I-417" (a 2,000-file /tmp is gone after a reboot, set aside under
+tmp-old, no `D! /tmp` rule, a start of the unit on the running guest
+leaves /tmp alone, the purge empties tmp-old). Measured on host-01
+(2026-10-03) with main's guest system and this one booted by hand on one
+scratch thin volume (2 GB, 4 vCPU, the production kernel, initrd and
+Cloud Hypervisor arguments, no network, no hostd), /tmp holding 200,405
+entries before each measured boot: main spent 4.72 s and 4.43 s in
+systemd-tmpfiles-setup and guestd listened at 9.78 s and 8.43 s; this
+one spent 0.16 s and 0.15 s and guestd listened at 4.72 s and 4.74 s. After
+each boot /tmp held only that boot's own 4 entries, and the purge ran at
+60 s and emptied tmp-old in 3.1 s and 3.3 s.
+**I-410. The command-not-found hint survives a command only one package has.** (owner,
+2026-10-03, dogfood on unwrap) Typing `az` on a machine without it printed
+nothing and returned 1. The handler (`nix/guest/base/devtools.nix`, I-219)
+runs under `writeShellApplication`'s `set -euo pipefail`, and its "other
+packages" line is `grep -vxF "$attr"` over the list of packages with the
+command. With one package (`az` is only in `azure-cli`; `htop` showed up
+fine because `htop-vim` has it too) that grep matches nothing, exits 1, and
+the script ends before it prints a word. The grep is now `{ grep ... ||
+true; }`. Checked on unwrap with the patched script: `az` prints the
+not-found line and `nix profile add nixpkgs#azure-cli`, exit 127. VM test:
+`guest-devtools` subtest "I-410". Reaches machines with the next base.
+
+**I-411. `repose exec` takes the command with or without `--`.** (owner,
+2026-10-03) `repose exec grep ADMIN_PASSWORD prod.env`, inside the
+project's checkout, answered `put the command after --`, and so did the
+same with the project named; the agent on the machine had told the owner
+to run it that way, and `ssh-and-editors.md` already showed `repose exec
+pwd`. Flags now stop at the first word (`SetInterspersed(false)`), so the
+command's own flags reach it, as with `docker exec`; exec's `-i`/`-t` go
+before the command. With no `--` and no `--project`, a first word that is
+one of the account's slugs is PROJECT (one `ListProjects`, skipped when
+the api fails), and that word alone is refused with exit 2, since running
+it would print only "command not found". The I-275 form `PROJECT [-i] [-t]
+-- COMMAND` still works: a `--` after one word and exec's flags only is the
+separator, and any other `--` is the command's (`repose exec git log --
+main.go`). `repose exec -- COMMAND` runs a command named like a project.
+Tests: `TestExecSeparated`, `TestExecCommandFlagsPassThrough`, and the
+project-word cases in `TestExecRunsInTheCheckout`.
+
+**I-412. The docs as markdown at /llms.txt, and the laptop's CLI version on the machine.** (owner,
+2026-10-03) An agent on unwrap gave the owner a `repose exec` command line
+from memory that the CLI refused. The owner asked for a link to the docs on
+top of the machine guide, and for the user's CLI version, since the docs
+describe the latest release and users run older ones. The web app now
+prerenders `/llms.txt` (every page, by section, with its description) and
+`/docs/<slug>.md` (title, description, body, with `/docs/...` links made
+absolute `.md` links), from the same `content/docs` the site renders
+(`apps/web/src/lib/llms.ts`). The machine guide's opening says to read the
+page before telling the user a `repose` command, and to compare
+`~/.repose/cli-version`. That file is a carry part (marker `cli-version`,
+sent when the version changes) written by `run` and `attach`; a test binary
+(version "") sends none. guest-conventions.md lists it. The guide is in the
+base, so it reaches machines with the next base; the file arrives with the
+next CLI release.
+
+**I-413. The tools carry reads Homebrew formulae and installs them from nixpkgs.** (owner,
+2026-10-03, "why not done: az") `az` never reached unwrap: the tools
+carry (I-221) read npm, pnpm, bun, Go, cargo, uv and pipx, and the
+owner's `az` came from Homebrew, so `~/.repose/tools-wanted.json` on
+unwrap listed eleven tools and no `az`. The CLI now reads
+`<prefix>/Cellar/<formula>/<version>/INSTALL_RECEIPT.json` under
+`$HOMEBREW_PREFIX`, else `/opt/homebrew` and `/usr/local` on macOS and
+`/home/linuxbrew/.linuxbrew` and `~/.linuxbrew` on Linux, and keeps the
+formulae with `installed_on_request` (no dependency travels) that have
+commands in their `bin`. Each is an item with `manager: "brew"` and no
+`pkg` or `version`: a formula's name and version mean nothing to nix, and
+the guest installer already tries nixpkgs by the first command before the
+manager, so `az` becomes `nixpkgs#azure-cli` with no guest change, on old
+bases too; one nixpkgs lacks fails into the notices as "no nixpkgs package
+has bin/X". Brew is read last, so a command npm or Go installed stays
+theirs. Casks are apps and are not read. Test: `TestReadGlobalTools`
+(asked for, a dependency, one in the base, one npm already has).
+
+**I-414. Events page back: `before` and `limit` on the api, Show older on the dashboard, and `repose events` reads the whole window.** (owner,
+2026-10-03) The project page fetched the api's newest 50 events and
+showed 20, with no way to older ones. `GET /projects/:id/events` takes
+`limit` (1..200, default 50) and `before=<event id>`, keyset on `(ts, id)`
+so events in the same second page cleanly (`store.ListEventsBefore`; the
+`events_project_ts` index serves it). The answer stays a bare array, so
+old clients are unchanged. The dashboard polls the newest 50, shows 20,
+and Show older shows 20 more, fetching the 50 before the oldest held when
+it runs out. `repose events --since` pages back with `before` until the
+window is covered (it printed only the newest 50 of a busy day), prints
+oldest first, and `--follow` asks for what came after the newest event
+printed: it used the last element of a newest-first list, the oldest,
+so every poll printed the whole window again. The fake api answered
+oldest first, which is why the tests never saw it; it now answers as the
+api does. Tests: `TestEventsPageBack` (api, Postgres, ties in one
+second), `TestEventsPagesAndFollows` (CLI, 130 events, follow prints a new
+event once). The same survey found other capped lists, recorded in
+STATUS for the owner to pick from.
+
+**I-418. Claude Code's `idle_prompt` is no event.** (owner, 2026-10-03)
+`repose ls` showed `kanali ... claude: needs_input` while `repose
+questions` said nothing was waiting. Claude Code sends a `Notification`
+with `notification_type: idle_prompt` ("Claude is waiting for your
+input") a minute after every turn that ends, and the hook mapping
+(guestd's `hooks/mapper.go` and `repose-hook`) counted it as
+`needs_input`, as 04-guestd.md said. kanali's events show the pattern
+exactly: each `completed` followed 60 s later by `needs_input`. So every
+finished turn sent two notifications ("claude finished", then "claude
+needs input", which the docs describe as the agent asking you something),
+both counting toward the 30 an hour, and a finished agent showed
+`needs_input` until its next turn. `idle_prompt` now maps to no event,
+typed or classified from its message; `permission_prompt` and
+`agent_needs_input` still raise `needs_input`. A finished agent shows
+`idle`. Test: `TestMapClaudeIgnoresUnreportableHooks` (typed and untyped
+idle fixtures). Reaches machines with the next base.
+
+**I-419. `repose questions` says where it looked, names terminal waits, and asks for one project's list.** (owner,
+2026-10-03) From the home directory the owner ran `repose questions`
+("No questions are waiting."), then `repose status` ("No repose project
+here"), and `repose ls` showed `kanali ... claude: needs_input`. With no
+PROJECT, `questions` covers every project and ignores the directory, but
+its answer did not say so. It now says "No questions are waiting in any of
+your projects." or "No questions are waiting on <slug>.", and lists the
+running agents in `needs_input` (a terminal prompt `repose reply` cannot
+answer) with `repose attach <slug>`. `--json` is unchanged, the questions
+only. With PROJECT it reads `GET /projects/:id/questions?state=pending`
+instead of filtering the all-projects list, which stops at 50, so another
+project's newer questions no longer hide this one's. Tests:
+`TestQuestionsSaysWhereItLooked`, `TestQuestionsForOneProjectPastTheCap`.

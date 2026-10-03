@@ -588,18 +588,20 @@
 	color: var(--ink-muted);
 }
 /* The links wrap at 320px (and with WCAG 1.4.12's text spacing) rather
-   than push the page sideways. Below md six links do not fit one line,
-   and a free wrap left "Refunds" alone on the second; there they stand in
-   two rows of three, the product's links over the legal ones. */
+   than push the page sideways. Below md seven links do not fit one line,
+   and a free wrap left one link alone on the second; there the four
+   product links stand over the three legal ones. Below 360px the grid
+   gives way to the free wrap: four links take 275px, which fits at 320
+   but not with 1.4.12's spacing. */
 .foot nav {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0.5rem 1.5rem;
 }
-@media (max-width: 767px) {
+@media (min-width: 360px) and (max-width: 767px) {
 	.foot nav {
 		display: grid;
-		grid-template-columns: repeat(3, max-content);
+		grid-template-columns: repeat(4, max-content);
 	}
 }
 .foot a:hover {

@@ -164,5 +164,5 @@ in
   # as the first virtio disk; the shared store is a virtio-fs tag. Both are
   # declared by nix/guest/microvm.nix; the VM tests use the test framework's
   # own layout, which has the same /nix/.ro-store + /nix/.rw-store shape.
-  boot.tmp.cleanOnBoot = true;
+  # /tmp is on that volume too; ./tmp.nix empties it at each boot.
 }

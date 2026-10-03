@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -335,6 +336,18 @@ func (c *Client) ListEvents(ctx context.Context, id, since string) ([]Event, err
 	if since != "" {
 		path += "?since=" + url.QueryEscape(since)
 	}
+	if err := c.get(ctx, path, &e); err != nil {
+		return nil, err
+	}
+	return e, nil
+}
+
+// ListEventsBefore is the page of up to limit events older than the event
+// before, newest first (I-414). An api older than I-414 ignores both and
+// answers with its newest 50.
+func (c *Client) ListEventsBefore(ctx context.Context, id, before string, limit int) ([]Event, error) {
+	var e []Event
+	path := "/projects/" + url.PathEscape(id) + "/events?before=" + url.QueryEscape(before) + "&limit=" + strconv.Itoa(limit)
 	if err := c.get(ctx, path, &e); err != nil {
 		return nil, err
 	}

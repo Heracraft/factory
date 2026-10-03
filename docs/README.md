@@ -29,6 +29,7 @@ wrong only if a `DECISIONS.md` entry says so.
 | [interfaces/](interfaces/README.md) | Two workstreams meet here. gRPC between API and hostd, vsock between hostd and guestd, the HTTP API, the database schema, the SSH gateway login contract, the CLI config file. |
 | [features/](features/README.md) | User-facing behaviour, one feature per file, written as the behaviour a user sees and the edge cases that must hold. |
 | [ops/ORCHESTRATION.md](ops/ORCHESTRATION.md) | You are running the waves: conductor and worker roles, the wave cycle, merge rules learned by doing, how applies and stalls are handled. |
+| [ops/RELEASE.md](ops/RELEASE.md) | Your branch is done and you want it on main, or you are the conductor cutting a release: the release queue, what a branch ships as, the verify-ship-check-record steps. |
 | [ops/LAUNCH.md](ops/LAUNCH.md) | You are the owner and the round is merged: the Paddle account, the Resend key, the seat count, the host, the deploy order and the tweet. |
 | [ops/RUNBOOK.md](ops/RUNBOOK.md) | Something is broken in production and you need the symptom-to-fix list. |
 | [ops/coolify.md](ops/coolify.md) | You are setting up, backing up, restoring or upgrading the control plane. The click path OpenTofu cannot own, because Coolify keeps it in its own database. |
