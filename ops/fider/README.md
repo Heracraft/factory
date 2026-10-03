@@ -1,6 +1,6 @@
 # Fider at repose.fider.io
 
-The public feedback board (DECISIONS I-403). Fider hosts it on the free
+The public feedback board (DECISIONS I-415). Fider hosts it on the free
 plan (250 suggestions, unlimited voters). Admin:
 `https://repose.fider.io/admin`, signed in as `accounts@herakraft.co`.
 

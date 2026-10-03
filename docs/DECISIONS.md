@@ -10390,7 +10390,7 @@ Internal docs (DESIGN.md, RUNBOOK, OBSERVABILITY, PRICING's prose) keep
 small"): a visitor has not met the classes, and a count is still a
 ceiling.
 
-**I-403. The feedback board is Fider's hosted `repose.fider.io`, and you
+**I-415. The feedback board is Fider's hosted `repose.fider.io`, and you
 sign in there with your repose account through Logto.** (owner,
 2026-10-01)
 The owner opened a free Fider board for bugs and ideas. Fider's custom
