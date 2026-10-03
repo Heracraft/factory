@@ -408,6 +408,11 @@ in
           guest.succeed("sudo -u dev sh -c 'mkdir -p /tmp/bypf/.claude && echo {\\\"permissions\\\":{\\\"defaultMode\\\":\\\"bypassPermissions\\\"}\\,\\\"skipDangerousModePermissionPrompt\\\":false} > /tmp/bypf/.claude/settings.json && HOME=/tmp/bypf repose-agent-setup claude'")
           bypf = json.loads(guest.succeed("cat /tmp/bypf/.claude/settings.json"))
           assert bypf["skipDangerousModePermissionPrompt"] is False, bypf
+          # I-425: the fullscreen renderer where the user set no tui; a
+          # user's own tui is kept.
+          assert s["tui"] == "fullscreen" and fresh["tui"] == "fullscreen" and plan["tui"] == "fullscreen", (s, fresh, plan)
+          guest.succeed("sudo -u dev sh -c 'mkdir -p /tmp/tui/.claude && echo {\\\"tui\\\":\\\"default\\\"} > /tmp/tui/.claude/settings.json && HOME=/tmp/tui repose-agent-setup claude'")
+          assert json.loads(guest.succeed("cat /tmp/tui/.claude/settings.json"))["tui"] == "default"
           mcp = json.loads(guest.succeed("cat /home/dev/.claude.json"))
           assert set(mcp["mcpServers"]) >= {"playwright", "chrome-devtools"}, mcp
           # I-283: no auto-mode offer to catch a sent prompt under bypass;

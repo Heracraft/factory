@@ -7,7 +7,9 @@
 #          contains "repose-hook" already exists under that event;
 #          permissions.defaultMode and skipDangerousModePermissionPrompt
 #          from the platform file are added only when the user's file sets
-#          no permissions.defaultMode (DECISIONS I-250);
+#          no permissions.defaultMode (DECISIONS I-250); tui from the
+#          platform file is added only when the user's file has no tui
+#          (I-425);
 #          ~/.claude.json mcpServers gains the platform servers from
 #          /etc/repose/mcp.json, user entries winning on name clash
 #          except an entry the platform registered itself in an earlier
@@ -73,6 +75,10 @@ writeShellApplication {
                 | if has("skipDangerousModePermissionPrompt") or ($platform | has("skipDangerousModePermissionPrompt") | not) then .
                   else .skipDangerousModePermissionPrompt = $platform.skipDangerousModePermissionPrompt end
               end
+            # The fullscreen renderer (I-425) only where the user chose
+            # none; "default" from the user or the laptop is theirs.
+            | if ($platform | has("tui")) and (has("tui") | not)
+              then .tui = $platform.tui else . end
           ' "$settings" "$platform_claude" | write_atomic "$settings" 0600
         else
           echo "repose-agent-setup: $settings is not valid JSON; leaving it alone" >&2

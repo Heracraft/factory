@@ -10961,3 +10961,23 @@ verification is the gate until then. *Rejected:* deploying from a
 release branch or a tag (a Coolify and infra change, owner-side, for the
 same effect); keeping branches queued until a release (agents keep
 merging each other's work late, and conflicts grow).
+**I-425. Claude Code in a guest starts with the fullscreen renderer unless the user chose one.** (owner,
+2026-10-03) On a new temporary machine the owner's first `claude` drew
+inline in the tmux pane: the prompt under the shell's output and the
+scrollback mixed with tmux's, while older machines drew fullscreen.
+Claude Code 2.1.283 picks its renderer from `CLAUDE_CODE_NO_FLICKER`,
+then settings.json's `tui`, then a server-side flag
+(`tengu_pewter_brook`) read from the cache in `~/.claude.json` at start
+and held for the process. A new machine's `~/.claude.json` is the one
+`repose-agent-setup` writes, with no flag cache, so the first start read
+the flag as false; older machines had it cached true. Neither laptop
+route reaches the guest: the carry drops settings.json's `env` (I-211)
+and never reads `~/.claude.json` (I-196). `/etc/repose/claude-settings.json`
+now carries `tui: "fullscreen"`, and `repose-agent-setup` adds it where
+the user's file has no `tui`, so the user's `"default"` (set in the guest,
+with `/tui default`, or carried from the laptop, which the merge puts on
+top) is kept. Checked on kanali: `claude --settings '{"tui":"fullscreen"}'`
+in a tmux pane gives `#{alternate_on}` 1, `"default"` gives 0. Test: the
+guest-base VM test asserts the key in the fresh, existing and `plan`
+files and keeps a user's `"default"`. Reaches machines with the next
+base; on an older base, `/tui fullscreen` sets it.

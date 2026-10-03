@@ -7,9 +7,14 @@ let
   # without permission prompts unless the user set another defaultMode;
   # repose-agent-setup adds these two keys only where defaultMode is unset
   # (DECISIONS I-250). User settings, never managed settings, so the user wins.
+  # The fullscreen renderer is set, not left to Claude Code's server-side
+  # flag, which a new machine has not fetched at its first start, so that
+  # start drew inline in the tmux pane; added only where the user's file
+  # has no tui (I-425).
   claudeSettings = {
     permissions.defaultMode = "bypassPermissions";
     skipDangerousModePermissionPrompt = true;
+    tui = "fullscreen";
     hooks = {
       Notification = [
         { matcher = ""; hooks = [ { type = "command"; command = "repose-hook"; } ]; }
