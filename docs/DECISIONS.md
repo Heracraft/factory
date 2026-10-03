@@ -10720,3 +10720,19 @@ only. With PROJECT it reads `GET /projects/:id/questions?state=pending`
 instead of filtering the all-projects list, which stops at 50, so another
 project's newer questions no longer hide this one's. Tests:
 `TestQuestionsSaysWhereItLooked`, `TestQuestionsForOneProjectPastTheCap`.
+
+**I-420. The destroyed list pages: `before` and `limit`, Show more past the first 100, and the CLI reads every page.** (owner,
+2026-10-03) `GET /projects/destroyed` stopped at 100 rows, so the
+dashboard's "N of M shown" never counted past 100 and `repose restore
+--destroyed` and `repose projects --destroyed` never listed the 101st.
+The route takes `limit` (1..200, default 100, so old clients are
+unchanged) and `before=<project id>`, keyset on `(destroyed_at, id)`. The
+projects page still polls the newest 100; "Show more" past them fetches
+the 100 before the oldest held, reads "Show more" and "N shown" while the
+api may hold more, and "Show N more" and "N of M shown" once it has sent
+its last page (I-333's steps of 20 kept). `Client.ListDestroyed` pages in
+200s until a short page, or a page with nothing new, which is what an api
+older than I-420 sends. Tests: `TestDestroyedPageBack` (Postgres, 130
+destroys with same-second ties, 4 pages of 40), `TestListDestroyedReadsEveryPage`
+(230 through the fake), playwright "recently destroyed pages past the
+first hundred" (10 -> 130, asks with `before` the 100th id).

@@ -122,7 +122,14 @@ export const patchProject = (
 ) => request<Project>(`/projects/${id}`, { method: 'PATCH', body });
 export const destroyProject = (id: string) =>
 	request<{ op_id: string; state: string }>(`/projects/${id}`, { method: 'DELETE' });
-export const listDestroyed = () => request<DestroyedProject[]>('/projects/destroyed');
+/** The newest 100 destroyed projects, or with `before` (a project id) the `limit` before it (I-420). */
+export const listDestroyed = (opts: { before?: string; limit?: number } = {}) => {
+	const q = new URLSearchParams();
+	if (opts.before) q.set('before', opts.before);
+	if (opts.limit) q.set('limit', String(opts.limit));
+	const qs = q.toString();
+	return request<DestroyedProject[]>(`/projects/destroyed${qs ? `?${qs}` : ''}`);
+};
 /** Restores a destroyed (or live) project's newest snapshot as a new project (I-167). */
 export const restoreProject = (body: {
 	slug?: string;

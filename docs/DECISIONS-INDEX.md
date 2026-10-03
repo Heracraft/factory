@@ -1,2 +1,2 @@
 
-- **I-419** `repose questions` says where it looked, names terminal waits, and asks for one project's list — 2026-10-03; L10710
+- **I-420** The destroyed list pages: `before` and `limit`, Show more past the first 100, the CLI reads every page — 2026-10-03; L10724

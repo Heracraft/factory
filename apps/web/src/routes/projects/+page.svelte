@@ -8,6 +8,7 @@
 	import PageShell from '$lib/components/PageShell.svelte';
 	import StateDot from '$lib/components/StateDot.svelte';
 	import { abuseStopReason } from '$lib/abuse';
+	import { DESTROYED_PAGE } from '$lib/destroyed';
 	import RecentlyDestroyed from '$lib/components/RecentlyDestroyed.svelte';
 	import LoadState, { loadErrorText } from '$lib/components/LoadState.svelte';
 	import type { DestroyedProject, Me, Project } from '$lib/api/types';
@@ -17,7 +18,28 @@
 	/** The first load failed; the poll keeps trying, and Retry asks now. */
 	let loadFailed = $state(false);
 	let loadError = $state<string | undefined>(undefined);
-	let destroyed = $state<DestroyedProject[]>([]);
+	// The poll keeps the newest DESTROYED_PAGE; "Show more" past them
+	// fetches the page before the oldest held (I-420).
+	let destroyedNewest = $state<DestroyedProject[]>([]);
+	let destroyedOlder = $state<DestroyedProject[]>([]);
+	let destroyedDone = $state(false);
+	const destroyed = $derived.by(() => {
+		const byId = new Map([...destroyedOlder, ...destroyedNewest].map((d) => [d.id, d]));
+		return [...byId.values()].sort((a, b) =>
+			a.destroyed_at < b.destroyed_at ? 1 : a.destroyed_at > b.destroyed_at ? -1 : 0
+		);
+	});
+	const destroyedHasMore = $derived(
+		!destroyedDone && (destroyedOlder.length > 0 || destroyedNewest.length >= DESTROYED_PAGE)
+	);
+
+	async function moreDestroyed() {
+		const last = destroyed[destroyed.length - 1];
+		if (!last) return;
+		const page = await listDestroyed({ before: last.id, limit: DESTROYED_PAGE });
+		destroyedOlder = [...destroyedOlder, ...page];
+		if (page.length < DESTROYED_PAGE) destroyedDone = true;
+	}
 	/** The account, for the seats and waitlist state of a user with no project yet (I-290). */
 	let me = $state<Me | undefined>(undefined);
 	let holdActive = $derived(
@@ -48,9 +70,9 @@
 		// Its own try: an api without the route (older than I-167) answers
 		// 404, and that must not hide the live list or raise a toast.
 		try {
-			destroyed = await listDestroyed();
+			destroyedNewest = await listDestroyed();
 		} catch {
-			destroyed = [];
+			destroyedNewest = [];
 		}
 		if (projects.length === 0) {
 			try {
@@ -209,6 +231,8 @@ cd ~/code/your-project && repose run</pre>
 		{/if}
 		<RecentlyDestroyed
 			{destroyed}
+			hasMore={destroyedHasMore}
+			onmore={moreDestroyed}
 			liveSlugs={(projects ?? []).map((p) => p.slug)}
 			onrestored={() => void refresh()}
 		/>

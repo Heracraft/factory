@@ -31,10 +31,12 @@ export function timeLeft(until: string | null | undefined, now = new Date()): st
 /**
  * "Recently destroyed" shows the newest DESTROYED_FIRST rows and a "Show
  * more" that adds DESTROYED_STEP at a time (DECISIONS I-333). The api sends
- * at most 100 rows, all at once, so this is paging in the page only.
+ * DESTROYED_PAGE rows at a time; past them the page asks for the next
+ * DESTROYED_PAGE (I-420).
  */
 export const DESTROYED_FIRST = 10;
 export const DESTROYED_STEP = 20;
+export const DESTROYED_PAGE = 100;
 
 /** How many more rows the next "Show more" reveals: 0 when all are shown. */
 export function moreToShow(shown: number, total: number): number {

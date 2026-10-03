@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
@@ -210,5 +211,34 @@ func TestRestoreWithoutANameInACheckout(t *testing.T) {
 	}
 	if len(asked) != 2 || !strings.Contains(asked[0], "Which one") || !strings.HasPrefix(out.String(), "Restored izma ") {
 		t.Fatalf("asked %q, said %q", asked, out.String())
+	}
+}
+
+// I-420: the CLI reads every page of the destroyed list, past the api's
+// first 100.
+func TestListDestroyedReadsEveryPage(t *testing.T) {
+	fake := fakeapi.New(fakeapi.Options{})
+	defer fake.Close()
+	e := newLifecycleEnv(t, fake)
+	ctx := context.Background()
+	for i := 0; i < 230; i++ {
+		p, err := e.Client.CreateProject(ctx, CreateProjectRequest{Name: fmt.Sprintf("gone-%03d", i), Class: "large"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.Client.DestroyProject(ctx, p.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, err := e.Client.ListDestroyed(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, d := range list {
+		seen[d.Slug] = true
+	}
+	if len(list) != 230 || len(seen) != 230 {
+		t.Fatalf("ListDestroyed gave %d (%d distinct), want 230", len(list), len(seen))
 	}
 }
