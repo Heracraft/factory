@@ -10389,6 +10389,7 @@ Internal docs (DESIGN.md, RUNBOOK, OBSERVABILITY, PRICING's prose) keep
 *Rejected:* counting machines by size class ("one large, or two
 small"): a visitor has not met the classes, and a count is still a
 ceiling.
+
 **I-403. A restore writes the volume with O_DIRECT, eight writes in
 flight, and downloads the snapshot as eight ranged GETs at once.**
 (owner, 2026-10-01; amends the restore steps of 03-hostd.md §5.9 and the
@@ -10642,3 +10643,32 @@ on main from a worktree, racing the conductor's merges); per-branch queue
 files union-merged into the repository (the conductor would have to scan
 every branch to learn what is queued); a GitHub merge queue (pull requests
 are not used here, and agents do not push).
+**I-415. The feedback board is Fider's hosted `repose.fider.io`, and you
+sign in there with your repose account through Logto.** (owner,
+2026-10-01)
+The owner opened a free Fider board for bugs and ideas. Fider's custom
+OAuth provider "repose account" points at the shared Logto tenant
+(I-340) through a fourth repose application, `repose feedback`
+(Traditional web, `wc2np1n3r9z4acp2wutev`), so a person posts with the
+login they already have and Fider never asks for a password. The
+application's name is what Logto's emails say ("... is your repose
+feedback sign-in code"); the owner asked for a name that tells it apart
+from the dashboard and CLI apps, which are both `repose`. Fider reads the
+profile from `/oidc/me` with the scope `openid profile email`: id `sub`,
+name `name, username`, email `email`. The name path stops before
+`email`: an account made with an email code has neither name nor
+username, and Fider shows names publicly, so Fider's own fallback (the
+part before the @) is what such a person shows until they change it in
+Fider. Sign-up does not start collecting given, family or user names for
+this: Logto's profile collection is tenant-wide, so it would add a step
+to every repose and Job Alerts sign-up for a display name on one board.
+The site links the board from the landing footer and from
+Troubleshooting's last section, and the privacy policy names Fider as
+the host that receives a poster's name and email. The footer's seven
+links stand four over three below md, and wrap freely below 360px, where
+four with WCAG 1.4.12's spacing are 341px wide. `ops/fider/README.md`
+has every setting.
+Fider's Facebook, Google and GitHub sign-ins are off (owner), so a
+person has one identity on the board; Fider's email sign-in stays on.
+*Rejected:* a Feedback link in the dashboard header (five items already
+share 350px at phone width).
