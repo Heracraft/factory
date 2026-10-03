@@ -414,3 +414,48 @@ func TestHeuristicCompletionForGeminiRunningAsNode(t *testing.T) {
 		t.Fatal("isAgentCommand does not follow the binaries table")
 	}
 }
+
+// I-421: claude started in the shell window counts as an agent while it is
+// the foreground program, keyed by that window for its hooks; node in a
+// window not named gemini, and a shell with no agent in front, do not.
+func TestAnAgentInAWindowWithAnotherName(t *testing.T) {
+	procs := []fakeProc{
+		{pid: 100, ppid: 1, comm: "bash"},
+		{pid: 101, ppid: 100, comm: ".claude-wrapped", ticks: 50},
+		{pid: 200, ppid: 1, comm: "bash"},
+		{pid: 201, ppid: 200, comm: "node", ticks: 50},
+		{pid: 300, ppid: 1, comm: "bash"},
+	}
+	w, run, _, clk, _ := newWatcherFixture(t, procs)
+	run.Match["list-windows"] = tmuxOutput(
+		[4]string{"shell", "100", ".claude-wrapped", "0"},
+		[4]string{"server", "200", "node", "0"},
+		[4]string{"misc", "300", "bash", "0"},
+	)
+	ctx := context.Background()
+	w.Refresh(ctx)
+	sig, _ := w.Signals()
+	if got := sig.GetAgents(); len(got) != 1 || got[0].GetAgent() != "claude" || got[0].GetTmuxWindow() != "shell" {
+		t.Fatalf("agents = %v, want claude in window shell only", got)
+	}
+	w.RecordHook("shell", KindNeedsInput, clk.now())
+	clk.advance(Interval)
+	w.Refresh(ctx)
+	sig, _ = w.Signals()
+	if got := sig.GetAgents(); len(got) != 1 || got[0].GetState() != StateNeedsInput {
+		t.Fatalf("after a needs_input hook from the shell window: %v", got)
+	}
+	// claude exits; the shell is in front again and the window stops counting.
+	run.Match["list-windows"] = tmuxOutput([4]string{"shell", "100", "bash", "0"})
+	clk.advance(Interval)
+	w.Refresh(ctx)
+	sig, _ = w.Signals()
+	if got := sig.GetAgents(); len(got) != 0 {
+		t.Fatalf("agents after claude exited = %v", got)
+	}
+	for comm, want := range map[string]string{"claude": "claude", ".claude-wrapped": "claude", ".opencode-wrapp": "opencode", "codex": "codex", "gemini": "gemini", "node": "", "bash": "", "": ""} {
+		if got := AgentByCommand(comm); got != want {
+			t.Errorf("AgentByCommand(%q) = %q, want %q", comm, got, want)
+		}
+	}
+}

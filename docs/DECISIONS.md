@@ -10736,3 +10736,20 @@ older than I-420 sends. Tests: `TestDestroyedPageBack` (Postgres, 130
 destroys with same-second ties, 4 pages of 40), `TestListDestroyedReadsEveryPage`
 (230 through the fake), playwright "recently destroyed pages past the
 first hundred" (10 -> 130, asks with `before` the 100th id).
+
+**I-421. A window counts as an agent window while an agent is its foreground program, whatever its name.** (owner,
+2026-10-03) kanali had claude running in two windows, `claude` and
+`shell` (claude typed in the shell window), and `repose ls` showed one.
+guestd (`sample.refreshTmux`) took a window as an agent's only by its name
+(`AgentOf`: `claude`, `claude-N`, ...), so an agent started by hand
+anywhere else was never sampled, never had its state shown, and its
+hooks named a window guestd did not know. A window with another name now
+counts while its pane's foreground command (`#{pane_current_command}`)
+is an agent's program (`AgentByCommand`, nix's `.claude-wrapped` and its
+15-byte cut included), and stops counting when the agent exits. Gemini is
+left out: its process is `node`, and so is any dev server. The window
+keeps its own name, so hooks from it (`window: "shell"`) land on it.
+Test: `TestAnAgentInAWindowWithAnotherName` (claude in `shell` counted
+and set to needs_input by a hook from `shell`, node in `server` and a
+plain shell not, the window dropped when claude exits). Reaches machines
+with the next base.
