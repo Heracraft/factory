@@ -4,6 +4,13 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
+	ssr: {
+		// Bundle every package into the server build. The runtime image holds
+		// build/ and no node_modules (Dockerfile), so a package left external
+		// failed at its first on-request render: /docs/<unknown slug>
+		// answered 500, "Cannot find package 'marked'".
+		noExternal: true
+	},
 	server: {
 		// This dev box is reached over Tailscale, not localhost. Sign-in needs
 		// a secure context (PKCE uses crypto.subtle), so `just web` puts the

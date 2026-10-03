@@ -19,9 +19,18 @@ test('docs are readable while signed out, with search and prev/next', async ({ p
 	await expect(page).toHaveURL(/\/docs\/notifications/);
 });
 
-test('an unknown docs page says so', async ({ page }) => {
-	await page.goto('/docs/no-such-page');
+test('an unknown docs page says so, with a 404', async ({ page }) => {
+	const response = await page.goto('/docs/no-such-page');
+	expect(response?.status()).toBe(404);
 	await expect(page.getByRole('heading', { name: 'No such page' })).toBeVisible();
+	await expect(page.getByText("There's no docs page called “no-such-page”.")).toBeVisible();
+});
+
+test('an experimental page says so under its title', async ({ page }) => {
+	await page.goto('/docs/tutorial-t3-code');
+	await expect(page.getByTestId('experimental')).toContainText('Experimental.');
+	await page.goto('/docs/machine');
+	await expect(page.getByTestId('experimental')).toHaveCount(0);
 });
 
 // A block with prompts copies its commands only, without the `$ ` or the

@@ -1,5 +1,5 @@
 // The user docs: src/content/docs/*.md, each with a small frontmatter block
-// (title, description, section, order). Bundled at build time with
+// (title, description, section, order, and status: experimental). Bundled at build time with
 // import.meta.glob, so /docs needs no server and no fetch.
 import { Marked, type Tokens } from 'marked';
 import { StreamLanguage, type Language } from '@codemirror/language';
@@ -22,6 +22,8 @@ export interface Doc {
 	description: string;
 	section: string;
 	order: number;
+	/** frontmatter `status: experimental`: the page says the feature may change or break. */
+	experimental: boolean;
 	body: string;
 	html: string;
 	headings: DocHeading[];
@@ -213,6 +215,7 @@ export const DOCS: Doc[] = Object.entries(files)
 			description: meta.description ?? '',
 			section: meta.section ?? 'Reference',
 			order: Number(meta.order ?? 99),
+			experimental: meta.status === 'experimental',
 			body,
 			html,
 			headings,

@@ -15,7 +15,10 @@ export function absoluteLinks(body: string): string {
 }
 
 export function docMarkdown(doc: Doc): string {
-	return `# ${doc.title}\n\n> ${doc.description}\n\n${absoluteLinks(doc.body.trim())}\n`;
+	const status = doc.experimental
+		? '\n\nExperimental: this setup is new and can change or stop working.'
+		: '';
+	return `# ${doc.title}\n\n> ${doc.description}${status}\n\n${absoluteLinks(doc.body.trim())}\n`;
 }
 
 export function llmsTxt(): string {
