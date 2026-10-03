@@ -74,8 +74,9 @@ stays on `main` and nobody edits in it. Reserve decision ids with
 `ops/dev/release-queue id` before writing them. When the branch is done:
 commit, `git merge main`, run its checks, then `ops/dev/release-queue add
 --live "<what to check after deploy>"`. Never merge into `main` or push
-yourself; the release session (the conductor) cuts the queue, verifies it,
-fast-forwards `main` and ships it (`docs/ops/RELEASE.md`, DECISIONS I-416).
+yourself; the conductor merges the queue into `main` in verified batches,
+on this machine only, and pushes and ships `main` when the owner asks for a
+release (`docs/ops/RELEASE.md`, DECISIONS I-416, I-424).
 Switching an existing worktree to another branch, or deleting one that is
 not yours, still needs the user's approval.
 

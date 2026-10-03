@@ -10943,3 +10943,21 @@ with the owner leaning towards a short curated list of development CLIs
 found on the laptop's PATH, are in
 `docs/proposals/2026-10-03-tools-from-system-packages.md`. Until one is
 picked, the I-410 hint names the nixpkgs package and `repose config add`.
+
+**I-424. Main is integrated often and released when the owner asks.**
+(owner, 2026-10-03: "we can merge stuff into main and hold on until we
+have a bit then release") I-416 had one step: a cut merged the queue,
+moved main, pushed and shipped. That gave two releases on 2026-10-03,
+and the owner stopped a third ("cant the release queue fill up a
+little"). But holding branches in the queue leaves agents building on a
+main that lacks each other's work. Now the conductor merges verified
+batches into main on this machine without pushing (`release-queue done`
+marks them `on-main`), and `ls` reports what main holds unreleased and
+what it ships as. A release pushes main, publishes the base and tags the
+CLI, when the owner asks. Coolify deploys GitHub's main, so nobody pushes
+main between releases, and a fix for production goes out with everything
+integrated before it. GitHub CI runs only on the push, so the batch
+verification is the gate until then. *Rejected:* deploying from a
+release branch or a tag (a Coolify and infra change, owner-side, for the
+same effect); keeping branches queued until a release (agents keep
+merging each other's work late, and conflicts grow).
