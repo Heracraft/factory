@@ -74,10 +74,12 @@ type claudeHook struct {
 }
 
 // needsInputNotifications are the notification types that mean the agent is
-// waiting for the user (docs/workstreams/04-guestd.md §5).
+// waiting for the user (docs/workstreams/04-guestd.md §5). idle_prompt is
+// not one: Claude Code sends it a minute after every turn that ends, so it
+// turned each "finished" into a second "needs input" notification and left
+// a finished agent showing needs_input (I-418).
 var needsInputNotifications = map[string]bool{
 	"permission_prompt": true,
-	"idle_prompt":       true,
 	"agent_needs_input": true,
 }
 

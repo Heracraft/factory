@@ -480,3 +480,4 @@ pointer, not a summary.
 - **I-412** The docs as markdown at /llms.txt, and the laptop's CLI version on the machine — 2026-10-03; L10640
 - **I-413** The tools carry reads Homebrew formulae and installs them from nixpkgs — 2026-10-03; L10656
 - **I-414** Events page back: `before` and `limit`, Show older, `repose events` reads the whole window — 2026-10-03; L10674
+- **I-418** Claude Code's `idle_prompt` is no event — 2026-10-03; L10693

@@ -177,7 +177,7 @@ never blocks an agent. Mapping:
 | Agent | Payload | kind | summary |
 |---|---|---|---|
 | claude | `hook_event_name=Stop` | `completed` | last assistant text from the transcript tail (200 chars), else `claude finished` |
-| claude | `Notification` with `notification_type` in `permission_prompt`, `idle_prompt`, `agent_needs_input` | `needs_input` | `message` |
+| claude | `Notification` with `notification_type` in `permission_prompt`, `agent_needs_input` (`idle_prompt` is no event since DECISIONS I-418) | `needs_input` | `message` |
 | claude | `StopFailure` | `error` | `error` or `message` |
 | codex | `type=agent-turn-complete` | `completed` | `last-assistant-message` |
 | opencode | plugin sends `{agent, kind, summary}` already mapped: `session.idle` → `completed`, `session.error` → `error`, `permission.updated` or `permission.asked` → `needs_input` | | |

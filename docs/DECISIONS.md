@@ -10689,3 +10689,20 @@ api does. Tests: `TestEventsPageBack` (api, Postgres, ties in one
 second), `TestEventsPagesAndFollows` (CLI, 130 events, follow prints a new
 event once). The same survey found other capped lists, recorded in
 STATUS for the owner to pick from.
+
+**I-418. Claude Code's `idle_prompt` is no event.** (owner, 2026-10-03)
+`repose ls` showed `kanali ... claude: needs_input` while `repose
+questions` said nothing was waiting. Claude Code sends a `Notification`
+with `notification_type: idle_prompt` ("Claude is waiting for your
+input") a minute after every turn that ends, and the hook mapping
+(guestd's `hooks/mapper.go` and `repose-hook`) counted it as
+`needs_input`, as 04-guestd.md said. kanali's events show the pattern
+exactly: each `completed` followed 60 s later by `needs_input`. So every
+finished turn sent two notifications ("claude finished", then "claude
+needs input", which the docs describe as the agent asking you something),
+both counting toward the 30 an hour, and a finished agent showed
+`needs_input` until its next turn. `idle_prompt` now maps to no event,
+typed or classified from its message; `permission_prompt` and
+`agent_needs_input` still raise `needs_input`. A finished agent shows
+`idle`. Test: `TestMapClaudeIgnoresUnreportableHooks` (typed and untyped
+idle fixtures). Reaches machines with the next base.

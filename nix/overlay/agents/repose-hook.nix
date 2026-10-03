@@ -48,7 +48,9 @@ writeShellApplication {
             Notification)
               nt=$(echo "$payload" | jq -r '.notification_type // ""')
               case "$nt" in
-                permission_prompt|idle_prompt|agent_needs_input)
+                # idle_prompt is Claude Code's minute-later nudge after every
+                # finished turn, not a question (I-418).
+                permission_prompt|agent_needs_input)
                   kind=needs_input
                   summary=$(echo "$payload" | jq -r '.message // "claude needs input"' | head -c 1000)
                   ;;
