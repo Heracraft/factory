@@ -157,24 +157,22 @@ done > ~/.repose/env-paths
 ` + setMarker("env", hash), nil
 }
 
-// addEnvRemoveToApply is the apply's .env part when config.toml leaves the
-// files on the laptop (DECISIONS I-422): it removes each guest copy whose
-// SHA-256 is the laptop file's, so a file edited on the machine stays and
-// is named, then forgets the carry (marker and env-paths), so turning env
-// back on sends the set again. Only hashes travel, never a value. It is
-// "" when no earlier carry wrote files here.
-func addEnvRemoveToApply(tw *tar.Writer, files []envFile, carried bool) (string, error) {
-	if !carried {
-		return "", nil
-	}
+// envRemoveList is the guest's half of the removal: one
+// "<sha256> <path>" line per laptop .env file, paths relative to the
+// checkout. Hashes only, never a value.
+func envRemoveList(files []envFile) []byte {
 	var list strings.Builder
 	for _, f := range files {
 		_, _ = fmt.Fprintf(&list, "%x %s\n", sha256.Sum256(f.Body), f.Rel)
 	}
-	if err := tarAddBytes(tw, "env/rm", []byte(list.String())); err != nil {
-		return "", err
-	}
-	return `n=0
+	return []byte(list.String())
+}
+
+// envRemoveScript runs in the checkout with the list at "$t/env/rm": it
+// removes each copy whose SHA-256 is the laptop file's, names the ones
+// that differ (edited on the machine), then forgets the carry (marker and
+// env-paths), so turning env back on sends the set again.
+const envRemoveScript = `n=0
 while IFS= read -r line; do
   s=${line%% *}; p=${line#* }
   [ -f "$p" ] || continue
@@ -182,5 +180,17 @@ while IFS= read -r line; do
 done < "$t/env/rm"
 echo "#envremoved $n"
 rm -f ~/.repose/env-paths ` + carryMarkerDir + `/env
-`, nil
+`
+
+// addEnvRemoveToApply is the apply's .env part when config.toml leaves the
+// files on the laptop (DECISIONS I-422). It is "" when no earlier carry
+// wrote files here (carried false).
+func addEnvRemoveToApply(tw *tar.Writer, files []envFile, carried bool) (string, error) {
+	if !carried {
+		return "", nil
+	}
+	if err := tarAddBytes(tw, "env/rm", envRemoveList(files)); err != nil {
+		return "", err
+	}
+	return envRemoveScript, nil
 }

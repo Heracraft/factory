@@ -26,9 +26,9 @@ import (
 // on the machine is removed when it is byte for byte the laptop's (the
 // I-298 rule), so a login made on the machine stays.
 
-// loginItem is one row of `repose logins`.
+// loginItem is one row of `repose secrets choose`.
 type loginItem struct {
-	Name string // what config.toml and `repose logins on|off` call it
+	Name string // what config.toml and `repose secrets choose` call it
 	What string
 }
 
@@ -36,7 +36,7 @@ type loginItem struct {
 // than the tool logins do, so they are chosen in the same place (I-197).
 const envLogin = "env"
 
-// loginItems is every row, in the order `repose logins` shows them: the
+// loginItems is every row, in the order `repose secrets choose` shows them: the
 // credRows, then the .env files.
 func loginItems() []loginItem {
 	what := map[string]string{
@@ -70,7 +70,7 @@ func isLoginName(n string) bool {
 
 // loginSkip is the set `run` leaves on the laptop for the project named
 // slug: its own list when config.toml has one, else the global list.
-// chosen is false when neither exists (run then names `repose logins`
+// chosen is false when neither exists (run then names `repose secrets choose`
 // once per copy). unknown are names in the list that are not logins.
 func (c Config) loginSkip(slug string) (skip map[string]bool, chosen bool, unknown []string) {
 	var list *[]string
@@ -103,7 +103,7 @@ func (e *Env) loginSkip(slug string) (map[string]bool, bool) {
 	return skip, chosen
 }
 
-// loginsScope is what a `repose logins` command reads and writes: the
+// loginsScope is what `repose secrets choose` reads and writes: the
 // global list, or one project's.
 type loginsScope struct {
 	Slug string // "" for every project
@@ -138,16 +138,39 @@ func (e *Env) loginsScope(ctx context.Context, projectArg string) (loginsScope, 
 	return loginsScope{Slug: p.Slug}, nil
 }
 
-// LoginsCmd implements `repose logins`: a toggle list on a terminal, the
-// list otherwise.
-func LoginsCmd(ctx context.Context, e *Env, projectArg string) error {
+// SecretsChooseCmd implements `repose secrets choose`: with --on or --off
+// it sets the NAMEs, with --reset it drops the scope's list, and with
+// none it shows the toggle list on a terminal and the list otherwise.
+func SecretsChooseCmd(ctx context.Context, e *Env, projectArg string, on, off, reset bool, names []string) error {
+	n := 0
+	for _, b := range []bool{on, off, reset} {
+		if b {
+			n++
+		}
+	}
+	switch {
+	case n > 1:
+		return exitf(ExitUsage, "Give one of --on, --off and --reset.")
+	case (on || off) && len(names) == 0:
+		return exitf(ExitUsage, "Name what to turn %s: %s.", map[bool]string{true: "on", false: "off"}[on], strings.Join(loginNames(), ", "))
+	case !on && !off && len(names) > 0:
+		return exitf(ExitUsage, "Say --on or --off before the names: `repose secrets choose --off %s`.", strings.Join(names, " "))
+	case reset:
+		return chooseReset(ctx, e, projectArg)
+	case on || off:
+		return chooseSet(ctx, e, projectArg, on, names)
+	}
+	return chooseList(ctx, e, projectArg)
+}
+
+func chooseList(ctx context.Context, e *Env, projectArg string) error {
 	scope, err := e.loginsScope(ctx, projectArg)
 	if err != nil {
 		return err
 	}
 	skip, own := scope.current(e.Cfg)
 	found := e.loginsFound()
-	if !e.JSON && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stderr.Fd())) {
+	if !e.JSON && term.IsTerminal(int(os.Stdin.Fd())) && writerIsTerminal(e.ErrOut) {
 		on, saved, err := pickLoginsTTY(loginsHeader(scope, own), loginItems(), skip, found)
 		if err != nil {
 			return err
@@ -159,15 +182,19 @@ func LoginsCmd(ctx context.Context, e *Env, projectArg string) error {
 		return e.saveLoginSkip(scope, offOf(on))
 	}
 	_, _ = fmt.Fprintln(e.Out, loginsHeader(scope, own)+":")
+	writeLoginRows(e.Out, skip, found)
+	_, _ = fmt.Fprintln(e.Out, "Change them with `repose secrets choose --off NAME...` or `--on NAME...`.")
+	return nil
+}
+
+func writeLoginRows(w io.Writer, skip map[string]bool, found map[string]string) {
 	for _, it := range loginItems() {
 		state := "on "
 		if skip[it.Name] {
 			state = "off"
 		}
-		_, _ = fmt.Fprintf(e.Out, "  %s  %-9s %s%s\n", state, it.Name, it.What, foundNote(found, it.Name))
+		_, _ = fmt.Fprintf(w, "  %s  %-9s %s%s\n", state, it.Name, it.What, foundNote(found, it.Name))
 	}
-	_, _ = fmt.Fprintln(e.Out, "Change one with `repose logins off NAME` or `repose logins on NAME`.")
-	return nil
 }
 
 func loginsHeader(s loginsScope, own bool) string {
@@ -205,6 +232,12 @@ func (e *Env) loginsFound() map[string]string {
 	return found
 }
 
+// writerIsTerminal is whether w is a terminal (a test's buffer is not).
+func writerIsTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	return ok && term.IsTerminal(int(f.Fd()))
+}
+
 func foundNote(found map[string]string, name string) string {
 	if n := found[name]; n != "" {
 		return " (" + n + ")"
@@ -222,8 +255,7 @@ func offOf(on map[string]bool) []string {
 	return off
 }
 
-// LoginsSetCmd implements `repose logins on|off NAME...`.
-func LoginsSetCmd(ctx context.Context, e *Env, projectArg string, turnOn bool, names []string) error {
+func chooseSet(ctx context.Context, e *Env, projectArg string, turnOn bool, names []string) error {
 	var bad []string
 	for _, n := range names {
 		if !isLoginName(n) {
@@ -250,9 +282,9 @@ func LoginsSetCmd(ctx context.Context, e *Env, projectArg string, turnOn bool, n
 	return e.saveLoginSkip(scope, off)
 }
 
-// LoginsResetCmd implements `repose logins reset`: a project goes back to
-// the list for every project; without one, every login is copied again.
-func LoginsResetCmd(ctx context.Context, e *Env, projectArg string) error {
+// chooseReset is --reset: a project goes back to the list for every
+// project; without one, every login is copied again.
+func chooseReset(ctx context.Context, e *Env, projectArg string) error {
 	scope, err := e.loginsScope(ctx, projectArg)
 	if err != nil {
 		return err
@@ -269,6 +301,7 @@ func LoginsResetCmd(ctx context.Context, e *Env, projectArg string) error {
 }
 
 func (e *Env) saveLoginSkip(scope loginsScope, off []string) error {
+	before, _ := scope.current(e.Cfg)
 	if err := writeLoginsTable(e.Dir, scope, off, false); err != nil {
 		return err
 	}
@@ -280,9 +313,13 @@ func (e *Env) saveLoginSkip(scope loginsScope, off []string) error {
 		_, _ = fmt.Fprintf(e.Out, "Saved: every login is copied, for %s.\n", where)
 		return nil
 	}
-	_, _ = fmt.Fprintf(e.Out, "Saved: %s stay on your laptop, for %s. The next repose run removes copies an earlier run left on the machine.\n", strings.Join(off, ", "), where)
+	verb := "stay"
+	if len(off) == 1 {
+		verb = "stays"
+	}
+	_, _ = fmt.Fprintf(e.Out, "Saved: %s %s on your laptop, for %s. The next repose run removes copies an earlier run left on the machine.\n", strings.Join(off, ", "), verb, where)
 	for _, n := range off {
-		if n == "gh" {
+		if n == "gh" && !before["gh"] {
 			_, _ = fmt.Fprintln(e.Out, "Without gh, git on the machine cannot push to GitHub until you run `gh auth login` there or store a token as a secret (see /docs/secrets).")
 		}
 	}
@@ -604,7 +641,7 @@ func loginsLine(copied []string, skip map[string]bool, chosen bool) string {
 		return ""
 	}
 	if !chosen {
-		return "Choose which logins are copied with `repose logins`."
+		return "Choose which logins are copied with `repose secrets choose`."
 	}
 	var off []string
 	for n := range skip {
@@ -614,5 +651,5 @@ func loginsLine(copied []string, skip map[string]bool, chosen bool) string {
 	if len(off) == 0 {
 		return ""
 	}
-	return "Left on your laptop (repose logins): " + strings.Join(off, ", ") + "."
+	return "Left on your laptop (repose secrets choose): " + strings.Join(off, ", ") + "."
 }

@@ -10608,8 +10608,8 @@ nothing next to the command. grpc-hostd.md says so. Test:
 `TestHeartbeatAheadOfEveryResult` (two commands give `hb,result,hb,result`;
 `result,result` against the old sender).
 
-**I-422. The laptop chooses which logins `run` copies: `repose logins`
-and `[logins] skip` in config.toml.** (owner, 2026-10-03: "for choosing
+**I-422. The laptop chooses which logins `run` copies: `repose secrets
+choose` and `[logins] skip` in config.toml.** (owner, 2026-10-03: "for choosing
 what credentials are copied over, think it should be a per CLI config?
 like some way to repose .... and it lists credentials detected and you
 tick/untick what you dont want sent off? plus perhaps a config file?")
@@ -10630,15 +10630,22 @@ go laptop to guest over SSH and the api never sees them (R2-8), so a
 dashboard switch would be a setting about files the api has never seen,
 and each laptop decides for the logins it has. Nothing changes for a user
 who sets nothing: everything is copied, as before, and the `Credentials:`
-line adds "Choose which logins are copied with `repose logins`" when a
+line adds "Choose which logins are copied with `repose secrets choose`" when a
 login travelled and no list exists (not on the runs that name only `git`,
 which is every run).
 
-`repose logins` shows a toggle list on a terminal (space, Enter, `q`) and
-prints the list otherwise, with what this laptop has (a login missing, the
-checkout's `.env` count); `repose logins on|off NAME...` sets it from a
-script; `reset` drops the scope's table; `--project` picks the project's
-own list. The command edits only its own table, keeping the rest of the
+`repose secrets choose` shows a toggle list on a terminal (space, Enter,
+`q`) and prints the list otherwise, with what this laptop has (a login
+missing, the checkout's `.env` count); `--off NAME...` and `--on NAME...`
+set it from a script; `--reset` drops the scope's table; `--project` picks
+the project's own list. `repose secrets list` on a terminal shows both
+kinds, the secrets repose stores and what this laptop copies; piped, it
+keeps its one `NAME<tab>DATE` line per secret. The command sits under
+`secrets` because the docs already put the copied logins on the secrets
+page, and a top-level `repose logins` was one letter from `repose login`,
+which is the account (owner, same session: "repose logins kinda makes me
+think its a repose secrets thing"; "repose secrets copy sounds like you
+are telling it to copy the secrets", so the verb is `choose`). The command edits only its own table, keeping the rest of the
 file and that table's comment lines byte for byte, writes a symlinked
 config at its target, keeps the file's mode, and refuses (leaving the file
 alone) when the result would not decode to the list asked for, as with a
@@ -10658,7 +10665,8 @@ whose SHA-256 is the laptop file's, names the ones that differ
 the marker, so turning `env` back on sends the set again. Snapshots taken
 before keep their copies; the docs say to revoke the token.
 
-*Rejected:* a per-project setting in the api, shown in the dashboard (the
+*Rejected:* a top-level `repose logins` (above); `repose secrets copy`
+(reads as an order to copy); a per-project setting in the api, shown in the dashboard (the
 reasons above); a file in the checkout (a committed file would decide for
 every teammate's laptop, and what travels depends on what each one is
 logged in to); an allow list (`only = [...]`; a login type added later

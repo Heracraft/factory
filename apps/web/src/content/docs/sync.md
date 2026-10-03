@@ -31,7 +31,7 @@ Later runs, from any folder or laptop, use the checkout the machine already has.
 - **Commits.** Your current branch, including commits you haven't pushed. They go straight from your laptop, so private repositories work with no setup on the machine.
 - **Uncommitted changes** to tracked files.
 - **Untracked files** that git isn't ignoring.
-- **`.env` files.** Gitignored `.env` and `.env.*` files up to 1 MB each. If the machine's copy is newer, it's kept. Unlike [secrets](/docs/secrets), they are files on the machine's disk, so they are in snapshots. `repose logins off env` keeps them on your laptop ([Secrets](/docs/secrets#choose-what-is-copied)).
+- **`.env` files.** Gitignored `.env` and `.env.*` files up to 1 MB each. If the machine's copy is newer, it's kept. Unlike [secrets](/docs/secrets), they are files on the machine's disk, so they are in snapshots. `repose secrets choose --off env` keeps them on your laptop ([Secrets](/docs/secrets#choose-what-is-copied)).
 
 Everything goes over your SSH connection. None of it is stored by repose.
 

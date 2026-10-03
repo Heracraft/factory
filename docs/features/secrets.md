@@ -67,7 +67,7 @@ on the guest disk (in snapshots), not a repose secret, the same as any
 other file the user writes there.
 
 The user chooses which of these travel, on the laptop (DECISIONS I-422):
-`repose logins` toggles `gh`, `codex`, `opencode` and `env` (the
+`repose secrets choose` toggles `gh`, `codex`, `opencode` and `env` (the
 gitignored `.env` files, I-197) and saves the list in the laptop's
 `config.toml`, for every project or, with `--project`, for one. The api
 never holds the choice, for the same reason it never holds the logins.

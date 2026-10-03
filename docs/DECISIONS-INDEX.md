@@ -475,4 +475,4 @@ pointer, not a summary.
 - **I-407** `repose run` waits for a destroy that holds the name it wants, instead of creating NAME-2 — 2026-10-01; L10558
 - **I-408** Placement waits up to three minutes for a guest being stopped before it answers `capacity` — 2026-10-01; L10571
 - **I-409** hostd sends a heartbeat ahead of every command result — 2026-10-01; L10595
-- **I-422** The laptop chooses which logins `run` copies: `repose logins` and `[logins] skip` in config.toml — 2026-10-03; L10611
+- **I-422** The laptop chooses which logins `run` copies: `repose secrets choose` and `[logins] skip` in config.toml — 2026-10-03; L10611

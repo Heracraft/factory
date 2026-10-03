@@ -74,7 +74,7 @@ type credSyncOptions struct {
 // a login the user turned off. It goes inside single quotes in the
 // guest's shell: no apostrophes.
 func skippedCredNotice(label string) string {
-	n := "Removed the " + label + " login an earlier repose run copied to the machine: repose logins has it off."
+	n := "Removed the " + label + " login an earlier repose run copied to the machine: repose secrets choose has it off."
 	if label == "gh" {
 		n += " Git on the machine cannot push to GitHub until you run gh auth login there or store a token as a secret."
 	}

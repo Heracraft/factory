@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// I-422: `repose logins` edits only its own table in config.toml; the
+// I-422: `repose secrets choose` edits only its own table in config.toml; the
 // rest of the file, comments and other tables included, stays byte for
 // byte.
 func TestReplaceTOMLTable(t *testing.T) {
@@ -92,7 +92,7 @@ func TestLoginsOnOffWritesConfig(t *testing.T) {
 		e.Cfg = c
 	}
 	reload()
-	if err := LoginsSetCmd(context.Background(), e, "", false, []string{"env", "gh"}); err != nil {
+	if err := SecretsChooseCmd(context.Background(), e, "", false, true, false, []string{"env", "gh"}); err != nil {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(configPath(dir))
@@ -106,17 +106,33 @@ func TestLoginsOnOffWritesConfig(t *testing.T) {
 		t.Fatalf("output = %q", out.String())
 	}
 	reload()
-	if err := LoginsSetCmd(context.Background(), e, "", true, []string{"gh"}); err != nil {
+	if err := SecretsChooseCmd(context.Background(), e, "", true, false, false, []string{"gh"}); err != nil {
 		t.Fatal(err)
 	}
 	reload()
 	if skip, _, _ := e.Cfg.loginSkip(""); !skip["env"] || skip["gh"] {
 		t.Fatalf("after on gh: %v", skip)
 	}
-	if err := LoginsSetCmd(context.Background(), e, "", false, []string{"vercel"}); exitCodeFor(err, &out) != ExitUsage {
+	if err := SecretsChooseCmd(context.Background(), e, "", false, true, false, []string{"vercel"}); exitCodeFor(err, &out) != ExitUsage {
 		t.Fatalf("unknown name: %v", err)
 	}
-	if err := LoginsResetCmd(context.Background(), e, ""); err != nil {
+	for _, bad := range []struct {
+		on, off, reset bool
+		names          []string
+	}{{true, true, false, []string{"gh"}}, {false, true, false, nil}, {false, false, false, []string{"gh"}}, {false, true, true, []string{"gh"}}} {
+		if err := SecretsChooseCmd(context.Background(), e, "", bad.on, bad.off, bad.reset, bad.names); exitCodeFor(err, &out) != ExitUsage {
+			t.Fatalf("%+v: want a usage error, got %v", bad, err)
+		}
+	}
+	// Not a terminal and no flags: the list, with the change hint.
+	out.Reset()
+	if err := SecretsChooseCmd(context.Background(), e, "", false, false, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "  off  env ") || !strings.Contains(out.String(), "  on   gh ") {
+		t.Fatalf("list = %q", out.String())
+	}
+	if err := SecretsChooseCmd(context.Background(), e, "", false, false, true, nil); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(configPath(dir)); string(b) != before {
@@ -186,10 +202,10 @@ func TestLoginsLine(t *testing.T) {
 	if l := loginsLine([]string{"git"}, nil, false); l != "" {
 		t.Fatalf("git alone is named on every run, so no hint: %q", l)
 	}
-	if l := loginsLine([]string{"gh", "git"}, nil, false); !strings.Contains(l, "repose logins") {
+	if l := loginsLine([]string{"gh", "git"}, nil, false); !strings.Contains(l, "repose secrets choose") {
 		t.Fatalf("hint = %q", l)
 	}
-	if l := loginsLine([]string{"codex"}, map[string]bool{"gh": true, "env": true}, true); l != "Left on your laptop (repose logins): env, gh." {
+	if l := loginsLine([]string{"codex"}, map[string]bool{"gh": true, "env": true}, true); l != "Left on your laptop (repose secrets choose): env, gh." {
 		t.Fatalf("line = %q", l)
 	}
 	if l := loginsLine([]string{"codex"}, map[string]bool{}, true); l != "" {
@@ -321,5 +337,55 @@ func TestSyncEnvOffRemovesCopies(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(f.guestRepo(), ".env")); string(b) != "A=1\n" {
 		t.Fatalf(".env = %q", b)
+	}
+}
+
+// `repose run` on a machine that already has its checkout leaves the
+// checkout alone (I-367) but still removes the .env copies once env is
+// off, so "the next repose run" holds (I-422).
+func TestRunEnvOffRemovesCopiesWithoutSyncing(t *testing.T) {
+	f := newSyncFixture(t)
+	if err := os.WriteFile(filepath.Join(f.local, ".gitignore"), []byte(".env\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, f.local, "git", "add", ".gitignore")
+	mustRun(t, f.local, "git", "commit", "-q", "-m", "ignore env")
+	if err := os.WriteFile(filepath.Join(f.local, ".env"), []byte("A=1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	sync := func(firstOnly, off bool) *SyncSummary {
+		t.Helper()
+		s, err := syncGuest(context.Background(), f.target, f.local, testSlug, SyncOptions{
+			FirstOnly: firstOnly,
+			EnvOff:    off,
+			EnvLater: func() []envFile {
+				envs, err := buildEnvCarry(f.local)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return envs
+			},
+			Carry: func(markers map[string]string) (*credCarry, error) {
+				return buildCredentialsAndCarry(home, f.local, credSyncOptions{}, carryOptions{Markers: markers})
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	if s := sync(false, false); s.EnvFiles != 1 {
+		t.Fatalf("env files = %d", s.EnvFiles)
+	}
+	s := sync(true, true)
+	if !s.Skipped || s.EnvRemoved != 1 {
+		t.Fatalf("skipped %v removed %d", s.Skipped, s.EnvRemoved)
+	}
+	if fileExists(filepath.Join(f.guestRepo(), ".env")) {
+		t.Fatal(".env is still on the machine")
+	}
+	if s := sync(true, true); s.EnvRemoved != 0 {
+		t.Fatalf("second run removed %d", s.EnvRemoved)
 	}
 }
