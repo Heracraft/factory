@@ -94,7 +94,7 @@ A stopped machine costs only its disk. The next `repose run` starts it again in 
 
 ## Next
 
-- [Run and attach](/docs/run-and-attach): tmux, several agents, `repose ps`, and `repose exec -- npm test` to run one command.
+- [Run and attach](/docs/run-and-attach): tmux, several agents, `repose ps`, and `repose exec npm test` to run one command.
 - [SSH and editors](/docs/ssh-and-editors): `ssh your-project.repose`, scp, rsync, and `repose code` for VS Code, Cursor or Zed.
 - [Sync](/docs/sync): what travels to the machine, and `git fetch repose` for what comes back.
 - [The machine](/docs/machine): what's installed, ports, the browser.

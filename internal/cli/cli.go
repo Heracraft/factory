@@ -22,6 +22,7 @@ import (
 // per docs/interfaces/cli-config.md.
 func Execute(version string) int {
 	markSSHPrepared() // before any child starts (I-281)
+	cliVersion = version
 	// A mistyped command or subcommand is answered before cobra runs, on a
 	// throwaway tree (its flag parsing leaves state behind), with the
 	// command the user probably meant (DECISIONS I-276).

@@ -300,13 +300,18 @@ is not a terminal: the CLI execs ssh as before. Nothing is logged.
   `window_activity` and `window_active`. Idle time is the guest's clock
   minus the activity time, so a skewed laptop clock does not matter.
   `-q` prints names, `--json` the records. Nothing is logged.
-- `repose exec [PROJECT] -- CMD...` runs, over ssh, `cd` into the
+- `repose exec [PROJECT] [--] CMD...` runs, over ssh, `cd` into the
   checkout (the home directory when the machine has none, I-368), `/etc/profile.d/repose.sh`, then
   `/etc/repose/devshell.sh` (the agent wrappers' loader, I-259) or, on an
   older base, `direnv export bash`, then `exec` of the arguments, each
   single-quoted. No stdin without `-i`, a remote tty only with `-t`
   (`ssh -tt`). Once the command runs, repose exits with its status; repose's
-  own codes only come before, with a message.
+  own codes only come before, with a message. The `--` is optional
+  (I-411): flags stop at the first word, so the command's own flags pass
+  through; with no `--` and no `--project`, a first word that is one of
+  the account's slugs is PROJECT, and that word alone is refused (exit 2).
+  A `--` after one word and `-i`/`-t` only is the old PROJECT separator;
+  any other `--` is the command's.
 - `repose ssh [PROJECT]` replaces the CLI with `ssh -t <slug>.repose` running
   a login shell in the checkout, outside tmux.
 - All three need a running project (exit 5 otherwise) and ensure the

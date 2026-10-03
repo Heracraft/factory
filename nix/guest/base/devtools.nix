@@ -63,7 +63,9 @@ let
       else
         attr=$(printf '%s\n' "$attrs" | head -n1)
       fi
-      others=$(printf '%s\n' "$attrs" | grep -vxF -- "$attr" | head -n3 | paste -sd, - | sed 's/,/, /g')
+      # grep -v finds nothing when one package has the command, and under
+      # pipefail that would end the script before it printed a word (I-410).
+      others=$(printf '%s\n' "$attrs" | { grep -vxF -- "$attr" || true; } | head -n3 | paste -sd, - | sed 's/,/, /g')
       # Plain and aligned (I-249): the not-found line bash users know,
       # then each command with what it does beside it.
       now="nix profile add nixpkgs#$attr"

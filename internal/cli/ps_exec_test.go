@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -128,6 +130,20 @@ func TestExecRunsInTheCheckout(t *testing.T) {
 		t.Errorf("-i did not pass stdin: %q", out.buf.String())
 	}
 
+	// I-411: with no --, a first word naming a project is PROJECT; alone,
+	// it is refused rather than run as a command.
+	out.buf.Reset()
+	if err := ExecCmd(ctx, f.env, ExecOptions{MayNameProject: true, Command: []string{testSlug, "pwd"}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(out.buf.String(), "/"+testSlug+"\n") {
+		t.Errorf("the project word was not taken as PROJECT: %q", out.buf.String())
+	}
+	err = ExecCmd(ctx, f.env, ExecOptions{MayNameProject: true, Command: []string{testSlug}}, nil)
+	if ee, ok := err.(*exitError); !ok || ee.code != ExitUsage || !strings.Contains(ee.msg, "repose exec "+testSlug+" COMMAND") {
+		t.Fatalf("a lone project word came back as %v", err)
+	}
+
 	err = ExecCmd(ctx, f.env, ExecOptions{ProjectArg: testSlug, Command: []string{"sh", "-c", "exit 42"}}, nil)
 	if ee, ok := err.(*exitError); !ok || ee.code != 42 || ee.msg != "" {
 		t.Fatalf("exit 42 came back as %v", err)
@@ -155,5 +171,59 @@ func TestExecScriptGolden(t *testing.T) {
 	}
 	if string(want) != got {
 		t.Fatalf("%s is stale (-update rewrites it):\n got %s\nwant %s", path, got, want)
+	}
+}
+
+// I-411: the -- is optional. Only a "--" after one word and exec's own
+// flags separates PROJECT; any other belongs to the command.
+func TestExecSeparated(t *testing.T) {
+	for _, tc := range []struct {
+		args    []string
+		project string
+		command []string
+		ok      bool
+		i, tty  bool
+	}{
+		{args: []string{"todo-app", "--", "git", "log"}, project: "todo-app", command: []string{"git", "log"}, ok: true},
+		{args: []string{"todo-app", "-it", "--", "psql"}, project: "todo-app", command: []string{"psql"}, ok: true, i: true, tty: true},
+		{args: []string{"todo-app", "-t", "--"}, project: "todo-app", command: []string{}, ok: true, tty: true},
+		{args: []string{"grep", "ADMIN", "prod.env"}},
+		{args: []string{"git", "log", "--", "main.go"}},
+		{args: []string{"grep", "-n", "x", "--", "y"}},
+	} {
+		var o ExecOptions
+		p, c, ok := execSeparated(tc.args, &o)
+		if ok != tc.ok || p != tc.project || strings.Join(c, " ") != strings.Join(tc.command, " ") || o.Interactive != tc.i || o.TTY != tc.tty {
+			t.Errorf("%q: got %q %q %v i=%v t=%v", tc.args, p, c, ok, o.Interactive, o.TTY)
+		}
+	}
+}
+
+// I-411: the command's own flags reach it, not exec's parser, and a
+// missing command is still a usage error.
+func TestExecCommandFlagsPassThrough(t *testing.T) {
+	stop := errors.New("parsed")
+	for _, args := range [][]string{
+		{"grep", "-n", "ADMIN_PASSWORD", "prod.env"},
+		{"-it", "psql", "-c", "select 1"},
+		{"--", "npm", "test"},
+		{"todo-app", "--", "ls", "-la"},
+	} {
+		cmd := newExecCmd(func() (*Env, error) { return nil, stop }, &globalFlags{})
+		cmd.SetArgs(args)
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		if err := cmd.Execute(); !errors.Is(err, stop) {
+			t.Errorf("%q: %v", args, err)
+		}
+	}
+	for _, args := range [][]string{{}, {"--"}, {"todo-app", "--"}} {
+		cmd := newExecCmd(func() (*Env, error) { return nil, stop }, &globalFlags{})
+		cmd.SetArgs(args)
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		if err := cmd.Execute(); err == nil || errors.Is(err, stop) {
+			t.Errorf("%q ran: %v", args, err)
+		}
 	}
 }
