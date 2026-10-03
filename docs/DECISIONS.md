@@ -10706,3 +10706,17 @@ typed or classified from its message; `permission_prompt` and
 `agent_needs_input` still raise `needs_input`. A finished agent shows
 `idle`. Test: `TestMapClaudeIgnoresUnreportableHooks` (typed and untyped
 idle fixtures). Reaches machines with the next base.
+
+**I-419. `repose questions` says where it looked, names terminal waits, and asks for one project's list.** (owner,
+2026-10-03) From the home directory the owner ran `repose questions`
+("No questions are waiting."), then `repose status` ("No repose project
+here"), and `repose ls` showed `kanali ... claude: needs_input`. With no
+PROJECT, `questions` covers every project and ignores the directory, but
+its answer did not say so. It now says "No questions are waiting in any of
+your projects." or "No questions are waiting on <slug>.", and lists the
+running agents in `needs_input` (a terminal prompt `repose reply` cannot
+answer) with `repose attach <slug>`. `--json` is unchanged, the questions
+only. With PROJECT it reads `GET /projects/:id/questions?state=pending`
+instead of filtering the all-projects list, which stops at 50, so another
+project's newer questions no longer hide this one's. Tests:
+`TestQuestionsSaysWhereItLooked`, `TestQuestionsForOneProjectPastTheCap`.

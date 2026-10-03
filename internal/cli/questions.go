@@ -45,6 +45,17 @@ func (c *Client) ListQuestions(ctx context.Context) ([]Question, error) {
 	return r.Questions, nil
 }
 
+// ListProjectQuestions is GET /projects/:id/questions?state=pending: one
+// project's waiting questions, which the all-projects list (50 at most)
+// can crowd out.
+func (c *Client) ListProjectQuestions(ctx context.Context, projectID string) ([]Question, error) {
+	var r questionList
+	if err := c.get(ctx, "/projects/"+url.PathEscape(projectID)+"/questions?state=pending", &r); err != nil {
+		return nil, err
+	}
+	return r.Questions, nil
+}
+
 // AnswerQuestion is POST /projects/:id/questions/:qid/answer.
 func (c *Client) AnswerQuestion(ctx context.Context, projectID, questionID, answer string) (*Question, error) {
 	var q Question
@@ -88,20 +99,26 @@ func shortID(id string) string {
 }
 
 // QuestionsCmd implements `repose questions [PROJECT]`: every question
-// still waiting for an answer, or only PROJECT's.
+// still waiting for an answer, or only PROJECT's. With no PROJECT it
+// covers every project, wherever it is run, and says so; agents waiting
+// at a prompt in their terminal (needs_input) are named after, since
+// they are not questions and `repose reply` cannot answer them.
 func QuestionsCmd(ctx context.Context, e *Env, projectArg string) error {
-	qs, err := e.Client.ListQuestions(ctx)
+	var qs []Question
+	var projects []Project
+	var err error
+	if projectArg != "" {
+		p, perr := requireProject(ctx, e, projectArg)
+		if perr != nil {
+			return perr
+		}
+		projects = []Project{*p}
+		qs, err = e.Client.ListProjectQuestions(ctx, p.ID)
+	} else {
+		qs, err = e.Client.ListQuestions(ctx)
+	}
 	if err != nil {
 		return err
-	}
-	if projectArg != "" {
-		var keep []Question
-		for _, q := range qs {
-			if matchesProject(q, projectArg) {
-				keep = append(keep, q)
-			}
-		}
-		qs = keep
 	}
 	if e.JSON {
 		if qs == nil {
@@ -109,16 +126,43 @@ func QuestionsCmd(ctx context.Context, e *Env, projectArg string) error {
 		}
 		return writeJSONOut(e.Out, qs)
 	}
-	if len(qs) == 0 {
-		_, _ = fmt.Fprintln(e.Out, "No questions are waiting.")
-		return nil
-	}
 	now := time.Now()
 	for i, q := range qs {
 		if i > 0 {
 			_, _ = fmt.Fprintln(e.Out)
 		}
 		printQuestion(e.Out, q, now)
+	}
+	if projectArg == "" {
+		// For the terminal waits; a failure leaves only the questions.
+		projects, _ = e.Client.ListProjects(ctx)
+	}
+	var waiting []string
+	for _, p := range projects {
+		if p.Signals == nil || p.State != "running" {
+			continue
+		}
+		for _, a := range p.Signals.Agents {
+			if a.State == "needs_input" {
+				waiting = append(waiting, fmt.Sprintf("  %s on %s: `repose attach %s`", a.Agent, p.Slug, p.Slug))
+			}
+		}
+	}
+	switch {
+	case len(qs) > 0:
+	case projectArg != "":
+		_, _ = fmt.Fprintf(e.Out, "No questions are waiting on %s.\n", projects[0].Slug)
+	default:
+		_, _ = fmt.Fprintln(e.Out, "No questions are waiting in any of your projects.")
+	}
+	if len(waiting) > 0 {
+		if len(qs) > 0 {
+			_, _ = fmt.Fprintln(e.Out)
+		}
+		_, _ = fmt.Fprintln(e.Out, "Waiting at a prompt in their terminal, which `repose reply` can't answer:")
+		for _, l := range waiting {
+			_, _ = fmt.Fprintln(e.Out, l)
+		}
 	}
 	return nil
 }
