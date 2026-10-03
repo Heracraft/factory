@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-451 entries.
+453 entries.
 
 ## Scope
 
@@ -483,3 +483,5 @@ pointer, not a summary.
 - **I-412** The docs as markdown at /llms.txt, and the laptop's CLI version on the machine — 2026-10-03; L10748
 - **I-413** The tools carry reads Homebrew formulae and installs them from nixpkgs — 2026-10-03; L10764
 - **I-414** Events page back: `before` and `limit` on the api, Show older on the dashboard, and `repose events` reads the whole window — 2026-10-03; L10782
+- **I-418** Claude Code's `idle_prompt` is no event — 2026-10-03; L10801
+- **I-419** `repose questions` says where it looked, names terminal waits, and asks for one project's list — 2026-10-03; L10818
