@@ -79,12 +79,13 @@ The logins in the table above are copied until you say otherwise, and so are you
 
 ```
 $ repose secrets choose
-Copied to the machine at each repose run, for every project (space toggles, enter saves, q leaves):
+Copied at each repose run, for every project:
+space toggles, enter saves, q leaves
 
-> [x] gh        GitHub CLI login: every repository your account can reach
+> [x] gh        GitHub CLI login: every repo you can reach
   [x] codex     Codex CLI login
   [ ] opencode  opencode login (not logged in on this laptop)
-  [x] env       gitignored .env files in the checkout (2 in this checkout)
+  [x] env       gitignored .env files (2 in this checkout)
 ```
 
 Or name them, which also works in scripts:

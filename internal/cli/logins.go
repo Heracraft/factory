@@ -40,7 +40,7 @@ const envLogin = "env"
 // credRows, then the .env files.
 func loginItems() []loginItem {
 	what := map[string]string{
-		"gh":       "GitHub CLI login: every repository your account can reach",
+		"gh":       "GitHub CLI login: every repo you can reach",
 		"codex":    "Codex CLI login",
 		"opencode": "opencode login",
 	}
@@ -48,7 +48,7 @@ func loginItems() []loginItem {
 	for _, r := range credRows {
 		items = append(items, loginItem{Name: r.Label, What: what[r.Label]})
 	}
-	return append(items, loginItem{Name: envLogin, What: "gitignored .env files in the checkout"})
+	return append(items, loginItem{Name: envLogin, What: "gitignored .env files"})
 }
 
 func loginNames() []string {
@@ -200,11 +200,11 @@ func writeLoginRows(w io.Writer, skip map[string]bool, found map[string]string) 
 func loginsHeader(s loginsScope, own bool) string {
 	switch {
 	case s.Slug == "":
-		return "Copied to the machine at each repose run, for every project"
+		return "Copied at each repose run, for every project"
 	case own:
-		return "Copied to " + s.Slug + "'s machine at each repose run (its own list)"
+		return "Copied to " + s.Slug + " at each repose run (its own list)"
 	default:
-		return "Copied to " + s.Slug + "'s machine at each repose run (the list for every project)"
+		return "Copied to " + s.Slug + " at each repose run (the shared list)"
 	}
 }
 
@@ -546,7 +546,7 @@ func pickLogins(r io.Reader, w io.Writer, header string, items []loginItem, skip
 		if drawn > 0 {
 			fmt.Fprintf(&b, "\x1b[%dA\r\x1b[J", drawn)
 		}
-		fmt.Fprintf(&b, "%s (space toggles, enter saves, q leaves):\r\n\r\n", header)
+		fmt.Fprintf(&b, "%s:\r\nspace toggles, enter saves, q leaves\r\n\r\n", header)
 		for i, it := range items {
 			mark, ptr := " ", "  "
 			if on[it.Name] {
@@ -558,7 +558,7 @@ func pickLogins(r io.Reader, w io.Writer, header string, items []loginItem, skip
 			fmt.Fprintf(&b, "%s[%s] %-9s %s%s\r\n", ptr, mark, it.Name, it.What, foundNote(found, it.Name))
 		}
 		_, _ = io.WriteString(w, b.String())
-		drawn = len(items) + 2
+		drawn = len(items) + 3
 	}
 	draw()
 	br := bufio.NewReader(r)

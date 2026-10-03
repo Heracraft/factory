@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // I-422: `repose secrets choose` edits only its own table in config.toml; the
@@ -312,6 +313,11 @@ func TestSyncEnvOffRemovesCopies(t *testing.T) {
 	// The agent edits one on the machine.
 	edited := filepath.Join(f.guestRepo(), ".env.local")
 	if err := os.WriteFile(edited, []byte("B=agent\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Newer than the laptop's by more than the second mtime compares at.
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(edited, later, later); err != nil {
 		t.Fatal(err)
 	}
 	s := sync(true)
