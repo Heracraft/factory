@@ -900,7 +900,7 @@ in
           print(guest.succeed("tail -n 12 /home/dev/.repose/tools-install.log"))
           assert guest.succeed("sudo -H -u dev bash -lc 'greet'").strip() == "greetings"
 
-      with subtest("I-410: a boot sets the old /tmp aside in one rename and deletes it after"):
+      with subtest("I-417: a boot sets the old /tmp aside in one rename and deletes it after"):
           guest.succeed("sudo -u dev mkdir -p /tmp/stale && sudo -u dev sh -c 'for i in $(seq 2000); do : > /tmp/stale/f$i; done'")
           guest.shutdown()
           guest.start()

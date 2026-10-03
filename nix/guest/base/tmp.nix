@@ -1,5 +1,5 @@
 # /tmp is on the guest's volume and starts every boot empty, but not through
-# boot.tmp.cleanOnBoot (DECISIONS I-410): its `D! /tmp` rule has
+# boot.tmp.cleanOnBoot (DECISIONS I-417): its `D! /tmp` rule has
 # systemd-tmpfiles-setup delete the old /tmp file by file before
 # sysinit.target, and guestd, sshd and everything else waited for it: 18 to
 # 20 s of a 27 s start on host-01, for a /tmp that a day of go test and
@@ -25,7 +25,12 @@ in
     after = [ "systemd-remount-fs.service" ];
     before = [ "systemd-tmpfiles-setup.service" "sysinit.target" "shutdown.target" ];
     conflicts = [ "shutdown.target" ];
-    serviceConfig.Type = "oneshot";
+    # Once a boot: on host-01 a second start request ran it again 0.24 s
+    # later, which would have moved aside whatever /tmp had gained by then.
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
     path = [ pkgs.coreutils pkgs.systemd ];
     # A base applied without a reboot (guestd's Switch) restarts the active
     # targets, and sysinit.target would start this unit on a running

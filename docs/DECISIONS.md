@@ -10608,7 +10608,7 @@ nothing next to the command. grpc-hostd.md says so. Test:
 `TestHeartbeatAheadOfEveryResult` (two commands give `hb,result,hb,result`;
 `result,result` against the old sender).
 
-**I-410. A boot sets the old /tmp aside in one rename and deletes it after
+**I-417. A boot sets the old /tmp aside in one rename and deletes it after
 the boot.** (owner, 2026-10-02: "starting a stopped project is taking 27
 seconds") On host-01, StartGuest for a stopped large guest ran 01:32:13Z
 to 01:32:40Z. hostd had Cloud Hypervisor up within 0.1 s; the guest's
@@ -10628,7 +10628,9 @@ them took 2.9 s on a quiet disk and 18 s at boot).
 `repose-tmp-purge.timer` deletes the set-aside trees a minute after the
 boot at Nice 19 and idle I/O class, and nothing a boot waits for depends
 on it. A /tmp that is a mount point (a tmpfs a user configured) is left
-alone. The rotate exits once systemd-tmpfiles-setup is active: a base
+alone. The rotate runs once a boot (RemainAfterExit; on host-01 a second
+start request ran it again 0.24 s after the first) and exits once
+systemd-tmpfiles-setup is active: a base
 applied without a reboot restarts the active targets, and sysinit.target
 would otherwise start it on a running machine, under its tmux and
 browsers. A stop before the purge snapshots the set-aside tree, the same
@@ -10639,6 +10641,14 @@ in /tmp would then take its memory); clearing /tmp at stop instead (a stop
 is waited on too, and a guest that crashes skips it).
 No public doc changes: /tmp's behaviour is the same, and the docs already
 say a start takes about 10 seconds (`/docs`, index). Test: guest-tools-carry
-subtest "I-410" (a 2,000-file /tmp is gone after a reboot, set aside under
+subtest "I-417" (a 2,000-file /tmp is gone after a reboot, set aside under
 tmp-old, no `D! /tmp` rule, a start of the unit on the running guest
-leaves /tmp alone, the purge empties tmp-old).
+leaves /tmp alone, the purge empties tmp-old). Measured on host-01
+(2026-10-03) with main's guest system and this one booted by hand on one
+scratch thin volume (2 GB, 4 vCPU, the production kernel, initrd and
+Cloud Hypervisor arguments, no network, no hostd), /tmp holding 200,405
+entries before each measured boot: main spent 4.72 s and 4.43 s in
+systemd-tmpfiles-setup and guestd listened at 9.78 s and 8.43 s; this
+one spent 0.16 s and 0.15 s and guestd listened at 4.72 s and 4.74 s. After
+each boot /tmp held only that boot's own 4 entries, and the purge ran at
+60 s and emptied tmp-old in 3.1 s and 3.3 s.

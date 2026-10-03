@@ -475,4 +475,4 @@ pointer, not a summary.
 - **I-407** `repose run` waits for a destroy that holds the name it wants, instead of creating NAME-2 — 2026-10-01; L10558
 - **I-408** Placement waits up to three minutes for a guest being stopped before it answers `capacity` — 2026-10-01; L10571
 - **I-409** hostd sends a heartbeat ahead of every command result — 2026-10-01; L10595
-- **I-410** A boot sets the old /tmp aside in one rename and deletes it after the boot — 2026-10-02; L10611
+- **I-417** A boot sets the old /tmp aside in one rename and deletes it after the boot — 2026-10-02; L10611
