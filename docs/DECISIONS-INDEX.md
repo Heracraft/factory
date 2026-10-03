@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-443 entries.
+444 entries.
 
 ## Scope
 
@@ -475,3 +475,4 @@ pointer, not a summary.
 - **I-407** `repose run` waits for a destroy that holds the name it wants, instead of creating NAME-2 — 2026-10-01; L10558
 - **I-408** Placement waits up to three minutes for a guest being stopped before it answers `capacity` — 2026-10-01; L10571
 - **I-409** hostd sends a heartbeat ahead of every command result — 2026-10-01; L10595
+- **I-416** Work happens in worktrees and reaches main through a release queue — 2026-10-03; L10611

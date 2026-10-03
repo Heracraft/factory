@@ -10607,3 +10607,38 @@ tries the placement. A heartbeat is one `update hosts`; one per command is
 nothing next to the command. grpc-hostd.md says so. Test:
 `TestHeartbeatAheadOfEveryResult` (two commands give `hb,result,hb,result`;
 `result,result` against the old sender).
+
+**I-416. Work happens in worktrees and reaches main through a release
+queue.** (owner, 2026-10-03: "start a release queue so multiple agents can
+work on features and queue and coordinate a full release. Also the default
+should be working in a worktree.") Four agent sessions were working in
+this checkout at once, on their own branches and on main. CLAUDE.md said to
+work on main and ask before branching, so a session either edited the main
+checkout under the others or asked first. Decision ids collided: on
+2026-10-03 feedback-batch and start-fast had both written I-410, as
+restore-fast and the design round had both written I-369 two days before.
+Merges and deploys happened from whichever session finished, so a release
+was never a known set of branches.
+
+Now every change starts in `~/<checkout>-<slug>` on its own branch with no
+need to ask, and the main checkout stays on main. `ops/dev/release-queue`
+(bash, state in the common git dir under one flock, on no branch) does
+four things: `id` reserves decision ids after reading every local branch,
+every worktree's uncommitted DECISIONS.md and earlier reservations; `add`
+queues a clean branch that merges into main (a conflict only in the
+generated DECISIONS-INDEX.md is allowed) and names its deploy targets from
+its diff (Go through `go list -deps`, so a shared package counts for each
+binary that imports it); `cut` and `resume` merge the queue in order into
+a `release/<id>` worktree, regenerating the index when that is the only
+conflict; `done` refuses until main holds the release, then removes its
+worktree. One conductor session verifies the merge, asks the owner once
+per release, fast-forwards and pushes main, publishes the base and tags
+the CLI as the targets need, runs each branch's live check and records the
+release in STATUS. `docs/ops/RELEASE.md` is the procedure; host and edge
+switches stay the owner's.
+
+*Rejected:* a queue file committed on main (every `add` would be a commit
+on main from a worktree, racing the conductor's merges); per-branch queue
+files union-merged into the repository (the conductor would have to scan
+every branch to learn what is queued); a GitHub merge queue (pull requests
+are not used here, and agents do not push).
