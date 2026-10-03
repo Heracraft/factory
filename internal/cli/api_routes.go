@@ -131,6 +131,9 @@ type opIDResponse struct {
 type StartResult struct {
 	OpID    string `json:"op_id"`
 	Restart bool   `json:"restart"`
+	// Create: the project had no guest (its create failed before one
+	// was made), so the api runs the create again (I-406).
+	Create bool `json:"create"`
 }
 
 func (c *Client) StartProject(ctx context.Context, id string) (*StartResult, error) {
@@ -306,16 +309,24 @@ func (c *Client) CreateSnapshot(ctx context.Context, id string) (string, error) 
 	return r.OpID, nil
 }
 
-func (c *Client) RestoreSnapshot(ctx context.Context, id, snapshotID, asNew string) (string, error) {
-	var r opIDResponse
+// RestoreSnapshot starts the restore and returns its op and the project
+// that owns the op: the new one with asNew (api.md's project_id), else id.
+func (c *Client) RestoreSnapshot(ctx context.Context, id, snapshotID, asNew string) (opID, projectID string, err error) {
+	var r struct {
+		OpID      string `json:"op_id"`
+		ProjectID string `json:"project_id"`
+	}
 	var body map[string]string
 	if asNew != "" {
 		body = map[string]string{"as_new_project": asNew}
 	}
 	if err := c.post(ctx, fmt.Sprintf("/projects/%s/snapshots/%s/restore", url.PathEscape(id), url.PathEscape(snapshotID)), body, &r); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return r.OpID, nil
+	if r.ProjectID == "" {
+		r.ProjectID = id
+	}
+	return r.OpID, r.ProjectID, nil
 }
 
 func (c *Client) ListEvents(ctx context.Context, id, since string) ([]Event, error) {

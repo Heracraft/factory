@@ -77,7 +77,8 @@ component must emit:
 
 - hostd: `guest_create`, `guest_start`, `guest_stop`, `guest_destroy`,
   `guest_state`, `build_start`, `build_done`, `build_fail`, `switch_done`,
-  `snapshot_start`, `snapshot_done`, `snapshot_fail`, `stream_connect`,
+  `snapshot_start`, `snapshot_done`, `snapshot_fail`, `restore_done`,
+  `restore_fail` (I-403), `stream_connect`,
   `stream_disconnect`, `guestd_lost`, `guestd_regained`, `pool_warning`,
   `store_warning`, `egress_blocked` (a guest over a block's threshold,
   DECISIONS I-238..I-240).
@@ -91,6 +92,7 @@ component must emit:
   `interfaces/vsock-guestd.md`).
 - api: `request` (method, route, status, duration_ms), `cert_issue`,
   `cert_revoke`, `schedule` (host chosen, free memory), `schedule_fail`,
+  `schedule_wait` (no host fits until a guest being stopped is down, I-408),
   `command_send`, `command_result`, `build_reused` (a create whose closure
   was already on the host, DECISIONS I-160), `rollup_done`, `webhook_received`,
   `overage_charged`, `gate_refused` (I-289),

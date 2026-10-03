@@ -510,6 +510,38 @@ func (s *Server) startProject(w http.ResponseWriter, r *http.Request) error {
 	default:
 		return errf("conflict", "%s is %s; wait for it to settle", p.Slug, p.State)
 	}
+	if p.GuestID == nil {
+		// A create that failed before CreateGuest (no host with capacity,
+		// a failed build) left the project in error with no guest; a
+		// restart has nothing to stop or boot, and nothing else could
+		// create it, so `repose start`, `repose run` and the dashboard
+		// went on answering "create it first" (dogfood 2026-10-01,
+		// I-406). The create runs again; the placement is redone when
+		// the host it had cannot take it.
+		replace := false
+		if p.HostID != nil {
+			h, err := store.GetHost(r.Context(), s.d.Pool, *p.HostID)
+			replace = err != nil || h.State != "ready" || h.Draining
+		}
+		pid := p.ID
+		var id uuid.UUID
+		err := db.InTx(r.Context(), s.d.Pool, func(tx db.Tx) error {
+			var err error
+			if id, err = s.d.Engine.Enqueue(r.Context(), tx, ops.NewOp{Kind: ops.KindCreate, ProjectID: &pid, Phases: ops.PlanCreate()}, false); err != nil {
+				return err
+			}
+			// "creating", as a fresh create reads, so every list stops
+			// showing the old error the moment the create is accepted.
+			_, err = tx.Exec(r.Context(), "update projects set state = 'creating', host_id = case when $2 then null else host_id end where id = $1 and guest_id is null", pid, replace)
+			return err
+		})
+		if err != nil {
+			return err
+		}
+		s.d.Engine.Kick()
+		writeJSON(w, http.StatusAccepted, map[string]any{"op_id": id, "restart": false, "create": true})
+		return nil
+	}
 	if p.HostID != nil {
 		h, err := store.GetHost(r.Context(), s.d.Pool, *p.HostID)
 		if err == nil && (h.State == "unreachable" || h.State == "retired" || h.State == "lost") {

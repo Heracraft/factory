@@ -322,6 +322,16 @@ func (s *Stream) sender(ctx context.Context, sess hostdv1.HostService_SessionCli
 					continue // acked already (sent on a previous session)
 				}
 			}
+			if _, ok := m.Msg.(*hostdv1.HostMessage_Result); ok {
+				// A heartbeat ahead of every result: the command may have
+				// freed or taken memory (a stop, a destroy, a create), and
+				// the api places the next guest from free_mem_bytes, which
+				// otherwise lags up to HeartbeatInterval. A restore right
+				// after a destroy waited 7 s for it on host-01 (I-409).
+				if err := sess.Send(&hostdv1.HostMessage{Msg: &hostdv1.HostMessage_Heartbeat{Heartbeat: s.host.Heartbeat()}}); err != nil {
+					return err
+				}
+			}
 			if err := sess.Send(m); err != nil {
 				return err
 			}

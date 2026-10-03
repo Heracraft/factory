@@ -83,6 +83,17 @@ L, in order:
    `fragment_line` from the first `fragment.nix:L:C` after the final
    `error:` line, else the last one in the trace, and the verbatim stderr
    (last 32 KB) after a blank line.
+   Before evaluating, hostd looks the inputs up in its eval cache
+   (`/var/lib/repose/builds/.evalcache/<key>`, DECISIONS I-405). The key
+   is a SHA-256 over B, the flake's subdirectory and scheme, the eval
+   attribute, the `base_version` label and F, which with `pure-eval`,
+   `restrict-eval` and no import-from-derivation is all the evaluation
+   reads. A hit whose `.drv` is still in the store (`nix path-info`)
+   skips the `nix eval` above and goes on to step 4 with that derivation;
+   the build log still prints `evaluating configuration`. An entry is
+   written only after a build that passed steps 4 to 6, and a hit whose
+   build fails is removed and the whole build runs again with a fresh
+   evaluation, so a cached evaluation never changes a build's outcome.
 4. Builds the derivation, same scope shape (`--unit repose-build-R`,
    `RuntimeMaxSec=<L.build_s+30>`), same user:
 

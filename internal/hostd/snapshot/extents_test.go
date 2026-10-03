@@ -140,7 +140,7 @@ func TestRawFallbacks(t *testing.T) {
 	if err := os.WriteFile(plain, payload, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	dst := filepath.Join(t.TempDir(), "out")
+	dst := emptyDevice(t, int64(len(payload)))
 	if _, mode := roundTrip(t, p, plain, dst); mode.Format != "raw" || mode.Why == "" {
 		t.Fatalf("mode %+v, want raw with a reason", mode)
 	}
@@ -205,19 +205,19 @@ func TestExtentStreamRefusesATruncatedOrOversizedStream(t *testing.T) {
 	}
 	ok := emptyDevice(t, 1<<20)
 	g, _ := os.OpenFile(ok, os.O_WRONLY, 0)
-	if err := readExtents(bytes.NewReader(s.Bytes()), g); err != nil {
+	if err := readExtents(bytes.NewReader(s.Bytes()), g, nil); err != nil {
 		t.Fatal(err)
 	}
 	_ = g.Close()
 	small := emptyDevice(t, 1<<19)
 	h, _ := os.OpenFile(small, os.O_WRONLY, 0)
-	if err := readExtents(bytes.NewReader(s.Bytes()), h); err == nil {
+	if err := readExtents(bytes.NewReader(s.Bytes()), h, nil); err == nil {
 		t.Fatal("wrote past a smaller device")
 	}
 	_ = h.Close()
 	cut := emptyDevice(t, 1<<20)
 	c, _ := os.OpenFile(cut, os.O_WRONLY, 0)
-	if err := readExtents(bytes.NewReader(s.Bytes()[:s.Len()-16]), c); err == nil {
+	if err := readExtents(bytes.NewReader(s.Bytes()[:s.Len()-16]), c, nil); err == nil {
 		t.Fatal("accepted a stream without its trailer")
 	}
 	_ = c.Close()

@@ -60,8 +60,15 @@ test('the docs columns hold still between pages, and the rail marks the section'
 
 	await page.goto('/docs');
 	await expect(page.getByRole('heading', { level: 1, name: 'Quickstart' })).toBeVisible();
+	// The text column is max-w-[68ch], and ch is the "0" of the prose's
+	// system sans: 622 px on the NixOS dev box, 605 px on CI's Ubuntu (it
+	// held at 605 for 5 s there, 2026-10-01), so its width is the
+	// machine's. What the test holds is that no column moves between
+	// pages: the loop below compares every page with this first read.
+	await page.evaluate(() => document.fonts.ready.then(() => undefined));
+	await expect.poll(boxes).toMatchObject({ sidebar: '100,57,240', rail: '1116,57,224' });
+	expect((await boxes()).main).toMatch(/^380,57,\d+$/);
 	const first = await boxes();
-	expect(first).toEqual({ sidebar: '100,57,240', main: '380,57,622', rail: '1116,57,224' });
 	// Layout shifts during the client navigations. The links are clicked
 	// from script: a shift within 500ms of real input is left out of the
 	// entries' sum (hadRecentInput), and the point is to see every shift.

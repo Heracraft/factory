@@ -10390,6 +10390,225 @@ Internal docs (DESIGN.md, RUNBOOK, OBSERVABILITY, PRICING's prose) keep
 small"): a visitor has not met the classes, and a count is still a
 ceiling.
 
+**I-403. A restore writes the volume with O_DIRECT, eight writes in
+flight, and downloads the snapshot as eight ranged GETs at once.**
+(owner, 2026-10-01; amends the restore steps of 03-hostd.md §5.9 and the
+raw path of I-164) The owner's `repose restore job` took 2m17s. The
+Restore command on host-01 took 124 s of that (04:07:27 to 04:09:31Z),
+for a snapshot of 902 MB compressed, 5.0 GB used on a 40 GB volume, which
+took 11.4 s to make. Measured stage by stage on host-01 against that
+blob and a scratch thin volume: the download 8.7 s on one GET, `zstd -d`
+2.5 s, the 1,796 `pwrite`s 1.0 s, `e2fsck -fp` 0.6 s, and the `fsync`
+125.6 s. The 4.3 GB of records went into the page cache at once and the
+kernel's writeback drained them into the new thin volume at 34 MB/s; the
+data disk is Premium SSD v2 at 16,000 IOPS and 600 MB/s. Sixteen
+buffered writers made no difference (42 MB/s). With O_DIRECT the same
+stream took 8.0 s on one writer, 5.6 s on four, 5.0 s on sixteen and
+6.7 s on sixty-four, `e2fsck -fn` clean every time. How:
+
+- *Direct writes* (`internal/hostd/snapshot/direct.go`). The restore
+  opens the volume twice, once with O_DIRECT. Records go to eight
+  goroutines from a pool of ten 4 MiB buffers aligned to 4096, so a
+  restore holds 40 MiB however large the volume. A record whose offset,
+  length or start in its buffer is off a 4096 boundary waits for the
+  writes in flight to land and switches the rest of the restore to the
+  page cache, which would otherwise read the record's partial page from
+  the device under a direct write to the rest of it. A record that
+  overlaps one in flight waits for it, so the result is what one writer
+  in stream order gives (the stream's records are ordered and disjoint,
+  so neither happens on an ext4 snapshot). A filesystem without O_DIRECT
+  falls back to the page cache. The final `fsync` stays: it is the flush
+  that commits the thin pool's mappings.
+- *Raw images too.* The raw path was `zstd -d | dd bs=4M
+  conv=sparse,fsync`, which has the same writeback. It is now the same
+  writer: each 4 MiB chunk that is all zero is skipped and any other is
+  written from its first non-zero 64 KiB piece to its last, never less
+  sparse than dd was. An image longer than the device is refused, as dd's
+  write past the end was. dd is no longer used on the way in.
+- *Ranged download* (`AzureBlob.Download`, `parallelRanges`). Once the
+  writes took 5 s the single GET (104 MB/s) was the floor. The blob's
+  length and ETag come from one `GetProperties`; then 8 MiB ranges, eight
+  in flight and each pinned to that ETag with If-Match, are written to the
+  pipe in order. Memory is nine blocks, 72 MiB. The first error, from a
+  range or from the pipe, cancels the rest. The 902 MB blob downloads in
+  1.2 to 1.6 s (8.7 s before), the 4.0 GB one in 5.7 s.
+
+Measured on host-01 with the real `AzureBlob.Download` and
+`Pipeline.Write` built from this change, onto scratch thin volumes
+(`bench-*`, removed after): the `job` snapshot in 5.4 and 6.1 s (124 s
+before); the same snapshot restored by the old path onto a second volume
+in 135 s, and `cmp` of the two 40 GB volumes found them identical; the
+largest snapshot on the host (4.0 GB compressed, 19.4 GB used) in 29.2 s,
+which is the disk's 600 MB/s, then `e2fsck -fp` 3.5 s; and a raw image
+(a 4 GiB volume with no filesystem and 1 GiB of scattered random runs,
+read by `Pipeline.Read`) written back in 3.0 s, `cmp` identical and both
+volumes at 25.00% of their thin allocation. hostd now logs `restore done`
+(`restore_done`: bytes downloaded, `duration_ms`, `write_ms`, `fsck_ms`)
+and `restore failed` (`restore_fail`), so the next slow restore says where
+its time went without a benchmark. A restore now
+takes about the Build phase (5.7 s of eval for a destroyed project,
+I-115), the write, and the start (6 s). Tests: `TestDirectRestoreMatchesBuffered`,
+`TestUnalignedRecordGoesBuffered`, `TestOverlappingRecordsLaterWins`,
+`TestDirectWriteErrorIsReturned`, `TestRestoreRefusalsStillHoldWithWriters`,
+`TestRawRestoreIsSparseAndExact`, `TestRawRestoreRefusesALongerImage`,
+`TestRawThroughPipelineIsDirect`, `TestOpenDirectFallsBack`,
+`TestParallelRangesOrderAndSizes` (which caught a ninth fetch in flight
+with eight allowed), `TestParallelRangesErrors`; the existing round trips
+now run on the direct path. *Rejected:* `dd oflag=direct` for the raw
+path (a short read from the pipe makes an unaligned write unless
+`iflag=fullblock`, and it would still be one write at a time);
+`sync_file_range` to push writeback along (the drain rate, not its start,
+was the problem); turning off the thin pool's zeroing (not measured: it is a
+pool-wide setting that changes every guest's first writes, and the direct
+path already runs at the disk's rate); azcopy
+(it cannot write to a pipe, as I-164 found for upload). *Not done:* the
+snapshot side still reads through the page cache (11.4 s for this
+volume), and Build still runs before Restore rather than beside it.
+
+**I-404. A stop uploads its snapshot while the guest shuts down; the
+snapshot read itself stays as it was.** (owner, 2026-10-01: "work on the
+optimizations for snapshotting") Measured on host-01 against scratch
+volumes holding the `job`, `unwrap` and a 19.4 GB-used snapshot: dumpe2fs
+25 ms; reading the used blocks 5.4 to 7.2 s, 9.1 to 9.6 s and 28.6 to
+30.8 s, which is the data disk's provisioned rate (600 MB/s, read at 650
+to 700); `zstd -T4 -3` keeps up (the whole read plus compress took the
+same time at -T4, -T8 and -T16, and at -1, -2 and --fast=3, which only
+made the blob 7 to 40% larger); the upload added about 0.2 s whether 4,
+8 or 16 blocks of 8 or 16 MiB were in flight; `lvcreate -s`, `lvchange
+-ay -K` and `lvremove` 50 to 100 ms each. Reading with O_DIRECT, eight
+chunks in flight, took the same time as the page cache (5.5 vs 5.5 s,
+9.3 vs 9.1 s, 30.2 vs 28.6 s) and showed no page-cache difference in
+`/proc/meminfo`, so it was not kept. A snapshot is the disk's speed;
+reading less (an incremental snapshot) or a faster disk is what would
+change it.
+
+What the user waits for can change. A `repose stop` froze, took the LVM
+snapshot, thawed, read and uploaded the whole snapshot with the guest
+still running and billed, and only then shut the guest down (5 s for
+`job`). Since the LVM snapshot is a fixed point in time once taken,
+`StopGuest` with `snapshot_first` now takes it (`takeSnapshot`), starts
+the upload (`uploadSnapshot`) and shuts the guest down at the same time,
+returning when both are done: the stop waits for the longer of the two,
+and the guest's hours and sessions end right after the freeze. A freeze
+that fails returns before anything shuts down, as before, so the api's
+I-157 recovery is unchanged. An upload that fails while the guest stops
+is taken again from the stopped volume (the I-158 path); if that fails
+too the stop reports the upload failure with the guest down and its
+volume kept, the project goes to `error`, and `repose start` boots it
+(PlanRestart), as for any failed stop. Tests:
+`TestStopUploadsWhileTheGuestShutsDown` (the upload waits for the guest
+to leave `running`; with the old order it times out, checked by running
+it against the old `stop.go`), `TestStopRetriesTheSnapshotFromTheStoppedVolume`
+(also fails on the old order), `TestStopReportsASnapshotThatFailsTwice`,
+`TestStopWithAFailedFreezeStopsNothing`; the snapshot, restore and stop
+tests that were there pass unchanged. `MemBlob` gained `FailNext` and
+`BeforeUpload` for them. *Not done:* incremental snapshots (a design
+change of the blob format and of restore) and a faster data disk (an
+infra cost: the owner's call).
+
+**I-405. hostd caches an evaluation by its inputs and skips `nix eval`
+when they recur.** (owner, 2026-10-01: "faster restores") A restore of a
+destroyed project runs Build before Restore (I-115), and on host-01 that
+Build was 5.3 s of `nix eval` and 0.35 s of `nix build` for the
+`job` restore: the configuration was the one evaluated when the project
+was made. With `pure-eval`, `restrict-eval`, no import-from-derivation
+and inputs locked by the base's `flake.lock`, the evaluation reads the
+base checkout (a git revision, checked out once), the flake attribute,
+the fragment and the `base_version` label, nothing else.
+`internal/hostd/nixbuild/evalcache.go` hashes those into a key and keeps
+`/var/lib/repose/builds/.evalcache/<key>` holding the derivation of a
+build that succeeded. A hit whose `.drv` is still in the store
+(`keep-derivations = true` on hosts keeps it while the closure is
+rooted) goes straight to `nix build`; a hit whose build fails is removed
+and the build runs again with a fresh eval, so the cache can cost time
+and never change a result. The build log lines are unchanged (the CLI
+reads them, I-320); `build done` gains `eval_cached`.
+nix-build-contract.md "What hostd runs" says so. Running Build beside
+Restore was rejected for now: an op holds one command at a time
+(`ops.command_id`), so it needs a migration and engine change for 5 s.
+Tests: `TestEvalCache` (hit, each input missing, a collected `.drv`, a
+stale hit rebuilt from a fresh eval, a failed build not cached, log lines
+unchanged); `TestRealNixEvalCache` with real Nix against the test flake:
+the second revision with the same fragment built from the cache in 384
+ms with the closure a fresh eval of its directory gives, and a changed
+fragment evaluated; the real-Nix corpus passes.
+
+**I-406. `start` on a project with no guest runs its create again.**
+(dogfood, 2026-10-01) `repose run` made `recruiting-2`, whose create op
+failed at placement with `capacity`; I-356 reported that, but the project
+stayed in `error` with no `guest_id`, and every later `repose run` and
+`repose start recruiting-2` enqueued a restart whose `start_guest` phase
+answered "project has no guest; create it first", while `repose ls`
+suggested that same `repose start`. No command creates an existing
+project, so the only way out was `repose rm`. `POST /projects/:id/start`
+on a project whose `guest_id` is null now enqueues a `create`
+(`build`, `create_guest`), sets the project `creating` in the same
+transaction, clears `host_id` first when that host is not ready or is
+draining (a guest-less project holds nothing there), and answers
+`{op_id, restart: false, create: true}`. The create's own failure
+(capacity again, a build error) is reported as any create's is. The CLI
+shows "Creating NAME" for it; an older CLI shows "Starting NAME" and
+waits on the op as it always did. Rejected: a `repose create` command or a
+create flag on start (one more thing to learn for a state the user did
+not choose); destroying the project when its create fails (the name and
+any secrets the user set would go with it). api.md's start row gains
+`create`. Tests: `TestStartCreatesAProjectWhoseCreateFailed` (on the old
+code: `restart: true` and the create-it-first error),
+`TestStartOfAProjectWithNoGuestShowsTheCreate`.
+
+**I-407. `repose run` waits for a destroy that holds the name it wants,
+instead of creating NAME-2.** (dogfood, 2026-10-01) `recruiting` had been
+restored with no remote; `repose rm recruiting` and, five seconds later,
+`repose run` in the checkout: resolve matches by remote, so it did not
+find `recruiting`, the create met the unique slug index (live until the
+destroy ends) and run went on to `recruiting-2`. I-301 already waits when
+the resolved project is the one being destroyed. On a `conflict` from
+`POST /projects`, run now looks the name up (`findByName`) and, when that
+project is `destroying`, waits for it with I-301's wait (same phase line,
+same 10-minute bound) and creates the same name; each project is waited on
+once. A live project with the name still gets NAME-2. Test:
+`TestRunWaitsForANameHeldByADestroy` (the old code made recruiting-2).
+
+**I-408. Placement waits up to three minutes for a guest being stopped
+before it answers `capacity`.** (dogfood, 2026-10-01) The same
+`recruiting-2` create came 5 s after `recruiting`'s destroy began, on
+host-01 (62 GB, five other guests). hostd counts a guest in `stopping`
+in `free_mem_bytes` (class RAM plus 512 MiB), so free memory read about
+7.8 GB until the stop ended, and the large create failed at once; 6 s
+later host-01 had 16 GB free. Placement (`build` of a create, `restore`)
+that finds no host now asks `scheduler.Freeing`: is there a host
+`PickHost` could choose that fits the class once the guests on it in
+`stopping` or `destroying` are down (their class RAM back in
+`free_mem_bytes`, and in the reservations for `stopping`; `destroying` is
+already out of `host_reservations`)? If so, and the op is younger than
+`ops.Config.PlacementWait` (3 min: a stop's 60 s timeout plus heartbeats),
+the phase is not failed and the next engine tick places again; the first
+wait logs `schedule_wait` (registered in obs). Otherwise `capacity` as
+before, with `schedule_fail`. Rejected: counting `destroying` guests in
+`host_reservations` (it makes the host look fuller, the opposite of what
+the create needs); retrying in the CLI (every client would need it, the
+dashboard too). Tests: `TestPlacementWaitsForAGuestBeingStopped` (the
+create waits while the old guest is `stopping`, places once it is
+`stopped`; with a 1 s wait and a guest that stays `stopping`, `capacity`
+after the wait; on the old code `capacity` at once); `TestCapacityError`
+unchanged.
+
+**I-409. hostd sends a heartbeat ahead of every command result.** (owner,
+2026-10-01, the live check of I-403..I-405) On host-01, `repose rm
+e2e-giftbox --wait` then `repose restore e2e-giftbox` spent 7 s before the
+restore's Build was sent: the destroy finished at 20:19:04Z and the api
+logged `schedule_wait` (I-408's placement wait), placing the project at
+20:19:11Z. The host was near its memory, and the api places from
+`hosts.free_mem_bytes`, which hostd refreshed only in its 15 s heartbeat,
+so the memory the destroy had just freed was not seen until the next one.
+hostd's stream now sends a Heartbeat right before each Result
+(`internal/hostd/stream`), and the api handles a session's messages in
+order, so `free_mem_bytes` is current when the engine (500 ms tick) next
+tries the placement. A heartbeat is one `update hosts`; one per command is
+nothing next to the command. grpc-hostd.md says so. Test:
+`TestHeartbeatAheadOfEveryResult` (two commands give `hb,result,hb,result`;
+`result,result` against the old sender).
+
 **I-415. The feedback board is Fider's hosted `repose.fider.io`, and you
 sign in there with your repose account through Logto.** (owner,
 2026-10-01)

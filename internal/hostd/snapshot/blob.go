@@ -161,15 +161,122 @@ func (a *AzureBlob) Upload(ctx context.Context, path string, r io.Reader, meta m
 	return cr.n, nil
 }
 
-// Download implements Blob.
+// Download implements Blob with ranged GETs, downloadBlock bytes each,
+// downloadParallel at once, written to w in order (parallelRanges). One
+// GET of a 902 MB snapshot from host-01 ran at 104 MB/s (8.7 s); eight
+// ranges at once took 1.4 s, and once a restore's writes went direct the
+// single stream was what a restore waited on (DECISIONS I-403). Every
+// range is pinned to the ETag the size came from, so a blob replaced
+// mid-restore fails it instead of mixing two snapshots.
 func (a *AzureBlob) Download(ctx context.Context, path string, w io.Writer) error {
-	resp, err := a.client.DownloadStream(ctx, a.container, path, nil)
+	bc := a.client.ServiceClient().NewContainerClient(a.container).NewBlobClient(path)
+	props, err := bc.GetProperties(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("blob download: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }() // body copied below
-	_, err = io.Copy(w, resp.Body)
-	return err
+	if props.ContentLength == nil || props.ETag == nil {
+		return errors.New("blob download: no length or ETag")
+	}
+	cond := &blob.AccessConditions{ModifiedAccessConditions: &blob.ModifiedAccessConditions{IfMatch: props.ETag}}
+	fetch := func(ctx context.Context, off int64, dst []byte) error {
+		resp, err := bc.DownloadStream(ctx, &blob.DownloadStreamOptions{Range: blob.HTTPRange{Offset: off, Count: int64(len(dst))}, AccessConditions: cond})
+		if err != nil {
+			return err
+		}
+		body := resp.NewRetryReader(ctx, &blob.RetryReaderOptions{MaxRetries: 3})
+		defer func() { _ = body.Close() }() // read to the end below
+		if _, err := io.ReadFull(body, dst); err != nil {
+			return fmt.Errorf("range at %d: %w", off, err)
+		}
+		return nil
+	}
+	if err := parallelRanges(ctx, *props.ContentLength, downloadBlock, downloadParallel, fetch, w); err != nil {
+		return fmt.Errorf("blob download: %w", err)
+	}
+	return nil
+}
+
+const (
+	// downloadBlock is one ranged GET; downloadParallel of them are in
+	// flight, so a download holds downloadBlock*(downloadParallel+1) of
+	// memory, 72 MiB.
+	downloadBlock    = 8 << 20
+	downloadParallel = 8
+)
+
+// parallelRanges reads size bytes as block-sized ranges, up to parallel
+// at once, and writes them to w in order. The first error (a fetch, or
+// w) cancels the fetches still running and is returned.
+func parallelRanges(ctx context.Context, size, block int64, parallel int, fetch func(ctx context.Context, off int64, dst []byte) error, w io.Writer) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	type part struct {
+		buf  []byte
+		done chan error
+	}
+	// order holds the parts in offset order; slots holds one token per
+	// fetch running; the pool's spare buffer is the one being written.
+	order := make(chan part, parallel)
+	slots := make(chan struct{}, parallel)
+	pool := make(chan []byte, parallel+1)
+	for range parallel + 1 {
+		pool <- make([]byte, block)
+	}
+	go func() {
+		defer close(order)
+		for off := int64(0); off < size; off += block {
+			var buf []byte
+			select {
+			case buf = <-pool:
+			case <-ctx.Done():
+				return
+			}
+			select {
+			case slots <- struct{}{}:
+			case <-ctx.Done():
+				pool <- buf
+				return
+			}
+			p := part{buf: buf[:min(block, size-off)], done: make(chan error, 1)}
+			select {
+			case order <- p:
+			case <-ctx.Done():
+				<-slots
+				pool <- buf
+				return
+			}
+			go func(off int64) {
+				err := fetch(ctx, off, p.buf)
+				<-slots
+				p.done <- err
+			}(off)
+		}
+	}()
+	var first error
+	var written int64
+	for p := range order {
+		err := <-p.done
+		if first == nil && err != nil {
+			first = err
+		}
+		if first == nil {
+			if _, err := w.Write(p.buf); err != nil {
+				first = err
+			}
+			written += int64(len(p.buf))
+		}
+		if first != nil {
+			cancel()
+		}
+		pool <- p.buf[:cap(p.buf)]
+	}
+	if first == nil && written != size {
+		first = ctx.Err()
+		if first == nil {
+			first = fmt.Errorf("read %d of %d bytes", written, size)
+		}
+	}
+	return first
 }
 
 // Exists implements Blob.
@@ -191,6 +298,11 @@ type MemBlob struct {
 	Blobs map[string][]byte
 	Meta  map[string]map[string]string
 	Fail  error
+	// FailNext fails that many uploads with "injected upload failure",
+	// then lets them through.
+	FailNext int
+	// BeforeUpload, when set, runs at the start of every Upload.
+	BeforeUpload func(path string)
 }
 
 // NewMemBlob returns an empty store.
@@ -199,6 +311,17 @@ func NewMemBlob() *MemBlob {
 }
 
 func (m *MemBlob) Upload(_ context.Context, path string, r io.Reader, meta map[string]string) (uint64, error) {
+	if m.BeforeUpload != nil {
+		m.BeforeUpload(path)
+	}
+	m.mu.Lock()
+	if m.FailNext > 0 {
+		m.FailNext--
+		m.mu.Unlock()
+		_, _ = io.Copy(io.Discard, r) // drain as a failed upload would
+		return 0, errors.New("injected upload failure")
+	}
+	m.mu.Unlock()
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return 0, err

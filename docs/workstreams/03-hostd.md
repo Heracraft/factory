@@ -141,7 +141,7 @@ replies with any commands it considers unfinished; hostd looks each
   idempotent), else return `internal: command interrupted` for `Exec`;
 - unknown: execute normally.
 
-Heartbeats every 15 seconds. Reconnect on any stream error with backoff 1,
+Heartbeats every 15 seconds, and one ahead of every Result (I-409). Reconnect on any stream error with backoff 1,
 2, 4, 8, 16, 30, 30... seconds and jitter. Commands received while a
 previous instance of the same `command_id` is still executing are
 acknowledged and ignored (the result will be sent when the first finishes).
@@ -240,8 +240,11 @@ to `error` with the step named: `create: step 9 (cloud-hypervisor) failed:
 
 ### 5.6 Stop, Start, Destroy, Resize
 
-`StopGuest`: if `snapshot_first`, run the Snapshot procedure first. Then
-`guestd Shutdown(timeout_s)`; wait for the `guest@<id>` unit to exit; after
+`StopGuest`: if `snapshot_first`, freeze, take the LVM snapshot and thaw
+(Snapshot steps 1 to 3), then upload it while the guest shuts down, and
+return when both are done (DECISIONS I-404). An upload that fails is
+taken again from the stopped volume; a freeze that fails stops nothing.
+The shutdown is `guestd Shutdown(timeout_s)`; wait for the `guest@<id>` unit to exit; after
 `timeout_s` (default 60) send `shutdown` via the CH API; after a further 15
 seconds `systemctl kill guest@<id>`. Tear down tap, tc, nft membership,
 virtiofsd unit. State `stopped`. The volume, GC root and IP allocation
@@ -353,11 +356,14 @@ bytes are reported in the Result so the cost stays visible.
 Restore:
 
 1. `lvcreate -V <volume_bytes>b -T vg-guests/thin -n g-<new guest_id>`.
-2. Download the blob as a stream through `zstd -d`. An extent stream
-   (magic `RPSXT001`) is written record by record with `pwrite` into the
-   new volume, which reads as zeros everywhere else, then `fsync`; a raw
-   stream (every snapshot from before I-164) goes into `dd
-   of=/dev/vg-guests/g-<id> bs=4M conv=sparse`.
+2. Download the blob as 8 MiB ranged GETs, eight at once and pinned to
+   its ETag, in order through `zstd -d`. An extent stream (magic
+   `RPSXT001`) is written record by record into the new volume, which
+   reads as zeros everywhere else; a raw stream (every snapshot from
+   before I-164) is written 4 MiB at a time, skipping chunks that are all
+   zero. Both go around the page cache (O_DIRECT, eight writes in
+   flight), then `fsync`: written through it, the writeback drained into
+   the thin volume at 34 MB/s (DECISIONS I-403).
 3. `e2fsck -fp` on the volume; a non-zero exit above 1 fails the restore
    with `internal: filesystem check failed after restore`.
 4. Continue as CreateGuest from step 4 with the closure the api passed

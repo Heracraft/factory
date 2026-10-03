@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-436 entries.
+444 entries.
 
 ## Scope
 
@@ -468,4 +468,11 @@ pointer, not a summary.
 - **I-400** Landing repair round 3: the Editor capture's rows are inert, so the a11y gate has no allowance left; a restored row is blue, every fade out names its ease, and the hero shows its still frame when the app never mounts — 2026-10-01; amended by I-401; L10216
 - **I-401** Landing repair round 4: the snapshot marks only turn as listed, the hero's lead wraps inside a sentence before it scrolls, the docs sidebar scrolls only for a cut link, and the dashboard's command block shows where its line runs on — 2026-10-01; L10312
 - **I-402** Pricing says "memory" and counts no agents — 2026-10-01; L10371
-- **I-415** The feedback board is Fider's hosted `repose.fider.io`, and you sign in there with your repose account through Logto — 2026-10-01; L10393
+- **I-403** A restore writes the volume with O_DIRECT, eight writes in flight, and downloads the snapshot as eight ranged GETs at once — 2026-10-01; L10393
+- **I-404** A stop uploads its snapshot while the guest shuts down; the snapshot read itself stays as it was — 2026-10-01; L10468
+- **I-405** hostd caches an evaluation by its inputs and skips `nix eval` when they recur — 2026-10-01; L10509
+- **I-406** `start` on a project with no guest runs its create again — 2026-10-01; L10536
+- **I-407** `repose run` waits for a destroy that holds the name it wants, instead of creating NAME-2 — 2026-10-01; L10559
+- **I-408** Placement waits up to three minutes for a guest being stopped before it answers `capacity` — 2026-10-01; L10572
+- **I-409** hostd sends a heartbeat ahead of every command result — 2026-10-01; L10596
+- **I-415** The feedback board is Fider's hosted `repose.fider.io`, and you sign in there with your repose account through Logto — 2026-10-01; L10612

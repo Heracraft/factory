@@ -2,6 +2,7 @@ package nixbuild
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -350,5 +351,84 @@ func TestEnsureBaseClonesOnceUnderConcurrency(t *testing.T) {
 	}
 	if n := clones.Load(); n != 1 {
 		t.Fatalf("%d clones for one ref", n)
+	}
+}
+
+// TestEvalCache: a second build of the same configuration skips `nix eval`
+// and builds the derivation the first one evaluated (I-405); anything that
+// changes the evaluation's inputs evaluates again; a cached derivation no
+// longer in the store, or one that fails to build, falls back to an eval;
+// a build that fails is never cached.
+func TestEvalCache(t *testing.T) {
+	closure := fakeClosure(t)
+	base := fakeBase(t)
+	const drvA = "/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-nixos-system-guest.drv"
+	evalOK := shell.Script{Prefix: []string{"timeout", "-k", "5", "60", "nix", "eval"}, Result: shell.Result{Stdout: []byte(drvA + "\n")}}
+	buildOK := shell.Script{Prefix: []string{"timeout", "-k", "5", "1800", "nix", "build"}, Result: shell.Result{Stdout: []byte(closure + "\n")}}
+	sizeOK := shell.Script{Prefix: []string{"nix", "path-info", "-S"}, Result: shell.Result{Stdout: []byte(closure + "\t5368709120\n")}}
+	r := &shell.Fake{Scripts: []shell.Script{evalOK, buildOK, sizeOK}}
+	b := (&Real{R: r, BuildsDir: t.TempDir(), BaseDir: base, Roots: gcroot.Roots{Dir: t.TempDir()}, Timeout: "timeout"}).Defaults()
+	lim := Limits{EvalS: 60, BuildS: 1800, Cores: 8, ClosureBytes: 20 << 30}
+	evals := func() int { return len(r.CallsWithPrefix("timeout", "-k", "5", "60", "nix", "eval")) }
+	build := func(rev, frag, version string) (*Result, []string, error) {
+		var lines []string
+		res, err := b.Build(context.Background(), Request{ProjectID: "p1", RevisionID: rev, Fragment: []byte(frag), BaseRef: "abc123", BaseVersion: version, Limits: lim},
+			func(l string) { lines = append(lines, l) })
+		return res, lines, err
+	}
+
+	res, _, err := build("r1", "{ a = 1; }", "2026.09.30")
+	if err != nil || res.EvalCached || evals() != 1 {
+		t.Fatalf("first build: %+v %v, %d evals", res, err, evals())
+	}
+	// A restore's copy: another project's revision, same inputs.
+	res, lines, err := build("r2", "{ a = 1; }", "2026.09.30")
+	if err != nil || !res.EvalCached || evals() != 1 || res.SystemClosure != closure {
+		t.Fatalf("cached build: %+v %v, %d evals", res, err, evals())
+	}
+	if got, _ := b.Roots.Get("rev-p1-r2"); got != closure {
+		t.Fatalf("cached build not rooted: %q", got)
+	}
+	if strings.Join(lines, "|") != "evaluating configuration|building nixos-system-guest|built "+closure {
+		t.Fatalf("log lines changed: %q", lines)
+	}
+	// Each input of the evaluation misses.
+	for i, in := range [][2]string{{"{ a = 2; }", "2026.09.30"}, {"{ a = 1; }", "2026.10.01"}} {
+		before := evals()
+		if res, _, err := build(fmt.Sprintf("r3-%d", i), in[0], in[1]); err != nil || res.EvalCached || evals() != before+1 {
+			t.Fatalf("changed input %v: %+v %v", in, res, err)
+		}
+	}
+	// The derivation is gone from the store: evaluate again.
+	r.Scripts = append([]shell.Script{{Prefix: []string{"nix", "path-info", drvA}, Result: shell.Result{ExitCode: 1}}}, r.Scripts...)
+	before := evals()
+	if res, _, err := build("r4", "{ a = 1; }", "2026.09.30"); err != nil || res.EvalCached || evals() != before+1 {
+		t.Fatalf("collected drv: %+v %v", res, err)
+	}
+	r.Scripts = r.Scripts[1:]
+	// The cached derivation fails to build once: forgotten, evaluated, built.
+	failOnce := 1
+	r.Scripts = append([]shell.Script{{Prefix: []string{"timeout", "-k", "5", "1800", "nix", "build"}, Handle: func(argv []string) (shell.Result, error) {
+		if failOnce > 0 {
+			failOnce--
+			res := shell.Result{ExitCode: 1, Stderr: []byte("error: path is not valid\n")}
+			return res, &shell.ExitError{Argv: argv, Result: res}
+		}
+		return shell.Result{Stdout: []byte(closure + "\n")}, nil
+	}}}, r.Scripts...)
+	before = evals()
+	if res, _, err := build("r5", "{ a = 1; }", "2026.09.30"); err != nil || res.EvalCached || evals() != before+1 {
+		t.Fatalf("stale cached drv: %+v %v, %d evals", res, err, evals()-before)
+	}
+	r.Scripts = r.Scripts[1:]
+	// A failed build is not cached: the next identical build evaluates.
+	r.Scripts = append([]shell.Script{{Prefix: []string{"timeout", "-k", "5", "1800", "nix", "build"}, Result: shell.Result{ExitCode: 1, Stderr: []byte("error: boom\n")}}}, r.Scripts...)
+	if _, _, err := build("r6", "{ b = 1; }", ""); err == nil {
+		t.Fatal("build should fail")
+	}
+	r.Scripts = r.Scripts[1:]
+	before = evals()
+	if res, _, err := build("r7", "{ b = 1; }", ""); err != nil || res.EvalCached || evals() != before+1 {
+		t.Fatalf("after a failed build: %+v %v", res, err)
 	}
 }

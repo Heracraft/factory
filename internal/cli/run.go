@@ -800,10 +800,13 @@ func ensureRunningFrom(ctx context.Context, e *Env, project *Project, pr *progre
 		return err
 	}
 	byState := true
-	if sr.Restart {
+	switch {
+	case sr.Create:
+		pr.Phase("Creating "+project.Slug, "Created "+project.Slug)
+	case sr.Restart:
 		pr.Phase(fmt.Sprintf("Restarting %s (its agent stopped answering)", project.Slug), "Restarted "+project.Slug)
 		byState = false
-	} else {
+	default:
 		pr.Phase("Starting "+project.Slug, "Started "+project.Slug)
 	}
 	op, err := waitOpPhased(ctx, e, project, sr.OpID, pr, byState)
@@ -1111,6 +1114,7 @@ func createProjectForRun(ctx context.Context, e *Env, remote string, opts RunOpt
 		req.AgentDefault = e.Cfg.DefaultAgent
 	}
 
+	waited := map[string]bool{}
 	for attempt := 1; attempt <= 10; attempt++ {
 		p, err := e.Client.CreateProject(ctx, req)
 		if err == nil {
@@ -1142,6 +1146,19 @@ func createProjectForRun(ctx context.Context, e *Env, remote string, opts RunOpt
 			return nil, exitf(ExitPaymentRequired, "%s", paymentRequiredMessage(apiErr))
 		}
 		if errors.As(err, &apiErr) && apiErr.Code == "conflict" {
+			// A name held by a project still being destroyed (`repose rm`
+			// a moment ago, from another checkout or with no remote, so
+			// resolve did not find it) is free in seconds: wait for it,
+			// as startOver does, instead of making NAME-2 (I-407).
+			if held, ferr := findByName(ctx, e.Client, req.Name); ferr == nil && held != nil && held.State == "destroying" && !waited[held.ID] {
+				waited[held.ID] = true
+				if err := waitDestroyed(ctx, e, held, pr); err != nil {
+					return nil, err
+				}
+				forgetProject(&e.Cache, held.ID)
+				attempt--
+				continue
+			}
 			req.Name = fmt.Sprintf("%s-%d", name, attempt+1)
 			pr.Fail()
 			_, _ = fmt.Fprintf(e.ErrOut, "%q is taken; trying %q\n", name, req.Name)
@@ -1171,6 +1188,26 @@ func startOver(ctx context.Context, e *Env, res *ResolveResult, opts *RunOptions
 			return exitf(ExitUsage, "%s is being destroyed. `repose run` in its checkout waits for that and creates a fresh %s; `repose restore %s` brings the old one back once it is gone.", old.Slug, old.Slug, old.Slug)
 		}
 	}
+	if err := waitDestroyed(ctx, e, &old, pr); err != nil {
+		return err
+	}
+	forgetProject(&e.Cache, old.ID)
+	if err := e.saveCache(); err != nil {
+		return err
+	}
+	if opts.Name == "" {
+		opts.Name = old.Name
+	}
+	res.Project, res.Remote = nil, remote
+	// The fresh project has a remote only when the old one did: a second
+	// project for a checkout (I-348) stays reached by name.
+	res.NoRemote = old.RemoteURL == ""
+	return nil
+}
+
+// waitDestroyed waits, as a phase on pr, for old's destroy to end, up to
+// runDestroyWait.
+func waitDestroyed(ctx context.Context, e *Env, old *Project, pr *progress) error {
 	pr.Phase(fmt.Sprintf("Waiting for the old %s to finish destroying", old.Slug), "Destroyed the old "+old.Slug)
 	started := time.Now()
 	for {
@@ -1196,17 +1233,6 @@ func startOver(ctx context.Context, e *Env, res *ResolveResult, opts *RunOptions
 		}
 	}
 	pr.End()
-	forgetProject(&e.Cache, old.ID)
-	if err := e.saveCache(); err != nil {
-		return err
-	}
-	if opts.Name == "" {
-		opts.Name = old.Name
-	}
-	res.Project, res.Remote = nil, remote
-	// The fresh project has a remote only when the old one did: a second
-	// project for a checkout (I-348) stays reached by name.
-	res.NoRemote = old.RemoteURL == ""
 	return nil
 }
 
