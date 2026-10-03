@@ -41,7 +41,7 @@ repose secrets list
 repose secrets rm STRIPE_SECRET_KEY
 ```
 
-`list` shows names and dates, never values. Nothing shows a value again after you set it. Secrets belong to one project; [`repose fork`](/docs/lifecycle#fork-a-project) gives each copy the project's secrets as they are at the time. Names are uppercase letters, digits and underscores, start with a letter and are up to 64 characters; values up to 64 KB.
+`list` shows names and dates, never values, and on a terminal it also lists the logins your laptop copies ([below](#choose-what-is-copied)). Nothing shows a value again after you set it. Secrets belong to one project; [`repose fork`](/docs/lifecycle#fork-a-project) gives each copy the project's secrets as they are at the time. Names are uppercase letters, digits and underscores, start with a letter and are up to 64 characters; values up to 64 KB.
 
 The dashboard's project **Secrets** page does the same.
 
@@ -72,6 +72,34 @@ repose secrets set VERCEL_TOKEN
 ```
 
 repose used to copy this login. If an earlier `repose run` copied it, the next `repose run` removes that copy and says so. A login you made on the machine is left alone, and so is a copy the Vercel CLI on the machine has rewritten since; delete `~/.local/share/com.vercel.cli/auth.json` there to remove it. Snapshots taken before then still hold the copy; to be sure, revoke that login's token in Vercel's settings and run `vercel login` on your laptop again.
+
+### Choose what is copied
+
+The logins in the table above are copied until you say otherwise, and so are your gitignored `.env` files ([Sync](/docs/sync)). To keep some of them on your laptop, run `repose secrets choose`:
+
+```
+$ repose secrets choose
+Copied at each repose run, for every project:
+space toggles, enter saves, q leaves
+
+> [x] gh        GitHub CLI login: every repo you can reach
+  [x] codex     Codex CLI login
+  [ ] opencode  opencode login (not logged in on this laptop)
+  [x] env       gitignored .env files (2 in this checkout)
+```
+
+Or name them, which also works in scripts:
+
+```
+repose secrets choose --off gh env
+repose secrets choose --on env
+```
+
+The choice is saved in `~/.config/repose/config.toml` on your laptop, as `skip = [...]` under `[logins]`, and applies to every project. `--project NAME` gives one project its own list, saved under `[projects.NAME.logins]`, and `repose secrets choose --reset --project NAME` sends it back to the shared list. repose never sees the list: like the logins themselves, it stays between your laptop and the machine.
+
+The next `repose run` after you turn one off removes the copy an earlier run left on the machine, as long as it is still the same as your laptop's. A login you made on the machine, or a `.env` file an agent changed there, is left alone, and `run` names the file. Snapshots taken before then still hold the copy; to be sure it is gone, revoke that token where you created it.
+
+Without the `gh` login, git on the machine has no way to push to GitHub. Run `gh auth login` there, or use a token as described below.
 
 ### Other git hosts
 

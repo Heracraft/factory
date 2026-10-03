@@ -66,6 +66,15 @@ one repository with write access. The deploy key is the user's own file
 on the guest disk (in snapshots), not a repose secret, the same as any
 other file the user writes there.
 
+The user chooses which of these travel, on the laptop (DECISIONS I-422):
+`repose secrets choose` toggles `gh`, `codex`, `opencode` and `env` (the
+gitignored `.env` files, I-197) and saves the list in the laptop's
+`config.toml`, for every project or, with `--project`, for one. The api
+never holds the choice, for the same reason it never holds the logins.
+Everything is copied until the user chooses. A login turned off is not
+sent, and the copy an earlier run left in the guest is removed while it is
+still byte for byte the laptop's; one made in the guest stays.
+
 The Vercel CLI's login is not copied (DECISIONS I-298): its `auth.json`
 holds a token for the whole Vercel account, every team and project, where
 an agent with full permissions could deploy, delete or read env vars of

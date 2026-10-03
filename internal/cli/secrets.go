@@ -53,8 +53,28 @@ func SecretsListCmd(ctx context.Context, e *Env, projectArg string) error {
 	if e.JSON {
 		return writeJSONOut(e.Out, secrets)
 	}
+	// Piped, it stays one "NAME\tDATE" line per secret for scripts. On a
+	// terminal it also shows what this laptop copies at each run, the
+	// other way a secret reaches the machine (DECISIONS I-422).
+	tty := writerIsTerminal(e.Out)
+	if tty {
+		if len(secrets) == 0 {
+			_, _ = fmt.Fprintf(e.Out, "Stored by repose for %s: none (repose secrets set NAME)\n", project.Slug)
+		} else {
+			_, _ = fmt.Fprintf(e.Out, "Stored by repose for %s:\n", project.Slug)
+		}
+	}
 	for _, s := range secrets {
-		_, _ = fmt.Fprintf(e.Out, "%s\t%s\n", s.Name, s.UpdatedAt.Format("2006-01-02 15:04"))
+		indent := ""
+		if tty {
+			indent = "  "
+		}
+		_, _ = fmt.Fprintf(e.Out, "%s%s\t%s\n", indent, s.Name, s.UpdatedAt.Format("2006-01-02 15:04"))
+	}
+	if tty {
+		skip, _, _ := e.Cfg.loginSkip(project.Slug)
+		_, _ = fmt.Fprintln(e.Out, "Copied from this laptop at each repose run (repose secrets choose):")
+		writeLoginRows(e.Out, skip, e.loginsFound())
 	}
 	return nil
 }

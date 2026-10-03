@@ -62,6 +62,10 @@ type SyncOptions struct {
 	// place of Env: `run` lists them (a walk of every ignored file) while
 	// the probe's ssh is in flight rather than before it.
 	EnvLater func() []envFile
+	// EnvOff: config.toml leaves the .env files on the laptop (DECISIONS
+	// I-422). None is written, and a guest copy an earlier carry wrote is
+	// removed while it is byte for byte the laptop's file.
+	EnvOff bool
 }
 
 func (o SyncOptions) envFiles() []envFile {
@@ -93,6 +97,10 @@ type SyncSummary struct {
 	// guest kept because its copy was newer (I-197).
 	EnvFiles int
 	EnvKept  []string
+	// EnvRemoved counts the copies removed under EnvOff; EnvLeft names
+	// the ones left because they differ from the laptop's.
+	EnvRemoved int
+	EnvLeft    []string
 	// ClonedFrom is the host the guest cloned from on a first sync
 	// (I-203); CloneFailed is why it could not, when it tried.
 	ClonedFrom  string
@@ -155,6 +163,14 @@ func skipCheckout(ctx context.Context, t sshTarget, localRepoDir string, opts Sy
 	if err != nil {
 		return nil, err
 	}
+	if opts.EnvOff && (probe.markers["env"] != "" || probe.envCarried) {
+		// The checkout is left alone, but .env copies an earlier carry
+		// wrote are removed now, not at the next `repose sync` (I-422).
+		if err := carry.p.file("env/rm", envRemoveList(opts.envFiles())); err != nil {
+			return nil, err
+		}
+		carry.p.line("(cd " + homeShell(probe.checkout) + "\n" + envRemoveScript + ")")
+	}
 	if carry.p.empty() {
 		s.Copied, s.Carried = carry.copied, &carryOutcome{}
 		return s, nil
@@ -162,6 +178,15 @@ func skipCheckout(ctx context.Context, t sshTarget, localRepoDir string, opts Sy
 	out, err := carry.p.run(ctx, t)
 	if err != nil {
 		return nil, stepFailed("copy your tool logins to the guest", err, "")
+	}
+	for _, l := range strings.Split(string(out), "\n") {
+		l = strings.TrimSpace(l)
+		if rest, ok := strings.CutPrefix(l, "#envremoved "); ok {
+			_, _ = fmt.Sscanf(rest, "%d", &s.EnvRemoved)
+		}
+		if rest, ok := strings.CutPrefix(l, "#envleft "); ok {
+			s.EnvLeft = append(s.EnvLeft, rest)
+		}
 	}
 	s.Copied, s.Carried = carry.finish(string(out))
 	return s, nil
@@ -231,7 +256,10 @@ type guestProbe struct {
 	syncedOnly bool
 	// envNewer are carried .env files the guest edited since the last
 	// carry while the laptop's did not change (I-215).
-	envNewer  []string
+	envNewer []string
+	// envCarried: an earlier carry wrote .env files here (its marker, or
+	// #envmissing for a set the probe no longer trusts).
+	envCarried bool
 	tips      []string // every commit a ref (or HEAD) in the guest points at
 	hasOrigin bool
 	// subTips are the commits every ref (or HEAD) of each checked-out
@@ -399,6 +427,7 @@ func parseProbe(out string) guestProbe {
 		}
 		if l == "#envmissing" {
 			delete(p.markers, "env") // a written file is gone: send the set again
+			p.envCarried = true
 			continue
 		}
 		switch l {
@@ -724,11 +753,16 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 			return nil, err
 		}
 	}
-	envScript, err := addEnvToApply(tw, opts.envFiles(), probe.markers)
+	var envScript string
+	if opts.EnvOff {
+		envScript, err = addEnvRemoveToApply(tw, opts.envFiles(), probe.markers["env"] != "" || probe.envCarried)
+	} else {
+		envScript, err = addEnvToApply(tw, opts.envFiles(), probe.markers)
+	}
 	if err != nil {
 		return nil, err
 	}
-	if envScript == "" {
+	if envScript == "" && !opts.EnvOff {
 		// Not sent, so the apply will not say which guest copies it kept:
 		// the probe's report of the ones edited since is that line.
 		summary.EnvKept = append(summary.EnvKept, probe.envNewer...)
@@ -818,6 +852,12 @@ func syncGuest(ctx context.Context, t sshTarget, localRepoDir, slug string, opts
 		}
 		if rest, ok := strings.CutPrefix(l, "#envfiles "); ok {
 			_, _ = fmt.Sscanf(rest, "%d", &summary.EnvFiles)
+		}
+		if rest, ok := strings.CutPrefix(l, "#envremoved "); ok {
+			_, _ = fmt.Sscanf(rest, "%d", &summary.EnvRemoved)
+		}
+		if rest, ok := strings.CutPrefix(l, "#envleft "); ok {
+			summary.EnvLeft = append(summary.EnvLeft, rest)
 		}
 	}
 	if carry != nil {
@@ -1353,6 +1393,15 @@ func (s *SyncSummary) Warnings() []string {
 	}
 	for _, k := range s.EnvKept {
 		w = append(w, fmt.Sprintf("Kept the guest's %s: it is newer than the laptop's.", k))
+	}
+	switch {
+	case s.EnvRemoved == 1:
+		w = append(w, "Removed the .env file an earlier repose run copied to the machine: repose secrets choose has env off.")
+	case s.EnvRemoved > 1:
+		w = append(w, fmt.Sprintf("Removed the %d .env files an earlier repose run copied to the machine: repose secrets choose has env off.", s.EnvRemoved))
+	}
+	if len(s.EnvLeft) > 0 {
+		w = append(w, fmt.Sprintf("Left %s on the machine: it changed there since it was copied. Delete it there if it should go.", strings.Join(s.EnvLeft, ", ")))
 	}
 	if s.Diverged {
 		w = append(w, fmt.Sprintf("The guest's %s has commits your laptop does not have; it was left as it is and the guest is on %s, detached. `git fetch repose` brings them to your laptop (or `repose attach` to look).", s.Branch, short))

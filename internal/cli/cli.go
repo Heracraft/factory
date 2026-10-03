@@ -680,7 +680,28 @@ func newSecretsCmd(env func() (*Env, error), g *globalFlags) *cobra.Command {
 			return SecretsRmCmd(cmd.Context(), e, g.project, args[0])
 		},
 	}
-	root.AddCommand(set, list, rm, newSecretsImportCmd(env, g))
+	var chooseOn, chooseOff, chooseReset bool
+	choose := &cobra.Command{
+		Use:   "choose [NAME...]",
+		Short: "Choose which of your laptop's logins and .env files repose run copies to the machine",
+		Long: "Choose which of your laptop's logins and files repose run copies to the machine: " +
+			strings.Join(loginNames(), ", ") + ". With no flags it shows a list to toggle in a terminal " +
+			"and prints the list otherwise. --off NAME... leaves them on your laptop, --on NAME... copies " +
+			"them again, --reset drops the list. Without --project the list is for every project; with " +
+			"--project NAME it is that project's own.",
+		ValidArgs: loginNames(),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			e, err := env()
+			if err != nil {
+				return err
+			}
+			return SecretsChooseCmd(cmd.Context(), e, g.project, chooseOn, chooseOff, chooseReset, args)
+		},
+	}
+	choose.Flags().BoolVar(&chooseOn, "on", false, "copy the NAMEs at each repose run")
+	choose.Flags().BoolVar(&chooseOff, "off", false, "leave the NAMEs on your laptop, and remove the copies an earlier run left on the machine")
+	choose.Flags().BoolVar(&chooseReset, "reset", false, "drop the list: a project follows the list for every project; without --project every login is copied")
+	root.AddCommand(set, list, rm, newSecretsImportCmd(env, g), choose)
 	return root
 }
 

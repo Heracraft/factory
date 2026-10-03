@@ -64,6 +64,21 @@ type credSyncOptions struct {
 	// Kept is told each login left alone because the guest's copy is
 	// newer (a login done inside the guest).
 	Kept func(label string)
+	// Skip are the rows config.toml leaves on the laptop (logins.go,
+	// DECISIONS I-422): not sent, and a guest copy byte for byte the
+	// laptop's is removed.
+	Skip map[string]bool
+}
+
+// skippedCredNotice is what `run` prints, once, when it removed a copy of
+// a login the user turned off. It goes inside single quotes in the
+// guest's shell: no apostrophes.
+func skippedCredNotice(label string) string {
+	n := "Removed the " + label + " login an earlier repose run copied to the machine: repose secrets choose has it off."
+	if label == "gh" {
+		n += " Git on the machine cannot push to GitHub until you run gh auth login there or store a token as a secret."
+	}
+	return n
 }
 
 // syncCredentials implements 07-cli.md §5.5 step 6, in one ssh: never
@@ -145,6 +160,19 @@ func buildCredentialsAndCarry(homeDir, repoDir string, opts credSyncOptions, co 
 		}
 		if row.Label == "gh" {
 			b = ghHostsWithToken(b, opts.ghToken)
+		}
+		if opts.Skip[row.Label] {
+			// Left on the laptop. Only the hash of what an earlier run
+			// would have written goes, as for the retired rows: the guest
+			// removes its copy only while it is exactly that, so a login
+			// made on the machine stays.
+			sum := fmt.Sprintf("%x", sha256.Sum256(b))
+			lines = append(lines, fmt.Sprintf("d=~/%s\nif [ -f \"$d\" ] && [ \"$(sha256sum \"$d\" | cut -c1-64)\" = %s ]; then rm -f \"$d\" && echo '#warn %s'; fi",
+				filepath.ToSlash(row.Rel), sum, skippedCredNotice(row.Label)))
+			hashParts = append(hashParts, []byte("skip "+row.Label), []byte(sum))
+			continue
+		}
+		if row.Label == "gh" {
 			ghCopied = true
 		}
 		name := fmt.Sprintf("c%d", i)

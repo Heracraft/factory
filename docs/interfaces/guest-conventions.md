@@ -254,6 +254,20 @@ SHA-256 is the same, printing `#warn` once; any other file there (a
 `vercel login` made in the guest) is left alone. The creds marker's
 version moved to `creds-2` so every guest takes this part once.
 
+A row the laptop's config.toml skips (DECISIONS I-422; `gh`, `codex`,
+`opencode` by their labels) is not sent, and for `gh` the `.gitconfig`
+lines above are not written. When the laptop has the file, the same ssh
+sends the SHA-256 of what would have travelled (for `gh`, `hosts.yml` with
+the keyring token written in), never its bytes, and the guest removes its
+copy only while its SHA-256 is the same, printing `#warn` once; a login
+made in the guest stays. The skip lines are in the creds marker's hash as
+`skip <label> <sha>`. With `env` skipped, the sync's apply writes no `.env`
+file; when the guest has an earlier `.env` carry (the `env` marker, or a
+probe that said `#envmissing`), the apply tar holds `env/rm` (one
+`<sha256> <path>` line per laptop file), the guest removes each file whose
+SHA-256 matches and prints `#envremoved <n>` and `#envleft <path>` for the
+ones that differ, then deletes `~/.repose/env-paths` and the `env` marker.
+
 Never `~/.claude/.credentials.json` (it is the login share's, below),
 never `~/.gemini/oauth_creds.json`
 (OAuth over SSH is unreliable; Gemini uses `GEMINI_API_KEY` as a named

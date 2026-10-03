@@ -10609,6 +10609,71 @@ nothing next to the command. grpc-hostd.md says so. Test:
 `TestHeartbeatAheadOfEveryResult` (two commands give `hb,result,hb,result`;
 `result,result` against the old sender).
 
+**I-422. The laptop chooses which logins `run` copies: `repose secrets
+choose` and `[logins] skip` in config.toml.** (owner, 2026-10-03: "for choosing
+what credentials are copied over, think it should be a per CLI config?
+like some way to repose .... and it lists credentials detected and you
+tick/untick what you dont want sent off? plus perhaps a config file?")
+This amends R2-8, I-150 and I-197, which copy gh's, Codex's and opencode's
+logins and every gitignored `.env` file at each `run`, with no way to
+leave one behind. A user who does not want an agent holding a full-scope
+`gh` token, or a `.env` with live keys, had to log out on the laptop or
+move the file. `docs/proposals/2026-09-27-credentials-convenience-first.md`
+planned the `.env` opt-out; this is that item, with the tool logins in the
+same list.
+
+The choice lives on the laptop, in `~/.config/repose/config.toml`:
+`[logins] skip = [...]` for every project, `[projects.NAME.logins] skip`
+for one (NAME is the project's name; its list replaces the global one, and
+`skip = []` copies everything for it). The names are the credRows labels
+(`gh`, `codex`, `opencode`) and `env`. The api never holds it: the logins
+go laptop to guest over SSH and the api never sees them (R2-8), so a
+dashboard switch would be a setting about files the api has never seen,
+and each laptop decides for the logins it has. Nothing changes for a user
+who sets nothing: everything is copied, as before, and the `Credentials:`
+line adds "Choose which logins are copied with `repose secrets choose`" when a
+login travelled and no list exists (not on the runs that name only `git`,
+which is every run).
+
+`repose secrets choose` shows a toggle list on a terminal (space, Enter,
+`q`) and prints the list otherwise, with what this laptop has (a login
+missing, the checkout's `.env` count); `--off NAME...` and `--on NAME...`
+set it from a script; `--reset` drops the scope's table; `--project` picks
+the project's own list. `repose secrets list` on a terminal shows both
+kinds, the secrets repose stores and what this laptop copies; piped, it
+keeps its one `NAME<tab>DATE` line per secret. The command sits under
+`secrets` because the docs already put the copied logins on the secrets
+page, and a top-level `repose logins` was one letter from `repose login`,
+which is the account (owner, same session: "repose logins kinda makes me
+think its a repose secrets thing"; "repose secrets copy sounds like you
+are telling it to copy the secrets", so the verb is `choose`). The command edits only its own table, keeping the rest of the
+file and that table's comment lines byte for byte, writes a symlinked
+config at its target, keeps the file's mode, and refuses (leaving the file
+alone) when the result would not decode to the list asked for, as with a
+hand-written top-level `logins.skip` dotted key.
+
+A skipped login is not sent and, for `gh`, the git helper and `insteadOf`
+rewrites are not set. The copy an earlier run left is removed by the I-298
+rule: only its SHA-256 travels, and the guest deletes its file only while
+it is byte for byte what the laptop would send (`hosts.yml` with the
+keyring token written in), printing `#warn` once; a login made on the
+machine stays. The removal lines are in the creds part's hash
+(`skip <label> <sha>`), so turning a login off sends the part once. With
+`env` off the sync writes no `.env` file; when the guest has an earlier
+carry (its `env` marker, or `#envmissing`), the apply removes each copy
+whose SHA-256 is the laptop file's, names the ones that differ
+(`#envleft`, edited on the machine) and deletes `~/.repose/env-paths` and
+the marker, so turning `env` back on sends the set again. Snapshots taken
+before keep their copies; the docs say to revoke the token.
+
+*Rejected:* a top-level `repose logins` (above); `repose secrets copy`
+(reads as an order to copy); a per-project setting in the api, shown in the dashboard (the
+reasons above); a file in the checkout (a committed file would decide for
+every teammate's laptop, and what travels depends on what each one is
+logged in to); an allow list (`only = [...]`; a login type added later
+would be off by default, against the convenience default of the proposal;
+it can be added beside `skip` if asked for); a prompt at the first `run`
+(it would stop scripts and `--no-attach` runs).
 **I-416. Work happens in worktrees and reaches main through a release
 queue.** (owner, 2026-10-03: "start a release queue so multiple agents can
 work on features and queue and coordinate a full release. Also the default
