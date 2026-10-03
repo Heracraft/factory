@@ -10607,3 +10607,38 @@ tries the placement. A heartbeat is one `update hosts`; one per command is
 nothing next to the command. grpc-hostd.md says so. Test:
 `TestHeartbeatAheadOfEveryResult` (two commands give `hb,result,hb,result`;
 `result,result` against the old sender).
+
+**I-410. A boot sets the old /tmp aside in one rename and deletes it after
+the boot.** (owner, 2026-10-02: "starting a stopped project is taking 27
+seconds") On host-01, StartGuest for a stopped large guest ran 01:32:13Z
+to 01:32:40Z. hostd had Cloud Hypervisor up within 0.1 s; the guest's
+console showed systemd-tmpfiles-setup ("Create System Files and
+Directories") running for 20 s before sysinit.target, and guestd, sshd and
+the ready signal all wait for sysinit. kanali's own boot measured the same:
+19.7 s in that unit, 18 s of it between two entries of /tmp. The cause was
+`boot.tmp.cleanOnBoot`, whose `D! /tmp` rule deletes the last boot's /tmp
+file by file, and a guest's /tmp is on its persistent volume, where a day
+of go test, browsers and builds leaves hundreds of thousands of files.
+
+/tmp still starts every boot empty. `repose-tmp-rotate` (before
+systemd-tmpfiles-setup, no default dependencies) renames a non-empty /tmp
+into `/var/lib/repose/tmp-old/<random>/tmp` and makes a new 1777 /tmp; the
+rename is one syscall (0.07 s for 200,000 files on kanali, where deleting
+them took 2.9 s on a quiet disk and 18 s at boot).
+`repose-tmp-purge.timer` deletes the set-aside trees a minute after the
+boot at Nice 19 and idle I/O class, and nothing a boot waits for depends
+on it. A /tmp that is a mount point (a tmpfs a user configured) is left
+alone. The rotate exits once systemd-tmpfiles-setup is active: a base
+applied without a reboot restarts the active targets, and sysinit.target
+would otherwise start it on a running machine, under its tmux and
+browsers. A stop before the purge snapshots the set-aside tree, the same
+bytes the old /tmp held.
+
+*Rejected:* /tmp on a tmpfs (a guest's large builds and browser profiles
+in /tmp would then take its memory); clearing /tmp at stop instead (a stop
+is waited on too, and a guest that crashes skips it).
+No public doc changes: /tmp's behaviour is the same, and the docs already
+say a start takes about 10 seconds (`/docs`, index). Test: guest-tools-carry
+subtest "I-410" (a 2,000-file /tmp is gone after a reboot, set aside under
+tmp-old, no `D! /tmp` rule, a start of the unit on the running guest
+leaves /tmp alone, the purge empties tmp-old).

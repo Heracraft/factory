@@ -899,6 +899,23 @@ in
           guest.wait_until_succeeds(f"grep -qx {wanted['hash']} /home/dev/.repose/carry/tools", timeout=900)
           print(guest.succeed("tail -n 12 /home/dev/.repose/tools-install.log"))
           assert guest.succeed("sudo -H -u dev bash -lc 'greet'").strip() == "greetings"
+
+      with subtest("I-410: a boot sets the old /tmp aside in one rename and deletes it after"):
+          guest.succeed("sudo -u dev mkdir -p /tmp/stale && sudo -u dev sh -c 'for i in $(seq 2000); do : > /tmp/stale/f$i; done'")
+          guest.shutdown()
+          guest.start()
+          guest.wait_for_unit("multi-user.target")
+          guest.fail("test -e /tmp/stale")
+          assert guest.succeed("stat -c %a /tmp").strip() == "1777"
+          guest.succeed("systemctl show -p Result --value repose-tmp-rotate | grep -qx success")
+          guest.succeed("test -d /var/lib/repose/tmp-old/*/tmp/stale")
+          # Off the boot: tmpfiles no longer deletes anything, and the purge
+          # is a timer, not a dependency of anything a boot waits for.
+          guest.fail("systemd-tmpfiles --cat-config | grep -q '^D! /tmp '")
+          # What a base switch without a reboot does to it: nothing.
+          guest.succeed("touch /tmp/live && systemctl start repose-tmp-rotate && test -e /tmp/live")
+          guest.succeed("systemctl start repose-tmp-purge")
+          assert guest.succeed("ls -A /var/lib/repose/tmp-old").strip() == ""
     '';
   };
 
