@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-453 entries.
+456 entries.
 
 ## Scope
 
@@ -481,7 +481,10 @@ pointer, not a summary.
 - **I-410** The command-not-found hint survives a command only one package has — 2026-10-03; L10719
 - **I-411** `repose exec` takes the command with or without `--` — 2026-10-03; L10731
 - **I-412** The docs as markdown at /llms.txt, and the laptop's CLI version on the machine — 2026-10-03; L10748
-- **I-413** The tools carry reads Homebrew formulae and installs them from nixpkgs — 2026-10-03; L10764
-- **I-414** Events page back: `before` and `limit` on the api, Show older on the dashboard, and `repose events` reads the whole window — 2026-10-03; L10782
-- **I-418** Claude Code's `idle_prompt` is no event — 2026-10-03; L10801
-- **I-419** `repose questions` says where it looked, names terminal waits, and asks for one project's list — 2026-10-03; L10818
+- **I-413** The tools carry reads Homebrew formulae and installs them from nixpkgs — 2026-10-03; superseded by I-423; L10764
+- **I-414** Events page back: `before` and `limit` on the api, Show older on the dashboard, and `repose events` reads the whole window — 2026-10-03; L10784
+- **I-418** Claude Code's `idle_prompt` is no event — 2026-10-03; L10803
+- **I-419** `repose questions` says where it looked, names terminal waits, and asks for one project's list — 2026-10-03; L10820
+- **I-420** The destroyed list pages: `before` and `limit`, Show more past the first 100, and the CLI reads every page — 2026-10-03; L10834
+- **I-421** A window counts as an agent window while an agent is its foreground program, whatever its name — 2026-10-03; L10850
+- **I-423** The tools carry does not read Homebrew; a curated list is the likely next step — 2026-10-03; L10867

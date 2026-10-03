@@ -210,6 +210,8 @@ guest, and never its login or its history:
   the CLI message above; it never produces a crash loop.
 - `repose status` shows per agent window: `working`, `idle`,
   `needs_input`, or `unknown`, from guestd's `AgentState` notifications.
+  An agent started by hand in another window (the `shell` window) is one
+  of them while it is that window's foreground program (I-421).
 - Removing an agent from the overlay is a base bump with a changelog line;
   a project holding base updates keeps the old one.
 

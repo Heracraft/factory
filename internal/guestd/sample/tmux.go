@@ -60,6 +60,27 @@ var HookedAgents = map[string]bool{"claude": true, "codex": true, "opencode": tr
 
 // AgentOf maps a tmux window name to an agent name, or "" if the window is not
 // an agent window. "claude" and "claude-2" are both claude.
+// AgentByCommand is the agent whose program a pane's foreground process
+// is, "" for none (I-421). Gemini's `node` is left out: a dev server is
+// node too, so gemini counts only in a window named after it.
+func AgentByCommand(comm string) string {
+	if comm == "" {
+		return ""
+	}
+	for _, a := range Agents {
+		var wants []string
+		for _, b := range binaries[a] {
+			if b != "node" {
+				wants = append(wants, b)
+			}
+		}
+		if matchesBinary(wants, comm) {
+			return a
+		}
+	}
+	return ""
+}
+
 func AgentOf(window string) string {
 	for _, a := range Agents {
 		if window == a || strings.HasPrefix(window, a+"-") {

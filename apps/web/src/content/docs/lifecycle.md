@@ -18,6 +18,8 @@ todo-app   large  running  2h14m  claude: working  $0.31  $18.40
 api-v2     xl     stopped  -      -                $0.00  $41.02
 ```
 
+AGENTS lists each agent in the machine's tmux session with its state: `working`, `idle` or `needs_input` (waiting on a permission prompt). One you started by typing `claude` in the shell window counts while it runs there. Gemini counts only in a window named `gemini`, which is where `repose run` starts it.
+
 `repose ls -q` prints only the names, for scripts: `repose ls -q | xargs -n1 repose stop` stops everything.
 
 A machine runs until you stop it; repose never stops one for being idle. It does tell you when one is, see [Idle machines](#idle-machines). For one project in detail, including which processes are listening on ports:

@@ -10778,6 +10778,8 @@ bases too; one nixpkgs lacks fails into the notices as "no nixpkgs package
 has bin/X". Brew is read last, so a command npm or Go installed stays
 theirs. Casks are apps and are not read. Test: `TestReadGlobalTools`
 (asked for, a dependency, one in the base, one npm already has).
+*Superseded by I-423 (2026-10-03): the Homebrew reader came out before any
+CLI shipped it.*
 
 **I-414. Events page back: `before` and `limit` on the api, Show older on the dashboard, and `repose events` reads the whole window.** (owner,
 2026-10-03) The project page fetched the api's newest 50 events and
@@ -10828,3 +10830,51 @@ only. With PROJECT it reads `GET /projects/:id/questions?state=pending`
 instead of filtering the all-projects list, which stops at 50, so another
 project's newer questions no longer hide this one's. Tests:
 `TestQuestionsSaysWhereItLooked`, `TestQuestionsForOneProjectPastTheCap`.
+
+**I-420. The destroyed list pages: `before` and `limit`, Show more past the first 100, and the CLI reads every page.** (owner,
+2026-10-03) `GET /projects/destroyed` stopped at 100 rows, so the
+dashboard's "N of M shown" never counted past 100 and `repose restore
+--destroyed` and `repose projects --destroyed` never listed the 101st.
+The route takes `limit` (1..200, default 100, so old clients are
+unchanged) and `before=<project id>`, keyset on `(destroyed_at, id)`. The
+projects page still polls the newest 100; "Show more" past them fetches
+the 100 before the oldest held, reads "Show more" and "N shown" while the
+api may hold more, and "Show N more" and "N of M shown" once it has sent
+its last page (I-333's steps of 20 kept). `Client.ListDestroyed` pages in
+200s until a short page, or a page with nothing new, which is what an api
+older than I-420 sends. Tests: `TestDestroyedPageBack` (Postgres, 130
+destroys with same-second ties, 4 pages of 40), `TestListDestroyedReadsEveryPage`
+(230 through the fake), playwright "recently destroyed pages past the
+first hundred" (10 -> 130, asks with `before` the 100th id).
+
+**I-421. A window counts as an agent window while an agent is its foreground program, whatever its name.** (owner,
+2026-10-03) kanali had claude running in two windows, `claude` and
+`shell` (claude typed in the shell window), and `repose ls` showed one.
+guestd (`sample.refreshTmux`) took a window as an agent's only by its name
+(`AgentOf`: `claude`, `claude-N`, ...), so an agent started by hand
+anywhere else was never sampled, never had its state shown, and its
+hooks named a window guestd did not know. A window with another name now
+counts while its pane's foreground command (`#{pane_current_command}`)
+is an agent's program (`AgentByCommand`, nix's `.claude-wrapped` and its
+15-byte cut included), and stops counting when the agent exits. Gemini is
+left out: its process is `node`, and so is any dev server. The window
+keeps its own name, so hooks from it (`window: "shell"`) land on it.
+Test: `TestAnAgentInAWindowWithAnotherName` (claude in `shell` counted
+and set to needs_input by a hook from `shell`, node in `server` and a
+plain shell not, the window dropped when claude exits). Reaches machines
+with the next base.
+
+**I-423. The tools carry does not read Homebrew; a curated list is the likely next step.** (owner,
+2026-10-03) I-413's Homebrew reader came out. The owner's `az` came from
+pacman on an Arch laptop (installed with Octopi), so I-413 would not have
+carried it, and a Mac with years of `brew install` would queue dozens of
+formulae for background install on every fresh machine. The reader,
+its test rows and its docs are gone; the carry reads npm, pnpm, bun, Go,
+cargo, uv and pipx as before I-413. No CLI shipped I-413: main had it from
+r20261003-1, but the conductor held that release's CLI tag, so the next
+tag carries this removal. The guest installer never needed a change, so
+nothing on a base changes. The options for system packages and Homebrew,
+with the owner leaning towards a short curated list of development CLIs
+found on the laptop's PATH, are in
+`docs/proposals/2026-10-03-tools-from-system-packages.md`. Until one is
+picked, the I-410 hint names the nixpkgs package and `repose config add`.

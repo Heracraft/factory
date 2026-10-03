@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -49,12 +51,35 @@ type RestoreResult struct {
 	FromProjectID     string    `json:"from_project_id"`
 }
 
+// destroyedPage is how many destroyed projects each request asks for.
+const destroyedPage = 200
+
+// ListDestroyed is every destroyed project that can still be restored,
+// newest destroy first: page after page (I-420), until one comes back
+// short or with nothing new, which is how an api older than I-420, with
+// its one list of 100, ends it.
 func (c *Client) ListDestroyed(ctx context.Context) ([]DestroyedProject, error) {
 	var out []DestroyedProject
-	if err := c.get(ctx, "/projects/destroyed", &out); err != nil {
-		return nil, err
+	seen := map[string]bool{}
+	path := "/projects/destroyed?limit=" + strconv.Itoa(destroyedPage)
+	for {
+		var page []DestroyedProject
+		if err := c.get(ctx, path, &page); err != nil {
+			return nil, err
+		}
+		added := 0
+		for _, d := range page {
+			if !seen[d.ID] {
+				seen[d.ID] = true
+				out = append(out, d)
+				added++
+			}
+		}
+		if len(page) < destroyedPage || added == 0 {
+			return out, nil
+		}
+		path = "/projects/destroyed?limit=" + strconv.Itoa(destroyedPage) + "&before=" + url.QueryEscape(page[len(page)-1].ID)
 	}
-	return out, nil
 }
 
 func (c *Client) RestoreByName(ctx context.Context, req RestoreRequest) (*RestoreResult, error) {

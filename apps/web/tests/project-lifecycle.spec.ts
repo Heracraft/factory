@@ -242,3 +242,50 @@ test('recently destroyed shows ten rows and reveals the rest on request', async 
 	await expect(section.getByTestId('destroyed-row')).toHaveCount(35);
 	await expect(section.getByRole('button', { name: /Show \d+ more/ })).toHaveCount(0);
 });
+
+// DECISIONS I-420: past the api's first 100, Show more asks for the page
+// before the oldest row held, until every destroyed project is listed.
+test('recently destroyed pages past the first hundred', async ({ page }) => {
+	const now = Date.now();
+	const rows = Array.from({ length: 130 }, (_, i) => ({
+		id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+		name: `old-${String(i + 1).padStart(3, '0')}`,
+		slug: `old-${String(i + 1).padStart(3, '0')}`,
+		class: 'small',
+		volume_bytes: 20 * 2 ** 30,
+		destroyed_at: new Date(now - (i + 1) * 3_600_000).toISOString(),
+		name_free: true,
+		restorable_until: new Date(now + 29 * 86_400_000).toISOString(),
+		snapshot: {
+			id: `snap-${i}`,
+			created_at: new Date(now - (i + 1) * 3_600_000).toISOString(),
+			bytes: 2 ** 30,
+			reason: 'stop',
+			expires_at: new Date(now + 29 * 86_400_000).toISOString()
+		}
+	}));
+	const asked: string[] = [];
+	await page.route(/\/v1\/projects\/destroyed(\?.*)?$/, (route) => {
+		const u = new URL(route.request().url());
+		asked.push(u.search);
+		const limit = Number(u.searchParams.get('limit') ?? 100);
+		const before = u.searchParams.get('before');
+		const from = before ? rows.findIndex((r) => r.id === before) + 1 : 0;
+		return route.fulfill({ json: rows.slice(from, from + limit) });
+	});
+	await page.goto('/projects');
+	const section = page.getByRole('region', { name: 'Recently destroyed' });
+	const shown = section.getByTestId('destroyed-row');
+	await expect(shown).toHaveCount(10);
+	await expect(section.getByText('10 shown')).toBeVisible();
+	// "Show more" while the api may hold more; "Show N more" once it has
+	// sent its last page.
+	const more = section.getByRole('button', { name: /^Show (\d+ )?more$/ });
+	for (const n of [30, 50, 70, 90, 110, 130]) {
+		await more.click();
+		await expect(shown).toHaveCount(n);
+	}
+	await expect(shown.last()).toContainText('old-130');
+	await expect(section.getByRole('button', { name: /Show/ })).toHaveCount(0);
+	expect(asked.some((q) => q.includes('before=00000000-0000-4000-8000-000000000099'))).toBe(true);
+});

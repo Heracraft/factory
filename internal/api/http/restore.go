@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,6 +45,24 @@ type destroyedRow struct {
 // each with its newest restorable snapshot and when that one goes.
 func (s *Server) listDestroyed(w http.ResponseWriter, r *http.Request) error {
 	u := userFrom(r.Context())
+	// limit and before page through the list (I-420), keyset on
+	// (destroyed_at, id); with neither, the newest 100 as before.
+	limit := 100
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 200 {
+			return errf("invalid", "limit must be 1 to 200")
+		}
+		limit = n
+	}
+	var before *uuid.UUID
+	if v := r.URL.Query().Get("before"); v != "" {
+		id, err := uuid.Parse(v)
+		if err != nil {
+			return errf("invalid", "before must be a project id")
+		}
+		before = &id
+	}
 	rows, err := s.d.Pool.Query(r.Context(), `
 		select p.id, p.name, p.slug, p.class, p.remote_url, p.volume_bytes, p.destroyed_at,
 		       s.id as snap_id, s.taken_at as snap_taken, s.bytes as snap_bytes, s.reason as snap_reason, s.expires_at as snap_expires,
@@ -54,8 +73,9 @@ func (s *Server) listDestroyed(w http.ResponseWriter, r *http.Request) error {
 			order by s.taken_at desc, s.created_at desc limit 1
 		) s on true
 		where p.user_id = $1 and p.destroyed_at is not null
-		order by p.destroyed_at desc
-		limit 100`, u.ID)
+		  and ($2::uuid is null or (p.destroyed_at, p.id) < (select b.destroyed_at, b.id from projects b where b.id = $2 and b.user_id = $1 and b.destroyed_at is not null))
+		order by p.destroyed_at desc, p.id desc
+		limit $3`, u.ID, before, limit)
 	if err != nil {
 		return err
 	}
