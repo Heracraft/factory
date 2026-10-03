@@ -168,6 +168,12 @@
 <div class="flex gap-10">
 	<main id="main" class="max-w-[68ch] min-w-0 flex-1 pt-8 pb-24">
 		<h1 class="text-3xl font-semibold">{doc.title}</h1>
+		{#if doc.experimental}
+			<p class="banner banner--warn mt-4 max-w-[33rem]" data-testid="experimental">
+				Experimental. This setup is new and can change or stop working. Tell us what breaks with the
+				Feedback link at the bottom of the page.
+			</p>
+		{/if}
 		{#if doc.description}
 			<p class="mt-3 max-w-[33rem] text-lg text-ink-muted">{doc.description}</p>
 		{/if}

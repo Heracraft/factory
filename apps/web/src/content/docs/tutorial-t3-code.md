@@ -3,6 +3,7 @@ title: T3 Code on your machine
 description: Run T3 Code's server on the machine and drive Claude Code and Codex threads from a browser or your phone, with the laptop closed.
 section: Tutorials
 order: 25
+status: experimental
 ---
 
 [T3 Code](https://github.com/pingdotgg/t3code) is an open-source app for running coding agents as threads, each with its diff and its own worktree. Its server can run on any Linux box, and a repose machine suits it: Claude Code is already logged in there, the threads keep going after you close the laptop, and a stop, start or restore keeps them. You need nothing from repose beyond SSH.

@@ -15,10 +15,6 @@
 	});
 </script>
 
-<svelte:head>
-	{#if !doc}<title>Not found · repose docs</title>{/if}
-</svelte:head>
-
 {#if doc}
 	{#key doc.slug}
 		<DocPage {doc} />
@@ -32,14 +28,6 @@
 			This page moved to <a href={resolve('/docs/[slug]', { slug: moved })} class="link"
 				>{docBySlug(moved)?.title ?? moved}</a
 			>.
-		</p>
-	</main>
-{:else}
-	<main id="main" class="pt-8 pb-24">
-		<h1 class="text-3xl font-semibold">No such page</h1>
-		<p class="mt-3 text-ink-muted">
-			There's no docs page called “{page.params.slug}”.
-			<a href={resolve('/docs')} class="link">The overview</a> lists everything.
 		</p>
 	</main>
 {/if}

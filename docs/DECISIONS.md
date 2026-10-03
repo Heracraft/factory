@@ -11001,3 +11001,31 @@ bubblewrap and ripgrep. Checked: the built package ran `echo` on kanali,
 and on a temporary guest with the package imported, a T3 Code Codex
 thread ran `cat hello.txt && date +%Y` and replied with the file's word
 and the year. Reaches machines with the next base.
+
+**I-427. The web server bundles its packages; an unknown docs page is a 404; a docs page can be experimental.**
+(owner, 2026-10-03: "mark it as experimental, add 404 thing") On the live
+site `/docs/<unknown slug>` answered 500: the web container's log said
+`Cannot find package 'marked'`. The runtime image (apps/web/Dockerfile)
+holds `build/` and no `node_modules`, and adapter-node leaves the
+packages in `dependencies` (marked, @logto/browser, animejs,
+svelte-sonner, the nix highlighter) external to the server bundle. Every
+known page is prerendered, so only an on-request render met it. Vite now
+bundles every package (`ssr.noExternal: true`), so the image needs no
+`node_modules` and a package added later cannot fail the same way.
+Reproduced and checked with `build/` copied to a directory without
+`node_modules`: before, 500 and ERR_MODULE_NOT_FOUND; after, 404.
+
+An unknown slug was also a soft 404 (200 with "No such page"). The docs
+page's `load` now throws 404 for a slug that is no page and no moved page,
+and `docs/+error.svelte` shows the same text, so a stale link reads as
+missing to people and to monitors. Test: docs.spec.ts "an unknown docs
+page says so, with a 404".
+
+A docs page with `status: experimental` in its frontmatter shows a warning
+banner under its title (the site's `banner--warn`), and its markdown
+(`/docs/<slug>.md`, `/llms.txt` readers) carries the same line. The T3 Code
+tutorial is the first: it is new, and T3 Code itself is a 0.0.x alpha.
+Test: docs.spec.ts "an experimental page says so under its title".
+Checked at 1440 and 390, light and dark. *Rejected:* moving the five
+packages to devDependencies (adapter-node bundles those; it fixes today's
+five and not the next one added to dependencies).
