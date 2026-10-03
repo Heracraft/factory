@@ -2,6 +2,7 @@ package cli
 
 import (
 	"archive/tar"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path"
@@ -154,4 +155,32 @@ cut -d' ' -f3- "$t/env/list" | while IFS= read -r p; do
   if [ -e "$p" ]; then printf '%s %s\n' "$(stat -c %Y "$p")" "$p"; fi
 done > ~/.repose/env-paths
 ` + setMarker("env", hash), nil
+}
+
+// addEnvRemoveToApply is the apply's .env part when config.toml leaves the
+// files on the laptop (DECISIONS I-422): it removes each guest copy whose
+// SHA-256 is the laptop file's, so a file edited on the machine stays and
+// is named, then forgets the carry (marker and env-paths), so turning env
+// back on sends the set again. Only hashes travel, never a value. It is
+// "" when no earlier carry wrote files here.
+func addEnvRemoveToApply(tw *tar.Writer, files []envFile, carried bool) (string, error) {
+	if !carried {
+		return "", nil
+	}
+	var list strings.Builder
+	for _, f := range files {
+		_, _ = fmt.Fprintf(&list, "%x %s\n", sha256.Sum256(f.Body), f.Rel)
+	}
+	if err := tarAddBytes(tw, "env/rm", []byte(list.String())); err != nil {
+		return "", err
+	}
+	return `n=0
+while IFS= read -r line; do
+  s=${line%% *}; p=${line#* }
+  [ -f "$p" ] || continue
+  if [ "$(sha256sum "$p" | cut -c1-64)" = "$s" ]; then rm -f "$p"; n=$((n+1)); else echo "#envleft $p"; fi
+done < "$t/env/rm"
+echo "#envremoved $n"
+rm -f ~/.repose/env-paths ` + carryMarkerDir + `/env
+`, nil
 }

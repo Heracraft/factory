@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-443 entries.
+444 entries.
 
 ## Scope
 
@@ -54,7 +54,7 @@ pointer, not a summary.
 
 - **R2-7** Logto (already self-hosted) with the GitHub connector is the identity provider — L155
 - **R5-10** CLI login is authorization code with PKCE and a loopback redirect, device code as the headless fallback — L158
-- **R2-8** Tool logins sync from the laptop (gh, Codex, opencode, git identity); Claude never; named secrets are held centrally with envelope encryption — amended; L161
+- **R2-8** Tool logins sync from the laptop (gh, Codex, opencode, git identity); Claude never; named secrets are held centrally with envelope encryption — amended; amended by I-422; L161
 - **R2-15** Claude logs in inside the guest by default; a setup token stored as a named secret is the headless fallback — L169
 - **R3-10** Named secrets: envelope encryption in Postgres, DEKs wrapped by a Key Vault key. Disks rely on Azure managed-disk encryption — L173
 - **R2-10** Egress is unrestricted but shaped; abuse control is card on file plus GitHub-linked identity plus recorded process samples — L179
@@ -242,7 +242,7 @@ pointer, not a summary.
 - **I-162** mkfs leaves the inode tables to the guest's lazy init — 2026-09-23; L3380
 - **I-163** An op enqueued in one api process wakes the driver in the other through NOTIFY — 2026-09-23; L3398
 - **I-149** The CLI has its own passphrase-less key, and one SSH connection per command — 2026-09-23; L3419
-- **I-150** The laptop sends its commits to the guest; the guest never fetches origin during a sync — 2026-09-23; L3451
+- **I-150** The laptop sends its commits to the guest; the guest never fetches origin during a sync — 2026-09-23; amended by I-422; L3451
 - **I-151** The CLI proves the `<slug>.repose` alias works and says exactly how to fix it when not — 2026-09-23; L3497
 - **I-152** A directory's cached project must share its remote, and naming a project never writes the directory cache — 2026-09-23; L3515
 - **I-153** The CLI says what actually happened: the true state, why, and the next command — 2026-09-23; L3530
@@ -280,7 +280,7 @@ pointer, not a summary.
 - **I-195..I-205** laptop parity, settled with the owner on 2026-09-23 before any code — 2026-09-23; L4325
 - **I-195** `run` and `attach` carry the laptop's git config, minus a denylist — L4333
 - **I-196** `run` and `attach` carry the laptop's Claude Code config, and merge `settings.json` — L4349
-- **I-197** Gitignored `.env` files travel over SSH at `run` — L4370
+- **I-197** Gitignored `.env` files travel over SSH at `run` — amended by I-422; L4370
 - **I-198** The guest's timezone follows the laptop on every `run` and `attach`, — L4384
 - **I-199** Ports are auto-forwarded while a CLI session is attached — L4389
 - **I-200** Agents outlive dev servers under memory pressure; nothing is killed on a timer — L4402
@@ -475,3 +475,4 @@ pointer, not a summary.
 - **I-407** `repose run` waits for a destroy that holds the name it wants, instead of creating NAME-2 — 2026-10-01; L10558
 - **I-408** Placement waits up to three minutes for a guest being stopped before it answers `capacity` — 2026-10-01; L10571
 - **I-409** hostd sends a heartbeat ahead of every command result — 2026-10-01; L10595
+- **I-422** The laptop chooses which logins `run` copies: `repose logins` and `[logins] skip` in config.toml — 2026-10-03; L10611

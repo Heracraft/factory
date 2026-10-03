@@ -247,6 +247,19 @@ Answer a waiting question: `repose reply todo-app yes`. The first word is the pr
 | `repose secrets list`          | Names and dates, never values. Alias `ls`.                                                                                |
 | `repose secrets rm NAME`       | Delete it.                                                                                                                |
 
+## Logins
+
+Which of your laptop's logins and files `repose run` copies to the machine: `gh`, `codex`, `opencode` and `env` (gitignored `.env` files). Everything is copied until you choose. See [Secrets](/docs/secrets#choose-what-is-copied).
+
+| Command                     | What it does                                                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `repose logins`             | In a terminal, a list to toggle: space toggles, Enter saves, `q` leaves. Otherwise it prints the list.              |
+| `repose logins off NAME...` | Leave these on your laptop. The next `repose run` removes the copies an earlier run left on the machine.            |
+| `repose logins on NAME...`  | Copy these again.                                                                                                   |
+| `repose logins reset`       | Drop the list: every login is copied again. With `--project`, the project follows the list for every project again. |
+
+Without `--project` these set the list for every project. With `--project NAME` they set that project's own list, which replaces the other one for it.
+
 ## Configuration
 
 | Command                           | What it does                                                                               |
@@ -280,16 +293,24 @@ default_agent = "codex"
 
 [sync]
 exclude = ["dist", "*.mp4"]
+
+[logins]
+skip = ["gh"]
+
+[projects.todo-app.logins]
+skip = ["gh", "env"]
 ```
 
-| Key               | Default  | What it does                                                         |
-| ----------------- | -------- | -------------------------------------------------------------------- |
-| `default_class`   | `large`  | Size of new projects.                                                |
-| `default_agent`   | `claude` | Agent for new projects.                                              |
-| `sync.exclude`    | none     | More gitignore-style patterns the sync leaves out.                   |
-| `api_url`         | hosted   | See [Other servers](#other-servers).                                 |
-| `logto_issuer`    | hosted   | The login server. See [Other servers](#other-servers).               |
-| `logto_client_id` | hosted   | The CLI's application id there. See [Other servers](#other-servers). |
+| Key               | Default  | What it does                                                                                                                            |
+| ----------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `default_class`   | `large`  | Size of new projects.                                                                                                                   |
+| `default_agent`   | `claude` | Agent for new projects.                                                                                                                 |
+| `sync.exclude`    | none     | More gitignore-style patterns the sync leaves out.                                                                                      |
+| `logins.skip`     | none     | Logins `repose run` leaves on your laptop: `gh`, `codex`, `opencode`, `env`. `repose logins` sets it.                                   |
+| `projects`        | none     | Per-project tables. `[projects.NAME.logins]` with `skip` replaces `logins.skip` for that project; `skip = []` copies everything for it. |
+| `api_url`         | hosted   | See [Other servers](#other-servers).                                                                                                    |
+| `logto_issuer`    | hosted   | The login server. See [Other servers](#other-servers).                                                                                  |
+| `logto_client_id` | hosted   | The CLI's application id there. See [Other servers](#other-servers).                                                                    |
 
 ## Environment variables
 

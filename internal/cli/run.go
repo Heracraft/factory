@@ -220,6 +220,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		}
 		pr.Phase("Syncing", "")
 		endSync := timeSpan("phase sync")
+		skip, chosen := e.loginSkip(project.Slug)
 		// Tool logins, the git identity and the carry run first in the
 		// sync's apply ssh, so the checkout lands in a guest whose git
 		// already knows the user and how to reach the remote (I-150), and
@@ -261,6 +262,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 			StashRemote: opts.StashRemote, DiscardRemote: opts.DiscardRemote, FirstOnly: !opts.Sync,
 			Exclude: e.Cfg.SyncExclude, NoRemote: project.RemoteURL == "", RemoteURL: project.RemoteURL,
 			EnvLater: waitEnv,
+			EnvOff:   skip[envLogin],
 			Probe:    early.forProject(),
 			Carry: func(markers map[string]string) (*credCarry, error) {
 				b := <-carryDone
@@ -280,6 +282,7 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 				}
 				return buildCredentialsAndCarry(e.HomeDir, repoRoot, credSyncOptions{
 					RemoteURL: project.RemoteURL,
+					Skip:      skip,
 					Kept: func(label string) {
 						e.warn("Kept the guest's %s login: it is newer than the laptop's.", label)
 					},
@@ -303,6 +306,9 @@ func runRun(ctx context.Context, e *Env, opts RunOptions, attachOnly bool) error
 		}
 		if len(summary.Copied) > 0 {
 			_, _ = fmt.Fprintf(e.Out, "Credentials: %s\n", strings.Join(summary.Copied, ", "))
+			if l := loginsLine(summary.Copied, skip, chosen); l != "" {
+				_, _ = fmt.Fprintln(e.Out, l)
+			}
 		}
 		if summary.Carried != nil {
 			for _, l := range summary.Carried.Lines() {
@@ -1375,8 +1381,10 @@ func (e *Env) carryWithoutSync(ctx context.Context, t sshTarget, project *Projec
 		}
 		co.Claude = cc
 	}
+	skip, chosen := e.loginSkip(project.Slug)
 	copied, carried, err := syncCredentialsAndCarry(ctx, t, e.HomeDir, repoDir, credSyncOptions{
 		RemoteURL: project.RemoteURL,
+		Skip:      skip,
 		Kept: func(label string) {
 			e.warn("Kept the guest's %s login: it is newer than the laptop's.", label)
 		},
@@ -1387,6 +1395,9 @@ func (e *Env) carryWithoutSync(ctx context.Context, t sshTarget, project *Projec
 	}
 	if len(copied) > 0 {
 		_, _ = fmt.Fprintf(e.Out, "Credentials: %s\n", strings.Join(copied, ", "))
+		if l := loginsLine(copied, skip, chosen); l != "" {
+			_, _ = fmt.Fprintln(e.Out, l)
+		}
 	}
 	if carried != nil {
 		for _, l := range carried.Lines() {

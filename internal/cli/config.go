@@ -37,6 +37,24 @@ type Config struct {
 	// LogtoClientID overrides the built-in App ID for a different Logto
 	// (staging, a fork). Public.
 	LogtoClientID string `toml:"logto_client_id"`
+	// Logins is the [logins] table: which of the laptop's logins `run`
+	// leaves on the laptop (logins.go, DECISIONS I-422).
+	Logins LoginsConfig `toml:"logins"`
+	// Projects holds per-project tables, keyed by the project's name:
+	// [projects.NAME.logins] replaces [logins] for that project.
+	Projects map[string]ProjectConfig `toml:"projects"`
+}
+
+// LoginsConfig is a [logins] table. Skip is nil when the table does not
+// set it, and empty when it says to copy everything: a project's
+// `skip = []` overrides a global list.
+type LoginsConfig struct {
+	Skip *[]string `toml:"skip"`
+}
+
+// ProjectConfig is one [projects.NAME] table.
+type ProjectConfig struct {
+	Logins LoginsConfig `toml:"logins"`
 }
 
 func defaultConfig() Config {
