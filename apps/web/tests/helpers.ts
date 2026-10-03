@@ -145,3 +145,15 @@ export async function addQuestion(
 	if (!res.ok) throw new Error(`/question: ${res.status} ${await res.text()}`);
 	return res.json();
 }
+
+/** count events on a project, one minute apart, e000 oldest (cmd/fakeapi POST /events). */
+export async function addEvents(projectId: string, count: number): Promise<void> {
+	const adminURL = process.env.FAKEAPI_ADMIN_URL;
+	if (!adminURL) throw new Error('FAKEAPI_ADMIN_URL not set — run tests through global-setup.ts');
+	const res = await fetch(`${adminURL}/events`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ project_id: projectId, count })
+	});
+	if (!res.ok) throw new Error(`/events: ${res.status} ${await res.text()}`);
+}

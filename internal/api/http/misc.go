@@ -3,7 +3,10 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/heracraft/repose/internal/api/store"
 )
@@ -22,7 +25,26 @@ func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	evs, err := store.ListEvents(r.Context(), s.d.Pool, p.ID, sinceParam(r), 50)
+	// limit and before page back through the list (I-414); with neither,
+	// the newest 50 as before.
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 200 {
+			return errf("invalid", "limit must be 1 to 200")
+		}
+		limit = n
+	}
+	var evs []store.Event
+	if v := r.URL.Query().Get("before"); v != "" {
+		before, perr := uuid.Parse(v)
+		if perr != nil {
+			return errf("invalid", "before must be an event id")
+		}
+		evs, err = store.ListEventsBefore(r.Context(), s.d.Pool, p.ID, before, limit)
+	} else {
+		evs, err = store.ListEvents(r.Context(), s.d.Pool, p.ID, sinceParam(r), limit)
+	}
 	if err != nil {
 		return err
 	}

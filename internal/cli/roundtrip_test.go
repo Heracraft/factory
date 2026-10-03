@@ -3,8 +3,10 @@ package cli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	fakeapi "github.com/heracraft/repose/internal/fakes/api"
 )
@@ -162,6 +164,54 @@ func TestLogsAndEventsRoundTrip(t *testing.T) {
 	}
 	if err := EventsCmd(ctx, e, "", "24h", false, nil); err != nil {
 		t.Fatalf("EventsCmd: %v", err)
+	}
+}
+
+// I-414: events print oldest first; a --since past the api's 50 pages back
+// with before; --follow prints each event once.
+func TestEventsPagesAndFollows(t *testing.T) {
+	fake := fakeapi.New(fakeapi.Options{})
+	defer fake.Close()
+	e, p := newRoundtripEnv(t, fake)
+	ctx := context.Background()
+	base := time.Now().Add(-3 * time.Hour)
+	for i := 0; i < 130; i++ {
+		fake.AddEvent(p.ID, base.Add(time.Duration(i)*time.Minute), "agent_message", fmt.Sprintf("m%03d", i))
+	}
+	out := &bytes.Buffer{}
+	e.Out = out
+	if err := EventsCmd(ctx, e, "", "24h", false, nil); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, l := range strings.Split(strings.TrimSpace(out.String()), "\n") {
+		if f := strings.Split(l, "\t"); len(f) == 4 && strings.HasPrefix(f[3], "m") {
+			got = append(got, f[3])
+		}
+	}
+	if len(got) != 130 || got[0] != "m000" || got[129] != "m129" {
+		t.Fatalf("--since 24h printed %d events, %v..., want m000..m129", len(got), got[:min(3, len(got))])
+	}
+
+	out.Reset()
+	polls := 0
+	pctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	poll := func() {
+		polls++
+		if polls == 1 {
+			fake.AddEvent(p.ID, time.Now(), "agent_message", "late")
+		}
+		if polls == 3 {
+			cancel()
+		}
+	}
+	_ = EventsCmd(pctx, e, "", "1h", true, poll)
+	if n := strings.Count(out.String(), "\tlate\n"); n != 1 {
+		t.Fatalf("follow printed the new event %d times:\n%s", n, out.String())
+	}
+	if n := strings.Count(out.String(), "\tm129\n"); n != 1 {
+		t.Fatalf("follow printed m129 %d times:\n%s", n, out.String())
 	}
 }
 

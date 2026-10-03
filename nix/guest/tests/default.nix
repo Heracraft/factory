@@ -655,6 +655,17 @@ in
           assert "is not installed" not in out, out
           assert "status=127" in out, out
 
+      with subtest("I-410: a command only one package has prints the hint"):
+          # az is only in azure-cli; the "other packages" grep found
+          # nothing and ended the handler with no output at all.
+          out = guest.succeed("sudo -H -u dev bash -ic 'az; echo status=$?' 2>&1 || true")
+          print(out)
+          lines = [l for l in out.splitlines() if l.strip()]
+          i = lines.index("az: command not found")
+          assert lines[i + 1] == "  nix profile add nixpkgs#azure-cli  install it on this machine", out
+          assert "Other packages" not in out, out
+          assert "status=127" in out, out
+
       with subtest("I-219: a truly unknown command prints the plain not-found"):
           out = guest.succeed("sudo -H -u dev bash -ic 'reposenosuchcommand; echo status=$?' 2>&1 || true")
           print(out)

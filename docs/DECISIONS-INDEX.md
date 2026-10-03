@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-446 entries.
+451 entries.
 
 ## Scope
 
@@ -478,3 +478,8 @@ pointer, not a summary.
 - **I-416** Work happens in worktrees and reaches main through a release queue — 2026-10-03; L10612
 - **I-415** The feedback board is Fider's hosted `repose.fider.io`, and you sign in there with your repose account through Logto — 2026-10-01; L10646
 - **I-417** A boot sets the old /tmp aside in one rename and deletes it after the boot — 2026-10-02; L10675
+- **I-410** The command-not-found hint survives a command only one package has — 2026-10-03; L10719
+- **I-411** `repose exec` takes the command with or without `--` — 2026-10-03; L10731
+- **I-412** The docs as markdown at /llms.txt, and the laptop's CLI version on the machine — 2026-10-03; L10748
+- **I-413** The tools carry reads Homebrew formulae and installs them from nixpkgs — 2026-10-03; L10764
+- **I-414** Events page back: `before` and `limit` on the api, Show older on the dashboard, and `repose events` reads the whole window — 2026-10-03; L10782

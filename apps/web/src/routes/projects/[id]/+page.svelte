@@ -48,7 +48,22 @@
 	let loadFailed = $state(false);
 	let loadError = $state<string | undefined>(undefined);
 	let lastUpdated = $state<Date | undefined>(undefined);
+	// The poll keeps the newest EVENTS_POLL; "Show older" pages back from
+	// the oldest one held (I-414). The card shows `eventsShown` of them.
+	const EVENTS_POLL = 50;
+	const EVENTS_STEP = 20;
 	let events = $state<ProjectEvent[]>([]);
+	let olderEvents = $state<ProjectEvent[]>([]);
+	let olderDone = $state(false);
+	let loadingOlder = $state(false);
+	let eventsShown = $state(EVENTS_STEP);
+	const allEvents = $derived.by(() => {
+		const byId = new Map([...olderEvents, ...events].map((e) => [e.id, e]));
+		return [...byId.values()].sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+	});
+	// Fewer than a full poll means the poll already holds every event.
+	const noOlder = $derived(olderDone || (olderEvents.length === 0 && events.length < EVENTS_POLL));
+	const canShowOlder = $derived(allEvents.length > eventsShown || !noOlder);
 	let snapshots = $state<Snapshot[]>([]);
 	let revisions = $state<Revision[]>([]);
 	let me = $state<Me | undefined>(undefined);
@@ -157,11 +172,32 @@
 
 	async function refreshEvents() {
 		try {
-			events = (await listEvents(id)).slice().sort((a, b) => (a.ts < b.ts ? 1 : -1));
+			events = await listEvents(id, { limit: EVENTS_POLL });
 			eventsFailure.ok();
 		} catch (err) {
 			eventsFailure.fail(err, !project);
 		}
+	}
+
+	async function showOlderEvents() {
+		// Fetch when the next step would run past what is held.
+		if (allEvents.length < eventsShown + EVENTS_STEP && !noOlder) {
+			loadingOlder = true;
+			try {
+				const page = await listEvents(id, {
+					before: allEvents[allEvents.length - 1].id,
+					limit: EVENTS_POLL
+				});
+				olderEvents = [...olderEvents, ...page];
+				if (page.length < EVENTS_POLL) olderDone = true;
+			} catch (err) {
+				eventsFailure.fail(err, false);
+				return;
+			} finally {
+				loadingOlder = false;
+			}
+		}
+		eventsShown += EVENTS_STEP;
 	}
 
 	async function refreshSnapshots() {
@@ -664,7 +700,7 @@
 					<p class="mt-3 text-sm text-ink-muted">No events yet.</p>
 				{:else}
 					<ul class="mt-2">
-						{#each events.slice(0, 20) as e (e.id)}
+						{#each allEvents.slice(0, eventsShown) as e (e.id)}
 							<!-- Baseline, so the smaller time sits on the summary's line. -->
 							<li class="row flex items-baseline justify-between gap-4 text-sm">
 								<span class="flex min-w-0 flex-wrap items-baseline gap-2">
@@ -677,6 +713,19 @@
 							</li>
 						{/each}
 					</ul>
+					{#if canShowOlder}
+						<div class="mt-3 flex items-baseline gap-3">
+							<button
+								type="button"
+								class="btn-ghost px-0"
+								disabled={loadingOlder}
+								onclick={showOlderEvents}>{loadingOlder ? 'Loading…' : 'Show older'}</button
+							>
+							<span class="text-sm text-ink-muted tabular-nums"
+								>{Math.min(eventsShown, allEvents.length)} shown</span
+							>
+						</div>
+					{/if}
 				{/if}
 			</div>
 

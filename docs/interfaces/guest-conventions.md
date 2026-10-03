@@ -267,6 +267,7 @@ state and is named once.
 | the laptop's `git config --global --list --includes`, run in the checkout, minus the I-195 denylist and the keys that hold a secret (I-211), plus the checkout's own `user.name`/`user.email` | `/home/dev/.config/git/repose-carried` (dev 0644, replaced whole by rename) | `/home/dev/.gitconfig` starts with `[include] path = ~/.config/git/repose-carried`, added once, so the guest's own keys after it win. Path values missing in the guest and a `core.pager`/`core.editor` not on PATH are removed from the file and named once. When `~/.gitconfig` is a symlink (home-manager) nothing is added and the CLI says what to add |
 | `core.excludesFile`'s contents | `/home/dev/.config/git/ignore` | git's default excludes file |
 | the laptop's zone | `TZ=` in `/etc/repose/env`, tmux global and per-session `TZ` | see "tmux" |
+| the laptop CLI's version (DECISIONS I-412) | `/home/dev/.repose/cli-version`, one line, as `repose --version` names it | marker `cli-version`; the machine guide tells agents to read it; absent until a CLI with I-412 has run or attached |
 | `~/.claude/CLAUDE.md`, `keybindings.json`, `skills/`, `agents/`, `commands/`, `output-styles/`, and the scripts under `~/.claude` that `settings.json` runs (DECISIONS I-196) | the same paths under `/home/dev/.claude/`, copied onto what is there (`cp -R`, modes kept) | one marker per file or directory (`claude-claude-md`, `claude-skills`, `claude-scripts`, ...) |
 | `~/.claude/settings.json` | `/home/dev/.claude/settings.json`, merged by `internal/cli/claude_merge.jq` with the base's `jq`: guest file as the base, laptop's on top (without `env`, `apiKeyHelper`, `aws*`/`gcp*`, `otelHeadersHelper`, `forceLoginMethod`, removed on the laptop, I-211) with its home rewritten to `/home/dev`, `permissions.allow/deny/ask` unioned, `repose-hook` entries stripped from both and `/etc/repose/claude-settings.json`'s appended, hooks and `statusLine` whose command does not resolve dropped. Written as `settings.json.tmp`, checked with `jq empty`, the old file kept as `settings.json.repose-prev`, renamed into place. An invalid guest file is left alone | marker `claude-settings` |
 | `enabledPlugins` from a marketplace | installed by `~/.repose/claude-plugins.sh` (started with `setsid -f`, reads `~/.repose/claude-plugins.json`) with `claude plugin marketplace add` / `claude plugin install`, reporting through `tmux display-message` | marker `claude-plugins`, written only when every install worked |
@@ -282,7 +283,8 @@ state and is named once.
 `{"v":1, "hash":"<32 hex>", "items":[{"name", "bins":[...], "manager",
 "pkg", "version", "from":"laptop"|"project"}], "node":"<major>",
 "ruby":"<x.y>", "java":"<major>"}`.
-`manager` is `npm`, `pnpm`, `bun`, `go`, `cargo`, `uv`, `pipx` or absent
+`manager` is `npm`, `pnpm`, `bun`, `go`, `cargo`, `uv`, `pipx`, `brew`
+(DECISIONS I-413: nixpkgs only, no `pkg` or `version`) or absent
 (nixpkgs only); `pkg` is the manager's name (the Go package path for
 `go`); names, versions and commands are restricted to
 `[A-Za-z0-9@/._+-]` by the CLI. `node` is absent when the project pins no

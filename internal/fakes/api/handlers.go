@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1480,6 +1481,27 @@ func (f *Fake) listEvents(w http.ResponseWriter, r *http.Request) *apiError {
 			continue
 		}
 		out = append(out, *ev)
+	}
+	// Newest first, at most limit (50), and before pages back, as the api
+	// answers (I-414).
+	sort.SliceStable(out, func(i, j int) bool { return out[i].TS.After(out[j].TS) })
+	if b := r.URL.Query().Get("before"); b != "" {
+		i := slices.IndexFunc(out, func(ev Event) bool { return ev.ID == b })
+		if i < 0 {
+			out = nil
+		} else {
+			out = out[i+1:]
+		}
+	}
+	limit := 50
+	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n >= 1 && n <= 200 {
+		limit = n
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	if out == nil {
+		out = []Event{}
 	}
 	writeJSON(w, http.StatusOK, out)
 	return nil

@@ -10716,3 +10716,84 @@ systemd-tmpfiles-setup and guestd listened at 9.78 s and 8.43 s; this
 one spent 0.16 s and 0.15 s and guestd listened at 4.72 s and 4.74 s. After
 each boot /tmp held only that boot's own 4 entries, and the purge ran at
 60 s and emptied tmp-old in 3.1 s and 3.3 s.
+**I-410. The command-not-found hint survives a command only one package has.** (owner,
+2026-10-03, dogfood on unwrap) Typing `az` on a machine without it printed
+nothing and returned 1. The handler (`nix/guest/base/devtools.nix`, I-219)
+runs under `writeShellApplication`'s `set -euo pipefail`, and its "other
+packages" line is `grep -vxF "$attr"` over the list of packages with the
+command. With one package (`az` is only in `azure-cli`; `htop` showed up
+fine because `htop-vim` has it too) that grep matches nothing, exits 1, and
+the script ends before it prints a word. The grep is now `{ grep ... ||
+true; }`. Checked on unwrap with the patched script: `az` prints the
+not-found line and `nix profile add nixpkgs#azure-cli`, exit 127. VM test:
+`guest-devtools` subtest "I-410". Reaches machines with the next base.
+
+**I-411. `repose exec` takes the command with or without `--`.** (owner,
+2026-10-03) `repose exec grep ADMIN_PASSWORD prod.env`, inside the
+project's checkout, answered `put the command after --`, and so did the
+same with the project named; the agent on the machine had told the owner
+to run it that way, and `ssh-and-editors.md` already showed `repose exec
+pwd`. Flags now stop at the first word (`SetInterspersed(false)`), so the
+command's own flags reach it, as with `docker exec`; exec's `-i`/`-t` go
+before the command. With no `--` and no `--project`, a first word that is
+one of the account's slugs is PROJECT (one `ListProjects`, skipped when
+the api fails), and that word alone is refused with exit 2, since running
+it would print only "command not found". The I-275 form `PROJECT [-i] [-t]
+-- COMMAND` still works: a `--` after one word and exec's flags only is the
+separator, and any other `--` is the command's (`repose exec git log --
+main.go`). `repose exec -- COMMAND` runs a command named like a project.
+Tests: `TestExecSeparated`, `TestExecCommandFlagsPassThrough`, and the
+project-word cases in `TestExecRunsInTheCheckout`.
+
+**I-412. The docs as markdown at /llms.txt, and the laptop's CLI version on the machine.** (owner,
+2026-10-03) An agent on unwrap gave the owner a `repose exec` command line
+from memory that the CLI refused. The owner asked for a link to the docs on
+top of the machine guide, and for the user's CLI version, since the docs
+describe the latest release and users run older ones. The web app now
+prerenders `/llms.txt` (every page, by section, with its description) and
+`/docs/<slug>.md` (title, description, body, with `/docs/...` links made
+absolute `.md` links), from the same `content/docs` the site renders
+(`apps/web/src/lib/llms.ts`). The machine guide's opening says to read the
+page before telling the user a `repose` command, and to compare
+`~/.repose/cli-version`. That file is a carry part (marker `cli-version`,
+sent when the version changes) written by `run` and `attach`; a test binary
+(version "") sends none. guest-conventions.md lists it. The guide is in the
+base, so it reaches machines with the next base; the file arrives with the
+next CLI release.
+
+**I-413. The tools carry reads Homebrew formulae and installs them from nixpkgs.** (owner,
+2026-10-03, "why not done: az") `az` never reached unwrap: the tools
+carry (I-221) read npm, pnpm, bun, Go, cargo, uv and pipx, and the
+owner's `az` came from Homebrew, so `~/.repose/tools-wanted.json` on
+unwrap listed eleven tools and no `az`. The CLI now reads
+`<prefix>/Cellar/<formula>/<version>/INSTALL_RECEIPT.json` under
+`$HOMEBREW_PREFIX`, else `/opt/homebrew` and `/usr/local` on macOS and
+`/home/linuxbrew/.linuxbrew` and `~/.linuxbrew` on Linux, and keeps the
+formulae with `installed_on_request` (no dependency travels) that have
+commands in their `bin`. Each is an item with `manager: "brew"` and no
+`pkg` or `version`: a formula's name and version mean nothing to nix, and
+the guest installer already tries nixpkgs by the first command before the
+manager, so `az` becomes `nixpkgs#azure-cli` with no guest change, on old
+bases too; one nixpkgs lacks fails into the notices as "no nixpkgs package
+has bin/X". Brew is read last, so a command npm or Go installed stays
+theirs. Casks are apps and are not read. Test: `TestReadGlobalTools`
+(asked for, a dependency, one in the base, one npm already has).
+
+**I-414. Events page back: `before` and `limit` on the api, Show older on the dashboard, and `repose events` reads the whole window.** (owner,
+2026-10-03) The project page fetched the api's newest 50 events and
+showed 20, with no way to older ones. `GET /projects/:id/events` takes
+`limit` (1..200, default 50) and `before=<event id>`, keyset on `(ts, id)`
+so events in the same second page cleanly (`store.ListEventsBefore`; the
+`events_project_ts` index serves it). The answer stays a bare array, so
+old clients are unchanged. The dashboard polls the newest 50, shows 20,
+and Show older shows 20 more, fetching the 50 before the oldest held when
+it runs out. `repose events --since` pages back with `before` until the
+window is covered (it printed only the newest 50 of a busy day), prints
+oldest first, and `--follow` asks for what came after the newest event
+printed: it used the last element of a newest-first list, the oldest,
+so every poll printed the whole window again. The fake api answered
+oldest first, which is why the tests never saw it; it now answers as the
+api does. Tests: `TestEventsPageBack` (api, Postgres, ties in one
+second), `TestEventsPagesAndFollows` (CLI, 130 events, follow prints a new
+event once). The same survey found other capped lists, recorded in
+STATUS for the owner to pick from.

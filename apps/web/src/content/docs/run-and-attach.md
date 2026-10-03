@@ -102,12 +102,12 @@ An agent that's working usually shows `now`; one that has been waiting for you s
 `repose exec` runs one command in the checkout on the machine and gives you its output and exit code, the way `docker exec` does. The command gets what an agent there gets: your [secrets](/docs/secrets) as environment variables and the project's dev shell (its `.envrc`, or its `flake.nix` dev shell). Loading it prints nothing unless it takes more than 2 seconds or fails.
 
 ```
-$ repose exec -- npm test
-$ repose exec todo-app -- git status --short
-$ repose exec -it -- psql
+$ repose exec npm test
+$ repose exec todo-app git status --short
+$ repose exec -it psql
 ```
 
-Everything after `--` is the command. Without `-i` it reads no input, and without `-t` it has no terminal; `-it` is for something interactive, like a REPL. In a script, `repose exec -- make check && echo passed` works as you'd expect, since the exit code is the command's.
+A first word that names one of your projects picks that project; otherwise it is this checkout's. `repose exec -- COMMAND` runs a command that happens to share a project's name. Without `-i` it reads no input, and without `-t` it has no terminal; `-it` is for something interactive, like a REPL. In a script, `repose exec make check && echo passed` works as you'd expect, since the exit code is the command's.
 
 `repose ssh` opens a plain shell in the checkout instead of the tmux session, and `exit` closes it. Start long jobs in tmux (`repose attach`), where they outlive the connection.
 

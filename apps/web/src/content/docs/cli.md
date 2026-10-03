@@ -72,15 +72,15 @@ WINDOW     COMMAND  ACTIVE
 2:codex    codex    12m ago
 ```
 
-### `repose exec [PROJECT] -- COMMAND [ARG...]`
+### `repose exec [PROJECT] [--] COMMAND [ARG...]`
 
-Run one command in the checkout on the machine, with the environment an agent there has: your secrets and the project's dev shell. Output streams back and the exit code is the command's. Everything after `--` is the command, passed word for word and not read by a shell; for a pipeline, run a shell yourself, as in the last example.
+Run one command in the checkout on the machine, with the environment an agent there has: your secrets and the project's dev shell. Output streams back and the exit code is the command's. The command is passed word for word, its own flags included, and no shell reads it; for a pipeline, run a shell yourself, as in the last example. If the first word names one of your projects, it is PROJECT. To run a command that has a project's name, put `--` before it. Put `-i` and `-t` before the command.
 
 ```
-$ repose exec -- npm test
-$ repose exec todo-app -- git log --oneline -3
-$ repose exec -it -- psql
-$ repose exec -- sh -c "npm run build && npm test"
+$ repose exec npm test
+$ repose exec todo-app git log --oneline -3
+$ repose exec -it psql
+$ repose exec sh -c "npm run build && npm test"
 ```
 
 `-i`/`--interactive` passes your input to the command; without it the command reads nothing. `-t`/`--tty` gives it a terminal. Pass both, as with `docker exec`, for anything interactive.
@@ -220,7 +220,7 @@ Grow the project's disk, for example `repose resize 80G`, or `repose resize todo
 
 ### `repose events [PROJECT]`
 
-`--since 72h` (default `24h`), `-f`/`--follow` to follow, `--json`.
+Every event in the window, oldest first, one per line: time, agent, kind, summary. `--since 72h` (default `24h`), `-f`/`--follow` to keep printing new ones as they come, `--json`.
 
 ### `repose questions [PROJECT]`
 

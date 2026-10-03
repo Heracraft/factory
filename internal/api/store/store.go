@@ -453,7 +453,14 @@ func ListSnapshots(ctx context.Context, q Querier, projectID uuid.UUID) ([]Snaps
 
 // ListEvents lists a project's events after since, newest first.
 func ListEvents(ctx context.Context, q Querier, projectID uuid.UUID, since time.Time, limit int) ([]Event, error) {
-	return many[Event](ctx, q, "select "+eventCols+" from events where project_id = $1 and ts > $2 order by ts desc limit $3", projectID, since, limit)
+	return many[Event](ctx, q, "select "+eventCols+" from events where project_id = $1 and ts > $2 order by ts desc, id desc limit $3", projectID, since, limit)
+}
+
+// ListEventsBefore lists a project's events older than the event before,
+// newest first: the next page after a list that ended at before (I-414).
+// An id that is not one of the project's events gives no rows.
+func ListEventsBefore(ctx context.Context, q Querier, projectID, before uuid.UUID, limit int) ([]Event, error) {
+	return many[Event](ctx, q, "select "+eventCols+" from events where project_id = $1 and (ts, id) < (select ts, id from events where id = $2 and project_id = $1) order by ts desc, id desc limit $3", projectID, before, limit)
 }
 
 // --- base versions ----------------------------------------------------
