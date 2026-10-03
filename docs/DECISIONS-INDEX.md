@@ -10,7 +10,7 @@ entry marked superseded, amended or reversed has a later entry that says so,
 and the later entry wins. The entry text is the decision; a title here is a
 pointer, not a summary.
 
-459 entries.
+460 entries.
 
 ## Scope
 
@@ -491,3 +491,4 @@ pointer, not a summary.
 - **I-423** The tools carry does not read Homebrew; a curated list is the likely next step — 2026-10-03; L10932
 - **I-424** Main is integrated often and released when the owner asks — 2026-10-03; L10947
 - **I-425** Claude Code in a guest starts with the fullscreen renderer unless the user chose one — 2026-10-03; L10964
+- **I-426** The guest's Codex ships with its code-mode host — 2026-10-03; L10985

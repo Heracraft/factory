@@ -114,6 +114,15 @@ for a in $agents; do
       '.[$a].version = $v | .[$a].url = $u | .[$a].hash = $h' "$versions" > "$tmp"
   fi
   mv "$tmp" "$versions"
+  # Codex runs shell commands through a second release asset, pinned
+  # beside the binary at the same version (DECISIONS I-426).
+  if [ "$a" = codex ]; then
+    hurl=${url/codex-x86_64/codex-code-mode-host-x86_64}
+    hhash=$(nix store prefetch-file --json "$hurl" | jq -r .hash)
+    tmp=$(mktemp)
+    jq --arg u "$hurl" --arg h "$hhash" '.codex["code-mode-host"] = {url: $u, hash: $h}' "$versions" > "$tmp"
+    mv "$tmp" "$versions"
+  fi
   changed+=("$a $new")
 done
 
@@ -145,6 +154,9 @@ for c in "${changed[@]}"; do
   out=$(nix build --no-link --print-out-paths "git+file://$root?dir=nix#$attr")
   echo "$a: built $out"
   HOME=$(mktemp -d) "$out/bin/$b" --version
+  if [ "$a" = codex ]; then
+    test -x "$out/bin/codex-code-mode-host"
+  fi
 done
 
 title="agents: $(printf '%s, ' "${changed[@]}" | sed 's/, $//')"
