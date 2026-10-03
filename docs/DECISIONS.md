@@ -10981,3 +10981,23 @@ in a tmux pane gives `#{alternate_on}` 1, `"default"` gives 0. Test: the
 guest-base VM test asserts the key in the fresh, existing and `plan`
 files and keeps a user's `"default"`. Reaches machines with the next
 base; on an older base, `/tui fullscreen` sets it.
+
+**I-426. The guest's Codex ships with its code-mode host.** (2026-10-03)
+Codex 0.157.1 on every guest failed each shell command with "failed to
+spawn code-mode host .../codex-0.157.1/bin/codex-code-mode-host: No such
+file or directory", so a Codex turn could read and answer but not run
+`ls`. Found while testing T3 Code against a guest; plain `codex` in tmux,
+`codex exec` and the Codex app over SSH hit the same wall, and
+`-c features.code_mode=false` does not get round it. Codex runs commands
+through `codex-code-mode-host`, which upstream ships as its own release
+asset and looks for next to its executable; `codex.nix` fetched only the
+`codex` binary. The package now fetches the host asset too, pinned in
+`versions.json` under `codex."code-mode-host"`, and installs it beside
+`codex` (the binary wrapper keeps `.codex-wrapped` in the same `bin`).
+`scripts/bump-agents.sh` moves the host with the binary and checks it is
+in the built package. The full `codex-package` tarball (148 MB, with
+bwrap, rg and a voice host) was not taken: the base already supplies
+bubblewrap and ripgrep. Checked: the built package ran `echo` on kanali,
+and on a temporary guest with the package imported, a T3 Code Codex
+thread ran `cat hello.txt && date +%Y` and replied with the file's word
+and the year. Reaches machines with the next base.
