@@ -25,6 +25,7 @@
     ./browser.nix
     ./desktop.nix
     ./sysctl.nix
+    ./tmp.nix
     ./env.nix
     ./guestd.nix
     ./store.nix

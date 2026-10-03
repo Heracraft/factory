@@ -10389,6 +10389,7 @@ Internal docs (DESIGN.md, RUNBOOK, OBSERVABILITY, PRICING's prose) keep
 *Rejected:* counting machines by size class ("one large, or two
 small"): a visitor has not met the classes, and a count is still a
 ceiling.
+
 **I-403. A restore writes the volume with O_DIRECT, eight writes in
 flight, and downloads the snapshot as eight ranged GETs at once.**
 (owner, 2026-10-01; amends the restore steps of 03-hostd.md §5.9 and the
@@ -10608,6 +10609,113 @@ nothing next to the command. grpc-hostd.md says so. Test:
 `TestHeartbeatAheadOfEveryResult` (two commands give `hb,result,hb,result`;
 `result,result` against the old sender).
 
+**I-416. Work happens in worktrees and reaches main through a release
+queue.** (owner, 2026-10-03: "start a release queue so multiple agents can
+work on features and queue and coordinate a full release. Also the default
+should be working in a worktree.") Four agent sessions were working in
+this checkout at once, on their own branches and on main. CLAUDE.md said to
+work on main and ask before branching, so a session either edited the main
+checkout under the others or asked first. Decision ids collided: on
+2026-10-03 feedback-batch and start-fast had both written I-410, as
+restore-fast and the design round had both written I-369 two days before.
+Merges and deploys happened from whichever session finished, so a release
+was never a known set of branches.
+
+Now every change starts in `~/<checkout>-<slug>` on its own branch with no
+need to ask, and the main checkout stays on main. `ops/dev/release-queue`
+(bash, state in the common git dir under one flock, on no branch) does
+four things: `id` reserves decision ids after reading every local branch,
+every worktree's uncommitted DECISIONS.md and earlier reservations; `add`
+queues a clean branch that merges into main (a conflict only in the
+generated DECISIONS-INDEX.md is allowed) and names its deploy targets from
+its diff (Go through `go list -deps`, so a shared package counts for each
+binary that imports it); `cut` and `resume` merge the queue in order into
+a `release/<id>` worktree, regenerating the index when that is the only
+conflict; `done` refuses until main holds the release, then removes its
+worktree. One conductor session verifies the merge, asks the owner once
+per release, fast-forwards and pushes main, publishes the base and tags
+the CLI as the targets need, runs each branch's live check and records the
+release in STATUS. `docs/ops/RELEASE.md` is the procedure; host and edge
+switches stay the owner's.
+
+*Rejected:* a queue file committed on main (every `add` would be a commit
+on main from a worktree, racing the conductor's merges); per-branch queue
+files union-merged into the repository (the conductor would have to scan
+every branch to learn what is queued); a GitHub merge queue (pull requests
+are not used here, and agents do not push).
+**I-415. The feedback board is Fider's hosted `repose.fider.io`, and you
+sign in there with your repose account through Logto.** (owner,
+2026-10-01)
+The owner opened a free Fider board for bugs and ideas. Fider's custom
+OAuth provider "repose account" points at the shared Logto tenant
+(I-340) through a fourth repose application, `repose feedback`
+(Traditional web, `wc2np1n3r9z4acp2wutev`), so a person posts with the
+login they already have and Fider never asks for a password. The
+application's name is what Logto's emails say ("... is your repose
+feedback sign-in code"); the owner asked for a name that tells it apart
+from the dashboard and CLI apps, which are both `repose`. Fider reads the
+profile from `/oidc/me` with the scope `openid profile email`: id `sub`,
+name `name, username`, email `email`. The name path stops before
+`email`: an account made with an email code has neither name nor
+username, and Fider shows names publicly, so Fider's own fallback (the
+part before the @) is what such a person shows until they change it in
+Fider. Sign-up does not start collecting given, family or user names for
+this: Logto's profile collection is tenant-wide, so it would add a step
+to every repose and Job Alerts sign-up for a display name on one board.
+The site links the board from the landing footer and from
+Troubleshooting's last section, and the privacy policy names Fider as
+the host that receives a poster's name and email. The footer's seven
+links stand four over three below md, and wrap freely below 360px, where
+four with WCAG 1.4.12's spacing are 341px wide. `ops/fider/README.md`
+has every setting.
+Fider's Facebook, Google and GitHub sign-ins are off (owner), so a
+person has one identity on the board; Fider's email sign-in stays on.
+*Rejected:* a Feedback link in the dashboard header (five items already
+share 350px at phone width).
+**I-417. A boot sets the old /tmp aside in one rename and deletes it after
+the boot.** (owner, 2026-10-02: "starting a stopped project is taking 27
+seconds") On host-01, StartGuest for a stopped large guest ran 01:32:13Z
+to 01:32:40Z. hostd had Cloud Hypervisor up within 0.1 s; the guest's
+console showed systemd-tmpfiles-setup ("Create System Files and
+Directories") running for 20 s before sysinit.target, and guestd, sshd and
+the ready signal all wait for sysinit. kanali's own boot measured the same:
+19.7 s in that unit, 18 s of it between two entries of /tmp. The cause was
+`boot.tmp.cleanOnBoot`, whose `D! /tmp` rule deletes the last boot's /tmp
+file by file, and a guest's /tmp is on its persistent volume, where a day
+of go test, browsers and builds leaves hundreds of thousands of files.
+
+/tmp still starts every boot empty. `repose-tmp-rotate` (before
+systemd-tmpfiles-setup, no default dependencies) renames a non-empty /tmp
+into `/var/lib/repose/tmp-old/<random>/tmp` and makes a new 1777 /tmp; the
+rename is one syscall (0.07 s for 200,000 files on kanali, where deleting
+them took 2.9 s on a quiet disk and 18 s at boot).
+`repose-tmp-purge.timer` deletes the set-aside trees a minute after the
+boot at Nice 19 and idle I/O class, and nothing a boot waits for depends
+on it. A /tmp that is a mount point (a tmpfs a user configured) is left
+alone. The rotate runs once a boot (RemainAfterExit; on host-01 a second
+start request ran it again 0.24 s after the first) and exits once
+systemd-tmpfiles-setup is active: a base
+applied without a reboot restarts the active targets, and sysinit.target
+would otherwise start it on a running machine, under its tmux and
+browsers. A stop before the purge snapshots the set-aside tree, the same
+bytes the old /tmp held.
+
+*Rejected:* /tmp on a tmpfs (a guest's large builds and browser profiles
+in /tmp would then take its memory); clearing /tmp at stop instead (a stop
+is waited on too, and a guest that crashes skips it).
+No public doc changes: /tmp's behaviour is the same, and the docs already
+say a start takes about 10 seconds (`/docs`, index). Test: guest-tools-carry
+subtest "I-417" (a 2,000-file /tmp is gone after a reboot, set aside under
+tmp-old, no `D! /tmp` rule, a start of the unit on the running guest
+leaves /tmp alone, the purge empties tmp-old). Measured on host-01
+(2026-10-03) with main's guest system and this one booted by hand on one
+scratch thin volume (2 GB, 4 vCPU, the production kernel, initrd and
+Cloud Hypervisor arguments, no network, no hostd), /tmp holding 200,405
+entries before each measured boot: main spent 4.72 s and 4.43 s in
+systemd-tmpfiles-setup and guestd listened at 9.78 s and 8.43 s; this
+one spent 0.16 s and 0.15 s and guestd listened at 4.72 s and 4.74 s. After
+each boot /tmp held only that boot's own 4 entries, and the purge ran at
+60 s and emptied tmp-old in 3.1 s and 3.3 s.
 **I-410. The command-not-found hint survives a command only one package has.** (owner,
 2026-10-03, dogfood on unwrap) Typing `az` on a machine without it printed
 nothing and returned 1. The handler (`nix/guest/base/devtools.nix`, I-219)

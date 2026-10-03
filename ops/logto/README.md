@@ -12,6 +12,7 @@ names no product or belongs to one application (I-340). Admin console:
 | `osfcu4s5rg0p6tn91lpb8` | SPA | `repose` | dashboard (`PUBLIC_LOGTO_APP_ID`) |
 | `jccig5bb3i4d78bq4farv` | Native, device flow | `repose` | CLI (`defaultLogtoClientID`, I-99) |
 | `ev18qy8l3y8wslzoyxmjt` | Machine-to-machine | `repose api` | api's Management API calls (I-87) |
+| `wc2np1n3r9z4acp2wutev` | Traditional | `repose feedback` | Fider board at `repose.fider.io` (I-415, `ops/fider/README.md`) |
 | `kcl4gnzsa68ttme40xy9p` | Traditional | `Job Alerts` | recruiting app |
 
 The name is what the verification emails say (`{{application.name}}`), so
