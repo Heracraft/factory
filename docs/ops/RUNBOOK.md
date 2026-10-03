@@ -617,6 +617,23 @@ A snapshot failed with `freeze_timeout`, or the alert fired from a
 5. To confirm the guest is healthy afterwards:
    `repose-admin exec <id> -- guestd call ping` and check `df` inside.
 
+## Switch a host to main
+
+Done from a clean checkout of the pushed main commit, with the owner's word
+for this switch (`docs/ops/RELEASE.md`). The host only trusts signed paths,
+so the derivation is copied and built there:
+
+1. `drv=$(nix eval --raw ./nix#nixosConfigurations.host-01.config.system.build.toplevel.drvPath)`
+2. `nix copy --derivation --to ssh-ng://host-01 "$drv"`
+3. `out=$(ssh host-01 "nix build --no-link --print-out-paths '$drv^*'")`
+4. Read `ssh host-01 nix store diff-closures /run/current-system $out` and
+   `ssh host-01 $out/bin/switch-to-configuration dry-activate`: what
+   restarts. A change to hostd alone restarts hostd; guests keep running.
+5. `ssh host-01 "nix-env -p /nix/var/nix/profiles/system --set $out && $out/bin/switch-to-configuration switch"`
+
+A push to main redeploys the api, which drops hostd's stream for a few
+seconds; a stop or restore timed across a push looks slow.
+
 ## Switch failed
 
 `repose config apply` reported a failed revision, or a base bump left a

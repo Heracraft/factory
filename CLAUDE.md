@@ -65,10 +65,19 @@ behaviour) ships with its update to the public docs in
 docs with it. `internal/cli/docs_test.go` fails when the CLI and `cli.md`
 disagree; the rest is on `docs/CHECKLIST.md` (DECISIONS I-242).
 
-## Ask before creating a branch
+## Work in a worktree; main changes only through the release queue
 
-Work on `main` unless told otherwise. Creating or switching to another branch
-needs the user's approval first.
+Several agents work in this repository at once, so every change starts in
+its own worktree: `git worktree add ../<checkout>-<slug> -b <slug> main`
+(on this machine, `~/kanali-<slug>`), with no need to ask. The main checkout
+stays on `main` and nobody edits in it. Reserve decision ids with
+`ops/dev/release-queue id` before writing them. When the branch is done:
+commit, `git merge main`, run its checks, then `ops/dev/release-queue add
+--live "<what to check after deploy>"`. Never merge into `main` or push
+yourself; the release session (the conductor) cuts the queue, verifies it,
+fast-forwards `main` and ships it (`docs/ops/RELEASE.md`, DECISIONS I-416).
+Switching an existing worktree to another branch, or deleting one that is
+not yours, still needs the user's approval.
 
 ## Names are fixed
 
