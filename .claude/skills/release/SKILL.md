@@ -11,7 +11,7 @@ for the rest of the conductor's role.
    branch in flight whether it is about to queue; wait for the ones that
    say minutes, not hours.
 2. `ops/dev/release-queue cut`, and `resume` after resolving any conflict.
-3. Run every check RELEASE.md step 3 names for the release's targets, in
+3. Run every check RELEASE.md step 4 names for the release's targets, in
    the release worktree. Paste the output in your notes; "tests pass"
    closes nothing.
 4. Ask the owner once with `repose-ask --options yes,no`: release id,

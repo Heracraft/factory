@@ -25,8 +25,10 @@ this file is the part between "a branch is done" and "it is live".
 
    `add` refuses a dirty tree, a branch with nothing main lacks, and a branch
    that conflicts with main anywhere but `docs/DECISIONS-INDEX.md`. It
-   records the commit, so later commits need another `add`. It prints what
-   the branch ships as (below).
+   records the commit, so later commits need another `add`; that works
+   while the branch is in a cut too, and the conductor takes the new
+   commits with `resume` or in the next cut. It prints what the branch
+   ships as (below).
 5. Stop there. Don't merge into `main`, push, tag, publish a base or switch
    a host. If the conductor asks for a change, make it on the same branch
    and `add` again.
@@ -56,7 +58,10 @@ reaches. Go packages count through `go list -deps`: a change to
 1. **See what is waiting.** `ops/dev/release-queue ls`. Ask each agent
    with a branch in flight (`ListAgents`, `SendMessage`) whether it is
    about to queue; a release that leaves out a branch five minutes from
-   done costs a second release.
+   done costs a second release. Sessions get renamed: a send that fails
+   with "no agent named" means the name changed, not that the session
+   ended. Run `ListAgents` again and match the `[ref]`, and tell agents
+   your current name, since their replies to an old one are lost.
 2. **Cut.** `ops/dev/release-queue cut` makes `~/kanali-r<date>-<n>` on
    branch `release/r<date>-<n>` from main and merges every queued branch
    in queue order, each with `--no-ff`. A conflict that is only the
@@ -64,7 +69,10 @@ reaches. Go packages count through `go list -deps`: a change to
    stops the cut: resolve it in the release worktree (or send it back to
    the branch's agent and `drop` the branch), commit, then
    `ops/dev/release-queue resume <release>`.
-3. **Verify the merge, not the branches.** In the release worktree, for
+3. **Freeze when you verify.** Commits that arrive after the cut wait for
+   the next release unless they fix the release itself; each one taken
+   in means verifying again.
+4. **Verify the merge, not the branches.** In the release worktree, for
    everything the release ships as:
    - always: `python3 ops/dev/decisions-index.py --check`; `go build ./...`,
      `go vet ./...`, `golangci-lint run ./...`; `go test -race ./...`
@@ -86,23 +94,23 @@ reaches. Go packages count through `go list -deps`: a change to
      `dry-activate` on the target before any switch.
    A failure is fixed in the release worktree when it comes from the merge,
    or sent back to the branch's agent when it is the branch's own.
-4. **Ask once.** Send the owner one summary (`repose-ask --options
+5. **Ask once.** Send the owner one summary (`repose-ask --options
    yes,no`): the release id, the branches with one line each, the targets,
    and what each target's ship step does to tenants. A yes covers this
    release's push, tag and base publish. A host or edge switch still needs
    the owner's word for that switch.
-5. **Move main.** `git -C ~/kanali merge --ff-only release/<id>`; the main
+6. **Move main.** `git -C ~/kanali merge --ff-only release/<id>`; the main
    checkout must be clean. Push `main`. Watch CI on the pushed commit; a
    push redeploys `api` and `web` whether CI passes or not, so a red run is
    fixed at once.
-6. **Ship the rest**, in this order when present: `base` publish (the rev
+7. **Ship the rest**, in this order when present: `base` publish (the rev
    is the pushed main commit), `cli` tag (the next `v0.1.N`, with notes
    from the merged branches), `host` switches (RUNBOOK "Switch a host to
    main") and the `edge` switch.
-7. **Check it live.** Run each branch's `--live` check on throwaway `e2e-*`
+8. **Check it live.** Run each branch's `--live` check on throwaway `e2e-*`
    projects, never on the owner's projects, at most two alive at once.
    Paste the output into the release record.
-8. **Record and close.** One line in `docs/workstreams/STATUS.md` per
+9. **Record and close.** One line in `docs/workstreams/STATUS.md` per
    release: the id, the branches, the targets shipped with versions, the
    live evidence, anything not done. Commit it to main and push. Then
    `ops/dev/release-queue done <release>`, which removes the release

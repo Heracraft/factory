@@ -103,7 +103,10 @@ cmd_add() {
   local f prev=""
   f=$state/entries/$(key "$branch")
   [ -f "$f" ] && prev=$(field "$f" state)
-  case $prev in cut:*) die "add: $branch is in release ${prev#cut:}; tell that session, or wait for it" ;; esac
+  # A branch already in a cut can take new commits: they wait as a new
+  # entry, which `resume` merges into that release or the next cut takes.
+  local held=""
+  case $prev in cut:*) held=${prev#cut:} ;; esac
   {
     echo "branch=$branch"
     echo "sha=$(git rev-parse HEAD)"
@@ -117,6 +120,7 @@ cmd_add() {
   } > "$f.new"
   mv "$f.new" "$f"
   echo "queued $branch at $(git rev-parse --short HEAD) ($ahead commits; ships as: $needs)"
+  [ -z "$held" ] || echo "  release $held holds an earlier commit of $branch; the conductor takes this one with 'release-queue resume $held', or the next cut does"
 }
 
 cmd_ls() {
@@ -193,7 +197,7 @@ merge_queue() { # release worktree
 
 summary() { # release
   local rel=$1 f=$state/releases/$1 needs
-  needs=$(sed -n 's/^merged=[^ ]* [^ ]* //p' "$f" | tr ',' '\n' | grep -v -e '^$' -e '^none$' | sort -u | paste -sd, -)
+  needs=$(sed -n 's/^merged=[^ ]* [^ ]* //p' "$f" | tr ',' '\n' | { grep -v -e '^$' -e '^none$' || true; } | sort -u | paste -sd, -)
   echo "release $rel in $(field "$f" worktree) (branch release/$rel)"
   sed -n 's/^merged=\([^ ]*\) \([^ ]\{9\}\)[^ ]* \(.*\)/  merged \1 \2 (\3)/p' "$f"
   echo "  ships as: ${needs:-nothing to deploy}"
