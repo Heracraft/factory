@@ -158,7 +158,7 @@ sshd material (delivered by hostd into the same tmpfs from the explicit
 
 | Method | Path | Body / result |
 |---|---|---|
-| GET | `/projects/:id/events?since=` | `[{id, ts, kind, agent?, summary}]` |
+| GET | `/projects/:id/events?since=&before=&limit=` | `[{id, ts, kind, agent?, summary}]`, newest first, `limit` (1..200, default 50) of them. `before=<event id>` (DECISIONS I-414) gives the events older than that one, ordered by `(ts, id)`, and ignores `since`; an id that is not one of the project's events gives `[]`. A bad `limit` or `before` is `400 invalid`. A client pages back by passing the last id of each page until a page is shorter than `limit`; an api older than I-414 ignores both and answers with its newest 50 |
 | GET | `/projects/:id/logs?since=&kind=console\|build\|ops` | last 10k lines, JSON lines. Every line has `ts` and `kind`; a `build` line also has `op_id`, `seq` and `line` (`ts` and `kind` on build lines since I-322; a client must accept a build line without them, which an older api sends). `since` (RFC 3339, fractional seconds allowed) keeps the lines after it: for `build`, lines that reached the api after it (since I-322; before, `since` was ignored for `build`), for `ops`, ops created at or after it |
 
 Event kinds are those of `features/notifications.md`; `agent_message`

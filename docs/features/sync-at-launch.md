@@ -271,7 +271,9 @@ Tools (DECISIONS I-221, I-222):
   (`~/.bun/install/global`), Go binaries in `$GOBIN`, `$GOPATH/bin` or
   `~/go/bin` (package path and version from their build info), cargo's
   `~/.cargo/.crates2.json` (registry crates only), `uv tool` and `pipx`
-  venvs. It adds the commands the checkout's own scripts run: package.json
+  venvs, and Homebrew formulae installed on request (`Cellar/*/*/
+  INSTALL_RECEIPT.json`, I-413), installed on the guest from nixpkgs by
+  their command. It adds the commands the checkout's own scripts run: package.json
   scripts at the root and in every workspace package, Makefile and
   justfile recipes, Procfile, `.air.toml` (air) and compose files
   (docker). A command is left out when the guest base has it, when a

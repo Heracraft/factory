@@ -141,3 +141,12 @@ func itoa(n int) string {
 	}
 	return string(b[i:])
 }
+
+// AddEvent records an event on a project at ts, as a guest's hook would.
+func (f *Fake) AddEvent(projectID string, ts time.Time, kind, summary string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if p, ok := f.projects[projectID]; ok {
+		p.events = append(p.events, &Event{ID: f.nextID(), TS: ts, Kind: kind, Summary: summary})
+	}
+}

@@ -220,7 +220,7 @@ Grow the project's disk, for example `repose resize 80G`, or `repose resize todo
 
 ### `repose events [PROJECT]`
 
-`--since 72h` (default `24h`), `-f`/`--follow` to follow, `--json`.
+Every event in the window, oldest first, one per line: time, agent, kind, summary. `--since 72h` (default `24h`), `-f`/`--follow` to keep printing new ones as they come, `--json`.
 
 ### `repose questions [PROJECT]`
 

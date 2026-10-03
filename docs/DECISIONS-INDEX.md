@@ -478,3 +478,5 @@ pointer, not a summary.
 - **I-410** The command-not-found hint survives a command only one package has — 2026-10-03; L10611
 - **I-411** `repose exec` takes the command with or without `--` — 2026-10-03; L10623
 - **I-412** The docs as markdown at /llms.txt, and the laptop's CLI version on the machine — 2026-10-03; L10640
+- **I-413** The tools carry reads Homebrew formulae and installs them from nixpkgs — 2026-10-03; L10656
+- **I-414** Events page back: `before` and `limit`, Show older, `repose events` reads the whole window — 2026-10-03; L10674

@@ -177,10 +177,18 @@ export const restoreSnapshot = (id: string, snapshotId: string, asNewProject?: s
 	});
 
 // Events and logs.
-export const listEvents = (id: string, since?: string) =>
-	request<ProjectEvent[]>(
-		`/projects/${id}/events${since ? `?since=${encodeURIComponent(since)}` : ''}`
-	);
+/** The newest 50 events, or with `before` (an event id) the `limit` before it (I-414). */
+export const listEvents = (
+	id: string,
+	opts: { since?: string; before?: string; limit?: number } = {}
+) => {
+	const q = new URLSearchParams();
+	if (opts.since) q.set('since', opts.since);
+	if (opts.before) q.set('before', opts.before);
+	if (opts.limit) q.set('limit', String(opts.limit));
+	const qs = q.toString();
+	return request<ProjectEvent[]>(`/projects/${id}/events${qs ? `?${qs}` : ''}`);
+};
 
 // Questions (repose-ask, I-245).
 export const listProjectQuestions = (id: string, pendingOnly = true) =>

@@ -27,7 +27,7 @@ repose status todo-app
 repose status todo-app --watch
 ```
 
-The dashboard's project page shows the state, agents, SSH sessions and cost, plus events, snapshots, the last build and a projected monthly cost. It doesn't list listening ports.
+The dashboard's project page shows the state, agents, SSH sessions and cost, plus events (newest 20, with Show older for the rest), snapshots, the last build and a projected monthly cost. It doesn't list listening ports.
 
 ## Stop and start
 

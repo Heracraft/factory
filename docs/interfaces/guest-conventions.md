@@ -283,7 +283,8 @@ state and is named once.
 `{"v":1, "hash":"<32 hex>", "items":[{"name", "bins":[...], "manager",
 "pkg", "version", "from":"laptop"|"project"}], "node":"<major>",
 "ruby":"<x.y>", "java":"<major>"}`.
-`manager` is `npm`, `pnpm`, `bun`, `go`, `cargo`, `uv`, `pipx` or absent
+`manager` is `npm`, `pnpm`, `bun`, `go`, `cargo`, `uv`, `pipx`, `brew`
+(DECISIONS I-413: nixpkgs only, no `pkg` or `version`) or absent
 (nixpkgs only); `pkg` is the manager's name (the Go package path for
 `go`); names, versions and commands are restricted to
 `[A-Za-z0-9@/._+-]` by the CLI. `node` is absent when the project pins no

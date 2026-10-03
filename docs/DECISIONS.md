@@ -10652,3 +10652,40 @@ sent when the version changes) written by `run` and `attach`; a test binary
 (version "") sends none. guest-conventions.md lists it. The guide is in the
 base, so it reaches machines with the next base; the file arrives with the
 next CLI release.
+
+**I-413. The tools carry reads Homebrew formulae and installs them from nixpkgs.** (owner,
+2026-10-03, "why not done: az") `az` never reached unwrap: the tools
+carry (I-221) read npm, pnpm, bun, Go, cargo, uv and pipx, and the
+owner's `az` came from Homebrew, so `~/.repose/tools-wanted.json` on
+unwrap listed eleven tools and no `az`. The CLI now reads
+`<prefix>/Cellar/<formula>/<version>/INSTALL_RECEIPT.json` under
+`$HOMEBREW_PREFIX`, else `/opt/homebrew` and `/usr/local` on macOS and
+`/home/linuxbrew/.linuxbrew` and `~/.linuxbrew` on Linux, and keeps the
+formulae with `installed_on_request` (no dependency travels) that have
+commands in their `bin`. Each is an item with `manager: "brew"` and no
+`pkg` or `version`: a formula's name and version mean nothing to nix, and
+the guest installer already tries nixpkgs by the first command before the
+manager, so `az` becomes `nixpkgs#azure-cli` with no guest change, on old
+bases too; one nixpkgs lacks fails into the notices as "no nixpkgs package
+has bin/X". Brew is read last, so a command npm or Go installed stays
+theirs. Casks are apps and are not read. Test: `TestReadGlobalTools`
+(asked for, a dependency, one in the base, one npm already has).
+
+**I-414. Events page back: `before` and `limit` on the api, Show older on the dashboard, and `repose events` reads the whole window.** (owner,
+2026-10-03) The project page fetched the api's newest 50 events and
+showed 20, with no way to older ones. `GET /projects/:id/events` takes
+`limit` (1..200, default 50) and `before=<event id>`, keyset on `(ts, id)`
+so events in the same second page cleanly (`store.ListEventsBefore`; the
+`events_project_ts` index serves it). The answer stays a bare array, so
+old clients are unchanged. The dashboard polls the newest 50, shows 20,
+and Show older shows 20 more, fetching the 50 before the oldest held when
+it runs out. `repose events --since` pages back with `before` until the
+window is covered (it printed only the newest 50 of a busy day), prints
+oldest first, and `--follow` asks for what came after the newest event
+printed: it used the last element of a newest-first list, the oldest,
+so every poll printed the whole window again. The fake api answered
+oldest first, which is why the tests never saw it; it now answers as the
+api does. Tests: `TestEventsPageBack` (api, Postgres, ties in one
+second), `TestEventsPagesAndFollows` (CLI, 130 events, follow prints a new
+event once). The same survey found other capped lists, recorded in
+STATUS for the owner to pick from.
